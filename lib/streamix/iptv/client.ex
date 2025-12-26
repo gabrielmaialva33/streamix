@@ -116,6 +116,7 @@ defmodule Streamix.Iptv.Client do
 
   defp parse_exp_date(nil), do: nil
   defp parse_exp_date(ts) when is_integer(ts), do: DateTime.from_unix!(ts)
+
   defp parse_exp_date(ts) when is_binary(ts) do
     case Integer.parse(ts) do
       {unix, _} -> DateTime.from_unix!(unix)
@@ -125,6 +126,7 @@ defmodule Streamix.Iptv.Client do
 
   defp to_integer(nil), do: nil
   defp to_integer(n) when is_integer(n), do: n
+
   defp to_integer(s) when is_binary(s) do
     case Integer.parse(s) do
       {n, _} -> n
@@ -134,11 +136,13 @@ defmodule Streamix.Iptv.Client do
 
   defp build_playlist_url(base_url, username, password) do
     base = String.trim_trailing(base_url, "/")
+
     "#{base}/get.php?username=#{URI.encode_www_form(username)}&password=#{URI.encode_www_form(password)}&type=m3u_plus&output=ts"
   end
 
   defp build_info_url(base_url, username, password) do
     base = String.trim_trailing(base_url, "/")
+
     "#{base}/player_api.php?username=#{URI.encode_www_form(username)}&password=#{URI.encode_www_form(password)}"
   end
 end

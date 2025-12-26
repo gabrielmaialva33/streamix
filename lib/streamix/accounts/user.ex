@@ -1,4 +1,7 @@
 defmodule Streamix.Accounts.User do
+  @moduledoc """
+  User schema for authentication.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

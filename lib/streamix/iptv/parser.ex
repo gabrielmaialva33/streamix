@@ -121,7 +121,8 @@ defmodule Streamix.Iptv.Parser do
   Fetches and parses M3U playlist from a provider URL.
   Returns a materialized list of channels.
   """
-  @spec fetch_and_parse(String.t(), String.t(), String.t()) :: {:ok, [channel()]} | {:error, term()}
+  @spec fetch_and_parse(String.t(), String.t(), String.t()) ::
+          {:ok, [channel()]} | {:error, term()}
   def fetch_and_parse(base_url, username, password) do
     url = build_url(base_url, username, password)
 

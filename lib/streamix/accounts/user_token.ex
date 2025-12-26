@@ -1,4 +1,7 @@
 defmodule Streamix.Accounts.UserToken do
+  @moduledoc """
+  Token schema for user sessions and email verification.
+  """
   use Ecto.Schema
   import Ecto.Query
   alias Streamix.Accounts.UserToken

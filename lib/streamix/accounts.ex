@@ -4,9 +4,8 @@ defmodule Streamix.Accounts do
   """
 
   import Ecto.Query, warn: false
+  alias Streamix.Accounts.{User, UserNotifier, UserToken}
   alias Streamix.Repo
-
-  alias Streamix.Accounts.{User, UserToken, UserNotifier}
 
   ## Database getters
 

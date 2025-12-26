@@ -5,8 +5,8 @@ defmodule Streamix.Iptv do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Repo
   alias Streamix.Iptv.{Channel, Client, Favorite, Provider, WatchHistory}
+  alias Streamix.Repo
   alias Streamix.Workers.SyncProviderWorker
 
   # =============================================================================
@@ -48,23 +48,17 @@ defmodule Streamix.Iptv do
   def create_provider_with_validation(attrs) do
     changeset = Provider.changeset(%Provider{}, attrs)
 
-    if changeset.valid? do
-      url = Ecto.Changeset.get_field(changeset, :url)
-      username = Ecto.Changeset.get_field(changeset, :username)
-      password = Ecto.Changeset.get_field(changeset, :password)
-
-      case Client.test_connection(url, username, password) do
-        {:ok, account_info} ->
-          case Repo.insert(changeset) do
-            {:ok, provider} -> {:ok, provider, account_info}
-            {:error, changeset} -> {:error, :validation, changeset}
-          end
-
-        {:error, reason} ->
-          {:error, :connection, reason}
-      end
+    with true <- changeset.valid?,
+         url = Ecto.Changeset.get_field(changeset, :url),
+         username = Ecto.Changeset.get_field(changeset, :username),
+         password = Ecto.Changeset.get_field(changeset, :password),
+         {:ok, account_info} <- Client.test_connection(url, username, password),
+         {:ok, provider} <- Repo.insert(changeset) do
+      {:ok, provider, account_info}
     else
-      {:error, :validation, changeset}
+      false -> {:error, :validation, changeset}
+      {:error, %Ecto.Changeset{} = changeset} -> {:error, :validation, changeset}
+      {:error, reason} -> {:error, :connection, reason}
     end
   end
 
@@ -102,7 +96,8 @@ defmodule Streamix.Iptv do
   Uses a transaction to ensure atomicity - either all channels are replaced or none.
   """
   def sync_provider(%Provider{} = provider) do
-    with {:ok, channels} <- Client.get_channels(provider.url, provider.username, provider.password) do
+    with {:ok, channels} <-
+           Client.get_channels(provider.url, provider.username, provider.password) do
       now_naive = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
       now_utc = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -123,20 +118,23 @@ defmodule Streamix.Iptv do
 
       # Wrap delete + insert in transaction for atomicity
       result =
-        Repo.transaction(fn ->
-          # Delete existing channels
-          Channel
-          |> where(provider_id: ^provider.id)
-          |> Repo.delete_all()
+        Repo.transaction(
+          fn ->
+            # Delete existing channels
+            Channel
+            |> where(provider_id: ^provider.id)
+            |> Repo.delete_all()
 
-          # Insert in batches of 500
-          channel_attrs
-          |> Enum.chunk_every(500)
-          |> Enum.reduce(0, fn batch, acc ->
-            {inserted, _} = Repo.insert_all(Channel, batch)
-            acc + inserted
-          end)
-        end, timeout: :infinity)
+            # Insert in batches of 500
+            channel_attrs
+            |> Enum.chunk_every(500)
+            |> Enum.reduce(0, fn batch, acc ->
+              {inserted, _} = Repo.insert_all(Channel, batch)
+              acc + inserted
+            end)
+          end,
+          timeout: :infinity
+        )
 
       case result do
         {:ok, count} ->
@@ -280,7 +278,7 @@ defmodule Streamix.Iptv do
     |> Repo.all()
   end
 
-  def is_favorite?(user_id, channel_id) do
+  def favorite?(user_id, channel_id) do
     Favorite
     |> where(user_id: ^user_id, channel_id: ^channel_id)
     |> Repo.exists?()
@@ -299,7 +297,7 @@ defmodule Streamix.Iptv do
   end
 
   def toggle_favorite(user_id, channel_id) do
-    if is_favorite?(user_id, channel_id) do
+    if favorite?(user_id, channel_id) do
       remove_favorite(user_id, channel_id)
       {:ok, :removed}
     else

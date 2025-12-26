@@ -1,4 +1,7 @@
 defmodule Streamix.Iptv.WatchHistory do
+  @moduledoc """
+  Schema for user watch history.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

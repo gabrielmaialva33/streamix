@@ -1,4 +1,7 @@
 defmodule Streamix.Iptv.Channel do
+  @moduledoc """
+  Schema for IPTV channels.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

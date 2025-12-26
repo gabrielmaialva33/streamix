@@ -1,4 +1,7 @@
 defmodule Streamix.Iptv.Provider do
+  @moduledoc """
+  Schema for IPTV providers (server configurations).
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

@@ -17,6 +17,8 @@ defmodule StreamixWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  alias Streamix.Accounts.Scope
+
   using do
     quote do
       # The default endpoint for testing
@@ -46,7 +48,7 @@ defmodule StreamixWeb.ConnCase do
   """
   def register_and_log_in_user(%{conn: conn} = context) do
     user = Streamix.AccountsFixtures.user_fixture()
-    scope = Streamix.Accounts.Scope.for_user(user)
+    scope = Scope.for_user(user)
 
     opts =
       context

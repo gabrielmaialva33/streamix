@@ -1,4 +1,7 @@
 defmodule Streamix.Iptv.Favorite do
+  @moduledoc """
+  Schema for user favorite channels.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 

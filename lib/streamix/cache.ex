@@ -5,7 +5,8 @@ defmodule Streamix.Cache do
   """
 
   @redis :streamix_redis
-  @default_ttl 3600  # 1 hour in seconds
+  # 1 hour in seconds
+  @default_ttl 3600
 
   @doc """
   Gets a value from cache. Returns nil if not found or expired.
@@ -40,6 +41,7 @@ defmodule Streamix.Cache do
     case Redix.command(@redis, ["KEYS", pattern]) do
       {:ok, keys} when keys != [] ->
         Redix.command(@redis, ["DEL" | keys])
+
       _ ->
         {:ok, 0}
     end

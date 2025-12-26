@@ -1,8 +1,11 @@
 defmodule Streamix.Accounts.UserNotifier do
+  @moduledoc """
+  Handles sending user notification emails.
+  """
   import Swoosh.Email
 
-  alias Streamix.Mailer
   alias Streamix.Accounts.User
+  alias Streamix.Mailer
 
   # Delivers the email using the application mailer.
   defp deliver(recipient, subject, body) do
