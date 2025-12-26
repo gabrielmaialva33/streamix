@@ -17,15 +17,7 @@ defmodule StreamixWeb.Router do
   scope "/", StreamixWeb do
     pipe_through :browser
 
-    live "/", DashboardLive, :index
-    live "/channels", ChannelsLive, :index
-    live "/channels/:id", PlayerLive, :show
-    live "/favorites", FavoritesLive, :index
-    live "/history", HistoryLive, :index
-    live "/providers", ProvidersLive, :index
-    live "/providers/new", ProvidersLive, :new
-    live "/providers/:id/edit", ProvidersLive, :edit
-    live "/settings", SettingsLive, :index
+    # TODO: Add routes here
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
