@@ -273,13 +273,7 @@ defmodule StreamixWeb.HomeLive do
             navigate={~p"/providers"}
             class="inline-flex items-center gap-2 px-8 py-3 bg-white text-black font-semibold rounded-md hover:bg-white/90 transition-colors"
           >
-            <.icon name="hero-play-solid" class="size-6" /> Meus Provedores
-          </.link>
-          <.link
-            navigate={~p"/search"}
-            class="inline-flex items-center gap-2 px-6 py-3 bg-white/20 text-white font-semibold rounded-md hover:bg-white/30 transition-colors backdrop-blur-sm"
-          >
-            <.icon name="hero-magnifying-glass" class="size-6" /> Buscar
+            <.icon name="hero-play-solid" class="size-6" /> Explorar Conteúdo
           </.link>
         <% else %>
           <.link

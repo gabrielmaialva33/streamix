@@ -34,34 +34,46 @@ defmodule StreamixWeb.ContentComponents do
 
   def content_tabs(assigns) do
     ~H"""
-    <div class="tabs tabs-boxed bg-base-200 p-1 inline-flex">
+    <div class="inline-flex bg-surface rounded-lg p-1 gap-1">
       <.link
         navigate={~p"/providers/#{@provider_id}"}
-        class={["tab gap-2", @selected == :live && "tab-active"]}
+        class={[
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          @selected == :live && "bg-brand text-white",
+          @selected != :live && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        ]}
       >
         <.icon name="hero-tv" class="size-4" />
         <span>Ao Vivo</span>
-        <span :if={@counts[:live]} class="badge badge-sm badge-ghost">
+        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
           {format_count(@counts.live)}
         </span>
       </.link>
       <.link
         navigate={~p"/providers/#{@provider_id}/movies"}
-        class={["tab gap-2", @selected == :movies && "tab-active"]}
+        class={[
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          @selected == :movies && "bg-brand text-white",
+          @selected != :movies && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        ]}
       >
         <.icon name="hero-film" class="size-4" />
         <span>Filmes</span>
-        <span :if={@counts[:movies]} class="badge badge-sm badge-ghost">
+        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
           {format_count(@counts.movies)}
         </span>
       </.link>
       <.link
         navigate={~p"/providers/#{@provider_id}/series"}
-        class={["tab gap-2", @selected == :series && "tab-active"]}
+        class={[
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          @selected == :series && "bg-brand text-white",
+          @selected != :series && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        ]}
       >
         <.icon name="hero-video-camera" class="size-4" />
         <span>Séries</span>
-        <span :if={@counts[:series]} class="badge badge-sm badge-ghost">
+        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
           {format_count(@counts.series)}
         </span>
       </.link>
@@ -94,9 +106,9 @@ defmodule StreamixWeb.ContentComponents do
 
   def movie_card(assigns) do
     ~H"""
-    <div class="card bg-base-200 hover:bg-base-300 transition-all group cursor-pointer">
-      <figure
-        class="relative aspect-[2/3] bg-base-300"
+    <div class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-all group cursor-pointer">
+      <div
+        class="relative aspect-[2/3] bg-surface-hover"
         phx-click={@on_details}
         phx-value-id={@movie.id}
       >
@@ -109,7 +121,7 @@ defmodule StreamixWeb.ContentComponents do
         />
         <div
           :if={!@movie.stream_icon && !@movie[:cover]}
-          class="w-full h-full flex items-center justify-center text-base-content/30"
+          class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name="hero-film" class="size-16" />
         </div>
@@ -119,32 +131,32 @@ defmodule StreamixWeb.ContentComponents do
             type="button"
             phx-click={@on_play}
             phx-value-id={@movie.id}
-            class="btn btn-circle btn-lg btn-primary"
+            class="w-14 h-14 rounded-full bg-brand flex items-center justify-center hover:bg-brand-hover transition-colors"
           >
-            <.icon name="hero-play-solid" class="size-8" />
+            <.icon name="hero-play-solid" class="size-8 text-white" />
           </button>
         </div>
 
-        <div :if={@movie[:rating]} class="absolute top-2 left-2 badge badge-sm badge-warning gap-1">
+        <div :if={@movie[:rating]} class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black">
           <.icon name="hero-star-solid" class="size-3" />
           {format_rating(@movie.rating)}
         </div>
 
-        <div :if={@movie[:year]} class="absolute top-2 right-2 badge badge-sm badge-ghost">
+        <div :if={@movie[:year]} class="absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white">
           {@movie.year}
         </div>
-      </figure>
+      </div>
 
-      <div class="card-body p-3">
+      <div class="p-3">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
-            <h3 class="font-medium text-sm truncate" title={@movie.name}>
+            <h3 class="font-medium text-sm text-text-primary truncate" title={@movie.name}>
               {@movie[:title] || @movie.name}
             </h3>
-            <p :if={@movie[:genre]} class="text-xs text-base-content/60 truncate">
+            <p :if={@movie[:genre]} class="text-xs text-text-secondary truncate">
               {@movie.genre}
             </p>
-            <p :if={@movie[:duration]} class="text-xs text-base-content/50">
+            <p :if={@movie[:duration]} class="text-xs text-text-secondary/70">
               {format_duration(@movie.duration)}
             </p>
           </div>
@@ -158,7 +170,7 @@ defmodule StreamixWeb.ContentComponents do
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-error"]}
+              class={["size-5", @is_favorite && "text-red-500"]}
             />
           </button>
         </div>
@@ -190,9 +202,9 @@ defmodule StreamixWeb.ContentComponents do
 
   def series_card(assigns) do
     ~H"""
-    <div class="card bg-base-200 hover:bg-base-300 transition-all group cursor-pointer">
-      <figure
-        class="relative aspect-[2/3] bg-base-300"
+    <div class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-all group cursor-pointer">
+      <div
+        class="relative aspect-[2/3] bg-surface-hover"
         phx-click={@on_click}
         phx-value-id={@series.id}
       >
@@ -205,31 +217,31 @@ defmodule StreamixWeb.ContentComponents do
         />
         <div
           :if={!@series[:cover]}
-          class="w-full h-full flex items-center justify-center text-base-content/30"
+          class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name="hero-video-camera" class="size-16" />
         </div>
 
-        <div :if={@series[:rating]} class="absolute top-2 left-2 badge badge-sm badge-warning gap-1">
+        <div :if={@series[:rating]} class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black">
           <.icon name="hero-star-solid" class="size-3" />
           {format_rating(@series.rating)}
         </div>
 
         <div
           :if={@series[:episode_count] && @series.episode_count > 0}
-          class="absolute bottom-2 left-2 badge badge-sm badge-primary"
+          class="absolute bottom-2 left-2 px-2 py-0.5 text-xs rounded bg-brand text-white"
         >
           {@series.episode_count} eps
         </div>
-      </figure>
+      </div>
 
-      <div class="card-body p-3">
+      <div class="p-3">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
-            <h3 class="font-medium text-sm truncate" title={@series.name}>
+            <h3 class="font-medium text-sm text-text-primary truncate" title={@series.name}>
               {@series[:title] || @series.name}
             </h3>
-            <p :if={@series[:year]} class="text-xs text-base-content/60">
+            <p :if={@series[:year]} class="text-xs text-text-secondary">
               {@series.year}
               <span :if={@series[:season_count] && @series.season_count > 0}>
                 | {pluralize(@series.season_count, "temporada", "temporadas")}
@@ -246,7 +258,7 @@ defmodule StreamixWeb.ContentComponents do
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-error"]}
+              class={["size-5", @is_favorite && "text-red-500"]}
             />
           </button>
         </div>
@@ -273,11 +285,11 @@ defmodule StreamixWeb.ContentComponents do
   def episode_card(assigns) do
     ~H"""
     <div
-      class="flex gap-4 p-3 bg-base-200 hover:bg-base-300 rounded-lg cursor-pointer transition-all group"
+      class="flex gap-4 p-3 bg-surface hover:bg-surface-hover rounded-lg cursor-pointer transition-all group"
       phx-click={@on_play}
       phx-value-id={@episode.id}
     >
-      <div class="relative w-40 aspect-video flex-shrink-0 bg-base-300 rounded overflow-hidden">
+      <div class="relative w-40 aspect-video flex-shrink-0 bg-surface-hover rounded overflow-hidden">
         <img
           :if={@episode[:cover]}
           src={@episode.cover}
@@ -287,7 +299,7 @@ defmodule StreamixWeb.ContentComponents do
         />
         <div
           :if={!@episode[:cover]}
-          class="w-full h-full flex items-center justify-center text-base-content/30"
+          class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name="hero-play" class="size-8" />
         </div>
@@ -296,20 +308,20 @@ defmodule StreamixWeb.ContentComponents do
           <.icon name="hero-play-solid" class="size-10 text-white" />
         </div>
 
-        <div class="absolute bottom-1 right-1 badge badge-sm badge-ghost">
+        <div class="absolute bottom-1 right-1 px-1.5 py-0.5 text-xs rounded bg-black/60 text-white">
           E{@episode[:episode_num] || @episode[:num] || "?"}
         </div>
       </div>
 
       <div class="flex-1 min-w-0 py-1">
-        <h4 class="font-medium truncate">{episode_title(@episode)}</h4>
-        <p :if={@episode[:plot]} class="text-sm text-base-content/60 line-clamp-2 mt-1">
+        <h4 class="font-medium text-text-primary truncate">{episode_title(@episode)}</h4>
+        <p :if={@episode[:plot]} class="text-sm text-text-secondary line-clamp-2 mt-1">
           {@episode.plot}
         </p>
-        <div class="flex items-center gap-3 mt-2 text-xs text-base-content/50">
+        <div class="flex items-center gap-3 mt-2 text-xs text-text-muted">
           <span :if={@episode[:duration]}>{format_duration(@episode.duration)}</span>
           <span :if={@episode[:rating]} class="flex items-center gap-1">
-            <.icon name="hero-star-solid" class="size-3 text-warning" />
+            <.icon name="hero-star-solid" class="size-3 text-yellow-500" />
             {format_rating(@episode.rating)}
           </span>
         </div>
@@ -339,29 +351,28 @@ defmodule StreamixWeb.ContentComponents do
 
   def season_accordion(assigns) do
     ~H"""
-    <div class="collapse collapse-arrow bg-base-200 rounded-lg">
-      <input
-        type="checkbox"
-        checked={@expanded}
+    <details class="bg-surface rounded-lg group" open={@expanded}>
+      <summary
+        class="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-surface-hover rounded-lg transition-colors list-none"
         phx-click={@on_toggle}
         phx-value-id={@season.id}
-      />
-      <div class="collapse-title font-medium flex items-center gap-3">
-        <span>Temporada {@season[:season_number] || @season[:num] || "?"}</span>
-        <span :if={@season[:episodes]} class="badge badge-sm badge-ghost">
-          {length(@season.episodes)} episódios
-        </span>
-      </div>
-      <div class="collapse-content">
-        <div class="space-y-2 pt-2">
-          <.episode_card
-            :for={episode <- @season[:episodes] || []}
-            episode={episode}
-            on_play={@on_play_episode}
-          />
+      >
+        <div class="flex items-center gap-3">
+          <span class="font-medium text-text-primary">Temporada {@season[:season_number] || @season[:num] || "?"}</span>
+          <span :if={@season[:episodes]} class="px-2 py-0.5 text-xs rounded bg-surface-hover text-text-secondary">
+            {length(@season.episodes)} episódios
+          </span>
         </div>
+        <.icon name="hero-chevron-down" class="size-5 text-text-secondary transition-transform group-open:rotate-180" />
+      </summary>
+      <div class="px-4 pb-4 space-y-2">
+        <.episode_card
+          :for={episode <- @season[:episodes] || []}
+          episode={episode}
+          on_play={@on_play_episode}
+        />
       </div>
-    </div>
+    </details>
     """
   end
 
@@ -430,13 +441,13 @@ defmodule StreamixWeb.ContentComponents do
     ~H"""
     <section :if={length(@items) > 0} class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-xl font-bold">{@title}</h2>
-        <.link :if={@see_all_path} navigate={@see_all_path} class="btn btn-ghost btn-sm">
+        <h2 class="text-xl font-bold text-text-primary">{@title}</h2>
+        <.link :if={@see_all_path} navigate={@see_all_path} class="flex items-center gap-1 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors">
           Ver tudo <.icon name="hero-arrow-right" class="size-4" />
         </.link>
       </div>
 
-      <div class="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-base-300">
+      <div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide scroll-smooth">
         <div :for={item <- @items} class="flex-shrink-0 w-36 sm:w-44">
           <.movie_card :if={@type == :movie} movie={item} show_favorite={false} />
           <.series_card :if={@type == :series} series={item} show_favorite={false} />
@@ -467,30 +478,30 @@ defmodule StreamixWeb.ContentComponents do
 
   def content_hero(assigns) do
     ~H"""
-    <div class="relative h-[50vh] min-h-[400px] bg-base-300 rounded-xl overflow-hidden">
+    <div class="relative h-[50vh] min-h-[400px] bg-surface-hover rounded-xl overflow-hidden">
       <img
         :if={@content[:backdrop] || @content[:cover]}
         src={@content[:backdrop] || @content[:cover]}
         alt={@content.name}
         class="w-full h-full object-cover"
       />
-      <div class="absolute inset-0 bg-gradient-to-t from-base-100 via-base-100/50 to-transparent" />
+      <div class="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
 
       <div class="absolute bottom-0 left-0 right-0 p-8">
         <div class="max-w-2xl space-y-4">
-          <h1 class="text-4xl font-bold">{@content[:title] || @content.name}</h1>
+          <h1 class="text-4xl font-bold text-text-primary">{@content[:title] || @content.name}</h1>
 
-          <div class="flex items-center gap-4 text-sm text-base-content/70">
+          <div class="flex items-center gap-4 text-sm text-text-secondary">
             <span :if={@content[:year]}>{@content.year}</span>
             <span :if={@content[:rating]} class="flex items-center gap-1">
-              <.icon name="hero-star-solid" class="size-4 text-warning" />
+              <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
               {format_rating(@content.rating)}
             </span>
             <span :if={@content[:genre]}>{@content.genre}</span>
             <span :if={@content[:duration]}>{format_duration(@content.duration)}</span>
           </div>
 
-          <p :if={@content[:plot]} class="text-base-content/80 line-clamp-3">
+          <p :if={@content[:plot]} class="text-text-secondary line-clamp-3">
             {@content.plot}
           </p>
 
@@ -499,7 +510,7 @@ defmodule StreamixWeb.ContentComponents do
               type="button"
               phx-click={@on_play}
               phx-value-id={@content.id}
-              class="btn btn-primary gap-2"
+              class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
             >
               <.icon name="hero-play-solid" class="size-5" /> Assistir
             </button>
@@ -507,7 +518,7 @@ defmodule StreamixWeb.ContentComponents do
               type="button"
               phx-click={@on_details}
               phx-value-id={@content.id}
-              class="btn btn-ghost gap-2"
+              class="inline-flex items-center gap-2 px-6 py-3 bg-white/20 text-white font-semibold rounded-md hover:bg-white/30 transition-colors"
             >
               <.icon name="hero-information-circle" class="size-5" /> Mais Info
             </button>
@@ -539,21 +550,21 @@ defmodule StreamixWeb.ContentComponents do
 
   def content_detail_modal(assigns) do
     ~H"""
-    <div class="modal modal-open" phx-click-away={@on_close}>
-      <div class="modal-box max-w-3xl p-0">
-        <div class="relative h-64 bg-base-300">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" phx-click-away={@on_close}>
+      <div class="bg-surface rounded-lg overflow-hidden max-w-3xl w-full shadow-2xl">
+        <div class="relative h-64 bg-surface-hover">
           <img
             :if={@content[:backdrop] || @content[:cover]}
             src={@content[:backdrop] || @content[:cover]}
             alt={@content.name}
             class="w-full h-full object-cover"
           />
-          <div class="absolute inset-0 bg-gradient-to-t from-base-100 to-transparent" />
+          <div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent" />
 
           <button
             type="button"
             phx-click={@on_close}
-            class="btn btn-circle btn-ghost btn-sm absolute top-4 right-4 text-white"
+            class="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
           >
             <.icon name="hero-x-mark" class="size-5" />
           </button>
@@ -564,17 +575,17 @@ defmodule StreamixWeb.ContentComponents do
         </div>
 
         <div class="p-6 space-y-4">
-          <div class="flex items-center gap-4 text-sm text-base-content/70">
+          <div class="flex items-center gap-4 text-sm text-text-secondary">
             <span :if={@content[:year]}>{@content.year}</span>
             <span :if={@content[:rating]} class="flex items-center gap-1">
-              <.icon name="hero-star-solid" class="size-4 text-warning" />
+              <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
               {format_rating(@content.rating)}
             </span>
             <span :if={@content[:genre]}>{@content.genre}</span>
             <span :if={@content[:duration]}>{format_duration(@content.duration)}</span>
           </div>
 
-          <p :if={@content[:plot]} class="text-base-content/80">
+          <p :if={@content[:plot]} class="text-text-secondary">
             {@content.plot}
           </p>
 
@@ -583,7 +594,7 @@ defmodule StreamixWeb.ContentComponents do
               type="button"
               phx-click={@on_play}
               phx-value-id={@content.id}
-              class="btn btn-primary gap-2"
+              class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
             >
               <.icon name="hero-play-solid" class="size-5" /> Assistir
             </button>

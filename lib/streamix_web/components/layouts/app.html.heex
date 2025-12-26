@@ -1,6 +1,6 @@
 <div class="min-h-screen bg-background">
   <!-- Fixed Header -->
-  <header class="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-background via-background/80 to-transparent">
+  <header class="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-white/5">
     <div class="flex items-center justify-between h-16 px-[4%]">
       <!-- Logo & Navigation -->
       <div class="flex items-center gap-8">
@@ -42,12 +42,40 @@
 <!-- Right side: Search & User -->
       <div class="flex items-center gap-4">
         <%= if @current_scope do %>
-          <.link
-            navigate={~p"/search"}
-            class="p-2 text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <.icon name="hero-magnifying-glass" class="size-5" />
-          </.link>
+          <!-- Expandable Search -->
+          <div class="flex items-center" id="header-search" phx-hook="HeaderSearch">
+            <button
+              type="button"
+              id="search-toggle"
+              class="p-2 text-text-secondary hover:text-text-primary transition-colors"
+              aria-label="Buscar"
+            >
+              <.icon name="hero-magnifying-glass" class="size-5" />
+            </button>
+
+            <div
+              id="search-input-container"
+              class="hidden items-center bg-surface/95 backdrop-blur border border-border rounded-lg overflow-hidden"
+            >
+              <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary ml-3 flex-shrink-0" />
+              <form action={~p"/search"} method="get" class="flex items-center">
+                <input
+                  type="text"
+                  name="q"
+                  id="header-search-input"
+                  placeholder="Títulos, pessoas, gêneros"
+                  class="w-64 px-3 py-2 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
+                />
+              </form>
+              <button
+                type="button"
+                id="search-close"
+                class="p-2 text-text-secondary hover:text-text-primary"
+              >
+                <.icon name="hero-x-mark" class="size-4" />
+              </button>
+            </div>
+          </div>
           
 <!-- User dropdown -->
           <div class="relative" x-data="{ open: false }">
@@ -129,6 +157,19 @@
           <.icon name="hero-x-mark" class="size-5" />
         </button>
       </div>
+      <!-- Mobile Search -->
+      <div class="p-4 border-b border-border">
+        <form action={~p"/search"} method="get" class="flex items-center gap-2 px-3 py-2 bg-surface-hover rounded-lg">
+          <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary" />
+          <input
+            type="text"
+            name="q"
+            placeholder="Buscar..."
+            class="flex-1 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
+          />
+        </form>
+      </div>
+
       <nav class="p-4 space-y-2">
         <.link
           navigate={~p"/"}
@@ -154,24 +195,18 @@
         >
           <.icon name="hero-clock" class="size-5" /> Histórico
         </.link>
-        <.link
-          navigate={~p"/search"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-magnifying-glass" class="size-5" /> Buscar
-        </.link>
       </nav>
     </div>
   </div>
   
 <!-- Flash Messages (Toast style - top right) -->
-  <div class="fixed top-20 right-4 z-50 w-full max-w-sm space-y-2">
+  <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>
   
 <!-- Main Content -->
-  <main class="pt-20">
+  <main class="pt-16">
     {@inner_content}
   </main>
 </div>

@@ -110,29 +110,29 @@ defmodule StreamixWeb.SearchLive do
   @doc false
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <div class="px-[4%] py-8 space-y-8">
       <div class="flex flex-col gap-4">
-        <h1 class="text-2xl font-bold">Buscar</h1>
+        <h1 class="text-3xl font-bold text-text-primary">Buscar</h1>
 
         <form phx-submit="search" phx-change="search" class="max-w-xl">
-          <label class="input input-bordered flex items-center gap-2">
-            <.icon name="hero-magnifying-glass" class="size-5 text-base-content/50" />
+          <div class="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg focus-within:border-brand/50 transition-colors">
+            <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary flex-shrink-0" />
             <input
-              type="search"
+              type="text"
               name="query"
               value={@query}
               placeholder="Buscar canais, filmes, séries..."
               phx-debounce="300"
-              class="grow bg-transparent border-none focus:outline-none text-lg"
+              class="flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-lg text-text-primary placeholder:text-text-secondary/50"
               autofocus
             />
-            <span :if={@loading} class="loading loading-spinner loading-sm"></span>
-          </label>
+            <div :if={@loading} class="size-5 border-2 border-brand/30 border-t-brand rounded-full animate-spin flex-shrink-0"></div>
+          </div>
         </form>
       </div>
 
-      <div :if={@searched && has_results?(@results)} class="space-y-6">
-        <div class="flex gap-2">
+      <div :if={@searched && has_results?(@results)} class="space-y-8">
+        <div class="flex gap-2 flex-wrap">
           <.filter_button type="all" label="Todos" current={@filter} count={total_count(@results)} />
           <.filter_button
             type="channels"
@@ -192,13 +192,13 @@ defmodule StreamixWeb.SearchLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "btn btn-sm gap-2",
-        @current == @type && "btn-primary",
-        @current != @type && "btn-ghost"
+        "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+        @current == @type && "bg-brand text-white",
+        @current != @type && "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="badge badge-xs">{@count}</span>
+      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-white/20">{@count}</span>
     </button>
     """
   end
@@ -211,8 +211,8 @@ defmodule StreamixWeb.SearchLive do
     ~H"""
     <section class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold">Canais ao Vivo</h2>
-        <span class="text-sm text-base-content/60">{length(@channels)} resultados</span>
+        <h2 class="text-xl font-semibold text-text-primary">Canais ao Vivo</h2>
+        <span class="text-sm text-text-secondary">{length(@channels)} resultados</span>
       </div>
 
       <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -236,8 +236,8 @@ defmodule StreamixWeb.SearchLive do
     ~H"""
     <section class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold">Filmes</h2>
-        <span class="text-sm text-base-content/60">{length(@movies)} resultados</span>
+        <h2 class="text-xl font-semibold text-text-primary">Filmes</h2>
+        <span class="text-sm text-text-secondary">{length(@movies)} resultados</span>
       </div>
 
       <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -257,8 +257,8 @@ defmodule StreamixWeb.SearchLive do
     ~H"""
     <section class="space-y-4">
       <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold">Séries</h2>
-        <span class="text-sm text-base-content/60">{length(@series)} resultados</span>
+        <h2 class="text-xl font-semibold text-text-primary">Séries</h2>
+        <span class="text-sm text-text-secondary">{length(@series)} resultados</span>
       </div>
 
       <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -273,31 +273,31 @@ defmodule StreamixWeb.SearchLive do
   defp search_hints(assigns) do
     ~H"""
     <div class="flex flex-col items-center justify-center py-12 text-center">
-      <div class="rounded-full bg-base-200 p-4 mb-4">
-        <.icon name="hero-magnifying-glass" class="size-12 text-base-content/30" />
+      <div class="rounded-full bg-surface p-4 mb-4">
+        <.icon name="hero-magnifying-glass" class="size-12 text-text-secondary/30" />
       </div>
-      <h3 class="text-lg font-medium mb-4">O que você quer assistir?</h3>
+      <h3 class="text-lg font-medium text-text-primary mb-4">O que você quer assistir?</h3>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
-        <div class="flex items-center gap-3 p-4 rounded-lg bg-base-200">
-          <.icon name="hero-tv" class="size-8 text-primary" />
+        <div class="flex items-center gap-3 p-4 rounded-lg bg-surface">
+          <.icon name="hero-tv" class="size-8 text-brand" />
           <div class="text-left">
-            <p class="font-medium">Canais</p>
-            <p class="text-sm text-base-content/60">TV ao vivo</p>
+            <p class="font-medium text-text-primary">Canais</p>
+            <p class="text-sm text-text-secondary">TV ao vivo</p>
           </div>
         </div>
-        <div class="flex items-center gap-3 p-4 rounded-lg bg-base-200">
-          <.icon name="hero-film" class="size-8 text-primary" />
+        <div class="flex items-center gap-3 p-4 rounded-lg bg-surface">
+          <.icon name="hero-film" class="size-8 text-brand" />
           <div class="text-left">
-            <p class="font-medium">Filmes</p>
-            <p class="text-sm text-base-content/60">Catálogo VOD</p>
+            <p class="font-medium text-text-primary">Filmes</p>
+            <p class="text-sm text-text-secondary">Catálogo VOD</p>
           </div>
         </div>
-        <div class="flex items-center gap-3 p-4 rounded-lg bg-base-200">
-          <.icon name="hero-video-camera" class="size-8 text-primary" />
+        <div class="flex items-center gap-3 p-4 rounded-lg bg-surface">
+          <.icon name="hero-video-camera" class="size-8 text-brand" />
           <div class="text-left">
-            <p class="font-medium">Séries</p>
-            <p class="text-sm text-base-content/60">Temporadas e episódios</p>
+            <p class="font-medium text-text-primary">Séries</p>
+            <p class="text-sm text-text-secondary">Temporadas e episódios</p>
           </div>
         </div>
       </div>

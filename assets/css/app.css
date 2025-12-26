@@ -43,10 +43,12 @@
 }
 
 /* Base styles */
-body {
+html, body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
   font-family: system-ui, -apple-system, sans-serif;
+  /* Disable macOS elastic/bounce scroll */
+  overscroll-behavior: none;
 }
 
 /* Custom utility classes */
@@ -112,10 +114,21 @@ body {
   display: contents;
 }
 
-/* Focus styles */
-:focus-visible {
+/* Focus styles - buttons and links only */
+button:focus-visible,
+a:focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
+}
+
+/* Remove default focus styles from inputs */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
 }
 
 /* Selection */
