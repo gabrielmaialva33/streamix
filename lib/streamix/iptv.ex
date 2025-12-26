@@ -173,6 +173,14 @@ defmodule Streamix.Iptv do
     Repo.delete(provider)
   end
 
+  @doc """
+  Returns a changeset for tracking provider changes.
+  """
+  @spec change_provider(Provider.t(), map()) :: Ecto.Changeset.t()
+  def change_provider(%Provider{} = provider, attrs \\ %{}) do
+    Provider.changeset(provider, attrs)
+  end
+
   # =============================================================================
   # Provider Sync
   # =============================================================================
@@ -192,6 +200,15 @@ defmodule Streamix.Iptv do
       {:error, reason} ->
         {:error, {:fetch_failed, reason}}
     end
+  end
+
+  @doc """
+  Syncs a provider asynchronously using Oban background job.
+  Returns `{:ok, job}` or `{:error, changeset}`.
+  """
+  @spec sync_provider_async(Provider.t()) :: {:ok, Oban.Job.t()} | {:error, Ecto.Changeset.t()}
+  def sync_provider_async(%Provider{} = provider) do
+    Streamix.Workers.SyncProviderWorker.enqueue(provider)
   end
 
   defp perform_sync(provider, channels) do
@@ -367,6 +384,31 @@ defmodule Streamix.Iptv do
     end)
   end
 
+  @doc """
+  Alias for get_user_categories/1 for consistency.
+  """
+  @spec list_categories(user_id()) :: [String.t()]
+  def list_categories(user_id), do: get_user_categories(user_id)
+
+  @doc """
+  Lists channels in the same group as the given channel.
+  Useful for showing related channels in the player.
+  """
+  @spec list_channels_by_group(provider_id(), String.t() | nil, keyword()) :: [Channel.t()]
+  def list_channels_by_group(provider_id, group_title, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    Channel
+    |> where(provider_id: ^provider_id)
+    |> where(
+      [c],
+      c.group_title == ^group_title or (is_nil(^group_title) and is_nil(c.group_title))
+    )
+    |> order_by([c], c.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
   # =============================================================================
   # Favorites
   # =============================================================================
@@ -531,5 +573,15 @@ defmodule Streamix.Iptv do
       |> Repo.delete_all()
 
     {:ok, count}
+  end
+
+  @doc """
+  Returns the total watch time in seconds for a user.
+  """
+  @spec total_watch_time(user_id()) :: non_neg_integer()
+  def total_watch_time(user_id) do
+    WatchHistory
+    |> where(user_id: ^user_id)
+    |> Repo.aggregate(:sum, :duration_seconds) || 0
   end
 end
