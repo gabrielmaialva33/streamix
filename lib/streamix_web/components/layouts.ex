@@ -4,5 +4,7 @@ defmodule StreamixWeb.Layouts do
   """
   use StreamixWeb, :html
 
+  import StreamixWeb.AppComponents
+
   embed_templates "layouts/*"
 end

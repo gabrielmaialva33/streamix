@@ -1,26 +1,32 @@
 defmodule Streamix.Iptv.Favorite do
   @moduledoc """
-  Schema for user favorite channels.
+  Schema for user favorites (polymorphic).
+  Supports: live_channel, movie, series
   """
   use Ecto.Schema
   import Ecto.Changeset
 
   alias Streamix.Accounts.User
-  alias Streamix.Iptv.Channel
+
+  @content_types ~w(live_channel movie series)
 
   schema "favorites" do
-    belongs_to :user, User
-    belongs_to :channel, Channel
+    field :content_type, :string
+    field :content_id, :integer
+    field :content_name, :string
+    field :content_icon, :string
 
-    timestamps()
+    belongs_to :user, User
+
+    timestamps(type: :utc_datetime)
   end
 
   def changeset(favorite, attrs) do
     favorite
-    |> cast(attrs, [:user_id, :channel_id])
-    |> validate_required([:user_id, :channel_id])
-    |> unique_constraint([:user_id, :channel_id])
+    |> cast(attrs, [:content_type, :content_id, :content_name, :content_icon, :user_id])
+    |> validate_required([:content_type, :content_id, :user_id])
+    |> validate_inclusion(:content_type, @content_types)
+    |> unique_constraint([:user_id, :content_type, :content_id])
     |> foreign_key_constraint(:user_id)
-    |> foreign_key_constraint(:channel_id)
   end
 end

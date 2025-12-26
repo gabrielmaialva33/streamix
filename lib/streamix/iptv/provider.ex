@@ -1,12 +1,12 @@
 defmodule Streamix.Iptv.Provider do
   @moduledoc """
-  Schema for IPTV providers (server configurations).
+  Schema for IPTV providers (Xtream Codes compatible servers).
   """
   use Ecto.Schema
   import Ecto.Changeset
 
   alias Streamix.Accounts.User
-  alias Streamix.Iptv.Channel
+  alias Streamix.Iptv.{Category, LiveChannel, Movie, Series}
 
   schema "providers" do
     field :name, :string
@@ -14,18 +14,33 @@ defmodule Streamix.Iptv.Provider do
     field :username, :string
     field :password, :string, redact: true
     field :is_active, :boolean, default: true
-    field :last_synced_at, :utc_datetime
-    field :channels_count, :integer, default: 0
     field :sync_status, :string, default: "idle"
 
-    belongs_to :user, User
-    has_many :channels, Channel
+    # Contadores por tipo
+    field :live_channels_count, :integer, default: 0
+    field :movies_count, :integer, default: 0
+    field :series_count, :integer, default: 0
 
-    timestamps()
+    # Timestamps de sync por tipo
+    field :live_synced_at, :utc_datetime
+    field :vod_synced_at, :utc_datetime
+    field :series_synced_at, :utc_datetime
+
+    # Info do servidor (JSON)
+    field :server_info, :map
+
+    belongs_to :user, User
+    has_many :categories, Category
+    has_many :live_channels, LiveChannel
+    has_many :movies, Movie
+    has_many :series, Series
+
+    timestamps(type: :utc_datetime)
   end
 
   @required_fields ~w(name url username password user_id)a
-  @optional_fields ~w(is_active last_synced_at channels_count sync_status)a
+  @optional_fields ~w(is_active sync_status live_channels_count movies_count series_count
+                      live_synced_at vod_synced_at series_synced_at server_info)a
 
   def changeset(provider, attrs) do
     provider
@@ -35,6 +50,20 @@ defmodule Streamix.Iptv.Provider do
     |> validate_url(:url)
     |> unique_constraint([:user_id, :url, :username])
     |> foreign_key_constraint(:user_id)
+  end
+
+  def sync_changeset(provider, attrs) do
+    provider
+    |> cast(attrs, [
+      :sync_status,
+      :live_channels_count,
+      :movies_count,
+      :series_count,
+      :live_synced_at,
+      :vod_synced_at,
+      :series_synced_at,
+      :server_info
+    ])
   end
 
   defp validate_url(changeset, field) do

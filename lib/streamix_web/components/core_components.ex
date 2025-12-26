@@ -27,7 +27,6 @@ defmodule StreamixWeb.CoreComponents do
 
   """
   use Phoenix.Component
-  use Gettext, backend: StreamixWeb.Gettext
 
   alias Phoenix.HTML.Form
   alias Phoenix.LiveView.JS
@@ -72,7 +71,7 @@ defmodule StreamixWeb.CoreComponents do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
+        <button type="button" class="group self-start cursor-pointer" aria-label="fechar">
           <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
         </button>
       </div>
@@ -366,7 +365,7 @@ defmodule StreamixWeb.CoreComponents do
         <tr>
           <th :for={col <- @col}>{col[:label]}</th>
           <th :if={@action != []}>
-            <span class="sr-only">{gettext("Actions")}</span>
+            <span class="sr-only">Ações</span>
           </th>
         </tr>
       </thead>
@@ -471,18 +470,17 @@ defmodule StreamixWeb.CoreComponents do
     <dialog
       id={@id}
       class="modal"
-      phx-mounted={@show && show_modal(@id)}
-      phx-remove={hide_modal(@id)}
+      phx-hook="Modal"
+      data-show={to_string(@show)}
     >
       <div class="modal-box">
-        <form method="dialog">
-          <button
-            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-            phx-click={@on_cancel}
-          >
-            <.icon name="hero-x-mark" class="size-5" />
-          </button>
-        </form>
+        <button
+          type="button"
+          class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          phx-click={@on_cancel}
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
 
         {render_slot(@inner_block)}
 
@@ -490,19 +488,67 @@ defmodule StreamixWeb.CoreComponents do
           {render_slot(@actions)}
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button phx-click={@on_cancel}>close</button>
-      </form>
+      <div class="modal-backdrop" phx-click={@on_cancel}></div>
     </dialog>
     """
   end
 
-  defp show_modal(id) do
-    JS.exec("showModal()", to: "##{id}")
+  @doc """
+  Renders a simple form.
+
+  ## Examples
+
+      <.simple_form for={@form} phx-change="validate" phx-submit="save">
+        <.input field={@form[:email]} label="Email"/>
+        <.input field={@form[:password]} type="password" label="Password"/>
+        <:actions>
+          <.button>Save</.button>
+        </:actions>
+      </.simple_form>
+  """
+  attr :for, :any, required: true, doc: "the data structure for the form"
+  attr :as, :any, default: nil, doc: "the server side parameter to collect all input under"
+
+  attr :rest, :global,
+    include: ~w(autocomplete name rel action enctype method novalidate target multipart),
+    doc: "the arbitrary HTML attributes to apply to the form tag"
+
+  slot :inner_block, required: true
+  slot :actions, doc: "the slot for form actions, such as a submit button"
+
+  def simple_form(assigns) do
+    ~H"""
+    <.form :let={f} for={@for} as={@as} {@rest}>
+      <div class="space-y-4">
+        {render_slot(@inner_block, f)}
+        <div :for={action <- @actions} class="mt-6 flex items-center justify-end gap-3">
+          {render_slot(action, f)}
+        </div>
+      </div>
+    </.form>
+    """
   end
 
-  defp hide_modal(id) do
-    JS.exec("close()", to: "##{id}")
+  @doc """
+  Renders a back navigation link.
+
+  ## Examples
+
+      <.back navigate={~p"/posts"}>Back to posts</.back>
+  """
+  attr :navigate, :any, required: true
+  slot :inner_block, required: true
+
+  def back(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="text-sm font-medium text-base-content/70 hover:text-base-content flex items-center gap-1"
+    >
+      <.icon name="hero-arrow-left" class="size-4" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
   end
 
   ## JS Commands

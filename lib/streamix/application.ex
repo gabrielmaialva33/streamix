@@ -14,6 +14,8 @@ defmodule Streamix.Application do
       {Redix, {redis_url(), [name: :streamix_redis]}},
       {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Streamix.PubSub},
+      # Stream proxy for caching IPTV streams
+      Streamix.Iptv.StreamProxy,
       # Start to serve requests, typically the last entry
       StreamixWeb.Endpoint
     ]

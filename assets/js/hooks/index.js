@@ -1,5 +1,9 @@
-import HlsPlayer from "./hls_player"
+import VideoPlayer from "./video_player";
+import InfiniteScroll from "./infinite_scroll";
+import Modal from "./modal";
 
 export default {
-  HlsPlayer,
-}
+  VideoPlayer,
+  InfiniteScroll,
+  Modal,
+};

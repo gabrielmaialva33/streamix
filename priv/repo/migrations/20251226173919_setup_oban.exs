@@ -1,4 +1,4 @@
-defmodule Streamix.Repo.Migrations.CreateObanJobs do
+defmodule Streamix.Repo.Migrations.SetupOban do
   use Ecto.Migration
 
   def up do

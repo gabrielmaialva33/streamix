@@ -76,7 +76,15 @@ config :phoenix, :json_library, Jason
 # Oban - Background jobs
 config :streamix, Oban,
   repo: Streamix.Repo,
-  queues: [default: 10, sync: 3]
+  queues: [default: 10, sync: 3, series_details: 2],
+  plugins: [
+    Oban.Plugins.Pruner,
+    {Oban.Plugins.Cron,
+     crontab: [
+       # Sync all providers every 6 hours
+       {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker}
+     ]}
+  ]
 
 # IPTV configuration
 config :streamix, Streamix.Iptv,
