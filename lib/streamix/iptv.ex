@@ -16,6 +16,7 @@ defmodule Streamix.Iptv do
     Provider,
     Season,
     Series,
+    Sync,
     WatchHistory,
     XtreamClient
   }
@@ -127,6 +128,16 @@ defmodule Streamix.Iptv do
   end
 
   def get_live_channel!(id), do: Repo.get!(LiveChannel, id)
+  def get_live_channel(id), do: Repo.get(LiveChannel, id)
+  def get_channel(id), do: get_live_channel(id)
+
+  def get_user_live_channel(user_id, channel_id) do
+    LiveChannel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, p], c.id == ^channel_id and p.user_id == ^user_id)
+    |> preload(:provider)
+    |> Repo.one()
+  end
 
   def get_live_channel_with_provider!(id) do
     LiveChannel
@@ -182,6 +193,15 @@ defmodule Streamix.Iptv do
   end
 
   def get_movie!(id), do: Repo.get!(Movie, id)
+  def get_movie(id), do: Repo.get(Movie, id)
+
+  def get_user_movie(user_id, movie_id) do
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], m.id == ^movie_id and p.user_id == ^user_id)
+    |> preload(:provider)
+    |> Repo.one()
+  end
 
   def get_movie_with_provider!(id) do
     Movie
@@ -234,6 +254,18 @@ defmodule Streamix.Iptv do
   end
 
   def get_series!(id), do: Repo.get!(Series, id)
+  def get_series(id), do: Repo.get(Series, id)
+
+  def get_series_with_seasons(id) do
+    seasons_query = from(s in Season, order_by: s.season_number)
+    episodes_query = from(e in Episode, order_by: e.episode_num)
+
+    Series
+    |> where(id: ^id)
+    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(:provider)
+    |> Repo.one()
+  end
 
   def get_series_with_seasons!(id) do
     seasons_query = from(s in Season, order_by: s.season_number)
@@ -256,7 +288,7 @@ defmodule Streamix.Iptv do
 
     # Sync if no episodes yet
     if series.episode_count == 0 do
-      case Streamix.Iptv.Sync.sync_series_details(series) do
+      case Sync.sync_series_details(series) do
         {:ok, _} -> :ok
         {:error, _reason} -> :ok
       end
@@ -267,6 +299,17 @@ defmodule Streamix.Iptv do
   end
 
   def get_episode!(id), do: Repo.get!(Episode, id)
+  def get_episode(id), do: Repo.get(Episode, id)
+
+  def get_user_episode(user_id, episode_id) do
+    Episode
+    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
+    |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
+    |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
+    |> where([e, s, sr, p], e.id == ^episode_id and p.user_id == ^user_id)
+    |> preload(season: [series: :provider])
+    |> Repo.one()
+  end
 
   def get_episode_with_context!(id) do
     Episode
@@ -301,6 +344,17 @@ defmodule Streamix.Iptv do
     Favorite
     |> where(user_id: ^user_id, content_type: ^content_type, content_id: ^content_id)
     |> Repo.exists?()
+  end
+
+  # Alias for consistency with LiveView naming conventions
+  # credo:disable-for-next-line Credo.Check.Readability.PredicateFunctionNames
+  def is_favorite?(user_id, content_type, content_id),
+    do: favorite?(user_id, content_type, content_id)
+
+  def add_favorite(user_id, attrs) when is_map(attrs) do
+    %Favorite{}
+    |> Favorite.changeset(Map.merge(attrs, %{user_id: user_id}))
+    |> Repo.insert()
   end
 
   def add_favorite(user_id, content_type, content_id, attrs \\ %{}) do
@@ -412,11 +466,213 @@ defmodule Streamix.Iptv do
     |> Repo.aggregate(:count)
   end
 
+  def remove_from_watch_history(user_id, entry_id) do
+    WatchHistory
+    |> where(user_id: ^user_id, id: ^entry_id)
+    |> Repo.delete_all()
+  end
+
+  # Convenience aliases for PlayerLive
+  def add_to_watch_history(user_id, attrs) when is_map(attrs) do
+    add_watch_history(
+      user_id,
+      attrs[:content_type] || attrs["content_type"],
+      attrs[:content_id] || attrs["content_id"],
+      attrs
+    )
+  end
+
+  def update_watch_progress(user_id, content_type, content_id, current_time, duration) do
+    update_progress(user_id, content_type, content_id, round(current_time), round(duration))
+  end
+
+  def update_watch_time(user_id, content_type, content_id, duration_seconds) do
+    add_watch_history(user_id, content_type, content_id, %{
+      duration_seconds: round(duration_seconds)
+    })
+  end
+
+  # =============================================================================
+  # Search (across all user providers)
+  # =============================================================================
+
+  def search_channels(user_id, query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+
+    LiveChannel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, p], p.user_id == ^user_id)
+    |> where([c], ilike(c.name, ^"%#{query}%"))
+    |> order_by([c], asc: c.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  def search_movies(user_id, query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.user_id == ^user_id)
+    |> where([m], ilike(m.name, ^"%#{query}%") or ilike(m.title, ^"%#{query}%"))
+    |> order_by([m], desc: m.rating, asc: m.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  def search_series(user_id, query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+
+    Series
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> where([s, p], p.user_id == ^user_id)
+    |> where([s], ilike(s.name, ^"%#{query}%") or ilike(s.title, ^"%#{query}%"))
+    |> order_by([s], desc: s.rating, asc: s.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  # =============================================================================
+  # Public Catalog (for homepage - all providers, no auth required)
+  # =============================================================================
+
+  @doc """
+  Lists featured movies from all providers for public display.
+  Orders by rating and recency.
+  """
+  def list_public_movies(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    Movie
+    |> where([m], not is_nil(m.stream_icon))
+    |> order_by([m], desc: m.rating, desc: m.year, asc: m.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists featured series from all providers for public display.
+  """
+  def list_public_series(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    Series
+    |> where([s], not is_nil(s.cover))
+    |> order_by([s], desc: s.rating, desc: s.year, asc: s.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists live channels from all providers for public display.
+  """
+  def list_public_channels(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    LiveChannel
+    |> where([c], not is_nil(c.stream_icon))
+    |> order_by([c], asc: c.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a featured movie/series with backdrop for hero display.
+  Uses a daily seed for consistency (same hero all day, changes at midnight).
+  """
+  def get_featured_content do
+    # Daily seed for consistent hero throughout the day
+    today = Date.utc_today()
+    seed = Date.to_gregorian_days(today)
+
+    # Try movies with backdrop first
+    movies =
+      Movie
+      |> where([m], not is_nil(m.backdrop_path) and m.backdrop_path != ^[])
+      |> where([m], not is_nil(m.plot))
+      |> order_by([m], desc: m.rating)
+      |> limit(10)
+      |> Repo.all()
+
+    if movies != [] do
+      index = rem(seed, length(movies))
+      {:movie, Enum.at(movies, index)}
+    else
+      # Fallback to series with backdrop
+      series_list =
+        Series
+        |> where([s], not is_nil(s.backdrop_path) and s.backdrop_path != ^[])
+        |> where([s], not is_nil(s.plot))
+        |> order_by([s], desc: s.rating)
+        |> limit(10)
+        |> Repo.all()
+
+      if series_list != [] do
+        index = rem(seed, length(series_list))
+        {:series, Enum.at(series_list, index)}
+      else
+        nil
+      end
+    end
+  rescue
+    _ -> nil
+  end
+
+  @doc """
+  Gets total counts for public stats display.
+  """
+  def get_public_stats do
+    %{
+      channels_count: Repo.aggregate(LiveChannel, :count),
+      movies_count: Repo.aggregate(Movie, :count),
+      series_count: Repo.aggregate(Series, :count)
+    }
+  end
+
+  @doc """
+  Lists movies by genre/category.
+  """
+  def list_public_movies_by_genre(genre, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    Movie
+    |> where([m], ilike(m.genre, ^"%#{genre}%"))
+    |> where([m], not is_nil(m.stream_icon))
+    |> order_by([m], desc: m.rating, desc: m.year)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets recently added content.
+  """
+  def list_recently_added(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    movies =
+      Movie
+      |> where([m], not is_nil(m.stream_icon))
+      |> order_by([m], desc: m.inserted_at)
+      |> limit(^limit)
+      |> Repo.all()
+      |> Enum.map(&{:movie, &1})
+
+    series =
+      Series
+      |> where([s], not is_nil(s.cover))
+      |> order_by([s], desc: s.inserted_at)
+      |> limit(^limit)
+      |> Repo.all()
+      |> Enum.map(&{:series, &1})
+
+    (movies ++ series)
+    |> Enum.sort_by(fn {_type, item} -> item.inserted_at end, {:desc, DateTime})
+    |> Enum.take(limit)
+  end
+
   # =============================================================================
   # Sync Operations
   # =============================================================================
-
-  alias Streamix.Iptv.Sync
 
   def sync_provider(provider, opts \\ []) do
     Sync.sync_all(provider, opts)

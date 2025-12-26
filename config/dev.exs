@@ -56,6 +56,7 @@ config :streamix, StreamixWeb.Endpoint,
 config :streamix, StreamixWeb.Endpoint,
   live_reload: [
     web_console_logger: true,
+    debounce: 1000,
     patterns: [
       # Static assets, except user uploads
       ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",

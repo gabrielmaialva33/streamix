@@ -2,29 +2,13 @@ defmodule StreamixWeb.CoreComponents do
   @moduledoc """
   Provides core UI components.
 
-  At first glance, this module may seem daunting, but its goal is to provide
-  core building blocks for your application, such as tables, forms, and
-  inputs. The components consist mostly of markup and are well-documented
-  with doc strings and declarative assigns. You may customize and style
-  them in any way you want, based on your application growth and needs.
+  This module provides core building blocks for your application, such as tables, forms,
+  and inputs. The components use pure Tailwind CSS v4 with custom theme variables.
 
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
-
-    * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
-      started and see the available components.
-
-    * [Tailwind CSS](https://tailwindcss.com) - the foundational framework
-      we build on. You will use it for layout, sizing, flexbox, grid, and
-      spacing.
-
-    * [Heroicons](https://heroicons.com) - see `icon/1` for usage.
-
-    * [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html) -
-      the component system used by Phoenix. Some components, such as `<.link>`
-      and `<.form>`, are defined there.
-
+  References:
+    * [Tailwind CSS](https://tailwindcss.com) - utility-first CSS framework
+    * [Heroicons](https://heroicons.com) - see `icon/1` for usage
+    * [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html)
   """
   use Phoenix.Component
 
@@ -56,23 +40,27 @@ defmodule StreamixWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="fixed top-4 right-4 z-50"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg max-w-sm",
+        "border backdrop-blur-sm",
+        @kind == :info && "bg-info/10 border-info/30 text-info",
+        @kind == :error && "bg-error/10 border-error/30 text-error"
       ]}>
         <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+        <div class="flex-1 text-sm">
           <p :if={@title} class="font-semibold">{@title}</p>
           <p>{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label="fechar">
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
+          aria-label="fechar"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
         </button>
       </div>
     </div>
@@ -89,27 +77,33 @@ defmodule StreamixWeb.CoreComponents do
       <.button navigate={~p"/"}>Home</.button>
   """
   attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
-  attr :class, :any
-  attr :variant, :string, values: ~w(primary)
+  attr :class, :any, default: nil
+  attr :variant, :string, values: ~w(primary secondary ghost default), default: "default"
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    base_classes =
+      "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
 
-    assigns =
-      assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
-      end)
+    variant_classes =
+      case assigns.variant do
+        "primary" -> "bg-brand text-white hover:bg-brand-hover"
+        "secondary" -> "bg-surface text-text-primary border border-border hover:bg-surface-hover"
+        "ghost" -> "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        _ -> "bg-brand/10 text-brand border border-brand/30 hover:bg-brand/20"
+      end
+
+    assigns = assign(assigns, :computed_class, [base_classes, variant_classes, assigns.class])
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
-      <.link class={@class} {@rest}>
+      <.link class={@computed_class} {@rest}>
         {render_slot(@inner_block)}
       </.link>
       """
     else
       ~H"""
-      <button class={@class} {@rest}>
+      <button class={@computed_class} {@rest}>
         {render_slot(@inner_block)}
       </button>
       """
@@ -128,33 +122,8 @@ defmodule StreamixWeb.CoreComponents do
   This function accepts all HTML input types, considering that:
 
     * You may also set `type="select"` to render a `<select>` tag
-
     * `type="checkbox"` is used exclusively to render boolean values
-
     * For live file uploads, see `Phoenix.Component.live_file_input/1`
-
-  See https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
-  for more information. Unsupported types, such as radio, are best
-  written directly in your templates.
-
-  ## Examples
-
-  ```heex
-  <.input field={@form[:email]} type="email" />
-  <.input name="my-input" errors={["oh no!"]} />
-  ```
-
-  ## Select type
-
-  When using `type="select"`, you must pass the `options` and optionally
-  a `value` to mark which option should be preselected.
-
-  ```heex
-  <.input field={@form[:user_type]} type="select" options={["Admin": "admin", "User": "user"]} />
-  ```
-
-  For more information on what kind of data can be passed to `options` see
-  [`options_for_select`](https://hexdocs.pm/phoenix_html/Phoenix.HTML.Form.html#options_for_select/2).
   """
   attr :id, :any, default: nil
   attr :name, :any
@@ -205,8 +174,8 @@ defmodule StreamixWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
+    <div class="mb-3">
+      <label class="flex items-center gap-3 cursor-pointer">
         <input
           type="hidden"
           name={@name}
@@ -214,17 +183,19 @@ defmodule StreamixWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={
+            @class ||
+              "size-4 rounded border-border bg-surface text-brand focus:ring-brand focus:ring-offset-background"
+          }
+          {@rest}
+        />
+        <span class="text-sm text-text-primary">{@label}</span>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -233,20 +204,25 @@ defmodule StreamixWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <select
-          id={@id}
-          name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
-          multiple={@multiple}
-          {@rest}
-        >
-          <option :if={@prompt} value="">{@prompt}</option>
-          {Phoenix.HTML.Form.options_for_select(@options, @value)}
-        </select>
+    <div class="mb-3">
+      <label :if={@label} class="block text-sm font-medium text-text-secondary mb-1.5">
+        {@label}
       </label>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          @class || "w-full px-3 py-2 rounded-md border bg-surface text-text-primary",
+          "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
+          @errors == [] && "border-border",
+          @errors != [] && "border-error"
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
+        <option :if={@prompt} value="">{@prompt}</option>
+        {Phoenix.HTML.Form.options_for_select(@options, @value)}
+      </select>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -254,19 +230,22 @@ defmodule StreamixWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <textarea
-          id={@id}
-          name={@name}
-          class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
-          {@rest}
-        >{Form.normalize_value("textarea", @value)}</textarea>
+    <div class="mb-3">
+      <label :if={@label} class="block text-sm font-medium text-text-secondary mb-1.5">
+        {@label}
       </label>
+      <textarea
+        id={@id}
+        name={@name}
+        class={[
+          @class || "w-full px-3 py-2 rounded-md border bg-surface text-text-primary",
+          "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
+          "placeholder:text-text-muted",
+          @errors == [] && "border-border",
+          @errors != [] && "border-error"
+        ]}
+        {@rest}
+      >{Form.normalize_value("textarea", @value)}</textarea>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -275,21 +254,24 @@ defmodule StreamixWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Form.normalize_value(@type, @value)}
-          class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
-          ]}
-          {@rest}
-        />
+    <div class="mb-3">
+      <label :if={@label} class="block text-sm font-medium text-text-secondary mb-1.5">
+        {@label}
       </label>
+      <input
+        type={@type}
+        name={@name}
+        id={@id}
+        value={Form.normalize_value(@type, @value)}
+        class={[
+          @class || "w-full px-3 py-2 rounded-md border bg-surface text-text-primary",
+          "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
+          "placeholder:text-text-muted",
+          @errors == [] && "border-border",
+          @errors != [] && "border-error"
+        ]}
+        {@rest}
+      />
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -299,7 +281,7 @@ defmodule StreamixWeb.CoreComponents do
   defp error(assigns) do
     ~H"""
     <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+      <.icon name="hero-exclamation-circle" class="size-4" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -316,10 +298,10 @@ defmodule StreamixWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8">
+        <h1 class="text-lg font-semibold text-text-primary leading-8">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="text-sm text-text-secondary">
           {render_slot(@subtitle)}
         </p>
       </div>
@@ -360,34 +342,42 @@ defmodule StreamixWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
-            <span class="sr-only">Ações</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td
-            :for={col <- @col}
-            phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
+    <div class="overflow-x-auto rounded-lg border border-border">
+      <table class="w-full text-sm">
+        <thead class="bg-surface border-b border-border">
+          <tr>
+            <th :for={col <- @col} class="px-4 py-3 text-left font-medium text-text-secondary">
+              {col[:label]}
+            </th>
+            <th :if={@action != []} class="px-4 py-3 text-right">
+              <span class="sr-only">Ações</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
+          <tr
+            :for={row <- @rows}
+            id={@row_id && @row_id.(row)}
+            class="border-b border-border last:border-0 hover:bg-surface-hover transition-colors"
           >
-            {render_slot(col, @row_item.(row))}
-          </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
-              <%= for action <- @action do %>
-                {render_slot(action, @row_item.(row))}
-              <% end %>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td
+              :for={col <- @col}
+              phx-click={@row_click && @row_click.(row)}
+              class={["px-4 py-3 text-text-primary", @row_click && "cursor-pointer"]}
+            >
+              {render_slot(col, @row_item.(row))}
+            </td>
+            <td :if={@action != []} class="px-4 py-3 text-right">
+              <div class="flex justify-end gap-2">
+                <%= for action <- @action do %>
+                  {render_slot(action, @row_item.(row))}
+                <% end %>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 
@@ -407,12 +397,10 @@ defmodule StreamixWeb.CoreComponents do
 
   def list(assigns) do
     ~H"""
-    <ul class="list">
-      <li :for={item <- @item} class="list-row">
-        <div class="list-col-grow">
-          <div class="font-bold">{item.title}</div>
-          <div>{render_slot(item)}</div>
-        </div>
+    <ul class="divide-y divide-border rounded-lg border border-border overflow-hidden">
+      <li :for={item <- @item} class="px-4 py-3 bg-surface">
+        <div class="text-sm font-medium text-text-secondary">{item.title}</div>
+        <div class="text-text-primary">{render_slot(item)}</div>
       </li>
     </ul>
     """
@@ -424,12 +412,6 @@ defmodule StreamixWeb.CoreComponents do
   Heroicons come in three styles – outline, solid, and mini.
   By default, the outline style is used, but solid and mini may
   be applied by using the `-solid` and `-mini` suffix.
-
-  You can customize the size and colors of the icons by setting
-  width, height, and background color classes.
-
-  Icons are extracted from the `deps/heroicons` directory and bundled within
-  your compiled app.css by the plugin in `assets/vendor/heroicons.js`.
 
   ## Examples
 
@@ -446,18 +428,17 @@ defmodule StreamixWeb.CoreComponents do
   end
 
   @doc """
-  Renders a modal dialog using daisyUI.
+  Renders a modal dialog.
 
   ## Examples
 
       <.modal id="confirm-modal">
         Are you sure?
         <:actions>
-          <button class="btn">Cancel</button>
-          <button class="btn btn-primary">Confirm</button>
+          <.button variant="secondary">Cancel</.button>
+          <.button variant="primary">Confirm</.button>
         </:actions>
       </.modal>
-
   """
   attr :id, :string, required: true
   attr :show, :boolean, default: false
@@ -469,26 +450,28 @@ defmodule StreamixWeb.CoreComponents do
     ~H"""
     <dialog
       id={@id}
-      class="modal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
       phx-hook="Modal"
       data-show={to_string(@show)}
     >
-      <div class="modal-box">
+      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" phx-click={@on_cancel}></div>
+      <div class="relative bg-surface rounded-xl shadow-2xl border border-border max-w-md w-full mx-4 p-6">
         <button
           type="button"
-          class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          class="absolute right-4 top-4 p-1 rounded-full text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
           phx-click={@on_cancel}
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
 
-        {render_slot(@inner_block)}
+        <div class="text-text-primary">
+          {render_slot(@inner_block)}
+        </div>
 
-        <div :if={@actions != []} class="modal-action">
+        <div :if={@actions != []} class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
           {render_slot(@actions)}
         </div>
       </div>
-      <div class="modal-backdrop" phx-click={@on_cancel}></div>
     </dialog>
     """
   end
@@ -543,7 +526,7 @@ defmodule StreamixWeb.CoreComponents do
     ~H"""
     <.link
       navigate={@navigate}
-      class="text-sm font-medium text-base-content/70 hover:text-base-content flex items-center gap-1"
+      class="text-sm font-medium text-text-secondary hover:text-text-primary flex items-center gap-1 transition-colors"
     >
       <.icon name="hero-arrow-left" class="size-4" />
       {render_slot(@inner_block)}
@@ -574,20 +557,27 @@ defmodule StreamixWeb.CoreComponents do
     )
   end
 
+  def show_mobile_menu(js \\ %JS{}) do
+    js
+    |> JS.remove_class("hidden", to: "#mobile-menu")
+    |> JS.add_class("overflow-hidden", to: "body")
+  end
+
+  def hide_mobile_menu(js \\ %JS{}) do
+    js
+    |> JS.add_class("hidden", to: "#mobile-menu")
+    |> JS.remove_class("overflow-hidden", to: "body")
+  end
+
+  def toggle_user_menu(js \\ %JS{}) do
+    js
+    |> JS.toggle(to: "#user-dropdown")
+  end
+
   @doc """
   Translates an error message using gettext.
   """
   def translate_error({msg, opts}) do
-    # When using gettext, we typically pass the strings we want
-    # to translate as a static argument:
-    #
-    #     # Translate the number of files with plural rules
-    #     dngettext("errors", "1 file", "%{count} files", count)
-    #
-    # However the error messages in our forms and APIs are generated
-    # dynamically, so we need to translate them by calling Gettext
-    # with our gettext backend as first argument. Translations are
-    # available in the errors.po file (as we use the "errors" domain).
     if count = opts[:count] do
       Gettext.dngettext(StreamixWeb.Gettext, "errors", msg, msg, count, opts)
     else

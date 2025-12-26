@@ -21,37 +21,37 @@ defmodule StreamixWeb.User.LoginLive do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-md mx-auto mt-10">
-      <.header>
-        Entrar no Streamix
-        <:subtitle>
+    <div class="min-h-[calc(100vh-80px)] flex items-center justify-center px-4">
+      <div class="w-full max-w-md bg-zinc-900/80 backdrop-blur-sm rounded-lg p-8 shadow-2xl border border-white/10">
+        <h1 class="text-3xl font-bold text-white mb-2">Entrar</h1>
+        <p class="text-zinc-400 mb-8">
           Não tem uma conta?
-          <.link navigate={~p"/register"} class="font-semibold text-primary hover:underline">
+          <.link navigate={~p"/register"} class="text-primary hover:underline font-medium">
             Cadastre-se
           </.link>
-        </:subtitle>
-      </.header>
+        </p>
 
-      <.simple_form for={@form} action={~p"/login"} phx-change="validate" method="post" class="mt-6">
-        <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
-        <.input
-          field={@form[:password]}
-          type="password"
-          label="Senha"
-          required
-          autocomplete="current-password"
-        />
+        <.simple_form for={@form} action={~p"/login"} phx-change="validate" method="post">
+          <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
+          <.input
+            field={@form[:password]}
+            type="password"
+            label="Senha"
+            required
+            autocomplete="current-password"
+          />
 
-        <div class="flex items-center gap-2">
-          <.input field={@form[:remember_me]} type="checkbox" label="Lembrar de mim" />
-        </div>
+          <div class="flex items-center justify-between">
+            <.input field={@form[:remember_me]} type="checkbox" label="Lembrar de mim" />
+          </div>
 
-        <:actions>
-          <.button type="submit" variant="primary" class="w-full">
-            Entrar
-          </.button>
-        </:actions>
-      </.simple_form>
+          <:actions>
+            <.button type="submit" variant="primary" class="w-full py-3 text-base font-semibold">
+              Entrar
+            </.button>
+          </:actions>
+        </.simple_form>
+      </div>
     </div>
     """
   end

@@ -1,72 +1,268 @@
-/* See the Tailwind configuration guide for advanced usage
-   https://tailwindcss.com/docs/configuration */
-
-@import "tailwindcss" source(none);
-@source "../css";
+@import "tailwindcss";
 @source "../js";
 @source "../../lib/streamix_web";
 
-/* A Tailwind plugin that makes "hero-#{ICON}" classes available.
-   The heroicons installation itself is managed by your mix.exs */
+/* Heroicons plugin */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
-   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
-   Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */
-@plugin "../vendor/daisyui" {
-  themes: false;
+/* ============================================
+   Streamix Theme - Cinematic Streaming Design
+   ============================================ */
+
+@theme {
+  /* Colors - Dark cinema palette */
+  --color-background: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-hover: #1f1f1f;
+  --color-border: #2a2a2a;
+
+  /* Text */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a3a3a3;
+  --color-text-muted: #6b6b6b;
+
+  /* Brand colors */
+  --color-brand: #e50914;
+  --color-brand-hover: #f6121d;
+  --color-accent: #46d369;
+
+  /* Status colors */
+  --color-success: #46d369;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* Spacing */
+  --spacing-gutter: 4%;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
 }
 
-/* daisyUI theme plugin. You can update this file by fetching the latest version with:
-  curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-/* Tema Streamix - Inspirado no CineWinx */
-@plugin "../vendor/daisyui-theme" {
-  name: "streamix-dark";
-  default: true;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(0% 0 0);              /* Preto - Background principal */
-  --color-base-200: oklch(18% 0.045 320);       /* Roxo escuro - Cards, modais */
-  --color-base-300: oklch(25% 0.055 320);       /* Roxo médio - Bordas */
-  --color-base-content: oklch(100% 0 0);        /* Branco - Texto principal */
-  --color-primary: oklch(55% 0.245 326);        /* Rosa/Magenta - Botões, CTAs */
-  --color-primary-content: oklch(100% 0 0);     /* Branco */
-  --color-secondary: oklch(75.5% 0.134 162);    /* Verde neon - Títulos, hover */
-  --color-secondary-content: oklch(0% 0 0);     /* Preto */
-  --color-accent: oklch(75.5% 0.134 162);       /* Verde neon */
-  --color-accent-content: oklch(0% 0 0);        /* Preto */
-  --color-neutral: oklch(25% 0.045 320);        /* Roxo escuro */
-  --color-neutral-content: oklch(86% 0.01 260); /* Cinza claro */
-  --color-info: oklch(58% 0.158 242);           /* Azul */
-  --color-info-content: oklch(97% 0.013 237);
-  --color-success: oklch(75.5% 0.134 162);      /* Verde neon */
-  --color-success-content: oklch(0% 0 0);
-  --color-warning: oklch(66% 0.179 58);         /* Laranja */
-  --color-warning-content: oklch(98% 0.022 95);
-  --color-error: oklch(58% 0.253 18);           /* Vermelho */
-  --color-error-content: oklch(96% 0.015 12);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.625rem;                       /* 10px - Border radius cards */
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
+/* Base styles */
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Custom utility classes */
+@utility text-gradient {
+  background: linear-gradient(90deg, var(--color-brand), var(--color-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
 
-/* Add variants based on LiveView classes */
+@utility glass {
+  background: rgba(20, 20, 20, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@utility card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+  }
+}
+
+@utility shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* LiveView loading states */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
-/* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+/* LiveView wrapper transparency */
+[data-phx-session], [data-phx-teleported-src] {
+  display: contents;
+}
 
-/* Make LiveView wrapper divs transparent for layout */
-[data-phx-session], [data-phx-teleported-src] { display: contents }
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
 
-/* This file is for your main application CSS */
+/* Selection */
+::selection {
+  background: var(--color-brand);
+  color: white;
+}
+
+/* Hide horizontal scrollbar for carousels */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Line clamp utilities */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============================================
+   Smooth Animations & Transitions
+   ============================================ */
+
+/* Fade in animation for images */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Hero backdrop fade */
+.hero-backdrop {
+  animation: fadeIn 0.8s ease-out forwards;
+}
+
+/* Content slide up animation */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.6s ease-out forwards;
+}
+
+/* Staggered animation delays for carousels */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.15s; }
+.stagger-3 { animation-delay: 0.2s; }
+.stagger-4 { animation-delay: 0.25s; }
+.stagger-5 { animation-delay: 0.3s; }
+
+/* Image loading states */
+img {
+  transition: opacity 0.3s ease;
+}
+
+img[loading] {
+  opacity: 0;
+}
+
+img:not([loading]) {
+  opacity: 1;
+}
+
+/* Smooth page transitions */
+[data-phx-main] {
+  transition: opacity 0.15s ease-out;
+}
+
+.phx-page-loading [data-phx-main] {
+  opacity: 0.9;
+}
+
+/* LiveView connected/disconnected - no flash */
+.phx-connected {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.phx-loading {
+  opacity: 0.95;
+  cursor: progress;
+}
+
+.phx-disconnected {
+  cursor: wait;
+}
+
+/* Disable loading indicator flash */
+.phx-no-feedback.phx-submit-loading,
+.phx-no-feedback.phx-change-loading {
+  opacity: 1;
+}
+
+/* Smooth scroll for carousels */
+.scroll-smooth {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Card hover effect - smoother */
+.content-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, outline 0.2s ease;
+  will-change: transform;
+}
+
+.content-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+/* Button press effect */
+button:active, a:active {
+  transform: scale(0.98);
+}
+
+/* Header transparency transition */
+header {
+  transition: background-color 0.3s ease;
+}

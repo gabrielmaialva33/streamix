@@ -1,24 +1,89 @@
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
+import {
+  ContentType,
+  selectStreamingMode,
+  getStreamingConfig,
+} from "../lib/streaming_config";
+import { NetworkMonitor } from "../lib/network_monitor";
 
+/**
+ * Enhanced VideoPlayer Hook for Streamix
+ *
+ * Features:
+ * - Multi-codec support (HLS, MPEG-TS, FLV, MP4)
+ * - Adaptive streaming with dynamic mode switching
+ * - Quality selection (auto + manual levels)
+ * - Audio/subtitle track selection
+ * - Picture-in-Picture support
+ * - Network monitoring with automatic adaptation
+ * - Progress tracking for VOD content
+ */
 const VideoPlayer = {
   mounted() {
-    this.video = this.el.querySelector("video");
-    this.streamUrl = this.el.dataset.streamUrl;
-    this.proxyUrl = this.el.dataset.proxyUrl;
-    this.startTime = Date.now();
-    this.hls = null;
-    this.mpegtsPlayer = null;
-    this.errorContainer = null;
-    this.retryCount = 0;
-    this.maxRetries = 3;
-    this.useProxy = true; // Start with proxy for .ts streams
-
-    this.createErrorContainer();
-    this.createLoadingIndicator();
+    this.initializeState();
+    this.createUI();
     this.initPlayer();
+    this.setupEventListeners();
+    this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
     this.trackWatchTime();
+  },
+
+  initializeState() {
+    // DOM elements
+    this.video = this.el.querySelector("video");
+
+    // Stream configuration
+    this.streamUrl = this.el.dataset.streamUrl;
+    this.proxyUrl = this.el.dataset.proxyUrl;
+    this.contentType = this.el.dataset.contentType || "live"; // 'live' or 'vod'
+    this.contentId = this.el.dataset.contentId;
+    this.initialMode = this.el.dataset.streamingMode || null;
+
+    // Player instances
+    this.hls = null;
+    this.mpegtsPlayer = null;
+
+    // Streaming state
+    this.streamingMode = this.initialMode ||
+      selectStreamingMode(
+        this.contentType === "live" ? ContentType.LIVE : ContentType.VOD,
+        "good"
+      );
+    this.currentStreamType = null;
+    this.currentUrl = null;
+
+    // Quality state
+    this.manualQuality = null; // null = auto, number = level index
+    this.availableQualities = [];
+
+    // Track state
+    this.audioTracks = [];
+    this.subtitleTracks = [];
+    this.selectedAudioTrack = 0;
+    this.selectedSubtitleTrack = -1; // -1 = off
+
+    // Retry/fallback state
+    this.retryCount = 0;
+    this.maxRetries = 3;
+    this.useProxy = true;
+
+    // Timing
+    this.startTime = Date.now();
+    this.lastProgressReport = 0;
+
+    // PiP state
+    this.pipActive = false;
+
+    // Network monitor
+    this.networkMonitor = null;
+  },
+
+  createUI() {
+    this.el.style.position = "relative";
+    this.createErrorContainer();
+    this.createLoadingIndicator();
   },
 
   createErrorContainer() {
@@ -35,7 +100,6 @@ const VideoPlayer = {
         <button class="btn btn-sm btn-primary mt-4 retry-btn">Retry</button>
       </div>
     `;
-    this.el.style.position = "relative";
     this.el.appendChild(this.errorContainer);
 
     this.errorContainer.querySelector(".retry-btn").addEventListener("click", () => {
@@ -59,11 +123,11 @@ const VideoPlayer = {
   },
 
   showLoading() {
-    this.loadingIndicator.classList.remove("hidden");
+    this.loadingIndicator?.classList.remove("hidden");
   },
 
   hideLoading() {
-    this.loadingIndicator.classList.add("hidden");
+    this.loadingIndicator?.classList.add("hidden");
   },
 
   showError(message) {
@@ -78,37 +142,311 @@ const VideoPlayer = {
     this.video.classList.remove("hidden");
   },
 
+  // ============================================
+  // Network Monitoring
+  // ============================================
+
+  setupNetworkMonitor() {
+    this.networkMonitor = new NetworkMonitor({
+      onQualityChange: (newQuality, oldQuality, stats) => {
+        console.log(`Network quality changed: ${oldQuality} -> ${newQuality}`, stats);
+
+        // Only adapt if using auto quality and content is live
+        if (this.manualQuality === null && this.contentType === "live") {
+          const newMode = selectStreamingMode(ContentType.LIVE, newQuality);
+          if (newMode !== this.streamingMode) {
+            this.switchStreamingMode(newMode);
+          }
+        }
+      },
+    });
+
+    this.networkMonitor.start();
+  },
+
+  // ============================================
+  // Streaming Mode Management
+  // ============================================
+
+  switchStreamingMode(newMode) {
+    if (newMode === this.streamingMode) return;
+
+    console.log(`Switching streaming mode: ${this.streamingMode} -> ${newMode}`);
+    this.streamingMode = newMode;
+
+    // Apply new configuration to active player
+    if (this.hls) {
+      const config = getStreamingConfig(newMode);
+      Object.keys(config.hls).forEach((key) => {
+        if (key in this.hls.config) {
+          this.hls.config[key] = config.hls[key];
+        }
+      });
+    }
+
+    // Notify LiveView
+    this.pushEvent("streaming_mode_changed", {
+      mode: newMode,
+      config: getStreamingConfig(newMode).name,
+    });
+  },
+
+  // ============================================
+  // Quality Selection
+  // ============================================
+
+  setQuality(levelIndex) {
+    if (!this.hls) return;
+
+    this.hls.currentLevel = levelIndex;
+    this.manualQuality = levelIndex === -1 ? null : levelIndex;
+
+    const quality = levelIndex === -1
+      ? "auto"
+      : this.availableQualities[levelIndex]?.label || `Level ${levelIndex}`;
+
+    this.pushEvent("quality_changed", { quality, level: levelIndex });
+  },
+
+  getAvailableQualities() {
+    if (!this.hls || !this.hls.levels) return [];
+
+    return this.hls.levels.map((level, index) => ({
+      index,
+      height: level.height,
+      width: level.width,
+      bitrate: level.bitrate,
+      label: level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)}k`,
+    }));
+  },
+
+  updateQualityList() {
+    this.availableQualities = this.getAvailableQualities();
+
+    // Notify LiveView of available qualities
+    this.pushEvent("qualities_available", {
+      qualities: [
+        { index: -1, label: "Auto" },
+        ...this.availableQualities,
+      ],
+      current: this.hls?.currentLevel ?? -1,
+    });
+  },
+
+  // ============================================
+  // Audio Track Selection
+  // ============================================
+
+  setAudioTrack(trackIndex) {
+    if (!this.hls) return;
+
+    this.hls.audioTrack = trackIndex;
+    this.selectedAudioTrack = trackIndex;
+
+    const track = this.audioTracks[trackIndex];
+    this.pushEvent("audio_track_changed", {
+      track: trackIndex,
+      label: track?.name || track?.lang || `Track ${trackIndex}`,
+    });
+  },
+
+  updateAudioTracks() {
+    if (!this.hls) return;
+
+    this.audioTracks = this.hls.audioTracks.map((track, index) => ({
+      index,
+      id: track.id,
+      name: track.name,
+      lang: track.lang,
+      label: track.name || track.lang || `Audio ${index + 1}`,
+    }));
+
+    this.pushEvent("audio_tracks_available", {
+      tracks: this.audioTracks,
+      current: this.hls.audioTrack,
+    });
+  },
+
+  // ============================================
+  // Subtitle Track Selection
+  // ============================================
+
+  setSubtitleTrack(trackIndex) {
+    if (!this.hls) return;
+
+    this.hls.subtitleTrack = trackIndex; // -1 to disable
+    this.selectedSubtitleTrack = trackIndex;
+
+    const track = trackIndex >= 0 ? this.subtitleTracks[trackIndex] : null;
+    this.pushEvent("subtitle_track_changed", {
+      track: trackIndex,
+      label: track?.name || track?.lang || (trackIndex === -1 ? "Off" : `Track ${trackIndex}`),
+    });
+  },
+
+  updateSubtitleTracks() {
+    if (!this.hls) return;
+
+    this.subtitleTracks = this.hls.subtitleTracks.map((track, index) => ({
+      index,
+      id: track.id,
+      name: track.name,
+      lang: track.lang,
+      label: track.name || track.lang || `Subtitle ${index + 1}`,
+    }));
+
+    this.pushEvent("subtitle_tracks_available", {
+      tracks: [{ index: -1, label: "Off" }, ...this.subtitleTracks],
+      current: this.hls.subtitleTrack,
+    });
+  },
+
+  // ============================================
+  // Picture-in-Picture
+  // ============================================
+
+  async togglePiP() {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        this.pipActive = false;
+      } else if (document.pictureInPictureEnabled && this.video) {
+        await this.video.requestPictureInPicture();
+        this.pipActive = true;
+      }
+
+      this.pushEvent("pip_toggled", { active: this.pipActive });
+    } catch (error) {
+      console.error("PiP error:", error);
+      this.pushEvent("pip_error", { message: error.message });
+    }
+  },
+
+  isPiPSupported() {
+    return document.pictureInPictureEnabled && !this.video?.disablePictureInPicture;
+  },
+
+  // ============================================
+  // Event Listeners
+  // ============================================
+
+  setupEventListeners() {
+    // Listen for commands from LiveView
+    this.handleEvent("set_quality", ({ level }) => {
+      this.setQuality(level);
+    });
+
+    this.handleEvent("set_audio_track", ({ track }) => {
+      this.setAudioTrack(track);
+    });
+
+    this.handleEvent("set_subtitle_track", ({ track }) => {
+      this.setSubtitleTrack(track);
+    });
+
+    this.handleEvent("toggle_pip", () => {
+      this.togglePiP();
+    });
+
+    this.handleEvent("set_streaming_mode", ({ mode }) => {
+      this.switchStreamingMode(mode);
+    });
+
+    this.handleEvent("seek", ({ time }) => {
+      if (this.video) {
+        this.video.currentTime = time;
+      }
+    });
+
+    this.handleEvent("set_playback_rate", ({ rate }) => {
+      if (this.video) {
+        this.video.playbackRate = rate;
+      }
+    });
+
+    // PiP events from video element
+    this.video?.addEventListener("enterpictureinpicture", () => {
+      this.pipActive = true;
+      this.pushEvent("pip_toggled", { active: true });
+    });
+
+    this.video?.addEventListener("leavepictureinpicture", () => {
+      this.pipActive = false;
+      this.pushEvent("pip_toggled", { active: false });
+    });
+
+    // Progress tracking for VOD
+    if (this.contentType === "vod") {
+      this.video?.addEventListener("timeupdate", () => {
+        this.reportProgress();
+      });
+
+      this.video?.addEventListener("durationchange", () => {
+        if (this.video.duration && isFinite(this.video.duration)) {
+          this.pushEvent("duration_available", {
+            duration: Math.floor(this.video.duration),
+          });
+        }
+      });
+    }
+
+    // Buffer health monitoring
+    this.video?.addEventListener("waiting", () => {
+      this.pushEvent("buffering", { buffering: true });
+    });
+
+    this.video?.addEventListener("playing", () => {
+      this.pushEvent("buffering", { buffering: false });
+      this.hideLoading();
+      this.hideError();
+    });
+  },
+
+  reportProgress() {
+    if (!this.video || !this.video.duration) return;
+
+    const currentTime = Math.floor(this.video.currentTime);
+    const duration = Math.floor(this.video.duration);
+
+    // Throttle updates to every 10 seconds
+    if (Math.abs(currentTime - this.lastProgressReport) >= 10) {
+      this.lastProgressReport = currentTime;
+
+      this.pushEvent("progress_update", {
+        current_time: currentTime,
+        duration: duration,
+        percent: Math.round((currentTime / duration) * 100),
+      });
+    }
+  },
+
+  // ============================================
+  // Stream Type Detection
+  // ============================================
+
   getStreamType(url) {
     if (!url) return "unknown";
     const lowercaseUrl = url.toLowerCase();
 
-    // HLS streams
     if (lowercaseUrl.includes(".m3u8") || lowercaseUrl.includes("/hls/")) {
       return "hls";
     }
-    // MPEG-TS streams
     if (lowercaseUrl.endsWith(".ts") || lowercaseUrl.includes(".ts?")) {
       return "ts";
     }
-    // MP4 streams
     if (lowercaseUrl.includes(".mp4")) {
       return "mp4";
     }
-    // FLV streams
     if (lowercaseUrl.includes(".flv")) {
       return "flv";
     }
-    // Xtream Codes IPTV format (common pattern)
     if (lowercaseUrl.includes("/live/") && lowercaseUrl.includes("/")) {
       return "xtream";
     }
     return "unknown";
   },
 
-  // Get the URL to use based on stream type and proxy availability
   getEffectiveUrl(streamType) {
-    // Use proxy for MPEG-TS and Xtream streams (they benefit most from server-side caching)
-    // HLS already has its own segmented caching mechanism
     const proxyableTypes = ["ts", "xtream", "unknown"];
 
     if (this.useProxy && this.proxyUrl && proxyableTypes.includes(streamType)) {
@@ -119,6 +457,10 @@ const VideoPlayer = {
     console.log("Using direct URL for", streamType, "stream");
     return this.streamUrl;
   },
+
+  // ============================================
+  // Player Initialization
+  // ============================================
 
   cleanup() {
     if (this.hls) {
@@ -144,29 +486,31 @@ const VideoPlayer = {
 
     this.showLoading();
     console.log("Initializing player with URL:", this.streamUrl);
-    console.log("Proxy URL available:", this.proxyUrl ? "yes" : "no");
+    console.log("Streaming mode:", this.streamingMode);
+    console.log("Content type:", this.contentType);
 
     this.currentStreamType = this.getStreamType(this.streamUrl);
     console.log("Detected stream type:", this.currentStreamType);
 
-    // Clean up previous instances
     this.cleanup();
-
-    // Get the effective URL (proxy or direct based on stream type)
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
 
-    // Choose the best player based on stream type
+    // Notify LiveView of player initialization
+    this.pushEvent("player_initializing", {
+      stream_type: this.currentStreamType,
+      streaming_mode: this.streamingMode,
+      pip_supported: this.isPiPSupported(),
+    });
+
     switch (this.currentStreamType) {
       case "hls":
         this.playWithHls();
         break;
       case "ts":
       case "xtream":
-        // For .ts and Xtream streams, try mpegts.js first
         if (mpegts.getFeatureList().mseLivePlayback) {
           this.playWithMpegts();
         } else if (Hls.isSupported()) {
-          // Fallback to HLS.js (some servers return HLS even with .ts extension)
           this.playWithHls();
         } else {
           this.playNative();
@@ -183,7 +527,6 @@ const VideoPlayer = {
         this.playNative();
         break;
       default:
-        // Try HLS.js first for unknown streams, then mpegts, then native
         if (Hls.isSupported()) {
           this.playWithHls();
         } else if (mpegts.getFeatureList().mseLivePlayback) {
@@ -194,112 +537,7 @@ const VideoPlayer = {
     }
   },
 
-  playWithMpegts(type = "mpegts") {
-    console.log("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
-
-    try {
-      this.mpegtsPlayer = mpegts.createPlayer(
-        {
-          type: type, // 'mpegts', 'flv', 'm2ts', 'mse'
-          isLive: true,
-          url: this.currentUrl,
-        },
-        {
-          enableWorker: true,
-          enableStashBuffer: true,
-          stashInitialSize: 512 * 1024, // 512KB initial buffer
-          autoCleanupSourceBuffer: true,
-          autoCleanupMaxBackwardDuration: 60, // Keep 60s of backward buffer
-          autoCleanupMinBackwardDuration: 30, // Minimum 30s backward
-          // Disable aggressive latency chasing to prevent rebuffering
-          liveBufferLatencyChasing: false,
-          // Increase buffer for smoother playback
-          lazyLoad: false,
-          lazyLoadMaxDuration: 60, // Buffer up to 60s
-          lazyLoadRecoverDuration: 30,
-          // Seek optimization
-          accurateSeek: false,
-          seekType: "range",
-        }
-      );
-
-      this.mpegtsPlayer.attachMediaElement(this.video);
-      this.mpegtsPlayer.load();
-
-      this.mpegtsPlayer.on(mpegts.Events.LOADING_COMPLETE, () => {
-        console.log("mpegts.js loading complete");
-      });
-
-      this.mpegtsPlayer.on(mpegts.Events.RECOVERED_EARLY_EOF, () => {
-        console.log("mpegts.js recovered from early EOF");
-      });
-
-      this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
-        console.log("mpegts.js media info:", info);
-        this.hideLoading();
-        this.hideError();
-      });
-
-      this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
-        console.error("mpegts.js error:", errorType, errorDetail, errorInfo);
-
-        // If using proxy and it failed, try direct URL first
-        if (this.useProxy && this.currentUrl !== this.streamUrl) {
-          console.log("Proxy failed, trying direct URL...");
-          this.useProxy = false;
-          this.currentUrl = this.streamUrl;
-          this.cleanup();
-          this.playWithMpegts();
-          return;
-        }
-
-        if (this.retryCount < this.maxRetries) {
-          this.retryCount++;
-          console.log(`Retrying with different method (${this.retryCount}/${this.maxRetries})`);
-          this.cleanup();
-
-          // Try HLS.js as fallback
-          if (Hls.isSupported()) {
-            this.playWithHls();
-          } else {
-            this.playNative();
-          }
-        } else {
-          this.showError(`Stream error: ${errorDetail || errorType}`);
-        }
-      });
-
-      // Try to play
-      this.video.play().catch((e) => {
-        console.log("Autoplay prevented:", e);
-        if (e.name === "NotAllowedError") {
-          this.hideLoading();
-          this.showPlayButton();
-        }
-      });
-
-      // Handle successful playback
-      this.video.addEventListener(
-        "playing",
-        () => {
-          this.hideLoading();
-          this.hideError();
-        },
-        { once: true }
-      );
-    } catch (e) {
-      console.error("mpegts.js initialization error:", e);
-      // Fallback to HLS.js
-      if (Hls.isSupported()) {
-        this.playWithHls();
-      } else {
-        this.playNative();
-      }
-    }
-  },
-
   playWithHls() {
-    // For HLS, always use direct URL - HLS.js handles its own buffering
     const hlsUrl = this.currentStreamType === "hls" ? this.streamUrl : this.currentUrl;
     console.log("Playing with HLS.js, url:", hlsUrl);
 
@@ -312,30 +550,11 @@ const VideoPlayer = {
       return;
     }
 
+    // Get streaming profile configuration
+    const config = getStreamingConfig(this.streamingMode);
+
     this.hls = new Hls({
-      enableWorker: true,
-      // Disable low latency mode for smoother playback
-      lowLatencyMode: false,
-      // Increase buffer sizes to reduce rebuffering
-      backBufferLength: 120, // 2 minutes of back buffer
-      maxBufferLength: 60, // Buffer up to 60 seconds ahead
-      maxMaxBufferLength: 120, // Max 2 minutes buffer
-      maxBufferSize: 60 * 1000 * 1000, // 60MB max buffer
-      maxBufferHole: 0.5, // Allow 0.5s gaps without rebuffering
-      // Start with auto quality
-      startLevel: -1,
-      // ABR settings for stability
-      abrEwmaDefaultEstimate: 500000, // Start with 500kbps estimate
-      abrBandWidthFactor: 0.8, // Conservative bandwidth factor
-      abrBandWidthUpFactor: 0.5, // Slower upward switches
-      // Fragment loading settings
-      fragLoadingTimeOut: 20000,
-      fragLoadingMaxRetry: 6,
-      fragLoadingRetryDelay: 1000,
-      // Level loading settings
-      levelLoadingTimeOut: 10000,
-      levelLoadingMaxRetry: 4,
-      levelLoadingRetryDelay: 1000,
+      ...config.hls,
       xhrSetup: (xhr) => {
         xhr.withCredentials = false;
       },
@@ -344,14 +563,48 @@ const VideoPlayer = {
     this.hls.loadSource(hlsUrl);
     this.hls.attachMedia(this.video);
 
+    // Track bandwidth for network monitoring
+    this.hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+      if (data.frag.stats.loaded && data.frag.stats.loading.end) {
+        const loadTime = data.frag.stats.loading.end - data.frag.stats.loading.start;
+        const bandwidth = (data.frag.stats.loaded * 8000) / loadTime; // bps
+        this.networkMonitor?.addSample(bandwidth);
+      }
+    });
+
     this.hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
       console.log("HLS manifest parsed, levels:", data.levels.length);
       this.hideLoading();
       this.hideError();
+
+      // Update available qualities
+      this.updateQualityList();
+      this.updateAudioTracks();
+      this.updateSubtitleTracks();
+
       this.video.play().catch((e) => {
         console.log("Autoplay prevented:", e);
         this.showPlayButton();
       });
+    });
+
+    this.hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+      // Notify of quality switch
+      const level = this.hls.levels[data.level];
+      this.pushEvent("quality_switched", {
+        level: data.level,
+        height: level?.height,
+        bitrate: level?.bitrate,
+        auto: this.manualQuality === null,
+      });
+    });
+
+    this.hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+      this.updateAudioTracks();
+    });
+
+    this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+      this.updateSubtitleTracks();
     });
 
     this.hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -364,7 +617,6 @@ const VideoPlayer = {
               data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
               data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR
             ) {
-              // Not an HLS stream, try mpegts.js
               if (this.retryCount < this.maxRetries && mpegts.getFeatureList().mseLivePlayback) {
                 this.retryCount++;
                 console.log("HLS failed, trying mpegts.js...");
@@ -398,6 +650,89 @@ const VideoPlayer = {
         }
       }
     });
+  },
+
+  playWithMpegts(type = "mpegts") {
+    console.log("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
+
+    try {
+      const config = getStreamingConfig(this.streamingMode);
+
+      this.mpegtsPlayer = mpegts.createPlayer(
+        {
+          type: type,
+          isLive: this.contentType === "live",
+          url: this.currentUrl,
+        },
+        config.mpegts
+      );
+
+      this.mpegtsPlayer.attachMediaElement(this.video);
+      this.mpegtsPlayer.load();
+
+      this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, (info) => {
+        if (info.speed) {
+          this.networkMonitor?.addSample(info.speed * 1000); // KB/s to bps
+        }
+      });
+
+      this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
+        console.log("mpegts.js media info:", info);
+        this.hideLoading();
+        this.hideError();
+      });
+
+      this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+        console.error("mpegts.js error:", errorType, errorDetail, errorInfo);
+
+        if (this.useProxy && this.currentUrl !== this.streamUrl) {
+          console.log("Proxy failed, trying direct URL...");
+          this.useProxy = false;
+          this.currentUrl = this.streamUrl;
+          this.cleanup();
+          this.playWithMpegts();
+          return;
+        }
+
+        if (this.retryCount < this.maxRetries) {
+          this.retryCount++;
+          console.log(`Retrying with different method (${this.retryCount}/${this.maxRetries})`);
+          this.cleanup();
+
+          if (Hls.isSupported()) {
+            this.playWithHls();
+          } else {
+            this.playNative();
+          }
+        } else {
+          this.showError(`Stream error: ${errorDetail || errorType}`);
+        }
+      });
+
+      this.video.play().catch((e) => {
+        console.log("Autoplay prevented:", e);
+        if (e.name === "NotAllowedError") {
+          this.hideLoading();
+          this.showPlayButton();
+        }
+      });
+
+      this.video.addEventListener(
+        "playing",
+        () => {
+          this.hideLoading();
+          this.hideError();
+        },
+        { once: true }
+      );
+    } catch (e) {
+      console.error("mpegts.js initialization error:", e);
+      if (Hls.isSupported()) {
+        this.playWithHls();
+      } else {
+        this.playNative();
+      }
+    }
   },
 
   playNative() {
@@ -452,7 +787,6 @@ const VideoPlayer = {
   },
 
   showPlayButton() {
-    // Remove existing overlay if any
     const existing = this.el.querySelector(".play-overlay");
     if (existing) existing.remove();
 
@@ -470,6 +804,10 @@ const VideoPlayer = {
     });
     this.el.appendChild(playOverlay);
   },
+
+  // ============================================
+  // Keyboard Shortcuts
+  // ============================================
 
   setupKeyboardShortcuts() {
     this.keyHandler = (e) => {
@@ -490,6 +828,12 @@ const VideoPlayer = {
         case "M":
           this.toggleMute();
           break;
+        case "p":
+        case "P":
+          if (this.isPiPSupported()) {
+            this.togglePiP();
+          }
+          break;
         case "ArrowUp":
           e.preventDefault();
           this.adjustVolume(0.1);
@@ -497,6 +841,18 @@ const VideoPlayer = {
         case "ArrowDown":
           e.preventDefault();
           this.adjustVolume(-0.1);
+          break;
+        case "ArrowLeft":
+          if (this.contentType === "vod") {
+            e.preventDefault();
+            this.seek(-10);
+          }
+          break;
+        case "ArrowRight":
+          if (this.contentType === "vod") {
+            e.preventDefault();
+            this.seek(10);
+          }
           break;
       }
     };
@@ -508,7 +864,7 @@ const VideoPlayer = {
     if (document.fullscreenElement) {
       document.exitFullscreen();
     } else {
-      this.video.requestFullscreen();
+      this.el.requestFullscreen?.() || this.video.requestFullscreen?.();
     }
   },
 
@@ -522,11 +878,26 @@ const VideoPlayer = {
 
   toggleMute() {
     this.video.muted = !this.video.muted;
+    this.pushEvent("mute_toggled", { muted: this.video.muted });
   },
 
   adjustVolume(delta) {
     this.video.volume = Math.max(0, Math.min(1, this.video.volume + delta));
+    this.pushEvent("volume_changed", { volume: Math.round(this.video.volume * 100) });
   },
+
+  seek(seconds) {
+    if (this.video.duration) {
+      this.video.currentTime = Math.max(
+        0,
+        Math.min(this.video.duration, this.video.currentTime + seconds)
+      );
+    }
+  },
+
+  // ============================================
+  // Watch Time Tracking
+  // ============================================
 
   trackWatchTime() {
     this.watchInterval = setInterval(() => {
@@ -537,8 +908,13 @@ const VideoPlayer = {
     }, 1000);
   },
 
+  // ============================================
+  // Lifecycle
+  // ============================================
+
   destroyed() {
     this.cleanup();
+    this.networkMonitor?.stop();
 
     if (this.keyHandler) {
       document.removeEventListener("keydown", this.keyHandler);

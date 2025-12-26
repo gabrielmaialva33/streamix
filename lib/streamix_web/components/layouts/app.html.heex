@@ -1,29 +1,175 @@
-<div class="drawer lg:drawer-open">
-  <input id="sidebar-drawer" type="checkbox" class="drawer-toggle" />
+<div class="min-h-screen bg-background">
+  <!-- Fixed Header -->
+  <header class="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-background via-background/80 to-transparent">
+    <div class="flex items-center justify-between h-16 px-[4%]">
+      <!-- Logo & Navigation -->
+      <div class="flex items-center gap-8">
+        <a href="/" class="flex items-center gap-2 text-2xl font-bold text-brand">
+          <.icon name="hero-play-circle-solid" class="size-8" />
+          <span class="hidden sm:inline">Streamix</span>
+        </a>
 
-  <div class="drawer-content flex flex-col min-h-screen">
-    <header class="navbar bg-base-200 lg:hidden border-b border-base-300">
-      <div class="flex-none">
-        <label for="sidebar-drawer" class="btn btn-square btn-ghost drawer-button">
-          <.icon name="hero-bars-3" class="size-6" />
-        </label>
+        <%= if @current_scope do %>
+          <nav class="hidden md:flex items-center gap-6">
+            <.link
+              navigate={~p"/"}
+              class={"text-sm font-medium transition-colors " <> if(@current_path == "/", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
+            >
+              Início
+            </.link>
+            <.link
+              navigate={~p"/providers"}
+              class={"text-sm font-medium transition-colors " <> if(String.starts_with?(@current_path || "", "/providers"), do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
+            >
+              Provedores
+            </.link>
+            <.link
+              navigate={~p"/favorites"}
+              class={"text-sm font-medium transition-colors " <> if(@current_path == "/favorites", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
+            >
+              Minha Lista
+            </.link>
+            <.link
+              navigate={~p"/history"}
+              class={"text-sm font-medium transition-colors " <> if(@current_path == "/history", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
+            >
+              Histórico
+            </.link>
+          </nav>
+        <% end %>
       </div>
-      <div class="flex-1">
-        <a href="/" class="btn btn-ghost text-xl text-primary">Streamix</a>
+      
+<!-- Right side: Search & User -->
+      <div class="flex items-center gap-4">
+        <%= if @current_scope do %>
+          <.link
+            navigate={~p"/search"}
+            class="p-2 text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <.icon name="hero-magnifying-glass" class="size-5" />
+          </.link>
+          
+<!-- User dropdown -->
+          <div class="relative" x-data="{ open: false }">
+            <button
+              type="button"
+              class="flex items-center gap-2 p-1.5 rounded-md hover:bg-surface-hover transition-colors"
+              phx-click={toggle_user_menu()}
+            >
+              <div class="w-8 h-8 rounded-md bg-brand flex items-center justify-center text-white font-semibold">
+                {String.first(@current_scope.user.email) |> String.upcase()}
+              </div>
+              <.icon name="hero-chevron-down" class="size-4 text-text-secondary" />
+            </button>
+
+            <div
+              id="user-dropdown"
+              class="hidden absolute right-0 top-full mt-2 w-48 bg-surface border border-border rounded-lg shadow-xl py-1"
+            >
+              <div class="px-3 py-2 border-b border-border">
+                <p class="text-sm font-medium text-text-primary truncate">
+                  {@current_scope.user.email}
+                </p>
+              </div>
+              <.link
+                navigate={~p"/settings"}
+                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                <.icon name="hero-cog-6-tooth" class="size-4" /> Configurações
+              </.link>
+              <.link
+                href={~p"/logout"}
+                method="delete"
+                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Sair
+              </.link>
+            </div>
+          </div>
+          
+<!-- Mobile menu button -->
+          <button
+            type="button"
+            phx-click={show_mobile_menu()}
+            class="md:hidden p-2 text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <.icon name="hero-bars-3" class="size-6" />
+          </button>
+        <% else %>
+          <.link
+            navigate={~p"/login"}
+            class="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+          >
+            Entrar
+          </.link>
+          <.link
+            navigate={~p"/register"}
+            class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-md hover:bg-brand-hover transition-colors"
+          >
+            Criar Conta
+          </.link>
+        <% end %>
       </div>
-    </header>
-
-    <main class="flex-1 p-4 lg:p-6">
-      <.flash flash={@flash} kind={:info} />
-      <.flash flash={@flash} kind={:error} />
-      {@inner_content}
-    </main>
+    </div>
+  </header>
+  
+<!-- Mobile Navigation Menu -->
+  <div id="mobile-menu" class="fixed inset-0 z-40 hidden md:hidden">
+    <div class="absolute inset-0 bg-black/60" phx-click={hide_mobile_menu()}></div>
+    <div class="absolute top-0 right-0 w-64 h-full bg-surface border-l border-border">
+      <div class="p-4 border-b border-border flex items-center justify-between">
+        <span class="font-semibold text-text-primary">Menu</span>
+        <button
+          type="button"
+          phx-click={hide_mobile_menu()}
+          class="p-2 text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </div>
+      <nav class="p-4 space-y-2">
+        <.link
+          navigate={~p"/"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-home" class="size-5" /> Início
+        </.link>
+        <.link
+          navigate={~p"/providers"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-server-stack" class="size-5" /> Provedores
+        </.link>
+        <.link
+          navigate={~p"/favorites"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-heart" class="size-5" /> Minha Lista
+        </.link>
+        <.link
+          navigate={~p"/history"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-clock" class="size-5" /> Histórico
+        </.link>
+        <.link
+          navigate={~p"/search"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-magnifying-glass" class="size-5" /> Buscar
+        </.link>
+      </nav>
+    </div>
   </div>
-
-  <div class="drawer-side z-40">
-    <label for="sidebar-drawer" aria-label="fechar menu lateral" class="drawer-overlay"></label>
-    <aside class="w-64 min-h-screen bg-base-200 border-r border-base-300">
-      <.sidebar current_scope={@current_scope} current_path={@current_path} />
-    </aside>
+  
+<!-- Flash Messages -->
+  <div class="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
+    <.flash flash={@flash} kind={:info} />
+    <.flash flash={@flash} kind={:error} />
   </div>
+  
+<!-- Main Content -->
+  <main>
+    {@inner_content}
+  </main>
 </div>

@@ -1,6 +1,7 @@
 defmodule StreamixWeb.AppComponents do
   @moduledoc """
   Application-specific UI components for Streamix.
+  Uses pure Tailwind CSS v4 with custom theme variables.
   """
   use Phoenix.Component
   use StreamixWeb, :verified_routes
@@ -11,10 +12,6 @@ defmodule StreamixWeb.AppComponents do
 
   @doc """
   Renders the sidebar navigation.
-
-  ## Examples
-
-      <.sidebar current_scope={@current_scope} current_path={@current_path} />
   """
   attr :current_scope, :any, default: nil
   attr :current_path, :string, default: "/"
@@ -22,26 +19,53 @@ defmodule StreamixWeb.AppComponents do
   def sidebar(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <div class="p-4 border-b border-base-300">
-        <.link navigate={~p"/"} class="flex items-center gap-2 text-xl font-bold text-primary">
+      <div class="p-4 border-b border-border">
+        <.link navigate={~p"/"} class="flex items-center gap-2 text-xl font-bold text-brand">
           <.icon name="hero-play-circle-solid" class="size-8" />
           <span>Streamix</span>
         </.link>
       </div>
 
-      <nav class="flex-1 p-4 space-y-2">
-        <div :if={@current_scope} class="space-y-2">
+      <nav class="flex-1 p-4 space-y-6">
+        <div :if={@current_scope} class="space-y-1">
+          <p class="text-xs font-semibold text-text-muted uppercase tracking-wider px-3 mb-2">
+            Menu
+          </p>
           <.nav_item
             path={~p"/providers"}
             icon="hero-server-stack"
             label="Provedores"
             current_path={@current_path}
           />
+          <.nav_item
+            path={~p"/search"}
+            icon="hero-magnifying-glass"
+            label="Buscar"
+            current_path={@current_path}
+          />
+        </div>
+
+        <div :if={@current_scope} class="space-y-1">
+          <p class="text-xs font-semibold text-text-muted uppercase tracking-wider px-3 mb-2">
+            Biblioteca
+          </p>
+          <.nav_item
+            path={~p"/favorites"}
+            icon="hero-heart"
+            label="Favoritos"
+            current_path={@current_path}
+          />
+          <.nav_item
+            path={~p"/history"}
+            icon="hero-clock"
+            label="Histórico"
+            current_path={@current_path}
+          />
         </div>
       </nav>
 
-      <div class="p-4 border-t border-base-300">
-        <div :if={@current_scope} class="space-y-2">
+      <div class="p-4 border-t border-border">
+        <div :if={@current_scope} class="space-y-1">
           <.nav_item
             path={~p"/settings"}
             icon="hero-cog-6-tooth"
@@ -51,7 +75,7 @@ defmodule StreamixWeb.AppComponents do
           <.link
             href={~p"/logout"}
             method="delete"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-base-content/70 hover:bg-base-300 hover:text-base-content transition-colors w-full"
+            class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors w-full"
           >
             <.icon name="hero-arrow-right-on-rectangle" class="size-5" />
             <span>Sair</span>
@@ -61,14 +85,14 @@ defmodule StreamixWeb.AppComponents do
         <div :if={!@current_scope} class="space-y-2">
           <.link
             navigate={~p"/login"}
-            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-content hover:bg-primary/80 transition-colors w-full"
+            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors w-full"
           >
             <.icon name="hero-arrow-right-end-on-rectangle" class="size-5" />
             <span>Entrar</span>
           </.link>
           <.link
             navigate={~p"/register"}
-            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-base-300 hover:bg-base-300 transition-colors w-full"
+            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors w-full"
           >
             <.icon name="hero-user-plus" class="size-5" />
             <span>Cadastrar</span>
@@ -81,7 +105,6 @@ defmodule StreamixWeb.AppComponents do
 
   defp nav_item(assigns) do
     active = assigns.current_path == assigns.path
-
     assigns = assign(assigns, :active, active)
 
     ~H"""
@@ -89,8 +112,8 @@ defmodule StreamixWeb.AppComponents do
       navigate={@path}
       class={[
         "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
-        @active && "bg-primary/20 text-primary font-medium",
-        !@active && "text-base-content/70 hover:bg-base-300 hover:text-base-content"
+        @active && "bg-brand/20 text-brand font-medium",
+        !@active && "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       <.icon name={@icon} class="size-5" />
@@ -100,11 +123,7 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
-  Renders a live channel card (new structure).
-
-  ## Examples
-
-      <.live_channel_card channel={@channel} is_favorite={false} />
+  Renders a live channel card.
   """
   attr :channel, :map, required: true
   attr :is_favorite, :boolean, default: false
@@ -114,9 +133,9 @@ defmodule StreamixWeb.AppComponents do
 
   def live_channel_card(assigns) do
     ~H"""
-    <div class="card bg-base-200 hover:bg-base-300 transition-colors group cursor-pointer">
-      <figure
-        class="relative aspect-video bg-base-300"
+    <div class="group relative rounded-lg overflow-hidden bg-surface border border-border card-hover cursor-pointer">
+      <div
+        class="relative aspect-video bg-surface-hover"
         phx-click={@on_play}
         phx-value-id={@channel.id}
       >
@@ -130,31 +149,29 @@ defmodule StreamixWeb.AppComponents do
         />
         <div
           :if={!@channel.stream_icon}
-          class="w-full h-full flex items-center justify-center text-base-content/30"
+          class="w-full h-full flex items-center justify-center text-text-muted"
         >
           <.icon name="hero-tv" class="size-12" />
         </div>
-        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-16 text-primary" />
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <.icon name="hero-play-circle-solid" class="size-16 text-brand" />
         </div>
-      </figure>
-      <div class="card-body p-3">
+      </div>
+      <div class="p-3">
         <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0 flex-1">
-            <h3 class="font-medium text-sm truncate" title={@channel.name}>
-              {@channel.name}
-            </h3>
-          </div>
+          <h3 class="font-medium text-sm text-text-primary truncate flex-1" title={@channel.name}>
+            {@channel.name}
+          </h3>
           <button
             :if={@show_favorite}
             type="button"
             phx-click={@on_favorite}
             phx-value-id={@channel.id}
-            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+            class="shrink-0 p-1 hover:scale-110 transition-transform"
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-error"]}
+              class={["size-5", @is_favorite && "text-brand"]}
             />
           </button>
         </div>
@@ -165,10 +182,6 @@ defmodule StreamixWeb.AppComponents do
 
   @doc """
   Renders a provider card with sync status.
-
-  ## Examples
-
-      <.provider_card provider={@provider} />
   """
   attr :provider, :map, required: true
   attr :on_sync, :string, default: "sync_provider"
@@ -177,95 +190,98 @@ defmodule StreamixWeb.AppComponents do
 
   def provider_card(assigns) do
     ~H"""
-    <div class="card bg-base-200">
-      <div class="card-body p-4">
-        <div class="flex items-start justify-between">
-          <div class="min-w-0 flex-1">
-            <h3 class="font-semibold truncate">{@provider.name}</h3>
-            <p class="text-sm text-base-content/60 truncate">{@provider.url}</p>
-          </div>
-          <.sync_status_badge status={@provider.sync_status} />
+    <div class="rounded-xl bg-surface border border-border p-4 hover:border-brand/30 transition-colors">
+      <div class="flex items-start justify-between gap-4 mb-3">
+        <div class="min-w-0 flex-1">
+          <h3 class="font-semibold text-text-primary truncate">{@provider.name}</h3>
+          <p class="text-sm text-text-secondary truncate">{@provider.url}</p>
         </div>
+        <.sync_status_badge status={@provider.sync_status} />
+      </div>
 
-        <div class="flex flex-wrap items-center gap-4 text-sm text-base-content/70 mt-2">
-          <div :if={@provider.live_count && @provider.live_count > 0} class="flex items-center gap-1">
-            <.icon name="hero-tv" class="size-4" />
-            <span>{@provider.live_count} ao vivo</span>
-          </div>
-          <div
-            :if={@provider.movies_count && @provider.movies_count > 0}
-            class="flex items-center gap-1"
-          >
-            <.icon name="hero-film" class="size-4" />
-            <span>{@provider.movies_count} filmes</span>
-          </div>
-          <div
-            :if={@provider.series_count && @provider.series_count > 0}
-            class="flex items-center gap-1"
-          >
-            <.icon name="hero-video-camera" class="size-4" />
-            <span>{@provider.series_count} séries</span>
-          </div>
-          <div :if={@provider.last_synced_at} class="flex items-center gap-1">
-            <.icon name="hero-clock" class="size-4" />
-            <span>{format_relative_time(@provider.last_synced_at)}</span>
-          </div>
+      <div class="flex flex-wrap items-center gap-4 text-sm text-text-secondary mb-4">
+        <div :if={@provider.live_count && @provider.live_count > 0} class="flex items-center gap-1.5">
+          <.icon name="hero-tv" class="size-4" />
+          <span>{@provider.live_count} ao vivo</span>
         </div>
+        <div
+          :if={@provider.movies_count && @provider.movies_count > 0}
+          class="flex items-center gap-1.5"
+        >
+          <.icon name="hero-film" class="size-4" />
+          <span>{@provider.movies_count} filmes</span>
+        </div>
+        <div
+          :if={@provider.series_count && @provider.series_count > 0}
+          class="flex items-center gap-1.5"
+        >
+          <.icon name="hero-video-camera" class="size-4" />
+          <span>{@provider.series_count} séries</span>
+        </div>
+        <div :if={@provider.last_synced_at} class="flex items-center gap-1.5">
+          <.icon name="hero-clock" class="size-4" />
+          <span>{format_relative_time(@provider.last_synced_at)}</span>
+        </div>
+      </div>
 
-        <div class="card-actions justify-end mt-3">
-          <button
-            type="button"
-            phx-click={@on_sync}
-            phx-value-id={@provider.id}
-            disabled={@provider.sync_status in ["pending", "syncing"]}
-            class="btn btn-sm btn-ghost"
-          >
-            <.icon
-              name="hero-arrow-path"
-              class={["size-4", @provider.sync_status == "syncing" && "animate-spin"]}
-            /> Sincronizar
-          </button>
-          <.link navigate={~p"/providers/#{@provider.id}"} class="btn btn-sm btn-ghost">
-            <.icon name="hero-eye" class="size-4" /> Ver
-          </.link>
-          <button
-            type="button"
-            phx-click={@on_edit}
-            phx-value-id={@provider.id}
-            class="btn btn-sm btn-ghost"
-          >
-            <.icon name="hero-pencil" class="size-4" />
-          </button>
-          <button
-            type="button"
-            phx-click={@on_delete}
-            phx-value-id={@provider.id}
-            data-confirm="Tem certeza que deseja excluir este provedor?"
-            class="btn btn-sm btn-ghost text-error"
-          >
-            <.icon name="hero-trash" class="size-4" />
-          </button>
-        </div>
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-border">
+        <button
+          type="button"
+          phx-click={@on_sync}
+          phx-value-id={@provider.id}
+          disabled={@provider.sync_status in ["pending", "syncing"]}
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors disabled:opacity-50"
+        >
+          <.icon
+            name="hero-arrow-path"
+            class={["size-4", @provider.sync_status == "syncing" && "animate-spin"]}
+          /> Sync
+        </button>
+        <.link
+          navigate={~p"/providers/#{@provider.id}"}
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
+        >
+          <.icon name="hero-eye" class="size-4" /> Ver
+        </.link>
+        <button
+          type="button"
+          phx-click={@on_edit}
+          phx-value-id={@provider.id}
+          class="p-1.5 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
+        >
+          <.icon name="hero-pencil" class="size-4" />
+        </button>
+        <button
+          type="button"
+          phx-click={@on_delete}
+          phx-value-id={@provider.id}
+          data-confirm="Tem certeza que deseja excluir este provedor?"
+          class="p-1.5 text-text-secondary hover:text-error hover:bg-error/10 rounded-md transition-colors"
+        >
+          <.icon name="hero-trash" class="size-4" />
+        </button>
       </div>
     </div>
     """
   end
 
   defp sync_status_badge(assigns) do
-    {color, label} =
+    {bg, text, label} =
       case assigns.status do
-        "idle" -> {"badge-ghost", "Inativo"}
-        "pending" -> {"badge-warning", "Pendente"}
-        "syncing" -> {"badge-info", "Sincronizando"}
-        "completed" -> {"badge-success", "Sincronizado"}
-        "failed" -> {"badge-error", "Falhou"}
-        _ -> {"badge-ghost", "Desconhecido"}
+        "idle" -> {"bg-text-muted/10", "text-text-muted", "Inativo"}
+        "pending" -> {"bg-warning/10", "text-warning", "Pendente"}
+        "syncing" -> {"bg-info/10", "text-info", "Sincronizando"}
+        "completed" -> {"bg-success/10", "text-success", "Sincronizado"}
+        "failed" -> {"bg-error/10", "text-error", "Falhou"}
+        _ -> {"bg-text-muted/10", "text-text-muted", "Desconhecido"}
       end
 
-    assigns = assign(assigns, color: color, label: label)
+    assigns = assign(assigns, bg: bg, text: text, label: label)
 
     ~H"""
-    <span class={["badge badge-sm", @color]}>{@label}</span>
+    <span class={["inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium", @bg, @text]}>
+      {@label}
+    </span>
     """
   end
 
@@ -283,11 +299,7 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
-  Renders the video player modal for live channels (v2).
-
-  ## Examples
-
-      <.video_player_v2 channel={@playing_channel} provider={@provider} />
+  Renders the video player modal for live channels.
   """
   attr :channel, :map, required: true
   attr :provider, :map, required: true
@@ -309,7 +321,7 @@ defmodule StreamixWeb.AppComponents do
       <button
         type="button"
         phx-click={@on_close}
-        class="absolute top-4 right-4 z-10 btn btn-circle btn-ghost text-white"
+        class="absolute top-4 right-4 z-10 p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
       >
         <.icon name="hero-x-mark" class="size-6" />
       </button>
@@ -327,7 +339,7 @@ defmodule StreamixWeb.AppComponents do
       >
         <video
           id="video-element"
-          class="w-full h-full bg-black"
+          class="w-full h-full bg-black rounded-lg"
           controls
           autoplay
           playsinline
@@ -346,11 +358,7 @@ defmodule StreamixWeb.AppComponents do
   defp proxy_stream_url(_), do: nil
 
   @doc """
-  Renders a category filter dropdown (v2 - with id/name structure).
-
-  ## Examples
-
-      <.category_filter_v2 categories={@categories} selected={@selected_category} />
+  Renders a category filter dropdown.
   """
   attr :categories, :list, required: true
   attr :selected, :any, default: nil
@@ -361,37 +369,47 @@ defmodule StreamixWeb.AppComponents do
     assigns = assign(assigns, :selected_name, selected_name)
 
     ~H"""
-    <div class="dropdown">
-      <div tabindex="0" role="button" class="btn btn-sm btn-ghost gap-2">
+    <div class="relative" x-data="{ open: false }">
+      <button
+        type="button"
+        class="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors"
+        @click="open = !open"
+      >
         <.icon name="hero-funnel" class="size-4" />
         <span>{@selected_name || "Todas as Categorias"}</span>
         <.icon name="hero-chevron-down" class="size-4" />
-      </div>
-      <ul
-        tabindex="0"
-        class="dropdown-content z-10 menu p-2 shadow bg-base-200 rounded-box w-52 max-h-96 overflow-y-auto"
+      </button>
+      <div
+        x-show="open"
+        @click.away="open = false"
+        class="absolute z-10 mt-2 w-52 max-h-96 overflow-y-auto bg-surface border border-border rounded-lg shadow-xl"
       >
-        <li>
-          <button
-            type="button"
-            phx-click={@on_change}
-            phx-value-category=""
-            class={[!@selected && "active"]}
-          >
-            Todas as Categorias
-          </button>
-        </li>
-        <li :for={category <- @categories}>
-          <button
-            type="button"
-            phx-click={@on_change}
-            phx-value-category={category.id}
-            class={[to_string(@selected) == to_string(category.id) && "active"]}
-          >
-            {category.name}
-          </button>
-        </li>
-      </ul>
+        <button
+          type="button"
+          phx-click={@on_change}
+          phx-value-category=""
+          class={[
+            "w-full px-3 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
+            !@selected && "text-brand font-medium"
+          ]}
+          @click="open = false"
+        >
+          Todas as Categorias
+        </button>
+        <button
+          :for={category <- @categories}
+          type="button"
+          phx-click={@on_change}
+          phx-value-category={category.id}
+          class={[
+            "w-full px-3 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
+            to_string(@selected) == to_string(category.id) && "text-brand font-medium"
+          ]}
+          @click="open = false"
+        >
+          {category.name}
+        </button>
+      </div>
     </div>
     """
   end
@@ -408,10 +426,6 @@ defmodule StreamixWeb.AppComponents do
 
   @doc """
   Renders a search input.
-
-  ## Examples
-
-      <.search_input value={@search} />
   """
   attr :value, :string, default: ""
   attr :placeholder, :string, default: "Buscar..."
@@ -420,27 +434,26 @@ defmodule StreamixWeb.AppComponents do
   def search_input(assigns) do
     ~H"""
     <form phx-change={@on_change} phx-submit={@on_change} class="flex-1 max-w-md">
-      <label class="input input-sm input-bordered flex items-center gap-2">
-        <.icon name="hero-magnifying-glass" class="size-4 text-base-content/50" />
+      <div class="relative">
+        <.icon
+          name="hero-magnifying-glass"
+          class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-muted"
+        />
         <input
           type="search"
           name="search"
           value={@value}
           placeholder={@placeholder}
           phx-debounce="300"
-          class="grow bg-transparent border-none focus:outline-none"
+          class="w-full pl-10 pr-4 py-2 text-sm bg-surface border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
         />
-      </label>
+      </div>
     </form>
     """
   end
 
   @doc """
   Renders an empty state message.
-
-  ## Examples
-
-      <.empty_state icon="hero-tv" title="No channels" message="Add a provider to see channels" />
   """
   attr :icon, :string, required: true
   attr :title, :string, required: true
@@ -449,12 +462,12 @@ defmodule StreamixWeb.AppComponents do
 
   def empty_state(assigns) do
     ~H"""
-    <div class="flex flex-col items-center justify-center py-12 text-center">
-      <div class="rounded-full bg-base-200 p-4 mb-4">
-        <.icon name={@icon} class="size-12 text-base-content/30" />
+    <div class="flex flex-col items-center justify-center py-16 text-center">
+      <div class="rounded-full bg-surface-hover p-6 mb-4">
+        <.icon name={@icon} class="size-12 text-text-muted" />
       </div>
-      <h3 class="text-lg font-medium mb-1">{@title}</h3>
-      <p :if={@message} class="text-base-content/60 mb-4">{@message}</p>
+      <h3 class="text-lg font-medium text-text-primary mb-1">{@title}</h3>
+      <p :if={@message} class="text-text-secondary mb-6 max-w-md">{@message}</p>
       {render_slot(@action)}
     </div>
     """
@@ -468,15 +481,24 @@ defmodule StreamixWeb.AppComponents do
   def loading_spinner(assigns) do
     size_class =
       case assigns.size do
-        "sm" -> "loading-sm"
-        "md" -> "loading-md"
-        "lg" -> "loading-lg"
+        "sm" -> "size-4"
+        "md" -> "size-6"
+        "lg" -> "size-8"
       end
 
     assigns = assign(assigns, :size_class, size_class)
 
     ~H"""
-    <span class={["loading loading-spinner", @size_class]}></span>
+    <svg class={["animate-spin text-brand", @size_class]} fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+      </circle>
+      <path
+        class="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      >
+      </path>
+    </svg>
     """
   end
 
@@ -500,18 +522,14 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
-  Renders a history item card (v2 - with denormalized data).
-
-  ## Examples
-
-      <.history_card_v2 entry={@entry} />
+  Renders a history item card.
   """
   attr :entry, :map, required: true
 
   def history_card_v2(assigns) do
     ~H"""
-    <div class="flex items-center gap-4 p-3 rounded-lg bg-base-200 hover:bg-base-300 transition-colors">
-      <div class="w-16 h-12 rounded bg-base-300 flex items-center justify-center flex-shrink-0 overflow-hidden">
+    <div class="flex items-center gap-4 p-3 rounded-lg bg-surface border border-border hover:border-brand/30 transition-colors cursor-pointer">
+      <div class="w-16 h-12 rounded-md bg-surface-hover flex items-center justify-center shrink-0 overflow-hidden">
         <img
           :if={@entry.content_icon}
           src={@entry.content_icon}
@@ -522,39 +540,35 @@ defmodule StreamixWeb.AppComponents do
         <.icon
           :if={!@entry.content_icon}
           name={content_type_icon(@entry.content_type)}
-          class="size-6 text-base-content/30"
+          class="size-6 text-text-muted"
         />
       </div>
       <div class="flex-1 min-w-0">
-        <h4 class="font-medium truncate">{@entry.content_name || "Desconhecido"}</h4>
-        <p class="text-sm text-base-content/60">
-          <span class="badge badge-xs badge-ghost mr-1">
+        <h4 class="font-medium text-text-primary truncate">
+          {@entry.content_name || "Desconhecido"}
+        </h4>
+        <p class="text-sm text-text-secondary flex items-center gap-2">
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-surface-hover text-text-muted">
             {format_content_type(@entry.content_type)}
           </span>
-          {format_relative_time(@entry.watched_at)}
-          <span :if={@entry.duration_seconds}>
-            - {format_duration(@entry.duration_seconds)}
-          </span>
+          <span>{format_relative_time(@entry.watched_at)}</span>
+          <span :if={@entry.duration_seconds}>- {format_duration(@entry.duration_seconds)}</span>
         </p>
       </div>
-      <.icon name="hero-play-circle" class="size-8 text-primary flex-shrink-0" />
+      <.icon name="hero-play-circle" class="size-8 text-brand shrink-0" />
     </div>
     """
   end
 
   @doc """
-  Renders a favorite card (with denormalized data).
-
-  ## Examples
-
-      <.favorite_card favorite={@favorite} />
+  Renders a favorite card.
   """
   attr :favorite, :map, required: true
 
   def favorite_card(assigns) do
     ~H"""
-    <div class="card bg-base-200 hover:bg-base-300 transition-colors">
-      <figure class="aspect-video bg-base-300 flex items-center justify-center">
+    <div class="group rounded-lg overflow-hidden bg-surface border border-border card-hover cursor-pointer">
+      <div class="aspect-video bg-surface-hover flex items-center justify-center relative">
         <img
           :if={@favorite.content_icon}
           src={@favorite.content_icon}
@@ -565,14 +579,19 @@ defmodule StreamixWeb.AppComponents do
         <.icon
           :if={!@favorite.content_icon}
           name={content_type_icon(@favorite.content_type)}
-          class="size-12 text-base-content/30"
+          class="size-12 text-text-muted"
         />
-      </figure>
-      <div class="card-body p-3">
-        <h3 class="font-medium text-sm truncate" title={@favorite.content_name}>
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <.icon name="hero-play-circle-solid" class="size-12 text-brand" />
+        </div>
+      </div>
+      <div class="p-3">
+        <h3 class="font-medium text-sm text-text-primary truncate" title={@favorite.content_name}>
           {@favorite.content_name || "Desconhecido"}
         </h3>
-        <span class="badge badge-xs badge-ghost">{format_content_type(@favorite.content_type)}</span>
+        <span class="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs bg-surface-hover text-text-muted">
+          {format_content_type(@favorite.content_type)}
+        </span>
       </div>
     </div>
     """

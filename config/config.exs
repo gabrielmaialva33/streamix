@@ -73,6 +73,10 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Gettext configuration - Portuguese Brazil as default
+config :gettext, :default_locale, "pt_BR"
+config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
+
 # Oban - Background jobs
 config :streamix, Oban,
   repo: Streamix.Repo,

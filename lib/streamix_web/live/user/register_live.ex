@@ -44,42 +44,56 @@ defmodule StreamixWeb.User.RegisterLive do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-md mx-auto mt-10">
-      <.header>
-        Criar uma conta
-        <:subtitle>
+    <div class="min-h-[calc(100vh-80px)] flex items-center justify-center px-4">
+      <div class="w-full max-w-md bg-zinc-900/80 backdrop-blur-sm rounded-lg p-8 shadow-2xl border border-white/10">
+        <h1 class="text-3xl font-bold text-white mb-2">Criar conta</h1>
+        <p class="text-zinc-400 mb-6">
           Já tem uma conta?
-          <.link navigate={~p"/login"} class="font-semibold text-primary hover:underline">
+          <.link navigate={~p"/login"} class="text-primary hover:underline font-medium">
             Entrar
           </.link>
-        </:subtitle>
-      </.header>
+        </p>
 
-      <.simple_form
-        for={@form}
-        id="registration_form"
-        phx-submit="save"
-        phx-change="validate"
-        phx-trigger-action={@trigger_submit}
-        action={~p"/login"}
-        method="post"
-        class="mt-6"
-      >
-        <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
-        <.input
-          field={@form[:password]}
-          type="password"
-          label="Senha"
-          required
-          autocomplete="new-password"
-        />
+        <.simple_form
+          for={@form}
+          id="registration_form"
+          phx-submit="save"
+          phx-change="validate"
+          phx-trigger-action={@trigger_submit}
+          action={~p"/login"}
+          method="post"
+        >
+          <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
+          <.input
+            field={@form[:password]}
+            type="password"
+            label="Senha"
+            required
+            autocomplete="new-password"
+          />
+          <p class="text-xs text-zinc-500 -mt-2">Mínimo de 12 caracteres</p>
+          <.input
+            field={@form[:password_confirmation]}
+            type="password"
+            label="Confirmar senha"
+            required
+            autocomplete="new-password"
+          />
 
-        <:actions>
-          <.button type="submit" variant="primary" class="w-full">
-            Criar conta
-          </.button>
-        </:actions>
-      </.simple_form>
+          <:actions>
+            <.button type="submit" variant="primary" class="w-full py-3 text-base font-semibold">
+              Criar conta
+            </.button>
+          </:actions>
+        </.simple_form>
+
+        <p class="text-xs text-zinc-500 text-center mt-6">
+          Ao criar uma conta, você concorda com nossos
+          <span class="text-zinc-400">Termos de Uso</span>
+          e
+          <span class="text-zinc-400">Política de Privacidade</span>.
+        </p>
+      </div>
     </div>
     """
   end

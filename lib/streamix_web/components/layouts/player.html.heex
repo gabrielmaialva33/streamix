@@ -1,0 +1,7 @@
+<main class="min-h-screen bg-black">
+  <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+    <.flash flash={@flash} kind={:info} />
+    <.flash flash={@flash} kind={:error} />
+  </div>
+  {@inner_content}
+</main>

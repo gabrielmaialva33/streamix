@@ -58,10 +58,28 @@ defmodule StreamixWeb.Router do
       layout: {StreamixWeb.Layouts, :app} do
       live "/settings", User.SettingsLive, :index
 
+      # Provider management
       live "/providers", Providers.ProviderListLive, :index
       live "/providers/new", Providers.ProviderListLive, :new
       live "/providers/:id", Providers.ProviderShowLive, :show
       live "/providers/:id/edit", Providers.ProviderListLive, :edit
+
+      # VOD content browsing
+      live "/providers/:provider_id/movies", Content.MoviesLive, :index
+      live "/providers/:provider_id/series", Content.SeriesLive, :index
+      live "/providers/:provider_id/series/:id", Content.SeriesDetailLive, :show
+
+      # User content
+      live "/favorites", FavoritesLive, :index
+      live "/history", HistoryLive, :index
+      live "/search", SearchLive, :index
+    end
+
+    # Player with fullscreen layout
+    live_session :player,
+      on_mount: [{StreamixWeb.UserAuth, :require_authenticated}],
+      layout: {StreamixWeb.Layouts, :player} do
+      live "/watch/:type/:id", PlayerLive, :show
     end
 
     delete "/logout", UserSessionController, :delete
