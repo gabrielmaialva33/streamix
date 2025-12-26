@@ -78,6 +78,20 @@ config :streamix, Oban,
   repo: Streamix.Repo,
   queues: [default: 10, sync: 3]
 
+# IPTV configuration
+config :streamix, Streamix.Iptv,
+  # Sync configuration
+  sync_batch_size: 500,
+  sync_timeout: :timer.minutes(10),
+  # HTTP client timeouts
+  http_timeout: :timer.seconds(60),
+  http_info_timeout: :timer.seconds(10),
+  # Cache TTL in seconds
+  cache_ttl: 3600,
+  # Default pagination
+  default_page_size: 100,
+  max_page_size: 500
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
