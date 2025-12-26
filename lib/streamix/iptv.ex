@@ -300,6 +300,76 @@ defmodule Streamix.Iptv do
   end
 
   # =============================================================================
+  # Public Catalog (no authentication required)
+  # =============================================================================
+
+  @doc """
+  Lists all channels from all active providers (public catalog).
+  Does not require authentication.
+
+  ## Options
+    * `:limit` - Maximum number of results (default: 100)
+    * `:offset` - Number of results to skip (default: 0)
+    * `:group` - Filter by group_title
+    * `:search` - Search by channel name (case-insensitive)
+  """
+  @spec list_all_channels(filter_opts()) :: [Channel.t()]
+  def list_all_channels(opts \\ []) do
+    opts = normalize_pagination_opts(opts)
+
+    Channel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, p], p.is_active == true)
+    |> ChannelQuery.apply_filters(opts)
+    |> Repo.all()
+  end
+
+  @doc """
+  Counts all channels from active providers (public catalog).
+  """
+  @spec count_all_channels(keyword()) :: non_neg_integer()
+  def count_all_channels(opts \\ []) do
+    query =
+      Channel
+      |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+      |> where([c, p], p.is_active == true)
+
+    query =
+      case opts[:group] do
+        nil -> query
+        "" -> query
+        group -> where(query, [c], c.group_title == ^group)
+      end
+
+    query =
+      case opts[:search] do
+        nil ->
+          query
+
+        "" ->
+          query
+
+        search ->
+          search_term = "%#{search}%"
+          where(query, [c], ilike(fragment("LEFT(?, 255)", c.name), ^search_term))
+      end
+
+    Repo.aggregate(query, :count)
+  end
+
+  @doc """
+  Lists all distinct categories from all active providers (public catalog).
+  """
+  @spec list_all_categories() :: [String.t()]
+  def list_all_categories do
+    Channel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, p], p.is_active == true)
+    |> ChannelQuery.distinct_groups()
+    |> Repo.all()
+  end
+
+  # =============================================================================
   # Channels
   # =============================================================================
 
