@@ -446,6 +446,65 @@ defmodule StreamixWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Renders a modal dialog using daisyUI.
+
+  ## Examples
+
+      <.modal id="confirm-modal">
+        Are you sure?
+        <:actions>
+          <button class="btn">Cancel</button>
+          <button class="btn btn-primary">Confirm</button>
+        </:actions>
+      </.modal>
+
+  """
+  attr :id, :string, required: true
+  attr :show, :boolean, default: false
+  attr :on_cancel, JS, default: %JS{}
+  slot :inner_block, required: true
+  slot :actions
+
+  def modal(assigns) do
+    ~H"""
+    <dialog
+      id={@id}
+      class="modal"
+      phx-mounted={@show && show_modal(@id)}
+      phx-remove={hide_modal(@id)}
+    >
+      <div class="modal-box">
+        <form method="dialog">
+          <button
+            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            phx-click={@on_cancel}
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+        </form>
+
+        {render_slot(@inner_block)}
+
+        <div :if={@actions != []} class="modal-action">
+          {render_slot(@actions)}
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button phx-click={@on_cancel}>close</button>
+      </form>
+    </dialog>
+    """
+  end
+
+  defp show_modal(id) do
+    JS.exec("showModal()", to: "##{id}")
+  end
+
+  defp hide_modal(id) do
+    JS.exec("close()", to: "##{id}")
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
