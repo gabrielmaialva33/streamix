@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg17
+    container_name: streamix-postgres
+    environment:
+      POSTGRES_USER: streamix
+      POSTGRES_PASSWORD: streamix
+      POSTGRES_DB: streamix_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - streamix_postgres_data:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamix -d streamix_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: streamix-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - streamix_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  streamix_postgres_data:
+  streamix_redis_data:
