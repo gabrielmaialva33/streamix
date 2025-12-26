@@ -11,6 +11,7 @@ defmodule Streamix.Repo.Migrations.CreateFavoritesAndHistory do
 
     create unique_index(:favorites, [:user_id, :channel_id])
     create index(:favorites, [:user_id])
+    create index(:favorites, [:user_id, :inserted_at])
 
     create table(:watch_history) do
       add :watched_at, :utc_datetime, null: false

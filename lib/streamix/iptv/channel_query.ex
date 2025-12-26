@@ -91,7 +91,8 @@ defmodule Streamix.Iptv.ChannelQuery do
 
   defp filter_by_search(query, search) do
     search_term = "%#{sanitize_search(search)}%"
-    where(query, [c], ilike(c.name, ^search_term))
+    # Uses LEFT(name, 255) to match the trigram index for better performance
+    where(query, [c], ilike(fragment("LEFT(?, 255)", c.name), ^search_term))
   end
 
   defp sanitize_search(search) do
