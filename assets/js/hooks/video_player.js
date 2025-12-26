@@ -89,15 +89,15 @@ const VideoPlayer = {
   createErrorContainer() {
     this.errorContainer = document.createElement("div");
     this.errorContainer.className =
-      "absolute inset-0 flex items-center justify-center bg-black/80 text-white text-center p-4 hidden";
+      "absolute inset-0 flex items-center justify-center bg-black/80 text-white text-center p-4 hidden z-20";
     this.errorContainer.innerHTML = `
       <div>
-        <svg class="w-16 h-16 mx-auto mb-4 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-16 h-16 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
         <p class="text-lg font-semibold mb-2">Unable to play stream</p>
         <p class="text-sm text-white/70 error-message"></p>
-        <button class="btn btn-sm btn-primary mt-4 retry-btn">Retry</button>
+        <button class="mt-4 px-4 py-2 bg-brand hover:bg-brand/90 text-white text-sm font-medium rounded-lg transition-colors retry-btn">Retry</button>
       </div>
     `;
     this.el.appendChild(this.errorContainer);
@@ -112,11 +112,14 @@ const VideoPlayer = {
   createLoadingIndicator() {
     this.loadingIndicator = document.createElement("div");
     this.loadingIndicator.className =
-      "absolute inset-0 flex items-center justify-center bg-black/50 text-white hidden";
+      "absolute inset-0 flex items-center justify-center bg-black/50 text-white hidden z-20";
     this.loadingIndicator.innerHTML = `
       <div class="text-center">
-        <span class="loading loading-spinner loading-lg"></span>
-        <p class="mt-2">Loading stream...</p>
+        <svg class="w-12 h-12 mx-auto animate-spin text-white" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p class="mt-3">Loading stream...</p>
       </div>
     `;
     this.el.appendChild(this.loadingIndicator);
@@ -223,13 +226,59 @@ const VideoPlayer = {
   updateQualityList() {
     this.availableQualities = this.getAvailableQualities();
 
+    // Update DOM with quality options
+    const qualityContainer = this.el.querySelector("#quality-options");
+    if (qualityContainer && this.availableQualities.length > 0) {
+      const currentLevel = this.hls?.currentLevel ?? -1;
+
+      qualityContainer.innerHTML = `
+        <button type="button" data-level="-1"
+          class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors quality-option">
+          <span>Auto</span>
+          <svg class="size-4 ${currentLevel === -1 ? "" : "invisible"}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+        </button>
+        ${this.availableQualities
+          .map(
+            (q) => `
+          <button type="button" data-level="${q.index}"
+            class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors quality-option">
+            <span>${q.label}</span>
+            <svg class="size-4 ${currentLevel === q.index ? "" : "invisible"}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+        `
+          )
+          .join("")}
+      `;
+
+      // Add click handlers
+      qualityContainer.querySelectorAll(".quality-option").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const level = parseInt(btn.dataset.level, 10);
+          this.setQuality(level);
+          this.updateQualityCheckmarks(level);
+        });
+      });
+    }
+
     // Notify LiveView of available qualities
     this.pushEvent("qualities_available", {
-      qualities: [
-        { index: -1, label: "Auto" },
-        ...this.availableQualities,
-      ],
+      qualities: [{ index: -1, label: "Auto" }, ...this.availableQualities],
       current: this.hls?.currentLevel ?? -1,
+    });
+  },
+
+  updateQualityCheckmarks(selectedLevel) {
+    const container = this.el.querySelector("#quality-options");
+    if (!container) return;
+
+    container.querySelectorAll(".quality-option svg").forEach((svg) => {
+      const btn = svg.closest("button");
+      const level = parseInt(btn.dataset.level, 10);
+      svg.classList.toggle("invisible", level !== selectedLevel);
     });
   },
 
@@ -258,12 +307,54 @@ const VideoPlayer = {
       id: track.id,
       name: track.name,
       lang: track.lang,
-      label: track.name || track.lang || `Audio ${index + 1}`,
+      label: track.name || track.lang || `Áudio ${index + 1}`,
     }));
+
+    // Update DOM with audio options
+    const audioContainer = this.el.querySelector("#audio-options");
+    if (audioContainer && this.audioTracks.length > 0) {
+      const currentTrack = this.hls.audioTrack;
+
+      audioContainer.innerHTML = this.audioTracks
+        .map(
+          (t) => `
+        <button type="button" data-track="${t.index}"
+          class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors audio-option">
+          <span>${t.label}</span>
+          <svg class="size-4 ${currentTrack === t.index ? "" : "invisible"}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+        </button>
+      `
+        )
+        .join("");
+
+      // Add click handlers
+      audioContainer.querySelectorAll(".audio-option").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const track = parseInt(btn.dataset.track, 10);
+          this.setAudioTrack(track);
+          this.updateAudioCheckmarks(track);
+        });
+      });
+    } else if (audioContainer && this.audioTracks.length === 0) {
+      audioContainer.innerHTML = `<div class="px-4 py-2 text-sm text-white/50">Padrão</div>`;
+    }
 
     this.pushEvent("audio_tracks_available", {
       tracks: this.audioTracks,
       current: this.hls.audioTrack,
+    });
+  },
+
+  updateAudioCheckmarks(selectedTrack) {
+    const container = this.el.querySelector("#audio-options");
+    if (!container) return;
+
+    container.querySelectorAll(".audio-option svg").forEach((svg) => {
+      const btn = svg.closest("button");
+      const track = parseInt(btn.dataset.track, 10);
+      svg.classList.toggle("invisible", track !== selectedTrack);
     });
   },
 
@@ -292,12 +383,61 @@ const VideoPlayer = {
       id: track.id,
       name: track.name,
       lang: track.lang,
-      label: track.name || track.lang || `Subtitle ${index + 1}`,
+      label: track.name || track.lang || `Legenda ${index + 1}`,
     }));
+
+    // Update DOM with subtitle options
+    const subtitleContainer = this.el.querySelector("#subtitle-options");
+    if (subtitleContainer) {
+      const currentTrack = this.hls.subtitleTrack;
+
+      subtitleContainer.innerHTML = `
+        <button type="button" data-track="-1"
+          class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors subtitle-option">
+          <span>Desativadas</span>
+          <svg class="size-4 ${currentTrack === -1 ? "" : "invisible"}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+        </button>
+        ${this.subtitleTracks
+          .map(
+            (t) => `
+          <button type="button" data-track="${t.index}"
+            class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors subtitle-option">
+            <span>${t.label}</span>
+            <svg class="size-4 ${currentTrack === t.index ? "" : "invisible"}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+        `
+          )
+          .join("")}
+      `;
+
+      // Add click handlers
+      subtitleContainer.querySelectorAll(".subtitle-option").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const track = parseInt(btn.dataset.track, 10);
+          this.setSubtitleTrack(track);
+          this.updateSubtitleCheckmarks(track);
+        });
+      });
+    }
 
     this.pushEvent("subtitle_tracks_available", {
       tracks: [{ index: -1, label: "Off" }, ...this.subtitleTracks],
       current: this.hls.subtitleTrack,
+    });
+  },
+
+  updateSubtitleCheckmarks(selectedTrack) {
+    const container = this.el.querySelector("#subtitle-options");
+    if (!container) return;
+
+    container.querySelectorAll(".subtitle-option svg").forEach((svg) => {
+      const btn = svg.closest("button");
+      const track = parseInt(btn.dataset.track, 10);
+      svg.classList.toggle("invisible", track !== selectedTrack);
     });
   },
 
@@ -331,7 +471,47 @@ const VideoPlayer = {
   // ============================================
 
   setupEventListeners() {
+    // ============================================
+    // DOM Custom Events from UI Controls
+    // ============================================
+    this.el.addEventListener("player:toggle-play", () => this.togglePlayPause());
+    this.el.addEventListener("player:toggle-mute", () => this.toggleMute());
+    this.el.addEventListener("player:toggle-fullscreen", () => this.toggleFullscreen());
+    this.el.addEventListener("player:toggle-pip", () => this.togglePiP());
+    this.el.addEventListener("player:set-speed", (e) => {
+      const speed = parseFloat(e.detail?.speed || 1);
+      this.setPlaybackRate(speed);
+    });
+
+    // Volume slider input
+    const volumeSlider = this.el.querySelector("#volume-slider");
+    if (volumeSlider) {
+      volumeSlider.addEventListener("input", (e) => {
+        const volume = parseInt(e.target.value, 10) / 100;
+        this.video.volume = volume;
+        if (volume > 0 && this.video.muted) {
+          this.video.muted = false;
+        }
+      });
+    }
+
+    // ============================================
+    // Video Element Events for UI Updates
+    // ============================================
+    this.video?.addEventListener("play", () => this.updatePlayPauseUI(false));
+    this.video?.addEventListener("pause", () => this.updatePlayPauseUI(true));
+    this.video?.addEventListener("volumechange", () => this.updateVolumeUI());
+    this.video?.addEventListener("timeupdate", () => this.updateTimeUI());
+    this.video?.addEventListener("loadedmetadata", () => this.updateTimeUI());
+    this.video?.addEventListener("ratechange", () => this.updateSpeedUI());
+
+    // Fullscreen change events
+    document.addEventListener("fullscreenchange", () => this.updateFullscreenUI());
+    document.addEventListener("webkitfullscreenchange", () => this.updateFullscreenUI());
+
+    // ============================================
     // Listen for commands from LiveView
+    // ============================================
     this.handleEvent("set_quality", ({ level }) => {
       this.setQuality(level);
     });
@@ -359,12 +539,12 @@ const VideoPlayer = {
     });
 
     this.handleEvent("set_playback_rate", ({ rate }) => {
-      if (this.video) {
-        this.video.playbackRate = rate;
-      }
+      this.setPlaybackRate(rate);
     });
 
+    // ============================================
     // PiP events from video element
+    // ============================================
     this.video?.addEventListener("enterpictureinpicture", () => {
       this.pipActive = true;
       this.pushEvent("pip_toggled", { active: true });
@@ -375,7 +555,9 @@ const VideoPlayer = {
       this.pushEvent("pip_toggled", { active: false });
     });
 
+    // ============================================
     // Progress tracking for VOD
+    // ============================================
     if (this.contentType === "vod") {
       this.video?.addEventListener("timeupdate", () => {
         this.reportProgress();
@@ -390,7 +572,9 @@ const VideoPlayer = {
       });
     }
 
+    // ============================================
     // Buffer health monitoring
+    // ============================================
     this.video?.addEventListener("waiting", () => {
       this.pushEvent("buffering", { buffering: true });
     });
@@ -400,6 +584,110 @@ const VideoPlayer = {
       this.hideLoading();
       this.hideError();
     });
+  },
+
+  // ============================================
+  // UI State Update Functions
+  // ============================================
+
+  updatePlayPauseUI(paused) {
+    const playIcon = this.el.querySelector(".play-icon");
+    const pauseIcon = this.el.querySelector(".pause-icon");
+    const centerPlay = this.el.querySelector("#center-play");
+
+    if (playIcon && pauseIcon) {
+      if (paused) {
+        playIcon.classList.remove("hidden");
+        pauseIcon.classList.add("hidden");
+      } else {
+        playIcon.classList.add("hidden");
+        pauseIcon.classList.remove("hidden");
+      }
+    }
+
+    // Flash center play button on pause
+    if (centerPlay && paused) {
+      centerPlay.classList.add("opacity-100");
+      setTimeout(() => centerPlay.classList.remove("opacity-100"), 300);
+    }
+  },
+
+  updateVolumeUI() {
+    const volumeOnIcon = this.el.querySelector(".volume-on-icon");
+    const volumeOffIcon = this.el.querySelector(".volume-off-icon");
+    const volumeSlider = this.el.querySelector("#volume-slider");
+
+    if (volumeOnIcon && volumeOffIcon) {
+      if (this.video.muted || this.video.volume === 0) {
+        volumeOnIcon.classList.add("hidden");
+        volumeOffIcon.classList.remove("hidden");
+      } else {
+        volumeOnIcon.classList.remove("hidden");
+        volumeOffIcon.classList.add("hidden");
+      }
+    }
+
+    if (volumeSlider) {
+      volumeSlider.value = this.video.muted ? 0 : Math.round(this.video.volume * 100);
+    }
+  },
+
+  updateTimeUI() {
+    if (!this.video) return;
+
+    const currentTimeEl = this.el.querySelector("#current-time");
+    const durationEl = this.el.querySelector("#duration");
+
+    if (currentTimeEl) {
+      currentTimeEl.textContent = this.formatTime(this.video.currentTime);
+    }
+
+    if (durationEl && this.video.duration && isFinite(this.video.duration)) {
+      durationEl.textContent = this.formatTime(this.video.duration);
+    }
+  },
+
+  updateSpeedUI() {
+    const speedLabel = this.el.querySelector("#speed-label");
+    if (speedLabel && this.video) {
+      speedLabel.textContent = `${this.video.playbackRate}x`;
+    }
+  },
+
+  updateFullscreenUI() {
+    const expandIcon = this.el.querySelector(".expand-icon");
+    const collapseIcon = this.el.querySelector(".collapse-icon");
+    const isFullscreen = !!document.fullscreenElement;
+
+    if (expandIcon && collapseIcon) {
+      if (isFullscreen) {
+        expandIcon.classList.add("hidden");
+        collapseIcon.classList.remove("hidden");
+      } else {
+        expandIcon.classList.remove("hidden");
+        collapseIcon.classList.add("hidden");
+      }
+    }
+  },
+
+  formatTime(seconds) {
+    if (!seconds || !isFinite(seconds)) return "0:00";
+
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  },
+
+  setPlaybackRate(rate) {
+    if (this.video) {
+      this.video.playbackRate = rate;
+      this.pushEvent("playback_rate_changed", { rate });
+    }
   },
 
   reportProgress() {

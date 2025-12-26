@@ -32,6 +32,17 @@ defmodule StreamixWeb.Router do
       on_mount: [{StreamixWeb.UserAuth, :mount_current_scope}],
       layout: {StreamixWeb.Layouts, :app} do
       live "/", HomeLive, :index
+      live "/search", SearchLive, :index
+
+      # Public content browsing (for global/public providers)
+      live "/providers/:provider_id/series/:id", Content.SeriesDetailLive, :show
+    end
+
+    # Player with fullscreen layout (public access for global/public content)
+    live_session :public_player,
+      on_mount: [{StreamixWeb.UserAuth, :mount_current_scope}],
+      layout: {StreamixWeb.Layouts, :player} do
+      live "/watch/:type/:id", PlayerLive, :show
     end
   end
 
@@ -64,22 +75,13 @@ defmodule StreamixWeb.Router do
       live "/providers/:id", Providers.ProviderShowLive, :show
       live "/providers/:id/edit", Providers.ProviderListLive, :edit
 
-      # VOD content browsing
+      # VOD content browsing (provider-specific, requires auth)
       live "/providers/:provider_id/movies", Content.MoviesLive, :index
       live "/providers/:provider_id/series", Content.SeriesLive, :index
-      live "/providers/:provider_id/series/:id", Content.SeriesDetailLive, :show
 
       # User content
       live "/favorites", FavoritesLive, :index
       live "/history", HistoryLive, :index
-      live "/search", SearchLive, :index
-    end
-
-    # Player with fullscreen layout
-    live_session :player,
-      on_mount: [{StreamixWeb.UserAuth, :require_authenticated}],
-      layout: {StreamixWeb.Layouts, :player} do
-      live "/watch/:type/:id", PlayerLive, :show
     end
 
     delete "/logout", UserSessionController, :delete

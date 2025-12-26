@@ -24,7 +24,7 @@ defmodule StreamixWeb.PlayerLive do
   @doc false
   def mount(%{"type" => type, "id" => id}, _session, socket) do
     # User might be nil for guests accessing public content
-    user = get_in(socket.assigns, [:current_scope, :user])
+    user = socket.assigns[:current_scope] && socket.assigns.current_scope.user
     user_id = if user, do: user.id, else: nil
 
     case load_content(type, id, user_id) do
@@ -166,6 +166,13 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, push_navigate(socket, to: back_path)}
   end
 
+  # Events from JS that we don't need to handle but must acknowledge
+  def handle_event("quality_switched", _params, socket), do: {:noreply, socket}
+  def handle_event("playback_rate_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("duration_available", _params, socket), do: {:noreply, socket}
+  def handle_event("mute_toggled", _params, socket), do: {:noreply, socket}
+  def handle_event("volume_changed", _params, socket), do: {:noreply, socket}
+
   # ============================================
   # Render
   # ============================================
@@ -183,16 +190,6 @@ defmodule StreamixWeb.PlayerLive do
         on_close="close_player"
         show_controls={true}
       />
-
-      <.buffering_indicator :if={@buffering} />
-    </div>
-    """
-  end
-
-  defp buffering_indicator(assigns) do
-    ~H"""
-    <div class="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none z-10">
-      <span class="loading loading-spinner loading-lg text-primary"></span>
     </div>
     """
   end
@@ -279,32 +276,37 @@ defmodule StreamixWeb.PlayerLive do
   defp default_streaming_mode(_), do: :quality
 
   defp content_title(content, "live_channel"), do: content.name
-  defp content_title(content, "movie"), do: content[:title] || content.name
+  defp content_title(content, "movie"), do: content.title || content.name
 
   defp content_title(content, "episode"),
-    do: content[:title] || "Episódio #{content[:episode_num] || ""}"
+    do: content.title || "Episódio #{content.episode_num || ""}"
 
   defp content_title(content, _), do: content.name
 
   defp content_icon(content, "live_channel"), do: content.stream_icon
-  defp content_icon(content, "movie"), do: content.stream_icon || content[:cover]
-  defp content_icon(content, "episode"), do: content[:cover]
+  defp content_icon(content, "movie"), do: content.stream_icon || Map.get(content, :cover)
+  defp content_icon(content, "episode"), do: Map.get(content, :cover)
   defp content_icon(_, _), do: nil
 
   defp get_back_path(socket) do
-    case socket.assigns.content_type do
-      :live_channel ->
-        ~p"/providers/#{socket.assigns.provider.id}"
+    # Guests should always go back to home (authenticated routes require login)
+    if socket.assigns.user_id == nil do
+      ~p"/"
+    else
+      case socket.assigns.content_type do
+        :live_channel ->
+          ~p"/providers/#{socket.assigns.provider.id}"
 
-      :movie ->
-        ~p"/providers/#{socket.assigns.provider.id}/movies"
+        :movie ->
+          ~p"/providers/#{socket.assigns.provider.id}/movies"
 
-      :episode ->
-        series_id = socket.assigns.content.season.series_id
-        ~p"/providers/#{socket.assigns.provider.id}/series/#{series_id}"
+        :episode ->
+          series_id = socket.assigns.content.season.series_id
+          ~p"/providers/#{socket.assigns.provider.id}/series/#{series_id}"
 
-      _ ->
-        ~p"/"
+        _ ->
+          ~p"/"
+      end
     end
   end
 

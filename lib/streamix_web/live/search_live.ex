@@ -18,7 +18,7 @@ defmodule StreamixWeb.SearchLive do
   @doc false
   def mount(_params, _session, socket) do
     # User might be nil for guests
-    user = get_in(socket.assigns, [:current_scope, :user])
+    user = socket.assigns[:current_scope] && socket.assigns.current_scope.user
     user_id = if user, do: user.id, else: nil
 
     socket =

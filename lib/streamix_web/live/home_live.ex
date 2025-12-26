@@ -1,8 +1,6 @@
 defmodule StreamixWeb.HomeLive do
   use StreamixWeb, :live_view
 
-  import StreamixWeb.AppComponents
-
   alias Streamix.Iptv
 
   def mount(_params, _session, socket) do
@@ -26,7 +24,7 @@ defmodule StreamixWeb.HomeLive do
     |> assign(stats: stats)
     |> assign(movies: Iptv.list_public_movies(limit: 12))
     |> assign(series: Iptv.list_public_series(limit: 12))
-    |> assign(channels: Iptv.list_public_channels(limit: 12))
+    |> assign(channels: Iptv.list_public_channels(limit: 24))
   end
 
   defp load_user_data(socket) do
@@ -299,20 +297,25 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <div class="px-[4%]">
       <h2 class="text-xl font-semibold text-text-primary mb-4">{@title}</h2>
-      <div class="flex gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth">
-        <%= case @type do %>
-          <% :movies -> %>
-            <.movie_card :for={movie <- @items} movie={movie} />
-          <% :series -> %>
-            <.series_card :for={series <- @items} series={series} />
-          <% :channels -> %>
-            <.channel_card :for={channel <- @items} channel={channel} />
-          <% :history -> %>
-            <.history_item :for={entry <- @items} entry={entry} />
-          <% :favorites -> %>
-            <.favorite_item :for={fav <- @items} favorite={fav} />
-        <% end %>
-      </div>
+      <%= if @type == :channels do %>
+        <!-- Grid layout with 2 rows for channels -->
+        <div class="grid grid-rows-2 grid-flow-col gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth auto-cols-[160px]">
+          <.channel_card :for={channel <- @items} channel={channel} />
+        </div>
+      <% else %>
+        <div class="flex gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth">
+          <%= case @type do %>
+            <% :movies -> %>
+              <.movie_card :for={movie <- @items} movie={movie} />
+            <% :series -> %>
+              <.series_card :for={series <- @items} series={series} />
+            <% :history -> %>
+              <.history_item :for={entry <- @items} entry={entry} />
+            <% :favorites -> %>
+              <.favorite_item :for={fav <- @items} favorite={fav} />
+          <% end %>
+        </div>
+      <% end %>
     </div>
     """
   end
@@ -404,7 +407,7 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <.link
       navigate={~p"/watch/live_channel/#{@channel.id}"}
-      class="group flex-shrink-0 w-[160px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50"
+      class="group rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50"
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
         <img

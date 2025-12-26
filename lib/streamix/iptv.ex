@@ -73,6 +73,30 @@ defmodule Streamix.Iptv do
     |> Repo.one()
   end
 
+  @doc """
+  Gets a provider by ID if it's public or global.
+  Used for guest access to public content.
+  """
+  def get_public_provider(provider_id) do
+    Provider
+    |> where(id: ^provider_id)
+    |> where([p], p.visibility in [:global, :public])
+    |> where([p], p.is_active == true)
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets a provider by ID if user can access it.
+  User can access: global, public, or their own providers.
+  """
+  def get_playable_provider(user_id, provider_id) do
+    Provider
+    |> where(id: ^provider_id)
+    |> where([p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([p], p.is_active == true)
+    |> Repo.one()
+  end
+
   def create_provider(attrs \\ %{}) do
     %Provider{}
     |> Provider.changeset(attrs)

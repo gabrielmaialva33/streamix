@@ -16,39 +16,55 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   @doc false
   def mount(%{"provider_id" => provider_id, "id" => series_id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_user_provider(user_id, provider_id)
+    user = socket.assigns[:current_scope] && socket.assigns.current_scope.user
+    user_id = if user, do: user.id, else: nil
+    provider = get_accessible_provider(user_id, provider_id)
 
-    if provider do
-      case Iptv.get_series_with_seasons(series_id) do
-        nil ->
-          {:ok,
-           socket
-           |> put_flash(:error, "Série não encontrada")
-           |> push_navigate(to: ~p"/providers/#{provider_id}/series")}
+    mount_with_provider(socket, provider, series_id, provider_id, user_id)
+  end
 
-        series ->
-          is_favorite = Iptv.is_favorite?(user_id, "series", series.id)
+  defp mount_with_provider(socket, nil, _series_id, _provider_id, _user_id) do
+    {:ok,
+     socket
+     |> put_flash(:error, "Provedor não encontrado")
+     |> push_navigate(to: ~p"/")}
+  end
 
-          socket =
-            socket
-            |> assign(page_title: series.title || series.name)
-            |> assign(current_path: "/providers/#{provider_id}/series/#{series_id}")
-            |> assign(provider: provider)
-            |> assign(series: series)
-            |> assign(seasons: series.seasons || [])
-            |> assign(expanded_seasons: MapSet.new())
-            |> assign(is_favorite: is_favorite)
-
-          {:ok, socket}
-      end
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Provedor não encontrado")
-       |> push_navigate(to: ~p"/providers")}
+  defp mount_with_provider(socket, provider, series_id, provider_id, user_id) do
+    case Iptv.get_series_with_seasons(series_id) do
+      nil -> mount_series_not_found(socket)
+      series -> mount_series_found(socket, provider, series, provider_id, user_id)
     end
   end
+
+  defp mount_series_not_found(socket) do
+    {:ok,
+     socket
+     |> put_flash(:error, "Série não encontrada")
+     |> push_navigate(to: ~p"/")}
+  end
+
+  defp mount_series_found(socket, provider, series, provider_id, user_id) do
+    is_favorite = if user_id, do: Iptv.is_favorite?(user_id, "series", series.id), else: false
+
+    socket =
+      socket
+      |> assign(page_title: series.title || series.name)
+      |> assign(current_path: "/providers/#{provider_id}/series/#{series.id}")
+      |> assign(provider: provider)
+      |> assign(series: series)
+      |> assign(seasons: series.seasons || [])
+      |> assign(expanded_seasons: MapSet.new())
+      |> assign(is_favorite: is_favorite)
+      |> assign(user_id: user_id)
+
+    {:ok, socket}
+  end
+
+  defp get_accessible_provider(nil, provider_id), do: Iptv.get_public_provider(provider_id)
+
+  defp get_accessible_provider(user_id, provider_id),
+    do: Iptv.get_playable_provider(user_id, provider_id)
 
   # ============================================
   # Event Handlers
@@ -86,22 +102,27 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    series = socket.assigns.series
-    is_favorite = socket.assigns.is_favorite
+    case socket.assigns.user_id do
+      nil ->
+        {:noreply, put_flash(socket, :info, "Faça login para adicionar favoritos")}
 
-    if is_favorite do
-      Iptv.remove_favorite(user_id, "series", series.id)
-    else
-      Iptv.add_favorite(user_id, %{
-        content_type: "series",
-        content_id: series.id,
-        content_name: series.title || series.name,
-        content_icon: series.cover
-      })
+      user_id ->
+        series = socket.assigns.series
+        is_favorite = socket.assigns.is_favorite
+
+        if is_favorite do
+          Iptv.remove_favorite(user_id, "series", series.id)
+        else
+          Iptv.add_favorite(user_id, %{
+            content_type: "series",
+            content_id: series.id,
+            content_name: series.title || series.name,
+            content_icon: series.cover
+          })
+        end
+
+        {:noreply, assign(socket, is_favorite: !is_favorite)}
     end
-
-    {:noreply, assign(socket, is_favorite: !is_favorite)}
   end
 
   # ============================================
