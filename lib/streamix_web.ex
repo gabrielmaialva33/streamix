@@ -86,6 +86,8 @@ defmodule StreamixWeb do
       import Phoenix.HTML
       # Core UI components
       import StreamixWeb.CoreComponents
+      # Application-specific components
+      import StreamixWeb.AppComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
