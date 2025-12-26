@@ -37,7 +37,7 @@ defmodule Streamix.Accounts.User do
       changeset
       |> validate_required([:email])
       |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
-        message: "must have the @ sign and no spaces"
+        message: "deve ter o @ e não pode conter espaços"
       )
       |> validate_length(:email, max: 160)
 
@@ -53,7 +53,7 @@ defmodule Streamix.Accounts.User do
 
   defp validate_email_changed(changeset) do
     if get_field(changeset, :email) && get_change(changeset, :email) == nil do
-      add_error(changeset, :email, "did not change")
+      add_error(changeset, :email, "não foi alterado")
     else
       changeset
     end
@@ -73,7 +73,7 @@ defmodule Streamix.Accounts.User do
     user
     |> cast(attrs, [:email, :password])
     |> validate_email(opts)
-    |> validate_confirmation(:password, message: "senhas não conferem")
+    |> validate_confirmation(:password, message: "as senhas não conferem")
     |> validate_password(opts)
   end
 
@@ -95,7 +95,7 @@ defmodule Streamix.Accounts.User do
   def password_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:password])
-    |> validate_confirmation(:password, message: "does not match password")
+    |> validate_confirmation(:password, message: "as senhas não conferem")
     |> validate_password(opts)
   end
 

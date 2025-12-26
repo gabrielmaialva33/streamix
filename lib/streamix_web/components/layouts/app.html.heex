@@ -96,18 +96,20 @@
             <.icon name="hero-bars-3" class="size-6" />
           </button>
         <% else %>
-          <.link
-            navigate={~p"/login"}
-            class="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-          >
-            Entrar
-          </.link>
-          <.link
-            navigate={~p"/register"}
-            class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-md hover:bg-brand-hover transition-colors"
-          >
-            Criar Conta
-          </.link>
+          <%= if @current_path not in ["/login", "/register"] do %>
+            <.link
+              navigate={~p"/login"}
+              class="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Entrar
+            </.link>
+            <.link
+              navigate={~p"/register"}
+              class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-md hover:bg-brand-hover transition-colors"
+            >
+              Criar Conta
+            </.link>
+          <% end %>
         <% end %>
       </div>
     </div>
@@ -162,8 +164,8 @@
     </div>
   </div>
   
-<!-- Flash Messages -->
-  <div class="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
+<!-- Flash Messages (Toast style - top right) -->
+  <div class="fixed top-20 right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>

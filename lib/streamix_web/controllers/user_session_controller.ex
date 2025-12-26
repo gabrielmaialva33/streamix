@@ -7,11 +7,11 @@ defmodule StreamixWeb.UserSessionController do
   def create(conn, %{"user" => %{"email" => email, "password" => password} = user_params}) do
     if user = Accounts.get_user_by_email_and_password(email, password) do
       conn
-      |> put_flash(:info, "Welcome back!")
+      |> put_flash(:info, "Bem-vindo de volta!")
       |> UserAuth.log_in_user(user, user_params)
     else
       conn
-      |> put_flash(:error, "Invalid email or password")
+      |> put_flash(:error, "Email ou senha inválidos")
       |> put_flash(:email, String.slice(email, 0, 160))
       |> redirect(to: ~p"/login")
     end
@@ -19,7 +19,7 @@ defmodule StreamixWeb.UserSessionController do
 
   def delete(conn, _params) do
     conn
-    |> put_flash(:info, "Logged out successfully.")
+    |> put_flash(:info, "Logout realizado com sucesso.")
     |> UserAuth.log_out_user()
   end
 end
