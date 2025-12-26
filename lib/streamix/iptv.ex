@@ -36,6 +36,57 @@ defmodule Streamix.Iptv do
     |> Repo.insert()
   end
 
+  @doc """
+  Validates provider credentials before creating.
+  Tests connection and returns account info on success.
+
+  Returns:
+  - {:ok, provider, account_info} on success
+  - {:error, :validation, changeset} for validation errors
+  - {:error, :connection, reason} for connection errors
+  """
+  def create_provider_with_validation(attrs) do
+    changeset = Provider.changeset(%Provider{}, attrs)
+
+    if changeset.valid? do
+      url = Ecto.Changeset.get_field(changeset, :url)
+      username = Ecto.Changeset.get_field(changeset, :username)
+      password = Ecto.Changeset.get_field(changeset, :password)
+
+      case Client.test_connection(url, username, password) do
+        {:ok, account_info} ->
+          case Repo.insert(changeset) do
+            {:ok, provider} -> {:ok, provider, account_info}
+            {:error, changeset} -> {:error, :validation, changeset}
+          end
+
+        {:error, reason} ->
+          {:error, :connection, reason}
+      end
+    else
+      {:error, :validation, changeset}
+    end
+  end
+
+  @doc """
+  Tests connection to a provider without creating it.
+  Useful for validating credentials in forms.
+  """
+  def test_provider_connection(url, username, password) do
+    Client.test_connection(url, username, password)
+  end
+
+  @doc """
+  Returns a human-readable error message for connection errors.
+  """
+  def connection_error_message(:invalid_credentials), do: "Invalid username or password"
+  def connection_error_message(:invalid_url), do: "Invalid server URL"
+  def connection_error_message(:host_not_found), do: "Server not found - check the URL"
+  def connection_error_message(:connection_refused), do: "Connection refused by server"
+  def connection_error_message(:timeout), do: "Connection timed out - server may be slow"
+  def connection_error_message(:invalid_response), do: "Invalid response from server"
+  def connection_error_message(_), do: "Failed to connect to server"
+
   def update_provider(%Provider{} = provider, attrs) do
     provider
     |> Provider.changeset(attrs)

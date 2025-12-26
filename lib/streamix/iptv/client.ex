@@ -63,13 +63,72 @@ defmodule Streamix.Iptv.Client do
   end
 
   @doc """
-  Tests connection to an IPTV provider.
+  Tests connection to an IPTV provider and returns account info.
+  Returns {:ok, info} with account details or {:error, reason}.
+
+  Info includes:
+  - :status - "Active", "Expired", etc
+  - :exp_date - Expiration timestamp
+  - :is_trial - Whether it's a trial account
+  - :active_cons - Active connections
+  - :max_connections - Max allowed connections
   """
-  @spec test_connection(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  @spec test_connection(String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, atom() | {atom(), any()}}
   def test_connection(base_url, username, password) do
     case get_provider_info(base_url, username, password) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, %{"user_info" => user_info}} ->
+        {:ok, normalize_user_info(user_info)}
+
+      {:ok, info} when is_map(info) ->
+        # Some providers return flat structure
+        {:ok, normalize_user_info(info)}
+
+      {:error, :unauthorized} ->
+        {:error, :invalid_credentials}
+
+      {:error, {:http_error, 404}} ->
+        {:error, :invalid_url}
+
+      {:error, %Req.TransportError{reason: :nxdomain}} ->
+        {:error, :host_not_found}
+
+      {:error, %Req.TransportError{reason: :econnrefused}} ->
+        {:error, :connection_refused}
+
+      {:error, %Req.TransportError{reason: :timeout}} ->
+        {:error, :timeout}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp normalize_user_info(info) do
+    %{
+      status: info["status"] || "unknown",
+      exp_date: parse_exp_date(info["exp_date"]),
+      is_trial: info["is_trial"] == "1" || info["is_trial"] == true,
+      active_cons: to_integer(info["active_cons"]),
+      max_connections: to_integer(info["max_connections"])
+    }
+  end
+
+  defp parse_exp_date(nil), do: nil
+  defp parse_exp_date(ts) when is_integer(ts), do: DateTime.from_unix!(ts)
+  defp parse_exp_date(ts) when is_binary(ts) do
+    case Integer.parse(ts) do
+      {unix, _} -> DateTime.from_unix!(unix)
+      :error -> nil
+    end
+  end
+
+  defp to_integer(nil), do: nil
+  defp to_integer(n) when is_integer(n), do: n
+  defp to_integer(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> nil
     end
   end
 
