@@ -61,7 +61,11 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
 
   def handle_event("save", %{"provider" => params}, socket) do
     user_id = socket.assigns.current_scope.user.id
-    params = Map.put(params, "user_id", user_id)
+
+    params =
+      params
+      |> Map.put("user_id", user_id)
+      |> process_visibility()
 
     case socket.assigns.provider do
       nil -> create_provider(socket, params)
@@ -105,6 +109,30 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(_), do: "Ocorreu um erro desconhecido"
 
+  # Check if provider is public (either from form params or existing data)
+  defp public?(form) do
+    case form.params["is_public"] do
+      "true" -> true
+      "false" -> false
+      nil -> form.data && form.data.visibility == :public
+      _ -> false
+    end
+  end
+
+  # Convert is_public checkbox to visibility field
+  defp process_visibility(params) do
+    visibility =
+      case params["is_public"] do
+        "true" -> :public
+        true -> :public
+        _ -> :private
+      end
+
+    params
+    |> Map.put("visibility", visibility)
+    |> Map.delete("is_public")
+  end
+
   def render(assigns) do
     ~H"""
     <div>
@@ -128,6 +156,21 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
         />
         <.input field={@form[:username]} label="Usuário" required />
         <.input field={@form[:password]} type="password" label="Senha" required />
+        
+    <!-- Visibility toggle -->
+        <div class="flex items-center gap-3 py-2">
+          <input
+            type="checkbox"
+            id="provider_is_public"
+            name="provider[is_public]"
+            checked={public?(@form)}
+            class="size-5 rounded border-border text-brand focus:ring-brand"
+          />
+          <label for="provider_is_public" class="text-sm text-text-secondary">
+            <span class="font-medium text-text-primary">Tornar público</span>
+            <span class="block text-xs">Outros usuários poderão ver o conteúdo deste provedor</span>
+          </label>
+        </div>
 
         <div
           :if={@test_result}

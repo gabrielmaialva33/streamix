@@ -57,7 +57,10 @@
               id="search-input-container"
               class="hidden items-center bg-surface/95 backdrop-blur border border-border rounded-lg overflow-hidden"
             >
-              <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary ml-3 flex-shrink-0" />
+              <.icon
+                name="hero-magnifying-glass"
+                class="size-5 text-text-secondary ml-3 flex-shrink-0"
+              />
               <form action={~p"/search"} method="get" class="flex items-center">
                 <input
                   type="text"
@@ -159,7 +162,11 @@
       </div>
       <!-- Mobile Search -->
       <div class="p-4 border-b border-border">
-        <form action={~p"/search"} method="get" class="flex items-center gap-2 px-3 py-2 bg-surface-hover rounded-lg">
+        <form
+          action={~p"/search"}
+          method="get"
+          class="flex items-center gap-2 px-3 py-2 bg-surface-hover rounded-lg"
+        >
           <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary" />
           <input
             type="text"

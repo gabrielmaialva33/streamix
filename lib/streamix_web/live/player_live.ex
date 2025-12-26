@@ -23,17 +23,13 @@ defmodule StreamixWeb.PlayerLive do
 
   @doc false
   def mount(%{"type" => type, "id" => id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+    # User might be nil for guests accessing public content
+    user = get_in(socket.assigns, [:current_scope, :user])
+    user_id = if user, do: user.id, else: nil
 
     case load_content(type, id, user_id) do
       {:ok, content, provider, stream_url} ->
-        # Record watch history
-        record_watch_history(user_id, type, content)
-
-        # Subscribe to progress updates if connected
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
-        end
+        maybe_setup_user_tracking(socket, user_id, type, content)
 
         socket =
           socket
@@ -52,6 +48,7 @@ defmodule StreamixWeb.PlayerLive do
           |> assign(current_quality: "Auto")
           |> assign(audio_tracks: [])
           |> assign(subtitle_tracks: [])
+          |> assign(user_id: user_id)
 
         {:ok, socket}
 
@@ -60,6 +57,16 @@ defmodule StreamixWeb.PlayerLive do
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
          |> push_navigate(to: ~p"/")}
+    end
+  end
+
+  defp maybe_setup_user_tracking(_socket, nil, _type, _content), do: :ok
+
+  defp maybe_setup_user_tracking(socket, user_id, type, content) do
+    record_watch_history(user_id, type, content)
+
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
     end
   end
 
@@ -73,12 +80,12 @@ defmodule StreamixWeb.PlayerLive do
         %{"current_time" => current_time, "duration" => duration},
         socket
       ) do
-    user_id = socket.assigns.current_scope.user.id
+    user_id = socket.assigns.user_id
     content = socket.assigns.content
     type = Atom.to_string(socket.assigns.content_type)
 
-    # Update progress in database for VOD content
-    if socket.assigns.content_type != :live do
+    # Update progress in database for VOD content (only for logged-in users)
+    if user_id && socket.assigns.content_type != :live do
       Iptv.update_watch_progress(user_id, type, content.id, current_time, duration)
     end
 
@@ -126,11 +133,14 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("update_watch_time", %{"duration" => duration}, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    content = socket.assigns.content
-    type = Atom.to_string(socket.assigns.content_type)
+    user_id = socket.assigns.user_id
 
-    Iptv.update_watch_time(user_id, type, content.id, duration)
+    # Only update watch time for logged-in users
+    if user_id do
+      content = socket.assigns.content
+      type = Atom.to_string(socket.assigns.content_type)
+      Iptv.update_watch_time(user_id, type, content.id, duration)
+    end
 
     {:noreply, socket}
   end
@@ -191,43 +201,70 @@ defmodule StreamixWeb.PlayerLive do
   # Private Helpers
   # ============================================
 
-  defp load_content("live_channel", id, user_id) do
-    case Iptv.get_user_live_channel(user_id, id) do
-      nil ->
-        {:error, :not_found}
+  # For logged-in users: use get_playable_* (sees global + public + own private)
+  # For guests: use get_public_* (sees global + public only)
 
-      channel ->
-        provider = channel.provider
-        stream_url = Iptv.LiveChannel.stream_url(channel, provider)
-        {:ok, channel, provider, stream_url}
+  defp load_content("live_channel", id, nil) do
+    case Iptv.get_public_channel(id) do
+      nil -> {:error, :not_found}
+      channel -> load_channel(channel)
+    end
+  end
+
+  defp load_content("live_channel", id, user_id) do
+    case Iptv.get_playable_channel(user_id, id) do
+      nil -> {:error, :not_found}
+      channel -> load_channel(channel)
+    end
+  end
+
+  defp load_content("movie", id, nil) do
+    case Iptv.get_public_movie(id) do
+      nil -> {:error, :not_found}
+      movie -> load_movie(movie)
     end
   end
 
   defp load_content("movie", id, user_id) do
-    case Iptv.get_user_movie(user_id, id) do
-      nil ->
-        {:error, :not_found}
+    case Iptv.get_playable_movie(user_id, id) do
+      nil -> {:error, :not_found}
+      movie -> load_movie(movie)
+    end
+  end
 
-      movie ->
-        provider = movie.provider
-        stream_url = Iptv.Movie.stream_url(movie, provider)
-        {:ok, movie, provider, stream_url}
+  defp load_content("episode", id, nil) do
+    case Iptv.get_public_episode(id) do
+      nil -> {:error, :not_found}
+      episode -> load_episode(episode)
     end
   end
 
   defp load_content("episode", id, user_id) do
-    case Iptv.get_user_episode(user_id, id) do
-      nil ->
-        {:error, :not_found}
-
-      episode ->
-        provider = episode.season.series.provider
-        stream_url = Iptv.Episode.stream_url(episode, provider)
-        {:ok, episode, provider, stream_url}
+    case Iptv.get_playable_episode(user_id, id) do
+      nil -> {:error, :not_found}
+      episode -> load_episode(episode)
     end
   end
 
   defp load_content(_, _, _), do: {:error, :not_found}
+
+  defp load_channel(channel) do
+    provider = channel.provider
+    stream_url = Iptv.LiveChannel.stream_url(channel, provider)
+    {:ok, channel, provider, stream_url}
+  end
+
+  defp load_movie(movie) do
+    provider = movie.provider
+    stream_url = Iptv.Movie.stream_url(movie, provider)
+    {:ok, movie, provider, stream_url}
+  end
+
+  defp load_episode(episode) do
+    provider = episode.season.series.provider
+    stream_url = Iptv.Episode.stream_url(episode, provider)
+    {:ok, episode, provider, stream_url}
+  end
 
   defp record_watch_history(user_id, type, content) do
     Iptv.add_to_watch_history(user_id, %{

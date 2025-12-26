@@ -137,12 +137,18 @@ defmodule StreamixWeb.ContentComponents do
           </button>
         </div>
 
-        <div :if={@movie[:rating]} class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black">
+        <div
+          :if={@movie[:rating]}
+          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black"
+        >
           <.icon name="hero-star-solid" class="size-3" />
           {format_rating(@movie.rating)}
         </div>
 
-        <div :if={@movie[:year]} class="absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white">
+        <div
+          :if={@movie[:year]}
+          class="absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white"
+        >
           {@movie.year}
         </div>
       </div>
@@ -222,7 +228,10 @@ defmodule StreamixWeb.ContentComponents do
           <.icon name="hero-video-camera" class="size-16" />
         </div>
 
-        <div :if={@series[:rating]} class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black">
+        <div
+          :if={@series[:rating]}
+          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black"
+        >
           <.icon name="hero-star-solid" class="size-3" />
           {format_rating(@series.rating)}
         </div>
@@ -358,12 +367,20 @@ defmodule StreamixWeb.ContentComponents do
         phx-value-id={@season.id}
       >
         <div class="flex items-center gap-3">
-          <span class="font-medium text-text-primary">Temporada {@season[:season_number] || @season[:num] || "?"}</span>
-          <span :if={@season[:episodes]} class="px-2 py-0.5 text-xs rounded bg-surface-hover text-text-secondary">
+          <span class="font-medium text-text-primary">
+            Temporada {@season[:season_number] || @season[:num] || "?"}
+          </span>
+          <span
+            :if={@season[:episodes]}
+            class="px-2 py-0.5 text-xs rounded bg-surface-hover text-text-secondary"
+          >
             {length(@season.episodes)} episódios
           </span>
         </div>
-        <.icon name="hero-chevron-down" class="size-5 text-text-secondary transition-transform group-open:rotate-180" />
+        <.icon
+          name="hero-chevron-down"
+          class="size-5 text-text-secondary transition-transform group-open:rotate-180"
+        />
       </summary>
       <div class="px-4 pb-4 space-y-2">
         <.episode_card
@@ -442,7 +459,11 @@ defmodule StreamixWeb.ContentComponents do
     <section :if={length(@items) > 0} class="space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-bold text-text-primary">{@title}</h2>
-        <.link :if={@see_all_path} navigate={@see_all_path} class="flex items-center gap-1 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors">
+        <.link
+          :if={@see_all_path}
+          navigate={@see_all_path}
+          class="flex items-center gap-1 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
+        >
           Ver tudo <.icon name="hero-arrow-right" class="size-4" />
         </.link>
       </div>
@@ -550,7 +571,10 @@ defmodule StreamixWeb.ContentComponents do
 
   def content_detail_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" phx-click-away={@on_close}>
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+      phx-click-away={@on_close}
+    >
       <div class="bg-surface rounded-lg overflow-hidden max-w-3xl w-full shadow-2xl">
         <div class="relative h-64 bg-surface-hover">
           <img

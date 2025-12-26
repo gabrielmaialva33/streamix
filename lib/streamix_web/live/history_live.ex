@@ -145,7 +145,8 @@ defmodule StreamixWeb.HistoryLive do
       class={[
         "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
         @current == @type && "bg-brand text-white",
-        @current != @type && "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+        @current != @type &&
+          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
@@ -191,7 +192,9 @@ defmodule StreamixWeb.HistoryLive do
         phx-value-id={@entry.content_id}
         phx-value-type={@entry.content_type}
       >
-        <h4 class="font-medium text-text-primary truncate">{@entry.content_name || "Desconhecido"}</h4>
+        <h4 class="font-medium text-text-primary truncate">
+          {@entry.content_name || "Desconhecido"}
+        </h4>
         <div class="flex items-center gap-2 text-sm text-text-secondary mt-1">
           <span class="px-2 py-0.5 text-xs rounded bg-surface-hover">
             {format_content_type(@entry.content_type)}

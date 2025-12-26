@@ -5,6 +5,19 @@ if config_env() in [:dev, :test] do
   Dotenvy.source!([".env", System.get_env()])
 end
 
+# Global provider configuration (optional)
+# Set GLOBAL_PROVIDER_ENABLED=true to enable
+if System.get_env("GLOBAL_PROVIDER_ENABLED") == "true" do
+  config :streamix, :global_provider,
+    enabled: true,
+    name: System.get_env("GLOBAL_PROVIDER_NAME") || "Streamix Global",
+    url: System.get_env("GLOBAL_PROVIDER_URL"),
+    username: System.get_env("GLOBAL_PROVIDER_USERNAME"),
+    password: System.get_env("GLOBAL_PROVIDER_PASSWORD")
+else
+  config :streamix, :global_provider, enabled: false
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration

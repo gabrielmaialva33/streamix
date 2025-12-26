@@ -13,6 +13,17 @@
 # Load .env file - returns a merged map of env vars
 env = Dotenvy.source!([".env", System.get_env()])
 
+# Configure global provider from env (runtime.exs was already evaluated)
+if env["GLOBAL_PROVIDER_ENABLED"] == "true" do
+  Application.put_env(:streamix, :global_provider,
+    enabled: true,
+    name: env["GLOBAL_PROVIDER_NAME"] || "Streamix Global",
+    url: env["GLOBAL_PROVIDER_URL"],
+    username: env["GLOBAL_PROVIDER_USERNAME"],
+    password: env["GLOBAL_PROVIDER_PASSWORD"]
+  )
+end
+
 alias Streamix.{Accounts, Iptv}
 
 # Create admin user from env vars
@@ -69,4 +80,32 @@ if provider_name && provider_url && provider_username && provider_password do
   end
 else
   IO.puts("→ Skipping IPTV provider (env vars not configured)")
+end
+
+# Create global provider (if configured)
+alias Streamix.Iptv.GlobalProvider
+
+if GlobalProvider.enabled?() do
+  case GlobalProvider.ensure_exists!() do
+    {:ok, provider} when is_struct(provider) ->
+      IO.puts("✓ Global provider ready: #{provider.name}")
+
+      # Sync global provider content
+      IO.puts("⏳ Syncing global provider content...")
+
+      case GlobalProvider.sync!() do
+        {:ok, stats} ->
+          IO.puts(
+            "✓ Synced global provider - Live: #{stats.live}, Movies: #{stats.movies}, Series: #{stats.series}"
+          )
+
+        {:error, reason} ->
+          IO.puts("✗ Failed to sync global provider: #{inspect(reason)}")
+      end
+
+    {:error, changeset} ->
+      IO.puts("✗ Failed to create global provider: #{inspect(changeset.errors)}")
+  end
+else
+  IO.puts("→ Global provider not configured (set GLOBAL_PROVIDER_ENABLED=true)")
 end

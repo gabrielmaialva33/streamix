@@ -4,7 +4,7 @@ defmodule Streamix.IptvFixtures do
   """
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Channel
+  alias Streamix.Iptv.LiveChannel
   alias Streamix.Repo
 
   def unique_provider_name, do: "Provider #{System.unique_integer([:positive])}"
@@ -31,12 +31,11 @@ defmodule Streamix.IptvFixtures do
 
   def valid_channel_attrs(provider, attrs \\ %{}) do
     Enum.into(attrs, %{
+      stream_id: System.unique_integer([:positive]),
       name: "Channel #{System.unique_integer([:positive])}",
-      stream_url: "http://stream.example.com/#{System.unique_integer([:positive])}.ts",
-      logo_url: "http://example.com/logo.png",
-      tvg_id: "ch#{System.unique_integer([:positive])}",
-      tvg_name: "Test Channel",
-      group_title: "General",
+      stream_icon: "http://example.com/logo.png",
+      epg_channel_id: "ch#{System.unique_integer([:positive])}",
+      tv_archive: false,
       provider_id: provider.id
     })
   end
@@ -44,8 +43,8 @@ defmodule Streamix.IptvFixtures do
   def channel_fixture(provider, attrs \\ %{}) do
     attrs = valid_channel_attrs(provider, attrs)
 
-    %Channel{}
-    |> Channel.changeset(attrs)
+    %LiveChannel{}
+    |> LiveChannel.changeset(attrs)
     |> Repo.insert!()
   end
 
@@ -56,12 +55,23 @@ defmodule Streamix.IptvFixtures do
   end
 
   def favorite_fixture(user, channel) do
-    {:ok, favorite} = Iptv.add_favorite(user.id, channel.id)
+    {:ok, favorite} =
+      Iptv.add_favorite(user.id, %{
+        content_type: "live_channel",
+        content_id: channel.id,
+        content_name: channel.name,
+        content_icon: channel.stream_icon
+      })
+
     favorite
   end
 
   def watch_history_fixture(user, channel, duration \\ 0) do
-    {:ok, history} = Iptv.add_watch_history(user.id, channel.id, duration)
+    {:ok, history} =
+      Iptv.add_watch_history(user.id, "live_channel", channel.id, %{
+        duration_seconds: duration
+      })
+
     history
   end
 

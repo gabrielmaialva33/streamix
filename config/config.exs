@@ -86,7 +86,9 @@ config :streamix, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        # Sync all providers every 6 hours
-       {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker}
+       {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker},
+       # Sync global provider every 4 hours
+       {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker}
      ]}
   ]
 

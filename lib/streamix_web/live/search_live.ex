@@ -17,6 +17,10 @@ defmodule StreamixWeb.SearchLive do
 
   @doc false
   def mount(_params, _session, socket) do
+    # User might be nil for guests
+    user = get_in(socket.assigns, [:current_scope, :user])
+    user_id = if user, do: user.id, else: nil
+
     socket =
       socket
       |> assign(page_title: "Buscar")
@@ -26,6 +30,7 @@ defmodule StreamixWeb.SearchLive do
       |> assign(results: %{channels: [], movies: [], series: []})
       |> assign(loading: false)
       |> assign(searched: false)
+      |> assign(user_id: user_id)
 
     {:ok, socket}
   end
@@ -80,27 +85,38 @@ defmodule StreamixWeb.SearchLive do
   end
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => type}, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    content_id = String.to_integer(id)
+    case socket.assigns.user_id do
+      nil ->
+        {:noreply, put_flash(socket, :info, "Faça login para adicionar favoritos")}
 
-    # Check if already favorite and toggle
+      user_id ->
+        toggle_favorite(user_id, type, String.to_integer(id))
+        {:noreply, perform_search(socket)}
+    end
+  end
+
+  defp toggle_favorite(user_id, type, content_id) do
     if Iptv.is_favorite?(user_id, type, content_id) do
       Iptv.remove_favorite(user_id, type, content_id)
     else
-      content = get_content(type, content_id)
-
-      if content do
-        Iptv.add_favorite(user_id, %{
-          content_type: type,
-          content_id: content_id,
-          content_name: get_content_name(content, type),
-          content_icon: get_content_icon(content, type)
-        })
-      end
+      add_favorite_if_exists(user_id, type, content_id)
     end
+  end
 
-    # Refresh results to update favorite status
-    {:noreply, perform_search(socket)}
+  defp add_favorite_if_exists(user_id, type, content_id) do
+    case get_content(type, content_id) do
+      nil -> :ok
+      content -> add_favorite(user_id, type, content_id, content)
+    end
+  end
+
+  defp add_favorite(user_id, type, content_id, content) do
+    Iptv.add_favorite(user_id, %{
+      content_type: type,
+      content_id: content_id,
+      content_name: get_content_name(content, type),
+      content_icon: get_content_icon(content, type)
+    })
   end
 
   # ============================================
@@ -126,7 +142,11 @@ defmodule StreamixWeb.SearchLive do
               class="flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-lg text-text-primary placeholder:text-text-secondary/50"
               autofocus
             />
-            <div :if={@loading} class="size-5 border-2 border-brand/30 border-t-brand rounded-full animate-spin flex-shrink-0"></div>
+            <div
+              :if={@loading}
+              class="size-5 border-2 border-brand/30 border-t-brand rounded-full animate-spin flex-shrink-0"
+            >
+            </div>
           </div>
         </form>
       </div>
@@ -194,7 +214,8 @@ defmodule StreamixWeb.SearchLive do
       class={[
         "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
         @current == @type && "bg-brand text-white",
-        @current != @type && "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+        @current != @type &&
+          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
@@ -311,7 +332,7 @@ defmodule StreamixWeb.SearchLive do
 
   defp perform_search(socket) do
     query = socket.assigns.query
-    user_id = socket.assigns.current_scope.user.id
+    user_id = socket.assigns.user_id
 
     if String.trim(query) == "" do
       socket
@@ -331,6 +352,14 @@ defmodule StreamixWeb.SearchLive do
     end
   end
 
+  # For logged-in users: use search with user_id (sees global + public + own private)
+  # For guests: use public search (sees global + public only)
+
+  defp search_channels(nil, query) do
+    Iptv.search_public_channels(query, limit: 24)
+    |> Enum.map(fn channel -> Map.put(channel, :is_favorite, false) end)
+  end
+
   defp search_channels(user_id, query) do
     Iptv.search_channels(user_id, query, limit: 24)
     |> Enum.map(fn channel ->
@@ -338,11 +367,21 @@ defmodule StreamixWeb.SearchLive do
     end)
   end
 
+  defp search_movies(nil, query) do
+    Iptv.search_public_movies(query, limit: 24)
+    |> Enum.map(fn movie -> Map.put(movie, :is_favorite, false) end)
+  end
+
   defp search_movies(user_id, query) do
     Iptv.search_movies(user_id, query, limit: 24)
     |> Enum.map(fn movie ->
       Map.put(movie, :is_favorite, Iptv.is_favorite?(user_id, "movie", movie.id))
     end)
+  end
+
+  defp search_series(nil, query) do
+    Iptv.search_public_series(query, limit: 24)
+    |> Enum.map(fn series -> Map.put(series, :is_favorite, false) end)
   end
 
   defp search_series(user_id, query) do

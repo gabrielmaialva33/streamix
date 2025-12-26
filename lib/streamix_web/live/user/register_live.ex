@@ -90,8 +90,7 @@ defmodule StreamixWeb.User.RegisterLive do
         <p class="text-xs text-zinc-500 text-center mt-6">
           Ao criar uma conta, você concorda com nossos
           <span class="text-zinc-400">Termos de Uso</span>
-          e
-          <span class="text-zinc-400">Política de Privacidade</span>.
+          e <span class="text-zinc-400">Política de Privacidade</span>.
         </p>
       </div>
     </div>

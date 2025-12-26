@@ -135,7 +135,8 @@ defmodule StreamixWeb.FavoritesLive do
       class={[
         "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
         @current == @type && "bg-brand text-white",
-        @current != @type && "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+        @current != @type &&
+          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
@@ -175,7 +176,10 @@ defmodule StreamixWeb.FavoritesLive do
       </div>
       <div class="p-3">
         <div class="flex items-start justify-between gap-2">
-          <h3 class="font-medium text-sm text-text-primary truncate flex-1" title={@favorite.content_name}>
+          <h3
+            class="font-medium text-sm text-text-primary truncate flex-1"
+            title={@favorite.content_name}
+          >
             {@favorite.content_name || "Desconhecido"}
           </h3>
           <button

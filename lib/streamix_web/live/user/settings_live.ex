@@ -79,7 +79,13 @@ defmodule StreamixWeb.User.SettingsLive do
             phx-change="validate_email"
             phx-submit="update_email"
           >
-            <.input field={@email_form[:email]} type="email" label="Email" required autocomplete="email" />
+            <.input
+              field={@email_form[:email]}
+              type="email"
+              label="Email"
+              required
+              autocomplete="email"
+            />
             <.input
               field={@email_form[:current_password]}
               type="password"
@@ -112,7 +118,13 @@ defmodule StreamixWeb.User.SettingsLive do
           >
             <.input type="hidden" name={@password_form[:email].name} value={@current_email} />
 
-            <.input field={@password_form[:password]} type="password" label="Nova Senha" required autocomplete="new-password" />
+            <.input
+              field={@password_form[:password]}
+              type="password"
+              label="Nova Senha"
+              required
+              autocomplete="new-password"
+            />
             <p class="text-xs text-text-secondary -mt-2">Mínimo de 12 caracteres</p>
             <.input
               field={@password_form[:password_confirmation]}

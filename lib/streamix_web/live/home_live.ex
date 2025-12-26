@@ -403,7 +403,7 @@ defmodule StreamixWeb.HomeLive do
   defp channel_card(assigns) do
     ~H"""
     <.link
-      navigate={~p"/watch/live/#{@channel.id}"}
+      navigate={~p"/watch/live_channel/#{@channel.id}"}
       class="group flex-shrink-0 w-[160px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50"
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
@@ -521,7 +521,8 @@ defmodule StreamixWeb.HomeLive do
   defp content_info_path(:series, series),
     do: ~p"/providers/#{series.provider_id}/series/#{series.id}"
 
-  defp watch_path("live", id), do: ~p"/watch/live/#{id}"
+  defp watch_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"
+  defp watch_path("live", id), do: ~p"/watch/live_channel/#{id}"
   defp watch_path("movie", id), do: ~p"/watch/movie/#{id}"
   defp watch_path("episode", id), do: ~p"/watch/episode/#{id}"
   defp watch_path(_, id), do: ~p"/watch/movie/#{id}"

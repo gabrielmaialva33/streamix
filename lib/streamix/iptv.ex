@@ -25,9 +25,41 @@ defmodule Streamix.Iptv do
   # Providers
   # =============================================================================
 
+  @doc """
+  Lists providers owned by the user (excludes system providers).
+  Use this for the provider management UI.
+  """
   def list_providers(user_id) do
     Provider
     |> where(user_id: ^user_id)
+    |> where([p], p.is_system == false)
+    |> order_by(asc: :name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists all providers visible to a user:
+  - Global (is_system: true)
+  - Public (visibility: :public)
+  - User's own private providers (visibility: :private, user_id: user_id)
+  """
+  def list_visible_providers(user_id \\ nil) do
+    Provider
+    |> where([p], p.visibility in [:global, :public])
+    |> or_where([p], p.user_id == ^user_id and p.visibility == :private)
+    |> where([p], p.is_active == true)
+    |> order_by(asc: :name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists only public providers (global + public visibility).
+  For unauthenticated users.
+  """
+  def list_public_providers do
+    Provider
+    |> where([p], p.visibility in [:global, :public])
+    |> where([p], p.is_active == true)
     |> order_by(asc: :name)
     |> Repo.all()
   end
@@ -139,6 +171,31 @@ defmodule Streamix.Iptv do
     |> Repo.one()
   end
 
+  @doc """
+  Gets a live channel if visible to the user (global, public, or user's private).
+  Use this for player access control.
+  """
+  def get_playable_channel(user_id, channel_id) do
+    LiveChannel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, _p], c.id == ^channel_id)
+    |> where([c, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets a live channel from public providers only (for guests).
+  """
+  def get_public_channel(channel_id) do
+    LiveChannel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, _p], c.id == ^channel_id)
+    |> where([c, p], p.visibility in [:global, :public])
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
   def get_live_channel_with_provider!(id) do
     LiveChannel
     |> where(id: ^id)
@@ -199,6 +256,31 @@ defmodule Streamix.Iptv do
     Movie
     |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
     |> where([m, p], m.id == ^movie_id and p.user_id == ^user_id)
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets a movie if visible to the user (global, public, or user's private).
+  Use this for player access control.
+  """
+  def get_playable_movie(user_id, movie_id) do
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, _p], m.id == ^movie_id)
+    |> where([m, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets a movie from public providers only (for guests).
+  """
+  def get_public_movie(movie_id) do
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, _p], m.id == ^movie_id)
+    |> where([m, p], p.visibility in [:global, :public])
     |> preload(:provider)
     |> Repo.one()
   end
@@ -307,6 +389,35 @@ defmodule Streamix.Iptv do
     |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
     |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
     |> where([e, s, sr, p], e.id == ^episode_id and p.user_id == ^user_id)
+    |> preload(season: [series: :provider])
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets an episode if visible to the user (global, public, or user's private).
+  Use this for player access control.
+  """
+  def get_playable_episode(user_id, episode_id) do
+    Episode
+    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
+    |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
+    |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
+    |> where([e, _s, _sr, _p], e.id == ^episode_id)
+    |> where([e, s, sr, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> preload(season: [series: :provider])
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets an episode from public providers only (for guests).
+  """
+  def get_public_episode(episode_id) do
+    Episode
+    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
+    |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
+    |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
+    |> where([e, _s, _sr, _p], e.id == ^episode_id)
+    |> where([e, s, sr, p], p.visibility in [:global, :public])
     |> preload(season: [series: :provider])
     |> Repo.one()
   end
@@ -496,37 +607,91 @@ defmodule Streamix.Iptv do
   # Search (across all user providers)
   # =============================================================================
 
+  @doc """
+  Searches channels across all visible providers (global + public + user's private).
+  """
   def search_channels(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
 
     LiveChannel
     |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
-    |> where([c, p], p.user_id == ^user_id)
-    |> where([c], ilike(c.name, ^"%#{query}%"))
+    |> where([c, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([c, _p], ilike(c.name, ^"%#{query}%"))
     |> order_by([c], asc: c.name)
     |> limit(^limit)
     |> Repo.all()
   end
 
+  @doc """
+  Searches channels in public providers only (for guests).
+  """
+  def search_public_channels(query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+
+    LiveChannel
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, p], p.visibility in [:global, :public])
+    |> where([c, _p], ilike(c.name, ^"%#{query}%"))
+    |> order_by([c], asc: c.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Searches movies across all visible providers (global + public + user's private).
+  """
   def search_movies(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
 
     Movie
     |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-    |> where([m, p], p.user_id == ^user_id)
-    |> where([m], ilike(m.name, ^"%#{query}%") or ilike(m.title, ^"%#{query}%"))
+    |> where([m, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([m, _p], ilike(m.name, ^"%#{query}%") or ilike(m.title, ^"%#{query}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
     |> Repo.all()
   end
 
+  @doc """
+  Searches movies in public providers only (for guests).
+  """
+  def search_public_movies(query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], ilike(m.name, ^"%#{query}%") or ilike(m.title, ^"%#{query}%"))
+    |> order_by([m], desc: m.rating, asc: m.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Searches series across all visible providers (global + public + user's private).
+  """
   def search_series(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
 
     Series
     |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-    |> where([s, p], p.user_id == ^user_id)
-    |> where([s], ilike(s.name, ^"%#{query}%") or ilike(s.title, ^"%#{query}%"))
+    |> where([s, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([s, _p], ilike(s.name, ^"%#{query}%") or ilike(s.title, ^"%#{query}%"))
+    |> order_by([s], desc: s.rating, asc: s.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Searches series in public providers only (for guests).
+  """
+  def search_public_series(query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+
+    Series
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> where([s, p], p.visibility in [:global, :public])
+    |> where([s, _p], ilike(s.name, ^"%#{query}%") or ilike(s.title, ^"%#{query}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
     |> Repo.all()
@@ -537,40 +702,46 @@ defmodule Streamix.Iptv do
   # =============================================================================
 
   @doc """
-  Lists featured movies from all providers for public display.
+  Lists featured movies from public/global providers for public display.
   Orders by rating and recency.
   """
   def list_public_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
     Movie
-    |> where([m], not is_nil(m.stream_icon))
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year, asc: m.name)
     |> limit(^limit)
     |> Repo.all()
   end
 
   @doc """
-  Lists featured series from all providers for public display.
+  Lists featured series from public/global providers for public display.
   """
   def list_public_series(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
     Series
-    |> where([s], not is_nil(s.cover))
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> where([s, p], p.visibility in [:global, :public])
+    |> where([s, _p], not is_nil(s.cover))
     |> order_by([s], desc: s.rating, desc: s.year, asc: s.name)
     |> limit(^limit)
     |> Repo.all()
   end
 
   @doc """
-  Lists live channels from all providers for public display.
+  Lists live channels from public/global providers for public display.
   """
   def list_public_channels(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
     LiveChannel
-    |> where([c], not is_nil(c.stream_icon))
+    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> where([c, p], p.visibility in [:global, :public])
+    |> where([c, _p], not is_nil(c.stream_icon))
     |> order_by([c], asc: c.name)
     |> limit(^limit)
     |> Repo.all()
@@ -579,17 +750,20 @@ defmodule Streamix.Iptv do
   @doc """
   Gets a featured movie/series with backdrop for hero display.
   Uses a daily seed for consistency (same hero all day, changes at midnight).
+  Only shows content from public/global providers.
   """
   def get_featured_content do
     # Daily seed for consistent hero throughout the day
     today = Date.utc_today()
     seed = Date.to_gregorian_days(today)
 
-    # Try movies with backdrop first
+    # Try movies with backdrop first (from public/global providers)
     movies =
       Movie
-      |> where([m], not is_nil(m.backdrop_path) and m.backdrop_path != ^[])
-      |> where([m], not is_nil(m.plot))
+      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+      |> where([m, p], p.visibility in [:global, :public])
+      |> where([m, _p], not is_nil(m.backdrop_path) and m.backdrop_path != ^[])
+      |> where([m, _p], not is_nil(m.plot))
       |> order_by([m], desc: m.rating)
       |> limit(10)
       |> Repo.all()
@@ -598,11 +772,13 @@ defmodule Streamix.Iptv do
       index = rem(seed, length(movies))
       {:movie, Enum.at(movies, index)}
     else
-      # Fallback to series with backdrop
+      # Fallback to series with backdrop (from public/global providers)
       series_list =
         Series
-        |> where([s], not is_nil(s.backdrop_path) and s.backdrop_path != ^[])
-        |> where([s], not is_nil(s.plot))
+        |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+        |> where([s, p], p.visibility in [:global, :public])
+        |> where([s, _p], not is_nil(s.backdrop_path) and s.backdrop_path != ^[])
+        |> where([s, _p], not is_nil(s.plot))
         |> order_by([s], desc: s.rating)
         |> limit(10)
         |> Repo.all()
@@ -620,38 +796,61 @@ defmodule Streamix.Iptv do
 
   @doc """
   Gets total counts for public stats display.
+  Only counts content from public/global providers.
   """
   def get_public_stats do
+    channels_count =
+      LiveChannel
+      |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+      |> where([c, p], p.visibility in [:global, :public])
+      |> Repo.aggregate(:count)
+
+    movies_count =
+      Movie
+      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+      |> where([m, p], p.visibility in [:global, :public])
+      |> Repo.aggregate(:count)
+
+    series_count =
+      Series
+      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+      |> where([s, p], p.visibility in [:global, :public])
+      |> Repo.aggregate(:count)
+
     %{
-      channels_count: Repo.aggregate(LiveChannel, :count),
-      movies_count: Repo.aggregate(Movie, :count),
-      series_count: Repo.aggregate(Series, :count)
+      channels_count: channels_count,
+      movies_count: movies_count,
+      series_count: series_count
     }
   end
 
   @doc """
-  Lists movies by genre/category.
+  Lists movies by genre/category from public/global providers.
   """
   def list_public_movies_by_genre(genre, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
     Movie
-    |> where([m], ilike(m.genre, ^"%#{genre}%"))
-    |> where([m], not is_nil(m.stream_icon))
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], ilike(m.genre, ^"%#{genre}%"))
+    |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year)
     |> limit(^limit)
     |> Repo.all()
   end
 
   @doc """
-  Gets recently added content.
+  Gets recently added content from public/global providers.
   """
   def list_recently_added(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
     movies =
       Movie
-      |> where([m], not is_nil(m.stream_icon))
+      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+      |> where([m, p], p.visibility in [:global, :public])
+      |> where([m, _p], not is_nil(m.stream_icon))
       |> order_by([m], desc: m.inserted_at)
       |> limit(^limit)
       |> Repo.all()
@@ -659,7 +858,9 @@ defmodule Streamix.Iptv do
 
     series =
       Series
-      |> where([s], not is_nil(s.cover))
+      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+      |> where([s, p], p.visibility in [:global, :public])
+      |> where([s, _p], not is_nil(s.cover))
       |> order_by([s], desc: s.inserted_at)
       |> limit(^limit)
       |> Repo.all()
