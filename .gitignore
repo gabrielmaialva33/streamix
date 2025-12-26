@@ -40,3 +40,4 @@ npm-debug.log
 .env.local
 .env.*.local
 
+.playwright-mcp
