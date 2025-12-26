@@ -60,6 +60,24 @@ defmodule Streamix.Accounts.User do
   end
 
   @doc """
+  A user changeset for registration with email and password.
+
+  ## Options
+
+    * `:hash_password` - Hashes the password so it can be stored securely.
+      Defaults to `true`.
+
+    * `:validate_email` - Validates email uniqueness. Defaults to `true`.
+  """
+  def registration_changeset(user, attrs, opts \\ []) do
+    user
+    |> cast(attrs, [:email, :password])
+    |> validate_email(opts)
+    |> validate_confirmation(:password, message: "senhas não conferem")
+    |> validate_password(opts)
+  end
+
+  @doc """
   A user changeset for changing the password.
 
   It is important to validate the length of the password, as long passwords may
