@@ -123,18 +123,18 @@ defmodule StreamixWeb.Providers.ProviderListLive do
 
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <.header>
-        Meus Provedores
-        <:subtitle>Gerencie seus provedores IPTV</:subtitle>
-        <:actions>
-          <.button navigate={~p"/providers/new"} variant="primary">
-            <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
-          </.button>
-        </:actions>
-      </.header>
+    <div class="px-[4%] py-8 space-y-8">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold text-text-primary">Meus Provedores</h1>
+          <p class="text-text-secondary mt-1">Gerencie seus provedores IPTV</p>
+        </div>
+        <.button navigate={~p"/providers/new"} variant="primary">
+          <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
+        </.button>
+      </div>
 
-      <div id="providers" phx-update="stream" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div id="providers" phx-update="stream" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <div :for={{dom_id, provider} <- @streams.providers} id={dom_id}>
           <.provider_card provider={provider} />
         </div>

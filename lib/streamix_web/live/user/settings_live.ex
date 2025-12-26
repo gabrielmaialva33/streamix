@@ -63,15 +63,15 @@ defmodule StreamixWeb.User.SettingsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-2xl space-y-8">
-      <.header>
-        Configurações
-        <:subtitle>Gerencie as configurações da sua conta</:subtitle>
-      </.header>
+    <div class="px-[4%] py-8">
+      <div class="max-w-2xl mx-auto space-y-8">
+        <div>
+          <h1 class="text-3xl font-bold text-text-primary">Configurações</h1>
+          <p class="text-text-secondary mt-1">Gerencie as configurações da sua conta</p>
+        </div>
 
-      <div class="card bg-base-200">
-        <div class="card-body">
-          <h3 class="card-title text-lg">Alterar Email</h3>
+        <div class="bg-surface rounded-xl p-6 border border-border">
+          <h3 class="text-lg font-semibold text-text-primary mb-4">Alterar Email</h3>
 
           <.simple_form
             for={@email_form}
@@ -79,7 +79,7 @@ defmodule StreamixWeb.User.SettingsLive do
             phx-change="validate_email"
             phx-submit="update_email"
           >
-            <.input field={@email_form[:email]} type="email" label="Email" required />
+            <.input field={@email_form[:email]} type="email" label="Email" required autocomplete="email" />
             <.input
               field={@email_form[:current_password]}
               type="password"
@@ -87,6 +87,7 @@ defmodule StreamixWeb.User.SettingsLive do
               required
               name="current_password"
               id="email_current_password"
+              autocomplete="current-password"
             />
 
             <:actions>
@@ -96,11 +97,9 @@ defmodule StreamixWeb.User.SettingsLive do
             </:actions>
           </.simple_form>
         </div>
-      </div>
 
-      <div class="card bg-base-200">
-        <div class="card-body">
-          <h3 class="card-title text-lg">Alterar Senha</h3>
+        <div class="bg-surface rounded-xl p-6 border border-border">
+          <h3 class="text-lg font-semibold text-text-primary mb-4">Alterar Senha</h3>
 
           <.simple_form
             for={@password_form}
@@ -113,12 +112,14 @@ defmodule StreamixWeb.User.SettingsLive do
           >
             <.input type="hidden" name={@password_form[:email].name} value={@current_email} />
 
-            <.input field={@password_form[:password]} type="password" label="Nova Senha" required />
+            <.input field={@password_form[:password]} type="password" label="Nova Senha" required autocomplete="new-password" />
+            <p class="text-xs text-text-secondary -mt-2">Mínimo de 12 caracteres</p>
             <.input
               field={@password_form[:password_confirmation]}
               type="password"
               label="Confirmar Nova Senha"
               required
+              autocomplete="new-password"
             />
             <.input
               field={@password_form[:current_password]}
@@ -127,6 +128,7 @@ defmodule StreamixWeb.User.SettingsLive do
               required
               name="current_password"
               id="password_current_password"
+              autocomplete="current-password"
             />
 
             <:actions>

@@ -450,26 +450,28 @@ defmodule StreamixWeb.CoreComponents do
     ~H"""
     <dialog
       id={@id}
-      class="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
+      class="fixed inset-0 z-50 m-0 h-full w-full max-h-full max-w-full bg-transparent p-0"
       phx-hook="Modal"
       data-show={to_string(@show)}
     >
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" phx-click={@on_cancel}></div>
-      <div class="relative bg-surface rounded-xl shadow-2xl border border-border max-w-md w-full mx-4 p-6">
-        <button
-          type="button"
-          class="absolute right-4 top-4 p-1 rounded-full text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
-          phx-click={@on_cancel}
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
+      <div class="fixed inset-0 flex items-center justify-center">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" phx-click={@on_cancel}></div>
+        <div class="relative bg-surface rounded-xl shadow-2xl border border-border max-w-md w-full mx-4 p-6">
+          <button
+            type="button"
+            class="absolute right-4 top-4 p-1 rounded-full text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+            phx-click={@on_cancel}
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
 
-        <div class="text-text-primary">
-          {render_slot(@inner_block)}
-        </div>
+          <div class="text-text-primary">
+            {render_slot(@inner_block)}
+          </div>
 
-        <div :if={@actions != []} class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
-          {render_slot(@actions)}
+          <div :if={@actions != []} class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+            {render_slot(@actions)}
+          </div>
         </div>
       </div>
     </dialog>

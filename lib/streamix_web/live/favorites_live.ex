@@ -82,9 +82,9 @@ defmodule StreamixWeb.FavoritesLive do
   @doc false
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold">Favoritos</h1>
+    <div class="px-[4%] py-8 space-y-8">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <h1 class="text-3xl font-bold text-text-primary">Minha Lista</h1>
 
         <div class="flex gap-2">
           <.filter_button type="all" label="Todos" current={@filter} count={length(@favorites)} />
@@ -133,22 +133,22 @@ defmodule StreamixWeb.FavoritesLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "btn btn-sm gap-2",
-        @current == @type && "btn-primary",
-        @current != @type && "btn-ghost"
+        "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+        @current == @type && "bg-brand text-white",
+        @current != @type && "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="badge badge-xs">{@count}</span>
+      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-white/20">{@count}</span>
     </button>
     """
   end
 
   defp favorite_item(assigns) do
     ~H"""
-    <div class="card bg-base-200 hover:bg-base-300 transition-colors group">
-      <figure
-        class="relative aspect-video bg-base-300 cursor-pointer"
+    <div class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-colors group">
+      <div
+        class="relative aspect-video bg-surface-hover cursor-pointer"
         phx-click="play"
         phx-value-id={@favorite.content_id}
         phx-value-type={@favorite.content_type}
@@ -162,27 +162,27 @@ defmodule StreamixWeb.FavoritesLive do
         />
         <div
           :if={!@favorite.content_icon}
-          class="w-full h-full flex items-center justify-center text-base-content/30"
+          class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name={content_type_icon(@favorite.content_type)} class="size-12" />
         </div>
         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-16 text-primary" />
+          <.icon name="hero-play-circle-solid" class="size-16 text-brand" />
         </div>
-        <span class="absolute top-2 left-2 badge badge-xs badge-ghost">
+        <span class="absolute top-2 left-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white">
           {format_content_type(@favorite.content_type)}
         </span>
-      </figure>
-      <div class="card-body p-3">
+      </div>
+      <div class="p-3">
         <div class="flex items-start justify-between gap-2">
-          <h3 class="font-medium text-sm truncate flex-1" title={@favorite.content_name}>
+          <h3 class="font-medium text-sm text-text-primary truncate flex-1" title={@favorite.content_name}>
             {@favorite.content_name || "Desconhecido"}
           </h3>
           <button
             type="button"
             phx-click="remove_favorite"
             phx-value-id={@favorite.id}
-            class="btn btn-ghost btn-xs text-error opacity-0 group-hover:opacity-100 transition-opacity"
+            class="p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 rounded"
             title="Remover dos favoritos"
           >
             <.icon name="hero-trash" class="size-4" />

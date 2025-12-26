@@ -83,9 +83,9 @@ defmodule StreamixWeb.HistoryLive do
   @doc false
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <div class="px-[4%] py-8 space-y-8">
       <div class="flex items-center justify-between flex-wrap gap-4">
-        <h1 class="text-2xl font-bold">Histórico</h1>
+        <h1 class="text-3xl font-bold text-text-primary">Histórico</h1>
 
         <div class="flex items-center gap-4">
           <div class="flex gap-2">
@@ -115,7 +115,7 @@ defmodule StreamixWeb.HistoryLive do
             type="button"
             phx-click="clear_history"
             data-confirm="Tem certeza que deseja limpar todo o histórico?"
-            class="btn btn-sm btn-ghost text-error"
+            class="px-3 py-2 text-sm text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
           >
             <.icon name="hero-trash" class="size-4" /> Limpar
           </button>
@@ -143,22 +143,22 @@ defmodule StreamixWeb.HistoryLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "btn btn-sm gap-2",
-        @current == @type && "btn-primary",
-        @current != @type && "btn-ghost"
+        "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+        @current == @type && "bg-brand text-white",
+        @current != @type && "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="badge badge-xs">{@count}</span>
+      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-white/20">{@count}</span>
     </button>
     """
   end
 
   defp history_entry(assigns) do
     ~H"""
-    <div class="flex items-center gap-4 p-4 rounded-lg bg-base-200 hover:bg-base-300 transition-colors group">
+    <div class="flex items-center gap-4 p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group">
       <div
-        class="relative w-24 h-16 rounded bg-base-300 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
+        class="relative w-24 h-16 rounded bg-surface-hover flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
         phx-click="play"
         phx-value-id={@entry.content_id}
         phx-value-type={@entry.content_type}
@@ -173,7 +173,7 @@ defmodule StreamixWeb.HistoryLive do
         <.icon
           :if={!@entry.content_icon}
           name={content_type_icon(@entry.content_type)}
-          class="size-8 text-base-content/30"
+          class="size-8 text-text-secondary/30"
         />
         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-8 text-white" />
@@ -191,9 +191,9 @@ defmodule StreamixWeb.HistoryLive do
         phx-value-id={@entry.content_id}
         phx-value-type={@entry.content_type}
       >
-        <h4 class="font-medium truncate">{@entry.content_name || "Desconhecido"}</h4>
-        <div class="flex items-center gap-2 text-sm text-base-content/60 mt-1">
-          <span class="badge badge-xs badge-ghost">
+        <h4 class="font-medium text-text-primary truncate">{@entry.content_name || "Desconhecido"}</h4>
+        <div class="flex items-center gap-2 text-sm text-text-secondary mt-1">
+          <span class="px-2 py-0.5 text-xs rounded bg-surface-hover">
             {format_content_type(@entry.content_type)}
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
@@ -207,7 +207,7 @@ defmodule StreamixWeb.HistoryLive do
         type="button"
         phx-click="remove_entry"
         phx-value-id={@entry.id}
-        class="btn btn-ghost btn-sm opacity-0 group-hover:opacity-100 transition-opacity"
+        class="p-2 text-text-secondary hover:text-text-primary opacity-0 group-hover:opacity-100 transition-all"
         title="Remover do histórico"
       >
         <.icon name="hero-x-mark" class="size-5" />
@@ -218,8 +218,8 @@ defmodule StreamixWeb.HistoryLive do
 
   defp progress_indicator(assigns) do
     ~H"""
-    <div class="absolute bottom-0 left-0 right-0 h-1 bg-base-100/50">
-      <div class="h-full bg-primary" style={"width: #{@percent}%"}></div>
+    <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+      <div class="h-full bg-brand" style={"width: #{@percent}%"}></div>
     </div>
     """
   end
