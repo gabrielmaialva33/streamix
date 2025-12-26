@@ -25,8 +25,12 @@ defmodule Streamix.Cache do
   @spec get(String.t()) :: term() | nil
   def get(key) do
     case Redix.command(@redis, ["GET", key]) do
-      {:ok, nil} -> nil
-      {:ok, value} -> decode(value)
+      {:ok, nil} ->
+        nil
+
+      {:ok, value} ->
+        decode(value)
+
       {:error, reason} ->
         log_error("GET", key, reason)
         nil
@@ -41,7 +45,9 @@ defmodule Streamix.Cache do
     case encode(value) do
       {:ok, encoded} ->
         case Redix.command(@redis, ["SETEX", key, ttl, encoded]) do
-          {:ok, _} -> :ok
+          {:ok, _} ->
+            :ok
+
           {:error, reason} ->
             log_error("SETEX", key, reason)
             {:error, reason}
@@ -59,7 +65,9 @@ defmodule Streamix.Cache do
   @spec delete(String.t()) :: :ok
   def delete(key) do
     case Redix.command(@redis, ["DEL", key]) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       {:error, reason} ->
         log_error("DEL", key, reason)
         :ok
@@ -145,7 +153,9 @@ defmodule Streamix.Cache do
   @spec invalidate_all() :: :ok
   def invalidate_all do
     case Redix.command(@redis, ["FLUSHDB"]) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       {:error, reason} ->
         log_error("FLUSHDB", "*", reason)
         :ok
