@@ -125,15 +125,17 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     {:noreply, assign(socket, expanded_seasons: expanded)}
   end
 
-  def handle_event("play_episode", %{"id" => episode_id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/episode/#{episode_id}")}
+  def handle_event("view_episode", %{"id" => episode_id}, socket) do
+    path = episode_path(socket.assigns.mode, socket.assigns.provider, socket.assigns.series.id, episode_id)
+    {:noreply, push_navigate(socket, to: path)}
   end
 
   def handle_event("play_first_episode", _, socket) do
     case socket.assigns.seasons do
       [first_season | _] when first_season.episodes != [] ->
         [first_episode | _] = Enum.sort_by(first_season.episodes, & &1.episode_num)
-        {:noreply, push_navigate(socket, to: ~p"/watch/episode/#{first_episode.id}")}
+        path = episode_path(socket.assigns.mode, socket.assigns.provider, socket.assigns.series.id, first_episode.id)
+        {:noreply, push_navigate(socket, to: path)}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Nenhum episódio disponível")}
@@ -436,7 +438,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     ~H"""
     <div
       class="flex gap-4 p-4 hover:bg-surface-hover cursor-pointer transition-colors group"
-      phx-click="play_episode"
+      phx-click="view_episode"
       phx-value-id={@episode.id}
     >
       <div class="flex-shrink-0 w-8 text-center">
@@ -486,6 +488,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp back_path(:browse, _provider), do: ~p"/browse/series"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/series"
+
+  defp episode_path(:browse, _provider, series_id, episode_id),
+    do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"
+
+  defp episode_path(:provider, provider, series_id, episode_id),
+    do: ~p"/providers/#{provider.id}/series/#{series_id}/episode/#{episode_id}"
 
   defp episode_title(episode), do: "Episódio #{episode.episode_num}"
 

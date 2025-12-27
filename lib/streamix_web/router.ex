@@ -65,6 +65,7 @@ defmodule StreamixWeb.Router do
       live "/browse/movies/:id", Content.MovieDetailLive, :show
       live "/browse/series", Content.SeriesLive, :index
       live "/browse/series/:id", Content.SeriesDetailLive, :show
+      live "/browse/series/:series_id/episode/:id", Content.EpisodeDetailLive, :show
 
       # User's personal providers (settings area)
       live "/providers", Providers.ProviderListLive, :index
@@ -77,6 +78,7 @@ defmodule StreamixWeb.Router do
       live "/providers/:provider_id/movies/:id", Content.MovieDetailLive, :show
       live "/providers/:provider_id/series", Content.SeriesLive, :index
       live "/providers/:provider_id/series/:id", Content.SeriesDetailLive, :show
+      live "/providers/:provider_id/series/:series_id/episode/:id", Content.EpisodeDetailLive, :show
 
       # User content
       live "/favorites", FavoritesLive, :index

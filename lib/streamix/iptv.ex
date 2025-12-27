@@ -634,6 +634,16 @@ defmodule Streamix.Iptv do
   end
 
   @doc """
+  Lists all episodes for a season, ordered by episode number.
+  """
+  def list_season_episodes(season_id) do
+    Episode
+    |> where(season_id: ^season_id)
+    |> order_by(:episode_num)
+    |> Repo.all()
+  end
+
+  @doc """
   Fetches detailed series info from TMDB if missing key data.
   Returns {:ok, updated_series} or {:error, reason}.
   """
