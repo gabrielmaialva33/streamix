@@ -230,6 +230,7 @@ defmodule Streamix.Iptv.TmdbClient do
   defp parse_year(_), do: nil
 
   defp parse_director(nil), do: nil
+
   defp parse_director(%{"crew" => crew}) when is_list(crew) do
     crew
     |> Enum.filter(&(&1["job"] == "Director"))
@@ -245,6 +246,7 @@ defmodule Streamix.Iptv.TmdbClient do
   defp parse_director(_), do: nil
 
   defp parse_cast(nil), do: nil
+
   defp parse_cast(%{"cast" => cast}) when is_list(cast) do
     cast
     |> Enum.take(5)
@@ -259,6 +261,7 @@ defmodule Streamix.Iptv.TmdbClient do
   defp parse_cast(_), do: nil
 
   defp parse_trailer(nil), do: nil
+
   defp parse_trailer(%{"results" => results}) when is_list(results) do
     results
     |> Enum.filter(fn video ->
