@@ -216,6 +216,7 @@ var Router = (function() {
         // No transition for first load or player (player has its own fullscreen behavior)
         currentRoute = parsed.path;
         currentParams = newParams;
+        isBackNavigation = false; // Reset flag even when skipping transitions
         matched.handler(currentParams);
         console.log('[Router] Navigated to:', parsed.path, currentParams);
       } else {

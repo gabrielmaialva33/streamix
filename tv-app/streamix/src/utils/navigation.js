@@ -192,6 +192,17 @@ var Navigation = (function() {
   // ========== END Performance Cache ==========
 
   /**
+   * Handle keyup for throttle reset
+   */
+  function handleKeyUp(event) {
+    var keyCode = event.keyCode;
+    if (keyCode === KEY_CODES.LEFT || keyCode === KEY_CODES.UP ||
+        keyCode === KEY_CODES.RIGHT || keyCode === KEY_CODES.DOWN) {
+      resetInputThrottle();
+    }
+  }
+
+  /**
    * Initialize navigation
    */
   function init(options) {
@@ -211,13 +222,7 @@ var Navigation = (function() {
     document.addEventListener('keydown', handleKeyDown, true);
 
     // Reset throttle on keyup (user released key)
-    document.addEventListener('keyup', function(event) {
-      var keyCode = event.keyCode;
-      if (keyCode === KEY_CODES.LEFT || keyCode === KEY_CODES.UP ||
-          keyCode === KEY_CODES.RIGHT || keyCode === KEY_CODES.DOWN) {
-        resetInputThrottle();
-      }
-    }, true);
+    document.addEventListener('keyup', handleKeyUp, true);
 
     // Track focus on any focusable element click
     document.addEventListener('click', handleClick);
@@ -1045,6 +1050,7 @@ var Navigation = (function() {
    */
   function destroy() {
     document.removeEventListener('keydown', handleKeyDown, true);
+    document.removeEventListener('keyup', handleKeyUp, true);
     document.removeEventListener('click', handleClick);
     clearFocus();
     clearSectionMemory();

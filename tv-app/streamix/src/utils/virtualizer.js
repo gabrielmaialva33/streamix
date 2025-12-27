@@ -125,6 +125,19 @@ var Virtualizer = (function() {
       var removeCount = instance.data.length - config.maxDataItems;
       instance.data = instance.data.slice(removeCount);
 
+      // Cleanup and reindex renderedItems
+      var newRenderedItems = new Map();
+      instance.renderedItems.forEach(function(el, oldIndex) {
+        if (oldIndex < removeCount) {
+          // This item was removed - cleanup DOM
+          cleanupElement(el);
+        } else {
+          // Reindex
+          newRenderedItems.set(oldIndex - removeCount, el);
+        }
+      });
+      instance.renderedItems = newRenderedItems;
+
       // Adjust rendered indices
       instance.firstRenderedIndex = Math.max(0, instance.firstRenderedIndex - removeCount);
       instance.lastRenderedIndex = Math.max(0, instance.lastRenderedIndex - removeCount);

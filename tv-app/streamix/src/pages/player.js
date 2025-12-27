@@ -44,6 +44,9 @@ var PlayerPage = (function() {
   var seekAcceleration = 1;
   var hasMovedHandle = false; // Track if user moved the handle
 
+  // Render generation counter (to prevent race conditions)
+  var renderGeneration = 0;
+
   /**
    * Show debug info on screen (disabled - enable when needed)
    */
@@ -163,6 +166,10 @@ var PlayerPage = (function() {
     // IMPORTANT: Reset all state before loading new content
     resetState();
 
+    // Increment render generation to cancel stale callbacks
+    renderGeneration++;
+    var thisGeneration = renderGeneration;
+
     contentType = params.type;
     contentId = params.id;
 
@@ -203,6 +210,12 @@ var PlayerPage = (function() {
     }
 
     streamPromise.then(function(streamData) {
+      // Check if this render is still current (user may have navigated away)
+      if (thisGeneration !== renderGeneration) {
+        console.log('[PlayerPage] Ignoring stale render callback');
+        return;
+      }
+
       streamUrl = (streamData && streamData.stream_url) || (streamData && streamData.url);
 
       if (!streamUrl) {
@@ -215,6 +228,9 @@ var PlayerPage = (function() {
 
       renderPlayer();
     }).catch(function(error) {
+      // Check if this render is still current
+      if (thisGeneration !== renderGeneration) { return; }
+
       console.error('[PlayerPage] Error loading stream:', error);
       var errorMessage = (error && error.message) || 'Stream não disponível';
       main.innerHTML = '<div class="safe-area flex items-center justify-center h-full">' +
@@ -2012,7 +2028,7 @@ var PlayerPage = (function() {
         }
       }
     } else {
-      if (buffering) {
+      if (buffering && buffering.parentNode) {
         buffering.parentNode.removeChild(buffering);
       }
     }

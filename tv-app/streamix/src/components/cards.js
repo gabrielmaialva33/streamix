@@ -120,15 +120,6 @@ var Cards = (function() {
    * Initialize lazy loading observer with optimized settings
    */
   function initLazyLoading() {
-    // Initialize IndexedDB image cache if available
-    if (window.ImageCache && !ImageCache.isAvailable()) {
-      ImageCache.init().then(function(success) {
-        if (success) {
-          console.log('[Cards] IndexedDB image cache initialized');
-        }
-      });
-    }
-
     if (imageObserver || !useIntersectionObserver) { return; }
 
     try {
@@ -261,18 +252,10 @@ var Cards = (function() {
     originalSrcMap.set(img, src);
     img.dataset.originalSrc = src;
 
-    // Load image directly (IndexedDB cache disabled for now - CORS issues)
+    // Just load the image directly
     img.src = src;
     imageCache[src] = src;
     stats.loaded++;
-
-    // Cache in IndexedDB in background (for future loads)
-    if (window.ImageCache && ImageCache.isAvailable()) {
-      // Don't wait for this - just cache in background
-      ImageCache.fetchAndCache(src).catch(function() {
-        // Ignore cache errors
-      });
-    }
 
     // Trim cache if needed
     trimImageCache();
