@@ -380,11 +380,9 @@ defmodule StreamixWeb.AppComponents do
       >
         <.icon name="hero-funnel" class="size-4" />
         <span>{@selected_name || "Todas as Categorias"}</span>
-        <.icon
-          name="hero-chevron-down"
-          class="size-4 transition-transform"
-          x-bind:class="open && 'rotate-180'"
-        />
+        <span class="transition-transform" x-bind:class="open && 'rotate-180'">
+          <.icon name="hero-chevron-down" class="size-4" />
+        </span>
       </button>
       <div
         x-show="open"
