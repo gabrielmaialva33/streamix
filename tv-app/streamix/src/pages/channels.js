@@ -1,18 +1,17 @@
 /**
- * Channels Page
+ * Channels Page with Virtualization
+ * Memory-optimized infinite scroll for live TV channels
  */
-/* globals API, Cards, Navigation, Router */
+/* globals API, Cards, Navigation, Router, Virtualizer */
 
 var ChannelsPage = (function() {
   'use strict';
 
+  var VIRTUALIZER_ID = 'channels-grid';
   var categories = [];
-  var channels = [];
   var selectedCategory = null;
   var offset = 0;
-  var hasMore = true;
-  var loading = false;
-  var LIMIT = 30;
+  var LIMIT = 20;
 
   /**
    * Create category click handler
@@ -21,9 +20,21 @@ var ChannelsPage = (function() {
     return function() {
       selectedCategory = catId;
       offset = 0;
-      channels = [];
-      hasMore = true;
-      loadMoreChannels().then(renderContent);
+
+      // Reset virtualizer
+      Virtualizer.reset(VIRTUALIZER_ID);
+
+      loadMoreChannels().then(function(result) {
+        if (result && result.items) {
+          Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+          var grid = document.getElementById('channels-grid');
+          if (grid) {
+            grid.innerHTML = '';
+            Virtualizer.render(VIRTUALIZER_ID, grid, 0);
+            focusFirstItem(grid);
+          }
+        }
+      });
     };
   }
 
@@ -37,32 +48,19 @@ var ChannelsPage = (function() {
   }
 
   /**
-   * Render the channels page
+   * Focus first focusable item in container
    */
-  function render() {
-    var main = document.getElementById('main-content');
-    main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
-    // Reset state
-    channels = [];
-    offset = 0;
-    hasMore = true;
-    loading = false;
-
-    // Fetch categories first, then channels
-    API.getCategories('live').then(function(data) {
-      categories = data || [];
-      return loadMoreChannels();
-    }).then(function() {
-      renderContent();
-    }).catch(function(error) {
-      console.error('[ChannelsPage] Error loading data:', error);
-      main.innerHTML = '<div class="safe-area"><p class="text-secondary">Erro ao carregar canais</p></div>';
-    });
+  function focusFirstItem(container) {
+    setTimeout(function() {
+      var firstFocusable = container.querySelector('.focusable');
+      if (firstFocusable) {
+        Navigation.focus(firstFocusable);
+      }
+    }, 100);
   }
 
   /**
-   * Load more channels
+   * Load more channels from API
    */
   function loadMoreChannels() {
     var params = {
@@ -76,10 +74,52 @@ var ChannelsPage = (function() {
 
     return API.getChannels(params).then(function(data) {
       var newChannels = data.channels || [];
-      channels = channels.concat(newChannels);
-      hasMore = data.has_more;
       offset += LIMIT;
-      return newChannels;
+
+      return {
+        items: newChannels,
+        hasMore: data.has_more
+      };
+    });
+  }
+
+  /**
+   * Render the channels page
+   */
+  function render() {
+    var main = document.getElementById('main-content');
+    main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    // Destroy previous virtualizer if exists
+    Virtualizer.destroy(VIRTUALIZER_ID);
+
+    // Reset state
+    offset = 0;
+    selectedCategory = null;
+
+    // Create new virtualizer
+    Virtualizer.create(VIRTUALIZER_ID, {
+      createCard: function(channel) {
+        return Cards.createChannelCard(channel, createChannelClickHandler(channel));
+      },
+      onClick: createChannelClickHandler,
+      itemWidth: 180, // channel card width + gap
+      pageType: 'channels',
+      onLoadMore: loadMoreChannels
+    });
+
+    // Fetch categories first, then channels
+    API.getCategories('live').then(function(data) {
+      categories = data || [];
+      return loadMoreChannels();
+    }).then(function(result) {
+      if (result && result.items) {
+        Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+      }
+      renderContent();
+    }).catch(function(error) {
+      console.error('[ChannelsPage] Error loading data:', error);
+      main.innerHTML = '<div class="safe-area"><p class="text-secondary">Erro ao carregar canais</p></div>';
     });
   }
 
@@ -122,7 +162,8 @@ var ChannelsPage = (function() {
     }
 
     // Channels grid
-    if (channels.length === 0) {
+    var virtualizer = Virtualizer.get(VIRTUALIZER_ID);
+    if (!virtualizer || virtualizer.data.length === 0) {
       container.appendChild(Cards.createEmptyState('Nenhum canal encontrado'));
     } else {
       var grid = document.createElement('div');
@@ -130,86 +171,52 @@ var ChannelsPage = (function() {
       grid.id = 'channels-grid';
       grid.setAttribute('data-nav-section', 'channels');
 
-      for (var j = 0; j < channels.length; j++) {
-        var channel = channels[j];
-        var card = Cards.createChannelCard(channel, createChannelClickHandler(channel));
-        // Mark last card for infinite scroll
-        if (j === channels.length - 1 && hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', 'channels');
-        }
-        grid.appendChild(card);
-      }
-
-      // Add loading indicator
-      var loader = document.createElement('div');
-      loader.className = 'grid-loader';
-      loader.id = 'channels-loader';
-      loader.innerHTML = '<div class="spinner-small"></div>';
-      loader.style.display = 'none';
-      grid.appendChild(loader);
-
       container.appendChild(grid);
+
+      // Render visible items via Virtualizer
+      Virtualizer.render(VIRTUALIZER_ID, grid, 0);
     }
 
     main.appendChild(container);
 
     // Focus first interactive element
-    setTimeout(function() {
-      var firstFocusable = main.querySelector('.focusable');
-      if (firstFocusable) {
-        Navigation.focus(firstFocusable);
-      }
-    }, 100);
+    focusFirstItem(main);
   }
 
   /**
-   * Handle infinite scroll
+   * Handle infinite scroll - delegated to Virtualizer
    */
   function handleInfiniteScroll() {
-    if (loading || !hasMore) { return; }
-
-    loading = true;
-
-    var loader = document.getElementById('channels-loader');
-    if (loader) { loader.style.display = 'flex'; }
-
-    var prevLast = document.querySelector('[data-page-type="channels"][data-last-item="true"]');
-    if (prevLast) { prevLast.removeAttribute('data-last-item'); }
-
-    loadMoreChannels().then(function(newChannels) {
-      loading = false;
-      if (loader) { loader.style.display = 'none'; }
-
-      var grid = document.getElementById('channels-grid');
-      if (!grid || newChannels.length === 0) { return; }
-
-      for (var i = 0; i < newChannels.length; i++) {
-        var channel = newChannels[i];
-        var card = Cards.createChannelCard(channel, createChannelClickHandler(channel));
-        if (i === newChannels.length - 1 && hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', 'channels');
+    return Virtualizer.handleInfiniteScroll(VIRTUALIZER_ID).then(function(count) {
+      if (count > 0) {
+        // Focus first new item
+        var grid = document.getElementById('channels-grid');
+        if (grid) {
+          var stats = Virtualizer.getStats(VIRTUALIZER_ID);
+          if (stats) {
+            var allCards = grid.querySelectorAll('.channel-card');
+            var targetIndex = allCards.length - count;
+            if (targetIndex >= 0 && allCards[targetIndex]) {
+              Navigation.focus(allCards[targetIndex]);
+            }
+          }
         }
-        grid.insertBefore(card, loader);
       }
-
-      var allCards = grid.querySelectorAll('.focusable');
-      var firstNewIndex = allCards.length - newChannels.length - 1;
-      if (firstNewIndex >= 0 && allCards[firstNewIndex]) {
-        Navigation.focus(allCards[firstNewIndex]);
-      }
-    }).catch(function(error) {
-      console.error('[ChannelsPage] Error loading more:', error);
-      loading = false;
-      if (loader) { loader.style.display = 'none'; }
     });
+  }
+
+  /**
+   * Clean up when leaving page
+   */
+  function cleanup() {
+    Virtualizer.destroy(VIRTUALIZER_ID);
   }
 
   // Public API
   return {
     render: render,
-    handleInfiniteScroll: handleInfiniteScroll
+    handleInfiniteScroll: handleInfiniteScroll,
+    cleanup: cleanup
   };
 })();
 

@@ -2,7 +2,7 @@
  * Card Components with Lazy Loading + Aggressive VRAM Cleanup
  * Optimized for Samsung Tizen TV performance (especially low-end models)
  */
-/* globals IntersectionObserver */
+/* globals IntersectionObserver, ImageCache */
 
 var Cards = (function() {
   'use strict';
@@ -31,12 +31,14 @@ var Cards = (function() {
   // Placeholder image (data URI to avoid network request)
   var PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"%3E%3Crect fill="%231e1e1e" width="200" height="300"/%3E%3C/svg%3E';
 
-  // Unload margin (larger than load margin to prevent flicker during navigation)
-  // Images unload when they are this far outside the viewport
-  var UNLOAD_MARGIN = '1200px 1600px'; // Vertical, Horizontal
-
   // Load margin (anticipate navigation)
-  var LOAD_MARGIN = '400px 800px';
+  var LOAD_MARGIN = '300px 600px';
+
+  // Unload margin (further out than load margin to prevent flicker)
+  var UNLOAD_MARGIN = '600px 1200px';
+
+  // Disable aggressive unloading - was causing images to disappear on screen change
+  var ENABLE_UNLOAD = false;
 
   /**
    * Setup image event handlers with proper tracking for cleanup
@@ -118,6 +120,15 @@ var Cards = (function() {
    * Initialize lazy loading observer with optimized settings
    */
   function initLazyLoading() {
+    // Initialize IndexedDB image cache if available
+    if (window.ImageCache && !ImageCache.isAvailable()) {
+      ImageCache.init().then(function(success) {
+        if (success) {
+          console.log('[Cards] IndexedDB image cache initialized');
+        }
+      });
+    }
+
     if (imageObserver || !useIntersectionObserver) { return; }
 
     try {
@@ -140,20 +151,23 @@ var Cards = (function() {
 
       // Observer for UNLOADING images (when leaving viewport area)
       // Uses larger margin so images are unloaded only when far from view
-      unloadObserver = new IntersectionObserver(function(entries) {
-        for (var i = 0; i < entries.length; i++) {
-          var entry = entries[i];
-          // Unload when image leaves the extended viewport
-          if (!entry.isIntersecting) {
-            var img = entry.target;
-            unloadImage(img);
+      // Only create if ENABLE_UNLOAD is true (disabled by default due to issues)
+      if (ENABLE_UNLOAD) {
+        unloadObserver = new IntersectionObserver(function(entries) {
+          for (var i = 0; i < entries.length; i++) {
+            var entry = entries[i];
+            // Unload when image leaves the extended viewport
+            if (!entry.isIntersecting) {
+              var img = entry.target;
+              unloadImage(img);
+            }
           }
-        }
-      }, {
-        root: null,
-        rootMargin: UNLOAD_MARGIN,
-        threshold: 0
-      });
+        }, {
+          root: null,
+          rootMargin: UNLOAD_MARGIN,
+          threshold: 0
+        });
+      }
 
     } catch (e) {
       console.warn('[Cards] IntersectionObserver not available, using direct loading');
@@ -209,13 +223,21 @@ var Cards = (function() {
 
   /**
    * Load an image from data-src (supports reload after unload)
+   * Uses IndexedDB cache for persistent storage
    */
   function loadImage(img) {
     var src = img.dataset.src;
     if (!src) { return; }
 
-    // Skip if already loaded with this src
-    if (img.classList.contains('img-loaded') && img.src === src) { return; }
+    // Skip if already loaded
+    if (img.classList.contains('img-loaded')) { return; }
+
+    // Skip data URIs and blobs - they're already in memory
+    if (src.indexOf('data:') === 0 || src.indexOf('blob:') === 0) {
+      img.src = src;
+      img.classList.add('img-loaded');
+      return;
+    }
 
     // Remove unloaded class if present (reload scenario)
     img.classList.remove('img-unloaded');
@@ -223,31 +245,37 @@ var Cards = (function() {
     // Check if already in browser cache (previously loaded)
     if (imageCache[src]) {
       // Use cached - load immediately (browser has it in memory)
-      img.src = src;
+      img.src = imageCache[src]; // May be blob URL or original URL
       img.classList.remove('img-loading');
       img.classList.add('img-loaded');
-    } else {
-      // First time loading this image
-      img.classList.add('img-loading');
-
-      // Setup handlers before setting src
-      setupImageHandlers(img);
-
-      // Load image
-      img.src = src;
-
-      // Save original src for potential unload/reload
-      originalSrcMap.set(img, src);
-      img.dataset.originalSrc = src;
-
-      // Add to URL cache
-      imageCache[src] = true;
-
-      // Trim cache if needed
-      trimImageCache();
-
-      stats.loaded++;
+      return;
     }
+
+    // First time loading this image
+    img.classList.add('img-loading');
+
+    // Setup handlers before setting src
+    setupImageHandlers(img);
+
+    // Save original src for potential unload/reload
+    originalSrcMap.set(img, src);
+    img.dataset.originalSrc = src;
+
+    // Load image directly (IndexedDB cache disabled for now - CORS issues)
+    img.src = src;
+    imageCache[src] = src;
+    stats.loaded++;
+
+    // Cache in IndexedDB in background (for future loads)
+    if (window.ImageCache && ImageCache.isAvailable()) {
+      // Don't wait for this - just cache in background
+      ImageCache.fetchAndCache(src).catch(function() {
+        // Ignore cache errors
+      });
+    }
+
+    // Trim cache if needed
+    trimImageCache();
   }
 
   /**
@@ -267,18 +295,21 @@ var Cards = (function() {
       originalSrcMap.set(img, src);
 
       if (imageCache[src]) {
-        // Image URL already in cache, load directly
-        img.src = src;
+        // Image URL already in cache, load directly (may be blob URL)
+        img.src = imageCache[src];
         img.classList.add('img-loaded');
       } else {
         // Start with placeholder
         img.src = PLACEHOLDER;
       }
 
-      // Register with both observers for load/unload cycle
-      if (useIntersectionObserver && imageObserver && unloadObserver) {
+      // Register with observers
+      if (useIntersectionObserver && imageObserver) {
         imageObserver.observe(img);   // Load when entering viewport
-        unloadObserver.observe(img);  // Unload when leaving viewport (VRAM cleanup)
+        // Only observe for unload if enabled (disabled by default)
+        if (ENABLE_UNLOAD && unloadObserver) {
+          unloadObserver.observe(img);  // Unload when leaving viewport (VRAM cleanup)
+        }
       } else if (!imageCache[src]) {
         // Fallback: load image directly (no IntersectionObserver)
         setTimeout(function() {
@@ -626,7 +657,14 @@ var Cards = (function() {
    */
   function clearImageCache() {
     imageCache = {};
-    console.log('[Cards] Image cache cleared');
+    console.log('[Cards] In-memory image cache cleared');
+
+    // Also clear IndexedDB cache if available
+    if (window.ImageCache && ImageCache.isAvailable()) {
+      ImageCache.clear().then(function() {
+        console.log('[Cards] IndexedDB image cache cleared');
+      });
+    }
   }
 
   /**
@@ -640,12 +678,26 @@ var Cards = (function() {
    * Get VRAM management stats
    */
   function getStats() {
-    return {
+    var result = {
       loaded: stats.loaded,
       unloaded: stats.unloaded,
       cacheSize: Object.keys(imageCache).length,
       maxCacheSize: MAX_CACHE_SIZE
     };
+
+    // Add IndexedDB stats if available
+    if (window.ImageCache && ImageCache.isAvailable()) {
+      var idbStats = ImageCache.getStats();
+      result.indexedDB = {
+        hits: idbStats.hits,
+        misses: idbStats.misses,
+        hitRate: idbStats.hitRate + '%',
+        sizeMB: idbStats.cacheSizeMB,
+        maxSizeMB: idbStats.maxSizeMB
+      };
+    }
+
+    return result;
   }
 
   /**

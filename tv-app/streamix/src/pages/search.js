@@ -12,7 +12,7 @@ var SearchPage = (function() {
     ['O', 'P', 'Q', 'R', 'S', 'T', 'U'],
     ['V', 'W', 'X', 'Y', 'Z', '0', '1'],
     ['2', '3', '4', '5', '6', '7', '8'],
-    ['9', 'SPACE', 'DEL', 'CLEAR', 'ENTER']
+    ['9', 'SPACE', 'DEL', 'ENTER']
   ];
 
   var query = '';
@@ -99,7 +99,7 @@ var SearchPage = (function() {
         var key = row[k];
         var keyBtn = document.createElement('button');
         keyBtn.className = 'keyboard-key focusable';
-        if (key === 'SPACE' || key === 'DEL' || key === 'CLEAR' || key === 'ENTER') {
+        if (key === 'SPACE' || key === 'DEL' || key === 'ENTER') {
           keyBtn.classList.add('wide');
         }
         keyBtn.tabIndex = 0;
@@ -108,10 +108,10 @@ var SearchPage = (function() {
         var displayLabel = key;
         if (key === 'SPACE') { displayLabel = 'Espaço'; }
         if (key === 'DEL') { displayLabel = '⌫'; }
-        if (key === 'CLEAR') { displayLabel = 'Limpar'; }
         if (key === 'ENTER') { displayLabel = 'Buscar'; }
         keyBtn.textContent = displayLabel;
 
+        // Use click event for keyboard buttons
         keyBtn.addEventListener('click', createKeyPressHandler(key));
         rowDiv.appendChild(keyBtn);
       }
@@ -155,9 +155,6 @@ var SearchPage = (function() {
         break;
       case 'DEL':
         query = query.slice(0, -1);
-        break;
-      case 'CLEAR':
-        query = '';
         break;
       case 'ENTER':
         // Execute search immediately
