@@ -1,17 +1,16 @@
 /**
- * Movies Page
+ * Movies Page with Virtualization
+ * Memory-optimized infinite scroll
  */
-/* globals API, Cards, Navigation, Router */
+/* globals API, Cards, Navigation, Router, Virtualizer */
 
 var MoviesPage = (function() {
   'use strict';
 
+  var VIRTUALIZER_ID = 'movies-grid';
   var categories = [];
-  var movies = [];
   var selectedCategory = null;
   var offset = 0;
-  var hasMore = true;
-  var loading = false;
   var LIMIT = 20;
 
   /**
@@ -21,9 +20,21 @@ var MoviesPage = (function() {
     return function() {
       selectedCategory = catId;
       offset = 0;
-      movies = [];
-      hasMore = true;
-      loadMoreMovies().then(renderContent);
+
+      // Reset virtualizer
+      Virtualizer.reset(VIRTUALIZER_ID);
+
+      loadMoreMovies().then(function(result) {
+        if (result && result.items) {
+          Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+          var grid = document.getElementById('movies-grid');
+          if (grid) {
+            grid.innerHTML = '';
+            Virtualizer.render(VIRTUALIZER_ID, grid, 0);
+            focusFirstItem(grid);
+          }
+        }
+      });
     };
   }
 
@@ -37,32 +48,19 @@ var MoviesPage = (function() {
   }
 
   /**
-   * Render the movies page
+   * Focus first focusable item in container
    */
-  function render() {
-    var main = document.getElementById('main-content');
-    main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
-    // Reset state
-    movies = [];
-    offset = 0;
-    hasMore = true;
-    loading = false;
-
-    // Fetch categories first, then movies
-    API.getCategories('movie').then(function(data) {
-      categories = data || [];
-      return loadMoreMovies();
-    }).then(function() {
-      renderContent();
-    }).catch(function(error) {
-      console.error('[MoviesPage] Error loading data:', error);
-      main.innerHTML = '<div class="safe-area"><p class="text-secondary">Erro ao carregar filmes</p></div>';
-    });
+  function focusFirstItem(container) {
+    setTimeout(function() {
+      var firstFocusable = container.querySelector('.focusable');
+      if (firstFocusable) {
+        Navigation.focus(firstFocusable);
+      }
+    }, 100);
   }
 
   /**
-   * Load more movies
+   * Load more movies from API
    */
   function loadMoreMovies() {
     var params = {
@@ -76,10 +74,52 @@ var MoviesPage = (function() {
 
     return API.getMovies(params).then(function(data) {
       var newMovies = data.movies || [];
-      movies = movies.concat(newMovies);
-      hasMore = data.has_more;
       offset += LIMIT;
-      return newMovies;
+
+      return {
+        items: newMovies,
+        hasMore: data.has_more
+      };
+    });
+  }
+
+  /**
+   * Render the movies page
+   */
+  function render() {
+    var main = document.getElementById('main-content');
+    main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    // Destroy previous virtualizer if exists
+    Virtualizer.destroy(VIRTUALIZER_ID);
+
+    // Reset state
+    offset = 0;
+    selectedCategory = null;
+
+    // Create new virtualizer
+    Virtualizer.create(VIRTUALIZER_ID, {
+      createCard: function(movie, onClick) {
+        return Cards.createPosterCard(movie, createMovieClickHandler(movie));
+      },
+      onClick: createMovieClickHandler,
+      itemWidth: 240, // 220px card + 20px gap
+      pageType: 'movies',
+      onLoadMore: loadMoreMovies
+    });
+
+    // Fetch categories first, then movies
+    API.getCategories('movie').then(function(data) {
+      categories = data || [];
+      return loadMoreMovies();
+    }).then(function(result) {
+      if (result && result.items) {
+        Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+      }
+      renderContent();
+    }).catch(function(error) {
+      console.error('[MoviesPage] Error loading data:', error);
+      main.innerHTML = '<div class="safe-area"><p class="text-secondary">Erro ao carregar filmes</p></div>';
     });
   }
 
@@ -122,7 +162,8 @@ var MoviesPage = (function() {
     }
 
     // Movies grid
-    if (movies.length === 0) {
+    var virtualizer = Virtualizer.get(VIRTUALIZER_ID);
+    if (!virtualizer || virtualizer.data.length === 0) {
       container.appendChild(Cards.createEmptyState('Nenhum filme encontrado'));
     } else {
       var grid = document.createElement('div');
@@ -130,91 +171,52 @@ var MoviesPage = (function() {
       grid.id = 'movies-grid';
       grid.setAttribute('data-nav-section', 'movies');
 
-      for (var j = 0; j < movies.length; j++) {
-        var movie = movies[j];
-        var card = Cards.createPosterCard(movie, createMovieClickHandler(movie));
-        // Mark last card for infinite scroll
-        if (j === movies.length - 1 && hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', 'movies');
-        }
-        grid.appendChild(card);
-      }
-
-      // Add loading indicator (hidden by default)
-      var loader = document.createElement('div');
-      loader.className = 'grid-loader';
-      loader.id = 'movies-loader';
-      loader.innerHTML = '<div class="spinner-small"></div>';
-      loader.style.display = 'none';
-      grid.appendChild(loader);
-
       container.appendChild(grid);
+
+      // Render visible items
+      Virtualizer.render(VIRTUALIZER_ID, grid, 0);
     }
 
     main.appendChild(container);
 
     // Focus first interactive element
-    setTimeout(function() {
-      var firstFocusable = main.querySelector('.focusable');
-      if (firstFocusable) {
-        Navigation.focus(firstFocusable);
-      }
-    }, 100);
+    focusFirstItem(main);
   }
 
   /**
    * Handle infinite scroll - called by navigation when at last item
    */
   function handleInfiniteScroll() {
-    if (loading || !hasMore) { return; }
-
-    loading = true;
-
-    // Show loader
-    var loader = document.getElementById('movies-loader');
-    if (loader) { loader.style.display = 'flex'; }
-
-    // Remove last-item from previous last
-    var prevLast = document.querySelector('[data-page-type="movies"][data-last-item="true"]');
-    if (prevLast) { prevLast.removeAttribute('data-last-item'); }
-
-    loadMoreMovies().then(function(newMovies) {
-      loading = false;
-      if (loader) { loader.style.display = 'none'; }
-
-      var grid = document.getElementById('movies-grid');
-      if (!grid || newMovies.length === 0) { return; }
-
-      // Append new cards
-      for (var i = 0; i < newMovies.length; i++) {
-        var movie = newMovies[i];
-        var card = Cards.createPosterCard(movie, createMovieClickHandler(movie));
-        // Mark new last card
-        if (i === newMovies.length - 1 && hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', 'movies');
+    return Virtualizer.handleInfiniteScroll(VIRTUALIZER_ID).then(function(count) {
+      if (count > 0) {
+        // Focus first new item
+        var grid = document.getElementById('movies-grid');
+        if (grid) {
+          var stats = Virtualizer.getStats(VIRTUALIZER_ID);
+          if (stats) {
+            var allCards = grid.querySelectorAll('.card-poster');
+            var targetIndex = allCards.length - count;
+            if (targetIndex >= 0 && allCards[targetIndex]) {
+              Navigation.focus(allCards[targetIndex]);
+            }
+          }
         }
-        grid.insertBefore(card, loader);
       }
-
-      // Focus first new item
-      var allCards = grid.querySelectorAll('.focusable');
-      var firstNewIndex = allCards.length - newMovies.length - 1;
-      if (firstNewIndex >= 0 && allCards[firstNewIndex]) {
-        Navigation.focus(allCards[firstNewIndex]);
-      }
-    }).catch(function(error) {
-      console.error('[MoviesPage] Error loading more:', error);
-      loading = false;
-      if (loader) { loader.style.display = 'none'; }
     });
+  }
+
+  /**
+   * Clean up when leaving page
+   */
+  function cleanup() {
+    Virtualizer.destroy(VIRTUALIZER_ID);
   }
 
   // Public API
   return {
     render: render,
-    handleInfiniteScroll: handleInfiniteScroll
+    handleInfiniteScroll: handleInfiniteScroll,
+    cleanup: cleanup
   };
 })();
 

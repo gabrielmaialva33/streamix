@@ -1,17 +1,16 @@
 /**
- * Series Page
+ * Series Page with Virtualization
+ * Memory-optimized infinite scroll
  */
-/* globals API, Cards, Navigation, Router */
+/* globals API, Cards, Navigation, Router, Virtualizer */
 
 var SeriesPage = (function() {
   'use strict';
 
+  var VIRTUALIZER_ID = 'series-grid';
   var categories = [];
-  var seriesList = [];
   var selectedCategory = null;
   var offset = 0;
-  var hasMore = true;
-  var loading = false;
   var LIMIT = 20;
 
   /**
@@ -21,9 +20,21 @@ var SeriesPage = (function() {
     return function() {
       selectedCategory = catId;
       offset = 0;
-      seriesList = [];
-      hasMore = true;
-      loadMoreSeries().then(renderContent);
+
+      // Reset virtualizer
+      Virtualizer.reset(VIRTUALIZER_ID);
+
+      loadMoreSeries().then(function(result) {
+        if (result && result.items) {
+          Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+          var grid = document.getElementById('series-grid');
+          if (grid) {
+            grid.innerHTML = '';
+            Virtualizer.render(VIRTUALIZER_ID, grid, 0);
+            focusFirstItem(grid);
+          }
+        }
+      });
     };
   }
 
@@ -37,32 +48,19 @@ var SeriesPage = (function() {
   }
 
   /**
-   * Render the series page
+   * Focus first focusable item in container
    */
-  function render() {
-    var main = document.getElementById('main-content');
-    main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
-    // Reset state
-    seriesList = [];
-    offset = 0;
-    hasMore = true;
-    loading = false;
-
-    // Fetch categories first, then series
-    API.getCategories('series').then(function(data) {
-      categories = data || [];
-      return loadMoreSeries();
-    }).then(function() {
-      renderContent();
-    }).catch(function(error) {
-      console.error('[SeriesPage] Error loading data:', error);
-      main.innerHTML = '<div class="safe-area"><p class="text-secondary">Erro ao carregar séries</p></div>';
-    });
+  function focusFirstItem(container) {
+    setTimeout(function() {
+      var firstFocusable = container.querySelector('.focusable');
+      if (firstFocusable) {
+        Navigation.focus(firstFocusable);
+      }
+    }, 100);
   }
 
   /**
-   * Load more series
+   * Load more series from API
    */
   function loadMoreSeries() {
     var params = {
@@ -76,10 +74,52 @@ var SeriesPage = (function() {
 
     return API.getSeries(params).then(function(data) {
       var newSeries = data.series || [];
-      seriesList = seriesList.concat(newSeries);
-      hasMore = data.has_more;
       offset += LIMIT;
-      return newSeries;
+
+      return {
+        items: newSeries,
+        hasMore: data.has_more
+      };
+    });
+  }
+
+  /**
+   * Render the series page
+   */
+  function render() {
+    var main = document.getElementById('main-content');
+    main.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+    // Destroy previous virtualizer if exists
+    Virtualizer.destroy(VIRTUALIZER_ID);
+
+    // Reset state
+    offset = 0;
+    selectedCategory = null;
+
+    // Create new virtualizer
+    Virtualizer.create(VIRTUALIZER_ID, {
+      createCard: function(series, onClick) {
+        return Cards.createPosterCard(series, createSeriesClickHandler(series));
+      },
+      onClick: createSeriesClickHandler,
+      itemWidth: 240, // 220px card + 20px gap
+      pageType: 'series',
+      onLoadMore: loadMoreSeries
+    });
+
+    // Fetch categories first, then series
+    API.getCategories('series').then(function(data) {
+      categories = data || [];
+      return loadMoreSeries();
+    }).then(function(result) {
+      if (result && result.items) {
+        Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+      }
+      renderContent();
+    }).catch(function(error) {
+      console.error('[SeriesPage] Error loading data:', error);
+      main.innerHTML = '<div class="safe-area"><p class="text-secondary">Erro ao carregar séries</p></div>';
     });
   }
 
@@ -122,7 +162,8 @@ var SeriesPage = (function() {
     }
 
     // Series grid
-    if (seriesList.length === 0) {
+    var virtualizer = Virtualizer.get(VIRTUALIZER_ID);
+    if (!virtualizer || virtualizer.data.length === 0) {
       container.appendChild(Cards.createEmptyState('Nenhuma série encontrada'));
     } else {
       var grid = document.createElement('div');
@@ -130,86 +171,52 @@ var SeriesPage = (function() {
       grid.id = 'series-grid';
       grid.setAttribute('data-nav-section', 'series');
 
-      for (var j = 0; j < seriesList.length; j++) {
-        var seriesItem = seriesList[j];
-        var card = Cards.createPosterCard(seriesItem, createSeriesClickHandler(seriesItem));
-        // Mark last card for infinite scroll
-        if (j === seriesList.length - 1 && hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', 'series');
-        }
-        grid.appendChild(card);
-      }
-
-      // Add loading indicator
-      var loader = document.createElement('div');
-      loader.className = 'grid-loader';
-      loader.id = 'series-loader';
-      loader.innerHTML = '<div class="spinner-small"></div>';
-      loader.style.display = 'none';
-      grid.appendChild(loader);
-
       container.appendChild(grid);
+
+      // Render visible items
+      Virtualizer.render(VIRTUALIZER_ID, grid, 0);
     }
 
     main.appendChild(container);
 
     // Focus first interactive element
-    setTimeout(function() {
-      var firstFocusable = main.querySelector('.focusable');
-      if (firstFocusable) {
-        Navigation.focus(firstFocusable);
-      }
-    }, 100);
+    focusFirstItem(main);
   }
 
   /**
-   * Handle infinite scroll
+   * Handle infinite scroll - called by navigation when at last item
    */
   function handleInfiniteScroll() {
-    if (loading || !hasMore) { return; }
-
-    loading = true;
-
-    var loader = document.getElementById('series-loader');
-    if (loader) { loader.style.display = 'flex'; }
-
-    var prevLast = document.querySelector('[data-page-type="series"][data-last-item="true"]');
-    if (prevLast) { prevLast.removeAttribute('data-last-item'); }
-
-    loadMoreSeries().then(function(newSeries) {
-      loading = false;
-      if (loader) { loader.style.display = 'none'; }
-
-      var grid = document.getElementById('series-grid');
-      if (!grid || newSeries.length === 0) { return; }
-
-      for (var i = 0; i < newSeries.length; i++) {
-        var seriesItem = newSeries[i];
-        var card = Cards.createPosterCard(seriesItem, createSeriesClickHandler(seriesItem));
-        if (i === newSeries.length - 1 && hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', 'series');
+    return Virtualizer.handleInfiniteScroll(VIRTUALIZER_ID).then(function(count) {
+      if (count > 0) {
+        // Focus first new item
+        var grid = document.getElementById('series-grid');
+        if (grid) {
+          var stats = Virtualizer.getStats(VIRTUALIZER_ID);
+          if (stats) {
+            var allCards = grid.querySelectorAll('.card-poster');
+            var targetIndex = allCards.length - count;
+            if (targetIndex >= 0 && allCards[targetIndex]) {
+              Navigation.focus(allCards[targetIndex]);
+            }
+          }
         }
-        grid.insertBefore(card, loader);
       }
-
-      var allCards = grid.querySelectorAll('.focusable');
-      var firstNewIndex = allCards.length - newSeries.length - 1;
-      if (firstNewIndex >= 0 && allCards[firstNewIndex]) {
-        Navigation.focus(allCards[firstNewIndex]);
-      }
-    }).catch(function(error) {
-      console.error('[SeriesPage] Error loading more:', error);
-      loading = false;
-      if (loader) { loader.style.display = 'none'; }
     });
+  }
+
+  /**
+   * Clean up when leaving page
+   */
+  function cleanup() {
+    Virtualizer.destroy(VIRTUALIZER_ID);
   }
 
   // Public API
   return {
     render: render,
-    handleInfiniteScroll: handleInfiniteScroll
+    handleInfiniteScroll: handleInfiniteScroll,
+    cleanup: cleanup
   };
 })();
 
