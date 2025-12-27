@@ -8,19 +8,20 @@ end
 
 # Global provider configuration (optional)
 # Set GLOBAL_PROVIDER_ENABLED=true to enable
-if env!("GLOBAL_PROVIDER_ENABLED", :boolean, false) do
+# Use System.get_env directly for runtime configuration
+if System.get_env("GLOBAL_PROVIDER_ENABLED") == "true" do
   config :streamix, :global_provider,
     enabled: true,
-    name: env!("GLOBAL_PROVIDER_NAME", :string, "Streamix Global"),
-    url: env!("GLOBAL_PROVIDER_URL", :string),
-    username: env!("GLOBAL_PROVIDER_USERNAME", :string),
-    password: env!("GLOBAL_PROVIDER_PASSWORD", :string)
+    name: System.get_env("GLOBAL_PROVIDER_NAME") || "Streamix Global",
+    url: System.get_env("GLOBAL_PROVIDER_URL"),
+    username: System.get_env("GLOBAL_PROVIDER_USERNAME"),
+    password: System.get_env("GLOBAL_PROVIDER_PASSWORD")
 else
   config :streamix, :global_provider, enabled: false
 end
 
 # TMDB API configuration (optional, for enriched movie metadata)
-if tmdb_token = env!("TMDB_API_TOKEN", :string, nil) do
+if tmdb_token = System.get_env("TMDB_API_TOKEN") do
   config :streamix, :tmdb,
     enabled: true,
     api_token: tmdb_token
