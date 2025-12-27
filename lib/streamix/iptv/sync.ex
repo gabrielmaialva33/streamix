@@ -20,6 +20,7 @@ defmodule Streamix.Iptv.Sync do
     Provider,
     Season,
     Series,
+    TmdbClient,
     WatchHistory,
     XtreamClient
   }
@@ -682,9 +683,12 @@ defmodule Streamix.Iptv.Sync do
   defp update_series_from_info(_series, nil), do: :ok
 
   defp update_series_from_info(series, info) when is_map(info) do
+    # First, try to get tmdb_id from provider response, or search TMDB if missing
+    tmdb_id = resolve_tmdb_id(series, info)
+
     attrs =
       %{}
-      |> maybe_update(:tmdb_id, to_string_or_nil(info["tmdb_id"]), series.tmdb_id)
+      |> maybe_update(:tmdb_id, tmdb_id, series.tmdb_id)
       |> maybe_update(:plot, info["plot"], series.plot)
       |> maybe_update(:cast, info["cast"], series.cast)
       |> maybe_update(:director, info["director"], series.director)
@@ -702,6 +706,36 @@ defmodule Streamix.Iptv.Sync do
   end
 
   defp update_series_from_info(_series, _info), do: :ok
+
+  # Try to resolve tmdb_id from provider response, or search TMDB by name
+  defp resolve_tmdb_id(series, info) do
+    case to_string_or_nil(info["tmdb_id"]) do
+      nil ->
+        # Provider doesn't have tmdb_id, try searching TMDB by name
+        search_tmdb_for_series(series.name, series.year)
+
+      "" ->
+        search_tmdb_for_series(series.name, series.year)
+
+      id ->
+        id
+    end
+  end
+
+  defp search_tmdb_for_series(name, year) when is_binary(name) do
+    opts = if year, do: [year: year], else: []
+
+    case TmdbClient.search_series(name, opts) do
+      {:ok, %{"results" => [first | _]}} ->
+        # Take the first result's ID
+        to_string(first["id"])
+
+      _ ->
+        nil
+    end
+  end
+
+  defp search_tmdb_for_series(_, _), do: nil
 
   # Only update if new value is present and current value is nil
   defp maybe_update(attrs, _key, nil, _current), do: attrs

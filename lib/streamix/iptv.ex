@@ -566,14 +566,16 @@ defmodule Streamix.Iptv do
 
   @doc """
   Gets a series with seasons/episodes, syncing on-demand if needed.
-  If the series has no episodes, syncs from the API first.
+  Syncs from the API if the series has no episodes or is missing tmdb_id.
   Returns {:ok, series} or {:error, reason}.
   """
   def get_series_with_sync!(id) do
     series = get_series!(id)
 
-    # Sync if no episodes yet
-    if series.episode_count == 0 do
+    # Sync if no episodes yet OR missing tmdb_id (for TMDB enrichment)
+    needs_sync = series.episode_count == 0 or is_nil(series.tmdb_id) or series.tmdb_id == ""
+
+    if needs_sync do
       case Sync.sync_series_details(series) do
         {:ok, _} -> :ok
         {:error, _reason} -> :ok

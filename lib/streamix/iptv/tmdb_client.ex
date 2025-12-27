@@ -86,6 +86,28 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   @doc """
+  Searches for a TV series by title and optionally year.
+  Returns {:ok, results} or {:error, reason}.
+  """
+  def search_series(query, opts \\ []) do
+    if enabled?() do
+      year = opts[:year]
+      query_encoded = URI.encode_www_form(query)
+
+      url =
+        if year do
+          "#{@base_url}/search/tv?query=#{query_encoded}&first_air_date_year=#{year}&language=pt-BR"
+        else
+          "#{@base_url}/search/tv?query=#{query_encoded}&language=pt-BR"
+        end
+
+      do_request(url)
+    else
+      {:error, :tmdb_not_configured}
+    end
+  end
+
+  @doc """
   Builds a full image URL from a TMDB image path.
 
   Sizes:
