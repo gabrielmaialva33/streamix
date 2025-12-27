@@ -42,12 +42,12 @@ COPY priv priv
 COPY lib lib
 COPY assets assets
 
-# Compile assets
+# Compile the application first (generates phoenix-colocated hooks)
+RUN mix compile
+
+# Setup and compile assets (after app compilation for colocated hooks)
 RUN mix assets.setup
 RUN mix assets.deploy
-
-# Compile the release
-RUN mix compile
 
 # Build release
 COPY config/runtime.exs config/
