@@ -23,6 +23,9 @@ var Virtualizer = (function() {
   // Active virtualizers by page
   var instances = {};
 
+  // RAF throttling for updateVisibleRange (max once per frame)
+  var pendingUpdates = {};
+
   /**
    * Create a new virtualizer instance
    * @param {string} id - Unique identifier for this virtualizer
@@ -200,14 +203,34 @@ var Virtualizer = (function() {
   /**
    * Handle scroll/navigation - update visible items
    * Called when user navigates to edges
+   * Throttled to max once per frame via requestAnimationFrame
    */
   function updateVisibleRange(id, direction) {
+    // Throttle: skip if already pending for this id
+    var pendingKey = id + '-' + direction;
+    if (pendingUpdates[pendingKey]) { return; }
+
+    pendingUpdates[pendingKey] = true;
+
+    requestAnimationFrame(function() {
+      delete pendingUpdates[pendingKey];
+      doUpdateVisibleRange(id, direction);
+    });
+  }
+
+  /**
+   * Actual implementation of updateVisibleRange (called by RAF)
+   */
+  function doUpdateVisibleRange(id, direction) {
     var instance = instances[id];
     if (!instance || !instance.container) { return; }
 
     if (direction === 'forward') {
       // Moving forward - render more items ahead
       var newEnd = Math.min(instance.lastRenderedIndex + config.bufferItems, instance.data.length);
+
+      // Use DocumentFragment for batch insertion
+      var fragment = document.createDocumentFragment();
 
       for (var i = instance.lastRenderedIndex + 1; i < newEnd; i++) {
         if (!instance.renderedItems.has(i) && instance.data[i]) {
@@ -220,15 +243,21 @@ var Virtualizer = (function() {
             card.setAttribute('data-virtualizer', id);
           }
 
-          var loader = instance.container.querySelector('.grid-loader');
-          if (loader) {
-            instance.container.insertBefore(card, loader);
-          } else {
-            instance.container.appendChild(card);
-          }
+          fragment.appendChild(card);
           instance.renderedItems.set(i, card);
         }
       }
+
+      // Single DOM insertion
+      if (fragment.childNodes.length > 0) {
+        var loader = instance.container.querySelector('.grid-loader');
+        if (loader) {
+          instance.container.insertBefore(fragment, loader);
+        } else {
+          instance.container.appendChild(fragment);
+        }
+      }
+
       instance.lastRenderedIndex = newEnd - 1;
 
       // Cleanup old items from the beginning if too many

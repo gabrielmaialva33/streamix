@@ -209,6 +209,15 @@ var Navigation = (function() {
     // Add keyboard event listener
     document.addEventListener('keydown', handleKeyDown, true);
 
+    // Reset throttle on keyup (user released key)
+    document.addEventListener('keyup', function(event) {
+      var keyCode = event.keyCode;
+      if (keyCode === KEY_CODES.LEFT || keyCode === KEY_CODES.UP ||
+          keyCode === KEY_CODES.RIGHT || keyCode === KEY_CODES.DOWN) {
+        resetInputThrottle();
+      }
+    }, true);
+
     // Track focus on any focusable element click
     document.addEventListener('click', handleClick);
 
@@ -324,7 +333,9 @@ var Navigation = (function() {
   /**
    * Move focus in a direction
    */
-  function moveFocus(direction) {
+  function moveFocus(direction, skip) {
+    skip = skip || 0; // Number of items to skip for fast navigation
+
     if (!currentFocus) {
       var first = document.querySelector(config.focusableSelector);
       if (first) { focus(first); }
@@ -337,7 +348,7 @@ var Navigation = (function() {
 
     // For horizontal navigation in a row, use row-based navigation with wrap-around
     if (isHorizontal && currentRow) {
-      var rowResult = navigateWithinRow(currentRow, direction);
+      var rowResult = navigateWithinRow(currentRow, direction, skip);
       if (rowResult) {
         focus(rowResult);
         scrollIntoViewIfNeeded(rowResult);
@@ -459,7 +470,8 @@ var Navigation = (function() {
   /**
    * Navigate within a content row with wrap-around or infinite scroll
    */
-  function navigateWithinRow(row, direction) {
+  function navigateWithinRow(row, direction, skip) {
+    skip = skip || 0;
     var items = row.querySelectorAll(config.focusableSelector);
     if (items.length === 0) { return null; }
 
@@ -474,8 +486,11 @@ var Navigation = (function() {
 
     if (currentIndex === -1) { return null; }
 
+    // Calculate step (1 + skip items)
+    var step = 1 + skip;
+
     // Check if at last item and going right - trigger infinite scroll or wrap
-    if (direction === 'right' && currentIndex === items.length - 1) {
+    if (direction === 'right' && currentIndex >= items.length - 1) {
       // Check for home page row infinite scroll
       var rowType = currentFocus.getAttribute('data-row-type');
       if (rowType && currentFocus.getAttribute('data-last-item') === 'true') {
@@ -490,10 +505,12 @@ var Navigation = (function() {
 
     var nextIndex;
     if (direction === 'right') {
-      nextIndex = currentIndex + 1;
+      nextIndex = Math.min(currentIndex + step, items.length - 1);
     } else if (direction === 'left' && currentIndex === 0) {
       // Wrap to last
       nextIndex = items.length - 1;
+    } else if (direction === 'left') {
+      nextIndex = Math.max(currentIndex - step, 0);
     } else {
       nextIndex = currentIndex - 1;
     }
