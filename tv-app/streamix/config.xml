@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://streamix.app/tv" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="EI8qhrd7xh.streamix" package="EI8qhrd7xh" required_version="6.0"/>
+    <content src="index.html"/>
+
+    <!-- Screen features -->
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+
+    <!-- Network access -->
+    <access origin="*" subdomains="true"/>
+
+    <!-- Privileges -->
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.audio"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.window"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <tizen:privilege name="http://tizen.org/privilege/network.get"/>
+    <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
+
+    <!-- App info -->
+    <icon src="icon.png"/>
+    <name>Streamix</name>
+    <description>IPTV Streaming App for Samsung Smart TV</description>
+    <author>Streamix</author>
+
+    <!-- TV profile -->
+    <tizen:profile name="tv-samsung"/>
+
+    <!-- Settings -->
+    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+
+    <!-- Background category for media playback -->
+    <tizen:background-category value="media"/>
+
+    <!-- Metadata -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="6.0"/>
+</widget>

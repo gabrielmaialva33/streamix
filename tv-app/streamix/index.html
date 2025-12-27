@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' http: https: data:; media-src 'self' http: https:;">
+  <title>Streamix</title>
+  <link rel="stylesheet" href="css/tv.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <nav id="sidebar" class="sidebar">
+      <div class="sidebar-logo">Streamix</div>
+      <div class="sidebar-nav" id="sidebar-nav"></div>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main-with-sidebar">
+      <div class="loading">
+        <div class="spinner"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts - External files only (Tizen CSP requirement) -->
+  <!-- Streaming Libraries -->
+  <script src="lib/hls.min.js"></script>
+  <script src="lib/dash.all.min.js"></script>
+
+  <script src="src/utils/tizen.js"></script>
+  <script src="src/utils/audio.js"></script>
+  <script src="src/utils/navigation.js"></script>
+  <script src="src/utils/api.js"></script>
+  <script src="src/utils/router.js"></script>
+  <script src="src/components/sidebar.js"></script>
+  <script src="src/components/cards.js"></script>
+  <script src="src/components/hero.js"></script>
+  <script src="src/pages/home.js"></script>
+  <script src="src/pages/movies.js"></script>
+  <script src="src/pages/series.js"></script>
+  <script src="src/pages/channels.js"></script>
+  <script src="src/pages/search.js"></script>
+  <script src="src/pages/movie-detail.js"></script>
+  <script src="src/pages/series-detail.js"></script>
+  <script src="src/pages/player.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>
