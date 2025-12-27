@@ -6,7 +6,7 @@
 var API = (function() {
   'use strict';
 
-  var BASE_URL = 'http://192.168.1.4:4000/api/v1/catalog';
+  var BASE_URL = 'https://streamix.mahina.cloud/api/v1/catalog';
 
   // Simple cache
   var cache = {};
