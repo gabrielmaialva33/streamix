@@ -53,58 +53,70 @@ var Cards = (function() {
     }
   }
 
+  // Flag to track if IntersectionObserver is available
+  var useIntersectionObserver = typeof IntersectionObserver !== 'undefined';
+
   /**
    * Initialize lazy loading observer with optimized settings
    */
   function initLazyLoading() {
-    if (imageObserver) { return; }
+    if (imageObserver || !useIntersectionObserver) { return; }
 
-    // Use Intersection Observer for lazy loading
-    // Larger margins for TV: 400px vertical, 800px horizontal (anticipate navigation)
-    imageObserver = new IntersectionObserver(function(entries) {
-      for (var i = 0; i < entries.length; i++) {
-        var entry = entries[i];
-        if (entry.isIntersecting) {
-          var img = entry.target;
-          var src = img.dataset.src;
-
-          if (src) {
-            // Check if already in cache
-            if (imageCache[src]) {
-              // Use cached - load immediately
-              img.src = src;
-              img.classList.remove('img-loading');
-              img.classList.add('img-loaded');
-            } else {
-              // Add loading class for transition
-              img.classList.add('img-loading');
-
-              // Load image
-              img.src = src;
-              img.removeAttribute('data-src');
-
-              // Add to cache
-              imageCache[src] = true;
-
-              // Handle load/error
-              img.onload = handleImageLoad;
-              img.onerror = handleImageError;
-
-              // Trim cache if needed
-              trimImageCache();
-            }
+    try {
+      // Use Intersection Observer for lazy loading
+      // Larger margins for TV: 400px vertical, 800px horizontal (anticipate navigation)
+      imageObserver = new IntersectionObserver(function(entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          if (entry.isIntersecting) {
+            var img = entry.target;
+            loadImage(img);
+            imageObserver.unobserve(img);
           }
-
-          // Stop observing
-          imageObserver.unobserve(img);
         }
-      }
-    }, {
-      root: null,
-      // Larger margins: 400px vertical, 800px horizontal for TV navigation
-      rootMargin: '400px 800px',
-      threshold: 0.01
-    });
+      }, {
+        root: null,
+        // Larger margins: 400px vertical, 800px horizontal for TV navigation
+        rootMargin: '400px 800px',
+        threshold: 0.01
+      });
+    } catch (e) {
+      console.warn('[Cards] IntersectionObserver not available, using direct loading');
+      useIntersectionObserver = false;
+    }
+  }
+
+  /**
+   * Load an image from data-src
+   */
+  function loadImage(img) {
+    var src = img.dataset.src;
+    if (!src) { return; }
+
+    // Check if already in cache
+    if (imageCache[src]) {
+      // Use cached - load immediately
+      img.src = src;
+      img.classList.remove('img-loading');
+      img.classList.add('img-loaded');
+    } else {
+      // Add loading class for transition
+      img.classList.add('img-loading');
+
+      // Load image
+      img.src = src;
+      img.removeAttribute('data-src');
+
+      // Add to cache
+      imageCache[src] = true;
+
+      // Handle load/error
+      img.onload = handleImageLoad;
+      img.onerror = handleImageError;
+
+      // Trim cache if needed
+      trimImageCache();
+    }
   }
 
   /**
@@ -121,12 +133,20 @@ var Cards = (function() {
       if (imageCache[src]) {
         // Image already loaded, use directly
         img.src = src;
-        img.classList.add('loaded');
-      } else {
-        // Use placeholder and lazy load
+        img.classList.add('img-loaded');
+      } else if (useIntersectionObserver && imageObserver) {
+        // Use placeholder and lazy load with IntersectionObserver
         img.src = PLACEHOLDER;
         img.dataset.src = src;
         imageObserver.observe(img);
+      } else {
+        // Fallback: load image directly (no IntersectionObserver)
+        img.src = PLACEHOLDER;
+        img.dataset.src = src;
+        // Use setTimeout to defer loading slightly (avoid blocking render)
+        setTimeout(function() {
+          loadImage(img);
+        }, 50);
       }
     } else {
       img.src = PLACEHOLDER;
