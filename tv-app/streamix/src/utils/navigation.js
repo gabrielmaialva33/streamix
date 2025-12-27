@@ -66,9 +66,10 @@ var Navigation = (function() {
     }
 
     // Determine current interval based on repeat count
-    var currentInterval = inputThrottle.keyRepeatCount >= inputThrottle.fastThreshold
-      ? inputThrottle.fastInterval
-      : inputThrottle.minInterval;
+    var currentInterval = inputThrottle.minInterval;
+    if (inputThrottle.keyRepeatCount >= inputThrottle.fastThreshold) {
+      currentInterval = inputThrottle.fastInterval;
+    }
 
     // Check if enough time has passed
     if (timeSinceLastKey < currentInterval) {
