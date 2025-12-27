@@ -360,24 +360,29 @@ defmodule Streamix.Iptv do
 
   defp maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
        when is_binary(tmdb_id) and tmdb_id != "" do
-    # Check if we're missing key metadata
-    has_plot = not is_nil(xtream_attrs[:plot]) or not is_nil(movie.plot)
-    has_cast = not is_nil(xtream_attrs[:cast]) or not is_nil(movie.cast)
-    has_director = not is_nil(xtream_attrs[:director]) or not is_nil(movie.director)
-
-    if has_plot and has_cast and has_director do
-      # Already have enough data
-      %{}
+    if needs_tmdb_enrichment?(movie, xtream_attrs) do
+      fetch_from_tmdb(tmdb_id)
     else
-      # Try to enrich from TMDB
-      case TmdbClient.get_movie(tmdb_id) do
-        {:ok, data} -> TmdbClient.parse_movie_response(data)
-        _ -> %{}
-      end
+      %{}
     end
   end
 
   defp maybe_fetch_from_tmdb(_movie, _xtream_attrs, _tmdb_id), do: %{}
+
+  defp needs_tmdb_enrichment?(movie, xtream_attrs) do
+    missing_plot = is_nil(xtream_attrs[:plot]) and is_nil(movie.plot)
+    missing_cast = is_nil(xtream_attrs[:cast]) and is_nil(movie.cast)
+    missing_director = is_nil(xtream_attrs[:director]) and is_nil(movie.director)
+
+    missing_plot or missing_cast or missing_director
+  end
+
+  defp fetch_from_tmdb(tmdb_id) do
+    case TmdbClient.get_movie(tmdb_id) do
+      {:ok, data} -> TmdbClient.parse_movie_response(data)
+      _ -> %{}
+    end
+  end
 
   defp update_movie(movie, attrs) when attrs == %{}, do: {:ok, movie}
 

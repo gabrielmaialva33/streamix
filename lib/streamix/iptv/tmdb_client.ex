@@ -119,39 +119,31 @@ defmodule Streamix.Iptv.TmdbClient do
       {"Accept", "application/json"}
     ]
 
-    case Req.get(url, headers: headers, receive_timeout: @timeout) do
-      {:ok, %{status: 200, body: body}} when is_map(body) ->
-        {:ok, body}
-
-      {:ok, %{status: 200, body: body}} when is_binary(body) ->
-        Jason.decode(body)
-
-      {:ok, %{status: 429} = response} ->
-        # Rate limited - retry with exponential backoff
-        if retries < @max_retries do
-          retry_after = get_retry_after(response)
-          Process.sleep(retry_after)
-          do_request(url, retries + 1)
-        else
-          {:error, :rate_limited}
-        end
-
-      {:ok, %{status: 404}} ->
-        {:error, :not_found}
-
-      {:ok, %{status: 401}} ->
-        {:error, :unauthorized}
-
-      {:ok, %{status: status}} ->
-        {:error, {:http_error, status}}
-
-      {:error, %Req.TransportError{reason: reason}} ->
-        {:error, {:transport_error, reason}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    url
+    |> Req.get(headers: headers, receive_timeout: @timeout)
+    |> handle_response(url, retries)
   end
+
+  defp handle_response({:ok, %{status: 200, body: body}}, _url, _retries) when is_map(body) do
+    {:ok, body}
+  end
+
+  defp handle_response({:ok, %{status: 200, body: body}}, _url, _retries) when is_binary(body) do
+    Jason.decode(body)
+  end
+
+  defp handle_response({:ok, %{status: 429} = response}, url, retries) when retries < @max_retries do
+    retry_after = get_retry_after(response)
+    Process.sleep(retry_after)
+    do_request(url, retries + 1)
+  end
+
+  defp handle_response({:ok, %{status: 429}}, _url, _retries), do: {:error, :rate_limited}
+  defp handle_response({:ok, %{status: 404}}, _url, _retries), do: {:error, :not_found}
+  defp handle_response({:ok, %{status: 401}}, _url, _retries), do: {:error, :unauthorized}
+  defp handle_response({:ok, %{status: status}}, _url, _retries), do: {:error, {:http_error, status}}
+  defp handle_response({:error, %Req.TransportError{reason: reason}}, _url, _retries), do: {:error, {:transport_error, reason}}
+  defp handle_response({:error, reason}, _url, _retries), do: {:error, reason}
 
   defp get_retry_after(%{headers: headers}) do
     # Try to get Retry-After header, otherwise use exponential backoff
@@ -209,8 +201,7 @@ defmodule Streamix.Iptv.TmdbClient do
   defp parse_genres(genres) when is_list(genres) do
     genres
     |> Enum.take(3)
-    |> Enum.map(& &1["name"])
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", & &1["name"])
   end
 
   defp parse_genres(_), do: nil
@@ -232,15 +223,13 @@ defmodule Streamix.Iptv.TmdbClient do
   defp parse_director(nil), do: nil
 
   defp parse_director(%{"crew" => crew}) when is_list(crew) do
-    crew
-    |> Enum.filter(&(&1["job"] == "Director"))
-    |> Enum.take(2)
-    |> Enum.map(& &1["name"])
-    |> Enum.join(", ")
-    |> case do
-      "" -> nil
-      directors -> directors
-    end
+    result =
+      crew
+      |> Enum.filter(&(&1["job"] == "Director"))
+      |> Enum.take(2)
+      |> Enum.map_join(", ", & &1["name"])
+
+    if result == "", do: nil, else: result
   end
 
   defp parse_director(_), do: nil
@@ -248,14 +237,12 @@ defmodule Streamix.Iptv.TmdbClient do
   defp parse_cast(nil), do: nil
 
   defp parse_cast(%{"cast" => cast}) when is_list(cast) do
-    cast
-    |> Enum.take(5)
-    |> Enum.map(& &1["name"])
-    |> Enum.join(", ")
-    |> case do
-      "" -> nil
-      actors -> actors
-    end
+    result =
+      cast
+      |> Enum.take(5)
+      |> Enum.map_join(", ", & &1["name"])
+
+    if result == "", do: nil, else: result
   end
 
   defp parse_cast(_), do: nil
