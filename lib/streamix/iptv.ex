@@ -87,6 +87,19 @@ defmodule Streamix.Iptv do
   end
 
   @doc """
+  Gets the global system provider.
+  Returns the first active provider with is_system: true and visibility: :global.
+  """
+  def get_global_provider do
+    Provider
+    |> where([p], p.is_system == true)
+    |> where([p], p.visibility == :global)
+    |> where([p], p.is_active == true)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  @doc """
   Gets a provider by ID if user can access it.
   User can access: global, public, or their own providers.
   """

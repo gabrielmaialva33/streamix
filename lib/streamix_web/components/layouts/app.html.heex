@@ -18,22 +18,16 @@
               Início
             </.link>
             <.link
-              navigate={~p"/providers"}
-              class={"text-sm font-medium transition-colors " <> if(String.starts_with?(@current_path || "", "/providers"), do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
+              navigate={~p"/browse"}
+              class={"text-sm font-medium transition-colors " <> if(String.starts_with?(@current_path || "", "/browse"), do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
             >
-              Provedores
+              Catálogo
             </.link>
             <.link
               navigate={~p"/favorites"}
               class={"text-sm font-medium transition-colors " <> if(@current_path == "/favorites", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
             >
               Minha Lista
-            </.link>
-            <.link
-              navigate={~p"/history"}
-              class={"text-sm font-medium transition-colors " <> if(@current_path == "/history", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
-            >
-              Histórico
             </.link>
           </nav>
         <% end %>
@@ -42,43 +36,45 @@
 <!-- Right side: Search & User -->
       <div class="flex items-center gap-4">
         <%= if @current_scope do %>
-          <!-- Expandable Search -->
-          <div class="flex items-center" id="header-search" phx-hook="HeaderSearch">
-            <button
-              type="button"
-              id="search-toggle"
-              class="p-2 text-text-secondary hover:text-text-primary transition-colors"
-              aria-label="Buscar"
-            >
-              <.icon name="hero-magnifying-glass" class="size-5" />
-            </button>
-
-            <div
-              id="search-input-container"
-              class="hidden items-center bg-surface/95 backdrop-blur border border-border rounded-lg overflow-hidden"
-            >
-              <.icon
-                name="hero-magnifying-glass"
-                class="size-5 text-text-secondary ml-3 flex-shrink-0"
-              />
-              <form action={~p"/search"} method="get" class="flex items-center">
-                <input
-                  type="text"
-                  name="q"
-                  id="header-search-input"
-                  placeholder="Títulos, pessoas, gêneros"
-                  class="w-64 px-3 py-2 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
-                />
-              </form>
+          <!-- Expandable Search (hidden on catalog pages which have their own search) -->
+          <%= unless String.starts_with?(@current_path || "", "/browse") do %>
+            <div class="flex items-center" id="header-search" phx-hook="HeaderSearch">
               <button
                 type="button"
-                id="search-close"
-                class="p-2 text-text-secondary hover:text-text-primary"
+                id="search-toggle"
+                class="p-2 text-text-secondary hover:text-text-primary transition-colors"
+                aria-label="Buscar"
               >
-                <.icon name="hero-x-mark" class="size-4" />
+                <.icon name="hero-magnifying-glass" class="size-5" />
               </button>
+
+              <div
+                id="search-input-container"
+                class="hidden items-center bg-surface/95 backdrop-blur border border-border rounded-lg overflow-hidden"
+              >
+                <.icon
+                  name="hero-magnifying-glass"
+                  class="size-5 text-text-secondary ml-3 flex-shrink-0"
+                />
+                <form action={~p"/search"} method="get" class="flex items-center">
+                  <input
+                    type="text"
+                    name="q"
+                    id="header-search-input"
+                    placeholder="Títulos, pessoas, gêneros"
+                    class="w-64 px-3 py-2 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
+                  />
+                </form>
+                <button
+                  type="button"
+                  id="search-close"
+                  class="p-2 text-text-secondary hover:text-text-primary"
+                >
+                  <.icon name="hero-x-mark" class="size-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          <% end %>
           
 <!-- User dropdown -->
           <div class="relative" x-data="{ open: false }">
@@ -103,11 +99,24 @@
                 </p>
               </div>
               <.link
+                navigate={~p"/history"}
+                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                <.icon name="hero-clock" class="size-4" /> Histórico
+              </.link>
+              <.link
+                navigate={~p"/providers"}
+                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                <.icon name="hero-server-stack" class="size-4" /> Meus Provedores
+              </.link>
+              <.link
                 navigate={~p"/settings"}
                 class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
               >
                 <.icon name="hero-cog-6-tooth" class="size-4" /> Configurações
               </.link>
+              <div class="border-t border-border my-1"></div>
               <.link
                 href={~p"/logout"}
                 method="delete"
@@ -185,10 +194,10 @@
           <.icon name="hero-home" class="size-5" /> Início
         </.link>
         <.link
-          navigate={~p"/providers"}
+          navigate={~p"/browse"}
           class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
         >
-          <.icon name="hero-server-stack" class="size-5" /> Provedores
+          <.icon name="hero-film" class="size-5" /> Catálogo
         </.link>
         <.link
           navigate={~p"/favorites"}
@@ -196,11 +205,26 @@
         >
           <.icon name="hero-heart" class="size-5" /> Minha Lista
         </.link>
+
+        <div class="border-t border-border my-3"></div>
+
         <.link
           navigate={~p"/history"}
           class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
         >
           <.icon name="hero-clock" class="size-5" /> Histórico
+        </.link>
+        <.link
+          navigate={~p"/providers"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-server-stack" class="size-5" /> Meus Provedores
+        </.link>
+        <.link
+          navigate={~p"/settings"}
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          <.icon name="hero-cog-6-tooth" class="size-5" /> Configurações
         </.link>
       </nav>
     </div>
@@ -213,7 +237,7 @@
   </div>
   
 <!-- Main Content -->
-  <main class="pt-16">
+  <main class="pt-20 pb-8 px-[4%]">
     {@inner_content}
   </main>
 </div>

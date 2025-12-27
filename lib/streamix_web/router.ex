@@ -59,13 +59,20 @@ defmodule StreamixWeb.Router do
       live "/settings", User.SettingsLive, :index
       live "/search", SearchLive, :index
 
-      # Provider management
+      # Global catalog (uses system global provider)
+      live "/browse", Content.LiveChannelsLive, :index
+      live "/browse/movies", Content.MoviesLive, :index
+      live "/browse/movies/:id", Content.MovieDetailLive, :show
+      live "/browse/series", Content.SeriesLive, :index
+      live "/browse/series/:id", Content.SeriesDetailLive, :show
+
+      # User's personal providers (settings area)
       live "/providers", Providers.ProviderListLive, :index
       live "/providers/new", Providers.ProviderListLive, :new
-      live "/providers/:id", Providers.ProviderShowLive, :show
-      live "/providers/:id/edit", Providers.ProviderListLive, :edit
+      live "/providers/:provider_id", Content.LiveChannelsLive, :show
+      live "/providers/:provider_id/edit", Providers.ProviderListLive, :edit
 
-      # VOD content browsing
+      # VOD content browsing (user's providers)
       live "/providers/:provider_id/movies", Content.MoviesLive, :index
       live "/providers/:provider_id/movies/:id", Content.MovieDetailLive, :show
       live "/providers/:provider_id/series", Content.SeriesLive, :index

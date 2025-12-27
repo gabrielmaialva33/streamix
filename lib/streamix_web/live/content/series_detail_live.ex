@@ -1,6 +1,7 @@
 defmodule StreamixWeb.Content.SeriesDetailLive do
   @moduledoc """
   LiveView for displaying series details with seasons and episodes.
+  Works for both /browse/series/:id (global provider) and /providers/:id/series/:id (user provider).
   """
   use StreamixWeb, :live_view
 
@@ -8,35 +9,52 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
+  # Mount for /browse/series/:id (global provider)
+  def mount(%{"id" => series_id}, _session, socket)
+      when not is_map_key(socket.assigns, :provider) do
+    user_id = socket.assigns.current_scope.user.id
+    provider = Iptv.get_global_provider()
+
+    if provider do
+      mount_with_provider(socket, provider, series_id, user_id, :browse)
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "Catálogo não disponível")
+       |> push_navigate(to: ~p"/providers")}
+    end
+  end
+
+  # Mount for /providers/:provider_id/series/:id (user provider)
   def mount(%{"provider_id" => provider_id, "id" => series_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
     provider = Iptv.get_playable_provider(user_id, provider_id)
 
-    mount_with_provider(socket, provider, series_id, provider_id, user_id)
+    if provider do
+      mount_with_provider(socket, provider, series_id, user_id, :provider)
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "Provedor não encontrado")
+       |> push_navigate(to: ~p"/")}
+    end
   end
 
-  defp mount_with_provider(socket, nil, _series_id, _provider_id, _user_id) do
-    {:ok,
-     socket
-     |> put_flash(:error, "Provedor não encontrado")
-     |> push_navigate(to: ~p"/")}
-  end
-
-  defp mount_with_provider(socket, provider, series_id, provider_id, user_id) do
+  defp mount_with_provider(socket, provider, series_id, user_id, mode) do
     {:ok, series} = Iptv.get_series_with_sync!(series_id)
-    mount_series_found(socket, provider, series, provider_id, user_id)
+    mount_series_found(socket, provider, series, user_id, mode)
   rescue
-    Ecto.NoResultsError -> mount_series_not_found(socket)
+    Ecto.NoResultsError -> mount_series_not_found(socket, mode, provider)
   end
 
-  defp mount_series_not_found(socket) do
+  defp mount_series_not_found(socket, mode, provider) do
     {:ok,
      socket
      |> put_flash(:error, "Série não encontrada")
-     |> push_navigate(to: ~p"/")}
+     |> push_navigate(to: back_path(mode, provider))}
   end
 
-  defp mount_series_found(socket, provider, series, provider_id, user_id) do
+  defp mount_series_found(socket, provider, series, user_id, mode) do
     is_favorite = if user_id, do: Iptv.is_favorite?(user_id, "series", series.id), else: false
     sorted_seasons = Enum.sort_by(series.seasons || [], & &1.season_number)
 
@@ -46,12 +64,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         _ -> nil
       end
 
+    current_path =
+      if mode == :browse,
+        do: "/browse/series/#{series.id}",
+        else: "/providers/#{provider.id}/series/#{series.id}"
+
     socket =
       socket
       |> assign(page_title: series.title || series.name)
-      |> assign(current_path: "/providers/#{provider_id}/series/#{series.id}")
+      |> assign(current_path: current_path)
       |> assign(provider: provider)
       |> assign(series: series)
+      |> assign(mode: mode)
       |> assign(seasons: sorted_seasons)
       |> assign(
         expanded_seasons:
@@ -125,9 +149,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen">
-      <%!-- Hero Section --%>
       <div class="relative h-[60vh] min-h-[500px]">
-        <%!-- Background Image --%>
         <div class="absolute inset-0">
           <img
             :if={get_backdrop(@series) || @series.cover}
@@ -141,27 +163,22 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           />
         </div>
 
-        <%!-- Gradient Overlay --%>
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/20" />
         <div class="absolute inset-0 bg-gradient-to-r from-background/90 via-background/40 to-transparent" />
 
-        <%!-- Content --%>
         <div class="absolute bottom-0 left-0 right-0 p-6 sm:p-10">
           <div class="max-w-4xl space-y-5">
-            <%!-- Back Link --%>
             <.link
-              navigate={~p"/providers/#{@provider.id}/series"}
+              navigate={back_path(@mode, @provider)}
               class="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
             >
               <.icon name="hero-arrow-left" class="size-4" /> Voltar
             </.link>
 
-            <%!-- Title --%>
             <h1 class="text-4xl sm:text-5xl font-bold text-white drop-shadow-2xl">
               {@series.title || @series.name}
             </h1>
 
-            <%!-- Metadata --%>
             <div class="flex flex-wrap items-center gap-3 text-sm">
               <span :if={@series.year} class="text-white/80">{@series.year}</span>
               <span
@@ -179,7 +196,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               </span>
             </div>
 
-            <%!-- Synopsis --%>
             <p
               :if={@series.plot}
               class="text-white/70 text-base leading-relaxed max-w-2xl line-clamp-3"
@@ -187,7 +203,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               {@series.plot}
             </p>
 
-            <%!-- Actions --%>
             <div class="flex items-center gap-4 pt-2">
               <button
                 type="button"
@@ -216,7 +231,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         </div>
       </div>
 
-      <%!-- Seasons Section --%>
       <div class="px-6 sm:px-10 py-8 space-y-6">
         <h2 class="text-2xl font-bold text-white">Episódios</h2>
 
@@ -275,12 +289,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       phx-click="play_episode"
       phx-value-id={@episode.id}
     >
-      <%!-- Episode Number --%>
       <div class="flex-shrink-0 w-8 text-center">
         <span class="text-2xl font-bold text-white/30">{@episode.episode_num}</span>
       </div>
 
-      <%!-- Thumbnail --%>
       <div class="relative flex-shrink-0 w-36 aspect-video bg-white/10 rounded overflow-hidden">
         <img
           :if={@episode.cover}
@@ -296,7 +308,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           <.icon name="hero-play-circle" class="size-10 text-white/40" />
         </div>
 
-        <%!-- Play overlay --%>
         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center">
             <.icon name="hero-play-solid" class="size-5 text-black ml-0.5" />
@@ -304,7 +315,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         </div>
       </div>
 
-      <%!-- Info --%>
       <div class="flex-1 min-w-0">
         <h4 class="font-medium text-white group-hover:text-white/90 truncate">
           {episode_title(@episode)}
@@ -324,7 +334,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Private Helpers
   # ============================================
 
-  # Simple episode title - just "Episódio X" since series name is in the header
+  defp back_path(:browse, _provider), do: ~p"/browse/series"
+  defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/series"
+
   defp episode_title(episode), do: "Episódio #{episode.episode_num}"
 
   defp format_rating(rating) when is_number(rating), do: Float.round(rating / 2, 1) |> to_string()

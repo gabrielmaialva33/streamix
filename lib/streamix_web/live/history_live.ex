@@ -181,8 +181,8 @@ defmodule StreamixWeb.HistoryLive do
         </div>
 
         <.progress_indicator
-          :if={@entry.progress_percent && @entry.progress_percent > 0}
-          percent={@entry.progress_percent}
+          :if={progress_percent(@entry) > 0}
+          percent={progress_percent(@entry)}
         />
       </div>
 
@@ -234,6 +234,13 @@ defmodule StreamixWeb.HistoryLive do
   defp count_by_type(history, type) do
     Enum.count(history, &(&1.content_type == type))
   end
+
+  defp progress_percent(%{progress_seconds: progress, duration_seconds: duration})
+       when is_integer(progress) and is_integer(duration) and duration > 0 do
+    round(progress / duration * 100)
+  end
+
+  defp progress_percent(_), do: 0
 
   defp get_play_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"
   defp get_play_path("movie", id), do: ~p"/watch/movie/#{id}"

@@ -1,6 +1,7 @@
 defmodule StreamixWeb.Content.MovieDetailLive do
   @moduledoc """
   LiveView for displaying movie details before playback.
+  Works for both /browse/movies/:id (global provider) and /providers/:id/movies/:id (user provider).
   """
   use StreamixWeb, :live_view
 
@@ -8,40 +9,61 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
+  # Mount for /browse/movies/:id (global provider)
+  def mount(%{"id" => movie_id}, _session, socket)
+      when not is_map_key(socket.assigns, :provider) do
+    user_id = socket.assigns.current_scope.user.id
+    provider = Iptv.get_global_provider()
+
+    if provider do
+      mount_with_provider(socket, provider, movie_id, user_id, :browse)
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "Catálogo não disponível")
+       |> push_navigate(to: ~p"/providers")}
+    end
+  end
+
+  # Mount for /providers/:provider_id/movies/:id (user provider)
   def mount(%{"provider_id" => provider_id, "id" => movie_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
     provider = Iptv.get_playable_provider(user_id, provider_id)
 
-    mount_with_provider(socket, provider, movie_id, provider_id, user_id)
+    if provider do
+      mount_with_provider(socket, provider, movie_id, user_id, :provider)
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "Provedor não encontrado")
+       |> push_navigate(to: ~p"/")}
+    end
   end
 
-  defp mount_with_provider(socket, nil, _movie_id, _provider_id, _user_id) do
-    {:ok,
-     socket
-     |> put_flash(:error, "Provedor não encontrado")
-     |> push_navigate(to: ~p"/")}
-  end
-
-  defp mount_with_provider(socket, provider, movie_id, provider_id, user_id) do
+  defp mount_with_provider(socket, provider, movie_id, user_id, mode) do
     case Iptv.get_movie(movie_id) do
       nil ->
         {:ok,
          socket
          |> put_flash(:error, "Filme não encontrado")
-         |> push_navigate(to: ~p"/providers/#{provider_id}/movies")}
+         |> push_navigate(to: back_path(mode, provider))}
 
       movie ->
         is_favorite = Iptv.is_favorite?(user_id, "movie", movie.id)
-
-        # Fetch detailed info from API if missing key metadata
         movie = maybe_fetch_movie_info(movie)
+
+        current_path =
+          if mode == :browse,
+            do: "/browse/movies/#{movie.id}",
+            else: "/providers/#{provider.id}/movies/#{movie.id}"
 
         socket =
           socket
           |> assign(page_title: movie.title || movie.name)
-          |> assign(current_path: "/providers/#{provider_id}/movies/#{movie.id}")
+          |> assign(current_path: current_path)
           |> assign(provider: provider)
           |> assign(movie: movie)
+          |> assign(mode: mode)
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
 
@@ -49,7 +71,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     end
   end
 
-  # Fetch detailed movie info if missing key fields (plot, cast, etc.)
   defp maybe_fetch_movie_info(movie) do
     if needs_detailed_info?(movie) do
       case Iptv.fetch_movie_info(movie) do
@@ -62,7 +83,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp needs_detailed_info?(movie) do
-    # Fetch if we're missing key metadata fields
     is_nil(movie.plot) and is_nil(movie.cast) and is_nil(movie.director)
   end
 
@@ -100,9 +120,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen">
-      <%!-- Hero Section --%>
       <div class="relative h-[70vh] min-h-[500px]">
-        <%!-- Background Image --%>
         <div class="absolute inset-0">
           <img
             :if={get_backdrop(@movie) || @movie.stream_icon}
@@ -116,14 +134,11 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           />
         </div>
 
-        <%!-- Gradient Overlay --%>
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/20" />
         <div class="absolute inset-0 bg-gradient-to-r from-background/90 via-background/40 to-transparent" />
 
-        <%!-- Content --%>
         <div class="absolute bottom-0 left-0 right-0 p-6 sm:p-10">
           <div class="flex gap-8 max-w-6xl">
-            <%!-- Poster --%>
             <div class="hidden md:block flex-shrink-0 w-64">
               <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl">
                 <img
@@ -141,22 +156,18 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               </div>
             </div>
 
-            <%!-- Info --%>
             <div class="flex-1 space-y-5">
-              <%!-- Back Link --%>
               <.link
-                navigate={~p"/providers/#{@provider.id}/movies"}
+                navigate={back_path(@mode, @provider)}
                 class="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
               >
                 <.icon name="hero-arrow-left" class="size-4" /> Voltar para Filmes
               </.link>
 
-              <%!-- Title --%>
               <h1 class="text-4xl sm:text-5xl font-bold text-white drop-shadow-2xl">
                 {@movie.title || @movie.name}
               </h1>
 
-              <%!-- Metadata --%>
               <div class="flex flex-wrap items-center gap-3 text-sm">
                 <span :if={@movie.year} class="text-white/80">{@movie.year}</span>
                 <span
@@ -178,12 +189,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 </span>
               </div>
 
-              <%!-- Synopsis --%>
               <p :if={@movie.plot} class="text-white/70 text-base leading-relaxed max-w-2xl">
                 {@movie.plot}
               </p>
 
-              <%!-- Cast & Director --%>
               <div :if={@movie.director || @movie.cast} class="space-y-2 text-sm">
                 <p :if={@movie.director} class="text-white/60">
                   <span class="text-white/40">Diretor:</span> {@movie.director}
@@ -193,7 +202,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 </p>
               </div>
 
-              <%!-- Actions --%>
               <div class="flex items-center gap-4 pt-2">
                 <button
                   type="button"
@@ -249,6 +257,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp back_path(:browse, _provider), do: ~p"/browse/movies"
+  defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/movies"
 
   defp format_rating(%Decimal{} = rating) do
     rating

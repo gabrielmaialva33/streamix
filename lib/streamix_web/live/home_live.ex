@@ -33,13 +33,55 @@ defmodule StreamixWeb.HomeLive do
         socket
         |> assign(favorites: [])
         |> assign(history: [])
+        |> assign(featured_favorite: false)
 
       scope ->
         user_id = scope.user.id
+        featured_favorite = check_featured_favorite(socket.assigns.featured, user_id)
 
         socket
         |> assign(favorites: Iptv.list_favorites(user_id, limit: 12))
         |> assign(history: Iptv.list_watch_history(user_id, limit: 6))
+        |> assign(featured_favorite: featured_favorite)
+    end
+  end
+
+  defp check_featured_favorite(nil, _user_id), do: false
+
+  defp check_featured_favorite({type, content}, user_id) do
+    content_type = if type == :movie, do: "movie", else: "series"
+    Iptv.is_favorite?(user_id, content_type, content.id)
+  end
+
+  # ============================================
+  # Event Handlers
+  # ============================================
+
+  def handle_event("toggle_featured_favorite", _, socket) do
+    case {socket.assigns.current_scope, socket.assigns.featured} do
+      {nil, _} ->
+        {:noreply, socket}
+
+      {_, nil} ->
+        {:noreply, socket}
+
+      {scope, {type, content}} ->
+        user_id = scope.user.id
+        content_type = if type == :movie, do: "movie", else: "series"
+        is_favorite = socket.assigns.featured_favorite
+
+        if is_favorite do
+          Iptv.remove_favorite(user_id, content_type, content.id)
+        else
+          Iptv.add_favorite(user_id, %{
+            content_type: content_type,
+            content_id: content.id,
+            content_name: content.title || content.name,
+            content_icon: content.stream_icon || content.cover
+          })
+        end
+
+        {:noreply, assign(socket, featured_favorite: !is_favorite)}
     end
   end
 
@@ -47,7 +89,12 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <div>
       <!-- Hero Section with Featured Content -->
-      <.hero_section featured={@featured} stats={@stats} current_scope={@current_scope} />
+      <.hero_section
+        featured={@featured}
+        stats={@stats}
+        current_scope={@current_scope}
+        featured_favorite={@featured_favorite}
+      />
 
       <div class="space-y-8 pb-12">
         <!-- Continue Watching (logged in only) -->
@@ -139,7 +186,11 @@ defmodule StreamixWeb.HomeLive do
       <div class="absolute inset-0 flex items-end">
         <div class="w-full px-[4%] pb-16 lg:pb-24">
           <%= if @featured do %>
-            <.hero_content featured={@featured} current_scope={@current_scope} />
+            <.hero_content
+              featured={@featured}
+              current_scope={@current_scope}
+              featured_favorite={@featured_favorite}
+            />
           <% else %>
             <.hero_welcome stats={@stats} current_scope={@current_scope} />
           <% end %>
@@ -225,9 +276,17 @@ defmodule StreamixWeb.HomeLive do
         <%= if @current_scope do %>
           <button
             type="button"
-            class="inline-flex items-center justify-center w-12 h-12 bg-white/20 text-white rounded-full hover:bg-white/30 transition-colors backdrop-blur-sm"
+            phx-click="toggle_featured_favorite"
+            class={[
+              "inline-flex items-center justify-center w-12 h-12 rounded-full transition-colors backdrop-blur-sm",
+              @featured_favorite && "bg-white text-black hover:bg-white/90",
+              !@featured_favorite && "bg-white/20 text-white hover:bg-white/30"
+            ]}
+            title={
+              if @featured_favorite, do: "Remover da Minha Lista", else: "Adicionar à Minha Lista"
+            }
           >
-            <.icon name="hero-plus" class="size-6" />
+            <.icon name={if @featured_favorite, do: "hero-check", else: "hero-plus"} class="size-6" />
           </button>
         <% end %>
       </div>
@@ -374,7 +433,7 @@ defmodule StreamixWeb.HomeLive do
   defp movie_card(assigns) do
     ~H"""
     <.link
-      navigate={~p"/providers/#{@movie.provider_id}/movies/#{@movie.id}"}
+      navigate={~p"/browse/movies/#{@movie.id}"}
       class="group flex-shrink-0 w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50"
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
@@ -412,7 +471,7 @@ defmodule StreamixWeb.HomeLive do
   defp series_card(assigns) do
     ~H"""
     <.link
-      navigate={~p"/providers/#{@series.provider_id}/series/#{@series.id}"}
+      navigate={~p"/browse/series/#{@series.id}"}
       class="group flex-shrink-0 w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50"
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
@@ -567,12 +626,10 @@ defmodule StreamixWeb.HomeLive do
   end
 
   defp content_path(:movie, movie), do: ~p"/watch/movie/#{movie.id}"
-  defp content_path(:series, series), do: ~p"/providers/#{series.provider_id}/series/#{series.id}"
+  defp content_path(:series, series), do: ~p"/browse/series/#{series.id}"
 
-  defp content_info_path(:movie, movie), do: ~p"/providers/#{movie.provider_id}/movies"
-
-  defp content_info_path(:series, series),
-    do: ~p"/providers/#{series.provider_id}/series/#{series.id}"
+  defp content_info_path(:movie, movie), do: ~p"/browse/movies/#{movie.id}"
+  defp content_info_path(:series, series), do: ~p"/browse/series/#{series.id}"
 
   defp watch_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"
   defp watch_path("live", id), do: ~p"/watch/live_channel/#{id}"
@@ -621,9 +678,9 @@ defmodule StreamixWeb.HomeLive do
   defp format_number(n), do: to_string(n)
 
   # Get the "See More" path based on content type
-  defp get_see_more_path(:movies, [first | _]), do: ~p"/providers/#{first.provider_id}/movies"
-  defp get_see_more_path(:series, [first | _]), do: ~p"/providers/#{first.provider_id}/series"
-  defp get_see_more_path(:channels, [first | _]), do: ~p"/providers/#{first.provider_id}"
+  defp get_see_more_path(:movies, _), do: ~p"/browse/movies"
+  defp get_see_more_path(:series, _), do: ~p"/browse/series"
+  defp get_see_more_path(:channels, _), do: ~p"/browse"
   defp get_see_more_path(:history, _), do: ~p"/history"
   defp get_see_more_path(:favorites, _), do: ~p"/favorites"
   defp get_see_more_path(_, _), do: nil

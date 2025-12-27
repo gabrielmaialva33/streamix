@@ -82,6 +82,70 @@ defmodule StreamixWeb.ContentComponents do
   end
 
   @doc """
+  Renders navigation tabs for the global browse catalog.
+
+  ## Attributes
+
+    * `:selected` - Currently selected tab (:live, :movies, :series)
+    * `:counts` - Map with content counts %{live: n, movies: n, series: n}
+
+  ## Examples
+
+      <.browse_tabs selected={:movies} counts={%{live: 100, movies: 500, series: 50}} />
+  """
+  attr :selected, :atom, required: true, values: [:live, :movies, :series]
+  attr :counts, :map, default: %{}
+
+  def browse_tabs(assigns) do
+    ~H"""
+    <div class="inline-flex bg-surface rounded-lg p-1 gap-1">
+      <.link
+        navigate={~p"/browse"}
+        class={[
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          @selected == :live && "bg-brand text-white",
+          @selected != :live && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        ]}
+      >
+        <.icon name="hero-tv" class="size-4" />
+        <span>Ao Vivo</span>
+        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+          {format_count(@counts.live)}
+        </span>
+      </.link>
+      <.link
+        navigate={~p"/browse/movies"}
+        class={[
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          @selected == :movies && "bg-brand text-white",
+          @selected != :movies && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        ]}
+      >
+        <.icon name="hero-film" class="size-4" />
+        <span>Filmes</span>
+        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+          {format_count(@counts.movies)}
+        </span>
+      </.link>
+      <.link
+        navigate={~p"/browse/series"}
+        class={[
+          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          @selected == :series && "bg-brand text-white",
+          @selected != :series && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+        ]}
+      >
+        <.icon name="hero-video-camera" class="size-4" />
+        <span>Séries</span>
+        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+          {format_count(@counts.series)}
+        </span>
+      </.link>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a movie card with poster and metadata.
 
   ## Attributes
@@ -105,51 +169,58 @@ defmodule StreamixWeb.ContentComponents do
   attr :on_details, :string, default: "show_details"
 
   def movie_card(assigns) do
+    image_url = get_image_url(assigns.movie.stream_icon, Map.get(assigns.movie, :cover))
+    rating = get_display_rating(assigns.movie)
+    assigns = assign(assigns, image_url: image_url, display_rating: rating)
+
     ~H"""
-    <div class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-all group cursor-pointer">
+    <div class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
       <div
-        class="relative aspect-[2/3] bg-surface-hover"
+        class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_details}
         phx-value-id={@movie.id}
         phx-value-provider_id={@movie.provider_id}
       >
         <img
-          :if={@movie.stream_icon || Map.get(@movie, :cover)}
-          src={@movie.stream_icon || Map.get(@movie, :cover)}
+          :if={@image_url}
+          src={@image_url}
           alt={@movie.name}
-          class="w-full h-full object-cover"
+          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 peer"
           loading="lazy"
+          onerror="this.classList.add('hidden'); this.nextElementSibling?.classList.remove('hidden')"
         />
-        <div
-          :if={!@movie.stream_icon && !Map.get(@movie, :cover)}
-          class="w-full h-full flex items-center justify-center text-text-secondary/30"
-        >
-          <.icon name="hero-film" class="size-16" />
+        <div class={[
+          "w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900",
+          @image_url && "hidden"
+        ]}>
+          <.icon name="hero-film" class="size-16 text-zinc-600" />
         </div>
 
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             type="button"
             phx-click={@on_play}
             phx-value-id={@movie.id}
             phx-value-provider_id={@movie.provider_id}
-            class="w-14 h-14 rounded-full bg-brand flex items-center justify-center hover:bg-brand-hover transition-colors"
+            class="w-14 h-14 rounded-full bg-brand/90 backdrop-blur-sm flex items-center justify-center hover:bg-brand hover:scale-110 transition-all shadow-lg"
           >
-            <.icon name="hero-play-solid" class="size-8 text-white" />
+            <.icon name="hero-play-solid" class="size-7 text-white ml-0.5" />
           </button>
         </div>
 
         <div
-          :if={Map.get(@movie, :rating)}
-          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black"
+          :if={@display_rating}
+          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-black/70 backdrop-blur-sm text-yellow-400"
         >
           <.icon name="hero-star-solid" class="size-3" />
-          {format_rating(@movie.rating)}
+          {@display_rating}
         </div>
 
         <div
           :if={Map.get(@movie, :year)}
-          class="absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white"
+          class="absolute top-2 right-2 px-2 py-1 text-xs font-medium rounded-md bg-black/70 backdrop-blur-sm text-white"
         >
           {@movie.year}
         </div>
@@ -158,14 +229,17 @@ defmodule StreamixWeb.ContentComponents do
       <div class="p-3">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
-            <h3 class="font-medium text-sm text-text-primary truncate" title={@movie.name}>
+            <h3
+              class="font-medium text-sm text-text-primary line-clamp-2 leading-tight"
+              title={@movie.name}
+            >
               {Map.get(@movie, :title) || @movie.name}
             </h3>
-            <p :if={Map.get(@movie, :genre)} class="text-xs text-text-secondary truncate">
+            <p
+              :if={Map.get(@movie, :genre) && @movie.genre != ""}
+              class="text-xs text-text-secondary mt-1 truncate"
+            >
               {@movie.genre}
-            </p>
-            <p :if={Map.get(@movie, :duration)} class="text-xs text-text-secondary/70">
-              {format_duration(@movie.duration)}
             </p>
           </div>
           <button
@@ -174,11 +248,15 @@ defmodule StreamixWeb.ContentComponents do
             phx-click={@on_favorite}
             phx-value-id={@movie.id}
             phx-value-type="movie"
-            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+            class={[
+              "flex-shrink-0 p-1.5 rounded-full transition-all",
+              @is_favorite && "text-red-500 bg-red-500/10",
+              !@is_favorite && "text-text-secondary hover:text-red-400 hover:bg-red-500/10"
+            ]}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-red-500"]}
+              class="size-5"
             />
           </button>
         </div>
@@ -209,10 +287,13 @@ defmodule StreamixWeb.ContentComponents do
   attr :on_favorite, :string, default: "toggle_favorite"
 
   def series_card(assigns) do
+    rating = get_display_rating(assigns.series)
+    assigns = assign(assigns, display_rating: rating)
+
     ~H"""
-    <div class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-all group cursor-pointer">
+    <div class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
       <div
-        class="relative aspect-[2/3] bg-surface-hover"
+        class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_click}
         phx-value-id={@series.id}
       >
@@ -220,22 +301,22 @@ defmodule StreamixWeb.ContentComponents do
           :if={Map.get(@series, :cover)}
           src={@series.cover}
           alt={@series.name}
-          class="w-full h-full object-cover"
+          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
         />
         <div
           :if={!Map.get(@series, :cover)}
-          class="w-full h-full flex items-center justify-center text-text-secondary/30"
+          class="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900"
         >
-          <.icon name="hero-video-camera" class="size-16" />
+          <.icon name="hero-video-camera" class="size-16 text-zinc-600" />
         </div>
 
         <div
-          :if={Map.get(@series, :rating)}
-          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black"
+          :if={@display_rating}
+          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-black/70 backdrop-blur-sm text-yellow-400"
         >
           <.icon name="hero-star-solid" class="size-3" />
-          {format_rating(@series.rating)}
+          {@display_rating}
         </div>
 
         <div
@@ -676,4 +757,36 @@ defmodule StreamixWeb.ContentComponents do
 
   defp pluralize(1, singular, _plural), do: "1 #{singular}"
   defp pluralize(count, _singular, plural), do: "#{count} #{plural}"
+
+  # Returns a valid image URL or nil
+  defp get_image_url(stream_icon, cover) do
+    cond do
+      is_binary(stream_icon) and stream_icon != "" -> stream_icon
+      is_binary(cover) and cover != "" -> cover
+      true -> nil
+    end
+  end
+
+  # Returns display rating string or nil (hides 0 ratings)
+  defp get_display_rating(item) do
+    rating = Map.get(item, :rating)
+
+    case rating do
+      nil ->
+        nil
+
+      %Decimal{} = d ->
+        if Decimal.compare(d, Decimal.new("0")) == :gt do
+          d |> Decimal.div(2) |> Decimal.round(1) |> Decimal.to_string()
+        else
+          nil
+        end
+
+      n when is_number(n) and n > 0 ->
+        Float.round(n / 2, 1) |> to_string()
+
+      _ ->
+        nil
+    end
+  end
 end

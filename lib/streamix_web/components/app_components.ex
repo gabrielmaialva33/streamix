@@ -372,7 +372,7 @@ defmodule StreamixWeb.AppComponents do
     assigns = assign(assigns, :selected_name, selected_name)
 
     ~H"""
-    <div class="relative" x-data="{ open: false }">
+    <div class="relative" x-data="{ open: false }" @click.outside="open = false">
       <button
         type="button"
         class="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors"
@@ -380,38 +380,50 @@ defmodule StreamixWeb.AppComponents do
       >
         <.icon name="hero-funnel" class="size-4" />
         <span>{@selected_name || "Todas as Categorias"}</span>
-        <.icon name="hero-chevron-down" class="size-4" />
+        <.icon
+          name="hero-chevron-down"
+          class="size-4 transition-transform"
+          x-bind:class="open && 'rotate-180'"
+        />
       </button>
       <div
         x-show="open"
-        @click.away="open = false"
-        class="absolute z-10 mt-2 w-52 max-h-96 overflow-y-auto bg-surface border border-border rounded-lg shadow-xl"
+        x-transition:enter="transition ease-out duration-100"
+        x-transition:enter-start="opacity-0 scale-95"
+        x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-75"
+        x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        style="display: none"
+        class="absolute left-0 z-50 mt-2 w-56 max-h-96 overflow-y-auto bg-surface border border-border rounded-lg shadow-xl origin-top-left"
       >
-        <button
-          type="button"
-          phx-click={@on_change}
-          phx-value-category=""
-          class={[
-            "w-full px-3 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
-            !@selected && "text-brand font-medium"
-          ]}
-          @click="open = false"
-        >
-          Todas as Categorias
-        </button>
-        <button
-          :for={category <- @categories}
-          type="button"
-          phx-click={@on_change}
-          phx-value-category={category.id}
-          class={[
-            "w-full px-3 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
-            to_string(@selected) == to_string(category.id) && "text-brand font-medium"
-          ]}
-          @click="open = false"
-        >
-          {category.name}
-        </button>
+        <div class="py-1">
+          <button
+            type="button"
+            phx-click={@on_change}
+            phx-value-category=""
+            class={[
+              "w-full px-4 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
+              !@selected && "text-brand font-medium bg-brand/5"
+            ]}
+            @click="open = false"
+          >
+            Todas as Categorias
+          </button>
+          <button
+            :for={category <- @categories}
+            type="button"
+            phx-click={@on_change}
+            phx-value-category={category.id}
+            class={[
+              "w-full px-4 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
+              to_string(@selected) == to_string(category.id) && "text-brand font-medium bg-brand/5"
+            ]}
+            @click="open = false"
+          >
+            {category.name}
+          </button>
+        </div>
       </div>
     </div>
     """
