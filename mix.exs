@@ -70,7 +70,8 @@ defmodule Streamix.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:dotenvy, "~> 0.8"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:cors_plug, "~> 3.0"}
     ]
   end
 
