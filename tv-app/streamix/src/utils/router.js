@@ -204,8 +204,9 @@ var Router = (function() {
         }
       }
 
-      // Clear navigation focus before route change
+      // Clear navigation state before route change (prevents memory leaks)
       Navigation.clearFocus();
+      Navigation.clearSectionMemory();
 
       // Check if we need transitions (skip for first load or player)
       var isPlayerRoute = parsed.path.indexOf('/player') === 0;

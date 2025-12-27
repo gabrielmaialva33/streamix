@@ -1,26 +1,42 @@
 /**
- * Card Components with Lazy Loading
- * Optimized for Samsung Tizen TV performance
+ * Card Components with Lazy Loading + Aggressive VRAM Cleanup
+ * Optimized for Samsung Tizen TV performance (especially low-end models)
  */
 /* globals IntersectionObserver */
 
 var Cards = (function() {
   'use strict';
 
-  // Intersection Observer for lazy loading
+  // ========== VRAM-SAVING IMAGE MANAGEMENT ==========
+  // Two-way lazy loading: load when visible, UNLOAD when far from viewport
+
+  // Intersection Observer for lazy loading (entering viewport)
   var imageObserver = null;
+
+  // Intersection Observer for unloading (leaving viewport - VRAM cleanup)
+  var unloadObserver = null;
 
   // Image cache to prevent reloading (using object as Set replacement)
   var imageCache = {};
 
-  // Max cache size (prevent memory bloat on low-end TVs)
-  var MAX_CACHE_SIZE = 100;
+  // Max cache size (aggressive limit for low-end TVs)
+  var MAX_CACHE_SIZE = 40; // Reduced from 100
 
   // WeakMap to track image handlers for proper cleanup
   var imageHandlers = new WeakMap();
 
+  // WeakMap to track original src for images (for reload after unload)
+  var originalSrcMap = new WeakMap();
+
   // Placeholder image (data URI to avoid network request)
   var PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"%3E%3Crect fill="%231e1e1e" width="200" height="300"/%3E%3C/svg%3E';
+
+  // Unload margin (larger than load margin to prevent flicker during navigation)
+  // Images unload when they are this far outside the viewport
+  var UNLOAD_MARGIN = '1200px 1600px'; // Vertical, Horizontal
+
+  // Load margin (anticipate navigation)
+  var LOAD_MARGIN = '400px 800px';
 
   /**
    * Setup image event handlers with proper tracking for cleanup
@@ -49,6 +65,7 @@ var Cards = (function() {
 
   /**
    * Cleanup image handlers to prevent memory leaks
+   * Also removes from observers
    */
   function cleanupImageHandlers(img) {
     var handlers = imageHandlers.get(img);
@@ -57,7 +74,19 @@ var Cards = (function() {
       img.removeEventListener('error', handlers.error);
       imageHandlers.delete(img);
     }
-    // Clear image src to stop any pending load
+
+    // Remove from observers
+    if (imageObserver) {
+      try { imageObserver.unobserve(img); } catch (e) { /* ignore */ }
+    }
+    if (unloadObserver) {
+      try { unloadObserver.unobserve(img); } catch (e) { /* ignore */ }
+    }
+
+    // Clear WeakMap reference
+    originalSrcMap.delete(img);
+
+    // Clear image src to stop any pending load and free VRAM
     img.src = '';
   }
 
@@ -79,6 +108,12 @@ var Cards = (function() {
   // Flag to track if IntersectionObserver is available
   var useIntersectionObserver = typeof IntersectionObserver !== 'undefined';
 
+  // Stats for debugging
+  var stats = {
+    loaded: 0,
+    unloaded: 0
+  };
+
   /**
    * Initialize lazy loading observer with optimized settings
    */
@@ -86,23 +121,40 @@ var Cards = (function() {
     if (imageObserver || !useIntersectionObserver) { return; }
 
     try {
-      // Use Intersection Observer for lazy loading
-      // Larger margins for TV: 400px vertical, 800px horizontal (anticipate navigation)
+      // Observer for LOADING images (when entering viewport area)
       imageObserver = new IntersectionObserver(function(entries) {
         for (var i = 0; i < entries.length; i++) {
           var entry = entries[i];
           if (entry.isIntersecting) {
             var img = entry.target;
             loadImage(img);
-            imageObserver.unobserve(img);
+            // Don't unobserve - keep observing for potential re-entry
+            // after being unloaded by unloadObserver
           }
         }
       }, {
         root: null,
-        // Larger margins: 400px vertical, 800px horizontal for TV navigation
-        rootMargin: '400px 800px',
+        rootMargin: LOAD_MARGIN,
         threshold: 0.01
       });
+
+      // Observer for UNLOADING images (when leaving viewport area)
+      // Uses larger margin so images are unloaded only when far from view
+      unloadObserver = new IntersectionObserver(function(entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          // Unload when image leaves the extended viewport
+          if (!entry.isIntersecting) {
+            var img = entry.target;
+            unloadImage(img);
+          }
+        }
+      }, {
+        root: null,
+        rootMargin: UNLOAD_MARGIN,
+        threshold: 0
+      });
+
     } catch (e) {
       console.warn('[Cards] IntersectionObserver not available, using direct loading');
       useIntersectionObserver = false;
@@ -110,39 +162,96 @@ var Cards = (function() {
   }
 
   /**
-   * Load an image from data-src
+   * Unload an image to free VRAM (replace with placeholder)
+   * The image can be reloaded when it re-enters the viewport
+   */
+  function unloadImage(img) {
+    // Skip if already unloaded or never loaded
+    if (!img.classList.contains('img-loaded')) { return; }
+
+    // Get original src (stored in WeakMap or dataset)
+    var originalSrc = originalSrcMap.get(img) || img.dataset.originalSrc;
+    if (!originalSrc) {
+      // First time unloading - save the current src
+      originalSrc = img.src;
+      if (originalSrc && originalSrc !== PLACEHOLDER) {
+        originalSrcMap.set(img, originalSrc);
+        img.dataset.originalSrc = originalSrc;
+      }
+    }
+
+    // Skip placeholder images
+    if (!originalSrc || originalSrc === PLACEHOLDER) { return; }
+
+    // Clean up event handlers
+    var handlers = imageHandlers.get(img);
+    if (handlers) {
+      img.removeEventListener('load', handlers.load);
+      img.removeEventListener('error', handlers.error);
+      imageHandlers.delete(img);
+    }
+
+    // Replace with placeholder to free VRAM
+    img.src = PLACEHOLDER;
+    img.classList.remove('img-loaded');
+    img.classList.add('img-unloaded');
+
+    // Store src for reload
+    img.dataset.src = originalSrc;
+
+    stats.unloaded++;
+
+    // Log periodically for debugging
+    if (stats.unloaded % 20 === 0) {
+      console.log('[Cards] VRAM cleanup: unloaded', stats.unloaded, 'images');
+    }
+  }
+
+  /**
+   * Load an image from data-src (supports reload after unload)
    */
   function loadImage(img) {
     var src = img.dataset.src;
     if (!src) { return; }
 
-    // Check if already in cache
+    // Skip if already loaded with this src
+    if (img.classList.contains('img-loaded') && img.src === src) { return; }
+
+    // Remove unloaded class if present (reload scenario)
+    img.classList.remove('img-unloaded');
+
+    // Check if already in browser cache (previously loaded)
     if (imageCache[src]) {
-      // Use cached - load immediately
+      // Use cached - load immediately (browser has it in memory)
       img.src = src;
       img.classList.remove('img-loading');
       img.classList.add('img-loaded');
     } else {
-      // Add loading class for transition
+      // First time loading this image
       img.classList.add('img-loading');
 
-      // Setup handlers before setting src (using proper event listeners)
+      // Setup handlers before setting src
       setupImageHandlers(img);
 
       // Load image
       img.src = src;
-      img.removeAttribute('data-src');
 
-      // Add to cache
+      // Save original src for potential unload/reload
+      originalSrcMap.set(img, src);
+      img.dataset.originalSrc = src;
+
+      // Add to URL cache
       imageCache[src] = true;
 
       // Trim cache if needed
       trimImageCache();
+
+      stats.loaded++;
     }
   }
 
   /**
-   * Create a lazy loading image
+   * Create a lazy loading image with automatic VRAM management
    */
   function createLazyImage(src, alt) {
     initLazyLoading();
@@ -152,20 +261,26 @@ var Cards = (function() {
     img.loading = 'lazy'; // Native lazy loading as fallback
 
     if (src) {
+      // Store original src for unload/reload cycle
+      img.dataset.src = src;
+      img.dataset.originalSrc = src;
+      originalSrcMap.set(img, src);
+
       if (imageCache[src]) {
-        // Image already loaded, use directly
+        // Image URL already in cache, load directly
         img.src = src;
         img.classList.add('img-loaded');
-      } else if (useIntersectionObserver && imageObserver) {
-        // Use placeholder and lazy load with IntersectionObserver
-        img.src = PLACEHOLDER;
-        img.dataset.src = src;
-        imageObserver.observe(img);
       } else {
-        // Fallback: load image directly (no IntersectionObserver)
+        // Start with placeholder
         img.src = PLACEHOLDER;
-        img.dataset.src = src;
-        // Use setTimeout to defer loading slightly (avoid blocking render)
+      }
+
+      // Register with both observers for load/unload cycle
+      if (useIntersectionObserver && imageObserver && unloadObserver) {
+        imageObserver.observe(img);   // Load when entering viewport
+        unloadObserver.observe(img);  // Unload when leaving viewport (VRAM cleanup)
+      } else if (!imageCache[src]) {
+        // Fallback: load image directly (no IntersectionObserver)
         setTimeout(function() {
           loadImage(img);
         }, 50);
@@ -377,6 +492,7 @@ var Cards = (function() {
 
   /**
    * Create a content row with lazy loaded cards
+   * Uses DocumentFragment for batched DOM insertion (prevents layout thrashing)
    */
   function createContentRow(title, items, createCardFn, seeAllPath) {
     var row = document.createElement('div');
@@ -391,16 +507,21 @@ var Cards = (function() {
     var itemsContainer = document.createElement('div');
     itemsContainer.className = 'content-row-items';
 
-    // Create cards
+    // Use DocumentFragment for batched insertion (single reflow)
+    var fragment = document.createDocumentFragment();
+
+    // Create cards into fragment
     for (var i = 0; i < items.length; i++) {
-      itemsContainer.appendChild(createCardFn(items[i]));
+      fragment.appendChild(createCardFn(items[i]));
     }
 
     // Add "See All" card at the end if path provided
     if (seeAllPath) {
-      itemsContainer.appendChild(createSeeAllCard(seeAllPath));
+      fragment.appendChild(createSeeAllCard(seeAllPath));
     }
 
+    // Single DOM insertion
+    itemsContainer.appendChild(fragment);
     row.appendChild(itemsContainer);
 
     return row;
@@ -515,6 +636,49 @@ var Cards = (function() {
     return Object.keys(imageCache).length;
   }
 
+  /**
+   * Get VRAM management stats
+   */
+  function getStats() {
+    return {
+      loaded: stats.loaded,
+      unloaded: stats.unloaded,
+      cacheSize: Object.keys(imageCache).length,
+      maxCacheSize: MAX_CACHE_SIZE
+    };
+  }
+
+  /**
+   * Force unload all images outside viewport (emergency VRAM cleanup)
+   */
+  function forceUnloadOffscreen() {
+    var imgs = document.querySelectorAll('img.img-loaded');
+    var viewport = {
+      top: -200,
+      bottom: window.innerHeight + 200,
+      left: -200,
+      right: window.innerWidth + 200
+    };
+
+    var unloadedCount = 0;
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      var rect = img.getBoundingClientRect();
+
+      // Check if completely outside viewport
+      if (rect.bottom < viewport.top ||
+          rect.top > viewport.bottom ||
+          rect.right < viewport.left ||
+          rect.left > viewport.right) {
+        unloadImage(img);
+        unloadedCount++;
+      }
+    }
+
+    console.log('[Cards] Force unload: freed', unloadedCount, 'images');
+    return unloadedCount;
+  }
+
   // Public API
   return {
     createPosterCard: createPosterCard,
@@ -530,8 +694,10 @@ var Cards = (function() {
     createEmptyState: createEmptyState,
     clearImageCache: clearImageCache,
     getCacheSize: getCacheSize,
-    // Memory management
-    cleanupImageHandlers: cleanupImageHandlers
+    // VRAM Management
+    cleanupImageHandlers: cleanupImageHandlers,
+    getStats: getStats,
+    forceUnloadOffscreen: forceUnloadOffscreen
   };
 })();
 

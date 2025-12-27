@@ -36,6 +36,66 @@ var Navigation = (function() {
     sectionBoundary: true  // Respect section boundaries
   };
 
+  // ========== INPUT THROTTLING ==========
+  // Prevents lag when user holds down a key
+  var inputThrottle = {
+    lastKeyTime: 0,
+    keyRepeatCount: 0,
+    lastDirection: null,
+    minInterval: 80,       // Min ms between navigation moves (initial)
+    fastInterval: 40,      // Faster interval after holding key
+    fastThreshold: 3,      // Number of repeats before switching to fast mode
+    skipThreshold: 8,      // Number of repeats before skipping items
+    skipAmount: 3          // Items to skip in fast navigation
+  };
+
+  /**
+   * Check if navigation should be throttled
+   * Returns: { allowed: boolean, skip: number }
+   */
+  function checkInputThrottle(direction) {
+    var now = performance.now();
+    var timeSinceLastKey = now - inputThrottle.lastKeyTime;
+
+    // Different direction = reset
+    if (direction !== inputThrottle.lastDirection) {
+      inputThrottle.keyRepeatCount = 0;
+      inputThrottle.lastDirection = direction;
+      inputThrottle.lastKeyTime = now;
+      return { allowed: true, skip: 0 };
+    }
+
+    // Determine current interval based on repeat count
+    var currentInterval = inputThrottle.keyRepeatCount >= inputThrottle.fastThreshold
+      ? inputThrottle.fastInterval
+      : inputThrottle.minInterval;
+
+    // Check if enough time has passed
+    if (timeSinceLastKey < currentInterval) {
+      return { allowed: false, skip: 0 };
+    }
+
+    // Update state
+    inputThrottle.keyRepeatCount++;
+    inputThrottle.lastKeyTime = now;
+
+    // Determine if we should skip items (fast scrolling)
+    var skip = 0;
+    if (inputThrottle.keyRepeatCount >= inputThrottle.skipThreshold) {
+      skip = inputThrottle.skipAmount;
+    }
+
+    return { allowed: true, skip: skip };
+  }
+
+  /**
+   * Reset throttle state (call on keyup or focus change)
+   */
+  function resetInputThrottle() {
+    inputThrottle.keyRepeatCount = 0;
+    inputThrottle.lastDirection = null;
+  }
+
   // Section focus memory - remember last focused element in each section
   var sectionMemory = {};
 
@@ -931,13 +991,25 @@ var Navigation = (function() {
   }
 
   /**
+   * Clear section memory (call before page navigation to prevent memory leaks)
+   * This removes DOM references that would otherwise be held after page change
+   */
+  function clearSectionMemory() {
+    sectionMemory = {};
+    scrollMemory = {};
+    // Clear layout caches as well since elements are no longer valid
+    layoutCache.rects = new WeakMap();
+    visibilityCache = new WeakMap();
+  }
+
+  /**
    * Destroy navigation
    */
   function destroy() {
     document.removeEventListener('keydown', handleKeyDown, true);
     document.removeEventListener('click', handleClick);
     clearFocus();
-    sectionMemory = {};
+    clearSectionMemory();
     focusListeners.length = 0;
   }
 
@@ -950,6 +1022,7 @@ var Navigation = (function() {
     focusFirst: focusFirst,
     getCurrentFocus: getCurrentFocus,
     clearFocus: clearFocus,
+    clearSectionMemory: clearSectionMemory,
     onFocusChange: onFocusChange,
     destroy: destroy,
     KEY_CODES: KEY_CODES,
