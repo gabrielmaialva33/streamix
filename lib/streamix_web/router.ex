@@ -35,6 +35,7 @@ defmodule StreamixWeb.Router do
     get "/catalog/series", CatalogController, :series
     get "/catalog/series/:id", CatalogController, :show_series
     get "/catalog/series/:series_id/episodes/:id", CatalogController, :show_episode
+    get "/catalog/episodes/:id", CatalogController, :show_episode
     get "/catalog/channels", CatalogController, :channels
     get "/catalog/channels/:id", CatalogController, :show_channel
     get "/catalog/categories", CatalogController, :categories

@@ -1,41 +1,93 @@
 defmodule StreamixWeb.Api.V1.CatalogController do
   @moduledoc """
-  API controller for public catalog access.
-  Used by the TV app and other clients that need JSON data.
+  Public catalog API for TV app and other clients.
+  Provides read-only access to content from public/global providers.
   """
   use StreamixWeb, :controller
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.{Movie, Episode, LiveChannel}
 
-  @default_limit 20
-  @max_limit 100
-
-  # GET /api/v1/catalog/featured
+  @doc """
+  GET /api/v1/catalog/featured
+  Returns featured content (hero) and stats for the home page.
+  """
   def featured(conn, _params) do
-    featured = Iptv.get_featured_content()
+    featured = build_featured_content()
     stats = Iptv.get_public_stats()
 
     json(conn, %{
-      featured: render_featured(featured),
+      featured: featured,
       stats: stats
     })
   end
 
-  # GET /api/v1/catalog/movies
-  def movies(conn, params) do
-    opts = parse_list_opts(params)
-    movies = Iptv.list_public_movies(opts)
-    total = length(movies)
+  defp build_featured_content do
+    case Iptv.get_featured_content() do
+      {:movie, movie} ->
+        %{
+          id: movie.id,
+          type: "movie",
+          title: movie.title || movie.name,
+          name: movie.name,
+          year: movie.year,
+          rating: movie.rating && Decimal.to_float(movie.rating),
+          genre: movie.genre,
+          plot: movie.plot,
+          poster: movie.stream_icon,
+          backdrop: movie.backdrop_path
+        }
 
-    json(conn, %{
-      movies: Enum.map(movies, &render_movie_list/1),
-      total: total,
-      has_more: total >= opts[:limit]
-    })
+      {:series, series} ->
+        %{
+          id: series.id,
+          type: "series",
+          title: series.title || series.name,
+          name: series.name,
+          year: series.year,
+          rating: series.rating && Decimal.to_float(series.rating),
+          genre: series.genre,
+          plot: series.plot,
+          poster: series.cover,
+          backdrop: series.backdrop_path
+        }
+
+      nil ->
+        nil
+    end
   end
 
-  # GET /api/v1/catalog/movies/:id
+  @doc """
+  GET /api/v1/catalog/movies
+  Returns paginated list of movies from public/global providers.
+  Query params: limit, offset, category_id
+  """
+  def movies(conn, params) do
+    provider = Iptv.get_global_provider()
+
+    if provider do
+      opts = [
+        limit: parse_int(params["limit"], 20),
+        offset: parse_int(params["offset"], 0),
+        category_id: parse_int(params["category_id"], nil)
+      ]
+
+      movies = Iptv.list_movies(provider.id, opts)
+      total = Iptv.count_movies(provider.id)
+
+      json(conn, %{
+        movies: Enum.map(movies, &serialize_movie/1),
+        total: total,
+        has_more: opts[:offset] + length(movies) < total
+      })
+    else
+      json(conn, %{movies: [], total: 0, has_more: false})
+    end
+  end
+
+  @doc """
+  GET /api/v1/catalog/movies/:id
+  Returns a single movie with full details.
+  """
   def show_movie(conn, %{"id" => id}) do
     case Iptv.get_public_movie(id) do
       nil ->
@@ -44,47 +96,57 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         |> json(%{error: "Movie not found"})
 
       movie ->
-        json(conn, %{movie: render_movie_detail(movie)})
+        {:ok, movie} = Iptv.fetch_movie_info(movie)
+        json(conn, serialize_movie_detail(movie))
     end
   end
 
-  # GET /api/v1/catalog/series
+  @doc """
+  GET /api/v1/catalog/series
+  Returns paginated list of series from public/global providers.
+  """
   def series(conn, params) do
-    opts = parse_list_opts(params)
-    series_list = Iptv.list_public_series(opts)
-    total = length(series_list)
+    provider = Iptv.get_global_provider()
 
-    json(conn, %{
-      series: Enum.map(series_list, &render_series_list/1),
-      total: total,
-      has_more: total >= opts[:limit]
-    })
-  end
+    if provider do
+      opts = [
+        limit: parse_int(params["limit"], 20),
+        offset: parse_int(params["offset"], 0),
+        category_id: parse_int(params["category_id"], nil)
+      ]
 
-  # GET /api/v1/catalog/series/:id
-  def show_series(conn, %{"id" => id}) do
-    case Iptv.get_series_with_seasons(id) do
-      nil ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: "Series not found"})
+      series_list = Iptv.list_series(provider.id, opts)
+      total = Iptv.count_series(provider.id)
 
-      series ->
-        # Verify it's a public series
-        case Iptv.get_public_series(id) do
-          nil ->
-            conn
-            |> put_status(:not_found)
-            |> json(%{error: "Series not found"})
-
-          _public_series ->
-            json(conn, %{series: render_series_detail(series)})
-        end
+      json(conn, %{
+        series: Enum.map(series_list, &serialize_series/1),
+        total: total,
+        has_more: opts[:offset] + length(series_list) < total
+      })
+    else
+      json(conn, %{series: [], total: 0, has_more: false})
     end
   end
 
-  # GET /api/v1/catalog/series/:series_id/episodes/:id
-  def show_episode(conn, %{"series_id" => _series_id, "id" => id}) do
+  @doc """
+  GET /api/v1/catalog/series/:id
+  Returns a single series with seasons and episodes.
+  """
+  def show_series(conn, %{"id" => id}) do
+    {:ok, series} = Iptv.get_series_with_sync!(id)
+    json(conn, serialize_series_detail(series))
+  rescue
+    Ecto.NoResultsError ->
+      conn
+      |> put_status(:not_found)
+      |> json(%{error: "Series not found"})
+  end
+
+  @doc """
+  GET /api/v1/catalog/series/:series_id/episodes/:id
+  Returns a single episode with stream info.
+  """
+  def show_episode(conn, %{"id" => id}) do
     case Iptv.get_public_episode(id) do
       nil ->
         conn
@@ -92,25 +154,42 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         |> json(%{error: "Episode not found"})
 
       episode ->
-        episode = Streamix.Repo.preload(episode, season: [series: :provider])
-        json(conn, %{episode: render_episode_detail(episode)})
+        {:ok, episode} = Iptv.fetch_episode_info(episode)
+        json(conn, serialize_episode_detail(episode))
     end
   end
 
-  # GET /api/v1/catalog/channels
+  @doc """
+  GET /api/v1/catalog/channels
+  Returns paginated list of channels from public/global providers.
+  """
   def channels(conn, params) do
-    opts = parse_list_opts(params)
-    channels = Iptv.list_public_channels(opts)
-    total = length(channels)
+    provider = Iptv.get_global_provider()
 
-    json(conn, %{
-      channels: Enum.map(channels, &render_channel_list/1),
-      total: total,
-      has_more: total >= opts[:limit]
-    })
+    if provider do
+      opts = [
+        limit: parse_int(params["limit"], 30),
+        offset: parse_int(params["offset"], 0),
+        category_id: parse_int(params["category_id"], nil)
+      ]
+
+      channels = Iptv.list_live_channels(provider.id, opts)
+      total = Iptv.count_live_channels(provider.id)
+
+      json(conn, %{
+        channels: Enum.map(channels, &serialize_channel/1),
+        total: total,
+        has_more: opts[:offset] + length(channels) < total
+      })
+    else
+      json(conn, %{channels: [], total: 0, has_more: false})
+    end
   end
 
-  # GET /api/v1/catalog/channels/:id
+  @doc """
+  GET /api/v1/catalog/channels/:id
+  Returns a single channel with stream URL.
+  """
   def show_channel(conn, %{"id" => id}) do
     case Iptv.get_public_channel(id) do
       nil ->
@@ -119,314 +198,207 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         |> json(%{error: "Channel not found"})
 
       channel ->
-        json(conn, %{channel: render_channel_detail(channel)})
+        json(conn, serialize_channel_detail(channel))
     end
   end
 
-  # GET /api/v1/catalog/categories
+  @doc """
+  GET /api/v1/catalog/categories?type=movie|series|live
+  Returns categories for a content type.
+  """
   def categories(conn, params) do
-    type = params["type"]
-    # Get categories from the global provider
-    case Iptv.get_global_provider() do
-      nil ->
-        json(conn, %{categories: []})
+    provider = Iptv.get_global_provider()
+    type = params["type"] || "movie"
 
-      provider ->
-        categories = Iptv.list_categories(provider.id, type)
-        json(conn, %{categories: Enum.map(categories, &render_category/1)})
+    if provider do
+      categories = Iptv.list_categories(provider.id, type)
+
+      json(conn, Enum.map(categories, fn cat ->
+        %{
+          id: cat.id,
+          name: cat.name,
+          type: cat.type
+        }
+      end))
+    else
+      json(conn, [])
     end
   end
 
-  # GET /api/v1/catalog/search
-  def search(conn, %{"q" => query} = params) when byte_size(query) > 0 do
-    opts = parse_list_opts(params)
-    type = params["type"] || "all"
+  @doc """
+  GET /api/v1/catalog/search?q=query
+  Searches across movies, series, and channels.
+  """
+  def search(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
+    movies = Iptv.search_public_movies(query, limit: 10)
+    series = Iptv.search_public_series(query, limit: 10)
+    channels = Iptv.search_public_channels(query, limit: 10)
 
-    result =
-      case type do
-        "movies" ->
-          %{movies: search_movies(query, opts)}
-
-        "series" ->
-          %{series: search_series(query, opts)}
-
-        "channels" ->
-          %{channels: search_channels(query, opts)}
-
-        _ ->
-          %{
-            movies: search_movies(query, Keyword.put(opts, :limit, 10)),
-            series: search_series(query, Keyword.put(opts, :limit, 10)),
-            channels: search_channels(query, Keyword.put(opts, :limit, 10))
-          }
-      end
-
-    json(conn, result)
+    json(conn, %{
+      movies: Enum.map(movies, &serialize_movie/1),
+      series: Enum.map(series, &serialize_series/1),
+      channels: Enum.map(channels, &serialize_channel/1)
+    })
   end
 
   def search(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: "Missing search query parameter 'q'"})
+    json(conn, %{movies: [], series: [], channels: []})
   end
 
-  # Private helpers
-
-  defp parse_list_opts(params) do
-    limit =
-      params
-      |> Map.get("limit", @default_limit)
-      |> to_integer(@default_limit)
-      |> min(@max_limit)
-
-    offset =
-      params
-      |> Map.get("offset", 0)
-      |> to_integer(0)
-
-    search = Map.get(params, "search")
-    category_id = Map.get(params, "category_id")
-    genre = Map.get(params, "genre")
-
-    opts = [limit: limit, offset: offset]
-    opts = if search, do: Keyword.put(opts, :search, search), else: opts
-    opts = if category_id, do: Keyword.put(opts, :category_id, category_id), else: opts
-    opts = if genre, do: Keyword.put(opts, :genre, genre), else: opts
-    opts
-  end
-
-  defp to_integer(val, default) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, _} -> int
-      :error -> default
-    end
-  end
-
-  defp to_integer(val, _default) when is_integer(val), do: val
-  defp to_integer(_, default), do: default
-
-  defp search_movies(query, opts) do
-    query
-    |> Iptv.search_public_movies(opts)
-    |> Enum.map(&render_movie_list/1)
-  end
-
-  defp search_series(query, opts) do
-    query
-    |> Iptv.search_public_series(opts)
-    |> Enum.map(&render_series_list/1)
-  end
-
-  defp search_channels(query, opts) do
-    query
-    |> Iptv.search_public_channels(opts)
-    |> Enum.map(&render_channel_list/1)
-  end
-
-  # Render functions
-
-  defp render_featured(nil), do: nil
-
-  defp render_featured({:movie, movie}) do
-    %{
-      type: "movie",
-      id: movie.id,
-      name: movie.name,
-      title: movie.title,
-      year: movie.year,
-      backdrop: List.first(movie.backdrop_path || []),
-      poster: movie.stream_icon,
-      plot: movie.plot,
-      rating: movie.rating,
-      genre: movie.genre
-    }
-  end
-
-  defp render_featured({:series, series}) do
-    %{
-      type: "series",
-      id: series.id,
-      name: series.name,
-      title: series.title,
-      year: series.year,
-      backdrop: List.first(series.backdrop_path || []),
-      poster: series.cover,
-      plot: series.plot,
-      rating: series.rating,
-      genre: series.genre
-    }
-  end
-
-  defp render_featured(_), do: nil
-
-  defp render_movie_list(movie) do
+  # Serializers
+  defp serialize_movie(movie) do
     %{
       id: movie.id,
       name: movie.name,
       title: movie.title,
       year: movie.year,
-      poster: movie.stream_icon,
-      rating: movie.rating,
+      rating: movie.rating && Decimal.to_float(movie.rating),
       genre: movie.genre,
+      poster: movie.stream_icon,
       duration: movie.duration
     }
   end
 
-  defp render_movie_detail(movie) do
-    stream_url = build_proxied_stream_url(Movie.stream_url(movie, movie.provider))
-
+  defp serialize_movie_detail(movie) do
     %{
       id: movie.id,
       name: movie.name,
       title: movie.title,
       year: movie.year,
-      poster: movie.stream_icon,
-      backdrop: movie.backdrop_path,
-      images: movie.images,
-      rating: movie.rating,
+      rating: movie.rating && Decimal.to_float(movie.rating),
       genre: movie.genre,
       plot: movie.plot,
       cast: movie.cast,
       director: movie.director,
       duration: movie.duration,
-      duration_secs: movie.duration_secs,
-      stream_url: stream_url,
-      youtube_trailer: movie.youtube_trailer,
       content_rating: movie.content_rating,
       tagline: movie.tagline,
-      tmdb_id: movie.tmdb_id,
-      imdb_id: movie.imdb_id
+      poster: movie.stream_icon,
+      backdrop: movie.backdrop_path,
+      youtube_trailer: movie.youtube_trailer,
+      stream_url: build_stream_url(movie)
     }
   end
 
-  defp render_series_list(series) do
+  defp serialize_series(series) do
     %{
       id: series.id,
       name: series.name,
       title: series.title,
       year: series.year,
-      poster: series.cover,
-      rating: series.rating,
+      rating: series.rating && Decimal.to_float(series.rating),
       genre: series.genre,
+      poster: series.cover,
       season_count: series.season_count,
       episode_count: series.episode_count
     }
   end
 
-  defp render_series_detail(series) do
+  defp serialize_series_detail(series) do
     %{
       id: series.id,
       name: series.name,
       title: series.title,
       year: series.year,
-      poster: series.cover,
-      backdrop: series.backdrop_path,
-      images: series.images,
-      rating: series.rating,
+      rating: series.rating && Decimal.to_float(series.rating),
       genre: series.genre,
       plot: series.plot,
       cast: series.cast,
       director: series.director,
-      youtube_trailer: series.youtube_trailer,
-      content_rating: series.content_rating,
-      tagline: series.tagline,
-      tmdb_id: series.tmdb_id,
+      poster: series.cover,
+      backdrop: series.backdrop_path,
       season_count: series.season_count,
       episode_count: series.episode_count,
-      seasons: Enum.map(series.seasons || [], &render_season/1)
+      seasons: Enum.map(series.seasons || [], &serialize_season/1)
     }
   end
 
-  defp render_season(season) do
+  defp serialize_season(season) do
     %{
       id: season.id,
-      season_number: season.season_number,
       name: season.name,
-      cover: season.cover,
-      air_date: season.air_date,
-      overview: season.overview,
-      episode_count: season.episode_count,
-      episodes: Enum.map(season.episodes || [], &render_episode_list/1)
+      season_number: season.season_number,
+      episode_count: length(season.episodes || []),
+      episodes: Enum.map(season.episodes || [], &serialize_episode/1)
     }
   end
 
-  defp render_episode_list(episode) do
+  defp serialize_episode(episode) do
     %{
       id: episode.id,
+      title: episode.title,
       episode_num: episode.episode_num,
-      title: episode.title || episode.name,
       plot: episode.plot,
-      still: episode.still_path || episode.cover,
+      still: episode.still_path,
       duration: episode.duration,
-      duration_secs: episode.duration_secs,
       air_date: episode.air_date
     }
   end
 
-  defp render_episode_detail(episode) do
-    provider = episode.season.series.provider
-    stream_url = build_proxied_stream_url(Episode.stream_url(episode, provider))
-
+  defp serialize_episode_detail(episode) do
     series = episode.season.series
-    season = episode.season
 
     %{
       id: episode.id,
+      title: episode.title,
       episode_num: episode.episode_num,
-      title: episode.title || episode.name,
+      season_number: episode.season.season_number,
       plot: episode.plot,
-      still: episode.still_path || episode.cover,
+      still: episode.still_path,
       duration: episode.duration,
-      duration_secs: episode.duration_secs,
       air_date: episode.air_date,
-      rating: episode.rating,
-      stream_url: stream_url,
-      series: %{
-        id: series.id,
-        name: series.name,
-        poster: series.cover
-      },
-      season: %{
-        id: season.id,
-        season_number: season.season_number,
-        name: season.name
-      }
+      series_id: series.id,
+      series_name: series.name,
+      stream_url: build_episode_stream_url(episode, series)
     }
   end
 
-  defp render_channel_list(channel) do
+  defp serialize_channel(channel) do
+    %{
+      id: channel.id,
+      name: channel.name,
+      icon: channel.stream_icon
+    }
+  end
+
+  defp serialize_channel_detail(channel) do
     %{
       id: channel.id,
       name: channel.name,
       icon: channel.stream_icon,
-      epg_channel_id: channel.epg_channel_id
+      stream_url: build_channel_stream_url(channel)
     }
   end
 
-  defp render_channel_detail(channel) do
-    stream_url = build_proxied_stream_url(LiveChannel.stream_url(channel, channel.provider))
-
-    %{
-      id: channel.id,
-      name: channel.name,
-      icon: channel.stream_icon,
-      epg_channel_id: channel.epg_channel_id,
-      stream_url: stream_url,
-      tv_archive: channel.tv_archive,
-      tv_archive_duration: channel.tv_archive_duration
-    }
+  # Stream URL Builders
+  defp build_stream_url(movie) do
+    provider = movie.provider
+    ext = movie.container_extension || "mp4"
+    "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
   end
 
-  defp render_category(category) do
-    %{
-      id: category.id,
-      name: category.name,
-      type: category.type
-    }
+  defp build_episode_stream_url(episode, series) do
+    provider = series.provider
+    ext = episode.container_extension || "mp4"
+    "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
   end
 
-  defp build_proxied_stream_url(original_url) do
-    encoded = Base.url_encode64(original_url, padding: false)
-    "/api/stream/proxy?url=#{encoded}"
+  defp build_channel_stream_url(channel) do
+    provider = channel.provider
+    "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.m3u8"
   end
+
+  # Helpers
+  defp parse_int(nil, default), do: default
+  defp parse_int("", default), do: default
+
+  defp parse_int(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, _} -> int
+      :error -> default
+    end
+  end
+
+  defp parse_int(value, _default) when is_integer(value), do: value
+  defp parse_int(_, default), do: default
 end
