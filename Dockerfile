@@ -8,8 +8,10 @@ ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
-# Install build dependencies
+# Install build dependencies including Node.js
 RUN apt-get update -y && apt-get install -y build-essential git curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
 # Prepare build dir
@@ -30,6 +32,10 @@ RUN mkdir config
 # Copy compile-time config files
 COPY config/config.exs config/${MIX_ENV}.exs config/
 RUN mix deps.compile
+
+# Install npm dependencies
+COPY assets/package.json assets/package-lock.json assets/
+RUN cd assets && npm ci
 
 # Copy application files
 COPY priv priv
@@ -58,9 +64,9 @@ RUN apt-get update -y && \
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 WORKDIR /app
 RUN chown nobody /app
