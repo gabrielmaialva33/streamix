@@ -294,13 +294,26 @@ defmodule StreamixWeb.HomeLive do
 
   # Content Carousel Component
   defp content_carousel(assigns) do
+    see_more_path = get_see_more_path(assigns.type, assigns.items)
+    assigns = assign(assigns, :see_more_path, see_more_path)
+
     ~H"""
     <div class="px-[4%]">
-      <h2 class="text-xl font-semibold text-text-primary mb-4">{@title}</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold text-text-primary">{@title}</h2>
+        <.link
+          :if={@see_more_path}
+          navigate={@see_more_path}
+          class="text-sm text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+        >
+          Ver mais <.icon name="hero-chevron-right" class="size-4" />
+        </.link>
+      </div>
       <%= if @type == :channels do %>
         <!-- Grid layout with 2 rows for channels -->
         <div class="grid grid-rows-2 grid-flow-col gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth auto-cols-[160px]">
           <.channel_card :for={channel <- @items} channel={channel} />
+          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} />
         </div>
       <% else %>
         <div class="flex gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth">
@@ -314,9 +327,43 @@ defmodule StreamixWeb.HomeLive do
             <% :favorites -> %>
               <.favorite_item :for={fav <- @items} favorite={fav} />
           <% end %>
+          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} />
         </div>
       <% end %>
     </div>
+    """
+  end
+
+  # See More Card at the end of carousel
+  defp see_more_card(assigns) do
+    # Different sizes based on content type
+    card_class =
+      case assigns.type do
+        :channels -> "aspect-video w-[160px]"
+        :history -> "aspect-video w-[280px]"
+        :favorites -> "aspect-[2/3] w-[120px]"
+        _ -> "aspect-[2/3] w-[180px]"
+      end
+
+    assigns = assign(assigns, :card_class, card_class)
+
+    ~H"""
+    <.link
+      navigate={@path}
+      class={[
+        "group flex-shrink-0 rounded-lg overflow-hidden bg-surface/50 border border-white/10",
+        "hover:bg-surface hover:border-white/20 transition-all duration-200",
+        "flex items-center justify-center",
+        @card_class
+      ]}
+    >
+      <div class="text-center p-4">
+        <div class="w-12 h-12 mx-auto mb-2 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+          <.icon name="hero-arrow-right" class="size-6 text-white/70 group-hover:text-white transition-colors" />
+        </div>
+        <span class="text-sm text-white/70 group-hover:text-white transition-colors">Ver mais</span>
+      </div>
+    </.link>
     """
   end
 
@@ -569,4 +616,12 @@ defmodule StreamixWeb.HomeLive do
   end
 
   defp format_number(n), do: to_string(n)
+
+  # Get the "See More" path based on content type
+  defp get_see_more_path(:movies, [first | _]), do: ~p"/providers/#{first.provider_id}/movies"
+  defp get_see_more_path(:series, [first | _]), do: ~p"/providers/#{first.provider_id}/series"
+  defp get_see_more_path(:channels, [first | _]), do: ~p"/providers/#{first.provider_id}"
+  defp get_see_more_path(:history, _), do: ~p"/history"
+  defp get_see_more_path(:favorites, _), do: ~p"/favorites"
+  defp get_see_more_path(_, _), do: nil
 end

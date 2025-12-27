@@ -17,9 +17,7 @@ defmodule StreamixWeb.SearchLive do
 
   @doc false
   def mount(_params, _session, socket) do
-    # User might be nil for guests
-    user = socket.assigns[:current_scope] && socket.assigns.current_scope.user
-    user_id = if user, do: user.id, else: nil
+    user_id = socket.assigns.current_scope.user.id
 
     socket =
       socket
@@ -85,14 +83,9 @@ defmodule StreamixWeb.SearchLive do
   end
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => type}, socket) do
-    case socket.assigns.user_id do
-      nil ->
-        {:noreply, put_flash(socket, :info, "Faça login para adicionar favoritos")}
-
-      user_id ->
-        toggle_favorite(user_id, type, String.to_integer(id))
-        {:noreply, perform_search(socket)}
-    end
+    user_id = socket.assigns.user_id
+    toggle_favorite(user_id, type, String.to_integer(id))
+    {:noreply, perform_search(socket)}
   end
 
   defp toggle_favorite(user_id, type, content_id) do
@@ -352,14 +345,6 @@ defmodule StreamixWeb.SearchLive do
     end
   end
 
-  # For logged-in users: use search with user_id (sees global + public + own private)
-  # For guests: use public search (sees global + public only)
-
-  defp search_channels(nil, query) do
-    Iptv.search_public_channels(query, limit: 24)
-    |> Enum.map(fn channel -> Map.put(channel, :is_favorite, false) end)
-  end
-
   defp search_channels(user_id, query) do
     Iptv.search_channels(user_id, query, limit: 24)
     |> Enum.map(fn channel ->
@@ -367,21 +352,11 @@ defmodule StreamixWeb.SearchLive do
     end)
   end
 
-  defp search_movies(nil, query) do
-    Iptv.search_public_movies(query, limit: 24)
-    |> Enum.map(fn movie -> Map.put(movie, :is_favorite, false) end)
-  end
-
   defp search_movies(user_id, query) do
     Iptv.search_movies(user_id, query, limit: 24)
     |> Enum.map(fn movie ->
       Map.put(movie, :is_favorite, Iptv.is_favorite?(user_id, "movie", movie.id))
     end)
-  end
-
-  defp search_series(nil, query) do
-    Iptv.search_public_series(query, limit: 24)
-    |> Enum.map(fn series -> Map.put(series, :is_favorite, false) end)
   end
 
   defp search_series(user_id, query) do

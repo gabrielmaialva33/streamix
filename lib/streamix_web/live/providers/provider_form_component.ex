@@ -199,7 +199,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
             phx-click="test_connection"
             phx-target={@myself}
             disabled={@testing}
-            class="btn btn-ghost"
+            class="inline-flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover font-medium rounded-lg disabled:opacity-50 transition-colors"
           >
             <.icon
               :if={@testing}

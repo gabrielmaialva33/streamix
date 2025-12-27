@@ -23,13 +23,15 @@ defmodule StreamixWeb.PlayerLive do
 
   @doc false
   def mount(%{"type" => type, "id" => id}, _session, socket) do
-    # User might be nil for guests accessing public content
-    user = socket.assigns[:current_scope] && socket.assigns.current_scope.user
-    user_id = if user, do: user.id, else: nil
+    user_id = socket.assigns.current_scope.user.id
 
     case load_content(type, id, user_id) do
       {:ok, content, provider, stream_url} ->
-        maybe_setup_user_tracking(socket, user_id, type, content)
+        record_watch_history(user_id, type, content)
+
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
+        end
 
         socket =
           socket
@@ -57,16 +59,6 @@ defmodule StreamixWeb.PlayerLive do
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
          |> push_navigate(to: ~p"/")}
-    end
-  end
-
-  defp maybe_setup_user_tracking(_socket, nil, _type, _content), do: :ok
-
-  defp maybe_setup_user_tracking(socket, user_id, type, content) do
-    record_watch_history(user_id, type, content)
-
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
     end
   end
 
@@ -198,16 +190,6 @@ defmodule StreamixWeb.PlayerLive do
   # Private Helpers
   # ============================================
 
-  # For logged-in users: use get_playable_* (sees global + public + own private)
-  # For guests: use get_public_* (sees global + public only)
-
-  defp load_content("live_channel", id, nil) do
-    case Iptv.get_public_channel(id) do
-      nil -> {:error, :not_found}
-      channel -> load_channel(channel)
-    end
-  end
-
   defp load_content("live_channel", id, user_id) do
     case Iptv.get_playable_channel(user_id, id) do
       nil -> {:error, :not_found}
@@ -215,24 +197,10 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp load_content("movie", id, nil) do
-    case Iptv.get_public_movie(id) do
-      nil -> {:error, :not_found}
-      movie -> load_movie(movie)
-    end
-  end
-
   defp load_content("movie", id, user_id) do
     case Iptv.get_playable_movie(user_id, id) do
       nil -> {:error, :not_found}
       movie -> load_movie(movie)
-    end
-  end
-
-  defp load_content("episode", id, nil) do
-    case Iptv.get_public_episode(id) do
-      nil -> {:error, :not_found}
-      episode -> load_episode(episode)
     end
   end
 
@@ -289,24 +257,19 @@ defmodule StreamixWeb.PlayerLive do
   defp content_icon(_, _), do: nil
 
   defp get_back_path(socket) do
-    # Guests should always go back to home (authenticated routes require login)
-    if socket.assigns.user_id == nil do
-      ~p"/"
-    else
-      case socket.assigns.content_type do
-        :live_channel ->
-          ~p"/providers/#{socket.assigns.provider.id}"
+    case socket.assigns.content_type do
+      :live_channel ->
+        ~p"/providers/#{socket.assigns.provider.id}"
 
-        :movie ->
-          ~p"/providers/#{socket.assigns.provider.id}/movies"
+      :movie ->
+        ~p"/providers/#{socket.assigns.provider.id}/movies"
 
-        :episode ->
-          series_id = socket.assigns.content.season.series_id
-          ~p"/providers/#{socket.assigns.provider.id}/series/#{series_id}"
+      :episode ->
+        series_id = socket.assigns.content.season.series_id
+        ~p"/providers/#{socket.assigns.provider.id}/series/#{series_id}"
 
-        _ ->
-          ~p"/"
-      end
+      _ ->
+        ~p"/"
     end
   end
 

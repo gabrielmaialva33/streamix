@@ -219,7 +219,7 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
         <div>
           <.link
             navigate={~p"/providers"}
-            class="text-sm text-base-content/60 hover:text-primary mb-2 inline-flex items-center gap-1"
+            class="text-sm text-text-secondary hover:text-brand mb-2 inline-flex items-center gap-1"
           >
             <.icon name="hero-arrow-left" class="size-4" /> Voltar para provedores
           </.link>
@@ -243,7 +243,7 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
           type="button"
           phx-click="sync_provider"
           disabled={@provider.sync_status in ["pending", "syncing"]}
-          class="btn btn-primary"
+          class="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white font-medium rounded-lg hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <.icon
             name="hero-arrow-path"
@@ -285,7 +285,7 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
               :if={@provider.sync_status == "idle"}
               type="button"
               phx-click="sync_provider"
-              class="btn btn-primary"
+              class="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white font-medium rounded-lg hover:bg-brand-hover transition-colors"
             >
               <.icon name="hero-arrow-path" class="size-5" /> Sincronizar Agora
             </button>
