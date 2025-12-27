@@ -1,21 +1,31 @@
 import Config
+import Dotenvy
 
 # Load .env file in dev/test environments
 if config_env() in [:dev, :test] do
-  Dotenvy.source!([".env", System.get_env()])
+  source!([".env", System.get_env()])
 end
 
 # Global provider configuration (optional)
 # Set GLOBAL_PROVIDER_ENABLED=true to enable
-if System.get_env("GLOBAL_PROVIDER_ENABLED") == "true" do
+if env!("GLOBAL_PROVIDER_ENABLED", :boolean, false) do
   config :streamix, :global_provider,
     enabled: true,
-    name: System.get_env("GLOBAL_PROVIDER_NAME") || "Streamix Global",
-    url: System.get_env("GLOBAL_PROVIDER_URL"),
-    username: System.get_env("GLOBAL_PROVIDER_USERNAME"),
-    password: System.get_env("GLOBAL_PROVIDER_PASSWORD")
+    name: env!("GLOBAL_PROVIDER_NAME", :string, "Streamix Global"),
+    url: env!("GLOBAL_PROVIDER_URL", :string),
+    username: env!("GLOBAL_PROVIDER_USERNAME", :string),
+    password: env!("GLOBAL_PROVIDER_PASSWORD", :string)
 else
   config :streamix, :global_provider, enabled: false
+end
+
+# TMDB API configuration (optional, for enriched movie metadata)
+if tmdb_token = env!("TMDB_API_TOKEN", :string, nil) do
+  config :streamix, :tmdb,
+    enabled: true,
+    api_token: tmdb_token
+else
+  config :streamix, :tmdb, enabled: false
 end
 
 # config/runtime.exs is executed for all environments, including
