@@ -104,7 +104,7 @@ var SeriesPage = (function() {
 
     // Create new virtualizer
     Virtualizer.create(VIRTUALIZER_ID, {
-      createCard: function(series, onClick) {
+      createCard: function(series) {
         return Cards.createPosterCard(series, createSeriesClickHandler(series));
       },
       onClick: createSeriesClickHandler,

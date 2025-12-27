@@ -8,16 +8,16 @@
 var Virtualizer = (function() {
   'use strict';
 
-  // Configuration
+  // Configuration (optimized for TV performance)
   var config = {
-    // Max items to keep in DOM at once
-    maxDomItems: 60,
+    // Max items to keep in DOM at once (~3x visible on 1920px screen)
+    maxDomItems: 24,
     // Buffer items before/after visible area
-    bufferItems: 10,
+    bufferItems: 6,
     // Max items to keep in data array
     maxDataItems: 100,
     // Cleanup threshold - when to start removing old items
-    cleanupThreshold: 80
+    cleanupThreshold: 40
   };
 
   // Active virtualizers by page
@@ -83,15 +83,19 @@ var Virtualizer = (function() {
   function cleanupElement(el) {
     if (!el) { return; }
 
-    // Remove event listeners by cloning (simple approach)
-    // Find and cleanup images
+    // Find and cleanup images using Cards cleanup function
     var imgs = el.querySelectorAll('img');
     for (var i = 0; i < imgs.length; i++) {
       var img = imgs[i];
-      img.onload = null;
-      img.onerror = null;
-      img.src = ''; // Stop loading
-      img.removeAttribute('src');
+      // Use Cards.cleanupImageHandlers if available (proper cleanup)
+      if (typeof Cards !== 'undefined' && Cards.cleanupImageHandlers) {
+        Cards.cleanupImageHandlers(img);
+      } else {
+        // Fallback
+        img.onload = null;
+        img.onerror = null;
+        img.src = '';
+      }
       img.removeAttribute('data-src');
     }
 
@@ -200,9 +204,6 @@ var Virtualizer = (function() {
   function updateVisibleRange(id, direction) {
     var instance = instances[id];
     if (!instance || !instance.container) { return; }
-
-    var containerWidth = instance.container.offsetWidth || 1920;
-    var visibleCount = Math.ceil(containerWidth / instance.itemWidth);
 
     if (direction === 'forward') {
       // Moving forward - render more items ahead

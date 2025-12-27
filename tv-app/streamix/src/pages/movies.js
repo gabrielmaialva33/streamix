@@ -104,7 +104,7 @@ var MoviesPage = (function() {
 
     // Create new virtualizer
     Virtualizer.create(VIRTUALIZER_ID, {
-      createCard: function(movie, onClick) {
+      createCard: function(movie) {
         return Cards.createPosterCard(movie, createMovieClickHandler(movie));
       },
       onClick: createMovieClickHandler,

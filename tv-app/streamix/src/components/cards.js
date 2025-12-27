@@ -16,26 +16,49 @@ var Cards = (function() {
   // Max cache size (prevent memory bloat on low-end TVs)
   var MAX_CACHE_SIZE = 100;
 
+  // WeakMap to track image handlers for proper cleanup
+  var imageHandlers = new WeakMap();
+
   // Placeholder image (data URI to avoid network request)
   var PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"%3E%3Crect fill="%231e1e1e" width="200" height="300"/%3E%3C/svg%3E';
 
   /**
-   * Handle image load success with smooth transition
+   * Setup image event handlers with proper tracking for cleanup
    */
-  function handleImageLoad(e) {
-    var img = e.target;
-    img.classList.remove('img-loading');
-    img.classList.add('img-loaded');
+  function setupImageHandlers(img) {
+    // Create handlers with reference to img
+    var handlers = {
+      load: function() {
+        img.classList.remove('img-loading');
+        img.classList.add('img-loaded');
+      },
+      error: function() {
+        img.src = PLACEHOLDER;
+        img.classList.remove('img-loading');
+        img.classList.add('img-error');
+      }
+    };
+
+    // Store for cleanup
+    imageHandlers.set(img, handlers);
+
+    // Add event listeners
+    img.addEventListener('load', handlers.load);
+    img.addEventListener('error', handlers.error);
   }
 
   /**
-   * Handle image load error
+   * Cleanup image handlers to prevent memory leaks
    */
-  function handleImageError(e) {
-    var img = e.target;
-    img.src = PLACEHOLDER;
-    img.classList.remove('img-loading');
-    img.classList.add('img-error');
+  function cleanupImageHandlers(img) {
+    var handlers = imageHandlers.get(img);
+    if (handlers) {
+      img.removeEventListener('load', handlers.load);
+      img.removeEventListener('error', handlers.error);
+      imageHandlers.delete(img);
+    }
+    // Clear image src to stop any pending load
+    img.src = '';
   }
 
   /**
@@ -103,16 +126,15 @@ var Cards = (function() {
       // Add loading class for transition
       img.classList.add('img-loading');
 
+      // Setup handlers before setting src (using proper event listeners)
+      setupImageHandlers(img);
+
       // Load image
       img.src = src;
       img.removeAttribute('data-src');
 
       // Add to cache
       imageCache[src] = true;
-
-      // Handle load/error
-      img.onload = handleImageLoad;
-      img.onerror = handleImageError;
 
       // Trim cache if needed
       trimImageCache();
@@ -507,7 +529,9 @@ var Cards = (function() {
     createLoading: createLoading,
     createEmptyState: createEmptyState,
     clearImageCache: clearImageCache,
-    getCacheSize: getCacheSize
+    getCacheSize: getCacheSize,
+    // Memory management
+    cleanupImageHandlers: cleanupImageHandlers
   };
 })();
 

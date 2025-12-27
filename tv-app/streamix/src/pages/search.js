@@ -12,7 +12,7 @@ var SearchPage = (function() {
     ['O', 'P', 'Q', 'R', 'S', 'T', 'U'],
     ['V', 'W', 'X', 'Y', 'Z', '0', '1'],
     ['2', '3', '4', '5', '6', '7', '8'],
-    ['9', 'SPACE', 'DEL', 'CLEAR']
+    ['9', 'SPACE', 'DEL', 'CLEAR', 'ENTER']
   ];
 
   var query = '';
@@ -99,15 +99,17 @@ var SearchPage = (function() {
         var key = row[k];
         var keyBtn = document.createElement('button');
         keyBtn.className = 'keyboard-key focusable';
-        if (key === 'SPACE' || key === 'DEL' || key === 'CLEAR') {
+        if (key === 'SPACE' || key === 'DEL' || key === 'CLEAR' || key === 'ENTER') {
           keyBtn.classList.add('wide');
         }
         keyBtn.tabIndex = 0;
 
-        // Display labels
+        // Display labels in pt-BR
         var displayLabel = key;
-        if (key === 'SPACE') { displayLabel = '␣'; }
+        if (key === 'SPACE') { displayLabel = 'Espaço'; }
         if (key === 'DEL') { displayLabel = '⌫'; }
+        if (key === 'CLEAR') { displayLabel = 'Limpar'; }
+        if (key === 'ENTER') { displayLabel = 'Buscar'; }
         keyBtn.textContent = displayLabel;
 
         keyBtn.addEventListener('click', createKeyPressHandler(key));
@@ -157,6 +159,16 @@ var SearchPage = (function() {
       case 'CLEAR':
         query = '';
         break;
+      case 'ENTER':
+        // Execute search immediately
+        if (query.length >= 2) {
+          if (searchTimeout) {
+            clearTimeout(searchTimeout);
+            searchTimeout = null;
+          }
+          performSearch();
+        }
+        return; // Don't update display or schedule
       default:
         query += key.toLowerCase();
     }

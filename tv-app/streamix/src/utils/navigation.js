@@ -48,6 +48,88 @@ var Navigation = (function() {
   // Active scroll animations
   var activeScrolls = {};
 
+  // ========== PERFORMANCE: Layout Cache ==========
+  // Cache getBoundingClientRect results per frame to avoid reflows
+  var layoutCache = {
+    rects: new WeakMap(),
+    frameId: 0
+  };
+
+  // Cache visibility results per frame
+  var visibilityCache = new WeakMap();
+  var visibilityCacheFrame = 0;
+
+  /**
+   * Get cached bounding rect (avoids reflow if already calculated this frame)
+   * @param {Element} element
+   * @returns {DOMRect}
+   */
+  function getCachedRect(element) {
+    var currentFrame = performance.now();
+    // Invalidate cache after 16ms (1 frame at 60fps)
+    if (currentFrame - layoutCache.frameId > 16) {
+      layoutCache.rects = new WeakMap();
+      layoutCache.frameId = currentFrame;
+    }
+
+    if (!layoutCache.rects.has(element)) {
+      layoutCache.rects.set(element, element.getBoundingClientRect());
+    }
+    return layoutCache.rects.get(element);
+  }
+
+  /**
+   * Check if element is visible (cached, optimized)
+   * Uses offsetParent instead of getComputedStyle when possible
+   * @param {Element} element
+   * @returns {boolean}
+   */
+  function isVisibleCached(element) {
+    if (!element) { return false; }
+
+    var currentFrame = performance.now();
+    // Invalidate cache after 16ms
+    if (currentFrame - visibilityCacheFrame > 16) {
+      visibilityCache = new WeakMap();
+      visibilityCacheFrame = currentFrame;
+    }
+
+    if (visibilityCache.has(element)) {
+      return visibilityCache.get(element);
+    }
+
+    // Fast check: offsetParent is null for display:none elements
+    // (except for fixed/sticky positioned elements)
+    if (element.offsetParent === null) {
+      var position = element.style.position;
+      if (position !== 'fixed' && position !== 'sticky') {
+        visibilityCache.set(element, false);
+        return false;
+      }
+    }
+
+    // Check dimensions via cached rect
+    var rect = getCachedRect(element);
+    if (rect.width === 0 || rect.height === 0) {
+      visibilityCache.set(element, false);
+      return false;
+    }
+
+    // Check if in viewport (with margin)
+    var margin = 50;
+    if (rect.bottom < -margin ||
+        rect.top > 1080 + margin ||
+        rect.right < -margin ||
+        rect.left > 1920 + margin) {
+      visibilityCache.set(element, false);
+      return false;
+    }
+
+    visibilityCache.set(element, true);
+    return true;
+  }
+  // ========== END Performance Cache ==========
+
   /**
    * Initialize navigation
    */
@@ -183,19 +265,20 @@ var Navigation = (function() {
       return;
     }
 
-    // Get all visible focusable elements
+    // Get all visible focusable elements (using cached visibility check)
     var allFocusables = document.querySelectorAll(config.focusableSelector);
     var focusables = [];
     for (var i = 0; i < allFocusables.length; i++) {
       var el = allFocusables[i];
-      if (isVisible(el) && el !== currentFocus) {
+      if (isVisibleCached(el) && el !== currentFocus) {
         focusables.push(el);
       }
     }
 
     if (focusables.length === 0) { return; }
 
-    var currentRect = currentFocus.getBoundingClientRect();
+    // Use cached rect to avoid reflow
+    var currentRect = getCachedRect(currentFocus);
     var currentCenter = getCenter(currentRect);
 
     // Find best candidate
@@ -204,7 +287,8 @@ var Navigation = (function() {
 
     for (var j = 0; j < focusables.length; j++) {
       var candidate = focusables[j];
-      var candidateRect = candidate.getBoundingClientRect();
+      // Use cached rect for candidates too
+      var candidateRect = getCachedRect(candidate);
       var candidateCenter = getCenter(candidateRect);
 
       var score = calculateNavigationScore(
@@ -511,17 +595,17 @@ var Navigation = (function() {
     var isInMainContent = currentFocus.closest('.main-with-sidebar') !== null;
     if (!isInMainContent) { return false; }
 
-    // Check if there's any focusable element to the left
-    var currentRect = currentFocus.getBoundingClientRect();
+    // Check if there's any focusable element to the left (using cached methods)
+    var currentRect = getCachedRect(currentFocus);
     var currentCenter = getCenter(currentRect);
 
     var allFocusables = document.querySelectorAll(config.focusableSelector);
     for (var i = 0; i < allFocusables.length; i++) {
       var el = allFocusables[i];
-      if (el === currentFocus || !isVisible(el)) { continue; }
+      if (el === currentFocus || !isVisibleCached(el)) { continue; }
       if (el.closest('.sidebar')) { continue; } // Skip sidebar items
 
-      var elRect = el.getBoundingClientRect();
+      var elRect = getCachedRect(el);
       var elCenter = getCenter(elRect);
 
       // Check if element is to the left
@@ -564,7 +648,7 @@ var Navigation = (function() {
     var remembered = null;
     for (var sectionId in sectionMemory) {
       var el = sectionMemory[sectionId];
-      if (el && mainContent.contains(el) && isVisible(el)) {
+      if (el && mainContent.contains(el) && isVisibleCached(el)) {
         remembered = el;
         break;
       }
@@ -579,7 +663,7 @@ var Navigation = (function() {
 
     // Otherwise focus first focusable in main content
     var firstFocusable = mainContent.querySelector(config.focusableSelector);
-    if (firstFocusable && isVisible(firstFocusable)) {
+    if (firstFocusable && isVisibleCached(firstFocusable)) {
       focus(firstFocusable);
       scrollIntoViewIfNeeded(firstFocusable);
     }
@@ -604,38 +688,6 @@ var Navigation = (function() {
     if (!backEvent.defaultPrevented) {
       event.preventDefault();
     }
-  }
-
-  /**
-   * Check if element is visible
-   */
-  function isVisible(element) {
-    if (!element) { return false; }
-
-    // Check basic visibility
-    var style = window.getComputedStyle(element);
-    if (style.display === 'none' ||
-        style.visibility === 'hidden' ||
-        style.opacity === '0') {
-      return false;
-    }
-
-    // Check if element has dimensions
-    var rect = element.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) {
-      return false;
-    }
-
-    // Check if element is in viewport (with some margin)
-    var margin = 50;
-    if (rect.bottom < -margin ||
-        rect.top > 1080 + margin ||
-        rect.right < -margin ||
-        rect.left > 1920 + margin) {
-      return false;
-    }
-
-    return true;
   }
 
   /**
@@ -781,7 +833,7 @@ var Navigation = (function() {
     // Try to restore remembered focus
     if (sectionMemory[sectionId]) {
       var remembered = sectionMemory[sectionId];
-      if (isVisible(remembered)) {
+      if (isVisibleCached(remembered)) {
         focus(remembered);
         // Scroll to element after a small delay to ensure position is correct
         setTimeout(function() {
@@ -833,7 +885,7 @@ var Navigation = (function() {
    */
   function focusFirst() {
     var first = document.querySelector(config.focusableSelector);
-    if (first && isVisible(first)) {
+    if (first && isVisibleCached(first)) {
       focus(first);
       return true;
     }

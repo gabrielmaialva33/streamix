@@ -1,6 +1,7 @@
 /**
  * API Client for Streamix Backend
  */
+/* globals requestIdleCallback */
 
 var API = (function() {
   'use strict';
@@ -11,8 +12,11 @@ var API = (function() {
   var cache = {};
   var CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // In-flight requests (prevents duplicate concurrent requests)
+  var inFlight = {};
+
   /**
-   * Make a fetch request with error handling
+   * Make a fetch request with error handling and deduplication
    */
   function request(endpoint, options) {
     options = options || {};
@@ -23,6 +27,11 @@ var API = (function() {
       var cached = cache[url];
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         return Promise.resolve(cached.data);
+      }
+
+      // Check if request is already in-flight (prevents duplicate requests)
+      if (inFlight[url]) {
+        return inFlight[url];
       }
     }
 
@@ -45,7 +54,7 @@ var API = (function() {
       fetchOptions.body = options.body;
     }
 
-    return fetch(url, fetchOptions).then(function(response) {
+    var promise = fetch(url, fetchOptions).then(function(response) {
       if (!response.ok) {
         throw new Error('HTTP ' + response.status + ': ' + response.statusText);
       }
@@ -54,12 +63,21 @@ var API = (function() {
       // Cache GET responses
       if (!options.method || options.method === 'GET') {
         cache[url] = { data: data, timestamp: Date.now() };
+        delete inFlight[url]; // Clear in-flight
       }
       return data;
     }).catch(function(error) {
+      delete inFlight[url]; // Clear in-flight on error
       console.error('[API] Error fetching ' + endpoint + ':', error);
       throw error;
     });
+
+    // Track in-flight GET requests
+    if (!options.method || options.method === 'GET') {
+      inFlight[url] = promise;
+    }
+
+    return promise;
   }
 
   /**
@@ -158,35 +176,32 @@ var API = (function() {
 
   /**
    * Prefetch a URL in background (silent, no error propagation)
-   * Uses low priority and doesn't block UI
+   * Uses requestIdleCallback when available for better performance
    */
   function prefetch(endpoint) {
     var url = BASE_URL + endpoint;
 
-    // Skip if already cached
-    var cached = cache[url];
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    // Skip if already cached or in-flight
+    if (cache[url] && Date.now() - cache[url].timestamp < CACHE_TTL) {
+      return;
+    }
+    if (inFlight[url]) {
       return;
     }
 
-    // Prefetch in background with setTimeout to yield to UI
-    setTimeout(function() {
-      fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
-        method: 'GET'
-      }).then(function(response) {
-        if (response.ok) {
-          return response.json();
-        }
-        return null;
-      }).then(function(data) {
-        if (data) {
-          cache[url] = { data: data, timestamp: Date.now() };
-        }
-      }).catch(function() {
-        // Silent fail for prefetch - don't log errors
+    // Use requestIdleCallback if available, fallback to setTimeout
+    var scheduleFetch = function() {
+      // Reuse request() to benefit from deduplication and caching
+      request(endpoint).catch(function() {
+        // Silent fail for prefetch
       });
-    }, 100);
+    };
+
+    if (window.requestIdleCallback) {
+      requestIdleCallback(scheduleFetch, { timeout: 2000 });
+    } else {
+      setTimeout(scheduleFetch, 100);
+    }
   }
 
   /**

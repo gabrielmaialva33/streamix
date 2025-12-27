@@ -27,6 +27,9 @@ var PlayerPage = (function() {
   var dashPlayer = null;
   var streamType = 'unknown';
 
+  // Video event handlers (stored for cleanup)
+  var videoHandlers = null;
+
   // Quality modal state
   var qualityModalVisible = false;
 
@@ -39,19 +42,21 @@ var PlayerPage = (function() {
   var seekPreviewTime = 0;
   var lastSeekKeyTime = 0;
   var seekAcceleration = 1;
+  var hasMovedHandle = false; // Track if user moved the handle
 
   /**
-   * Show debug info on screen
+   * Show debug info on screen (disabled - enable when needed)
    */
-  function showDebug(msg) {
-    var debug = document.getElementById('player-debug');
-    if (!debug) {
-      debug = document.createElement('div');
-      debug.id = 'player-debug';
-      debug.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:10px 20px;font-size:20px;font-family:monospace;z-index:9999;border-radius:8px;';
-      document.body.appendChild(debug);
-    }
-    debug.textContent = msg;
+  function showDebug() {
+    // Debug disabled - uncomment below to enable
+    // var debug = document.getElementById('player-debug');
+    // if (!debug) {
+    //   debug = document.createElement('div');
+    //   debug.id = 'player-debug';
+    //   debug.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:10px 20px;font-size:20px;font-family:monospace;z-index:9999;border-radius:8px;';
+    //   document.body.appendChild(debug);
+    // }
+    // debug.textContent = arguments[0];
   }
 
   /**
@@ -460,6 +465,7 @@ var PlayerPage = (function() {
         progressContainerEl.addEventListener('focus', function() {
           progressBarFocused = true;
           seekPreviewTime = currentTime;
+          hasMovedHandle = false; // Reset - user hasn't moved handle yet
           // Show preview handle at current position
           updateHandlePosition(currentTime);
         });
@@ -948,44 +954,86 @@ var PlayerPage = (function() {
   }
 
   /**
+   * Cleanup video event handlers
+   */
+  function cleanupVideoHandlers() {
+    if (videoElement && videoHandlers) {
+      videoElement.removeEventListener('play', videoHandlers.play);
+      videoElement.removeEventListener('pause', videoHandlers.pause);
+      videoElement.removeEventListener('timeupdate', videoHandlers.timeupdate);
+      videoElement.removeEventListener('ended', videoHandlers.ended);
+      videoElement.removeEventListener('waiting', videoHandlers.waiting);
+      videoElement.removeEventListener('playing', videoHandlers.playing);
+      videoElement.removeEventListener('error', videoHandlers.error);
+      videoElement.removeEventListener('loadeddata', videoHandlers.loadeddata);
+      console.log('[PlayerPage] Video handlers cleaned up');
+    }
+    videoHandlers = null;
+  }
+
+  /**
    * Initialize HTML5 Video with HLS/DASH support
    */
   function initHTML5Video() {
     if (!videoElement) { return; }
 
+    // IMPORTANT: Cleanup previous handlers to prevent memory leaks and time persistence
+    cleanupVideoHandlers();
+
+    // Reset video element state for new content
+    videoElement.currentTime = 0;
+    currentTime = 0;
+    duration = 0;
+
     streamType = detectStreamType(streamUrl);
     console.log('[PlayerPage] Stream type:', streamType, 'URL:', streamUrl);
 
-    // Setup video event listeners first
-    videoElement.addEventListener('play', function() {
-      isPlaying = true;
-      updatePlayPauseButton();
-    });
-
-    videoElement.addEventListener('pause', function() {
-      isPlaying = false;
-      updatePlayPauseButton();
-    });
-
-    videoElement.addEventListener('timeupdate', function() {
-      currentTime = videoElement.currentTime * 1000;
-      duration = videoElement.duration * 1000;
-      updateProgressUI();
-    });
-
-    videoElement.addEventListener('ended', handleVideoEnded);
-    videoElement.addEventListener('waiting', function() { showBuffering(true); });
-    videoElement.addEventListener('playing', function() { showBuffering(false); });
-
-    videoElement.addEventListener('error', function(e) {
-      console.error('[HTML5Video] Error:', e);
-      // Try fallback or show error
-      if (streamType === 'hls' && hlsPlayer) {
-        console.log('[PlayerPage] HLS error, might recover...');
-      } else {
-        showError('Erro na reprodução');
+    // Create handlers object for proper cleanup later
+    videoHandlers = {
+      play: function() {
+        isPlaying = true;
+        updatePlayPauseButton();
+      },
+      pause: function() {
+        isPlaying = false;
+        updatePlayPauseButton();
+      },
+      timeupdate: function() {
+        currentTime = videoElement.currentTime * 1000;
+        duration = videoElement.duration * 1000;
+        updateProgressUI();
+      },
+      ended: handleVideoEnded,
+      waiting: function() { showBuffering(true); },
+      playing: function() { showBuffering(false); },
+      error: function(e) {
+        console.error('[HTML5Video] Error:', e);
+        if (streamType === 'hls' && hlsPlayer) {
+          console.log('[PlayerPage] HLS error, might recover...');
+        } else {
+          showError('Erro na reprodução');
+        }
+      },
+      loadeddata: function() {
+        // Ensure we start from beginning on new content
+        if (videoElement.currentTime > 1) {
+          console.log('[PlayerPage] Resetting to start - was at:', videoElement.currentTime);
+          videoElement.currentTime = 0;
+        }
+        currentTime = 0;
+        updateProgressUI();
       }
-    });
+    };
+
+    // Setup video event listeners
+    videoElement.addEventListener('play', videoHandlers.play);
+    videoElement.addEventListener('pause', videoHandlers.pause);
+    videoElement.addEventListener('timeupdate', videoHandlers.timeupdate);
+    videoElement.addEventListener('ended', videoHandlers.ended);
+    videoElement.addEventListener('waiting', videoHandlers.waiting);
+    videoElement.addEventListener('playing', videoHandlers.playing);
+    videoElement.addEventListener('error', videoHandlers.error);
+    videoElement.addEventListener('loadeddata', videoHandlers.loadeddata);
 
     // Initialize based on stream type
     if (streamType === 'hls') {
@@ -1669,35 +1717,6 @@ var PlayerPage = (function() {
   }
 
   /**
-   * Update seek preview (when navigating with progress bar focused)
-   */
-  function updateSeekPreview(previewTimeMs) {
-    var progressBar = document.getElementById('progress-bar');
-    var progressHandle = document.getElementById('progress-handle');
-    var progressPreview = document.getElementById('progress-preview');
-    var previewTimeEl = document.getElementById('preview-time');
-
-    if (!duration || duration <= 0) { return; }
-
-    var progress = (previewTimeMs / duration) * 100;
-    progress = Math.max(0, Math.min(100, progress));
-
-    if (progressBar) {
-      progressBar.style.width = progress + '%';
-    }
-    if (progressHandle) {
-      progressHandle.style.left = progress + '%';
-    }
-    if (progressPreview) {
-      progressPreview.style.display = 'block';
-      progressPreview.style.left = progress + '%';
-    }
-    if (previewTimeEl) {
-      previewTimeEl.textContent = formatTime(previewTimeMs / 1000);
-    }
-  }
-
-  /**
    * Update PREVIEW handle position for scrubbing (separate from main handle)
    * Shows a second red handle that user controls
    */
@@ -1743,33 +1762,6 @@ var PlayerPage = (function() {
   }
 
   /**
-   * Hide seek preview and reset to current time
-   */
-  function hideSeekPreview() {
-    var progressPreview = document.getElementById('progress-preview');
-    if (progressPreview) {
-      progressPreview.style.display = 'none';
-    }
-    updateProgressUI();
-  }
-
-  /**
-   * Seek to preview position
-   */
-  function seekToPreview() {
-    if (seekPreviewTime >= 0 && duration > 0) {
-      var newTimeSeconds = seekPreviewTime / 1000;
-      if (useAVPlay) {
-        TizenSDK.AVPlayer.seekTo(seekPreviewTime);
-      } else if (videoElement) {
-        videoElement.currentTime = newTimeSeconds;
-      }
-      currentTime = seekPreviewTime;
-      updateProgressUI();
-    }
-  }
-
-  /**
    * Handle keyboard events directly on progress bar
    * LEFT/RIGHT = control time (stay on timeline)
    * UP/DOWN = exit timeline to buttons
@@ -1811,6 +1803,7 @@ var PlayerPage = (function() {
       var seekStep = Math.round(baseStep * seekAcceleration);
 
       // Move preview position (handle) - don't seek yet
+      hasMovedHandle = true; // User moved the handle
       if (keyCode === 37) { // Left
         seekPreviewTime = Math.max(0, seekPreviewTime - seekStep);
       } else { // Right
@@ -1831,17 +1824,22 @@ var PlayerPage = (function() {
       return;
     }
 
-    // ENTER: Confirm seek to handle position
+    // ENTER: If moved handle -> seek, otherwise -> pause/play
     if (keyCode === 13) {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      var targetTime = seekPreviewTime;
-      showDebug('ENTER! seekPreview=' + Math.round(targetTime/1000) + 's cur=' + Math.round(currentTime/1000) + 's');
-      // Hide preview handle first
-      hidePreviewHandle();
-      // Do the actual seek
-      seekToTime(targetTime);
+
+      if (hasMovedHandle) {
+        // User moved the handle, do seek
+        var targetTime = seekPreviewTime;
+        hidePreviewHandle();
+        seekToTime(targetTime);
+        hasMovedHandle = false;
+      } else {
+        // User didn't move handle, toggle play/pause
+        togglePlayPause();
+      }
       resetOverlayTimeout();
       return false;
     }
@@ -2100,9 +2098,13 @@ var PlayerPage = (function() {
         dashPlayer = null;
       }
 
-      // 3c. Stop HTML5 video
+      // 3c. Cleanup event handlers to prevent memory leaks
+      cleanupVideoHandlers();
+
+      // 3d. Stop HTML5 video
       try {
         videoElement.pause();
+        videoElement.currentTime = 0; // Reset time to prevent persistence
         videoElement.removeAttribute('src');
         videoElement.load(); // Force release of resources
       } catch (e) {
