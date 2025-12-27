@@ -2393,6 +2393,51 @@ body {
 }
 
 /* ==========================================================================
+   Page Header with Search
+   ========================================================================== */
+.page-header {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-box-pack: justify;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 20px;
+}
+
+.search-container {
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+}
+
+.search-input {
+  background-color: #1e1e1e;
+  border: 2px solid #333;
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 18px;
+  color: #fff;
+  width: 300px;
+  outline: none;
+  -webkit-transition: border-color 150ms ease, background-color 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.search-input:focus,
+.search-input.focused {
+  border-color: #e50914;
+  background-color: #2a2a2a;
+}
+
+.search-input::-webkit-input-placeholder {
+  color: #666;
+}
+
+/* ==========================================================================
    Performance: Reduce motion for users who prefer it
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {

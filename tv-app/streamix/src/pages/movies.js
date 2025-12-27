@@ -10,6 +10,8 @@ var MoviesPage = (function() {
   var VIRTUALIZER_ID = 'movies-grid';
   var categories = [];
   var selectedCategory = null;
+  var searchQuery = '';
+  var searchTimeout = null;
   var offset = 0;
   var LIMIT = 20;
 
@@ -48,6 +50,35 @@ var MoviesPage = (function() {
   }
 
   /**
+   * Handle search input
+   */
+  function handleSearch(query) {
+    // Debounce search
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    searchTimeout = setTimeout(function() {
+      searchQuery = query;
+      offset = 0;
+
+      // Reset virtualizer
+      Virtualizer.reset(VIRTUALIZER_ID);
+
+      loadMoreMovies().then(function(result) {
+        if (result && result.items) {
+          Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+          var grid = document.getElementById('movies-grid');
+          if (grid) {
+            grid.innerHTML = '';
+            Virtualizer.render(VIRTUALIZER_ID, grid, 0);
+          }
+        }
+      });
+    }, 300);
+  }
+
+  /**
    * Focus first focusable item in container
    */
   function focusFirstItem(container) {
@@ -70,6 +101,10 @@ var MoviesPage = (function() {
 
     if (selectedCategory) {
       params.category_id = selectedCategory;
+    }
+
+    if (searchQuery) {
+      params.search = searchQuery;
     }
 
     return API.getMovies(params).then(function(data) {
@@ -101,6 +136,7 @@ var MoviesPage = (function() {
     // Reset state
     offset = 0;
     selectedCategory = null;
+    searchQuery = '';
 
     // Create new virtualizer
     Virtualizer.create(VIRTUALIZER_ID, {
@@ -113,8 +149,8 @@ var MoviesPage = (function() {
       onLoadMore: loadMoreMovies
     });
 
-    // Fetch categories first, then movies
-    API.getCategories('movie').then(function(data) {
+    // Fetch categories first, then movies (backend uses 'vod' type for movies)
+    API.getCategories('vod').then(function(data) {
       categories = data || [];
       return loadMoreMovies();
     }).then(function(result) {
@@ -138,11 +174,31 @@ var MoviesPage = (function() {
     var container = document.createElement('div');
     container.className = 'safe-area scroll-container h-full';
 
-    // Title
+    // Header with title and search
+    var header = document.createElement('div');
+    header.className = 'page-header';
+
     var title = document.createElement('h1');
-    title.className = 'text-2xl font-bold mb-4';
+    title.className = 'text-2xl font-bold';
     title.textContent = 'Filmes';
-    container.appendChild(title);
+    header.appendChild(title);
+
+    // Search input
+    var searchContainer = document.createElement('div');
+    searchContainer.className = 'search-container';
+    var searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'search-input focusable';
+    searchInput.placeholder = 'Buscar filmes...';
+    searchInput.value = searchQuery;
+    searchInput.id = 'movies-search';
+    searchInput.addEventListener('input', function(e) {
+      handleSearch(e.target.value);
+    });
+    searchContainer.appendChild(searchInput);
+    header.appendChild(searchContainer);
+
+    container.appendChild(header);
 
     // Category filters as carousel
     if (categories.length > 0) {

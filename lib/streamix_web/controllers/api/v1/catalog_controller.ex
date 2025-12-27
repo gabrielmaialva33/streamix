@@ -70,7 +70,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   @doc """
   GET /api/v1/catalog/movies
   Returns paginated list of movies from public/global providers.
-  Query params: limit, offset, category_id
+  Query params: limit, offset, category_id, search
   """
   def movies(conn, params) do
     provider = Iptv.get_global_provider()
@@ -79,7 +79,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       opts = [
         limit: parse_int(params["limit"], 20),
         offset: parse_int(params["offset"], 0),
-        category_id: parse_int(params["category_id"], nil)
+        category_id: parse_int(params["category_id"], nil),
+        search: params["search"]
       ]
 
       movies = Iptv.list_movies(provider.id, opts)
@@ -115,6 +116,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   @doc """
   GET /api/v1/catalog/series
   Returns paginated list of series from public/global providers.
+  Query params: limit, offset, category_id, search
   """
   def series(conn, params) do
     provider = Iptv.get_global_provider()
@@ -123,7 +125,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       opts = [
         limit: parse_int(params["limit"], 20),
         offset: parse_int(params["offset"], 0),
-        category_id: parse_int(params["category_id"], nil)
+        category_id: parse_int(params["category_id"], nil),
+        search: params["search"]
       ]
 
       series_list = Iptv.list_series(provider.id, opts)
@@ -173,6 +176,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   @doc """
   GET /api/v1/catalog/channels
   Returns paginated list of channels from public/global providers.
+  Query params: limit, offset, category_id, search
   """
   def channels(conn, params) do
     provider = Iptv.get_global_provider()
@@ -181,7 +185,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       opts = [
         limit: parse_int(params["limit"], 30),
         offset: parse_int(params["offset"], 0),
-        category_id: parse_int(params["category_id"], nil)
+        category_id: parse_int(params["category_id"], nil),
+        search: params["search"]
       ]
 
       channels = Iptv.list_live_channels(provider.id, opts)

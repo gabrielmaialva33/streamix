@@ -10,6 +10,8 @@ var SeriesPage = (function() {
   var VIRTUALIZER_ID = 'series-grid';
   var categories = [];
   var selectedCategory = null;
+  var searchQuery = '';
+  var searchTimeout = null;
   var offset = 0;
   var LIMIT = 20;
 
@@ -48,6 +50,35 @@ var SeriesPage = (function() {
   }
 
   /**
+   * Handle search input
+   */
+  function handleSearch(query) {
+    // Debounce search
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    searchTimeout = setTimeout(function() {
+      searchQuery = query;
+      offset = 0;
+
+      // Reset virtualizer
+      Virtualizer.reset(VIRTUALIZER_ID);
+
+      loadMoreSeries().then(function(result) {
+        if (result && result.items) {
+          Virtualizer.addData(VIRTUALIZER_ID, result.items, result.hasMore);
+          var grid = document.getElementById('series-grid');
+          if (grid) {
+            grid.innerHTML = '';
+            Virtualizer.render(VIRTUALIZER_ID, grid, 0);
+          }
+        }
+      });
+    }, 300);
+  }
+
+  /**
    * Focus first focusable item in container
    */
   function focusFirstItem(container) {
@@ -70,6 +101,10 @@ var SeriesPage = (function() {
 
     if (selectedCategory) {
       params.category_id = selectedCategory;
+    }
+
+    if (searchQuery) {
+      params.search = searchQuery;
     }
 
     return API.getSeries(params).then(function(data) {
@@ -101,6 +136,7 @@ var SeriesPage = (function() {
     // Reset state
     offset = 0;
     selectedCategory = null;
+    searchQuery = '';
 
     // Create new virtualizer
     Virtualizer.create(VIRTUALIZER_ID, {
@@ -138,11 +174,31 @@ var SeriesPage = (function() {
     var container = document.createElement('div');
     container.className = 'safe-area scroll-container h-full';
 
-    // Title
+    // Header with title and search
+    var header = document.createElement('div');
+    header.className = 'page-header';
+
     var title = document.createElement('h1');
-    title.className = 'text-2xl font-bold mb-4';
+    title.className = 'text-2xl font-bold';
     title.textContent = 'Séries';
-    container.appendChild(title);
+    header.appendChild(title);
+
+    // Search input
+    var searchContainer = document.createElement('div');
+    searchContainer.className = 'search-container';
+    var searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'search-input focusable';
+    searchInput.placeholder = 'Buscar séries...';
+    searchInput.value = searchQuery;
+    searchInput.id = 'series-search';
+    searchInput.addEventListener('input', function(e) {
+      handleSearch(e.target.value);
+    });
+    searchContainer.appendChild(searchInput);
+    header.appendChild(searchContainer);
+
+    container.appendChild(header);
 
     // Category filters as carousel
     if (categories.length > 0) {

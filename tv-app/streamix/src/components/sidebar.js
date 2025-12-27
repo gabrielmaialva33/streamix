@@ -10,8 +10,7 @@ var Sidebar = (function() {
     { path: '/', label: 'Início', icon: 'home' },
     { path: '/movies', label: 'Filmes', icon: 'film' },
     { path: '/series', label: 'Séries', icon: 'tv' },
-    { path: '/channels', label: 'Canais', icon: 'signal' },
-    { path: '/search', label: 'Buscar', icon: 'search' }
+    { path: '/channels', label: 'Canais', icon: 'signal' }
   ];
 
   var ICONS = {
