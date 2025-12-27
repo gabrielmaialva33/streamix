@@ -18,6 +18,13 @@ defmodule StreamixWeb.Router do
     plug CORSPlug, origin: ["*"]
   end
 
+  # Health check endpoint
+  scope "/api", StreamixWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
+  end
+
   # Stream proxy - public access for video streaming
   scope "/api", StreamixWeb do
     pipe_through :api

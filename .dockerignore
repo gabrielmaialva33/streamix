@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# Elixir/Phoenix build artifacts
+_build/
+deps/
+*.ez
+
+# Node.js
+assets/node_modules/
+
+# Static artifacts
+priv/static/assets/
+priv/static/cache_manifest.json
+
+# Generated files
+cover/
+doc/
+
+# Test and dev files
+.fetch
+erl_crash.dump
+*.ez
+*.beam
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI
+.github/
+
+# Documentation
+*.md
+!README.md
+
+# TV App (separate deployment)
+tv-app/
+
+# Secrets
+*.p12
+*.pem
+*.key

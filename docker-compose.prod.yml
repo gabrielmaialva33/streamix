@@ -1,0 +1,75 @@
+services:
+  streamix:
+    image: ghcr.io/gabrielmaialva33/streamix:latest
+    container_name: streamix
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ecto://streamix:${DB_PASSWORD}@postgres:5432/streamix_prod
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      PHX_HOST: streamix.mahina.cloud
+      PHX_SERVER: "true"
+      PORT: "4000"
+      POOL_SIZE: "10"
+      REDIS_URL: redis://redis:6379
+      GLOBAL_PROVIDER_ENABLED: ${GLOBAL_PROVIDER_ENABLED:-false}
+      GLOBAL_PROVIDER_NAME: ${GLOBAL_PROVIDER_NAME:-}
+      GLOBAL_PROVIDER_URL: ${GLOBAL_PROVIDER_URL:-}
+      GLOBAL_PROVIDER_USERNAME: ${GLOBAL_PROVIDER_USERNAME:-}
+      GLOBAL_PROVIDER_PASSWORD: ${GLOBAL_PROVIDER_PASSWORD:-}
+      TMDB_API_TOKEN: ${TMDB_API_TOKEN:-}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - streamix-network
+
+  postgres:
+    image: timescale/timescaledb:latest-pg17
+    container_name: streamix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: streamix
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: streamix_prod
+    volumes:
+      - streamix_postgres_data:/home/postgres/pgdata/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamix -d streamix_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamix-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: streamix-redis
+    restart: unless-stopped
+    volumes:
+      - streamix_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamix-network
+
+volumes:
+  streamix_postgres_data:
+  streamix_redis_data:
+
+networks:
+  streamix-network:
+    driver: bridge
