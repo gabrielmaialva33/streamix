@@ -37,6 +37,8 @@ var PlayerPage = (function() {
   // Progress bar state
   var progressBarFocused = false;
   var seekPreviewTime = 0;
+  var lastSeekKeyTime = 0;
+  var seekAcceleration = 1;
 
   /**
    * Show debug info on screen
@@ -1782,17 +1784,31 @@ var PlayerPage = (function() {
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      // Calculate seek step based on duration
-      var seekStep = 5000; // 5 seconds default
+      // Calculate seek step based on duration (bigger steps for longer content)
+      // Also accelerate if pressing repeatedly
+      var baseStep;
       if (duration > 7200000) { // > 2 hours
-        seekStep = 15000;
+        baseStep = 60000; // 1 minute
       } else if (duration > 3600000) { // > 1 hour
-        seekStep = 10000;
+        baseStep = 30000; // 30 seconds
+      } else if (duration > 1800000) { // > 30 minutes
+        baseStep = 15000; // 15 seconds
       } else if (duration > 600000) { // > 10 minutes
-        seekStep = 5000;
+        baseStep = 10000; // 10 seconds
       } else {
-        seekStep = 2000;
+        baseStep = 5000; // 5 seconds
       }
+
+      // Acceleration: increase step if pressing repeatedly
+      var now = Date.now();
+      if (now - lastSeekKeyTime < 300) {
+        seekAcceleration = Math.min(seekAcceleration + 0.5, 5); // Max 5x acceleration
+      } else {
+        seekAcceleration = 1;
+      }
+      lastSeekKeyTime = now;
+
+      var seekStep = Math.round(baseStep * seekAcceleration);
 
       // Move preview position (handle) - don't seek yet
       if (keyCode === 37) { // Left
@@ -1801,7 +1817,9 @@ var PlayerPage = (function() {
         seekPreviewTime = Math.min(duration, seekPreviewTime + seekStep);
       }
 
-      showDebug('Handle: ' + Math.round(seekPreviewTime/1000) + 's / ' + Math.round(duration/1000) + 's');
+      var mins = Math.floor(seekPreviewTime / 60000);
+      var secs = Math.floor((seekPreviewTime % 60000) / 1000);
+      showDebug('Handle: ' + mins + ':' + (secs < 10 ? '0' : '') + secs + ' (x' + seekAcceleration.toFixed(1) + ')');
       updateHandlePosition(seekPreviewTime);
       resetOverlayTimeout();
       return false;
