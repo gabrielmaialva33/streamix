@@ -51,6 +51,20 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   @doc """
+  Fetches a season with all episodes from TMDB.
+  Returns episode details including overview, still_path, air_date, runtime.
+  """
+  def get_season(series_tmdb_id, season_number)
+      when (is_binary(series_tmdb_id) or is_integer(series_tmdb_id)) and is_integer(season_number) do
+    if enabled?() do
+      url = "#{@base_url}/tv/#{series_tmdb_id}/season/#{season_number}?language=pt-BR"
+      do_request(url)
+    else
+      {:error, :tmdb_not_configured}
+    end
+  end
+
+  @doc """
   Searches for a movie by title and optionally year.
   """
   def search_movie(query, opts \\ []) do
@@ -129,6 +143,38 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   def parse_series_response(_), do: %{}
+
+  @doc """
+  Parses TMDB season response and returns a map of episode_num => episode_attrs.
+  This allows matching with our episodes by episode number.
+  """
+  def parse_season_episodes(%{"episodes" => episodes}) when is_list(episodes) do
+    episodes
+    |> Enum.map(fn ep ->
+      {ep["episode_number"], parse_episode_response(ep)}
+    end)
+    |> Enum.into(%{})
+  end
+
+  def parse_season_episodes(_), do: %{}
+
+  @doc """
+  Parses a single TMDB episode into attributes suitable for our Episode schema.
+  """
+  def parse_episode_response(%{"id" => tmdb_id} = data) do
+    %{}
+    |> maybe_put(:tmdb_id, tmdb_id)
+    |> maybe_put(:name, data["name"])
+    |> maybe_put(:plot, data["overview"])
+    |> maybe_put(:rating, parse_rating(data["vote_average"]))
+    |> maybe_put(:still_path, image_url(data["still_path"], "w500"))
+    |> maybe_put(:air_date, parse_date(data["air_date"]))
+    |> maybe_put(:duration_secs, parse_runtime_secs(data["runtime"]))
+    |> maybe_put(:duration, format_runtime(data["runtime"]))
+    |> Map.put(:tmdb_enriched, true)
+  end
+
+  def parse_episode_response(_), do: %{}
 
   # ============================================================================
   # Private
@@ -243,6 +289,18 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   defp parse_year(_), do: nil
+
+  defp parse_date(nil), do: nil
+  defp parse_date(""), do: nil
+
+  defp parse_date(date_string) when is_binary(date_string) do
+    case Date.from_iso8601(date_string) do
+      {:ok, date} -> date
+      _ -> nil
+    end
+  end
+
+  defp parse_date(_), do: nil
 
   defp parse_director(nil), do: nil
 

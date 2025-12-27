@@ -685,6 +685,48 @@ defmodule Streamix.Iptv do
     |> Repo.update()
   end
 
+  @doc """
+  Fetches detailed episode info from TMDB if not already enriched.
+  Uses the series tmdb_id and season number to fetch the entire season,
+  then matches by episode number.
+  Returns {:ok, updated_episode} or {:error, reason}.
+  """
+  def fetch_episode_info(%Episode{} = episode) do
+    episode = Repo.preload(episode, season: :series)
+    series = episode.season.series
+    tmdb_id = series.tmdb_id
+    season_number = episode.season.season_number
+
+    if needs_episode_tmdb_enrichment?(episode) and is_binary(tmdb_id) and tmdb_id != "" do
+      case TmdbClient.get_season(tmdb_id, season_number) do
+        {:ok, data} ->
+          episodes_map = TmdbClient.parse_season_episodes(data)
+
+          case Map.get(episodes_map, episode.episode_num) do
+            nil -> {:ok, episode}
+            attrs -> update_episode(episode, attrs)
+          end
+
+        {:error, _reason} ->
+          {:ok, episode}
+      end
+    else
+      {:ok, episode}
+    end
+  end
+
+  defp needs_episode_tmdb_enrichment?(episode) do
+    not episode.tmdb_enriched
+  end
+
+  defp update_episode(episode, attrs) when attrs == %{}, do: {:ok, episode}
+
+  defp update_episode(episode, attrs) do
+    episode
+    |> Episode.changeset(attrs)
+    |> Repo.update()
+  end
+
   # =============================================================================
   # Favorites (Polymorphic)
   # =============================================================================

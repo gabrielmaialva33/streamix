@@ -646,6 +646,9 @@ defmodule Streamix.Iptv.Sync do
     seasons_data = info["seasons"] || []
     episodes_map = info["episodes"] || %{}
 
+    # Update series with info from detailed response (including tmdb_id)
+    update_series_from_info(series, info["info"])
+
     # Upsert seasons
     {season_count, inserted_seasons, current_season_nums} =
       upsert_seasons(seasons_data, series.id, now)
@@ -674,6 +677,37 @@ defmodule Streamix.Iptv.Sync do
 
     {:ok, %{seasons: season_count, episodes: ep_count}}
   end
+
+  # Update series with additional info from get_series_info response
+  defp update_series_from_info(_series, nil), do: :ok
+
+  defp update_series_from_info(series, info) when is_map(info) do
+    attrs =
+      %{}
+      |> maybe_update(:tmdb_id, to_string_or_nil(info["tmdb_id"]), series.tmdb_id)
+      |> maybe_update(:plot, info["plot"], series.plot)
+      |> maybe_update(:cast, info["cast"], series.cast)
+      |> maybe_update(:director, info["director"], series.director)
+      |> maybe_update(:genre, info["genre"], series.genre)
+      |> maybe_update(:youtube_trailer, info["youtube_trailer"], series.youtube_trailer)
+      |> maybe_update(:backdrop_path, normalize_backdrop(info["backdrop_path"]), series.backdrop_path)
+
+    if map_size(attrs) > 0 do
+      series
+      |> Ecto.Changeset.change(attrs)
+      |> Repo.update()
+    else
+      :ok
+    end
+  end
+
+  defp update_series_from_info(_series, _info), do: :ok
+
+  # Only update if new value is present and current value is nil
+  defp maybe_update(attrs, _key, nil, _current), do: attrs
+  defp maybe_update(attrs, _key, "", _current), do: attrs
+  defp maybe_update(attrs, _key, _new, current) when not is_nil(current), do: attrs
+  defp maybe_update(attrs, key, new, _current), do: Map.put(attrs, key, new)
 
   defp upsert_seasons(seasons_data, series_id, now) do
     season_attrs_list =

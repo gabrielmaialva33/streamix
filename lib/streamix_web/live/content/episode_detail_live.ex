@@ -69,6 +69,9 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp mount_episode_found(socket, provider, episode, series, user_id, mode) do
     is_favorite = if user_id, do: Iptv.is_favorite?(user_id, "series", series.id), else: false
 
+    # Enrich episode with TMDB data if needed
+    episode = maybe_fetch_episode_info(episode)
+
     # Get adjacent episodes for navigation
     season = episode.season
     episodes = Iptv.list_season_episodes(season.id)
@@ -101,6 +104,13 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       |> assign(total_episodes: length(episodes))
 
     {:ok, socket}
+  end
+
+  defp maybe_fetch_episode_info(episode) do
+    case Iptv.fetch_episode_info(episode) do
+      {:ok, updated_episode} -> updated_episode
+      {:error, _reason} -> episode
+    end
   end
 
   # ============================================
@@ -146,13 +156,13 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       <div class="relative h-[40vh] sm:h-[50vh] min-h-[300px]">
         <div class="absolute inset-0">
           <img
-            :if={@episode.cover || get_series_backdrop(@series)}
-            src={@episode.cover || get_series_backdrop(@series)}
+            :if={get_episode_image(@episode) || get_series_backdrop(@series)}
+            src={get_episode_image(@episode) || get_series_backdrop(@series)}
             alt={episode_title(@episode, @series)}
             class="w-full h-full object-cover"
           />
           <div
-            :if={!@episode.cover && !get_series_backdrop(@series)}
+            :if={!get_episode_image(@episode) && !get_series_backdrop(@series)}
             class="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900"
           />
         </div>
@@ -188,13 +198,13 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
             <div class="flex-shrink-0 w-full lg:w-80 mx-auto lg:mx-0">
               <div class="aspect-video rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                 <img
-                  :if={@episode.cover}
-                  src={@episode.cover}
+                  :if={get_episode_image(@episode)}
+                  src={get_episode_image(@episode)}
                   alt={episode_title(@episode, @series)}
                   class="w-full h-full object-cover"
                 />
                 <div
-                  :if={!@episode.cover}
+                  :if={!get_episode_image(@episode)}
                   class="w-full h-full bg-surface flex items-center justify-center"
                 >
                   <.icon name="hero-play-circle" class="size-16 text-text-secondary/30" />
@@ -233,6 +243,12 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   title="Classificação Indicativa"
                 >
                   {@series.content_rating}
+                </span>
+                <span :if={@episode.rating} class="inline-flex items-center gap-1 h-8 px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-sm font-medium">
+                  <.icon name="hero-star-solid" class="size-3.5" />{format_rating(@episode.rating)}
+                </span>
+                <span :if={@episode.air_date} class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
+                  <.icon name="hero-calendar" class="size-3.5" />{format_date(@episode.air_date)}
                 </span>
                 <span :if={@episode.duration} class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
                   <.icon name="hero-clock" class="size-3.5" />{@episode.duration}
@@ -360,11 +376,29 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   end
 
   defp episode_display_title(episode) do
-    if episode.title && episode.title != "" do
-      episode.title
-    else
-      "Episódio #{episode.episode_num}"
+    cond do
+      episode.name && episode.name != "" -> episode.name
+      episode.title && episode.title != "" -> episode.title
+      true -> "Episódio #{episode.episode_num}"
     end
+  end
+
+  defp get_episode_image(episode) do
+    episode.still_path || episode.cover
+  end
+
+  defp format_rating(nil), do: nil
+
+  defp format_rating(rating) do
+    # Convert from TMDB 0-10 scale to display format (1 decimal)
+    value = Decimal.to_float(rating)
+    :erlang.float_to_binary(value, decimals: 1)
+  end
+
+  defp format_date(nil), do: nil
+
+  defp format_date(date) do
+    Calendar.strftime(date, "%d/%m/%Y")
   end
 
   defp get_series_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: url
