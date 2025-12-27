@@ -246,6 +246,25 @@ var Navigation = (function() {
       }
     }
 
+    // Determine direction for throttling
+    var direction = null;
+    switch (keyCode) {
+      case KEY_CODES.LEFT: direction = 'left'; break;
+      case KEY_CODES.UP: direction = 'up'; break;
+      case KEY_CODES.RIGHT: direction = 'right'; break;
+      case KEY_CODES.DOWN: direction = 'down'; break;
+    }
+
+    // Apply throttling for directional keys
+    var throttleResult = { allowed: true, skip: 0 };
+    if (direction) {
+      throttleResult = checkInputThrottle(direction);
+      if (!throttleResult.allowed) {
+        event.preventDefault();
+        return; // Skip this key event (too fast)
+      }
+    }
+
     switch (keyCode) {
       case KEY_CODES.LEFT:
         event.preventDefault();
@@ -253,13 +272,13 @@ var Navigation = (function() {
         if (shouldFocusSidebar()) {
           focusSidebar();
         } else {
-          moveFocus('left');
+          moveFocus('left', throttleResult.skip);
         }
         break;
 
       case KEY_CODES.UP:
         event.preventDefault();
-        moveFocus('up');
+        moveFocus('up', throttleResult.skip);
         break;
 
       case KEY_CODES.RIGHT:
@@ -268,17 +287,18 @@ var Navigation = (function() {
         if (currentFocus && currentFocus.closest('.sidebar')) {
           focusMainContent();
         } else {
-          moveFocus('right');
+          moveFocus('right', throttleResult.skip);
         }
         break;
 
       case KEY_CODES.DOWN:
         event.preventDefault();
-        moveFocus('down');
+        moveFocus('down', throttleResult.skip);
         break;
 
       case KEY_CODES.ENTER:
         event.preventDefault();
+        resetInputThrottle(); // Reset on action
         handleEnter();
         break;
 
