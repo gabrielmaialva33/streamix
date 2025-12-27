@@ -97,9 +97,9 @@ const VideoPlayer = {
         <svg class="w-16 h-16 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        <p class="text-lg font-semibold mb-2">Unable to play stream</p>
+        <p class="text-lg font-semibold mb-2">Não foi possível reproduzir</p>
         <p class="text-sm text-white/70 error-message"></p>
-        <button class="mt-4 px-4 py-2 bg-brand hover:bg-brand/90 text-white text-sm font-medium rounded-lg transition-colors retry-btn">Retry</button>
+        <button class="mt-4 px-4 py-2 bg-brand hover:bg-brand/90 text-white text-sm font-medium rounded-lg transition-colors retry-btn">Tentar novamente</button>
       </div>
     `;
     this.el.appendChild(this.errorContainer);
@@ -121,7 +121,7 @@ const VideoPlayer = {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        <p class="mt-3">Loading stream...</p>
+        <p class="mt-3">Carregando...</p>
       </div>
     `;
     this.el.appendChild(this.loadingIndicator);
@@ -239,7 +239,7 @@ const VideoPlayer = {
       qualityContainer.innerHTML = `
         <button type="button" data-level="-1"
           class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors quality-option">
-          <span>Auto</span>
+          <span>Automático</span>
           <svg class="size-4 ${currentLevel === -1 ? "" : "invisible"}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
           </svg>
@@ -271,7 +271,7 @@ const VideoPlayer = {
 
     // Notify LiveView of available qualities
     this.pushEvent("qualities_available", {
-      qualities: [{ index: -1, label: "Auto" }, ...this.availableQualities],
+      qualities: [{ index: -1, label: "Automático" }, ...this.availableQualities],
       current: this.hls?.currentLevel ?? -1,
     });
   },
@@ -376,7 +376,7 @@ const VideoPlayer = {
     const track = trackIndex >= 0 ? this.subtitleTracks[trackIndex] : null;
     this.pushEvent("subtitle_track_changed", {
       track: trackIndex,
-      label: track?.name || track?.lang || (trackIndex === -1 ? "Off" : `Track ${trackIndex}`),
+      label: track?.name || track?.lang || (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
     });
   },
 
@@ -430,7 +430,7 @@ const VideoPlayer = {
     }
 
     this.pushEvent("subtitle_tracks_available", {
-      tracks: [{ index: -1, label: "Off" }, ...this.subtitleTracks],
+      tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
       current: this.hls.subtitleTrack,
     });
   },
@@ -773,7 +773,7 @@ const VideoPlayer = {
 
   initPlayer() {
     if (!this.streamUrl) {
-      this.showError("No stream URL provided");
+      this.showError("URL do stream não fornecida");
       return;
     }
 
@@ -813,7 +813,7 @@ const VideoPlayer = {
         if (mpegts.getFeatureList().mseLivePlayback) {
           this.playWithMpegts("flv");
         } else {
-          this.showError("FLV playback not supported in this browser");
+          this.showError("Reprodução FLV não suportada neste navegador");
         }
         break;
       case "mp4":
@@ -838,7 +838,7 @@ const VideoPlayer = {
       if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
         this.playNative();
       } else {
-        this.showError("HLS not supported in this browser");
+        this.showError("HLS não suportado neste navegador");
       }
       return;
     }
@@ -916,7 +916,7 @@ const VideoPlayer = {
                 this.cleanup();
                 this.playWithMpegts();
               } else {
-                this.showError("Unable to load stream - server may be unavailable");
+                this.showError("Não foi possível carregar - servidor indisponível");
               }
             } else {
               console.log("Network error, trying to recover...");
@@ -937,7 +937,7 @@ const VideoPlayer = {
                 this.playNative();
               }
             } else {
-              this.showError("Playback error - stream format may not be supported");
+              this.showError("Erro de reprodução - formato não suportado");
             }
             break;
         }
@@ -998,7 +998,7 @@ const VideoPlayer = {
             this.playNative();
           }
         } else {
-          this.showError(`Stream error: ${errorDetail || errorType}`);
+          this.showError(`Erro no stream: ${errorDetail || errorType}`);
         }
       });
 
@@ -1041,21 +1041,21 @@ const VideoPlayer = {
 
     const errorHandler = () => {
       const error = this.video.error;
-      let message = "Stream playback failed";
+      let message = "Falha na reprodução";
 
       if (error) {
         switch (error.code) {
           case MediaError.MEDIA_ERR_ABORTED:
-            message = "Playback aborted";
+            message = "Reprodução cancelada";
             break;
           case MediaError.MEDIA_ERR_NETWORK:
-            message = "Network error - check your connection";
+            message = "Erro de rede - verifique sua conexão";
             break;
           case MediaError.MEDIA_ERR_DECODE:
-            message = "Stream format not supported";
+            message = "Formato não suportado";
             break;
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            message = "Stream format not supported by browser";
+            message = "Formato não suportado pelo navegador";
             break;
         }
       }
@@ -1074,7 +1074,7 @@ const VideoPlayer = {
       if (e.name === "NotAllowedError") {
         this.showPlayButton();
       } else {
-        this.showError("Failed to start playback: " + e.message);
+        this.showError("Falha ao iniciar reprodução: " + e.message);
       }
     });
   },

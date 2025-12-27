@@ -47,7 +47,7 @@ defmodule StreamixWeb.PlayerLive do
           |> assign(buffering: false)
           |> assign(pip_active: false)
           |> assign(available_qualities: [])
-          |> assign(current_quality: "Auto")
+          |> assign(current_quality: "Automático")
           |> assign(audio_tracks: [])
           |> assign(subtitle_tracks: [])
           |> assign(user_id: user_id)
@@ -276,9 +276,9 @@ defmodule StreamixWeb.PlayerLive do
   defp find_quality_label(qualities, level) when is_list(qualities) do
     case Enum.find(qualities, fn q -> q["index"] == level end) do
       %{"label" => label} -> label
-      _ -> "Auto"
+      _ -> "Automático"
     end
   end
 
-  defp find_quality_label(_, _), do: "Auto"
+  defp find_quality_label(_, _), do: "Automático"
 end

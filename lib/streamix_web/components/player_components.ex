@@ -82,7 +82,7 @@ defmodule StreamixWeb.PlayerComponents do
               id="pip-btn"
               phx-click={JS.dispatch("player:toggle-pip")}
               class="p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 transition-colors"
-              title="Picture-in-Picture"
+              title="Modo Picture-in-Picture"
             >
               <.icon name="hero-rectangle-stack" class="size-5" />
             </button>
@@ -269,7 +269,7 @@ defmodule StreamixWeb.PlayerComponents do
             phx-click={JS.push("set_quality", value: %{level: -1})}
             class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
           >
-            <span>Auto</span>
+            <span>Automático</span>
             <span class="size-4 quality-check" data-level="-1">
               <.icon name="hero-check" class="size-4" />
             </span>
