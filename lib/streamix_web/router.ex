@@ -29,6 +29,9 @@ defmodule StreamixWeb.Router do
   scope "/api/v1", StreamixWeb.Api.V1 do
     pipe_through :api
 
+    # Handle CORS preflight requests
+    options "/catalog/*path", CatalogController, :options
+
     get "/catalog/featured", CatalogController, :featured
     get "/catalog/movies", CatalogController, :movies
     get "/catalog/movies/:id", CatalogController, :show_movie
@@ -40,6 +43,11 @@ defmodule StreamixWeb.Router do
     get "/catalog/channels/:id", CatalogController, :show_channel
     get "/catalog/categories", CatalogController, :categories
     get "/catalog/search", CatalogController, :search
+
+    # Stream URLs for TV app
+    get "/catalog/movies/:id/stream", CatalogController, :movie_stream
+    get "/catalog/episodes/:id/stream", CatalogController, :episode_stream
+    get "/catalog/channels/:id/stream", CatalogController, :channel_stream
   end
 
   # Public routes - landing page only

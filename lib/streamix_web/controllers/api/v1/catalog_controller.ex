@@ -6,6 +6,17 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   use StreamixWeb, :controller
 
   alias Streamix.Iptv
+  alias Streamix.Repo
+
+  @doc """
+  Handle CORS preflight OPTIONS requests.
+  """
+  def options(conn, _params) do
+    conn
+    |> put_resp_header("access-control-allow-methods", "GET, OPTIONS")
+    |> put_resp_header("access-control-allow-headers", "content-type, authorization")
+    |> send_resp(204, "")
+  end
 
   @doc """
   GET /api/v1/catalog/featured
@@ -368,6 +379,48 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       icon: channel.stream_icon,
       stream_url: build_channel_stream_url(channel)
     }
+  end
+
+@doc """
+  Returns stream URL for a movie.
+  """
+  def movie_stream(conn, %{"id" => id}) do
+    case Iptv.get_movie(id) do
+      nil ->
+        conn |> put_status(:not_found) |> json(%{error: "Movie not found"})
+
+      movie ->
+        movie = Repo.preload(movie, :provider)
+        json(conn, %{stream_url: build_stream_url(movie)})
+    end
+  end
+
+  @doc """
+  Returns stream URL for an episode.
+  """
+  def episode_stream(conn, %{"id" => id}) do
+    case Iptv.get_episode(id) do
+      nil ->
+        conn |> put_status(:not_found) |> json(%{error: "Episode not found"})
+
+      episode ->
+        episode = Repo.preload(episode, season: [series: :provider])
+        json(conn, %{stream_url: build_episode_stream_url(episode, episode.season.series)})
+    end
+  end
+
+  @doc """
+  Returns stream URL for a channel.
+  """
+  def channel_stream(conn, %{"id" => id}) do
+    case Iptv.get_channel(id) do
+      nil ->
+        conn |> put_status(:not_found) |> json(%{error: "Channel not found"})
+
+      channel ->
+        channel = Repo.preload(channel, :provider)
+        json(conn, %{stream_url: build_channel_stream_url(channel)})
+    end
   end
 
   # Stream URL Builders
