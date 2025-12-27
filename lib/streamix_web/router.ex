@@ -15,6 +15,7 @@ defmodule StreamixWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug CORSPlug, origin: ["*"]
   end
 
   # Stream proxy - public access for video streaming
@@ -22,6 +23,22 @@ defmodule StreamixWeb.Router do
     pipe_through :api
 
     get "/stream/proxy", StreamController, :proxy
+  end
+
+  # Public catalog API for TV app and other clients
+  scope "/api/v1", StreamixWeb.Api.V1 do
+    pipe_through :api
+
+    get "/catalog/featured", CatalogController, :featured
+    get "/catalog/movies", CatalogController, :movies
+    get "/catalog/movies/:id", CatalogController, :show_movie
+    get "/catalog/series", CatalogController, :series
+    get "/catalog/series/:id", CatalogController, :show_series
+    get "/catalog/series/:series_id/episodes/:id", CatalogController, :show_episode
+    get "/catalog/channels", CatalogController, :channels
+    get "/catalog/channels/:id", CatalogController, :show_channel
+    get "/catalog/categories", CatalogController, :categories
+    get "/catalog/search", CatalogController, :search
   end
 
   # Public routes - landing page only

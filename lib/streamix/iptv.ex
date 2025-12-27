@@ -548,6 +548,18 @@ defmodule Streamix.Iptv do
   def get_series!(id), do: Repo.get!(Series, id)
   def get_series(id), do: Repo.get(Series, id)
 
+  @doc """
+  Gets a series from public providers only (for guests).
+  """
+  def get_public_series(series_id) do
+    Series
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> where([s, _p], s.id == ^series_id)
+    |> where([s, p], p.visibility in [:global, :public])
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
   def get_series_with_seasons(id) do
     seasons_query = from(s in Season, order_by: s.season_number)
     episodes_query = from(e in Episode, order_by: e.episode_num)
