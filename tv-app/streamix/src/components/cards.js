@@ -408,6 +408,54 @@ var Cards = (function() {
   }
 
   /**
+   * Create a skeleton poster card (for loading state)
+   */
+  function createSkeletonPosterCard() {
+    var skeleton = document.createElement('div');
+    skeleton.className = 'skeleton-card-poster';
+    return skeleton;
+  }
+
+  /**
+   * Create a skeleton channel card (for loading state)
+   */
+  function createSkeletonChannelCard() {
+    var skeleton = document.createElement('div');
+    skeleton.className = 'skeleton-card-channel';
+    return skeleton;
+  }
+
+  /**
+   * Create a skeleton row with N skeleton cards
+   */
+  function createSkeletonRow(title, count, type) {
+    count = count || 8;
+    type = type || 'poster';
+
+    var row = document.createElement('div');
+    row.className = 'content-row';
+
+    var titleEl = document.createElement('h2');
+    titleEl.className = 'content-row-title';
+    titleEl.textContent = title;
+    row.appendChild(titleEl);
+
+    var itemsContainer = document.createElement('div');
+    itemsContainer.className = 'content-row-items';
+
+    for (var i = 0; i < count; i++) {
+      if (type === 'channel') {
+        itemsContainer.appendChild(createSkeletonChannelCard());
+      } else {
+        itemsContainer.appendChild(createSkeletonPosterCard());
+      }
+    }
+
+    row.appendChild(itemsContainer);
+    return row;
+  }
+
+  /**
    * Create loading spinner
    */
   function createLoading() {
@@ -453,6 +501,9 @@ var Cards = (function() {
     createEpisodeCard: createEpisodeCard,
     createCategoryButton: createCategoryButton,
     createContentRow: createContentRow,
+    createSkeletonPosterCard: createSkeletonPosterCard,
+    createSkeletonChannelCard: createSkeletonChannelCard,
+    createSkeletonRow: createSkeletonRow,
     createLoading: createLoading,
     createEmptyState: createEmptyState,
     clearImageCache: clearImageCache,

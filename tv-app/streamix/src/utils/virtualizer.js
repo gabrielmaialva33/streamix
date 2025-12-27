@@ -149,22 +149,32 @@ var Virtualizer = (function() {
       container.innerHTML = '';
     }
 
+    // Remove previous last-item marker
+    var prevLast = container.querySelector('[data-last-item="true"]');
+    if (prevLast) {
+      prevLast.removeAttribute('data-last-item');
+    }
+
     // Render items in range
+    var lastRenderedCard = null;
     for (var i = startIndex; i < endIndex; i++) {
       if (!instance.renderedItems.has(i)) {
         var item = instance.data[i];
         var card = instance.createCard(item, instance.onClick);
 
-        // Mark last item for infinite scroll trigger
-        if (i === instance.data.length - 1 && instance.hasMore) {
-          card.setAttribute('data-last-item', 'true');
-          card.setAttribute('data-page-type', instance.pageType);
-          card.setAttribute('data-virtualizer', id);
-        }
-
         container.appendChild(card);
         instance.renderedItems.set(i, card);
+        lastRenderedCard = card;
+      } else {
+        lastRenderedCard = instance.renderedItems.get(i);
       }
+    }
+
+    // Mark the last RENDERED item for infinite scroll trigger (if hasMore)
+    if (lastRenderedCard && instance.hasMore) {
+      lastRenderedCard.setAttribute('data-last-item', 'true');
+      lastRenderedCard.setAttribute('data-page-type', instance.pageType);
+      lastRenderedCard.setAttribute('data-virtualizer', id);
     }
 
     instance.firstRenderedIndex = startIndex;

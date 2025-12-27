@@ -95,6 +95,15 @@ var Navigation = (function() {
   function handleKeyDown(event) {
     var keyCode = event.keyCode;
 
+    // Special handling: If progress bar is focused, let player handle LEFT/RIGHT/ENTER
+    // This allows the timeline scrubbing to work without Navigation interfering
+    if (currentFocus && currentFocus.id === 'progress-container') {
+      if (keyCode === KEY_CODES.LEFT || keyCode === KEY_CODES.RIGHT || keyCode === KEY_CODES.ENTER) {
+        // Don't prevent default, don't handle - let player.js handle it
+        return;
+      }
+    }
+
     switch (keyCode) {
       case KEY_CODES.LEFT:
         event.preventDefault();
@@ -113,7 +122,12 @@ var Navigation = (function() {
 
       case KEY_CODES.RIGHT:
         event.preventDefault();
-        moveFocus('right');
+        // If in sidebar, explicitly move to main content
+        if (currentFocus && currentFocus.closest('.sidebar')) {
+          focusMainContent();
+        } else {
+          moveFocus('right');
+        }
         break;
 
       case KEY_CODES.DOWN:
@@ -209,6 +223,14 @@ var Navigation = (function() {
       focus(bestCandidate);
       scrollIntoViewIfNeeded(bestCandidate);
     } else {
+      // Dispatch navigatefailed event
+      var failEvent = document.createEvent('CustomEvent');
+      failEvent.initCustomEvent('nav:navigatefailed', true, false, {
+        direction: direction,
+        currentElement: currentFocus
+      });
+      document.dispatchEvent(failEvent);
+
       // Check for page-level infinite scroll (grids)
       checkPageInfiniteScroll();
     }
@@ -220,12 +242,47 @@ var Navigation = (function() {
   function checkPageInfiniteScroll() {
     if (!currentFocus) { return; }
 
+    // First check: current element has data-last-item
     var pageType = currentFocus.getAttribute('data-page-type');
     var isLastItem = currentFocus.getAttribute('data-last-item') === 'true';
 
-    if (!pageType || !isLastItem) { return; }
+    if (pageType && isLastItem) {
+      triggerPageInfiniteScroll(pageType);
+      return;
+    }
 
-    // Trigger the appropriate page's infinite scroll
+    // Second check: we're in a grid section near the edge
+    // Find the grid container the current element is in
+    var grid = currentFocus.closest('.content-grid');
+    if (!grid) { return; }
+
+    // Check if there's a last-item marker in this grid
+    var lastMarker = grid.querySelector('[data-last-item="true"]');
+    if (!lastMarker) { return; }
+
+    // Get all cards in the grid
+    var cards = grid.querySelectorAll('.focusable');
+    var currentIndex = -1;
+    var lastMarkerIndex = -1;
+
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i] === currentFocus) { currentIndex = i; }
+      if (cards[i] === lastMarker) { lastMarkerIndex = i; }
+    }
+
+    // If we're within 5 items of the last marker, trigger infinite scroll
+    if (currentIndex >= 0 && lastMarkerIndex >= 0 && (lastMarkerIndex - currentIndex) <= 5) {
+      var markerPageType = lastMarker.getAttribute('data-page-type');
+      if (markerPageType) {
+        triggerPageInfiniteScroll(markerPageType);
+      }
+    }
+  }
+
+  /**
+   * Trigger infinite scroll for a specific page type
+   */
+  function triggerPageInfiniteScroll(pageType) {
     if (pageType === 'movies' && window.MoviesPage && window.MoviesPage.handleInfiniteScroll) {
       window.MoviesPage.handleInfiniteScroll();
     } else if (pageType === 'series' && window.SeriesPage && window.SeriesPage.handleInfiniteScroll) {
@@ -409,10 +466,19 @@ var Navigation = (function() {
     // Notify listeners
     notifyFocusChange(element);
 
-    // Dispatch custom event
+    // Dispatch custom events for external listeners
+    // willfocus - fires on old element before focus changes
+    if (focusChanged && currentFocus) {
+      var willFocusEvent = document.createEvent('CustomEvent');
+      willFocusEvent.initCustomEvent('nav:willfocus', true, false, { newTarget: element });
+      document.dispatchEvent(willFocusEvent);
+    }
+
+    // focused - fires on new element after focus changes
     var focusEvent = document.createEvent('CustomEvent');
-    focusEvent.initCustomEvent('nav:focus', true, false, null);
+    focusEvent.initCustomEvent('nav:focus', true, false, { element: element });
     element.dispatchEvent(focusEvent);
+    document.dispatchEvent(focusEvent);
   }
 
   /**
@@ -484,6 +550,38 @@ var Navigation = (function() {
 
     if (itemToFocus) {
       focus(itemToFocus);
+    }
+  }
+
+  /**
+   * Focus main content area (leaving sidebar)
+   */
+  function focusMainContent() {
+    var mainContent = document.querySelector('.main-with-sidebar');
+    if (!mainContent) { return; }
+
+    // Try to find the last focused element in main content
+    var remembered = null;
+    for (var sectionId in sectionMemory) {
+      var el = sectionMemory[sectionId];
+      if (el && mainContent.contains(el) && isVisible(el)) {
+        remembered = el;
+        break;
+      }
+    }
+
+    // If we have a remembered element, focus it
+    if (remembered) {
+      focus(remembered);
+      scrollIntoViewIfNeeded(remembered);
+      return;
+    }
+
+    // Otherwise focus first focusable in main content
+    var firstFocusable = mainContent.querySelector(config.focusableSelector);
+    if (firstFocusable && isVisible(firstFocusable)) {
+      focus(firstFocusable);
+      scrollIntoViewIfNeeded(firstFocusable);
     }
   }
 

@@ -39,6 +39,20 @@ var PlayerPage = (function() {
   var seekPreviewTime = 0;
 
   /**
+   * Show debug info on screen
+   */
+  function showDebug(msg) {
+    var debug = document.getElementById('player-debug');
+    if (!debug) {
+      debug = document.createElement('div');
+      debug.id = 'player-debug';
+      debug.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:10px 20px;font-size:20px;font-family:monospace;z-index:9999;border-radius:8px;';
+      document.body.appendChild(debug);
+    }
+    debug.textContent = msg;
+  }
+
+  /**
    * Pad number with leading zeros
    */
   function padStart(num, targetLength) {
@@ -367,6 +381,7 @@ var PlayerPage = (function() {
       progressContainer.innerHTML = '<div class="player-progress">' +
         '<div class="player-progress-bar" id="progress-bar" style="width: 0%;"></div>' +
         '<div class="player-progress-handle" id="progress-handle"></div>' +
+        '<div class="player-progress-handle player-preview-handle" id="preview-handle" style="display:none;"></div>' +
         '<div class="player-progress-preview" id="progress-preview" style="display: none;">' +
         '<span id="preview-time">00:00</span>' +
         '</div>' +
@@ -437,17 +452,26 @@ var PlayerPage = (function() {
         subtitleBtnEl.addEventListener('click', showSubtitleModal);
       }
 
-      // Progress bar focus/blur
+      // Progress bar focus/blur and keyboard handling
       var progressContainerEl = document.getElementById('progress-container');
       if (progressContainerEl) {
         progressContainerEl.addEventListener('focus', function() {
           progressBarFocused = true;
           seekPreviewTime = currentTime;
+          // Show preview handle at current position
+          updateHandlePosition(currentTime);
         });
         progressContainerEl.addEventListener('blur', function() {
           progressBarFocused = false;
-          hideSeekPreview();
+          // Hide preview handle
+          hidePreviewHandle();
         });
+
+        // Click to seek on progress bar
+        progressContainerEl.addEventListener('click', handleProgressBarClick);
+
+        // Keyboard handling for timeline scrubbing (LEFT/RIGHT = seek, UP/DOWN = exit)
+        progressContainerEl.addEventListener('keydown', handleProgressBarKeydown, true);
       }
     }, 0);
 
@@ -1422,53 +1446,55 @@ var PlayerPage = (function() {
       return;
     }
 
-    // Handle progress bar navigation when focused
+    // DEBUG: Show state on screen
+    showDebug('Key: ' + keyCode + ' | PB: ' + progressBarFocused + ' | OV: ' + overlayVisible);
+
+    // Handle progress bar navigation when focused - SCRUBBING MODE
+    // LEFT/RIGHT = move preview handle, ENTER = confirm seek
     if (progressBarFocused && overlayVisible) {
-      var seekStep = 10000; // 10 seconds in ms
+      var seekStep = 5000; // 5 seconds in ms
       // Adjust step based on duration (larger for longer content)
-      if (duration > 3600000) { // > 1 hour
-        seekStep = 30000; // 30 seconds
-      } else if (duration > 600000) { // > 10 minutes
+      if (duration > 7200000) { // > 2 hours
+        seekStep = 15000; // 15 seconds
+      } else if (duration > 3600000) { // > 1 hour
         seekStep = 10000; // 10 seconds
-      } else {
+      } else if (duration > 600000) { // > 10 minutes
         seekStep = 5000; // 5 seconds
+      } else {
+        seekStep = 2000; // 2 seconds for short content
       }
 
-      if (keyCode === 37) { // Left - seek back
+      if (keyCode === 37) { // Left - move handle back (preview only)
         event.preventDefault();
         event.stopPropagation();
         seekPreviewTime = Math.max(0, seekPreviewTime - seekStep);
-        updateSeekPreview(seekPreviewTime);
+        showDebug('LEFT! seekPreview=' + Math.round(seekPreviewTime/1000) + 's dur=' + Math.round(duration/1000) + 's');
+        updateHandlePosition(seekPreviewTime);
         resetOverlayTimeout();
         return;
       }
-      if (keyCode === 39) { // Right - seek forward
+      if (keyCode === 39) { // Right - move handle forward (preview only)
         event.preventDefault();
         event.stopPropagation();
         seekPreviewTime = Math.min(duration, seekPreviewTime + seekStep);
-        updateSeekPreview(seekPreviewTime);
+        showDebug('RIGHT! seekPreview=' + Math.round(seekPreviewTime/1000) + 's dur=' + Math.round(duration/1000) + 's');
+        updateHandlePosition(seekPreviewTime);
         resetOverlayTimeout();
         return;
       }
-      if (keyCode === 13) { // Enter - confirm seek
+      if (keyCode === 13) { // Enter - CONFIRM seek to handle position
         event.preventDefault();
         event.stopPropagation();
-        seekToPreview();
-        // Move focus to play button
-        var playPauseBtn = document.getElementById('play-pause-btn');
-        if (playPauseBtn) {
-          Navigation.focus(playPauseBtn);
-        }
+        seekToTime(seekPreviewTime);
         resetOverlayTimeout();
         return;
       }
       if (keyCode === TizenSDK.TV_KEYS.BACK || keyCode === 8 || keyCode === 27) {
-        // Cancel seek preview and go back to current time
+        // Cancel - reset handle to current time and exit
         event.preventDefault();
         event.stopPropagation();
         seekPreviewTime = currentTime;
-        hideSeekPreview();
-        // Move focus to play button
+        updateHandlePosition(currentTime);
         var playBtn = document.getElementById('play-pause-btn');
         if (playBtn) {
           Navigation.focus(playBtn);
@@ -1670,6 +1696,51 @@ var PlayerPage = (function() {
   }
 
   /**
+   * Update PREVIEW handle position for scrubbing (separate from main handle)
+   * Shows a second red handle that user controls
+   */
+  function updateHandlePosition(targetTimeMs) {
+    var previewHandle = document.getElementById('preview-handle');
+    var progressPreview = document.getElementById('progress-preview');
+    var previewTimeEl = document.getElementById('preview-time');
+
+    if (!duration || duration <= 0) { return; }
+
+    var progress = (targetTimeMs / duration) * 100;
+    progress = Math.max(0, Math.min(100, progress));
+
+    // Show and move the PREVIEW handle (red one)
+    if (previewHandle) {
+      previewHandle.style.display = 'block';
+      previewHandle.style.left = progress + '%';
+    }
+
+    // Show time preview badge above preview handle
+    if (progressPreview) {
+      progressPreview.style.display = 'block';
+      progressPreview.style.left = progress + '%';
+    }
+    if (previewTimeEl) {
+      previewTimeEl.textContent = formatTime(targetTimeMs / 1000);
+    }
+  }
+
+  /**
+   * Hide preview handle (when exiting scrubbing mode)
+   */
+  function hidePreviewHandle() {
+    var previewHandle = document.getElementById('preview-handle');
+    var progressPreview = document.getElementById('progress-preview');
+
+    if (previewHandle) {
+      previewHandle.style.display = 'none';
+    }
+    if (progressPreview) {
+      progressPreview.style.display = 'none';
+    }
+  }
+
+  /**
    * Hide seek preview and reset to current time
    */
   function hideSeekPreview() {
@@ -1694,6 +1765,132 @@ var PlayerPage = (function() {
       currentTime = seekPreviewTime;
       updateProgressUI();
     }
+  }
+
+  /**
+   * Handle keyboard events directly on progress bar
+   * LEFT/RIGHT = control time (stay on timeline)
+   * UP/DOWN = exit timeline to buttons
+   */
+  function handleProgressBarKeydown(event) {
+    var keyCode = event.keyCode;
+    showDebug('PB-Keydown: ' + keyCode + ' dur=' + Math.round(duration/1000) + 's cur=' + Math.round(currentTime/1000) + 's');
+
+    // LEFT/RIGHT: Move handle on timeline (preview only)
+    if (keyCode === 37 || keyCode === 39) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      // Calculate seek step based on duration
+      var seekStep = 5000; // 5 seconds default
+      if (duration > 7200000) { // > 2 hours
+        seekStep = 15000;
+      } else if (duration > 3600000) { // > 1 hour
+        seekStep = 10000;
+      } else if (duration > 600000) { // > 10 minutes
+        seekStep = 5000;
+      } else {
+        seekStep = 2000;
+      }
+
+      // Move preview position (handle) - don't seek yet
+      if (keyCode === 37) { // Left
+        seekPreviewTime = Math.max(0, seekPreviewTime - seekStep);
+      } else { // Right
+        seekPreviewTime = Math.min(duration, seekPreviewTime + seekStep);
+      }
+
+      showDebug('Handle: ' + Math.round(seekPreviewTime/1000) + 's / ' + Math.round(duration/1000) + 's');
+      updateHandlePosition(seekPreviewTime);
+      resetOverlayTimeout();
+      return false;
+    }
+
+    // UP/DOWN: Exit timeline, go to buttons
+    if (keyCode === 38 || keyCode === 40) {
+      // Let navigation handle this - move to buttons
+      return;
+    }
+
+    // ENTER: Confirm seek to handle position
+    if (keyCode === 13) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      var targetTime = seekPreviewTime;
+      showDebug('ENTER! seekPreview=' + Math.round(targetTime/1000) + 's cur=' + Math.round(currentTime/1000) + 's');
+      // Hide preview handle first
+      hidePreviewHandle();
+      // Do the actual seek
+      seekToTime(targetTime);
+      resetOverlayTimeout();
+      return false;
+    }
+  }
+
+  /**
+   * Seek to specific time in milliseconds (real-time seeking)
+   */
+  function seekToTime(timeMs) {
+    showDebug('seekToTime: ' + Math.round(timeMs/1000) + 's useAVPlay=' + useAVPlay);
+    if (!duration || duration <= 0) {
+      showDebug('seekToTime ABORTED: no duration');
+      return;
+    }
+
+    var timeSeconds = timeMs / 1000;
+
+    if (useAVPlay) {
+      showDebug('AVPlayer.seek(' + timeMs + ')');
+      TizenSDK.AVPlayer.seek(timeMs);
+    } else if (videoElement) {
+      showDebug('video.currentTime = ' + timeSeconds);
+      videoElement.currentTime = timeSeconds;
+    }
+
+    // Update state and UI immediately
+    currentTime = timeMs;
+    updateProgressUI();
+  }
+
+  /**
+   * Handle click on progress bar to seek
+   */
+  function handleProgressBarClick(event) {
+    if (!duration || duration <= 0) { return; }
+
+    // Get the progress bar element (the clickable track)
+    var progressBar = event.currentTarget.querySelector('.player-progress');
+    if (!progressBar) {
+      progressBar = event.currentTarget;
+    }
+
+    // Calculate click position relative to progress bar
+    var rect = progressBar.getBoundingClientRect();
+    var clickX = event.clientX - rect.left;
+    var barWidth = rect.width;
+
+    // Calculate percentage and target time
+    var percentage = Math.max(0, Math.min(1, clickX / barWidth));
+    var targetTimeMs = percentage * duration;
+
+    console.log('[PlayerPage] Progress bar clicked at', Math.round(percentage * 100) + '%', 'seeking to', formatTime(targetTimeMs / 1000));
+
+    // Seek to the target time
+    if (useAVPlay) {
+      TizenSDK.AVPlayer.seekTo(targetTimeMs);
+    } else if (videoElement) {
+      videoElement.currentTime = targetTimeMs / 1000;
+    }
+
+    // Update UI immediately
+    currentTime = targetTimeMs;
+    seekPreviewTime = targetTimeMs;
+    updateProgressUI();
+
+    // Reset overlay timeout
+    resetOverlayTimeout();
   }
 
   /**

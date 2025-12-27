@@ -648,6 +648,20 @@ body {
   padding: 16px;
   min-width: 0;
   border-radius: 50%;
+  display: -webkit-inline-box;
+  display: -webkit-inline-flex;
+  display: inline-flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+}
+
+.btn-icon svg {
+  display: block;
+  flex-shrink: 0;
 }
 
 /* ==========================================================================
@@ -1020,8 +1034,13 @@ body {
   margin-bottom: 16px;
   padding: 8px 0;
   border-radius: 8px;
+  cursor: pointer;
   -webkit-transition: all 100ms ease-out;
   transition: all 100ms ease-out;
+}
+
+.player-progress-container:hover .player-progress-handle {
+  opacity: 1;
 }
 
 .player-progress-container:focus,
@@ -1043,6 +1062,9 @@ body {
 .player-progress-container:focus .player-progress-handle,
 .player-progress-container.focused .player-progress-handle {
   opacity: 1;
+  width: 28px;
+  height: 28px;
+  box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.5), 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
 .player-progress {
@@ -1075,8 +1097,8 @@ body {
   transform: translate(-50%, -50%);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   opacity: 0;
-  -webkit-transition: opacity 100ms ease-out;
-  transition: opacity 100ms ease-out;
+  -webkit-transition: opacity 100ms ease-out, width 150ms ease-out, height 150ms ease-out, box-shadow 150ms ease-out;
+  transition: opacity 100ms ease-out, width 150ms ease-out, height 150ms ease-out, box-shadow 150ms ease-out;
   pointer-events: none;
 }
 
@@ -1093,6 +1115,29 @@ body {
   white-space: nowrap;
   font-size: 24px;
   font-weight: 600;
+}
+
+/* Preview handle - red scrubbing indicator (separate from main handle) */
+.player-preview-handle {
+  display: none;
+  opacity: 1;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #ff4444, #e50914);
+  box-shadow: 0 0 0 6px rgba(229, 9, 20, 0.6), 0 4px 16px rgba(0, 0, 0, 0.8);
+  z-index: 10;
+  -webkit-animation: handle-pulse 0.8s ease-in-out infinite;
+  animation: handle-pulse 0.8s ease-in-out infinite;
+}
+
+@-webkit-keyframes handle-pulse {
+  0%, 100% { -webkit-transform: translate(-50%, -50%) scale(1); transform: translate(-50%, -50%) scale(1); }
+  50% { -webkit-transform: translate(-50%, -50%) scale(1.1); transform: translate(-50%, -50%) scale(1.1); }
+}
+
+@keyframes handle-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.1); }
 }
 
 .player-info {

@@ -76,6 +76,11 @@ var SeriesPage = (function() {
       var newSeries = data.series || [];
       offset += LIMIT;
 
+      // Prefetch next page in background
+      if (data.has_more) {
+        API.prefetchSeriesNextPage(offset, LIMIT);
+      }
+
       return {
         items: newSeries,
         hasMore: data.has_more

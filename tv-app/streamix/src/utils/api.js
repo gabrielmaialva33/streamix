@@ -156,6 +156,71 @@ var API = (function() {
     cache = {};
   }
 
+  /**
+   * Prefetch a URL in background (silent, no error propagation)
+   * Uses low priority and doesn't block UI
+   */
+  function prefetch(endpoint) {
+    var url = BASE_URL + endpoint;
+
+    // Skip if already cached
+    var cached = cache[url];
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return;
+    }
+
+    // Prefetch in background with setTimeout to yield to UI
+    setTimeout(function() {
+      fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        method: 'GET'
+      }).then(function(response) {
+        if (response.ok) {
+          return response.json();
+        }
+        return null;
+      }).then(function(data) {
+        if (data) {
+          cache[url] = { data: data, timestamp: Date.now() };
+        }
+      }).catch(function() {
+        // Silent fail for prefetch - don't log errors
+      });
+    }, 100);
+  }
+
+  /**
+   * Prefetch next page of movies
+   */
+  function prefetchMoviesNextPage(currentOffset, limit) {
+    limit = limit || 20;
+    var nextOffset = currentOffset + limit;
+    prefetch('/movies' + buildQuery({ limit: limit, offset: nextOffset }));
+  }
+
+  /**
+   * Prefetch next page of series
+   */
+  function prefetchSeriesNextPage(currentOffset, limit) {
+    limit = limit || 20;
+    var nextOffset = currentOffset + limit;
+    prefetch('/series' + buildQuery({ limit: limit, offset: nextOffset }));
+  }
+
+  /**
+   * Prefetch movie details (when user focuses on card)
+   */
+  function prefetchMovie(id) {
+    prefetch('/movies/' + id);
+  }
+
+  /**
+   * Prefetch series details (when user focuses on card)
+   */
+  function prefetchSeries(id) {
+    prefetch('/series/' + id);
+  }
+
   // Public API
   return {
     getFeatured: getFeatured,
@@ -171,7 +236,12 @@ var API = (function() {
     getMovieStream: getMovieStream,
     getEpisodeStream: getEpisodeStream,
     getChannelStream: getChannelStream,
-    clearCache: clearCache
+    clearCache: clearCache,
+    // Prefetch functions
+    prefetchMoviesNextPage: prefetchMoviesNextPage,
+    prefetchSeriesNextPage: prefetchSeriesNextPage,
+    prefetchMovie: prefetchMovie,
+    prefetchSeries: prefetchSeries
   };
 })();
 

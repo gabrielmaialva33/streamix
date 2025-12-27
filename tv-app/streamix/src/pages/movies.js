@@ -76,6 +76,11 @@ var MoviesPage = (function() {
       var newMovies = data.movies || [];
       offset += LIMIT;
 
+      // Prefetch next page in background
+      if (data.has_more) {
+        API.prefetchMoviesNextPage(offset, LIMIT);
+      }
+
       return {
         items: newMovies,
         hasMore: data.has_more
