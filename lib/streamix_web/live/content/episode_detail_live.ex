@@ -169,28 +169,32 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-
-        <!-- Back Button -->
+        
+    <!-- Back Button -->
         <div class="absolute top-6 left-6 z-10">
           <.link
             navigate={back_path(@mode, @provider, @series.id)}
             class="inline-flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-sm font-medium"
           >
-            <.icon name="hero-arrow-left" class="size-4" /> Voltar para {@series.title || @series.name}
+            <.icon name="hero-arrow-left" class="size-4" />
+            Voltar para {@series.title || @series.name}
           </.link>
         </div>
-
-        <!-- Play Button Overlay -->
+        
+    <!-- Play Button Overlay -->
         <button
           type="button"
           phx-click="play_episode"
           class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-full flex items-center justify-center transition-all group"
         >
-          <.icon name="hero-play-solid" class="size-10 text-white ml-1 group-hover:scale-110 transition-transform" />
+          <.icon
+            name="hero-play-solid"
+            class="size-10 text-white ml-1 group-hover:scale-110 transition-transform"
+          />
         </button>
       </div>
-
-      <!-- Content Section -->
+      
+    <!-- Content Section -->
       <div class="relative -mt-24 sm:-mt-32 px-4 sm:px-8 lg:px-12 pb-12">
         <div class="max-w-5xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-8">
@@ -211,8 +215,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 </div>
               </div>
             </div>
-
-            <!-- Info -->
+            
+    <!-- Info -->
             <div class="flex-1 space-y-5 text-center lg:text-left">
               <!-- Series & Season Info -->
               <div class="space-y-1">
@@ -226,13 +230,13 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   Temporada {@season.season_number} · Episódio {@episode.episode_num} de {@total_episodes}
                 </p>
               </div>
-
-              <!-- Episode Title -->
+              
+    <!-- Episode Title -->
               <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight">
                 {episode_display_title(@episode)}
               </h1>
-
-              <!-- Meta Tags -->
+              
+    <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
                 <span
                   :if={@series.content_rating}
@@ -244,13 +248,22 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 >
                   {@series.content_rating}
                 </span>
-                <span :if={@episode.rating} class="inline-flex items-center gap-1 h-8 px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-sm font-medium">
+                <span
+                  :if={@episode.rating}
+                  class="inline-flex items-center gap-1 h-8 px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-sm font-medium"
+                >
                   <.icon name="hero-star-solid" class="size-3.5" />{format_rating(@episode.rating)}
                 </span>
-                <span :if={@episode.air_date} class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
+                <span
+                  :if={@episode.air_date}
+                  class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm"
+                >
                   <.icon name="hero-calendar" class="size-3.5" />{format_date(@episode.air_date)}
                 </span>
-                <span :if={@episode.duration} class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
+                <span
+                  :if={@episode.duration}
+                  class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm"
+                >
                   <.icon name="hero-clock" class="size-3.5" />{@episode.duration}
                 </span>
                 <span
@@ -260,8 +273,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   {@episode.container_extension}
                 </span>
               </div>
-
-              <!-- Action Buttons -->
+              
+    <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-2">
                 <button
                   type="button"
@@ -277,9 +290,12 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   class={[
                     "inline-flex items-center justify-center w-12 h-12 rounded-lg border-2 transition-all",
                     @is_favorite && "bg-red-600 border-red-600 text-white",
-                    !@is_favorite && "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
+                    !@is_favorite &&
+                      "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
                   ]}
-                  title={if @is_favorite, do: "Série nos favoritos", else: "Adicionar série aos favoritos"}
+                  title={
+                    if @is_favorite, do: "Série nos favoritos", else: "Adicionar série aos favoritos"
+                  }
                 >
                   <.icon
                     name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
@@ -287,16 +303,16 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   />
                 </button>
               </div>
-
-              <!-- Synopsis -->
+              
+    <!-- Synopsis -->
               <div :if={@episode.plot && @episode.plot != ""} class="pt-4">
                 <h3 class="text-lg font-semibold text-text-primary mb-3">Sinopse do Episódio</h3>
                 <p class="text-text-secondary text-base leading-relaxed">
                   {@episode.plot}
                 </p>
               </div>
-
-              <!-- Series Synopsis (if no episode synopsis) -->
+              
+    <!-- Series Synopsis (if no episode synopsis) -->
               <div :if={(!@episode.plot || @episode.plot == "") && @series.plot} class="pt-4">
                 <h3 class="text-lg font-semibold text-text-primary mb-3">Sobre a Série</h3>
                 <p class="text-text-secondary text-base leading-relaxed line-clamp-4">
@@ -305,8 +321,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
               </div>
             </div>
           </div>
-
-          <!-- Episode Navigation -->
+          
+    <!-- Episode Navigation -->
           <div class="mt-10 pt-8 border-t border-border">
             <div class="flex items-center justify-between">
               <!-- Previous Episode -->
@@ -316,23 +332,30 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   navigate={episode_path(@mode, @provider, @series.id, @prev_episode.id)}
                   class="inline-flex items-center gap-3 p-4 rounded-xl bg-surface hover:bg-surface-hover transition-colors group"
                 >
-                  <.icon name="hero-chevron-left" class="size-5 text-text-secondary group-hover:text-text-primary" />
+                  <.icon
+                    name="hero-chevron-left"
+                    class="size-5 text-text-secondary group-hover:text-text-primary"
+                  />
                   <div class="text-left">
-                    <p class="text-xs text-text-secondary uppercase tracking-wide">Episódio Anterior</p>
-                    <p class="text-sm font-medium text-text-primary">Episódio {@prev_episode.episode_num}</p>
+                    <p class="text-xs text-text-secondary uppercase tracking-wide">
+                      Episódio Anterior
+                    </p>
+                    <p class="text-sm font-medium text-text-primary">
+                      Episódio {@prev_episode.episode_num}
+                    </p>
                   </div>
                 </.link>
               </div>
-
-              <!-- Back to Series -->
+              
+    <!-- Back to Series -->
               <.link
                 navigate={series_path(@mode, @provider, @series.id)}
                 class="hidden sm:inline-flex items-center gap-2 px-5 py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-sm"
               >
                 <.icon name="hero-list-bullet" class="size-4" /> Todos os Episódios
               </.link>
-
-              <!-- Next Episode -->
+              
+    <!-- Next Episode -->
               <div class="flex-1 flex justify-end">
                 <.link
                   :if={@next_episode}
@@ -340,10 +363,17 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   class="inline-flex items-center gap-3 p-4 rounded-xl bg-surface hover:bg-surface-hover transition-colors group"
                 >
                   <div class="text-right">
-                    <p class="text-xs text-text-secondary uppercase tracking-wide">Próximo Episódio</p>
-                    <p class="text-sm font-medium text-text-primary">Episódio {@next_episode.episode_num}</p>
+                    <p class="text-xs text-text-secondary uppercase tracking-wide">
+                      Próximo Episódio
+                    </p>
+                    <p class="text-sm font-medium text-text-primary">
+                      Episódio {@next_episode.episode_num}
+                    </p>
                   </div>
-                  <.icon name="hero-chevron-right" class="size-5 text-text-secondary group-hover:text-text-primary" />
+                  <.icon
+                    name="hero-chevron-right"
+                    class="size-5 text-text-secondary group-hover:text-text-primary"
+                  />
                 </.link>
               </div>
             </div>
@@ -359,10 +389,14 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # ============================================
 
   defp back_path(:browse, _provider, series_id), do: ~p"/browse/series/#{series_id}"
-  defp back_path(:provider, provider, series_id), do: ~p"/providers/#{provider.id}/series/#{series_id}"
+
+  defp back_path(:provider, provider, series_id),
+    do: ~p"/providers/#{provider.id}/series/#{series_id}"
 
   defp series_path(:browse, _provider, series_id), do: ~p"/browse/series/#{series_id}"
-  defp series_path(:provider, provider, series_id), do: ~p"/providers/#{provider.id}/series/#{series_id}"
+
+  defp series_path(:provider, provider, series_id),
+    do: ~p"/providers/#{provider.id}/series/#{series_id}"
 
   defp episode_path(:browse, _provider, series_id, episode_id),
     do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"

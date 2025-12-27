@@ -31,7 +31,9 @@ defmodule Streamix.Iptv.TmdbClient do
   """
   def get_movie(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
-      url = "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
+      url =
+        "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
+
       do_request(url)
     else
       {:error, :tmdb_not_configured}
@@ -43,7 +45,9 @@ defmodule Streamix.Iptv.TmdbClient do
   """
   def get_series(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
-      url = "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
+      url =
+        "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
+
       do_request(url)
     else
       {:error, :tmdb_not_configured}
@@ -224,7 +228,8 @@ defmodule Streamix.Iptv.TmdbClient do
     Jason.decode(body)
   end
 
-  defp handle_response({:ok, %{status: 429} = response}, url, retries) when retries < @max_retries do
+  defp handle_response({:ok, %{status: 429} = response}, url, retries)
+       when retries < @max_retries do
     retry_after = get_retry_after(response)
     Process.sleep(retry_after)
     do_request(url, retries + 1)
@@ -233,8 +238,13 @@ defmodule Streamix.Iptv.TmdbClient do
   defp handle_response({:ok, %{status: 429}}, _url, _retries), do: {:error, :rate_limited}
   defp handle_response({:ok, %{status: 404}}, _url, _retries), do: {:error, :not_found}
   defp handle_response({:ok, %{status: 401}}, _url, _retries), do: {:error, :unauthorized}
-  defp handle_response({:ok, %{status: status}}, _url, _retries), do: {:error, {:http_error, status}}
-  defp handle_response({:error, %Req.TransportError{reason: reason}}, _url, _retries), do: {:error, {:transport_error, reason}}
+
+  defp handle_response({:ok, %{status: status}}, _url, _retries),
+    do: {:error, {:http_error, status}}
+
+  defp handle_response({:error, %Req.TransportError{reason: reason}}, _url, _retries),
+    do: {:error, {:transport_error, reason}}
+
   defp handle_response({:error, reason}, _url, _retries), do: {:error, reason}
 
   defp get_retry_after(%{headers: headers}) do

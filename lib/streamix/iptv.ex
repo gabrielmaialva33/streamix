@@ -383,17 +383,23 @@ defmodule Streamix.Iptv do
   defp maybe_fetch_from_tmdb(_movie, _xtream_attrs, _tmdb_id), do: %{}
 
   defp needs_tmdb_enrichment?(movie, xtream_attrs) do
-    missing_plot = is_nil(xtream_attrs[:plot]) and is_nil(movie.plot)
-    missing_cast = is_nil(xtream_attrs[:cast]) and is_nil(movie.cast)
-    missing_director = is_nil(xtream_attrs[:director]) and is_nil(movie.director)
-
-    # Also check for extended metadata from TMDB
-    missing_extended =
-      is_nil(movie.content_rating) and is_nil(movie.tagline) and
-        (is_nil(movie.images) or movie.images == [])
-
-    missing_plot or missing_cast or missing_director or missing_extended
+    missing_basic_info?(movie, xtream_attrs) or missing_extended_info?(movie)
   end
+
+  defp missing_basic_info?(movie, xtream_attrs) do
+    missing_field?(xtream_attrs[:plot], movie.plot) or
+      missing_field?(xtream_attrs[:cast], movie.cast) or
+      missing_field?(xtream_attrs[:director], movie.director)
+  end
+
+  defp missing_extended_info?(movie) do
+    is_nil(movie.content_rating) and is_nil(movie.tagline) and empty_images?(movie.images)
+  end
+
+  defp missing_field?(xtream_val, movie_val), do: is_nil(xtream_val) and is_nil(movie_val)
+  defp empty_images?(nil), do: true
+  defp empty_images?([]), do: true
+  defp empty_images?(_), do: false
 
   defp fetch_from_tmdb(tmdb_id) do
     case TmdbClient.get_movie(tmdb_id) do
@@ -700,20 +706,25 @@ defmodule Streamix.Iptv do
     season_number = episode.season.season_number
 
     if needs_episode_tmdb_enrichment?(episode) and is_binary(tmdb_id) and tmdb_id != "" do
-      case TmdbClient.get_season(tmdb_id, season_number) do
-        {:ok, data} ->
-          episodes_map = TmdbClient.parse_season_episodes(data)
-
-          case Map.get(episodes_map, episode.episode_num) do
-            nil -> {:ok, episode}
-            attrs -> update_episode(episode, attrs)
-          end
-
-        {:error, _reason} ->
-          {:ok, episode}
-      end
+      fetch_and_update_episode(episode, tmdb_id, season_number)
     else
       {:ok, episode}
+    end
+  end
+
+  defp fetch_and_update_episode(episode, tmdb_id, season_number) do
+    case TmdbClient.get_season(tmdb_id, season_number) do
+      {:ok, data} ->
+        data
+        |> TmdbClient.parse_season_episodes()
+        |> Map.get(episode.episode_num)
+        |> case do
+          nil -> {:ok, episode}
+          attrs -> update_episode(episode, attrs)
+        end
+
+      {:error, _reason} ->
+        {:ok, episode}
     end
   end
 

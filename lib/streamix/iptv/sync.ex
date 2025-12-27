@@ -694,7 +694,11 @@ defmodule Streamix.Iptv.Sync do
       |> maybe_update(:director, info["director"], series.director)
       |> maybe_update(:genre, info["genre"], series.genre)
       |> maybe_update(:youtube_trailer, info["youtube_trailer"], series.youtube_trailer)
-      |> maybe_update(:backdrop_path, normalize_backdrop(info["backdrop_path"]), series.backdrop_path)
+      |> maybe_update(
+        :backdrop_path,
+        normalize_backdrop(info["backdrop_path"]),
+        series.backdrop_path
+      )
 
     if map_size(attrs) > 0 do
       series

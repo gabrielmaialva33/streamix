@@ -126,7 +126,14 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   def handle_event("view_episode", %{"id" => episode_id}, socket) do
-    path = episode_path(socket.assigns.mode, socket.assigns.provider, socket.assigns.series.id, episode_id)
+    path =
+      episode_path(
+        socket.assigns.mode,
+        socket.assigns.provider,
+        socket.assigns.series.id,
+        episode_id
+      )
+
     {:noreply, push_navigate(socket, to: path)}
   end
 
@@ -134,7 +141,15 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     case socket.assigns.seasons do
       [first_season | _] when first_season.episodes != [] ->
         [first_episode | _] = Enum.sort_by(first_season.episodes, & &1.episode_num)
-        path = episode_path(socket.assigns.mode, socket.assigns.provider, socket.assigns.series.id, first_episode.id)
+
+        path =
+          episode_path(
+            socket.assigns.mode,
+            socket.assigns.provider,
+            socket.assigns.series.id,
+            first_episode.id
+          )
+
         {:noreply, push_navigate(socket, to: path)}
 
       _ ->
@@ -190,8 +205,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-
-        <!-- Back Button -->
+        
+    <!-- Back Button -->
         <div class="absolute top-6 left-6 z-10">
           <.link
             navigate={back_path(@mode, @provider)}
@@ -200,18 +215,21 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             <.icon name="hero-arrow-left" class="size-4" /> Voltar
           </.link>
         </div>
-
-        <!-- Play Button Overlay -->
+        
+    <!-- Play Button Overlay -->
         <button
           type="button"
           phx-click="play_first_episode"
           class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-full flex items-center justify-center transition-all group"
         >
-          <.icon name="hero-play-solid" class="size-10 text-white ml-1 group-hover:scale-110 transition-transform" />
+          <.icon
+            name="hero-play-solid"
+            class="size-10 text-white ml-1 group-hover:scale-110 transition-transform"
+          />
         </button>
       </div>
-
-      <!-- Content Section -->
+      
+    <!-- Content Section -->
       <div class="relative -mt-32 sm:-mt-40 px-4 sm:px-8 lg:px-12 pb-12">
         <div class="max-w-7xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-8">
@@ -232,24 +250,30 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 </div>
               </div>
             </div>
-
-            <!-- Info -->
+            
+    <!-- Info -->
             <div class="flex-1 space-y-6 text-center lg:text-left">
               <!-- Title -->
               <div class="space-y-2">
                 <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary leading-tight">
                   {@series.title || @series.name}
                 </h1>
-                <p :if={@series.title && @series.name && @series.title != @series.name} class="text-lg text-text-secondary">
+                <p
+                  :if={@series.title && @series.name && @series.title != @series.name}
+                  class="text-lg text-text-secondary"
+                >
                   {@series.name}
                 </p>
                 <!-- Tagline -->
-                <p :if={@series.tagline && @series.tagline != ""} class="text-lg italic text-text-secondary/80">
+                <p
+                  :if={@series.tagline && @series.tagline != ""}
+                  class="text-lg italic text-text-secondary/80"
+                >
                   "{@series.tagline}"
                 </p>
               </div>
-
-              <!-- Meta Tags -->
+              
+    <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
                 <!-- Content Rating -->
                 <span
@@ -269,7 +293,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   <.icon name="hero-star-solid" class="size-3.5" />
                   {format_rating(@series.rating)}
                 </span>
-                <span :if={@series.year} class="inline-flex items-center h-8 px-2.5 bg-surface text-text-primary rounded-md text-sm font-medium">
+                <span
+                  :if={@series.year}
+                  class="inline-flex items-center h-8 px-2.5 bg-surface text-text-primary rounded-md text-sm font-medium"
+                >
                   {@series.year}
                 </span>
                 <span class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
@@ -277,9 +304,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   {length(@seasons)} temp · {@series.episode_count || 0} eps
                 </span>
               </div>
-
-              <!-- Genres -->
-              <div :if={@series.genre} class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
+              
+    <!-- Genres -->
+              <div
+                :if={@series.genre}
+                class="flex flex-wrap items-center justify-center lg:justify-start gap-2"
+              >
                 <span
                   :for={genre <- split_genres(@series.genre)}
                   class="px-3 py-1 bg-white/5 text-text-secondary rounded-full text-sm border border-white/10 hover:border-white/20 transition-colors"
@@ -287,8 +317,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   {genre}
                 </span>
               </div>
-
-              <!-- Action Buttons -->
+              
+    <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-2">
                 <button
                   type="button"
@@ -304,9 +334,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   class={[
                     "inline-flex items-center justify-center w-12 h-12 rounded-lg border-2 transition-all",
                     @is_favorite && "bg-red-600 border-red-600 text-white",
-                    !@is_favorite && "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
+                    !@is_favorite &&
+                      "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
                   ]}
-                  title={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
+                  title={
+                    if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"
+                  }
                 >
                   <.icon
                     name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
@@ -333,36 +366,40 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   title="Ver no The Movie Database"
                 >
                   <svg class="size-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
                   </svg>
                   TMDB
                 </a>
               </div>
-
-              <!-- Synopsis -->
+              
+    <!-- Synopsis -->
               <div :if={@series.plot} class="pt-4">
                 <h3 class="text-lg font-semibold text-text-primary mb-3">Sinopse</h3>
                 <p class="text-text-secondary text-base leading-relaxed">
                   {@series.plot}
                 </p>
               </div>
-
-              <!-- Details Grid -->
+              
+    <!-- Details Grid -->
               <div :if={@series.director || @series.cast} class="grid sm:grid-cols-2 gap-6 pt-4">
                 <div :if={@series.director} class="space-y-2">
-                  <h4 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">Criado por</h4>
+                  <h4 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                    Criado por
+                  </h4>
                   <p class="text-text-primary">{@series.director}</p>
                 </div>
 
                 <div :if={@series.cast} class="space-y-2">
-                  <h4 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">Elenco</h4>
+                  <h4 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+                    Elenco
+                  </h4>
                   <p class="text-text-primary">{truncate_cast(@series.cast)}</p>
                 </div>
               </div>
             </div>
           </div>
-
-          <!-- Image Gallery -->
+          
+    <!-- Image Gallery -->
           <div :if={@series.images && @series.images != []} class="mt-12">
             <h3 class="text-xl font-semibold text-text-primary mb-4">Galeria</h3>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
@@ -379,8 +416,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               </div>
             </div>
           </div>
-
-          <!-- Episodes Section -->
+          
+    <!-- Episodes Section -->
           <div class="mt-12 space-y-6">
             <h2 class="text-2xl font-bold text-text-primary">Episódios</h2>
 
@@ -416,12 +453,17 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         class="w-full flex items-center justify-between px-6 py-4 hover:bg-surface-hover transition-colors"
       >
         <div class="flex items-center gap-4">
-          <span class="text-lg font-semibold text-text-primary">Temporada {@season.season_number}</span>
+          <span class="text-lg font-semibold text-text-primary">
+            Temporada {@season.season_number}
+          </span>
           <span class="text-sm text-text-secondary">{length(@episodes)} episódios</span>
         </div>
         <.icon
           name="hero-chevron-down"
-          class={["size-5 text-text-secondary transition-transform duration-200", @expanded && "rotate-180"]}
+          class={[
+            "size-5 text-text-secondary transition-transform duration-200",
+            @expanded && "rotate-180"
+          ]}
         />
       </button>
 
@@ -539,8 +581,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     cast
     |> String.split(",")
     |> Enum.take(5)
-    |> Enum.map(&String.trim/1)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", &String.trim/1)
   end
 
   # Content rating color classes based on Brazilian/US ratings
