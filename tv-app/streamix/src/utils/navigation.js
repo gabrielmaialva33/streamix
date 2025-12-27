@@ -730,10 +730,20 @@ var Navigation = (function() {
     // Add expanded class to show sidebar
     sidebar.classList.add('expanded');
 
-    // Find and focus the active item, or first item
+    // Priority: 1) item with .active class, 2) item matching current route, 3) first item
     var activeItem = sidebar.querySelector('.sidebar-item.active');
-    var firstItem = sidebar.querySelector('.sidebar-item');
-    var itemToFocus = activeItem || firstItem;
+
+    // If no active item, try to find by current route
+    if (!activeItem && window.Router) {
+      var current = window.Router.getCurrent();
+      if (current && current.path) {
+        // Get base path (e.g., /movies/123 -> /movies)
+        var basePath = current.path.split('/').slice(0, 2).join('/') || '/';
+        activeItem = sidebar.querySelector('.sidebar-item[data-path="' + basePath + '"]');
+      }
+    }
+
+    var itemToFocus = activeItem || sidebar.querySelector('.sidebar-item');
 
     if (itemToFocus) {
       focus(itemToFocus);

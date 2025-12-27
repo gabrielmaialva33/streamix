@@ -79,13 +79,17 @@ var MoviesPage = (function() {
   }
 
   /**
-   * Focus first focusable item in container
+   * Focus first content item (skip search input)
    */
   function focusFirstItem(container) {
     setTimeout(function() {
-      var firstFocusable = container.querySelector('.focusable');
-      if (firstFocusable) {
-        Navigation.focus(firstFocusable);
+      // Prioridade: primeiro card, depois filtro de categoria, por último qualquer focusable
+      var firstCard = container.querySelector('.card-poster.focusable, .channel-card.focusable');
+      var firstFilter = container.querySelector('.category-btn.focusable');
+      var target = firstCard || firstFilter || container.querySelector('.focusable:not(.search-input)');
+
+      if (target) {
+        Navigation.focus(target);
       }
     }, 100);
   }
