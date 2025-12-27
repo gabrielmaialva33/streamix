@@ -1,0 +1,16 @@
+# Tizen Studio workspace metadata
+/.metadata/
+
+# Tizen project files (IDE-specific)
+streamix/.settings/
+streamix/.project
+streamix/.tproject
+
+# Build artifacts
+streamix/.buildResult/
+streamix/.manifest.tmp
+streamix/*.wgt
+
+# Signatures (generated during build)
+streamix/author-signature.xml
+streamix/signature1.xml
