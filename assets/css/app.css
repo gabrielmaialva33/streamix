@@ -42,6 +42,11 @@
   --radius-xl: 1rem;
 }
 
+/* Alpine.js cloak - hide elements before Alpine initializes */
+[x-cloak] {
+  display: none !important;
+}
+
 /* Base styles */
 html, body {
   background-color: var(--color-background);
@@ -208,16 +213,9 @@ select:focus-visible {
 .stagger-4 { animation-delay: 0.25s; }
 .stagger-5 { animation-delay: 0.3s; }
 
-/* Image loading states */
+/* Image loading states - smooth fade in when loaded */
 img {
   transition: opacity 0.3s ease;
-}
-
-img[loading] {
-  opacity: 0;
-}
-
-img:not([loading]) {
   opacity: 1;
 }
 

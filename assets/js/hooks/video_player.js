@@ -83,6 +83,8 @@ const VideoPlayer = {
   createUI() {
     this.el.style.position = "relative";
     this.createErrorContainer();
+    // Track whether we're using native controls to avoid duplicate loaders
+    this.hasNativeControls = this.video?.hasAttribute("controls");
     this.createLoadingIndicator();
   },
 
@@ -126,6 +128,9 @@ const VideoPlayer = {
   },
 
   showLoading() {
+    // Skip custom loading indicator when native controls are present
+    // to avoid duplicate loaders (browser already shows loading state)
+    if (this.hasNativeControls) return;
     this.loadingIndicator?.classList.remove("hidden");
   },
 
