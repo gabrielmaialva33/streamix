@@ -74,8 +74,8 @@ defmodule StreamixWeb.SearchLive do
     {:noreply, push_navigate(socket, to: ~p"/watch/live_channel/#{id}")}
   end
 
-  def handle_event("play_movie", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/movie/#{id}")}
+  def handle_event("play_movie", %{"id" => id, "provider_id" => provider_id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/providers/#{provider_id}/movies/#{id}")}
   end
 
   def handle_event("view_series", %{"id" => id, "provider_id" => provider_id}, socket) do

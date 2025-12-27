@@ -18,6 +18,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
       socket
       |> assign(page_title: "Provedores")
       |> assign(current_path: "/providers")
+      |> assign(empty_providers: Enum.empty?(providers))
       |> stream(:providers, providers)
 
     {:ok, socket}
@@ -102,11 +103,12 @@ defmodule StreamixWeb.Providers.ProviderListLive do
         updated_provider = %{
           provider
           | sync_status: status,
-            live_count: Map.get(payload, :live_count, provider.live_count),
+            live_channels_count:
+              Map.get(payload, :live_channels_count, provider.live_channels_count),
             movies_count: Map.get(payload, :movies_count, provider.movies_count),
             series_count: Map.get(payload, :series_count, provider.series_count),
-            last_synced_at:
-              if(status == "completed", do: DateTime.utc_now(), else: provider.last_synced_at)
+            live_synced_at:
+              if(status == "completed", do: DateTime.utc_now(), else: provider.live_synced_at)
         }
 
         {:noreply, stream_insert(socket, :providers, updated_provider)}
@@ -117,6 +119,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     {:noreply,
      socket
      |> stream_insert(:providers, provider)
+     |> assign(empty_providers: false)
      |> put_flash(:info, "Provedor salvo com sucesso")
      |> push_patch(to: ~p"/providers")}
   end
@@ -140,7 +143,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
         </div>
       </div>
 
-      <div :if={@streams.providers == []} class="py-12">
+      <div :if={@empty_providers} class="py-12">
         <.empty_state
           icon="hero-server-stack"
           title="Nenhum provedor ainda"

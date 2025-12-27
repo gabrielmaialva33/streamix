@@ -9,7 +9,7 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
 
   def mount(%{"id" => id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_user_provider(user_id, id)
+    provider = Iptv.get_playable_provider(user_id, id)
 
     if provider do
       if connected?(socket) do
@@ -133,11 +133,11 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
     updated_provider = %{
       provider
       | sync_status: status,
-        live_count: Map.get(payload, :live_count, provider.live_count),
+        live_channels_count: Map.get(payload, :live_channels_count, provider.live_channels_count),
         movies_count: Map.get(payload, :movies_count, provider.movies_count),
         series_count: Map.get(payload, :series_count, provider.series_count),
-        last_synced_at:
-          if(status == "completed", do: DateTime.utc_now(), else: provider.last_synced_at)
+        live_synced_at:
+          if(status == "completed", do: DateTime.utc_now(), else: provider.live_synced_at)
     }
 
     socket = assign(socket, provider: updated_provider)
@@ -153,7 +153,7 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
        |> load_channels()
        |> put_flash(
          :info,
-         "Sincronização concluída! #{payload[:live_count]} canais ao vivo carregados."
+         "Sincronização concluída! #{payload[:live_channels_count]} canais ao vivo carregados."
        )}
     else
       {:noreply, socket}
@@ -171,11 +171,13 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
 
     channels = Iptv.list_live_channels(socket.assigns.provider.id, opts)
     has_more = length(channels) == @per_page
+    empty_results = socket.assigns.page == 1 && Enum.empty?(channels)
 
     socket
     |> stream(:channels, channels)
     |> assign(has_more: has_more)
     |> assign(loading: false)
+    |> assign(empty_results: empty_results)
   end
 
   defp load_favorites_map(socket) do
@@ -226,15 +228,15 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
           <.header>
             {@provider.name}
             <:subtitle>
-              {@provider.live_count || 0} canais ao vivo
+              {@provider.live_channels_count || 0} canais ao vivo
               <span :if={@provider.movies_count && @provider.movies_count > 0} class="ml-2">
                 | {@provider.movies_count} filmes
               </span>
               <span :if={@provider.series_count && @provider.series_count > 0} class="ml-2">
                 | {@provider.series_count} séries
               </span>
-              <span :if={@provider.last_synced_at} class="ml-2">
-                - Última sinc: {format_relative_time(@provider.last_synced_at)}
+              <span :if={@provider.live_synced_at} class="ml-2">
+                - Última sinc: {format_relative_time(@provider.live_synced_at)}
               </span>
             </:subtitle>
           </.header>
@@ -270,7 +272,7 @@ defmodule StreamixWeb.Providers.ProviderShowLive do
         </div>
       </div>
 
-      <div :if={@streams.channels == []} class="py-12">
+      <div :if={@empty_results} class="py-12">
         <.empty_state
           icon="hero-tv"
           title="Nenhum canal encontrado"

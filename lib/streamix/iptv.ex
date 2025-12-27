@@ -17,6 +17,7 @@ defmodule Streamix.Iptv do
     Season,
     Series,
     Sync,
+    TmdbClient,
     WatchHistory,
     XtreamClient
   }
@@ -315,6 +316,162 @@ defmodule Streamix.Iptv do
     |> preload(:provider)
     |> Repo.one!()
   end
+
+  @doc """
+  Fetches detailed movie info from Xtream API and TMDB (as fallback).
+  Returns {:ok, updated_movie} or {:error, reason}.
+
+  Flow:
+  1. Fetch from Xtream API (get_vod_info)
+  2. If still missing key data (plot, cast, director) and tmdb_id is available, fetch from TMDB
+  3. Merge all data and update the movie record
+  """
+  def fetch_movie_info(%Movie{} = movie) do
+    movie = Repo.preload(movie, :provider)
+    provider = movie.provider
+
+    # Step 1: Fetch from Xtream API
+    xtream_attrs =
+      case XtreamClient.get_vod_info(
+             provider.url,
+             provider.username,
+             provider.password,
+             movie.stream_id
+           ) do
+        {:ok, %{"info" => info, "movie_data" => movie_data}} ->
+          parse_vod_info(info, movie_data)
+
+        {:ok, %{"info" => info}} ->
+          parse_vod_info(info, %{})
+
+        _ ->
+          %{}
+      end
+
+    # Step 2: Fetch from TMDB if we're still missing key data
+    tmdb_id = xtream_attrs[:tmdb_id] || movie.tmdb_id
+    tmdb_attrs = maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
+
+    # Step 3: Merge attrs (TMDB fills in what Xtream didn't provide)
+    final_attrs = Map.merge(tmdb_attrs, xtream_attrs)
+
+    update_movie(movie, final_attrs)
+  end
+
+  defp maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
+       when is_binary(tmdb_id) and tmdb_id != "" do
+    # Check if we're missing key metadata
+    has_plot = not is_nil(xtream_attrs[:plot]) or not is_nil(movie.plot)
+    has_cast = not is_nil(xtream_attrs[:cast]) or not is_nil(movie.cast)
+    has_director = not is_nil(xtream_attrs[:director]) or not is_nil(movie.director)
+
+    if has_plot and has_cast and has_director do
+      # Already have enough data
+      %{}
+    else
+      # Try to enrich from TMDB
+      case TmdbClient.get_movie(tmdb_id) do
+        {:ok, data} -> TmdbClient.parse_movie_response(data)
+        _ -> %{}
+      end
+    end
+  end
+
+  defp maybe_fetch_from_tmdb(_movie, _xtream_attrs, _tmdb_id), do: %{}
+
+  defp update_movie(movie, attrs) when attrs == %{}, do: {:ok, movie}
+
+  defp update_movie(movie, attrs) do
+    movie
+    |> Movie.changeset(attrs)
+    |> Repo.update()
+  end
+
+  defp parse_vod_info(info, movie_data) when is_map(info) do
+    %{}
+    |> maybe_put(:title, info["name"])
+    |> maybe_put(:plot, info["plot"] || info["description"])
+    |> maybe_put(:cast, info["cast"])
+    |> maybe_put(:director, info["director"])
+    |> maybe_put(:genre, info["genre"])
+    |> maybe_put(:duration, info["duration"] || format_runtime(info["runtime"]))
+    |> maybe_put(:duration_secs, parse_duration_secs(info["duration_secs"]))
+    |> maybe_put(:rating, parse_decimal(info["rating"]))
+    |> maybe_put(:rating_5based, parse_decimal(info["rating_5based"]))
+    |> maybe_put(:year, parse_integer(info["releasedate"] || info["release_date"]))
+    |> maybe_put(:tmdb_id, to_string_or_nil(info["tmdb_id"]))
+    |> maybe_put(:imdb_id, info["kinopoisk_url"])
+    |> maybe_put(:youtube_trailer, info["youtube_trailer"])
+    |> maybe_put(:backdrop_path, parse_backdrop(info["backdrop_path"]))
+    |> maybe_put(:stream_icon, info["cover_big"] || info["movie_image"])
+    |> maybe_put(:container_extension, movie_data["container_extension"])
+  end
+
+  defp parse_vod_info(_, _), do: %{}
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, _key, ""), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp parse_decimal(nil), do: nil
+  defp parse_decimal(""), do: nil
+
+  defp parse_decimal(value) when is_binary(value) do
+    case Decimal.parse(value) do
+      {decimal, _} -> decimal
+      :error -> nil
+    end
+  end
+
+  defp parse_decimal(value) when is_number(value), do: Decimal.from_float(value / 1)
+  defp parse_decimal(_), do: nil
+
+  defp parse_integer(nil), do: nil
+  defp parse_integer(""), do: nil
+
+  defp parse_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, _} -> int
+      :error -> nil
+    end
+  end
+
+  defp parse_integer(value) when is_integer(value), do: value
+  defp parse_integer(_), do: nil
+
+  defp parse_duration_secs(nil), do: nil
+  defp parse_duration_secs(value) when is_integer(value), do: value
+  defp parse_duration_secs(value) when is_binary(value), do: parse_integer(value)
+  defp parse_duration_secs(_), do: nil
+
+  defp format_runtime(nil), do: nil
+  defp format_runtime(""), do: nil
+
+  defp format_runtime(runtime) when is_binary(runtime) do
+    case Integer.parse(runtime) do
+      {minutes, _} when minutes > 0 ->
+        hours = div(minutes, 60)
+        mins = rem(minutes, 60)
+        if hours > 0, do: "#{hours}h #{mins}min", else: "#{mins}min"
+
+      _ ->
+        runtime
+    end
+  end
+
+  defp format_runtime(_), do: nil
+
+  defp parse_backdrop(nil), do: nil
+  defp parse_backdrop([]), do: nil
+  defp parse_backdrop(paths) when is_list(paths), do: paths
+  defp parse_backdrop(path) when is_binary(path), do: [path]
+  defp parse_backdrop(_), do: nil
+
+  defp to_string_or_nil(nil), do: nil
+  defp to_string_or_nil(""), do: nil
+  defp to_string_or_nil(value) when is_binary(value), do: value
+  defp to_string_or_nil(value) when is_integer(value), do: Integer.to_string(value)
+  defp to_string_or_nil(_), do: nil
 
   # =============================================================================
   # Series

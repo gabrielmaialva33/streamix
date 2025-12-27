@@ -359,7 +359,10 @@ defmodule StreamixWeb.HomeLive do
     >
       <div class="text-center p-4">
         <div class="w-12 h-12 mx-auto mb-2 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
-          <.icon name="hero-arrow-right" class="size-6 text-white/70 group-hover:text-white transition-colors" />
+          <.icon
+            name="hero-arrow-right"
+            class="size-6 text-white/70 group-hover:text-white transition-colors"
+          />
         </div>
         <span class="text-sm text-white/70 group-hover:text-white transition-colors">Ver mais</span>
       </div>
@@ -371,7 +374,7 @@ defmodule StreamixWeb.HomeLive do
   defp movie_card(assigns) do
     ~H"""
     <.link
-      navigate={~p"/watch/movie/#{@movie.id}"}
+      navigate={~p"/providers/#{@movie.provider_id}/movies/#{@movie.id}"}
       class="group flex-shrink-0 w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50"
     >
       <div class="aspect-[2/3] bg-surface-hover relative">

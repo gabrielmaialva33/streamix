@@ -21,7 +21,7 @@ defmodule StreamixWeb.Content.MoviesLive do
   @doc false
   def mount(%{"provider_id" => provider_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_user_provider(user_id, provider_id)
+    provider = Iptv.get_playable_provider(user_id, provider_id)
 
     if provider do
       categories = Iptv.list_categories(provider.id, "movie")
@@ -37,7 +37,6 @@ defmodule StreamixWeb.Content.MoviesLive do
         |> assign(page: 1)
         |> assign(has_more: true)
         |> assign(loading: false)
-        |> assign(detail_movie: nil)
         |> assign(favorites_map: %{})
         |> stream(:movies, [])
         |> load_movies()
@@ -97,17 +96,14 @@ defmodule StreamixWeb.Content.MoviesLive do
     {:noreply, socket}
   end
 
-  def handle_event("play_movie", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/movie/#{id}")}
+  def handle_event("play_movie", %{"id" => id} = params, socket) do
+    provider_id = params["provider_id"] || socket.assigns.provider.id
+    {:noreply, push_navigate(socket, to: ~p"/providers/#{provider_id}/movies/#{id}")}
   end
 
-  def handle_event("show_details", %{"id" => id}, socket) do
-    movie = Iptv.get_movie!(id)
-    {:noreply, assign(socket, detail_movie: movie)}
-  end
-
-  def handle_event("close_detail", _, socket) do
-    {:noreply, assign(socket, detail_movie: nil)}
+  def handle_event("show_details", %{"id" => id} = params, socket) do
+    provider_id = params["provider_id"] || socket.assigns.provider.id
+    {:noreply, push_navigate(socket, to: ~p"/providers/#{provider_id}/movies/#{id}")}
   end
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => "movie"}, socket) do
@@ -145,7 +141,7 @@ defmodule StreamixWeb.Content.MoviesLive do
         provider_id={@provider.id}
         counts={
           %{
-            live: @provider.live_count,
+            live: @provider.live_channels_count,
             movies: @provider.movies_count,
             series: @provider.series_count
           }
@@ -171,21 +167,13 @@ defmodule StreamixWeb.Content.MoviesLive do
       </div>
 
       <.empty_state
-        :if={@page == 1 && !@loading && Enum.empty?(@streams.movies)}
+        :if={@empty_results && !@loading}
         icon="hero-film"
         title="Nenhum filme encontrado"
         message="Tente ajustar os filtros ou fazer uma busca diferente."
       />
 
       <.infinite_scroll has_more={@has_more} loading={@loading} />
-
-      <.content_detail_modal
-        :if={@detail_movie}
-        content={@detail_movie}
-        type={:movie}
-        on_play="play_movie"
-        on_close="close_detail"
-      />
     </div>
     """
   end
@@ -209,11 +197,13 @@ defmodule StreamixWeb.Content.MoviesLive do
       )
 
     has_more = length(movies) >= @per_page
+    empty_results = page == 1 && Enum.empty?(movies)
 
     socket
     |> stream(:movies, movies)
     |> assign(has_more: has_more)
     |> assign(loading: false)
+    |> assign(empty_results: empty_results)
   end
 
   defp load_favorites_map(socket) do

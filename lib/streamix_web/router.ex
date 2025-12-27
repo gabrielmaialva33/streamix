@@ -67,6 +67,7 @@ defmodule StreamixWeb.Router do
 
       # VOD content browsing
       live "/providers/:provider_id/movies", Content.MoviesLive, :index
+      live "/providers/:provider_id/movies/:id", Content.MovieDetailLive, :show
       live "/providers/:provider_id/series", Content.SeriesLive, :index
       live "/providers/:provider_id/series/:id", Content.SeriesDetailLive, :show
 

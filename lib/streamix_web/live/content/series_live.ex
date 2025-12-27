@@ -21,7 +21,7 @@ defmodule StreamixWeb.Content.SeriesLive do
   @doc false
   def mount(%{"provider_id" => provider_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_user_provider(user_id, provider_id)
+    provider = Iptv.get_playable_provider(user_id, provider_id)
 
     if provider do
       categories = Iptv.list_categories(provider.id, "series")
@@ -136,7 +136,7 @@ defmodule StreamixWeb.Content.SeriesLive do
         provider_id={@provider.id}
         counts={
           %{
-            live: @provider.live_count,
+            live: @provider.live_channels_count,
             movies: @provider.movies_count,
             series: @provider.series_count
           }
@@ -162,7 +162,7 @@ defmodule StreamixWeb.Content.SeriesLive do
       </div>
 
       <.empty_state
-        :if={@page == 1 && !@loading && Enum.empty?(@streams.series)}
+        :if={@empty_results && !@loading}
         icon="hero-video-camera"
         title="Nenhuma série encontrada"
         message="Tente ajustar os filtros ou fazer uma busca diferente."
@@ -192,11 +192,13 @@ defmodule StreamixWeb.Content.SeriesLive do
       )
 
     has_more = length(series) >= @per_page
+    empty_results = page == 1 && Enum.empty?(series)
 
     socket
     |> stream(:series, series)
     |> assign(has_more: has_more)
     |> assign(loading: false)
+    |> assign(empty_results: empty_results)
   end
 
   defp load_favorites_map(socket) do

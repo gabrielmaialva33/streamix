@@ -53,7 +53,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> assign(provider: provider)
       |> assign(series: series)
       |> assign(seasons: sorted_seasons)
-      |> assign(expanded_seasons: if(first_season_id, do: MapSet.new([first_season_id]), else: MapSet.new()))
+      |> assign(
+        expanded_seasons:
+          if(first_season_id, do: MapSet.new([first_season_id]), else: MapSet.new())
+      )
       |> assign(is_favorite: is_favorite)
       |> assign(user_id: user_id)
 
@@ -132,7 +135,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             alt={@series.name}
             class="w-full h-full object-cover"
           />
-          <div :if={!get_backdrop(@series) && !@series.cover} class="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900" />
+          <div
+            :if={!get_backdrop(@series) && !@series.cover}
+            class="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900"
+          />
         </div>
 
         <%!-- Gradient Overlay --%>
@@ -147,8 +153,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               navigate={~p"/providers/#{@provider.id}/series"}
               class="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
             >
-              <.icon name="hero-arrow-left" class="size-4" />
-              Voltar
+              <.icon name="hero-arrow-left" class="size-4" /> Voltar
             </.link>
 
             <%!-- Title --%>
@@ -159,18 +164,26 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             <%!-- Metadata --%>
             <div class="flex flex-wrap items-center gap-3 text-sm">
               <span :if={@series.year} class="text-white/80">{@series.year}</span>
-              <span :if={@series.rating} class="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+              <span
+                :if={@series.rating}
+                class="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded"
+              >
                 <.icon name="hero-star-solid" class="size-4" />
                 {format_rating(@series.rating)}
               </span>
-              <span :if={@series.genre} class="px-2 py-0.5 bg-white/10 text-white/80 rounded">{@series.genre}</span>
+              <span :if={@series.genre} class="px-2 py-0.5 bg-white/10 text-white/80 rounded">
+                {@series.genre}
+              </span>
               <span class="text-white/60">
                 {length(@series.seasons || [])} temp · {@series.episode_count || 0} eps
               </span>
             </div>
 
             <%!-- Synopsis --%>
-            <p :if={@series.plot} class="text-white/70 text-base leading-relaxed max-w-2xl line-clamp-3">
+            <p
+              :if={@series.plot}
+              class="text-white/70 text-base leading-relaxed max-w-2xl line-clamp-3"
+            >
               {@series.plot}
             </p>
 
@@ -181,8 +194,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 phx-click="play_first_episode"
                 class="inline-flex items-center gap-2 px-8 py-3.5 bg-white text-black font-bold rounded hover:bg-white/90 transition-colors"
               >
-                <.icon name="hero-play-solid" class="size-6" />
-                Assistir
+                <.icon name="hero-play-solid" class="size-6" /> Assistir
               </button>
 
               <button
@@ -194,7 +206,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   !@is_favorite && "border-white/40 text-white hover:border-white"
                 ]}
               >
-                <.icon name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"} class="size-6" />
+                <.icon
+                  name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+                  class="size-6"
+                />
               </button>
             </div>
           </div>
@@ -274,7 +289,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           class="w-full h-full object-cover"
           loading="lazy"
         />
-        <div :if={!@episode.cover} class="w-full h-full flex items-center justify-center bg-neutral-800">
+        <div
+          :if={!@episode.cover}
+          class="w-full h-full flex items-center justify-center bg-neutral-800"
+        >
           <.icon name="hero-play-circle" class="size-10 text-white/40" />
         </div>
 

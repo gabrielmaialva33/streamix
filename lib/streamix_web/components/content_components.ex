@@ -111,16 +111,17 @@ defmodule StreamixWeb.ContentComponents do
         class="relative aspect-[2/3] bg-surface-hover"
         phx-click={@on_details}
         phx-value-id={@movie.id}
+        phx-value-provider_id={@movie.provider_id}
       >
         <img
-          :if={@movie.stream_icon || @movie[:cover]}
-          src={@movie.stream_icon || @movie[:cover]}
+          :if={@movie.stream_icon || Map.get(@movie, :cover)}
+          src={@movie.stream_icon || Map.get(@movie, :cover)}
           alt={@movie.name}
           class="w-full h-full object-cover"
           loading="lazy"
         />
         <div
-          :if={!@movie.stream_icon && !@movie[:cover]}
+          :if={!@movie.stream_icon && !Map.get(@movie, :cover)}
           class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name="hero-film" class="size-16" />
@@ -131,6 +132,7 @@ defmodule StreamixWeb.ContentComponents do
             type="button"
             phx-click={@on_play}
             phx-value-id={@movie.id}
+            phx-value-provider_id={@movie.provider_id}
             class="w-14 h-14 rounded-full bg-brand flex items-center justify-center hover:bg-brand-hover transition-colors"
           >
             <.icon name="hero-play-solid" class="size-8 text-white" />
@@ -138,7 +140,7 @@ defmodule StreamixWeb.ContentComponents do
         </div>
 
         <div
-          :if={@movie[:rating]}
+          :if={Map.get(@movie, :rating)}
           class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black"
         >
           <.icon name="hero-star-solid" class="size-3" />
@@ -146,7 +148,7 @@ defmodule StreamixWeb.ContentComponents do
         </div>
 
         <div
-          :if={@movie[:year]}
+          :if={Map.get(@movie, :year)}
           class="absolute top-2 right-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white"
         >
           {@movie.year}
@@ -157,12 +159,12 @@ defmodule StreamixWeb.ContentComponents do
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
             <h3 class="font-medium text-sm text-text-primary truncate" title={@movie.name}>
-              {@movie[:title] || @movie.name}
+              {Map.get(@movie, :title) || @movie.name}
             </h3>
-            <p :if={@movie[:genre]} class="text-xs text-text-secondary truncate">
+            <p :if={Map.get(@movie, :genre)} class="text-xs text-text-secondary truncate">
               {@movie.genre}
             </p>
-            <p :if={@movie[:duration]} class="text-xs text-text-secondary/70">
+            <p :if={Map.get(@movie, :duration)} class="text-xs text-text-secondary/70">
               {format_duration(@movie.duration)}
             </p>
           </div>
@@ -215,21 +217,21 @@ defmodule StreamixWeb.ContentComponents do
         phx-value-id={@series.id}
       >
         <img
-          :if={@series[:cover]}
+          :if={Map.get(@series, :cover)}
           src={@series.cover}
           alt={@series.name}
           class="w-full h-full object-cover"
           loading="lazy"
         />
         <div
-          :if={!@series[:cover]}
+          :if={!Map.get(@series, :cover)}
           class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name="hero-video-camera" class="size-16" />
         </div>
 
         <div
-          :if={@series[:rating]}
+          :if={Map.get(@series, :rating)}
           class="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-yellow-500/90 text-black"
         >
           <.icon name="hero-star-solid" class="size-3" />
@@ -237,7 +239,7 @@ defmodule StreamixWeb.ContentComponents do
         </div>
 
         <div
-          :if={@series[:episode_count] && @series.episode_count > 0}
+          :if={Map.get(@series, :episode_count) && @series.episode_count > 0}
           class="absolute bottom-2 left-2 px-2 py-0.5 text-xs rounded bg-brand text-white"
         >
           {@series.episode_count} eps
@@ -248,11 +250,11 @@ defmodule StreamixWeb.ContentComponents do
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
             <h3 class="font-medium text-sm text-text-primary truncate" title={@series.name}>
-              {@series[:title] || @series.name}
+              {Map.get(@series, :title) || @series.name}
             </h3>
-            <p :if={@series[:year]} class="text-xs text-text-secondary">
+            <p :if={Map.get(@series, :year)} class="text-xs text-text-secondary">
               {@series.year}
-              <span :if={@series[:season_count] && @series.season_count > 0}>
+              <span :if={Map.get(@series, :season_count) && @series.season_count > 0}>
                 | {pluralize(@series.season_count, "temporada", "temporadas")}
               </span>
             </p>
@@ -300,14 +302,14 @@ defmodule StreamixWeb.ContentComponents do
     >
       <div class="relative w-40 aspect-video flex-shrink-0 bg-surface-hover rounded overflow-hidden">
         <img
-          :if={@episode[:cover]}
+          :if={Map.get(@episode, :cover)}
           src={@episode.cover}
           alt={episode_title(@episode)}
           class="w-full h-full object-cover"
           loading="lazy"
         />
         <div
-          :if={!@episode[:cover]}
+          :if={!Map.get(@episode, :cover)}
           class="w-full h-full flex items-center justify-center text-text-secondary/30"
         >
           <.icon name="hero-play" class="size-8" />
@@ -318,18 +320,18 @@ defmodule StreamixWeb.ContentComponents do
         </div>
 
         <div class="absolute bottom-1 right-1 px-1.5 py-0.5 text-xs rounded bg-black/60 text-white">
-          E{@episode[:episode_num] || @episode[:num] || "?"}
+          E{Map.get(@episode, :episode_num) || Map.get(@episode, :num) || "?"}
         </div>
       </div>
 
       <div class="flex-1 min-w-0 py-1">
         <h4 class="font-medium text-text-primary truncate">{episode_title(@episode)}</h4>
-        <p :if={@episode[:plot]} class="text-sm text-text-secondary line-clamp-2 mt-1">
+        <p :if={Map.get(@episode, :plot)} class="text-sm text-text-secondary line-clamp-2 mt-1">
           {@episode.plot}
         </p>
         <div class="flex items-center gap-3 mt-2 text-xs text-text-muted">
-          <span :if={@episode[:duration]}>{format_duration(@episode.duration)}</span>
-          <span :if={@episode[:rating]} class="flex items-center gap-1">
+          <span :if={Map.get(@episode, :duration)}>{format_duration(@episode.duration)}</span>
+          <span :if={Map.get(@episode, :rating)} class="flex items-center gap-1">
             <.icon name="hero-star-solid" class="size-3 text-yellow-500" />
             {format_rating(@episode.rating)}
           </span>
@@ -368,10 +370,10 @@ defmodule StreamixWeb.ContentComponents do
       >
         <div class="flex items-center gap-3">
           <span class="font-medium text-text-primary">
-            Temporada {@season[:season_number] || @season[:num] || "?"}
+            Temporada {Map.get(@season, :season_number) || Map.get(@season, :num) || "?"}
           </span>
           <span
-            :if={@season[:episodes]}
+            :if={Map.get(@season, :episodes)}
             class="px-2 py-0.5 text-xs rounded bg-surface-hover text-text-secondary"
           >
             {length(@season.episodes)} episódios
@@ -384,7 +386,7 @@ defmodule StreamixWeb.ContentComponents do
       </summary>
       <div class="px-4 pb-4 space-y-2">
         <.episode_card
-          :for={episode <- @season[:episodes] || []}
+          :for={episode <- Map.get(@season, :episodes) || []}
           episode={episode}
           on_play={@on_play_episode}
         />
@@ -501,8 +503,8 @@ defmodule StreamixWeb.ContentComponents do
     ~H"""
     <div class="relative h-[50vh] min-h-[400px] bg-surface-hover rounded-xl overflow-hidden">
       <img
-        :if={@content[:backdrop] || @content[:cover]}
-        src={@content[:backdrop] || @content[:cover]}
+        :if={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
+        src={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
         alt={@content.name}
         class="w-full h-full object-cover"
       />
@@ -510,19 +512,21 @@ defmodule StreamixWeb.ContentComponents do
 
       <div class="absolute bottom-0 left-0 right-0 p-8">
         <div class="max-w-2xl space-y-4">
-          <h1 class="text-4xl font-bold text-text-primary">{@content[:title] || @content.name}</h1>
+          <h1 class="text-4xl font-bold text-text-primary">
+            {Map.get(@content, :title) || @content.name}
+          </h1>
 
           <div class="flex items-center gap-4 text-sm text-text-secondary">
-            <span :if={@content[:year]}>{@content.year}</span>
-            <span :if={@content[:rating]} class="flex items-center gap-1">
+            <span :if={Map.get(@content, :year)}>{@content.year}</span>
+            <span :if={Map.get(@content, :rating)} class="flex items-center gap-1">
               <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
               {format_rating(@content.rating)}
             </span>
-            <span :if={@content[:genre]}>{@content.genre}</span>
-            <span :if={@content[:duration]}>{format_duration(@content.duration)}</span>
+            <span :if={Map.get(@content, :genre)}>{@content.genre}</span>
+            <span :if={Map.get(@content, :duration)}>{format_duration(@content.duration)}</span>
           </div>
 
-          <p :if={@content[:plot]} class="text-text-secondary line-clamp-3">
+          <p :if={Map.get(@content, :plot)} class="text-text-secondary line-clamp-3">
             {@content.plot}
           </p>
 
@@ -578,8 +582,8 @@ defmodule StreamixWeb.ContentComponents do
       <div class="bg-surface rounded-lg overflow-hidden max-w-3xl w-full shadow-2xl">
         <div class="relative h-64 bg-surface-hover">
           <img
-            :if={@content[:backdrop] || @content[:cover]}
-            src={@content[:backdrop] || @content[:cover]}
+            :if={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
+            src={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
             alt={@content.name}
             class="w-full h-full object-cover"
           />
@@ -594,22 +598,24 @@ defmodule StreamixWeb.ContentComponents do
           </button>
 
           <div class="absolute bottom-4 left-6 right-6">
-            <h2 class="text-2xl font-bold text-white">{@content[:title] || @content.name}</h2>
+            <h2 class="text-2xl font-bold text-white">
+              {Map.get(@content, :title) || @content.name}
+            </h2>
           </div>
         </div>
 
         <div class="p-6 space-y-4">
           <div class="flex items-center gap-4 text-sm text-text-secondary">
-            <span :if={@content[:year]}>{@content.year}</span>
-            <span :if={@content[:rating]} class="flex items-center gap-1">
+            <span :if={Map.get(@content, :year)}>{@content.year}</span>
+            <span :if={Map.get(@content, :rating)} class="flex items-center gap-1">
               <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
               {format_rating(@content.rating)}
             </span>
-            <span :if={@content[:genre]}>{@content.genre}</span>
-            <span :if={@content[:duration]}>{format_duration(@content.duration)}</span>
+            <span :if={Map.get(@content, :genre)}>{@content.genre}</span>
+            <span :if={Map.get(@content, :duration)}>{format_duration(@content.duration)}</span>
           </div>
 
-          <p :if={@content[:plot]} class="text-text-secondary">
+          <p :if={Map.get(@content, :plot)} class="text-text-secondary">
             {@content.plot}
           </p>
 
@@ -639,6 +645,13 @@ defmodule StreamixWeb.ContentComponents do
 
   defp format_count(count), do: to_string(count)
 
+  defp format_rating(%Decimal{} = rating) do
+    rating
+    |> Decimal.div(2)
+    |> Decimal.round(1)
+    |> Decimal.to_string()
+  end
+
   defp format_rating(rating) when is_number(rating) do
     Float.round(rating / 2, 1) |> to_string()
   end
@@ -657,7 +670,8 @@ defmodule StreamixWeb.ContentComponents do
   defp format_duration(_), do: nil
 
   defp episode_title(episode) do
-    episode[:title] || "Episódio #{episode[:episode_num] || episode[:num] || "?"}"
+    Map.get(episode, :title) ||
+      "Episódio #{Map.get(episode, :episode_num) || Map.get(episode, :num) || "?"}"
   end
 
   defp pluralize(1, singular, _plural), do: "1 #{singular}"

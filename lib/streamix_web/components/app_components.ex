@@ -200,9 +200,12 @@ defmodule StreamixWeb.AppComponents do
       </div>
 
       <div class="flex flex-wrap items-center gap-4 text-sm text-text-secondary mb-4">
-        <div :if={@provider.live_count && @provider.live_count > 0} class="flex items-center gap-1.5">
+        <div
+          :if={@provider.live_channels_count && @provider.live_channels_count > 0}
+          class="flex items-center gap-1.5"
+        >
           <.icon name="hero-tv" class="size-4" />
-          <span>{@provider.live_count} ao vivo</span>
+          <span>{@provider.live_channels_count} ao vivo</span>
         </div>
         <div
           :if={@provider.movies_count && @provider.movies_count > 0}
@@ -218,9 +221,9 @@ defmodule StreamixWeb.AppComponents do
           <.icon name="hero-video-camera" class="size-4" />
           <span>{@provider.series_count} séries</span>
         </div>
-        <div :if={@provider.last_synced_at} class="flex items-center gap-1.5">
+        <div :if={@provider.live_synced_at} class="flex items-center gap-1.5">
           <.icon name="hero-clock" class="size-4" />
-          <span>{format_relative_time(@provider.last_synced_at)}</span>
+          <span>{format_relative_time(@provider.live_synced_at)}</span>
         </div>
       </div>
 
