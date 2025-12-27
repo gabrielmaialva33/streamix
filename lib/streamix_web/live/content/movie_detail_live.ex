@@ -83,7 +83,11 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp needs_detailed_info?(movie) do
-    is_nil(movie.plot) and is_nil(movie.cast) and is_nil(movie.director)
+    # Refetch if missing basic info OR if missing new extended metadata
+    missing_basic = is_nil(movie.plot) and is_nil(movie.cast) and is_nil(movie.director)
+    missing_extended = is_nil(movie.content_rating) and is_nil(movie.tagline)
+
+    missing_basic or missing_extended
   end
 
   # ============================================
@@ -119,8 +123,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen">
-      <div class="relative h-[70vh] min-h-[500px]">
+    <div class="min-h-screen bg-background">
+      <!-- Hero Section -->
+      <div class="relative h-[50vh] sm:h-[60vh] min-h-[400px]">
         <div class="absolute inset-0">
           <img
             :if={get_backdrop(@movie) || @movie.stream_icon}
@@ -134,13 +139,36 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           />
         </div>
 
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/20" />
-        <div class="absolute inset-0 bg-gradient-to-r from-background/90 via-background/40 to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
 
-        <div class="absolute bottom-0 left-0 right-0 p-6 sm:p-10">
-          <div class="flex gap-8 max-w-6xl">
-            <div class="hidden md:block flex-shrink-0 w-64">
-              <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl">
+        <!-- Back Button -->
+        <div class="absolute top-6 left-6 z-10">
+          <.link
+            navigate={back_path(@mode, @provider)}
+            class="inline-flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-sm font-medium"
+          >
+            <.icon name="hero-arrow-left" class="size-4" /> Voltar
+          </.link>
+        </div>
+
+        <!-- Play Button Overlay -->
+        <button
+          type="button"
+          phx-click="play_movie"
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-white/20 backdrop-blur-sm hover:bg-white/30 rounded-full flex items-center justify-center transition-all group"
+        >
+          <.icon name="hero-play-solid" class="size-10 text-white ml-1 group-hover:scale-110 transition-transform" />
+        </button>
+      </div>
+
+      <!-- Content Section -->
+      <div class="relative -mt-32 sm:-mt-40 px-4 sm:px-8 lg:px-12 pb-12">
+        <div class="max-w-7xl mx-auto">
+          <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Poster -->
+            <div class="flex-shrink-0 w-48 sm:w-56 lg:w-72 mx-auto lg:mx-0">
+              <div class="aspect-[2/3] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                 <img
                   :if={@movie.stream_icon}
                   src={@movie.stream_icon}
@@ -149,80 +177,96 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 />
                 <div
                   :if={!@movie.stream_icon}
-                  class="w-full h-full bg-neutral-800 flex items-center justify-center"
+                  class="w-full h-full bg-surface flex items-center justify-center"
                 >
-                  <.icon name="hero-film" class="size-20 text-white/20" />
+                  <.icon name="hero-film" class="size-20 text-text-secondary/30" />
                 </div>
               </div>
             </div>
 
-            <div class="flex-1 space-y-5">
-              <.link
-                navigate={back_path(@mode, @provider)}
-                class="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
-              >
-                <.icon name="hero-arrow-left" class="size-4" /> Voltar para Filmes
-              </.link>
+            <!-- Info -->
+            <div class="flex-1 space-y-6 text-center lg:text-left">
+              <!-- Title -->
+              <div class="space-y-2">
+                <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary leading-tight">
+                  {@movie.title || @movie.name}
+                </h1>
+                <p :if={@movie.title && @movie.name && @movie.title != @movie.name} class="text-lg text-text-secondary">
+                  {@movie.name}
+                </p>
+                <!-- Tagline -->
+                <p :if={@movie.tagline && @movie.tagline != ""} class="text-lg italic text-text-secondary/80">
+                  "{@movie.tagline}"
+                </p>
+              </div>
 
-              <h1 class="text-4xl sm:text-5xl font-bold text-white drop-shadow-2xl">
-                {@movie.title || @movie.name}
-              </h1>
-
-              <div class="flex flex-wrap items-center gap-3 text-sm">
-                <span :if={@movie.year} class="text-white/80">{@movie.year}</span>
+              <!-- Meta Tags -->
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
+                <!-- Content Rating -->
+                <span
+                  :if={@movie.content_rating}
+                  class={[
+                    "inline-flex items-center justify-center min-w-[42px] h-8 px-2.5 rounded-md text-xs font-bold",
+                    content_rating_class(@movie.content_rating)
+                  ]}
+                  title="Classificação Indicativa"
+                >
+                  {@movie.content_rating}
+                </span>
                 <span
                   :if={@movie.rating}
-                  class="flex items-center gap-1 px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded"
+                  class="inline-flex items-center gap-1 h-8 px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-sm font-semibold"
                 >
-                  <.icon name="hero-star-solid" class="size-4" />
+                  <.icon name="hero-star-solid" class="size-3.5" />
                   {format_rating(@movie.rating)}
                 </span>
-                <span :if={@movie.genre} class="px-2 py-0.5 bg-white/10 text-white/80 rounded">
-                  {@movie.genre}
+                <span :if={@movie.year} class="inline-flex items-center h-8 px-2.5 bg-surface text-text-primary rounded-md text-sm font-medium">
+                  {@movie.year}
                 </span>
-                <span :if={@movie.duration} class="text-white/60">{@movie.duration}</span>
+                <span :if={@movie.duration} class="inline-flex items-center gap-1 h-8 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
+                  <.icon name="hero-clock" class="size-3.5" />{format_duration(@movie.duration)}
+                </span>
                 <span
                   :if={@movie.container_extension}
-                  class="px-2 py-0.5 bg-white/10 text-white/60 rounded uppercase text-xs"
+                  class="inline-flex items-center h-8 px-2.5 bg-brand/20 text-brand rounded-md uppercase text-xs font-bold"
                 >
                   {@movie.container_extension}
                 </span>
               </div>
 
-              <p :if={@movie.plot} class="text-white/70 text-base leading-relaxed max-w-2xl">
-                {@movie.plot}
-              </p>
-
-              <div :if={@movie.director || @movie.cast} class="space-y-2 text-sm">
-                <p :if={@movie.director} class="text-white/60">
-                  <span class="text-white/40">Diretor:</span> {@movie.director}
-                </p>
-                <p :if={@movie.cast} class="text-white/60">
-                  <span class="text-white/40">Elenco:</span> {@movie.cast}
-                </p>
+              <!-- Genres -->
+              <div :if={@movie.genre} class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
+                <span
+                  :for={genre <- split_genres(@movie.genre)}
+                  class="px-3 py-1 bg-white/5 text-text-secondary rounded-full text-sm border border-white/10 hover:border-white/20 transition-colors"
+                >
+                  {genre}
+                </span>
               </div>
 
-              <div class="flex items-center gap-4 pt-2">
+              <!-- Action Buttons -->
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-2">
                 <button
                   type="button"
                   phx-click="play_movie"
-                  class="inline-flex items-center gap-2 px-8 py-3.5 bg-white text-black font-bold rounded hover:bg-white/90 transition-colors"
+                  class="inline-flex items-center gap-2 px-8 py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30"
                 >
-                  <.icon name="hero-play-solid" class="size-6" /> Assistir
+                  <.icon name="hero-play-solid" class="size-5" /> Assistir Agora
                 </button>
 
                 <button
                   type="button"
                   phx-click="toggle_favorite"
                   class={[
-                    "inline-flex items-center justify-center w-12 h-12 rounded-full border-2 transition-colors",
+                    "inline-flex items-center justify-center w-12 h-12 rounded-lg border-2 transition-all",
                     @is_favorite && "bg-red-600 border-red-600 text-white",
-                    !@is_favorite && "border-white/40 text-white hover:border-white"
+                    !@is_favorite && "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
                   ]}
+                  title={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
                 >
                   <.icon
                     name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-                    class="size-6"
+                    class="size-5"
                   />
                 </button>
 
@@ -231,9 +275,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   href={trailer_url(@movie.youtube_trailer)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="inline-flex items-center gap-2 px-6 py-3 border-2 border-white/40 text-white font-semibold rounded hover:border-white transition-colors"
+                  class="inline-flex items-center gap-2 px-5 py-3 bg-surface border border-border text-text-primary font-semibold rounded-lg hover:bg-surface-hover transition-colors"
                 >
-                  <.icon name="hero-play-circle" class="size-5" /> Trailer
+                  <.icon name="hero-play-circle" class="size-5 text-red-500" /> Trailer
                 </a>
 
                 <a
@@ -241,10 +285,53 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   href={"https://www.themoviedb.org/movie/#{@movie.tmdb_id}"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="inline-flex items-center gap-2 px-4 py-3 border-2 border-white/20 text-white/70 rounded hover:border-white/40 hover:text-white transition-colors text-sm"
+                  class="inline-flex items-center gap-2 px-4 py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-sm"
+                  title="Ver no The Movie Database"
                 >
+                  <svg class="size-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                  </svg>
                   TMDB
                 </a>
+              </div>
+
+              <!-- Synopsis -->
+              <div :if={@movie.plot} class="pt-4">
+                <h3 class="text-lg font-semibold text-text-primary mb-3">Sinopse</h3>
+                <p class="text-text-secondary text-base leading-relaxed">
+                  {@movie.plot}
+                </p>
+              </div>
+
+              <!-- Details Grid -->
+              <div :if={@movie.director || @movie.cast} class="grid sm:grid-cols-2 gap-6 pt-4">
+                <div :if={@movie.director} class="space-y-2">
+                  <h4 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">Direção</h4>
+                  <p class="text-text-primary">{@movie.director}</p>
+                </div>
+
+                <div :if={@movie.cast} class="space-y-2">
+                  <h4 class="text-sm font-semibold text-text-secondary uppercase tracking-wide">Elenco</h4>
+                  <p class="text-text-primary">{truncate_cast(@movie.cast)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Image Gallery -->
+          <div :if={@movie.images && @movie.images != []} class="mt-12">
+            <h3 class="text-xl font-semibold text-text-primary mb-4">Galeria</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              <div
+                :for={image <- @movie.images}
+                class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group"
+              >
+                <img
+                  src={image}
+                  alt="Imagem do filme"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy"
+                />
               </div>
             </div>
           </div>
@@ -286,4 +373,95 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp trailer_url(_), do: nil
+
+  defp split_genres(nil), do: []
+
+  defp split_genres(genre) when is_binary(genre) do
+    genre
+    |> String.split(~r/[,\/]/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.take(5)
+  end
+
+  defp truncate_cast(nil), do: nil
+
+  defp truncate_cast(cast) when is_binary(cast) do
+    cast
+    |> String.split(",")
+    |> Enum.take(5)
+    |> Enum.map(&String.trim/1)
+    |> Enum.join(", ")
+  end
+
+  defp format_duration(nil), do: nil
+
+  defp format_duration(duration) when is_binary(duration) do
+    # Try to parse as minutes if it's just a number
+    case Integer.parse(duration) do
+      {minutes, ""} when minutes > 0 ->
+        hours = div(minutes, 60)
+        mins = rem(minutes, 60)
+
+        cond do
+          hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
+          hours > 0 -> "#{hours}h"
+          true -> "#{mins}min"
+        end
+
+      _ ->
+        # Already formatted or unparseable, return as-is
+        duration
+    end
+  end
+
+  defp format_duration(duration) when is_integer(duration) do
+    hours = div(duration, 60)
+    mins = rem(duration, 60)
+
+    cond do
+      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
+      hours > 0 -> "#{hours}h"
+      true -> "#{mins}min"
+    end
+  end
+
+  defp format_duration(_), do: nil
+
+  # Content rating color classes based on Brazilian/US ratings
+  defp content_rating_class(rating) when is_binary(rating) do
+    rating_upper = String.upcase(rating)
+
+    cond do
+      # Livre / General (green)
+      rating_upper in ["L", "G", "TV-G", "TV-Y", "TV-Y7"] ->
+        "bg-green-500/20 text-green-400"
+
+      # 10 anos / PG (blue)
+      rating_upper in ["10", "PG", "TV-PG"] ->
+        "bg-blue-500/20 text-blue-400"
+
+      # 12 anos / PG-13 (yellow)
+      rating_upper in ["12", "PG-13", "TV-14"] ->
+        "bg-yellow-500/20 text-yellow-400"
+
+      # 14 anos (orange)
+      rating_upper in ["14"] ->
+        "bg-orange-500/20 text-orange-400"
+
+      # 16 anos (red-orange)
+      rating_upper in ["16", "R", "TV-MA"] ->
+        "bg-red-400/20 text-red-400"
+
+      # 18 anos / NC-17 (dark red)
+      rating_upper in ["18", "NC-17"] ->
+        "bg-red-600/20 text-red-500"
+
+      # Default
+      true ->
+        "bg-surface text-text-secondary"
+    end
+  end
+
+  defp content_rating_class(_), do: "bg-surface text-text-secondary"
 end

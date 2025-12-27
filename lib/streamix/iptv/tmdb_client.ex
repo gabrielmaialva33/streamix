@@ -31,7 +31,7 @@ defmodule Streamix.Iptv.TmdbClient do
   """
   def get_movie(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
-      url = "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos&language=pt-BR"
+      url = "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
       do_request(url)
     else
       {:error, :tmdb_not_configured}
@@ -43,7 +43,7 @@ defmodule Streamix.Iptv.TmdbClient do
   """
   def get_series(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
-      url = "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos&language=pt-BR"
+      url = "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
       do_request(url)
     else
       {:error, :tmdb_not_configured}
@@ -102,9 +102,33 @@ defmodule Streamix.Iptv.TmdbClient do
     |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))
     |> maybe_put(:backdrop_path, parse_backdrop_paths(data["backdrop_path"]))
     |> maybe_put(:stream_icon, image_url(data["poster_path"], "w500"))
+    |> maybe_put(:tagline, data["tagline"])
+    |> maybe_put(:content_rating, parse_content_rating(data["release_dates"]))
+    |> maybe_put(:images, parse_images(data["images"]))
   end
 
   def parse_movie_response(_), do: %{}
+
+  @doc """
+  Parses TMDB series response into attributes suitable for our Series schema.
+  """
+  def parse_series_response(%{"id" => _} = data) do
+    %{}
+    |> maybe_put(:plot, data["overview"])
+    |> maybe_put(:rating, parse_rating(data["vote_average"]))
+    |> maybe_put(:genre, parse_genres(data["genres"]))
+    |> maybe_put(:year, parse_year(data["first_air_date"]))
+    |> maybe_put(:director, parse_creators(data["created_by"]))
+    |> maybe_put(:cast, parse_cast(data["credits"]))
+    |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))
+    |> maybe_put(:backdrop_path, parse_backdrop_paths(data["backdrop_path"]))
+    |> maybe_put(:cover, image_url(data["poster_path"], "w500"))
+    |> maybe_put(:tagline, data["tagline"])
+    |> maybe_put(:content_rating, parse_series_content_rating(data["content_ratings"]))
+    |> maybe_put(:images, parse_images(data["images"]))
+  end
+
+  def parse_series_response(_), do: %{}
 
   # ============================================================================
   # Private
@@ -234,6 +258,21 @@ defmodule Streamix.Iptv.TmdbClient do
 
   defp parse_director(_), do: nil
 
+  # Parse series creators (equivalent to directors for TV shows)
+  defp parse_creators(nil), do: nil
+  defp parse_creators([]), do: nil
+
+  defp parse_creators(creators) when is_list(creators) do
+    result =
+      creators
+      |> Enum.take(2)
+      |> Enum.map_join(", ", & &1["name"])
+
+    if result == "", do: nil, else: result
+  end
+
+  defp parse_creators(_), do: nil
+
   defp parse_cast(nil), do: nil
 
   defp parse_cast(%{"cast" => cast}) when is_list(cast) do
@@ -282,4 +321,107 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   defp parse_backdrop_paths(_), do: nil
+
+  # Parse content rating from release_dates
+  # Prioritizes BR, then US, then any other country
+  defp parse_content_rating(nil), do: nil
+
+  defp parse_content_rating(%{"results" => results}) when is_list(results) do
+    # Try to find Brazilian rating first
+    br_rating = find_certification(results, "BR")
+    us_rating = find_certification(results, "US")
+
+    cond do
+      br_rating -> br_rating
+      us_rating -> us_rating
+      true -> find_first_certification(results)
+    end
+  end
+
+  defp parse_content_rating(_), do: nil
+
+  # Parse content rating for TV series from content_ratings endpoint
+  # Structure: {"results": [{"iso_3166_1": "BR", "rating": "16"}, ...]}
+  defp parse_series_content_rating(nil), do: nil
+
+  defp parse_series_content_rating(%{"results" => results}) when is_list(results) do
+    # Try to find Brazilian rating first
+    br_rating = find_series_certification(results, "BR")
+    us_rating = find_series_certification(results, "US")
+
+    cond do
+      br_rating -> br_rating
+      us_rating -> us_rating
+      true -> find_first_series_certification(results)
+    end
+  end
+
+  defp parse_series_content_rating(_), do: nil
+
+  defp find_series_certification(results, country_code) do
+    results
+    |> Enum.find(&(&1["iso_3166_1"] == country_code))
+    |> case do
+      %{"rating" => rating} when rating != "" and not is_nil(rating) -> rating
+      _ -> nil
+    end
+  end
+
+  defp find_first_series_certification(results) do
+    results
+    |> Enum.find_value(fn
+      %{"rating" => rating} when rating != "" and not is_nil(rating) -> rating
+      _ -> nil
+    end)
+  end
+
+  defp find_certification(results, country_code) do
+    results
+    |> Enum.find(&(&1["iso_3166_1"] == country_code))
+    |> case do
+      %{"release_dates" => dates} when is_list(dates) ->
+        dates
+        |> Enum.find(&(&1["certification"] != "" and &1["certification"] != nil))
+        |> case do
+          %{"certification" => cert} -> cert
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp find_first_certification(results) do
+    results
+    |> Enum.find_value(fn %{"release_dates" => dates} ->
+      dates
+      |> Enum.find(&(&1["certification"] != "" and &1["certification"] != nil))
+      |> case do
+        %{"certification" => cert} -> cert
+        _ -> nil
+      end
+    end)
+  end
+
+  # Parse images gallery (backdrops and posters)
+  defp parse_images(nil), do: nil
+
+  defp parse_images(%{"backdrops" => backdrops, "posters" => posters}) do
+    backdrop_urls =
+      (backdrops || [])
+      |> Enum.take(6)
+      |> Enum.map(&image_url(&1["file_path"], "w780"))
+
+    poster_urls =
+      (posters || [])
+      |> Enum.take(4)
+      |> Enum.map(&image_url(&1["file_path"], "w500"))
+
+    images = backdrop_urls ++ poster_urls
+
+    if Enum.empty?(images), do: nil, else: images
+  end
+
+  defp parse_images(_), do: nil
 end

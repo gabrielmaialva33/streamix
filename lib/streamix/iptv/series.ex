@@ -22,6 +22,9 @@ defmodule Streamix.Iptv.Series do
     field :backdrop_path, {:array, :string}
     field :youtube_trailer, :string
     field :tmdb_id, :string
+    field :tagline, :string
+    field :content_rating, :string
+    field :images, {:array, :string}, default: []
     field :season_count, :integer, default: 0
     field :episode_count, :integer, default: 0
 
@@ -33,8 +36,8 @@ defmodule Streamix.Iptv.Series do
   end
 
   @fields ~w(series_id name title year cover rating rating_5based genre cast
-             director plot backdrop_path youtube_trailer tmdb_id season_count
-             episode_count provider_id)a
+             director plot backdrop_path youtube_trailer tmdb_id tagline
+             content_rating images season_count episode_count provider_id)a
 
   def changeset(series, attrs) do
     series

@@ -26,6 +26,9 @@ defmodule Streamix.Iptv.Movie do
     field :imdb_id, :string
     field :backdrop_path, {:array, :string}
     field :youtube_trailer, :string
+    field :tagline, :string
+    field :content_rating, :string
+    field :images, {:array, :string}, default: []
 
     belongs_to :provider, Provider
     many_to_many :categories, Category, join_through: "movie_categories"
@@ -35,7 +38,7 @@ defmodule Streamix.Iptv.Movie do
 
   @fields ~w(stream_id name title year stream_icon rating rating_5based genre cast
              director plot container_extension duration_secs duration tmdb_id imdb_id
-             backdrop_path youtube_trailer provider_id)a
+             backdrop_path youtube_trailer tagline content_rating images provider_id)a
 
   def changeset(movie, attrs) do
     movie

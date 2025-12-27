@@ -387,7 +387,12 @@ defmodule Streamix.Iptv do
     missing_cast = is_nil(xtream_attrs[:cast]) and is_nil(movie.cast)
     missing_director = is_nil(xtream_attrs[:director]) and is_nil(movie.director)
 
-    missing_plot or missing_cast or missing_director
+    # Also check for extended metadata from TMDB
+    missing_extended =
+      is_nil(movie.content_rating) and is_nil(movie.tagline) and
+        (is_nil(movie.images) or movie.images == [])
+
+    missing_plot or missing_cast or missing_director or missing_extended
   end
 
   defp fetch_from_tmdb(tmdb_id) do
@@ -626,6 +631,48 @@ defmodule Streamix.Iptv do
     |> where(id: ^id)
     |> preload(season: [series: :provider])
     |> Repo.one!()
+  end
+
+  @doc """
+  Fetches detailed series info from TMDB if missing key data.
+  Returns {:ok, updated_series} or {:error, reason}.
+  """
+  def fetch_series_info(%Series{} = series) do
+    tmdb_id = series.tmdb_id
+
+    if needs_series_tmdb_enrichment?(series) and is_binary(tmdb_id) and tmdb_id != "" do
+      case TmdbClient.get_series(tmdb_id) do
+        {:ok, data} ->
+          attrs = TmdbClient.parse_series_response(data)
+          update_series(series, attrs)
+
+        {:error, _reason} ->
+          {:ok, series}
+      end
+    else
+      {:ok, series}
+    end
+  end
+
+  defp needs_series_tmdb_enrichment?(series) do
+    missing_plot = is_nil(series.plot)
+    missing_cast = is_nil(series.cast)
+    missing_director = is_nil(series.director)
+
+    # Also check for extended metadata from TMDB
+    missing_extended =
+      is_nil(series.content_rating) and is_nil(series.tagline) and
+        (is_nil(series.images) or series.images == [])
+
+    missing_plot or missing_cast or missing_director or missing_extended
+  end
+
+  defp update_series(series, attrs) when attrs == %{}, do: {:ok, series}
+
+  defp update_series(series, attrs) do
+    series
+    |> Series.changeset(attrs)
+    |> Repo.update()
   end
 
   # =============================================================================
