@@ -73,7 +73,9 @@ defmodule Streamix.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:cors_plug, "~> 3.0"},
       {:mint, "~> 1.6"},
-      {:castore, "~> 1.0"}
+      {:castore, "~> 1.0"},
+      {:hammer, "~> 6.2"},
+      {:con_cache, "~> 1.1"}
     ]
   end
 

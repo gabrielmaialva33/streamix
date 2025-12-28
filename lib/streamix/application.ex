@@ -14,6 +14,15 @@ defmodule Streamix.Application do
       {Redix, {redis_url(), [name: :streamix_redis]}},
       {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Streamix.PubSub},
+      # Rate limiting backend using ETS
+      {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60, cleanup_interval_ms: 60_000 * 10]},
+      # Content caching (categories, featured, stats)
+      {ConCache,
+       [
+         name: :streamix_cache,
+         ttl_check_interval: :timer.seconds(60),
+         global_ttl: :timer.hours(1)
+       ]},
       # Stream proxy for caching IPTV streams
       Streamix.Iptv.StreamProxy,
       # Start to serve requests, typically the last entry

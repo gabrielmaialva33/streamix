@@ -34,6 +34,29 @@ end
 config :streamix,
   stream_proxy_url: System.get_env("STREAM_PROXY_URL", "https://pannxs.mahina.cloud")
 
+# CORS configuration
+# Comma-separated list of allowed origins, or "*" for development
+cors_origins =
+  case System.get_env("CORS_ORIGINS") do
+    nil ->
+      # Default: in prod use PHX_HOST, in dev allow localhost
+      if config_env() == :prod do
+        host = System.get_env("PHX_HOST", "example.com")
+        ["https://#{host}"]
+      else
+        ["http://localhost:4000", "http://127.0.0.1:4000"]
+      end
+
+    "*" ->
+      # Explicitly allow all (not recommended for production)
+      :all
+
+    origins ->
+      String.split(origins, ",") |> Enum.map(&String.trim/1)
+  end
+
+config :streamix, :cors, origins: cors_origins
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
