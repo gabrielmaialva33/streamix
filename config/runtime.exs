@@ -29,6 +29,11 @@ else
   config :streamix, :tmdb, enabled: false
 end
 
+# Stream proxy URL for bypassing mixed content blocking
+# This reverse proxy handles HTTP IPTV streams over HTTPS
+config :streamix,
+  stream_proxy_url: System.get_env("STREAM_PROXY_URL", "https://pannxs.mahina.cloud")
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration

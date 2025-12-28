@@ -325,10 +325,10 @@ defmodule StreamixWeb.PlayerComponents do
   # ============================================
 
   defp build_proxy_url(stream_url) when is_binary(stream_url) do
-    # Use Phoenix stream proxy for HTTP streams (bypasses mixed content blocking)
-    # Base64 URL-safe encoding without padding as expected by StreamController
-    encoded_url = Base.url_encode64(stream_url, padding: false)
-    "/stream/proxy?url=#{encoded_url}"
+    # Use Nginx reverse proxy for HTTP streams (bypasses mixed content blocking)
+    # The proxy at pannxs.mahina.cloud handles CORS and proxies to IPTV servers
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    "#{proxy_base}/proxy?url=#{stream_url}"
   end
 
   defp build_proxy_url(_), do: nil
