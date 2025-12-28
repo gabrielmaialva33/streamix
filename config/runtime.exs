@@ -32,7 +32,7 @@ end
 # Stream proxy URL for bypassing mixed content blocking
 # This reverse proxy handles HTTP IPTV streams over HTTPS
 config :streamix,
-  stream_proxy_url: System.get_env("STREAM_PROXY_URL", "https://pannxs.mahina.cloud")
+  stream_proxy_url: System.get_env("STREAM_PROXY_URL", "https://proxy.example.com")
 
 # CORS configuration
 # Comma-separated list of allowed origins, or "*" for development
