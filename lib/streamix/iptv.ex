@@ -7,6 +7,8 @@ defmodule Streamix.Iptv do
 
   alias Streamix.Repo
 
+  alias Streamix.Cache
+
   alias Streamix.Iptv.{
     Category,
     Episode,
@@ -147,9 +149,11 @@ defmodule Streamix.Iptv do
   # =============================================================================
 
   def list_categories(provider_id, type \\ nil) do
-    query = Category |> where(provider_id: ^provider_id)
-    query = if type, do: where(query, type: ^type), else: query
-    query |> order_by(:name) |> Repo.all()
+    Cache.fetch_categories(provider_id, type, fn ->
+      query = Category |> where(provider_id: ^provider_id)
+      query = if type, do: where(query, type: ^type), else: query
+      query |> order_by(:name) |> Repo.all()
+    end)
   end
 
   def get_category!(id), do: Repo.get!(Category, id)
@@ -357,7 +361,23 @@ defmodule Streamix.Iptv do
         {:ok, %{"info" => info}} ->
           parse_vod_info(info, %{})
 
-        _ ->
+        {:ok, response} ->
+          require Logger
+
+          Logger.debug("[IPTV] Unexpected Xtream response format for movie #{movie.id}",
+            response_keys: Map.keys(response)
+          )
+
+          %{}
+
+        {:error, reason} ->
+          require Logger
+
+          Logger.warning("[IPTV] Xtream API failed for movie #{movie.id}",
+            movie_name: movie.name,
+            reason: inspect(reason)
+          )
+
           %{}
       end
 
@@ -403,8 +423,20 @@ defmodule Streamix.Iptv do
 
   defp fetch_from_tmdb(tmdb_id) do
     case TmdbClient.get_movie(tmdb_id) do
-      {:ok, data} -> TmdbClient.parse_movie_response(data)
-      _ -> %{}
+      {:ok, data} ->
+        TmdbClient.parse_movie_response(data)
+
+      {:error, reason} ->
+        require Logger
+
+        Logger.warning("[IPTV] TMDB API failed for tmdb_id #{tmdb_id}",
+          reason: inspect(reason)
+        )
+
+        %{}
+
+      _ ->
+        %{}
     end
   end
 
@@ -785,6 +817,32 @@ defmodule Streamix.Iptv do
   def is_favorite?(user_id, content_type, content_id),
     do: favorite?(user_id, content_type, content_id)
 
+  @doc """
+  Counts favorites grouped by content type for a user.
+  Returns a map like %{"movie" => 10, "series" => 5, "live_channel" => 3}
+  """
+  def count_favorites_by_type(user_id) do
+    Favorite
+    |> where(user_id: ^user_id)
+    |> group_by([f], f.content_type)
+    |> select([f], {f.content_type, count(f.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
+  Lists only the content_ids of favorites for a user, filtered by content_type.
+  Returns a MapSet of content_ids for O(1) lookup.
+  This is optimized for checking if items are favorited in list views.
+  """
+  def list_favorite_ids(user_id, content_type) do
+    Favorite
+    |> where(user_id: ^user_id, content_type: ^content_type)
+    |> select([f], f.content_id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
   def add_favorite(user_id, attrs) when is_map(attrs) do
     %Favorite{}
     |> Favorite.changeset(Map.merge(attrs, %{user_id: user_id}))
@@ -844,6 +902,19 @@ defmodule Streamix.Iptv do
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
+  end
+
+  @doc """
+  Counts watch history grouped by content type for a user.
+  Returns a map like %{"movie" => 10, "episode" => 15, "live_channel" => 3}
+  """
+  def count_watch_history_by_type(user_id) do
+    WatchHistory
+    |> where(user_id: ^user_id)
+    |> group_by([h], h.content_type)
+    |> select([h], {h.content_type, count(h.id)})
+    |> Repo.all()
+    |> Map.new()
   end
 
   def add_watch_history(user_id, content_type, content_id, attrs \\ %{}) do
@@ -1116,37 +1187,47 @@ defmodule Streamix.Iptv do
       end
     end
   rescue
-    _ -> nil
+    e ->
+      require Logger
+
+      Logger.error("[IPTV] get_featured_content failed",
+        error: Exception.format(:error, e, __STACKTRACE__)
+      )
+
+      nil
   end
 
   @doc """
   Gets total counts for public stats display.
   Only counts content from public/global providers.
+  Results are cached for 30 minutes.
   """
   def get_public_stats do
-    channels_count =
-      LiveChannel
-      |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
-      |> where([c, p], p.visibility in [:global, :public])
-      |> Repo.aggregate(:count)
+    Cache.fetch_public_stats(fn ->
+      channels_count =
+        LiveChannel
+        |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+        |> where([c, p], p.visibility in [:global, :public])
+        |> Repo.aggregate(:count)
 
-    movies_count =
-      Movie
-      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-      |> where([m, p], p.visibility in [:global, :public])
-      |> Repo.aggregate(:count)
+      movies_count =
+        Movie
+        |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+        |> where([m, p], p.visibility in [:global, :public])
+        |> Repo.aggregate(:count)
 
-    series_count =
-      Series
-      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-      |> where([s, p], p.visibility in [:global, :public])
-      |> Repo.aggregate(:count)
+      series_count =
+        Series
+        |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+        |> where([s, p], p.visibility in [:global, :public])
+        |> Repo.aggregate(:count)
 
-    %{
-      channels_count: channels_count,
-      movies_count: movies_count,
-      series_count: series_count
-    }
+      %{
+        "channels_count" => channels_count,
+        "movies_count" => movies_count,
+        "series_count" => series_count
+      }
+    end)
   end
 
   @doc """

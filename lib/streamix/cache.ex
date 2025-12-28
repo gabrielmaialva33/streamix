@@ -127,6 +127,38 @@ defmodule Streamix.Cache do
   @spec groups_key(integer()) :: String.t()
   def groups_key(user_id), do: "groups:user:#{user_id}"
 
+  @doc "Cache key for public stats"
+  @spec public_stats_key() :: String.t()
+  def public_stats_key, do: "stats:public"
+
+  @doc "Cache key for featured content (daily)"
+  @spec featured_key() :: String.t()
+  def featured_key, do: "featured:#{Date.utc_today()}"
+
+  # =============================================================================
+  # High-Level Caching Functions
+  # =============================================================================
+
+  @categories_ttl 6 * 3600
+  @stats_ttl 30 * 60
+  @featured_ttl 24 * 3600
+
+  @doc "Gets or computes categories for a provider"
+  def fetch_categories(provider_id, type, fun) do
+    key = "#{provider_categories_key(provider_id)}:#{type || "all"}"
+    fetch(key, @categories_ttl, fun)
+  end
+
+  @doc "Gets or computes public stats"
+  def fetch_public_stats(fun) do
+    fetch(public_stats_key(), @stats_ttl, fun)
+  end
+
+  @doc "Gets or computes featured content (cached daily)"
+  def fetch_featured(fun) do
+    fetch(featured_key(), @featured_ttl, fun)
+  end
+
   # =============================================================================
   # Invalidation
   # =============================================================================
