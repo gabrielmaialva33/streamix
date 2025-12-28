@@ -142,7 +142,11 @@ defmodule StreamixWeb.Providers.ProviderListLive do
         </.button>
       </div>
 
-      <div id="providers" phx-update="stream" class="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div
+        id="providers"
+        phx-update="stream"
+        class="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3"
+      >
         <div :for={{dom_id, provider} <- @streams.providers} id={dom_id}>
           <.provider_card provider={provider} />
         </div>

@@ -4,7 +4,10 @@
     <div class="flex items-center justify-between h-14 sm:h-16 px-[4%]">
       <!-- Logo & Navigation -->
       <div class="flex items-center gap-4 sm:gap-8">
-        <a href="/" class="flex items-center gap-1.5 sm:gap-2 text-xl sm:text-2xl font-bold text-brand">
+        <a
+          href="/"
+          class="flex items-center gap-1.5 sm:gap-2 text-xl sm:text-2xl font-bold text-brand"
+        >
           <.icon name="hero-play-circle-solid" class="size-6 sm:size-8" />
           <span>Streamix</span>
         </a>
@@ -147,7 +150,7 @@
       </div>
     </div>
   </header>
-
+  
 <!-- Flash Messages (Toast style - top right) -->
   <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
@@ -158,8 +161,8 @@
   <main class="pt-16 sm:pt-20 pb-20 sm:pb-8 px-[4%]">
     {@inner_content}
   </main>
-
-  <!-- Bottom Navigation Bar (Mobile Only) -->
+  
+<!-- Bottom Navigation Bar (Mobile Only) -->
   <%= if @current_scope do %>
     <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-surface/95 backdrop-blur-lg border-t border-white/10 safe-area-bottom">
       <div class="flex items-center justify-around h-14">
@@ -171,7 +174,10 @@
             @current_path != "/" && "text-text-secondary active:text-text-primary"
           ]}
         >
-          <.icon name={if @current_path == "/", do: "hero-home-solid", else: "hero-home"} class="size-5" />
+          <.icon
+            name={if @current_path == "/", do: "hero-home-solid", else: "hero-home"}
+            class="size-5"
+          />
           <span class="text-[10px] mt-0.5 font-medium">Início</span>
         </.link>
         <.link
@@ -179,10 +185,18 @@
           class={[
             "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
             String.starts_with?(@current_path || "", "/browse") && "text-brand",
-            !String.starts_with?(@current_path || "", "/browse") && "text-text-secondary active:text-text-primary"
+            !String.starts_with?(@current_path || "", "/browse") &&
+              "text-text-secondary active:text-text-primary"
           ]}
         >
-          <.icon name={if String.starts_with?(@current_path || "", "/browse"), do: "hero-film-solid", else: "hero-film"} class="size-5" />
+          <.icon
+            name={
+              if String.starts_with?(@current_path || "", "/browse"),
+                do: "hero-film-solid",
+                else: "hero-film"
+            }
+            class="size-5"
+          />
           <span class="text-[10px] mt-0.5 font-medium">Catálogo</span>
         </.link>
         <.link
@@ -193,7 +207,10 @@
             @current_path != "/favorites" && "text-text-secondary active:text-text-primary"
           ]}
         >
-          <.icon name={if @current_path == "/favorites", do: "hero-heart-solid", else: "hero-heart"} class="size-5" />
+          <.icon
+            name={if @current_path == "/favorites", do: "hero-heart-solid", else: "hero-heart"}
+            class="size-5"
+          />
           <span class="text-[10px] mt-0.5 font-medium">Favoritos</span>
         </.link>
         <.link
@@ -204,7 +221,14 @@
             @current_path != "/settings" && "text-text-secondary active:text-text-primary"
           ]}
         >
-          <.icon name={if @current_path == "/settings", do: "hero-user-circle-solid", else: "hero-user-circle"} class="size-5" />
+          <.icon
+            name={
+              if @current_path == "/settings",
+                do: "hero-user-circle-solid",
+                else: "hero-user-circle"
+            }
+            class="size-5"
+          />
           <span class="text-[10px] mt-0.5 font-medium">Perfil</span>
         </.link>
       </div>

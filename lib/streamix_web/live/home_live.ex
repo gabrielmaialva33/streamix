@@ -255,10 +255,13 @@ defmodule StreamixWeb.HomeLive do
       </h1>
       
     <!-- Plot (hidden on small mobile) -->
-      <p :if={@content.plot} class="hidden sm:block text-base sm:text-lg text-text-secondary mb-4 sm:mb-6 line-clamp-2 sm:line-clamp-3 max-w-xl">
+      <p
+        :if={@content.plot}
+        class="hidden sm:block text-base sm:text-lg text-text-secondary mb-4 sm:mb-6 line-clamp-2 sm:line-clamp-3 max-w-xl"
+      >
         {@content.plot}
       </p>
-
+      
     <!-- Actions -->
       <div class="flex gap-2 sm:gap-3">
         <.link
@@ -286,7 +289,10 @@ defmodule StreamixWeb.HomeLive do
               if @featured_favorite, do: "Remover da Minha Lista", else: "Adicionar à Minha Lista"
             }
           >
-            <.icon name={if @featured_favorite, do: "hero-check", else: "hero-plus"} class="size-4 sm:size-6" />
+            <.icon
+              name={if @featured_favorite, do: "hero-check", else: "hero-plus"}
+              class="size-4 sm:size-6"
+            />
           </button>
         <% end %>
       </div>
@@ -373,7 +379,12 @@ defmodule StreamixWeb.HomeLive do
         <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[160px]">
           <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
           <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
-          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} class="hidden sm:flex" />
+          <.see_more_card
+            :if={@see_more_path}
+            path={@see_more_path}
+            type={@type}
+            class="hidden sm:flex"
+          />
         </div>
         <.link
           :if={@see_more_path && length(@items) > 6}
@@ -402,7 +413,12 @@ defmodule StreamixWeb.HomeLive do
               <.favorite_item :for={fav <- Enum.take(@items, 6)} favorite={fav} class="sm:hidden" />
               <.favorite_item :for={fav <- @items} favorite={fav} class="hidden sm:block" />
           <% end %>
-          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} class="hidden sm:flex" />
+          <.see_more_card
+            :if={@see_more_path}
+            path={@see_more_path}
+            type={@type}
+            class="hidden sm:flex"
+          />
         </div>
         <.link
           :if={@see_more_path && length(@items) > 6 && @type not in [:history]}
@@ -462,7 +478,10 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <.link
       navigate={~p"/browse/movies/#{@movie.id}"}
-      class={["group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50", @class]}
+      class={[
+        "group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50",
+        @class
+      ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
         <img
@@ -489,7 +508,9 @@ defmodule StreamixWeb.HomeLive do
         </div>
       </div>
       <div class="p-1.5 sm:p-2">
-        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">{@movie.title || @movie.name}</h3>
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
+          {@movie.title || @movie.name}
+        </h3>
         <p class="text-[10px] sm:text-xs text-text-muted">{@movie.year}</p>
       </div>
     </.link>
@@ -502,7 +523,10 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <.link
       navigate={~p"/browse/series/#{@series.id}"}
-      class={["group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50", @class]}
+      class={[
+        "group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50",
+        @class
+      ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
         <img
@@ -548,7 +572,10 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <.link
       navigate={~p"/watch/live_channel/#{@channel.id}"}
-      class={["group rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50", @class]}
+      class={[
+        "group rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50",
+        @class
+      ]}
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
         <img
@@ -581,7 +608,10 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <.link
       navigate={watch_path(@entry.content_type, @entry.content_id)}
-      class={["group flex-shrink-0 w-full sm:w-[280px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all duration-200", @class]}
+      class={[
+        "group flex-shrink-0 w-full sm:w-[280px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all duration-200",
+        @class
+      ]}
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
         <img
@@ -629,7 +659,10 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <.link
       navigate={watch_path(@favorite.content_type, @favorite.content_id)}
-      class={["group flex-shrink-0 w-full sm:w-[120px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50", @class]}
+      class={[
+        "group flex-shrink-0 w-full sm:w-[120px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50",
+        @class
+      ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative flex items-center justify-center">
         <img

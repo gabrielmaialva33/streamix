@@ -141,7 +141,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-
+        
     <!-- Back Button -->
         <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
           <.link
@@ -152,7 +152,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           </.link>
         </div>
       </div>
-
+      
     <!-- Content Section -->
       <div class="relative -mt-24 sm:-mt-32 lg:-mt-40 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
         <div class="max-w-7xl mx-auto">
@@ -174,7 +174,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 </div>
               </div>
             </div>
-
+            
     <!-- Info -->
             <div class="flex-1 space-y-3 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <!-- Title -->
@@ -227,7 +227,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   :if={@movie.duration}
                   class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
                 >
-                  <.icon name="hero-clock" class="size-3 sm:size-3.5" />{format_duration(@movie.duration)}
+                  <.icon name="hero-clock" class="size-3 sm:size-3.5" />{format_duration(
+                    @movie.duration
+                  )}
                 </span>
                 <span
                   :if={@movie.container_extension}
@@ -249,7 +251,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   {genre}
                 </span>
               </div>
-
+              
     <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
                 <button
@@ -306,14 +308,19 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               
     <!-- Synopsis -->
               <div :if={@movie.plot} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">Sinopse</h3>
+                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
+                  Sinopse
+                </h3>
                 <p class="text-text-secondary text-sm sm:text-base leading-relaxed">
                   {@movie.plot}
                 </p>
               </div>
-
+              
     <!-- Details Grid -->
-              <div :if={@movie.director || @movie.cast} class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4">
+              <div
+                :if={@movie.director || @movie.cast}
+                class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4"
+              >
                 <div :if={@movie.director} class="space-y-1 sm:space-y-2">
                   <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
                     Direção
@@ -330,7 +337,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               </div>
             </div>
           </div>
-
+          
     <!-- Image Gallery -->
           <div :if={@movie.images && @movie.images != []} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>

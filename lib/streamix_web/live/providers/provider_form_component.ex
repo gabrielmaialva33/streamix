@@ -156,8 +156,8 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
         />
         <.input field={@form[:username]} label="Usuário" required />
         <.input field={@form[:password]} type="password" label="Senha" required />
-
-        <!-- Visibility toggle -->
+        
+    <!-- Visibility toggle -->
         <div class="flex items-start gap-3 py-2">
           <input
             type="checkbox"

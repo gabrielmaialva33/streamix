@@ -169,7 +169,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-
+        
     <!-- Back Button -->
         <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
           <.link
@@ -181,7 +181,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
           </.link>
         </div>
       </div>
-
+      
     <!-- Content Section -->
       <div class="relative -mt-20 sm:-mt-28 lg:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
         <div class="max-w-5xl mx-auto">
@@ -203,7 +203,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 </div>
               </div>
             </div>
-
+            
     <!-- Info -->
             <div class="flex-1 space-y-3 sm:space-y-4 lg:space-y-5 text-center lg:text-left">
               <!-- Series & Season Info -->
@@ -218,7 +218,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   T{@season.season_number} · Ep {@episode.episode_num} de {@total_episodes}
                 </p>
               </div>
-
+              
     <!-- Episode Title -->
               <h1 class="text-xl sm:text-2xl lg:text-4xl font-bold text-text-primary leading-tight">
                 {episode_display_title(@episode)}
@@ -240,13 +240,17 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   :if={@episode.rating}
                   class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-xs sm:text-sm font-medium"
                 >
-                  <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />{format_rating(@episode.rating)}
+                  <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />{format_rating(
+                    @episode.rating
+                  )}
                 </span>
                 <span
                   :if={@episode.air_date}
                   class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
                 >
-                  <.icon name="hero-calendar" class="size-3 sm:size-3.5" />{format_date(@episode.air_date)}
+                  <.icon name="hero-calendar" class="size-3 sm:size-3.5" />{format_date(
+                    @episode.air_date
+                  )}
                 </span>
                 <span
                   :if={@episode.duration}
@@ -291,18 +295,22 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   />
                 </button>
               </div>
-
+              
     <!-- Synopsis -->
               <div :if={@episode.plot && @episode.plot != ""} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">Sinopse</h3>
+                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
+                  Sinopse
+                </h3>
                 <p class="text-text-secondary text-sm sm:text-base leading-relaxed">
                   {@episode.plot}
                 </p>
               </div>
-
+              
     <!-- Series Synopsis (if no episode synopsis) -->
               <div :if={(!@episode.plot || @episode.plot == "") && @series.plot} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">Sobre a Série</h3>
+                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
+                  Sobre a Série
+                </h3>
                 <p class="text-text-secondary text-sm sm:text-base leading-relaxed line-clamp-4">
                   {@series.plot}
                 </p>
@@ -334,7 +342,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   </div>
                 </.link>
               </div>
-
+              
     <!-- Back to Series -->
               <.link
                 navigate={series_path(@mode, @provider, @series.id)}
@@ -342,7 +350,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
               >
                 <.icon name="hero-list-bullet" class="size-4" /> Todos os Episódios
               </.link>
-
+              
     <!-- Next Episode -->
               <div class="flex-1 flex justify-end min-w-0">
                 <.link

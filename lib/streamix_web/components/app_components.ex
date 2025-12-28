@@ -159,7 +159,10 @@ defmodule StreamixWeb.AppComponents do
       </div>
       <div class="p-2 sm:p-3">
         <div class="flex items-start justify-between gap-1.5 sm:gap-2">
-          <h3 class="font-medium text-xs sm:text-sm text-text-primary truncate flex-1" title={@channel.name}>
+          <h3
+            class="font-medium text-xs sm:text-sm text-text-primary truncate flex-1"
+            title={@channel.name}
+          >
             {@channel.name}
           </h3>
           <button

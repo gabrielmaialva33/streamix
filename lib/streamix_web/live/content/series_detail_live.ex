@@ -205,7 +205,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-
+        
     <!-- Back Button -->
         <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
           <.link
@@ -216,7 +216,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           </.link>
         </div>
       </div>
-
+      
     <!-- Content Section -->
       <div class="relative -mt-24 sm:-mt-32 lg:-mt-40 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
         <div class="max-w-7xl mx-auto">
@@ -238,7 +238,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 </div>
               </div>
             </div>
-
+            
     <!-- Info -->
             <div class="flex-1 space-y-3 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <!-- Title -->
@@ -305,7 +305,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   {genre}
                 </span>
               </div>
-
+              
     <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
                 <button
@@ -362,14 +362,19 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               
     <!-- Synopsis -->
               <div :if={@series.plot} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">Sinopse</h3>
+                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
+                  Sinopse
+                </h3>
                 <p class="text-text-secondary text-sm sm:text-base leading-relaxed">
                   {@series.plot}
                 </p>
               </div>
-
+              
     <!-- Details Grid -->
-              <div :if={@series.director || @series.cast} class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4">
+              <div
+                :if={@series.director || @series.cast}
+                class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4"
+              >
                 <div :if={@series.director} class="space-y-1 sm:space-y-2">
                   <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
                     Criado por
@@ -386,7 +391,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               </div>
             </div>
           </div>
-
+          
     <!-- Image Gallery -->
           <div :if={@series.images && @series.images != []} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
@@ -404,13 +409,16 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               </div>
             </div>
           </div>
-
+          
     <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
             <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
 
             <div :if={Enum.empty?(@seasons)} class="text-center py-8 sm:py-12">
-              <.icon name="hero-film" class="size-12 sm:size-16 mx-auto mb-3 sm:mb-4 text-text-secondary/20" />
+              <.icon
+                name="hero-film"
+                class="size-12 sm:size-16 mx-auto mb-3 sm:mb-4 text-text-secondary/20"
+              />
               <p class="text-text-secondary text-sm sm:text-base">Nenhum episódio disponível</p>
             </div>
 
@@ -472,7 +480,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       phx-value-id={@episode.id}
     >
       <div class="flex-shrink-0 w-6 sm:w-8 text-center">
-        <span class="text-lg sm:text-2xl font-bold text-text-secondary/30">{@episode.episode_num}</span>
+        <span class="text-lg sm:text-2xl font-bold text-text-secondary/30">
+          {@episode.episode_num}
+        </span>
       </div>
 
       <div class="relative flex-shrink-0 w-24 sm:w-36 aspect-video bg-surface-hover rounded-lg overflow-hidden">
@@ -501,10 +511,16 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
           {episode_title(@episode)}
         </h4>
-        <p :if={@episode.plot} class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-0.5 sm:mt-1 hidden sm:block">
+        <p
+          :if={@episode.plot}
+          class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-0.5 sm:mt-1 hidden sm:block"
+        >
           {@episode.plot}
         </p>
-        <span :if={@episode.duration} class="text-[10px] sm:text-xs text-text-secondary/60 mt-1 sm:mt-2 block">
+        <span
+          :if={@episode.duration}
+          class="text-[10px] sm:text-xs text-text-secondary/60 mt-1 sm:mt-2 block"
+        >
           {@episode.duration}
         </span>
       </div>
