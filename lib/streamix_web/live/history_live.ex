@@ -7,6 +7,7 @@ defmodule StreamixWeb.HistoryLive do
   - Content type filtering
   - Resume playback with progress
   - Clear history functionality
+  - Infinite scroll with pagination using LiveView streams
   """
   use StreamixWeb, :live_view
 
@@ -14,18 +15,24 @@ defmodule StreamixWeb.HistoryLive do
 
   alias Streamix.Iptv
 
+  @page_size 20
+
   @doc false
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    history = Iptv.list_watch_history(user_id)
 
     socket =
       socket
-      |> assign(page_title: "Histórico")
+      |> assign(page_title: "Historico")
       |> assign(current_path: "/history")
-      |> assign(history: history)
+      |> assign(user_id: user_id)
       |> assign(filter: "all")
-      |> assign(filtered_history: history)
+      |> assign(page: 0)
+      |> assign(loading: false)
+      |> assign(end_of_list: false)
+      |> assign(counts: load_counts(user_id))
+      |> stream(:history, [])
+      |> load_history()
 
     {:ok, socket}
   end
@@ -36,14 +43,29 @@ defmodule StreamixWeb.HistoryLive do
 
   @doc false
   def handle_event("filter", %{"type" => type}, socket) do
-    filtered =
-      if type == "all" do
-        socket.assigns.history
-      else
-        Enum.filter(socket.assigns.history, &(&1.content_type == type))
-      end
+    socket =
+      socket
+      |> assign(filter: type)
+      |> assign(page: 0)
+      |> assign(end_of_list: false)
+      |> stream(:history, [], reset: true)
+      |> load_history()
 
-    {:noreply, assign(socket, filter: type, filtered_history: filtered)}
+    {:noreply, socket}
+  end
+
+  def handle_event("load_more", _, socket) do
+    if socket.assigns.loading || socket.assigns.end_of_list do
+      {:noreply, socket}
+    else
+      socket =
+        socket
+        |> assign(page: socket.assigns.page + 1)
+        |> assign(loading: true)
+        |> load_history()
+
+      {:noreply, socket}
+    end
   end
 
   def handle_event("play", %{"id" => id, "type" => type}, socket) do
@@ -51,29 +73,33 @@ defmodule StreamixWeb.HistoryLive do
     {:noreply, push_navigate(socket, to: path)}
   end
 
-  def handle_event("remove_entry", %{"id" => id}, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  def handle_event("remove_entry", %{"id" => id, "type" => type}, socket) do
+    user_id = socket.assigns.user_id
     entry_id = String.to_integer(id)
 
     Iptv.remove_from_watch_history(user_id, entry_id)
 
-    history = Enum.reject(socket.assigns.history, &(&1.id == entry_id))
+    # Update counts
+    counts = update_counts(socket.assigns.counts, type, -1)
 
-    filtered =
-      if socket.assigns.filter == "all" do
-        history
-      else
-        Enum.filter(history, &(&1.content_type == socket.assigns.filter))
-      end
+    socket =
+      socket
+      |> stream_delete_by_dom_id(:history, "history-#{entry_id}")
+      |> assign(counts: counts)
 
-    {:noreply, assign(socket, history: history, filtered_history: filtered)}
+    {:noreply, socket}
   end
 
   def handle_event("clear_history", _, socket) do
-    user_id = socket.assigns.current_scope.user.id
+    user_id = socket.assigns.user_id
     Iptv.clear_watch_history(user_id)
 
-    {:noreply, assign(socket, history: [], filtered_history: [])}
+    socket =
+      socket
+      |> stream(:history, [], reset: true)
+      |> assign(counts: %{})
+
+    {:noreply, socket}
   end
 
   # ============================================
@@ -85,36 +111,36 @@ defmodule StreamixWeb.HistoryLive do
     ~H"""
     <div class="space-y-4 sm:space-y-6">
       <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
-        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Histórico</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Historico</h1>
 
         <div class="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
           <div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
-            <.filter_button type="all" label="Todos" current={@filter} count={length(@history)} />
+            <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
             <.filter_button
               type="live_channel"
               label="Ao Vivo"
               current={@filter}
-              count={count_by_type(@history, "live_channel")}
+              count={@counts["live_channel"] || 0}
             />
             <.filter_button
               type="movie"
               label="Filmes"
               current={@filter}
-              count={count_by_type(@history, "movie")}
+              count={@counts["movie"] || 0}
             />
             <.filter_button
               type="episode"
-              label="Episódios"
+              label="Episodios"
               current={@filter}
-              count={count_by_type(@history, "episode")}
+              count={@counts["episode"] || 0}
             />
           </div>
 
           <button
-            :if={Enum.any?(@history)}
+            :if={total_count(@counts) > 0}
             type="button"
             phx-click="clear_history"
-            data-confirm="Tem certeza que deseja limpar todo o histórico?"
+            data-confirm="Tem certeza que deseja limpar todo o historico?"
             class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-red-500 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
           >
             <.icon name="hero-trash" class="size-4" />
@@ -123,12 +149,21 @@ defmodule StreamixWeb.HistoryLive do
         </div>
       </div>
 
-      <div :if={Enum.any?(@filtered_history)} class="space-y-2 sm:space-y-3">
-        <.history_entry :for={entry <- @filtered_history} entry={entry} />
+      <div
+        id="history-list"
+        phx-update="stream"
+        phx-viewport-bottom={!@end_of_list && "load_more"}
+        class="space-y-2 sm:space-y-3"
+      >
+        <.history_entry :for={{dom_id, entry} <- @streams.history} id={dom_id} entry={entry} />
+      </div>
+
+      <div :if={@loading} class="flex justify-center py-8">
+        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
       </div>
 
       <.empty_state
-        :if={Enum.empty?(@filtered_history)}
+        :if={total_count(@counts) == 0}
         icon="hero-clock"
         title={empty_title(@filter)}
         message={empty_message(@filter)}
@@ -151,14 +186,22 @@ defmodule StreamixWeb.HistoryLive do
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">{@count}</span>
+      <span
+        :if={@count > 0}
+        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+      >
+        {@count}
+      </span>
     </button>
     """
   end
 
   defp history_entry(assigns) do
     ~H"""
-    <div class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group">
+    <div
+      id={@id}
+      class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group"
+    >
       <div
         class="relative w-20 sm:w-24 h-14 sm:h-16 rounded bg-surface-hover flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
         phx-click="play"
@@ -202,7 +245,7 @@ defmodule StreamixWeb.HistoryLive do
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
           <span :if={@entry.duration_seconds}>
-            · {format_duration(@entry.duration_seconds)}
+            . {format_duration(@entry.duration_seconds)}
           </span>
         </div>
       </div>
@@ -211,8 +254,9 @@ defmodule StreamixWeb.HistoryLive do
         type="button"
         phx-click="remove_entry"
         phx-value-id={@entry.id}
+        phx-value-type={@entry.content_type}
         class="p-1.5 sm:p-2 text-text-secondary hover:text-text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-        title="Remover do histórico"
+        title="Remover do historico"
       >
         <.icon name="hero-x-mark" class="size-4 sm:size-5" />
       </button>
@@ -232,8 +276,33 @@ defmodule StreamixWeb.HistoryLive do
   # Private Helpers
   # ============================================
 
-  defp count_by_type(history, type) do
-    Enum.count(history, &(&1.content_type == type))
+  defp load_history(socket) do
+    user_id = socket.assigns.user_id
+    filter = socket.assigns.filter
+    page = socket.assigns.page
+    offset = page * @page_size
+
+    opts = [limit: @page_size, offset: offset]
+    opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
+
+    history = Iptv.list_watch_history(user_id, opts)
+
+    socket
+    |> assign(loading: false)
+    |> assign(end_of_list: length(history) < @page_size)
+    |> stream(:history, history)
+  end
+
+  defp load_counts(user_id) do
+    Iptv.count_watch_history_by_type(user_id)
+  end
+
+  defp update_counts(counts, type, delta) do
+    Map.update(counts, type, 0, &max(0, &1 + delta))
+  end
+
+  defp total_count(counts) do
+    Enum.reduce(counts, 0, fn {_type, count}, acc -> acc + count end)
   end
 
   defp progress_percent(%{progress_seconds: progress, duration_seconds: duration})
@@ -256,8 +325,8 @@ defmodule StreamixWeb.HistoryLive do
 
   defp format_content_type("live_channel"), do: "Ao Vivo"
   defp format_content_type("movie"), do: "Filme"
-  defp format_content_type("series"), do: "Série"
-  defp format_content_type("episode"), do: "Episódio"
+  defp format_content_type("series"), do: "Serie"
+  defp format_content_type("episode"), do: "Episodio"
   defp format_content_type(type), do: type || "Desconhecido"
 
   defp format_relative_time(nil), do: ""
@@ -267,9 +336,9 @@ defmodule StreamixWeb.HistoryLive do
 
     cond do
       diff < 60 -> "agora mesmo"
-      diff < 3600 -> "#{div(diff, 60)} min atrás"
-      diff < 86_400 -> "#{div(diff, 3600)}h atrás"
-      diff < 604_800 -> "#{div(diff, 86_400)} dias atrás"
+      diff < 3600 -> "#{div(diff, 60)} min atras"
+      diff < 86_400 -> "#{div(diff, 3600)}h atras"
+      diff < 604_800 -> "#{div(diff, 86_400)} dias atras"
       true -> Calendar.strftime(datetime, "%d/%m/%Y")
     end
   end
@@ -287,15 +356,15 @@ defmodule StreamixWeb.HistoryLive do
 
   defp format_duration(_), do: ""
 
-  defp empty_title("all"), do: "Nenhum histórico"
+  defp empty_title("all"), do: "Nenhum historico"
   defp empty_title("live_channel"), do: "Nenhum canal assistido"
   defp empty_title("movie"), do: "Nenhum filme assistido"
-  defp empty_title("episode"), do: "Nenhum episódio assistido"
-  defp empty_title(_), do: "Nenhum histórico"
+  defp empty_title("episode"), do: "Nenhum episodio assistido"
+  defp empty_title(_), do: "Nenhum historico"
 
-  defp empty_message("all"), do: "Seu histórico de visualização aparecerá aqui."
-  defp empty_message("live_channel"), do: "Os canais que você assistir aparecerão aqui."
-  defp empty_message("movie"), do: "Os filmes que você assistir aparecerão aqui."
-  defp empty_message("episode"), do: "Os episódios que você assistir aparecerão aqui."
-  defp empty_message(_), do: "Seu histórico aparecerá aqui."
+  defp empty_message("all"), do: "Seu historico de visualizacao aparecera aqui."
+  defp empty_message("live_channel"), do: "Os canais que voce assistir aparecerao aqui."
+  defp empty_message("movie"), do: "Os filmes que voce assistir aparecerao aqui."
+  defp empty_message("episode"), do: "Os episodios que voce assistir aparecerao aqui."
+  defp empty_message(_), do: "Seu historico aparecera aqui."
 end

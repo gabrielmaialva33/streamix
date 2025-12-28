@@ -7,6 +7,7 @@ defmodule StreamixWeb.FavoritesLive do
   - Content type filtering (all, live, movies, series)
   - Quick play functionality
   - Remove from favorites
+  - Infinite scroll with pagination using LiveView streams
   """
   use StreamixWeb, :live_view
 
@@ -14,18 +15,24 @@ defmodule StreamixWeb.FavoritesLive do
 
   alias Streamix.Iptv
 
+  @page_size 24
+
   @doc false
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    favorites = Iptv.list_favorites(user_id)
 
     socket =
       socket
       |> assign(page_title: "Favoritos")
       |> assign(current_path: "/favorites")
-      |> assign(favorites: favorites)
+      |> assign(user_id: user_id)
       |> assign(filter: "all")
-      |> assign(filtered_favorites: favorites)
+      |> assign(page: 0)
+      |> assign(loading: false)
+      |> assign(end_of_list: false)
+      |> assign(counts: load_counts(user_id))
+      |> stream(:favorites, [])
+      |> load_favorites()
 
     {:ok, socket}
   end
@@ -36,14 +43,29 @@ defmodule StreamixWeb.FavoritesLive do
 
   @doc false
   def handle_event("filter", %{"type" => type}, socket) do
-    filtered =
-      if type == "all" do
-        socket.assigns.favorites
-      else
-        Enum.filter(socket.assigns.favorites, &(&1.content_type == type))
-      end
+    socket =
+      socket
+      |> assign(filter: type)
+      |> assign(page: 0)
+      |> assign(end_of_list: false)
+      |> stream(:favorites, [], reset: true)
+      |> load_favorites()
 
-    {:noreply, assign(socket, filter: type, filtered_favorites: filtered)}
+    {:noreply, socket}
+  end
+
+  def handle_event("load_more", _, socket) do
+    if socket.assigns.loading || socket.assigns.end_of_list do
+      {:noreply, socket}
+    else
+      socket =
+        socket
+        |> assign(page: socket.assigns.page + 1)
+        |> assign(loading: true)
+        |> load_favorites()
+
+      {:noreply, socket}
+    end
   end
 
   def handle_event("play", %{"id" => id, "type" => type}, socket) do
@@ -51,28 +73,26 @@ defmodule StreamixWeb.FavoritesLive do
     {:noreply, push_navigate(socket, to: path)}
   end
 
-  def handle_event("remove_favorite", %{"id" => id}, socket) do
-    user_id = socket.assigns.current_scope.user.id
+  def handle_event(
+        "remove_favorite",
+        %{"id" => id, "type" => type, "content_id" => content_id},
+        socket
+      ) do
+    user_id = socket.assigns.user_id
     favorite_id = String.to_integer(id)
+    content_id = String.to_integer(content_id)
 
-    case Enum.find(socket.assigns.favorites, &(&1.id == favorite_id)) do
-      nil ->
-        {:noreply, socket}
+    Iptv.remove_favorite(user_id, type, content_id)
 
-      favorite ->
-        Iptv.remove_favorite(user_id, favorite.content_type, favorite.content_id)
+    # Update counts
+    counts = update_counts(socket.assigns.counts, type, -1)
 
-        favorites = Enum.reject(socket.assigns.favorites, &(&1.id == favorite_id))
+    socket =
+      socket
+      |> stream_delete_by_dom_id(:favorites, "favorites-#{favorite_id}")
+      |> assign(counts: counts)
 
-        filtered =
-          if socket.assigns.filter == "all" do
-            favorites
-          else
-            Enum.filter(favorites, &(&1.content_type == socket.assigns.filter))
-          end
-
-        {:noreply, assign(socket, favorites: favorites, filtered_favorites: filtered)}
-    end
+    {:noreply, socket}
   end
 
   # ============================================
@@ -87,37 +107,47 @@ defmodule StreamixWeb.FavoritesLive do
         <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Minha Lista</h1>
 
         <div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
-          <.filter_button type="all" label="Todos" current={@filter} count={length(@favorites)} />
+          <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
           <.filter_button
             type="live_channel"
             label="Ao Vivo"
             current={@filter}
-            count={count_by_type(@favorites, "live_channel")}
+            count={@counts["live_channel"] || 0}
           />
           <.filter_button
             type="movie"
             label="Filmes"
             current={@filter}
-            count={count_by_type(@favorites, "movie")}
+            count={@counts["movie"] || 0}
           />
           <.filter_button
             type="series"
             label="Séries"
             current={@filter}
-            count={count_by_type(@favorites, "series")}
+            count={@counts["series"] || 0}
           />
         </div>
       </div>
 
       <div
-        :if={Enum.any?(@filtered_favorites)}
+        id="favorites-grid"
+        phx-update="stream"
+        phx-viewport-bottom={!@end_of_list && "load_more"}
         class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
-        <.favorite_item :for={favorite <- @filtered_favorites} favorite={favorite} />
+        <.favorite_item
+          :for={{dom_id, favorite} <- @streams.favorites}
+          id={dom_id}
+          favorite={favorite}
+        />
+      </div>
+
+      <div :if={@loading} class="flex justify-center py-8">
+        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
       </div>
 
       <.empty_state
-        :if={Enum.empty?(@filtered_favorites)}
+        :if={total_count(@counts) == 0}
         icon="hero-heart"
         title={empty_title(@filter)}
         message={empty_message(@filter)}
@@ -140,14 +170,22 @@ defmodule StreamixWeb.FavoritesLive do
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">{@count}</span>
+      <span
+        :if={@count > 0}
+        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+      >
+        {@count}
+      </span>
     </button>
     """
   end
 
   defp favorite_item(assigns) do
     ~H"""
-    <div class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-colors group">
+    <div
+      id={@id}
+      class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-colors group"
+    >
       <div
         class="relative aspect-video bg-surface-hover cursor-pointer"
         phx-click="play"
@@ -186,6 +224,8 @@ defmodule StreamixWeb.FavoritesLive do
             type="button"
             phx-click="remove_favorite"
             phx-value-id={@favorite.id}
+            phx-value-type={@favorite.content_type}
+            phx-value-content_id={@favorite.content_id}
             class="p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 rounded"
             title="Remover dos favoritos"
           >
@@ -201,8 +241,33 @@ defmodule StreamixWeb.FavoritesLive do
   # Private Helpers
   # ============================================
 
-  defp count_by_type(favorites, type) do
-    Enum.count(favorites, &(&1.content_type == type))
+  defp load_favorites(socket) do
+    user_id = socket.assigns.user_id
+    filter = socket.assigns.filter
+    page = socket.assigns.page
+    offset = page * @page_size
+
+    opts = [limit: @page_size, offset: offset]
+    opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
+
+    favorites = Iptv.list_favorites(user_id, opts)
+
+    socket
+    |> assign(loading: false)
+    |> assign(end_of_list: length(favorites) < @page_size)
+    |> stream(:favorites, favorites)
+  end
+
+  defp load_counts(user_id) do
+    Iptv.count_favorites_by_type(user_id)
+  end
+
+  defp update_counts(counts, type, delta) do
+    Map.update(counts, type, 0, &max(0, &1 + delta))
+  end
+
+  defp total_count(counts) do
+    Enum.reduce(counts, 0, fn {_type, count}, acc -> acc + count end)
   end
 
   defp get_play_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"

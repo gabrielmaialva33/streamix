@@ -158,8 +158,13 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       content_icon: channel.stream_icon
     })
 
+    # Toggle in MapSet
     favorites_map =
-      Map.update(socket.assigns.favorites_map, channel_id, true, fn current -> !current end)
+      if MapSet.member?(socket.assigns.favorites_map, channel_id) do
+        MapSet.delete(socket.assigns.favorites_map, channel_id)
+      else
+        MapSet.put(socket.assigns.favorites_map, channel_id)
+      end
 
     {:noreply,
      socket
@@ -270,7 +275,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
         <div :for={{dom_id, channel} <- @streams.channels} id={dom_id}>
           <.live_channel_card
             channel={channel}
-            is_favorite={Map.get(@favorites_map, channel.id, false)}
+            is_favorite={MapSet.member?(@favorites_map, channel.id)}
           />
         </div>
       </div>
@@ -327,15 +332,9 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   defp load_favorites_map(socket) do
     user_id = socket.assigns.user_id
-    favorites = Iptv.list_favorites(user_id, content_type: "live_channel", limit: 10_000)
-
-    favorites_map =
-      favorites
-      |> Enum.map(& &1.content_id)
-      |> MapSet.new()
-      |> Enum.into(%{}, fn id -> {id, true} end)
-
-    assign(socket, favorites_map: favorites_map)
+    # Optimized: only fetches content_ids instead of full records
+    favorite_ids = Iptv.list_favorite_ids(user_id, "live_channel")
+    assign(socket, favorites_map: favorite_ids)
   end
 
   defp maybe_add_filter(opts, _key, nil), do: opts

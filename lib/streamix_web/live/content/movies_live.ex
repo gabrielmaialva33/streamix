@@ -133,7 +133,7 @@ defmodule StreamixWeb.Content.MoviesLive do
     user_id = socket.assigns.user_id
     movie_id = String.to_integer(id)
     movie = Iptv.get_movie!(movie_id)
-    is_favorite = Map.get(socket.assigns.favorites_map, movie_id, false)
+    is_favorite = MapSet.member?(socket.assigns.favorites_map, movie_id)
 
     if is_favorite do
       Iptv.remove_favorite(user_id, "movie", movie_id)
@@ -146,7 +146,13 @@ defmodule StreamixWeb.Content.MoviesLive do
       })
     end
 
-    favorites_map = Map.put(socket.assigns.favorites_map, movie_id, !is_favorite)
+    # Toggle in MapSet
+    favorites_map =
+      if is_favorite do
+        MapSet.delete(socket.assigns.favorites_map, movie_id)
+      else
+        MapSet.put(socket.assigns.favorites_map, movie_id)
+      end
 
     {:noreply,
      socket
@@ -199,7 +205,7 @@ defmodule StreamixWeb.Content.MoviesLive do
         <div :for={{dom_id, movie} <- @streams.movies} id={dom_id}>
           <.movie_card
             movie={movie}
-            is_favorite={Map.get(@favorites_map, movie.id, false)}
+            is_favorite={MapSet.member?(@favorites_map, movie.id)}
           />
         </div>
       </div>
@@ -246,13 +252,9 @@ defmodule StreamixWeb.Content.MoviesLive do
 
   defp load_favorites_map(socket) do
     user_id = socket.assigns.user_id
-
-    favorites =
-      Iptv.list_favorites(user_id, content_type: "movie")
-      |> Enum.map(& &1.content_id)
-      |> Enum.into(%{}, fn id -> {id, true} end)
-
-    assign(socket, favorites_map: favorites)
+    # Optimized: only fetches content_ids instead of full records
+    favorite_ids = Iptv.list_favorite_ids(user_id, "movie")
+    assign(socket, favorites_map: favorite_ids)
   end
 
   # Path builders based on mode
