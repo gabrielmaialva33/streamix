@@ -14,26 +14,39 @@ defmodule StreamixWeb.StreamController do
   @recv_timeout 30_000
   @max_redirects 5
 
+  alias StreamixWeb.StreamToken
+
   @doc """
-  Proxies a stream URL with chunked transfer.
-  Supports HTTP Range requests for seeking.
+  Proxies a stream using a signed token (secure, recommended).
+  The token is verified server-side and exchanged for the actual stream URL.
+  Credentials are never exposed to the client.
   """
-  def proxy(conn, %{"url" => encoded_url}) do
-    case Base.url_decode64(encoded_url, padding: false) do
+  def proxy(conn, %{"token" => token}) do
+    case StreamToken.verify_and_get_url(token) do
       {:ok, url} ->
         stream_url(conn, url, 0)
 
-      :error ->
+      {:error, :token_expired} ->
         conn
-        |> put_status(:bad_request)
-        |> json(%{error: "Invalid URL encoding"})
+        |> put_status(:unauthorized)
+        |> json(%{error: "Stream token expired"})
+
+      {:error, :invalid_token} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{error: "Invalid stream token"})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: "Content not found"})
     end
   end
 
   def proxy(conn, _params) do
     conn
     |> put_status(:bad_request)
-    |> json(%{error: "Missing url parameter"})
+    |> json(%{error: "Missing token parameter"})
   end
 
   defp stream_url(conn, _url, redirect_count) when redirect_count > @max_redirects do
@@ -115,15 +128,13 @@ defmodule StreamixWeb.StreamController do
   defp handle_response(conn, mint_conn, request_ref, original_url, redirect_count) do
     case receive_headers(mint_conn, request_ref) do
       {:ok, mint_conn, status, headers} ->
-        cond do
-          # Handle redirects (301, 302, 303, 307, 308)
-          status in [301, 302, 303, 307, 308] ->
-            Mint.HTTP.close(mint_conn)
-            handle_redirect(conn, headers, original_url, redirect_count)
-
+        if status in [301, 302, 303, 307, 308] do
+          # Handle redirects
+          Mint.HTTP.close(mint_conn)
+          handle_redirect(conn, headers, original_url, redirect_count)
+        else
           # Normal response - stream it
-          true ->
-            stream_response(conn, mint_conn, request_ref, status, headers)
+          stream_response(conn, mint_conn, request_ref, status, headers)
         end
 
       {:error, _mint_conn, reason} ->
@@ -328,15 +339,34 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp put_cors_headers(conn) do
+    origin = get_cors_origin(conn)
+
     conn
-    |> put_resp_header("access-control-allow-origin", "*")
+    |> put_resp_header("access-control-allow-origin", origin)
     |> put_resp_header("access-control-allow-methods", "GET, HEAD, OPTIONS")
     |> put_resp_header("access-control-allow-headers", "Range, Accept-Encoding")
+    |> put_resp_header("access-control-allow-credentials", "true")
     |> put_resp_header(
       "access-control-expose-headers",
       "Content-Length, Content-Range, Accept-Ranges"
     )
   end
+
+  defp get_cors_origin(conn) do
+    origins = Application.get_env(:streamix, :cors, [])[:origins] || []
+
+    case Plug.Conn.get_req_header(conn, "origin") do
+      [origin] ->
+        if origin_allowed?(origin, origins), do: origin, else: "null"
+
+      _ ->
+        "null"
+    end
+  end
+
+  defp origin_allowed?(_origin, :all), do: true
+  defp origin_allowed?(origin, origins) when is_list(origins), do: origin in origins
+  defp origin_allowed?(_origin, _), do: false
 
   defp put_streaming_headers(conn) do
     conn

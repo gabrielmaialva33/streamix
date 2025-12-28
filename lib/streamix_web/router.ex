@@ -15,7 +15,21 @@ defmodule StreamixWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    plug CORSPlug, origin: ["*"]
+    plug StreamixWeb.Plugs.CORS
+  end
+
+  # Rate-limited API pipeline for sensitive endpoints
+  pipeline :api_rate_limited do
+    plug :accepts, ["json"]
+    plug StreamixWeb.Plugs.CORS
+    # 60 requests per minute per IP for stream proxy
+    plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
+  end
+
+  # Strict rate limiting for auth endpoints
+  pipeline :auth_rate_limited do
+    # 5 login attempts per minute per IP
+    plug StreamixWeb.Plugs.RateLimit, limit: 5, period: 60_000
   end
 
   # Health check endpoint
@@ -25,9 +39,9 @@ defmodule StreamixWeb.Router do
     get "/health", HealthController, :index
   end
 
-  # Stream proxy - public access for video streaming
+  # Stream proxy - public access for video streaming (rate limited)
   scope "/api", StreamixWeb do
-    pipe_through :api
+    pipe_through :api_rate_limited
 
     get "/stream/proxy", StreamController, :proxy
   end
@@ -78,6 +92,11 @@ defmodule StreamixWeb.Router do
       live "/login", User.LoginLive, :new
       live "/register", User.RegisterLive, :new
     end
+  end
+
+  # Rate-limited login endpoint (separate scope for pipeline)
+  scope "/", StreamixWeb do
+    pipe_through [:browser, :redirect_if_user_is_authenticated, :auth_rate_limited]
 
     post "/login", UserSessionController, :create
   end

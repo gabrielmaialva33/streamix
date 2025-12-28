@@ -2,11 +2,15 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   @moduledoc """
   Public catalog API for TV app and other clients.
   Provides read-only access to content from public/global providers.
+
+  Stream URLs are returned as proxy URLs with signed tokens.
+  Credentials are never exposed to clients.
   """
   use StreamixWeb, :controller
 
   alias Streamix.Iptv
   alias Streamix.Repo
+  alias StreamixWeb.StreamToken
 
   @doc """
   Handle CORS preflight OPTIONS requests.
@@ -431,23 +435,27 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     end
   end
 
-  # Stream URL Builders
+  # Stream URL Builders - Now using signed tokens for security
+  # Credentials are never exposed to clients
+
   defp build_stream_url(movie) do
-    provider = movie.provider
-    ext = movie.container_extension || "mp4"
-    "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
+    token = StreamToken.sign_movie(movie.id)
+    build_proxy_url(token)
   end
 
-  defp build_episode_stream_url(episode, series) do
-    provider = series.provider
-    ext = episode.container_extension || "mp4"
-
-    "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
+  defp build_episode_stream_url(episode, _series) do
+    token = StreamToken.sign_episode(episode.id)
+    build_proxy_url(token)
   end
 
   defp build_channel_stream_url(channel) do
-    provider = channel.provider
-    "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.m3u8"
+    token = StreamToken.sign_channel(channel.id)
+    build_proxy_url(token)
+  end
+
+  defp build_proxy_url(token) do
+    base_url = StreamixWeb.Endpoint.url()
+    "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
 
   # Helpers
