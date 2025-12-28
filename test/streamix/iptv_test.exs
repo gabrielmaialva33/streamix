@@ -273,17 +273,18 @@ defmodule Streamix.IptvTest do
       # Simulating categories created by sync/fixtures
       # For this test we need to insert categories manually or via fixture
       # Assuming we can insert categories directly for testing
-      
+
       Repo.insert!(%Streamix.Iptv.Category{
-        provider_id: provider.id, 
-        name: "News", 
-        type: "live", 
+        provider_id: provider.id,
+        name: "News",
+        type: "live",
         external_id: "1"
       })
+
       Repo.insert!(%Streamix.Iptv.Category{
-        provider_id: provider.id, 
-        name: "Sports", 
-        type: "live", 
+        provider_id: provider.id,
+        name: "Sports",
+        type: "live",
         external_id: "2"
       })
 
@@ -508,7 +509,11 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, %WatchHistory{} = entry} = Iptv.add_watch_history(user.id, "live_channel", channel.id, %{duration_seconds: 300})
+      assert {:ok, %WatchHistory{} = entry} =
+               Iptv.add_watch_history(user.id, "live_channel", channel.id, %{
+                 duration_seconds: 300
+               })
+
       assert entry.duration_seconds == 300
       assert entry.user_id == user.id
       assert entry.content_id == channel.id

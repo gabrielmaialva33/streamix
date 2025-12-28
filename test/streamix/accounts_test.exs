@@ -215,7 +215,7 @@ defmodule Streamix.AccountsTest do
       changeset =
         Accounts.change_user_password(
           %User{},
-          %{ "password" => "new valid password" },
+          %{"password" => "new valid password"},
           hash_password: false
         )
 
