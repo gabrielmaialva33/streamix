@@ -317,19 +317,14 @@ defmodule StreamixWeb.StreamController do
         "content-type" -> put_resp_header(conn, "content-type", value)
         "content-length" -> put_resp_header(conn, "content-length", value)
         "content-range" -> put_resp_header(conn, "content-range", value)
-        "accept-ranges" -> put_resp_header(conn, "accept-ranges", value)
+        # Ignore upstream accept-ranges as some servers send malformed values
+        # Always set it to "bytes" below
+        "accept-ranges" -> conn
         _ -> conn
       end
     end)
-    # Always ensure accept-ranges is set for video seeking
-    |> ensure_accept_ranges()
-  end
-
-  defp ensure_accept_ranges(conn) do
-    case get_resp_header(conn, "accept-ranges") do
-      [] -> put_resp_header(conn, "accept-ranges", "bytes")
-      _ -> conn
-    end
+    # Always set accept-ranges to "bytes" for video seeking support
+    |> put_resp_header("accept-ranges", "bytes")
   end
 
   defp put_cors_headers(conn) do
