@@ -1,12 +1,12 @@
 <div class="min-h-screen bg-background">
   <!-- Fixed Header -->
   <header class="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-white/5">
-    <div class="flex items-center justify-between h-16 px-[4%]">
+    <div class="flex items-center justify-between h-14 sm:h-16 px-[4%]">
       <!-- Logo & Navigation -->
-      <div class="flex items-center gap-8">
-        <a href="/" class="flex items-center gap-2 text-2xl font-bold text-brand">
-          <.icon name="hero-play-circle-solid" class="size-8" />
-          <span class="hidden sm:inline">Streamix</span>
+      <div class="flex items-center gap-4 sm:gap-8">
+        <a href="/" class="flex items-center gap-1.5 sm:gap-2 text-xl sm:text-2xl font-bold text-brand">
+          <.icon name="hero-play-circle-solid" class="size-6 sm:size-8" />
+          <span>Streamix</span>
         </a>
 
         <%= if @current_scope do %>
@@ -50,27 +50,27 @@
 
               <div
                 id="search-input-container"
-                class="hidden items-center bg-surface/95 backdrop-blur border border-border rounded-lg overflow-hidden"
+                class="hidden items-center bg-surface border-b sm:border border-border sm:rounded-lg overflow-hidden fixed sm:relative inset-x-0 sm:inset-x-auto top-0 sm:top-auto h-14 sm:h-auto z-50 px-[4%] sm:px-0"
               >
                 <.icon
                   name="hero-magnifying-glass"
-                  class="size-5 text-text-secondary ml-3 flex-shrink-0"
+                  class="size-5 text-text-secondary sm:ml-3 flex-shrink-0"
                 />
-                <form action={~p"/search"} method="get" class="flex items-center">
+                <form action={~p"/search"} method="get" class="flex items-center flex-1">
                   <input
                     type="text"
                     name="q"
                     id="header-search-input"
                     placeholder="Títulos, pessoas, gêneros"
-                    class="w-64 px-3 py-2 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
+                    class="w-full sm:w-64 px-3 py-2.5 sm:py-2 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
                   />
                 </form>
                 <button
                   type="button"
                   id="search-close"
-                  class="p-2 text-text-secondary hover:text-text-primary"
+                  class="p-2.5 sm:p-2 text-text-secondary hover:text-text-primary touch-manipulation"
                 >
-                  <.icon name="hero-x-mark" class="size-4" />
+                  <.icon name="hero-x-mark" class="size-6 sm:size-4" />
                 </button>
               </div>
             </div>
@@ -126,110 +126,28 @@
               </.link>
             </div>
           </div>
-          
-<!-- Mobile menu button -->
-          <button
-            type="button"
-            phx-click={show_mobile_menu()}
-            class="md:hidden p-2 text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <.icon name="hero-bars-3" class="size-6" />
-          </button>
         <% else %>
           <%= if @current_path not in ["/login", "/register"] do %>
-            <.link
-              navigate={~p"/login"}
-              class="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-            >
-              Entrar
-            </.link>
-            <.link
-              navigate={~p"/register"}
-              class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-md hover:bg-brand-hover transition-colors"
-            >
-              Criar Conta
-            </.link>
+            <div class="flex items-center gap-2">
+              <.link
+                navigate={~p"/login"}
+                class="px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Entrar
+              </.link>
+              <.link
+                navigate={~p"/register"}
+                class="px-3 py-1.5 text-xs font-semibold bg-brand text-white rounded hover:bg-brand-hover transition-colors"
+              >
+                Começar
+              </.link>
+            </div>
           <% end %>
         <% end %>
       </div>
     </div>
   </header>
-  
-<!-- Mobile Navigation Menu -->
-  <div id="mobile-menu" class="fixed inset-0 z-40 hidden md:hidden">
-    <div class="absolute inset-0 bg-black/60" phx-click={hide_mobile_menu()}></div>
-    <div class="absolute top-0 right-0 w-64 h-full bg-surface border-l border-border">
-      <div class="p-4 border-b border-border flex items-center justify-between">
-        <span class="font-semibold text-text-primary">Menu</span>
-        <button
-          type="button"
-          phx-click={hide_mobile_menu()}
-          class="p-2 text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
-      </div>
-      <!-- Mobile Search -->
-      <div class="p-4 border-b border-border">
-        <form
-          action={~p"/search"}
-          method="get"
-          class="flex items-center gap-2 px-3 py-2 bg-surface-hover rounded-lg"
-        >
-          <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary" />
-          <input
-            type="text"
-            name="q"
-            placeholder="Buscar..."
-            class="flex-1 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
-          />
-        </form>
-      </div>
 
-      <nav class="p-4 space-y-2">
-        <.link
-          navigate={~p"/"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-home" class="size-5" /> Início
-        </.link>
-        <.link
-          navigate={~p"/browse"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-film" class="size-5" /> Catálogo
-        </.link>
-        <.link
-          navigate={~p"/favorites"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-heart" class="size-5" /> Minha Lista
-        </.link>
-
-        <div class="border-t border-border my-3"></div>
-
-        <.link
-          navigate={~p"/history"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-clock" class="size-5" /> Histórico
-        </.link>
-        <.link
-          navigate={~p"/providers"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-server-stack" class="size-5" /> Meus Provedores
-        </.link>
-        <.link
-          navigate={~p"/settings"}
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-        >
-          <.icon name="hero-cog-6-tooth" class="size-5" /> Configurações
-        </.link>
-      </nav>
-    </div>
-  </div>
-  
 <!-- Flash Messages (Toast style - top right) -->
   <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
@@ -237,7 +155,59 @@
   </div>
   
 <!-- Main Content -->
-  <main class="pt-20 pb-8 px-[4%]">
+  <main class="pt-16 sm:pt-20 pb-20 sm:pb-8 px-[4%]">
     {@inner_content}
   </main>
+
+  <!-- Bottom Navigation Bar (Mobile Only) -->
+  <%= if @current_scope do %>
+    <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-surface/95 backdrop-blur-lg border-t border-white/10 safe-area-bottom">
+      <div class="flex items-center justify-around h-14">
+        <.link
+          navigate={~p"/"}
+          class={[
+            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
+            @current_path == "/" && "text-brand",
+            @current_path != "/" && "text-text-secondary active:text-text-primary"
+          ]}
+        >
+          <.icon name={if @current_path == "/", do: "hero-home-solid", else: "hero-home"} class="size-5" />
+          <span class="text-[10px] mt-0.5 font-medium">Início</span>
+        </.link>
+        <.link
+          navigate={~p"/browse"}
+          class={[
+            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
+            String.starts_with?(@current_path || "", "/browse") && "text-brand",
+            !String.starts_with?(@current_path || "", "/browse") && "text-text-secondary active:text-text-primary"
+          ]}
+        >
+          <.icon name={if String.starts_with?(@current_path || "", "/browse"), do: "hero-film-solid", else: "hero-film"} class="size-5" />
+          <span class="text-[10px] mt-0.5 font-medium">Catálogo</span>
+        </.link>
+        <.link
+          navigate={~p"/favorites"}
+          class={[
+            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
+            @current_path == "/favorites" && "text-brand",
+            @current_path != "/favorites" && "text-text-secondary active:text-text-primary"
+          ]}
+        >
+          <.icon name={if @current_path == "/favorites", do: "hero-heart-solid", else: "hero-heart"} class="size-5" />
+          <span class="text-[10px] mt-0.5 font-medium">Favoritos</span>
+        </.link>
+        <.link
+          navigate={~p"/settings"}
+          class={[
+            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
+            @current_path == "/settings" && "text-brand",
+            @current_path != "/settings" && "text-text-secondary active:text-text-primary"
+          ]}
+        >
+          <.icon name={if @current_path == "/settings", do: "hero-user-circle-solid", else: "hero-user-circle"} class="size-5" />
+          <span class="text-[10px] mt-0.5 font-medium">Perfil</span>
+        </.link>
+      </div>
+    </nav>
+  <% end %>
 </div>

@@ -136,7 +136,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <h3 class="text-lg font-bold mb-4">
+      <h3 class="text-base sm:text-lg font-bold mb-3 sm:mb-4">
         {if @provider, do: "Editar Provedor", else: "Adicionar Provedor"}
       </h3>
 
@@ -156,15 +156,15 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
         />
         <.input field={@form[:username]} label="Usuário" required />
         <.input field={@form[:password]} type="password" label="Senha" required />
-        
-    <!-- Visibility toggle -->
-        <div class="flex items-center gap-3 py-2">
+
+        <!-- Visibility toggle -->
+        <div class="flex items-start gap-3 py-2">
           <input
             type="checkbox"
             id="provider_is_public"
             name="provider[is_public]"
             checked={public?(@form)}
-            class="size-5 rounded border-border text-brand focus:ring-brand"
+            class="size-5 rounded border-border text-brand focus:ring-brand mt-0.5"
           />
           <label for="provider_is_public" class="text-sm text-text-secondary">
             <span class="font-medium text-text-primary">Tornar público</span>
@@ -194,23 +194,25 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
         </div>
 
         <:actions>
-          <button
-            type="button"
-            phx-click="test_connection"
-            phx-target={@myself}
-            disabled={@testing}
-            class="inline-flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover font-medium rounded-lg disabled:opacity-50 transition-colors"
-          >
-            <.icon
-              :if={@testing}
-              name="hero-arrow-path"
-              class="size-4 animate-spin"
-            />
-            <.icon :if={!@testing} name="hero-signal" class="size-4" /> Testar Conexão
-          </button>
-          <.button type="submit" variant="primary">
-            {if @provider, do: "Atualizar", else: "Adicionar Provedor"}
-          </.button>
+          <div class="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+            <button
+              type="button"
+              phx-click="test_connection"
+              phx-target={@myself}
+              disabled={@testing}
+              class="inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              <.icon
+                :if={@testing}
+                name="hero-arrow-path"
+                class="size-4 animate-spin"
+              />
+              <.icon :if={!@testing} name="hero-signal" class="size-4" /> Testar Conexão
+            </button>
+            <.button type="submit" variant="primary" class="w-full sm:w-auto justify-center">
+              {if @provider, do: "Atualizar", else: "Adicionar Provedor"}
+            </.button>
+          </div>
         </:actions>
       </.simple_form>
     </div>

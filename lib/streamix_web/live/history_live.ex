@@ -83,12 +83,12 @@ defmodule StreamixWeb.HistoryLive do
   @doc false
   def render(assigns) do
     ~H"""
-    <div class="px-[4%] py-8 space-y-8">
-      <div class="flex items-center justify-between flex-wrap gap-4">
-        <h1 class="text-3xl font-bold text-text-primary">Histórico</h1>
+    <div class="space-y-4 sm:space-y-6">
+      <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
+        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Histórico</h1>
 
-        <div class="flex items-center gap-4">
-          <div class="flex gap-2">
+        <div class="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
+          <div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
             <.filter_button type="all" label="Todos" current={@filter} count={length(@history)} />
             <.filter_button
               type="live_channel"
@@ -115,14 +115,15 @@ defmodule StreamixWeb.HistoryLive do
             type="button"
             phx-click="clear_history"
             data-confirm="Tem certeza que deseja limpar todo o histórico?"
-            class="px-3 py-2 text-sm text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+            class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-red-500 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
           >
-            <.icon name="hero-trash" class="size-4" /> Limpar
+            <.icon name="hero-trash" class="size-4" />
+            <span class="hidden sm:inline ml-1">Limpar</span>
           </button>
         </div>
       </div>
 
-      <div :if={Enum.any?(@filtered_history)} class="space-y-3">
+      <div :if={Enum.any?(@filtered_history)} class="space-y-2 sm:space-y-3">
         <.history_entry :for={entry <- @filtered_history} entry={entry} />
       </div>
 
@@ -143,23 +144,23 @@ defmodule StreamixWeb.HistoryLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
         @current == @type && "bg-brand text-white",
         @current != @type &&
           "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-white/20">{@count}</span>
+      <span :if={@count > 0} class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">{@count}</span>
     </button>
     """
   end
 
   defp history_entry(assigns) do
     ~H"""
-    <div class="flex items-center gap-4 p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group">
+    <div class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group">
       <div
-        class="relative w-24 h-16 rounded bg-surface-hover flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
+        class="relative w-20 sm:w-24 h-14 sm:h-16 rounded bg-surface-hover flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
         phx-click="play"
         phx-value-id={@entry.content_id}
         phx-value-type={@entry.content_type}
@@ -174,10 +175,10 @@ defmodule StreamixWeb.HistoryLive do
         <.icon
           :if={!@entry.content_icon}
           name={content_type_icon(@entry.content_type)}
-          class="size-8 text-text-secondary/30"
+          class="size-6 sm:size-8 text-text-secondary/30"
         />
         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-8 text-white" />
+          <.icon name="hero-play-solid" class="size-6 sm:size-8 text-white" />
         </div>
 
         <.progress_indicator
@@ -192,11 +193,11 @@ defmodule StreamixWeb.HistoryLive do
         phx-value-id={@entry.content_id}
         phx-value-type={@entry.content_type}
       >
-        <h4 class="font-medium text-text-primary truncate">
+        <h4 class="font-medium text-sm sm:text-base text-text-primary truncate">
           {@entry.content_name || "Desconhecido"}
         </h4>
-        <div class="flex items-center gap-2 text-sm text-text-secondary mt-1">
-          <span class="px-2 py-0.5 text-xs rounded bg-surface-hover">
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-text-secondary mt-0.5 sm:mt-1">
+          <span class="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs rounded bg-surface-hover">
             {format_content_type(@entry.content_type)}
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
@@ -210,10 +211,10 @@ defmodule StreamixWeb.HistoryLive do
         type="button"
         phx-click="remove_entry"
         phx-value-id={@entry.id}
-        class="p-2 text-text-secondary hover:text-text-primary opacity-0 group-hover:opacity-100 transition-all"
+        class="p-1.5 sm:p-2 text-text-secondary hover:text-text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-all"
         title="Remover do histórico"
       >
-        <.icon name="hero-x-mark" class="size-5" />
+        <.icon name="hero-x-mark" class="size-4 sm:size-5" />
       </button>
     </div>
     """

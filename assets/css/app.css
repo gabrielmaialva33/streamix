@@ -277,3 +277,76 @@ button:active, a:active {
 header {
   transition: background-color 0.3s ease;
 }
+
+/* ============================================
+   Mobile-First Touch Optimizations
+   ============================================ */
+
+/* Touch manipulation for better responsiveness */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Minimum touch target size (44px recommended by Apple/Google) */
+@media (max-width: 640px) {
+  /* Touch targets for interactive buttons only - not all links */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Player controls - always visible on mobile until user taps */
+  #player-controls {
+    opacity: 1 !important;
+  }
+
+  #player-controls.controls-hidden {
+    opacity: 0 !important;
+  }
+
+  /* Larger progress bar on mobile */
+  #progress-container {
+    height: 6px !important;
+  }
+
+  /* Better spacing for mobile player controls */
+  .player-controls-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+}
+
+/* Safe area padding for notched devices */
+@supports (padding: max(0px)) {
+  .safe-area-bottom {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .safe-area-top {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Video player touch area */
+#video-player-container {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth opacity transition for controls */
+#player-controls {
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Active/pressed states for mobile */
+@media (hover: none) {
+  button:active, a:active {
+    opacity: 0.8;
+    transform: scale(0.95);
+  }
+}

@@ -488,6 +488,11 @@ const VideoPlayer = {
       this.setPlaybackRate(speed);
     });
 
+    // ============================================
+    // Mobile Touch Support
+    // ============================================
+    this.setupMobileControls();
+
     // Volume slider input
     const volumeSlider = this.el.querySelector("#volume-slider");
     if (volumeSlider) {
@@ -1110,6 +1115,117 @@ const VideoPlayer = {
   },
 
   // ============================================
+  // Mobile Touch Controls
+  // ============================================
+
+  setupMobileControls() {
+    const controls = this.el.querySelector("#player-controls");
+    if (!controls) return;
+
+    // Track touch state
+    this.controlsVisible = true;
+    this.controlsTimeout = null;
+    this.lastTapTime = 0;
+
+    // Detect mobile/touch device
+    this.isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+
+    if (this.isTouchDevice) {
+      // Tap on video to toggle controls and play/pause
+      this.video.addEventListener("click", (e) => {
+        e.preventDefault();
+        const now = Date.now();
+        const timeSinceLastTap = now - this.lastTapTime;
+
+        if (timeSinceLastTap < 300) {
+          // Double tap - toggle fullscreen
+          this.toggleFullscreen();
+        } else {
+          // Single tap - toggle controls visibility
+          this.toggleControlsVisibility();
+        }
+
+        this.lastTapTime = now;
+      });
+
+      // Start with controls visible, then auto-hide
+      this.showControls();
+      this.scheduleHideControls();
+
+      // Keep controls visible when interacting with them
+      controls.addEventListener("touchstart", () => {
+        this.clearHideControlsTimeout();
+      });
+
+      controls.addEventListener("touchend", () => {
+        this.scheduleHideControls();
+      });
+    }
+
+    // Mouse movement shows controls (desktop)
+    this.el.addEventListener("mousemove", () => {
+      if (!this.isTouchDevice) {
+        this.showControls();
+        this.scheduleHideControls();
+      }
+    });
+
+    // Hide controls when video plays
+    this.video.addEventListener("play", () => {
+      this.scheduleHideControls();
+    });
+
+    // Show controls when video pauses
+    this.video.addEventListener("pause", () => {
+      this.showControls();
+      this.clearHideControlsTimeout();
+    });
+  },
+
+  toggleControlsVisibility() {
+    if (this.controlsVisible) {
+      this.hideControls();
+    } else {
+      this.showControls();
+      this.scheduleHideControls();
+    }
+  },
+
+  showControls() {
+    const controls = this.el.querySelector("#player-controls");
+    if (controls) {
+      controls.classList.remove("controls-hidden");
+      controls.style.opacity = "1";
+      this.controlsVisible = true;
+    }
+  },
+
+  hideControls() {
+    const controls = this.el.querySelector("#player-controls");
+    if (controls && !this.video.paused) {
+      controls.classList.add("controls-hidden");
+      controls.style.opacity = "0";
+      this.controlsVisible = false;
+    }
+  },
+
+  scheduleHideControls() {
+    this.clearHideControlsTimeout();
+    this.controlsTimeout = setTimeout(() => {
+      if (!this.video.paused) {
+        this.hideControls();
+      }
+    }, 3000);
+  },
+
+  clearHideControlsTimeout() {
+    if (this.controlsTimeout) {
+      clearTimeout(this.controlsTimeout);
+      this.controlsTimeout = null;
+    }
+  },
+
+  // ============================================
   // Keyboard Shortcuts
   // ============================================
 
@@ -1219,6 +1335,7 @@ const VideoPlayer = {
   destroyed() {
     this.cleanup();
     this.networkMonitor?.stop();
+    this.clearHideControlsTimeout();
 
     if (this.keyHandler) {
       document.removeEventListener("keydown", this.keyHandler);

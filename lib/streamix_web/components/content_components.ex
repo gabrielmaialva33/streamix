@@ -34,46 +34,46 @@ defmodule StreamixWeb.ContentComponents do
 
   def content_tabs(assigns) do
     ~H"""
-    <div class="inline-flex bg-surface rounded-lg p-1 gap-1">
+    <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
       <.link
         navigate={~p"/providers/#{@provider_id}"}
         class={[
-          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :live && "bg-brand text-white",
           @selected != :live && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
       >
-        <.icon name="hero-tv" class="size-4" />
+        <.icon name="hero-tv" class="size-3.5 sm:size-4" />
         <span>Ao Vivo</span>
-        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
           {format_count(@counts.live)}
         </span>
       </.link>
       <.link
         navigate={~p"/providers/#{@provider_id}/movies"}
         class={[
-          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :movies && "bg-brand text-white",
           @selected != :movies && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
       >
-        <.icon name="hero-film" class="size-4" />
+        <.icon name="hero-film" class="size-3.5 sm:size-4" />
         <span>Filmes</span>
-        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
           {format_count(@counts.movies)}
         </span>
       </.link>
       <.link
         navigate={~p"/providers/#{@provider_id}/series"}
         class={[
-          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :series && "bg-brand text-white",
           @selected != :series && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
       >
-        <.icon name="hero-video-camera" class="size-4" />
+        <.icon name="hero-video-camera" class="size-3.5 sm:size-4" />
         <span>Séries</span>
-        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
           {format_count(@counts.series)}
         </span>
       </.link>
@@ -98,46 +98,46 @@ defmodule StreamixWeb.ContentComponents do
 
   def browse_tabs(assigns) do
     ~H"""
-    <div class="inline-flex bg-surface rounded-lg p-1 gap-1">
+    <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
       <.link
         navigate={~p"/browse"}
         class={[
-          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :live && "bg-brand text-white",
           @selected != :live && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
       >
-        <.icon name="hero-tv" class="size-4" />
+        <.icon name="hero-tv" class="size-3.5 sm:size-4" />
         <span>Ao Vivo</span>
-        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
           {format_count(@counts.live)}
         </span>
       </.link>
       <.link
         navigate={~p"/browse/movies"}
         class={[
-          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :movies && "bg-brand text-white",
           @selected != :movies && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
       >
-        <.icon name="hero-film" class="size-4" />
+        <.icon name="hero-film" class="size-3.5 sm:size-4" />
         <span>Filmes</span>
-        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
           {format_count(@counts.movies)}
         </span>
       </.link>
       <.link
         navigate={~p"/browse/series"}
         class={[
-          "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :series && "bg-brand text-white",
           @selected != :series && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
       >
-        <.icon name="hero-video-camera" class="size-4" />
+        <.icon name="hero-video-camera" class="size-3.5 sm:size-4" />
         <span>Séries</span>
-        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-xs rounded bg-white/20">
+        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
           {format_count(@counts.series)}
         </span>
       </.link>

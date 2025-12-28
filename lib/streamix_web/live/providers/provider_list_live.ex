@@ -126,24 +126,29 @@ defmodule StreamixWeb.Providers.ProviderListLive do
 
   def render(assigns) do
     ~H"""
-    <div class="px-[4%] py-8 space-y-8">
-      <div class="flex items-center justify-between">
+    <div class="space-y-4 sm:space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 class="text-3xl font-bold text-text-primary">Meus Provedores</h1>
-          <p class="text-text-secondary mt-1">Gerencie seus provedores IPTV</p>
+          <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Meus Provedores</h1>
+          <p class="text-sm sm:text-base text-text-secondary mt-1">Gerencie seus provedores IPTV</p>
         </div>
-        <.button navigate={~p"/providers/new"} variant="primary">
-          <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
+        <.button
+          :if={!@empty_providers}
+          navigate={~p"/providers/new"}
+          variant="primary"
+          class="w-full sm:w-auto"
+        >
+          <.icon name="hero-plus" class="size-4 sm:size-5" /> Adicionar Provedor
         </.button>
       </div>
 
-      <div id="providers" phx-update="stream" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div id="providers" phx-update="stream" class="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
         <div :for={{dom_id, provider} <- @streams.providers} id={dom_id}>
           <.provider_card provider={provider} />
         </div>
       </div>
 
-      <div :if={@empty_providers} class="py-12">
+      <div :if={@empty_providers} class="py-8 sm:py-12">
         <.empty_state
           icon="hero-server-stack"
           title="Nenhum provedor ainda"
@@ -151,7 +156,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
         >
           <:action>
             <.button navigate={~p"/providers/new"} variant="primary">
-              <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
+              <.icon name="hero-plus" class="size-4 sm:size-5" /> Adicionar Provedor
             </.button>
           </:action>
         </.empty_state>

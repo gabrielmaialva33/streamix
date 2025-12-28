@@ -96,7 +96,7 @@ defmodule StreamixWeb.HomeLive do
         featured_favorite={@featured_favorite}
       />
 
-      <div class="space-y-8 pb-12">
+      <div class="space-y-6 sm:space-y-8 pb-12">
         <!-- Continue Watching (logged in only) -->
         <.content_carousel
           :if={@current_scope && @history != []}
@@ -170,7 +170,7 @@ defmodule StreamixWeb.HomeLive do
   # Hero Section Component
   defp hero_section(assigns) do
     ~H"""
-    <div class="relative h-[70vh] min-h-[500px] max-h-[800px] overflow-hidden">
+    <div class="relative h-[45vh] sm:h-[60vh] lg:h-[70vh] min-h-[280px] sm:min-h-[400px] max-h-[800px] overflow-hidden -mt-16 sm:-mt-20 pt-14 sm:pt-16">
       <!-- Background Image -->
       <%= if @featured do %>
         <.hero_background featured={@featured} />
@@ -250,35 +250,35 @@ defmodule StreamixWeb.HomeLive do
       </div>
       
     <!-- Title -->
-      <h1 class="text-4xl md:text-6xl font-bold text-text-primary mb-4 drop-shadow-lg">
+      <h1 class="text-2xl sm:text-4xl md:text-6xl font-bold text-text-primary mb-2 sm:mb-4 drop-shadow-lg">
         {@content.title || @content.name}
       </h1>
       
-    <!-- Plot -->
-      <p :if={@content.plot} class="text-lg text-text-secondary mb-6 line-clamp-3 max-w-xl">
+    <!-- Plot (hidden on small mobile) -->
+      <p :if={@content.plot} class="hidden sm:block text-base sm:text-lg text-text-secondary mb-4 sm:mb-6 line-clamp-2 sm:line-clamp-3 max-w-xl">
         {@content.plot}
       </p>
-      
+
     <!-- Actions -->
-      <div class="flex gap-3">
+      <div class="flex gap-2 sm:gap-3">
         <.link
           navigate={content_path(@type, @content)}
-          class="inline-flex items-center gap-2 px-8 py-3 bg-white text-black font-semibold rounded-md hover:bg-white/90 transition-colors"
+          class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black text-sm sm:text-base font-semibold rounded-md hover:bg-white/90 transition-colors"
         >
-          <.icon name="hero-play-solid" class="size-6" /> Assistir
+          <.icon name="hero-play-solid" class="size-4 sm:size-6" /> Assistir
         </.link>
         <.link
           navigate={content_info_path(@type, @content)}
-          class="inline-flex items-center gap-2 px-6 py-3 bg-white/20 text-white font-semibold rounded-md hover:bg-white/30 transition-colors backdrop-blur-sm"
+          class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white/20 text-white text-sm sm:text-base font-semibold rounded-md hover:bg-white/30 transition-colors backdrop-blur-sm"
         >
-          <.icon name="hero-information-circle" class="size-6" /> Mais Informações
+          <.icon name="hero-information-circle" class="size-4 sm:size-6" /> <span class="hidden sm:inline">Mais </span>Info
         </.link>
         <%= if @current_scope do %>
           <button
             type="button"
             phx-click="toggle_featured_favorite"
             class={[
-              "inline-flex items-center justify-center w-12 h-12 rounded-full transition-colors backdrop-blur-sm",
+              "inline-flex items-center justify-center w-9 h-9 sm:w-12 sm:h-12 rounded-full transition-colors backdrop-blur-sm",
               @featured_favorite && "bg-white text-black hover:bg-white/90",
               !@featured_favorite && "bg-white/20 text-white hover:bg-white/30"
             ]}
@@ -286,7 +286,7 @@ defmodule StreamixWeb.HomeLive do
               if @featured_favorite, do: "Remover da Minha Lista", else: "Adicionar à Minha Lista"
             }
           >
-            <.icon name={if @featured_favorite, do: "hero-check", else: "hero-plus"} class="size-6" />
+            <.icon name={if @featured_favorite, do: "hero-check", else: "hero-plus"} class="size-4 sm:size-6" />
           </button>
         <% end %>
       </div>
@@ -358,36 +358,59 @@ defmodule StreamixWeb.HomeLive do
 
     ~H"""
     <div class="px-[4%]">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold text-text-primary">{@title}</h2>
+      <div class="flex items-center justify-between mb-3 sm:mb-4">
+        <h2 class="text-base sm:text-xl font-semibold text-text-primary">{@title}</h2>
         <.link
           :if={@see_more_path}
           navigate={@see_more_path}
-          class="text-sm text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+          class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
         >
           Ver mais <.icon name="hero-chevron-right" class="size-4" />
         </.link>
       </div>
       <%= if @type == :channels do %>
-        <!-- Grid layout with 2 rows for channels -->
-        <div class="grid grid-rows-2 grid-flow-col gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth auto-cols-[160px]">
-          <.channel_card :for={channel <- @items} channel={channel} />
-          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} />
+        <!-- Grid layout for channels - 3 cols mobile, scrollable on larger -->
+        <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[160px]">
+          <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
+          <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
+          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} class="hidden sm:flex" />
         </div>
+        <.link
+          :if={@see_more_path && length(@items) > 6}
+          navigate={@see_more_path}
+          class="sm:hidden mt-3 flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary hover:text-text-primary bg-surface/50 rounded-lg transition-colors"
+        >
+          Ver todos os canais <.icon name="hero-arrow-right" class="size-4" />
+        </.link>
       <% else %>
-        <div class="flex gap-4 overflow-x-auto py-2 scrollbar-hide scroll-smooth">
+        <!-- Grid on mobile (3 cols), horizontal scroll on desktop -->
+        <div class={[
+          "grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth",
+          @type in [:history] && "grid-cols-1 sm:grid-cols-none"
+        ]}>
           <%= case @type do %>
             <% :movies -> %>
-              <.movie_card :for={movie <- @items} movie={movie} />
+              <.movie_card :for={movie <- Enum.take(@items, 6)} movie={movie} class="sm:hidden" />
+              <.movie_card :for={movie <- @items} movie={movie} class="hidden sm:block" />
             <% :series -> %>
-              <.series_card :for={series <- @items} series={series} />
+              <.series_card :for={series <- Enum.take(@items, 6)} series={series} class="sm:hidden" />
+              <.series_card :for={series <- @items} series={series} class="hidden sm:block" />
             <% :history -> %>
-              <.history_item :for={entry <- @items} entry={entry} />
+              <.history_item :for={entry <- Enum.take(@items, 3)} entry={entry} class="sm:hidden" />
+              <.history_item :for={entry <- @items} entry={entry} class="hidden sm:block" />
             <% :favorites -> %>
-              <.favorite_item :for={fav <- @items} favorite={fav} />
+              <.favorite_item :for={fav <- Enum.take(@items, 6)} favorite={fav} class="sm:hidden" />
+              <.favorite_item :for={fav <- @items} favorite={fav} class="hidden sm:block" />
           <% end %>
-          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} />
+          <.see_more_card :if={@see_more_path} path={@see_more_path} type={@type} class="hidden sm:flex" />
         </div>
+        <.link
+          :if={@see_more_path && length(@items) > 6 && @type not in [:history]}
+          navigate={@see_more_path}
+          class="sm:hidden mt-3 flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary hover:text-text-primary bg-surface/50 rounded-lg transition-colors"
+        >
+          Ver mais <.icon name="hero-arrow-right" class="size-4" />
+        </.link>
       <% end %>
     </div>
     """
@@ -395,6 +418,8 @@ defmodule StreamixWeb.HomeLive do
 
   # See More Card at the end of carousel
   defp see_more_card(assigns) do
+    assigns = assign_new(assigns, :class, fn -> nil end)
+
     # Different sizes based on content type
     card_class =
       case assigns.type do
@@ -412,8 +437,9 @@ defmodule StreamixWeb.HomeLive do
       class={[
         "group flex-shrink-0 rounded-lg overflow-hidden bg-surface/50 border border-white/10",
         "hover:bg-surface hover:border-white/20 transition-all duration-200",
-        "flex items-center justify-center",
-        @card_class
+        "items-center justify-center",
+        @card_class,
+        @class
       ]}
     >
       <div class="text-center p-4">
@@ -431,10 +457,12 @@ defmodule StreamixWeb.HomeLive do
 
   # Card Components
   defp movie_card(assigns) do
+    assigns = assign_new(assigns, :class, fn -> nil end)
+
     ~H"""
     <.link
       navigate={~p"/browse/movies/#{@movie.id}"}
-      class="group flex-shrink-0 w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50"
+      class={["group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50", @class]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
         <img
@@ -445,34 +473,36 @@ defmodule StreamixWeb.HomeLive do
           loading="lazy"
         />
         <div :if={!@movie.stream_icon} class="w-full h-full flex items-center justify-center">
-          <.icon name="hero-film" class="size-12 text-text-muted" />
+          <.icon name="hero-film" class="size-8 sm:size-12 text-text-muted" />
         </div>
-        <!-- Hover overlay -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <!-- Hover overlay (hidden on touch devices) -->
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
           <.icon name="hero-play-circle-solid" class="size-16 text-white" />
         </div>
         <!-- Rating badge -->
         <div
           :if={@movie.rating}
-          class="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 bg-black/70 rounded text-xs text-white"
+          class="absolute top-1 right-1 sm:top-2 sm:right-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-black/70 rounded text-[10px] sm:text-xs text-white"
         >
-          <.icon name="hero-star-solid" class="size-3 text-yellow-500" />
+          <.icon name="hero-star-solid" class="size-2.5 sm:size-3 text-yellow-500" />
           {Float.round(Decimal.to_float(@movie.rating), 1)}
         </div>
       </div>
-      <div class="p-2">
-        <h3 class="text-sm font-medium text-text-primary truncate">{@movie.title || @movie.name}</h3>
-        <p class="text-xs text-text-muted">{@movie.year}</p>
+      <div class="p-1.5 sm:p-2">
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">{@movie.title || @movie.name}</h3>
+        <p class="text-[10px] sm:text-xs text-text-muted">{@movie.year}</p>
       </div>
     </.link>
     """
   end
 
   defp series_card(assigns) do
+    assigns = assign_new(assigns, :class, fn -> nil end)
+
     ~H"""
     <.link
       navigate={~p"/browse/series/#{@series.id}"}
-      class="group flex-shrink-0 w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50"
+      class={["group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50", @class]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
         <img
@@ -483,28 +513,28 @@ defmodule StreamixWeb.HomeLive do
           loading="lazy"
         />
         <div :if={!@series.cover} class="w-full h-full flex items-center justify-center">
-          <.icon name="hero-tv" class="size-12 text-text-muted" />
+          <.icon name="hero-tv" class="size-8 sm:size-12 text-text-muted" />
         </div>
-        <!-- Hover overlay -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <!-- Hover overlay (hidden on touch devices) -->
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
           <.icon name="hero-play-circle-solid" class="size-16 text-white" />
         </div>
         <!-- Rating badge -->
         <div
           :if={@series.rating}
-          class="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 bg-black/70 rounded text-xs text-white"
+          class="absolute top-1 right-1 sm:top-2 sm:right-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-black/70 rounded text-[10px] sm:text-xs text-white"
         >
-          <.icon name="hero-star-solid" class="size-3 text-yellow-500" />
+          <.icon name="hero-star-solid" class="size-2.5 sm:size-3 text-yellow-500" />
           {Float.round(Decimal.to_float(@series.rating), 1)}
         </div>
       </div>
-      <div class="p-2">
-        <h3 class="text-sm font-medium text-text-primary truncate">
+      <div class="p-1.5 sm:p-2">
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
           {@series.title || @series.name}
         </h3>
-        <p class="text-xs text-text-muted">
+        <p class="text-[10px] sm:text-xs text-text-muted">
           {if @series.season_count && @series.season_count > 0,
-            do: "#{@series.season_count} temporadas",
+            do: "#{@series.season_count} temp",
             else: @series.year}
         </p>
       </div>
@@ -513,41 +543,45 @@ defmodule StreamixWeb.HomeLive do
   end
 
   defp channel_card(assigns) do
+    assigns = assign_new(assigns, :class, fn -> nil end)
+
     ~H"""
     <.link
       navigate={~p"/watch/live_channel/#{@channel.id}"}
-      class="group rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50"
+      class={["group rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50", @class]}
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
         <img
           :if={@channel.stream_icon}
           src={@channel.stream_icon}
           alt={@channel.name}
-          class="w-full h-full object-contain p-2 animate-fade-in"
+          class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
           loading="lazy"
         />
-        <.icon :if={!@channel.stream_icon} name="hero-tv" class="size-10 text-text-muted" />
+        <.icon :if={!@channel.stream_icon} name="hero-tv" class="size-6 sm:size-10 text-text-muted" />
         <!-- Live badge -->
-        <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-brand rounded text-xs text-white font-semibold">
-          <span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse" /> AO VIVO
+        <div class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-brand rounded text-[8px] sm:text-xs text-white font-semibold">
+          <span class="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-white rounded-full animate-pulse" /> AO VIVO
         </div>
-        <!-- Hover overlay -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <!-- Hover overlay (hidden on touch devices) -->
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-12 text-white" />
         </div>
       </div>
-      <div class="p-2">
-        <h3 class="text-sm font-medium text-text-primary truncate">{@channel.name}</h3>
+      <div class="p-1.5 sm:p-2">
+        <h3 class="text-[10px] sm:text-sm font-medium text-text-primary truncate">{@channel.name}</h3>
       </div>
     </.link>
     """
   end
 
   defp history_item(assigns) do
+    assigns = assign_new(assigns, :class, fn -> nil end)
+
     ~H"""
     <.link
       navigate={watch_path(@entry.content_type, @entry.content_id)}
-      class="group flex-shrink-0 w-[280px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all duration-200"
+      class={["group flex-shrink-0 w-full sm:w-[280px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all duration-200", @class]}
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
         <img
@@ -560,7 +594,7 @@ defmodule StreamixWeb.HomeLive do
         <.icon
           :if={!@entry.content_icon}
           name={content_type_icon(@entry.content_type)}
-          class="size-12 text-text-muted"
+          class="size-8 sm:size-12 text-text-muted"
         />
         <!-- Progress bar -->
         <div
@@ -569,17 +603,17 @@ defmodule StreamixWeb.HomeLive do
         >
           <div class="h-full bg-brand" style={"width: #{progress_percent(@entry)}%"} />
         </div>
-        <!-- Hover overlay -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <!-- Hover overlay (hidden on touch devices) -->
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-12 text-white" />
         </div>
       </div>
-      <div class="p-3">
-        <h3 class="text-sm font-medium text-text-primary truncate">
+      <div class="p-2 sm:p-3">
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
           {@entry.content_name || "Desconhecido"}
         </h3>
-        <p class="text-xs text-text-muted flex items-center gap-2">
-          <span class="px-1.5 py-0.5 rounded bg-surface-hover">
+        <p class="text-[10px] sm:text-xs text-text-muted flex items-center gap-1 sm:gap-2">
+          <span class="px-1 sm:px-1.5 py-0.5 rounded bg-surface-hover">
             {format_content_type(@entry.content_type)}
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
@@ -590,10 +624,12 @@ defmodule StreamixWeb.HomeLive do
   end
 
   defp favorite_item(assigns) do
+    assigns = assign_new(assigns, :class, fn -> nil end)
+
     ~H"""
     <.link
       navigate={watch_path(@favorite.content_type, @favorite.content_id)}
-      class="group flex-shrink-0 w-[120px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50"
+      class={["group flex-shrink-0 w-full sm:w-[120px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50", @class]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative flex items-center justify-center">
         <img
@@ -606,10 +642,10 @@ defmodule StreamixWeb.HomeLive do
         <.icon
           :if={!@favorite.content_icon}
           name={content_type_icon(@favorite.content_type)}
-          class="size-10 text-text-muted"
+          class="size-6 sm:size-10 text-text-muted"
         />
-        <!-- Hover overlay -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <!-- Hover overlay (hidden on touch devices) -->
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-10 text-white" />
         </div>
       </div>

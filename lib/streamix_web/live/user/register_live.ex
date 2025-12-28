@@ -44,12 +44,12 @@ defmodule StreamixWeb.User.RegisterLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-[calc(100vh-80px)] flex items-center justify-center px-4">
-      <div class="w-full max-w-md bg-zinc-900/80 backdrop-blur-sm rounded-lg p-8 shadow-2xl border border-white/10">
-        <h1 class="text-3xl font-bold text-white mb-2">Criar conta</h1>
-        <p class="text-zinc-400 mb-6">
+    <div class="min-h-[calc(100vh-80px)] flex items-center justify-center -mx-[4%] px-4 sm:mx-0">
+      <div class="w-full max-w-md bg-surface/90 backdrop-blur-sm rounded-none sm:rounded-lg p-6 sm:p-8 shadow-2xl border-y sm:border border-white/10">
+        <h1 class="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Criar conta</h1>
+        <p class="text-text-secondary text-sm sm:text-base mb-5 sm:mb-6">
           Já tem uma conta?
-          <.link navigate={~p"/login"} class="text-primary hover:underline font-medium">
+          <.link navigate={~p"/login"} class="text-brand hover:underline font-medium">
             Entrar
           </.link>
         </p>
@@ -71,7 +71,7 @@ defmodule StreamixWeb.User.RegisterLive do
             required
             autocomplete="new-password"
           />
-          <p class="text-xs text-zinc-500 -mt-2">Mínimo de 12 caracteres</p>
+          <p class="text-xs text-text-muted -mt-2">Mínimo de 12 caracteres</p>
           <.input
             field={@form[:password_confirmation]}
             type="password"
@@ -87,10 +87,10 @@ defmodule StreamixWeb.User.RegisterLive do
           </:actions>
         </.simple_form>
 
-        <p class="text-xs text-zinc-500 text-center mt-6">
+        <p class="text-xs text-text-muted text-center mt-5 sm:mt-6">
           Ao criar uma conta, você concorda com nossos
-          <span class="text-zinc-400">Termos de Uso</span>
-          e <span class="text-zinc-400">Política de Privacidade</span>.
+          <span class="text-text-secondary">Termos de Uso</span>
+          e <span class="text-text-secondary">Política de Privacidade</span>.
         </p>
       </div>
     </div>

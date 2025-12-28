@@ -143,7 +143,7 @@ defmodule StreamixWeb.AppComponents do
           :if={@channel.stream_icon}
           src={@channel.stream_icon}
           alt={@channel.name}
-          class="w-full h-full object-contain p-2"
+          class="w-full h-full object-contain p-1.5 sm:p-2"
           loading="lazy"
           onerror="this.style.display='none'"
         />
@@ -151,15 +151,15 @@ defmodule StreamixWeb.AppComponents do
           :if={!@channel.stream_icon}
           class="w-full h-full flex items-center justify-center text-text-muted"
         >
-          <.icon name="hero-tv" class="size-12" />
+          <.icon name="hero-tv" class="size-8 sm:size-12" />
         </div>
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-16 text-brand" />
+          <.icon name="hero-play-circle-solid" class="size-10 sm:size-16 text-brand" />
         </div>
       </div>
-      <div class="p-3">
-        <div class="flex items-start justify-between gap-2">
-          <h3 class="font-medium text-sm text-text-primary truncate flex-1" title={@channel.name}>
+      <div class="p-2 sm:p-3">
+        <div class="flex items-start justify-between gap-1.5 sm:gap-2">
+          <h3 class="font-medium text-xs sm:text-sm text-text-primary truncate flex-1" title={@channel.name}>
             {@channel.name}
           </h3>
           <button
@@ -167,11 +167,11 @@ defmodule StreamixWeb.AppComponents do
             type="button"
             phx-click={@on_favorite}
             phx-value-id={@channel.id}
-            class="shrink-0 p-1 hover:scale-110 transition-transform"
+            class="shrink-0 p-0.5 sm:p-1 hover:scale-110 transition-transform"
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-brand"]}
+              class={["size-4 sm:size-5", @is_favorite && "text-brand"]}
             />
           </button>
         </div>

@@ -63,15 +63,19 @@ defmodule StreamixWeb.User.SettingsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="px-[4%] py-8">
-      <div class="max-w-2xl mx-auto space-y-8">
-        <div>
-          <h1 class="text-3xl font-bold text-text-primary">Configurações</h1>
-          <p class="text-text-secondary mt-1">Gerencie as configurações da sua conta</p>
+    <div class="-mx-[4%] sm:mx-0">
+      <div class="max-w-2xl mx-auto space-y-4 sm:space-y-6">
+        <div class="px-[4%] sm:px-0">
+          <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Configurações</h1>
+          <p class="text-sm sm:text-base text-text-secondary mt-1">
+            Gerencie as configurações da sua conta
+          </p>
         </div>
 
-        <div class="bg-surface rounded-xl p-6 border border-border">
-          <h3 class="text-lg font-semibold text-text-primary mb-4">Alterar Email</h3>
+        <div class="bg-surface sm:rounded-xl p-4 sm:p-6 border-y sm:border border-border">
+          <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
+            Alterar Email
+          </h3>
 
           <.simple_form
             for={@email_form}
@@ -97,15 +101,17 @@ defmodule StreamixWeb.User.SettingsLive do
             />
 
             <:actions>
-              <.button type="submit" variant="primary">
+              <.button type="submit" variant="primary" class="w-full sm:w-auto">
                 Alterar Email
               </.button>
             </:actions>
           </.simple_form>
         </div>
 
-        <div class="bg-surface rounded-xl p-6 border border-border">
-          <h3 class="text-lg font-semibold text-text-primary mb-4">Alterar Senha</h3>
+        <div class="bg-surface sm:rounded-xl p-4 sm:p-6 border-y sm:border border-border">
+          <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
+            Alterar Senha
+          </h3>
 
           <.simple_form
             for={@password_form}
@@ -144,7 +150,7 @@ defmodule StreamixWeb.User.SettingsLive do
             />
 
             <:actions>
-              <.button type="submit" variant="primary">
+              <.button type="submit" variant="primary" class="w-full sm:w-auto">
                 Alterar Senha
               </.button>
             </:actions>

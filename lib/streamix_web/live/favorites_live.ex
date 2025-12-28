@@ -82,11 +82,11 @@ defmodule StreamixWeb.FavoritesLive do
   @doc false
   def render(assigns) do
     ~H"""
-    <div class="px-[4%] py-8 space-y-8">
-      <div class="flex items-center justify-between flex-wrap gap-4">
-        <h1 class="text-3xl font-bold text-text-primary">Minha Lista</h1>
+    <div class="space-y-6 sm:space-y-8">
+      <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
+        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Minha Lista</h1>
 
-        <div class="flex gap-2">
+        <div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
           <.filter_button type="all" label="Todos" current={@filter} count={length(@favorites)} />
           <.filter_button
             type="live_channel"
@@ -133,14 +133,14 @@ defmodule StreamixWeb.FavoritesLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
         @current == @type && "bg-brand text-white",
         @current != @type &&
           "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-white/20">{@count}</span>
+      <span :if={@count > 0} class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">{@count}</span>
     </button>
     """
   end
