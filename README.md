@@ -1,482 +1,295 @@
-# Streamix
+<h1 align="center">
+  <br>
+  <img src=".github/assets/web-data.png" alt="Streamix" width="200">
+  <br>
+  Streamix - Next-Gen Unified IPTV Platform 📺
+  <br>
+</h1>
 
-<div align="center">
+<p align="center">
+  <strong>A premium, consolidated streaming experience bringing all your IPTV providers into one intelligent, beautiful interface.</strong>
+</p>
 
-![Streamix](https://img.shields.io/badge/Streamix-IPTV%20Streaming-blueviolet?style=for-the-badge)
-![Elixir](https://img.shields.io/badge/Elixir-1.15+-4B275F?style=for-the-badge&logo=elixir)
-![Phoenix](https://img.shields.io/badge/Phoenix-1.8-FD4F00?style=for-the-badge&logo=phoenix-framework)
-![LiveView](https://img.shields.io/badge/LiveView-1.1-blue?style=for-the-badge)
-![License](https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge)
+<p align="center">
+  <img src="https://img.shields.io/badge/Elixir-1.15+-purple?style=flat&logo=elixir" alt="Elixir" />
+  <img src="https://img.shields.io/badge/Phoenix-1.8.2+-orange?style=flat&logo=phoenix-framework" alt="Phoenix" />
+  <img src="https://img.shields.io/badge/LiveView-1.1.0+-blue?style=flat&logo=phoenix-framework" alt="LiveView" />
+  <img src="https://img.shields.io/badge/PostgreSQL-14+-blue?style=flat&logo=postgresql" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Tailwind-v3+-38bdf8?style=flat&logo=tailwindcss" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat&logo=appveyor" alt="License" />
+  <img src="https://img.shields.io/badge/Made%20with-❤️%20by%20Maia-red?style=flat&logo=appveyor" alt="Made with Love" />
+</p>
 
-**Uma aplicacao moderna de streaming IPTV construida com Phoenix LiveView**
+<br>
 
-[Funcionalidades](#-funcionalidades) •
-[Arquitetura](#-arquitetura) •
-[Instalacao](#-instalacao) •
-[Uso](#-uso) •
-[API](#-api) •
-[Licenca](#-licenca)
+<p align="center">
+  <a href="#sparkles-features">Features</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#rocket-capabilities">Capabilities</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#computer-technologies">Technologies</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#package-installation">Installation</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#electric_plug-usage">Usage</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#memo-license">License</a>
+</p>
 
-</div>
+<br>
 
----
+## :sparkles: Features
 
-## Sobre
+### Unified Content Management 🎬
 
-O **Streamix** e uma aplicacao completa de streaming IPTV que permite gerenciar provedores, sincronizar canais de playlists M3U/Xtream Codes, assistir conteudo ao vivo e sob demanda, alem de rastrear favoritos e historico de visualizacao.
+- **Multi-Provider Aggregation** - Connect unlimited Xtream Codes IPTV providers in one place
+- **Intelligent Sync** - Background synchronization of Live TV, Movies, and Series
+- **Global & Private Providers** - System-wide providers for all users or personal private subscriptions
+- **Smart Categorization** - Automatic organization of content by genre, country, and resolution
+- **Unified Search** - Search across all your providers instantly
+- **Favorites & History** - Keep track of what you love and resume where you left off
+- **🆕 Cross-Provider Playlists** - Create custom playlists mixing content from different sources
+- **🆕 Metadata Enrichment** - Automatic fetching of logos, posters, and EPG data
 
-Desenvolvido com **Phoenix 1.8** e **LiveView**, oferece uma experiencia fluida e reativa em tempo real, com suporte a dispositivos moveis e uma interface moderna construida com Tailwind CSS.
+### Advanced Streaming Engine ⚡
 
----
+- **Adaptive Stream Proxying** - Smart proxy system to bypass geo-blocks and insecure content (HLS/MPEG-TS)
+- **Low-Latency Playback** - Optimized buffer settings for instant channel zapping
+- **Format Intelligence** - Automatic detection and handling of m3u8 and ts stream formats
+- **Bandwidth Optimization** - Smart transcoding and stream relay capability
+- **Error Recovery** - Automatic reconnection strategies for unstable streams
+- **🆕 Multi-Format Support** - Seamless playback of Live Streams, VOD Movies, and Series Episodes
+- **🆕 Player API** - Dedicated API endpoints for external player integration
 
-## Funcionalidades
+### Premium User Experience 💎
 
-### Gerenciamento de Provedores IPTV
-- Suporte a provedores **Xtream Codes**
-- Provedores **globais** (compartilhados) e **privados** por usuario
-- Sincronizacao automatica em background com **Oban**
-- Rastreamento de status de sincronizacao em tempo real
+- **Cinematic UI** - Dark-mode first, glassmorphism-inspired design
+- **Responsive Layouts** - Perfectly optimized for Desktop, Tablet, and Mobile
+- **Instant Navigation** - Powered by Phoenix LiveView for app-like speed without page loads
+- **Visual Feedback** - Micro-interactions and smooth transitions
+- **Player Controls** - Full suite of controls including quality selection, audio tracks, and subtitles
 
-### Catalogo de Conteudo
-- **Canais ao Vivo**: TV ao vivo com suporte a EPG e arquivo
-- **Filmes (VOD)**: Metadados completos via integracao TMDB/IMDB
-- **Series**: Temporadas e episodios com progresso individual
+<br>
 
-### Player de Video
-- Suporte a **HLS** e **MPEG-TS**
-- Proxy de streaming com cache ETS
-- Selecao de qualidade e faixas de audio/legenda
-- Modo Picture-in-Picture
-- Retomada de progresso
+## :rocket: Capabilities
 
-### Engajamento do Usuario
-- Sistema de **Favoritos** polimorfico
-- **Historico de visualizacao** com progresso
-- Conteudo em destaque na pagina inicial
-- Busca global em tempo real
+### IPTV Protocol Support 📡
 
-### Autenticacao
-- Login **sem senha** via magic link (email)
-- Padrao de escopo do Phoenix 1.8
-
----
-
-## Arquitetura
-
-### Visao Geral do Sistema
-
-```mermaid
-graph TB
-    subgraph Cliente
-        Browser[Navegador]
-        TVApp[TV App]
-        Mobile[Mobile]
-    end
-
-    subgraph Phoenix["Phoenix Application"]
-        Router[Router]
-        LiveView[LiveView Pages]
-        Controllers[Controllers]
-        API[REST API]
-
-        subgraph Contexts
-            Accounts[Accounts Context]
-            IPTV[IPTV Context]
-        end
-
-        subgraph Workers
-            SyncWorker[Sync Provider Worker]
-            SeriesWorker[Series Details Worker]
-        end
-    end
-
-    subgraph External
-        XtreamAPI[Xtream Codes API]
-        TMDB[TMDB API]
-        Email[Email Provider]
-    end
-
-    subgraph Storage
-        PostgreSQL[(PostgreSQL)]
-        Redis[(Redis)]
-    end
-
-    Browser --> Router
-    TVApp --> API
-    Mobile --> API
-
-    Router --> LiveView
-    Router --> Controllers
-    Router --> API
-
-    LiveView --> Accounts
-    LiveView --> IPTV
-    Controllers --> IPTV
-    API --> IPTV
-
-    IPTV --> SyncWorker
-    SyncWorker --> SeriesWorker
-
-    SyncWorker --> XtreamAPI
-    SeriesWorker --> TMDB
-    Accounts --> Email
-
-    IPTV --> PostgreSQL
-    Accounts --> PostgreSQL
-    Workers --> Redis
+```bash
+# Supported Standards:
+✅ Xtream Codes API - Full integration with standard IPTV panels
+✅ M3U Playlists - Advanced parsing and categorization
+✅ EPG (XMLTV) - Electronic Program Guide synchronization
+✅ HLS (HTTP Live Streaming) - Native .m3u8 playback
+✅ MPEG-TS - Transport stream support via proxy
+✅ VOD Metadata - Movie and Series information fetching
 ```
 
-### Fluxo de Sincronizacao de Provedor
+### Content Intelligence
+
+```bash
+# Smart Features:
+- Automatic provider health checks
+- Stream availability monitoring
+- Duplicate channel detection
+- Intelligent grouped search
+- Resource usage optimization (lazy loading)
+- Secure credential management (Redacted in DB)
+```
+
+
+<br>
+
+## :art: System Architecture
+
+### High-Level Overview 🏗️
+
+```mermaid
+graph TD
+    User[👤 User / Client]
+    
+    subgraph "Streamix Platform"
+        LB[🌐 Phoenix Endpoint]
+        LV[⚡ LiveView UI]
+        API[🔌 REST API]
+        Proxy[🔄 Stream Proxy]
+        Sync[⚙️ Sync Engine]
+    end
+    
+    subgraph "Data Layer"
+        DB[(🐘 PostgreSQL)]
+        Cache[(⚡ Cache / ETS)]
+    end
+    
+    subgraph "External World"
+        P1[📡 IPTV Provider A]
+        P2[📡 IPTV Provider B]
+        TM[🎬 TMDB / Metadata]
+    end
+
+    User -->|HTTPS| LB
+    LB --> LV
+    LB --> API
+    LB --> Proxy
+    
+    LV --> DB
+    LV <--> Cache
+    
+    Sync -->|Cron Jobs| P1
+    Sync -->|Cron Jobs| P2
+    Sync -->|Enrichment| TM
+    Sync --> DB
+    
+    Proxy -->|HLS/TS| P1
+```
+
+### Streaming Pipeline 🌊
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant LiveView
-    participant IPTV Context
-    participant Oban
-    participant XtreamClient
-    participant Database
+    participant C as 👤 Client
+    participant S as 🛡️ Streamix Core
+    participant P as 🔄 Stream Proxy
+    participant X as 📡 IPTV Service
 
-    User->>LiveView: Clica "Sincronizar"
-    LiveView->>IPTV Context: sync_provider(provider)
-    IPTV Context->>Oban: Enfileira SyncProviderWorker
-    IPTV Context-->>LiveView: {:ok, job}
-    LiveView-->>User: Status: "Sincronizando..."
-
-    Oban->>XtreamClient: Buscar canais ao vivo
-    XtreamClient-->>Oban: Lista de canais
-    Oban->>Database: Upsert canais
-
-    Oban->>XtreamClient: Buscar filmes
-    XtreamClient-->>Oban: Lista de filmes
-    Oban->>Database: Upsert filmes
-
-    Oban->>XtreamClient: Buscar series
-    XtreamClient-->>Oban: Lista de series
-    Oban->>Database: Upsert series
-
-    Oban->>IPTV Context: Broadcast status
-    IPTV Context-->>LiveView: PubSub update
-    LiveView-->>User: Status: "Concluido"
+    C->>S: Request Stream (Channel 101)
+    S->>S: Check User Access & Settings
+    
+    alt Direct Mode
+        S-->>C: Redirect to Provider URL (302)
+        C->>X: Play Stream Direct
+    else Proxy Mode (Secure/Fix)
+        S->>P: Initialize Proxy Session
+        P->>X: Open Connection
+        X-->>P: Stream Data (MPEG-TS/HLS)
+        P-->>P: Buffer & Transcode (Optional)
+        P-->>C: Stream Chunks
+    end
 ```
+<br>
 
-### Modelo de Dados
+## :computer: Technologies
 
-```mermaid
-erDiagram
-    USERS ||--o{ PROVIDERS : owns
-    USERS ||--o{ FAVORITES : has
-    USERS ||--o{ WATCH_HISTORY : has
+### Core Framework
 
-    PROVIDERS ||--o{ LIVE_CHANNELS : contains
-    PROVIDERS ||--o{ MOVIES : contains
-    PROVIDERS ||--o{ SERIES : contains
-    PROVIDERS ||--o{ CATEGORIES : contains
+- **[Elixir](https://elixir-lang.org/)** 1.15+ - The backbone of our concurrent architecture
+- **[Phoenix Framework](https://www.phoenixframework.org/)** 1.8.2+ - High-performance web interface
+- **[Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/)** 1.1.0+ - Real-time smooth UX
+- **[OTP](https://www.erlang.org/doc/design_principles/des_princ.html)** - Fault tolerance and supervision
 
-    SERIES ||--o{ SEASONS : has
-    SEASONS ||--o{ EPISODES : has
+### Data & Connectivity
 
-    CATEGORIES ||--o{ LIVE_CHANNELS : categorizes
-    CATEGORIES ||--o{ MOVIES : categorizes
-    CATEGORIES ||--o{ SERIES : categorizes
+- **[PostgreSQL](https://www.postgresql.org/)** 14+ - Robust relational data storage
+- **[Ecto](https://hexdocs.pm/ecto/)** 3.13+ - Database interaction and query composition
+- **[Req](https://hexdocs.pm/req/)** 0.5+ - Powerful HTTP client for provider communication
+- **[Bandit](https://hexdocs.pm/bandit/)** - Next-gen HTTP server for Elixir
 
-    USERS {
-        uuid id PK
-        string email UK
-        string hashed_password
-        timestamp confirmed_at
-    }
+### Frontend & Design
 
-    PROVIDERS {
-        uuid id PK
-        uuid user_id FK
-        string name
-        string server_url
-        string username
-        string password
-        string visibility
-        timestamp last_synced_at
-    }
+- **[Tailwind CSS](https://tailwindcss.com/)** v3 - Utility-first styling for custom designs
+- **[Heroicons](https://heroicons.com/)** - Beautiful SVG icons
+- **[JS Hooks](https://hexdocs.pm/phoenix_live_view/js-interop.html)** - integration for video players and advanced interactions
 
-    LIVE_CHANNELS {
-        uuid id PK
-        uuid provider_id FK
-        uuid category_id FK
-        string name
-        string stream_url
-        string logo_url
-        integer stream_id
-        boolean has_archive
-    }
+### Quality & Tools
 
-    MOVIES {
-        uuid id PK
-        uuid provider_id FK
-        uuid category_id FK
-        string name
-        string stream_url
-        string cover_url
-        string plot
-        float rating
-        integer duration
-        string director
-        string cast
-    }
+- **[Credo](https://hexdocs.pm/credo/)** - Code consistency and quality
+- **[ExUnit](https://hexdocs.pm/ex_unit/)** - Comprehensive testing framework
+- **[Oban](https://getoban.pro/)** - Robust background job processing
 
-    SERIES {
-        uuid id PK
-        uuid provider_id FK
-        uuid category_id FK
-        string name
-        string cover_url
-        string plot
-        float rating
-    }
+<br>
 
-    FAVORITES {
-        uuid id PK
-        uuid user_id FK
-        string favoritable_type
-        uuid favoritable_id
-    }
+## :package: Installation
 
-    WATCH_HISTORY {
-        uuid id PK
-        uuid user_id FK
-        string watchable_type
-        uuid watchable_id
-        integer progress_seconds
-        integer duration_seconds
-    }
-```
+### Prerequisites
 
-### Estrutura de Rotas
+- **[Elixir](https://elixir-lang.org/install.html)** 1.15+
+- **[PostgreSQL](https://www.postgresql.org/download/)** 14+
+- **[Node.js](https://nodejs.org/)** (for asset building)
 
-```mermaid
-flowchart LR
-    subgraph Public
-        Home["/"]
-    end
+### Quick Start
 
-    subgraph Guest["Guest Only"]
-        Login["/login"]
-        Register["/register"]
-    end
-
-    subgraph Auth["Authenticated"]
-        Browse["/browse"]
-        Movies["/browse/movies"]
-        Series["/browse/series"]
-        Search["/search"]
-        Favorites["/favorites"]
-        History["/history"]
-        Player["/watch/:type/:id"]
-        Providers["/providers"]
-        Settings["/settings"]
-    end
-
-    subgraph API["REST API"]
-        Catalog["/api/v1/catalog/*"]
-    end
-
-    Home --> Guest
-    Home --> Auth
-    Guest -.->|redirect if auth| Auth
-    Auth -.->|redirect if guest| Guest
-```
-
----
-
-## Stack Tecnologica
-
-| Categoria | Tecnologia |
-|-----------|------------|
-| **Backend** | Elixir 1.15+, Phoenix 1.8, Ecto 3.13 |
-| **Frontend** | Phoenix LiveView 1.1, Tailwind CSS v4, Alpine.js |
-| **Banco de Dados** | PostgreSQL |
-| **Cache/Jobs** | Redis, Oban |
-| **Streaming** | HLS.js, mpegts.js |
-| **HTTP Client** | Req, Mint |
-| **APIs Externas** | Xtream Codes, TMDB |
-
----
-
-## Instalacao
-
-### Pre-requisitos
-
-- **Elixir** 1.15 ou superior
-- **Erlang/OTP** 26 ou superior
-- **PostgreSQL** 14 ou superior
-- **Redis** 6 ou superior
-- **Node.js** 18+ (para compilacao de assets)
-
-### Setup
+1. **Clone the repository**
 
 ```bash
-# Clone o repositorio
-git clone https://github.com/seu-usuario/streamix.git
+git clone https://github.com/gabrielmaialva33/streamix.git
 cd streamix
+```
 
-# Instale as dependencias e configure o banco
-mix setup
+2. **Install dependencies**
 
-# Configure as variaveis de ambiente
-cp .env.example .env
-# Edite .env com suas configuracoes
+```bash
+mix deps.get
+```
 
-# Inicie o servidor de desenvolvimento
+3. **Setup database**
+
+```bash
+mix ecto.setup
+```
+
+4. **Start the Phoenix server**
+
+```bash
 mix phx.server
 ```
 
-Acesse [`localhost:4000`](http://localhost:4000) no seu navegador.
+5. **Access the Application**
 
-### Variaveis de Ambiente
+Open [http://localhost:4000](http://localhost:4000) in your browser.
 
-| Variavel | Descricao |
-|----------|-----------|
-| `DATABASE_URL` | URL de conexao PostgreSQL |
-| `REDIS_URL` | URL de conexao Redis |
-| `SECRET_KEY_BASE` | Chave secreta Phoenix (gere com `mix phx.gen.secret`) |
-| `ADMIN_EMAIL` | Email do usuario admin |
-| `ADMIN_PASSWORD` | Senha do usuario admin |
-| `TMDB_API_TOKEN` | Token da API TMDB (opcional) |
-| `STREAM_PROXY_URL` | URL base do proxy de streaming |
+<br>
 
----
+## :electric_plug: Usage
 
-## Uso
+### Provider Management
 
-### Comandos de Desenvolvimento
+1. Navigate to **Providers** in the main menu.
+2. Click **Add Provider**.
+3. Enter your Xtream Codes credentials (URL, Username, Password).
+4. Watch as Streamix automatically syncs your channels and VOD library.
 
-```bash
-# Servidor de desenvolvimento
-mix phx.server
-iex -S mix phx.server  # com shell IEx
+### Watching Content
 
-# Testes
-mix test
-mix test test/path/to/test.exs  # arquivo especifico
-mix test --failed               # re-executar falhos
+- **Live TV**: Browse by category, search for channels, and click to play instantly.
+- **Movies & Series**: Explore your VOD library with rich metadata and one-click playback.
+- **Favorites**: Star your top channels for quick access on the dashboard.
 
-# Verificacao pre-commit
-mix precommit  # compila, formata, executa testes
+<br>
 
-# Banco de dados
-mix ecto.gen.migration nome_da_migracao
-mix ecto.migrate
-mix ecto.reset  # drop, create, migrate, seed
+## :memo: License
 
-# Assets
-mix assets.build
-mix assets.deploy  # producao
-```
+This project is under the **MIT** license. See [LICENSE](./LICENSE) for details.
 
-### Docker
+<br>
 
-```bash
-# Desenvolvimento com Docker Compose
-docker-compose up -d
+## :handshake: Contributing
 
-# Build para producao
-docker build -t streamix .
-docker run -p 4000:4000 streamix
-```
+Contributions are welcome! Please feel free to submit a Pull Request.
 
----
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## API
+<br>
 
-O Streamix expoe uma API REST publica para integracao com aplicativos externos (TV, mobile, etc.).
+## :busts_in_silhouette: Author
 
-### Endpoints
+<p align="center">
+  <img src="https://avatars.githubusercontent.com/u/26732067" alt="Maia" width="100">
+</p>
 
-| Metodo | Endpoint | Descricao |
-|--------|----------|-----------|
-| `GET` | `/api/v1/catalog/featured` | Conteudo em destaque e estatisticas |
-| `GET` | `/api/v1/catalog/channels` | Lista de canais ao vivo |
-| `GET` | `/api/v1/catalog/movies` | Catalogo de filmes |
-| `GET` | `/api/v1/catalog/series` | Catalogo de series |
-| `GET` | `/api/v1/catalog/search?q=termo` | Busca global |
-| `GET` | `/api/v1/catalog/:type/:id/stream` | URL de streaming |
+Made with ❤️ by **Maia**
 
-### Exemplo de Resposta
+- 📧 Email: [gabrielmaialva33@gmail.com](mailto:gabrielmaialva33@gmail.com)
+- 🐙 GitHub: [@gabrielmaialva33](https://github.com/gabrielmaialva33)
 
-```json
-{
-  "data": {
-    "movies": [
-      {
-        "id": "uuid",
-        "name": "Nome do Filme",
-        "cover_url": "https://...",
-        "rating": 8.5,
-        "duration": 7200,
-        "plot": "Descricao..."
-      }
-    ],
-    "pagination": {
-      "page": 1,
-      "per_page": 20,
-      "total": 150
-    }
-  }
-}
-```
+<br>
 
----
+<p align="center">
+  <img src="https://raw.githubusercontent.com/gabrielmaialva33/gabrielmaialva33/master/assets/gray0_ctp_on_line.svg?sanitize=true" />
+</p>
 
-## Estrutura do Projeto
+<p align="center">
+  <strong>Streamix - Where Entertainment Meets Technology.</strong> 📺✨
+</p>
 
-```
-streamix/
-├── lib/
-│   ├── streamix/              # Logica de negocio
-│   │   ├── accounts/          # Autenticacao de usuarios
-│   │   ├── iptv/              # Contexto IPTV principal
-│   │   │   ├── xtream_client.ex
-│   │   │   ├── tmdb_client.ex
-│   │   │   ├── stream_proxy.ex
-│   │   │   └── sync.ex
-│   │   └── workers/           # Jobs Oban
-│   ├── streamix_web/          # Camada web
-│   │   ├── live/              # Paginas LiveView
-│   │   ├── controllers/       # Controllers HTTP
-│   │   ├── components/        # Componentes reutilizaveis
-│   │   └── router.ex
-│   └── streamix_web.ex
-├── assets/                    # Frontend (JS, CSS)
-├── priv/repo/migrations/      # Migracoes do banco
-├── config/                    # Configuracoes
-├── test/                      # Testes
-├── Dockerfile
-└── docker-compose.yml
-```
-
----
-
-## Contribuicao
-
-Este e um projeto proprietario. Contribuicoes sao bem-vindas apenas mediante autorizacao previa do autor.
-
-Para reportar bugs ou sugerir funcionalidades, abra uma issue no repositorio.
-
----
-
-## Licenca
-
-Copyright (c) 2025 Gabriel Maia. Todos os direitos reservados.
-
-Este software e proprietario e esta licenciado sob os termos da [Licenca Streamix](./LICENSE).
-
-**A revenda ou redistribuicao comercial por terceiros e estritamente proibida.**
-
-Consulte o arquivo [LICENSE](./LICENSE) para detalhes completos.
-
----
-
-<div align="center">
-
-Desenvolvido com :purple_heart: usando [Phoenix Framework](https://phoenixframework.org/)
-
-</div>
+<p align="center">
+  &copy; 2024-present <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
+</p>
