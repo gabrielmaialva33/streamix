@@ -4,6 +4,7 @@ defmodule StreamixWeb.StreamController do
 
   Proxies HTTP streams through HTTPS to avoid mixed content blocking.
   Uses Mint for low-level HTTP streaming without buffering.
+  Follows redirects automatically (up to 5 hops).
   """
   use StreamixWeb, :controller
 
@@ -11,6 +12,7 @@ defmodule StreamixWeb.StreamController do
 
   @connect_timeout 10_000
   @recv_timeout 30_000
+  @max_redirects 5
 
   @doc """
   Proxies a stream URL with chunked transfer.
@@ -19,7 +21,7 @@ defmodule StreamixWeb.StreamController do
   def proxy(conn, %{"url" => encoded_url}) do
     case Base.url_decode64(encoded_url, padding: false) do
       {:ok, url} ->
-        stream_url(conn, url)
+        stream_url(conn, url, 0)
 
       :error ->
         conn
@@ -34,16 +36,26 @@ defmodule StreamixWeb.StreamController do
     |> json(%{error: "Missing url parameter"})
   end
 
-  defp stream_url(conn, url) do
+  defp stream_url(conn, url, redirect_count) when redirect_count > @max_redirects do
+    Logger.error("Stream proxy: too many redirects")
+
+    conn
+    |> put_status(:bad_gateway)
+    |> json(%{error: "Too many redirects"})
+  end
+
+  defp stream_url(conn, url, redirect_count) do
     uri = URI.parse(url)
     scheme = if uri.scheme == "https", do: :https, else: :http
     port = uri.port || default_port(scheme)
     path = build_request_path(uri)
-    headers = build_upstream_headers(conn)
+    headers = build_upstream_headers(conn, uri.host)
+
+    Logger.info("Stream proxy: connecting to #{uri.host}:#{port}#{path}")
 
     case connect_and_request(scheme, uri.host, port, path, headers) do
       {:ok, mint_conn, request_ref} ->
-        stream_response(conn, mint_conn, request_ref)
+        handle_response(conn, mint_conn, request_ref, url, redirect_count)
 
       {:error, reason} ->
         Logger.error("Stream proxy connection error: #{inspect(reason)}")
@@ -62,8 +74,9 @@ defmodule StreamixWeb.StreamController do
     if uri.query, do: "#{path}?#{uri.query}", else: path
   end
 
-  defp build_upstream_headers(conn) do
+  defp build_upstream_headers(conn, host) do
     headers = [
+      {"host", host},
       {"user-agent", "Streamix/1.0"},
       {"accept", "*/*"},
       {"connection", "keep-alive"}
@@ -99,19 +112,19 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp stream_response(conn, mint_conn, request_ref) do
+  defp handle_response(conn, mint_conn, request_ref, original_url, redirect_count) do
     case receive_headers(mint_conn, request_ref) do
       {:ok, mint_conn, status, headers} ->
-        # Build the Phoenix response with proper headers
-        conn =
-          conn
-          |> put_cors_headers()
-          |> put_streaming_headers()
-          |> copy_upstream_headers(headers)
-          |> send_chunked(normalize_status(status))
+        cond do
+          # Handle redirects (301, 302, 303, 307, 308)
+          status in [301, 302, 303, 307, 308] ->
+            Mint.HTTP.close(mint_conn)
+            handle_redirect(conn, headers, original_url, redirect_count)
 
-        # Stream the body
-        stream_body(conn, mint_conn, request_ref)
+          # Normal response - stream it
+          true ->
+            stream_response(conn, mint_conn, request_ref, status, headers)
+        end
 
       {:error, _mint_conn, reason} ->
         Logger.error("Stream proxy header error: #{inspect(reason)}")
@@ -120,6 +133,54 @@ defmodule StreamixWeb.StreamController do
         |> put_status(:bad_gateway)
         |> json(%{error: "Failed to read stream headers", reason: inspect(reason)})
     end
+  end
+
+  defp handle_redirect(conn, headers, original_url, redirect_count) do
+    case get_header(headers, "location") do
+      nil ->
+        Logger.error("Stream proxy: redirect without Location header")
+
+        conn
+        |> put_status(:bad_gateway)
+        |> json(%{error: "Redirect without Location header"})
+
+      location ->
+        # Resolve relative URLs
+        redirect_url = resolve_url(original_url, location)
+        Logger.info("Stream proxy: following redirect to #{redirect_url}")
+        stream_url(conn, redirect_url, redirect_count + 1)
+    end
+  end
+
+  defp resolve_url(base_url, location) do
+    if String.starts_with?(location, "http://") or String.starts_with?(location, "https://") do
+      location
+    else
+      base_uri = URI.parse(base_url)
+      URI.merge(base_uri, location) |> URI.to_string()
+    end
+  end
+
+  defp get_header(headers, name) do
+    name_lower = String.downcase(name)
+
+    case Enum.find(headers, fn {k, _v} -> String.downcase(k) == name_lower end) do
+      {_, value} -> value
+      nil -> nil
+    end
+  end
+
+  defp stream_response(conn, mint_conn, request_ref, status, headers) do
+    # Build the Phoenix response with proper headers
+    conn =
+      conn
+      |> put_cors_headers()
+      |> put_streaming_headers()
+      |> copy_upstream_headers(headers)
+      |> send_chunked(normalize_status(status))
+
+    # Stream the body
+    stream_body(conn, mint_conn, request_ref)
   end
 
   defp receive_headers(mint_conn, request_ref) do
