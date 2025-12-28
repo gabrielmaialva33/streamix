@@ -917,7 +917,9 @@ defmodule Streamix.Iptv do
   end
 
   def update_watch_progress(user_id, content_type, content_id, current_time, duration) do
-    update_progress(user_id, content_type, content_id, round(current_time), round(duration))
+    # duration can be nil for live streams
+    duration_rounded = if duration, do: round(duration), else: nil
+    update_progress(user_id, content_type, content_id, round(current_time || 0), duration_rounded)
   end
 
   def update_watch_time(user_id, content_type, content_id, duration_seconds) do

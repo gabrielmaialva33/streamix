@@ -36,7 +36,7 @@ defmodule StreamixWeb.StreamController do
     |> json(%{error: "Missing url parameter"})
   end
 
-  defp stream_url(conn, url, redirect_count) when redirect_count > @max_redirects do
+  defp stream_url(conn, _url, redirect_count) when redirect_count > @max_redirects do
     Logger.error("Stream proxy: too many redirects")
 
     conn

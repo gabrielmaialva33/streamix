@@ -229,13 +229,16 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     if provider do
       categories = Iptv.list_categories(provider.id, type)
 
-      json(conn, Enum.map(categories, fn cat ->
-        %{
-          id: cat.id,
-          name: cat.name,
-          type: cat.type
-        }
-      end))
+      json(
+        conn,
+        Enum.map(categories, fn cat ->
+          %{
+            id: cat.id,
+            name: cat.name,
+            type: cat.type
+          }
+        end)
+      )
     else
       json(conn, [])
     end
@@ -386,7 +389,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     }
   end
 
-@doc """
+  @doc """
   Returns stream URL for a movie.
   """
   def movie_stream(conn, %{"id" => id}) do
@@ -438,6 +441,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   defp build_episode_stream_url(episode, series) do
     provider = series.provider
     ext = episode.container_extension || "mp4"
+
     "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
   end
 

@@ -33,7 +33,9 @@ admin_password = env["ADMIN_PASSWORD"] || "changeme12345"
 admin =
   case Accounts.get_user_by_email(admin_email) do
     nil ->
-      {:ok, user} = Accounts.register_user_with_password(%{email: admin_email, password: admin_password})
+      {:ok, user} =
+        Accounts.register_user_with_password(%{email: admin_email, password: admin_password})
+
       IO.puts("✓ Created admin user: #{admin_email}")
       user
 
