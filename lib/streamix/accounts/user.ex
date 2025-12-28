@@ -40,6 +40,7 @@ defmodule Streamix.Accounts.User do
         message: "deve ter o @ e não pode conter espaços"
       )
       |> validate_length(:email, max: 160)
+      |> update_change(:email, &String.downcase/1)
 
     if Keyword.get(opts, :validate_unique, true) do
       changeset

@@ -13,7 +13,7 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       provider = provider_fixture(user)
 
       assert {:ok, %Oban.Job{} = job} = SyncProviderWorker.enqueue(provider)
-      assert job.args == %{"provider_id" => provider.id}
+      assert job.args == %{"provider_id" => provider.id, "series_details" => "skip"}
       assert job.queue == "sync"
     end
 
@@ -32,12 +32,12 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
   describe "enqueue/1 with provider_id" do
     test "enqueues a job with integer provider_id" do
       assert {:ok, %Oban.Job{} = job} = SyncProviderWorker.enqueue(123)
-      assert job.args == %{"provider_id" => 123}
+      assert job.args == %{"provider_id" => 123, "series_details" => "skip"}
     end
 
     test "enqueues a job with string provider_id" do
       assert {:ok, %Oban.Job{} = job} = SyncProviderWorker.enqueue("456")
-      assert job.args == %{"provider_id" => "456"}
+      assert job.args == %{"provider_id" => "456", "series_details" => "skip"}
     end
   end
 

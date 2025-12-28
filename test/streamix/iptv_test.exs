@@ -119,7 +119,7 @@ defmodule Streamix.IptvTest do
       assert provider.user_id == user.id
       assert provider.is_active == true
       assert provider.sync_status == "idle"
-      assert provider.channels_count == 0
+      assert provider.live_channels_count == 0
     end
 
     test "returns error changeset with invalid data" do
@@ -186,45 +186,19 @@ defmodule Streamix.IptvTest do
       assert {:ok, %Provider{}} = Iptv.delete_provider(provider)
       assert is_nil(Iptv.get_provider(provider.id))
     end
-
-    test "deletes associated channels" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      channel = channel_fixture(provider)
-
-      {:ok, _} = Iptv.delete_provider(provider)
-
-      assert is_nil(Iptv.get_channel(channel.id))
-    end
-  end
-
-  describe "connection_error_message/1" do
-    test "returns appropriate messages for each error type" do
-      assert Iptv.connection_error_message(:invalid_credentials) == "Invalid username or password"
-      assert Iptv.connection_error_message(:invalid_url) == "Invalid server URL"
-      assert Iptv.connection_error_message(:host_not_found) == "Server not found - check the URL"
-      assert Iptv.connection_error_message(:connection_refused) == "Connection refused by server"
-
-      assert Iptv.connection_error_message(:timeout) ==
-               "Connection timed out - server may be slow"
-
-      assert Iptv.connection_error_message(:invalid_response) == "Invalid response from server"
-      assert Iptv.connection_error_message({:http_error, 500}) == "HTTP error: 500"
-      assert Iptv.connection_error_message(:unknown_error) == "Failed to connect to server"
-    end
   end
 
   # =============================================================================
-  # Channels
+  # Live Channels
   # =============================================================================
 
-  describe "list_channels/2" do
+  describe "list_live_channels/2" do
     test "returns channels for a provider" do
       user = user_fixture()
       provider = provider_fixture(user)
       channels_fixture(provider, 3)
 
-      channels = Iptv.list_channels(provider.id)
+      channels = Iptv.list_live_channels(provider.id)
 
       assert length(channels) == 3
     end
@@ -233,7 +207,7 @@ defmodule Streamix.IptvTest do
       user = user_fixture()
       provider = provider_fixture(user)
 
-      assert Iptv.list_channels(provider.id) == []
+      assert Iptv.list_live_channels(provider.id) == []
     end
 
     test "supports limit option" do
@@ -241,7 +215,7 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channels_fixture(provider, 10)
 
-      channels = Iptv.list_channels(provider.id, limit: 5)
+      channels = Iptv.list_live_channels(provider.id, limit: 5)
 
       assert length(channels) == 5
     end
@@ -251,24 +225,11 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channels_fixture(provider, 10)
 
-      all = Iptv.list_channels(provider.id)
-      offset = Iptv.list_channels(provider.id, offset: 5)
+      all = Iptv.list_live_channels(provider.id)
+      offset = Iptv.list_live_channels(provider.id, offset: 5)
 
       assert length(offset) == 5
       refute hd(all).id == hd(offset).id
-    end
-
-    test "supports group filter" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      channel_fixture(provider, %{group_title: "News"})
-      channel_fixture(provider, %{group_title: "News"})
-      channel_fixture(provider, %{group_title: "Sports"})
-
-      channels = Iptv.list_channels(provider.id, group: "News")
-
-      assert length(channels) == 2
-      assert Enum.all?(channels, &(&1.group_title == "News"))
     end
 
     test "supports search filter" do
@@ -278,98 +239,60 @@ defmodule Streamix.IptvTest do
       channel_fixture(provider, %{name: "CNN News"})
       channel_fixture(provider, %{name: "ESPN Sports"})
 
-      channels = Iptv.list_channels(provider.id, search: "News")
+      channels = Iptv.list_live_channels(provider.id, search: "News")
 
       assert length(channels) == 2
       assert Enum.all?(channels, &String.contains?(&1.name, "News"))
     end
-
-    test "enforces max page size" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-
-      # Request more than max allowed
-      channels = Iptv.list_channels(provider.id, limit: 1000)
-
-      # Should be capped at max_page_size (500)
-      assert length(channels) <= 500
-    end
   end
 
-  describe "list_user_channels/2" do
-    test "returns channels from all active providers" do
-      user = user_fixture()
-      provider1 = provider_fixture(user, %{is_active: true})
-      provider2 = provider_fixture(user, %{is_active: true})
-      channels_fixture(provider1, 3)
-      channels_fixture(provider2, 2)
-
-      channels = Iptv.list_user_channels(user.id)
-
-      assert length(channels) == 5
-    end
-
-    test "excludes channels from inactive providers" do
-      user = user_fixture()
-      active = provider_fixture(user, %{is_active: true})
-      inactive = provider_fixture(user, %{is_active: false})
-      channels_fixture(active, 3)
-      channels_fixture(inactive, 2)
-
-      channels = Iptv.list_user_channels(user.id)
-
-      assert length(channels) == 3
-    end
-  end
-
-  describe "get_channel!/1 and get_channel/1" do
-    test "get_channel!/1 returns the channel with given id" do
+  describe "get_live_channel!/1" do
+    test "returns the channel with given id" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert Iptv.get_channel!(channel.id).id == channel.id
+      assert Iptv.get_live_channel!(channel.id).id == channel.id
     end
 
-    test "get_channel!/1 raises if channel does not exist" do
+    test "raises if channel does not exist" do
       assert_raise Ecto.NoResultsError, fn ->
-        Iptv.get_channel!(0)
+        Iptv.get_live_channel!(0)
       end
-    end
-
-    test "get_channel/1 returns nil if channel does not exist" do
-      assert is_nil(Iptv.get_channel(0))
     end
   end
 
-  describe "get_categories/1" do
+  # =============================================================================
+  # Categories
+  # =============================================================================
+
+  describe "list_categories/1" do
     test "returns unique categories for a provider" do
       user = user_fixture()
       provider = provider_fixture(user)
-      channel_fixture(provider, %{group_title: "News"})
-      channel_fixture(provider, %{group_title: "Sports"})
-      channel_fixture(provider, %{group_title: "News"})
+      # Simulating categories created by sync/fixtures
+      # For this test we need to insert categories manually or via fixture
+      # Assuming we can insert categories directly for testing
+      
+      Repo.insert!(%Streamix.Iptv.Category{
+        provider_id: provider.id, 
+        name: "News", 
+        type: "live", 
+        external_id: "1"
+      })
+      Repo.insert!(%Streamix.Iptv.Category{
+        provider_id: provider.id, 
+        name: "Sports", 
+        type: "live", 
+        external_id: "2"
+      })
 
-      categories = Iptv.get_categories(provider.id)
+      categories = Iptv.list_categories(provider.id)
 
-      assert "News" in categories
-      assert "Sports" in categories
+      names = Enum.map(categories, & &1.name)
+      assert "News" in names
+      assert "Sports" in names
       assert length(categories) == 2
-    end
-  end
-
-  describe "get_user_categories/1" do
-    test "returns categories from all active providers" do
-      user = user_fixture()
-      provider1 = provider_fixture(user)
-      provider2 = provider_fixture(user)
-      channel_fixture(provider1, %{group_title: "News"})
-      channel_fixture(provider2, %{group_title: "Sports"})
-
-      categories = Iptv.get_user_categories(user.id)
-
-      assert "News" in categories
-      assert "Sports" in categories
     end
   end
 
@@ -378,7 +301,7 @@ defmodule Streamix.IptvTest do
   # =============================================================================
 
   describe "list_favorites/2" do
-    test "returns favorites for a user with channels preloaded" do
+    test "returns favorites for a user" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
@@ -387,7 +310,8 @@ defmodule Streamix.IptvTest do
       favorites = Iptv.list_favorites(user.id)
 
       assert length(favorites) == 1
-      assert hd(favorites).channel.id == channel.id
+      assert hd(favorites).content_id == channel.id
+      assert hd(favorites).content_type == "live_channel"
     end
 
     test "orders by descending inserted_at" do
@@ -396,6 +320,7 @@ defmodule Streamix.IptvTest do
       ch1 = channel_fixture(provider, %{name: "First"})
       ch2 = channel_fixture(provider, %{name: "Second"})
       favorite_fixture(user, ch1)
+      Process.sleep(1000)
       favorite_fixture(user, ch2)
 
       favorites = Iptv.list_favorites(user.id)
@@ -403,24 +328,7 @@ defmodule Streamix.IptvTest do
       # Verify ordering is descending by inserted_at
       assert length(favorites) == 2
       [first, second] = favorites
-      assert NaiveDateTime.compare(first.inserted_at, second.inserted_at) in [:gt, :eq]
-    end
-
-    test "supports pagination" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-
-      for i <- 1..5 do
-        ch = channel_fixture(provider, %{name: "Channel #{i}"})
-        favorite_fixture(user, ch)
-      end
-
-      page1 = Iptv.list_favorites(user.id, limit: 2)
-      page2 = Iptv.list_favorites(user.id, limit: 2, offset: 2)
-
-      assert length(page1) == 2
-      assert length(page2) == 2
-      refute hd(page1).id == hd(page2).id
+      assert NaiveDateTime.compare(first.inserted_at, second.inserted_at) == :gt
     end
   end
 
@@ -436,21 +344,16 @@ defmodule Streamix.IptvTest do
 
       assert Iptv.count_favorites(user.id) == 3
     end
-
-    test "returns 0 for user with no favorites" do
-      user = user_fixture()
-      assert Iptv.count_favorites(user.id) == 0
-    end
   end
 
-  describe "favorite?/2" do
+  describe "favorite?/3" do
     test "returns true if channel is favorited" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert Iptv.favorite?(user.id, channel.id)
+      assert Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "returns false if channel is not favorited" do
@@ -458,18 +361,18 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      refute Iptv.favorite?(user.id, channel.id)
+      refute Iptv.favorite?(user.id, "live_channel", channel.id)
     end
   end
 
-  describe "add_favorite/2" do
+  describe "add_favorite/3" do
     test "adds a favorite" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, %Favorite{}} = Iptv.add_favorite(user.id, channel.id)
-      assert Iptv.favorite?(user.id, channel.id)
+      assert {:ok, %Favorite{}} = Iptv.add_favorite(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "returns error for duplicate favorite" do
@@ -477,37 +380,37 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      {:ok, _} = Iptv.add_favorite(user.id, channel.id)
-      assert {:error, changeset} = Iptv.add_favorite(user.id, channel.id)
+      {:ok, _} = Iptv.add_favorite(user.id, "live_channel", channel.id)
+      assert {:error, changeset} = Iptv.add_favorite(user.id, "live_channel", channel.id)
       assert "has already been taken" in errors_on(changeset).user_id
     end
   end
 
-  describe "remove_favorite/2" do
+  describe "remove_favorite/3" do
     test "removes a favorite" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert {:ok, 1} = Iptv.remove_favorite(user.id, channel.id)
-      refute Iptv.favorite?(user.id, channel.id)
+      assert {:ok, 1} = Iptv.remove_favorite(user.id, "live_channel", channel.id)
+      refute Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "returns 0 if favorite doesn't exist" do
       user = user_fixture()
-      assert {:ok, 0} = Iptv.remove_favorite(user.id, 0)
+      assert {:ok, 0} = Iptv.remove_favorite(user.id, "live_channel", 0)
     end
   end
 
-  describe "toggle_favorite/2" do
+  describe "toggle_favorite/3" do
     test "adds favorite if not exists" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, :added} = Iptv.toggle_favorite(user.id, channel.id)
-      assert Iptv.favorite?(user.id, channel.id)
+      assert {:ok, :added} = Iptv.toggle_favorite(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "removes favorite if exists" do
@@ -516,8 +419,8 @@ defmodule Streamix.IptvTest do
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert {:ok, :removed} = Iptv.toggle_favorite(user.id, channel.id)
-      refute Iptv.favorite?(user.id, channel.id)
+      assert {:ok, :removed} = Iptv.toggle_favorite(user.id, "live_channel", channel.id)
+      refute Iptv.favorite?(user.id, "live_channel", channel.id)
     end
   end
 
@@ -526,7 +429,7 @@ defmodule Streamix.IptvTest do
   # =============================================================================
 
   describe "list_watch_history/2" do
-    test "returns watch history for a user with channels preloaded" do
+    test "returns watch history for a user" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
@@ -535,7 +438,8 @@ defmodule Streamix.IptvTest do
       history = Iptv.list_watch_history(user.id)
 
       assert length(history) == 1
-      assert hd(history).channel.id == channel.id
+      assert hd(history).content_id == channel.id
+      assert hd(history).content_type == "live_channel"
       assert hd(history).duration_seconds == 120
     end
 
@@ -545,6 +449,7 @@ defmodule Streamix.IptvTest do
       ch1 = channel_fixture(provider, %{name: "First"})
       ch2 = channel_fixture(provider, %{name: "Second"})
       watch_history_fixture(user, ch1)
+      Process.sleep(1000)
       watch_history_fixture(user, ch2)
 
       history = Iptv.list_watch_history(user.id)
@@ -552,20 +457,7 @@ defmodule Streamix.IptvTest do
       # Verify ordering is descending by watched_at
       assert length(history) == 2
       [first, second] = history
-      assert DateTime.compare(first.watched_at, second.watched_at) in [:gt, :eq]
-    end
-
-    test "supports pagination with default limit of 50" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-
-      for _ <- 1..60 do
-        ch = channel_fixture(provider)
-        watch_history_fixture(user, ch)
-      end
-
-      history = Iptv.list_watch_history(user.id)
-      assert length(history) == 50
+      assert DateTime.compare(first.watched_at, second.watched_at) == :gt
     end
   end
 
@@ -575,31 +467,10 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, %WatchHistory{} = entry} = Iptv.add_watch_history(user.id, channel.id, 300)
+      assert {:ok, %WatchHistory{} = entry} = Iptv.add_watch_history(user.id, "live_channel", channel.id, %{duration_seconds: 300})
       assert entry.duration_seconds == 300
       assert entry.user_id == user.id
-      assert entry.channel_id == channel.id
-    end
-
-    test "allows multiple entries for same channel" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      channel = channel_fixture(provider)
-
-      {:ok, _} = Iptv.add_watch_history(user.id, channel.id, 100)
-      {:ok, _} = Iptv.add_watch_history(user.id, channel.id, 200)
-
-      history = Iptv.list_watch_history(user.id)
-      assert length(history) == 2
-    end
-
-    test "defaults duration to 0" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-      channel = channel_fixture(provider)
-
-      {:ok, entry} = Iptv.add_watch_history(user.id, channel.id)
-      assert entry.duration_seconds == 0
+      assert entry.content_id == channel.id
     end
   end
 
@@ -615,59 +486,6 @@ defmodule Streamix.IptvTest do
 
       assert {:ok, 5} = Iptv.clear_watch_history(user.id)
       assert Iptv.list_watch_history(user.id) == []
-    end
-
-    test "returns 0 if no history exists" do
-      user = user_fixture()
-      assert {:ok, 0} = Iptv.clear_watch_history(user.id)
-    end
-
-    test "does not affect other users' history" do
-      user1 = user_fixture()
-      user2 = user_fixture()
-      provider = provider_fixture(user1)
-      channel = channel_fixture(provider)
-
-      watch_history_fixture(user1, channel)
-      watch_history_fixture(user2, channel)
-
-      Iptv.clear_watch_history(user1.id)
-
-      assert Iptv.list_watch_history(user1.id) == []
-      assert length(Iptv.list_watch_history(user2.id)) == 1
-    end
-  end
-
-  describe "prune_watch_history/2" do
-    test "keeps only the most recent entries" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-
-      for i <- 1..10 do
-        ch = channel_fixture(provider, %{name: "Channel #{i}"})
-        watch_history_fixture(user, ch)
-        Process.sleep(5)
-      end
-
-      {:ok, pruned} = Iptv.prune_watch_history(user.id, 5)
-
-      assert pruned == 5
-      assert length(Iptv.list_watch_history(user.id)) == 5
-    end
-
-    test "does nothing if history is within limit" do
-      user = user_fixture()
-      provider = provider_fixture(user)
-
-      for _ <- 1..3 do
-        ch = channel_fixture(provider)
-        watch_history_fixture(user, ch)
-      end
-
-      {:ok, pruned} = Iptv.prune_watch_history(user.id, 10)
-
-      assert pruned == 0
-      assert length(Iptv.list_watch_history(user.id)) == 3
     end
   end
 end

@@ -62,7 +62,7 @@ defmodule Streamix.AccountsTest do
           password: valid_user_password()
         })
 
-      assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
+      assert %{email: ["deve ter o @ e não pode conter espaços"]} = errors_on(changeset)
     end
 
     test "validates maximum values for email for security" do
@@ -215,9 +215,7 @@ defmodule Streamix.AccountsTest do
       changeset =
         Accounts.change_user_password(
           %User{},
-          %{
-            "password" => "new valid password"
-          },
+          %{ "password" => "new valid password" },
           hash_password: false
         )
 
@@ -241,7 +239,7 @@ defmodule Streamix.AccountsTest do
 
       assert %{
                password: ["should be at least 12 character(s)"],
-               password_confirmation: ["does not match password"]
+               password_confirmation: ["as senhas não conferem"]
              } = errors_on(changeset)
     end
 

@@ -106,6 +106,10 @@ config :streamix, Streamix.Iptv,
   default_page_size: 100,
   max_page_size: 500
 
+# Rate limiting configuration
+config :hammer,
+  backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60, cleanup_interval_ms: 60_000 * 10]}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
