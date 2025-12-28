@@ -326,8 +326,8 @@ defmodule StreamixWeb.PlayerComponents do
 
   defp build_proxy_url(stream_url) when is_binary(stream_url) do
     # Use Nginx proxy for HTTP streams (bypasses mixed content blocking)
-    encoded = URI.encode(stream_url, &URI.char_unreserved?/1)
-    "https://pannxs.mahina.cloud/proxy?url=#{encoded}"
+    # Don't URL-encode as Nginx expects raw URL in query parameter
+    "https://pannxs.mahina.cloud/proxy?url=#{stream_url}"
   end
 
   defp build_proxy_url(_), do: nil
