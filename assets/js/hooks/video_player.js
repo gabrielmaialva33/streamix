@@ -740,8 +740,17 @@ const VideoPlayer = {
   },
 
   getEffectiveUrl(streamType) {
-    const proxyableTypes = ["ts", "xtream", "unknown"];
+    // Always use proxy for HTTP URLs when on HTTPS to avoid Mixed Content blocking
+    const isHttpUrl = this.streamUrl?.startsWith("http://");
+    const isHttpsPage = window.location.protocol === "https:";
 
+    if (this.useProxy && this.proxyUrl && isHttpUrl && isHttpsPage) {
+      console.log("Using proxy URL for", streamType, "stream (HTTP -> HTTPS proxy)");
+      return this.proxyUrl;
+    }
+
+    // Also proxy specific stream types that benefit from it
+    const proxyableTypes = ["ts", "xtream", "unknown"];
     if (this.useProxy && this.proxyUrl && proxyableTypes.includes(streamType)) {
       console.log("Using proxy URL for", streamType, "stream");
       return this.proxyUrl;
