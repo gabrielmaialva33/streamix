@@ -291,5 +291,5 @@ Feito com ❤️ por **Maia**
 </p>
 
 <p align="center">
-  &copy; 2024-presente <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
+  &copy; 2017-presente <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
 </p>
