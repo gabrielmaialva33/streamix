@@ -744,12 +744,13 @@ const VideoPlayer = {
     const isHttpUrl = this.streamUrl?.startsWith("http://");
     const isHttpsPage = window.location.protocol === "https:";
 
-    if (this.useProxy && this.proxyUrl && isHttpUrl && isHttpsPage) {
-      console.log("Using proxy URL for", streamType, "stream (HTTP -> HTTPS proxy)");
+    // Force proxy for ALL HTTP streams when on HTTPS (mixed content blocking)
+    if (isHttpUrl && isHttpsPage && this.proxyUrl) {
+      console.log("Using proxy URL for", streamType, "stream (HTTP -> HTTPS proxy required)");
       return this.proxyUrl;
     }
 
-    // Also proxy specific stream types that benefit from it
+    // For same-protocol, proxy specific stream types that benefit from it
     const proxyableTypes = ["ts", "xtream", "unknown"];
     if (this.useProxy && this.proxyUrl && proxyableTypes.includes(streamType)) {
       console.log("Using proxy URL for", streamType, "stream");
@@ -840,7 +841,8 @@ const VideoPlayer = {
   },
 
   playWithHls() {
-    const hlsUrl = this.currentStreamType === "hls" ? this.streamUrl : this.currentUrl;
+    // Always use currentUrl which properly handles HTTP->HTTPS proxy
+    const hlsUrl = this.currentUrl;
     console.log("Playing with HLS.js, url:", hlsUrl);
 
     if (!Hls.isSupported()) {

@@ -71,7 +71,9 @@ defmodule Streamix.MixProject do
       {:bandit, "~> 1.5"},
       {:dotenvy, "~> 0.8"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:cors_plug, "~> 3.0"}
+      {:cors_plug, "~> 3.0"},
+      {:mint, "~> 1.6"},
+      {:castore, "~> 1.0"}
     ]
   end
 
