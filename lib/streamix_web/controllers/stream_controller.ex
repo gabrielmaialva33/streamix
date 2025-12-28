@@ -313,13 +313,23 @@ defmodule StreamixWeb.StreamController do
   defp copy_upstream_headers(conn, headers) do
     Enum.reduce(headers, conn, fn {key, value}, conn ->
       case String.downcase(key) do
-        "content-type" -> put_resp_content_type(conn, value)
+        # Use put_resp_header directly to avoid Phoenix adding charset
+        "content-type" -> put_resp_header(conn, "content-type", value)
         "content-length" -> put_resp_header(conn, "content-length", value)
         "content-range" -> put_resp_header(conn, "content-range", value)
         "accept-ranges" -> put_resp_header(conn, "accept-ranges", value)
         _ -> conn
       end
     end)
+    # Always ensure accept-ranges is set for video seeking
+    |> ensure_accept_ranges()
+  end
+
+  defp ensure_accept_ranges(conn) do
+    case get_resp_header(conn, "accept-ranges") do
+      [] -> put_resp_header(conn, "accept-ranges", "bytes")
+      _ -> conn
+    end
   end
 
   defp put_cors_headers(conn) do
