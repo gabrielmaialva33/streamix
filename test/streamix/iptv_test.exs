@@ -346,6 +346,47 @@ defmodule Streamix.IptvTest do
     end
   end
 
+  describe "count_favorites_by_type/1" do
+    test "returns counts grouped by type" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      ch = channel_fixture(provider)
+
+      # Add 1 live channel
+      favorite_fixture(user, ch)
+
+      # Add 2 movies
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", 100, %{content_name: "Movie"})
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", 101, %{content_name: "Movie 2"})
+
+      # Add 1 series
+      {:ok, _} = Iptv.add_favorite(user.id, "series", 200, %{content_name: "Series"})
+
+      counts = Iptv.count_favorites_by_type(user.id)
+
+      assert counts["live_channel"] == 1
+      assert counts["movie"] == 2
+      assert counts["series"] == 1
+    end
+  end
+
+  describe "list_favorite_ids/2" do
+    test "returns set of IDs for type" do
+      user = user_fixture()
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", 100)
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", 101)
+      {:ok, _} = Iptv.add_favorite(user.id, "series", 200)
+
+      movie_ids = Iptv.list_favorite_ids(user.id, "movie")
+      series_ids = Iptv.list_favorite_ids(user.id, "series")
+
+      assert MapSet.member?(movie_ids, 100)
+      assert MapSet.member?(movie_ids, 101)
+      refute MapSet.member?(movie_ids, 200)
+      assert MapSet.member?(series_ids, 200)
+    end
+  end
+
   describe "favorite?/3" do
     test "returns true if channel is favorited" do
       user = user_fixture()
