@@ -75,6 +75,33 @@ defmodule Streamix.IptvFixtures do
     history
   end
 
+  def valid_epg_program_attrs(provider, attrs \\ %{}) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    start_time = Map.get(attrs, :start_time, DateTime.add(now, -30, :minute))
+    end_time = Map.get(attrs, :end_time, DateTime.add(now, 30, :minute))
+
+    Enum.into(attrs, %{
+      epg_channel_id: "ch#{System.unique_integer([:positive])}",
+      title: "Program #{System.unique_integer([:positive])}",
+      description: "Test program description",
+      start_time: start_time,
+      end_time: end_time,
+      category: "Entertainment",
+      lang: "pt",
+      provider_id: provider.id
+    })
+  end
+
+  def epg_program_fixture(provider, attrs \\ %{}) do
+    alias Streamix.Iptv.EpgProgram
+
+    attrs = valid_epg_program_attrs(provider, attrs)
+
+    %EpgProgram{}
+    |> EpgProgram.changeset(attrs)
+    |> Repo.insert!()
+  end
+
   @doc """
   Creates a complete test setup with user, provider, and channels.
   Returns a map with :user, :provider, and :channels.
