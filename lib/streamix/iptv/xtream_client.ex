@@ -67,6 +67,26 @@ defmodule Streamix.Iptv.XtreamClient do
   end
 
   # ============================================================================
+  # EPG
+  # ============================================================================
+
+  @doc """
+  Fetches short EPG data for a specific stream.
+  Returns program listings for the specified channel.
+  """
+  def get_short_epg(url, username, password, stream_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+    api_call(url, username, password, "get_short_epg", %{stream_id: stream_id, limit: limit})
+  end
+
+  @doc """
+  Fetches simple EPG data table for a stream.
+  """
+  def get_simple_data_table(url, username, password, stream_id) do
+    api_call(url, username, password, "get_simple_data_table", %{stream_id: stream_id})
+  end
+
+  # ============================================================================
   # Stream URLs
   # ============================================================================
 

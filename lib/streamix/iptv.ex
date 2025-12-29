@@ -6,6 +6,7 @@ defmodule Streamix.Iptv do
   alias Streamix.Iptv.{
     Catalog,
     Channels,
+    Epg,
     Favorites,
     History,
     Movies,
@@ -137,4 +138,12 @@ defmodule Streamix.Iptv do
   defdelegate list_recently_added(opts \\ []), to: Catalog
   defdelegate list_categories(provider_id, type \\ nil), to: Catalog
   defdelegate get_category!(id), to: Catalog
+
+  # EPG operations
+  defdelegate get_now_and_next(provider_id, epg_channel_id), to: Epg
+  defdelegate get_current_programs_batch(provider_id, epg_channel_ids), to: Epg
+  defdelegate enrich_channels_with_epg(channels, provider_id), to: Epg
+  defdelegate sync_channel_epg(provider, stream_id, epg_channel_id), to: Epg, as: :sync_channel
+  defdelegate sync_channels_epg(provider, channels), to: Epg, as: :sync_channels
+  defdelegate ensure_epg_available(provider, channels), to: Epg
 end

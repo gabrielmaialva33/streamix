@@ -135,6 +135,11 @@ defmodule Streamix.Cache do
   @spec featured_key() :: String.t()
   def featured_key, do: "featured:#{Date.utc_today()}"
 
+  @doc "Cache key for EPG now/next for a channel"
+  @spec epg_now_key(integer(), String.t()) :: String.t()
+  def epg_now_key(provider_id, epg_channel_id),
+    do: "epg:now:#{provider_id}:#{epg_channel_id}"
+
   # =============================================================================
   # High-Level Caching Functions
   # =============================================================================
@@ -177,6 +182,14 @@ defmodule Streamix.Cache do
   @spec invalidate_provider(integer()) :: {:ok, non_neg_integer()}
   def invalidate_provider(provider_id) do
     delete_pattern("*:provider:#{provider_id}")
+  end
+
+  @doc """
+  Invalidates all EPG cache entries for a provider.
+  """
+  @spec invalidate_provider_epg(integer()) :: {:ok, non_neg_integer()}
+  def invalidate_provider_epg(provider_id) do
+    delete_pattern("epg:*:#{provider_id}:*")
   end
 
   @doc """
