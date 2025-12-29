@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.Provider do
   import Ecto.Changeset
 
   alias Streamix.Accounts.User
-  alias Streamix.Iptv.{Category, LiveChannel, Movie, Series}
+  alias Streamix.Iptv.{Category, EpgProgram, LiveChannel, Movie, Series}
 
   schema "providers" do
     field :name, :string
@@ -27,6 +27,8 @@ defmodule Streamix.Iptv.Provider do
     field :live_synced_at, :utc_datetime
     field :vod_synced_at, :utc_datetime
     field :series_synced_at, :utc_datetime
+    field :epg_synced_at, :utc_datetime
+    field :epg_sync_interval_hours, :integer, default: 6
 
     # Info do servidor (JSON)
     field :server_info, :map
@@ -36,6 +38,7 @@ defmodule Streamix.Iptv.Provider do
     has_many :live_channels, LiveChannel
     has_many :movies, Movie
     has_many :series, Series
+    has_many :epg_programs, EpgProgram
 
     timestamps(type: :utc_datetime)
   end
@@ -43,7 +46,8 @@ defmodule Streamix.Iptv.Provider do
   @required_fields ~w(name url username password)a
   @optional_fields ~w(user_id is_active sync_status visibility is_system
                       live_channels_count movies_count series_count
-                      live_synced_at vod_synced_at series_synced_at server_info)a
+                      live_synced_at vod_synced_at series_synced_at
+                      epg_synced_at epg_sync_interval_hours server_info)a
 
   def changeset(provider, attrs) do
     provider
@@ -76,6 +80,7 @@ defmodule Streamix.Iptv.Provider do
       :live_synced_at,
       :vod_synced_at,
       :series_synced_at,
+      :epg_synced_at,
       :server_info
     ])
   end
