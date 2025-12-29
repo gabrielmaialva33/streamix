@@ -45,6 +45,7 @@
 - **Favorites & History** - Keep track of what you love and resume where you left off
 - **🆕 Cross-Provider Playlists** - Create custom playlists mixing content from different sources
 - **🆕 Metadata Enrichment** - Automatic fetching of logos, posters, and EPG data
+- **🆕 EPG (Electronic Program Guide)** - Live program info with progress bars on channel cards
 
 ### Advanced Streaming Engine ⚡
 
@@ -291,5 +292,5 @@ Made with ❤️ by **Maia**
 </p>
 
 <p align="center">
-  &copy; 2017-present <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
+  &copy; 2017-2025 <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
 </p>
