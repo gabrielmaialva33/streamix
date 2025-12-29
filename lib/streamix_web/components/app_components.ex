@@ -126,8 +126,10 @@ defmodule StreamixWeb.AppComponents do
   Renders a live channel card.
   """
   attr :channel, :map, required: true
+  attr :current_program, :any, default: nil
   attr :is_favorite, :boolean, default: false
   attr :show_favorite, :boolean, default: true
+  attr :show_epg, :boolean, default: true
   attr :on_play, :string, default: "play_channel"
   attr :on_favorite, :string, default: "toggle_favorite"
 
@@ -178,6 +180,11 @@ defmodule StreamixWeb.AppComponents do
             />
           </button>
         </div>
+
+        <StreamixWeb.EpgComponents.epg_now
+          :if={@show_epg}
+          current_program={@current_program || Map.get(@channel, :current_program)}
+        />
       </div>
     </div>
     """

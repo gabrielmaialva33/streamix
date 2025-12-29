@@ -45,6 +45,8 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   defp mount_with_provider(socket, provider, user_id, mode) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
+      # Trigger async EPG sync if needed
+      maybe_sync_epg(provider)
     end
 
     categories = Iptv.list_categories(provider.id, "live")
@@ -75,6 +77,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       |> assign(favorites_map: %{})
       |> assign(empty_results: false)
       |> assign(user_id: user_id)
+      |> assign(epg_syncing: false)
       |> stream(:channels, [])
       |> load_favorites_map()
 
@@ -212,6 +215,23 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     end
   end
 
+  # Handler for EPG sync completion - refresh channel list to show EPG data
+  def handle_info({:epg_sync_complete, :ok}, socket) do
+    # Reload channels to pick up EPG data
+    socket =
+      socket
+      |> assign(page: 1)
+      |> stream(:channels, [], reset: true)
+      |> load_channels()
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:epg_sync_complete, _}, socket) do
+    # EPG sync failed or was not needed, just ignore
+    {:noreply, socket}
+  end
+
   # ============================================
   # Render
   # ============================================
@@ -319,7 +339,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       |> maybe_add_filter(:category_id, socket.assigns.selected_category)
       |> maybe_add_filter(:search, socket.assigns.search)
 
-    channels = Iptv.list_live_channels(socket.assigns.provider.id, opts)
+    provider = socket.assigns.provider
+    channels = Iptv.list_live_channels(provider.id, opts)
+
+    # Enrich channels with EPG data
+    channels = Iptv.enrich_channels_with_epg(channels, provider.id)
+
     has_more = length(channels) == @per_page
     empty_results = socket.assigns.page == 1 && Enum.empty?(channels)
 
@@ -377,5 +402,17 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       diff < 86_400 -> "#{div(diff, 3600)}h atrás"
       true -> "#{div(diff, 86_400)}d atrás"
     end
+  end
+
+  # EPG sync helper - triggers async sync if EPG data is stale
+  defp maybe_sync_epg(provider) do
+    pid = self()
+
+    Task.start(fn ->
+      # Get channels for this provider to sync EPG
+      channels = Iptv.list_live_channels(provider.id, limit: 100)
+      result = Iptv.ensure_epg_available(provider, channels)
+      send(pid, {:epg_sync_complete, result})
+    end)
   end
 end
