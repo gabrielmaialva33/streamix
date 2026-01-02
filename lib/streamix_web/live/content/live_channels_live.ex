@@ -243,8 +243,11 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     <div class="space-y-6">
       <div class="flex flex-wrap items-center gap-4">
         <%= if @mode == :browse do %>
+          <.source_tabs selected="iptv" path="/browse" gindex_path="/browse/movies" />
+          <div class="hidden sm:block w-px h-8 bg-border" />
           <.browse_tabs
             selected={:live}
+            source="iptv"
             counts={
               %{
                 live: @provider.live_channels_count,

@@ -161,7 +161,19 @@ defmodule StreamixWeb.ContentComponents do
   attr :selected, :string, required: true
   attr :path, :string, default: "/browse/movies"
 
+  attr :gindex_path, :string,
+    default: nil,
+    doc: "Override path for GDrive tab (for live which redirects to movies)"
+
   def source_tabs(assigns) do
+    # Use gindex_path if provided, otherwise use the same path
+    assigns =
+      assign_new(assigns, :gindex_target, fn ->
+        if assigns[:gindex_path],
+          do: browse_path(assigns.gindex_path, "gindex"),
+          else: browse_path(assigns.path, "gindex")
+      end)
+
     ~H"""
     <div class="flex items-center bg-surface rounded-full p-1 gap-0.5">
       <.link
@@ -176,7 +188,7 @@ defmodule StreamixWeb.ContentComponents do
         <span>IPTV</span>
       </.link>
       <.link
-        navigate={browse_path(@path, "gindex")}
+        navigate={@gindex_target}
         class={[
           "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
           @selected == "gindex" && "bg-brand text-white shadow-sm",
@@ -343,6 +355,7 @@ defmodule StreamixWeb.ContentComponents do
   attr :show_favorite, :boolean, default: true
   attr :on_click, :string, default: "view_series"
   attr :on_favorite, :string, default: "toggle_favorite"
+  attr :source, :string, default: nil
 
   def series_card(assigns) do
     rating = get_display_rating(assigns.series)
@@ -376,6 +389,13 @@ defmodule StreamixWeb.ContentComponents do
           <.icon name="hero-star-solid" class="size-3" />
           {@display_rating}
         </div>
+
+        <span
+          :if={@source == "gindex"}
+          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
+        >
+          GDrive
+        </span>
 
         <div
           :if={Map.get(@series, :episode_count) && @series.episode_count > 0}
