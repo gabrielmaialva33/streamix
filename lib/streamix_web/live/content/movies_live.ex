@@ -2,6 +2,7 @@ defmodule StreamixWeb.Content.MoviesLive do
   @moduledoc """
   LiveView for browsing movies from a provider.
   Works for both /browse/movies (global provider) and /providers/:id/movies (user provider).
+  Supports source=gindex param for GIndex content.
   """
   use StreamixWeb, :live_view
 
@@ -12,19 +13,33 @@ defmodule StreamixWeb.Content.MoviesLive do
 
   @per_page 24
 
-  # Mount for /browse/movies (global provider)
+  # Mount for /browse/movies (global provider or gindex)
   def mount(%{}, _session, socket) when not is_map_key(socket.assigns, :provider) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_global_provider()
+    user = socket.assigns.current_scope.user
 
-    if provider do
-      mount_with_provider(socket, provider, user_id, :browse)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Catálogo não disponível. Configure um provedor.")
-       |> push_navigate(to: ~p"/providers")}
-    end
+    # Source will be set in handle_params
+    socket =
+      socket
+      |> assign(user_id: user_id)
+      |> assign(user: user)
+      |> assign(mode: :browse)
+      |> assign(source: "iptv")
+      |> assign(provider: nil)
+      |> assign(categories: [])
+      |> assign(selected_category: nil)
+      |> assign(search: "")
+      |> assign(page: 1)
+      |> assign(has_more: true)
+      |> assign(loading: false)
+      |> assign(favorites_map: %{})
+      |> assign(empty_results: false)
+      |> assign(page_title: "Filmes")
+      |> assign(current_path: "/browse/movies")
+      |> assign(gindex_count: 0)
+      |> stream(:movies, [])
+
+    {:ok, socket}
   end
 
   # Mount for /providers/:provider_id/movies (user provider)
@@ -63,6 +78,7 @@ defmodule StreamixWeb.Content.MoviesLive do
       |> assign(current_path: current_path)
       |> assign(provider: provider)
       |> assign(mode: mode)
+      |> assign(source: "iptv")
       |> assign(categories: categories)
       |> assign(selected_category: nil)
       |> assign(search: "")
@@ -72,6 +88,8 @@ defmodule StreamixWeb.Content.MoviesLive do
       |> assign(favorites_map: %{})
       |> assign(empty_results: false)
       |> assign(user_id: user_id)
+      |> assign(user: user)
+      |> assign(gindex_count: 0)
       |> stream(:movies, [])
       |> load_movies()
       |> load_favorites_map()
@@ -80,16 +98,66 @@ defmodule StreamixWeb.Content.MoviesLive do
   end
 
   def handle_params(params, _url, socket) do
+    source = params["source"] || "iptv"
     category = parse_integer_param(params["category"])
     search = params["search"] || ""
 
+    # When source changes or on initial load (provider nil), reload everything
+    source_changed = socket.assigns.source != source
+    needs_provider_load = source_changed || (source == "iptv" && socket.assigns.provider == nil)
+    user = socket.assigns.user
+
     socket =
       socket
+      |> assign(source: source)
       |> assign(selected_category: category)
       |> assign(search: search)
       |> assign(page: 1)
       |> stream(:movies, [], reset: true)
+
+    socket =
+      if needs_provider_load do
+        # Reload provider/categories based on source
+        case source do
+          "gindex" ->
+            gindex_count = Iptv.count_gindex_movies()
+
+            socket
+            |> assign(provider: nil)
+            |> assign(categories: [])
+            |> assign(page_title: "Filmes - GDrive")
+            |> assign(gindex_count: gindex_count)
+
+          "iptv" ->
+            provider = Iptv.get_global_provider()
+
+            if provider do
+              categories = Iptv.list_categories(provider.id, "vod")
+              categories = filter_adult_categories(categories, user.show_adult_content)
+
+              socket
+              |> assign(provider: provider)
+              |> assign(categories: categories)
+              |> assign(page_title: "Filmes")
+              |> assign(gindex_count: Iptv.count_gindex_movies())
+            else
+              socket
+              |> assign(provider: nil)
+              |> assign(categories: [])
+              |> assign(page_title: "Filmes")
+            end
+
+          _ ->
+            socket
+        end
+      else
+        socket
+      end
+
+    socket =
+      socket
       |> load_movies()
+      |> load_favorites_map()
 
     {:noreply, socket}
   end
@@ -169,34 +237,41 @@ defmodule StreamixWeb.Content.MoviesLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="flex flex-wrap items-center gap-4">
-        <%= if @mode == :browse do %>
-          <.browse_tabs
-            selected={:movies}
-            counts={
-              %{
-                live: @provider.live_channels_count,
-                movies: @provider.movies_count,
-                series: @provider.series_count
+      <div class="flex flex-col gap-4">
+        <%!-- Source and content tabs row --%>
+        <div class="flex flex-wrap items-center gap-3">
+          <%= if @mode == :browse do %>
+            <.source_tabs selected={@source} path="/browse/movies" />
+            <div class="hidden sm:block w-px h-8 bg-border" />
+            <.browse_tabs
+              selected={:movies}
+              source={@source}
+              counts={get_counts(assigns)}
+            />
+          <% else %>
+            <.content_tabs
+              selected={:movies}
+              provider_id={@provider.id}
+              counts={
+                %{
+                  live: @provider.live_channels_count,
+                  movies: @provider.movies_count,
+                  series: @provider.series_count
+                }
               }
-            }
-          />
-        <% else %>
-          <.content_tabs
-            selected={:movies}
-            provider_id={@provider.id}
-            counts={
-              %{
-                live: @provider.live_channels_count,
-                movies: @provider.movies_count,
-                series: @provider.series_count
-              }
-            }
-          />
-        <% end %>
+            />
+          <% end %>
+        </div>
 
-        <.category_filter_v2 categories={@categories} selected={@selected_category} />
-        <.search_input value={@search} placeholder="Buscar filmes..." />
+        <%!-- Filters row --%>
+        <div class="flex flex-wrap items-center gap-3">
+          <.category_filter_v2
+            :if={@source == "iptv" && length(@categories) > 0}
+            categories={@categories}
+            selected={@selected_category}
+          />
+          <.search_input value={@search} placeholder="Buscar filmes..." />
+        </div>
       </div>
 
       <div
@@ -208,6 +283,7 @@ defmodule StreamixWeb.Content.MoviesLive do
           <.movie_card
             movie={movie}
             is_favorite={MapSet.member?(@favorites_map, movie.id)}
+            source={@source}
           />
         </div>
       </div>
@@ -228,8 +304,54 @@ defmodule StreamixWeb.Content.MoviesLive do
   # Private Helpers
   # ============================================
 
+  defp get_counts(%{source: "gindex", gindex_count: count}) do
+    %{live: 0, movies: count, series: 0}
+  end
+
+  defp get_counts(%{provider: nil}) do
+    %{live: 0, movies: 0, series: 0}
+  end
+
+  defp get_counts(%{provider: provider}) do
+    %{
+      live: provider.live_channels_count,
+      movies: provider.movies_count,
+      series: provider.series_count
+    }
+  end
+
+  defp load_movies(%{assigns: %{source: "gindex"}} = socket) do
+    user = socket.assigns.user
+    search = socket.assigns.search
+    page = socket.assigns.page
+
+    movies =
+      Iptv.list_gindex_movies(
+        search: search,
+        limit: @per_page,
+        offset: (page - 1) * @per_page,
+        show_adult: user.show_adult_content
+      )
+
+    has_more = length(movies) >= @per_page
+    empty_results = page == 1 && Enum.empty?(movies)
+
+    socket
+    |> stream(:movies, movies)
+    |> assign(has_more: has_more)
+    |> assign(loading: false)
+    |> assign(empty_results: empty_results)
+  end
+
+  defp load_movies(%{assigns: %{provider: nil}} = socket) do
+    socket
+    |> assign(has_more: false)
+    |> assign(loading: false)
+    |> assign(empty_results: true)
+  end
+
   defp load_movies(socket) do
-    user = socket.assigns.current_scope.user
+    user = socket.assigns.user
     provider_id = socket.assigns.provider.id
     category = socket.assigns.selected_category
     search = socket.assigns.search
@@ -264,17 +386,34 @@ defmodule StreamixWeb.Content.MoviesLive do
   defp filter_adult_categories(categories, true), do: categories
   defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
 
-  # Path builders based on mode
-  defp build_path(%{assigns: %{mode: :browse}}, nil, ""), do: ~p"/browse/movies"
+  # Path builders based on mode and source
+  defp build_path(%{assigns: %{mode: :browse, source: source}}, nil, "") do
+    case source do
+      "gindex" -> ~p"/browse/movies?source=gindex"
+      _ -> ~p"/browse/movies"
+    end
+  end
 
-  defp build_path(%{assigns: %{mode: :browse}}, nil, search),
-    do: ~p"/browse/movies?search=#{search}"
+  defp build_path(%{assigns: %{mode: :browse, source: source}}, nil, search) do
+    case source do
+      "gindex" -> ~p"/browse/movies?source=gindex&search=#{search}"
+      _ -> ~p"/browse/movies?search=#{search}"
+    end
+  end
 
-  defp build_path(%{assigns: %{mode: :browse}}, category, ""),
-    do: ~p"/browse/movies?category=#{category}"
+  defp build_path(%{assigns: %{mode: :browse, source: source}}, category, "") do
+    case source do
+      "gindex" -> ~p"/browse/movies?source=gindex&category=#{category}"
+      _ -> ~p"/browse/movies?category=#{category}"
+    end
+  end
 
-  defp build_path(%{assigns: %{mode: :browse}}, category, search),
-    do: ~p"/browse/movies?category=#{category}&search=#{search}"
+  defp build_path(%{assigns: %{mode: :browse, source: source}}, category, search) do
+    case source do
+      "gindex" -> ~p"/browse/movies?source=gindex&category=#{category}&search=#{search}"
+      _ -> ~p"/browse/movies?category=#{category}&search=#{search}"
+    end
+  end
 
   defp build_path(%{assigns: %{mode: :provider, provider: provider}}, nil, ""),
     do: ~p"/providers/#{provider.id}/movies"
@@ -288,6 +427,8 @@ defmodule StreamixWeb.Content.MoviesLive do
   defp build_path(%{assigns: %{mode: :provider, provider: provider}}, category, search),
     do: ~p"/providers/#{provider.id}/movies?category=#{category}&search=#{search}"
 
+  # Detail path based on source
+  defp detail_path(%{assigns: %{source: "gindex"}}, id), do: ~p"/gindex/movies/#{id}"
   defp detail_path(%{assigns: %{mode: :browse}}, id), do: ~p"/browse/movies/#{id}"
 
   defp detail_path(%{assigns: %{mode: :provider, provider: provider}}, id),
