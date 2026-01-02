@@ -241,17 +241,17 @@ defmodule Streamix.Cache do
   end
 
   defp encode(value) do
-    case Jason.encode(value) do
-      {:ok, encoded} -> {:ok, encoded}
-      {:error, reason} -> {:error, {:encode_error, reason}}
-    end
+    # Use Erlang term_to_binary to preserve Elixir types (atoms, structs, etc.)
+    {:ok, :erlang.term_to_binary(value)}
+  rescue
+    e -> {:error, {:encode_error, e}}
   end
 
   defp decode(value) do
-    case Jason.decode(value) do
-      {:ok, decoded} -> decoded
-      {:error, _} -> nil
-    end
+    # Use Erlang binary_to_term to restore Elixir types
+    :erlang.binary_to_term(value)
+  rescue
+    _ -> nil
   end
 
   defp log_error(operation, key, reason) do
