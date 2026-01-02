@@ -6,6 +6,7 @@ defmodule StreamixWeb.PlayerLive do
   - Live channels
   - Movies (VOD)
   - Episodes (VOD)
+  - GIndex movies (dynamic URL with 30min cache)
 
   Features:
   - Adaptive streaming with dynamic mode switching
@@ -20,6 +21,7 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerComponents
 
   alias Streamix.Iptv
+  alias Streamix.Iptv.Gindex
 
   @doc false
   def mount(%{"type" => type, "id" => id}, _session, socket) do
@@ -211,6 +213,18 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
+  defp load_content("gindex", id, _user_id) do
+    movie = Iptv.get_movie_with_provider!(id)
+
+    if movie && movie.gindex_path do
+      load_gindex_movie(movie)
+    else
+      {:error, :not_found}
+    end
+  rescue
+    Ecto.NoResultsError -> {:error, :not_found}
+  end
+
   defp load_content(_, _, _), do: {:error, :not_found}
 
   defp load_channel(channel) do
@@ -231,6 +245,18 @@ defmodule StreamixWeb.PlayerLive do
     {:ok, episode, provider, stream_url}
   end
 
+  defp load_gindex_movie(movie) do
+    provider = movie.provider
+
+    case Gindex.get_movie_url(movie.id) do
+      {:ok, stream_url} ->
+        {:ok, movie, provider, stream_url}
+
+      {:error, _reason} ->
+        {:error, :not_found}
+    end
+  end
+
   defp record_watch_history(user_id, type, content) do
     Iptv.add_to_watch_history(user_id, %{
       content_type: type,
@@ -241,10 +267,12 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp default_streaming_mode("live_channel"), do: :balanced
+  defp default_streaming_mode("gindex"), do: :quality
   defp default_streaming_mode(_), do: :quality
 
   defp content_title(content, "live_channel"), do: content.name
   defp content_title(content, "movie"), do: content.title || content.name
+  defp content_title(content, "gindex"), do: content.title || content.name
 
   defp content_title(content, "episode"),
     do: content.title || "Episódio #{content.episode_num || ""}"
@@ -253,6 +281,7 @@ defmodule StreamixWeb.PlayerLive do
 
   defp content_icon(content, "live_channel"), do: content.stream_icon
   defp content_icon(content, "movie"), do: content.stream_icon || Map.get(content, :cover)
+  defp content_icon(content, "gindex"), do: content.stream_icon
   defp content_icon(content, "episode"), do: Map.get(content, :cover)
   defp content_icon(_, _), do: nil
 
@@ -263,6 +292,9 @@ defmodule StreamixWeb.PlayerLive do
 
       :movie ->
         ~p"/providers/#{socket.assigns.provider.id}/movies"
+
+      :gindex ->
+        ~p"/gindex/movies"
 
       :episode ->
         series_id = socket.assigns.content.season.series_id

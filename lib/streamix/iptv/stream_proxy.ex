@@ -4,9 +4,16 @@ defmodule Streamix.Iptv.StreamProxy do
 
   Uses ETS for fast in-memory caching with automatic expiration.
   Implements chunked streaming for smooth playback.
+
+  ## GIndex Support
+
+  For GIndex content, URLs are signed with expiration. Use `stream_gindex/1`
+  which fetches fresh URLs via the UrlCache GenServer.
   """
   use GenServer
   require Logger
+
+  alias Streamix.Iptv.Gindex.UrlCache
 
   @cache_table :stream_proxy_cache
   # 5 minutes cache
@@ -41,6 +48,27 @@ defmodule Streamix.Iptv.StreamProxy do
   end
 
   @doc """
+  Streams content from a GIndex movie by ID.
+
+  Fetches a fresh download URL from the UrlCache and streams the content.
+  The URL is cached for 30 minutes and refreshed when needed.
+  """
+  def stream_gindex(movie_id) when is_integer(movie_id) do
+    case UrlCache.get_movie_url(movie_id) do
+      {:ok, url} ->
+        Logger.debug("StreamProxy: Got GIndex URL for movie #{movie_id}")
+        stream(url)
+
+      {:error, reason} ->
+        Logger.warning(
+          "StreamProxy: Failed to get GIndex URL for movie #{movie_id}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Returns headers suitable for streaming video content.
   """
   def stream_headers(content_type \\ "video/mp2t") do
@@ -57,13 +85,16 @@ defmodule Streamix.Iptv.StreamProxy do
   end
 
   @doc """
-  Determines content type based on URL.
+  Determines content type based on URL or filename.
   """
   def content_type_for_url(url) do
     cond do
       String.contains?(url, ".m3u8") -> "application/vnd.apple.mpegurl"
       String.contains?(url, ".ts") -> "video/mp2t"
       String.contains?(url, ".mp4") -> "video/mp4"
+      String.contains?(url, ".mkv") -> "video/x-matroska"
+      String.contains?(url, ".avi") -> "video/x-msvideo"
+      String.contains?(url, ".webm") -> "video/webm"
       String.contains?(url, ".flv") -> "video/x-flv"
       true -> "application/octet-stream"
     end

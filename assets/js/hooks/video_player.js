@@ -38,6 +38,7 @@ const VideoPlayer = {
     this.streamUrl = this.el.dataset.streamUrl;
     this.proxyUrl = this.el.dataset.proxyUrl;
     this.contentType = this.el.dataset.contentType || "live"; // 'live' or 'vod'
+    this.sourceType = this.el.dataset.sourceType || null; // 'gindex', 'movie', 'episode', etc.
     this.contentId = this.el.dataset.contentId;
     this.initialMode = this.el.dataset.streamingMode || null;
 
@@ -735,6 +736,9 @@ const VideoPlayer = {
     if (lowercaseUrl.includes(".mp4")) {
       return "mp4";
     }
+    if (lowercaseUrl.includes(".mkv")) {
+      return "mkv";
+    }
     if (lowercaseUrl.includes(".flv")) {
       return "flv";
     }
@@ -805,6 +809,7 @@ const VideoPlayer = {
     console.log("Initializing player with URL:", this.streamUrl);
     console.log("Streaming mode:", this.streamingMode);
     console.log("Content type:", this.contentType);
+    console.log("Source type:", this.sourceType);
 
     this.currentStreamType = this.getStreamType(this.streamUrl);
     console.log("Detected stream type:", this.currentStreamType);
@@ -818,6 +823,13 @@ const VideoPlayer = {
       streaming_mode: this.streamingMode,
       pip_supported: this.isPiPSupported(),
     });
+
+    // GIndex streams use native video playback (direct HTTPS with signed URLs)
+    if (this.sourceType === "gindex") {
+      console.log("Using native playback for GIndex source");
+      this.playNative();
+      return;
+    }
 
     switch (this.currentStreamType) {
       case "hls":
@@ -841,6 +853,7 @@ const VideoPlayer = {
         }
         break;
       case "mp4":
+      case "mkv":
         this.playNative();
         break;
       default:

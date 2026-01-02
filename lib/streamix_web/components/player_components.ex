@@ -22,8 +22,8 @@ defmodule StreamixWeb.PlayerComponents do
   attr :show_controls, :boolean, default: true
 
   def video_player(assigns) do
-    # Use external nginx proxy for HTTP streams
-    proxy_url = build_proxy_url(assigns.stream_url)
+    # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
+    proxy_url = build_proxy_url(assigns.stream_url, assigns.content_type)
     content_type_str = if assigns.content_type == :live, do: "live", else: "vod"
 
     assigns =
@@ -39,6 +39,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-stream-url={@stream_url}
       data-proxy-url={@proxy_url}
       data-content-type={@content_type_str}
+      data-source-type={@content_type}
       data-content-id={@content.id}
       data-streaming-mode={@streaming_mode}
     >
@@ -329,18 +330,22 @@ defmodule StreamixWeb.PlayerComponents do
   # Private Helpers
   # ============================================
 
-  defp build_proxy_url(stream_url) when is_binary(stream_url) do
+  # GIndex streams play directly without proxy (they have signed URLs from Cloudflare)
+  defp build_proxy_url(_stream_url, :gindex), do: nil
+
+  defp build_proxy_url(stream_url, _content_type) when is_binary(stream_url) do
     # Use Nginx reverse proxy for HTTP streams (bypasses mixed content blocking)
     # The proxy at pannxs.mahina.cloud handles CORS and proxies to IPTV servers
     proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
     "#{proxy_base}/proxy?url=#{stream_url}"
   end
 
-  defp build_proxy_url(_), do: nil
+  defp build_proxy_url(_, _), do: nil
 
   defp content_title(content, :live), do: content.name
   defp content_title(content, :live_channel), do: content.name
   defp content_title(content, :movie), do: content.title || content.name
+  defp content_title(content, :gindex), do: content.title || content.name
 
   defp content_title(content, :episode),
     do: content.title || "Episódio #{Map.get(content, :episode_num, "")}"
