@@ -26,7 +26,7 @@ defmodule StreamixWeb.Plugs.RateLimit do
     key = build_key(conn, opts.by)
     bucket = "rate_limit:#{key}"
 
-    case Hammer.check_rate(bucket, opts.period, opts.limit) do
+    case Streamix.RateLimit.hit(bucket, opts.period, opts.limit) do
       {:allow, count} ->
         conn
         |> put_rate_limit_headers(opts.limit, opts.limit - count, opts.period)
