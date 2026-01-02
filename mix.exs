@@ -69,12 +69,12 @@ defmodule Streamix.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:dotenvy, "~> 0.8"},
+      {:dotenvy, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:cors_plug, "~> 3.0"},
       {:mint, "~> 1.6"},
       {:castore, "~> 1.0"},
-      {:hammer, "~> 6.2"},
+      {:hammer, "~> 7.0"},
       {:con_cache, "~> 1.1"}
     ]
   end
