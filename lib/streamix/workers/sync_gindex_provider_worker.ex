@@ -39,7 +39,13 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   defp sync_gindex_provider do
     case GIndexProvider.sync!() do
       {:ok, stats} ->
-        Logger.info("[GIndex] GIndex provider sync completed - Movies: #{stats.movies_count}")
+        Logger.info(
+          "[GIndex] GIndex provider sync completed - " <>
+            "Movies: #{stats.movies_count}, " <>
+            "Series: #{Map.get(stats, :series_count, 0)}, " <>
+            "Episodes: #{Map.get(stats, :episodes_count, 0)}"
+        )
+
         :ok
 
       {:error, :not_found} ->
