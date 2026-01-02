@@ -16,7 +16,9 @@ defmodule Streamix.Iptv.Gindex do
 
   # Delegate URL cache functions
   defdelegate get_movie_url(movie_id), to: UrlCache
+  defdelegate get_episode_url(episode_id), to: UrlCache
   defdelegate invalidate_url(movie_id), to: UrlCache, as: :invalidate
+  defdelegate invalidate_episode_url(episode_id), to: UrlCache, as: :invalidate_episode
   defdelegate clear_url_cache, to: UrlCache, as: :clear_all
 
   # Delegate parser functions

@@ -14,7 +14,7 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
   use GenServer
 
   alias Streamix.Iptv.Gindex.Client
-  alias Streamix.Iptv.Movie
+  alias Streamix.Iptv.{Episode, Movie}
   alias Streamix.Repo
 
   require Logger
@@ -40,10 +40,26 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
   end
 
   @doc """
+  Gets the download URL for an episode.
+
+  Returns a fresh URL, using cache if available and not expired.
+  """
+  def get_episode_url(episode_id) do
+    GenServer.call(__MODULE__, {:get_episode_url, episode_id}, :timer.seconds(30))
+  end
+
+  @doc """
   Invalidates the cached URL for a movie.
   """
   def invalidate(movie_id) do
-    GenServer.cast(__MODULE__, {:invalidate, movie_id})
+    GenServer.cast(__MODULE__, {:invalidate, {:movie, movie_id}})
+  end
+
+  @doc """
+  Invalidates the cached URL for an episode.
+  """
+  def invalidate_episode(episode_id) do
+    GenServer.cast(__MODULE__, {:invalidate, {:episode, episode_id}})
   end
 
   @doc """
@@ -68,13 +84,19 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
 
   @impl true
   def handle_call({:get_movie_url, movie_id}, _from, state) do
-    result = fetch_or_refresh_url(movie_id)
+    result = fetch_or_refresh_movie_url(movie_id)
     {:reply, result, state}
   end
 
   @impl true
-  def handle_cast({:invalidate, movie_id}, state) do
-    :ets.delete(@table_name, {:movie, movie_id})
+  def handle_call({:get_episode_url, episode_id}, _from, state) do
+    result = fetch_or_refresh_episode_url(episode_id)
+    {:reply, result, state}
+  end
+
+  @impl true
+  def handle_cast({:invalidate, cache_key}, state) do
+    :ets.delete(@table_name, cache_key)
     {:noreply, state}
   end
 
@@ -91,9 +113,9 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
     {:noreply, state}
   end
 
-  # Private functions
+  # Private functions - Movie URLs
 
-  defp fetch_or_refresh_url(movie_id) do
+  defp fetch_or_refresh_movie_url(movie_id) do
     cache_key = {:movie, movie_id}
     now = System.monotonic_time(:millisecond)
 
@@ -125,16 +147,16 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
         {:error, :not_gindex_movie}
 
       %Movie{gindex_path: path, provider: provider} ->
-        fetch_and_cache_url(movie_id, provider, path)
+        fetch_and_cache_movie_url(movie_id, provider, path)
     end
   end
 
-  defp fetch_and_cache_url(movie_id, provider, path) do
+  defp fetch_and_cache_movie_url(movie_id, provider, path) do
     base_url = provider.gindex_url || provider.url
 
     case Client.get_download_url(base_url, path) do
       {:ok, url} ->
-        cache_url(movie_id, url)
+        cache_url({:movie, movie_id}, url)
         update_movie_cache(movie_id, url)
         {:ok, url}
 
@@ -144,14 +166,8 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
         )
 
         # Try to use cached URL from database as fallback
-        fallback_to_db_cache(movie_id)
+        fallback_to_movie_db_cache(movie_id)
     end
-  end
-
-  defp cache_url(movie_id, url) do
-    cache_key = {:movie, movie_id}
-    expires_at = System.monotonic_time(:millisecond) + @default_ttl
-    :ets.insert(@table_name, {cache_key, url, expires_at})
   end
 
   defp update_movie_cache(movie_id, url) do
@@ -163,7 +179,7 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
     |> Repo.update_all(set: [gindex_url_cached: url, gindex_url_expires_at: expires_at])
   end
 
-  defp fallback_to_db_cache(movie_id) do
+  defp fallback_to_movie_db_cache(movie_id) do
     import Ecto.Query
 
     query =
@@ -180,6 +196,98 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
       _ ->
         {:error, :url_not_available}
     end
+  end
+
+  # Private functions - Episode URLs
+
+  defp fetch_or_refresh_episode_url(episode_id) do
+    cache_key = {:episode, episode_id}
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@table_name, cache_key) do
+      [{^cache_key, url, expires_at}] when expires_at > now + @refresh_margin ->
+        # Cache hit and not close to expiring
+        {:ok, url}
+
+      _ ->
+        # Cache miss or expired, fetch fresh URL
+        refresh_episode_url(episode_id)
+    end
+  end
+
+  defp refresh_episode_url(episode_id) do
+    import Ecto.Query
+
+    # Get episode with season -> series -> provider
+    query =
+      from e in Episode,
+        where: e.id == ^episode_id,
+        preload: [season: [series: :provider]]
+
+    case Repo.one(query) do
+      nil ->
+        {:error, :episode_not_found}
+
+      %Episode{gindex_path: nil} ->
+        {:error, :not_gindex_episode}
+
+      %Episode{gindex_path: path, season: %{series: %{provider: provider}}} ->
+        fetch_and_cache_episode_url(episode_id, provider, path)
+    end
+  end
+
+  defp fetch_and_cache_episode_url(episode_id, provider, path) do
+    base_url = provider.gindex_url || provider.url
+
+    case Client.get_download_url(base_url, path) do
+      {:ok, url} ->
+        cache_url({:episode, episode_id}, url)
+        update_episode_cache(episode_id, url)
+        {:ok, url}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[GIndex UrlCache] Failed to get URL for episode #{episode_id}: #{inspect(reason)}"
+        )
+
+        # Try to use cached URL from database as fallback
+        fallback_to_episode_db_cache(episode_id)
+    end
+  end
+
+  defp update_episode_cache(episode_id, url) do
+    expires_at = DateTime.utc_now() |> DateTime.add(30, :minute)
+
+    import Ecto.Query
+
+    from(e in Episode, where: e.id == ^episode_id)
+    |> Repo.update_all(set: [gindex_url_cached: url, gindex_url_expires_at: expires_at])
+  end
+
+  defp fallback_to_episode_db_cache(episode_id) do
+    import Ecto.Query
+
+    query =
+      from e in Episode,
+        where: e.id == ^episode_id,
+        select: {e.gindex_url_cached, e.gindex_url_expires_at}
+
+    case Repo.one(query) do
+      {url, _expires_at} when is_binary(url) and url != "" ->
+        # Use cached URL even if expired (better than nothing)
+        Logger.info("[GIndex UrlCache] Using fallback DB cache for episode #{episode_id}")
+        {:ok, url}
+
+      _ ->
+        {:error, :url_not_available}
+    end
+  end
+
+  # Common cache function
+
+  defp cache_url(cache_key, url) do
+    expires_at = System.monotonic_time(:millisecond) + @default_ttl
+    :ets.insert(@table_name, {cache_key, url, expires_at})
   end
 
   defp cleanup_expired do

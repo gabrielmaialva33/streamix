@@ -18,7 +18,7 @@ defmodule Streamix.Iptv.Gindex.Parser do
   @source_patterns ~w(AMZN NF DSNP HMAX HBO ATVP PMTP WEB-DL WEBRip BluRay BDRip HDRip DVDRip)
 
   @doc """
-  Parses a movie folder name.
+  Parses a movie or series folder name.
 
   ## Examples
 
@@ -27,6 +27,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
 
       iex> Parser.parse_movie_folder("Avatar (2009)")
       %{name: "Avatar", original_name: nil, year: 2009}
+
+      iex> Parser.parse_movie_folder("13 Reasons Why (2017)")
+      %{name: "13 Reasons Why", original_name: nil, year: 2017}
   """
   def parse_movie_folder(folder_name) do
     folder_name = String.trim(folder_name)
@@ -57,6 +60,73 @@ defmodule Streamix.Iptv.Gindex.Parser do
               original_name: nil,
               year: nil
             }
+        end
+    end
+  end
+
+  @doc """
+  Alias for parse_movie_folder/1 - same pattern applies to series folders.
+
+  ## Examples
+
+      iex> Parser.parse_series_folder("A Casa do Dragão [House of the Dragon] (2022)")
+      %{name: "A Casa do Dragão", original_name: "House of the Dragon", year: 2022}
+
+      iex> Parser.parse_series_folder("1883")
+      %{name: "1883", original_name: nil, year: nil}
+  """
+  def parse_series_folder(folder_name), do: parse_movie_folder(folder_name)
+
+  @doc """
+  Parses a season folder name.
+
+  Supports multiple formats:
+  - "S01", "S02" (short format)
+  - "Season 1", "Season 2" (long format)
+  - "Nome.S01.1080p.WEB-DL.Group" (release folder)
+
+  ## Examples
+
+      iex> Parser.parse_season_folder("S01")
+      %{season_number: 1}
+
+      iex> Parser.parse_season_folder("Season 2")
+      %{season_number: 2}
+
+      iex> Parser.parse_season_folder("13.Reasons.Why.S01.1080p.NF.WEB-DL")
+      %{season_number: 1}
+  """
+  def parse_season_folder(folder_name) do
+    folder_name = String.trim(folder_name)
+
+    # Pattern: "S01" or "S1"
+    case Regex.run(~r/^S(\d{1,2})$/i, folder_name) do
+      [_, season] ->
+        %{season_number: String.to_integer(season)}
+
+      nil ->
+        # Pattern: "Season 1" or "Season 01"
+        case Regex.run(~r/^Season\s*(\d{1,2})$/i, folder_name) do
+          [_, season] ->
+            %{season_number: String.to_integer(season)}
+
+          nil ->
+            # Pattern: "Nome.S01.1080p..." (release folder)
+            case Regex.run(~r/\.S(\d{1,2})\./i, folder_name) do
+              [_, season] ->
+                %{season_number: String.to_integer(season)}
+
+              nil ->
+                # Fallback: try to find any S followed by digits
+                case Regex.run(~r/S(\d{1,2})/i, folder_name) do
+                  [_, season] ->
+                    %{season_number: String.to_integer(season)}
+
+                  nil ->
+                    # Default to season 1 if no pattern matches
+                    %{season_number: 1}
+                end
+            end
         end
     end
   end
@@ -128,9 +198,20 @@ defmodule Streamix.Iptv.Gindex.Parser do
         series_name: "13 Reasons Why",
         season: 1,
         episode: 1,
+        title: nil,
         quality: "1080p",
         source: "NF",
         extension: "mkv"
+      }
+
+      iex> Parser.parse_episode_name("A.Grande.Familia.S01E01.Meu.Marido.Me.Trata.1080p.WEB-DL.mkv")
+      %{
+        series_name: "A Grande Familia",
+        season: 1,
+        episode: 1,
+        title: "Meu Marido Me Trata",
+        quality: "1080p",
+        ...
       }
   """
   def parse_episode_name(filename) do
@@ -144,13 +225,17 @@ defmodule Streamix.Iptv.Gindex.Parser do
         rest_parts = String.split(rest, ".")
 
         {quality, rest_parts} = extract_pattern(rest_parts, @quality_patterns)
-        {source, _rest_parts} = extract_pattern(rest_parts, @source_patterns)
+        {source, rest_parts} = extract_pattern(rest_parts, @source_patterns)
         release_group = extract_release_group(name_without_ext)
+
+        # Extract title (parts before quality/source patterns)
+        title = extract_episode_title(rest_parts)
 
         %{
           series_name: series_name,
           season: String.to_integer(season),
           episode: String.to_integer(episode),
+          title: title,
           quality: quality,
           source: source,
           release_group: release_group,
@@ -164,6 +249,7 @@ defmodule Streamix.Iptv.Gindex.Parser do
           series_name: name_without_ext,
           season: nil,
           episode: nil,
+          title: nil,
           quality: nil,
           source: nil,
           release_group: nil,
@@ -272,6 +358,34 @@ defmodule Streamix.Iptv.Gindex.Parser do
     case Regex.run(~r/-([A-Za-z0-9]+)(?:\.[a-z]+)?$/, name) do
       [_, group] -> group
       nil -> nil
+    end
+  end
+
+  # Patterns that indicate technical info (not episode title)
+  @tech_patterns ~w(DDP DDP5 DD5 DD2 AAC AAC2 AC3 H264 H.264 x264 x265 H265 H.265 HEVC
+                   DUAL REMUX PROPER REPACK WEB HDTV DVB AMZN NF HMAX HBO DSNP ATVP GLBO
+                   WEB-DL WEBRip BluRay BDRip HDRip DVDRip 1080p 720p 480p 2160p 4K UHD HDR)
+
+  defp extract_episode_title(rest_parts) do
+    # Filter out technical info patterns and release group tags
+    title_parts =
+      rest_parts
+      |> Enum.reject(fn part ->
+        upcase_part = String.upcase(part)
+        # Reject if it matches any tech pattern
+        # Reject codec patterns like "1" in "DD5.1"
+        # Reject release group patterns (typically at end after dash)
+        Enum.any?(@tech_patterns, fn pattern ->
+          String.upcase(pattern) == upcase_part or
+            String.contains?(upcase_part, String.upcase(pattern))
+        end) or
+          Regex.match?(~r/^\d+$/, part) or
+          Regex.match?(~r/^[A-Z]{2,}$/, part)
+      end)
+
+    case title_parts do
+      [] -> nil
+      parts -> parts |> Enum.join(" ") |> String.trim()
     end
   end
 
