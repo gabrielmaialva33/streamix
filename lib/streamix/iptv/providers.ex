@@ -97,14 +97,16 @@ defmodule Streamix.Iptv.Providers do
   end
 
   @doc """
-  Gets the global system provider.
-  Returns the first active provider with is_system: true and visibility: :global.
+  Gets the global IPTV system provider (Xtream type).
+  Returns the first active provider with is_system: true, visibility: :global, and provider_type: :xtream.
+  For GIndex provider, use GindexProvider.get() instead.
   """
   @spec get_global() :: Provider.t() | nil
   def get_global do
     Provider
     |> where([p], p.is_system == true)
     |> where([p], p.visibility == :global)
+    |> where([p], p.provider_type == :xtream)
     |> where([p], p.is_active == true)
     |> limit(1)
     |> Repo.one()
