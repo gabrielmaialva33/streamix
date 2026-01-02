@@ -320,8 +320,20 @@ defmodule StreamixWeb.AppComponents do
   attr :use_proxy, :boolean, default: true
 
   def video_player_v2(assigns) do
+    alias StreamixWeb.StreamToken
+
     stream_url = LiveChannel.stream_url(assigns.channel, assigns.provider)
-    proxy_url = if assigns.use_proxy, do: proxy_stream_url(stream_url), else: nil
+
+    # Use signed token for secure streaming through internal Phoenix proxy
+    # This avoids mixed content issues (HTTP streams on HTTPS pages)
+    proxy_url =
+      if assigns.use_proxy do
+        token = StreamToken.sign_channel(assigns.channel.id)
+        "/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+      else
+        nil
+      end
+
     assigns = assign(assigns, stream_url: stream_url, proxy_url: proxy_url)
 
     ~H"""
@@ -362,13 +374,6 @@ defmodule StreamixWeb.AppComponents do
     </div>
     """
   end
-
-  defp proxy_stream_url(stream_url) when is_binary(stream_url) do
-    encoded = Base.url_encode64(stream_url, padding: false)
-    "/api/stream/proxy?url=#{encoded}"
-  end
-
-  defp proxy_stream_url(_), do: nil
 
   @doc """
   Renders a category filter dropdown.
