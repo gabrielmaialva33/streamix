@@ -10,6 +10,7 @@ defmodule Streamix.Application do
     children = [
       StreamixWeb.Telemetry,
       Streamix.Repo,
+      {Streamix.RateLimit, clean_period: :timer.minutes(10)},
       {Oban, Application.fetch_env!(:streamix, Oban)},
       {Redix, {redis_url(), [name: :streamix_redis]}},
       {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
