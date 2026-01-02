@@ -44,6 +44,7 @@
 - **Busca Unificada** - Pesquise em todos os seus provedores instantaneamente
 - **Favoritos e Histórico** - Acompanhe o que você ama e continue de onde parou
 - **🆕 Playlists Cruzadas** - Crie playlists personalizadas misturando conteúdo de diferentes fontes
+- **🆕 Integração com Cloud Drive** - Transmita filmes e séries diretamente do GIndex/Google Drive
 - **🆕 Enriquecimento de Metadados** - Obtenção automática de logotipos, pôsteres e dados EPG
 
 ### Motor de Streaming Avançado ⚡
@@ -78,6 +79,15 @@
 ✅ HLS (HTTP Live Streaming) - Reprodução nativa de .m3u8
 ✅ MPEG-TS - Suporte a stream de transporte via proxy
 ✅ Metadados VOD - Obtenção de informações de Filmes e Séries
+```
+
+### Integração em Nuvem
+
+```bash
+# Suporte GIndex:
+✅ Indexação Direta - Streaming direto do Google Drive
+✅ Links Seguros - Geração de URLs assinadas com cache de expiração
+✅ Scraping Inteligente - Análise automática de estrutura de pastas
 ```
 
 ### Inteligência de Conteúdo

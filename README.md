@@ -44,6 +44,7 @@
 - **Unified Search** - Search across all your providers instantly
 - **Favorites & History** - Keep track of what you love and resume where you left off
 - **🆕 Cross-Provider Playlists** - Create custom playlists mixing content from different sources
+- **🆕 Cloud Drive Integration** - Seamlessly stream movies and series directly from GIndex/Google Drive
 - **🆕 Metadata Enrichment** - Automatic fetching of logos, posters, and EPG data
 - **🆕 EPG (Electronic Program Guide)** - Live program info with progress bars on channel cards
 
@@ -79,6 +80,15 @@
 ✅ HLS (HTTP Live Streaming) - Native .m3u8 playback
 ✅ MPEG-TS - Transport stream support via proxy
 ✅ VOD Metadata - Movie and Series information fetching
+```
+
+### Cloud Integration
+
+```bash
+# GIndex Support:
+✅ Direct Indexing - Stream directly from Google Drive
+✅ Secure Links - Signed URL generation with expiration caching
+✅ Smart Scraping - Automatic folder structure parsing
 ```
 
 ### Content Intelligence
