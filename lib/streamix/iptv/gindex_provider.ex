@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.GIndexProvider do
   It is identified by `is_system: true`, `visibility: :global`, and `provider_type: :gindex`.
   """
 
+  alias Streamix.Iptv.Gindex.Sync
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
 
@@ -106,7 +107,7 @@ defmodule Streamix.Iptv.GIndexProvider do
         {:error, :not_found}
 
       provider ->
-        Streamix.Iptv.Gindex.Sync.sync_provider(provider)
+        Sync.sync_provider(provider)
     end
   end
 

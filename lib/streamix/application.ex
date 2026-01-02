@@ -42,16 +42,18 @@ defmodule Streamix.Application do
   end
 
   defp init_providers do
+    alias Streamix.Iptv.{GIndexProvider, GlobalProvider}
+
     # Run in a separate process to not block app startup
     Task.start(fn ->
       # Wait for Repo to be ready
       Process.sleep(1000)
 
       # Ensure GIndex provider exists if configured
-      Streamix.Iptv.GIndexProvider.ensure_exists!()
+      GIndexProvider.ensure_exists!()
 
       # Ensure Global provider exists if configured
-      Streamix.Iptv.GlobalProvider.ensure_exists!()
+      GlobalProvider.ensure_exists!()
     end)
   end
 

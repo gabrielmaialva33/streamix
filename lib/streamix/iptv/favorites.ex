@@ -51,8 +51,8 @@ defmodule Streamix.Iptv.Favorites do
   @doc """
   Alias for `exists?/3` for LiveView naming conventions.
   """
-  # credo:disable-for-next-line Credo.Check.Readability.PredicateFunctionNames
   @spec is_favorite?(integer(), String.t(), integer()) :: boolean()
+  # credo:disable-for-next-line Credo.Check.Readability.PredicateFunctionNames
   def is_favorite?(user_id, content_type, content_id) do
     exists?(user_id, content_type, content_id)
   end
