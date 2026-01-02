@@ -101,8 +101,10 @@ defmodule StreamixWeb.StreamToken do
         channel = Repo.preload(channel, :provider)
         provider = channel.provider
 
+        # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
+        # This avoids mixed content issues with HLS segment URLs
         url =
-          "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.m3u8"
+          "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
 
         {:ok, url}
     end
