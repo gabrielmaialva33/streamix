@@ -138,6 +138,10 @@ defmodule StreamixWeb.Router do
       # User content
       live "/favorites", FavoritesLive, :index
       live "/history", HistoryLive, :index
+
+      # GIndex content (GDrive)
+      live "/gindex/movies", Gindex.MoviesLive, :index
+      live "/gindex/movies/:id", Gindex.MovieDetailLive, :show
     end
 
     # Player with fullscreen layout (requires auth)
