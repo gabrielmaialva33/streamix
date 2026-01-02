@@ -96,39 +96,25 @@ defmodule Streamix.Iptv.Gindex.Parser do
       iex> Parser.parse_season_folder("13.Reasons.Why.S01.1080p.NF.WEB-DL")
       %{season_number: 1}
   """
+  @season_patterns [
+    ~r/^S(\d{1,2})$/i,
+    ~r/^Season\s*(\d{1,2})$/i,
+    ~r/\.S(\d{1,2})\./i,
+    ~r/S(\d{1,2})/i
+  ]
+
   def parse_season_folder(folder_name) do
     folder_name = String.trim(folder_name)
 
-    # Pattern: "S01" or "S1"
-    case Regex.run(~r/^S(\d{1,2})$/i, folder_name) do
-      [_, season] ->
-        %{season_number: String.to_integer(season)}
-
-      nil ->
-        # Pattern: "Season 1" or "Season 01"
-        case Regex.run(~r/^Season\s*(\d{1,2})$/i, folder_name) do
-          [_, season] ->
-            %{season_number: String.to_integer(season)}
-
-          nil ->
-            # Pattern: "Nome.S01.1080p..." (release folder)
-            case Regex.run(~r/\.S(\d{1,2})\./i, folder_name) do
-              [_, season] ->
-                %{season_number: String.to_integer(season)}
-
-              nil ->
-                # Fallback: try to find any S followed by digits
-                case Regex.run(~r/S(\d{1,2})/i, folder_name) do
-                  [_, season] ->
-                    %{season_number: String.to_integer(season)}
-
-                  nil ->
-                    # Default to season 1 if no pattern matches
-                    %{season_number: 1}
-                end
-            end
+    season_number =
+      Enum.find_value(@season_patterns, 1, fn pattern ->
+        case Regex.run(pattern, folder_name) do
+          [_, season] -> String.to_integer(season)
+          nil -> nil
         end
-    end
+      end)
+
+    %{season_number: season_number}
   end
 
   @doc """

@@ -469,29 +469,12 @@ defmodule Streamix.Iptv.Gindex.Scraper do
 
     all_episodes =
       subfolders
-      |> Enum.flat_map(fn subfolder ->
-        Process.sleep(@delay_between_requests)
-
-        case Client.list_folder(base_url, subfolder.path) do
-          {:ok, sub_items} ->
-            episode_files =
-              sub_items
-              |> Enum.filter(fn item ->
-                item.type == :file and Parser.video_file?(item.name)
-              end)
-
-            scrape_episodes_from_files(base_url, episode_files, season_number)
-
-          {:error, _} ->
-            []
-        end
-      end)
+      |> Enum.flat_map(&scrape_subfolder_episodes(base_url, &1, season_number))
       |> Enum.sort_by(& &1.episode_num)
 
     if Enum.empty?(all_episodes) do
       nil
     else
-      # Use the first subfolder's info for the season
       first_subfolder = List.first(subfolders)
 
       %{
@@ -501,6 +484,20 @@ defmodule Streamix.Iptv.Gindex.Scraper do
         episodes: all_episodes,
         episode_count: length(all_episodes)
       }
+    end
+  end
+
+  defp scrape_subfolder_episodes(base_url, subfolder, season_number) do
+    Process.sleep(@delay_between_requests)
+
+    case Client.list_folder(base_url, subfolder.path) do
+      {:ok, sub_items} ->
+        sub_items
+        |> Enum.filter(&(&1.type == :file and Parser.video_file?(&1.name)))
+        |> scrape_episodes_from_files(base_url, season_number)
+
+      {:error, _} ->
+        []
     end
   end
 
