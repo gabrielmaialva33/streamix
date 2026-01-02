@@ -88,7 +88,9 @@ config :streamix, Oban,
        # Sync all providers every 6 hours
        {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker},
        # Sync global provider every 4 hours
-       {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker}
+       {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
+       # Sync GIndex providers daily at 3 AM
+       {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker}
      ]}
   ]
 

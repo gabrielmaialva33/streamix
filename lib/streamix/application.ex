@@ -24,6 +24,8 @@ defmodule Streamix.Application do
        ]},
       # Stream proxy for caching IPTV streams
       Streamix.Iptv.StreamProxy,
+      # GIndex URL cache
+      Streamix.Iptv.Gindex.UrlCache,
       # Start to serve requests, typically the last entry
       StreamixWeb.Endpoint
     ]
@@ -31,7 +33,26 @@ defmodule Streamix.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Streamix.Supervisor]
-    Supervisor.start_link(children, opts)
+    result = Supervisor.start_link(children, opts)
+
+    # Initialize providers after supervisor starts
+    init_providers()
+
+    result
+  end
+
+  defp init_providers do
+    # Run in a separate process to not block app startup
+    Task.start(fn ->
+      # Wait for Repo to be ready
+      Process.sleep(1000)
+
+      # Ensure GIndex provider exists if configured
+      Streamix.Iptv.GIndexProvider.ensure_exists!()
+
+      # Ensure Global provider exists if configured
+      Streamix.Iptv.GlobalProvider.ensure_exists!()
+    end)
   end
 
   # Tell Phoenix to update the endpoint configuration

@@ -2,26 +2,37 @@ import Config
 import Dotenvy
 
 # Load .env file in dev/test environments
-if config_env() in [:dev, :test] do
-  source!([".env", System.get_env()])
+# This creates an env map that merges .env with System.get_env()
+env =
+  if config_env() in [:dev, :test] do
+    source!([".env", System.get_env()])
+  else
+    System.get_env()
+  end
+
+# Helper to get env value
+get_env = fn key ->
+  case env do
+    %{^key => value} when is_binary(value) and value != "" -> value
+    _ -> System.get_env(key)
+  end
 end
 
 # Global provider configuration (optional)
 # Set GLOBAL_PROVIDER_ENABLED=true to enable
-# Use System.get_env directly for runtime configuration
-if System.get_env("GLOBAL_PROVIDER_ENABLED") == "true" do
+if get_env.("GLOBAL_PROVIDER_ENABLED") == "true" do
   config :streamix, :global_provider,
     enabled: true,
-    name: System.get_env("GLOBAL_PROVIDER_NAME") || "Streamix Global",
-    url: System.get_env("GLOBAL_PROVIDER_URL"),
-    username: System.get_env("GLOBAL_PROVIDER_USERNAME"),
-    password: System.get_env("GLOBAL_PROVIDER_PASSWORD")
+    name: get_env.("GLOBAL_PROVIDER_NAME") || "Streamix Global",
+    url: get_env.("GLOBAL_PROVIDER_URL"),
+    username: get_env.("GLOBAL_PROVIDER_USERNAME"),
+    password: get_env.("GLOBAL_PROVIDER_PASSWORD")
 else
   config :streamix, :global_provider, enabled: false
 end
 
 # TMDB API configuration (optional, for enriched movie metadata)
-if tmdb_token = System.get_env("TMDB_API_TOKEN") do
+if tmdb_token = get_env.("TMDB_API_TOKEN") do
   config :streamix, :tmdb,
     enabled: true,
     api_token: tmdb_token
@@ -29,19 +40,29 @@ else
   config :streamix, :tmdb, enabled: false
 end
 
+# GIndex provider configuration (Google Drive Index for movies/series)
+if get_env.("GINDEX_ENABLED") == "true" do
+  config :streamix, :gindex_provider,
+    enabled: true,
+    url: get_env.("GINDEX_URL"),
+    movies_path: get_env.("GINDEX_MOVIES_PATH") || "/1:/Filmes/"
+else
+  config :streamix, :gindex_provider, enabled: false
+end
+
 # Stream proxy URL for bypassing mixed content blocking
 # This reverse proxy handles HTTP IPTV streams over HTTPS
 config :streamix,
-  stream_proxy_url: System.get_env("STREAM_PROXY_URL", "https://proxy.example.com")
+  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://proxy.example.com"
 
 # CORS configuration
 # Comma-separated list of allowed origins, or "*" for development
 cors_origins =
-  case System.get_env("CORS_ORIGINS") do
+  case get_env.("CORS_ORIGINS") do
     nil ->
       # Default: in prod use PHX_HOST, in dev allow localhost
       if config_env() == :prod do
-        host = System.get_env("PHX_HOST", "example.com")
+        host = get_env.("PHX_HOST") || "example.com"
         ["https://#{host}"]
       else
         ["http://localhost:4000", "http://127.0.0.1:4000"]
@@ -73,12 +94,12 @@ config :streamix, :cors, origins: cors_origins
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-if System.get_env("PHX_SERVER") do
+if get_env.("PHX_SERVER") do
   config :streamix, StreamixWeb.Endpoint, server: true
 end
 
 config :streamix, StreamixWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+  http: [port: String.to_integer(get_env.("PORT") || "4000")]
 
 if config_env() == :prod do
   database_url =
