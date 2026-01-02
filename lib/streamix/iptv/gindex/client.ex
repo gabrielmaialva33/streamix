@@ -11,9 +11,11 @@ defmodule Streamix.Iptv.Gindex.Client do
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(2)
   @max_retries 3
+  @rate_limit_base_delay :timer.seconds(5)
+  @max_rate_limit_retries 5
 
   @doc """
-  Lists the contents of a folder in the GIndex.
+  Lists the contents of a folder in the GIndex (single page).
 
   ## Examples
 
@@ -38,6 +40,52 @@ defmodule Streamix.Iptv.Gindex.Client do
     case do_request(:post, url, body) do
       {:ok, %{status: 200, body: response_body}} ->
         parse_folder_response(response_body, base_url, path)
+
+      {:ok, %{status: status}} ->
+        {:error, {:http_error, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Lists ALL contents of a folder, handling pagination automatically.
+
+  GIndex pagination requires BOTH page_token AND page_index to be incremented.
+  """
+  def list_folder_all(base_url, path) do
+    list_folder_paginated(base_url, path, nil, 0, [])
+  end
+
+  defp list_folder_paginated(base_url, path, page_token, page_index, acc) do
+    body =
+      Jason.encode!(%{
+        id: "",
+        type: "folder",
+        password: "",
+        page_token: page_token,
+        page_index: page_index
+      })
+
+    url = join_url(base_url, path)
+
+    case do_request(:post, url, body) do
+      {:ok, %{status: 200, body: response_body}} ->
+        case parse_folder_response_with_token(response_body, base_url, path) do
+          {:ok, items, nil} ->
+            # No more pages
+            {:ok, acc ++ items}
+
+          {:ok, items, next_token} ->
+            # More pages to fetch - increment page_index
+            Logger.debug("[GIndex] Fetching page #{page_index + 1}...")
+            Process.sleep(300)
+            list_folder_paginated(base_url, path, next_token, page_index + 1, acc ++ items)
+
+          {:error, reason} ->
+            {:error, reason}
+        end
 
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
@@ -123,10 +171,10 @@ defmodule Streamix.Iptv.Gindex.Client do
   # Private functions
 
   defp do_request(method, url, body \\ nil, opts \\ []) do
-    do_request_with_retry(method, url, body, opts, 0)
+    do_request_with_retry(method, url, body, opts, 0, 0)
   end
 
-  defp do_request_with_retry(method, url, body, opts, attempt) do
+  defp do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     follow_redirects = Keyword.get(opts, :follow_redirects, true)
 
@@ -147,16 +195,35 @@ defmodule Streamix.Iptv.Gindex.Client do
 
     case Req.request(req_opts) do
       {:ok, response} ->
-        {:ok, response}
+        handle_response(response, method, url, body, opts, attempt, rate_limit_attempt)
 
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
         Logger.warning("[GIndex] Request failed (attempt #{attempt + 1}): #{inspect(reason)}")
         Process.sleep(@retry_delay)
-        do_request_with_retry(method, url, body, opts, attempt + 1)
+        do_request_with_retry(method, url, body, opts, attempt + 1, rate_limit_attempt)
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Handle rate limiting (429) and service unavailable (503) with exponential backoff
+  defp handle_response(%{status: status}, method, url, body, opts, attempt, rate_limit_attempt)
+       when status in [429, 503] and rate_limit_attempt < @max_rate_limit_retries do
+    # Exponential backoff: 5s, 10s, 20s, 40s, 80s
+    delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+
+    Logger.warning(
+      "[GIndex] Rate limited (#{status}), waiting #{div(delay, 1000)}s before retry " <>
+        "(attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
+    )
+
+    Process.sleep(delay)
+    do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
+  end
+
+  defp handle_response(response, _method, _url, _body, _opts, _attempt, _rate_limit_attempt) do
+    {:ok, response}
   end
 
   defp build_headers(:post) do
@@ -190,6 +257,21 @@ defmodule Streamix.Iptv.Gindex.Client do
     parse_folder_data(body, base_url, current_path)
   end
 
+  # Parse response and also return nextPageToken for pagination
+  defp parse_folder_response_with_token(body, base_url, current_path) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, data} ->
+        parse_folder_data_with_token(data, base_url, current_path)
+
+      {:error, _} ->
+        {:error, :invalid_json_response}
+    end
+  end
+
+  defp parse_folder_response_with_token(body, base_url, current_path) when is_map(body) do
+    parse_folder_data_with_token(body, base_url, current_path)
+  end
+
   defp parse_folder_data(%{"data" => %{"files" => files}}, base_url, current_path)
        when is_list(files) do
     items = Enum.map(files, &parse_file_item(&1, base_url, current_path))
@@ -208,12 +290,42 @@ defmodule Streamix.Iptv.Gindex.Client do
     {:ok, items}
   end
 
+  # Parse folder data and extract nextPageToken
+  defp parse_folder_data_with_token(%{"data" => data}, base_url, current_path)
+       when is_map(data) do
+    files = Map.get(data, "files", [])
+    next_token = Map.get(data, "nextPageToken")
+    items = Enum.map(files, &parse_file_item(&1, base_url, current_path))
+    {:ok, items, next_token}
+  end
+
+  defp parse_folder_data_with_token(%{"files" => files} = data, base_url, current_path)
+       when is_list(files) do
+    next_token = Map.get(data, "nextPageToken")
+    items = Enum.map(files, &parse_file_item(&1, base_url, current_path))
+    {:ok, items, next_token}
+  end
+
+  defp parse_folder_data_with_token(data, base_url, current_path) do
+    files = extract_files_from_response(data)
+    next_token = extract_next_page_token(data)
+    items = Enum.map(files, &parse_file_item(&1, base_url, current_path))
+    {:ok, items, next_token}
+  end
+
   defp extract_files_from_response(%{"data" => data}) when is_map(data) do
     Map.get(data, "files", [])
   end
 
   defp extract_files_from_response(%{"files" => files}) when is_list(files), do: files
   defp extract_files_from_response(_), do: []
+
+  defp extract_next_page_token(%{"data" => data}) when is_map(data) do
+    Map.get(data, "nextPageToken")
+  end
+
+  defp extract_next_page_token(%{"nextPageToken" => token}), do: token
+  defp extract_next_page_token(_), do: nil
 
   defp parse_file_item(item, _base_url, current_path) do
     name = item["name"] || item["title"] || ""
