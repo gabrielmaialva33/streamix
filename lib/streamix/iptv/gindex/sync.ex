@@ -8,9 +8,9 @@ defmodule Streamix.Iptv.Gindex.Sync do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Repo
-  alias Streamix.Iptv.{Movie, Provider}
   alias Streamix.Iptv.Gindex.Scraper
+  alias Streamix.Iptv.{Movie, Provider}
+  alias Streamix.Repo
 
   require Logger
 
@@ -83,24 +83,22 @@ defmodule Streamix.Iptv.Gindex.Sync do
   # Private functions
 
   defp sync_movies(provider, base_url, movies_path) do
-    try do
-      movies =
-        Scraper.scrape_movies(base_url, movies_path)
-        |> Stream.chunk_every(@batch_size)
-        |> Stream.map(fn batch ->
-          case upsert_movies(provider, batch) do
-            {:ok, count} -> count
-            {:error, _} -> 0
-          end
-        end)
-        |> Enum.sum()
+    movies =
+      Scraper.scrape_movies(base_url, movies_path)
+      |> Stream.chunk_every(@batch_size)
+      |> Stream.map(fn batch ->
+        case upsert_movies(provider, batch) do
+          {:ok, count} -> count
+          {:error, _} -> 0
+        end
+      end)
+      |> Enum.sum()
 
-      {:ok, movies}
-    rescue
-      e ->
-        Logger.error("[GIndex Sync] Error during sync: #{inspect(e)}")
-        {:error, e}
-    end
+    {:ok, movies}
+  rescue
+    e ->
+      Logger.error("[GIndex Sync] Error during sync: #{inspect(e)}")
+      {:error, e}
   end
 
   defp upsert_movies(provider, movies) when is_list(movies) do

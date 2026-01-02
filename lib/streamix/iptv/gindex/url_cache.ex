@@ -13,9 +13,9 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
 
   use GenServer
 
-  alias Streamix.Repo
-  alias Streamix.Iptv.Movie
   alias Streamix.Iptv.Gindex.Client
+  alias Streamix.Iptv.Movie
+  alias Streamix.Repo
 
   require Logger
 
@@ -193,7 +193,7 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
 
     Enum.each(expired, &:ets.delete(@table_name, &1))
 
-    if length(expired) > 0 do
+    if expired != [] do
       Logger.debug("[GIndex UrlCache] Cleaned up #{length(expired)} expired entries")
     end
   end
