@@ -164,9 +164,9 @@ defmodule Streamix.Iptv.Gindex.Scraper do
       {:ok, items} ->
         # Find season folders
         season_folders =
-          items
-          |> Enum.filter(&(&1.type == :folder))
-          |> Enum.filter(&is_season_folder?/1)
+          Enum.filter(items, fn item ->
+            item.type == :folder and season_folder?(item)
+          end)
 
         # Scrape seasons
         seasons = scrape_seasons(base_url, season_folders, folder.path)
@@ -454,7 +454,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   # =============================================================================
 
   # Checks if a folder looks like a season folder
-  defp is_season_folder?(folder) do
+  defp season_folder?(folder) do
     name = folder.name
     # Match patterns like "S01", "Season 1", or "Nome.S01.1080p..."
     Regex.match?(~r/^S\d{1,2}$/i, name) or

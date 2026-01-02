@@ -13,8 +13,8 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
 
   use GenServer
 
-  alias Streamix.Iptv.Gindex.Client
   alias Streamix.Iptv.{Episode, Movie}
+  alias Streamix.Iptv.Gindex.Client
   alias Streamix.Repo
 
   require Logger

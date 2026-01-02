@@ -50,7 +50,7 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
   defp api_keys_configured? do
     case Application.get_env(:streamix, :api_keys, []) do
       [] -> false
-      keys when is_list(keys) -> length(keys) > 0
+      [_ | _] -> true
     end
   end
 

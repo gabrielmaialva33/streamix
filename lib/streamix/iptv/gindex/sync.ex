@@ -8,8 +8,8 @@ defmodule Streamix.Iptv.Gindex.Sync do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.Gindex.Scraper
   alias Streamix.Iptv.{Episode, Movie, Provider, Season, Series}
+  alias Streamix.Iptv.Gindex.Scraper
   alias Streamix.Repo
 
   require Logger
