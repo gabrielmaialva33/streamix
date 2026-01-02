@@ -61,6 +61,22 @@ defmodule StreamixWeb.User.SettingsLive do
     end
   end
 
+  def handle_event("toggle_adult_content", _, socket) do
+    user = socket.assigns.current_scope.user
+    new_value = !user.show_adult_content
+
+    case Accounts.update_user_settings(user, %{show_adult_content: new_value}) do
+      {:ok, updated_user} ->
+        {:noreply,
+         socket
+         |> assign(current_scope: %{socket.assigns.current_scope | user: updated_user})
+         |> put_flash(:info, "Preferências atualizadas")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Erro ao atualizar preferências")}
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <div class="-mx-[4%] sm:mx-0">
@@ -155,6 +171,34 @@ defmodule StreamixWeb.User.SettingsLive do
               </.button>
             </:actions>
           </.simple_form>
+        </div>
+
+        <div class="bg-surface sm:rounded-xl p-4 sm:p-6 border-y sm:border border-border">
+          <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
+            Preferências de Conteúdo
+          </h3>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-text-primary font-medium">Conteúdo Adulto</p>
+              <p class="text-sm text-text-secondary">
+                Mostrar categorias e conteúdo marcados como adulto (+18)
+              </p>
+            </div>
+            <button
+              type="button"
+              phx-click="toggle_adult_content"
+              class={[
+                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface",
+                if(@current_scope.user.show_adult_content, do: "bg-brand", else: "bg-gray-600")
+              ]}
+            >
+              <span class={[
+                "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                if(@current_scope.user.show_adult_content, do: "translate-x-5", else: "translate-x-0")
+              ]} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

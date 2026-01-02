@@ -49,7 +49,9 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       maybe_sync_epg(provider)
     end
 
+    user = socket.assigns.current_scope.user
     categories = Iptv.list_categories(provider.id, "live")
+    categories = filter_adult_categories(categories, user.show_adult_content)
 
     current_path =
       if mode == :browse,
@@ -331,10 +333,13 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # ============================================
 
   defp load_channels(socket) do
+    user = socket.assigns.current_scope.user
+
     opts =
       [
         limit: @per_page,
-        offset: (socket.assigns.page - 1) * @per_page
+        offset: (socket.assigns.page - 1) * @per_page,
+        show_adult: user.show_adult_content
       ]
       |> maybe_add_filter(:category_id, socket.assigns.selected_category)
       |> maybe_add_filter(:search, socket.assigns.search)
@@ -365,6 +370,9 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   defp maybe_add_filter(opts, _key, nil), do: opts
   defp maybe_add_filter(opts, _key, ""), do: opts
   defp maybe_add_filter(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp filter_adult_categories(categories, true), do: categories
+  defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
 
   # Path builders based on mode
   defp build_path(%{assigns: %{mode: :browse}}, nil, ""), do: ~p"/browse"

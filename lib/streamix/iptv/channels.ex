@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.Channels do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{Access, LiveChannel}
+  alias Streamix.Iptv.{Access, AdultFilter, LiveChannel}
   alias Streamix.Repo
 
   # =============================================================================
@@ -23,6 +23,7 @@ defmodule Streamix.Iptv.Channels do
     * `:offset` - Number of results to skip (default: 0)
     * `:search` - Search term for channel name
     * `:category_id` - Filter by category ID
+    * `:show_adult` - Include adult content (default: false)
   """
   @spec list(integer(), keyword()) :: [LiveChannel.t()]
   def list(provider_id, opts \\ []) do
@@ -30,6 +31,7 @@ defmodule Streamix.Iptv.Channels do
     offset = Keyword.get(opts, :offset, 0)
     search = Keyword.get(opts, :search)
     category_id = Keyword.get(opts, :category_id)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     query =
       LiveChannel
@@ -50,6 +52,14 @@ defmodule Streamix.Iptv.Channels do
         )
       else
         query
+      end
+
+    # Filter adult content unless user opts in
+    query =
+      if show_adult do
+        query
+      else
+        AdultFilter.exclude_adult_channels(query, provider_id)
       end
 
     query

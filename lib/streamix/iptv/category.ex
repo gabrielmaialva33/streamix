@@ -13,6 +13,7 @@ defmodule Streamix.Iptv.Category do
     field :external_id, :string
     field :name, :string
     field :type, :string
+    field :is_adult, :boolean, default: false
 
     belongs_to :provider, Provider
     belongs_to :parent, Category
@@ -22,7 +23,7 @@ defmodule Streamix.Iptv.Category do
 
   def changeset(category, attrs) do
     category
-    |> cast(attrs, [:external_id, :name, :type, :provider_id, :parent_id])
+    |> cast(attrs, [:external_id, :name, :type, :provider_id, :parent_id, :is_adult])
     |> validate_required([:external_id, :name, :type, :provider_id])
     |> validate_inclusion(:type, @type_values)
     |> unique_constraint([:provider_id, :external_id, :type])

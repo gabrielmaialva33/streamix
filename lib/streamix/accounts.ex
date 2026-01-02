@@ -197,6 +197,34 @@ defmodule Streamix.Accounts do
     |> update_user_and_delete_all_tokens()
   end
 
+  @doc """
+  Returns an `%Ecto.Changeset{}` for changing user settings.
+
+  ## Examples
+
+      iex> change_user_settings(user)
+      %Ecto.Changeset{data: %User{}}
+
+  """
+  def change_user_settings(user, attrs \\ %{}) do
+    User.settings_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates user settings (like show_adult_content).
+
+  ## Examples
+
+      iex> update_user_settings(user, %{show_adult_content: true})
+      {:ok, %User{}}
+
+  """
+  def update_user_settings(user, attrs) do
+    user
+    |> User.settings_changeset(attrs)
+    |> Repo.update()
+  end
+
   ## Session
 
   @doc """

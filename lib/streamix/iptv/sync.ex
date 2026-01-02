@@ -12,6 +12,7 @@ defmodule Streamix.Iptv.Sync do
   alias Streamix.Repo
 
   alias Streamix.Iptv.{
+    AdultDetector,
     Category,
     Episode,
     Favorite,
@@ -139,7 +140,7 @@ defmodule Streamix.Iptv.Sync do
       # Upsert categories
       {count, _} =
         Repo.insert_all(Category, all_categories,
-          on_conflict: {:replace, [:name, :updated_at]},
+          on_conflict: {:replace, [:name, :is_adult, :updated_at]},
           conflict_target: [:provider_id, :external_id, :type]
         )
 
@@ -164,10 +165,13 @@ defmodule Streamix.Iptv.Sync do
   end
 
   defp category_attrs(cat, type, provider_id, now) do
+    name = cat["category_name"] || "Unknown"
+
     %{
       external_id: to_string(cat["category_id"]),
-      name: cat["category_name"] || "Unknown",
+      name: name,
       type: type,
+      is_adult: AdultDetector.adult_category?(name),
       provider_id: provider_id,
       inserted_at: now,
       updated_at: now

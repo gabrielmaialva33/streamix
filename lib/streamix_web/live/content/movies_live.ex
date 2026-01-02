@@ -43,7 +43,9 @@ defmodule StreamixWeb.Content.MoviesLive do
   end
 
   defp mount_with_provider(socket, provider, user_id, mode) do
+    user = socket.assigns.current_scope.user
     categories = Iptv.list_categories(provider.id, "vod")
+    categories = filter_adult_categories(categories, user.show_adult_content)
 
     current_path =
       if mode == :browse,
@@ -227,6 +229,7 @@ defmodule StreamixWeb.Content.MoviesLive do
   # ============================================
 
   defp load_movies(socket) do
+    user = socket.assigns.current_scope.user
     provider_id = socket.assigns.provider.id
     category = socket.assigns.selected_category
     search = socket.assigns.search
@@ -237,7 +240,8 @@ defmodule StreamixWeb.Content.MoviesLive do
         category_id: category,
         search: search,
         limit: @per_page,
-        offset: (page - 1) * @per_page
+        offset: (page - 1) * @per_page,
+        show_adult: user.show_adult_content
       )
 
     has_more = length(movies) >= @per_page
@@ -256,6 +260,9 @@ defmodule StreamixWeb.Content.MoviesLive do
     favorite_ids = Iptv.list_favorite_ids(user_id, "movie")
     assign(socket, favorites_map: favorite_ids)
   end
+
+  defp filter_adult_categories(categories, true), do: categories
+  defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
 
   # Path builders based on mode
   defp build_path(%{assigns: %{mode: :browse}}, nil, ""), do: ~p"/browse/movies"

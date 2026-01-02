@@ -11,6 +11,7 @@ defmodule Streamix.Accounts.User do
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
+    field :show_adult_content, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end
@@ -150,5 +151,13 @@ defmodule Streamix.Accounts.User do
   def valid_password?(_, _) do
     Bcrypt.no_user_verify()
     false
+  end
+
+  @doc """
+  A user changeset for updating settings like content preferences.
+  """
+  def settings_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:show_adult_content])
   end
 end

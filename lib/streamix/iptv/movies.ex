@@ -9,7 +9,7 @@ defmodule Streamix.Iptv.Movies do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{Access, Movie, TmdbClient, XtreamClient}
+  alias Streamix.Iptv.{Access, AdultFilter, Movie, TmdbClient, XtreamClient}
   alias Streamix.Repo
 
   # =============================================================================
@@ -25,6 +25,7 @@ defmodule Streamix.Iptv.Movies do
     * `:search` - Search term for movie name
     * `:category_id` - Filter by category ID
     * `:year` - Filter by release year
+    * `:show_adult` - Include adult content (default: false)
   """
   @spec list(integer(), keyword()) :: [Movie.t()]
   def list(provider_id, opts \\ []) do
@@ -33,6 +34,7 @@ defmodule Streamix.Iptv.Movies do
     search = Keyword.get(opts, :search)
     category_id = Keyword.get(opts, :category_id)
     year = Keyword.get(opts, :year)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     query =
       Movie
@@ -56,6 +58,14 @@ defmodule Streamix.Iptv.Movies do
       end
 
     query = if year, do: where(query, year: ^year), else: query
+
+    # Filter adult content unless user opts in
+    query =
+      if show_adult do
+        query
+      else
+        AdultFilter.exclude_adult_movies(query, provider_id)
+      end
 
     query
     |> limit(^limit)
