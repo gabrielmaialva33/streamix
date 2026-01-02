@@ -220,20 +220,8 @@ defmodule Streamix.Iptv.Gindex.Client do
     mime_type = item["mimeType"] || item["mime_type"] || ""
     size = item["size"] || 0
 
-    type =
-      if mime_type == "application/vnd.google-apps.folder" or
-           String.ends_with?(name, "/") do
-        :folder
-      else
-        :file
-      end
-
-    path =
-      if type == :folder do
-        Path.join(current_path, name) <> "/"
-      else
-        Path.join(current_path, name)
-      end
+    type = determine_file_type(mime_type, name)
+    path = build_file_path(current_path, name, type)
 
     %{
       name: String.trim_trailing(name, "/"),
@@ -243,6 +231,22 @@ defmodule Streamix.Iptv.Gindex.Client do
       mime_type: mime_type,
       modified: item["modifiedTime"] || item["modified_time"]
     }
+  end
+
+  defp determine_file_type(mime_type, name) do
+    if mime_type == "application/vnd.google-apps.folder" or String.ends_with?(name, "/") do
+      :folder
+    else
+      :file
+    end
+  end
+
+  defp build_file_path(current_path, name, :folder) do
+    Path.join(current_path, name) <> "/"
+  end
+
+  defp build_file_path(current_path, name, :file) do
+    Path.join(current_path, name)
   end
 
   defp parse_size(size) when is_integer(size), do: size
@@ -281,7 +285,7 @@ defmodule Streamix.Iptv.Gindex.Client do
     path
     |> String.split("/")
     |> Enum.with_index()
-    |> Enum.map(fn {segment, index} ->
+    |> Enum.map_join("/", fn {segment, index} ->
       # Only treat as drive letter if it's the first non-empty segment and matches pattern "X:"
       if index <= 1 and Regex.match?(~r/^\d+:$/, segment) do
         # This is a drive letter like "1:", don't encode
@@ -291,7 +295,6 @@ defmodule Streamix.Iptv.Gindex.Client do
         URI.encode(segment, &uri_char?/1)
       end
     end)
-    |> Enum.join("/")
   end
 
   # Characters allowed in URL path segments (RFC 3986) - note: : is NOT included

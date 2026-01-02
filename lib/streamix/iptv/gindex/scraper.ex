@@ -186,23 +186,26 @@ defmodule Streamix.Iptv.Gindex.Scraper do
 
     Enum.find_value(subfolders, fn subfolder ->
       Process.sleep(@delay_between_requests)
-
-      case Client.list_folder(base_url, subfolder.path) do
-        {:ok, files} ->
-          video =
-            Enum.find(files, fn file ->
-              file.type == :file and Parser.video_file?(file.name)
-            end)
-
-          if video do
-            folder_meta = Parser.parse_movie_folder(Path.basename(parent_path))
-            build_movie_data(folder_meta, video, parent_path)
-          end
-
-        _ ->
-          nil
-      end
+      check_subfolder_for_video(base_url, subfolder, parent_path)
     end)
+  end
+
+  defp check_subfolder_for_video(base_url, subfolder, parent_path) do
+    case Client.list_folder(base_url, subfolder.path) do
+      {:ok, files} ->
+        video =
+          Enum.find(files, fn file ->
+            file.type == :file and Parser.video_file?(file.name)
+          end)
+
+        if video do
+          folder_meta = Parser.parse_movie_folder(Path.basename(parent_path))
+          build_movie_data(folder_meta, video, parent_path)
+        end
+
+      _ ->
+        nil
+    end
   end
 
   defp build_movie_data(folder_meta, video_file, folder_path) do
