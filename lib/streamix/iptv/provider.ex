@@ -18,6 +18,11 @@ defmodule Streamix.Iptv.Provider do
     field :visibility, Ecto.Enum, values: [:private, :public, :global], default: :private
     field :is_system, :boolean, default: false
 
+    # Provider type: xtream (default) or gindex
+    field :provider_type, Ecto.Enum, values: [:xtream, :gindex], default: :xtream
+    field :gindex_url, :string
+    field :gindex_drives, :map
+
     # Contadores por tipo
     field :live_channels_count, :integer, default: 0
     field :movies_count, :integer, default: 0
@@ -43,20 +48,21 @@ defmodule Streamix.Iptv.Provider do
     timestamps(type: :utc_datetime)
   end
 
-  @required_fields ~w(name url username password)a
-  @optional_fields ~w(user_id is_active sync_status visibility is_system
+  @all_fields ~w(name url username password user_id is_active sync_status visibility is_system
                       live_channels_count movies_count series_count
                       live_synced_at vod_synced_at series_synced_at
-                      epg_synced_at epg_sync_interval_hours server_info)a
+                      epg_synced_at epg_sync_interval_hours server_info
+                      provider_type gindex_url gindex_drives)a
 
   def changeset(provider, attrs) do
     provider
-    |> cast(attrs, @required_fields ++ @optional_fields)
-    |> validate_required(@required_fields)
+    |> cast(attrs, @all_fields)
+    |> validate_required([:name, :url])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_url(:url)
     |> validate_inclusion(:visibility, [:private, :public, :global])
     |> maybe_require_user_id()
+    |> maybe_require_credentials()
     |> unique_constraint([:user_id, :url, :username])
     |> foreign_key_constraint(:user_id)
   end
@@ -67,6 +73,15 @@ defmodule Streamix.Iptv.Provider do
       changeset
     else
       validate_required(changeset, [:user_id])
+    end
+  end
+
+  # GIndex providers don't need username/password
+  defp maybe_require_credentials(changeset) do
+    if get_field(changeset, :provider_type) == :gindex do
+      changeset
+    else
+      validate_required(changeset, [:username, :password])
     end
   end
 

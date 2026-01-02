@@ -30,7 +30,7 @@ defmodule Streamix.Iptv.GlobalProvider do
   """
   def get do
     Provider
-    |> where(is_system: true)
+    |> where(is_system: true, provider_type: :xtream)
     |> Repo.one()
   end
 
