@@ -225,6 +225,18 @@ defmodule StreamixWeb.PlayerLive do
     Ecto.NoResultsError -> {:error, :not_found}
   end
 
+  defp load_content("gindex_episode", id, _user_id) do
+    episode = Iptv.get_episode_with_context!(id)
+
+    if episode && episode.gindex_path do
+      load_gindex_episode(episode)
+    else
+      {:error, :not_found}
+    end
+  rescue
+    Ecto.NoResultsError -> {:error, :not_found}
+  end
+
   defp load_content(_, _, _), do: {:error, :not_found}
 
   defp load_channel(channel) do
@@ -257,6 +269,18 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
+  defp load_gindex_episode(episode) do
+    provider = episode.season.series.provider
+
+    case Gindex.get_episode_url(episode.id) do
+      {:ok, stream_url} ->
+        {:ok, episode, provider, stream_url}
+
+      {:error, _reason} ->
+        {:error, :not_found}
+    end
+  end
+
   defp record_watch_history(user_id, type, content) do
     Iptv.add_to_watch_history(user_id, %{
       content_type: type,
@@ -268,6 +292,7 @@ defmodule StreamixWeb.PlayerLive do
 
   defp default_streaming_mode("live_channel"), do: :balanced
   defp default_streaming_mode("gindex"), do: :quality
+  defp default_streaming_mode("gindex_episode"), do: :quality
   defp default_streaming_mode(_), do: :quality
 
   defp content_title(content, "live_channel"), do: content.name
@@ -277,12 +302,16 @@ defmodule StreamixWeb.PlayerLive do
   defp content_title(content, "episode"),
     do: content.title || "Episódio #{content.episode_num || ""}"
 
+  defp content_title(content, "gindex_episode"),
+    do: content.title || "Episódio #{content.episode_num || ""}"
+
   defp content_title(content, _), do: content.name
 
   defp content_icon(content, "live_channel"), do: content.stream_icon
   defp content_icon(content, "movie"), do: content.stream_icon || Map.get(content, :cover)
   defp content_icon(content, "gindex"), do: content.stream_icon
   defp content_icon(content, "episode"), do: Map.get(content, :cover)
+  defp content_icon(content, "gindex_episode"), do: Map.get(content, :cover)
   defp content_icon(_, _), do: nil
 
   defp get_back_path(socket) do
@@ -299,6 +328,10 @@ defmodule StreamixWeb.PlayerLive do
       :episode ->
         series_id = socket.assigns.content.season.series_id
         ~p"/providers/#{socket.assigns.provider.id}/series/#{series_id}"
+
+      :gindex_episode ->
+        series_id = socket.assigns.content.season.series_id
+        ~p"/gindex/series/#{series_id}"
 
       _ ->
         ~p"/"
