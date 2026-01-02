@@ -9,6 +9,8 @@ defmodule Streamix.Iptv.Category do
 
   @type_values ~w(live vod series)
 
+  @derive {Jason.Encoder, only: [:id, :external_id, :name, :type, :is_adult, :provider_id]}
+
   schema "categories" do
     field :external_id, :string
     field :name, :string

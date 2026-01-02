@@ -55,6 +55,17 @@ end
 config :streamix,
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://proxy.example.com"
 
+# API Keys for TV app and external clients
+# Comma-separated list of valid API keys
+api_keys =
+  case get_env.("API_KEYS") do
+    nil -> []
+    "" -> []
+    keys -> String.split(keys, ",") |> Enum.map(&String.trim/1)
+  end
+
+config :streamix, :api_keys, api_keys
+
 # CORS configuration
 # Comma-separated list of allowed origins, or "*" for development
 cors_origins =

@@ -32,6 +32,15 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 5, period: 60_000
   end
 
+  # Protected API pipeline with rate limiting and API key auth
+  pipeline :api_v1 do
+    plug :accepts, ["json"]
+    plug StreamixWeb.Plugs.CORS
+    # 120 requests per minute per IP
+    plug StreamixWeb.Plugs.RateLimit, limit: 120, period: 60_000
+    plug StreamixWeb.Plugs.ApiKeyAuth
+  end
+
   # Health check endpoint
   scope "/api", StreamixWeb do
     pipe_through :api
@@ -46,9 +55,9 @@ defmodule StreamixWeb.Router do
     get "/stream/proxy", StreamController, :proxy
   end
 
-  # Public catalog API for TV app and other clients
+  # Protected catalog API for TV app and other clients
   scope "/api/v1", StreamixWeb.Api.V1 do
-    pipe_through :api
+    pipe_through :api_v1
 
     # Handle CORS preflight requests
     options "/catalog/*path", CatalogController, :options
