@@ -23,13 +23,19 @@ defmodule Streamix.Iptv.Episode do
     field :tmdb_id, :integer
     field :tmdb_enriched, :boolean, default: false
 
+    # GIndex fields
+    field :gindex_path, :string
+    field :gindex_url_cached, :string
+    field :gindex_url_expires_at, :utc_datetime
+
     belongs_to :season, Season
 
     timestamps(type: :utc_datetime)
   end
 
   @fields ~w(episode_id episode_num title name plot cover still_path duration_secs
-             duration container_extension air_date rating tmdb_id tmdb_enriched season_id)a
+             duration container_extension air_date rating tmdb_id tmdb_enriched season_id
+             gindex_path gindex_url_cached gindex_url_expires_at)a
 
   def changeset(episode, attrs) do
     episode
