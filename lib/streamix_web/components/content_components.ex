@@ -95,12 +95,13 @@ defmodule StreamixWeb.ContentComponents do
   """
   attr :selected, :atom, required: true, values: [:live, :movies, :series]
   attr :counts, :map, default: %{}
+  attr :source, :string, default: "iptv"
 
   def browse_tabs(assigns) do
     ~H"""
     <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
       <.link
-        navigate={~p"/browse"}
+        navigate={browse_path("/browse", @source)}
         class={[
           "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :live && "bg-brand text-white",
@@ -114,7 +115,7 @@ defmodule StreamixWeb.ContentComponents do
         </span>
       </.link>
       <.link
-        navigate={~p"/browse/movies"}
+        navigate={browse_path("/browse/movies", @source)}
         class={[
           "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :movies && "bg-brand text-white",
@@ -128,7 +129,7 @@ defmodule StreamixWeb.ContentComponents do
         </span>
       </.link>
       <.link
-        navigate={~p"/browse/series"}
+        navigate={browse_path("/browse/series", @source)}
         class={[
           "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
           @selected == :series && "bg-brand text-white",
@@ -146,6 +147,54 @@ defmodule StreamixWeb.ContentComponents do
   end
 
   @doc """
+  Renders source tabs for switching between IPTV and GIndex content.
+
+  ## Attributes
+
+    * `:selected` - Currently selected source ("iptv" or "gindex")
+    * `:path` - Current path to preserve when switching sources
+
+  ## Examples
+
+      <.source_tabs selected="iptv" path="/browse/movies" />
+  """
+  attr :selected, :string, required: true
+  attr :path, :string, default: "/browse/movies"
+
+  def source_tabs(assigns) do
+    ~H"""
+    <div class="flex items-center bg-surface rounded-full p-1 gap-0.5">
+      <.link
+        navigate={browse_path(@path, "iptv")}
+        class={[
+          "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
+          @selected == "iptv" && "bg-brand text-white shadow-sm",
+          @selected != "iptv" && "text-text-secondary hover:text-text-primary"
+        ]}
+      >
+        <.icon name="hero-signal" class="size-4" />
+        <span>IPTV</span>
+      </.link>
+      <.link
+        navigate={browse_path(@path, "gindex")}
+        class={[
+          "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
+          @selected == "gindex" && "bg-brand text-white shadow-sm",
+          @selected != "gindex" && "text-text-secondary hover:text-text-primary"
+        ]}
+      >
+        <.icon name="hero-cloud" class="size-4" />
+        <span>GDrive</span>
+      </.link>
+    </div>
+    """
+  end
+
+  # Helper to build browse paths with source param
+  defp browse_path(path, "iptv"), do: path
+  defp browse_path(path, source), do: "#{path}?source=#{source}"
+
+  @doc """
   Renders a movie card with poster and metadata.
 
   ## Attributes
@@ -153,6 +202,7 @@ defmodule StreamixWeb.ContentComponents do
     * `:movie` - The movie struct/map
     * `:is_favorite` - Whether the movie is favorited
     * `:show_favorite` - Whether to show the favorite button
+    * `:source` - Content source ("iptv" or "gindex") for badge display
     * `:on_play` - Event name for play action
     * `:on_favorite` - Event name for favorite toggle
     * `:on_details` - Event name for showing details
@@ -164,6 +214,7 @@ defmodule StreamixWeb.ContentComponents do
   attr :movie, :map, required: true
   attr :is_favorite, :boolean, default: false
   attr :show_favorite, :boolean, default: true
+  attr :source, :string, default: nil
   attr :on_play, :string, default: "play_movie"
   attr :on_favorite, :string, default: "toggle_favorite"
   attr :on_details, :string, default: "show_details"
@@ -224,6 +275,13 @@ defmodule StreamixWeb.ContentComponents do
         >
           {@movie.year}
         </div>
+
+        <span
+          :if={@source == "gindex"}
+          class="absolute bottom-2 left-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
+        >
+          GIndex
+        </span>
       </div>
 
       <div class="p-3">
