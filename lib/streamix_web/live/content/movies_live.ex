@@ -102,11 +102,6 @@ defmodule StreamixWeb.Content.MoviesLive do
     category = parse_integer_param(params["category"])
     search = params["search"] || ""
 
-    # When source changes or on initial load (provider nil), reload everything
-    source_changed = socket.assigns.source != source
-    needs_provider_load = source_changed || (source == "iptv" && socket.assigns.provider == nil)
-    user = socket.assigns.user
-
     socket =
       socket
       |> assign(source: source)
@@ -114,52 +109,115 @@ defmodule StreamixWeb.Content.MoviesLive do
       |> assign(search: search)
       |> assign(page: 1)
       |> stream(:movies, [], reset: true)
-
-    socket =
-      if needs_provider_load do
-        # Reload provider/categories based on source
-        case source do
-          "gindex" ->
-            gindex_count = Iptv.count_gindex_movies()
-
-            socket
-            |> assign(provider: nil)
-            |> assign(categories: [])
-            |> assign(page_title: "Filmes - GDrive")
-            |> assign(gindex_count: gindex_count)
-
-          "iptv" ->
-            provider = Iptv.get_global_provider()
-
-            if provider do
-              categories = Iptv.list_categories(provider.id, "vod")
-              categories = filter_adult_categories(categories, user.show_adult_content)
-
-              socket
-              |> assign(provider: provider)
-              |> assign(categories: categories)
-              |> assign(page_title: "Filmes")
-              |> assign(gindex_count: Iptv.count_gindex_movies())
-            else
-              socket
-              |> assign(provider: nil)
-              |> assign(categories: [])
-              |> assign(page_title: "Filmes")
-            end
-
-          _ ->
-            socket
-        end
-      else
-        socket
-      end
-
-    socket =
-      socket
+      |> maybe_reload_provider_and_categories(source)
       |> load_movies()
       |> load_favorites_map()
 
     {:noreply, socket}
+  end
+
+  defp maybe_reload_provider_and_categories(socket, source) do
+    # We re-assign source in handle_params, so we should check against the
+    # *previous* source if we had it, but here we've already assigned the
+    # new source.
+    # Actually, the logic in original code checked `socket.assigns.source`
+    # before assignment?
+    # No, it did: `source_changed = socket.assigns.source != source`.
+    # But in my refactor, I passed `source` to this function. I need to handle
+    # the condition correctly.
+    # Since I'm assigning `source` before calling this, `socket.assigns.source`
+    # is already `source`.
+    # Wait, `assign/3` returns a *new* socket struct.
+    # So if I chain `assign(source: source) |> maybe_reload...`, the socket
+    # passed to `maybe_reload` *has* the new source.
+    # So `socket.assigns.source != source` would always be false if I use the
+    # new socket.
+    #
+    # Original logic:
+    # `source_changed = socket.assigns.source != source` (OLD socket vs NEW source param)
+    #
+    # So I should check if I need to reload based on the socket state *before*
+    # it was potentially cleared?
+    # Actually, the requirement is: "When source changes or on initial load
+    # (provider nil), reload everything".
+    #
+    # If I simply check `socket.assigns.provider == nil` or if the provider
+    # type doesn't match the source?
+    #
+    # Let's look at the original logic again:
+    # `needs_provider_load = source_changed || (source == "iptv" && socket.assigns.provider == nil)`
+    #
+    # I can just implement `reload_provider_if_needed(socket)`.
+    # It checks `socket.assigns.source`.
+    #
+    # If source is "gindex" and provider is NOT nil (or we don't have gindex info), we load.
+    # If source is "iptv" and provider is nil, we load.
+    #
+    # Simpler approach: blindly reload if conditions met.
+    #
+    # Let's stick to the original logic but extracted.
+    # But I can't easily access the "old" source if I've already updated the socket.
+    #
+    # Solution: Do the check *before* the chain? Or inside the function, checking if the current state
+    # matches the source.
+    #
+    # If source="gindex", we expect provider=nil. If provider!=nil, we need to reload (clear it).
+    # If source="iptv", we expect provider!=nil. If provider==nil, we need to reload.
+    #
+    # That seems robust enough.
+
+    case source do
+      "gindex" ->
+        # If we have a provider, it means we were in IPTV mode, so switch.
+        # Or if we just want to ensure GIndex state is correct.
+        if socket.assigns.provider != nil or socket.assigns.gindex_count == 0 do
+          load_gindex_provider(socket)
+        else
+          socket
+        end
+
+      "iptv" ->
+        # If we don't have a provider, we need to load it.
+        if socket.assigns.provider == nil do
+          load_iptv_provider(socket)
+        else
+          socket
+        end
+
+      _ ->
+        socket
+    end
+  end
+
+  defp load_gindex_provider(socket) do
+    gindex_count = Iptv.count_gindex_movies()
+
+    socket
+    |> assign(provider: nil)
+    |> assign(categories: [])
+    |> assign(page_title: "Filmes - GDrive")
+    |> assign(gindex_count: gindex_count)
+  end
+
+  defp load_iptv_provider(socket) do
+    user = socket.assigns.user
+    provider = Iptv.get_global_provider()
+
+    if provider do
+      categories = Iptv.list_categories(provider.id, "vod")
+      categories = filter_adult_categories(categories, user.show_adult_content)
+
+      socket
+      |> assign(provider: provider)
+      |> assign(categories: categories)
+      |> assign(page_title: "Filmes")
+      |> assign(gindex_count: Iptv.count_gindex_movies())
+    else
+      socket
+      |> assign(provider: nil)
+      |> assign(categories: [])
+      |> assign(page_title: "Filmes")
+    end
   end
 
   defp parse_integer_param(nil), do: nil
