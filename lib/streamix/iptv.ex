@@ -103,6 +103,11 @@ defmodule Streamix.Iptv do
   defdelegate search_series(user_id, query, opts \\ []), to: SeriesOps, as: :search
   defdelegate search_public_series(query, opts \\ []), to: SeriesOps, as: :search_public
 
+  # GIndex series
+  defdelegate list_gindex_series(opts \\ []), to: SeriesOps, as: :list_gindex
+  defdelegate count_gindex_series, to: SeriesOps, as: :count_gindex
+  defdelegate get_gindex_series_with_seasons(id), to: SeriesOps, as: :get_gindex_with_seasons
+
   # Episode operations
   defdelegate get_episode!(id), to: SeriesOps
   defdelegate get_episode(id), to: SeriesOps

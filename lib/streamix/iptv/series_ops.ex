@@ -13,6 +13,69 @@ defmodule Streamix.Iptv.SeriesOps do
   alias Streamix.Repo
 
   # =============================================================================
+  # GIndex Series Functions
+  # =============================================================================
+
+  @doc """
+  Lists GIndex series (series with gindex_path set).
+
+  ## Options
+    * `:limit` - Maximum number of results (default: 100)
+    * `:offset` - Number of results to skip (default: 0)
+    * `:search` - Search term for series name
+  """
+  @spec list_gindex(keyword()) :: [Series.t()]
+  def list_gindex(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    search = Keyword.get(opts, :search)
+
+    query =
+      Series
+      |> where([s], not is_nil(s.gindex_path))
+      |> order_by(desc: :year, asc: :name)
+
+    query =
+      if search && search != "" do
+        where(query, [s], ilike(s.name, ^"%#{search}%") or ilike(s.title, ^"%#{search}%"))
+      else
+        query
+      end
+
+    query
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Repo.all()
+  end
+
+  @doc """
+  Counts GIndex series.
+  """
+  @spec count_gindex() :: integer()
+  def count_gindex do
+    Series
+    |> where([s], not is_nil(s.gindex_path))
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
+  Gets a GIndex series by ID with its seasons and episodes.
+  Returns nil if not a GIndex series.
+  """
+  @spec get_gindex_with_seasons(integer()) :: Series.t() | nil
+  def get_gindex_with_seasons(id) do
+    seasons_query = from(s in Season, order_by: s.season_number)
+    episodes_query = from(e in Episode, order_by: e.episode_num)
+
+    Series
+    |> where(id: ^id)
+    |> where([s], not is_nil(s.gindex_path))
+    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
+  # =============================================================================
   # Series Listing
   # =============================================================================
 
