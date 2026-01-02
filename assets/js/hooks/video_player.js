@@ -752,18 +752,27 @@ const VideoPlayer = {
     // Force proxy for ALL HTTP streams when on HTTPS (mixed content blocking)
     if (isHttpUrl && isHttpsPage && this.proxyUrl) {
       console.log("Using proxy URL for", streamType, "stream (HTTP -> HTTPS proxy required)");
-      return this.proxyUrl;
+      return this.toAbsoluteUrl(this.proxyUrl);
     }
 
     // For same-protocol, proxy specific stream types that benefit from it
     const proxyableTypes = ["ts", "xtream", "unknown"];
     if (this.useProxy && this.proxyUrl && proxyableTypes.includes(streamType)) {
       console.log("Using proxy URL for", streamType, "stream");
-      return this.proxyUrl;
+      return this.toAbsoluteUrl(this.proxyUrl);
     }
 
     console.log("Using direct URL for", streamType, "stream");
     return this.streamUrl;
+  },
+
+  // Convert relative URL to absolute URL (required for Web Workers)
+  toAbsoluteUrl(url) {
+    if (!url) return url;
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    return new URL(url, window.location.origin).href;
   },
 
   // ============================================
