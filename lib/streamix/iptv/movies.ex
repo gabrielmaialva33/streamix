@@ -74,6 +74,64 @@ defmodule Streamix.Iptv.Movies do
   end
 
   @doc """
+  Lists GIndex movies (movies with gindex_path set).
+
+  ## Options
+    * `:limit` - Maximum number of results (default: 100)
+    * `:offset` - Number of results to skip (default: 0)
+    * `:search` - Search term for movie name
+    * `:year` - Filter by release year
+    * `:show_adult` - Include adult content (default: false)
+  """
+  @spec list_gindex(keyword()) :: [Movie.t()]
+  def list_gindex(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    search = Keyword.get(opts, :search)
+    year = Keyword.get(opts, :year)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    query =
+      Movie
+      |> where([m], not is_nil(m.gindex_path))
+      |> order_by(desc: :year, asc: :name)
+
+    query =
+      if search && search != "" do
+        search_term = "%#{search}%"
+        where(query, [m], ilike(m.name, ^search_term) or ilike(m.title, ^search_term))
+      else
+        query
+      end
+
+    query = if year, do: where(query, year: ^year), else: query
+
+    # Filter adult content (basic check on name)
+    query =
+      if show_adult do
+        query
+      else
+        where(query, [m], not ilike(m.name, "%xxx%") and not ilike(m.name, "%adult%"))
+      end
+
+    query
+    |> limit(^limit)
+    |> offset(^offset)
+    |> preload(:provider)
+    |> Repo.all()
+  end
+
+  @doc """
+  Counts GIndex movies.
+  """
+  @spec count_gindex() :: integer()
+  def count_gindex do
+    Movie
+    |> where([m], not is_nil(m.gindex_path))
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
   Lists featured movies from public/global providers for public display.
   Orders by rating and recency.
   """
