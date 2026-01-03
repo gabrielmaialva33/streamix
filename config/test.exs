@@ -1,5 +1,8 @@
 import Config
 
+# Mark environment as test (used to skip provider initialization in Application)
+config :streamix, env: :test
+
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
