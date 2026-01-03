@@ -27,6 +27,7 @@ defmodule Streamix.Iptv.Series do
     field :images, {:array, :string}, default: []
     field :season_count, :integer, default: 0
     field :episode_count, :integer, default: 0
+    field :content_type, :string, default: "series"
 
     # GIndex fields
     field :gindex_path, :string
@@ -40,7 +41,7 @@ defmodule Streamix.Iptv.Series do
 
   @fields ~w(series_id name title year cover rating rating_5based genre cast
              director plot backdrop_path youtube_trailer tmdb_id tagline
-             content_rating images season_count episode_count provider_id gindex_path)a
+             content_rating images season_count episode_count content_type provider_id gindex_path)a
 
   def changeset(series, attrs) do
     series
