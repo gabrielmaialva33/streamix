@@ -80,9 +80,9 @@ defmodule Streamix.Iptv.Gindex.Client do
 
           {:ok, items, next_token} ->
             # More pages to fetch - increment page_index
-            # Delay between pages to avoid rate limiting (5s + jitter)
+            # Delay between pages to avoid rate limiting (8s + jitter)
             Logger.debug("[GIndex] Fetching page #{page_index + 1}...")
-            Process.sleep(5000 + :rand.uniform(2000))
+            Process.sleep(8000 + :rand.uniform(3000))
             list_folder_paginated(base_url, path, next_token, page_index + 1, acc ++ items)
 
           {:error, reason} ->

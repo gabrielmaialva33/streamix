@@ -118,7 +118,8 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
 
   defp schedule_retry_for_failures(failed_ids, attempt) do
     # Exponential backoff: 1min, 2min, 4min, 8min, capped at 15min
-    delay_seconds = min(@retry_base_delay * :math.pow(2, attempt - 1) |> trunc(), @max_retry_delay)
+    delay_seconds =
+      min((@retry_base_delay * :math.pow(2, attempt - 1)) |> trunc(), @max_retry_delay)
 
     %{series_ids: failed_ids, retry_attempt: attempt + 1}
     |> __MODULE__.new(schedule_in: delay_seconds)

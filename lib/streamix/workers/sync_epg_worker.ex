@@ -35,7 +35,9 @@ defmodule Streamix.Workers.SyncEpgWorker do
   end
 
   defp sync_all_epg(%Provider{} = provider, attempt) do
-    Logger.info("[SyncEpgWorker] Starting EPG sync for provider #{provider.id} (attempt #{attempt})")
+    Logger.info(
+      "[SyncEpgWorker] Starting EPG sync for provider #{provider.id} (attempt #{attempt})"
+    )
 
     channels = get_epg_channels(provider.id)
     total = length(channels)
@@ -61,17 +63,20 @@ defmodule Streamix.Workers.SyncEpgWorker do
       channels
       |> Enum.chunk_every(@batch_size)
       |> Enum.with_index(1)
-      |> Enum.reduce_while({%{synced: 0, programs: 0, failed: 0, failed_channels: []}, nil}, fn indexed_batch, {acc, _} ->
-        case process_batch_with_delay(provider, indexed_batch, batch_count) do
-          {:ok, batch_results} ->
-            merged = merge_results(acc, batch_results)
-            {:cont, {merged, nil}}
+      |> Enum.reduce_while(
+        {%{synced: 0, programs: 0, failed: 0, failed_channels: []}, nil},
+        fn indexed_batch, {acc, _} ->
+          case process_batch_with_delay(provider, indexed_batch, batch_count) do
+            {:ok, batch_results} ->
+              merged = merge_results(acc, batch_results)
+              {:cont, {merged, nil}}
 
-          {:high_failure, batch_results, batch_num} ->
-            merged = merge_results(acc, batch_results)
-            {:halt, {merged, batch_num}}
+            {:high_failure, batch_results, batch_num} ->
+              merged = merge_results(acc, batch_results)
+              {:halt, {merged, batch_num}}
+          end
         end
-      end)
+      )
 
     # If we detected a high failure batch, snooze
     if high_failure_batch do
