@@ -40,11 +40,12 @@ defmodule Streamix.Queue.Publisher do
     message_priority = Keyword.get(opts, :message_priority, 5)
 
     routing_key = "sync.#{priority}.#{task.type}"
+    task_id = generate_task_id()
 
     payload =
       task
       |> Map.put(:enqueued_at, DateTime.utc_now() |> DateTime.to_iso8601())
-      |> Map.put(:id, generate_task_id())
+      |> Map.put(:id, task_id)
       |> Jason.encode!()
 
     publish_options = [
@@ -63,7 +64,7 @@ defmodule Streamix.Queue.Publisher do
         case AMQP.Basic.publish(channel, @exchange, routing_key, payload, publish_options) do
           :ok ->
             Logger.debug("[Publisher] Published task: #{routing_key}")
-            {:ok, task.id}
+            {:ok, task_id}
 
           error ->
             Logger.error("[Publisher] Failed to publish: #{inspect(error)}")

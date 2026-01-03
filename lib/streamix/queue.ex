@@ -90,6 +90,25 @@ defmodule Streamix.Queue do
     end
   end
 
+  @doc """
+  Enqueues a sync task with the task map directly.
+
+  ## Examples
+
+      Queue.enqueue_sync(%{type: "gindex_full_sync", provider_id: 4}, priority: :high)
+  """
+  def enqueue_sync(task, opts \\ []) when is_map(task) do
+    if enabled?() do
+      Publisher.publish_sync_task(task, opts)
+    else
+      Logger.debug("[Queue] RabbitMQ disabled, using Oban")
+
+      task
+      |> Streamix.Workers.SyncGindexProviderWorker.new()
+      |> Oban.insert()
+    end
+  end
+
   # Private functions
 
   defp enqueue_gindex_via_rabbitmq(provider) do
