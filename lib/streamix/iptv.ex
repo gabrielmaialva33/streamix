@@ -113,6 +113,18 @@ defmodule Streamix.Iptv do
   defdelegate count_gindex_animes, to: SeriesOps
   defdelegate get_gindex_anime_with_seasons(id), to: SeriesOps
 
+  @doc """
+  Returns all GIndex content counts in a single call for efficient tab rendering.
+  """
+  @spec gindex_counts() :: %{movies: integer(), series: integer(), animes: integer()}
+  def gindex_counts do
+    %{
+      movies: Movies.count_gindex(),
+      series: SeriesOps.count_gindex(),
+      animes: SeriesOps.count_gindex_animes()
+    }
+  end
+
   # Episode operations
   defdelegate get_episode!(id), to: SeriesOps
   defdelegate get_episode(id), to: SeriesOps

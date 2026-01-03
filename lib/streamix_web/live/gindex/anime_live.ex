@@ -15,7 +15,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
 
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    animes_count = Iptv.count_gindex_animes()
+    gindex_counts = Iptv.gindex_counts()
 
     socket =
       socket
@@ -28,7 +28,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
       |> assign(empty_results: false)
       |> assign(page_title: "Animes - GDrive")
       |> assign(current_path: "/browse/animes")
-      |> assign(animes_count: animes_count)
+      |> assign(gindex_counts: gindex_counts)
       |> stream(:animes, [])
 
     {:ok, socket}
@@ -115,13 +115,14 @@ defmodule StreamixWeb.Gindex.AnimeLive do
       <div class="flex flex-col gap-4">
         <%!-- Source and content tabs row --%>
         <div class="flex flex-wrap items-center gap-3">
-          <.source_tabs selected="gindex" path="/browse/animes" gindex_path="/browse/animes" />
-          <div class="hidden sm:block w-px h-8 bg-border" />
-          <.browse_tabs
-            selected={:animes}
-            source="gindex"
-            counts={%{animes: @animes_count, movies: 0, series: 0}}
+          <.source_tabs
+            selected="gindex"
+            path="/browse/animes"
+            iptv_path="/browse"
+            gindex_path="/browse/animes"
           />
+          <div class="hidden sm:block w-px h-8 bg-border" />
+          <.browse_tabs selected={:animes} source="gindex" counts={@gindex_counts} />
         </div>
 
         <%!-- Filters row --%>

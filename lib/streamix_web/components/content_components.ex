@@ -102,74 +102,59 @@ defmodule StreamixWeb.ContentComponents do
   def browse_tabs(assigns) do
     ~H"""
     <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
-      <%= if @source == "gindex" do %>
-        <.link
-          navigate={browse_path("/browse/animes", @source)}
-          class={[
-            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
-            @selected == :animes && "bg-brand text-white",
-            @selected != :animes &&
-              "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-          ]}
-        >
-          <.icon name="hero-sparkles" class="size-3.5 sm:size-4" />
-          <span>Animes</span>
-          <span
-            :if={@counts[:animes]}
-            class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
-          >
-            {format_count(@counts.animes)}
-          </span>
-        </.link>
-      <% else %>
-        <.link
-          navigate={browse_path("/browse", @source)}
-          class={[
-            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
-            @selected == :live && "bg-brand text-white",
-            @selected != :live &&
-              "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-          ]}
-        >
-          <.icon name="hero-tv" class="size-3.5 sm:size-4" />
-          <span>Ao Vivo</span>
-          <span
-            :if={@counts[:live]}
-            class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
-          >
-            {format_count(@counts.live)}
-          </span>
-        </.link>
-      <% end %>
-      <.link
-        navigate={browse_path("/browse/movies", @source)}
-        class={[
-          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
-          @selected == :movies && "bg-brand text-white",
-          @selected != :movies && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-        ]}
-      >
-        <.icon name="hero-film" class="size-3.5 sm:size-4" />
-        <span>Filmes</span>
-        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
-          {format_count(@counts.movies)}
-        </span>
-      </.link>
-      <.link
-        navigate={browse_path("/browse/series", @source)}
-        class={[
-          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
-          @selected == :series && "bg-brand text-white",
-          @selected != :series && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-        ]}
-      >
-        <.icon name="hero-video-camera" class="size-3.5 sm:size-4" />
-        <span>Séries</span>
-        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
-          {format_count(@counts.series)}
-        </span>
-      </.link>
+      <.browse_tab
+        :if={@source == "gindex"}
+        href={browse_path("/browse/animes", @source)}
+        icon="hero-sparkles"
+        label="Animes"
+        count={@counts[:animes]}
+        selected={@selected == :animes}
+      />
+      <.browse_tab
+        :if={@source != "gindex"}
+        href={browse_path("/browse", @source)}
+        icon="hero-tv"
+        label="Ao Vivo"
+        count={@counts[:live]}
+        selected={@selected == :live}
+      />
+      <.browse_tab
+        href={browse_path("/browse/movies", @source)}
+        icon="hero-film"
+        label="Filmes"
+        count={@counts[:movies]}
+        selected={@selected == :movies}
+      />
+      <.browse_tab
+        href={browse_path("/browse/series", @source)}
+        icon="hero-video-camera"
+        label="Séries"
+        count={@counts[:series]}
+        selected={@selected == :series}
+      />
     </div>
+    """
+  end
+
+  defp browse_tab(assigns) do
+    ~H"""
+    <.link
+      navigate={@href}
+      class={[
+        "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+        @selected && "bg-brand text-white",
+        !@selected && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+      ]}
+    >
+      <.icon name={@icon} class="size-3.5 sm:size-4" />
+      <span>{@label}</span>
+      <span
+        :if={@count && @count > 0}
+        class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+      >
+        {format_count(@count)}
+      </span>
+    </.link>
     """
   end
 
@@ -180,31 +165,42 @@ defmodule StreamixWeb.ContentComponents do
 
     * `:selected` - Currently selected source ("iptv" or "gindex")
     * `:path` - Current path to preserve when switching sources
+    * `:iptv_path` - Override path for IPTV tab (for animes which redirects to live)
+    * `:gindex_path` - Override path for GDrive tab (for live which redirects to animes)
 
   ## Examples
 
       <.source_tabs selected="iptv" path="/browse/movies" />
+      <.source_tabs selected="gindex" path="/browse/animes" iptv_path="/browse" />
   """
   attr :selected, :string, required: true
   attr :path, :string, default: "/browse/movies"
 
+  attr :iptv_path, :string,
+    default: nil,
+    doc: "Override path for IPTV tab (for animes which redirects to live)"
+
   attr :gindex_path, :string,
     default: nil,
-    doc: "Override path for GDrive tab (for live which redirects to movies)"
+    doc: "Override path for GDrive tab (for live which redirects to animes)"
 
   def source_tabs(assigns) do
-    # Use gindex_path if provided, otherwise use the same path
+    # Compute target paths with overrides
     assigns =
-      assign_new(assigns, :gindex_target, fn ->
-        if assigns[:gindex_path],
-          do: browse_path(assigns.gindex_path, "gindex"),
-          else: browse_path(assigns.path, "gindex")
+      assigns
+      |> assign_new(:iptv_target, fn ->
+        path = assigns[:iptv_path] || assigns.path
+        browse_path(path, "iptv")
+      end)
+      |> assign_new(:gindex_target, fn ->
+        path = assigns[:gindex_path] || assigns.path
+        browse_path(path, "gindex")
       end)
 
     ~H"""
     <div class="flex items-center bg-surface rounded-full p-1 gap-0.5">
       <.link
-        navigate={browse_path(@path, "iptv")}
+        navigate={@iptv_target}
         class={[
           "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
           @selected == "iptv" && "bg-brand text-white shadow-sm",

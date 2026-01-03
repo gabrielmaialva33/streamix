@@ -190,13 +190,13 @@ defmodule StreamixWeb.Content.MoviesLive do
   end
 
   defp load_gindex_provider(socket) do
-    gindex_count = Iptv.count_gindex_movies()
+    gindex_counts = Iptv.gindex_counts()
 
     socket
     |> assign(provider: nil)
     |> assign(categories: [])
     |> assign(page_title: "Filmes - GDrive")
-    |> assign(gindex_count: gindex_count)
+    |> assign(gindex_counts: gindex_counts)
   end
 
   defp load_iptv_provider(socket) do
@@ -211,12 +211,13 @@ defmodule StreamixWeb.Content.MoviesLive do
       |> assign(provider: provider)
       |> assign(categories: categories)
       |> assign(page_title: "Filmes")
-      |> assign(gindex_count: Iptv.count_gindex_movies())
+      |> assign(gindex_counts: Iptv.gindex_counts())
     else
       socket
       |> assign(provider: nil)
       |> assign(categories: [])
       |> assign(page_title: "Filmes")
+      |> assign(gindex_counts: Iptv.gindex_counts())
     end
   end
 
@@ -362,8 +363,13 @@ defmodule StreamixWeb.Content.MoviesLive do
   # Private Helpers
   # ============================================
 
+  defp get_counts(%{source: "gindex", gindex_counts: counts}) do
+    %{live: 0, movies: counts.movies, series: counts.series, animes: counts.animes}
+  end
+
+  # Fallback for old gindex_count format
   defp get_counts(%{source: "gindex", gindex_count: count}) do
-    %{live: 0, movies: count, series: 0}
+    %{live: 0, movies: count, series: 0, animes: 0}
   end
 
   defp get_counts(%{provider: nil}) do
