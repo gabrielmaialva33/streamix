@@ -3,12 +3,14 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   Periodic worker that syncs the GIndex provider (configured via env vars).
   Runs via Oban Cron plugin daily at 3 AM.
 
-  Only runs if the GIndex provider is configured and enabled.
+  When RabbitMQ is enabled, enqueues tasks to Broadway for distributed processing.
+  Otherwise, runs sync directly in this process.
   """
 
   use Oban.Worker, queue: :sync, max_attempts: 3
 
   alias Streamix.Iptv.GIndexProvider
+  alias Streamix.Queue
 
   require Logger
 
@@ -20,7 +22,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
       case GIndexProvider.ensure_exists!() do
         {:ok, provider} when is_struct(provider) ->
           Logger.info("[GIndex] GIndex provider exists: #{provider.name}")
-          sync_gindex_provider()
+          sync_gindex_provider(provider)
 
         {:ok, :disabled} ->
           Logger.info("[GIndex] GIndex provider is disabled, skipping sync")
@@ -36,7 +38,18 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
     end
   end
 
-  defp sync_gindex_provider do
+  defp sync_gindex_provider(provider) do
+    if Queue.enabled?() do
+      # Use Broadway for distributed processing
+      Logger.info("[GIndex] Enqueueing sync via RabbitMQ/Broadway")
+      Queue.enqueue_gindex_sync(provider)
+    else
+      # Direct execution
+      sync_directly()
+    end
+  end
+
+  defp sync_directly do
     case GIndexProvider.sync!() do
       {:ok, stats} ->
         Logger.info(

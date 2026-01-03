@@ -44,7 +44,7 @@ defmodule Streamix.Queue do
   require Logger
 
   alias Streamix.Queue.Publisher
-  alias Streamix.Workers.SyncGindexProviderWorker
+  alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
 
   @doc """
   Checks if the queue system is enabled.
@@ -110,6 +110,20 @@ defmodule Streamix.Queue do
     end
   end
 
+  @doc """
+  Enqueues an IPTV provider sync (live, vod, series).
+
+  When RabbitMQ is enabled, splits the sync into parallel tasks.
+  When disabled, falls back to direct execution via Oban.
+  """
+  def enqueue_iptv_sync(provider) do
+    if enabled?() do
+      enqueue_iptv_via_rabbitmq(provider)
+    else
+      enqueue_iptv_via_oban(provider)
+    end
+  end
+
   # Private functions
 
   defp enqueue_gindex_via_rabbitmq(provider) do
@@ -136,6 +150,33 @@ defmodule Streamix.Queue do
 
     %{provider_id: provider.id}
     |> SyncGindexProviderWorker.new()
+    |> Oban.insert()
+  end
+
+  defp enqueue_iptv_via_rabbitmq(provider) do
+    Logger.info("[Queue] Enqueueing IPTV sync for provider #{provider.id} via RabbitMQ")
+
+    # Create tasks for each sync type (run in parallel)
+    tasks = [
+      %{type: "iptv_categories", provider_id: provider.id},
+      %{type: "iptv_live", provider_id: provider.id},
+      %{type: "iptv_movies", provider_id: provider.id},
+      %{type: "iptv_series", provider_id: provider.id}
+    ]
+
+    # Enqueue all tasks with normal priority
+    Enum.each(tasks, fn task ->
+      Publisher.publish_sync_task(task, priority: :normal)
+    end)
+
+    {:ok, length(tasks)}
+  end
+
+  defp enqueue_iptv_via_oban(provider) do
+    Logger.info("[Queue] Enqueueing IPTV sync for provider #{provider.id} via Oban")
+
+    %{provider_id: provider.id}
+    |> SyncProviderWorker.new()
     |> Oban.insert()
   end
 end

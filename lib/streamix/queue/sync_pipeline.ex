@@ -7,10 +7,17 @@ defmodule Streamix.Queue.SyncPipeline do
 
   ## Task Types
 
+  ### GIndex
   - `gindex_full_sync` - Full sync of a GIndex provider
   - `gindex_movies` - Sync movies from a specific path
   - `gindex_series` - Sync series from a specific path
   - `gindex_animes` - Sync animes from a specific path
+
+  ### IPTV (Xtream)
+  - `iptv_categories` - Sync categories (live, vod, series)
+  - `iptv_live` - Sync live channels
+  - `iptv_movies` - Sync VOD movies
+  - `iptv_series` - Sync series
   """
 
   use Broadway
@@ -19,6 +26,7 @@ defmodule Streamix.Queue.SyncPipeline do
 
   alias Broadway.Message
   alias Streamix.Iptv.Gindex
+  alias Streamix.Iptv.Sync.{Categories, Live, Movies, Series}
   alias Streamix.Queue.Connection
 
   @doc """
@@ -141,6 +149,64 @@ defmodule Streamix.Queue.SyncPipeline do
 
       {:error, reason} ->
         {:error, {:scrape_failed, reason}}
+    end
+  end
+
+  # IPTV (Xtream) task processors
+
+  defp process_task(%{"type" => "iptv_categories", "provider_id" => provider_id}) do
+    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    Logger.info("[SyncPipeline] Syncing IPTV categories for provider #{provider_id}")
+
+    case Categories.sync_categories(provider) do
+      {:ok, count} ->
+        Logger.info("[SyncPipeline] Synced #{count} categories")
+        {:ok, %{categories: count}}
+
+      {:error, reason} ->
+        {:error, {:sync_failed, reason}}
+    end
+  end
+
+  defp process_task(%{"type" => "iptv_live", "provider_id" => provider_id}) do
+    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    Logger.info("[SyncPipeline] Syncing IPTV live channels for provider #{provider_id}")
+
+    case Live.sync_live_channels(provider) do
+      {:ok, count} ->
+        Logger.info("[SyncPipeline] Synced #{count} live channels")
+        {:ok, %{live_channels: count}}
+
+      {:error, reason} ->
+        {:error, {:sync_failed, reason}}
+    end
+  end
+
+  defp process_task(%{"type" => "iptv_movies", "provider_id" => provider_id}) do
+    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    Logger.info("[SyncPipeline] Syncing IPTV movies for provider #{provider_id}")
+
+    case Movies.sync_movies(provider) do
+      {:ok, count} ->
+        Logger.info("[SyncPipeline] Synced #{count} movies")
+        {:ok, %{movies: count}}
+
+      {:error, reason} ->
+        {:error, {:sync_failed, reason}}
+    end
+  end
+
+  defp process_task(%{"type" => "iptv_series", "provider_id" => provider_id}) do
+    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    Logger.info("[SyncPipeline] Syncing IPTV series for provider #{provider_id}")
+
+    case Series.sync_series(provider) do
+      {:ok, count} ->
+        Logger.info("[SyncPipeline] Synced #{count} series")
+        {:ok, %{series: count}}
+
+      {:error, reason} ->
+        {:error, {:sync_failed, reason}}
     end
   end
 
