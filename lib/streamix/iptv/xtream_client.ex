@@ -112,7 +112,8 @@ defmodule Streamix.Iptv.XtreamClient do
   defp api_call(base_url, username, password, action, extra_params \\ %{}) do
     url = build_url(base_url, username, password, action, extra_params)
 
-    case Req.get(url, receive_timeout: @timeout) do
+    # Use dedicated Finch pool for connection reuse during sync
+    case Req.get(url, receive_timeout: @timeout, finch: Streamix.Finch) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
         {:ok, body}
 

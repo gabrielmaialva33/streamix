@@ -183,7 +183,8 @@ defmodule Streamix.Iptv.Gindex.Client do
       url: url,
       headers: build_headers(method),
       receive_timeout: timeout,
-      redirect: follow_redirects
+      redirect: follow_redirects,
+      finch: Streamix.Finch
     ]
 
     req_opts =

@@ -216,7 +216,7 @@ defmodule Streamix.Iptv.TmdbClient do
     ]
 
     url
-    |> Req.get(headers: headers, receive_timeout: @timeout)
+    |> Req.get(headers: headers, receive_timeout: @timeout, finch: Streamix.Finch)
     |> handle_response(url, retries)
   end
 
