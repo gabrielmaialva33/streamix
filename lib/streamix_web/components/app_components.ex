@@ -320,16 +320,14 @@ defmodule StreamixWeb.AppComponents do
   attr :use_proxy, :boolean, default: true
 
   def video_player_v2(assigns) do
-    alias StreamixWeb.StreamToken
-
     stream_url = LiveChannel.stream_url(assigns.channel, assigns.provider)
 
-    # Use signed token for secure streaming through internal Phoenix proxy
-    # This avoids mixed content issues (HTTP streams on HTTPS pages)
+    # Use external nginx proxy (pannxs.mahina.cloud) instead of local Phoenix proxy
+    # This avoids consuming Elixir VM resources for streaming
     proxy_url =
       if assigns.use_proxy do
-        token = StreamToken.sign_channel(assigns.channel.id)
-        "/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+        proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+        "#{proxy_base}/proxy?url=#{stream_url}"
       else
         nil
       end

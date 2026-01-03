@@ -96,7 +96,7 @@ end
 # Stream proxy URL for bypassing mixed content blocking
 # This reverse proxy handles HTTP IPTV streams over HTTPS
 config :streamix,
-  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://proxy.example.com"
+  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://pannxs.mahina.cloud"
 
 # API Keys for TV app and external clients
 # Comma-separated list of valid API keys
