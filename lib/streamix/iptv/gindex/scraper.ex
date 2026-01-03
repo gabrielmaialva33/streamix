@@ -23,8 +23,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
 
   # Base delay between requests to respect Cloudflare Workers rate limits
   # Free plan: 1,000 req/min but GIndex makes internal subrequests to Google Drive
-  # 10000ms = ~6 req/min = ultra conservative to avoid 500 errors
-  @base_delay 10000
+  # 60000ms = 1 req/min = ultra conservative to avoid 500 errors
+  @base_delay 60000
   # Max jitter to add (0-5000ms random) to smooth out request pattern
   @max_jitter 5000
 
