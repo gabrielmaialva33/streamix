@@ -50,6 +50,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
       {:ok, [%{name: "Movie Name", year: 2025, ...}]}
   """
   def scrape_category(base_url, category_path) do
+    # Delay before listing category
+    rate_limit_delay()
     Logger.info("[GIndex Scraper] Scraping category: #{category_path}")
 
     # Use list_folder_all to handle pagination
@@ -60,7 +62,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
       movies =
         folders
         |> Enum.map(fn folder ->
-          rate_limit_delay()
+          # scrape_movie_folder already has delay
           scrape_movie_folder(base_url, folder)
         end)
         |> Enum.reject(&is_nil/1)
@@ -73,6 +75,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Lists all available categories (top-level folders) in the movies section.
   """
   def list_categories(base_url, movies_path \\ "/1:/Filmes/") do
+    # Delay before listing categories
+    rate_limit_delay()
     # Top-level categories usually don't need pagination, but use it anyway
     case Client.list_folder_all(base_url, movies_path) do
       {:ok, items} ->
@@ -106,6 +110,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Returns a list of anime data with releases and episodes.
   """
   def scrape_animes(base_url, anime_path \\ "/0:/Animes/") do
+    # Delay before listing animes
+    rate_limit_delay()
     Logger.info("[GIndex Scraper] Scraping animes from: #{anime_path}")
 
     case Client.list_folder_all(base_url, anime_path) do
@@ -116,7 +122,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
         animes =
           folders
           |> Enum.map(fn folder ->
-            rate_limit_delay()
+            # scrape_single_anime already has delay
             scrape_single_anime(base_url, folder)
           end)
           |> Enum.reject(&is_nil/1)
@@ -136,6 +142,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Scrapes a single anime folder and extracts releases and episodes.
   """
   def scrape_single_anime(base_url, folder) do
+    # Delay before request
+    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping anime: #{folder.name}")
 
     # Parse anime folder name
@@ -184,7 +192,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
     release_folders
     |> Enum.with_index(1)
     |> Enum.map(fn {folder, index} ->
-      rate_limit_delay()
+      # scrape_single_anime_release already has delay
       scrape_single_anime_release(base_url, folder, index)
     end)
     |> Enum.reject(&is_nil/1)
@@ -195,6 +203,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Scrapes a single release folder for episodes.
   """
   def scrape_single_anime_release(base_url, folder, release_index) do
+    # Delay before request
+    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping anime release: #{folder.name}")
 
     # Parse release info
@@ -294,6 +304,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Uses pagination to fetch ALL series from the folder.
   """
   def scrape_series_folder(base_url, series_path) do
+    # Delay before listing series folder
+    rate_limit_delay()
     Logger.info("[GIndex Scraper] Scraping series folder: #{series_path}")
 
     # Use list_folder_all to handle pagination and get ALL series
@@ -305,7 +317,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
         series_list =
           folders
           |> Enum.map(fn folder ->
-            rate_limit_delay()
+            # scrape_single_series already has delay
             scrape_single_series(base_url, folder)
           end)
           |> Enum.reject(&is_nil/1)
@@ -325,6 +337,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Scrapes a single series folder and extracts seasons and episodes.
   """
   def scrape_single_series(base_url, folder) do
+    # Delay before request
+    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping series: #{folder.name}")
 
     # Parse series folder name
@@ -375,7 +389,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   def scrape_seasons(base_url, season_folders, series_path) do
     season_folders
     |> Enum.map(fn folder ->
-      rate_limit_delay()
+      # scrape_single_season already has delay
       scrape_single_season(base_url, folder, series_path)
     end)
     |> Enum.reject(&is_nil/1)
@@ -386,6 +400,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Scrapes a single season folder.
   """
   def scrape_single_season(base_url, folder, _series_path) do
+    # Delay before request
+    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping season: #{folder.name}")
 
     # Parse season number
@@ -466,6 +482,8 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   Scrapes a single movie folder and extracts video files.
   """
   def scrape_movie_folder(base_url, folder) do
+    # Delay BEFORE request to avoid rate limiting
+    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping movie folder: #{folder.name}")
 
     # Parse folder name for movie metadata

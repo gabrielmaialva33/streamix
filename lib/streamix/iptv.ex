@@ -1,6 +1,22 @@
 defmodule Streamix.Iptv do
   @moduledoc """
-  The IPTV context - manages providers, live channels, movies, series, favorites, and watch history.
+  The IPTV context - unified API for managing streaming content.
+
+  This module serves as a facade that delegates to specialized sub-modules:
+
+  - `Streamix.Iptv.Providers` - Provider CRUD and sync operations
+  - `Streamix.Iptv.Channels` - Live TV channel operations
+  - `Streamix.Iptv.Movies` - VOD movie operations
+  - `Streamix.Iptv.SeriesOps` - Series, seasons, and episodes
+  - `Streamix.Iptv.Favorites` - User favorites (polymorphic)
+  - `Streamix.Iptv.History` - Watch history tracking
+  - `Streamix.Iptv.Catalog` - Public catalog and featured content
+  - `Streamix.Iptv.Epg` - Electronic Program Guide
+
+  ## Design Pattern
+
+  This facade pattern provides a single entry point for all IPTV operations,
+  keeping the public API stable while allowing internal refactoring.
   """
 
   alias Streamix.Iptv.{
@@ -15,10 +31,8 @@ defmodule Streamix.Iptv do
   }
 
   # =============================================================================
-  # Delegations to Sub-modules
+  # Favorites (Polymorphic)
   # =============================================================================
-
-  # Favorites operations (polymorphic)
   defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
   defdelegate favorite?(user_id, content_type, content_id), to: Favorites, as: :exists?
   defdelegate is_favorite?(user_id, content_type, content_id), to: Favorites
@@ -37,7 +51,9 @@ defmodule Streamix.Iptv do
     to: Favorites,
     as: :toggle
 
-  # Watch History operations (polymorphic)
+  # =============================================================================
+  # Watch History (Polymorphic)
+  # =============================================================================
   defdelegate list_watch_history(user_id, opts \\ []), to: History, as: :list
   defdelegate count_watch_history_by_type(user_id), to: History, as: :count_by_type
 
@@ -57,7 +73,9 @@ defmodule Streamix.Iptv do
   defdelegate remove_from_watch_history(user_id, entry_id), to: History, as: :remove
   defdelegate clear_watch_history(user_id), to: History, as: :clear
 
-  # Live Channels operations
+  # =============================================================================
+  # Live Channels
+  # =============================================================================
   defdelegate list_live_channels(provider_id, opts \\ []), to: Channels, as: :list
   defdelegate list_public_channels(opts \\ []), to: Channels, as: :list_public
   defdelegate count_live_channels(provider_id), to: Channels, as: :count
@@ -71,7 +89,9 @@ defmodule Streamix.Iptv do
   defdelegate search_channels(user_id, query, opts \\ []), to: Channels, as: :search
   defdelegate search_public_channels(query, opts \\ []), to: Channels, as: :search_public
 
-  # Movies operations
+  # =============================================================================
+  # Movies (VOD)
+  # =============================================================================
   defdelegate list_movies(provider_id, opts \\ []), to: Movies, as: :list
   defdelegate list_public_movies(opts \\ []), to: Movies, as: :list_public
   defdelegate count_movies(provider_id), to: Movies, as: :count
@@ -86,11 +106,13 @@ defmodule Streamix.Iptv do
   defdelegate search_public_movies(query, opts \\ []), to: Movies, as: :search_public
   defdelegate get_movies_by_ids(ids), to: Movies, as: :get_by_ids
 
-  # GIndex movies
+  # GIndex Movies
   defdelegate list_gindex_movies(opts \\ []), to: Movies, as: :list_gindex
   defdelegate count_gindex_movies, to: Movies, as: :count_gindex
 
-  # Series operations
+  # =============================================================================
+  # Series
+  # =============================================================================
   defdelegate list_series(provider_id, opts \\ []), to: SeriesOps, as: :list
   defdelegate list_public_series(opts \\ []), to: SeriesOps, as: :list_public
   defdelegate count_series(provider_id), to: SeriesOps, as: :count
@@ -105,12 +127,12 @@ defmodule Streamix.Iptv do
   defdelegate search_public_series(query, opts \\ []), to: SeriesOps, as: :search_public
   defdelegate get_series_by_ids(ids), to: SeriesOps, as: :get_by_ids
 
-  # GIndex series
+  # GIndex Series
   defdelegate list_gindex_series(opts \\ []), to: SeriesOps, as: :list_gindex
   defdelegate count_gindex_series, to: SeriesOps, as: :count_gindex
   defdelegate get_gindex_series_with_seasons(id), to: SeriesOps, as: :get_gindex_with_seasons
 
-  # GIndex animes
+  # GIndex Animes
   defdelegate list_gindex_animes(opts \\ []), to: SeriesOps
   defdelegate count_gindex_animes, to: SeriesOps
   defdelegate get_gindex_anime_with_seasons(id), to: SeriesOps
@@ -127,7 +149,9 @@ defmodule Streamix.Iptv do
     }
   end
 
-  # Episode operations
+  # =============================================================================
+  # Episodes
+  # =============================================================================
   defdelegate get_episode!(id), to: SeriesOps
   defdelegate get_episode(id), to: SeriesOps
   defdelegate get_user_episode(user_id, episode_id), to: SeriesOps
@@ -137,7 +161,9 @@ defmodule Streamix.Iptv do
   defdelegate list_season_episodes(season_id), to: SeriesOps
   defdelegate fetch_episode_info(episode), to: SeriesOps
 
-  # Provider operations
+  # =============================================================================
+  # Providers
+  # =============================================================================
   defdelegate list_providers(user_id), to: Providers, as: :list
   defdelegate list_visible_providers(user_id \\ nil), to: Providers, as: :list_visible
   defdelegate list_public_providers(), to: Providers, as: :list_public
@@ -155,7 +181,9 @@ defmodule Streamix.Iptv do
   defdelegate sync_provider(provider, opts \\ []), to: Providers, as: :sync
   defdelegate async_sync_provider(provider), to: Providers, as: :async_sync
 
-  # Catalog operations (public content)
+  # =============================================================================
+  # Catalog (Public Content)
+  # =============================================================================
   defdelegate get_featured_content(), to: Catalog
   defdelegate get_public_stats(), to: Catalog
 
@@ -167,7 +195,9 @@ defmodule Streamix.Iptv do
   defdelegate list_categories(provider_id, type \\ nil), to: Catalog
   defdelegate get_category!(id), to: Catalog
 
-  # EPG operations
+  # =============================================================================
+  # EPG (Electronic Program Guide)
+  # =============================================================================
   defdelegate get_now_and_next(provider_id, epg_channel_id), to: Epg
   defdelegate get_current_programs_batch(provider_id, epg_channel_ids), to: Epg
   defdelegate enrich_channels_with_epg(channels, provider_id), to: Epg
