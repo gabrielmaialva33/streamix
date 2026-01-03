@@ -21,10 +21,19 @@ defmodule Streamix.Queue.Supervisor do
       # Connection manager
       Streamix.Queue.Connection,
 
-      # Broadway pipelines for each priority queue
-      {Streamix.Queue.SyncPipeline, queue: "streamix.sync.high"},
-      {Streamix.Queue.SyncPipeline, queue: "streamix.sync.normal"},
-      {Streamix.Queue.SyncPipeline, queue: "streamix.sync.low"}
+      # Broadway pipelines for each priority queue (unique IDs required)
+      Supervisor.child_spec(
+        {Streamix.Queue.SyncPipeline, queue: "streamix.sync.high"},
+        id: :sync_pipeline_high
+      ),
+      Supervisor.child_spec(
+        {Streamix.Queue.SyncPipeline, queue: "streamix.sync.normal"},
+        id: :sync_pipeline_normal
+      ),
+      Supervisor.child_spec(
+        {Streamix.Queue.SyncPipeline, queue: "streamix.sync.low"},
+        id: :sync_pipeline_low
+      )
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
