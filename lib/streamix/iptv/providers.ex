@@ -191,71 +191,18 @@ defmodule Streamix.Iptv.Providers do
   end
 
   @doc """
-  Asynchronously syncs a provider's content.
+  Asynchronously syncs a provider's content using Oban.
+  Persists the job in the database, survives restarts, and controls concurrency.
   Broadcasts sync status updates via PubSub.
+
+  ## Options
+
+    * `:series_details` - `:skip`, `:enqueue`, or `:immediate` (default: `:skip`)
+
   """
-  @spec async_sync(Provider.t()) :: {:ok, pid()}
-  def async_sync(provider) do
-    Task.start(fn ->
-      Phoenix.PubSub.broadcast(
-        Streamix.PubSub,
-        "user:#{provider.user_id}:providers",
-        {:sync_status, %{provider_id: provider.id, status: "syncing"}}
-      )
-
-      Phoenix.PubSub.broadcast(
-        Streamix.PubSub,
-        "provider:#{provider.id}",
-        {:sync_status, %{status: "syncing"}}
-      )
-
-      case Sync.sync_all(provider) do
-        {:ok, result} ->
-          # Reload provider to get updated counts
-          updated_provider = get!(provider.id)
-
-          Phoenix.PubSub.broadcast(
-            Streamix.PubSub,
-            "user:#{provider.user_id}:providers",
-            {:sync_status,
-             %{
-               provider_id: provider.id,
-               status: "completed",
-               live_count: updated_provider.live_count,
-               movies_count: updated_provider.movies_count,
-               series_count: updated_provider.series_count
-             }}
-          )
-
-          Phoenix.PubSub.broadcast(
-            Streamix.PubSub,
-            "provider:#{provider.id}",
-            {:sync_status,
-             %{
-               status: "completed",
-               live_count: updated_provider.live_count,
-               movies_count: updated_provider.movies_count,
-               series_count: updated_provider.series_count
-             }}
-          )
-
-          {:ok, result}
-
-        {:error, reason} ->
-          Phoenix.PubSub.broadcast(
-            Streamix.PubSub,
-            "user:#{provider.user_id}:providers",
-            {:sync_status, %{provider_id: provider.id, status: "failed", error: reason}}
-          )
-
-          Phoenix.PubSub.broadcast(
-            Streamix.PubSub,
-            "provider:#{provider.id}",
-            {:sync_status, %{status: "failed", error: reason}}
-          )
-
-          {:error, reason}
-      end
-    end)
+  @spec async_sync(Provider.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
+  def async_sync(provider, opts \\ []) do
+    alias Streamix.Workers.SyncProviderWorker
+    SyncProviderWorker.enqueue(provider, opts)
   end
 end

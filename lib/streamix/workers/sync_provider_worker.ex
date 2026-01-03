@@ -14,7 +14,10 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 3
+  use Oban.Worker,
+    queue: :sync,
+    max_attempts: 3,
+    unique: [period: 300, keys: [:provider_id]]
 
   alias Streamix.Iptv
   alias Streamix.Iptv.Provider
