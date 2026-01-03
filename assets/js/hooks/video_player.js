@@ -1182,10 +1182,8 @@ const VideoPlayer = {
         this.nativePlaybackTimeout = null;
       }
 
-      // Check for audio issues after playback starts (for GIndex/MKV files)
-      if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
-        this.checkAudioAndFallback();
-      }
+      // Note: Audio check/AVPlayer fallback disabled (requires external avplayer.js files)
+      // Most GIndex/MKV content uses standard codecs that native video handles fine
     };
 
     const errorHandler = () => {
@@ -1202,13 +1200,7 @@ const VideoPlayer = {
             break;
           case MediaError.MEDIA_ERR_DECODE:
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            // For GIndex/MKV, try AVPlayer fallback silently (no error shown)
-            if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
-              console.log("[VideoPlayer] Native player failed, trying AVPlayer fallback silently");
-              this.tryAVPlayerFallback();
-              this.video.removeEventListener("error", errorHandler);
-              return;
-            }
+            // Note: AVPlayer fallback disabled (requires external avplayer.js files)
             message = "Formato não suportado pelo navegador";
             break;
         }
@@ -1222,17 +1214,9 @@ const VideoPlayer = {
     this.video.addEventListener("error", errorHandler);
     this.video.addEventListener("loadedmetadata", () => this.hideLoading(), { once: true });
 
-    // Timeout fallback for GIndex/MKV - if video doesn't start playing in 5 seconds, try AVPlayer
-    if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
-      this.nativePlaybackTimeout = setTimeout(() => {
-        if (this.video.readyState < 3 && !this.avPlayerAttempted) {
-          console.log("[VideoPlayer] Native playback timeout - video not ready after 5s, trying AVPlayer");
-          this.video.removeEventListener("playing", playHandler);
-          this.video.removeEventListener("error", errorHandler);
-          this.tryAVPlayerFallback();
-        }
-      }, 5000);
-    }
+    // Note: AVPlayer fallback disabled for now (requires external avplayer.js files)
+    // Native video should handle most GIndex/MKV content
+    // TODO: Re-enable when AVPlayer files are added to assets/js/avplayer/
 
     this.video.play().catch((e) => {
       console.log("Native autoplay prevented:", e);
