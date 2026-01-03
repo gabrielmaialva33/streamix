@@ -85,6 +85,8 @@ config :streamix, Oban,
     Oban.Plugins.Pruner,
     {Oban.Plugins.Cron,
      crontab: [
+       # Cleanup orphaned favorites/history daily at 2 AM
+       {"0 2 * * *", Streamix.Workers.CleanupOrphanedDataWorker},
        # Sync all providers every 6 hours
        {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker},
        # Sync global provider every 4 hours
