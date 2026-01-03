@@ -6,6 +6,13 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
   this worker processes series in configurable batches, spreading the load
   over time and allowing for better error handling and retries.
 
+  ## Error Handling
+
+  - Failed series are automatically re-enqueued with exponential backoff
+  - If >80% of a batch fails, the job snoozes (likely API/network issue)
+  - Individual failures don't block the entire batch
+  - Failed series IDs are logged for debugging
+
   ## Usage
 
   To queue all series for a provider in batches:
@@ -19,7 +26,7 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
   """
   use Oban.Worker,
     queue: :series_details,
-    max_attempts: 3,
+    max_attempts: 5,
     priority: 2
 
   import Ecto.Query
@@ -30,35 +37,92 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
   require Logger
 
   @default_batch_size 50
+  @failure_threshold 0.8
+  @retry_base_delay 60
+  @max_retry_delay 900
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"series_ids" => series_ids}}) do
-    Logger.info("Syncing details for #{length(series_ids)} series")
+  def perform(%Oban.Job{args: %{"series_ids" => series_ids}, attempt: attempt}) do
+    total = length(series_ids)
+    Logger.info("[SyncSeriesDetails] Processing #{total} series (attempt #{attempt})")
 
     series_list = Repo.all(from s in Series, where: s.id in ^series_ids)
 
-    results =
-      series_list
-      |> Task.async_stream(
-        fn series ->
-          case Sync.sync_series_details(series) do
-            {:ok, _result} -> :ok
-            {:error, _reason} -> :error
-          end
-        end,
-        max_concurrency: 5,
-        timeout: 30_000,
-        on_timeout: :kill_task
-      )
-      |> Enum.reduce(%{success: 0, failed: 0}, fn
-        {:ok, :ok}, acc -> %{acc | success: acc.success + 1}
-        {:ok, :error}, acc -> %{acc | failed: acc.failed + 1}
-        {:exit, _}, acc -> %{acc | failed: acc.failed + 1}
-      end)
+    # Process batch and track individual results
+    {successes, failures} = process_batch(series_list)
 
-    Logger.info("Batch completed: #{results.success} success, #{results.failed} failed")
+    success_count = length(successes)
+    failure_count = length(failures)
+    failure_rate = if total > 0, do: failure_count / total, else: 0.0
 
-    :ok
+    Logger.info(
+      "[SyncSeriesDetails] Batch completed: #{success_count} success, #{failure_count} failed " <>
+        "(#{Float.round(failure_rate * 100, 1)}% failure rate)"
+    )
+
+    cond do
+      # All succeeded
+      failure_count == 0 ->
+        :ok
+
+      # High failure rate - likely API/network issue, snooze and retry entire batch
+      failure_rate >= @failure_threshold ->
+        snooze_seconds = min(@retry_base_delay * attempt, @max_retry_delay)
+
+        Logger.warning(
+          "[SyncSeriesDetails] High failure rate (#{Float.round(failure_rate * 100, 1)}%), " <>
+            "snoozing for #{snooze_seconds}s"
+        )
+
+        {:snooze, snooze_seconds}
+
+      # Partial failure - re-enqueue only failed items
+      true ->
+        failed_ids = Enum.map(failures, & &1.id)
+
+        Logger.info(
+          "[SyncSeriesDetails] Re-enqueueing #{failure_count} failed series: #{inspect(failed_ids)}"
+        )
+
+        schedule_retry_for_failures(failed_ids, attempt)
+        :ok
+    end
+  end
+
+  defp process_batch(series_list) do
+    series_list
+    |> Task.async_stream(
+      fn series ->
+        case Sync.sync_series_details(series) do
+          {:ok, _result} -> {:ok, series}
+          {:error, reason} -> {:error, series, reason}
+        end
+      end,
+      max_concurrency: 5,
+      timeout: 30_000,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce({[], []}, fn
+      {:ok, {:ok, series}}, {successes, failures} ->
+        {[series | successes], failures}
+
+      {:ok, {:error, series, reason}}, {successes, failures} ->
+        Logger.debug("[SyncSeriesDetails] Failed series #{series.id}: #{inspect(reason)}")
+        {successes, [series | failures]}
+
+      {:exit, reason}, {successes, failures} ->
+        Logger.warning("[SyncSeriesDetails] Task exit: #{inspect(reason)}")
+        {successes, failures}
+    end)
+  end
+
+  defp schedule_retry_for_failures(failed_ids, attempt) do
+    # Exponential backoff: 1min, 2min, 4min, 8min, capped at 15min
+    delay_seconds = min(@retry_base_delay * :math.pow(2, attempt - 1) |> trunc(), @max_retry_delay)
+
+    %{series_ids: failed_ids, retry_attempt: attempt + 1}
+    |> __MODULE__.new(schedule_in: delay_seconds)
+    |> Oban.insert()
   end
 
   @doc """

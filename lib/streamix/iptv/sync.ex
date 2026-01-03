@@ -72,35 +72,134 @@ defmodule Streamix.Iptv.Sync do
     end
   end
 
-  # Sync live channels, movies, and series in parallel
+  # Sync live channels, movies, and series in parallel with graceful error handling
   defp sync_content_parallel(provider, opts) do
     tasks = [
-      Task.async(fn -> {:live, sync_live_channels(provider)} end),
-      Task.async(fn -> {:movies, sync_movies(provider)} end),
-      Task.async(fn -> {:series, sync_series(provider)} end)
+      Task.async(fn -> {:live, safe_sync(fn -> sync_live_channels(provider) end)} end),
+      Task.async(fn -> {:movies, safe_sync(fn -> sync_movies(provider) end)} end),
+      Task.async(fn -> {:series, safe_sync(fn -> sync_series(provider) end)} end)
     ]
 
-    # Wait for all tasks with a 10 minute timeout
+    # Wait for all tasks with a 10 minute timeout, catch exits gracefully
     results =
-      tasks
-      |> Task.await_many(:timer.minutes(10))
-      |> Map.new()
+      try do
+        tasks
+        |> Task.await_many(:timer.minutes(10))
+        |> Map.new()
+      rescue
+        e ->
+          Logger.error("[Sync] Task timeout or crash: #{inspect(e)}")
+          # Kill remaining tasks and return partial results
+          Enum.each(tasks, &Task.shutdown(&1, :brutal_kill))
+          %{live: {:error, :timeout}, movies: {:error, :timeout}, series: {:error, :timeout}}
+      end
 
-    case {results.live, results.movies, results.series} do
-      {{:ok, live_count}, {:ok, vod_count}, {:ok, series_count}} ->
+    handle_sync_results(provider, results, opts)
+  end
+
+  # Wrap sync functions to catch unexpected errors
+  defp safe_sync(sync_fn) do
+    try do
+      sync_fn.()
+    rescue
+      e ->
+        Logger.error("[Sync] Unexpected error: #{Exception.message(e)}")
+        {:error, {:exception, Exception.message(e)}}
+    catch
+      :exit, reason ->
+        Logger.error("[Sync] Process exit: #{inspect(reason)}")
+        {:error, {:exit, reason}}
+    end
+  end
+
+  # Handle results with partial success support
+  defp handle_sync_results(provider, results, opts) do
+    live_result = results[:live] || {:error, :not_run}
+    movies_result = results[:movies] || {:error, :not_run}
+    series_result = results[:series] || {:error, :not_run}
+
+    # Extract counts for successful syncs
+    live_count = extract_count(live_result)
+    vod_count = extract_count(movies_result)
+    series_count = extract_count(series_result)
+
+    # Collect failures
+    failures =
+      []
+      |> maybe_add_failure(:live, live_result)
+      |> maybe_add_failure(:movies, movies_result)
+      |> maybe_add_failure(:series, series_result)
+
+    cond do
+      # All succeeded
+      Enum.empty?(failures) ->
         finalize_sync(provider, live_count, vod_count, series_count, opts)
 
-      {{:error, reason}, _, _} ->
+      # All failed
+      length(failures) == 3 ->
         update_status(provider, "failed")
-        {:error, {:live_sync_failed, reason}}
+        Logger.error("[Sync] All sync types failed: #{inspect(failures)}")
+        {:error, {:all_failed, failures}}
 
-      {_, {:error, reason}, _} ->
-        update_status(provider, "failed")
-        {:error, {:movies_sync_failed, reason}}
+      # Partial success - log failures but continue
+      true ->
+        Logger.warning("[Sync] Partial sync failure: #{inspect(failures)}")
+        finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts)
+    end
+  end
 
-      {_, _, {:error, reason}} ->
+  defp extract_count({:ok, count}) when is_integer(count), do: count
+  defp extract_count(_), do: 0
+
+  defp maybe_add_failure(failures, type, {:error, reason}), do: [{type, reason} | failures]
+  defp maybe_add_failure(failures, _type, {:ok, _}), do: failures
+
+  defp finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts) do
+    case handle_series_details(provider, opts) do
+      {:ok, details} ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        # Build update attrs only for successful syncs
+        attrs =
+          %{sync_status: "partial"}
+          |> maybe_put(:live_channels_count, live_count, :live, failures)
+          |> maybe_put(:movies_count, vod_count, :movies, failures)
+          |> maybe_put(:series_count, series_count, :series, failures)
+          |> maybe_put(:live_synced_at, now, :live, failures)
+          |> maybe_put(:vod_synced_at, now, :movies, failures)
+          |> maybe_put(:series_synced_at, now, :series, failures)
+
+        provider
+        |> Provider.sync_changeset(attrs)
+        |> Repo.update()
+
+        failed_types = Enum.map(failures, fn {type, _} -> type end)
+
+        Logger.info(
+          "[Sync] Partial sync completed: #{live_count} live, #{vod_count} movies, " <>
+            "#{series_count} series (failed: #{inspect(failed_types)})"
+        )
+
+        {:ok,
+         %{
+           live: live_count,
+           movies: vod_count,
+           series: series_count,
+           details: details,
+           failures: failures
+         }}
+
+      {:error, reason} ->
         update_status(provider, "failed")
-        {:error, {:series_sync_failed, reason}}
+        {:error, reason}
+    end
+  end
+
+  defp maybe_put(attrs, key, value, type, failures) do
+    if Enum.any?(failures, fn {t, _} -> t == type end) do
+      attrs
+    else
+      Map.put(attrs, key, value)
     end
   end
 
