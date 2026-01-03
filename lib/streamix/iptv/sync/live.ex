@@ -64,61 +64,18 @@ defmodule Streamix.Iptv.Sync.Live do
     end)
   end
 
-  # Optimized: Only insert/delete associations that changed (diff-based)
   defp rebuild_live_category_assocs(streams, returned_channels, category_lookup) do
     channel_ids = Enum.map(returned_channels, & &1.id)
+    category_assocs = build_live_category_assocs(streams, returned_channels, category_lookup)
 
-    # Get current associations from DB
-    current_assocs =
-      Repo.query!(
-        "SELECT live_channel_id, category_id FROM live_channel_categories WHERE live_channel_id = ANY($1)",
-        [channel_ids]
-      )
-      |> Map.get(:rows, [])
-      |> MapSet.new(fn [channel_id, category_id] -> {channel_id, category_id} end)
-
-    # Build desired associations
-    desired_assocs =
-      streams
-      |> build_live_category_assocs(returned_channels, category_lookup)
-      |> MapSet.new(fn %{live_channel_id: ch_id, category_id: cat_id} -> {ch_id, cat_id} end)
-
-    # Compute diff
-    to_insert = MapSet.difference(desired_assocs, current_assocs)
-    to_delete = MapSet.difference(current_assocs, desired_assocs)
-
-    # Bulk delete obsolete associations
-    unless MapSet.size(to_delete) == 0 do
-      delete_pairs = MapSet.to_list(to_delete)
-
-      # Use VALUES to create a set of (channel_id, category_id) pairs to delete
-      values_clause =
-        delete_pairs
-        |> Enum.with_index(1)
-        |> Enum.map_join(", ", fn {_, i} -> "($#{i * 2 - 1}::bigint, $#{i * 2}::bigint)" end)
-
-      params = Enum.flat_map(delete_pairs, fn {ch_id, cat_id} -> [ch_id, cat_id] end)
-
-      Repo.query!(
-        """
-        DELETE FROM live_channel_categories
-        WHERE (live_channel_id, category_id) IN (VALUES #{values_clause})
-        """,
-        params
-      )
-    end
-
-    # Insert new associations
-    unless MapSet.size(to_insert) == 0 do
-      new_assocs =
-        to_insert
-        |> MapSet.to_list()
-        |> Enum.map(fn {channel_id, category_id} ->
-          %{live_channel_id: channel_id, category_id: category_id}
-        end)
-
-      Repo.insert_all("live_channel_categories", new_assocs)
-    end
+    # Use shared diff-based rebuild helper
+    Helpers.rebuild_category_assocs_diff(
+      "live_channel_categories",
+      "live_channel_id",
+      "category_id",
+      channel_ids,
+      category_assocs
+    )
   end
 
   defp delete_orphaned_live_channels(provider_id, current_stream_ids) do

@@ -173,19 +173,16 @@ defmodule Streamix.Iptv.Sync.Series do
 
   defp rebuild_series_category_assocs(series_list, returned_series, category_lookup) do
     series_ids = Enum.map(returned_series, & &1.id)
-
-    # Delete existing associations for these series
-    Repo.query!(
-      "DELETE FROM series_categories WHERE series_id = ANY($1)",
-      [series_ids]
-    )
-
-    # Build new associations
     category_assocs = build_series_category_assocs(series_list, returned_series, category_lookup)
 
-    unless Enum.empty?(category_assocs) do
-      Repo.insert_all("series_categories", category_assocs)
-    end
+    # Use diff-based rebuild to avoid WAL bloat and visibility gaps
+    Helpers.rebuild_category_assocs_diff(
+      "series_categories",
+      "series_id",
+      "category_id",
+      series_ids,
+      category_assocs
+    )
   end
 
   defp delete_orphaned_series(provider_id, current_series_ids) do

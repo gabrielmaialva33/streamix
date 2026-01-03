@@ -66,19 +66,16 @@ defmodule Streamix.Iptv.Sync.Movies do
 
   defp rebuild_movie_category_assocs(streams, returned_movies, category_lookup) do
     movie_ids = Enum.map(returned_movies, & &1.id)
-
-    # Delete existing associations for these movies
-    Repo.query!(
-      "DELETE FROM movie_categories WHERE movie_id = ANY($1)",
-      [movie_ids]
-    )
-
-    # Build new associations
     category_assocs = build_movie_category_assocs(streams, returned_movies, category_lookup)
 
-    unless Enum.empty?(category_assocs) do
-      Repo.insert_all("movie_categories", category_assocs)
-    end
+    # Use diff-based rebuild to avoid WAL bloat and visibility gaps
+    Helpers.rebuild_category_assocs_diff(
+      "movie_categories",
+      "movie_id",
+      "category_id",
+      movie_ids,
+      category_assocs
+    )
   end
 
   defp delete_orphaned_movies(provider_id, current_stream_ids) do
