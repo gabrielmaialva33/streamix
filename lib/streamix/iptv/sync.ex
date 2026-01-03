@@ -33,6 +33,12 @@ defmodule Streamix.Iptv.Sync do
   Syncs all content from a provider (categories, live, vod, series).
   Uses UPSERT strategy to preserve record IDs for favorites/history references.
 
+  ## Performance
+
+  Categories are synced first (required for live channel associations).
+  Then live channels, movies, and series are synced in parallel using Task.async
+  for ~3x faster sync times.
+
   ## Options
 
     * `:series_details` - How to handle series details (seasons/episodes):
@@ -48,33 +54,73 @@ defmodule Streamix.Iptv.Sync do
 
     update_status(provider, "syncing")
 
-    with {:ok, _} <- sync_categories(provider),
-         {:ok, live_count} <- sync_live_channels(provider),
-         {:ok, vod_count} <- sync_movies(provider),
-         {:ok, series_count} <- sync_series(provider),
-         {:ok, details} <- handle_series_details(provider, opts) do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+    # First sync categories (required for live channel associations)
+    case sync_categories(provider) do
+      {:ok, _} ->
+        # Then sync live, movies, series in parallel
+        sync_content_parallel(provider, opts)
 
-      provider
-      |> Provider.sync_changeset(%{
-        sync_status: "completed",
-        live_channels_count: live_count,
-        movies_count: vod_count,
-        series_count: series_count,
-        live_synced_at: now,
-        vod_synced_at: now,
-        series_synced_at: now
-      })
-      |> Repo.update()
+      {:error, reason} ->
+        update_status(provider, "failed")
+        {:error, reason}
+    end
+  end
 
-      # NOTE: Orphaned data cleanup is now handled by CleanupOrphanedDataWorker (daily cron at 2 AM)
+  # Sync live channels, movies, and series in parallel
+  defp sync_content_parallel(provider, opts) do
+    tasks = [
+      Task.async(fn -> {:live, sync_live_channels(provider)} end),
+      Task.async(fn -> {:movies, sync_movies(provider)} end),
+      Task.async(fn -> {:series, sync_series(provider)} end)
+    ]
 
-      Logger.info(
-        "Full sync completed: #{live_count} live, #{vod_count} movies, #{series_count} series"
-      )
+    # Wait for all tasks with a 10 minute timeout
+    results =
+      tasks
+      |> Task.await_many(:timer.minutes(10))
+      |> Map.new()
 
-      {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}
-    else
+    case {results.live, results.movies, results.series} do
+      {{:ok, live_count}, {:ok, vod_count}, {:ok, series_count}} ->
+        finalize_sync(provider, live_count, vod_count, series_count, opts)
+
+      {{:error, reason}, _, _} ->
+        update_status(provider, "failed")
+        {:error, {:live_sync_failed, reason}}
+
+      {_, {:error, reason}, _} ->
+        update_status(provider, "failed")
+        {:error, {:movies_sync_failed, reason}}
+
+      {_, _, {:error, reason}} ->
+        update_status(provider, "failed")
+        {:error, {:series_sync_failed, reason}}
+    end
+  end
+
+  defp finalize_sync(provider, live_count, vod_count, series_count, opts) do
+    case handle_series_details(provider, opts) do
+      {:ok, details} ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        provider
+        |> Provider.sync_changeset(%{
+          sync_status: "completed",
+          live_channels_count: live_count,
+          movies_count: vod_count,
+          series_count: series_count,
+          live_synced_at: now,
+          vod_synced_at: now,
+          series_synced_at: now
+        })
+        |> Repo.update()
+
+        Logger.info(
+          "Full sync completed: #{live_count} live, #{vod_count} movies, #{series_count} series"
+        )
+
+        {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}
+
       {:error, reason} ->
         update_status(provider, "failed")
         {:error, reason}
