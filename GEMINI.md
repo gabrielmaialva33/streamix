@@ -1,4 +1,4 @@
-# Streamix Project Context
+# Streamix Project Context (AGY Optimized)
 
 ## Overview
 Streamix is a Phoenix-based web application designed to manage and stream IPTV content. It allows users to register, manage IPTV providers, and synchronize/view channels from those providers.
@@ -24,75 +24,37 @@ The application follows the standard Phoenix umbrella-less structure:
 
 ### Web Interface (`lib/streamix_web/`)
 *   **Controllers:** Standard controllers for Auth (`UserRegistration`, `UserSession`) and Pages (`PageController`).
-*   **LiveView:** The interactive UI is built with LiveView (though specific LiveViews weren't deep-dived, the dependencies and structure confirm this).
-*   **Router:** Defined in `lib/streamix_web/router.ex`, protecting routes via authentication pipelines.
-
-## Key Entities & Database Schema
-*   **User:** Standard auth fields (email, password_hash).
-*   **Provider:**
-    *   `name`, `url`, `username`, `password` (redacted).
-    *   `is_active`, `last_synced_at`.
-    *   Belongs to a `User`.
-*   **Channel:**
-    *   `name`, `stream_url`, `logo_url`.
-    *   `tvg_id`, `tvg_name`, `group_title` (EPG metadata).
-    *   Belongs to a `Provider`.
+*   **LiveView:** The interactive UI is built with LiveView.
+*   **Router:** Defined in `lib/streamix_web/router.ex`.
 
 ## Development Workflow
-
-### Setup
 ```bash
-# Install dependencies, setup DB, and build assets
-mix setup
+mix setup        # Setup dependencies and DB
+mix phx.server   # Start server
+mix test         # Run test suite
 ```
 
-### Running
-```bash
-# Start the server (accessible at localhost:4000)
-mix phx.server
+# 🚀 Google Antigravity (AGY) System Rules
 
-# Start interactive shell
-iex -S mix phx.server
-```
+These rules are optimized for the **Agent Manager (Mission Control)** and **Gemini 3 Pro** orchestration.
 
-### Testing
-```bash
-# Run the test suite
-mix test
-```
+## 1. Multi-Agent Orchestration (Mission Control)
+- **Parallel Workflows**: Agents should work in parallel when possible (e.g., one agent writing tests while another refactors code).
+- **Background Execution**: Long-running tasks (like full sync simulations) should be run via the Agent Manager in the background.
 
-## Conventions
-*   **IPTV Integration:** The `Streamix.Iptv.Client` module encapsulates all external HTTP logic. It constructs URLs for standard IPTV panel APIs (Xtream Codes style).
-*   **Safety:** Passwords for providers are marked `redact: true` in the Ecto schema.
-*   **UI:** Uses standard Phoenix CoreComponents and Tailwind classes.
+## 2. Visual Artifacts & Verification
+- **Browser-in-the-Loop**: Use the AGY browser agent to verify UI changes in LiveView.
+- **Verification**: Always take a screenshot/video of the UI after visual changes to provide "Visual Artifacts" for verification.
 
-# AI Agent Rules (Antigravity System Instructions)
+## 3. Coding Conventions
+- **Idiomatic Elixir**: Use pipes `|>`, pattern matching, and function components.
+- **Client Safety**: All external calls MUST go through `Streamix.Iptv.Client`.
+- **Changesets**: Validate all DB interactions using Ecto Changesets.
 
-You are an expert Elixir and Phoenix developer working on the Streamix project.
-Your goal is to help build a robust, scalable, and clean IPTV management system.
+## 4. Safety & Redaction
+- **Redact Sensitive Info**: Always use `redact: true` for passwords and tokens in schemas.
+- **Logs**: Never log raw responses from IPTV providers.
 
-## Coding Conventions for Agents
-
-### 1. Elixir & Phoenix
-- **Idiomatic Code**: Follow standard Elixir style (pipes `|>`, pattern matching).
-- **Contexts**: Keep business logic inside Context modules (`Streamix.Iptv`, etc.), not in Controllers/LiveViews.
-- **Ecto**:
-  - Always redact sensitive fields (like passwords) in schemas: `field :password, :string, redact: true`.
-  - Use `changeset/2` for validation.
-- **LiveView**:
-  - Use `core_components.ex` for reusable UI elements.
-  - Colocate LiveView files (e.g., `index.ex` and `index.html.heex` or just `index.ex` with `render/1`).
-
-### 2. Testing
-- **Mandatory**: Every new feature or fix must have a corresponding test.
-- **Structure**: Mirror the `lib/` structure in `test/`.
-- **Helpers**: Use `Streamix.DataCase` for DB tests and `StreamixWeb.ConnCase` for web tests.
-
-### 3. External APIs
-- **Safety**: Never log full API responses that might contain credentials.
-- **Client**: All external calls go through `Streamix.Iptv.Client`. Do not use `Req` directly in contexts/controllers.
-
-### 4. General Behavior
-- **Conciseness**: When explaining changes, be brief. Focus on the code.
-- **Safety Check**: Before deleting or modifying files, check for dependencies.
-- **Search First**: Always use `glob` or `search_file_content` to understand existing patterns before writing new code.
+## 5. Agent Behavior
+- **Concise Reporting**: Focus on the code and the "why".
+- **Verification First**: Run `mix test` and check UI artifacts before declaring a task complete.
