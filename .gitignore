@@ -27,6 +27,9 @@ streamix-*.tar
 
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
+# But keep AVPlayer files (can't use npm for these)
+!/priv/static/assets/js/
+!/priv/static/assets/js/avplayer/
 
 # Ignore digested assets cache.
 /priv/static/cache_manifest.json
