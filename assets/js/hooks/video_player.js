@@ -1182,8 +1182,10 @@ const VideoPlayer = {
         this.nativePlaybackTimeout = null;
       }
 
-      // Note: Audio check/AVPlayer fallback disabled (requires external avplayer.js files)
-      // Most GIndex/MKV content uses standard codecs that native video handles fine
+      // Check for audio issues and fallback to AVPlayer if needed (AC3/DTS codecs)
+      if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
+        this.checkAudioAndFallback();
+      }
     };
 
     const errorHandler = () => {
@@ -1200,7 +1202,12 @@ const VideoPlayer = {
             break;
           case MediaError.MEDIA_ERR_DECODE:
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            // Note: AVPlayer fallback disabled (requires external avplayer.js files)
+            // Try AVPlayer fallback for unsupported codecs (AC3/DTS in MKV)
+            if ((this.sourceType === "gindex" || this.currentStreamType === "mkv") && !this.avPlayerAttempted) {
+              console.log("[VideoPlayer] Format not supported, trying AVPlayer fallback");
+              this.tryAVPlayerFallback();
+              return;
+            }
             message = "Formato não suportado pelo navegador";
             break;
         }
@@ -1213,10 +1220,6 @@ const VideoPlayer = {
     this.video.addEventListener("playing", playHandler);
     this.video.addEventListener("error", errorHandler);
     this.video.addEventListener("loadedmetadata", () => this.hideLoading(), { once: true });
-
-    // Note: AVPlayer fallback disabled for now (requires external avplayer.js files)
-    // Native video should handle most GIndex/MKV content
-    // TODO: Re-enable when AVPlayer files are added to assets/js/avplayer/
 
     this.video.play().catch((e) => {
       console.log("Native autoplay prevented:", e);
