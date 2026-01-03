@@ -22,10 +22,10 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   alias Streamix.Iptv.Gindex.{Client, Parser}
 
   # Base delay between requests to respect Cloudflare Workers rate limits
-  # 2000ms = ~30 req/min = safe for GIndex workers (avoids 500 errors)
-  @base_delay 2000
-  # Max jitter to add (0-500ms random) to avoid detection patterns
-  @max_jitter 500
+  # 3000ms = ~20 req/min = very safe for GIndex workers (avoids 500 errors)
+  @base_delay 3000
+  # Max jitter to add (0-1000ms random) to avoid detection patterns
+  @max_jitter 1000
 
   @doc """
   Scrapes all movies from a GIndex provider.

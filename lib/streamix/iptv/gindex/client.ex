@@ -11,8 +11,8 @@ defmodule Streamix.Iptv.Gindex.Client do
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(3)
   @max_retries 3
-  # Conservative rate limit handling - start with 10s to avoid 500 errors
-  @rate_limit_base_delay :timer.seconds(10)
+  # Conservative rate limit handling - start with 15s to recover from 500 errors
+  @rate_limit_base_delay :timer.seconds(15)
   @max_rate_limit_retries 5
 
   @doc """
@@ -80,9 +80,9 @@ defmodule Streamix.Iptv.Gindex.Client do
 
           {:ok, items, next_token} ->
             # More pages to fetch - increment page_index
-            # Delay between pages to avoid rate limiting
+            # Delay between pages to avoid rate limiting (3s + jitter)
             Logger.debug("[GIndex] Fetching page #{page_index + 1}...")
-            Process.sleep(1500)
+            Process.sleep(3000 + :rand.uniform(1000))
             list_folder_paginated(base_url, path, next_token, page_index + 1, acc ++ items)
 
           {:error, reason} ->
