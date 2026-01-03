@@ -50,6 +50,18 @@ else
   config :streamix, :gindex_provider, enabled: false
 end
 
+# Gemini AI configuration for embeddings
+# Required for semantic search functionality
+if gemini_api_key = get_env.("GEMINI_API_KEY") do
+  config :streamix, :gemini, api_key: gemini_api_key
+end
+
+# Qdrant vector database configuration
+# Required for semantic search functionality
+config :streamix, :qdrant,
+  url: get_env.("QDRANT_URL") || "http://localhost:6333",
+  api_key: get_env.("QDRANT_API_KEY")
+
 # RabbitMQ configuration for Broadway distributed workers
 # Set RABBITMQ_ENABLED=true to enable
 if get_env.("RABBITMQ_ENABLED") == "true" do

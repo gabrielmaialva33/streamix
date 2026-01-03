@@ -84,6 +84,7 @@ defmodule Streamix.Iptv do
   defdelegate fetch_movie_info(movie), to: Movies, as: :fetch_info
   defdelegate search_movies(user_id, query, opts \\ []), to: Movies, as: :search
   defdelegate search_public_movies(query, opts \\ []), to: Movies, as: :search_public
+  defdelegate get_movies_by_ids(ids), to: Movies, as: :get_by_ids
 
   # GIndex movies
   defdelegate list_gindex_movies(opts \\ []), to: Movies, as: :list_gindex
@@ -102,6 +103,7 @@ defmodule Streamix.Iptv do
   defdelegate fetch_series_info(series), to: SeriesOps, as: :fetch_info
   defdelegate search_series(user_id, query, opts \\ []), to: SeriesOps, as: :search
   defdelegate search_public_series(query, opts \\ []), to: SeriesOps, as: :search_public
+  defdelegate get_series_by_ids(ids), to: SeriesOps, as: :get_by_ids
 
   # GIndex series
   defdelegate list_gindex_series(opts \\ []), to: SeriesOps, as: :list_gindex

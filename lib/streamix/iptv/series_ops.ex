@@ -239,6 +239,18 @@ defmodule Streamix.Iptv.SeriesOps do
   def get(id), do: Repo.get(Series, id)
 
   @doc """
+  Gets multiple series by their IDs.
+  Returns series in arbitrary order.
+  """
+  @spec get_by_ids([integer()]) :: [Series.t()]
+  def get_by_ids([]), do: []
+
+  def get_by_ids(ids) when is_list(ids) do
+    from(s in Series, where: s.id in ^ids)
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a series from public providers only (for guests).
   """
   @spec get_public(integer()) :: Series.t() | nil

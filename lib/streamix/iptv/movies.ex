@@ -174,6 +174,18 @@ defmodule Streamix.Iptv.Movies do
   def get(id), do: Repo.get(Movie, id)
 
   @doc """
+  Gets multiple movies by their IDs.
+  Returns movies in arbitrary order.
+  """
+  @spec get_by_ids([integer()]) :: [Movie.t()]
+  def get_by_ids([]), do: []
+
+  def get_by_ids(ids) when is_list(ids) do
+    from(m in Movie, where: m.id in ^ids)
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a movie owned by a specific user.
   """
   @spec get_user_movie(integer(), integer()) :: Movie.t() | nil
