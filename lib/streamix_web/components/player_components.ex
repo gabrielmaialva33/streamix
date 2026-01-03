@@ -330,13 +330,20 @@ defmodule StreamixWeb.PlayerComponents do
   # Private Helpers
   # ============================================
 
-  # GIndex streams play directly without proxy (they have signed URLs from Cloudflare)
-  defp build_proxy_url(_stream_url, :gindex), do: nil
+  # GIndex streams use animezey.mahina.cloud proxy (specific for GIndex/animezey)
+  # URL is NOT encoded - Nginx needs the raw URL for proxy_pass
+  defp build_proxy_url(stream_url, :gindex) when is_binary(stream_url) do
+    "https://animezey.mahina.cloud/proxy?url=#{stream_url}"
+  end
 
+  defp build_proxy_url(stream_url, :gindex_episode) when is_binary(stream_url) do
+    "https://animezey.mahina.cloud/proxy?url=#{stream_url}"
+  end
+
+  # IPTV streams use stream.mahina.cloud proxy (replaces local Phoenix proxy)
+  # URL is NOT encoded - Nginx needs the raw URL for proxy_pass
   defp build_proxy_url(stream_url, _content_type) when is_binary(stream_url) do
-    # Use Nginx reverse proxy for HTTP streams (bypasses mixed content blocking)
-    # The proxy at pannxs.mahina.cloud handles CORS and proxies to IPTV servers
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://stream.mahina.cloud")
     "#{proxy_base}/proxy?url=#{stream_url}"
   end
 
