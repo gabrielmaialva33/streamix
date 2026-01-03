@@ -99,17 +99,15 @@ defmodule Streamix.Iptv.Sync do
 
   # Wrap sync functions to catch unexpected errors
   defp safe_sync(sync_fn) do
-    try do
-      sync_fn.()
-    rescue
-      e ->
-        Logger.error("[Sync] Unexpected error: #{Exception.message(e)}")
-        {:error, {:exception, Exception.message(e)}}
-    catch
-      :exit, reason ->
-        Logger.error("[Sync] Process exit: #{inspect(reason)}")
-        {:error, {:exit, reason}}
-    end
+    sync_fn.()
+  rescue
+    e ->
+      Logger.error("[Sync] Unexpected error: #{Exception.message(e)}")
+      {:error, {:exception, Exception.message(e)}}
+  catch
+    :exit, reason ->
+      Logger.error("[Sync] Process exit: #{inspect(reason)}")
+      {:error, {:exit, reason}}
   end
 
   # Handle results with partial success support
