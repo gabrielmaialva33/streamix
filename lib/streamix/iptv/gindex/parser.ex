@@ -236,14 +236,16 @@ defmodule Streamix.Iptv.Gindex.Parser do
       iex> Parser.parse_release_folder("Dual Áudio (Eternal) - BD 1080p")
       %{group: "Eternal", is_dual: true, quality: "1080p", source: "BD", codec: nil, score: 95}
   """
-  @quality_patterns [
+  # These are tuple-based patterns for release folder parsing
+  # Format: {[keywords...], canonical_value}
+  @release_quality_patterns [
     {["2160P", "4K"], "2160p"},
     {["1080P"], "1080p"},
     {["720P"], "720p"},
     {["480P"], "480p"}
   ]
 
-  @source_patterns [
+  @release_source_patterns [
     {["BDREMUX", "REMUX"], "BDRemux"},
     {["BD ", "BLURAY"], "BD"},
     {["WEB-DL"], "WEB-DL"},
@@ -251,7 +253,7 @@ defmodule Streamix.Iptv.Gindex.Parser do
     {["HDTV"], "HDTV"}
   ]
 
-  @codec_patterns [
+  @release_codec_patterns [
     {["HEVC", "X265", "H.265"], "HEVC"},
     {["X264", "H.264"], "H.264"}
   ]
@@ -276,9 +278,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
     upcase_name = String.upcase(folder_name)
 
     is_dual = String.contains?(upcase_name, "DUAL")
-    quality = find_pattern_match(upcase_name, @quality_patterns)
-    source = find_pattern_match(upcase_name, @source_patterns)
-    codec = find_pattern_match(upcase_name, @codec_patterns)
+    quality = find_pattern_match(upcase_name, @release_quality_patterns)
+    source = find_pattern_match(upcase_name, @release_source_patterns)
+    codec = find_pattern_match(upcase_name, @release_codec_patterns)
     group = extract_anime_release_group(folder_name)
     score = calculate_release_score(quality, source, codec, is_dual)
 
