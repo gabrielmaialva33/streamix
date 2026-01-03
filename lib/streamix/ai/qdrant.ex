@@ -20,7 +20,7 @@ defmodule Streamix.AI.Qdrant do
 
   require Logger
 
-  alias Streamix.AI.Gemini
+  alias Streamix.AI.Embeddings
 
   @default_url "http://localhost:6333"
   @collections ~w(movies series animes)
@@ -177,10 +177,10 @@ defmodule Streamix.AI.Qdrant do
   Searches for similar content using text query.
 
   Generates embedding from query text and searches the collection.
-  Uses Gemini with RETRIEVAL_QUERY task type for optimal search results.
+  Uses configured embedding provider with automatic fallback.
   """
   def search_by_text(collection, query_text, opts \\ []) do
-    case Gemini.embed(query_text) do
+    case Embeddings.embed(query_text) do
       {:ok, vector} ->
         search(collection, vector, opts)
 
@@ -300,7 +300,7 @@ defmodule Streamix.AI.Qdrant do
     body =
       Jason.encode!(%{
         vectors: %{
-          size: Gemini.embedding_dimensions(),
+          size: Embeddings.embedding_dimensions(),
           distance: "Cosine"
         },
         optimizers_config: %{

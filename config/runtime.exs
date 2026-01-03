@@ -50,10 +50,21 @@ else
   config :streamix, :gindex_provider, enabled: false
 end
 
-# Gemini AI configuration for embeddings
-# Required for semantic search functionality
+# AI Embeddings configuration for semantic search
+# Set EMBEDDING_PROVIDER to choose: "gemini" (default) or "nvidia"
+# Both can be configured for automatic fallback
+config :streamix, :embeddings, provider: get_env.("EMBEDDING_PROVIDER") || "gemini"
+
+# Gemini AI configuration for embeddings (3072 dimensions)
 if gemini_api_key = get_env.("GEMINI_API_KEY") do
   config :streamix, :gemini, api_key: gemini_api_key
+end
+
+# NVIDIA NIM configuration for embeddings (1024 dimensions)
+if nvidia_api_key = get_env.("NVIDIA_API_KEY") do
+  config :streamix, :nvidia,
+    api_key: nvidia_api_key,
+    embedding_model: get_env.("NVIDIA_EMBEDDING_MODEL") || "nv-embedqa-e5-v5"
 end
 
 # Qdrant vector database configuration

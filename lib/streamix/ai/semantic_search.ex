@@ -21,7 +21,7 @@ defmodule Streamix.AI.SemanticSearch do
 
   require Logger
 
-  alias Streamix.AI.{Gemini, Qdrant}
+  alias Streamix.AI.{Embeddings, Qdrant}
   alias Streamix.Repo
 
   import Ecto.Query
@@ -36,7 +36,7 @@ defmodule Streamix.AI.SemanticSearch do
   Checks if semantic search is available.
   """
   def available? do
-    Gemini.enabled?() and Qdrant.enabled?()
+    Embeddings.enabled?() and Qdrant.enabled?()
   end
 
   @doc """
@@ -46,7 +46,7 @@ defmodule Streamix.AI.SemanticSearch do
     if available?() do
       Qdrant.setup_collections()
     else
-      Logger.warning("[SemanticSearch] Not available - check Gemini and Qdrant config")
+      Logger.warning("[SemanticSearch] Not available - check embeddings and Qdrant config")
       {:error, :not_available}
     end
   end
@@ -123,7 +123,7 @@ defmodule Streamix.AI.SemanticSearch do
   def index_content(content, collection) when is_atom(collection) do
     content_map = content_to_map(content)
 
-    case Gemini.embed_content(content_map) do
+    case Embeddings.embed_content(content_map) do
       {:ok, vector} ->
         payload = build_payload(content_map)
         Qdrant.upsert_point(to_string(collection), content.id, vector, payload)
@@ -223,7 +223,7 @@ defmodule Streamix.AI.SemanticSearch do
   def stats do
     collections = [:movies, :series, :animes]
 
-    stats =
+    collection_stats =
       Enum.map(collections, fn col ->
         case Qdrant.collection_info(to_string(col)) do
           {:ok, info} -> {col, info}
@@ -232,13 +232,24 @@ defmodule Streamix.AI.SemanticSearch do
       end)
       |> Map.new()
 
-    {:ok, stats}
+    {:ok, collection_stats}
+  end
+
+  @doc """
+  Returns detailed info about the semantic search system.
+  """
+  def info do
+    %{
+      available: available?(),
+      embeddings: Embeddings.info(),
+      qdrant_enabled: Qdrant.enabled?()
+    }
   end
 
   # Private functions
 
   defp index_batch(contents, collection) do
-    case Gemini.embed_contents(contents) do
+    case Embeddings.embed_contents(contents) do
       {:ok, embeddings} ->
         points =
           Enum.map(embeddings, fn {id, vector} ->
