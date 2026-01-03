@@ -86,34 +86,61 @@ defmodule StreamixWeb.ContentComponents do
 
   ## Attributes
 
-    * `:selected` - Currently selected tab (:live, :movies, :series)
-    * `:counts` - Map with content counts %{live: n, movies: n, series: n}
+    * `:selected` - Currently selected tab (:live, :movies, :series, :animes)
+    * `:counts` - Map with content counts %{live: n, movies: n, series: n, animes: n}
+    * `:source` - Content source ("iptv" or "gindex"). When "gindex", shows Animes instead of Ao Vivo.
 
   ## Examples
 
       <.browse_tabs selected={:movies} counts={%{live: 100, movies: 500, series: 50}} />
+      <.browse_tabs selected={:animes} source="gindex" counts={%{animes: 200, movies: 500, series: 50}} />
   """
-  attr :selected, :atom, required: true, values: [:live, :movies, :series]
+  attr :selected, :atom, required: true, values: [:live, :movies, :series, :animes]
   attr :counts, :map, default: %{}
   attr :source, :string, default: "iptv"
 
   def browse_tabs(assigns) do
     ~H"""
     <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
-      <.link
-        navigate={browse_path("/browse", @source)}
-        class={[
-          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
-          @selected == :live && "bg-brand text-white",
-          @selected != :live && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-        ]}
-      >
-        <.icon name="hero-tv" class="size-3.5 sm:size-4" />
-        <span>Ao Vivo</span>
-        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
-          {format_count(@counts.live)}
-        </span>
-      </.link>
+      <%= if @source == "gindex" do %>
+        <.link
+          navigate={browse_path("/browse/animes", @source)}
+          class={[
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+            @selected == :animes && "bg-brand text-white",
+            @selected != :animes &&
+              "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+          ]}
+        >
+          <.icon name="hero-sparkles" class="size-3.5 sm:size-4" />
+          <span>Animes</span>
+          <span
+            :if={@counts[:animes]}
+            class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+          >
+            {format_count(@counts.animes)}
+          </span>
+        </.link>
+      <% else %>
+        <.link
+          navigate={browse_path("/browse", @source)}
+          class={[
+            "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+            @selected == :live && "bg-brand text-white",
+            @selected != :live &&
+              "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+          ]}
+        >
+          <.icon name="hero-tv" class="size-3.5 sm:size-4" />
+          <span>Ao Vivo</span>
+          <span
+            :if={@counts[:live]}
+            class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+          >
+            {format_count(@counts.live)}
+          </span>
+        </.link>
+      <% end %>
       <.link
         navigate={browse_path("/browse/movies", @source)}
         class={[

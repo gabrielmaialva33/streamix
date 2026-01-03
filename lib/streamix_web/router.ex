@@ -127,6 +127,7 @@ defmodule StreamixWeb.Router do
       live "/browse/series", Content.SeriesLive, :index
       live "/browse/series/:id", Content.SeriesDetailLive, :show
       live "/browse/series/:series_id/episode/:id", Content.EpisodeDetailLive, :show
+      live "/browse/animes", Gindex.AnimeLive, :index
 
       # User's personal providers (settings area)
       live "/providers", Providers.ProviderListLive, :index
@@ -152,6 +153,7 @@ defmodule StreamixWeb.Router do
       live "/gindex/movies", Gindex.MoviesLive, :index
       live "/gindex/movies/:id", Gindex.MovieDetailLive, :show
       live "/gindex/series/:id", Gindex.SeriesDetailLive, :show
+      live "/gindex/animes/:id", Gindex.AnimeDetailLive, :show
     end
 
     # Player with fullscreen layout (requires auth)
