@@ -604,7 +604,7 @@ defmodule Streamix.Iptv.Gindex.Parser do
 
     index =
       Enum.find_index(parts, fn part ->
-        String.upcase(part) in patterns_upper
+        is_binary(part) and String.upcase(part) in patterns_upper
       end)
 
     case index do
@@ -634,17 +634,22 @@ defmodule Streamix.Iptv.Gindex.Parser do
     # Filter out technical info patterns and release group tags
     title_parts =
       rest_parts
-      |> Enum.reject(fn part ->
-        upcase_part = String.upcase(part)
-        # Reject if it matches any tech pattern
-        # Reject codec patterns like "1" in "DD5.1"
-        # Reject release group patterns (typically at end after dash)
-        Enum.any?(@tech_patterns, fn pattern ->
-          String.upcase(pattern) == upcase_part or
-            String.contains?(upcase_part, String.upcase(pattern))
-        end) or
-          Regex.match?(~r/^\d+$/, part) or
-          Regex.match?(~r/^[A-Z]{2,}$/, part)
+      |> Enum.reject(fn
+        # Skip nil or non-string parts
+        part when not is_binary(part) ->
+          true
+
+        part ->
+          upcase_part = String.upcase(part)
+          # Reject if it matches any tech pattern
+          # Reject codec patterns like "1" in "DD5.1"
+          # Reject release group patterns (typically at end after dash)
+          Enum.any?(@tech_patterns, fn pattern ->
+            String.upcase(pattern) == upcase_part or
+              String.contains?(upcase_part, String.upcase(pattern))
+          end) or
+            Regex.match?(~r/^\d+$/, part) or
+            Regex.match?(~r/^[A-Z]{2,}$/, part)
       end)
 
     case title_parts do
