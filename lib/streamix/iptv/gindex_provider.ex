@@ -52,7 +52,9 @@ defmodule Streamix.Iptv.GIndexProvider do
         url: cfg[:url],
         gindex_url: cfg[:url],
         gindex_drives: %{
-          "movies_path" => cfg[:movies_path] || "/1:/Filmes/"
+          "movies_path" => "/1:/Filmes/",
+          "series_paths" => ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"],
+          "animes_path" => "/0:/Animes/"
         },
         provider_type: :gindex,
         is_system: true,
@@ -116,7 +118,7 @@ defmodule Streamix.Iptv.GIndexProvider do
   """
   def movies_path do
     case get() do
-      nil -> config()[:movies_path] || "/1:/Filmes/"
+      nil -> "/1:/Filmes/"
       provider -> provider.gindex_drives["movies_path"] || "/1:/Filmes/"
     end
   end

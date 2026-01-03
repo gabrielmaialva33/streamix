@@ -40,12 +40,12 @@ else
   config :streamix, :tmdb, enabled: false
 end
 
-# GIndex provider configuration (Google Drive Index for movies/series)
+# GIndex provider configuration (Google Drive Index for movies/series/animes)
+# Paths are configured via gindex_drives on the provider record
 if get_env.("GINDEX_ENABLED") == "true" do
   config :streamix, :gindex_provider,
     enabled: true,
-    url: get_env.("GINDEX_URL"),
-    movies_path: get_env.("GINDEX_MOVIES_PATH") || "/1:/Filmes/"
+    url: get_env.("GINDEX_URL")
 else
   config :streamix, :gindex_provider, enabled: false
 end
