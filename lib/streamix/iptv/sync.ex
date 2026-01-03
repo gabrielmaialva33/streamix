@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.Sync do
   - `Sync.Cleanup` - Orphaned user data cleanup
   """
 
+  alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Provider
   alias Streamix.Iptv.Sync.{Categories, Cleanup, Live, Movies, Series}
   alias Streamix.Repo
@@ -49,7 +50,12 @@ defmodule Streamix.Iptv.Sync do
     * `:batch_size` - When using `:enqueue`, the number of series per batch job (default: 50)
 
   """
-  def sync_all(%Provider{} = provider, opts \\ []) do
+  def sync_all(%Provider{provider_type: :gindex} = provider, _opts) do
+    # Route GIndex providers to specialized sync module
+    Gindex.Sync.sync_provider(provider)
+  end
+
+  def sync_all(%Provider{} = provider, opts) do
     Logger.info("Starting full sync for provider #{provider.id}")
 
     update_status(provider, "syncing")
