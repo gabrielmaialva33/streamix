@@ -94,6 +94,175 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   end
 
   # =============================================================================
+  # Anime Scraping Functions
+  # =============================================================================
+
+  @doc """
+  Scrapes all animes from a GIndex provider.
+
+  Returns a list of anime data with releases and episodes.
+  """
+  def scrape_animes(base_url, anime_path \\ "/0:/Animes/") do
+    Logger.info("[GIndex Scraper] Scraping animes from: #{anime_path}")
+
+    case Client.list_folder_all(base_url, anime_path) do
+      {:ok, items} ->
+        folders = Enum.filter(items, &(&1.type == :folder))
+        Logger.info("[GIndex Scraper] Found #{length(folders)} anime folders")
+
+        animes =
+          folders
+          |> Enum.map(fn folder ->
+            Process.sleep(@delay_between_requests)
+            scrape_single_anime(base_url, folder)
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        {:ok, animes}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[GIndex Scraper] Failed to list anime folder #{anime_path}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Scrapes a single anime folder and extracts releases and episodes.
+  """
+  def scrape_single_anime(base_url, folder) do
+    Logger.debug("[GIndex Scraper] Scraping anime: #{folder.name}")
+
+    # Parse anime folder name
+    folder_meta = Parser.parse_anime_folder(folder.name)
+    anime_id = Parser.path_to_stream_id(folder.path)
+
+    # List contents (release folders)
+    case Client.list_folder(base_url, folder.path) do
+      {:ok, items} ->
+        # Find release folders (subfolders with video files)
+        release_folders = Enum.filter(items, &(&1.type == :folder))
+
+        # Scrape releases
+        releases = scrape_anime_releases(base_url, release_folders)
+
+        if Enum.empty?(releases) do
+          nil
+        else
+          total_episodes = Enum.sum(Enum.map(releases, & &1.episode_count))
+
+          %{
+            series_id: anime_id,
+            name: folder_meta.name,
+            title: folder_meta.original_name,
+            year: folder_meta.year,
+            gindex_path: folder.path,
+            seasons: releases,
+            season_count: length(releases),
+            episode_count: total_episodes,
+            content_type: "anime"
+          }
+        end
+
+      {:error, reason} ->
+        Logger.warning("[GIndex Scraper] Failed to list anime #{folder.name}: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  @doc """
+  Scrapes releases from a list of release folders.
+
+  Each release is treated as a "season" for data model compatibility.
+  """
+  def scrape_anime_releases(base_url, release_folders) do
+    release_folders
+    |> Enum.with_index(1)
+    |> Enum.map(fn {folder, index} ->
+      Process.sleep(@delay_between_requests)
+      scrape_single_anime_release(base_url, folder, index)
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.release_score, :desc)
+  end
+
+  @doc """
+  Scrapes a single release folder for episodes.
+  """
+  def scrape_single_anime_release(base_url, folder, release_index) do
+    Logger.debug("[GIndex Scraper] Scraping anime release: #{folder.name}")
+
+    # Parse release info
+    release_meta = Parser.parse_release_folder(folder.name)
+
+    case Client.list_folder(base_url, folder.path) do
+      {:ok, items} ->
+        # Find video files
+        video_files =
+          items
+          |> Enum.filter(fn item ->
+            item.type == :file and Parser.video_file?(item.name)
+          end)
+
+        episodes = scrape_anime_episodes_from_files(video_files, release_index)
+
+        if Enum.empty?(episodes) do
+          nil
+        else
+          %{
+            season_number: release_index,
+            name: folder.name,
+            gindex_path: folder.path,
+            episodes: episodes,
+            episode_count: length(episodes),
+            release_score: release_meta.score,
+            release_group: release_meta.group,
+            quality: release_meta.quality,
+            is_dual: release_meta.is_dual
+          }
+        end
+
+      {:error, reason} ->
+        Logger.warning(
+          "[GIndex Scraper] Failed to list release #{folder.name}: #{inspect(reason)}"
+        )
+
+        nil
+    end
+  end
+
+  @doc """
+  Scrapes episodes from a list of video files for anime.
+  """
+  def scrape_anime_episodes_from_files(files, release_index) do
+    files
+    |> Enum.map(fn file ->
+      episode_meta = Parser.parse_anime_episode(file.name)
+
+      if episode_meta.episode do
+        episode_id = Parser.path_to_stream_id(file.path)
+
+        %{
+          episode_id: episode_id,
+          episode_num: episode_meta.episode,
+          title: nil,
+          name: file.name,
+          season_number: release_index,
+          container_extension: episode_meta.extension || "mkv",
+          gindex_path: file.path,
+          file_size: file.size
+        }
+      else
+        nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.episode_num)
+  end
+
+  # =============================================================================
   # Series Scraping Functions
   # =============================================================================
 

@@ -78,6 +78,232 @@ defmodule Streamix.Iptv.Gindex.Parser do
   def parse_series_folder(folder_name), do: parse_movie_folder(folder_name)
 
   @doc """
+  Parses an anime folder name.
+
+  Anime folders typically don't have years, but may have:
+  - Season indicators: "2nd Season", "Season 2", or just "2"
+  - Type indicators: "(TV)", "(ONA)", "(OVA)"
+  - Original names in brackets: "[Original Name]"
+
+  ## Examples
+
+      iex> Parser.parse_anime_folder("86 - Eighty Six")
+      %{name: "86 - Eighty Six", original_name: nil, year: nil, season_indicator: nil}
+
+      iex> Parser.parse_anime_folder("Ajin 2nd Season")
+      %{name: "Ajin", original_name: nil, year: nil, season_indicator: "2nd Season"}
+
+      iex> Parser.parse_anime_folder("Aggressive Retsuko (ONA)")
+      %{name: "Aggressive Retsuko", original_name: nil, year: nil, type: "ONA"}
+
+      iex> Parser.parse_anime_folder("30-sai made Doutei [Cherry Magic!]")
+      %{name: "30-sai made Doutei", original_name: "Cherry Magic!", year: nil}
+  """
+  def parse_anime_folder(folder_name) do
+    folder_name = String.trim(folder_name)
+
+    {name, original_name} = extract_original_name(folder_name)
+    {name, year} = extract_year_from_name(name)
+    {name, type} = extract_anime_type(name)
+    {name, season_indicator} = extract_season_indicator(name)
+
+    %{
+      name: name,
+      original_name: original_name,
+      year: year,
+      type: type,
+      season_indicator: season_indicator
+    }
+  end
+
+  defp extract_original_name(folder_name) do
+    case Regex.run(~r/^(.+?)\s*\[(.+?)\]/, folder_name) do
+      [_, n, orig] -> {String.trim(n), String.trim(orig)}
+      nil -> {folder_name, nil}
+    end
+  end
+
+  defp extract_year_from_name(name) do
+    case Regex.run(~r/^(.+?)\s*\((\d{4})\)$/, name) do
+      [_, n, y] -> {String.trim(n), String.to_integer(y)}
+      nil -> {name, nil}
+    end
+  end
+
+  defp extract_anime_type(name) do
+    case Regex.run(~r/^(.+?)\s*\((ONA|OVA|TV|Movie)\)$/i, name) do
+      [_, n, t] -> {String.trim(n), String.upcase(t)}
+      nil -> {name, nil}
+    end
+  end
+
+  @anime_season_patterns [
+    {~r/^(.+?)\s+(\d+)$/, :simple},
+    {~r/^(.+?)\s+((2nd|3rd|4th|5th)\s+Season)$/i, :ordinal},
+    {~r/^(.+?)\s+(Season\s+\d+)$/i, :simple},
+    {~r/^(.+?)\s+(Part\s+\d+)$/i, :simple}
+  ]
+
+  defp extract_season_indicator(name) do
+    Enum.find_value(@anime_season_patterns, {name, nil}, fn {pattern, type} ->
+      case Regex.run(pattern, name) do
+        nil -> nil
+        match -> extract_season_match(match, type)
+      end
+    end)
+  end
+
+  defp extract_season_match([_, n, s], :simple), do: {String.trim(n), s}
+  defp extract_season_match([_, n, s, _], :ordinal), do: {String.trim(n), s}
+
+  @doc """
+  Parses an anime episode filename.
+
+  Anime episodes follow the pattern: `[Group] Name - NNN [Quality][Audio].ext`
+
+  ## Examples
+
+      iex> Parser.parse_anime_episode("[Anitsu] 86 Eighty Six - 01 [BD 1080p][Dual Áudio].mkv")
+      %{episode: 1, group: "Anitsu", quality: "BD 1080p", extension: "mkv"}
+
+      iex> Parser.parse_anime_episode("[HBO Max] Naruto - 001 [WEB-DL 1080p][Dual Áudio].mkv")
+      %{episode: 1, group: "HBO Max", quality: "WEB-DL 1080p", extension: "mkv"}
+  """
+  def parse_anime_episode(filename) do
+    filename = String.trim(filename)
+    {name_without_ext, extension} = split_extension(filename)
+
+    # Pattern: [Group] Name - NNN [Quality][Audio]
+    # Extract episode number: - NNN [
+    episode =
+      case Regex.run(~r/-\s*(\d{1,3})\s*\[/, name_without_ext) do
+        [_, ep] ->
+          String.to_integer(ep)
+
+        nil ->
+          # Try alternate patterns: - NNN. or - NNN at end
+          case Regex.run(~r/-\s*(\d{1,3})(?:\.|$)/, name_without_ext) do
+            [_, ep] -> String.to_integer(ep)
+            nil -> nil
+          end
+      end
+
+    # Extract group: [Group]
+    group =
+      case Regex.run(~r/^\[([^\]]+)\]/, name_without_ext) do
+        [_, g] -> g
+        nil -> nil
+      end
+
+    # Extract quality info from brackets after episode number
+    quality =
+      case Regex.run(~r/-\s*\d{1,3}\s*\[([^\]]+)\]/, name_without_ext) do
+        [_, q] -> q
+        nil -> nil
+      end
+
+    # Check for dual audio
+    is_dual = String.contains?(String.downcase(name_without_ext), "dual")
+
+    %{
+      episode: episode,
+      group: group,
+      quality: quality,
+      extension: extension,
+      is_dual_audio: is_dual,
+      raw_filename: filename
+    }
+  end
+
+  @doc """
+  Parses a release folder name to extract quality and audio info.
+
+  Used to rank releases and pick the best one.
+
+  ## Examples
+
+      iex> Parser.parse_release_folder("Anitsu (Dual Áudio) - BD 1080p HEVC")
+      %{group: "Anitsu", is_dual: true, quality: "1080p", source: "BD", codec: "HEVC", score: 100}
+
+      iex> Parser.parse_release_folder("Dual Áudio (Eternal) - BD 1080p")
+      %{group: "Eternal", is_dual: true, quality: "1080p", source: "BD", codec: nil, score: 95}
+  """
+  @quality_patterns [
+    {["2160P", "4K"], "2160p"},
+    {["1080P"], "1080p"},
+    {["720P"], "720p"},
+    {["480P"], "480p"}
+  ]
+
+  @source_patterns [
+    {["BDREMUX", "REMUX"], "BDRemux"},
+    {["BD ", "BLURAY"], "BD"},
+    {["WEB-DL"], "WEB-DL"},
+    {["WEBRIP"], "WEBRip"},
+    {["HDTV"], "HDTV"}
+  ]
+
+  @codec_patterns [
+    {["HEVC", "X265", "H.265"], "HEVC"},
+    {["X264", "H.264"], "H.264"}
+  ]
+
+  @quality_scores %{"2160p" => 40, "1080p" => 30, "720p" => 20, "480p" => 10}
+  @source_scores %{"BDRemux" => 25, "BD" => 20, "WEB-DL" => 15, "WEBRip" => 10, "HDTV" => 5}
+  @codec_scores %{"HEVC" => 10, "H.264" => 5}
+
+  def parse_release_folder(folder_name) do
+    folder_name = String.trim(folder_name)
+    upcase_name = String.upcase(folder_name)
+
+    is_dual = String.contains?(upcase_name, "DUAL")
+    quality = find_pattern_match(upcase_name, @quality_patterns)
+    source = find_pattern_match(upcase_name, @source_patterns)
+    codec = find_pattern_match(upcase_name, @codec_patterns)
+    group = extract_anime_release_group(folder_name)
+    score = calculate_release_score(quality, source, codec, is_dual)
+
+    %{
+      group: group,
+      is_dual: is_dual,
+      quality: quality,
+      source: source,
+      codec: codec,
+      score: score,
+      raw_name: folder_name
+    }
+  end
+
+  defp find_pattern_match(text, patterns) do
+    Enum.find_value(patterns, fn {keywords, value} ->
+      if Enum.any?(keywords, &String.contains?(text, &1)), do: value
+    end)
+  end
+
+  defp extract_anime_release_group(folder_name) do
+    case Regex.run(~r/^([A-Za-z0-9]+)\s*[\(-]/, folder_name) do
+      [_, g] -> g
+      nil -> extract_group_from_parens(folder_name)
+    end
+  end
+
+  defp extract_group_from_parens(folder_name) do
+    case Regex.run(~r/\(([A-Za-z0-9]+)\)/, folder_name) do
+      [_, g] -> g
+      nil -> nil
+    end
+  end
+
+  defp calculate_release_score(quality, source, codec, is_dual) do
+    quality_score = Map.get(@quality_scores, quality, 0)
+    source_score = Map.get(@source_scores, source, 0)
+    codec_score = Map.get(@codec_scores, codec, 0)
+    dual_score = if is_dual, do: 20, else: 0
+
+    quality_score + source_score + codec_score + dual_score
+  end
+
+  @doc """
   Parses a season folder name.
 
   Supports multiple formats:
