@@ -39,9 +39,11 @@ defmodule Streamix.AI.Qdrant do
 
   @doc """
   Performs a health check on the Qdrant server.
+  Uses the root endpoint which returns server info.
   """
   def health_check do
-    case Req.get("#{base_url()}/health") do
+    case Req.get("#{base_url()}/", receive_timeout: 5_000) do
+      {:ok, %Req.Response{status: 200, body: %{"version" => _}}} -> {:ok, :healthy}
       {:ok, %Req.Response{status: 200}} -> {:ok, :healthy}
       {:ok, %Req.Response{status: status}} -> {:error, {:unhealthy, status}}
       {:error, reason} -> {:error, reason}
