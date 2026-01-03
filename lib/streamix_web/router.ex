@@ -85,6 +85,7 @@ defmodule StreamixWeb.Router do
     get "/search/series", SearchController, :series
     get "/search/similar/:collection/:id", SearchController, :similar
     get "/search/status", SearchController, :status
+    get "/search/info", SearchController, :info
   end
 
   # Public routes - landing page only

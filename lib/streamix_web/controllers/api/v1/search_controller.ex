@@ -152,6 +152,14 @@ defmodule StreamixWeb.Api.V1.SearchController do
     })
   end
 
+  @doc """
+  GET /api/v1/search/info
+  Returns detailed semantic search system info.
+  """
+  def info(conn, _params) do
+    json(conn, SemanticSearch.info())
+  end
+
   # Private functions
 
   defp enrich_movie_results(results) do
