@@ -108,6 +108,11 @@ defmodule Streamix.Iptv do
   defdelegate count_gindex_series, to: SeriesOps, as: :count_gindex
   defdelegate get_gindex_series_with_seasons(id), to: SeriesOps, as: :get_gindex_with_seasons
 
+  # GIndex animes
+  defdelegate list_gindex_animes(opts \\ []), to: SeriesOps
+  defdelegate count_gindex_animes, to: SeriesOps
+  defdelegate get_gindex_anime_with_seasons(id), to: SeriesOps
+
   # Episode operations
   defdelegate get_episode!(id), to: SeriesOps
   defdelegate get_episode(id), to: SeriesOps
@@ -155,4 +160,13 @@ defmodule Streamix.Iptv do
   defdelegate sync_channel_epg(provider, stream_id, epg_channel_id), to: Epg, as: :sync_channel
   defdelegate sync_channels_epg(provider, channels), to: Epg, as: :sync_channels
   defdelegate ensure_epg_available(provider, channels), to: Epg
+
+  @doc """
+  Enqueues a background job to sync EPG for all channels of a provider.
+  Uses Oban for persistent job processing.
+  """
+  def async_sync_epg(provider) do
+    alias Streamix.Workers.SyncEpgWorker
+    SyncEpgWorker.enqueue(provider)
+  end
 end

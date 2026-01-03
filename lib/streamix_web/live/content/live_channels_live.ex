@@ -43,11 +43,14 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   end
 
   defp mount_with_provider(socket, provider, user_id, mode) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
-      # Trigger async EPG sync if needed
-      maybe_sync_epg(provider)
-    end
+    epg_syncing =
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
+        # Trigger async EPG sync if needed, returns true if sync started
+        maybe_sync_epg(provider)
+      else
+        false
+      end
 
     user = socket.assigns.current_scope.user
     categories = Iptv.list_categories(provider.id, "live")
@@ -79,7 +82,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       |> assign(favorites_map: %{})
       |> assign(empty_results: false)
       |> assign(user_id: user_id)
-      |> assign(epg_syncing: false)
+      |> assign(epg_syncing: epg_syncing)
       |> stream(:channels, [])
       |> load_favorites_map()
 
@@ -217,21 +220,22 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     end
   end
 
-  # Handler for EPG sync completion - refresh channel list to show EPG data
-  def handle_info({:epg_sync_complete, :ok}, socket) do
+  # Handler for EPG sync completion (from Oban worker via PubSub)
+  def handle_info({:epg_sync_complete, :ok, _results}, socket) do
     # Reload channels to pick up EPG data
     socket =
       socket
       |> assign(page: 1)
+      |> assign(epg_syncing: false)
       |> stream(:channels, [], reset: true)
       |> load_channels()
 
     {:noreply, socket}
   end
 
-  def handle_info({:epg_sync_complete, _}, socket) do
-    # EPG sync failed or was not needed, just ignore
-    {:noreply, socket}
+  def handle_info({:epg_sync_complete, _, _}, socket) do
+    # EPG sync failed, just update status
+    {:noreply, assign(socket, epg_syncing: false)}
   end
 
   # ============================================
@@ -416,14 +420,24 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   end
 
   # EPG sync helper - triggers async sync if EPG data is stale
+  # Uses Oban worker for persistent, reliable background processing
+  # Returns true if sync was enqueued, false if not needed
   defp maybe_sync_epg(provider) do
-    pid = self()
+    # Check if EPG needs sync (stale or never synced)
+    if epg_needs_sync?(provider) do
+      # Enqueue Oban job to sync EPG for all channels
+      Iptv.async_sync_epg(provider)
+      true
+    else
+      false
+    end
+  end
 
-    Task.start(fn ->
-      # Get channels for this provider to sync EPG
-      channels = Iptv.list_live_channels(provider.id, limit: 100)
-      result = Iptv.ensure_epg_available(provider, channels)
-      send(pid, {:epg_sync_complete, result})
-    end)
+  defp epg_needs_sync?(%{epg_synced_at: nil}), do: true
+
+  defp epg_needs_sync?(provider) do
+    interval = provider.epg_sync_interval_hours || 6
+    hours_since_sync = DateTime.diff(DateTime.utc_now(), provider.epg_synced_at, :hour)
+    hours_since_sync >= interval
   end
 end
