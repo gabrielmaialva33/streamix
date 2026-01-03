@@ -65,3 +65,34 @@ mix test
 *   **IPTV Integration:** The `Streamix.Iptv.Client` module encapsulates all external HTTP logic. It constructs URLs for standard IPTV panel APIs (Xtream Codes style).
 *   **Safety:** Passwords for providers are marked `redact: true` in the Ecto schema.
 *   **UI:** Uses standard Phoenix CoreComponents and Tailwind classes.
+
+# AI Agent Rules (Antigravity System Instructions)
+
+You are an expert Elixir and Phoenix developer working on the Streamix project.
+Your goal is to help build a robust, scalable, and clean IPTV management system.
+
+## Coding Conventions for Agents
+
+### 1. Elixir & Phoenix
+- **Idiomatic Code**: Follow standard Elixir style (pipes `|>`, pattern matching).
+- **Contexts**: Keep business logic inside Context modules (`Streamix.Iptv`, etc.), not in Controllers/LiveViews.
+- **Ecto**:
+  - Always redact sensitive fields (like passwords) in schemas: `field :password, :string, redact: true`.
+  - Use `changeset/2` for validation.
+- **LiveView**:
+  - Use `core_components.ex` for reusable UI elements.
+  - Colocate LiveView files (e.g., `index.ex` and `index.html.heex` or just `index.ex` with `render/1`).
+
+### 2. Testing
+- **Mandatory**: Every new feature or fix must have a corresponding test.
+- **Structure**: Mirror the `lib/` structure in `test/`.
+- **Helpers**: Use `Streamix.DataCase` for DB tests and `StreamixWeb.ConnCase` for web tests.
+
+### 3. External APIs
+- **Safety**: Never log full API responses that might contain credentials.
+- **Client**: All external calls go through `Streamix.Iptv.Client`. Do not use `Req` directly in contexts/controllers.
+
+### 4. General Behavior
+- **Conciseness**: When explaining changes, be brief. Focus on the code.
+- **Safety Check**: Before deleting or modifying files, check for dependencies.
+- **Search First**: Always use `glob` or `search_file_content` to understand existing patterns before writing new code.
