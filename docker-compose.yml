@@ -30,6 +30,25 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: streamix-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: streamix
+      RABBITMQ_DEFAULT_PASS: streamix
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - streamix_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   streamix_postgres_data:
   streamix_redis_data:
+  streamix_rabbitmq_data:
