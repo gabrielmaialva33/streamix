@@ -31,7 +31,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
       iex> Parser.parse_movie_folder("13 Reasons Why (2017)")
       %{name: "13 Reasons Why", original_name: nil, year: 2017}
   """
-  def parse_movie_folder(folder_name) do
+  def parse_movie_folder(nil), do: %{name: nil, original_name: nil, year: nil}
+
+  def parse_movie_folder(folder_name) when is_binary(folder_name) do
     folder_name = String.trim(folder_name)
 
     # Pattern: "Nome PT [Nome Original] (Ano)"
@@ -99,7 +101,10 @@ defmodule Streamix.Iptv.Gindex.Parser do
       iex> Parser.parse_anime_folder("30-sai made Doutei [Cherry Magic!]")
       %{name: "30-sai made Doutei", original_name: "Cherry Magic!", year: nil}
   """
-  def parse_anime_folder(folder_name) do
+  def parse_anime_folder(nil),
+    do: %{name: nil, original_name: nil, year: nil, type: nil, season_indicator: nil}
+
+  def parse_anime_folder(folder_name) when is_binary(folder_name) do
     folder_name = String.trim(folder_name)
 
     {name, original_name} = extract_original_name(folder_name)
