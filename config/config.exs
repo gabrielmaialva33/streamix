@@ -80,7 +80,7 @@ config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 # Oban - Background jobs
 config :streamix, Oban,
   repo: Streamix.Repo,
-  queues: [default: 10, sync: 3, series_details: 2],
+  queues: [default: 10, sync: 3, series_details: 2, ai: 1],
   plugins: [
     Oban.Plugins.Pruner,
     {Oban.Plugins.Cron,
@@ -92,7 +92,9 @@ config :streamix, Oban,
        # Sync global provider every 4 hours
        {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
        # Sync GIndex providers daily at 3 AM
-       {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker}
+       {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
+       # Index embeddings for semantic search daily at 5 AM
+       {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker}
      ]}
   ]
 
