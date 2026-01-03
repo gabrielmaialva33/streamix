@@ -188,10 +188,15 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
         select: {m.gindex_url_cached, m.gindex_url_expires_at}
 
     case Repo.one(query) do
-      {url, _expires_at} when is_binary(url) and url != "" ->
-        # Use cached URL even if expired (better than nothing)
-        Logger.info("[GIndex UrlCache] Using fallback DB cache for movie #{movie_id}")
-        {:ok, url}
+      {url, expires_at} when is_binary(url) and url != "" and not is_nil(expires_at) ->
+        # Only use cached URL if it hasn't expired yet
+        if DateTime.compare(expires_at, DateTime.utc_now()) == :gt do
+          Logger.info("[GIndex UrlCache] Using fallback DB cache for movie #{movie_id}")
+          {:ok, url}
+        else
+          Logger.warning("[GIndex UrlCache] DB cache expired for movie #{movie_id}")
+          {:error, :url_expired}
+        end
 
       _ ->
         {:error, :url_not_available}
@@ -273,10 +278,15 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
         select: {e.gindex_url_cached, e.gindex_url_expires_at}
 
     case Repo.one(query) do
-      {url, _expires_at} when is_binary(url) and url != "" ->
-        # Use cached URL even if expired (better than nothing)
-        Logger.info("[GIndex UrlCache] Using fallback DB cache for episode #{episode_id}")
-        {:ok, url}
+      {url, expires_at} when is_binary(url) and url != "" and not is_nil(expires_at) ->
+        # Only use cached URL if it hasn't expired yet
+        if DateTime.compare(expires_at, DateTime.utc_now()) == :gt do
+          Logger.info("[GIndex UrlCache] Using fallback DB cache for episode #{episode_id}")
+          {:ok, url}
+        else
+          Logger.warning("[GIndex UrlCache] DB cache expired for episode #{episode_id}")
+          {:error, :url_expired}
+        end
 
       _ ->
         {:error, :url_not_available}
