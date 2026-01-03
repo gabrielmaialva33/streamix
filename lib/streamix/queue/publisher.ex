@@ -91,28 +91,7 @@ defmodule Streamix.Queue.Publisher do
   """
   def enqueue_gindex_sync(provider_id, paths, opts \\ []) do
     # Create tasks for each path
-    tasks =
-      Enum.flat_map(paths, fn {type, path_or_paths} ->
-        case path_or_paths do
-          paths when is_list(paths) ->
-            Enum.map(paths, fn path ->
-              %{
-                type: :"gindex_#{type}",
-                provider_id: provider_id,
-                path: path
-              }
-            end)
-
-          path when is_binary(path) ->
-            [
-              %{
-                type: :"gindex_#{type}",
-                provider_id: provider_id,
-                path: path
-              }
-            ]
-        end
-      end)
+    tasks = Enum.flat_map(paths, &build_path_tasks(provider_id, &1))
 
     # Movies get normal priority, series/animes get low (they take longer)
     grouped =
@@ -126,6 +105,18 @@ defmodule Streamix.Queue.Publisher do
     end)
 
     {:ok, length(tasks)}
+  end
+
+  defp build_path_tasks(provider_id, {type, paths}) when is_list(paths) do
+    Enum.map(paths, &build_task(provider_id, type, &1))
+  end
+
+  defp build_path_tasks(provider_id, {type, path}) when is_binary(path) do
+    [build_task(provider_id, type, path)]
+  end
+
+  defp build_task(provider_id, type, path) do
+    %{type: :"gindex_#{type}", provider_id: provider_id, path: path}
   end
 
   @doc """

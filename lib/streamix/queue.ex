@@ -44,6 +44,7 @@ defmodule Streamix.Queue do
   require Logger
 
   alias Streamix.Queue.Publisher
+  alias Streamix.Workers.SyncGindexProviderWorker
 
   @doc """
   Checks if the queue system is enabled.
@@ -85,7 +86,7 @@ defmodule Streamix.Queue do
       Logger.debug("[Queue] RabbitMQ disabled, using Oban for #{type}")
 
       %{type: type, payload: payload}
-      |> Streamix.Workers.SyncGindexProviderWorker.new()
+      |> SyncGindexProviderWorker.new()
       |> Oban.insert()
     end
   end
@@ -104,7 +105,7 @@ defmodule Streamix.Queue do
       Logger.debug("[Queue] RabbitMQ disabled, using Oban")
 
       task
-      |> Streamix.Workers.SyncGindexProviderWorker.new()
+      |> SyncGindexProviderWorker.new()
       |> Oban.insert()
     end
   end
@@ -134,7 +135,7 @@ defmodule Streamix.Queue do
     Logger.info("[Queue] Enqueueing GIndex sync for provider #{provider.id} via Oban")
 
     %{provider_id: provider.id}
-    |> Streamix.Workers.SyncGindexProviderWorker.new()
+    |> SyncGindexProviderWorker.new()
     |> Oban.insert()
   end
 end

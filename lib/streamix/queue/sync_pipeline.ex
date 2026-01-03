@@ -81,9 +81,7 @@ defmodule Streamix.Queue.SyncPipeline do
   @impl true
   def handle_failed(messages, _context) do
     Enum.each(messages, fn message ->
-      Logger.warning(
-        "[SyncPipeline] Message failed: #{inspect(message.status)}"
-      )
+      Logger.warning("[SyncPipeline] Message failed: #{inspect(message.status)}")
     end)
 
     messages

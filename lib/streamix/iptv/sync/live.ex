@@ -95,8 +95,7 @@ defmodule Streamix.Iptv.Sync.Live do
       values_clause =
         delete_pairs
         |> Enum.with_index(1)
-        |> Enum.map(fn {_, i} -> "($#{i * 2 - 1}::bigint, $#{i * 2}::bigint)" end)
-        |> Enum.join(", ")
+        |> Enum.map_join(", ", fn {_, i} -> "($#{i * 2 - 1}::bigint, $#{i * 2}::bigint)" end)
 
       params = Enum.flat_map(delete_pairs, fn {ch_id, cat_id} -> [ch_id, cat_id] end)
 

@@ -144,10 +144,21 @@ defmodule Streamix.Queue.Connection do
     {:ok, _} = AMQP.Queue.declare(channel, "streamix.sync.dead", durable: true)
 
     # Bind queues to exchanges
-    :ok = AMQP.Queue.bind(channel, "streamix.sync.high", "streamix.sync", routing_key: "sync.high.*")
-    :ok = AMQP.Queue.bind(channel, "streamix.sync.normal", "streamix.sync", routing_key: "sync.normal.*")
-    :ok = AMQP.Queue.bind(channel, "streamix.sync.low", "streamix.sync", routing_key: "sync.low.*")
-    :ok = AMQP.Queue.bind(channel, "streamix.sync.dead", "streamix.sync.dlx", routing_key: "sync.dead")
+    :ok =
+      AMQP.Queue.bind(channel, "streamix.sync.high", "streamix.sync", routing_key: "sync.high.*")
+
+    :ok =
+      AMQP.Queue.bind(channel, "streamix.sync.normal", "streamix.sync",
+        routing_key: "sync.normal.*"
+      )
+
+    :ok =
+      AMQP.Queue.bind(channel, "streamix.sync.low", "streamix.sync", routing_key: "sync.low.*")
+
+    :ok =
+      AMQP.Queue.bind(channel, "streamix.sync.dead", "streamix.sync.dlx",
+        routing_key: "sync.dead"
+      )
 
     Logger.info("[RabbitMQ] Queues and exchanges configured")
   end
