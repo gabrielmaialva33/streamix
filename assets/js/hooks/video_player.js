@@ -6,6 +6,7 @@ import {
   getStreamingConfig,
 } from "../lib/streaming_config";
 import { NetworkMonitor } from "../lib/network_monitor";
+import { AVPlayerWrapper, detectAudioIssue } from "../lib/avplayer_wrapper";
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -28,6 +29,9 @@ const VideoPlayer = {
     this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
     this.trackWatchTime();
+
+    // Expose hook instance on element for child hooks (like ProgressBar) to access
+    this.el.__videoPlayerHook = this;
   },
 
   initializeState() {
@@ -79,6 +83,15 @@ const VideoPlayer = {
 
     // Network monitor
     this.networkMonitor = null;
+
+    // AVPlayer fallback for unsupported codecs (AC3, DTS, etc.)
+    this.avPlayer = null;
+    this.usingAVPlayer = false;
+    this.audioCheckTimeout = null;
+    this.avPlayerAttempted = false; // Prevent multiple fallback attempts
+    this.avPlayerVolume = 1; // Volume state for AVPlayer (0-1)
+    this.avPlayerMuted = false; // Mute state for AVPlayer
+    this.avPlayerTimeInterval = null; // Interval for time updates when using AVPlayer
   },
 
   createUI() {
@@ -499,9 +512,18 @@ const VideoPlayer = {
     if (volumeSlider) {
       volumeSlider.addEventListener("input", (e) => {
         const volume = parseInt(e.target.value, 10) / 100;
-        this.video.volume = volume;
-        if (volume > 0 && this.video.muted) {
-          this.video.muted = false;
+        if (this.usingAVPlayer && this.avPlayer) {
+          this.avPlayerVolume = volume;
+          if (volume > 0 && this.avPlayerMuted) {
+            this.avPlayerMuted = false;
+          }
+          this.avPlayer.setVolume(this.avPlayerMuted ? 0 : volume);
+          this.updateVolumeUI();
+        } else {
+          this.video.volume = volume;
+          if (volume > 0 && this.video.muted) {
+            this.video.muted = false;
+          }
         }
       });
     }
@@ -628,8 +650,18 @@ const VideoPlayer = {
     const volumeOffIcon = this.el.querySelector(".volume-off-icon");
     const volumeSlider = this.el.querySelector("#volume-slider");
 
+    // Get current mute and volume state based on player type
+    let isMuted, volume;
+    if (this.usingAVPlayer) {
+      isMuted = this.avPlayerMuted;
+      volume = this.avPlayerVolume || 1;
+    } else {
+      isMuted = this.video?.muted || false;
+      volume = this.video?.volume || 1;
+    }
+
     if (volumeOnIcon && volumeOffIcon) {
-      if (this.video.muted || this.video.volume === 0) {
+      if (isMuted || volume === 0) {
         volumeOnIcon.classList.add("hidden");
         volumeOffIcon.classList.remove("hidden");
       } else {
@@ -639,23 +671,39 @@ const VideoPlayer = {
     }
 
     if (volumeSlider) {
-      volumeSlider.value = this.video.muted ? 0 : Math.round(this.video.volume * 100);
+      volumeSlider.value = isMuted ? 0 : Math.round(volume * 100);
     }
   },
 
   updateTimeUI() {
-    if (!this.video) return;
-
     const currentTimeEl = this.el.querySelector("#current-time");
     const durationEl = this.el.querySelector("#duration");
 
+    // Get time values based on player type
+    const currentTime = this.getCurrentTime();
+    const duration = this.getDuration();
+
     if (currentTimeEl) {
-      currentTimeEl.textContent = this.formatTime(this.video.currentTime);
+      currentTimeEl.textContent = this.formatTime(currentTime);
     }
 
-    if (durationEl && this.video.duration && isFinite(this.video.duration)) {
-      durationEl.textContent = this.formatTime(this.video.duration);
+    if (durationEl && duration && isFinite(duration)) {
+      durationEl.textContent = this.formatTime(duration);
     }
+
+    // Update progress bar
+    this.updateProgressBar(currentTime, duration);
+  },
+
+  /**
+   * Update progress bar width based on current time
+   */
+  updateProgressBar(currentTime, duration) {
+    const progressPlayed = this.el.querySelector("#progress-played");
+    if (!progressPlayed || !duration || !isFinite(duration)) return;
+
+    const percent = (currentTime / duration) * 100;
+    progressPlayed.style.width = `${percent}%`;
   },
 
   updateSpeedUI() {
@@ -702,10 +750,10 @@ const VideoPlayer = {
   },
 
   reportProgress() {
-    if (!this.video || !this.video.duration) return;
+    const currentTime = Math.floor(this.getCurrentTime());
+    const duration = Math.floor(this.getDuration());
 
-    const currentTime = Math.floor(this.video.currentTime);
-    const duration = Math.floor(this.video.duration);
+    if (!duration || duration <= 0) return;
 
     // Throttle updates to every 10 seconds
     if (Math.abs(currentTime - this.lastProgressReport) >= 10) {
@@ -746,6 +794,35 @@ const VideoPlayer = {
       return "xtream";
     }
     return "unknown";
+  },
+
+  /**
+   * Extract file extension from stream URL for AVPlayer format detection.
+   * This is needed because proxy URLs don't contain the original file extension.
+   */
+  getFileExtension() {
+    // First check if currentStreamType is a valid extension
+    const videoExtensions = ["mkv", "mp4", "webm", "avi", "mov", "flv"];
+    if (videoExtensions.includes(this.currentStreamType)) {
+      return this.currentStreamType;
+    }
+
+    // Try to extract from original stream URL
+    if (this.streamUrl) {
+      const url = this.streamUrl.toLowerCase();
+      for (const ext of videoExtensions) {
+        if (url.includes(`.${ext}`)) {
+          return ext;
+        }
+      }
+    }
+
+    // Default to mkv for GIndex sources (most common format there)
+    if (this.sourceType === "gindex") {
+      return "mkv";
+    }
+
+    return null;
   },
 
   getEffectiveUrl(streamType) {
@@ -795,6 +872,29 @@ const VideoPlayer = {
       this.mpegtsPlayer.destroy();
       this.mpegtsPlayer = null;
     }
+    // Cleanup AVPlayer fallback
+    this.stopAVPlayerTimeUpdates();
+    if (this.avPlayer) {
+      this.avPlayer.destroy();
+      this.avPlayer = null;
+    }
+    if (this.audioCheckTimeout) {
+      clearTimeout(this.audioCheckTimeout);
+      this.audioCheckTimeout = null;
+    }
+    if (this.nativePlaybackTimeout) {
+      clearTimeout(this.nativePlaybackTimeout);
+      this.nativePlaybackTimeout = null;
+    }
+    // Remove AVPlayer container if exists
+    const avContainer = this.el?.querySelector("#avplayer-container");
+    if (avContainer) {
+      avContainer.remove();
+    }
+    this.usingAVPlayer = false;
+    this.avPlayerAttempted = false;
+    this.avPlayerVolume = 1;
+    this.avPlayerMuted = false;
     this.video.src = "";
     this.video.load();
   },
@@ -1075,6 +1175,17 @@ const VideoPlayer = {
       this.hideLoading();
       this.hideError();
       this.video.removeEventListener("playing", playHandler);
+
+      // Clear timeout since video started playing
+      if (this.nativePlaybackTimeout) {
+        clearTimeout(this.nativePlaybackTimeout);
+        this.nativePlaybackTimeout = null;
+      }
+
+      // Check for audio issues after playback starts (for GIndex/MKV files)
+      if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
+        this.checkAudioAndFallback();
+      }
     };
 
     const errorHandler = () => {
@@ -1090,9 +1201,14 @@ const VideoPlayer = {
             message = "Erro de rede - verifique sua conexão";
             break;
           case MediaError.MEDIA_ERR_DECODE:
-            message = "Formato não suportado";
-            break;
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            // For GIndex/MKV, try AVPlayer fallback silently (no error shown)
+            if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
+              console.log("[VideoPlayer] Native player failed, trying AVPlayer fallback silently");
+              this.tryAVPlayerFallback();
+              this.video.removeEventListener("error", errorHandler);
+              return;
+            }
             message = "Formato não suportado pelo navegador";
             break;
         }
@@ -1106,15 +1222,209 @@ const VideoPlayer = {
     this.video.addEventListener("error", errorHandler);
     this.video.addEventListener("loadedmetadata", () => this.hideLoading(), { once: true });
 
+    // Timeout fallback for GIndex/MKV - if video doesn't start playing in 5 seconds, try AVPlayer
+    if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
+      this.nativePlaybackTimeout = setTimeout(() => {
+        if (this.video.readyState < 3 && !this.avPlayerAttempted) {
+          console.log("[VideoPlayer] Native playback timeout - video not ready after 5s, trying AVPlayer");
+          this.video.removeEventListener("playing", playHandler);
+          this.video.removeEventListener("error", errorHandler);
+          this.tryAVPlayerFallback();
+        }
+      }, 5000);
+    }
+
     this.video.play().catch((e) => {
       console.log("Native autoplay prevented:", e);
       this.hideLoading();
       if (e.name === "NotAllowedError") {
         this.showPlayButton();
+      } else if (e.name === "NotSupportedError" && (this.sourceType === "gindex" || this.currentStreamType === "mkv")) {
+        // For GIndex/MKV with unsupported format, AVPlayer fallback will be triggered by error event
+        console.log("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
       } else {
         this.showError("Falha ao iniciar reprodução: " + e.message);
       }
     });
+  },
+
+  // ============================================
+  // Audio Detection and AVPlayer Fallback
+  // ============================================
+
+  async checkAudioAndFallback() {
+    // Clear any previous timeout
+    if (this.audioCheckTimeout) {
+      clearTimeout(this.audioCheckTimeout);
+    }
+
+    // Wait a bit for audio to start playing
+    this.audioCheckTimeout = setTimeout(async () => {
+      try {
+        const hasAudioIssue = await detectAudioIssue(this.video);
+
+        if (hasAudioIssue) {
+          console.log("[VideoPlayer] Audio issue detected, auto-switching to AVPlayer");
+          // Auto-switch silently - no UI notification
+          this.tryAVPlayerFallback();
+        } else {
+          console.log("[VideoPlayer] Audio working correctly");
+        }
+      } catch (e) {
+        console.warn("[VideoPlayer] Could not check audio:", e);
+      }
+    }, 2000); // Check after 2 seconds of playback
+  },
+
+  async tryAVPlayerFallback() {
+    // Prevent multiple fallback attempts
+    if (this.avPlayerAttempted || this.usingAVPlayer) {
+      console.log("[VideoPlayer] AVPlayer fallback already attempted, skipping");
+      return;
+    }
+    this.avPlayerAttempted = true;
+
+    // Clear audio check timeout to prevent re-triggering
+    if (this.audioCheckTimeout) {
+      clearTimeout(this.audioCheckTimeout);
+      this.audioCheckTimeout = null;
+    }
+
+    console.log("[VideoPlayer] Attempting AVPlayer fallback (seamless)");
+
+    // Save current playback position for seamless transition
+    const currentTime = this.video.currentTime || 0;
+    const wasPlaying = !this.video.paused;
+
+    // Pause native video but don't show loading (seamless)
+    this.video.pause();
+
+    try {
+      // Create AVPlayer container
+      // Use z-0 so it stays below the controls (which have z-10)
+      const avContainer = document.createElement("div");
+      avContainer.id = "avplayer-container";
+      avContainer.className = "absolute inset-0 z-0";
+      this.el.appendChild(avContainer);
+
+      // Hide native video
+      this.video.classList.add("hidden");
+      this.video.src = "";
+
+      // Initialize AVPlayer
+      this.avPlayer = new AVPlayerWrapper({
+        container: avContainer,
+        onReady: () => {
+          console.log("[VideoPlayer] AVPlayer ready");
+        },
+        onPlay: () => {
+          console.log("[VideoPlayer] AVPlayer playing with audio support");
+          this.hideLoading();
+          this.updatePlayPauseUI(false);
+          // Start time update interval for AVPlayer
+          this.startAVPlayerTimeUpdates();
+        },
+        onPause: () => {
+          console.log("[VideoPlayer] AVPlayer paused");
+          this.updatePlayPauseUI(true);
+        },
+        onError: (error) => {
+          console.error("[VideoPlayer] AVPlayer error:", error);
+          // Silently revert to native without showing error
+          this.revertToNativePlayer();
+        },
+        onTimeUpdate: (time) => {
+          // Update UI with current time (called from interval)
+          this.updateTimeUI();
+        },
+        onEnded: () => {
+          console.log("[VideoPlayer] AVPlayer ended");
+          this.updatePlayPauseUI(true);
+          this.stopAVPlayerTimeUpdates();
+        },
+      });
+
+      // Load and play with AVPlayer, starting from saved position
+      // Use proxy URL to avoid CORS issues (proxy adds proper CORS headers)
+      const avPlayerUrl = this.proxyUrl
+        ? this.toAbsoluteUrl(this.proxyUrl)
+        : this.streamUrl;
+
+      // Determine file extension for format detection
+      // AVPlayer needs this hint since proxy URLs don't have extensions
+      const ext = this.getFileExtension();
+      console.log("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext);
+
+      await this.avPlayer.load(avPlayerUrl, { ext });
+
+      // Seek to the position where native player was
+      if (currentTime > 0) {
+        await this.avPlayer.seek(currentTime);
+      }
+
+      // Auto-play - always play since we're falling back due to format issues
+      // wasPlaying might be false if native player couldn't even start
+      console.log("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
+      await this.avPlayer.play();
+      console.log("[VideoPlayer] AVPlayer play() completed");
+
+      this.usingAVPlayer = true;
+      console.log("[VideoPlayer] Seamless AVPlayer switch complete");
+
+    } catch (error) {
+      console.error("[VideoPlayer] AVPlayer fallback failed:", error);
+      // Silently revert to native player
+      this.revertToNativePlayer();
+    }
+  },
+
+  revertToNativePlayer() {
+    console.log("[VideoPlayer] Reverting to native player");
+
+    // Stop time updates
+    this.stopAVPlayerTimeUpdates();
+
+    // Cleanup AVPlayer
+    if (this.avPlayer) {
+      this.avPlayer.destroy();
+      this.avPlayer = null;
+    }
+
+    // Remove AVPlayer container
+    const avContainer = this.el.querySelector("#avplayer-container");
+    if (avContainer) {
+      avContainer.remove();
+    }
+
+    // Show native video
+    this.video.classList.remove("hidden");
+    this.usingAVPlayer = false;
+  },
+
+  /**
+   * Start interval for updating time UI when using AVPlayer
+   */
+  startAVPlayerTimeUpdates() {
+    this.stopAVPlayerTimeUpdates(); // Clear any existing interval
+    this.avPlayerTimeInterval = setInterval(() => {
+      if (this.usingAVPlayer && this.avPlayer) {
+        this.updateTimeUI();
+        // Also report progress for VOD content
+        if (this.contentType === "vod") {
+          this.reportProgress();
+        }
+      }
+    }, 250); // Update 4 times per second for smooth progress bar
+  },
+
+  /**
+   * Stop the AVPlayer time update interval
+   */
+  stopAVPlayerTimeUpdates() {
+    if (this.avPlayerTimeInterval) {
+      clearInterval(this.avPlayerTimeInterval);
+      this.avPlayerTimeInterval = null;
+    }
   },
 
   showPlayButton() {
@@ -1310,31 +1620,115 @@ const VideoPlayer = {
     }
   },
 
-  togglePlayPause() {
-    if (this.video.paused) {
-      this.video.play();
+  async togglePlayPause() {
+    if (this.usingAVPlayer && this.avPlayer) {
+      const isPlaying = this.avPlayer.isPlaying();
+      console.log("[VideoPlayer] togglePlayPause: AVPlayer isPlaying =", isPlaying);
+      if (isPlaying) {
+        console.log("[VideoPlayer] Calling AVPlayer pause()");
+        await this.avPlayer.pause();
+        // UI is updated via onPause callback
+      } else {
+        console.log("[VideoPlayer] Calling AVPlayer play()");
+        try {
+          await this.avPlayer.play();
+          console.log("[VideoPlayer] AVPlayer play() completed");
+          // UI is updated via onPlay callback
+        } catch (err) {
+          console.error("[VideoPlayer] AVPlayer play() failed:", err);
+        }
+      }
     } else {
-      this.video.pause();
+      if (this.video.paused) {
+        this.video.play();
+      } else {
+        this.video.pause();
+      }
     }
   },
 
   toggleMute() {
-    this.video.muted = !this.video.muted;
-    this.pushEvent("mute_toggled", { muted: this.video.muted });
+    if (this.usingAVPlayer && this.avPlayer) {
+      // Toggle mute state for AVPlayer
+      this.avPlayerMuted = !this.avPlayerMuted;
+      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume || 1);
+      this.updateVolumeUI();
+      this.pushEvent("mute_toggled", { muted: this.avPlayerMuted });
+    } else {
+      this.video.muted = !this.video.muted;
+      this.pushEvent("mute_toggled", { muted: this.video.muted });
+    }
   },
 
   adjustVolume(delta) {
-    this.video.volume = Math.max(0, Math.min(1, this.video.volume + delta));
-    this.pushEvent("volume_changed", { volume: Math.round(this.video.volume * 100) });
+    if (this.usingAVPlayer && this.avPlayer) {
+      this.avPlayerVolume = Math.max(0, Math.min(1, (this.avPlayerVolume || 1) + delta));
+      if (!this.avPlayerMuted) {
+        this.avPlayer.setVolume(this.avPlayerVolume);
+      }
+      this.updateVolumeUI();
+      this.pushEvent("volume_changed", { volume: Math.round(this.avPlayerVolume * 100) });
+    } else {
+      this.video.volume = Math.max(0, Math.min(1, this.video.volume + delta));
+      this.pushEvent("volume_changed", { volume: Math.round(this.video.volume * 100) });
+    }
   },
 
   seek(seconds) {
-    if (this.video.duration) {
+    if (this.usingAVPlayer && this.avPlayer) {
+      const currentTime = this.avPlayer.getCurrentTime();
+      const duration = this.avPlayer.getDuration();
+      if (duration > 0) {
+        const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
+        this.avPlayer.seek(newTime);
+      }
+    } else if (this.video.duration) {
       this.video.currentTime = Math.max(
         0,
         Math.min(this.video.duration, this.video.currentTime + seconds)
       );
     }
+  },
+
+  /**
+   * Seek to an absolute time in seconds (used by progress bar)
+   */
+  seekTo(time) {
+    if (this.usingAVPlayer && this.avPlayer) {
+      this.avPlayer.seek(time);
+    } else if (this.video) {
+      this.video.currentTime = time;
+    }
+  },
+
+  /**
+   * Get current playback time in seconds
+   */
+  getCurrentTime() {
+    if (this.usingAVPlayer && this.avPlayer) {
+      return this.avPlayer.getCurrentTime();
+    }
+    return this.video?.currentTime || 0;
+  },
+
+  /**
+   * Get total duration in seconds
+   */
+  getDuration() {
+    if (this.usingAVPlayer && this.avPlayer) {
+      return this.avPlayer.getDuration();
+    }
+    return this.video?.duration || 0;
+  },
+
+  /**
+   * Check if player is paused
+   */
+  isPaused() {
+    if (this.usingAVPlayer && this.avPlayer) {
+      return !this.avPlayer.isPlaying();
+    }
+    return this.video?.paused ?? true;
   },
 
   // ============================================
@@ -1358,6 +1752,7 @@ const VideoPlayer = {
     this.cleanup();
     this.networkMonitor?.stop();
     this.clearHideControlsTimeout();
+    this.stopAVPlayerTimeUpdates();
 
     if (this.keyHandler) {
       document.removeEventListener("keydown", this.keyHandler);
@@ -1369,6 +1764,11 @@ const VideoPlayer = {
       if (duration > 0) {
         this.pushEvent("update_watch_time", { duration });
       }
+    }
+
+    // Clean up reference
+    if (this.el) {
+      this.el.__videoPlayerHook = null;
     }
   },
 };

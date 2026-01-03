@@ -5,6 +5,7 @@
  * - Click to seek
  * - Drag to seek
  * - Visual progress and buffer indicators
+ * - Works with both native video and AVPlayer
  */
 const ProgressBar = {
   mounted() {
@@ -13,16 +14,24 @@ const ProgressBar = {
     this.progressPlayed = this.el.querySelector("#progress-played");
     this.progressBuffered = this.el.querySelector("#progress-buffered");
 
-    // Get the video element from the parent player container
+    // Get the video element and player container
     this.playerContainer = this.el.closest("[phx-hook='VideoPlayer']");
     this.video = this.playerContainer?.querySelector("video");
 
-    if (!this.video) {
-      console.warn("ProgressBar: video element not found");
+    if (!this.playerContainer) {
+      console.warn("ProgressBar: player container not found");
       return;
     }
 
     this.setupEventListeners();
+  },
+
+  /**
+   * Get the VideoPlayer hook instance from the container
+   */
+  getVideoPlayerHook() {
+    // VideoPlayer hook exposes itself on the element
+    return this.playerContainer?.__videoPlayerHook;
   },
 
   setupEventListeners() {
@@ -63,23 +72,46 @@ const ProgressBar = {
       this.isDragging = false;
     });
 
-    // Update progress bar on timeupdate
-    this.video.addEventListener("timeupdate", () => this.updateProgress());
-    this.video.addEventListener("progress", () => this.updateBuffer());
-    this.video.addEventListener("loadedmetadata", () => this.updateProgress());
+    // Update progress bar on timeupdate (for native video)
+    // AVPlayer updates are handled by VideoPlayer hook's time interval
+    if (this.video) {
+      this.video.addEventListener("timeupdate", () => this.updateProgress());
+      this.video.addEventListener("progress", () => this.updateBuffer());
+      this.video.addEventListener("loadedmetadata", () => this.updateProgress());
+    }
   },
 
   seekToPosition(e) {
-    if (!this.video || !this.video.duration || !isFinite(this.video.duration)) return;
+    const hook = this.getVideoPlayerHook();
+    const duration = hook?.getDuration?.() || this.video?.duration;
+
+    if (!duration || !isFinite(duration)) return;
 
     const rect = this.progressContainer.getBoundingClientRect();
     const pos = (e.clientX - rect.left) / rect.width;
     const clampedPos = Math.max(0, Math.min(1, pos));
+    const seekTime = clampedPos * duration;
 
-    this.video.currentTime = clampedPos * this.video.duration;
+    // Use VideoPlayer hook's seekTo method (works with both native and AVPlayer)
+    if (hook?.seekTo) {
+      hook.seekTo(seekTime);
+    } else if (this.video) {
+      // Fallback to direct video element
+      this.video.currentTime = seekTime;
+    }
+
+    // Update progress bar immediately for responsive feel
+    if (this.progressPlayed) {
+      this.progressPlayed.style.width = `${clampedPos * 100}%`;
+    }
   },
 
   updateProgress() {
+    const hook = this.getVideoPlayerHook();
+
+    // If using AVPlayer, the VideoPlayer hook handles progress updates
+    if (hook?.usingAVPlayer) return;
+
     if (!this.video || !this.video.duration || !isFinite(this.video.duration)) return;
     if (!this.progressPlayed) return;
 
@@ -88,6 +120,11 @@ const ProgressBar = {
   },
 
   updateBuffer() {
+    const hook = this.getVideoPlayerHook();
+
+    // Buffer tracking not available for AVPlayer
+    if (hook?.usingAVPlayer) return;
+
     if (!this.video || !this.video.duration || !isFinite(this.video.duration)) return;
     if (!this.progressBuffered) return;
 
