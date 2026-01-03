@@ -554,6 +554,9 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   defp scrape_next_movie(%{categories: [category | rest_categories]} = state) do
     Logger.info("[GIndex Scraper] Processing category: #{category.name}")
 
+    # Delay before fetching category contents to avoid rate limiting
+    rate_limit_delay()
+
     # Use list_folder_all to handle pagination for movie categories
     case Client.list_folder_all(state.base_url, category.path) do
       {:ok, items} ->
