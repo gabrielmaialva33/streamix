@@ -52,7 +52,10 @@ defmodule StreamixWeb.Router do
   scope "/api", StreamixWeb do
     pipe_through :api_rate_limited
 
+    # Handle CORS preflight for AVPlayer fetch()
+    options "/stream/proxy", StreamController, :options
     get "/stream/proxy", StreamController, :proxy
+    head "/stream/proxy", StreamController, :proxy
   end
 
   # Protected catalog API for TV app and other clients

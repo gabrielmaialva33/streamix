@@ -49,6 +49,7 @@ defmodule StreamixWeb.Endpoint do
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride
+  plug StreamixWeb.Plugs.PreserveMethod
   plug Plug.Head
   plug Plug.Session, @session_options
   plug StreamixWeb.Router

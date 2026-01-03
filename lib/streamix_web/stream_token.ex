@@ -35,11 +35,25 @@ defmodule StreamixWeb.StreamToken do
   end
 
   @doc """
+  Generates a signed token for proxying an external URL.
+  Used for GIndex and other external sources that need CORS headers.
+  Token expires in 1 hour for security.
+  """
+  def sign_url(url) when is_binary(url) do
+    data = %{type: "url", url: url}
+    Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
+  end
+
+  @doc """
   Verifies a token and returns the actual stream URL if valid.
   Returns {:ok, url} or {:error, reason}.
   """
   def verify_and_get_url(token) do
     case Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age) do
+      {:ok, %{type: "url", url: url}} ->
+        # Direct URL token (for GIndex and external sources)
+        {:ok, url}
+
       {:ok, %{type: type, id: id}} ->
         get_stream_url(type, id)
 
