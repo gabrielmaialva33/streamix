@@ -208,11 +208,15 @@ defmodule Streamix.Iptv.Gindex.Client do
     end
   end
 
-  # Handle rate limiting (429) and service unavailable (503) with exponential backoff
+  # Handle rate limiting (429), service unavailable (503), and server errors (500)
+  # with exponential backoff and jitter
   defp handle_response(%{status: status}, method, url, body, opts, attempt, rate_limit_attempt)
-       when status in [429, 503] and rate_limit_attempt < @max_rate_limit_retries do
-    # Exponential backoff: 5s, 10s, 20s, 40s, 80s
-    delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+       when status in [429, 500, 503] and rate_limit_attempt < @max_rate_limit_retries do
+    # Exponential backoff with jitter: base * 2^attempt + random jitter (0-2s)
+    # E.g., 5s, 10s, 20s, 40s, 80s + 0-2s jitter each
+    base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+    jitter = :rand.uniform(2000)
+    delay = base_delay + jitter
 
     Logger.warning(
       "[GIndex] Rate limited (#{status}), waiting #{div(delay, 1000)}s before retry " <>

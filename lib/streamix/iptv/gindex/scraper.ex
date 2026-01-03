@@ -21,9 +21,11 @@ defmodule Streamix.Iptv.Gindex.Scraper do
 
   alias Streamix.Iptv.Gindex.{Client, Parser}
 
-  # Delay between requests to respect Cloudflare Workers rate limits
-  # 300ms = ~200 req/min = ~12k req/hour (well under 100k/day limit)
-  @delay_between_requests 300
+  # Base delay between requests to respect Cloudflare Workers rate limits
+  # 500ms = ~120 req/min = ~7.2k req/hour (conservative, avoids rate limiting)
+  @base_delay 500
+  # Max jitter to add (0-200ms random) to avoid detection patterns
+  @max_jitter 200
 
   @doc """
   Scrapes all movies from a GIndex provider.
@@ -57,7 +59,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
       movies =
         folders
         |> Enum.map(fn folder ->
-          Process.sleep(@delay_between_requests)
+          rate_limit_delay()
           scrape_movie_folder(base_url, folder)
         end)
         |> Enum.reject(&is_nil/1)
@@ -113,7 +115,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
         animes =
           folders
           |> Enum.map(fn folder ->
-            Process.sleep(@delay_between_requests)
+            rate_limit_delay()
             scrape_single_anime(base_url, folder)
           end)
           |> Enum.reject(&is_nil/1)
@@ -181,7 +183,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
     release_folders
     |> Enum.with_index(1)
     |> Enum.map(fn {folder, index} ->
-      Process.sleep(@delay_between_requests)
+      rate_limit_delay()
       scrape_single_anime_release(base_url, folder, index)
     end)
     |> Enum.reject(&is_nil/1)
@@ -302,7 +304,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
         series_list =
           folders
           |> Enum.map(fn folder ->
-            Process.sleep(@delay_between_requests)
+            rate_limit_delay()
             scrape_single_series(base_url, folder)
           end)
           |> Enum.reject(&is_nil/1)
@@ -372,7 +374,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   def scrape_seasons(base_url, season_folders, series_path) do
     season_folders
     |> Enum.map(fn folder ->
-      Process.sleep(@delay_between_requests)
+      rate_limit_delay()
       scrape_single_season(base_url, folder, series_path)
     end)
     |> Enum.reject(&is_nil/1)
@@ -521,7 +523,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
 
   defp scrape_next_movie(%{current_folders: [folder | rest]} = state) do
     movie = scrape_movie_folder(state.base_url, folder)
-    Process.sleep(@delay_between_requests)
+    rate_limit_delay()
 
     if movie do
       {[movie], %{state | current_folders: rest}}
@@ -559,7 +561,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
     subfolders = Enum.filter(items, &(&1.type == :folder))
 
     Enum.find_value(subfolders, fn subfolder ->
-      Process.sleep(@delay_between_requests)
+      rate_limit_delay()
       check_subfolder_for_video(base_url, subfolder, parent_path)
     end)
   end
@@ -657,7 +659,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   end
 
   defp scrape_subfolder_episodes(base_url, subfolder, season_number) do
-    Process.sleep(@delay_between_requests)
+    rate_limit_delay()
 
     case Client.list_folder(base_url, subfolder.path) do
       {:ok, sub_items} ->
@@ -689,5 +691,11 @@ defmodule Streamix.Iptv.Gindex.Scraper do
       true ->
         nil
     end
+  end
+
+  # Rate limit helper: adds jitter to base delay to avoid detection patterns
+  defp rate_limit_delay do
+    jitter = :rand.uniform(@max_jitter)
+    Process.sleep(@base_delay + jitter)
   end
 end
