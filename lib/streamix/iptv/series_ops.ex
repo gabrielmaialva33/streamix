@@ -13,11 +13,74 @@ defmodule Streamix.Iptv.SeriesOps do
   alias Streamix.Repo
 
   # =============================================================================
+  # GIndex Anime Functions
+  # =============================================================================
+
+  @doc """
+  Lists GIndex animes (content_type = "anime" with gindex_path set).
+
+  ## Options
+    * `:limit` - Maximum number of results (default: 100)
+    * `:offset` - Number of results to skip (default: 0)
+    * `:search` - Search term for anime name
+  """
+  @spec list_gindex_animes(keyword()) :: [Series.t()]
+  def list_gindex_animes(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    search = Keyword.get(opts, :search)
+
+    query =
+      Series
+      |> where([s], s.content_type == "anime" and not is_nil(s.gindex_path))
+      |> order_by(asc: :name)
+
+    query =
+      if search && search != "" do
+        where(query, [s], ilike(s.name, ^"%#{search}%") or ilike(s.title, ^"%#{search}%"))
+      else
+        query
+      end
+
+    query
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Repo.all()
+  end
+
+  @doc """
+  Counts GIndex animes.
+  """
+  @spec count_gindex_animes() :: integer()
+  def count_gindex_animes do
+    Series
+    |> where([s], s.content_type == "anime" and not is_nil(s.gindex_path))
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
+  Gets a GIndex anime by ID with its releases (seasons) and episodes.
+  Returns nil if not a GIndex anime.
+  """
+  @spec get_gindex_anime_with_seasons(integer()) :: Series.t() | nil
+  def get_gindex_anime_with_seasons(id) do
+    seasons_query = from(s in Season, order_by: s.season_number)
+    episodes_query = from(e in Episode, order_by: e.episode_num)
+
+    Series
+    |> where(id: ^id)
+    |> where([s], s.content_type == "anime" and not is_nil(s.gindex_path))
+    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
+  # =============================================================================
   # GIndex Series Functions
   # =============================================================================
 
   @doc """
-  Lists GIndex series (series with gindex_path set).
+  Lists GIndex series (series with gindex_path set, excluding animes).
 
   ## Options
     * `:limit` - Maximum number of results (default: 100)
@@ -33,6 +96,7 @@ defmodule Streamix.Iptv.SeriesOps do
     query =
       Series
       |> where([s], not is_nil(s.gindex_path))
+      |> where([s], s.content_type != "anime" or is_nil(s.content_type))
       |> order_by(desc: :year, asc: :name)
 
     query =
@@ -49,12 +113,13 @@ defmodule Streamix.Iptv.SeriesOps do
   end
 
   @doc """
-  Counts GIndex series.
+  Counts GIndex series (excluding animes).
   """
   @spec count_gindex() :: integer()
   def count_gindex do
     Series
     |> where([s], not is_nil(s.gindex_path))
+    |> where([s], s.content_type != "anime" or is_nil(s.content_type))
     |> Repo.aggregate(:count)
   end
 
