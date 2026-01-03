@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.Channels do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{Access, AdultFilter, LiveChannel}
+  alias Streamix.Iptv.{Access, AdultFilter, EpgProgram, LiveChannel}
   alias Streamix.Repo
 
   # =============================================================================
@@ -66,6 +66,81 @@ defmodule Streamix.Iptv.Channels do
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
+  end
+
+  @doc """
+  Lists live channels with current EPG program in a single query.
+  More efficient than list/2 + enrich_channels_with_epg for high-traffic pages.
+
+  Returns channels with a virtual :current_program field containing the EPG data.
+
+  ## Options
+    Same as `list/2` plus:
+    * `:with_epg` - Include EPG data (default: true)
+  """
+  @spec list_with_epg(integer(), keyword()) :: [map()]
+  def list_with_epg(provider_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    search = Keyword.get(opts, :search)
+    category_id = Keyword.get(opts, :category_id)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    now = DateTime.utc_now()
+
+    # Build base query with LEFT JOIN to EPG
+    query =
+      from c in LiveChannel,
+        left_lateral_join:
+          epg in subquery(
+            from p in EpgProgram,
+              where:
+                p.provider_id == parent_as(:channel).provider_id and
+                  p.epg_channel_id == parent_as(:channel).epg_channel_id and
+                  p.start_time <= ^now and
+                  p.end_time > ^now,
+              limit: 1
+          ),
+        as: :channel,
+        on: true,
+        where: c.provider_id == ^provider_id,
+        order_by: c.name,
+        select: %{
+          channel: c,
+          current_program: epg
+        }
+
+    query =
+      if search && search != "" do
+        where(query, [c], ilike(c.name, ^"%#{search}%"))
+      else
+        query
+      end
+
+    query =
+      if category_id do
+        join(query, :inner, [c], lcc in "live_channel_categories",
+          on: lcc.live_channel_id == c.id and lcc.category_id == ^category_id
+        )
+      else
+        query
+      end
+
+    # Filter adult content unless user opts in
+    query =
+      if show_adult do
+        query
+      else
+        AdultFilter.exclude_adult_channels(query, provider_id)
+      end
+
+    query
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Repo.all()
+    |> Enum.map(fn %{channel: channel, current_program: epg} ->
+      Map.put(channel, :current_program, epg)
+    end)
   end
 
   @doc """
