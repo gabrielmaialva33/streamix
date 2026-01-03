@@ -1,7 +1,12 @@
 defmodule Streamix.Cache do
   @moduledoc """
-  Redis-based caching for categories and metadata.
-  Uses Redix for Redis connection.
+  Hybrid L1+L2 caching for categories and metadata.
+
+  L1: ConCache (in-memory, per-node) - microsecond access, hot data
+  L2: Redis (distributed) - millisecond access, cluster-wide consistency
+
+  Read path: L1 -> L2 (populate L1 on hit)
+  Write path: L1 + L2 (write-through)
 
   This module provides a simple caching interface with:
   - Automatic TTL handling
@@ -11,8 +16,10 @@ defmodule Streamix.Cache do
 
   require Logger
 
+  @l1_cache :streamix_l1_cache
   @redis :streamix_redis
   @default_ttl 3600
+  @l1_ttl :timer.minutes(5)
   @scan_count 100
 
   # =============================================================================
@@ -21,15 +28,33 @@ defmodule Streamix.Cache do
 
   @doc """
   Gets a value from cache. Returns nil if not found or expired.
+  Checks L1 (in-memory) first, then L2 (Redis).
   """
   @spec get(String.t()) :: term() | nil
   def get(key) do
+    # Try L1 first (microsecond access)
+    case ConCache.get(@l1_cache, key) do
+      nil ->
+        # L1 miss, try L2 (Redis)
+        get_from_l2(key)
+
+      value ->
+        # L1 hit
+        value
+    end
+  end
+
+  # Get from L2 and populate L1 on hit
+  defp get_from_l2(key) do
     case Redix.command(@redis, ["GET", key]) do
       {:ok, nil} ->
         nil
 
       {:ok, value} ->
-        decode(value)
+        decoded = decode(value)
+        # Populate L1 for future reads (shorter TTL)
+        if decoded, do: ConCache.put(@l1_cache, key, %ConCache.Item{value: decoded, ttl: @l1_ttl})
+        decoded
 
       {:error, reason} ->
         log_error("GET", key, reason)
@@ -39,9 +64,15 @@ defmodule Streamix.Cache do
 
   @doc """
   Sets a value in cache with optional TTL (in seconds).
+  Writes to both L1 (in-memory) and L2 (Redis) for consistency.
   """
   @spec set(String.t(), term(), pos_integer()) :: :ok | {:error, term()}
   def set(key, value, ttl \\ @default_ttl) do
+    # Write to L1 first (local node)
+    l1_ttl_ms = min(ttl * 1000, @l1_ttl)
+    ConCache.put(@l1_cache, key, %ConCache.Item{value: value, ttl: l1_ttl_ms})
+
+    # Write to L2 (Redis) for persistence and cluster sharing
     case encode(value) do
       {:ok, encoded} ->
         case Redix.command(@redis, ["SETEX", key, ttl, encoded]) do
@@ -61,9 +92,14 @@ defmodule Streamix.Cache do
 
   @doc """
   Deletes a key from cache.
+  Removes from both L1 (in-memory) and L2 (Redis).
   """
   @spec delete(String.t()) :: :ok
   def delete(key) do
+    # Delete from L1
+    ConCache.delete(@l1_cache, key)
+
+    # Delete from L2
     case Redix.command(@redis, ["DEL", key]) do
       {:ok, _} ->
         :ok
@@ -165,6 +201,35 @@ defmodule Streamix.Cache do
   end
 
   # =============================================================================
+  # Stats & Monitoring
+  # =============================================================================
+
+  @doc """
+  Returns cache statistics for monitoring.
+  Useful for debugging and performance tuning.
+  """
+  @spec stats() :: %{l1: map(), l2: map()}
+  def stats do
+    l1_stats = l1_stats()
+    l2_stats = l2_stats()
+    %{l1: l1_stats, l2: l2_stats}
+  end
+
+  defp l1_stats do
+    ets_table = ConCache.ets(@l1_cache)
+    size = :ets.info(ets_table, :size)
+    memory = :ets.info(ets_table, :memory) * :erlang.system_info(:wordsize)
+    %{size: size, memory_bytes: memory}
+  end
+
+  defp l2_stats do
+    case Redix.command(@redis, ["DBSIZE"]) do
+      {:ok, size} -> %{size: size}
+      {:error, _} -> %{size: :unavailable}
+    end
+  end
+
+  # =============================================================================
   # Invalidation
   # =============================================================================
 
@@ -194,9 +259,14 @@ defmodule Streamix.Cache do
 
   @doc """
   Invalidates all cache entries. Use with caution.
+  Clears both L1 (in-memory) and L2 (Redis).
   """
   @spec invalidate_all() :: :ok
   def invalidate_all do
+    # Clear L1 cache
+    clear_l1_cache()
+
+    # Clear L2 cache
     case Redix.command(@redis, ["FLUSHDB"]) do
       {:ok, _} ->
         :ok
@@ -205,6 +275,13 @@ defmodule Streamix.Cache do
         log_error("FLUSHDB", "*", reason)
         :ok
     end
+  end
+
+  # Clear all entries from L1 ConCache
+  defp clear_l1_cache do
+    # ConCache uses ETS under the hood, access via its internal table
+    ets_table = ConCache.ets(@l1_cache)
+    :ets.delete_all_objects(ets_table)
   end
 
   # =============================================================================
@@ -234,6 +311,10 @@ defmodule Streamix.Cache do
   defp delete_keys([]), do: 0
 
   defp delete_keys(keys) do
+    # Delete from L1 first
+    Enum.each(keys, &ConCache.delete(@l1_cache, &1))
+
+    # Delete from L2
     case Redix.command(@redis, ["DEL" | keys]) do
       {:ok, count} -> count
       {:error, _} -> 0

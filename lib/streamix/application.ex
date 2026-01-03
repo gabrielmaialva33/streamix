@@ -13,6 +13,14 @@ defmodule Streamix.Application do
       {Streamix.RateLimit, clean_period: :timer.minutes(10)},
       {Oban, Application.fetch_env!(:streamix, Oban)},
       {Redix, {redis_url(), [name: :streamix_redis]}},
+      # L1 in-memory cache (ConCache) for hot data
+      {ConCache,
+       [
+         name: :streamix_l1_cache,
+         ttl_check_interval: :timer.seconds(30),
+         global_ttl: :timer.hours(1),
+         touch_on_read: true
+       ]},
       # HTTP connection pool for sync operations (high concurrency)
       {Finch,
        name: Streamix.Finch,
