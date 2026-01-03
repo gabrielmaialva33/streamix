@@ -78,6 +78,13 @@ defmodule StreamixWeb.Router do
     get "/catalog/movies/:id/stream", CatalogController, :movie_stream
     get "/catalog/episodes/:id/stream", CatalogController, :episode_stream
     get "/catalog/channels/:id/stream", CatalogController, :channel_stream
+
+    # Semantic search API
+    options "/search/*path", SearchController, :options
+    get "/search/movies", SearchController, :movies
+    get "/search/series", SearchController, :series
+    get "/search/similar/:collection/:id", SearchController, :similar
+    get "/search/status", SearchController, :status
   end
 
   # Public routes - landing page only
