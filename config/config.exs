@@ -110,6 +110,24 @@ config :streamix, Streamix.Iptv,
   default_page_size: 100,
   max_page_size: 500
 
+# RabbitMQ configuration (Broadway)
+config :streamix, :rabbitmq,
+  enabled: false,
+  connection: [
+    host: "localhost",
+    port: 5672,
+    username: "guest",
+    password: "guest",
+    virtual_host: "/"
+  ],
+  # Broadway pipeline settings
+  broadway: [
+    processor_concurrency: 5,
+    batcher_concurrency: 2,
+    batch_size: 10,
+    batch_timeout: 2_000
+  ]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

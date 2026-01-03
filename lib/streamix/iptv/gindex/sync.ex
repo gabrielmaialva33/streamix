@@ -513,4 +513,37 @@ defmodule Streamix.Iptv.Gindex.Sync do
     {count, _} = Repo.insert_all(Episode, entries, conflict_opts)
     count
   end
+
+  # ============================================================================
+  # Public batch sync functions (for Broadway/Queue integration)
+  # ============================================================================
+
+  @doc """
+  Syncs a batch of movies to the database.
+  Used by Broadway pipeline for distributed sync.
+  """
+  def sync_movies_batch(%Provider{} = provider, movies) when is_list(movies) do
+    Logger.info("[GIndex Sync] Syncing batch of #{length(movies)} movies")
+    upsert_movies(provider, movies)
+  end
+
+  @doc """
+  Syncs a batch of series to the database.
+  Used by Broadway pipeline for distributed sync.
+  """
+  def sync_series_batch(%Provider{} = provider, series_list) when is_list(series_list) do
+    Logger.info("[GIndex Sync] Syncing batch of #{length(series_list)} series")
+    upsert_series_batch(provider, series_list)
+    {:ok, length(series_list)}
+  end
+
+  @doc """
+  Syncs a batch of animes to the database.
+  Used by Broadway pipeline for distributed sync.
+  """
+  def sync_animes_batch(%Provider{} = provider, animes_list) when is_list(animes_list) do
+    Logger.info("[GIndex Sync] Syncing batch of #{length(animes_list)} animes")
+    upsert_animes_batch(provider, animes_list)
+    {:ok, length(animes_list)}
+  end
 end

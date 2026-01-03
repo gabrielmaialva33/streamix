@@ -50,6 +50,26 @@ else
   config :streamix, :gindex_provider, enabled: false
 end
 
+# RabbitMQ configuration for Broadway distributed workers
+# Set RABBITMQ_ENABLED=true to enable
+if get_env.("RABBITMQ_ENABLED") == "true" do
+  config :streamix, :rabbitmq,
+    enabled: true,
+    connection: [
+      host: get_env.("RABBITMQ_HOST") || "localhost",
+      port: String.to_integer(get_env.("RABBITMQ_PORT") || "5672"),
+      username: get_env.("RABBITMQ_USERNAME") || "guest",
+      password: get_env.("RABBITMQ_PASSWORD") || "guest",
+      virtual_host: get_env.("RABBITMQ_VHOST") || "/"
+    ],
+    broadway: [
+      processor_concurrency: String.to_integer(get_env.("BROADWAY_CONCURRENCY") || "5"),
+      batcher_concurrency: 2,
+      batch_size: 10,
+      batch_timeout: 2_000
+    ]
+end
+
 # Stream proxy URL for bypassing mixed content blocking
 # This reverse proxy handles HTTP IPTV streams over HTTPS
 config :streamix,

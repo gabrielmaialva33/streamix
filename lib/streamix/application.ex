@@ -7,37 +7,38 @@ defmodule Streamix.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      StreamixWeb.Telemetry,
-      Streamix.Repo,
-      {Streamix.RateLimit, clean_period: :timer.minutes(10)},
-      {Oban, Application.fetch_env!(:streamix, Oban)},
-      {Redix, {redis_url(), [name: :streamix_redis]}},
-      # L1 in-memory cache (ConCache) for hot data
-      {ConCache,
-       [
-         name: :streamix_l1_cache,
-         ttl_check_interval: :timer.seconds(30),
-         global_ttl: :timer.hours(1),
-         touch_on_read: true
-       ]},
-      # HTTP connection pool for sync operations (high concurrency)
-      {Finch,
-       name: Streamix.Finch,
-       pools: %{
-         # Default pool for API calls during sync
-         :default => [size: 50, count: 4]
-       }},
-      {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Streamix.PubSub},
-      # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
-      # Stream proxy for caching IPTV streams
-      Streamix.Iptv.StreamProxy,
-      # GIndex URL cache
-      Streamix.Iptv.Gindex.UrlCache,
-      # Start to serve requests, typically the last entry
-      StreamixWeb.Endpoint
-    ]
+    children =
+      [
+        StreamixWeb.Telemetry,
+        Streamix.Repo,
+        {Streamix.RateLimit, clean_period: :timer.minutes(10)},
+        {Oban, Application.fetch_env!(:streamix, Oban)},
+        {Redix, {redis_url(), [name: :streamix_redis]}},
+        # L1 in-memory cache (ConCache) for hot data
+        {ConCache,
+         [
+           name: :streamix_l1_cache,
+           ttl_check_interval: :timer.seconds(30),
+           global_ttl: :timer.hours(1),
+           touch_on_read: true
+         ]},
+        # HTTP connection pool for sync operations (high concurrency)
+        {Finch,
+         name: Streamix.Finch,
+         pools: %{
+           # Default pool for API calls during sync
+           :default => [size: 50, count: 4]
+         }},
+        {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: Streamix.PubSub},
+        # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
+        # Stream proxy for caching IPTV streams
+        Streamix.Iptv.StreamProxy,
+        # GIndex URL cache
+        Streamix.Iptv.Gindex.UrlCache,
+        # Start to serve requests, typically the last entry
+        StreamixWeb.Endpoint
+      ] ++ Streamix.Queue.Supervisor.child_spec_if_enabled()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

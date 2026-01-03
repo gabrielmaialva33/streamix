@@ -75,7 +75,14 @@ defmodule Streamix.MixProject do
       {:mint, "~> 1.6"},
       {:castore, "~> 1.0"},
       {:hammer, "~> 7.0"},
-      {:con_cache, "~> 1.1"}
+      {:con_cache, "~> 1.1"},
+      # Broadway + RabbitMQ for distributed sync workers
+      {:broadway, "~> 1.2"},
+      {:broadway_rabbitmq, "~> 0.8"},
+      # Override amqp_client to use latest version compatible with OTP 28
+      {:amqp, "~> 3.3", override: true},
+      {:rabbit_common, "~> 4.0", override: true},
+      {:amqp_client, "~> 4.0", override: true}
     ]
   end
 
