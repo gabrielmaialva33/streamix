@@ -28,10 +28,14 @@ defmodule StreamixWeb.Plugs.CORS do
           )
           |> put_resp_header(
             "access-control-allow-headers",
-            "content-type, authorization, x-requested-with"
+            "content-type, authorization, x-requested-with, range, accept-encoding"
           )
           |> put_resp_header("access-control-allow-credentials", "true")
           |> put_resp_header("access-control-max-age", "86400")
+          |> put_resp_header(
+            "access-control-expose-headers",
+            "content-length, content-range, accept-ranges"
+          )
           |> handle_preflight()
         else
           conn
