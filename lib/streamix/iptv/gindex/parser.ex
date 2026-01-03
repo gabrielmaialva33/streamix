@@ -174,7 +174,10 @@ defmodule Streamix.Iptv.Gindex.Parser do
       iex> Parser.parse_anime_episode("[HBO Max] Naruto - 001 [WEB-DL 1080p][Dual Áudio].mkv")
       %{episode: 1, group: "HBO Max", quality: "WEB-DL 1080p", extension: "mkv"}
   """
-  def parse_anime_episode(filename) do
+  def parse_anime_episode(nil),
+    do: %{episode: nil, group: nil, quality: nil, extension: nil, is_dual: false}
+
+  def parse_anime_episode(filename) when is_binary(filename) do
     filename = String.trim(filename)
     {name_without_ext, extension} = split_extension(filename)
 
@@ -257,7 +260,18 @@ defmodule Streamix.Iptv.Gindex.Parser do
   @source_scores %{"BDRemux" => 25, "BD" => 20, "WEB-DL" => 15, "WEBRip" => 10, "HDTV" => 5}
   @codec_scores %{"HEVC" => 10, "H.264" => 5}
 
-  def parse_release_folder(folder_name) do
+  def parse_release_folder(nil),
+    do: %{
+      group: nil,
+      is_dual: false,
+      quality: nil,
+      source: nil,
+      codec: nil,
+      score: 0,
+      raw_name: nil
+    }
+
+  def parse_release_folder(folder_name) when is_binary(folder_name) do
     folder_name = String.trim(folder_name)
     upcase_name = String.upcase(folder_name)
 
@@ -334,7 +348,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
     ~r/S(\d{1,2})/i
   ]
 
-  def parse_season_folder(folder_name) do
+  def parse_season_folder(nil), do: %{season_number: 1}
+
+  def parse_season_folder(folder_name) when is_binary(folder_name) do
     folder_name = String.trim(folder_name)
 
     season_number =
@@ -366,7 +382,20 @@ defmodule Streamix.Iptv.Gindex.Parser do
         is_dual_audio: true
       }
   """
-  def parse_release_name(filename) do
+  def parse_release_name(nil),
+    do: %{
+      name: nil,
+      year: nil,
+      quality: nil,
+      source: nil,
+      codec: nil,
+      audio: nil,
+      release_group: nil,
+      extension: nil,
+      is_dual_audio: false
+    }
+
+  def parse_release_name(filename) when is_binary(filename) do
     filename = String.trim(filename)
 
     # Remove extension
@@ -384,8 +413,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
     # Extract source
     {source, rest_parts} = extract_pattern(rest_parts, @source_patterns)
 
-    # Check for dual audio
-    is_dual = Enum.any?(rest_parts, &(String.upcase(&1) == "DUAL"))
+    # Check for dual audio (filter nils first)
+    is_dual =
+      Enum.any?(rest_parts, fn part -> is_binary(part) and String.upcase(part) == "DUAL" end)
 
     # Extract release group (usually after last dash)
     release_group = extract_release_group(name_without_ext)
@@ -431,7 +461,20 @@ defmodule Streamix.Iptv.Gindex.Parser do
         ...
       }
   """
-  def parse_episode_name(filename) do
+  def parse_episode_name(nil),
+    do: %{
+      series_name: nil,
+      season: nil,
+      episode: nil,
+      title: nil,
+      quality: nil,
+      source: nil,
+      release_group: nil,
+      extension: nil,
+      raw_filename: nil
+    }
+
+  def parse_episode_name(filename) when is_binary(filename) do
     filename = String.trim(filename)
     {name_without_ext, extension} = split_extension(filename)
 
@@ -479,7 +522,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
   @doc """
   Determines if a filename is a video file.
   """
-  def video_file?(filename) do
+  def video_file?(nil), do: false
+
+  def video_file?(filename) when is_binary(filename) do
     {_, ext} = split_extension(filename)
     String.downcase(ext || "") in @video_extensions
   end
@@ -487,7 +532,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
   @doc """
   Extracts the file extension.
   """
-  def split_extension(filename) do
+  def split_extension(nil), do: {nil, nil}
+
+  def split_extension(filename) when is_binary(filename) do
     case Path.extname(filename) do
       "" -> {filename, nil}
       ext -> {String.trim_trailing(filename, ext), String.trim_leading(ext, ".")}
