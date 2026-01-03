@@ -171,7 +171,6 @@ defmodule Streamix.AI.SemanticSearch do
         select: %{
           id: m.id,
           title: m.title,
-          description: m.description,
           plot: m.plot,
           year: m.year,
           genres: m.genre,
