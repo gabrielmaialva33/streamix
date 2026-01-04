@@ -685,9 +685,11 @@ defmodule Streamix.Iptv.Gindex.Scraper do
 
     case Client.list_folder(base_url, subfolder.path) do
       {:ok, sub_items} ->
-        sub_items
-        |> Enum.filter(&(&1.type == :file and Parser.video_file?(&1.name)))
-        |> scrape_episodes_from_files(base_url, season_number)
+        episode_files =
+          sub_items
+          |> Enum.filter(&(&1.type == :file and Parser.video_file?(&1.name)))
+
+        scrape_episodes_from_files(base_url, episode_files, season_number)
 
       {:error, _} ->
         []

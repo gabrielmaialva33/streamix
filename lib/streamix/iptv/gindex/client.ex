@@ -25,14 +25,21 @@ defmodule Streamix.Iptv.Gindex.Client do
 
   @doc """
   Lists the contents of a folder in the GIndex (single page).
-  Automatically uses the best available endpoint.
+
+  Can be called with:
+  - `list_folder(path)` - auto-selects best endpoint
+  - `list_folder(path, opts)` - auto-selects endpoint with options
+  - `list_folder(base_url, path)` - uses specific endpoint
+  - `list_folder(base_url, path, opts)` - uses specific endpoint with options
 
   ## Examples
 
       iex> Client.list_folder("/1:/Filmes/")
       {:ok, [%{name: "Movie Name", type: :folder, path: "/1:/Filmes/Movie/"}]}
   """
-  def list_folder(path, opts \\ []) do
+  def list_folder(path_or_base_url, path_or_opts \\ [])
+
+  def list_folder(path, opts) when is_binary(path) and is_list(opts) do
     case EndpointManager.get_endpoint() do
       {:ok, base_url} ->
         list_folder(base_url, path, opts)
@@ -42,10 +49,11 @@ defmodule Streamix.Iptv.Gindex.Client do
     end
   end
 
-  @doc """
-  Lists the contents of a folder using a specific base URL.
-  """
-  def list_folder(base_url, path, opts) when is_binary(base_url) do
+  def list_folder(base_url, path) when is_binary(base_url) and is_binary(path) do
+    list_folder(base_url, path, [])
+  end
+
+  def list_folder(base_url, path, opts) when is_binary(base_url) and is_binary(path) and is_list(opts) do
     page_token = Keyword.get(opts, :page_token)
     page_index = Keyword.get(opts, :page_index, 0)
 
