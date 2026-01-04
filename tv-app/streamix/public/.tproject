@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tproject xmlns="http://www.tizen.org/tproject" version="1.0.0">
+    <platforms>
+        <platform>
+            <name>tv-samsung-6.0</name>
+        </platform>
+    </platforms>
+    <package>
+        <output>.buildResult</output>
+    </package>
+</tproject>

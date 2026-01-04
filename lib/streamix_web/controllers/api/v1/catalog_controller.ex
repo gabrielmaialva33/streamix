@@ -459,11 +459,24 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   end
 
   # Image proxy helper - proxies TMDB images through our Cloudflare tunnel
+  # Adds cache-busting version to force CDN refresh after config changes
+  @image_cache_version "v2"
+
   defp proxy_image(nil), do: nil
   defp proxy_image(urls) when is_list(urls), do: Enum.map(urls, &proxy_image/1)
 
   defp proxy_image(url) when is_binary(url) do
-    String.replace(url, "https://image.tmdb.org", "https://tmdb.mahina.cloud")
+    url
+    |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
+    |> add_cache_buster()
+  end
+
+  defp add_cache_buster(url) do
+    if String.contains?(url, "?") do
+      "#{url}&_v=#{@image_cache_version}"
+    else
+      "#{url}?_v=#{@image_cache_version}"
+    end
   end
 
   # Helpers
