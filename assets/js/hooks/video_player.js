@@ -538,7 +538,10 @@ const VideoPlayer = {
       volume = this.avPlayerVolume;
       muted = this.avPlayerMuted;
     } else {
-      volume = this.video?.volume || 1;
+      // Convert perceived volume back to linear for UI display
+      // This prevents the slider from "jumping" when reading from video.volume
+      const rawVolume = this.video?.volume ?? 1;
+      volume = perceivedToLinear(rawVolume);
       muted = this.video?.muted || false;
     }
     this.playerUI.updateVolumeUI(volume, muted);
@@ -722,12 +725,19 @@ const VideoPlayer = {
       },
       onError: (type, data) => this.handleStreamError(type, data),
       onLevelSwitched: (level, levelData) => {
+        const isAuto = this.manualQuality === null;
         this.pushEvent("quality_switched", {
           level,
           height: levelData?.height,
           bitrate: levelData?.bitrate,
-          auto: this.manualQuality === null,
+          auto: isAuto,
         });
+
+        // Show visual feedback for quality changes (only for auto switching)
+        if (isAuto && levelData?.height) {
+          const qualityLabel = `Auto: ${levelData.height}p`;
+          this.playerUI.showQualityChange(qualityLabel);
+        }
       },
       onAudioTracksUpdated: () => this.updateAudioTracks(),
       onSubtitleTracksUpdated: () => this.updateSubtitleTracks(),

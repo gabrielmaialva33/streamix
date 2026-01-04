@@ -16,6 +16,9 @@ import {
 // Cache for tested local WASM availability
 const localWasmAvailable = new Map();
 
+// Track active audio detection to prevent AudioContext leaks during rapid zapping
+let activeAudioDetection = null;
+
 // Codec IDs from @libmedia/avutil
 const AVCodecID = {
   // Audio codecs
@@ -182,12 +185,15 @@ function loadScript(src, id = null) {
 /**
  * Configure webpack public path for dynamic imports
  * AVPlayer UMD bundle loads chunks dynamically and needs to know the base path
+ *
+ * Note: This is set globally once and checked before setting to avoid conflicts
+ * with other modules that might use webpack dynamic imports.
  */
 function configureWebpackPublicPath() {
-  // Set the public path for webpack chunk loading
-  // This ensures dynamic imports resolve to the correct directory
+  // Only set if not already configured (prevents conflicts with other modules)
   if (typeof __webpack_public_path__ === 'undefined') {
     window.__webpack_public_path__ = `${AVPLAYER_CONFIG.localBasePath}/`;
+    console.log('[AVPlayerWrapper] Webpack public path configured:', window.__webpack_public_path__);
   }
 }
 
@@ -713,25 +719,68 @@ export function detectAudioIssue(videoElement) {
 /**
  * Detect audio using Web Audio API
  * Creates an AnalyserNode to check for actual audio data in the stream
+ * Supports cancellation to prevent AudioContext leaks during rapid channel switching
  */
 function detectAudioWithWebAudioAPI(videoElement) {
+  // Cancel any active detection to prevent AudioContext accumulation
+  if (activeAudioDetection) {
+    activeAudioDetection.cancel();
+  }
+
+  let cancelled = false;
+  let audioContext = null;
+  let source = null;
+  let timeoutId = null;
+  let playingHandler = null;
+
+  const cleanup = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    if (playingHandler && videoElement) {
+      videoElement.removeEventListener('playing', playingHandler);
+      playingHandler = null;
+    }
+    if (source && audioContext) {
+      try {
+        source.disconnect();
+      } catch (e) { /* ignore */ }
+    }
+    if (audioContext) {
+      audioContext.close().catch(() => {});
+      audioContext = null;
+    }
+  };
+
+  const detection = {
+    cancel: () => {
+      cancelled = true;
+      cleanup();
+      console.log('[detectAudioWithWebAudioAPI] Detection cancelled');
+    }
+  };
+
+  activeAudioDetection = detection;
+
   return new Promise((resolve, reject) => {
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        activeAudioDetection = null;
         reject(new Error('Web Audio API not supported'));
         return;
       }
 
-      const audioContext = new AudioContext();
-      let source;
+      audioContext = new AudioContextClass();
 
       try {
         source = audioContext.createMediaElementSource(videoElement);
       } catch (e) {
         // MediaElementSource may already exist for this element
         console.warn('[detectAudioWithWebAudioAPI] Could not create MediaElementSource:', e);
-        audioContext.close();
+        cleanup();
+        activeAudioDetection = null;
         reject(e);
         return;
       }
@@ -748,9 +797,23 @@ function detectAudioWithWebAudioAPI(videoElement) {
       let checkCount = 0;
       const maxChecks = 10; // Check for ~1 second
 
-      const checkForAudio = () => {
-        checkCount++;
+      const finishDetection = (hasAudio) => {
+        if (cancelled) return;
+        // Cleanup: disconnect analyser but keep audio flowing
+        try {
+          source.disconnect(analyser);
+          source.connect(audioContext.destination);
+        } catch (e) { /* ignore */ }
+        audioContext.close().catch(() => {});
+        audioContext = null;
+        activeAudioDetection = null;
+        resolve(hasAudio);
+      };
 
+      const checkForAudio = () => {
+        if (cancelled) return;
+
+        checkCount++;
         analyser.getByteFrequencyData(dataArray);
 
         // Check if there's any significant audio data
@@ -762,36 +825,33 @@ function detectAudioWithWebAudioAPI(videoElement) {
 
         // If average frequency data is above threshold, audio is present
         if (average > 5) {
-          // Cleanup: disconnect but keep audio flowing
-          source.disconnect(analyser);
-          source.connect(audioContext.destination);
-          audioContext.close().catch(() => {});
-          resolve(true);
+          finishDetection(true);
           return;
         }
 
-        if (checkCount < maxChecks && !videoElement.paused) {
-          setTimeout(checkForAudio, 100);
-        } else {
+        if (checkCount < maxChecks && !videoElement.paused && !cancelled) {
+          timeoutId = setTimeout(checkForAudio, 100);
+        } else if (!cancelled) {
           // No audio detected after all checks
-          source.disconnect(analyser);
-          source.connect(audioContext.destination);
-          audioContext.close().catch(() => {});
-          resolve(false);
+          finishDetection(false);
         }
       };
 
       // Start checking after a short delay to let audio buffer
       if (videoElement.readyState >= 3 && !videoElement.paused) {
-        setTimeout(checkForAudio, 200);
+        timeoutId = setTimeout(checkForAudio, 200);
       } else {
-        const onPlaying = () => {
-          videoElement.removeEventListener('playing', onPlaying);
-          setTimeout(checkForAudio, 200);
+        playingHandler = () => {
+          if (cancelled) return;
+          videoElement.removeEventListener('playing', playingHandler);
+          playingHandler = null;
+          timeoutId = setTimeout(checkForAudio, 200);
         };
-        videoElement.addEventListener('playing', onPlaying);
+        videoElement.addEventListener('playing', playingHandler);
       }
     } catch (error) {
+      cleanup();
+      activeAudioDetection = null;
       reject(error);
     }
   });

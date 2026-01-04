@@ -290,6 +290,10 @@ export class PlayerUI {
     const container = this.elements.qualityOptions;
     if (!container || qualities.length === 0) return;
 
+    // Set accessibility attributes
+    container.setAttribute('role', 'menu');
+    container.setAttribute('aria-label', 'Qualidade do video');
+
     // Clear existing content
     container.innerHTML = '';
     container.appendChild(this.renderOptionList(
@@ -310,6 +314,10 @@ export class PlayerUI {
   updateAudioOptions(tracks, currentTrack, onSelect) {
     const container = this.elements.audioOptions;
     if (!container) return;
+
+    // Set accessibility attributes
+    container.setAttribute('role', 'menu');
+    container.setAttribute('aria-label', 'Faixa de audio');
 
     if (tracks.length === 0) {
       container.innerHTML = '';
@@ -335,6 +343,10 @@ export class PlayerUI {
   updateSubtitleOptions(tracks, currentTrack, onSelect) {
     const container = this.elements.subtitleOptions;
     if (!container) return;
+
+    // Set accessibility attributes
+    container.setAttribute('role', 'menu');
+    container.setAttribute('aria-label', 'Legendas');
 
     const allTracks = [{ index: -1, label: "Desativadas" }, ...tracks];
 
@@ -539,6 +551,39 @@ export class PlayerUI {
       pip: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4v4h-4z"/></svg>',
     };
     return icons[icon] || null;
+  }
+
+  /**
+   * Show quality change notification
+   * @param {string} quality - The new quality level (e.g., "720p", "Auto: 1080p")
+   */
+  showQualityChange(quality) {
+    // Remove existing notification
+    const existing = this.container.querySelector(".quality-toast");
+    if (existing) existing.remove();
+
+    const toast = document.createElement("div");
+    toast.className = "quality-toast absolute top-4 right-4 pointer-events-none z-30 animate-fade-in-out";
+
+    // Create using DOM API for security
+    const inner = document.createElement("div");
+    inner.className = "px-3 py-1.5 rounded bg-black/70 backdrop-blur-sm text-white text-sm font-medium flex items-center gap-2";
+
+    // HD icon
+    const icon = document.createElement("span");
+    icon.className = "text-xs bg-white/20 px-1 rounded";
+    icon.textContent = "HD";
+
+    const text = document.createElement("span");
+    text.textContent = quality;
+
+    inner.appendChild(icon);
+    inner.appendChild(text);
+    toast.appendChild(inner);
+    this.container.appendChild(toast);
+
+    // Remove after animation
+    setTimeout(() => toast.remove(), 2000);
   }
 
   // ============================================
