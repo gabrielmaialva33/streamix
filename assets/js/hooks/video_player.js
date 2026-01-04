@@ -17,6 +17,7 @@ import {
   savePlaybackRate,
   savePreferAVPlayer,
 } from "../lib/player_preferences";
+import { playerLogger as log } from "../lib/logger";
 
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
@@ -24,11 +25,38 @@ let detectAudioIssue = null;
 
 async function loadAVPlayer() {
   if (!AVPlayerWrapper) {
+    log.debug("Lazy loading AVPlayer module...");
     const module = await import("../lib/avplayer_wrapper");
     AVPlayerWrapper = module.AVPlayerWrapper;
     detectAudioIssue = module.detectAudioIssue;
+    log.debug("AVPlayer module loaded");
   }
   return { AVPlayerWrapper, detectAudioIssue };
+}
+
+// Preload WASM files when user shows intent
+let wasmPreloaded = false;
+function preloadAVPlayerWasm() {
+  if (wasmPreloaded) return;
+  wasmPreloaded = true;
+
+  const wasmFiles = [
+    '/avplayer/decode/h264-atomic.wasm',
+    '/avplayer/decode/hevc-atomic.wasm',
+    '/avplayer/decode/ac3-atomic.wasm',
+    '/avplayer/decode/aac-atomic.wasm',
+  ];
+
+  wasmFiles.forEach(url => {
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.href = url;
+    link.as = 'fetch';
+    link.crossOrigin = 'anonymous';
+    document.head.appendChild(link);
+  });
+
+  log.debug("WASM files prefetch initiated");
 }
 
 /**
@@ -59,6 +87,11 @@ const VideoPlayer = {
 
     // Expose hook instance on element for child hooks (like ProgressBar) to access
     this.el.__videoPlayerHook = this;
+
+    // Preload WASM files if likely to need AVPlayer (GIndex/MKV sources)
+    if (this.sourceType === "gindex" || this.preferAVPlayer) {
+      preloadAVPlayerWasm();
+    }
   },
 
   initializeState() {
@@ -173,7 +206,7 @@ const VideoPlayer = {
   setupNetworkMonitor() {
     this.networkMonitor = new NetworkMonitor({
       onQualityChange: (newQuality, oldQuality, stats) => {
-        console.log(`Network quality changed: ${oldQuality} -> ${newQuality}`, stats);
+        log.debug(`Network quality changed: ${oldQuality} -> ${newQuality}`, stats);
 
         if (this.manualQuality === null && this.contentType === "live") {
           const newMode = selectStreamingMode(ContentType.LIVE, newQuality);
@@ -194,7 +227,7 @@ const VideoPlayer = {
   switchStreamingMode(newMode) {
     if (newMode === this.streamingMode) return;
 
-    console.log(`Switching streaming mode: ${this.streamingMode} -> ${newMode}`);
+    log.debug(`Switching streaming mode: ${this.streamingMode} -> ${newMode}`);
     this.streamingMode = newMode;
 
     if (this.streamLoader) {
@@ -420,7 +453,7 @@ const VideoPlayer = {
     this.handleEvent("set_playback_rate", ({ rate }) => this.setPlaybackRate(rate));
     this.handleEvent("refresh_token", ({ url, proxyUrl }) => {
       // Handle token refresh from server
-      console.log("[VideoPlayer] Token refreshed, updating URLs");
+      log.debug("[VideoPlayer] Token refreshed, updating URLs");
       this.streamUrl = url;
       this.proxyUrl = proxyUrl;
       this.retryCount = 0;
@@ -541,17 +574,17 @@ const VideoPlayer = {
     const isHttpsPage = window.location.protocol === "https:";
 
     if (isHttpUrl && isHttpsPage && this.proxyUrl) {
-      console.log("Using proxy URL for", streamType, "stream (HTTP -> HTTPS proxy required)");
+      log.debug("Using proxy URL for", streamType, "stream (HTTP -> HTTPS proxy required)");
       return this.toAbsoluteUrl(this.proxyUrl);
     }
 
     const proxyableTypes = ["ts", "xtream", "unknown"];
     if (this.useProxy && this.proxyUrl && proxyableTypes.includes(streamType)) {
-      console.log("Using proxy URL for", streamType, "stream");
+      log.debug("Using proxy URL for", streamType, "stream");
       return this.toAbsoluteUrl(this.proxyUrl);
     }
 
-    console.log("Using direct URL for", streamType, "stream");
+    log.debug("Using direct URL for", streamType, "stream");
     return this.streamUrl;
   },
 
@@ -610,13 +643,13 @@ const VideoPlayer = {
     }
 
     this.playerUI.showLoading();
-    console.log("Initializing player with URL:", this.streamUrl);
-    console.log("Streaming mode:", this.streamingMode);
-    console.log("Content type:", this.contentType);
-    console.log("Source type:", this.sourceType);
+    log.info("Initializing player with URL:", this.streamUrl);
+    log.debug("Streaming mode:", this.streamingMode);
+    log.debug("Content type:", this.contentType);
+    log.debug("Source type:", this.sourceType);
 
     this.currentStreamType = getStreamType(this.streamUrl);
-    console.log("Detected stream type:", this.currentStreamType);
+    log.debug("Detected stream type:", this.currentStreamType);
 
     this.cleanup();
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
@@ -627,7 +660,7 @@ const VideoPlayer = {
       streamingMode: this.streamingMode,
       contentType: this.contentType,
       onManifestParsed: (data) => {
-        console.log("Manifest parsed, levels:", data.levels.length);
+        log.info("Manifest parsed, levels:", data.levels.length);
         this.playerUI.hideLoading();
         this.playerUI.hideError();
         this.updateQualityList();
@@ -635,7 +668,7 @@ const VideoPlayer = {
         this.updateSubtitleTracks();
 
         this.video.play().catch((e) => {
-          console.log("Autoplay prevented:", e);
+          log.debug("Autoplay prevented:", e);
           this.playerUI.showPlayButton(() => this.video.play());
         });
       },
@@ -666,14 +699,14 @@ const VideoPlayer = {
 
     // Check for manual AVPlayer preference or GIndex sources
     if (this.preferAVPlayer && (this.sourceType === "gindex" || this.currentStreamType === "mkv")) {
-      console.log("Using AVPlayer due to user preference");
+      log.debug("Using AVPlayer due to user preference");
       this.tryAVPlayerFallback();
       return;
     }
 
     // GIndex uses native playback
     if (this.sourceType === "gindex") {
-      console.log("Using native playback for GIndex source");
+      log.debug("Using native playback for GIndex source");
       this.playNative();
       return;
     }
@@ -719,7 +752,7 @@ const VideoPlayer = {
       if (data.fatal) {
         // Check for auth errors (403/401)
         if (data.response?.code === 403 || data.response?.code === 401) {
-          console.log("Auth error detected, requesting token refresh");
+          log.warn("Auth error detected, requesting token refresh");
           this.pushEvent("request_token_refresh", {});
           return;
         }
@@ -730,19 +763,19 @@ const VideoPlayer = {
                 data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR) {
               if (this.retryCount < this.maxRetries && mpegts.getFeatureList().mseLivePlayback) {
                 this.retryCount++;
-                console.log("HLS failed, trying mpegts.js...");
+                log.warn("HLS failed, trying mpegts.js...");
                 this.cleanup();
                 this.playWithMpegts();
               } else {
                 this.playerUI.showError("Nao foi possivel carregar - servidor indisponivel");
               }
             } else {
-              console.log("Network error, trying to recover...");
+              log.warn("Network error, trying to recover...");
               this.streamLoader?.startLoad();
             }
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
-            console.log("Media error, trying to recover...");
+            log.warn("Media error, trying to recover...");
             this.streamLoader?.recoverMediaError();
             break;
           default:
@@ -763,7 +796,7 @@ const VideoPlayer = {
       const { errorType, errorDetail } = data;
 
       if (this.useProxy && this.currentUrl !== this.streamUrl) {
-        console.log("Proxy failed, trying direct URL...");
+        log.warn("Proxy failed, trying direct URL...");
         this.useProxy = false;
         this.currentUrl = this.streamUrl;
         this.cleanup();
@@ -773,7 +806,7 @@ const VideoPlayer = {
 
       if (this.retryCount < this.maxRetries) {
         this.retryCount++;
-        console.log(`Retrying with different method (${this.retryCount}/${this.maxRetries})`);
+        log.warn(`Retrying with different method (${this.retryCount}/${this.maxRetries})`);
         this.cleanup();
 
         if (Hls.isSupported()) {
@@ -788,7 +821,7 @@ const VideoPlayer = {
   },
 
   playWithHls() {
-    console.log("Playing with HLS.js, url:", this.currentUrl);
+    log.info("Playing with HLS.js, url:", this.currentUrl);
 
     if (!Hls.isSupported()) {
       if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -803,13 +836,13 @@ const VideoPlayer = {
   },
 
   playWithMpegts(type = "mpegts") {
-    console.log("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
+    log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
 
     try {
       this.mpegtsPlayer = this.streamLoader.loadMpegts(this.currentUrl, type);
 
       this.video.play().catch((e) => {
-        console.log("Autoplay prevented:", e);
+        log.debug("Autoplay prevented:", e);
         if (e.name === "NotAllowedError") {
           this.playerUI.hideLoading();
           this.playerUI.showPlayButton(() => this.video.play());
@@ -831,11 +864,11 @@ const VideoPlayer = {
   },
 
   playNative() {
-    console.log("Playing with native video element, url:", this.currentUrl);
+    log.info("Playing with native video element, url:", this.currentUrl);
     this.video.src = this.currentUrl;
 
     const playHandler = () => {
-      console.log("Native playback started");
+      log.debug("Native playback started");
       this.playerUI.hideLoading();
       this.playerUI.hideError();
       this.video.removeEventListener("playing", playHandler);
@@ -853,7 +886,7 @@ const VideoPlayer = {
 
     const errorHandler = () => {
       if (this.usingAVPlayer || this.avPlayerAttempted) {
-        console.log("[VideoPlayer] Ignoring native video error - AVPlayer is active");
+        log.debug("[VideoPlayer] Ignoring native video error - AVPlayer is active");
         return;
       }
 
@@ -871,7 +904,7 @@ const VideoPlayer = {
           case MediaError.MEDIA_ERR_DECODE:
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
             if ((this.sourceType === "gindex" || this.currentStreamType === "mkv") && !this.avPlayerAttempted) {
-              console.log("[VideoPlayer] Format not supported, trying AVPlayer fallback");
+              log.debug("[VideoPlayer] Format not supported, trying AVPlayer fallback");
               this.tryAVPlayerFallback();
               return;
             }
@@ -891,12 +924,12 @@ const VideoPlayer = {
     this.video.addEventListener("loadedmetadata", () => this.playerUI.hideLoading(), { once: true });
 
     this.video.play().catch((e) => {
-      console.log("Native autoplay prevented:", e);
+      log.debug("Native autoplay prevented:", e);
       this.playerUI.hideLoading();
       if (e.name === "NotAllowedError") {
         this.playerUI.showPlayButton(() => this.video.play());
       } else if (e.name === "NotSupportedError" && (this.sourceType === "gindex" || this.currentStreamType === "mkv")) {
-        console.log("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
+        log.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
       } else {
         this.playerUI.showError("Falha ao iniciar reproducao: " + e.message);
       }
@@ -918,10 +951,10 @@ const VideoPlayer = {
         const hasAudioIssue = await detectAudioIssue(this.video);
 
         if (hasAudioIssue) {
-          console.log("[VideoPlayer] Audio issue detected, auto-switching to AVPlayer");
+          log.debug("[VideoPlayer] Audio issue detected, auto-switching to AVPlayer");
           this.tryAVPlayerFallback();
         } else {
-          console.log("[VideoPlayer] Audio working correctly");
+          log.debug("[VideoPlayer] Audio working correctly");
         }
       } catch (e) {
         console.warn("[VideoPlayer] Could not check audio:", e);
@@ -939,7 +972,7 @@ const VideoPlayer = {
     if (this.fallbackAttempts >= this.maxFallbackAttempts) {
       // Allow retry after cooldown
       if (now - this.lastFallbackTime < this.fallbackCooldown) {
-        console.log("[VideoPlayer] Circuit breaker: too many fallback attempts, cooling down");
+        log.debug("[VideoPlayer] Circuit breaker: too many fallback attempts, cooling down");
         return false;
       }
       // Reset after cooldown
@@ -952,13 +985,13 @@ const VideoPlayer = {
   async tryAVPlayerFallback() {
     // Circuit breaker check
     if (!this.canAttemptFallback()) {
-      console.log("[VideoPlayer] Circuit breaker prevented fallback attempt");
+      log.debug("[VideoPlayer] Circuit breaker prevented fallback attempt");
       this.playerUI.showError("Formato de audio nao suportado. Tente novamente mais tarde.");
       return;
     }
 
     if (this.avPlayerAttempted || this.usingAVPlayer) {
-      console.log("[VideoPlayer] AVPlayer fallback already attempted, skipping");
+      log.debug("[VideoPlayer] AVPlayer fallback already attempted, skipping");
       return;
     }
 
@@ -971,7 +1004,7 @@ const VideoPlayer = {
       this.audioCheckTimeout = null;
     }
 
-    console.log("[VideoPlayer] Attempting AVPlayer fallback (seamless)");
+    log.debug("[VideoPlayer] Attempting AVPlayer fallback (seamless)");
     this.playerUI.hideError();
 
     const currentTime = this.video.currentTime || 0;
@@ -997,24 +1030,24 @@ const VideoPlayer = {
 
       this.avPlayer = new AVPlayerWrapper({
         container: avContainer,
-        onReady: () => console.log("[VideoPlayer] AVPlayer ready"),
+        onReady: () => log.debug("[VideoPlayer] AVPlayer ready"),
         onPlay: () => {
-          console.log("[VideoPlayer] AVPlayer playing with audio support");
+          log.debug("[VideoPlayer] AVPlayer playing with audio support");
           this.playerUI.hideLoading();
           this.playerUI.updatePlayPauseUI(false);
           this.startAVPlayerTimeUpdates();
         },
         onPause: () => {
-          console.log("[VideoPlayer] AVPlayer paused");
+          log.debug("[VideoPlayer] AVPlayer paused");
           this.playerUI.updatePlayPauseUI(true);
         },
         onError: (error) => {
-          console.error("[VideoPlayer] AVPlayer error:", error);
+          log.error("[VideoPlayer] AVPlayer error:", error);
           this.revertToNativePlayer();
         },
         onTimeUpdate: () => this.updateTimeUI(),
         onEnded: () => {
-          console.log("[VideoPlayer] AVPlayer ended");
+          log.debug("[VideoPlayer] AVPlayer ended");
           this.playerUI.updatePlayPauseUI(true);
           this.stopAVPlayerTimeUpdates();
         },
@@ -1025,7 +1058,7 @@ const VideoPlayer = {
         : this.streamUrl;
 
       const ext = getFileExtension(this.streamUrl, this.sourceType, this.currentStreamType);
-      console.log("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext);
+      log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext);
 
       await this.avPlayer.load(avPlayerUrl, { ext });
 
@@ -1036,21 +1069,21 @@ const VideoPlayer = {
       // Apply saved volume
       this.avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume);
 
-      console.log("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
+      log.debug("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
       await this.avPlayer.play();
-      console.log("[VideoPlayer] AVPlayer play() completed");
+      log.debug("[VideoPlayer] AVPlayer play() completed");
 
       this.usingAVPlayer = true;
-      console.log("[VideoPlayer] Seamless AVPlayer switch complete");
+      log.debug("[VideoPlayer] Seamless AVPlayer switch complete");
 
     } catch (error) {
-      console.error("[VideoPlayer] AVPlayer fallback failed:", error);
+      log.error("[VideoPlayer] AVPlayer fallback failed:", error);
       this.revertToNativePlayer();
     }
   },
 
   revertToNativePlayer() {
-    console.log("[VideoPlayer] Reverting to native player");
+    log.debug("[VideoPlayer] Reverting to native player");
 
     this.stopAVPlayerTimeUpdates();
 
@@ -1072,7 +1105,7 @@ const VideoPlayer = {
     this.preferAVPlayer = !this.preferAVPlayer;
     savePreferAVPlayer(this.preferAVPlayer);
 
-    console.log("[VideoPlayer] AVPlayer preference toggled:", this.preferAVPlayer);
+    log.debug("[VideoPlayer] AVPlayer preference toggled:", this.preferAVPlayer);
 
     // Restart player with new preference
     if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
@@ -1086,19 +1119,34 @@ const VideoPlayer = {
 
   startAVPlayerTimeUpdates() {
     this.stopAVPlayerTimeUpdates();
-    this.avPlayerTimeInterval = setInterval(() => {
-      if (this.usingAVPlayer && this.avPlayer) {
-        this.updateTimeUI();
-        if (this.contentType === "vod") {
-          this.reportProgress();
+    this._avPlayerAnimating = true;
+    this._lastTimeUpdate = 0;
+
+    const updateLoop = (timestamp) => {
+      if (!this._avPlayerAnimating) return;
+
+      // Throttle updates to ~4fps (250ms) to match previous behavior
+      // but using rAF for better CPU efficiency when tab is inactive
+      if (timestamp - this._lastTimeUpdate >= 250) {
+        this._lastTimeUpdate = timestamp;
+        if (this.usingAVPlayer && this.avPlayer) {
+          this.updateTimeUI();
+          if (this.contentType === "vod") {
+            this.reportProgress();
+          }
         }
       }
-    }, 250);
+
+      this.avPlayerTimeInterval = requestAnimationFrame(updateLoop);
+    };
+
+    this.avPlayerTimeInterval = requestAnimationFrame(updateLoop);
   },
 
   stopAVPlayerTimeUpdates() {
+    this._avPlayerAnimating = false;
     if (this.avPlayerTimeInterval) {
-      clearInterval(this.avPlayerTimeInterval);
+      cancelAnimationFrame(this.avPlayerTimeInterval);
       this.avPlayerTimeInterval = null;
     }
   },
@@ -1264,14 +1312,14 @@ const VideoPlayer = {
   async togglePlayPause() {
     if (this.usingAVPlayer && this.avPlayer) {
       const isPlaying = this.avPlayer.isPlaying();
-      console.log("[VideoPlayer] togglePlayPause: AVPlayer isPlaying =", isPlaying);
+      log.debug("[VideoPlayer] togglePlayPause: AVPlayer isPlaying =", isPlaying);
       if (isPlaying) {
         await this.avPlayer.pause();
       } else {
         try {
           await this.avPlayer.play();
         } catch (err) {
-          console.error("[VideoPlayer] AVPlayer play() failed:", err);
+          log.error("[VideoPlayer] AVPlayer play() failed:", err);
         }
       }
     } else {

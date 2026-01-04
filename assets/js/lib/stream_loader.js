@@ -3,11 +3,13 @@
  *
  * Handles loading different stream types (HLS, MPEG-TS, native).
  * Extracted from video_player.js for better modularity.
+ * Supports soft reload (reusing player instances) for faster channel switching.
  */
 
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
 import { getStreamingConfig } from "./streaming_config";
+import { streamLogger as log } from "./logger";
 
 /**
  * Stream type detection from URL
@@ -138,7 +140,7 @@ export class StreamLoader {
    * Load HLS stream
    */
   loadHls(url) {
-    console.log("[StreamLoader] Loading HLS:", url);
+    log.debug("Loading HLS:", url);
 
     if (!Hls.isSupported()) {
       throw new Error('HLS not supported');
@@ -166,7 +168,7 @@ export class StreamLoader {
     });
 
     this.hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-      console.log("[StreamLoader] HLS manifest parsed, levels:", data.levels.length);
+      log.debug("HLS manifest parsed, levels:", data.levels.length);
       this.onManifestParsed(data);
     });
 
@@ -184,7 +186,7 @@ export class StreamLoader {
     });
 
     this.hls.on(Hls.Events.ERROR, (_event, data) => {
-      console.error("[StreamLoader] HLS error:", data);
+      log.error("HLS error:", data);
       this.onError('hls', data);
     });
 
@@ -195,7 +197,7 @@ export class StreamLoader {
    * Load MPEG-TS stream
    */
   loadMpegts(url, type = 'mpegts') {
-    console.log("[StreamLoader] Loading MPEG-TS:", url, "type:", type);
+    log.debug("Loading MPEG-TS:", url, "type:", type);
 
     const config = getStreamingConfig(this.streamingMode);
 
@@ -218,16 +220,103 @@ export class StreamLoader {
     });
 
     this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
-      console.log("[StreamLoader] MPEG-TS media info:", info);
+      log.debug("MPEG-TS media info:", info);
       this.onMediaInfo(info);
     });
 
     this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
-      console.error("[StreamLoader] MPEG-TS error:", errorType, errorDetail, errorInfo);
+      log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
       this.onError('mpegts', { errorType, errorDetail, errorInfo });
     });
 
     return this.mpegtsPlayer;
+  }
+
+  /**
+   * Soft reload HLS stream (reuses existing player instance)
+   * Returns true if soft reload was used, false if full reload needed
+   */
+  loadHlsSoft(url) {
+    if (!this.hls) {
+      log.debug("No existing HLS instance, using full load");
+      return this.loadHls(url);
+    }
+
+    log.debug("Soft reloading HLS:", url);
+
+    // Stop current loading
+    this.hls.stopLoad();
+
+    // Load new source
+    this.hls.loadSource(url);
+    this.hls.startLoad();
+
+    return this.hls;
+  }
+
+  /**
+   * Soft reload MPEG-TS stream (reuses existing player instance)
+   * Returns player instance
+   */
+  loadMpegtsSoft(url, type = 'mpegts') {
+    if (!this.mpegtsPlayer) {
+      log.debug("No existing MPEG-TS instance, using full load");
+      return this.loadMpegts(url, type);
+    }
+
+    log.debug("Soft reloading MPEG-TS:", url);
+
+    // Unload current stream but keep player
+    this.mpegtsPlayer.unload();
+
+    // mpegts.js doesn't support changing URL, need to destroy and recreate
+    // But we can skip the attachMediaElement step
+    const config = getStreamingConfig(this.streamingMode);
+    const wasAttached = this.mpegtsPlayer._mediaElement;
+
+    this.mpegtsPlayer.destroy();
+
+    this.mpegtsPlayer = mpegts.createPlayer(
+      {
+        type: type,
+        isLive: this.contentType === "live",
+        url: url,
+      },
+      config.mpegts
+    );
+
+    if (wasAttached) {
+      this.mpegtsPlayer.attachMediaElement(this.video);
+    }
+    this.mpegtsPlayer.load();
+
+    // Re-attach event listeners
+    this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, (info) => {
+      if (info.speed) {
+        this.onStatisticsInfo(info.speed * 1000);
+      }
+    });
+
+    this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
+      log.debug("MPEG-TS media info:", info);
+      this.onMediaInfo(info);
+    });
+
+    this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+      log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
+      this.onError('mpegts', { errorType, errorDetail, errorInfo });
+    });
+
+    return this.mpegtsPlayer;
+  }
+
+  /**
+   * Check if soft reload is available for current stream type
+   */
+  canSoftReload(streamType) {
+    if (streamType === 'hls' && this.hls) return true;
+    if (streamType === 'ts' && this.mpegtsPlayer) return true;
+    return false;
   }
 
   /**
