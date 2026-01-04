@@ -153,34 +153,7 @@ defmodule StreamixWeb.StreamController do
     case receive_headers(mint_conn, request_ref) do
       {:ok, _mint_conn, status, headers, _initial_data, _body_complete?} ->
         Mint.HTTP.close(mint_conn)
-
-        if status in [301, 302, 303, 307, 308] do
-          # Handle redirects
-          case get_header(headers, "location") do
-            nil ->
-              conn
-              |> put_status(:bad_gateway)
-              |> json(%{error: "Redirect without Location header"})
-
-            location ->
-              redirect_url = resolve_url(original_url, location)
-              head_request(conn, redirect_url, redirect_count + 1)
-          end
-        else
-          # Return headers only (no body for HEAD)
-          content_length = get_header(headers, "content-length")
-          content_type = get_header(headers, "content-type")
-
-          conn =
-            conn
-            |> put_cors_headers()
-            |> put_resp_header("accept-ranges", "bytes")
-
-          conn = if content_length, do: put_resp_header(conn, "content-length", content_length), else: conn
-          conn = if content_type, do: put_resp_header(conn, "content-type", content_type), else: conn
-
-          send_resp(conn, normalize_status(status), "")
-        end
+        process_head_response(conn, status, headers, original_url, redirect_count)
 
       {:error, _mint_conn, reason} ->
         Logger.error("Stream proxy HEAD header error: #{inspect(reason)}")
@@ -189,6 +162,34 @@ defmodule StreamixWeb.StreamController do
         |> put_status(:bad_gateway)
         |> json(%{error: "Failed to read stream headers", reason: inspect(reason)})
     end
+  end
+
+  defp process_head_response(conn, status, headers, original_url, redirect_count)
+       when status in [301, 302, 303, 307, 308] do
+    # Handle redirects
+    case get_header(headers, "location") do
+      nil ->
+        conn
+        |> put_status(:bad_gateway)
+        |> json(%{error: "Redirect without Location header"})
+
+      location ->
+        redirect_url = resolve_url(original_url, location)
+        head_request(conn, redirect_url, redirect_count + 1)
+    end
+  end
+
+  defp process_head_response(conn, status, headers, _original_url, _redirect_count) do
+    # Return headers only (no body for HEAD)
+    content_length = get_header(headers, "content-length")
+    content_type = get_header(headers, "content-type")
+
+    conn
+    |> put_cors_headers()
+    |> put_resp_header("accept-ranges", "bytes")
+    |> maybe_put_header("content-length", content_length)
+    |> maybe_put_header("content-type", content_type)
+    |> send_resp(normalize_status(status), "")
   end
 
   defp default_port(:https), do: 443
@@ -251,7 +252,15 @@ defmodule StreamixWeb.StreamController do
           handle_redirect(conn, headers, original_url, redirect_count)
         else
           # Normal response - stream it (pass initial_data that was received with headers)
-          stream_response(conn, mint_conn, request_ref, status, headers, initial_data, body_complete?)
+          stream_response(
+            conn,
+            mint_conn,
+            request_ref,
+            status,
+            headers,
+            initial_data,
+            body_complete?
+          )
         end
 
       {:error, _mint_conn, reason} ->
@@ -298,11 +307,22 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp stream_response(conn, mint_conn, request_ref, status, headers, initial_data, body_complete?) do
+  defp stream_response(
+         conn,
+         mint_conn,
+         request_ref,
+         status,
+         headers,
+         initial_data,
+         body_complete?
+       ) do
     content_length = get_header(headers, "content-length")
     Logger.debug("Upstream headers: #{inspect(headers)}")
     Logger.debug("Upstream Content-Length: #{content_length}")
-    Logger.debug("Initial data received with headers: #{byte_size(initial_data)} bytes, complete: #{body_complete?}")
+
+    Logger.debug(
+      "Initial data received with headers: #{byte_size(initial_data)} bytes, complete: #{body_complete?}"
+    )
 
     # Build the Phoenix response with proper headers
     conn =
@@ -316,19 +336,21 @@ defmodule StreamixWeb.StreamController do
     if content_length do
       # Send response with Content-Length using Cowboy/Bandit adapter directly
       # This allows streaming while preserving Content-Length header
-      stream_with_content_length(conn, mint_conn, request_ref, normalize_status(status), content_length, initial_data, body_complete?)
+      stream_with_content_length(
+        conn,
+        mint_conn,
+        request_ref,
+        normalize_status(status),
+        content_length,
+        initial_data,
+        body_complete?
+      )
     else
       # Fall back to chunked encoding when Content-Length is unknown
       conn = send_chunked(conn, normalize_status(status))
       # Send any initial data that came with headers
-      conn = if byte_size(initial_data) > 0 do
-        case chunk(conn, initial_data) do
-          {:ok, conn} -> conn
-          {:error, _} -> conn
-        end
-      else
-        conn
-      end
+      conn = send_initial_chunk(conn, initial_data)
+
       # If body is already complete, don't try to read more
       if body_complete? do
         Mint.HTTP.close(mint_conn)
@@ -343,26 +365,37 @@ defmodule StreamixWeb.StreamController do
   # This avoids chunked encoding which corrupts byte offsets for video players
   @max_buffer_size 50 * 1024 * 1024
 
-  defp stream_with_content_length(conn, mint_conn, request_ref, status, content_length, initial_data, body_complete?) do
+  defp stream_with_content_length(
+         conn,
+         mint_conn,
+         request_ref,
+         status,
+         content_length,
+         initial_data,
+         body_complete?
+       ) do
     content_length_int = String.to_integer(content_length)
 
     if content_length_int <= @max_buffer_size do
       # Buffer small responses and send with send_resp (no chunked encoding)
       Logger.debug("Buffering response (#{content_length_int} bytes) for non-chunked delivery")
-      buffer_and_send(conn, mint_conn, request_ref, status, content_length_int, initial_data, body_complete?)
+
+      buffer_and_send(
+        conn,
+        mint_conn,
+        request_ref,
+        status,
+        content_length_int,
+        initial_data,
+        body_complete?
+      )
     else
       # For large responses, use chunked encoding as fallback
       Logger.debug("Large response (#{content_length_int} bytes), using chunked encoding")
       conn = send_chunked(conn, status)
       # Send any initial data that came with headers
-      conn = if byte_size(initial_data) > 0 do
-        case chunk(conn, initial_data) do
-          {:ok, conn} -> conn
-          {:error, _} -> conn
-        end
-      else
-        conn
-      end
+      conn = send_initial_chunk(conn, initial_data)
+
       # If body is already complete, don't try to read more
       if body_complete? do
         Mint.HTTP.close(mint_conn)
@@ -373,19 +406,37 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp buffer_and_send(conn, mint_conn, _request_ref, status, _expected_size, initial_data, true = _body_complete?) do
+  defp buffer_and_send(
+         conn,
+         mint_conn,
+         _request_ref,
+         status,
+         _expected_size,
+         initial_data,
+         true = _body_complete?
+       ) do
     # Body is already complete - just send what we have
     Logger.debug("Body already complete, sending #{byte_size(initial_data)} bytes")
     Mint.HTTP.close(mint_conn)
+
     conn
     |> send_resp(status, initial_data)
   end
 
-  defp buffer_and_send(conn, mint_conn, request_ref, status, expected_size, initial_data, false = _body_complete?) do
+  defp buffer_and_send(
+         conn,
+         mint_conn,
+         request_ref,
+         status,
+         expected_size,
+         initial_data,
+         false = _body_complete?
+       ) do
     # Use initial_data as starting accumulator - this data was already received with headers
     case collect_body(mint_conn, request_ref, initial_data, expected_size) do
       {:ok, body} ->
         Logger.debug("Buffered #{byte_size(body)} bytes, sending response")
+
         conn
         |> send_resp(status, body)
 
@@ -489,7 +540,7 @@ defmodule StreamixWeb.StreamController do
       @recv_timeout ->
         # Timeout while waiting for headers, but we might have partial headers with data
         # Return what we have if we got status and headers
-        if status && length(headers) > 0 do
+        if status && headers != [] do
           {:ok, mint_conn, status, headers, initial_data, false}
         else
           {:error, mint_conn, :timeout}
@@ -640,4 +691,18 @@ defmodule StreamixWeb.StreamController do
     |> put_resp_header("cache-control", "no-cache, no-store, must-revalidate")
     |> put_resp_header("x-accel-buffering", "no")
   end
+
+  # Helper to send initial data chunk without deep nesting
+  defp send_initial_chunk(conn, initial_data) when byte_size(initial_data) > 0 do
+    case chunk(conn, initial_data) do
+      {:ok, conn} -> conn
+      {:error, _} -> conn
+    end
+  end
+
+  defp send_initial_chunk(conn, _initial_data), do: conn
+
+  # Helper to add optional header without deep nesting
+  defp maybe_put_header(conn, _name, nil), do: conn
+  defp maybe_put_header(conn, name, value), do: put_resp_header(conn, name, value)
 end

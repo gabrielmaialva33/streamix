@@ -326,7 +326,9 @@ defmodule StreamixWeb.AppComponents do
     # This avoids consuming Elixir VM resources for streaming
     proxy_url =
       if assigns.use_proxy do
-        proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+        proxy_base =
+          Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+
         "#{proxy_base}/proxy?url=#{stream_url}"
       else
         nil
