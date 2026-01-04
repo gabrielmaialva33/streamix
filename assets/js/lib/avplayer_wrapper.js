@@ -16,8 +16,20 @@ import {
 // Cache for tested local WASM availability
 const localWasmAvailable = new Map();
 
+// Cache for pre-loaded WASM modules
+const preloadedWasm = new Map();
+
 // Track active audio detection to prevent AudioContext leaks during rapid zapping
 let activeAudioDetection = null;
+
+// AVMediaType constants from libmedia
+const AVMediaType = {
+  AVMEDIA_TYPE_VIDEO: 0,
+  AVMEDIA_TYPE_AUDIO: 1,
+  AVMEDIA_TYPE_DATA: 2,
+  AVMEDIA_TYPE_SUBTITLE: 3,
+  AVMEDIA_TYPE_ATTACHMENT: 4,
+};
 
 // Codec IDs from @libmedia/avutil
 const AVCodecID = {
@@ -163,6 +175,63 @@ async function checkLocalWasmAvailability(url) {
 }
 
 /**
+ * Pre-load common WASM decoders to reduce startup latency
+ * Call this early (on hover, page load, etc.) to have decoders ready
+ */
+export async function preloadCommonWasm() {
+  const commonCodecs = [
+    // Audio decoders most likely to be needed
+    AVCodecID.AV_CODEC_ID_AAC,
+    AVCodecID.AV_CODEC_ID_AC3,
+    AVCodecID.AV_CODEC_ID_EAC3,
+    AVCodecID.AV_CODEC_ID_DTS,
+    AVCodecID.AV_CODEC_ID_MP3,
+    // Video decoders
+    AVCodecID.AV_CODEC_ID_H264,
+    AVCodecID.AV_CODEC_ID_HEVC,
+  ];
+
+  const preloadPromises = commonCodecs.map(async (codecId) => {
+    const url = getWasmUrl('decoder', codecId);
+    if (!url || preloadedWasm.has(url)) return;
+
+    try {
+      // Use fetch with cache to pre-load the WASM file
+      const response = await fetch(url, {
+        method: 'GET',
+        cache: 'force-cache',
+        priority: 'low'
+      });
+      if (response.ok) {
+        // Compile the WASM module ahead of time for even faster startup
+        const buffer = await response.arrayBuffer();
+        const module = await WebAssembly.compile(buffer);
+        preloadedWasm.set(url, module);
+        console.log(`[AVPlayerWrapper] Pre-loaded WASM: ${url.split('/').pop()}`);
+      }
+    } catch (e) {
+      // Silently fail - pre-loading is optional optimization
+      console.debug(`[AVPlayerWrapper] Pre-load failed for ${url}:`, e.message);
+    }
+  });
+
+  // Also pre-load resampler
+  const resamplerUrl = getWasmUrl('resampler');
+  if (resamplerUrl && !preloadedWasm.has(resamplerUrl)) {
+    preloadPromises.push(
+      fetch(resamplerUrl, { method: 'GET', cache: 'force-cache', priority: 'low' })
+        .then(r => r.ok ? r.arrayBuffer() : null)
+        .then(buf => buf ? WebAssembly.compile(buf) : null)
+        .then(mod => mod && preloadedWasm.set(resamplerUrl, mod))
+        .catch(() => {})
+    );
+  }
+
+  await Promise.allSettled(preloadPromises);
+  console.log(`[AVPlayerWrapper] Pre-loaded ${preloadedWasm.size} WASM modules`);
+}
+
+/**
  * Load a script dynamically
  */
 function loadScript(src, id = null) {
@@ -265,6 +334,10 @@ export class AVPlayerWrapper {
       }
 
       // Step 6: Create the player instance
+      // Audio/Video sync strategy:
+      // - Use WASM for both audio AND video decoding (consistent latency)
+      // - Minimize AudioWorklet buffer to reduce audio latency
+      // - Enable jitter buffer for smoother sync adjustments
       this.player = new window.AVPlayer({
         container: this.container,
         getWasm: (type, codecId) => {
@@ -272,8 +345,15 @@ export class AVPlayerWrapper {
           console.log(`[AVPlayerWrapper] getWasm: type=${type}, codecId=${codecId}, url=${url}`);
           return url;
         },
-        enableHardware: true, // Use hardware acceleration when available
-        enableWebCodecs: true, // Use WebCodecs API when available
+        enableHardware: false, // Disable hardware - use WASM for consistent latency
+        enableWebCodecs: false, // Disable WebCodecs - use WASM for both A/V
+        enableAudioWorklet: true, // Enable AudioWorklet for lower latency audio
+        audioWorkletBufferLength: 4, // Smaller buffer = lower latency (default 10)
+        enableJitterBuffer: true, // Enable jitter buffer for A/V sync
+        jitterBufferMax: 1, // Max 1 second buffer (tighter sync)
+        jitterBufferMin: 0.2, // Min 200ms buffer
+        preLoadTime: 1, // Faster start, less pre-buffering
+        subtitle: true, // Enable subtitle rendering
         loop: false,
       });
 
@@ -601,6 +681,259 @@ export class AVPlayerWrapper {
    */
   isPlaying() {
     return this._playing;
+  }
+
+  /**
+   * Get list of audio tracks from the media
+   * @returns {Array} Array of audio track objects with id, index, label, language
+   */
+  async getAudioTracks() {
+    if (!this.player) return [];
+
+    try {
+      // Method 1: Try AVPlayer's getAudioList (for HLS/DASH)
+      if (typeof this.player.getAudioList === 'function') {
+        const result = await this.player.getAudioList();
+        if (result && result.list && result.list.length > 0) {
+          return result.list.map((track, index) => ({
+            id: track.id ?? index,
+            index,
+            label: track.name || track.title || `Audio ${index + 1}`,
+            language: track.lang || track.language || '',
+            selected: index === result.selectedIndex
+          }));
+        }
+      }
+
+      // Method 2: For MP4/MKV, use selectedAudioStream and formatContext
+      // codecpar is a pointer in libmedia, so we use metadata to identify tracks
+      const formatContext = this.player.getFormatContext?.();
+      const selectedAudio = this.player.selectedAudioStream;
+      const selectedVideo = this.player.selectedVideoStream;
+
+      if (formatContext && formatContext.streams) {
+        const audioTracks = [];
+        const videoStreamIds = new Set();
+
+        // First, identify video streams by selectedVideoStream
+        if (selectedVideo) {
+          videoStreamIds.add(selectedVideo.id);
+        }
+
+        // Identify audio streams - those that aren't video and have audio-like metadata
+        formatContext.streams.forEach((stream) => {
+          // Skip if it's the selected video stream
+          if (videoStreamIds.has(stream.id)) return;
+
+          // Check if this could be an audio stream based on metadata
+          const metadata = stream.metadata || {};
+          const title = metadata.title || '';
+          const bps = parseInt(metadata.BPS) || 0;
+
+          // Audio streams typically have lower BPS than video (< 1Mbps usually)
+          // Video streams typically have BPS > 1Mbps
+          const isLikelyAudio = bps > 0 && bps < 1500000;
+
+          // Also check if it's the selected audio stream
+          const isSelectedAudio = selectedAudio && selectedAudio.id === stream.id;
+
+          if (isSelectedAudio || isLikelyAudio) {
+            audioTracks.push({
+              id: stream.id,
+              index: audioTracks.length,
+              streamIndex: stream.index,
+              label: title || `Audio ${audioTracks.length + 1}`,
+              language: metadata.language || '',
+              selected: isSelectedAudio
+            });
+          }
+        });
+
+        // If we found no tracks but hasAudio is true, add the selected stream
+        if (audioTracks.length === 0 && this.player.hasAudio?.() && selectedAudio) {
+          const metadata = selectedAudio.metadata || {};
+          audioTracks.push({
+            id: selectedAudio.id,
+            index: 0,
+            streamIndex: selectedAudio.index,
+            label: metadata.title || 'Audio 1',
+            language: metadata.language || '',
+            selected: true
+          });
+        }
+
+        return audioTracks;
+      }
+    } catch (e) {
+      console.warn('[AVPlayerWrapper] Error getting audio tracks:', e);
+    }
+
+    return [];
+  }
+
+  /**
+   * Get list of subtitle tracks from the media
+   * @returns {Array} Array of subtitle track objects with id, index, label, language
+   */
+  async getSubtitleTracks() {
+    if (!this.player) return [];
+
+    try {
+      // Method 1: Try AVPlayer's getSubtitleList (for HLS/DASH)
+      if (typeof this.player.getSubtitleList === 'function') {
+        const result = await this.player.getSubtitleList();
+        if (result && result.list && result.list.length > 0) {
+          return result.list.map((track, index) => ({
+            id: track.id ?? index,
+            index,
+            label: track.name || track.title || `Subtitle ${index + 1}`,
+            language: track.lang || track.language || '',
+            selected: index === result.selectedIndex
+          }));
+        }
+      }
+
+      // Method 2: For MP4/MKV, use selectedSubtitleStream and formatContext
+      const formatContext = this.player.getFormatContext?.();
+      const selectedSub = this.player.selectedSubtitleStream;
+      const selectedVideo = this.player.selectedVideoStream;
+      const selectedAudio = this.player.selectedAudioStream;
+
+      if (formatContext && formatContext.streams) {
+        const subtitleTracks = [];
+        const usedStreamIds = new Set();
+
+        // Mark video and audio streams as used
+        if (selectedVideo) usedStreamIds.add(selectedVideo.id);
+        if (selectedAudio) usedStreamIds.add(selectedAudio.id);
+
+        // Remaining streams that aren't video/audio could be subtitles
+        formatContext.streams.forEach((stream) => {
+          // Skip video and audio streams
+          if (usedStreamIds.has(stream.id)) return;
+
+          const metadata = stream.metadata || {};
+          const bps = parseInt(metadata.BPS) || 0;
+
+          // Subtitle streams typically have very low or zero BPS
+          // They're text-based so they're much smaller than audio
+          const isLikelySubtitle = bps === 0 || bps < 50000;
+          const isSelectedSub = selectedSub && selectedSub.id === stream.id;
+
+          if (isSelectedSub || isLikelySubtitle) {
+            subtitleTracks.push({
+              id: stream.id,
+              index: subtitleTracks.length,
+              streamIndex: stream.index,
+              label: metadata.title || `Subtitle ${subtitleTracks.length + 1}`,
+              language: metadata.language || '',
+              selected: isSelectedSub
+            });
+          }
+        });
+
+        // If hasSubtitle but we found nothing, add selected subtitle
+        if (subtitleTracks.length === 0 && this.player.hasSubtitle?.() && selectedSub) {
+          const metadata = selectedSub.metadata || {};
+          subtitleTracks.push({
+            id: selectedSub.id,
+            index: 0,
+            streamIndex: selectedSub.index,
+            label: metadata.title || 'Subtitle 1',
+            language: metadata.language || '',
+            selected: true
+          });
+        }
+
+        return subtitleTracks;
+      }
+    } catch (e) {
+      console.warn('[AVPlayerWrapper] Error getting subtitle tracks:', e);
+    }
+
+    return [];
+  }
+
+  /**
+   * Select an audio track by ID
+   * @param {number} trackId - The track ID to select
+   */
+  async selectAudioTrack(trackId) {
+    if (!this.player) return;
+
+    try {
+      // Save current position before switching
+      const currentTime = this.getCurrentTime();
+      const wasPlaying = this._playing;
+
+      console.log(`[AVPlayerWrapper] Selecting audio track: ${trackId}, currentTime: ${currentTime}`);
+
+      // Switch the audio track
+      await this.player.selectAudio(trackId);
+      console.log(`[AVPlayerWrapper] Audio track ${trackId} selected`);
+
+      // Force resync by seeking to current position
+      // This ensures audio is at the same position as video
+      if (currentTime > 0) {
+        console.log(`[AVPlayerWrapper] Resyncing audio to position: ${currentTime}`);
+        await this.seek(currentTime);
+
+        // Resume playback if it was playing
+        if (wasPlaying) {
+          await this.play();
+        }
+      }
+
+      console.log(`[AVPlayerWrapper] Audio track switch complete with resync`);
+    } catch (e) {
+      console.error('[AVPlayerWrapper] Error selecting audio track:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Select a subtitle track by ID (-1 to disable)
+   * @param {number} trackId - The track ID to select, or -1 to disable subtitles
+   */
+  async selectSubtitleTrack(trackId) {
+    if (!this.player) return;
+
+    try {
+      console.log(`[AVPlayerWrapper] Selecting subtitle track: ${trackId}`);
+      if (trackId === -1) {
+        // Disable subtitles - libmedia may have a specific method for this
+        // For now, we'll try selectSubtitle with -1 or a special value
+        if (typeof this.player.hideSubtitle === 'function') {
+          await this.player.hideSubtitle();
+        } else {
+          await this.player.selectSubtitle(-1);
+        }
+      } else {
+        await this.player.selectSubtitle(trackId);
+      }
+      console.log(`[AVPlayerWrapper] Subtitle track ${trackId} selected`);
+    } catch (e) {
+      console.error('[AVPlayerWrapper] Error selecting subtitle track:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Get human-readable codec name from codec ID
+   * @private
+   */
+  _getCodecName(codecId) {
+    const names = {
+      [AVCodecID.AV_CODEC_ID_AAC]: 'AAC',
+      [AVCodecID.AV_CODEC_ID_MP3]: 'MP3',
+      [AVCodecID.AV_CODEC_ID_AC3]: 'AC3',
+      [AVCodecID.AV_CODEC_ID_EAC3]: 'E-AC3',
+      [AVCodecID.AV_CODEC_ID_DTS]: 'DTS',
+      [AVCodecID.AV_CODEC_ID_FLAC]: 'FLAC',
+      [AVCodecID.AV_CODEC_ID_OPUS]: 'Opus',
+      [AVCodecID.AV_CODEC_ID_VORBIS]: 'Vorbis',
+    };
+    return names[codecId] || `Codec ${codecId}`;
   }
 
   /**
