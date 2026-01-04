@@ -10,7 +10,7 @@
 const WASM_CDN_BASE = 'https://cdn.jsdelivr.net/gh/zhaohappy/libmedia@latest/dist';
 
 // Local paths for bundled assets
-const LOCAL_AVPLAYER_PATH = '/assets/js/avplayer';
+const LOCAL_AVPLAYER_PATH = '/avplayer';
 
 // Codec IDs from @libmedia/avutil
 const AVCodecID = {
