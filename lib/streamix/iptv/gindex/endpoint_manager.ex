@@ -223,8 +223,6 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
 
         :ets.insert(@table_name, {name, new_state})
 
-        Logger.warning("[GIndex EndpointManager] #{name}: error_count=#{new_error_count}, state=#{new_state.circuit_state}")
-
         if endpoint_state.circuit_state != @state_open and new_state.circuit_state == @state_open do
           Logger.warning(
             "[GIndex EndpointManager] Circuit OPEN for #{name} after #{new_error_count} errors - " <>
@@ -233,8 +231,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
         end
 
       nil ->
-        Logger.warning("[GIndex EndpointManager] URL not found in endpoints: #{url}")
-        Logger.warning("[GIndex EndpointManager] Known endpoints: #{inspect(:ets.tab2list(@table_name) |> Enum.map(fn {n, s} -> {n, s.url} end))}")
+        :ok
     end
 
     {:noreply, state}
