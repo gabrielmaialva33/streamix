@@ -343,7 +343,9 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
 
   defp get_first_available_endpoint do
     case :ets.first(@table_name) do
-      :"$end_of_table" -> {:error, :no_endpoints}
+      :"$end_of_table" ->
+        {:error, :no_endpoints}
+
       name ->
         [{^name, state}] = :ets.lookup(@table_name, name)
         {:ok, state.url}
