@@ -40,7 +40,9 @@ const Hooks = {
 }
 
 const liveSocket = new LiveSocket("/live", Socket, {
-  longPollFallbackMs: 2500,
+  // Increase timeout to allow WebSocket through Cloudflare Tunnel
+  // Default 2500ms is too short for tunneled connections
+  longPollFallbackMs: 10000,
   params: {_csrf_token: csrfToken},
   hooks: Hooks,
 })
