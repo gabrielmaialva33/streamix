@@ -28,7 +28,7 @@ defmodule StreamixWeb.Plugs.CORS do
           )
           |> put_resp_header(
             "access-control-allow-headers",
-            "content-type, authorization, x-requested-with, range, accept-encoding"
+            "content-type, authorization, x-api-key, x-requested-with, range, accept-encoding"
           )
           |> put_resp_header("access-control-allow-credentials", "true")
           |> put_resp_header("access-control-max-age", "86400")
