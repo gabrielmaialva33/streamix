@@ -5,6 +5,8 @@
  * HTML structure is in HEEX templates - this only manages state/visibility.
  */
 
+import { createFocusTrap } from "./focus_trap";
+
 /**
  * PlayerUI class - manages UI state updates
  */
@@ -12,6 +14,7 @@ export class PlayerUI {
   constructor(container) {
     this.container = container;
     this.video = container.querySelector("video");
+    this.focusTraps = new Map();
 
     // Cache DOM elements
     this.elements = {
@@ -60,6 +63,65 @@ export class PlayerUI {
     this.controlsVisible = true;
     this.controlsTimeout = null;
     this.isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+
+    // Setup menu focus traps
+    this.setupMenuFocusTraps();
+  }
+
+  // ============================================
+  // Menu Focus Traps (Accessibility)
+  // ============================================
+
+  setupMenuFocusTraps() {
+    // Speed menu
+    const speedMenu = this.container.querySelector("#speed-menu");
+    const speedBtn = this.container.querySelector("#speed-btn");
+    if (speedMenu && speedBtn) {
+      this.setupMenuFocusTrap(speedMenu, speedBtn, "speed");
+    }
+
+    // Settings menu
+    const settingsMenu = this.container.querySelector("#settings-menu");
+    const settingsBtn = this.container.querySelector("#settings-btn");
+    if (settingsMenu && settingsBtn) {
+      this.setupMenuFocusTrap(settingsMenu, settingsBtn, "settings");
+    }
+  }
+
+  setupMenuFocusTrap(menu, triggerBtn, name) {
+    const focusTrap = createFocusTrap(menu, {
+      returnFocusTo: triggerBtn,
+      onEscape: () => {
+        menu.classList.add("hidden");
+        triggerBtn.setAttribute("aria-expanded", "false");
+      },
+    });
+
+    this.focusTraps.set(name, focusTrap);
+
+    // Use MutationObserver to detect when menu visibility changes
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === "class") {
+          const isHidden = menu.classList.contains("hidden");
+          if (isHidden) {
+            focusTrap.deactivate();
+            triggerBtn.setAttribute("aria-expanded", "false");
+          } else {
+            focusTrap.activate();
+            triggerBtn.setAttribute("aria-expanded", "true");
+          }
+        }
+      }
+    });
+
+    observer.observe(menu, { attributes: true, attributeFilter: ["class"] });
+
+    // Store observer for cleanup
+    if (!this._menuObservers) {
+      this._menuObservers = [];
+    }
+    this._menuObservers.push(observer);
   }
 
   // ============================================
@@ -228,11 +290,13 @@ export class PlayerUI {
     const container = this.elements.qualityOptions;
     if (!container || qualities.length === 0) return;
 
-    container.innerHTML = this.renderOptionList(
+    // Clear existing content
+    container.innerHTML = '';
+    container.appendChild(this.renderOptionList(
       [{ index: -1, label: "Automatico" }, ...qualities],
       currentLevel,
       'quality-option'
-    );
+    ));
 
     container.querySelectorAll(".quality-option").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -248,11 +312,16 @@ export class PlayerUI {
     if (!container) return;
 
     if (tracks.length === 0) {
-      container.innerHTML = `<div class="px-4 py-2 text-sm text-white/50">Padrao</div>`;
+      container.innerHTML = '';
+      const defaultDiv = document.createElement('div');
+      defaultDiv.className = 'px-4 py-2 text-sm text-white/50';
+      defaultDiv.textContent = 'Padrao';
+      container.appendChild(defaultDiv);
       return;
     }
 
-    container.innerHTML = this.renderOptionList(tracks, currentTrack, 'audio-option', 'track');
+    container.innerHTML = '';
+    container.appendChild(this.renderOptionList(tracks, currentTrack, 'audio-option', 'track'));
 
     container.querySelectorAll(".audio-option").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -269,7 +338,8 @@ export class PlayerUI {
 
     const allTracks = [{ index: -1, label: "Desativadas" }, ...tracks];
 
-    container.innerHTML = this.renderOptionList(allTracks, currentTrack, 'subtitle-option', 'track');
+    container.innerHTML = '';
+    container.appendChild(this.renderOptionList(allTracks, currentTrack, 'subtitle-option', 'track'));
 
     container.querySelectorAll(".subtitle-option").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -281,24 +351,47 @@ export class PlayerUI {
   }
 
   renderOptionList(items, currentValue, className, dataAttr = 'level') {
-    return items.map((item) => {
+    // Create a document fragment to build elements safely (avoid XSS from labels)
+    const fragment = document.createDocumentFragment();
+
+    items.forEach((item) => {
       const value = item.index ?? item;
       const label = item.label ?? item;
       const isSelected = currentValue === value;
 
-      return `
-        <button type="button" data-${dataAttr}="${value}"
-          role="menuitemradio"
-          aria-checked="${isSelected}"
-          aria-label="${label}"
-          class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors ${className}">
-          <span>${label}</span>
-          <svg class="size-4 ${isSelected ? "" : "invisible"}" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-          </svg>
-        </button>
-      `;
-    }).join("");
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset[dataAttr] = value;
+      button.setAttribute('role', 'menuitemradio');
+      button.setAttribute('aria-checked', isSelected.toString());
+      button.setAttribute('aria-label', label);
+      button.className = `flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors ${className}`;
+
+      // Use textContent for label to prevent XSS
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = label;
+      button.appendChild(labelSpan);
+
+      // Checkmark icon
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', `size-4 ${isSelected ? '' : 'invisible'}`);
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('stroke', 'currentColor');
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('d', 'M5 13l4 4L19 7');
+      svg.appendChild(path);
+      button.appendChild(svg);
+
+      fragment.appendChild(button);
+    });
+
+    return fragment;
   }
 
   updateOptionCheckmarks(container, selector, selectedValue, dataAttr = 'level') {
@@ -454,6 +547,20 @@ export class PlayerUI {
 
   destroy() {
     this.clearHideControlsTimeout();
+
+    // Cleanup focus traps
+    for (const focusTrap of this.focusTraps.values()) {
+      focusTrap.deactivate();
+    }
+    this.focusTraps.clear();
+
+    // Cleanup mutation observers
+    if (this._menuObservers) {
+      for (const observer of this._menuObservers) {
+        observer.disconnect();
+      }
+      this._menuObservers = [];
+    }
   }
 }
 
