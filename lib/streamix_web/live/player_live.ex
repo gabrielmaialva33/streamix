@@ -166,6 +166,8 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("duration_available", _params, socket), do: {:noreply, socket}
   def handle_event("mute_toggled", _params, socket), do: {:noreply, socket}
   def handle_event("volume_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("audio_track_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("subtitle_track_changed", _params, socket), do: {:noreply, socket}
 
   # ============================================
   # Render

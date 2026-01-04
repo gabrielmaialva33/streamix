@@ -26,6 +26,7 @@ import { linearToPerceived, perceivedToLinear } from "../lib/volume_utils";
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
 let detectAudioIssue = null;
+let preloadCommonWasm = null;
 
 async function loadAVPlayer() {
   if (!AVPlayerWrapper) {
@@ -33,34 +34,43 @@ async function loadAVPlayer() {
     const module = await import("../lib/avplayer_wrapper");
     AVPlayerWrapper = module.AVPlayerWrapper;
     detectAudioIssue = module.detectAudioIssue;
+    preloadCommonWasm = module.preloadCommonWasm;
     log.debug("AVPlayer module loaded");
   }
-  return { AVPlayerWrapper, detectAudioIssue };
+  return { AVPlayerWrapper, detectAudioIssue, preloadCommonWasm };
 }
 
-// Preload WASM files when user shows intent
+// Advanced WASM pre-loading with WebAssembly.compile for faster startup
 let wasmPreloaded = false;
-function preloadAVPlayerWasm() {
+async function preloadAVPlayerWasm() {
   if (wasmPreloaded) return;
   wasmPreloaded = true;
 
-  const wasmFiles = [
-    '/avplayer/decode/h264-atomic.wasm',
-    '/avplayer/decode/hevc-atomic.wasm',
-    '/avplayer/decode/ac3-atomic.wasm',
-    '/avplayer/decode/aac-atomic.wasm',
-  ];
-
-  wasmFiles.forEach(url => {
-    const link = document.createElement('link');
-    link.rel = 'prefetch';
-    link.href = url;
-    link.as = 'fetch';
-    link.crossOrigin = 'anonymous';
-    document.head.appendChild(link);
-  });
-
-  log.debug("WASM files prefetch initiated");
+  try {
+    // Load module and use advanced pre-loading with WebAssembly.compile
+    const { preloadCommonWasm } = await loadAVPlayer();
+    if (preloadCommonWasm) {
+      log.debug("Starting advanced WASM pre-compilation...");
+      await preloadCommonWasm();
+      log.debug("WASM pre-compilation complete");
+    }
+  } catch (e) {
+    log.debug("WASM pre-load failed (non-critical):", e.message);
+    // Fallback to simple prefetch
+    const wasmFiles = [
+      '/avplayer/decode/h264-atomic.wasm',
+      '/avplayer/decode/ac3-atomic.wasm',
+      '/avplayer/decode/aac-atomic.wasm',
+    ];
+    wasmFiles.forEach(url => {
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.href = url;
+      link.as = 'fetch';
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+    });
+  }
 }
 
 /**
@@ -976,9 +986,21 @@ const VideoPlayer = {
       }
 
       // Check for audio issues (MP4/MKV files may have AC3/DTS audio not supported by browsers)
-      // Run audio detection for all VOD content, not just gindex
-      if (this.contentType === "vod" && (this.currentStreamType === "mp4" || this.currentStreamType === "mkv")) {
+      // Run audio detection for all VOD content, including GIndex (which often has unknown stream type)
+      const needsAudioCheck = this.contentType === "vod" && (
+        this.currentStreamType === "mp4" ||
+        this.currentStreamType === "mkv" ||
+        this.sourceType === "gindex" ||  // GIndex URLs don't have extensions
+        this.currentStreamType === "unknown"  // Unknown types might have unsupported audio
+      );
+      if (needsAudioCheck) {
         this.checkAudioAndFallback();
+      }
+
+      // For GIndex content, probe metadata in background to detect audio/subtitle tracks
+      // This allows native player to start fast while we detect available tracks
+      if (this.sourceType === "gindex") {
+        this.probeMetadataInBackground();
       }
     };
 
@@ -1001,8 +1023,14 @@ const VideoPlayer = {
             break;
           case MediaError.MEDIA_ERR_DECODE:
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            // Try AVPlayer for any VOD content with mp4/mkv that may have unsupported codecs
-            if (this.contentType === "vod" && (this.currentStreamType === "mp4" || this.currentStreamType === "mkv") && !this.avPlayerAttempted) {
+            // Try AVPlayer for any VOD content that may have unsupported codecs
+            const canTryAVPlayer = this.contentType === "vod" && !this.avPlayerAttempted && (
+              this.currentStreamType === "mp4" ||
+              this.currentStreamType === "mkv" ||
+              this.sourceType === "gindex" ||
+              this.currentStreamType === "unknown"
+            );
+            if (canTryAVPlayer) {
               log.debug("[VideoPlayer] Format not supported, trying AVPlayer fallback");
               this.tryAVPlayerFallback();
               return;
@@ -1096,6 +1124,12 @@ const VideoPlayer = {
   },
 
   async tryAVPlayerFallback() {
+    // Prevent duplicate switch attempts
+    if (this._switchingToAVPlayer) {
+      log.debug("[VideoPlayer] Already switching to AVPlayer, skipping fallback");
+      return;
+    }
+
     // Circuit breaker check
     if (!this.canAttemptFallback()) {
       log.debug("[VideoPlayer] Circuit breaker prevented fallback attempt");
@@ -1107,6 +1141,8 @@ const VideoPlayer = {
       log.debug("[VideoPlayer] AVPlayer fallback already attempted, skipping");
       return;
     }
+
+    this._switchingToAVPlayer = true;
 
     this.avPlayerAttempted = true;
     this.fallbackAttempts++;
@@ -1189,9 +1225,500 @@ const VideoPlayer = {
       this.usingAVPlayer = true;
       log.debug("[VideoPlayer] Seamless AVPlayer switch complete");
 
+      // Detect available audio/subtitle tracks from AVPlayer
+      this.detectAVPlayerTracks();
+
     } catch (error) {
       log.error("[VideoPlayer] AVPlayer fallback failed:", error);
       this.revertToNativePlayer();
+    } finally {
+      this._switchingToAVPlayer = false;
+    }
+  },
+
+  /**
+   * Detect and expose audio/subtitle tracks from AVPlayer
+   */
+  async detectAVPlayerTracks() {
+    if (!this.avPlayer) return;
+
+    try {
+      // Small delay to let AVPlayer fully initialize streams
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Get audio tracks
+      const audioTracks = await this.avPlayer.getAudioTracks();
+      if (audioTracks && audioTracks.length > 0) {
+        this.audioTracks = audioTracks.map((track, index) => ({
+          index,
+          id: track.id,
+          label: this.formatTrackLabel(track),
+          language: track.language || '',
+          codec: track.codec || '',
+        }));
+
+        const currentTrack = audioTracks.findIndex(t => t.selected) || 0;
+
+        this.playerUI.updateAudioOptions(
+          this.audioTracks,
+          currentTrack,
+          (track) => this.setAVPlayerAudioTrack(track)
+        );
+
+        // Apply saved preference
+        if (this._preferredAudioTrack !== null && this._preferredAudioTrack < this.audioTracks.length) {
+          this.setAVPlayerAudioTrack(this._preferredAudioTrack);
+        }
+
+        this.pushEvent("audio_tracks_available", {
+          tracks: this.audioTracks,
+          current: currentTrack,
+        });
+
+        log.debug("[VideoPlayer] AVPlayer audio tracks detected:", this.audioTracks);
+      }
+
+      // Get subtitle tracks
+      const subtitleTracks = await this.avPlayer.getSubtitleTracks();
+      if (subtitleTracks && subtitleTracks.length > 0) {
+        this.subtitleTracks = subtitleTracks.map((track, index) => ({
+          index,
+          id: track.id,
+          label: this.formatTrackLabel(track),
+          language: track.language || '',
+        }));
+
+        const currentTrack = subtitleTracks.findIndex(t => t.selected);
+
+        this.playerUI.updateSubtitleOptions(
+          this.subtitleTracks,
+          currentTrack,
+          (track) => this.setAVPlayerSubtitleTrack(track)
+        );
+
+        // Apply saved preference
+        if (this._preferredSubtitleTrack !== null && this._preferredSubtitleTrack < this.subtitleTracks.length) {
+          this.setAVPlayerSubtitleTrack(this._preferredSubtitleTrack);
+        }
+
+        this.pushEvent("subtitle_tracks_available", {
+          tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
+          current: currentTrack,
+        });
+
+        log.debug("[VideoPlayer] AVPlayer subtitle tracks detected:", this.subtitleTracks);
+      }
+    } catch (e) {
+      log.warn("[VideoPlayer] Failed to detect AVPlayer tracks:", e);
+    }
+  },
+
+  /**
+   * Format track label from track metadata
+   */
+  formatTrackLabel(track) {
+    const parts = [];
+    if (track.label && track.label !== `Audio ${track.index + 1}` && track.label !== `Subtitle ${track.index + 1}`) {
+      parts.push(track.label);
+    }
+    if (track.language) {
+      const langName = this.getLanguageName(track.language);
+      if (!parts.includes(langName)) {
+        parts.push(langName);
+      }
+    }
+    if (track.codec) {
+      parts.push(`(${track.codec})`);
+    }
+    if (track.channels && track.channels > 0) {
+      parts.push(`${track.channels}ch`);
+    }
+    return parts.length > 0 ? parts.join(' ') : `Track ${track.index + 1}`;
+  },
+
+  /**
+   * Get human readable language name
+   */
+  getLanguageName(code) {
+    const languages = {
+      'por': 'Português',
+      'pt': 'Português',
+      'pt-BR': 'Português (BR)',
+      'eng': 'English',
+      'en': 'English',
+      'spa': 'Español',
+      'es': 'Español',
+      'jpn': 'Japanese',
+      'ja': 'Japanese',
+      'und': 'Indefinido',
+    };
+    return languages[code] || code;
+  },
+
+  /**
+   * Set audio track for AVPlayer
+   */
+  async setAVPlayerAudioTrack(trackIndex) {
+    if (!this.avPlayer || !this.audioTracks[trackIndex]) return;
+
+    try {
+      const track = this.audioTracks[trackIndex];
+      await this.avPlayer.selectAudioTrack(track.id);
+      this.selectedAudioTrack = trackIndex;
+      saveAudioTrack(trackIndex, this.contentId);
+
+      this.pushEvent("audio_track_changed", {
+        track: trackIndex,
+        label: track.label,
+      });
+      log.debug("[VideoPlayer] AVPlayer audio track changed to:", track.label);
+    } catch (e) {
+      log.error("[VideoPlayer] Failed to change AVPlayer audio track:", e);
+    }
+  },
+
+  /**
+   * Set subtitle track for AVPlayer (-1 to disable)
+   */
+  async setAVPlayerSubtitleTrack(trackIndex) {
+    if (!this.avPlayer) return;
+
+    try {
+      if (trackIndex === -1) {
+        await this.avPlayer.selectSubtitleTrack(-1);
+        this.selectedSubtitleTrack = -1;
+        saveSubtitleTrack(-1, this.contentId);
+        this.pushEvent("subtitle_track_changed", { track: -1, label: "Desativado" });
+      } else if (this.subtitleTracks[trackIndex]) {
+        const track = this.subtitleTracks[trackIndex];
+        await this.avPlayer.selectSubtitleTrack(track.id);
+        this.selectedSubtitleTrack = trackIndex;
+        saveSubtitleTrack(trackIndex, this.contentId);
+        this.pushEvent("subtitle_track_changed", {
+          track: trackIndex,
+          label: track.label,
+        });
+        log.debug("[VideoPlayer] AVPlayer subtitle track changed to:", track.label);
+      }
+    } catch (e) {
+      log.error("[VideoPlayer] Failed to change AVPlayer subtitle track:", e);
+    }
+  },
+
+  /**
+   * Probe metadata in background using AVPlayer
+   * This detects audio/subtitle tracks without switching the active player
+   * Netflix-style progressive enhancement: fast start with native, enhance UI when tracks detected
+   */
+  async probeMetadataInBackground() {
+    // Skip if we're already using AVPlayer or already probed
+    if (this.usingAVPlayer || this._metadataProbed) return;
+    this._metadataProbed = true;
+
+    log.debug("[VideoPlayer] Starting background metadata probe...");
+
+    try {
+      // Get AVPlayer wrapper module
+      const { AVPlayerWrapper } = await import("../lib/avplayer_wrapper.js");
+
+      // Create a probe-only AVPlayer (won't actually play)
+      const probeContainer = document.createElement("div");
+      probeContainer.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;";
+      this.el.appendChild(probeContainer);
+
+      const probePlayer = new AVPlayerWrapper({
+        container: probeContainer,
+        onReady: () => {},
+        onError: (error) => {
+          log.warn("[VideoPlayer] Probe failed:", error);
+        },
+      });
+
+      // Initialize the probe player
+      await probePlayer.init();
+
+      // Get the proxy URL for GIndex (use proxyUrl if available, otherwise direct URL)
+      const probeUrl = this.proxyUrl
+        ? this.toAbsoluteUrl(this.proxyUrl)
+        : this.streamUrl;
+      // For GIndex content, default to mkv since URL parsing is unreliable
+      const ext = this.sourceType === 'gindex' ? 'mkv' : (this.streamUrl.split('.').pop()?.split('?')[0] || 'mkv');
+
+      log.debug("[VideoPlayer] Probe loading:", probeUrl);
+      await probePlayer.load(probeUrl, { ext });
+
+      // Give it a moment to parse the container
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Get audio tracks
+      const audioTracks = await probePlayer.getAudioTracks();
+      let preferredAudioTrack = 0;
+
+      if (audioTracks && audioTracks.length > 1) {
+        this._probedAudioTracks = audioTracks.map((track, index) => ({
+          index,
+          id: track.id,
+          label: this.formatTrackLabel(track),
+          language: track.language || '',
+        }));
+
+        log.debug("[VideoPlayer] Probed audio tracks:", this._probedAudioTracks);
+
+        // Find Portuguese audio track (prefer pt-BR over others)
+        preferredAudioTrack = this.findPortugueseTrack(this._probedAudioTracks);
+
+        // Update UI with detected tracks
+        // Use special handlers that will switch to AVPlayer when selected
+        this.playerUI.updateAudioOptions(
+          this._probedAudioTracks,
+          preferredAudioTrack,
+          (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex)
+        );
+
+        this.pushEvent("audio_tracks_available", {
+          tracks: this._probedAudioTracks,
+          current: preferredAudioTrack,
+        });
+      }
+
+      // Get subtitle tracks
+      const subtitleTracks = await probePlayer.getSubtitleTracks();
+      if (subtitleTracks && subtitleTracks.length > 0) {
+        this._probedSubtitleTracks = subtitleTracks.map((track, index) => ({
+          index,
+          id: track.id,
+          label: this.formatTrackLabel(track),
+          language: track.language || '',
+        }));
+
+        log.debug("[VideoPlayer] Probed subtitle tracks:", this._probedSubtitleTracks);
+
+        // Update UI with detected tracks
+        this.playerUI.updateSubtitleOptions(
+          this._probedSubtitleTracks,
+          -1,
+          (trackIndex) => this.handleProbedSubtitleTrackSelect(trackIndex)
+        );
+
+        this.pushEvent("subtitle_tracks_available", {
+          tracks: [{ index: -1, label: "Desativado" }, ...this._probedSubtitleTracks],
+          current: -1,
+        });
+      }
+
+      // Clean up probe player
+      probePlayer.destroy();
+      probeContainer.remove();
+
+      log.debug("[VideoPlayer] Background metadata probe complete");
+
+      // Auto-switch to AVPlayer when multiple audio tracks detected (Dual Audio)
+      // Native player can't guarantee which track plays, so we switch to control audio selection
+      if (this._probedAudioTracks && this._probedAudioTracks.length > 1) {
+        log.debug("[VideoPlayer] Multiple audio tracks detected, auto-switching to AVPlayer with Portuguese track", preferredAudioTrack);
+        // Short delay to let native player stabilize before switch
+        await new Promise(resolve => setTimeout(resolve, 500));
+        this.handleProbedAudioTrackSelect(preferredAudioTrack);
+      }
+    } catch (e) {
+      log.warn("[VideoPlayer] Failed to start metadata probe:", e);
+    }
+  },
+
+  /**
+   * Find Portuguese audio track (prefers pt-BR)
+   * Returns the track index or 0 if not found
+   */
+  findPortugueseTrack(tracks) {
+    if (!tracks || tracks.length <= 1) return 0;
+
+    // Priority order for Portuguese variants
+    const ptPatterns = [
+      /\bpt[-_]?br\b/i,      // pt-br, pt_br, ptbr
+      /\bportugu[eê]s?\b/i,  // portugues, português
+      /\bbrazil/i,           // brazilian
+      /\bpt\b/i,             // pt (generic portuguese)
+      /\bpor\b/i,            // por (ISO 639-2)
+    ];
+
+    for (const pattern of ptPatterns) {
+      const found = tracks.find(t =>
+        pattern.test(t.language) || pattern.test(t.label)
+      );
+      if (found) {
+        log.debug("[VideoPlayer] Found Portuguese track:", found.label, "at index", found.index);
+        return found.index;
+      }
+    }
+
+    return 0; // Default to first track
+  },
+
+  /**
+   * Handle audio track selection from probed tracks (switches to AVPlayer)
+   */
+  async handleProbedAudioTrackSelect(trackIndex) {
+    // Prevent duplicate switch attempts
+    if (this._switchingToAVPlayer) {
+      log.debug("[VideoPlayer] Already switching to AVPlayer, ignoring...");
+      return;
+    }
+
+    // If already using AVPlayer, just change the track
+    if (this.usingAVPlayer && this.avPlayer) {
+      this.audioTracks = this._probedAudioTracks;
+      await this.setAVPlayerAudioTrack(trackIndex);
+      return;
+    }
+
+    log.debug("[VideoPlayer] User selected audio track, switching to AVPlayer...");
+
+    // Save current position before switching
+    const currentTime = this.video.currentTime;
+    const wasPlaying = !this.video.paused;
+
+    // Switch to AVPlayer with selected track
+    await this.switchToAVPlayerWithTrack("audio", trackIndex, currentTime, wasPlaying);
+  },
+
+  /**
+   * Handle subtitle track selection from probed tracks (switches to AVPlayer)
+   */
+  async handleProbedSubtitleTrackSelect(trackIndex) {
+    // Prevent duplicate switch attempts
+    if (this._switchingToAVPlayer) {
+      log.debug("[VideoPlayer] Already switching to AVPlayer, ignoring...");
+      return;
+    }
+
+    // If already using AVPlayer, just change the track
+    if (this.usingAVPlayer && this.avPlayer) {
+      this.subtitleTracks = this._probedSubtitleTracks || [];
+      await this.setAVPlayerSubtitleTrack(trackIndex);
+      return;
+    }
+
+    if (trackIndex === -1) {
+      // Subtitles disabled, no need to switch if not using AVPlayer
+      log.debug("[VideoPlayer] Subtitles disabled, staying on native");
+      return;
+    }
+
+    log.debug("[VideoPlayer] User selected subtitle track, switching to AVPlayer...");
+
+    // Save current position before switching
+    const currentTime = this.video.currentTime;
+    const wasPlaying = !this.video.paused;
+
+    // Switch to AVPlayer
+    await this.switchToAVPlayerWithTrack("subtitle", trackIndex, currentTime, wasPlaying);
+  },
+
+  /**
+   * Switch from native to AVPlayer and apply selected track
+   */
+  async switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay) {
+    // Prevent duplicate switch attempts
+    if (this._switchingToAVPlayer) {
+      log.debug("[VideoPlayer] Already switching to AVPlayer, ignoring duplicate call");
+      return;
+    }
+    this._switchingToAVPlayer = true;
+
+    this.playerUI.showLoading();
+
+    try {
+      // Stop native player
+      this.video.pause();
+      this.video.src = "";
+
+      // Initialize AVPlayer if not already
+      if (!this.avPlayer) {
+        const { AVPlayerWrapper } = await import("../lib/avplayer_wrapper.js");
+
+        // Create container if it doesn't exist
+        let avContainer = this.el.querySelector("#avplayer-container");
+        if (!avContainer) {
+          avContainer = document.createElement("div");
+          avContainer.id = "avplayer-container";
+          avContainer.className = "absolute inset-0 z-0";
+          this.el.appendChild(avContainer);
+        }
+
+        this.avPlayer = new AVPlayerWrapper({
+          container: avContainer,
+          onReady: () => log.debug("[VideoPlayer] AVPlayer ready for track switch"),
+          onError: (e) => log.error("[VideoPlayer] AVPlayer error:", e),
+          onPlay: () => {
+            this.playerUI.updatePlayPauseUI(false); // false = not paused
+            this.playerUI.hideLoading();
+            this.startAVPlayerTimeUpdates();
+          },
+          onPause: () => this.playerUI.updatePlayPauseUI(true), // true = paused
+          onTimeUpdate: () => this.updateTimeUI(),
+          onEnded: () => {
+            this.playerUI.updatePlayPauseUI(true);
+            this.stopAVPlayerTimeUpdates();
+          },
+        });
+
+        await this.avPlayer.init();
+      }
+
+      // Load the stream (use proxyUrl if available, otherwise direct URL)
+      const proxyUrl = this.proxyUrl
+        ? this.toAbsoluteUrl(this.proxyUrl)
+        : this.streamUrl;
+      // For GIndex content, default to mkv since URL parsing is unreliable
+      const ext = this.sourceType === 'gindex' ? 'mkv' : (this.streamUrl.split('.').pop()?.split('?')[0] || 'mkv');
+      await this.avPlayer.load(proxyUrl, { ext });
+
+      // Apply volume settings
+      this.avPlayer.setVolume(this.avPlayerVolume);
+      if (this.avPlayerMuted) {
+        this.avPlayer.mute();
+      }
+
+      // Mark as using AVPlayer
+      this.usingAVPlayer = true;
+      this.video.classList.add("hidden");
+      const avContainer = this.el.querySelector("#avplayer-container");
+      if (avContainer) avContainer.classList.remove("hidden");
+
+      // Seek to saved position
+      if (seekTime > 0) {
+        await this.avPlayer.seek(seekTime);
+      }
+
+      // Apply the selected track
+      if (trackType === "audio" && this._probedAudioTracks?.[trackIndex]) {
+        this.audioTracks = this._probedAudioTracks;
+        await this.setAVPlayerAudioTrack(trackIndex);
+      } else if (trackType === "subtitle") {
+        this.subtitleTracks = this._probedSubtitleTracks || [];
+        await this.setAVPlayerSubtitleTrack(trackIndex);
+      }
+
+      // Start playback
+      if (shouldPlay) {
+        await this.avPlayer.play();
+      }
+
+      // Start time updates
+      this.startAVPlayerTimeUpdates();
+
+      // Detect tracks from now-active AVPlayer
+      this.detectAVPlayerTracks();
+
+      this.playerUI.hideLoading();
+      log.debug("[VideoPlayer] Switched to AVPlayer with", trackType, "track", trackIndex);
+
+    } catch (error) {
+      log.error("[VideoPlayer] Failed to switch to AVPlayer:", error);
+      this.playerUI.hideLoading();
+      this.playerUI.showError("Falha ao carregar faixas de áudio/legenda");
+    } finally {
+      this._switchingToAVPlayer = false;
     }
   },
 
