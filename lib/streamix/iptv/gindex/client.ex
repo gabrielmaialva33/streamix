@@ -5,14 +5,16 @@ defmodule Streamix.Iptv.Gindex.Client do
   GIndex uses a JavaScript-based frontend that makes POST requests to fetch
   folder contents. This client mimics those requests.
 
-  ## Circuit Breaker
+  ## Multi-Endpoint Failover
 
-  This client includes a circuit breaker that opens after consecutive 500 errors
-  to protect the GIndex server (Cloudflare Worker) from being overwhelmed.
-  When open, requests return `{:error, :circuit_breaker_open}` immediately.
+  This client uses EndpointManager for automatic failover between multiple
+  GIndex endpoints. If one endpoint starts failing, requests are automatically
+  routed to healthy fallback endpoints.
   """
 
   require Logger
+
+  alias Streamix.Iptv.Gindex.EndpointManager
 
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(5)
@@ -21,81 +23,29 @@ defmodule Streamix.Iptv.Gindex.Client do
   @rate_limit_base_delay :timer.seconds(30)
   @max_rate_limit_retries 5
 
-  # Circuit breaker settings
-  @circuit_breaker_threshold 3
-  @circuit_breaker_reset_time :timer.minutes(5)
-  @circuit_breaker_table :gindex_circuit_breaker
-
-  @doc """
-  Initializes the circuit breaker ETS table.
-  Called from Application supervision tree.
-  """
-  def init_circuit_breaker do
-    if :ets.whereis(@circuit_breaker_table) == :undefined do
-      :ets.new(@circuit_breaker_table, [:named_table, :public, :set])
-      :ets.insert(@circuit_breaker_table, {:consecutive_errors, 0})
-      :ets.insert(@circuit_breaker_table, {:open_until, nil})
-    end
-
-    :ok
-  end
-
-  defp circuit_breaker_open? do
-    init_circuit_breaker()
-
-    case :ets.lookup(@circuit_breaker_table, :open_until) do
-      [{:open_until, nil}] -> false
-      [{:open_until, open_until}] -> System.monotonic_time(:millisecond) < open_until
-      [] -> false
-    end
-  end
-
-  defp record_success do
-    init_circuit_breaker()
-    :ets.insert(@circuit_breaker_table, {:consecutive_errors, 0})
-  end
-
-  defp record_error_500 do
-    init_circuit_breaker()
-
-    [{:consecutive_errors, count}] = :ets.lookup(@circuit_breaker_table, :consecutive_errors)
-    new_count = count + 1
-    :ets.insert(@circuit_breaker_table, {:consecutive_errors, new_count})
-
-    if new_count >= @circuit_breaker_threshold do
-      open_until = System.monotonic_time(:millisecond) + @circuit_breaker_reset_time
-      :ets.insert(@circuit_breaker_table, {:open_until, open_until})
-
-      Logger.error(
-        "[GIndex] Circuit breaker OPEN after #{new_count} consecutive 500 errors. " <>
-          "Pausing requests for #{div(@circuit_breaker_reset_time, 60_000)} minutes."
-      )
-    end
-
-    new_count
-  end
-
-  @doc """
-  Manually resets the circuit breaker.
-  Use this to resume requests after fixing the underlying issue.
-  """
-  def reset_circuit_breaker do
-    init_circuit_breaker()
-    :ets.insert(@circuit_breaker_table, {:consecutive_errors, 0})
-    :ets.insert(@circuit_breaker_table, {:open_until, nil})
-    Logger.info("[GIndex] Circuit breaker RESET - resuming normal operation")
-    :ok
-  end
-
   @doc """
   Lists the contents of a folder in the GIndex (single page).
+  Automatically uses the best available endpoint.
 
   ## Examples
 
-      iex> Client.list_folder("https://example.workers.dev", "/1:/Filmes/")
+      iex> Client.list_folder("/1:/Filmes/")
       {:ok, [%{name: "Movie Name", type: :folder, path: "/1:/Filmes/Movie/"}]}
   """
-  def list_folder(base_url, path, opts \\ []) do
+  def list_folder(path, opts \\ []) do
+    case EndpointManager.get_endpoint() do
+      {:ok, base_url} ->
+        list_folder(base_url, path, opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Lists the contents of a folder using a specific base URL.
+  """
+  def list_folder(base_url, path, opts) when is_binary(base_url) do
     page_token = Keyword.get(opts, :page_token)
     page_index = Keyword.get(opts, :page_index, 0)
 
@@ -110,7 +60,7 @@ defmodule Streamix.Iptv.Gindex.Client do
 
     url = join_url(base_url, path)
 
-    case do_request(:post, url, body) do
+    case do_request(:post, url, body, base_url) do
       {:ok, %{status: 200, body: response_body}} ->
         parse_folder_response(response_body, base_url, path)
 
@@ -124,10 +74,23 @@ defmodule Streamix.Iptv.Gindex.Client do
 
   @doc """
   Lists ALL contents of a folder, handling pagination automatically.
+  Automatically uses the best available endpoint.
+  """
+  def list_folder_all(path) do
+    case EndpointManager.get_endpoint() do
+      {:ok, base_url} ->
+        list_folder_all(base_url, path)
 
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Lists ALL contents of a folder using a specific base URL.
   GIndex pagination requires BOTH page_token AND page_index to be incremented.
   """
-  def list_folder_all(base_url, path) do
+  def list_folder_all(base_url, path) when is_binary(base_url) do
     list_folder_paginated(base_url, path, nil, 0, [])
   end
 
@@ -143,7 +106,7 @@ defmodule Streamix.Iptv.Gindex.Client do
 
     url = join_url(base_url, path)
 
-    case do_request(:post, url, body) do
+    case do_request(:post, url, body, base_url) do
       {:ok, %{status: 200, body: response_body}} ->
         case parse_folder_response_with_token(response_body, base_url, path) do
           {:ok, items, nil} ->
@@ -175,11 +138,23 @@ defmodule Streamix.Iptv.Gindex.Client do
 
   ## Examples
 
-      iex> Client.get_download_url("https://example.workers.dev", "/1:/Filmes/movie.mkv")
+      iex> Client.get_download_url("/1:/Filmes/movie.mkv")
       {:ok, "https://example.workers.dev/download.aspx?file=TOKEN&expiry=...&mac=..."}
   """
-  def get_download_url(base_url, file_path) do
-    # POST to the file path with type: "file" to get file metadata including download link
+  def get_download_url(file_path) do
+    case EndpointManager.get_endpoint() do
+      {:ok, base_url} ->
+        get_download_url(base_url, file_path)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Gets the download URL for a file using a specific base URL.
+  """
+  def get_download_url(base_url, file_path) when is_binary(base_url) do
     url = join_url(base_url, file_path)
 
     body =
@@ -189,7 +164,7 @@ defmodule Streamix.Iptv.Gindex.Client do
         password: ""
       })
 
-    case do_request(:post, url, body) do
+    case do_request(:post, url, body, base_url) do
       {:ok, %{status: 200, body: response_body}} ->
         extract_download_link(response_body, base_url)
 
@@ -222,10 +197,23 @@ defmodule Streamix.Iptv.Gindex.Client do
   @doc """
   Gets file info including size and modified date.
   """
-  def get_file_info(base_url, file_path) do
+  def get_file_info(file_path) do
+    case EndpointManager.get_endpoint() do
+      {:ok, base_url} ->
+        get_file_info(base_url, file_path)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Gets file info using a specific base URL.
+  """
+  def get_file_info(base_url, file_path) when is_binary(base_url) do
     url = join_url(base_url, file_path)
 
-    case do_request(:head, url) do
+    case do_request(:head, url, nil, base_url) do
       {:ok, %{status: 200, headers: headers}} ->
         {:ok,
          %{
@@ -242,19 +230,21 @@ defmodule Streamix.Iptv.Gindex.Client do
     end
   end
 
-  # Private functions
-
-  defp do_request(method, url, body \\ nil, opts \\ []) do
-    # Check circuit breaker before making request
-    if circuit_breaker_open?() do
-      Logger.warning("[GIndex] Circuit breaker is OPEN - skipping request to #{url}")
-      {:error, :circuit_breaker_open}
-    else
-      do_request_with_retry(method, url, body, opts, 0, 0)
-    end
+  @doc """
+  Gets the current base URL from the EndpointManager.
+  Useful for scraper and other modules that need to know the current endpoint.
+  """
+  def get_base_url do
+    EndpointManager.get_endpoint()
   end
 
-  defp do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt) do
+  # Private functions
+
+  defp do_request(method, url, body, base_url, opts \\ []) do
+    do_request_with_retry(method, url, body, base_url, opts, 0, 0)
+  end
+
+  defp do_request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     follow_redirects = Keyword.get(opts, :follow_redirects, true)
 
@@ -276,23 +266,38 @@ defmodule Streamix.Iptv.Gindex.Client do
 
     case Req.request(req_opts) do
       {:ok, response} ->
-        result = handle_response(response, method, url, body, opts, attempt, rate_limit_attempt)
-        # Record success on 200 responses to reset circuit breaker
-        if match?({:ok, %{status: 200}}, result), do: record_success()
+        result = handle_response(response, method, url, body, base_url, opts, attempt, rate_limit_attempt)
+
+        # Report success/failure to EndpointManager
+        case result do
+          {:ok, %{status: 200}} ->
+            EndpointManager.report_success(base_url)
+
+          {:ok, %{status: status}} when status >= 500 ->
+            EndpointManager.report_error(base_url)
+
+          {:error, _} ->
+            EndpointManager.report_error(base_url)
+
+          _ ->
+            :ok
+        end
+
         result
 
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
         Logger.warning("[GIndex] Request failed (attempt #{attempt + 1}): #{inspect(reason)}")
         Process.sleep(@retry_delay)
-        do_request_with_retry(method, url, body, opts, attempt + 1, rate_limit_attempt)
+        do_request_with_retry(method, url, body, base_url, opts, attempt + 1, rate_limit_attempt)
 
       {:error, reason} ->
+        EndpointManager.report_error(base_url)
         {:error, reason}
     end
   end
 
   # Handle rate limiting (429) and service unavailable (503) with exponential backoff
-  defp handle_response(%{status: status}, method, url, body, opts, attempt, rate_limit_attempt)
+  defp handle_response(%{status: status}, method, url, body, base_url, opts, attempt, rate_limit_attempt)
        when status in [429, 503] and rate_limit_attempt < @max_rate_limit_retries do
     base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
     jitter = :rand.uniform(2000)
@@ -304,45 +309,54 @@ defmodule Streamix.Iptv.Gindex.Client do
     )
 
     Process.sleep(delay)
-    do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
+    do_request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
   end
 
-  # Handle 500 errors separately - log body for diagnosis (might be auth/token error)
-  defp handle_response(%{status: 500, body: resp_body} = response, method, url, body, opts, attempt, rate_limit_attempt)
+  # Handle 500 errors - check for auth errors, otherwise report to EndpointManager
+  defp handle_response(%{status: 500, body: resp_body} = response, method, url, body, base_url, opts, attempt, rate_limit_attempt)
        when rate_limit_attempt < @max_rate_limit_retries do
-    # Record error for circuit breaker
-    error_count = record_error_500()
+    body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
+    is_auth_error = auth_error?(body_str)
 
-    # Check if circuit breaker was opened
-    if error_count >= @circuit_breaker_threshold do
-      {:error, :circuit_breaker_open}
+    if is_auth_error do
+      Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
+      # Don't retry auth errors - return immediately
+      {:ok, response}
     else
-      # Check if it's an auth/token error by inspecting the response body
-      body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
-      is_auth_error = auth_error?(body_str)
+      # Report error to EndpointManager - it will handle circuit breaking
+      EndpointManager.report_error(base_url)
 
-      if is_auth_error do
-        Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
-        # Don't retry auth errors - return immediately
-        {:ok, response}
-      else
-        # Might be temporary server error, retry with backoff
-        base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
-        jitter = :rand.uniform(2000)
-        delay = base_delay + jitter
+      # Check if we should try fallback endpoint
+      case EndpointManager.get_endpoint() do
+        {:ok, new_base_url} when new_base_url != base_url ->
+          # We have a different (fallback) endpoint available
+          Logger.info("[GIndex] Switching to fallback endpoint: #{new_base_url}")
 
-        Logger.warning(
-          "[GIndex] Server error (500), body: #{String.slice(body_str, 0, 200)}... " <>
-            "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
-        )
+          # Rebuild URL with new base
+          path = String.replace_prefix(url, base_url, "")
+          new_url = new_base_url <> path
 
-        Process.sleep(delay)
-        do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
+          # Try with new endpoint
+          do_request_with_retry(method, new_url, body, new_base_url, opts, attempt, 0)
+
+        _ ->
+          # No fallback or same endpoint - retry with backoff
+          base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+          jitter = :rand.uniform(2000)
+          delay = base_delay + jitter
+
+          Logger.warning(
+            "[GIndex] Server error (500), body: #{String.slice(body_str, 0, 200)}... " <>
+              "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
+          )
+
+          Process.sleep(delay)
+          do_request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
       end
     end
   end
 
-  defp handle_response(response, _method, _url, _body, _opts, _attempt, _rate_limit_attempt) do
+  defp handle_response(response, _method, _url, _body, _base_url, _opts, _attempt, _rate_limit_attempt) do
     {:ok, response}
   end
 
@@ -382,17 +396,14 @@ defmodule Streamix.Iptv.Gindex.Client do
         parse_folder_data(data, base_url, current_path)
 
       {:error, _} ->
-        # Response might be HTML, try to parse it
         {:error, :invalid_json_response}
     end
   end
 
-  # Handle case where Req already decoded the JSON
   defp parse_folder_response(body, base_url, current_path) when is_map(body) do
     parse_folder_data(body, base_url, current_path)
   end
 
-  # Parse response and also return nextPageToken for pagination
   defp parse_folder_response_with_token(body, base_url, current_path) when is_binary(body) do
     case Jason.decode(body) do
       {:ok, data} ->
@@ -419,13 +430,11 @@ defmodule Streamix.Iptv.Gindex.Client do
   end
 
   defp parse_folder_data(data, base_url, current_path) do
-    # Try to extract files from different response formats
     files = extract_files_from_response(data)
     items = Enum.map(files, &parse_file_item(&1, base_url, current_path))
     {:ok, items}
   end
 
-  # Parse folder data and extract nextPageToken
   defp parse_folder_data_with_token(%{"data" => data}, base_url, current_path)
        when is_map(data) do
     files = Map.get(data, "files", [])
@@ -517,11 +526,10 @@ defmodule Streamix.Iptv.Gindex.Client do
     base = String.trim_trailing(base_url, "/")
     path_part = if String.starts_with?(path, "/"), do: path, else: "/" <> path
 
-    # If path already has query params (download URLs), don't encode - it's already a valid URL path
+    # If path already has query params (download URLs), don't encode
     if String.contains?(path_part, "?") do
       base <> path_part
     else
-      # Encode the path, but preserve / and : characters which are valid in GIndex paths
       encoded_path = encode_path(path_part)
       base <> encoded_path
     end
@@ -533,18 +541,15 @@ defmodule Streamix.Iptv.Gindex.Client do
     |> String.split("/")
     |> Enum.with_index()
     |> Enum.map_join("/", fn {segment, index} ->
-      # Only treat as drive letter if it's the first non-empty segment and matches pattern "X:"
       if index <= 1 and Regex.match?(~r/^\d+:$/, segment) do
-        # This is a drive letter like "1:", don't encode
         segment
       else
-        # Fully encode the segment including any : characters
         URI.encode(segment, &uri_char?/1)
       end
     end)
   end
 
-  # Characters allowed in URL path segments (RFC 3986) - note: : is NOT included
+  # Characters allowed in URL path segments (RFC 3986)
   defp uri_char?(char) do
     char in ?0..?9 or char in ?a..?z or char in ?A..?Z or char in ~c"-._~!$&'()*+,;=@"
   end

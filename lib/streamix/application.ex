@@ -34,6 +34,8 @@ defmodule Streamix.Application do
         # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
         # Stream proxy for caching IPTV streams
         Streamix.Iptv.StreamProxy,
+        # GIndex endpoint manager (multi-endpoint failover)
+        Streamix.Iptv.Gindex.EndpointManager,
         # GIndex URL cache
         Streamix.Iptv.Gindex.UrlCache,
         # Start to serve requests, typically the last entry
