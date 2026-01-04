@@ -48,8 +48,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           rating: movie.rating && Decimal.to_float(movie.rating),
           genre: movie.genre,
           plot: movie.plot,
-          poster: movie.stream_icon,
-          backdrop: movie.backdrop_path
+          poster: proxy_image(movie.stream_icon),
+          backdrop: proxy_image(movie.backdrop_path)
         }
 
       {:series, series} ->
@@ -62,8 +62,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           rating: series.rating && Decimal.to_float(series.rating),
           genre: series.genre,
           plot: series.plot,
-          poster: series.cover,
-          backdrop: series.backdrop_path
+          poster: proxy_image(series.cover),
+          backdrop: proxy_image(series.backdrop_path)
         }
 
       nil ->
@@ -277,7 +277,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: movie.genre,
-      poster: movie.stream_icon,
+      poster: proxy_image(movie.stream_icon),
       duration: movie.duration
     }
   end
@@ -296,8 +296,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       duration: movie.duration,
       content_rating: movie.content_rating,
       tagline: movie.tagline,
-      poster: movie.stream_icon,
-      backdrop: movie.backdrop_path,
+      poster: proxy_image(movie.stream_icon),
+      backdrop: proxy_image(movie.backdrop_path),
       youtube_trailer: movie.youtube_trailer,
       stream_url: build_stream_url(movie)
     }
@@ -311,7 +311,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: series.genre,
-      poster: series.cover,
+      poster: proxy_image(series.cover),
       season_count: series.season_count,
       episode_count: series.episode_count
     }
@@ -328,8 +328,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       plot: series.plot,
       cast: series.cast,
       director: series.director,
-      poster: series.cover,
-      backdrop: series.backdrop_path,
+      poster: proxy_image(series.cover),
+      backdrop: proxy_image(series.backdrop_path),
       season_count: series.season_count,
       episode_count: series.episode_count,
       seasons: Enum.map(series.seasons || [], &serialize_season/1)
@@ -352,7 +352,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       title: episode.title,
       episode_num: episode.episode_num,
       plot: episode.plot,
-      still: episode.still_path,
+      still: proxy_image(episode.still_path),
       duration: episode.duration,
       air_date: episode.air_date
     }
@@ -367,7 +367,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       episode_num: episode.episode_num,
       season_number: episode.season.season_number,
       plot: episode.plot,
-      still: episode.still_path,
+      still: proxy_image(episode.still_path),
       duration: episode.duration,
       air_date: episode.air_date,
       series_id: series.id,
@@ -380,7 +380,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     %{
       id: channel.id,
       name: channel.name,
-      icon: channel.stream_icon
+      icon: proxy_image(channel.stream_icon)
     }
   end
 
@@ -388,7 +388,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     %{
       id: channel.id,
       name: channel.name,
-      icon: channel.stream_icon,
+      icon: proxy_image(channel.stream_icon),
       stream_url: build_channel_stream_url(channel)
     }
   end
@@ -456,6 +456,14 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   defp build_proxy_url(token) do
     base_url = StreamixWeb.Endpoint.url()
     "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+  end
+
+  # Image proxy helper - proxies TMDB images through our Cloudflare tunnel
+  defp proxy_image(nil), do: nil
+  defp proxy_image(urls) when is_list(urls), do: Enum.map(urls, &proxy_image/1)
+
+  defp proxy_image(url) when is_binary(url) do
+    String.replace(url, "https://image.tmdb.org", "https://tmdb.mahina.cloud")
   end
 
   # Helpers
