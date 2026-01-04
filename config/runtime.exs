@@ -190,6 +190,13 @@ if config_env() == :prod do
 
   config :streamix, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Parse allowed WebSocket origins from env or use host
+  check_origin =
+    case System.get_env("WEBSOCKET_ORIGINS") do
+      nil -> ["//#{host}", "//localhost"]
+      origins -> String.split(origins, ",") |> Enum.map(&String.trim/1)
+    end
+
   config :streamix, StreamixWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
@@ -199,6 +206,7 @@ if config_env() == :prod do
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
+    check_origin: check_origin,
     secret_key_base: secret_key_base
 
   # ## SSL Support
