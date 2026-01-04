@@ -7,7 +7,7 @@ defmodule Streamix.Iptv.TmdbClient do
   """
 
   @base_url "https://api.themoviedb.org/3"
-  @image_base_url "https://image.tmdb.org/t/p"
+  @image_base_url "https://tmdb.mahina.cloud/t/p"
   @timeout :timer.seconds(10)
 
   @doc """
