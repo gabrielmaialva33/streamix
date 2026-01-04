@@ -2,10 +2,18 @@
   "name": "streamix-assets",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "lint": "biome check js/",
+    "lint:fix": "biome check --fix js/",
+    "format": "biome format --write js/"
+  },
   "dependencies": {
     "@libmedia/avplayer": "^1.2.2",
     "alpinejs": "^3.15.3",
     "hls.js": "^1.5.0",
     "mpegts.js": "^1.8.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11"
   }
 }
