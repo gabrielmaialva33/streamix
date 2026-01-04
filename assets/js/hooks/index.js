@@ -1,3 +1,4 @@
+import ContentCard from "./content_card";
 import HeaderSearch from "./header_search";
 import InfiniteScroll from "./infinite_scroll";
 import Modal from "./modal";
@@ -10,4 +11,5 @@ export default {
   InfiniteScroll,
   Modal,
   HeaderSearch,
+  ContentCard,
 };

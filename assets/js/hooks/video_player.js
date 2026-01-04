@@ -1,11 +1,16 @@
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
+import { getCapabilitySummary } from "../lib/codec_detector";
+import { createErrorReport, detectErrorPatterns, formatErrorForLog } from "../lib/error_telemetry";
 import { KeyboardManager } from "../lib/keyboard_manager";
 import { playerLogger as log, setErrorReporter } from "../lib/logger";
 import { NetworkMonitor } from "../lib/network_monitor";
+import { diagnoseError, runQuickDiagnostics } from "../lib/player_diagnostics";
 import {
   getPlaybackPosition,
   getPreferences,
+  getRecommendedPlayer,
+  recordPlayerSuccess,
   saveAudioTrack,
   saveMuted,
   savePlaybackPosition,
@@ -101,9 +106,59 @@ const VideoPlayer = {
     // Expose hook instance on element for child hooks (like ProgressBar) to access
     this.el.__videoPlayerHook = this;
 
-    // Preload WASM files if likely to need AVPlayer (GIndex/MKV sources)
-    if (this.sourceType === "gindex" || this.preferAVPlayer) {
+    // Smart preloading based on Device Codec Memory and content type
+    this.smartPreload();
+
+    // Run quick diagnostics in background (non-blocking)
+    this.runStartupDiagnostics();
+  },
+
+  /**
+   * Smart preloading based on past experience and content type
+   * Netflix pattern: pre-load resources before they're needed
+   */
+  smartPreload() {
+    const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+    const recommendedPlayer = getRecommendedPlayer(contentKey);
+
+    // Pre-load AVPlayer if:
+    // 1. Device Codec Memory recommends it
+    // 2. Manual preference is set
+    // 3. GIndex/MKV content (likely needs AVPlayer for audio)
+    const shouldPreloadAVPlayer =
+      recommendedPlayer === "avplayer" ||
+      this.preferAVPlayer ||
+      this.sourceType === "gindex" ||
+      this.currentStreamType === "mkv";
+
+    if (shouldPreloadAVPlayer) {
+      log.debug("[VideoPlayer] Smart preload: AVPlayer WASM");
       preloadAVPlayerWasm();
+    }
+  },
+
+  /**
+   * Run quick diagnostics at startup (non-blocking)
+   * Helps detect issues early and inform backend of device capabilities
+   */
+  async runStartupDiagnostics() {
+    try {
+      const quickDiag = await runQuickDiagnostics();
+
+      if (!quickDiag.allPassed) {
+        log.warn(
+          "[VideoPlayer] Some startup diagnostics failed:",
+          quickDiag.results.filter((r) => !r.passed),
+        );
+      }
+
+      // Send capabilities to backend for analytics
+      this.pushEvent("device_diagnostics", {
+        quick: quickDiag,
+        capabilities: getCapabilitySummary(),
+      });
+    } catch (e) {
+      log.debug("[VideoPlayer] Startup diagnostics failed (non-critical):", e);
     }
   },
 
@@ -568,6 +623,39 @@ const VideoPlayer = {
     }
   },
 
+  /**
+   * Show error with optional automatic diagnostics (Netflix pattern)
+   * @param {string} message - Error message to display
+   * @param {Error|string} error - Original error for diagnostics
+   * @param {boolean} runDiagnostics - Whether to run automatic diagnostics
+   */
+  async showErrorWithDiagnostics(message, error = null, runDiagnostics = false) {
+    this.playerUI.showError(message);
+
+    if (runDiagnostics && error) {
+      try {
+        const diagnosis = await diagnoseError(error, {
+          contentType: this.contentType,
+          streamType: this.currentStreamType,
+          sourceType: this.sourceType,
+        });
+
+        log.debug("[VideoPlayer] Diagnostics result:", diagnosis);
+
+        // If we have a suggested player, offer to try it
+        if (diagnosis.suggestedPlayer?.player && diagnosis.suggestedPlayer.player !== "native") {
+          this.pushEvent("diagnostic_suggestion", {
+            player: diagnosis.suggestedPlayer.player,
+            reason: diagnosis.suggestedPlayer.reason,
+            recommendations: diagnosis.recommendations,
+          });
+        }
+      } catch (e) {
+        log.warn("[VideoPlayer] Diagnostics failed:", e);
+      }
+    }
+  },
+
   setVolume(volume) {
     // Apply logarithmic curve for perceived loudness consistency
     const perceivedVolume = linearToPerceived(volume);
@@ -758,11 +846,24 @@ const VideoPlayer = {
       onStatisticsInfo: (bps) => this.networkMonitor?.addSample(bps),
     });
 
+    // Send codec capabilities to backend for optimal stream selection
+    const capabilities = getCapabilitySummary();
     this.pushEvent("player_initializing", {
       stream_type: this.currentStreamType,
       streaming_mode: this.streamingMode,
       pip_supported: this.isPiPSupported(),
+      capabilities, // Send codec support info to backend
     });
+
+    // Check Device Codec Memory for recommended player (Netflix pattern)
+    const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+    const recommendedPlayer = getRecommendedPlayer(contentKey);
+
+    if (recommendedPlayer === "avplayer" && !this.avPlayerAttempted) {
+      log.debug("Using AVPlayer based on device compatibility history");
+      this.tryAVPlayerFallback();
+      return;
+    }
 
     // Check for manual AVPlayer preference or GIndex sources
     if (this.preferAVPlayer && (this.sourceType === "gindex" || this.currentStreamType === "mkv")) {
@@ -815,6 +916,36 @@ const VideoPlayer = {
   },
 
   handleStreamError(type, data) {
+    // Create enriched error report for telemetry
+    const errorReport = createErrorReport(
+      { message: data.details || data.errorDetail || "Stream error", type },
+      {
+        type,
+        contentId: this.contentId,
+        contentType: this.contentType,
+        streamUrl: this.currentUrl,
+        player: type,
+        videoElement: this.video,
+        playerState: {
+          usingAVPlayer: this.usingAVPlayer,
+          streamingMode: this.streamingMode,
+          streamType: this.currentStreamType,
+          sourceType: this.sourceType,
+        },
+        retryCount: this.retryCount,
+        fallbackAttempt: this.fallbackAttempts,
+        fatal: data.fatal,
+      },
+    );
+
+    log.debug(formatErrorForLog(errorReport));
+
+    // Send enriched error to backend
+    this.pushEvent("player_error", {
+      ...errorReport,
+      patterns: detectErrorPatterns(),
+    });
+
     if (type === "hls") {
       // Track recovery attempts
       this._hlsRecoveryAttempts = this._hlsRecoveryAttempts || 0;
@@ -854,7 +985,11 @@ const VideoPlayer = {
               this.cleanup();
               this.playWithMpegts();
             } else {
-              this.playerUI.showError("Nao foi possivel carregar - servidor indisponivel");
+              this.showErrorWithDiagnostics(
+                "Nao foi possivel carregar - servidor indisponivel",
+                { message: "Manifest load failed", type: "network" },
+                true,
+              );
             }
           } else {
             // Fragment/level load errors - try soft recovery first
@@ -890,7 +1025,11 @@ const VideoPlayer = {
               this.playNative();
             }
           } else {
-            this.playerUI.showError("Erro de reproducao - formato nao suportado");
+            this.showErrorWithDiagnostics(
+              "Erro de reproducao - formato nao suportado",
+              { message: "Media format error", type: "codec" },
+              true,
+            );
           }
       }
     } else if (type === "mpegts") {
@@ -1006,6 +1145,20 @@ const VideoPlayer = {
       // This allows native player to start fast while we detect available tracks
       if (this.sourceType === "gindex") {
         this.probeMetadataInBackground();
+      }
+
+      // Record successful native playback after 5s (confirms no fallback needed)
+      // This helps Device Codec Memory learn that native works for this content type
+      if (!needsAudioCheck) {
+        setTimeout(() => {
+          if (!this.usingAVPlayer && !this.video.paused) {
+            const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+            recordPlayerSuccess(contentKey, "native", {
+              sourceType: this.sourceType,
+              streamType: this.currentStreamType,
+            });
+          }
+        }, 5000);
       }
     };
 
@@ -1199,6 +1352,13 @@ const VideoPlayer = {
           this.playerUI.hideLoading();
           this.playerUI.updatePlayPauseUI(false);
           this.startAVPlayerTimeUpdates();
+
+          // Record successful AVPlayer playback for Device Codec Memory
+          const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+          recordPlayerSuccess(contentKey, "avplayer", {
+            sourceType: this.sourceType,
+            streamType: this.currentStreamType,
+          });
         },
         onPause: () => {
           log.debug("[VideoPlayer] AVPlayer paused");

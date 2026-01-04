@@ -7,8 +7,164 @@
 
 const STORAGE_KEY = "streamix_player_prefs";
 const POSITION_KEY = "streamix_playback_positions";
+const DEVICE_COMPAT_KEY = "streamix_device_compat";
 const GLOBAL_KEY = "global";
 const MAX_POSITIONS = 100; // Max number of positions to store
+
+// ============================================
+// Device Fingerprint & Codec Compatibility
+// ============================================
+
+/**
+ * Generate a simple device fingerprint for codec compatibility tracking
+ * This helps remember which player/codec works on this specific device
+ */
+function getDeviceFingerprint() {
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl");
+  const renderer = gl ? gl.getParameter(gl.UNMASKED_RENDERER_WEBGL) : "unknown";
+
+  return {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    gpu: renderer,
+    screen: `${screen.width}x${screen.height}`,
+    memory: navigator.deviceMemory || "unknown",
+    cores: navigator.hardwareConcurrency || "unknown",
+  };
+}
+
+/**
+ * Get stored device compatibility data
+ */
+function getDeviceCompatibility() {
+  try {
+    const stored = localStorage.getItem(DEVICE_COMPAT_KEY);
+    return stored ? JSON.parse(stored) : { codecs: {}, players: {}, lastUpdated: null };
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to read device compatibility:", e);
+    return { codecs: {}, players: {}, lastUpdated: null };
+  }
+}
+
+/**
+ * Save device compatibility data
+ */
+function saveDeviceCompatibility(compat) {
+  try {
+    compat.lastUpdated = Date.now();
+    localStorage.setItem(DEVICE_COMPAT_KEY, JSON.stringify(compat));
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to save device compatibility:", e);
+  }
+}
+
+/**
+ * Record codec compatibility result
+ * @param {string} codec - Codec name (e.g., 'ac3', 'hevc', 'av1')
+ * @param {boolean} nativeSupport - Whether native player supports it
+ * @param {string} fallbackPlayer - Which player worked (e.g., 'avplayer', 'native')
+ */
+export function recordCodecCompatibility(codec, nativeSupport, fallbackPlayer = null) {
+  const compat = getDeviceCompatibility();
+
+  compat.codecs[codec] = {
+    nativeSupport,
+    fallbackPlayer,
+    testedAt: Date.now(),
+  };
+
+  saveDeviceCompatibility(compat);
+  console.log(
+    `[PlayerPreferences] Recorded codec compatibility: ${codec} -> ${fallbackPlayer || "native"}`,
+  );
+}
+
+/**
+ * Record which player worked for a specific content type
+ * @param {string} contentType - Content type (e.g., 'mkv', 'gindex', 'hls')
+ * @param {string} player - Player that worked ('native', 'avplayer', 'hls', 'mpegts')
+ * @param {object} context - Additional context (codecs detected, etc.)
+ */
+export function recordPlayerSuccess(contentType, player, context = {}) {
+  const compat = getDeviceCompatibility();
+
+  compat.players[contentType] = {
+    recommendedPlayer: player,
+    context,
+    successCount: (compat.players[contentType]?.successCount || 0) + 1,
+    lastSuccess: Date.now(),
+  };
+
+  saveDeviceCompatibility(compat);
+  console.log(`[PlayerPreferences] Recorded player success: ${contentType} -> ${player}`);
+}
+
+/**
+ * Get recommended player for a content type based on past experience
+ * @param {string} contentType - Content type to check
+ * @returns {string|null} Recommended player or null if no data
+ */
+export function getRecommendedPlayer(contentType) {
+  const compat = getDeviceCompatibility();
+  const playerData = compat.players[contentType];
+
+  if (!playerData) return null;
+
+  // Only trust recommendations from the last 30 days
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+  if (Date.now() - playerData.lastSuccess > thirtyDays) {
+    return null;
+  }
+
+  // Require at least 2 successful plays to trust the recommendation
+  if (playerData.successCount >= 2) {
+    return playerData.recommendedPlayer;
+  }
+
+  return null;
+}
+
+/**
+ * Check if a specific codec needs AVPlayer fallback
+ * @param {string} codec - Codec to check
+ * @returns {boolean} True if AVPlayer is recommended
+ */
+export function needsAVPlayerForCodec(codec) {
+  const compat = getDeviceCompatibility();
+  const codecData = compat.codecs[codec];
+
+  if (!codecData) return false;
+
+  return codecData.fallbackPlayer === "avplayer" && !codecData.nativeSupport;
+}
+
+/**
+ * Get full device compatibility report
+ * Useful for diagnostics and debugging
+ */
+export function getDeviceCompatibilityReport() {
+  const compat = getDeviceCompatibility();
+  const fingerprint = getDeviceFingerprint();
+
+  return {
+    device: fingerprint,
+    codecs: compat.codecs,
+    players: compat.players,
+    lastUpdated: compat.lastUpdated,
+  };
+}
+
+/**
+ * Clear device compatibility data (for testing/reset)
+ */
+export function clearDeviceCompatibility() {
+  try {
+    localStorage.removeItem(DEVICE_COMPAT_KEY);
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to clear device compatibility:", e);
+  }
+}
 
 /**
  * Get all stored preferences
@@ -258,4 +414,11 @@ export default {
   getPlaybackPosition,
   clearPlaybackPosition,
   clearAllPlaybackPositions,
+  // Device Codec Memory
+  recordCodecCompatibility,
+  recordPlayerSuccess,
+  getRecommendedPlayer,
+  needsAVPlayerForCodec,
+  getDeviceCompatibilityReport,
+  clearDeviceCompatibility,
 };
