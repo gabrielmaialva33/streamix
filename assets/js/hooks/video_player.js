@@ -20,6 +20,8 @@ import {
   getPlaybackPosition,
 } from "../lib/player_preferences";
 import { playerLogger as log, setErrorReporter } from "../lib/logger";
+import { KeyboardManager } from "../lib/keyboard_manager";
+import { linearToPerceived, perceivedToLinear } from "../lib/volume_utils";
 
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
@@ -154,6 +156,9 @@ const VideoPlayer = {
     // Network monitor
     this.networkMonitor = null;
 
+    // Keyboard manager
+    this.keyboardManager = null;
+
     // AVPlayer fallback state
     this.avPlayer = null;
     this.usingAVPlayer = false;
@@ -168,11 +173,11 @@ const VideoPlayer = {
   loadPreferences() {
     const prefs = getPreferences(this.contentId);
 
-    // Apply volume
+    // Apply volume (prefs.volume is UI value, convert to perceived for backends)
     this.avPlayerVolume = prefs.volume;
     this.avPlayerMuted = prefs.muted;
     if (this.video) {
-      this.video.volume = prefs.volume;
+      this.video.volume = linearToPerceived(prefs.volume);
       this.video.muted = prefs.muted;
     }
 
@@ -496,12 +501,27 @@ const VideoPlayer = {
       });
     }
 
-    // Buffer health monitoring
+    // Buffer health monitoring with debounce to prevent flickering
     this.video?.addEventListener("waiting", () => {
-      this.pushEvent("buffering", { buffering: true });
+      // Debounce showing loading spinner (200ms) to avoid flickering on unstable networks
+      if (this._bufferingDebounce) {
+        clearTimeout(this._bufferingDebounce);
+      }
+      this._bufferingDebounce = setTimeout(() => {
+        // Only show if still buffering
+        if (this.video && !this.video.paused && this.video.readyState < 3) {
+          this.playerUI.showLoading();
+          this.pushEvent("buffering", { buffering: true });
+        }
+      }, 200);
     });
 
     this.video?.addEventListener("playing", () => {
+      // Cancel any pending buffering indicator
+      if (this._bufferingDebounce) {
+        clearTimeout(this._bufferingDebounce);
+        this._bufferingDebounce = null;
+      }
       this.pushEvent("buffering", { buffering: false });
       this.playerUI.hideLoading();
       this.playerUI.hideError();
@@ -537,19 +557,22 @@ const VideoPlayer = {
   },
 
   setVolume(volume) {
+    // Apply logarithmic curve for perceived loudness consistency
+    const perceivedVolume = linearToPerceived(volume);
+
     if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayerVolume = volume;
+      this.avPlayerVolume = volume; // Store UI value
       if (volume > 0 && this.avPlayerMuted) {
         this.avPlayerMuted = false;
       }
-      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : volume);
+      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : perceivedVolume);
     } else if (this.video) {
-      this.video.volume = volume;
+      this.video.volume = perceivedVolume;
       if (volume > 0 && this.video.muted) {
         this.video.muted = false;
       }
     }
-    saveVolume(volume);
+    saveVolume(volume); // Save UI value for consistency
     this.updateVolumeUI();
   },
 
@@ -1144,8 +1167,8 @@ const VideoPlayer = {
         await this.avPlayer.seek(currentTime);
       }
 
-      // Apply saved volume
-      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume);
+      // Apply saved volume (convert UI value to perceived)
+      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : linearToPerceived(this.avPlayerVolume));
 
       log.debug("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
       await this.avPlayer.play();
@@ -1198,20 +1221,20 @@ const VideoPlayer = {
   startAVPlayerTimeUpdates() {
     this.stopAVPlayerTimeUpdates();
     this._avPlayerAnimating = true;
-    this._lastTimeUpdate = 0;
+    this._lastProgressUpdate = 0;
 
     const updateLoop = (timestamp) => {
       if (!this._avPlayerAnimating) return;
 
-      // Throttle updates to ~4fps (250ms) to match previous behavior
-      // but using rAF for better CPU efficiency when tab is inactive
-      if (timestamp - this._lastTimeUpdate >= 250) {
-        this._lastTimeUpdate = timestamp;
-        if (this.usingAVPlayer && this.avPlayer) {
-          this.updateTimeUI();
-          if (this.contentType === "vod") {
-            this.reportProgress();
-          }
+      if (this.usingAVPlayer && this.avPlayer) {
+        // Update time UI on every frame for smooth progress bar
+        this.updateTimeUI();
+
+        // Throttle progress reporting to server (every 10s as per reportProgress)
+        // Only throttle the heavy operation, not the UI update
+        if (this.contentType === "vod" && timestamp - this._lastProgressUpdate >= 10000) {
+          this._lastProgressUpdate = timestamp;
+          this.reportProgress();
         }
       }
 
@@ -1289,105 +1312,27 @@ const VideoPlayer = {
   // ============================================
 
   setupKeyboardShortcuts() {
-    this.keyHandler = (e) => {
-      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-        return;
-      }
+    this.keyboardManager = new KeyboardManager({
+      contentType: this.contentType,
+      showFeedback: (icon) => this.playerUI.showShortcutFeedback(icon),
+      actions: {
+        togglePlayPause: () => this.togglePlayPause(),
+        toggleMute: () => this.toggleMute(),
+        toggleFullscreen: () => this.toggleFullscreen(),
+        togglePiP: () => this.togglePiP(),
+        adjustVolume: (delta) => this.adjustVolume(delta),
+        seek: (seconds) => this.seek(seconds),
+        seekTo: (time) => this.seekTo(time),
+        setPlaybackRate: (rate) => this.setPlaybackRate(rate),
+        getDuration: () => this.getDuration(),
+        isPaused: () => this.isPaused(),
+        isMuted: () => this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted,
+        isPiPSupported: () => this.isPiPSupported(),
+        getPlaybackRate: () => this.video?.playbackRate || 1,
+      },
+    });
 
-      switch (e.key) {
-        case "f":
-        case "F":
-          this.toggleFullscreen();
-          this.playerUI.showShortcutFeedback("fullscreen");
-          break;
-        case " ":
-        case "k":
-        case "K":
-          e.preventDefault();
-          this.playerUI.showShortcutFeedback(this.isPaused() ? "play" : "pause");
-          this.togglePlayPause();
-          break;
-        case "m":
-        case "M":
-          {
-            const wasMuted = this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted;
-            this.toggleMute();
-            this.playerUI.showShortcutFeedback(wasMuted ? "unmute" : "mute");
-          }
-          break;
-        case "p":
-        case "P":
-          if (this.isPiPSupported()) {
-            this.togglePiP();
-            this.playerUI.showShortcutFeedback("pip");
-          }
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          this.adjustVolume(0.1);
-          this.playerUI.showShortcutFeedback("volumeUp");
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          this.adjustVolume(-0.1);
-          this.playerUI.showShortcutFeedback("volumeDown");
-          break;
-        case "ArrowLeft":
-        case "j":
-        case "J":
-          if (this.contentType === "vod") {
-            e.preventDefault();
-            this.seek(-10);
-            this.playerUI.showShortcutFeedback("backward");
-          }
-          break;
-        case "ArrowRight":
-        case "l":
-        case "L":
-          if (this.contentType === "vod") {
-            e.preventDefault();
-            this.seek(10);
-            this.playerUI.showShortcutFeedback("forward");
-          }
-          break;
-        // Number keys 0-9 for percentage seek
-        case "0":
-        case "1":
-        case "2":
-        case "3":
-        case "4":
-        case "5":
-        case "6":
-        case "7":
-        case "8":
-        case "9":
-          if (this.contentType === "vod") {
-            e.preventDefault();
-            const percent = parseInt(e.key, 10) / 10;
-            const duration = this.getDuration();
-            if (duration > 0) {
-              this.seekTo(duration * percent);
-            }
-          }
-          break;
-        case "<":
-          // Decrease playback speed
-          if (this.video) {
-            const newRate = Math.max(0.25, this.video.playbackRate - 0.25);
-            this.setPlaybackRate(newRate);
-          }
-          break;
-        case ">":
-          // Increase playback speed
-          if (this.video) {
-            const newRate = Math.min(2, this.video.playbackRate + 0.25);
-            this.setPlaybackRate(newRate);
-          }
-          break;
-      }
-    };
-
-    document.addEventListener("keydown", this.keyHandler);
+    this.keyboardManager.start();
   },
 
   toggleFullscreen() {
@@ -1423,7 +1368,7 @@ const VideoPlayer = {
   toggleMute() {
     if (this.usingAVPlayer && this.avPlayer) {
       this.avPlayerMuted = !this.avPlayerMuted;
-      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume || 1);
+      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : linearToPerceived(this.avPlayerVolume || 1));
       saveMuted(this.avPlayerMuted);
     } else if (this.video) {
       this.video.muted = !this.video.muted;
@@ -1434,18 +1379,24 @@ const VideoPlayer = {
   },
 
   adjustVolume(delta) {
+    let newVolume;
+
     if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayerVolume = Math.max(0, Math.min(1, (this.avPlayerVolume || 1) + delta));
+      newVolume = Math.max(0, Math.min(1, (this.avPlayerVolume || 1) + delta));
+      this.avPlayerVolume = newVolume;
       if (!this.avPlayerMuted) {
-        this.avPlayer.setVolume(this.avPlayerVolume);
+        this.avPlayer.setVolume(linearToPerceived(newVolume));
       }
-      saveVolume(this.avPlayerVolume);
     } else if (this.video) {
-      this.video.volume = Math.max(0, Math.min(1, this.video.volume + delta));
-      saveVolume(this.video.volume);
+      // Adjust UI volume, not backend volume
+      const currentUIVolume = perceivedToLinear(this.video.volume);
+      newVolume = Math.max(0, Math.min(1, currentUIVolume + delta));
+      this.video.volume = linearToPerceived(newVolume);
     }
+
+    saveVolume(newVolume);
     this.updateVolumeUI();
-    this.pushEvent("volume_changed", { volume: Math.round((this.usingAVPlayer ? this.avPlayerVolume : this.video?.volume || 1) * 100) });
+    this.pushEvent("volume_changed", { volume: Math.round((newVolume || 1) * 100) });
   },
 
   seek(seconds) {
@@ -1516,8 +1467,15 @@ const VideoPlayer = {
     this.playerUI?.destroy();
     this.stopAVPlayerTimeUpdates();
 
-    if (this.keyHandler) {
-      document.removeEventListener("keydown", this.keyHandler);
+    // Clear buffering debounce
+    if (this._bufferingDebounce) {
+      clearTimeout(this._bufferingDebounce);
+      this._bufferingDebounce = null;
+    }
+
+    if (this.keyboardManager) {
+      this.keyboardManager.destroy();
+      this.keyboardManager = null;
     }
 
     if (this.watchInterval) {
