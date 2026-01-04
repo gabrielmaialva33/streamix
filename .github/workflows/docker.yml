@@ -60,13 +60,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Run migrations via SSH
+      - name: Deploy and run migrations via SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "Waiting for container to update..."
-            sleep 30
+            cd /opt/streamix
+            echo "Pulling new image..."
+            docker compose pull streamix
+            echo "Restarting container..."
+            docker compose up -d --force-recreate streamix
+            echo "Waiting for container to be ready..."
+            sleep 10
+            echo "Running migrations..."
             docker exec streamix /app/bin/migrate
+            echo "Deploy complete!"
