@@ -126,6 +126,28 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, assign(socket, player_state: :initializing, stream_type: params["stream_type"])}
   end
 
+  # Netflix-inspired telemetry events (just log for now, could store for analytics)
+  def handle_event("device_diagnostics", params, socket) do
+    # Log device capabilities for debugging/analytics
+    require Logger
+    Logger.debug("Device diagnostics: #{inspect(params["capabilities"])}")
+    {:noreply, socket}
+  end
+
+  def handle_event("player_error", params, socket) do
+    # Log enriched error for debugging/analytics
+    require Logger
+    Logger.warning("Player error: #{inspect(params["error"])} - Category: #{params["category"]}")
+    {:noreply, socket}
+  end
+
+  def handle_event("diagnostic_suggestion", params, socket) do
+    # Could show UI suggestion to user in the future
+    require Logger
+    Logger.info("Diagnostic suggestion: #{params["player"]} - #{params["reason"]}")
+    {:noreply, socket}
+  end
+
   def handle_event("update_watch_time", %{"duration" => duration}, socket) do
     user_id = socket.assigns.user_id
 
