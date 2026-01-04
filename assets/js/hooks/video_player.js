@@ -16,8 +16,10 @@ import {
   saveSubtitleTrack,
   savePlaybackRate,
   savePreferAVPlayer,
+  savePlaybackPosition,
+  getPlaybackPosition,
 } from "../lib/player_preferences";
-import { playerLogger as log } from "../lib/logger";
+import { playerLogger as log, setErrorReporter } from "../lib/logger";
 
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
@@ -85,6 +87,9 @@ const VideoPlayer = {
     this.setupKeyboardShortcuts();
     this.trackWatchTime();
 
+    // Configure error reporter to send errors to backend
+    setErrorReporter((event, data) => this.pushEvent(event, data));
+
     // Expose hook instance on element for child hooks (like ProgressBar) to access
     this.el.__videoPlayerHook = this;
 
@@ -130,14 +135,14 @@ const VideoPlayer = {
     this.selectedAudioTrack = 0;
     this.selectedSubtitleTrack = -1;
 
-    // Retry/fallback state with circuit breaker
+    // Retry/fallback state with circuit breaker (exponential backoff)
     this.retryCount = 0;
     this.maxRetries = 3;
     this.useProxy = true;
     this.fallbackAttempts = 0;
-    this.maxFallbackAttempts = 2; // Circuit breaker limit
+    this.maxFallbackAttempts = 5; // Circuit breaker limit
     this.lastFallbackTime = 0;
-    this.fallbackCooldown = 30000; // 30 seconds between fallback attempts
+    this.fallbackCooldowns = [2000, 5000, 10000, 20000, 30000]; // Exponential backoff delays
 
     // Timing
     this.startTime = Date.now();
@@ -182,6 +187,14 @@ const VideoPlayer = {
 
     // Manual AVPlayer preference
     this.preferAVPlayer = prefs.preferAVPlayer;
+
+    // Load saved playback position for VOD content
+    if (this.contentType === "vod" && this.contentId) {
+      this._savedPosition = getPlaybackPosition(this.contentId);
+      if (this._savedPosition) {
+        log.debug("Found saved position:", this._savedPosition.time, "seconds");
+      }
+    }
   },
 
   initUI() {
@@ -557,6 +570,11 @@ const VideoPlayer = {
     if (Math.abs(currentTime - this.lastProgressReport) >= 10) {
       this.lastProgressReport = currentTime;
 
+      // Save position to localStorage for resume later
+      if (this.contentId && this.contentType === "vod") {
+        savePlaybackPosition(this.contentId, currentTime, duration);
+      }
+
       this.pushEvent("progress_update", {
         current_time: currentTime,
         duration: duration,
@@ -667,6 +685,13 @@ const VideoPlayer = {
         this.updateAudioTracks();
         this.updateSubtitleTracks();
 
+        // Resume from saved position if available
+        if (this._savedPosition && this.contentType === "vod") {
+          log.debug("Resuming from saved position:", this._savedPosition.time);
+          this.seekTo(this._savedPosition.time);
+          this._savedPosition = null; // Clear after use
+        }
+
         this.video.play().catch((e) => {
           log.debug("Autoplay prevented:", e);
           this.playerUI.showPlayButton(() => this.video.play());
@@ -749,48 +774,80 @@ const VideoPlayer = {
 
   handleStreamError(type, data) {
     if (type === 'hls') {
-      if (data.fatal) {
-        // Check for auth errors (403/401)
-        if (data.response?.code === 403 || data.response?.code === 401) {
-          log.warn("Auth error detected, requesting token refresh");
-          this.pushEvent("request_token_refresh", {});
-          return;
-        }
+      // Track recovery attempts
+      this._hlsRecoveryAttempts = this._hlsRecoveryAttempts || 0;
 
-        switch (data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            if (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-                data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR) {
-              if (this.retryCount < this.maxRetries && mpegts.getFeatureList().mseLivePlayback) {
-                this.retryCount++;
-                log.warn("HLS failed, trying mpegts.js...");
-                this.cleanup();
-                this.playWithMpegts();
-              } else {
-                this.playerUI.showError("Nao foi possivel carregar - servidor indisponivel");
-              }
-            } else {
-              log.warn("Network error, trying to recover...");
-              this.streamLoader?.startLoad();
+      // Non-fatal errors - just log
+      if (!data.fatal) {
+        log.debug("HLS non-fatal error:", data.details);
+        return;
+      }
+
+      // Check for auth errors (403/401)
+      if (data.response?.code === 403 || data.response?.code === 401) {
+        log.warn("Auth error detected, requesting token refresh");
+        this.pushEvent("request_token_refresh", {});
+        return;
+      }
+
+      switch (data.type) {
+        case Hls.ErrorTypes.NETWORK_ERROR:
+          if (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+              data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR) {
+            // First try soft reload
+            if (this._hlsRecoveryAttempts < 2 && this.streamLoader?.canSoftReload('hls')) {
+              this._hlsRecoveryAttempts++;
+              log.warn(`Soft recovering HLS (attempt ${this._hlsRecoveryAttempts})...`);
+              setTimeout(() => {
+                this.streamLoader?.loadHlsSoft(this.currentUrl);
+              }, 1000 * this._hlsRecoveryAttempts); // Increasing delay
+              return;
             }
-            break;
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            log.warn("Media error, trying to recover...");
-            this.streamLoader?.recoverMediaError();
-            break;
-          default:
-            if (this.retryCount < this.maxRetries) {
+            // Then try different player
+            if (this.retryCount < this.maxRetries && mpegts.getFeatureList().mseLivePlayback) {
               this.retryCount++;
+              log.warn("HLS failed, trying mpegts.js...");
               this.cleanup();
-              if (mpegts.getFeatureList().mseLivePlayback) {
-                this.playWithMpegts();
-              } else {
-                this.playNative();
-              }
+              this.playWithMpegts();
             } else {
-              this.playerUI.showError("Erro de reproducao - formato nao suportado");
+              this.playerUI.showError("Nao foi possivel carregar - servidor indisponivel");
             }
-        }
+          } else {
+            // Fragment/level load errors - try soft recovery first
+            if (this._hlsRecoveryAttempts < 3) {
+              this._hlsRecoveryAttempts++;
+              log.warn(`Network error, soft recovering (attempt ${this._hlsRecoveryAttempts})...`);
+              this.streamLoader?.startLoad();
+            } else {
+              log.warn("Network recovery failed, reloading stream...");
+              this._hlsRecoveryAttempts = 0;
+              this.streamLoader?.loadHlsSoft(this.currentUrl);
+            }
+          }
+          break;
+        case Hls.ErrorTypes.MEDIA_ERROR:
+          if (this._hlsRecoveryAttempts < 2) {
+            this._hlsRecoveryAttempts++;
+            log.warn(`Media error, recovering (attempt ${this._hlsRecoveryAttempts})...`);
+            this.streamLoader?.recoverMediaError();
+          } else {
+            log.warn("Media recovery failed, reloading stream...");
+            this._hlsRecoveryAttempts = 0;
+            this.streamLoader?.loadHlsSoft(this.currentUrl);
+          }
+          break;
+        default:
+          if (this.retryCount < this.maxRetries) {
+            this.retryCount++;
+            this.cleanup();
+            if (mpegts.getFeatureList().mseLivePlayback) {
+              this.playWithMpegts();
+            } else {
+              this.playNative();
+            }
+          } else {
+            this.playerUI.showError("Erro de reproducao - formato nao suportado");
+          }
       }
     } else if (type === 'mpegts') {
       const { errorType, errorDetail } = data;
@@ -878,6 +935,13 @@ const VideoPlayer = {
         this.nativePlaybackTimeout = null;
       }
 
+      // Resume from saved position if available (VOD only)
+      if (this._savedPosition && this.contentType === "vod") {
+        log.debug("Resuming from saved position:", this._savedPosition.time);
+        this.seekTo(this._savedPosition.time);
+        this._savedPosition = null;
+      }
+
       // Check for audio issues (GIndex/MKV with AC3/DTS)
       if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
         this.checkAudioAndFallback();
@@ -963,20 +1027,34 @@ const VideoPlayer = {
   },
 
   /**
-   * Check circuit breaker before attempting fallback
+   * Check circuit breaker before attempting fallback (exponential backoff)
    */
   canAttemptFallback() {
     const now = Date.now();
 
     // Check if we've exceeded max attempts
     if (this.fallbackAttempts >= this.maxFallbackAttempts) {
-      // Allow retry after cooldown
-      if (now - this.lastFallbackTime < this.fallbackCooldown) {
-        log.debug("[VideoPlayer] Circuit breaker: too many fallback attempts, cooling down");
+      // Use last cooldown value (max) for reset check
+      const maxCooldown = this.fallbackCooldowns[this.fallbackCooldowns.length - 1];
+      if (now - this.lastFallbackTime < maxCooldown) {
+        log.debug("[VideoPlayer] Circuit breaker: max attempts reached, cooling down");
         return false;
       }
       // Reset after cooldown
       this.fallbackAttempts = 0;
+    }
+
+    // Check exponential backoff between attempts
+    if (this.fallbackAttempts > 0 && this.lastFallbackTime > 0) {
+      const cooldownIndex = Math.min(this.fallbackAttempts - 1, this.fallbackCooldowns.length - 1);
+      const requiredCooldown = this.fallbackCooldowns[cooldownIndex];
+      const elapsed = now - this.lastFallbackTime;
+
+      if (elapsed < requiredCooldown) {
+        const remaining = Math.ceil((requiredCooldown - elapsed) / 1000);
+        log.debug(`[VideoPlayer] Circuit breaker: waiting ${remaining}s (attempt ${this.fallbackAttempts})`);
+        return false;
+      }
     }
 
     return true;
@@ -1220,30 +1298,39 @@ const VideoPlayer = {
         case "f":
         case "F":
           this.toggleFullscreen();
+          this.playerUI.showShortcutFeedback("fullscreen");
           break;
         case " ":
         case "k":
         case "K":
           e.preventDefault();
+          this.playerUI.showShortcutFeedback(this.isPaused() ? "play" : "pause");
           this.togglePlayPause();
           break;
         case "m":
         case "M":
-          this.toggleMute();
+          {
+            const wasMuted = this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted;
+            this.toggleMute();
+            this.playerUI.showShortcutFeedback(wasMuted ? "unmute" : "mute");
+          }
           break;
         case "p":
         case "P":
           if (this.isPiPSupported()) {
             this.togglePiP();
+            this.playerUI.showShortcutFeedback("pip");
           }
           break;
         case "ArrowUp":
           e.preventDefault();
           this.adjustVolume(0.1);
+          this.playerUI.showShortcutFeedback("volumeUp");
           break;
         case "ArrowDown":
           e.preventDefault();
           this.adjustVolume(-0.1);
+          this.playerUI.showShortcutFeedback("volumeDown");
           break;
         case "ArrowLeft":
         case "j":
@@ -1251,6 +1338,7 @@ const VideoPlayer = {
           if (this.contentType === "vod") {
             e.preventDefault();
             this.seek(-10);
+            this.playerUI.showShortcutFeedback("backward");
           }
           break;
         case "ArrowRight":
@@ -1259,6 +1347,7 @@ const VideoPlayer = {
           if (this.contentType === "vod") {
             e.preventDefault();
             this.seek(10);
+            this.playerUI.showShortcutFeedback("forward");
           }
           break;
         // Number keys 0-9 for percentage seek
@@ -1409,12 +1498,11 @@ const VideoPlayer = {
   // ============================================
 
   trackWatchTime() {
+    // Run directly every 30s instead of checking every 1s
     this.watchInterval = setInterval(() => {
       const duration = Math.floor((Date.now() - this.startTime) / 1000);
-      if (duration > 0 && duration % 30 === 0) {
-        this.pushEvent("update_watch_time", { duration });
-      }
-    }, 1000);
+      this.pushEvent("update_watch_time", { duration });
+    }, 30000);
   },
 
   // ============================================

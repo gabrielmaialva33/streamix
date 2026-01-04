@@ -90,6 +90,26 @@ html, body {
   100% { background-position: 200% 0; }
 }
 
+/* Keyboard shortcut feedback animation (YouTube-style) */
+@keyframes shortcut-feedback {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.animate-shortcut-feedback {
+  animation: shortcut-feedback 0.5s ease-out forwards;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

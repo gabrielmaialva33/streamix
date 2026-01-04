@@ -93,9 +93,10 @@ defmodule StreamixWeb.PlayerComponents do
                 :if={@on_close}
                 type="button"
                 phx-click={@on_close}
+                aria-label="Fechar player"
                 class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
               >
-                <.icon name="hero-x-mark" class="size-6" />
+                <.icon name="hero-x-mark" class="size-6" aria-hidden="true" />
               </button>
               <div class="min-w-0 flex-1">
                 <h2 class="text-base sm:text-xl font-semibold text-white drop-shadow-lg truncate">
@@ -111,10 +112,11 @@ defmodule StreamixWeb.PlayerComponents do
               type="button"
               id="pip-btn"
               phx-click={JS.dispatch("player:toggle-pip")}
+              aria-label="Modo Picture-in-Picture"
               class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation flex-shrink-0"
               title="Modo Picture-in-Picture"
             >
-              <.icon name="hero-rectangle-stack" class="size-5" />
+              <.icon name="hero-rectangle-stack" class="size-5" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -189,10 +191,11 @@ defmodule StreamixWeb.PlayerComponents do
       type="button"
       id="play-pause-btn"
       phx-click={JS.dispatch("player:toggle-play")}
+      aria-label="Reproduzir ou pausar"
       class="p-3 sm:p-2 rounded-full text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
     >
-      <.icon name="hero-play-solid" class="size-8 sm:size-7 play-icon" />
-      <.icon name="hero-pause-solid" class="size-8 sm:size-7 pause-icon hidden" />
+      <.icon name="hero-play-solid" class="size-8 sm:size-7 play-icon" aria-hidden="true" />
+      <.icon name="hero-pause-solid" class="size-8 sm:size-7 pause-icon hidden" aria-hidden="true" />
     </button>
     """
   end
@@ -204,10 +207,11 @@ defmodule StreamixWeb.PlayerComponents do
         type="button"
         id="mute-btn"
         phx-click={JS.dispatch("player:toggle-mute")}
+        aria-label="Ativar ou desativar som"
         class="p-3 sm:p-2 rounded-full text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
       >
-        <.icon name="hero-speaker-wave" class="size-6 sm:size-5 volume-on-icon" />
-        <.icon name="hero-speaker-x-mark" class="size-6 sm:size-5 volume-off-icon hidden" />
+        <.icon name="hero-speaker-wave" class="size-6 sm:size-5 volume-on-icon" aria-hidden="true" />
+        <.icon name="hero-speaker-x-mark" class="size-6 sm:size-5 volume-off-icon hidden" aria-hidden="true" />
       </button>
       <%!-- Volume slider hidden on mobile, shown on hover for desktop --%>
       <div class="hidden sm:block w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300">
@@ -217,6 +221,7 @@ defmodule StreamixWeb.PlayerComponents do
           min="0"
           max="100"
           value="100"
+          aria-label="Volume"
           class="w-20 h-1 bg-white/30 rounded-full appearance-none cursor-pointer accent-brand
                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
                  [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer
@@ -253,18 +258,24 @@ defmodule StreamixWeb.PlayerComponents do
         type="button"
         id="speed-btn"
         phx-click={JS.toggle(to: "#speed-menu") |> JS.hide(to: "#settings-menu")}
+        aria-label="Velocidade de reproducao"
+        aria-haspopup="menu"
+        aria-expanded="false"
         class="px-3 py-2 sm:py-1.5 rounded text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors text-sm font-medium touch-manipulation"
       >
         <span id="speed-label">1x</span>
       </button>
       <div
         id="speed-menu"
+        role="menu"
+        aria-label="Opcoes de velocidade"
         class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[100px] sm:min-w-[80px] border border-white/10"
         phx-click-away={JS.hide(to: "#speed-menu")}
       >
         <button
           :for={speed <- ["0.5", "0.75", "1", "1.25", "1.5", "2"]}
           type="button"
+          role="menuitem"
           phx-click={
             JS.dispatch("player:set-speed", detail: %{speed: speed}) |> JS.hide(to: "#speed-menu")
           }
@@ -284,9 +295,12 @@ defmodule StreamixWeb.PlayerComponents do
         type="button"
         id="settings-btn"
         phx-click={JS.toggle(to: "#settings-menu") |> JS.hide(to: "#speed-menu")}
+        aria-label="Configuracoes"
+        aria-haspopup="menu"
+        aria-expanded="false"
         class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
       >
-        <.icon name="hero-cog-6-tooth" class="size-6 sm:size-5" />
+        <.icon name="hero-cog-6-tooth" class="size-6 sm:size-5" aria-hidden="true" />
       </button>
       <div
         id="settings-menu"
@@ -345,11 +359,12 @@ defmodule StreamixWeb.PlayerComponents do
       type="button"
       id="fullscreen-btn"
       phx-click={JS.dispatch("player:toggle-fullscreen")}
+      aria-label="Tela cheia"
       class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
       title="Tela cheia"
     >
-      <.icon name="hero-arrows-pointing-out" class="size-6 sm:size-5 expand-icon" />
-      <.icon name="hero-arrows-pointing-in" class="size-6 sm:size-5 collapse-icon hidden" />
+      <.icon name="hero-arrows-pointing-out" class="size-6 sm:size-5 expand-icon" aria-hidden="true" />
+      <.icon name="hero-arrows-pointing-in" class="size-6 sm:size-5 collapse-icon hidden" aria-hidden="true" />
     </button>
     """
   end

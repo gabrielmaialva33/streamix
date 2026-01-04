@@ -23,6 +23,16 @@ const LogLevel = {
 // Current log level (can be changed at runtime)
 let currentLevel = isDev ? LogLevel.DEBUG : LogLevel.WARN;
 
+// Error reporter callback (set via setErrorReporter)
+let errorReporter = null;
+
+/**
+ * Set error reporter callback (typically pushEvent from LiveView hook)
+ */
+export function setErrorReporter(callback) {
+  errorReporter = callback;
+}
+
 /**
  * Format log message with prefix
  */
@@ -65,6 +75,36 @@ function createLogger(prefix) {
     error(...args) {
       if (currentLevel <= LogLevel.ERROR) {
         console.error(...formatMessage(prefix, args));
+      }
+    },
+
+    /**
+     * Report error to backend (always sends, regardless of log level)
+     * @param {string} message - Error message
+     * @param {Object} context - Additional context (error object, stack, etc)
+     */
+    reportError(message, context = {}) {
+      // Always log to console
+      console.error(...formatMessage(prefix, [message, context]));
+
+      // Send to backend if reporter is configured
+      if (errorReporter) {
+        try {
+          errorReporter("player_error", {
+            module: prefix,
+            message: typeof message === 'string' ? message : String(message),
+            context: {
+              ...context,
+              error: context.error?.message || context.error,
+              stack: context.error?.stack,
+            },
+            timestamp: Date.now(),
+            userAgent: navigator.userAgent,
+            url: window.location.href,
+          });
+        } catch (e) {
+          console.warn("[Logger] Failed to report error:", e);
+        }
       }
     },
 
@@ -152,6 +192,7 @@ export { createLogger, LogLevel };
 export default {
   createLogger,
   setLogLevel,
+  setErrorReporter,
   enableDebug,
   disableLogs,
   getEnvInfo,
