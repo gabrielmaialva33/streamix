@@ -327,7 +327,10 @@ defmodule Streamix.Iptv.Gindex.Client do
       EndpointManager.report_error(base_url)
 
       # Check if we should try fallback endpoint
-      case EndpointManager.get_endpoint() do
+      endpoint_result = EndpointManager.get_endpoint()
+      Logger.debug("[GIndex] Current base_url: #{base_url}, get_endpoint result: #{inspect(endpoint_result)}")
+
+      case endpoint_result do
         {:ok, new_base_url} when new_base_url != base_url ->
           # We have a different (fallback) endpoint available
           Logger.info("[GIndex] Switching to fallback endpoint: #{new_base_url}")
