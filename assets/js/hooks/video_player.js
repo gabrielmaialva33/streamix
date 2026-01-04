@@ -975,8 +975,9 @@ const VideoPlayer = {
         this._savedPosition = null;
       }
 
-      // Check for audio issues (GIndex/MKV with AC3/DTS)
-      if (this.sourceType === "gindex" || this.currentStreamType === "mkv") {
+      // Check for audio issues (MP4/MKV files may have AC3/DTS audio not supported by browsers)
+      // Run audio detection for all VOD content, not just gindex
+      if (this.contentType === "vod" && (this.currentStreamType === "mp4" || this.currentStreamType === "mkv")) {
         this.checkAudioAndFallback();
       }
     };
@@ -1000,7 +1001,8 @@ const VideoPlayer = {
             break;
           case MediaError.MEDIA_ERR_DECODE:
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            if ((this.sourceType === "gindex" || this.currentStreamType === "mkv") && !this.avPlayerAttempted) {
+            // Try AVPlayer for any VOD content with mp4/mkv that may have unsupported codecs
+            if (this.contentType === "vod" && (this.currentStreamType === "mp4" || this.currentStreamType === "mkv") && !this.avPlayerAttempted) {
               log.debug("[VideoPlayer] Format not supported, trying AVPlayer fallback");
               this.tryAVPlayerFallback();
               return;

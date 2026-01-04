@@ -20,16 +20,20 @@ defmodule StreamixWeb.PlayerComponents do
   attr :fullscreen, :boolean, default: false
   attr :on_close, :string, default: nil
   attr :show_controls, :boolean, default: true
+  attr :provider_type, :string, default: nil
 
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
     proxy_url = build_proxy_url(assigns.stream_url, assigns.content_type)
     content_type_str = if assigns.content_type == :live, do: "live", else: "vod"
+    # Provider type for JS player (gindex/xtream) - used for codec detection
+    source_type = assigns.provider_type || Atom.to_string(assigns.content_type)
 
     assigns =
       assigns
       |> assign(:proxy_url, proxy_url)
       |> assign(:content_type_str, content_type_str)
+      |> assign(:source_type, source_type)
 
     ~H"""
     <div
@@ -39,7 +43,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-stream-url={@stream_url}
       data-proxy-url={@proxy_url}
       data-content-type={@content_type_str}
-      data-source-type={@content_type}
+      data-source-type={@source_type}
       data-content-id={@content.id}
       data-streaming-mode={@streaming_mode}
     >

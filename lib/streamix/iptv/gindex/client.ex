@@ -53,7 +53,8 @@ defmodule Streamix.Iptv.Gindex.Client do
     list_folder(base_url, path, [])
   end
 
-  def list_folder(base_url, path, opts) when is_binary(base_url) and is_binary(path) and is_list(opts) do
+  def list_folder(base_url, path, opts)
+      when is_binary(base_url) and is_binary(path) and is_list(opts) do
     page_token = Keyword.get(opts, :page_token)
     page_index = Keyword.get(opts, :page_index, 0)
 
@@ -274,7 +275,17 @@ defmodule Streamix.Iptv.Gindex.Client do
 
     case Req.request(req_opts) do
       {:ok, response} ->
-        result = handle_response(response, method, url, body, base_url, opts, attempt, rate_limit_attempt)
+        result =
+          handle_response(
+            response,
+            method,
+            url,
+            body,
+            base_url,
+            opts,
+            attempt,
+            rate_limit_attempt
+          )
 
         # Report success/failure to EndpointManager
         case result do
@@ -305,7 +316,16 @@ defmodule Streamix.Iptv.Gindex.Client do
   end
 
   # Handle rate limiting (429) and service unavailable (503) with exponential backoff
-  defp handle_response(%{status: status}, method, url, body, base_url, opts, attempt, rate_limit_attempt)
+  defp handle_response(
+         %{status: status},
+         method,
+         url,
+         body,
+         base_url,
+         opts,
+         attempt,
+         rate_limit_attempt
+       )
        when status in [429, 503] and rate_limit_attempt < @max_rate_limit_retries do
     base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
     jitter = :rand.uniform(2000)
@@ -321,7 +341,16 @@ defmodule Streamix.Iptv.Gindex.Client do
   end
 
   # Handle 500 errors - check for auth errors, otherwise report to EndpointManager
-  defp handle_response(%{status: 500, body: resp_body} = response, method, url, body, base_url, opts, attempt, rate_limit_attempt)
+  defp handle_response(
+         %{status: 500, body: resp_body} = response,
+         method,
+         url,
+         body,
+         base_url,
+         opts,
+         attempt,
+         rate_limit_attempt
+       )
        when rate_limit_attempt < @max_rate_limit_retries do
     body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
     is_auth_error = auth_error?(body_str)
@@ -359,12 +388,30 @@ defmodule Streamix.Iptv.Gindex.Client do
           )
 
           Process.sleep(delay)
-          do_request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
+
+          do_request_with_retry(
+            method,
+            url,
+            body,
+            base_url,
+            opts,
+            attempt,
+            rate_limit_attempt + 1
+          )
       end
     end
   end
 
-  defp handle_response(response, _method, _url, _body, _base_url, _opts, _attempt, _rate_limit_attempt) do
+  defp handle_response(
+         response,
+         _method,
+         _url,
+         _body,
+         _base_url,
+         _opts,
+         _attempt,
+         _rate_limit_attempt
+       ) do
     {:ok, response}
   end
 

@@ -130,7 +130,11 @@ defmodule Streamix.Iptv.XtreamClient do
       {:ok, %{status: 429}} when attempt < @max_retries ->
         # Rate limited - exponential backoff with jitter
         delay = @base_retry_delay * round(:math.pow(2, attempt)) + :rand.uniform(2000)
-        Logger.warning("[XtreamClient] Rate limited (429), retry #{attempt + 1}/#{@max_retries} in #{div(delay, 1000)}s")
+
+        Logger.warning(
+          "[XtreamClient] Rate limited (429), retry #{attempt + 1}/#{@max_retries} in #{div(delay, 1000)}s"
+        )
+
         Process.sleep(delay)
         do_api_call(url, attempt + 1)
 
@@ -140,7 +144,11 @@ defmodule Streamix.Iptv.XtreamClient do
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
         # Transport error - retry with backoff
         delay = @base_retry_delay * round(:math.pow(2, attempt)) + :rand.uniform(1000)
-        Logger.warning("[XtreamClient] Transport error #{inspect(reason)}, retry #{attempt + 1}/#{@max_retries}")
+
+        Logger.warning(
+          "[XtreamClient] Transport error #{inspect(reason)}, retry #{attempt + 1}/#{@max_retries}"
+        )
+
         Process.sleep(delay)
         do_api_call(url, attempt + 1)
 
