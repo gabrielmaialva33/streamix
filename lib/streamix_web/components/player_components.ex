@@ -43,6 +43,34 @@ defmodule StreamixWeb.PlayerComponents do
       data-content-id={@content.id}
       data-streaming-mode={@streaming_mode}
     >
+      <%!-- Loading indicator --%>
+      <div
+        id="loading-indicator"
+        class="absolute inset-0 flex items-center justify-center bg-black/50 z-20"
+      >
+        <div class="flex flex-col items-center gap-4">
+          <div class="w-12 h-12 border-4 border-white/20 border-t-brand rounded-full animate-spin" />
+          <span class="text-white/80 text-sm">Carregando...</span>
+        </div>
+      </div>
+
+      <%!-- Error container --%>
+      <div
+        id="error-container"
+        class="absolute inset-0 flex items-center justify-center bg-black/80 z-20 hidden"
+      >
+        <div class="flex flex-col items-center gap-4 text-center p-6">
+          <.icon name="hero-exclamation-triangle" class="size-16 text-red-500" />
+          <p class="error-message text-white text-lg">Erro ao carregar</p>
+          <button
+            type="button"
+            class="retry-btn px-6 py-2 bg-brand hover:bg-brand/80 text-white rounded-lg font-medium transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+
       <%!-- Video element --%>
       <video
         id="video-element"

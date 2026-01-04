@@ -553,7 +553,29 @@ export class AVPlayerWrapper {
       this.player = null;
     }
 
+    // Cleanup AudioContext to free memory
+    // Only close if we created it and no other AVPlayer instances are using it
+    if (window.AVPlayer?.audioContext && !window._avplayerInstanceCount) {
+      try {
+        const audioCtx = window.AVPlayer.audioContext;
+        if (audioCtx.state !== 'closed') {
+          // Suspend first, then close
+          if (audioCtx.state === 'running') {
+            await audioCtx.suspend();
+          }
+          await audioCtx.close();
+          window.AVPlayer.audioContext = null;
+          console.log('[AVPlayerWrapper] AudioContext closed');
+        }
+      } catch (e) {
+        console.warn('[AVPlayerWrapper] Error closing AudioContext:', e);
+      }
+    }
+
     this.isReady = false;
+    this._playing = false;
+    this._currentTimeMs = 0;
+    this._durationMs = 0;
     console.log('[AVPlayerWrapper] Destroyed');
   }
 }

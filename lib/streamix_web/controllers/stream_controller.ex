@@ -450,7 +450,7 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp collect_body(mint_conn, request_ref, acc, max_size) when byte_size(acc) > max_size do
+  defp collect_body(mint_conn, _request_ref, acc, max_size) when byte_size(acc) > max_size do
     Mint.HTTP.close(mint_conn)
     {:error, :response_too_large}
   end
