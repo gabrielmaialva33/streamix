@@ -47,7 +47,7 @@ export function perceivedToLinear(perceived) {
  * @param {'native'|'avplayer'} backend - Audio backend type
  * @returns {number} Normalized volume for the backend (0-1)
  */
-export function normalizeVolumeForBackend(uiVolume, backend) {
+export function normalizeVolumeForBackend(uiVolume, _backend) {
   // Both native HTML5 audio and AVPlayer use linear volume internally
   // We apply the same curve to both for consistency
   return linearToPerceived(uiVolume);
@@ -60,7 +60,7 @@ export function normalizeVolumeForBackend(uiVolume, backend) {
  * @param {'native'|'avplayer'} backend - Audio backend type
  * @returns {number} Volume for UI slider (0-1)
  */
-export function getUIVolumeFromBackend(backendVolume, backend) {
+export function getUIVolumeFromBackend(backendVolume, _backend) {
   // Convert back to linear for UI display
   return perceivedToLinear(backendVolume);
 }

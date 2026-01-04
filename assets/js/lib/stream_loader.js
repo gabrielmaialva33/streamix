@@ -8,8 +8,8 @@
 
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
-import { getStreamingConfig } from "./streaming_config";
 import { streamLogger as log } from "./logger";
+import { getStreamingConfig } from "./streaming_config";
 
 /**
  * Stream type detection from URL
@@ -70,7 +70,7 @@ export function getFileExtension(streamUrl, sourceType, currentStreamType) {
  * Check if browser supports HEVC natively
  */
 export function supportsHEVCNatively() {
-  const video = document.createElement('video');
+  const video = document.createElement("video");
 
   // Check various HEVC mime types
   const hevcTypes = [
@@ -82,7 +82,7 @@ export function supportsHEVCNatively() {
 
   for (const type of hevcTypes) {
     const result = video.canPlayType(type);
-    if (result === 'probably' || result === 'maybe') {
+    if (result === "probably" || result === "maybe") {
       return true;
     }
   }
@@ -108,8 +108,8 @@ export function isMpegtsSupported() {
  * Check if native HLS is supported (Safari)
  */
 export function isNativeHlsSupported() {
-  const video = document.createElement('video');
-  return video.canPlayType('application/vnd.apple.mpegurl') !== '';
+  const video = document.createElement("video");
+  return video.canPlayType("application/vnd.apple.mpegurl") !== "";
 }
 
 /**
@@ -118,8 +118,8 @@ export function isNativeHlsSupported() {
 export class StreamLoader {
   constructor(options = {}) {
     this.video = options.video;
-    this.streamingMode = options.streamingMode || 'balanced';
-    this.contentType = options.contentType || 'live';
+    this.streamingMode = options.streamingMode || "balanced";
+    this.contentType = options.contentType || "live";
 
     // Player instances
     this.hls = null;
@@ -143,7 +143,7 @@ export class StreamLoader {
     log.debug("Loading HLS:", url);
 
     if (!Hls.isSupported()) {
-      throw new Error('HLS not supported');
+      throw new Error("HLS not supported");
     }
 
     const config = getStreamingConfig(this.streamingMode);
@@ -187,7 +187,7 @@ export class StreamLoader {
 
     this.hls.on(Hls.Events.ERROR, (_event, data) => {
       log.error("HLS error:", data);
-      this.onError('hls', data);
+      this.onError("hls", data);
     });
 
     return this.hls;
@@ -196,7 +196,7 @@ export class StreamLoader {
   /**
    * Load MPEG-TS stream
    */
-  loadMpegts(url, type = 'mpegts') {
+  loadMpegts(url, type = "mpegts") {
     log.debug("Loading MPEG-TS:", url, "type:", type);
 
     const config = getStreamingConfig(this.streamingMode);
@@ -207,7 +207,7 @@ export class StreamLoader {
         isLive: this.contentType === "live",
         url: url,
       },
-      config.mpegts
+      config.mpegts,
     );
 
     this.mpegtsPlayer.attachMediaElement(this.video);
@@ -226,7 +226,7 @@ export class StreamLoader {
 
     this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
       log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
-      this.onError('mpegts', { errorType, errorDetail, errorInfo });
+      this.onError("mpegts", { errorType, errorDetail, errorInfo });
     });
 
     return this.mpegtsPlayer;
@@ -258,7 +258,7 @@ export class StreamLoader {
    * Soft reload MPEG-TS stream (reuses existing player instance)
    * Returns player instance
    */
-  loadMpegtsSoft(url, type = 'mpegts') {
+  loadMpegtsSoft(url, type = "mpegts") {
     if (!this.mpegtsPlayer) {
       log.debug("No existing MPEG-TS instance, using full load");
       return this.loadMpegts(url, type);
@@ -282,7 +282,7 @@ export class StreamLoader {
         isLive: this.contentType === "live",
         url: url,
       },
-      config.mpegts
+      config.mpegts,
     );
 
     if (wasAttached) {
@@ -304,7 +304,7 @@ export class StreamLoader {
 
     this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
       log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
-      this.onError('mpegts', { errorType, errorDetail, errorInfo });
+      this.onError("mpegts", { errorType, errorDetail, errorInfo });
     });
 
     return this.mpegtsPlayer;
@@ -314,8 +314,8 @@ export class StreamLoader {
    * Check if soft reload is available for current stream type
    */
   canSoftReload(streamType) {
-    if (streamType === 'hls' && this.hls) return true;
-    if (streamType === 'ts' && this.mpegtsPlayer) return true;
+    if (streamType === "hls" && this.hls) return true;
+    if (streamType === "ts" && this.mpegtsPlayer) return true;
     return false;
   }
 

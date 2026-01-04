@@ -6,13 +6,13 @@
  */
 
 const FOCUSABLE_SELECTORS = [
-  'button:not([disabled])',
-  'a[href]',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
+  "button:not([disabled])",
+  "a[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
-].join(',');
+].join(",");
 
 /**
  * Create a focus trap for a container element
@@ -32,8 +32,9 @@ export function createFocusTrap(container, options = {}) {
    * Get all focusable elements within the container
    */
   function getFocusableElements() {
-    return Array.from(container.querySelectorAll(FOCUSABLE_SELECTORS))
-      .filter(el => el.offsetParent !== null); // Filter out hidden elements
+    return Array.from(container.querySelectorAll(FOCUSABLE_SELECTORS)).filter(
+      (el) => el.offsetParent !== null,
+    ); // Filter out hidden elements
   }
 
   /**
@@ -42,7 +43,7 @@ export function createFocusTrap(container, options = {}) {
   function handleKeyDown(e) {
     if (!active) return;
 
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       deactivate();
@@ -50,7 +51,7 @@ export function createFocusTrap(container, options = {}) {
       return;
     }
 
-    if (e.key !== 'Tab') return;
+    if (e.key !== "Tab") return;
 
     const focusableElements = getFocusableElements();
     if (focusableElements.length === 0) return;
@@ -95,8 +96,8 @@ export function createFocusTrap(container, options = {}) {
     previouslyFocused = returnFocusTo || document.activeElement;
 
     // Add event listeners
-    document.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('mousedown', handleClickOutside, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("mousedown", handleClickOutside, true);
 
     // Focus the first focusable element
     const focusableElements = getFocusableElements();
@@ -108,8 +109,8 @@ export function createFocusTrap(container, options = {}) {
     }
 
     // Set aria-modal for screen readers
-    container.setAttribute('aria-modal', 'true');
-    container.setAttribute('role', 'dialog');
+    container.setAttribute("aria-modal", "true");
+    container.setAttribute("role", "dialog");
   }
 
   /**
@@ -121,15 +122,15 @@ export function createFocusTrap(container, options = {}) {
     active = false;
 
     // Remove event listeners
-    document.removeEventListener('keydown', handleKeyDown, true);
-    document.removeEventListener('mousedown', handleClickOutside, true);
+    document.removeEventListener("keydown", handleKeyDown, true);
+    document.removeEventListener("mousedown", handleClickOutside, true);
 
     // Remove ARIA attributes
-    container.removeAttribute('aria-modal');
-    container.removeAttribute('role');
+    container.removeAttribute("aria-modal");
+    container.removeAttribute("role");
 
     // Return focus to the previous element
-    if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+    if (previouslyFocused && typeof previouslyFocused.focus === "function") {
       previouslyFocused.focus();
     }
 

@@ -6,10 +6,11 @@
  */
 
 // Detect environment
-const isDev = window.location.hostname === 'localhost' ||
-              window.location.hostname === '127.0.0.1' ||
-              window.location.hostname.includes('.local') ||
-              window.__STREAMIX_DEBUG__ === true;
+const isDev =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1" ||
+  window.location.hostname.includes(".local") ||
+  window.__STREAMIX_DEBUG__ === true;
 
 // Log levels
 const LogLevel = {
@@ -37,7 +38,7 @@ export function setErrorReporter(callback) {
  * Format log message with prefix
  */
 function formatMessage(prefix, args) {
-  if (typeof args[0] === 'string') {
+  if (typeof args[0] === "string") {
     return [`[${prefix}] ${args[0]}`, ...args.slice(1)];
   }
   return [`[${prefix}]`, ...args];
@@ -92,7 +93,7 @@ function createLogger(prefix) {
         try {
           errorReporter("player_error", {
             module: prefix,
-            message: typeof message === 'string' ? message : String(message),
+            message: typeof message === "string" ? message : String(message),
             context: {
               ...context,
               error: context.error?.message || context.error,
@@ -145,7 +146,7 @@ function createLogger(prefix) {
  * Set global log level
  */
 export function setLogLevel(level) {
-  if (typeof level === 'string') {
+  if (typeof level === "string") {
     currentLevel = LogLevel[level.toUpperCase()] ?? LogLevel.WARN;
   } else {
     currentLevel = level;
@@ -174,17 +175,17 @@ export function getEnvInfo() {
   return {
     isDev,
     currentLevel,
-    levelName: Object.keys(LogLevel).find(k => LogLevel[k] === currentLevel),
+    levelName: Object.keys(LogLevel).find((k) => LogLevel[k] === currentLevel),
   };
 }
 
 // Pre-created loggers for common modules
-export const playerLogger = createLogger('VideoPlayer');
-export const streamLogger = createLogger('StreamLoader');
-export const avplayerLogger = createLogger('AVPlayer');
-export const uiLogger = createLogger('PlayerUI');
-export const prefsLogger = createLogger('Preferences');
-export const networkLogger = createLogger('Network');
+export const playerLogger = createLogger("VideoPlayer");
+export const streamLogger = createLogger("StreamLoader");
+export const avplayerLogger = createLogger("AVPlayer");
+export const uiLogger = createLogger("PlayerUI");
+export const prefsLogger = createLogger("Preferences");
+export const networkLogger = createLogger("Network");
 
 // Export factory for custom loggers
 export { createLogger, LogLevel };

@@ -11,7 +11,7 @@ const InfiniteScroll = {
         root: null,
         rootMargin: "200px",
         threshold: 0,
-      }
+      },
     );
 
     this.observer.observe(this.el);

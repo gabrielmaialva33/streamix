@@ -1,26 +1,22 @@
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
-import {
-  ContentType,
-  selectStreamingMode,
-  getStreamingConfig,
-} from "../lib/streaming_config";
+import { KeyboardManager } from "../lib/keyboard_manager";
+import { playerLogger as log, setErrorReporter } from "../lib/logger";
 import { NetworkMonitor } from "../lib/network_monitor";
-import { PlayerUI } from "../lib/player_ui";
-import { StreamLoader, getStreamType, getFileExtension, supportsHEVCNatively } from "../lib/stream_loader";
 import {
+  getPlaybackPosition,
   getPreferences,
-  saveVolume,
-  saveMuted,
   saveAudioTrack,
-  saveSubtitleTrack,
+  saveMuted,
+  savePlaybackPosition,
   savePlaybackRate,
   savePreferAVPlayer,
-  savePlaybackPosition,
-  getPlaybackPosition,
+  saveSubtitleTrack,
+  saveVolume,
 } from "../lib/player_preferences";
-import { playerLogger as log, setErrorReporter } from "../lib/logger";
-import { KeyboardManager } from "../lib/keyboard_manager";
+import { PlayerUI } from "../lib/player_ui";
+import { getFileExtension, getStreamType, StreamLoader } from "../lib/stream_loader";
+import { ContentType, getStreamingConfig, selectStreamingMode } from "../lib/streaming_config";
 import { linearToPerceived, perceivedToLinear } from "../lib/volume_utils";
 
 // Lazy load AVPlayer only when needed
@@ -58,16 +54,16 @@ async function preloadAVPlayerWasm() {
     log.debug("WASM pre-load failed (non-critical):", e.message);
     // Fallback to simple prefetch
     const wasmFiles = [
-      '/avplayer/decode/h264-atomic.wasm',
-      '/avplayer/decode/ac3-atomic.wasm',
-      '/avplayer/decode/aac-atomic.wasm',
+      "/avplayer/decode/h264-atomic.wasm",
+      "/avplayer/decode/ac3-atomic.wasm",
+      "/avplayer/decode/aac-atomic.wasm",
     ];
-    wasmFiles.forEach(url => {
-      const link = document.createElement('link');
-      link.rel = 'prefetch';
+    wasmFiles.forEach((url) => {
+      const link = document.createElement("link");
+      link.rel = "prefetch";
       link.href = url;
-      link.as = 'fetch';
-      link.crossOrigin = 'anonymous';
+      link.as = "fetch";
+      link.crossOrigin = "anonymous";
       document.head.appendChild(link);
     });
   }
@@ -129,11 +125,9 @@ const VideoPlayer = {
     this.mpegtsPlayer = null;
 
     // Streaming state
-    this.streamingMode = this.initialMode ||
-      selectStreamingMode(
-        this.contentType === "live" ? ContentType.LIVE : ContentType.VOD,
-        "good"
-      );
+    this.streamingMode =
+      this.initialMode ||
+      selectStreamingMode(this.contentType === "live" ? ContentType.LIVE : ContentType.VOD, "good");
     this.currentStreamType = null;
     this.currentUrl = null;
 
@@ -278,9 +272,10 @@ const VideoPlayer = {
     }
     this.manualQuality = levelIndex === -1 ? null : levelIndex;
 
-    const quality = levelIndex === -1
-      ? "auto"
-      : this.availableQualities[levelIndex]?.label || `Level ${levelIndex}`;
+    const quality =
+      levelIndex === -1
+        ? "auto"
+        : this.availableQualities[levelIndex]?.label || `Level ${levelIndex}`;
 
     this.pushEvent("quality_changed", { quality, level: levelIndex });
   },
@@ -291,10 +286,8 @@ const VideoPlayer = {
     this.availableQualities = this.streamLoader.getQualityLevels();
     const currentLevel = this.streamLoader.getCurrentLevel();
 
-    this.playerUI.updateQualityOptions(
-      this.availableQualities,
-      currentLevel,
-      (level) => this.setQuality(level)
+    this.playerUI.updateQualityOptions(this.availableQualities, currentLevel, (level) =>
+      this.setQuality(level),
     );
 
     this.pushEvent("qualities_available", {
@@ -337,10 +330,8 @@ const VideoPlayer = {
 
     const currentTrack = hls.audioTrack;
 
-    this.playerUI.updateAudioOptions(
-      this.audioTracks,
-      currentTrack,
-      (track) => this.setAudioTrack(track)
+    this.playerUI.updateAudioOptions(this.audioTracks, currentTrack, (track) =>
+      this.setAudioTrack(track),
     );
 
     // Apply saved preference
@@ -370,7 +361,8 @@ const VideoPlayer = {
     const track = trackIndex >= 0 ? this.subtitleTracks[trackIndex] : null;
     this.pushEvent("subtitle_track_changed", {
       track: trackIndex,
-      label: track?.name || track?.lang || (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
+      label:
+        track?.name || track?.lang || (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
     });
   },
 
@@ -388,14 +380,15 @@ const VideoPlayer = {
 
     const currentTrack = hls.subtitleTrack;
 
-    this.playerUI.updateSubtitleOptions(
-      this.subtitleTracks,
-      currentTrack,
-      (track) => this.setSubtitleTrack(track)
+    this.playerUI.updateSubtitleOptions(this.subtitleTracks, currentTrack, (track) =>
+      this.setSubtitleTrack(track),
     );
 
     // Apply saved preference
-    if (this._preferredSubtitleTrack !== null && this._preferredSubtitleTrack < this.subtitleTracks.length) {
+    if (
+      this._preferredSubtitleTrack !== null &&
+      this._preferredSubtitleTrack < this.subtitleTracks.length
+    ) {
       this.setSubtitleTrack(this._preferredSubtitleTrack);
     }
 
@@ -464,12 +457,18 @@ const VideoPlayer = {
     this.video?.addEventListener("volumechange", () => this.updateVolumeUI());
     this.video?.addEventListener("timeupdate", () => this.updateTimeUI());
     this.video?.addEventListener("loadedmetadata", () => this.updateTimeUI());
-    this.video?.addEventListener("ratechange", () => this.playerUI.updateSpeedUI(this.video.playbackRate));
+    this.video?.addEventListener("ratechange", () =>
+      this.playerUI.updateSpeedUI(this.video.playbackRate),
+    );
     this.video?.addEventListener("progress", () => this.updateBufferBar());
 
     // Fullscreen events
-    document.addEventListener("fullscreenchange", () => this.playerUI.updateFullscreenUI(!!document.fullscreenElement));
-    document.addEventListener("webkitfullscreenchange", () => this.playerUI.updateFullscreenUI(!!document.fullscreenElement));
+    document.addEventListener("fullscreenchange", () =>
+      this.playerUI.updateFullscreenUI(!!document.fullscreenElement),
+    );
+    document.addEventListener("webkitfullscreenchange", () =>
+      this.playerUI.updateFullscreenUI(!!document.fullscreenElement),
+    );
 
     // LiveView commands
     this.handleEvent("set_quality", ({ level }) => this.setQuality(level));
@@ -503,7 +502,7 @@ const VideoPlayer = {
     if (this.contentType === "vod") {
       this.video?.addEventListener("timeupdate", () => this.reportProgress());
       this.video?.addEventListener("durationchange", () => {
-        if (this.video.duration && isFinite(this.video.duration)) {
+        if (this.video.duration && Number.isFinite(this.video.duration)) {
           this.pushEvent("duration_available", {
             duration: Math.floor(this.video.duration),
           });
@@ -564,7 +563,7 @@ const VideoPlayer = {
   },
 
   updateBufferBar() {
-    if (this.video && this.video.buffered) {
+    if (this.video?.buffered) {
       this.playerUI.updateBufferBar(this.video.buffered, this.video.duration);
     }
   },
@@ -816,7 +815,7 @@ const VideoPlayer = {
   },
 
   handleStreamError(type, data) {
-    if (type === 'hls') {
+    if (type === "hls") {
       // Track recovery attempts
       this._hlsRecoveryAttempts = this._hlsRecoveryAttempts || 0;
 
@@ -835,10 +834,12 @@ const VideoPlayer = {
 
       switch (data.type) {
         case Hls.ErrorTypes.NETWORK_ERROR:
-          if (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-              data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR) {
+          if (
+            data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+            data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR
+          ) {
             // First try soft reload
-            if (this._hlsRecoveryAttempts < 2 && this.streamLoader?.canSoftReload('hls')) {
+            if (this._hlsRecoveryAttempts < 2 && this.streamLoader?.canSoftReload("hls")) {
               this._hlsRecoveryAttempts++;
               log.warn(`Soft recovering HLS (attempt ${this._hlsRecoveryAttempts})...`);
               setTimeout(() => {
@@ -892,7 +893,7 @@ const VideoPlayer = {
             this.playerUI.showError("Erro de reproducao - formato nao suportado");
           }
       }
-    } else if (type === 'mpegts') {
+    } else if (type === "mpegts") {
       const { errorType, errorDetail } = data;
 
       if (this.useProxy && this.currentUrl !== this.streamUrl) {
@@ -949,10 +950,14 @@ const VideoPlayer = {
         }
       });
 
-      this.video.addEventListener("playing", () => {
-        this.playerUI.hideLoading();
-        this.playerUI.hideError();
-      }, { once: true });
+      this.video.addEventListener(
+        "playing",
+        () => {
+          this.playerUI.hideLoading();
+          this.playerUI.hideError();
+        },
+        { once: true },
+      );
     } catch (e) {
       console.error("mpegts.js initialization error:", e);
       if (Hls.isSupported()) {
@@ -987,12 +992,12 @@ const VideoPlayer = {
 
       // Check for audio issues (MP4/MKV files may have AC3/DTS audio not supported by browsers)
       // Run audio detection for all VOD content, including GIndex (which often has unknown stream type)
-      const needsAudioCheck = this.contentType === "vod" && (
-        this.currentStreamType === "mp4" ||
-        this.currentStreamType === "mkv" ||
-        this.sourceType === "gindex" ||  // GIndex URLs don't have extensions
-        this.currentStreamType === "unknown"  // Unknown types might have unsupported audio
-      );
+      const needsAudioCheck =
+        this.contentType === "vod" &&
+        (this.currentStreamType === "mp4" ||
+          this.currentStreamType === "mkv" ||
+          this.sourceType === "gindex" || // GIndex URLs don't have extensions
+          this.currentStreamType === "unknown"); // Unknown types might have unsupported audio
       if (needsAudioCheck) {
         this.checkAudioAndFallback();
       }
@@ -1022,14 +1027,15 @@ const VideoPlayer = {
             message = "Erro de rede - verifique sua conexao";
             break;
           case MediaError.MEDIA_ERR_DECODE:
-          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED: {
             // Try AVPlayer for any VOD content that may have unsupported codecs
-            const canTryAVPlayer = this.contentType === "vod" && !this.avPlayerAttempted && (
-              this.currentStreamType === "mp4" ||
-              this.currentStreamType === "mkv" ||
-              this.sourceType === "gindex" ||
-              this.currentStreamType === "unknown"
-            );
+            const canTryAVPlayer =
+              this.contentType === "vod" &&
+              !this.avPlayerAttempted &&
+              (this.currentStreamType === "mp4" ||
+                this.currentStreamType === "mkv" ||
+                this.sourceType === "gindex" ||
+                this.currentStreamType === "unknown");
             if (canTryAVPlayer) {
               log.debug("[VideoPlayer] Format not supported, trying AVPlayer fallback");
               this.tryAVPlayerFallback();
@@ -1037,6 +1043,7 @@ const VideoPlayer = {
             }
             message = "Formato nao suportado pelo navegador";
             break;
+          }
         }
       }
 
@@ -1048,17 +1055,22 @@ const VideoPlayer = {
 
     this.video.addEventListener("playing", playHandler);
     this.video.addEventListener("error", errorHandler);
-    this.video.addEventListener("loadedmetadata", () => this.playerUI.hideLoading(), { once: true });
+    this.video.addEventListener("loadedmetadata", () => this.playerUI.hideLoading(), {
+      once: true,
+    });
 
     this.video.play().catch((e) => {
       log.debug("Native autoplay prevented:", e);
       this.playerUI.hideLoading();
       if (e.name === "NotAllowedError") {
         this.playerUI.showPlayButton(() => this.video.play());
-      } else if (e.name === "NotSupportedError" && (this.sourceType === "gindex" || this.currentStreamType === "mkv")) {
+      } else if (
+        e.name === "NotSupportedError" &&
+        (this.sourceType === "gindex" || this.currentStreamType === "mkv")
+      ) {
         log.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
       } else {
-        this.playerUI.showError("Falha ao iniciar reproducao: " + e.message);
+        this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
       }
     });
   },
@@ -1115,7 +1127,9 @@ const VideoPlayer = {
 
       if (elapsed < requiredCooldown) {
         const remaining = Math.ceil((requiredCooldown - elapsed) / 1000);
-        log.debug(`[VideoPlayer] Circuit breaker: waiting ${remaining}s (attempt ${this.fallbackAttempts})`);
+        log.debug(
+          `[VideoPlayer] Circuit breaker: waiting ${remaining}s (attempt ${this.fallbackAttempts})`,
+        );
         return false;
       }
     }
@@ -1202,9 +1216,7 @@ const VideoPlayer = {
         },
       });
 
-      const avPlayerUrl = this.proxyUrl
-        ? this.toAbsoluteUrl(this.proxyUrl)
-        : this.streamUrl;
+      const avPlayerUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
 
       const ext = getFileExtension(this.streamUrl, this.sourceType, this.currentStreamType);
       log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext);
@@ -1227,7 +1239,6 @@ const VideoPlayer = {
 
       // Detect available audio/subtitle tracks from AVPlayer
       this.detectAVPlayerTracks();
-
     } catch (error) {
       log.error("[VideoPlayer] AVPlayer fallback failed:", error);
       this.revertToNativePlayer();
@@ -1244,7 +1255,7 @@ const VideoPlayer = {
 
     try {
       // Small delay to let AVPlayer fully initialize streams
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Get audio tracks
       const audioTracks = await this.avPlayer.getAudioTracks();
@@ -1253,20 +1264,21 @@ const VideoPlayer = {
           index,
           id: track.id,
           label: this.formatTrackLabel(track),
-          language: track.language || '',
-          codec: track.codec || '',
+          language: track.language || "",
+          codec: track.codec || "",
         }));
 
-        const currentTrack = audioTracks.findIndex(t => t.selected) || 0;
+        const currentTrack = audioTracks.findIndex((t) => t.selected) || 0;
 
-        this.playerUI.updateAudioOptions(
-          this.audioTracks,
-          currentTrack,
-          (track) => this.setAVPlayerAudioTrack(track)
+        this.playerUI.updateAudioOptions(this.audioTracks, currentTrack, (track) =>
+          this.setAVPlayerAudioTrack(track),
         );
 
         // Apply saved preference
-        if (this._preferredAudioTrack !== null && this._preferredAudioTrack < this.audioTracks.length) {
+        if (
+          this._preferredAudioTrack !== null &&
+          this._preferredAudioTrack < this.audioTracks.length
+        ) {
           this.setAVPlayerAudioTrack(this._preferredAudioTrack);
         }
 
@@ -1285,19 +1297,20 @@ const VideoPlayer = {
           index,
           id: track.id,
           label: this.formatTrackLabel(track),
-          language: track.language || '',
+          language: track.language || "",
         }));
 
-        const currentTrack = subtitleTracks.findIndex(t => t.selected);
+        const currentTrack = subtitleTracks.findIndex((t) => t.selected);
 
-        this.playerUI.updateSubtitleOptions(
-          this.subtitleTracks,
-          currentTrack,
-          (track) => this.setAVPlayerSubtitleTrack(track)
+        this.playerUI.updateSubtitleOptions(this.subtitleTracks, currentTrack, (track) =>
+          this.setAVPlayerSubtitleTrack(track),
         );
 
         // Apply saved preference
-        if (this._preferredSubtitleTrack !== null && this._preferredSubtitleTrack < this.subtitleTracks.length) {
+        if (
+          this._preferredSubtitleTrack !== null &&
+          this._preferredSubtitleTrack < this.subtitleTracks.length
+        ) {
           this.setAVPlayerSubtitleTrack(this._preferredSubtitleTrack);
         }
 
@@ -1318,7 +1331,11 @@ const VideoPlayer = {
    */
   formatTrackLabel(track) {
     const parts = [];
-    if (track.label && track.label !== `Audio ${track.index + 1}` && track.label !== `Subtitle ${track.index + 1}`) {
+    if (
+      track.label &&
+      track.label !== `Audio ${track.index + 1}` &&
+      track.label !== `Subtitle ${track.index + 1}`
+    ) {
       parts.push(track.label);
     }
     if (track.language) {
@@ -1333,7 +1350,7 @@ const VideoPlayer = {
     if (track.channels && track.channels > 0) {
       parts.push(`${track.channels}ch`);
     }
-    return parts.length > 0 ? parts.join(' ') : `Track ${track.index + 1}`;
+    return parts.length > 0 ? parts.join(" ") : `Track ${track.index + 1}`;
   },
 
   /**
@@ -1341,16 +1358,16 @@ const VideoPlayer = {
    */
   getLanguageName(code) {
     const languages = {
-      'por': 'Português',
-      'pt': 'Português',
-      'pt-BR': 'Português (BR)',
-      'eng': 'English',
-      'en': 'English',
-      'spa': 'Español',
-      'es': 'Español',
-      'jpn': 'Japanese',
-      'ja': 'Japanese',
-      'und': 'Indefinido',
+      por: "Português",
+      pt: "Português",
+      "pt-BR": "Português (BR)",
+      eng: "English",
+      en: "English",
+      spa: "Español",
+      es: "Español",
+      jpn: "Japanese",
+      ja: "Japanese",
+      und: "Indefinido",
     };
     return languages[code] || code;
   },
@@ -1423,7 +1440,8 @@ const VideoPlayer = {
 
       // Create a probe-only AVPlayer (won't actually play)
       const probeContainer = document.createElement("div");
-      probeContainer.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;";
+      probeContainer.style.cssText =
+        "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;";
       this.el.appendChild(probeContainer);
 
       const probePlayer = new AVPlayerWrapper({
@@ -1438,17 +1456,18 @@ const VideoPlayer = {
       await probePlayer.init();
 
       // Get the proxy URL for GIndex (use proxyUrl if available, otherwise direct URL)
-      const probeUrl = this.proxyUrl
-        ? this.toAbsoluteUrl(this.proxyUrl)
-        : this.streamUrl;
+      const probeUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
       // For GIndex content, default to mkv since URL parsing is unreliable
-      const ext = this.sourceType === 'gindex' ? 'mkv' : (this.streamUrl.split('.').pop()?.split('?')[0] || 'mkv');
+      const ext =
+        this.sourceType === "gindex"
+          ? "mkv"
+          : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
 
       log.debug("[VideoPlayer] Probe loading:", probeUrl);
       await probePlayer.load(probeUrl, { ext });
 
       // Give it a moment to parse the container
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Get audio tracks
       const audioTracks = await probePlayer.getAudioTracks();
@@ -1459,7 +1478,7 @@ const VideoPlayer = {
           index,
           id: track.id,
           label: this.formatTrackLabel(track),
-          language: track.language || '',
+          language: track.language || "",
         }));
 
         log.debug("[VideoPlayer] Probed audio tracks:", this._probedAudioTracks);
@@ -1472,7 +1491,7 @@ const VideoPlayer = {
         this.playerUI.updateAudioOptions(
           this._probedAudioTracks,
           preferredAudioTrack,
-          (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex)
+          (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex),
         );
 
         this.pushEvent("audio_tracks_available", {
@@ -1488,16 +1507,14 @@ const VideoPlayer = {
           index,
           id: track.id,
           label: this.formatTrackLabel(track),
-          language: track.language || '',
+          language: track.language || "",
         }));
 
         log.debug("[VideoPlayer] Probed subtitle tracks:", this._probedSubtitleTracks);
 
         // Update UI with detected tracks
-        this.playerUI.updateSubtitleOptions(
-          this._probedSubtitleTracks,
-          -1,
-          (trackIndex) => this.handleProbedSubtitleTrackSelect(trackIndex)
+        this.playerUI.updateSubtitleOptions(this._probedSubtitleTracks, -1, (trackIndex) =>
+          this.handleProbedSubtitleTrackSelect(trackIndex),
         );
 
         this.pushEvent("subtitle_tracks_available", {
@@ -1515,9 +1532,12 @@ const VideoPlayer = {
       // Auto-switch to AVPlayer when multiple audio tracks detected (Dual Audio)
       // Native player can't guarantee which track plays, so we switch to control audio selection
       if (this._probedAudioTracks && this._probedAudioTracks.length > 1) {
-        log.debug("[VideoPlayer] Multiple audio tracks detected, auto-switching to AVPlayer with Portuguese track", preferredAudioTrack);
+        log.debug(
+          "[VideoPlayer] Multiple audio tracks detected, auto-switching to AVPlayer with Portuguese track",
+          preferredAudioTrack,
+        );
         // Short delay to let native player stabilize before switch
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         this.handleProbedAudioTrackSelect(preferredAudioTrack);
       }
     } catch (e) {
@@ -1534,17 +1554,15 @@ const VideoPlayer = {
 
     // Priority order for Portuguese variants
     const ptPatterns = [
-      /\bpt[-_]?br\b/i,      // pt-br, pt_br, ptbr
-      /\bportugu[eê]s?\b/i,  // portugues, português
-      /\bbrazil/i,           // brazilian
-      /\bpt\b/i,             // pt (generic portuguese)
-      /\bpor\b/i,            // por (ISO 639-2)
+      /\bpt[-_]?br\b/i, // pt-br, pt_br, ptbr
+      /\bportugu[eê]s?\b/i, // portugues, português
+      /\bbrazil/i, // brazilian
+      /\bpt\b/i, // pt (generic portuguese)
+      /\bpor\b/i, // por (ISO 639-2)
     ];
 
     for (const pattern of ptPatterns) {
-      const found = tracks.find(t =>
-        pattern.test(t.language) || pattern.test(t.label)
-      );
+      const found = tracks.find((t) => pattern.test(t.language) || pattern.test(t.label));
       if (found) {
         log.debug("[VideoPlayer] Found Portuguese track:", found.label, "at index", found.index);
         return found.index;
@@ -1666,11 +1684,12 @@ const VideoPlayer = {
       }
 
       // Load the stream (use proxyUrl if available, otherwise direct URL)
-      const proxyUrl = this.proxyUrl
-        ? this.toAbsoluteUrl(this.proxyUrl)
-        : this.streamUrl;
+      const proxyUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
       // For GIndex content, default to mkv since URL parsing is unreliable
-      const ext = this.sourceType === 'gindex' ? 'mkv' : (this.streamUrl.split('.').pop()?.split('?')[0] || 'mkv');
+      const ext =
+        this.sourceType === "gindex"
+          ? "mkv"
+          : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
       await this.avPlayer.load(proxyUrl, { ext });
 
       // Apply volume settings
@@ -1712,7 +1731,6 @@ const VideoPlayer = {
 
       this.playerUI.hideLoading();
       log.debug("[VideoPlayer] Switched to AVPlayer with", trackType, "track", trackIndex);
-
     } catch (error) {
       log.error("[VideoPlayer] Failed to switch to AVPlayer:", error);
       this.playerUI.hideLoading();
@@ -1865,7 +1883,7 @@ const VideoPlayer = {
         setPlaybackRate: (rate) => this.setPlaybackRate(rate),
         getDuration: () => this.getDuration(),
         isPaused: () => this.isPaused(),
-        isMuted: () => this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted,
+        isMuted: () => (this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted),
         isPiPSupported: () => this.isPiPSupported(),
         getPlaybackRate: () => this.video?.playbackRate || 1,
       },
@@ -1914,7 +1932,9 @@ const VideoPlayer = {
       saveMuted(this.video.muted);
     }
     this.updateVolumeUI();
-    this.pushEvent("mute_toggled", { muted: this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted });
+    this.pushEvent("mute_toggled", {
+      muted: this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted,
+    });
   },
 
   adjustVolume(delta) {
@@ -1949,7 +1969,7 @@ const VideoPlayer = {
     } else if (this.video?.duration) {
       this.video.currentTime = Math.max(
         0,
-        Math.min(this.video.duration, this.video.currentTime + seconds)
+        Math.min(this.video.duration, this.video.currentTime + seconds),
       );
     }
   },

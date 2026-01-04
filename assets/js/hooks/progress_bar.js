@@ -85,7 +85,7 @@ const ProgressBar = {
     const hook = this.getVideoPlayerHook();
     const duration = hook?.getDuration?.() || this.video?.duration;
 
-    if (!duration || !isFinite(duration)) return;
+    if (!duration || !Number.isFinite(duration)) return;
 
     const rect = this.progressContainer.getBoundingClientRect();
     const pos = (e.clientX - rect.left) / rect.width;
@@ -112,7 +112,7 @@ const ProgressBar = {
     // If using AVPlayer, the VideoPlayer hook handles progress updates
     if (hook?.usingAVPlayer) return;
 
-    if (!this.video || !this.video.duration || !isFinite(this.video.duration)) return;
+    if (!this.video || !this.video.duration || !Number.isFinite(this.video.duration)) return;
     if (!this.progressPlayed) return;
 
     const percent = (this.video.currentTime / this.video.duration) * 100;
@@ -125,7 +125,7 @@ const ProgressBar = {
     // Buffer tracking not available for AVPlayer
     if (hook?.usingAVPlayer) return;
 
-    if (!this.video || !this.video.duration || !isFinite(this.video.duration)) return;
+    if (!this.video || !this.video.duration || !Number.isFinite(this.video.duration)) return;
     if (!this.progressBuffered) return;
 
     // Get the furthest buffered range

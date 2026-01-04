@@ -5,9 +5,9 @@
  * Preferences are scoped by content ID when available.
  */
 
-const STORAGE_KEY = 'streamix_player_prefs';
-const POSITION_KEY = 'streamix_playback_positions';
-const GLOBAL_KEY = 'global';
+const STORAGE_KEY = "streamix_player_prefs";
+const POSITION_KEY = "streamix_playback_positions";
+const GLOBAL_KEY = "global";
 const MAX_POSITIONS = 100; // Max number of positions to store
 
 /**
@@ -18,7 +18,7 @@ function getAllPrefs() {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
-    console.warn('[PlayerPreferences] Failed to read preferences:', e);
+    console.warn("[PlayerPreferences] Failed to read preferences:", e);
     return {};
   }
 }
@@ -30,7 +30,7 @@ function saveAllPrefs(prefs) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
   } catch (e) {
-    console.warn('[PlayerPreferences] Failed to save preferences:', e);
+    console.warn("[PlayerPreferences] Failed to save preferences:", e);
   }
 }
 
@@ -39,11 +39,11 @@ function saveAllPrefs(prefs) {
  */
 export function getPreferences(contentId = null) {
   const prefs = getAllPrefs();
-  const key = contentId || GLOBAL_KEY;
+  const _key = contentId || GLOBAL_KEY;
 
   // Merge global with content-specific (content-specific takes precedence)
   const globalPrefs = prefs[GLOBAL_KEY] || {};
-  const contentPrefs = contentId ? (prefs[contentId] || {}) : {};
+  const contentPrefs = contentId ? prefs[contentId] || {} : {};
 
   return {
     volume: contentPrefs.volume ?? globalPrefs.volume ?? 1,
@@ -74,42 +74,42 @@ export function savePreference(key, value, contentId = null) {
  * Save volume preference (always global)
  */
 export function saveVolume(volume) {
-  savePreference('volume', volume, null);
+  savePreference("volume", volume, null);
 }
 
 /**
  * Save mute preference (always global)
  */
 export function saveMuted(muted) {
-  savePreference('muted', muted, null);
+  savePreference("muted", muted, null);
 }
 
 /**
  * Save audio track preference (content-specific if ID provided)
  */
 export function saveAudioTrack(trackIndex, contentId = null) {
-  savePreference('audioTrack', trackIndex, contentId);
+  savePreference("audioTrack", trackIndex, contentId);
 }
 
 /**
  * Save subtitle track preference (content-specific if ID provided)
  */
 export function saveSubtitleTrack(trackIndex, contentId = null) {
-  savePreference('subtitleTrack', trackIndex, contentId);
+  savePreference("subtitleTrack", trackIndex, contentId);
 }
 
 /**
  * Save playback rate preference (always global)
  */
 export function savePlaybackRate(rate) {
-  savePreference('playbackRate', rate, null);
+  savePreference("playbackRate", rate, null);
 }
 
 /**
  * Save AVPlayer preference (manual audio compatibility mode)
  */
 export function savePreferAVPlayer(prefer) {
-  savePreference('preferAVPlayer', prefer, null);
+  savePreference("preferAVPlayer", prefer, null);
 }
 
 /**
@@ -130,7 +130,7 @@ export function clearAllPreferences() {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
-    console.warn('[PlayerPreferences] Failed to clear preferences:', e);
+    console.warn("[PlayerPreferences] Failed to clear preferences:", e);
   }
 }
 
@@ -146,7 +146,7 @@ function getAllPositions() {
     const stored = localStorage.getItem(POSITION_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
-    console.warn('[PlayerPreferences] Failed to read positions:', e);
+    console.warn("[PlayerPreferences] Failed to read positions:", e);
     return {};
   }
 }
@@ -158,7 +158,7 @@ function saveAllPositions(positions) {
   try {
     localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
   } catch (e) {
-    console.warn('[PlayerPreferences] Failed to save positions:', e);
+    console.warn("[PlayerPreferences] Failed to save positions:", e);
   }
 }
 
@@ -194,7 +194,9 @@ export function savePlaybackPosition(contentId, currentTime, duration) {
   if (keys.length > MAX_POSITIONS) {
     const sortedKeys = keys.sort((a, b) => positions[a].timestamp - positions[b].timestamp);
     const toRemove = sortedKeys.slice(0, keys.length - MAX_POSITIONS);
-    toRemove.forEach(key => delete positions[key]);
+    for (const key of toRemove) {
+      delete positions[key];
+    }
   }
 
   saveAllPositions(positions);
@@ -237,7 +239,7 @@ export function clearAllPlaybackPositions() {
   try {
     localStorage.removeItem(POSITION_KEY);
   } catch (e) {
-    console.warn('[PlayerPreferences] Failed to clear positions:', e);
+    console.warn("[PlayerPreferences] Failed to clear positions:", e);
   }
 }
 

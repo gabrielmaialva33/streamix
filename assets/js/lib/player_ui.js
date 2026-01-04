@@ -209,7 +209,7 @@ export class PlayerUI {
       currentTimeEl.textContent = this.formatTime(currentTime);
     }
 
-    if (durationEl && duration && isFinite(duration)) {
+    if (durationEl && duration && Number.isFinite(duration)) {
       durationEl.textContent = this.formatTime(duration);
     }
 
@@ -219,7 +219,7 @@ export class PlayerUI {
 
   updateProgressBar(currentTime, duration) {
     const { progressPlayed } = this.elements;
-    if (!progressPlayed || !duration || !isFinite(duration)) return;
+    if (!progressPlayed || !duration || !Number.isFinite(duration)) return;
 
     const percent = (currentTime / duration) * 100;
     progressPlayed.style.width = `${percent}%`;
@@ -230,7 +230,7 @@ export class PlayerUI {
    */
   updateBufferBar(buffered, duration) {
     const { progressBuffered } = this.elements;
-    if (!progressBuffered || !duration || !isFinite(duration)) return;
+    if (!progressBuffered || !duration || !Number.isFinite(duration)) return;
 
     // Get the end of the last buffered range
     let bufferedEnd = 0;
@@ -243,7 +243,7 @@ export class PlayerUI {
   }
 
   formatTime(seconds) {
-    if (!seconds || !isFinite(seconds)) return "0:00";
+    if (!seconds || !Number.isFinite(seconds)) return "0:00";
 
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
@@ -293,22 +293,24 @@ export class PlayerUI {
     if (!container || qualities.length === 0) return;
 
     // Set accessibility attributes
-    container.setAttribute('role', 'menu');
-    container.setAttribute('aria-label', 'Qualidade do video');
+    container.setAttribute("role", "menu");
+    container.setAttribute("aria-label", "Qualidade do video");
 
     // Clear existing content
-    container.innerHTML = '';
-    container.appendChild(this.renderOptionList(
-      [{ index: -1, label: "Automatico" }, ...qualities],
-      currentLevel,
-      'quality-option'
-    ));
+    container.innerHTML = "";
+    container.appendChild(
+      this.renderOptionList(
+        [{ index: -1, label: "Automatico" }, ...qualities],
+        currentLevel,
+        "quality-option",
+      ),
+    );
 
     container.querySelectorAll(".quality-option").forEach((btn) => {
       btn.addEventListener("click", () => {
         const level = parseInt(btn.dataset.level, 10);
         onSelect(level);
-        this.updateOptionCheckmarks(container, '.quality-option', level);
+        this.updateOptionCheckmarks(container, ".quality-option", level);
       });
     });
   }
@@ -319,26 +321,26 @@ export class PlayerUI {
     if (!container) return;
 
     // Set accessibility attributes
-    container.setAttribute('role', 'menu');
-    container.setAttribute('aria-label', 'Faixa de audio');
+    container.setAttribute("role", "menu");
+    container.setAttribute("aria-label", "Faixa de audio");
 
     // Only show audio section if there are multiple tracks
     if (tracks.length <= 1) {
-      if (section) section.classList.add('hidden');
+      if (section) section.classList.add("hidden");
       return;
     }
 
     // Show the section when we have multiple tracks
-    if (section) section.classList.remove('hidden');
+    if (section) section.classList.remove("hidden");
 
-    container.innerHTML = '';
-    container.appendChild(this.renderOptionList(tracks, currentTrack, 'audio-option', 'track'));
+    container.innerHTML = "";
+    container.appendChild(this.renderOptionList(tracks, currentTrack, "audio-option", "track"));
 
     container.querySelectorAll(".audio-option").forEach((btn) => {
       btn.addEventListener("click", () => {
         const track = parseInt(btn.dataset.track, 10);
         onSelect(track);
-        this.updateOptionCheckmarks(container, '.audio-option', track, 'track');
+        this.updateOptionCheckmarks(container, ".audio-option", track, "track");
       });
     });
   }
@@ -349,33 +351,35 @@ export class PlayerUI {
     if (!container) return;
 
     // Set accessibility attributes
-    container.setAttribute('role', 'menu');
-    container.setAttribute('aria-label', 'Legendas');
+    container.setAttribute("role", "menu");
+    container.setAttribute("aria-label", "Legendas");
 
     // Only show subtitle section if there are subtitles available
     if (!tracks || tracks.length === 0) {
-      if (section) section.classList.add('hidden');
+      if (section) section.classList.add("hidden");
       return;
     }
 
     // Show the section when we have subtitles
-    if (section) section.classList.remove('hidden');
+    if (section) section.classList.remove("hidden");
 
     const allTracks = [{ index: -1, label: "Desativadas" }, ...tracks];
 
-    container.innerHTML = '';
-    container.appendChild(this.renderOptionList(allTracks, currentTrack, 'subtitle-option', 'track'));
+    container.innerHTML = "";
+    container.appendChild(
+      this.renderOptionList(allTracks, currentTrack, "subtitle-option", "track"),
+    );
 
     container.querySelectorAll(".subtitle-option").forEach((btn) => {
       btn.addEventListener("click", () => {
         const track = parseInt(btn.dataset.track, 10);
         onSelect(track);
-        this.updateOptionCheckmarks(container, '.subtitle-option', track, 'track');
+        this.updateOptionCheckmarks(container, ".subtitle-option", track, "track");
       });
     });
   }
 
-  renderOptionList(items, currentValue, className, dataAttr = 'level') {
+  renderOptionList(items, currentValue, className, dataAttr = "level") {
     // Create a document fragment to build elements safely (avoid XSS from labels)
     const fragment = document.createDocumentFragment();
 
@@ -384,32 +388,32 @@ export class PlayerUI {
       const label = item.label ?? item;
       const isSelected = currentValue === value;
 
-      const button = document.createElement('button');
-      button.type = 'button';
+      const button = document.createElement("button");
+      button.type = "button";
       button.dataset[dataAttr] = value;
-      button.setAttribute('role', 'menuitemradio');
-      button.setAttribute('aria-checked', isSelected.toString());
-      button.setAttribute('aria-label', label);
+      button.setAttribute("role", "menuitemradio");
+      button.setAttribute("aria-checked", isSelected.toString());
+      button.setAttribute("aria-label", label);
       button.className = `flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors ${className}`;
 
       // Use textContent for label to prevent XSS
-      const labelSpan = document.createElement('span');
+      const labelSpan = document.createElement("span");
       labelSpan.textContent = label;
       button.appendChild(labelSpan);
 
       // Checkmark icon
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', `size-4 ${isSelected ? '' : 'invisible'}`);
-      svg.setAttribute('aria-hidden', 'true');
-      svg.setAttribute('fill', 'none');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('stroke', 'currentColor');
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", `size-4 ${isSelected ? "" : "invisible"}`);
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("stroke", "currentColor");
 
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('stroke-linecap', 'round');
-      path.setAttribute('stroke-linejoin', 'round');
-      path.setAttribute('stroke-width', '2');
-      path.setAttribute('d', 'M5 13l4 4L19 7');
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("d", "M5 13l4 4L19 7");
       svg.appendChild(path);
       button.appendChild(svg);
 
@@ -419,7 +423,7 @@ export class PlayerUI {
     return fragment;
   }
 
-  updateOptionCheckmarks(container, selector, selectedValue, dataAttr = 'level') {
+  updateOptionCheckmarks(container, selector, selectedValue, dataAttr = "level") {
     container.querySelectorAll(selector).forEach((btn) => {
       const value = parseInt(btn.dataset[dataAttr], 10);
       const isSelected = value === selectedValue;
@@ -537,7 +541,8 @@ export class PlayerUI {
     if (!iconSvg) return;
 
     const feedback = document.createElement("div");
-    feedback.className = "shortcut-feedback absolute inset-0 flex items-center justify-center pointer-events-none z-30";
+    feedback.className =
+      "shortcut-feedback absolute inset-0 flex items-center justify-center pointer-events-none z-30";
     feedback.innerHTML = `
       <div class="p-4 rounded-full bg-black/60 backdrop-blur-sm animate-shortcut-feedback">
         ${iconSvg}
@@ -553,14 +558,21 @@ export class PlayerUI {
   getShortcutIcon(icon) {
     const icons = {
       play: '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
-      pause: '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
+      pause:
+        '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
       mute: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>',
-      unmute: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>',
-      forward: '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>',
-      backward: '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>',
-      volumeUp: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m0 0l-4-4H4v-4h4l4-4v12z"/><path stroke-linecap="round" stroke-width="2" d="M19 12h2"/></svg>',
-      volumeDown: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m0 0l-4-4H4v-4h4l4-4v12z"/><path stroke-linecap="round" stroke-width="2" d="M16 12h-2"/></svg>',
-      fullscreen: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>',
+      unmute:
+        '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>',
+      forward:
+        '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>',
+      backward:
+        '<svg class="size-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>',
+      volumeUp:
+        '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m0 0l-4-4H4v-4h4l4-4v12z"/><path stroke-linecap="round" stroke-width="2" d="M19 12h2"/></svg>',
+      volumeDown:
+        '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m0 0l-4-4H4v-4h4l4-4v12z"/><path stroke-linecap="round" stroke-width="2" d="M16 12h-2"/></svg>',
+      fullscreen:
+        '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>',
       pip: '<svg class="size-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4v4h-4z"/></svg>',
     };
     return icons[icon] || null;
@@ -576,11 +588,13 @@ export class PlayerUI {
     if (existing) existing.remove();
 
     const toast = document.createElement("div");
-    toast.className = "quality-toast absolute top-4 right-4 pointer-events-none z-30 animate-fade-in-out";
+    toast.className =
+      "quality-toast absolute top-4 right-4 pointer-events-none z-30 animate-fade-in-out";
 
     // Create using DOM API for security
     const inner = document.createElement("div");
-    inner.className = "px-3 py-1.5 rounded bg-black/70 backdrop-blur-sm text-white text-sm font-medium flex items-center gap-2";
+    inner.className =
+      "px-3 py-1.5 rounded bg-black/70 backdrop-blur-sm text-white text-sm font-medium flex items-center gap-2";
 
     // HD icon
     const icon = document.createElement("span");

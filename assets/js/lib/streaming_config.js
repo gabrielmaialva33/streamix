@@ -174,7 +174,6 @@ export function selectStreamingMode(contentType, networkQuality) {
     case NetworkQuality.EXCELLENT:
       // Excellent network: can afford larger buffers for quality
       return StreamingMode.QUALITY;
-    case NetworkQuality.GOOD:
     default:
       // Good network: balanced approach
       return StreamingMode.BALANCED;

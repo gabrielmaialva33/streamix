@@ -77,19 +77,17 @@ export class NetworkMonitor {
     const downlink = connection.downlink; // Mbps
 
     // Map effective type to our quality levels
-    let estimatedQuality;
+    let _estimatedQuality;
     switch (effectiveType) {
       case "slow-2g":
       case "2g":
-        estimatedQuality = NetworkQuality.POOR;
+        _estimatedQuality = NetworkQuality.POOR;
         break;
       case "3g":
-        estimatedQuality = NetworkQuality.GOOD;
+        _estimatedQuality = NetworkQuality.GOOD;
         break;
-      case "4g":
       default:
-        estimatedQuality =
-          downlink > 5 ? NetworkQuality.EXCELLENT : NetworkQuality.GOOD;
+        _estimatedQuality = downlink > 5 ? NetworkQuality.EXCELLENT : NetworkQuality.GOOD;
     }
 
     // Add to samples as bps for consistency

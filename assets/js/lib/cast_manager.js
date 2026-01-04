@@ -14,18 +14,18 @@
 
 // Cast states
 export const CastState = {
-  NO_DEVICES: 'no_devices',
-  NOT_CONNECTED: 'not_connected',
-  CONNECTING: 'connecting',
-  CONNECTED: 'connected',
-  ERROR: 'error'
+  NO_DEVICES: "no_devices",
+  NOT_CONNECTED: "not_connected",
+  CONNECTING: "connecting",
+  CONNECTED: "connected",
+  ERROR: "error",
 };
 
 // Cast types
 export const CastType = {
-  CHROMECAST: 'chromecast',
-  AIRPLAY: 'airplay',
-  NONE: 'none'
+  CHROMECAST: "chromecast",
+  AIRPLAY: "airplay",
+  NONE: "none",
 };
 
 /**
@@ -36,11 +36,12 @@ export const CastType = {
 export class CastManager {
   constructor(options = {}) {
     this.options = {
-      receiverApplicationId: options.receiverApplicationId || chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID,
+      receiverApplicationId:
+        options.receiverApplicationId || chrome?.cast?.media?.DEFAULT_MEDIA_RECEIVER_APP_ID,
       onStateChange: options.onStateChange || (() => {}),
       onDevicesAvailable: options.onDevicesAvailable || (() => {}),
       onError: options.onError || (() => {}),
-      ...options
+      ...options,
     };
 
     this.state = CastState.NO_DEVICES;
@@ -62,12 +63,12 @@ export class CastManager {
    */
   _detectCapabilities() {
     // Check for AirPlay support (Safari/WebKit)
-    this.airplayAvailable = 'webkitShowPlaybackTargetPicker' in HTMLVideoElement.prototype ||
-                            window.WebKitPlaybackTargetAvailabilityEvent !== undefined;
+    this.airplayAvailable =
+      "webkitShowPlaybackTargetPicker" in HTMLVideoElement.prototype ||
+      window.WebKitPlaybackTargetAvailabilityEvent !== undefined;
 
     // Chromecast requires the Cast SDK to be loaded
-    this.chromecastAvailable = typeof chrome !== 'undefined' &&
-                                typeof chrome.cast !== 'undefined';
+    this.chromecastAvailable = typeof chrome !== "undefined" && typeof chrome.cast !== "undefined";
 
     if (this.chromecastAvailable) {
       this._initializeChromecast();
@@ -77,7 +78,7 @@ export class CastManager {
       this._updateState(CastState.NOT_CONNECTED);
       this.options.onDevicesAvailable({
         chromecast: this.chromecastAvailable,
-        airplay: this.airplayAvailable
+        airplay: this.airplayAvailable,
       });
     }
   }
@@ -92,17 +93,18 @@ export class CastManager {
     const apiConfig = new chrome.cast.ApiConfig(
       sessionRequest,
       this._onSessionDiscovered.bind(this),
-      this._onReceiverStatusChange.bind(this)
+      this._onReceiverStatusChange.bind(this),
     );
 
-    chrome.cast.initialize(apiConfig,
+    chrome.cast.initialize(
+      apiConfig,
       () => {
-        console.log('[CastManager] Chromecast initialized');
+        console.log("[CastManager] Chromecast initialized");
       },
       (error) => {
-        console.error('[CastManager] Chromecast init error:', error);
+        console.error("[CastManager] Chromecast init error:", error);
         this.chromecastAvailable = false;
-      }
+      },
     );
   }
 
@@ -110,7 +112,7 @@ export class CastManager {
    * Handle discovered session (for reconnection)
    */
   _onSessionDiscovered(session) {
-    console.log('[CastManager] Session discovered:', session.sessionId);
+    console.log("[CastManager] Session discovered:", session.sessionId);
     this.session = session;
     this.castType = CastType.CHROMECAST;
     this._updateState(CastState.CONNECTED);
@@ -173,15 +175,15 @@ export class CastManager {
 
     if (this.airplayAvailable && videoElement) {
       // Listen for AirPlay availability
-      videoElement.addEventListener('webkitplaybacktargetavailabilitychanged', (event) => {
-        if (event.availability === 'available') {
+      videoElement.addEventListener("webkitplaybacktargetavailabilitychanged", (event) => {
+        if (event.availability === "available") {
           this.airplayAvailable = true;
           this._updateState(CastState.NOT_CONNECTED);
         }
       });
 
       // Listen for AirPlay connection changes
-      videoElement.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', (event) => {
+      videoElement.addEventListener("webkitcurrentplaybacktargetiswirelesschanged", (_event) => {
         if (videoElement.webkitCurrentPlaybackTargetIsWireless) {
           this.castType = CastType.AIRPLAY;
           this._updateState(CastState.CONNECTED);
@@ -198,16 +200,20 @@ export class CastManager {
    */
   async requestCast(preferredType = null) {
     // Prefer AirPlay on Safari, Chromecast on Chrome
-    const type = preferredType || (this.airplayAvailable && /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
-      ? CastType.AIRPLAY
-      : CastType.CHROMECAST);
+    const type =
+      preferredType ||
+      (this.airplayAvailable &&
+      /Safari/.test(navigator.userAgent) &&
+      !/Chrome/.test(navigator.userAgent)
+        ? CastType.AIRPLAY
+        : CastType.CHROMECAST);
 
     if (type === CastType.AIRPLAY && this.airplayAvailable) {
       return this._requestAirPlay();
     } else if (type === CastType.CHROMECAST && this.chromecastAvailable) {
       return this._requestChromecast();
     } else {
-      throw new Error('No casting method available');
+      throw new Error("No casting method available");
     }
   }
 
@@ -217,7 +223,7 @@ export class CastManager {
   _requestAirPlay() {
     return new Promise((resolve, reject) => {
       if (!this.videoElement) {
-        reject(new Error('No video element attached'));
+        reject(new Error("No video element attached"));
         return;
       }
 
@@ -226,7 +232,7 @@ export class CastManager {
         // AirPlay picker is async, we'll know about connection via event
         resolve();
       } else {
-        reject(new Error('AirPlay not supported'));
+        reject(new Error("AirPlay not supported"));
       }
     });
   }
@@ -237,7 +243,7 @@ export class CastManager {
   _requestChromecast() {
     return new Promise((resolve, reject) => {
       if (!this.chromecastAvailable) {
-        reject(new Error('Chromecast not available'));
+        reject(new Error("Chromecast not available"));
         return;
       }
 
@@ -259,11 +265,11 @@ export class CastManager {
           resolve(session);
         },
         (error) => {
-          console.error('[CastManager] Failed to connect:', error);
+          console.error("[CastManager] Failed to connect:", error);
           this._updateState(CastState.NOT_CONNECTED);
           this.options.onError(error);
           reject(error);
-        }
+        },
       );
     });
   }
@@ -273,7 +279,7 @@ export class CastManager {
    */
   async loadMedia(mediaInfo) {
     if (!this.isCasting()) {
-      throw new Error('Not connected to any cast device');
+      throw new Error("Not connected to any cast device");
     }
 
     this.currentMedia = mediaInfo;
@@ -293,12 +299,12 @@ export class CastManager {
     return new Promise((resolve, reject) => {
       const { url, contentType, metadata } = mediaInfo;
 
-      const mediaDetails = new chrome.cast.media.MediaInfo(url, contentType || 'video/mp4');
+      const mediaDetails = new chrome.cast.media.MediaInfo(url, contentType || "video/mp4");
 
       if (metadata) {
         const meta = new chrome.cast.media.GenericMediaMetadata();
-        meta.title = metadata.title || '';
-        meta.subtitle = metadata.subtitle || '';
+        meta.title = metadata.title || "";
+        meta.subtitle = metadata.subtitle || "";
         meta.images = metadata.images || [];
         mediaDetails.metadata = meta;
       }
@@ -306,17 +312,18 @@ export class CastManager {
       const request = new chrome.cast.media.LoadRequest(mediaDetails);
       request.autoplay = true;
 
-      this.session.loadMedia(request,
+      this.session.loadMedia(
+        request,
         (mediaSession) => {
           this.mediaSession = mediaSession;
-          console.log('[CastManager] Media loaded on Chromecast');
+          console.log("[CastManager] Media loaded on Chromecast");
           resolve(mediaSession);
         },
         (error) => {
-          console.error('[CastManager] Failed to load media:', error);
+          console.error("[CastManager] Failed to load media:", error);
           this.options.onError(error);
           reject(error);
-        }
+        },
       );
     });
   }
@@ -326,7 +333,11 @@ export class CastManager {
    */
   play() {
     if (this.castType === CastType.CHROMECAST && this.mediaSession) {
-      this.mediaSession.play(null, () => {}, (err) => console.error(err));
+      this.mediaSession.play(
+        null,
+        () => {},
+        (err) => console.error(err),
+      );
     }
   }
 
@@ -335,7 +346,11 @@ export class CastManager {
    */
   pause() {
     if (this.castType === CastType.CHROMECAST && this.mediaSession) {
-      this.mediaSession.pause(null, () => {}, (err) => console.error(err));
+      this.mediaSession.pause(
+        null,
+        () => {},
+        (err) => console.error(err),
+      );
     }
   }
 
@@ -346,7 +361,11 @@ export class CastManager {
     if (this.castType === CastType.CHROMECAST && this.mediaSession) {
       const request = new chrome.cast.media.SeekRequest();
       request.currentTime = position;
-      this.mediaSession.seek(request, () => {}, (err) => console.error(err));
+      this.mediaSession.seek(
+        request,
+        () => {},
+        (err) => console.error(err),
+      );
     }
   }
 
@@ -355,7 +374,11 @@ export class CastManager {
    */
   setVolume(volume) {
     if (this.castType === CastType.CHROMECAST && this.session) {
-      this.session.setReceiverVolumeLevel(volume, () => {}, (err) => console.error(err));
+      this.session.setReceiverVolumeLevel(
+        volume,
+        () => {},
+        (err) => console.error(err),
+      );
     }
   }
 
@@ -366,7 +389,7 @@ export class CastManager {
     if (this.castType === CastType.CHROMECAST && this.session) {
       this.session.stop(
         () => this._onSessionEnded(),
-        (err) => console.error('[CastManager] Stop error:', err)
+        (err) => console.error("[CastManager] Stop error:", err),
       );
     } else if (this.castType === CastType.AIRPLAY) {
       // AirPlay doesn't have a direct disconnect API
@@ -394,7 +417,7 @@ export class CastManager {
         currentTime: this.mediaSession.getEstimatedTime(),
         duration: this.mediaSession.media?.duration || 0,
         playerState: this.mediaSession.playerState,
-        volume: this.session?.receiver?.volume?.level || 1
+        volume: this.session?.receiver?.volume?.level || 1,
       };
     }
     return null;
@@ -420,9 +443,10 @@ export function createCastManager(options = {}) {
  * Check if casting is supported in the current browser
  */
 export function isCastingSupported() {
-  const hasAirPlay = 'webkitShowPlaybackTargetPicker' in HTMLVideoElement.prototype ||
-                     window.WebKitPlaybackTargetAvailabilityEvent !== undefined;
-  const hasChromecast = typeof chrome !== 'undefined' && typeof chrome.cast !== 'undefined';
+  const hasAirPlay =
+    "webkitShowPlaybackTargetPicker" in HTMLVideoElement.prototype ||
+    window.WebKitPlaybackTargetAvailabilityEvent !== undefined;
+  const hasChromecast = typeof chrome !== "undefined" && typeof chrome.cast !== "undefined";
 
   return hasAirPlay || hasChromecast;
 }
@@ -434,7 +458,7 @@ export function isCastingSupported() {
 export function loadChromecastSDK() {
   return new Promise((resolve, reject) => {
     // Check if already loaded
-    if (typeof chrome !== 'undefined' && typeof chrome.cast !== 'undefined') {
+    if (typeof chrome !== "undefined" && typeof chrome.cast !== "undefined") {
       resolve();
       return;
     }
@@ -444,26 +468,26 @@ export function loadChromecastSDK() {
       // Wait for it to load
       window.__onGCastApiAvailable = (isAvailable) => {
         if (isAvailable) resolve();
-        else reject(new Error('Cast API not available'));
+        else reject(new Error("Cast API not available"));
       };
       return;
     }
 
     // Load the SDK
-    const script = document.createElement('script');
-    script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+    const script = document.createElement("script");
+    script.src = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
     script.async = true;
 
     window.__onGCastApiAvailable = (isAvailable) => {
       if (isAvailable) {
-        console.log('[CastManager] Chromecast SDK loaded');
+        console.log("[CastManager] Chromecast SDK loaded");
         resolve();
       } else {
-        reject(new Error('Cast API not available'));
+        reject(new Error("Cast API not available"));
       }
     };
 
-    script.onerror = () => reject(new Error('Failed to load Cast SDK'));
+    script.onerror = () => reject(new Error("Failed to load Cast SDK"));
     document.head.appendChild(script);
   });
 }
