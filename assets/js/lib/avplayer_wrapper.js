@@ -5,12 +5,16 @@
  * including AC3, DTS, EAC3 (Dolby Digital).
  */
 
-// CDN base URL for WASM files
-// Note: The npm package doesn't include the decode WASMs, so we use the GitHub repo directly
-const WASM_CDN_BASE = 'https://cdn.jsdelivr.net/gh/zhaohappy/libmedia@latest/dist';
+import {
+  AVPLAYER_CONFIG,
+  DECODER_WASM_FILES,
+  OTHER_WASM_FILES,
+  getWasmUrl as getWasmUrlFromConfig,
+  getAvPlayerScriptUrls,
+} from './config';
 
-// Local paths for bundled assets
-const LOCAL_AVPLAYER_PATH = '/avplayer';
+// Cache for tested local WASM availability
+const localWasmAvailable = new Map();
 
 // Codec IDs from @libmedia/avutil
 const AVCodecID = {
@@ -66,14 +70,19 @@ const ADPCM_CODEC_END = 69683;
 
 /**
  * Get WASM URL for a given codec
+ * Uses local files first, falls back to CDN if local not available
  */
 function getWasmUrl(type, codecId) {
+  let filename;
+
   // Handle resampler and stretchpitcher FIRST - they don't need a codecId
   if (type === 'resampler') {
-    return `${WASM_CDN_BASE}/resample/resample-atomic.wasm`;
+    filename = OTHER_WASM_FILES.resampler;
+    return getWasmUrlWithFallback('resampler', filename);
   }
   if (type === 'stretchpitcher') {
-    return `${WASM_CDN_BASE}/stretchpitch/stretchpitch-atomic.wasm`;
+    filename = OTHER_WASM_FILES.stretchpitcher;
+    return getWasmUrlWithFallback('stretchpitcher', filename);
   }
 
   // For decoder type, we need a valid codecId
@@ -84,11 +93,13 @@ function getWasmUrl(type, codecId) {
 
   // Handle PCM range
   if (codecId >= PCM_CODEC_START && codecId <= PCM_CODEC_END) {
-    return `${WASM_CDN_BASE}/decode/pcm-atomic.wasm`;
+    filename = DECODER_WASM_FILES.pcm;
+    return getWasmUrlWithFallback('decoder', filename);
   }
   // Handle ADPCM range
   if (codecId >= ADPCM_CODEC_START && codecId <= ADPCM_CODEC_END) {
-    return `${WASM_CDN_BASE}/decode/adpcm-atomic.wasm`;
+    filename = DECODER_WASM_FILES.adpcm;
+    return getWasmUrlWithFallback('decoder', filename);
   }
 
   const codecName = DECODER_WASM_MAP[codecId];
@@ -97,8 +108,55 @@ function getWasmUrl(type, codecId) {
     return null;
   }
 
-  // Use -atomic version for better compatibility (doesn't require SharedArrayBuffer)
-  return `${WASM_CDN_BASE}/decode/${codecName}-atomic.wasm`;
+  filename = DECODER_WASM_FILES[codecName];
+  if (!filename) {
+    // Fallback to constructing filename
+    filename = `${codecName}-atomic.wasm`;
+  }
+
+  return getWasmUrlWithFallback('decoder', filename);
+}
+
+/**
+ * Get WASM URL with fallback to CDN if local not available
+ * Checks if local file exists and caches the result
+ */
+function getWasmUrlWithFallback(type, filename) {
+  const localUrl = getWasmUrlFromConfig(type, filename, false);
+  const cdnUrl = getWasmUrlFromConfig(type, filename, true);
+
+  // If we've already tested this URL, return based on cached result
+  if (localWasmAvailable.has(localUrl)) {
+    return localWasmAvailable.get(localUrl) ? localUrl : cdnUrl;
+  }
+
+  // For first request, prefer local and let it fall back on error
+  // The browser will cache the HEAD request result
+  if (AVPLAYER_CONFIG.preferLocal) {
+    // Async check if local file exists (for future requests)
+    checkLocalWasmAvailability(localUrl).then((available) => {
+      localWasmAvailable.set(localUrl, available);
+      if (!available) {
+        console.warn(`[AVPlayerWrapper] Local WASM not available, will use CDN: ${filename}`);
+      }
+    });
+
+    return localUrl;
+  }
+
+  return cdnUrl;
+}
+
+/**
+ * Check if a local WASM file is available via HEAD request
+ */
+async function checkLocalWasmAvailability(url) {
+  try {
+    const response = await fetch(url, { method: 'HEAD' });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -129,7 +187,7 @@ function configureWebpackPublicPath() {
   // Set the public path for webpack chunk loading
   // This ensures dynamic imports resolve to the correct directory
   if (typeof __webpack_public_path__ === 'undefined') {
-    window.__webpack_public_path__ = `${LOCAL_AVPLAYER_PATH}/`;
+    window.__webpack_public_path__ = `${AVPLAYER_CONFIG.localBasePath}/`;
   }
 }
 
@@ -172,17 +230,20 @@ export class AVPlayerWrapper {
       // Step 1: Configure webpack public path for dynamic chunk loading
       configureWebpackPublicPath();
 
-      // Step 2: Load cheap-polyfill.js FIRST
-      await loadScript(`${LOCAL_AVPLAYER_PATH}/cheap-polyfill.js`, 'cheap-polyfill');
+      // Step 2: Get script URLs from config
+      const scriptUrls = getAvPlayerScriptUrls();
+
+      // Step 3: Load cheap-polyfill.js FIRST
+      await loadScript(scriptUrls.polyfill, 'cheap-polyfill');
       console.log('[AVPlayerWrapper] Loaded cheap-polyfill.js');
 
-      // Step 3: Configure polyfill URL for BigInt fallback
+      // Step 4: Configure polyfill URL for BigInt fallback
       if (typeof BigInt === 'undefined' || BigInt === Number) {
-        window.CHEAP_POLYFILL_URL = `${LOCAL_AVPLAYER_PATH}/cheap-polyfill.js`;
+        window.CHEAP_POLYFILL_URL = scriptUrls.polyfill;
       }
 
-      // Step 4: Load AVPlayer main script
-      await loadScript(`${LOCAL_AVPLAYER_PATH}/avplayer.js`);
+      // Step 5: Load AVPlayer main script
+      await loadScript(scriptUrls.player);
       console.log('[AVPlayerWrapper] Loaded avplayer.js');
 
       if (!window.AVPlayer) {
@@ -635,9 +696,104 @@ export function detectAudioIssue(videoElement) {
       return;
     }
 
-    // Fallback: assume no issue
-    clearTimeout(timeout);
-    resolve(false);
+    // Method 3: Web Audio API fallback (works on all browsers)
+    // Creates an AudioContext and analyzes the audio stream from the video
+    detectAudioWithWebAudioAPI(videoElement).then((hasAudio) => {
+      clearTimeout(timeout);
+      console.log(`[detectAudioIssue] Web Audio API detection: hasAudio=${hasAudio}`);
+      resolve(!hasAudio);
+    }).catch((error) => {
+      console.warn('[detectAudioIssue] Web Audio API detection failed:', error);
+      clearTimeout(timeout);
+      resolve(false); // Assume no issue on error
+    });
+  });
+}
+
+/**
+ * Detect audio using Web Audio API
+ * Creates an AnalyserNode to check for actual audio data in the stream
+ */
+function detectAudioWithWebAudioAPI(videoElement) {
+  return new Promise((resolve, reject) => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) {
+        reject(new Error('Web Audio API not supported'));
+        return;
+      }
+
+      const audioContext = new AudioContext();
+      let source;
+
+      try {
+        source = audioContext.createMediaElementSource(videoElement);
+      } catch (e) {
+        // MediaElementSource may already exist for this element
+        console.warn('[detectAudioWithWebAudioAPI] Could not create MediaElementSource:', e);
+        audioContext.close();
+        reject(e);
+        return;
+      }
+
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      // Connect: video -> analyser -> destination (speakers)
+      source.connect(analyser);
+      analyser.connect(audioContext.destination);
+
+      let checkCount = 0;
+      const maxChecks = 10; // Check for ~1 second
+
+      const checkForAudio = () => {
+        checkCount++;
+
+        analyser.getByteFrequencyData(dataArray);
+
+        // Check if there's any significant audio data
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+
+        // If average frequency data is above threshold, audio is present
+        if (average > 5) {
+          // Cleanup: disconnect but keep audio flowing
+          source.disconnect(analyser);
+          source.connect(audioContext.destination);
+          audioContext.close().catch(() => {});
+          resolve(true);
+          return;
+        }
+
+        if (checkCount < maxChecks && !videoElement.paused) {
+          setTimeout(checkForAudio, 100);
+        } else {
+          // No audio detected after all checks
+          source.disconnect(analyser);
+          source.connect(audioContext.destination);
+          audioContext.close().catch(() => {});
+          resolve(false);
+        }
+      };
+
+      // Start checking after a short delay to let audio buffer
+      if (videoElement.readyState >= 3 && !videoElement.paused) {
+        setTimeout(checkForAudio, 200);
+      } else {
+        const onPlaying = () => {
+          videoElement.removeEventListener('playing', onPlaying);
+          setTimeout(checkForAudio, 200);
+        };
+        videoElement.addEventListener('playing', onPlaying);
+      }
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
