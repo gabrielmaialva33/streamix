@@ -123,9 +123,10 @@ config :streamix, :rabbitmq,
     virtual_host: "/"
   ],
   # Broadway pipeline settings
+  # IMPORTANT: Keep concurrency at 1 for GIndex to avoid rate limiting
   broadway: [
-    processor_concurrency: 5,
-    batcher_concurrency: 2,
+    processor_concurrency: 1,
+    batcher_concurrency: 1,
     batch_size: 10,
     batch_timeout: 2_000
   ]

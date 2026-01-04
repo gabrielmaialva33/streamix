@@ -4,6 +4,12 @@ defmodule Streamix.Iptv.Gindex.Client do
 
   GIndex uses a JavaScript-based frontend that makes POST requests to fetch
   folder contents. This client mimics those requests.
+
+  ## Circuit Breaker
+
+  This client includes a circuit breaker that opens after consecutive 500 errors
+  to protect the GIndex server (Cloudflare Worker) from being overwhelmed.
+  When open, requests return `{:error, :circuit_breaker_open}` immediately.
   """
 
   require Logger
@@ -14,6 +20,72 @@ defmodule Streamix.Iptv.Gindex.Client do
   # Conservative rate limit handling - start with 30s to fully recover
   @rate_limit_base_delay :timer.seconds(30)
   @max_rate_limit_retries 5
+
+  # Circuit breaker settings
+  @circuit_breaker_threshold 3
+  @circuit_breaker_reset_time :timer.minutes(5)
+  @circuit_breaker_table :gindex_circuit_breaker
+
+  @doc """
+  Initializes the circuit breaker ETS table.
+  Called from Application supervision tree.
+  """
+  def init_circuit_breaker do
+    if :ets.whereis(@circuit_breaker_table) == :undefined do
+      :ets.new(@circuit_breaker_table, [:named_table, :public, :set])
+      :ets.insert(@circuit_breaker_table, {:consecutive_errors, 0})
+      :ets.insert(@circuit_breaker_table, {:open_until, nil})
+    end
+
+    :ok
+  end
+
+  defp circuit_breaker_open? do
+    init_circuit_breaker()
+
+    case :ets.lookup(@circuit_breaker_table, :open_until) do
+      [{:open_until, nil}] -> false
+      [{:open_until, open_until}] -> System.monotonic_time(:millisecond) < open_until
+      [] -> false
+    end
+  end
+
+  defp record_success do
+    init_circuit_breaker()
+    :ets.insert(@circuit_breaker_table, {:consecutive_errors, 0})
+  end
+
+  defp record_error_500 do
+    init_circuit_breaker()
+
+    [{:consecutive_errors, count}] = :ets.lookup(@circuit_breaker_table, :consecutive_errors)
+    new_count = count + 1
+    :ets.insert(@circuit_breaker_table, {:consecutive_errors, new_count})
+
+    if new_count >= @circuit_breaker_threshold do
+      open_until = System.monotonic_time(:millisecond) + @circuit_breaker_reset_time
+      :ets.insert(@circuit_breaker_table, {:open_until, open_until})
+
+      Logger.error(
+        "[GIndex] Circuit breaker OPEN after #{new_count} consecutive 500 errors. " <>
+          "Pausing requests for #{div(@circuit_breaker_reset_time, 60_000)} minutes."
+      )
+    end
+
+    new_count
+  end
+
+  @doc """
+  Manually resets the circuit breaker.
+  Use this to resume requests after fixing the underlying issue.
+  """
+  def reset_circuit_breaker do
+    init_circuit_breaker()
+    :ets.insert(@circuit_breaker_table, {:consecutive_errors, 0})
+    :ets.insert(@circuit_breaker_table, {:open_until, nil})
+    Logger.info("[GIndex] Circuit breaker RESET - resuming normal operation")
+    :ok
+  end
 
   @doc """
   Lists the contents of a folder in the GIndex (single page).
@@ -173,7 +245,13 @@ defmodule Streamix.Iptv.Gindex.Client do
   # Private functions
 
   defp do_request(method, url, body \\ nil, opts \\ []) do
-    do_request_with_retry(method, url, body, opts, 0, 0)
+    # Check circuit breaker before making request
+    if circuit_breaker_open?() do
+      Logger.warning("[GIndex] Circuit breaker is OPEN - skipping request to #{url}")
+      {:error, :circuit_breaker_open}
+    else
+      do_request_with_retry(method, url, body, opts, 0, 0)
+    end
   end
 
   defp do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt) do
@@ -198,7 +276,10 @@ defmodule Streamix.Iptv.Gindex.Client do
 
     case Req.request(req_opts) do
       {:ok, response} ->
-        handle_response(response, method, url, body, opts, attempt, rate_limit_attempt)
+        result = handle_response(response, method, url, body, opts, attempt, rate_limit_attempt)
+        # Record success on 200 responses to reset circuit breaker
+        if match?({:ok, %{status: 200}}, result), do: record_success()
+        result
 
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
         Logger.warning("[GIndex] Request failed (attempt #{attempt + 1}): #{inspect(reason)}")
@@ -229,27 +310,35 @@ defmodule Streamix.Iptv.Gindex.Client do
   # Handle 500 errors separately - log body for diagnosis (might be auth/token error)
   defp handle_response(%{status: 500, body: resp_body} = response, method, url, body, opts, attempt, rate_limit_attempt)
        when rate_limit_attempt < @max_rate_limit_retries do
-    # Check if it's an auth/token error by inspecting the response body
-    body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
-    is_auth_error = auth_error?(body_str)
+    # Record error for circuit breaker
+    error_count = record_error_500()
 
-    if is_auth_error do
-      Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
-      # Don't retry auth errors - return immediately
-      {:ok, response}
+    # Check if circuit breaker was opened
+    if error_count >= @circuit_breaker_threshold do
+      {:error, :circuit_breaker_open}
     else
-      # Might be temporary server error, retry with backoff
-      base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
-      jitter = :rand.uniform(2000)
-      delay = base_delay + jitter
+      # Check if it's an auth/token error by inspecting the response body
+      body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
+      is_auth_error = auth_error?(body_str)
 
-      Logger.warning(
-        "[GIndex] Server error (500), body: #{String.slice(body_str, 0, 200)}... " <>
-          "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
-      )
+      if is_auth_error do
+        Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
+        # Don't retry auth errors - return immediately
+        {:ok, response}
+      else
+        # Might be temporary server error, retry with backoff
+        base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+        jitter = :rand.uniform(2000)
+        delay = base_delay + jitter
 
-      Process.sleep(delay)
-      do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
+        Logger.warning(
+          "[GIndex] Server error (500), body: #{String.slice(body_str, 0, 200)}... " <>
+            "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
+        )
+
+        Process.sleep(delay)
+        do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
+      end
     end
   end
 

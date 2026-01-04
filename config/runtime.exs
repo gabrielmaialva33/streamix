@@ -86,8 +86,9 @@ if get_env.("RABBITMQ_ENABLED") == "true" do
       virtual_host: get_env.("RABBITMQ_VHOST") || "/"
     ],
     broadway: [
-      processor_concurrency: String.to_integer(get_env.("BROADWAY_CONCURRENCY") || "5"),
-      batcher_concurrency: 2,
+      # Keep at 1 to avoid GIndex rate limiting (tasks run sequentially)
+      processor_concurrency: String.to_integer(get_env.("BROADWAY_CONCURRENCY") || "1"),
+      batcher_concurrency: 1,
       batch_size: 10,
       batch_timeout: 2_000
     ]
