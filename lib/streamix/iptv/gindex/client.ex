@@ -210,12 +210,9 @@ defmodule Streamix.Iptv.Gindex.Client do
     end
   end
 
-  # Handle rate limiting (429), service unavailable (503), and server errors (500)
-  # with exponential backoff and jitter
+  # Handle rate limiting (429) and service unavailable (503) with exponential backoff
   defp handle_response(%{status: status}, method, url, body, opts, attempt, rate_limit_attempt)
-       when status in [429, 500, 503] and rate_limit_attempt < @max_rate_limit_retries do
-    # Exponential backoff with jitter: base * 2^attempt + random jitter (0-2s)
-    # E.g., 5s, 10s, 20s, 40s, 80s + 0-2s jitter each
+       when status in [429, 503] and rate_limit_attempt < @max_rate_limit_retries do
     base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
     jitter = :rand.uniform(2000)
     delay = base_delay + jitter
@@ -229,9 +226,51 @@ defmodule Streamix.Iptv.Gindex.Client do
     do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
   end
 
+  # Handle 500 errors separately - log body for diagnosis (might be auth/token error)
+  defp handle_response(%{status: 500, body: resp_body} = response, method, url, body, opts, attempt, rate_limit_attempt)
+       when rate_limit_attempt < @max_rate_limit_retries do
+    # Check if it's an auth/token error by inspecting the response body
+    body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
+    is_auth_error = auth_error?(body_str)
+
+    if is_auth_error do
+      Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
+      # Don't retry auth errors - return immediately
+      {:ok, response}
+    else
+      # Might be temporary server error, retry with backoff
+      base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+      jitter = :rand.uniform(2000)
+      delay = base_delay + jitter
+
+      Logger.warning(
+        "[GIndex] Server error (500), body: #{String.slice(body_str, 0, 200)}... " <>
+          "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
+      )
+
+      Process.sleep(delay)
+      do_request_with_retry(method, url, body, opts, attempt, rate_limit_attempt + 1)
+    end
+  end
+
   defp handle_response(response, _method, _url, _body, _opts, _attempt, _rate_limit_attempt) do
     {:ok, response}
   end
+
+  # Check if error response indicates auth/token issue
+  defp auth_error?(body) when is_binary(body) do
+    body_lower = String.downcase(body)
+
+    String.contains?(body_lower, "token") or
+      String.contains?(body_lower, "auth") or
+      String.contains?(body_lower, "expired") or
+      String.contains?(body_lower, "invalid") or
+      String.contains?(body_lower, "unauthorized") or
+      String.contains?(body_lower, "forbidden") or
+      String.contains?(body_lower, "access denied")
+  end
+
+  defp auth_error?(_), do: false
 
   defp build_headers(:post) do
     [

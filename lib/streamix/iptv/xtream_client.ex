@@ -9,7 +9,11 @@ defmodule Streamix.Iptv.XtreamClient do
   - Series: get_series_categories, get_series, get_series_info
   """
 
+  require Logger
+
   @timeout :timer.seconds(30)
+  @max_retries 3
+  @base_retry_delay 10_000
 
   # ============================================================================
   # Account
@@ -111,7 +115,10 @@ defmodule Streamix.Iptv.XtreamClient do
 
   defp api_call(base_url, username, password, action, extra_params \\ %{}) do
     url = build_url(base_url, username, password, action, extra_params)
+    do_api_call(url, 0)
+  end
 
+  defp do_api_call(url, attempt) do
     # Use dedicated Finch pool for connection reuse during sync
     case Req.get(url, receive_timeout: @timeout, finch: Streamix.Finch) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
@@ -120,8 +127,22 @@ defmodule Streamix.Iptv.XtreamClient do
       {:ok, %{status: 200, body: body}} when is_binary(body) ->
         Jason.decode(body)
 
+      {:ok, %{status: 429}} when attempt < @max_retries ->
+        # Rate limited - exponential backoff with jitter
+        delay = @base_retry_delay * round(:math.pow(2, attempt)) + :rand.uniform(2000)
+        Logger.warning("[XtreamClient] Rate limited (429), retry #{attempt + 1}/#{@max_retries} in #{div(delay, 1000)}s")
+        Process.sleep(delay)
+        do_api_call(url, attempt + 1)
+
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
+
+      {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
+        # Transport error - retry with backoff
+        delay = @base_retry_delay * round(:math.pow(2, attempt)) + :rand.uniform(1000)
+        Logger.warning("[XtreamClient] Transport error #{inspect(reason)}, retry #{attempt + 1}/#{@max_retries}")
+        Process.sleep(delay)
+        do_api_call(url, attempt + 1)
 
       {:error, %Req.TransportError{reason: reason}} ->
         {:error, {:transport_error, reason}}

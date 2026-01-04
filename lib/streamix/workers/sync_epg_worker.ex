@@ -22,8 +22,9 @@ defmodule Streamix.Workers.SyncEpgWorker do
 
   require Logger
 
-  @batch_size 50
-  @batch_delay_ms 500
+  # Reduced batch size and increased delays to avoid rate limiting
+  @batch_size 20
+  @batch_delay_ms 3_000
   @failure_threshold 0.8
 
   @impl Oban.Worker
@@ -132,12 +133,15 @@ defmodule Streamix.Workers.SyncEpgWorker do
     channels
     |> Task.async_stream(
       fn channel ->
+        # Small delay between individual requests to spread load
+        Process.sleep(:rand.uniform(500))
+
         case EpgSync.sync_channel_epg(provider, channel.stream_id, channel.epg_channel_id) do
           {:ok, count} -> {:ok, channel, count}
           {:error, reason} -> {:error, channel, reason}
         end
       end,
-      max_concurrency: 5,
+      max_concurrency: 2,
       timeout: 30_000,
       on_timeout: :kill_task
     )
