@@ -1189,6 +1189,12 @@ const VideoPlayer = {
     };
 
     const errorHandler = () => {
+      // Ignore errors if AVPlayer is active or being attempted
+      if (this.usingAVPlayer || this.avPlayerAttempted) {
+        console.log("[VideoPlayer] Ignoring native video error - AVPlayer is active");
+        return;
+      }
+
       const error = this.video.error;
       let message = "Falha na reprodução";
 
@@ -1216,6 +1222,9 @@ const VideoPlayer = {
       this.showError(message);
       this.video.removeEventListener("error", errorHandler);
     };
+
+    // Store reference to remove later if needed
+    this._nativeErrorHandler = errorHandler;
 
     this.video.addEventListener("playing", playHandler);
     this.video.addEventListener("error", errorHandler);
@@ -1279,12 +1288,20 @@ const VideoPlayer = {
 
     console.log("[VideoPlayer] Attempting AVPlayer fallback (seamless)");
 
+    // Hide any error messages from native player
+    this.hideError();
+
     // Save current playback position for seamless transition
     const currentTime = this.video.currentTime || 0;
     const wasPlaying = !this.video.paused;
 
     // Pause native video but don't show loading (seamless)
     this.video.pause();
+
+    // Remove native video error handler to prevent interference
+    if (this._nativeErrorHandler) {
+      this.video.removeEventListener("error", this._nativeErrorHandler);
+    }
 
     try {
       // Create AVPlayer container
