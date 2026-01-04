@@ -55,7 +55,9 @@ export class PlayerUI {
 
       // Quality/Audio/Subtitle containers
       qualityOptions: container.querySelector("#quality-options"),
+      audioSection: container.querySelector("#audio-section"),
       audioOptions: container.querySelector("#audio-options"),
+      subtitleSection: container.querySelector("#subtitle-section"),
       subtitleOptions: container.querySelector("#subtitle-options"),
     };
 
@@ -313,20 +315,21 @@ export class PlayerUI {
 
   updateAudioOptions(tracks, currentTrack, onSelect) {
     const container = this.elements.audioOptions;
+    const section = this.elements.audioSection;
     if (!container) return;
 
     // Set accessibility attributes
     container.setAttribute('role', 'menu');
     container.setAttribute('aria-label', 'Faixa de audio');
 
-    if (tracks.length === 0) {
-      container.innerHTML = '';
-      const defaultDiv = document.createElement('div');
-      defaultDiv.className = 'px-4 py-2 text-sm text-white/50';
-      defaultDiv.textContent = 'Padrao';
-      container.appendChild(defaultDiv);
+    // Only show audio section if there are multiple tracks
+    if (tracks.length <= 1) {
+      if (section) section.classList.add('hidden');
       return;
     }
+
+    // Show the section when we have multiple tracks
+    if (section) section.classList.remove('hidden');
 
     container.innerHTML = '';
     container.appendChild(this.renderOptionList(tracks, currentTrack, 'audio-option', 'track'));
@@ -342,11 +345,21 @@ export class PlayerUI {
 
   updateSubtitleOptions(tracks, currentTrack, onSelect) {
     const container = this.elements.subtitleOptions;
+    const section = this.elements.subtitleSection;
     if (!container) return;
 
     // Set accessibility attributes
     container.setAttribute('role', 'menu');
     container.setAttribute('aria-label', 'Legendas');
+
+    // Only show subtitle section if there are subtitles available
+    if (!tracks || tracks.length === 0) {
+      if (section) section.classList.add('hidden');
+      return;
+    }
+
+    // Show the section when we have subtitles
+    if (section) section.classList.remove('hidden');
 
     const allTracks = [{ index: -1, label: "Desativadas" }, ...tracks];
 

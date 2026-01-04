@@ -332,29 +332,33 @@ defmodule StreamixWeb.PlayerComponents do
           </button>
         </div>
 
-        <%!-- Audio --%>
-        <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
-          Áudio
-        </div>
-        <div id="audio-options" class="py-1">
-          <div class="px-4 py-2 text-sm text-white/50">Padrão</div>
+        <%!-- Audio Section - hidden until tracks detected --%>
+        <div id="audio-section" class="hidden">
+          <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
+            Áudio
+          </div>
+          <div id="audio-options" class="py-1">
+            <div class="px-4 py-2 text-sm text-white/50">Padrão</div>
+          </div>
         </div>
 
-        <%!-- Subtitles --%>
-        <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
-          Legendas
-        </div>
-        <div id="subtitle-options" class="py-1">
-          <button
-            type="button"
-            phx-click={JS.push("set_subtitle_track", value: %{track: -1})}
-            class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <span>Desativadas</span>
-            <span class="size-4 subtitle-check" data-track="-1">
-              <.icon name="hero-check" class="size-4" />
-            </span>
-          </button>
+        <%!-- Subtitles Section - hidden until tracks detected --%>
+        <div id="subtitle-section" class="hidden">
+          <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
+            Legendas
+          </div>
+          <div id="subtitle-options" class="py-1">
+            <button
+              type="button"
+              phx-click={JS.push("set_subtitle_track", value: %{track: -1})}
+              class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <span>Desativadas</span>
+              <span class="size-4 subtitle-check" data-track="-1">
+                <.icon name="hero-check" class="size-4" />
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
