@@ -211,7 +211,11 @@ defmodule StreamixWeb.PlayerComponents do
         class="p-3 sm:p-2 rounded-full text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
       >
         <.icon name="hero-speaker-wave" class="size-6 sm:size-5 volume-on-icon" aria-hidden="true" />
-        <.icon name="hero-speaker-x-mark" class="size-6 sm:size-5 volume-off-icon hidden" aria-hidden="true" />
+        <.icon
+          name="hero-speaker-x-mark"
+          class="size-6 sm:size-5 volume-off-icon hidden"
+          aria-hidden="true"
+        />
       </button>
       <%!-- Volume slider hidden on mobile, shown on hover for desktop --%>
       <div class="hidden sm:block w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300">
@@ -364,7 +368,11 @@ defmodule StreamixWeb.PlayerComponents do
       title="Tela cheia"
     >
       <.icon name="hero-arrows-pointing-out" class="size-6 sm:size-5 expand-icon" aria-hidden="true" />
-      <.icon name="hero-arrows-pointing-in" class="size-6 sm:size-5 collapse-icon hidden" aria-hidden="true" />
+      <.icon
+        name="hero-arrows-pointing-in"
+        class="size-6 sm:size-5 collapse-icon hidden"
+        aria-hidden="true"
+      />
     </button>
     """
   end

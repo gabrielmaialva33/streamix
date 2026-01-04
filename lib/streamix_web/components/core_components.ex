@@ -420,10 +420,11 @@ defmodule StreamixWeb.CoreComponents do
   """
   attr :name, :string, required: true
   attr :class, :any, default: "size-4"
+  attr :rest, :global, doc: "Additional HTML attributes (aria-hidden, etc.)"
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
-    <span class={[@name, @class]} />
+    <span class={[@name, @class]} {@rest} />
     """
   end
 
