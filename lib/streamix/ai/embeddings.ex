@@ -117,7 +117,7 @@ defmodule Streamix.AI.Embeddings do
   defp get_provider_config do
     Application.get_env(:streamix, :embeddings, [])[:provider] ||
       System.get_env("EMBEDDING_PROVIDER") ||
-      "gemini"
+      "nvidia"
   end
 
   defp embed_with_fallback(text, primary, fallback) do

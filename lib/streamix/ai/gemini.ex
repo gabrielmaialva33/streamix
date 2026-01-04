@@ -141,9 +141,8 @@ defmodule Streamix.AI.Gemini do
         {:ok, embedding}
 
       {:ok, %Req.Response{status: 429, body: body}} ->
-        Logger.warning("[Gemini] Rate limited: #{inspect(body)}")
-        Process.sleep(2000)
-        do_embed(text, task_type)
+        Logger.error("[Gemini] Quota exceeded (429): #{inspect(body)}")
+        {:error, {:quota_exceeded, body}}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("[Gemini] API error #{status}: #{inspect(body)}")
@@ -180,9 +179,8 @@ defmodule Streamix.AI.Gemini do
         {:ok, embeddings}
 
       {:ok, %Req.Response{status: 429, body: body}} ->
-        Logger.warning("[Gemini] Rate limited: #{inspect(body)}")
-        Process.sleep(2000)
-        do_embed_batch(texts, task_type)
+        Logger.error("[Gemini] Quota exceeded (429): #{inspect(body)}")
+        {:error, {:quota_exceeded, body}}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("[Gemini] Batch API error #{status}: #{inspect(body)}")
