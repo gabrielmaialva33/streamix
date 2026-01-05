@@ -255,15 +255,23 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   end
 
   # Clean category names for TV app display
-  # Removes special unicode characters and normalizes prefixes
+  # Removes special unicode characters, accents and normalizes prefixes
   defp clean_category_name(name) when is_binary(name) do
     name
     |> String.replace(~r/『』/, " - ")
+    |> remove_accents()
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
   end
 
   defp clean_category_name(name), do: name
+
+  # Remove accented characters for TV font compatibility
+  defp remove_accents(string) do
+    string
+    |> String.normalize(:nfd)
+    |> String.replace(~r/[\x{0300}-\x{036f}]/u, "")
+  end
 
   @doc """
   GET /api/v1/catalog/search?q=query
