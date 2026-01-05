@@ -244,7 +244,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         Enum.map(categories, fn cat ->
           %{
             id: cat.id,
-            name: cat.name,
+            name: clean_category_name(cat.name),
             type: cat.type
           }
         end)
@@ -253,6 +253,17 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       json(conn, [])
     end
   end
+
+  # Clean category names for TV app display
+  # Removes special unicode characters and normalizes prefixes
+  defp clean_category_name(name) when is_binary(name) do
+    name
+    |> String.replace(~r/『』/, " - ")
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
+  defp clean_category_name(name), do: name
 
   @doc """
   GET /api/v1/catalog/search?q=query
