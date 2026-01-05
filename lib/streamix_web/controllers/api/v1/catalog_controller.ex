@@ -488,11 +488,14 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   @image_cache_version "v2"
 
   defp proxy_image(nil), do: nil
+  defp proxy_image(""), do: nil
   defp proxy_image(urls) when is_list(urls), do: Enum.map(urls, &proxy_image/1)
 
   defp proxy_image(url) when is_binary(url) do
     url
     |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
+    |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
+    |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
     |> add_cache_buster()
   end
 
