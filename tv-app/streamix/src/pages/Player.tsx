@@ -170,7 +170,7 @@ const Player = () => {
       y={0}
       width={1920}
       height={1080}
-      color={0x000000ff}
+      color={0x00000000}
       onEnter={handlePlayPause}
       onBack={handleClose}
       onLeft={() => handleSeek(-10)}
@@ -217,7 +217,7 @@ const Player = () => {
           y={0}
           width={1920}
           height={120}
-          color={0x000000cc}
+          color={0x333333ee}
         >
           <Text
             x={60}
@@ -239,7 +239,7 @@ const Player = () => {
           y={880}
           width={1920}
           height={200}
-          color={0x000000cc}
+          color={0x333333ee}
         >
           {/* Progress Bar Background */}
           <View x={60} y={40} width={1800} height={8} color={0x444444ff} borderRadius={4}>
