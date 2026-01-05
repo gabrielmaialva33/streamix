@@ -56,11 +56,12 @@ const Home = () => {
 
   return (
     <Column
-      x={220}
       width={1700}
       height={1080}
       gap={30}
       scroll="always"
+      // Forward focus to first ContentRow (child 1, after Hero)
+      forwardFocus={1}
     >
       {/* Hero Section */}
       <Hero
@@ -73,10 +74,12 @@ const Home = () => {
       <Show when={movies()?.data?.length}>
         <ContentRow
           title="Filmes Populares"
+          autofocus
           onSelectedChanged={(index) => {
             const movie = movies()?.data?.[index];
             if (movie) api.prefetchMovie(String(movie.id));
           }}
+          onItemSelected={(item) => navigate(item.href)}
         >
           <For each={movies()?.data}>
             {(movie: Movie) => (
@@ -84,7 +87,7 @@ const Home = () => {
                 title={movie.title || movie.name}
                 imageUrl={movie.poster_url || movie.poster}
                 subtitle={movie.year?.toString()}
-                onEnter={() => navigate(`/movie/${movie.id}`)}
+                item={{ id: movie.id, type: 'movie', href: `/movie/${movie.id}` }}
               />
             )}
           </For>
@@ -99,6 +102,7 @@ const Home = () => {
             const show = series()?.data?.[index];
             if (show) api.prefetchSeries(String(show.id));
           }}
+          onItemSelected={(item) => navigate(item.href)}
         >
           <For each={series()?.data}>
             {(show: Series) => (
@@ -106,7 +110,7 @@ const Home = () => {
                 title={show.title || show.name}
                 imageUrl={show.poster_url || show.poster}
                 subtitle={show.year?.toString()}
-                onEnter={() => navigate(`/series/${show.id}`)}
+                item={{ id: show.id, type: 'series', href: `/series/${show.id}` }}
               />
             )}
           </For>

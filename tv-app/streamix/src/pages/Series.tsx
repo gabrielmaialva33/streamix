@@ -1,8 +1,8 @@
-import { View, Text } from '@lightningtv/solid';
+import { View, Text, ElementNode } from '@lightningtv/solid';
 import { Column, Row } from '@lightningtv/solid/primitives';
 import { createSignal, createResource, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Card } from '../components';
+import { Card, SearchBox } from '../components';
 import api, { type Series as SeriesType, type Category } from '../lib/api';
 
 const ITEMS_PER_ROW = 6;
@@ -12,15 +12,38 @@ const Series = () => {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = createSignal<string | undefined>(undefined);
   const [offset, setOffset] = createSignal(0);
+  const [searchQuery, setSearchQuery] = createSignal<string | undefined>(undefined);
+
+  // Handler for Enter key - finds focused child and navigates
+  function handleRowEnter(this: ElementNode) {
+    const focused = this.children.find((c) => c.states?.has('focus')) as ElementNode | undefined;
+    if (focused && focused.item?.href) {
+      navigate(focused.item.href);
+      return true;
+    }
+    return false;
+  }
 
   // Fetch categories
   const [categories] = createResource(() => api.getCategories('series'));
 
-  // Fetch series based on category
+  // Fetch series based on category and search
   const [series] = createResource(
-    () => ({ category_id: selectedCategory(), offset: offset(), limit: ITEMS_PER_PAGE }),
+    () => ({
+      category_id: selectedCategory(),
+      offset: offset(),
+      limit: ITEMS_PER_PAGE,
+      search: searchQuery()
+    }),
     (params) => api.getSeries(params)
   );
+
+  // Handle search
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setSelectedCategory(undefined);
+    setOffset(0);
+  };
 
   // Chunk series into rows
   const seriesRows = () => {
@@ -42,22 +65,28 @@ const Series = () => {
   };
 
   return (
-    <View x={220} width={1700} height={1080}>
+    <View width={1700} height={1080} forwardFocus={1}>
+      {/* Header Background */}
+      <View width={1700} height={160} color={0x0a0a0fff} zIndex={30} />
+
       {/* Header */}
-      <View y={30} width={1700} height={60}>
+      <View x={20} y={30} width={1660} height={60} zIndex={50}>
         <Text fontSize={42} fontWeight="bold" color={0xffffffff}>
-          TV Series
+          Series
         </Text>
       </View>
 
       {/* Category Filter */}
-      <Row y={100} width={1700} height={50} gap={15}>
+      <Row x={20} y={100} width={1660} height={50} gap={15} zIndex={40} autofocus>
+        {/* Search */}
+        <SearchBox onSearch={handleSearch} placeholder="Buscar series..." />
         {/* All button */}
         <CategoryButton
-          label="All"
-          selected={selectedCategory() === undefined}
+          label="Todas"
+          selected={selectedCategory() === undefined && !searchQuery()}
           onSelect={() => {
             setSelectedCategory(undefined);
+            setSearchQuery(undefined);
             setOffset(0);
           }}
         />
@@ -65,9 +94,10 @@ const Series = () => {
           {(category: Category) => (
             <CategoryButton
               label={category.name}
-              selected={selectedCategory() === category.id}
+              selected={selectedCategory() === category.id && !searchQuery()}
               onSelect={() => {
                 setSelectedCategory(category.id);
+                setSearchQuery(undefined);
                 setOffset(0);
               }}
             />
@@ -76,22 +106,22 @@ const Series = () => {
       </Row>
 
       {/* Series Grid */}
-      <Column y={170} width={1700} height={880} gap={30} scroll="always">
+      <Column x={20} y={170} width={1660} height={880} gap={30} scroll="always" forwardFocus={0}>
         <Show when={series.loading}>
           <View width={1700} height={400} display="flex" justifyContent="center" alignItems="center">
-            <Text fontSize={28} color={0x888888ff}>Loading...</Text>
+            <Text fontSize={28} color={0x888888ff}>Carregando...</Text>
           </View>
         </Show>
 
         <Show when={!series.loading && seriesRows().length === 0}>
           <View width={1700} height={400} display="flex" justifyContent="center" alignItems="center">
-            <Text fontSize={28} color={0x888888ff}>No series found</Text>
+            <Text fontSize={28} color={0x888888ff}>Nenhuma série encontrada</Text>
           </View>
         </Show>
 
         <For each={seriesRows()}>
           {(row) => (
-            <Row width={1700} height={440} gap={20}>
+            <Row width={1640} height={440} gap={20} onEnter={handleRowEnter}>
               <For each={row}>
                 {(show: SeriesType) => (
                   <Card
@@ -99,7 +129,7 @@ const Series = () => {
                     imageUrl={show.poster_url}
                     subtitle={show.year?.toString()}
                     onFocus={() => api.prefetchSeries(show.id)}
-                    onEnter={() => navigate(`/series/${show.id}`)}
+                    item={{ id: show.id, type: 'series', href: `/series/${show.id}` }}
                   />
                 )}
               </For>
@@ -119,7 +149,7 @@ const Series = () => {
             alignItems="center"
             onEnter={loadMore}
           >
-            <Text fontSize={20} color={0xffffffff}>Load More</Text>
+            <Text fontSize={20} color={0xffffffff}>Carregar Mais</Text>
           </View>
         </Show>
       </Column>
@@ -151,7 +181,7 @@ const CategoryButton = (props: CategoryButtonProps) => {
     >
       <Text
         fontSize={18}
-        color={focused() || props.selected ? 0xffffffff : 0xaaaaaaff}
+        color={0xccccccff}
         fontWeight={props.selected ? 'bold' : 'normal'}
       >
         {props.label}

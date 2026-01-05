@@ -50,24 +50,24 @@ const Search = () => {
   };
 
   return (
-    <View x={220} width={1700} height={1080}>
+    <View width={1700} height={1080} forwardFocus={2}>
       {/* Header */}
       <View y={30} width={1700} height={60}>
         <Text fontSize={42} fontWeight="bold" color={0xffffffff}>
-          Search
+          Buscar
         </Text>
       </View>
 
       {/* Search Input Display */}
       <View y={100} width={600} height={60} color={0x1a1a2eff} borderRadius={8}>
         <Text x={20} y={15} fontSize={28} color={query() ? 0xffffffff : 0x666666ff}>
-          {query() || 'Type to search...'}
+          {query() || 'Digite para buscar...'}
         </Text>
         <View x={query().length * 16 + 20} y={10} width={3} height={40} color={0xe50914ff} />
       </View>
 
       {/* Keyboard */}
-      <Column y={180} width={500} height={300} gap={10}>
+      <Column y={180} width={500} height={300} gap={10} autofocus forwardFocus={0}>
         <For each={KEYBOARD_ROWS}>
           {(row) => (
             <Row width={500} height={45} gap={8}>
@@ -88,13 +88,13 @@ const Search = () => {
       <View x={550} y={100} width={1150} height={950}>
         <Show when={results.loading}>
           <View width={1150} height={400} display="flex" justifyContent="center" alignItems="center">
-            <Text fontSize={28} color={0x888888ff}>Searching...</Text>
+            <Text fontSize={28} color={0x888888ff}>Buscando...</Text>
           </View>
         </Show>
 
         <Show when={searchTriggered() && !results.loading && totalResults() === 0}>
           <View width={1150} height={400} display="flex" justifyContent="center" alignItems="center">
-            <Text fontSize={28} color={0x888888ff}>No results found</Text>
+            <Text fontSize={28} color={0x888888ff}>Nenhum resultado encontrado</Text>
           </View>
         </Show>
 
@@ -103,7 +103,7 @@ const Search = () => {
           <Show when={results()?.movies?.length}>
             <View width={1150} height={450}>
               <Text fontSize={24} color={0xffffffff} fontWeight="bold">
-                Movies ({results()!.movies.length})
+                Filmes ({results()!.movies.length})
               </Text>
               <Row y={40} width={1150} height={400} gap={15}>
                 <For each={results()!.movies.slice(0, 4)}>
@@ -126,7 +126,7 @@ const Search = () => {
           <Show when={results()?.series?.length}>
             <View width={1150} height={450}>
               <Text fontSize={24} color={0xffffffff} fontWeight="bold">
-                Series ({results()!.series.length})
+                Séries ({results()!.series.length})
               </Text>
               <Row y={40} width={1150} height={400} gap={15}>
                 <For each={results()!.series.slice(0, 4)}>
@@ -149,7 +149,7 @@ const Search = () => {
           <Show when={results()?.channels?.length}>
             <View width={1150} height={200}>
               <Text fontSize={24} color={0xffffffff} fontWeight="bold">
-                Channels ({results()!.channels.length})
+                Canais ({results()!.channels.length})
               </Text>
               <Row y={40} width={1150} height={140} gap={15}>
                 <For each={results()!.channels.slice(0, 6)}>
@@ -214,10 +214,8 @@ const ChannelResult = (props: ChannelResultProps) => {
       height={120}
       color={focused() ? 0x333333ff : 0x222222ff}
       borderRadius={8}
-      effects={focused() ? [{
-        type: 'border',
-        props: { color: 0xe50914ff, width: 2 }
-      }] : undefined}
+      border={focused() ? { color: 0xe50914ff, width: 2 } : { color: 0x00000000, width: 0 }}
+      transition={{ border: { duration: 150 } }}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       onEnter={props.onSelect}
