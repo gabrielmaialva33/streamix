@@ -4,7 +4,7 @@
     <content src="index.html"/>
 
     <!-- Screen features -->
-    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
 
     <!-- Network access -->
     <access origin="*" subdomains="true"/>
@@ -15,6 +15,7 @@
     <tizen:privilege name="http://tizen.org/privilege/tv.audio"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.window"/>
     <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:privilege name="http://tizen.org/privilege/network.get"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
 
@@ -24,8 +25,8 @@
     <description>IPTV Streaming App for Samsung Smart TV - LightningJS Edition</description>
     <author>Streamix</author>
 
-    <!-- TV profile -->
-    <tizen:profile name="tv-samsung"/>
+    <!-- TV profile - use "tv" not "tv-samsung" -->
+    <tizen:profile name="tv"/>
 
     <!-- Settings -->
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
@@ -33,6 +34,20 @@
     <!-- Background category for media playback -->
     <tizen:background-category value="media"/>
 
+    <!-- Content Security Policy - REQUIRED for WebGL workers -->
+    <tizen:content-security-policy>
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' https: data: blob:;
+        media-src 'self' https: blob:;
+        connect-src 'self' https: wss:;
+        worker-src 'self' blob:;
+        object-src 'none';
+    </tizen:content-security-policy>
+
     <!-- Metadata -->
     <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="6.0"/>
+    <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
 </widget>

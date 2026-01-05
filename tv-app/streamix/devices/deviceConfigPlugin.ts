@@ -1,22 +1,22 @@
 import { Plugin } from "vite";
+import path from "path";
 
 export default (device: string): Plugin => ({
   name: "device-config",
   enforce: "pre",
-  // change the config file to point to the correct device
-  transform: device
-    ? (code, id) => {
-        if (!id.endsWith("device/config.ts")) return { code, map: null };
-        return {
-          code: code.replace("#devices/common", `#devices/${device}`),
-          map: null,
-        };
-      }
-    : undefined,
+  // Resolve #devices/common to the correct device folder
+  resolveId(id) {
+    if (device && id === "#devices/common") {
+      return { id: `#devices/${device}`, external: false };
+    }
+    return null;
+  },
   config: config => {
     config.build = config.build ?? {};
-    const path = `${device ?? "common"}`;
-    config.build.outDir ??= `dist/${path}`;
-    config.base ??= `/${path}/`;
+    const devicePath = `${device ?? "common"}`;
+    config.build.outDir ??= `dist/${devicePath}`;
+    // Use relative paths for embedded devices (tizen, lg), absolute for browser (common)
+    const isEmbedded = device === "tizen" || device === "lg";
+    config.base ??= isEmbedded ? "./" : `/${devicePath}/`;
   },
 });
