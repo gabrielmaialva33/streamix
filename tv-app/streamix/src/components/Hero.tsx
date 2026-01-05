@@ -1,6 +1,58 @@
-import { View, Text, type NodeProps } from '@lightningtv/solid';
-import { createSignal, Show } from 'solid-js';
+import { View, Text, type NodeProps, type IntrinsicNodeStyleProps, type IntrinsicTextNodeStyleProps } from '@lightningtv/solid';
+import { Show } from 'solid-js';
 import type { FeaturedItem } from '../lib/api';
+import { theme } from '../styles';
+
+// Hero button styles with $focus
+const PlayButtonStyle = {
+  width: 160,
+  height: 50,
+  color: theme.primary,
+  borderRadius: 8,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  transition: {
+    color: { duration: 150 },
+  },
+  $focus: {
+    color: 0xffffffff,
+  },
+} satisfies IntrinsicNodeStyleProps;
+
+const InfoButtonStyle = {
+  width: 160,
+  height: 50,
+  color: 0x555555ff,
+  borderRadius: 8,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  transition: {
+    color: { duration: 150 },
+  },
+  $focus: {
+    color: 0xffffffff,
+  },
+} satisfies IntrinsicNodeStyleProps;
+
+const PlayButtonTextStyle = {
+  fontSize: 22,
+  fontWeight: 'bold',
+  color: 0xffffffff,
+  $focus: {
+    color: 0x000000ff,
+  },
+} satisfies IntrinsicTextNodeStyleProps;
+
+const InfoButtonTextStyle = {
+  fontSize: 22,
+  fontWeight: 'bold',
+  color: 0xffffffff,
+  $focus: {
+    color: 0x000000ff,
+  },
+} satisfies IntrinsicTextNodeStyleProps;
 
 export interface HeroProps extends NodeProps {
   item?: FeaturedItem;
@@ -9,9 +61,6 @@ export interface HeroProps extends NodeProps {
 }
 
 const Hero = (props: HeroProps) => {
-  const [playFocused, setPlayFocused] = createSignal(false);
-  const [infoFocused, setInfoFocused] = createSignal(false);
-
   return (
     <View
       {...props}
@@ -92,22 +141,11 @@ const Hero = (props: HeroProps) => {
         <View y={260} display="flex" gap={20}>
           {/* Play Button */}
           <View
-            width={160}
-            height={50}
-            color={playFocused() ? 0xffffffff : 0xe50914ff}
-            borderRadius={8}
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            onFocus={() => setPlayFocused(true)}
-            onBlur={() => setPlayFocused(false)}
+            style={PlayButtonStyle}
+            forwardStates
             onEnter={props.onPlay}
           >
-            <Text
-              fontSize={22}
-              fontWeight="bold"
-              color={playFocused() ? 0x000000ff : 0xffffffff}
-            >
+            <Text style={PlayButtonTextStyle}>
               Assistir
             </Text>
           </View>
@@ -115,22 +153,11 @@ const Hero = (props: HeroProps) => {
           {/* More Info Button */}
           <View
             x={180}
-            width={160}
-            height={50}
-            color={infoFocused() ? 0xffffffff : 0x555555ff}
-            borderRadius={8}
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            onFocus={() => setInfoFocused(true)}
-            onBlur={() => setInfoFocused(false)}
+            style={InfoButtonStyle}
+            forwardStates
             onEnter={props.onInfo}
           >
-            <Text
-              fontSize={22}
-              fontWeight="bold"
-              color={infoFocused() ? 0x000000ff : 0xffffffff}
-            >
+            <Text style={InfoButtonTextStyle}>
               Detalhes
             </Text>
           </View>
