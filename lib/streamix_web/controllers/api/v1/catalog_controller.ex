@@ -228,7 +228,13 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   """
   def categories(conn, params) do
     provider = Iptv.get_global_provider()
-    type = params["type"] || "movie"
+    # Map API types to database types (movie -> vod, series -> series, live -> live)
+    type = case params["type"] do
+      "movie" -> "vod"
+      "movies" -> "vod"
+      nil -> "vod"
+      other -> other
+    end
 
     if provider do
       categories = Iptv.list_categories(provider.id, type)
