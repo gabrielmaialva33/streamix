@@ -199,11 +199,11 @@ export const api = {
   },
 
   // Categories
-  getCategories: (type?: 'movie' | 'series') =>
+  getCategories: (type?: 'movie' | 'series' | 'live') =>
     request<Category[]>(`/categories${buildQuery({ type })}`),
 
   // Movies
-  getMovies: async (params?: { limit?: number; offset?: number; category_id?: string }) => {
+  getMovies: async (params?: { limit?: number; offset?: number; category_id?: string; search?: string }) => {
     const response = await request<{ movies: Movie[]; total: number; has_more: boolean }>(
       `/movies${buildQuery(params || {})}`
     );
@@ -225,7 +225,7 @@ export const api = {
   getMovieStream: (id: string) => request<StreamUrl>(`/movies/${id}/stream`),
 
   // Series
-  getSeries: async (params?: { limit?: number; offset?: number; category_id?: string }) => {
+  getSeries: async (params?: { limit?: number; offset?: number; category_id?: string; search?: string }) => {
     const response = await request<{ series: Series[]; total: number; has_more: boolean }>(
       `/series${buildQuery(params || {})}`
     );
@@ -249,7 +249,7 @@ export const api = {
   getEpisodeStream: (id: string) => request<StreamUrl>(`/episodes/${id}/stream`),
 
   // Channels
-  getChannels: async (params?: { limit?: number; offset?: number; group?: string }) => {
+  getChannels: async (params?: { limit?: number; offset?: number; category_id?: string; search?: string }) => {
     const response = await request<{ channels: Channel[]; total: number; has_more: boolean }>(
       `/channels${buildQuery(params || {})}`
     );
