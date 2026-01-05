@@ -31,6 +31,8 @@ export const config = {
       devicePhysicalPixelRatio: 1,
       // Increase to preload images coming from offscreen
       boundsMargin: 500,
+      // Transparent background for video playback (allows HTML5 video to show through)
+      clearColor: 0x00000000,
     },
   },
   keys: {
