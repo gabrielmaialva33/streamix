@@ -50,6 +50,10 @@ let callbacks: PlayerCallbacks = {};
 let currentBackend: PlayerBackend | null = null;
 let isInitialized = false;
 
+// Store original styles to restore on destroy
+let originalAppStyle: string | null = null;
+let originalRootStyle: string | null = null;
+
 let state: PlayerState = {
   playing: false,
   currentTime: 0,
@@ -104,7 +108,7 @@ const init = async (cbs: PlayerCallbacks = {}): Promise<void> => {
   currentBackend = hasAVPlay() ? 'avplay' : 'html5';
 
   if (currentBackend === 'html5') {
-    // Create video element positioned behind Lightning app
+    // Create video element
     videoElement = document.createElement('video');
     videoElement.id = 'player-video';
     videoElement.style.cssText = `
@@ -114,18 +118,40 @@ const init = async (cbs: PlayerCallbacks = {}): Promise<void> => {
       width: 100%;
       height: 100%;
       background: #000;
-      z-index: 0;
+      z-index: 100000;
     `;
     videoElement.playsInline = true;
     videoElement.autoplay = true;
 
-    // Position Lightning app on top of video
+    // Position Lightning canvas on top of video for controls overlay
+    // Use mix-blend-mode: screen to make black areas transparent (show video through)
     const appElement = document.getElementById('app');
     if (appElement) {
-      appElement.style.position = 'absolute';
-      appElement.style.left = '0';
-      appElement.style.top = '0';
-      appElement.style.zIndex = '1';
+      originalAppStyle = appElement.getAttribute('style');
+      appElement.style.cssText = `
+        position: fixed !important;
+        left: 0;
+        top: 0;
+        z-index: 100001 !important;
+        pointer-events: none;
+        mix-blend-mode: screen;
+      `;
+      // Also apply to canvas inside
+      const canvas = appElement.querySelector('canvas');
+      if (canvas) {
+        (canvas as HTMLElement).style.mixBlendMode = 'screen';
+      }
+    }
+
+    // Hide Lightning's accessibility DOM tree (blocks video with high z-index)
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+      originalRootStyle = rootElement.getAttribute('style');
+      rootElement.style.cssText = `
+        position: absolute !important;
+        z-index: 0 !important;
+        pointer-events: none !important;
+      `;
     }
 
     document.body.insertBefore(videoElement, document.body.firstChild);
@@ -426,6 +452,24 @@ const destroy = async (): Promise<void> => {
     videoElement.remove();
     videoElement = null;
   }
+
+  // Restore original styles
+  const appElement = document.getElementById('app');
+  if (appElement && originalAppStyle !== null) {
+    appElement.setAttribute('style', originalAppStyle);
+  } else if (appElement) {
+    appElement.removeAttribute('style');
+  }
+
+  const rootElement = document.getElementById('root');
+  if (rootElement && originalRootStyle !== null) {
+    rootElement.setAttribute('style', originalRootStyle);
+  } else if (rootElement) {
+    rootElement.removeAttribute('style');
+  }
+
+  originalAppStyle = null;
+  originalRootStyle = null;
 
   // Reset state
   state = {
