@@ -1,55 +1,71 @@
 import { View, Text } from '@lightningtv/solid';
-import { createSignal, onMount, onCleanup } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 
 interface SearchBoxProps {
   onSearch: (query: string) => void;
   placeholder?: string;
+  x?: number;
+  y?: number;
 }
 
 /**
  * Search box that triggers native TV keyboard on focus.
+ * On Samsung TV, we rely on blur event since keydown may not fire.
  */
 const SearchBox = (props: SearchBoxProps) => {
   const [focused, setFocused] = createSignal(false);
   const [query, setQuery] = createSignal('');
+  const [isSearching, setIsSearching] = createSignal(false);
   let inputRef: HTMLInputElement | null = null;
 
   onMount(() => {
     // Create hidden HTML input for native keyboard
     inputRef = document.createElement('input');
     inputRef.type = 'text';
+    inputRef.enterKeyHint = 'search';
     inputRef.style.cssText = `
       position: fixed;
-      top: -100px;
-      left: -100px;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
+      top: 50%;
+      left: 50%;
+      width: 300px;
+      height: 50px;
+      opacity: 0.01;
+      z-index: 9999;
+      font-size: 24px;
     `;
     inputRef.placeholder = props.placeholder || 'Buscar...';
 
+    // Track input changes
     inputRef.addEventListener('input', (e) => {
       const value = (e.target as HTMLInputElement).value;
       setQuery(value);
+      console.log('[SearchBox] input:', value);
     });
 
-    inputRef.addEventListener('change', (e) => {
-      const value = (e.target as HTMLInputElement).value;
-      if (value.trim().length >= 2) {
-        props.onSearch(value.trim());
+    // Samsung TV keyboard closes and fires blur - this is our main trigger
+    inputRef.addEventListener('blur', () => {
+      console.log('[SearchBox] blur, query:', inputRef?.value);
+      const value = inputRef?.value?.trim() || '';
+      if (value.length >= 2) {
+        console.log('[SearchBox] triggering search for:', value);
+        props.onSearch(value);
+        setIsSearching(true);
+        setTimeout(() => setIsSearching(false), 2000);
       }
+      // Reset input for next search
+      if (inputRef) inputRef.value = '';
+      setQuery('');
     });
 
-    // Handle keyboard done/enter (including Tizen keycodes)
+    // Also handle Enter key for non-TV environments
     inputRef.addEventListener('keydown', (e) => {
+      console.log('[SearchBox] keydown:', e.key, e.keyCode);
       if (e.key === 'Enter' || e.keyCode === 13 || e.keyCode === 65376) {
-        const value = (e.target as HTMLInputElement).value;
-        if (value.trim().length >= 2) {
-          props.onSearch(value.trim());
-        }
+        e.preventDefault();
         inputRef?.blur();
       }
       if (e.keyCode === 65385) { // Tizen cancel
+        if (inputRef) inputRef.value = '';
         inputRef?.blur();
       }
     });
@@ -65,17 +81,29 @@ const SearchBox = (props: SearchBoxProps) => {
 
   const handleFocus = () => {
     setFocused(true);
-    // Small delay to ensure Lightning has processed focus
-    setTimeout(() => inputRef?.focus(), 50);
   };
 
   const handleBlur = () => {
     setFocused(false);
   };
 
+  const openKeyboard = () => {
+    console.log('[SearchBox] opening keyboard');
+    // Small delay to ensure Lightning has processed focus
+    setTimeout(() => {
+      if (inputRef) {
+        inputRef.value = '';
+        inputRef.focus();
+        inputRef.click(); // Some TVs need click to open keyboard
+      }
+    }, 100);
+  };
+
   return (
     <View
-      width={120}
+      x={props.x}
+      y={props.y}
+      width={140}
       height={40}
       color={focused() ? 0xe50914ff : 0x333333ff}
       borderRadius={20}
@@ -84,11 +112,15 @@ const SearchBox = (props: SearchBoxProps) => {
       alignItems="center"
       onFocus={handleFocus}
       onBlur={handleBlur}
-      onEnter={() => inputRef?.focus()}
+      onEnter={openKeyboard}
     >
-      <Text fontSize={18} color={0xffffffff}>
-        Buscar
-      </Text>
+      <Show when={!isSearching()} fallback={
+        <Text fontSize={16} color={0xffffffff}>Buscando...</Text>
+      }>
+        <Text fontSize={16} color={0xffffffff}>
+          {query() || 'Buscar'}
+        </Text>
+      </Show>
     </View>
   );
 };

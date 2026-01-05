@@ -157,7 +157,9 @@ export interface Channel {
 }
 
 export interface StreamUrl {
-  url: string;
+  stream_url: string;
+  browser_stream_url?: string;
+  url?: string;
   type?: 'hls' | 'dash' | 'mp4';
 }
 

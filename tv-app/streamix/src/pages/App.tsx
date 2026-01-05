@@ -1,5 +1,5 @@
-import { useNavigate } from '@solidjs/router';
-import { View, ElementNode, activeElement } from '@lightningtv/solid';
+import { useNavigate, useLocation } from '@solidjs/router';
+import { View, ElementNode, activeElement, Show } from '@lightningtv/solid';
 import { useAnnouncer, useMouse, useFocusManager } from '@lightningtv/solid/primitives';
 import { Sidebar } from '../components';
 import { config } from '#devices/common';
@@ -54,9 +54,13 @@ const App = (props: AppProps) => {
   useFocusManager(activeKeys, activeKeyHoldOptions);
   useMouse();
   const navigate = useNavigate();
+  const location = useLocation();
   const announcer = useAnnouncer();
   announcer.debug = false;
   announcer.enabled = false;
+
+  // Check if on player page
+  const isPlayerPage = () => location.pathname.startsWith('/player');
 
   let sidebar: ElementNode | undefined;
   let contentArea: ElementNode | undefined;
@@ -89,18 +93,20 @@ const App = (props: AppProps) => {
       onAnnouncer={() => (announcer.enabled = !announcer.enabled)}
       onLast={() => history.back()}
       onMenu={() => navigate('/')}
-      onLeft={focusSidebar}
-      onRight={focusContent}
+      onLeft={isPlayerPage() ? undefined : focusSidebar}
+      onRight={isPlayerPage() ? undefined : focusContent}
     >
-      {/* Sidebar Navigation */}
-      <Sidebar ref={sidebar} />
+      {/* Sidebar Navigation - hidden on player page */}
+      <Show when={!isPlayerPage()}>
+        <Sidebar ref={sidebar} />
+      </Show>
 
-      {/* Main Content Area - clipping prevents content from showing behind sidebar */}
+      {/* Main Content Area - fullscreen on player, offset otherwise */}
       <View
         id="pageContainer"
         ref={contentArea}
-        x={220}
-        width={1700}
+        x={isPlayerPage() ? 0 : 220}
+        width={isPlayerPage() ? 1920 : 1700}
         height={1080}
         clipping
         forwardFocus={0}

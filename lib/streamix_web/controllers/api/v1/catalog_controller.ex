@@ -325,7 +325,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       poster: proxy_image(movie.stream_icon),
       backdrop: proxy_image(movie.backdrop_path),
       youtube_trailer: movie.youtube_trailer,
-      stream_url: build_stream_url(movie)
+      stream_url: build_stream_url(movie),
+      browser_stream_url: build_browser_stream_url(movie)
     }
   end
 
@@ -398,7 +399,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       air_date: episode.air_date,
       series_id: series.id,
       series_name: series.name,
-      stream_url: build_episode_stream_url(episode, series)
+      stream_url: build_episode_stream_url(episode, series),
+      browser_stream_url: build_browser_episode_url(episode)
     }
   end
 
@@ -415,7 +417,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       id: channel.id,
       name: channel.name,
       icon: proxy_image(channel.stream_icon),
-      stream_url: build_channel_stream_url(channel)
+      stream_url: build_channel_stream_url(channel),
+      browser_stream_url: build_browser_channel_url(channel)
     }
   end
 
@@ -463,25 +466,58 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   # Stream URL Builders - Now using signed tokens for security
   # Credentials are never exposed to clients
+  #
+  # We provide two URL types:
+  # - stream_url: Token-based proxy for AVPlay on Tizen (works with any format)
+  # - browser_stream_url: Pannxs proxy for browser testing (handles CORS)
 
   defp build_stream_url(movie) do
     token = StreamToken.sign_movie(movie.id)
-    build_proxy_url(token)
+    build_token_proxy_url(token)
   end
 
   defp build_episode_stream_url(episode, _series) do
     token = StreamToken.sign_episode(episode.id)
-    build_proxy_url(token)
+    build_token_proxy_url(token)
   end
 
   defp build_channel_stream_url(channel) do
     token = StreamToken.sign_channel(channel.id)
-    build_proxy_url(token)
+    build_token_proxy_url(token)
   end
 
-  defp build_proxy_url(token) do
+  defp build_token_proxy_url(token) do
     base_url = StreamixWeb.Endpoint.url()
     "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+  end
+
+  # Browser-compatible proxy URL using pannxs for CORS support
+  defp build_browser_stream_url(movie) when is_struct(movie, Streamix.Iptv.Movie) do
+    movie = Repo.preload(movie, :provider)
+    provider = movie.provider
+    ext = movie.container_extension || "mp4"
+    raw_url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
+    build_pannxs_proxy_url(raw_url)
+  end
+
+  defp build_browser_episode_url(episode) do
+    episode = Repo.preload(episode, season: [series: :provider])
+    provider = episode.season.series.provider
+    ext = episode.container_extension || "mp4"
+    raw_url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
+    build_pannxs_proxy_url(raw_url)
+  end
+
+  defp build_browser_channel_url(channel) do
+    channel = Repo.preload(channel, :provider)
+    provider = channel.provider
+    raw_url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
+    build_pannxs_proxy_url(raw_url)
+  end
+
+  defp build_pannxs_proxy_url(stream_url) do
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
   end
 
   # Image proxy helper - proxies TMDB images through our Cloudflare tunnel

@@ -1,4 +1,4 @@
-import { View, Text, ElementNode } from '@lightningtv/solid';
+import { View, Text, ElementNode, type IntrinsicNodeStyleProps } from '@lightningtv/solid';
 import { Column, Row } from '@lightningtv/solid/primitives';
 import { createSignal, createResource, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
@@ -8,21 +8,38 @@ import api, { type Movie, type Category } from '../lib/api';
 const ITEMS_PER_ROW = 6;
 const ITEMS_PER_PAGE = 30;
 
+// Style constants following demo app patterns
+const CategoryButtonStyle = {
+  height: 40,
+  borderRadius: 20,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  color: 0x222222ff,
+  scale: 1,
+  transition: {
+    color: { duration: 150, easing: 'ease-out' },
+    scale: { duration: 150, easing: 'ease-out' },
+  },
+  $focus: {
+    color: 0xe50914ff,
+    scale: 1.1,
+  },
+} satisfies IntrinsicNodeStyleProps;
+
+const SelectedCategoryStyle = {
+  ...CategoryButtonStyle,
+  color: 0x444444ff,
+} satisfies IntrinsicNodeStyleProps;
+
 const Movies = () => {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = createSignal<string | undefined>(undefined);
   const [offset, setOffset] = createSignal(0);
   const [searchQuery, setSearchQuery] = createSignal<string | undefined>(undefined);
 
-  // Handler for Enter key - finds focused child and navigates
-  function handleRowEnter(this: ElementNode) {
-    const focused = this.children.find((c) => c.states?.has('focus')) as ElementNode | undefined;
-    if (focused && focused.item?.href) {
-      navigate(focused.item.href);
-      return true;
-    }
-    return false;
-  }
+  let categoriesRow: ElementNode | undefined;
+  let contentGrid: ElementNode | undefined;
 
   // Fetch categories
   const [categories] = createResource(() => api.getCategories('movie'));
@@ -64,72 +81,103 @@ const Movies = () => {
     }
   };
 
-  return (
-    <View width={1700} height={1080} forwardFocus={1}>
-      {/* Header Background */}
-      <View width={1700} height={160} color={0x0a0a0fff} zIndex={30} />
+  // Navigate to movie on Enter
+  const handleMovieSelect = (movie: Movie) => {
+    navigate(`/player/movie/${movie.id}`);
+  };
 
-      {/* Header */}
-      <View x={20} y={30} width={1660} height={60} zIndex={50}>
-        <Text fontSize={42} fontWeight="bold" color={0xffffffff}>
+  return (
+    <Column
+      width={1700}
+      height={1080}
+      y={0}
+      scroll="none"
+    >
+      {/* Header - not focusable */}
+      <View width={1660} height={70} x={20} skipFocus>
+        <Text y={15} fontSize={42} fontWeight="bold" color={0xffffffff}>
           Filmes
         </Text>
+        <View x={1500} y={15}>
+          <SearchBox onSearch={handleSearch} placeholder="Buscar filmes..." />
+        </View>
       </View>
 
-      {/* Category Filter */}
-      <Row x={20} y={100} width={1660} height={50} gap={15} zIndex={40} autofocus>
-        {/* Search */}
-        <SearchBox onSearch={handleSearch} placeholder="Buscar filmes..." />
-        {/* All button */}
-        <CategoryButton
-          label="Todos"
-          selected={selectedCategory() === undefined && !searchQuery()}
-          onSelect={() => {
+      {/* Category Filter - horizontal scrolling */}
+      <Row
+        ref={categoriesRow}
+        x={20}
+        width={1660}
+        height={50}
+        gap={12}
+        scroll="auto"
+        autofocus
+        onDown={() => contentGrid?.setFocus()}
+      >
+        <View
+          width={100}
+          style={selectedCategory() === undefined && !searchQuery() ? SelectedCategoryStyle : CategoryButtonStyle}
+          onEnter={() => {
             setSelectedCategory(undefined);
             setSearchQuery(undefined);
             setOffset(0);
           }}
-        />
+        >
+          <Text fontSize={16} color={0xffffffff}>Todos</Text>
+        </View>
         <For each={categories()}>
           {(category: Category) => (
-            <CategoryButton
-              label={category.name}
-              selected={selectedCategory() === category.id && !searchQuery()}
-              onSelect={() => {
+            <View
+              width={Math.max(100, category.name.length * 10 + 24)}
+              style={selectedCategory() === category.id && !searchQuery() ? SelectedCategoryStyle : CategoryButtonStyle}
+              onEnter={() => {
                 setSelectedCategory(category.id);
                 setSearchQuery(undefined);
                 setOffset(0);
               }}
-            />
+            >
+              <Text fontSize={16} color={0xffffffff}>{category.name}</Text>
+            </View>
           )}
         </For>
       </Row>
 
-      {/* Movies Grid */}
-      <Column x={20} y={170} width={1660} height={880} gap={30} scroll="always" forwardFocus={0}>
+      {/* Movies Grid - vertical scrolling */}
+      <Column
+        ref={contentGrid}
+        x={20}
+        y={10}
+        width={1660}
+        height={900}
+        gap={24}
+        scroll="auto"
+        plinko
+        onUp={() => categoriesRow?.setFocus()}
+      >
         <Show when={movies.loading}>
-          <View width={1700} height={400} display="flex" justifyContent="center" alignItems="center">
+          <View width={1640} height={400} display="flex" justifyContent="center" alignItems="center" skipFocus>
             <Text fontSize={28} color={0x888888ff}>Carregando...</Text>
           </View>
         </Show>
 
         <Show when={!movies.loading && movieRows().length === 0}>
-          <View width={1700} height={400} display="flex" justifyContent="center" alignItems="center">
+          <View width={1640} height={400} display="flex" justifyContent="center" alignItems="center" skipFocus>
             <Text fontSize={28} color={0x888888ff}>Nenhum filme encontrado</Text>
           </View>
         </Show>
 
         <For each={movieRows()}>
           {(row) => (
-            <Row width={1640} height={440} gap={20} onEnter={handleRowEnter}>
+            <Row width={1640} height={420} gap={16} scroll="none">
               <For each={row}>
                 {(movie: Movie) => (
                   <Card
                     title={movie.title}
                     imageUrl={movie.poster_url}
                     subtitle={movie.year?.toString()}
-                    onFocus={() => api.prefetchMovie(movie.id)}
-                    item={{ id: movie.id, type: 'movie', href: `/movie/${movie.id}` }}
+                    onFocus={() => api.prefetchMovie(String(movie.id))}
+                    onEnter={() => handleMovieSelect(movie)}
+                    item={{ id: movie.id, type: 'movie', href: `/player/movie/${movie.id}` }}
                   />
                 )}
               </For>
@@ -137,56 +185,29 @@ const Movies = () => {
           )}
         </For>
 
-        {/* Load More */}
+        {/* Load More Button */}
         <Show when={movies()?.data && movies()!.data.length < (movies()?.total || 0)}>
-          <View
-            width={200}
-            height={50}
-            color={0x333333ff}
-            borderRadius={8}
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            onEnter={loadMore}
-          >
-            <Text fontSize={20} color={0xffffffff}>Carregar Mais</Text>
-          </View>
+          <Row width={1640} height={60} justifyContent="center">
+            <View
+              width={200}
+              height={50}
+              color={0x333333ff}
+              borderRadius={8}
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              style={{
+                transition: { scale: { duration: 150 } },
+                $focus: { scale: 1.1, color: 0xe50914ff },
+              }}
+              onEnter={loadMore}
+            >
+              <Text fontSize={18} color={0xffffffff}>Carregar Mais</Text>
+            </View>
+          </Row>
         </Show>
       </Column>
-    </View>
-  );
-};
-
-interface CategoryButtonProps {
-  label: string;
-  selected: boolean;
-  onSelect: () => void;
-}
-
-const CategoryButton = (props: CategoryButtonProps) => {
-  const [focused, setFocused] = createSignal(false);
-
-  return (
-    <View
-      width={Math.max(100, props.label.length * 14 + 32)}
-      height={40}
-      color={focused() ? 0xe50914ff : props.selected ? 0x444444ff : 0x222222ff}
-      borderRadius={20}
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onEnter={props.onSelect}
-    >
-      <Text
-        fontSize={18}
-        color={0xccccccff}
-        fontWeight={props.selected ? 'bold' : 'normal'}
-      >
-        {props.label}
-      </Text>
-    </View>
+    </Column>
   );
 };
 

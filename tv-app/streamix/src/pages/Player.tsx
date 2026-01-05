@@ -1,25 +1,28 @@
 import { View, Text } from '@lightningtv/solid';
-import { createSignal, createResource, onMount, onCleanup, Show } from 'solid-js';
+import { createSignal, createResource, onMount, onCleanup, Show, createEffect } from 'solid-js';
 import { useParams, useNavigate } from '@solidjs/router';
 import api from '../lib/api';
-
-declare const webapis: any;
-declare const tizen: any;
+import PlayerManager, { type PlayerState } from '../managers/PlayerManager';
 
 type PlayerType = 'movie' | 'series' | 'channel';
 
-interface PlayerState {
-  playing: boolean;
-  currentTime: number;
-  duration: number;
-  buffering: boolean;
-  error: string | null;
-}
+/**
+ * Get the appropriate stream URL based on the platform
+ * - Tizen AVPlay: uses stream_url (token-based proxy)
+ * - Browser: uses browser_stream_url (pannxs proxy with CORS support)
+ */
+const getStreamUrl = (info: any, isBrowser: boolean): string => {
+  if (isBrowser && info.browser_stream_url) {
+    console.log('[Player] Using browser stream URL');
+    return info.browser_stream_url;
+  }
+  return info.stream_url;
+};
 
 const Player = () => {
   const params = useParams<{ type: PlayerType; id: string }>();
   const navigate = useNavigate();
-  let videoRef: HTMLVideoElement | null = null;
+
   let controlsTimeout: number | null = null;
 
   const [state, setState] = createSignal<PlayerState>({
@@ -28,6 +31,7 @@ const Player = () => {
     duration: 0,
     buffering: true,
     error: null,
+    ready: false,
   });
 
   const [showControls, setShowControls] = createSignal(true);
@@ -38,37 +42,43 @@ const Player = () => {
     () => ({ type: params.type, id: params.id }),
     async ({ type, id }) => {
       try {
-        let stream;
-        let info;
+        let info: any;
 
         switch (type) {
           case 'movie':
-            [stream, info] = await Promise.all([
-              api.getMovieStream(id),
-              api.getMovie(id),
-            ]);
-            setTitle(info.title);
+            info = await api.getMovie(id);
+            setTitle(info.title || info.name || 'Movie');
             break;
           case 'series':
-            [stream, info] = await Promise.all([
-              api.getEpisodeStream(id),
-              api.getEpisode(id),
-            ]);
-            setTitle(`S${info.season_number}E${info.number} - ${info.title}`);
+            info = await api.getEpisode(id);
+            setTitle(`S${info.season_number}E${info.episode_num} - ${info.title}`);
             break;
           case 'channel':
-            [stream, info] = await Promise.all([
-              api.getChannelStream(id),
-              api.getChannel(id),
-            ]);
-            setTitle(info.name);
+            info = await api.getChannel(id);
+            setTitle(info.name || 'Channel');
             break;
           default:
             throw new Error('Unknown player type');
         }
 
-        return stream;
+        // Determine if running in browser (not Tizen)
+        const isBrowser = !PlayerManager.hasAVPlay();
+
+        // Use stream_url from info if available, otherwise fetch separately
+        let streamUrl = getStreamUrl(info, isBrowser);
+        if (!streamUrl) {
+          // Fallback to stream endpoint
+          const stream = type === 'movie' ? await api.getMovieStream(id)
+            : type === 'series' ? await api.getEpisodeStream(id)
+            : await api.getChannelStream(id);
+          console.log('[Player] Stream from endpoint:', stream);
+          streamUrl = getStreamUrl(stream, isBrowser);
+        }
+
+        console.log('[Player] Stream URL:', streamUrl, { isBrowser });
+        return { stream_url: streamUrl };
       } catch (error) {
+        console.error('[Player] Error fetching stream:', error);
         setState(s => ({ ...s, error: String(error), buffering: false }));
         throw error;
       }
@@ -84,108 +94,46 @@ const Player = () => {
     }, 5000);
   };
 
-  // Initialize video element
-  onMount(() => {
-    // Create video element
-    videoRef = document.createElement('video');
-    videoRef.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:#000;z-index:-1;';
-    document.body.appendChild(videoRef);
+  // Initialize player when stream data is available
+  createEffect(() => {
+    const data = streamData();
+    if (data?.stream_url) {
+      console.log('[Player] Loading stream:', data.stream_url);
 
-    // Event listeners
-    videoRef.addEventListener('play', () => setState(s => ({ ...s, playing: true })));
-    videoRef.addEventListener('pause', () => setState(s => ({ ...s, playing: false })));
-    videoRef.addEventListener('waiting', () => setState(s => ({ ...s, buffering: true })));
-    videoRef.addEventListener('playing', () => setState(s => ({ ...s, buffering: false })));
-    videoRef.addEventListener('loadedmetadata', () => {
-      setState(s => ({ ...s, duration: videoRef!.duration }));
-    });
-    videoRef.addEventListener('timeupdate', () => {
-      setState(s => ({ ...s, currentTime: videoRef!.currentTime }));
-    });
-    videoRef.addEventListener('error', () => {
-      setState(s => ({ ...s, error: 'Playback error', buffering: false }));
-    });
-    videoRef.addEventListener('ended', () => handleClose());
-
-    // Keep screen awake on Tizen
-    try {
-      if (typeof webapis !== 'undefined' && webapis.avplay) {
-        tizen.power.request('SCREEN', 'SCREEN_NORMAL');
-      }
-    } catch (e) {
-      console.warn('Could not request screen power:', e);
+      // Initialize player manager with callbacks
+      PlayerManager.init({
+        onStateChange: (newState) => {
+          setState(newState);
+        },
+        onComplete: () => {
+          console.log('[Player] Playback complete');
+          handleClose();
+        },
+        onError: (error) => {
+          console.error('[Player] Error:', error);
+        },
+      }).then(() => {
+        // Load the stream
+        PlayerManager.load(data.stream_url);
+      });
     }
+  });
 
+  onMount(() => {
+    console.log('[Player] Mounted');
     resetControlsTimeout();
   });
 
-  // Load video when stream URL is available
-  createResource(
-    () => streamData(),
-    (data) => {
-      if (data?.url && videoRef) {
-        loadVideo(data.url);
-      }
-    }
-  );
-
-  const loadVideo = async (url: string) => {
-    if (!videoRef) return;
-
-    setState(s => ({ ...s, buffering: true, error: null }));
-
-    try {
-      // Check if HLS
-      if (url.includes('.m3u8')) {
-        // Use native HLS on Safari/Tizen
-        if (videoRef.canPlayType('application/vnd.apple.mpegurl')) {
-          videoRef.src = url;
-        } else {
-          // Dynamic import HLS.js for other browsers
-          const Hls = (await import('hls.js')).default;
-          if (Hls.isSupported()) {
-            const hls = new Hls({
-              enableWorker: true,
-              lowLatencyMode: true,
-            });
-            hls.loadSource(url);
-            hls.attachMedia(videoRef);
-            hls.on(Hls.Events.ERROR, (_, data) => {
-              if (data.fatal) {
-                setState(s => ({ ...s, error: `HLS Error: ${data.type}` }));
-              }
-            });
-          }
-        }
-      } else {
-        // Direct playback for MP4/other formats
-        videoRef.src = url;
-      }
-
-      await videoRef.play();
-    } catch (error) {
-      setState(s => ({ ...s, error: String(error), buffering: false }));
-    }
-  };
-
-  // Cleanup
+  // Cleanup - CRITICAL for memory management
   onCleanup(() => {
-    if (videoRef) {
-      videoRef.pause();
-      videoRef.remove();
-    }
+    console.log('[Player] Cleanup');
     if (controlsTimeout) clearTimeout(controlsTimeout);
-
-    // Release screen power
-    try {
-      if (typeof tizen !== 'undefined') {
-        tizen.power.release('SCREEN');
-      }
-    } catch (e) {}
+    PlayerManager.destroy();
   });
 
   // Format time
   const formatTime = (seconds: number) => {
+    if (!seconds || !isFinite(seconds)) return '0:00';
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
@@ -196,20 +144,14 @@ const Player = () => {
   };
 
   // Controls
-  const togglePlayPause = () => {
-    if (!videoRef) return;
-    if (videoRef.paused) {
-      videoRef.play();
-    } else {
-      videoRef.pause();
-    }
+  const handlePlayPause = () => {
     resetControlsTimeout();
+    PlayerManager.togglePlayPause();
   };
 
-  const seek = (delta: number) => {
-    if (!videoRef) return;
-    videoRef.currentTime = Math.max(0, Math.min(state().duration, videoRef.currentTime + delta));
+  const handleSeek = (delta: number) => {
     resetControlsTimeout();
+    PlayerManager.seek(delta);
   };
 
   const handleClose = () => {
@@ -229,16 +171,17 @@ const Player = () => {
       width={1920}
       height={1080}
       color={0x000000ff}
-      onEnter={togglePlayPause}
+      onEnter={handlePlayPause}
       onBack={handleClose}
-      onLeft={() => seek(-10)}
-      onRight={() => seek(10)}
-      onUp={() => seek(60)}
-      onDown={() => seek(-60)}
+      onLeft={() => handleSeek(-10)}
+      onRight={() => handleSeek(10)}
+      onUp={() => handleSeek(60)}
+      onDown={() => handleSeek(-60)}
       onAny={resetControlsTimeout}
+      autofocus
     >
       {/* Loading / Buffering */}
-      <Show when={state().buffering}>
+      <Show when={state().buffering && !state().error}>
         <View
           width={1920}
           height={1080}
@@ -246,7 +189,7 @@ const Player = () => {
           justifyContent="center"
           alignItems="center"
         >
-          <Text fontSize={32} color={0xffffffff}>Carregando...</Text>
+          <Text fontSize={36} color={0xffffffff}>Carregando...</Text>
         </View>
       </Show>
 
@@ -261,24 +204,25 @@ const Player = () => {
           alignItems="center"
           gap={20}
         >
-          <Text fontSize={28} color={0xe50914ff}>Erro de Reproducao</Text>
-          <Text fontSize={20} color={0x888888ff}>{state().error}</Text>
+          <Text fontSize={32} color={0xe50914ff}>Erro de Reproducao</Text>
+          <Text fontSize={24} color={0x888888ff}>{state().error}</Text>
+          <Text fontSize={20} color={0x666666ff} y={40}>Pressione Voltar para sair</Text>
         </View>
       </Show>
 
       {/* Controls Overlay */}
-      <Show when={showControls()}>
+      <Show when={showControls() && !state().error}>
         {/* Top Bar - Title */}
         <View
           y={0}
           width={1920}
           height={120}
-          color={0x000000aa}
+          color={0x000000cc}
         >
           <Text
             x={60}
             y={40}
-            fontSize={32}
+            fontSize={36}
             fontWeight="bold"
             color={0xffffffff}
             contain="width"
@@ -292,15 +236,16 @@ const Player = () => {
 
         {/* Bottom Bar - Progress & Controls */}
         <View
-          y={900}
+          y={880}
           width={1920}
-          height={180}
-          color={0x000000aa}
+          height={200}
+          color={0x000000cc}
         >
-          {/* Progress Bar */}
-          <View x={60} y={60} width={1800} height={8} color={0x444444ff} borderRadius={4}>
+          {/* Progress Bar Background */}
+          <View x={60} y={40} width={1800} height={8} color={0x444444ff} borderRadius={4}>
+            {/* Progress Bar Fill */}
             <View
-              width={1800 * progress() / 100}
+              width={Math.max(0, 1800 * progress() / 100)}
               height={8}
               color={0xe50914ff}
               borderRadius={4}
@@ -308,27 +253,27 @@ const Player = () => {
           </View>
 
           {/* Time */}
-          <View x={60} y={80}>
-            <Text fontSize={20} color={0xffffffff}>
+          <View x={60} y={60}>
+            <Text fontSize={24} color={0xffffffff}>
               {formatTime(state().currentTime)} / {formatTime(state().duration)}
             </Text>
           </View>
 
           {/* Play/Pause indicator */}
-          <View x={1800} y={80}>
-            <Text fontSize={20} color={0x888888ff}>
-              {state().playing ? 'Pause' : 'Play'}
+          <View x={1760} y={60}>
+            <Text fontSize={24} color={0xccccccff}>
+              {state().playing ? 'II Pause' : '> Play'}
             </Text>
           </View>
 
           {/* Controls hint */}
-          <View x={60} y={120} display="flex" gap={40}>
-            <Text fontSize={16} color={0x666666ff}>Esquerda -10s</Text>
-            <Text fontSize={16} color={0x666666ff}>Direita +10s</Text>
-            <Text fontSize={16} color={0x666666ff}>Cima +1m</Text>
-            <Text fontSize={16} color={0x666666ff}>Baixo -1m</Text>
-            <Text fontSize={16} color={0x666666ff}>OK Play/Pause</Text>
-            <Text fontSize={16} color={0x666666ff}>Voltar Sair</Text>
+          <View x={60} y={110} display="flex" gap={50}>
+            <Text fontSize={18} color={0x888888ff}>{'<'} -10s</Text>
+            <Text fontSize={18} color={0x888888ff}>{'>'} +10s</Text>
+            <Text fontSize={18} color={0x888888ff}>^ +1min</Text>
+            <Text fontSize={18} color={0x888888ff}>v -1min</Text>
+            <Text fontSize={18} color={0x888888ff}>OK Play/Pause</Text>
+            <Text fontSize={18} color={0x888888ff}>Voltar Sair</Text>
           </View>
         </View>
       </Show>
