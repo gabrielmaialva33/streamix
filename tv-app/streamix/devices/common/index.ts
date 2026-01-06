@@ -33,6 +33,17 @@ export const config = {
       boundsMargin: 500,
       // Transparent background for video playback (allows HTML5 video to show through)
       clearColor: 0x00000000,
+      // Texture Memory Manager settings for TV devices
+      textureMemory: {
+        // Reasonable threshold (default is 124MB, TV can handle ~100MB)
+        criticalThreshold: 100e6, // 100MB - triggers cleanup
+        // Target 60% of critical after cleanup (60MB)
+        targetThresholdLevel: 0.6,
+        // Cleanup interval (default 5000ms)
+        cleanupInterval: 5000, // 5 seconds
+        // Debug logging in dev mode only
+        debugLogging: import.meta.env.DEV,
+      },
     },
   },
   keys: {
