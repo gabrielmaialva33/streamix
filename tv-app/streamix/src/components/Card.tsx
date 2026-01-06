@@ -1,37 +1,44 @@
 import { View, Text, type NodeProps, type IntrinsicNodeStyleProps, type IntrinsicTextNodeStyleProps } from '@lightningtv/solid';
-import { Image } from '@lightningtv/solid/primitives';
-import { Show } from 'solid-js';
+import { Show, createSignal } from 'solid-js';
 import { theme } from '../styles';
 
-// Card container style - this is what scales
-const CardContainerStyle = {
-  scale: 1,
-  transition: {
-    scale: { duration: 200, easing: 'ease-out' },
-  },
-  $focus: {
-    scale: 1.05,
-  },
-} satisfies IntrinsicNodeStyleProps;
-
-// Card image style - border highlight on focus
+// Card image container - subtle border that highlights on focus
 const CardImageStyle = {
   borderRadius: 12,
-  border: { width: 0, color: 0x00000000 },
-  transition: {
-    border: { duration: 200, easing: 'ease-out' },
-  },
+  border: { color: theme.border, width: 2 },
   $focus: {
-    border: { color: theme.primary, width: 4 },
+    border: { color: theme.primary, width: 3 },
   },
 } satisfies IntrinsicNodeStyleProps;
 
-// Title style - simple, no transitions
+// Placeholder style for missing images
+const PlaceholderStyle = {
+  borderRadius: 12,
+  color: theme.surface,
+  border: { color: theme.border, width: 2 },
+  $focus: {
+    border: { color: theme.primary, width: 3 },
+  },
+} satisfies IntrinsicNodeStyleProps;
+
+// Title style - transitions to white on focus
 const CardTitleStyle = {
   fontSize: 18,
-  color: 0xccccccff,
+  color: theme.textMuted,
   contain: 'width',
   maxLines: 1,
+  $focus: {
+    color: theme.textPrimary,
+  },
+} satisfies IntrinsicTextNodeStyleProps;
+
+// Subtitle style
+const SubtitleStyle = {
+  fontSize: 14,
+  color: theme.textDisabled,
+  $focus: {
+    color: theme.textMuted,
+  },
 } satisfies IntrinsicTextNodeStyleProps;
 
 export interface CardItem {
@@ -53,43 +60,69 @@ const Card = (props: CardProps) => {
   const width = props.width || 240;
   const height = props.height || 360;
 
+  // Track image errors only
+  const [imageError, setImageError] = createSignal(false);
+
+  // Show placeholder only if no image or error
+  const showPlaceholder = () => !props.imageUrl || imageError();
+
   return (
     <View
       {...props}
       width={width}
-      height={height + 40}
+      height={height + 55}
       item={props.item}
-      style={CardContainerStyle}
       forwardStates
     >
-      {/* Card Image with focus border */}
-      <Show when={props.imageUrl}>
-        <Image
+      {/* Card Image with border - show when image URL exists and no error */}
+      <Show when={props.imageUrl && !imageError()}>
+        <View
           src={props.imageUrl}
           width={width}
           height={height}
-          style={CardImageStyle}
-          placeholder="./assets/fallback.png"
-        />
-      </Show>
-      <Show when={!props.imageUrl}>
-        <View
-          width={width}
-          height={height}
-          color={0x2a2a3eff}
-          borderRadius={12}
+          color={0xffffffff}
           style={CardImageStyle}
         />
       </Show>
 
+      {/* Placeholder - shown when no image, loading, or error */}
+      <Show when={showPlaceholder()}>
+        <View
+          width={width}
+          height={height}
+          style={PlaceholderStyle}
+        >
+          {/* Icon placeholder */}
+          <View
+            x={width / 2 - 30}
+            y={height / 2 - 30}
+            width={60}
+            height={60}
+            color={theme.surfaceLight}
+            borderRadius={30}
+          />
+        </View>
+      </Show>
+
       {/* Card Title - below image */}
       <Text
-        y={height + 8}
+        y={height + 10}
         width={width}
         style={CardTitleStyle}
       >
         {props.title}
       </Text>
+
+      {/* Subtitle if provided */}
+      <Show when={props.subtitle}>
+        <Text
+          y={height + 32}
+          width={width}
+          style={SubtitleStyle}
+        >
+          {props.subtitle}
+        </Text>
+      </Show>
     </View>
   );
 };
