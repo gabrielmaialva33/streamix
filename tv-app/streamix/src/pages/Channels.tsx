@@ -2,7 +2,7 @@ import { View, Text, ElementNode, type IntrinsicNodeStyleProps } from '@lightnin
 import { Column, Row } from '@lightningtv/solid/primitives';
 import { createSignal, createResource, For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { SearchBox } from '../components';
+import { SearchBox, SkeletonLoader } from '../components';
 import api, { type Channel, type Category } from '../lib/api';
 
 const ITEMS_PER_ROW = 8;
@@ -37,11 +37,9 @@ const ChannelCardStyle = {
   color: 0x1a1a2eff,
   borderRadius: 12,
   scale: 1,
-  border: { width: 0, color: 0x00000000 },
   transition: {
     scale: { duration: 150, easing: 'ease-out' },
     color: { duration: 150, easing: 'ease-out' },
-    border: { duration: 150, easing: 'ease-out' },
   },
   $focus: {
     scale: 1.1,
@@ -55,6 +53,7 @@ const Channels = () => {
   const [selectedCategory, setSelectedCategory] = createSignal<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = createSignal<string | undefined>(undefined);
 
+  let titleRow: ElementNode | undefined;
   let categoriesRow: ElementNode | undefined;
   let contentGrid: ElementNode | undefined;
 
@@ -89,75 +88,87 @@ const Channels = () => {
   };
 
   return (
-    <Column
-      width={1700}
-      height={1080}
-      y={0}
-      scroll="none"
-    >
-      {/* Header - not focusable */}
-      <View width={1660} height={70} x={20} skipFocus>
-        <Text y={15} fontSize={42} fontWeight="bold" color={0xffffffff}>
-          Canais ao Vivo
-        </Text>
-        <View x={1500} y={15}>
+    <View width={1700} height={1080}>
+      {/* Fixed Header - solid background hides content scrolling behind */}
+      <View x={0} y={0} width={1700} height={140} zIndex={10} color={0x0a0a0fff}>
+        {/* Title and Search */}
+        <Row
+          ref={titleRow}
+          width={1660}
+          height={70}
+          x={20}
+          gap={20}
+          scroll="none"
+          onDown={() => categoriesRow?.setFocus()}
+        >
+          <View width={1350} skipFocus>
+            <Text y={15} fontSize={42} fontWeight="bold" color={0xffffffff}>
+              Canais ao Vivo
+            </Text>
+          </View>
           <SearchBox onSearch={handleSearch} placeholder="Buscar canais..." />
-        </View>
+        </Row>
+
+        {/* Category Filter - horizontal scrolling */}
+        <Row
+          ref={categoriesRow}
+          x={20}
+          y={70}
+          width={1660}
+          height={50}
+          gap={12}
+          scroll="auto"
+          autofocus
+          onUp={() => titleRow?.setFocus()}
+          onDown={() => contentGrid?.setFocus()}
+        >
+          <View
+            width={100}
+            style={selectedCategory() === undefined && !searchQuery() ? SelectedCategoryStyle : CategoryButtonStyle}
+            onEnter={() => {
+              setSelectedCategory(undefined);
+              setSearchQuery(undefined);
+            }}
+          >
+            <Text fontSize={16} color={0xffffffff}>Todos</Text>
+          </View>
+          <For each={categories()}>
+            {(category: Category) => (
+              <View
+                width={Math.max(100, category.name.length * 10 + 24)}
+                style={selectedCategory() === category.id && !searchQuery() ? SelectedCategoryStyle : CategoryButtonStyle}
+                onEnter={() => {
+                  setSelectedCategory(category.id);
+                  setSearchQuery(undefined);
+                }}
+              >
+                <Text fontSize={16} color={0xffffffff}>{category.name}</Text>
+              </View>
+            )}
+          </For>
+        </Row>
       </View>
 
-      {/* Category Filter - horizontal scrolling */}
-      <Row
-        ref={categoriesRow}
-        x={20}
-        width={1660}
-        height={50}
-        gap={12}
-        scroll="auto"
-        autofocus
-        onDown={() => contentGrid?.setFocus()}
-      >
-        <View
-          width={100}
-          style={selectedCategory() === undefined && !searchQuery() ? SelectedCategoryStyle : CategoryButtonStyle}
-          onEnter={() => {
-            setSelectedCategory(undefined);
-            setSearchQuery(undefined);
-          }}
-        >
-          <Text fontSize={16} color={0xffffffff}>Todos</Text>
-        </View>
-        <For each={categories()}>
-          {(category: Category) => (
-            <View
-              width={Math.max(100, category.name.length * 10 + 24)}
-              style={selectedCategory() === category.id && !searchQuery() ? SelectedCategoryStyle : CategoryButtonStyle}
-              onEnter={() => {
-                setSelectedCategory(category.id);
-                setSearchQuery(undefined);
-              }}
-            >
-              <Text fontSize={16} color={0xffffffff}>{category.name}</Text>
-            </View>
-          )}
-        </For>
-      </Row>
-
-      {/* Channels Grid - vertical scrolling */}
+      {/* Channels Grid - below fixed header with clipping */}
       <Column
         ref={contentGrid}
         x={20}
-        y={10}
+        y={140}
         width={1660}
-        height={900}
+        height={930}
         gap={16}
         scroll="auto"
         plinko
+        clipping
         onUp={() => categoriesRow?.setFocus()}
       >
         <Show when={channels.loading}>
-          <View width={1640} height={400} display="flex" justifyContent="center" alignItems="center" skipFocus>
-            <Text fontSize={28} color={0x888888ff}>Carregando...</Text>
-          </View>
+          {/* Skeleton loaders */}
+          <Row width={1640} height={150} gap={12} scroll="none" skipFocus>
+            <For each={[1, 2, 3, 4, 5, 6, 7, 8]}>
+              {() => <SkeletonLoader width={180} height={130} />}
+            </For>
+          </Row>
         </Show>
 
         <Show when={!channels.loading && channelRows().length === 0}>
@@ -183,6 +194,7 @@ const Channels = () => {
                         width={100}
                         height={65}
                         src={channel.logo_url}
+                        color={0xffffffff}
                       />
                     </Show>
                     <Show when={!channel.logo_url}>
@@ -218,7 +230,7 @@ const Channels = () => {
           )}
         </For>
       </Column>
-    </Column>
+    </View>
   );
 };
 
