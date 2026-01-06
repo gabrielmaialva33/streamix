@@ -1,8 +1,13 @@
 import { useNavigate, useLocation } from '@solidjs/router';
-import { View, ElementNode, activeElement, Show } from '@lightningtv/solid';
+import { View, Text, ElementNode, activeElement, Show } from '@lightningtv/solid';
 import { useAnnouncer, useMouse, useFocusManager } from '@lightningtv/solid/primitives';
-import { Sidebar } from '../components';
+import { createSignal, onMount } from 'solid-js';
+import { Sidebar, ExitDialog } from '../components';
+import { preferences } from '../lib/storage';
 import { config } from '#devices/common';
+
+// Debug mode - set to false in production (use Inspector instead)
+const DEBUG_MODE = false;
 
 // Detect if running on Tizen
 const isTizen = typeof (window as any).tizen !== 'undefined' || navigator.userAgent.includes('Tizen');
@@ -57,7 +62,41 @@ const App = (props: AppProps) => {
   const location = useLocation();
   const announcer = useAnnouncer();
   announcer.debug = false;
-  announcer.enabled = false;
+  // Enable announcer for accessibility (TTS)
+  announcer.enabled = preferences.get().announcer;
+
+  // Exit dialog state
+  const [showExitDialog, setShowExitDialog] = createSignal(false);
+
+  // Debug state
+  const [debugInfo, setDebugInfo] = createSignal({
+    lastKey: '',
+    focusPath: '',
+    route: '',
+  });
+
+  // Update debug info on mount and key events
+  onMount(() => {
+    if (DEBUG_MODE) {
+      // Track key presses
+      document.addEventListener('keydown', (e) => {
+        setDebugInfo((prev) => ({
+          ...prev,
+          lastKey: `${e.key} (${e.keyCode})`,
+        }));
+      });
+
+      // Update focus path periodically
+      setInterval(() => {
+        const active = activeElement();
+        setDebugInfo((prev) => ({
+          ...prev,
+          focusPath: active?.id || active?.name || 'unknown',
+          route: location.pathname,
+        }));
+      }, 500);
+    }
+  });
 
   // Check if on player page
   const isPlayerPage = () => location.pathname.startsWith('/player');
@@ -65,6 +104,32 @@ const App = (props: AppProps) => {
   let sidebar: ElementNode | undefined;
   let contentArea: ElementNode | undefined;
   let lastFocused: ElementNode | undefined;
+
+  // Handle back button - show exit dialog on home page
+  function handleBack() {
+    const isHome = location.pathname === '/' || location.pathname === '';
+
+    if (isHome) {
+      // On home page, show exit confirmation
+      setShowExitDialog(true);
+      return true;
+    }
+
+    // Otherwise, go back in history
+    history.back();
+    return true;
+  }
+
+  // Exit app (Tizen specific)
+  function exitApp() {
+    const tizen = (window as any).tizen;
+    if (tizen?.application) {
+      tizen.application.getCurrentApplication().exit();
+    } else {
+      // Fallback for browser - just close the dialog
+      setShowExitDialog(false);
+    }
+  }
 
   function focusSidebar() {
     // Don't do anything if already on sidebar
@@ -89,9 +154,12 @@ const App = (props: AppProps) => {
       ref={window.APP}
       width={1920}
       height={1080}
-      color={0x0a0a0fff}
-      onAnnouncer={() => (announcer.enabled = !announcer.enabled)}
-      onLast={() => history.back()}
+      color={0x0d0d12ff}
+      onAnnouncer={() => {
+        announcer.enabled = !announcer.enabled;
+        preferences.update({ announcer: announcer.enabled });
+      }}
+      onLast={handleBack}
       onMenu={() => navigate('/')}
       onLeft={isPlayerPage() ? undefined : focusSidebar}
       onRight={isPlayerPage() ? undefined : focusContent}
@@ -112,6 +180,44 @@ const App = (props: AppProps) => {
         forwardFocus={0}
         children={props.children}
       />
+
+      {/* Exit Confirmation Dialog */}
+      <Show when={showExitDialog()}>
+        <ExitDialog
+          onConfirm={exitApp}
+          onCancel={() => setShowExitDialog(false)}
+        />
+      </Show>
+
+      {/* Debug Overlay - visible in DEBUG_MODE */}
+      <Show when={DEBUG_MODE}>
+        <View
+          skipFocus
+          zIndex={9999}
+          x={1400}
+          y={20}
+          width={500}
+          height={150}
+          color={0x000000cc}
+          borderRadius={8}
+        >
+          <Text x={10} y={10} fontSize={18} color={0x00ff00ff}>
+            DEBUG MODE
+          </Text>
+          <Text x={10} y={40} fontSize={16} color={0xffffffff}>
+            {`Key: ${debugInfo().lastKey}`}
+          </Text>
+          <Text x={10} y={65} fontSize={16} color={0xffffffff}>
+            {`Focus: ${debugInfo().focusPath}`}
+          </Text>
+          <Text x={10} y={90} fontSize={16} color={0xffffffff}>
+            {`Route: ${debugInfo().route}`}
+          </Text>
+          <Text x={10} y={115} fontSize={14} color={0xffff00ff}>
+            {`Tizen: ${isTizen}`}
+          </Text>
+        </View>
+      </Show>
     </View>
   );
 };
