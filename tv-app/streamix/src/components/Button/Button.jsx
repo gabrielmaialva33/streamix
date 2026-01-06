@@ -10,24 +10,19 @@ const styles = {
     height: 136,
     color: "#FFF",
     alpha: 0.9,
-    effects: {
-      radius: { radius: 8 },
-      border: { width: 5, color: "#000" },
-    },
+    borderRadius: 8,
+    border: { width: 5, color: "#000" },
     scale: 1,
-    focus: {
+    $focus: {
       color: 0x58807dff,
       scale: 1.2,
-      effects: {
-        radius: { radius: 8 },
-        border: { width: 5, color: 0xff0000ff },
-      },
+      border: { width: 5, color: 0xff0000ff },
       alpha: 1,
     },
-    active: {
+    $active: {
       color: 0x33ff55ff,
     },
-    disabled: {
+    $disabled: {
       alpha: 1,
     },
     transition: {
@@ -47,7 +42,7 @@ styles.text = {
   color: "#000",
   height: styles.container.height,
   width: styles.container.width,
-  focus: {
+  $focus: {
     fontSize: 64,
   },
 };

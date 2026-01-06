@@ -214,14 +214,13 @@ const ChannelResult = (props: ChannelResultProps) => {
       height={120}
       color={focused() ? 0x333333ff : 0x222222ff}
       borderRadius={8}
-      border={focused() ? { color: 0xe50914ff, width: 2 } : { color: 0x00000000, width: 0 }}
-      transition={{ border: { duration: 150 } }}
+      border={focused() ? { color: 0xe50914ff, width: 2 } : undefined}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       onEnter={props.onSelect}
     >
       <Show when={props.channel.logo_url}>
-        <View x={35} y={15} width={100} height={60} src={props.channel.logo_url} />
+        <View x={35} y={15} width={100} height={60} src={props.channel.logo_url} color={0xffffffff} />
       </Show>
       <Text
         x={10}
