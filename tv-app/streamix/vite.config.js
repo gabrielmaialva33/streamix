@@ -29,8 +29,9 @@ export default defineConfig(({ mode }) => {
       }),
       legacy({
         targets: ["defaults", "Chrome >= 49"],
-        // additionalLegacyPolyfills: ["whatwg-fetch", "es6-proxy-polyfill"],
-        modernPolyfills: [
+        // For Tizen: disable modern chunks since file:// protocol causes both to run
+        renderModernChunks: process.env.TARGET_DEVICE !== "tizen",
+        modernPolyfills: process.env.TARGET_DEVICE === "tizen" ? false : [
           // Safari 11 has modules, but throws > ReferenceError: Can't find variable: globalThis
           "es.global-this",
         ],
