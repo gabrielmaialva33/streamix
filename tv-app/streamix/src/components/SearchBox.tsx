@@ -1,5 +1,24 @@
-import { View, Text } from '@lightningtv/solid';
+import { View, Text, type IntrinsicNodeStyleProps } from '@lightningtv/solid';
 import { createSignal, onMount, onCleanup, Show } from 'solid-js';
+import { theme } from '../styles';
+
+const SearchBoxStyle = {
+  width: 140,
+  height: 40,
+  color: 0x333333ff,
+  borderRadius: 20,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  transition: {
+    color: { duration: 150 },
+    scale: { duration: 150 },
+  },
+  $focus: {
+    color: theme.primary,
+    scale: 1.05,
+  },
+} satisfies IntrinsicNodeStyleProps;
 
 interface SearchBoxProps {
   onSearch: (query: string) => void;
@@ -103,16 +122,11 @@ const SearchBox = (props: SearchBoxProps) => {
     <View
       x={props.x}
       y={props.y}
-      width={140}
-      height={40}
-      color={focused() ? 0xe50914ff : 0x333333ff}
-      borderRadius={20}
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
+      style={SearchBoxStyle}
       onFocus={handleFocus}
       onBlur={handleBlur}
       onEnter={openKeyboard}
+      forwardStates
     >
       <Show when={!isSearching()} fallback={
         <Text fontSize={16} color={0xffffffff}>Buscando...</Text>
