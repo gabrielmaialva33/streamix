@@ -2,7 +2,7 @@ import { View, Text } from '@lightningtv/solid';
 import { Column } from '@lightningtv/solid/primitives';
 import { createSignal, createResource, For, Show, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
-import { Card, ContentRow, Hero } from '../components';
+import { Card, ContentRow, Hero, ContinueWatchingRow } from '../components';
 import api, { type FeaturedItem, type Movie, type Series } from '../lib/api';
 
 const Home = () => {
@@ -87,7 +87,7 @@ const Home = () => {
                 title={movie.title || movie.name}
                 imageUrl={movie.poster_url || movie.poster}
                 subtitle={movie.year?.toString()}
-                item={{ id: movie.id, type: 'movie', href: `/movie/${movie.id}` }}
+                item={{ id: movie.id, type: 'movie', href: `/player/movie/${movie.id}` }}
               />
             )}
           </For>
@@ -117,34 +117,8 @@ const Home = () => {
         </ContentRow>
       </Show>
 
-      {/* Continue Watching Row (placeholder) */}
-      <ContentRow title="Continue Assistindo">
-        <View width={240} height={420} color={0x1a1a2eff} borderRadius={12}>
-          <View
-            width={240}
-            height={360}
-            color={0x2a2a3eff}
-            borderRadius={12}
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-          >
-            <View width={200} height={300}>
-              <View
-                y={100}
-                width={200}
-                height={100}
-                display="flex"
-                flexDirection="column"
-                alignItems="center"
-                gap={10}
-              >
-                <Text fontSize={18} color={0x888888ff}>Sem conteudo</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </ContentRow>
+      {/* Continue Watching Row - Real implementation */}
+      <ContinueWatchingRow limit={10} />
     </Column>
   );
 };
