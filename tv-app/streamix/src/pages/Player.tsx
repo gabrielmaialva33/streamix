@@ -2,20 +2,28 @@ import { View, Text } from '@lightningtv/solid';
 import { createSignal, createResource, onMount, onCleanup, Show, createEffect } from 'solid-js';
 import { useParams, useNavigate } from '@solidjs/router';
 import api from '../lib/api';
+import { history } from '../lib/storage';
 import PlayerManager, { type PlayerState } from '../managers/PlayerManager';
+import { theme } from '../styles';
 
 type PlayerType = 'movie' | 'series' | 'channel';
 
 /**
  * Get the appropriate stream URL based on the platform
- * - Tizen AVPlay: uses stream_url (token-based proxy)
- * - Browser: uses browser_stream_url (pannxs proxy with CORS support)
+ * Priority: browser_stream_url > stream_url
+ *
+ * Note: We prefer browser_stream_url even on Tizen because:
+ * - The Phoenix proxy (stream_url) doesn't respond without Range header
+ * - AVPlay makes initial requests without Range, causing PLAYER_ERROR_CONNECTION_FAILED
+ * - browser_stream_url (pannxs proxy) works correctly with AVPlay
  */
-const getStreamUrl = (info: any, isBrowser: boolean): string => {
-  if (isBrowser && info.browser_stream_url) {
-    console.log('[Player] Using browser stream URL');
+const getStreamUrl = (info: any, _isBrowser: boolean): string => {
+  // Prefer browser_stream_url for all platforms (it works without Range header)
+  if (info.browser_stream_url) {
+    console.log('[Player] Using browser stream URL (pannxs proxy)');
     return info.browser_stream_url;
   }
+  console.log('[Player] Using stream_url (Phoenix proxy)');
   return info.stream_url;
 };
 
@@ -35,7 +43,13 @@ const Player = () => {
   });
 
   const [showControls, setShowControls] = createSignal(true);
+  const [controlsAlpha, setControlsAlpha] = createSignal(1);
   const [title, setTitle] = createSignal('');
+  const [posterUrl, setPosterUrl] = createSignal<string | undefined>();
+  const [seekFeedback, setSeekFeedback] = createSignal<string | null>(null);
+  const [accumulatedSeek, setAccumulatedSeek] = createSignal(0);
+  let seekFeedbackTimeout: number | null = null;
+  let historyInterval: number | null = null;
 
   // Fetch stream URL based on type
   const [streamData] = createResource(
@@ -48,14 +62,17 @@ const Player = () => {
           case 'movie':
             info = await api.getMovie(id);
             setTitle(info.title || info.name || 'Movie');
+            setPosterUrl(info.poster_url || info.poster);
             break;
           case 'series':
             info = await api.getEpisode(id);
             setTitle(`S${info.season_number}E${info.episode_num} - ${info.title}`);
+            setPosterUrl(info.thumbnail_url);
             break;
           case 'channel':
             info = await api.getChannel(id);
             setTitle(info.name || 'Channel');
+            setPosterUrl(info.logo_url || info.icon);
             break;
           default:
             throw new Error('Unknown player type');
@@ -85,13 +102,46 @@ const Player = () => {
     }
   );
 
-  // Hide controls after inactivity
+  // Hide controls after inactivity with fade animation
   const resetControlsTimeout = () => {
     if (controlsTimeout) clearTimeout(controlsTimeout);
     setShowControls(true);
+    setControlsAlpha(1);
+
     controlsTimeout = window.setTimeout(() => {
-      if (state().playing) setShowControls(false);
-    }, 5000);
+      if (state().playing) {
+        // Fade out animation
+        let alpha = 1;
+        const fadeInterval = setInterval(() => {
+          alpha -= 0.1;
+          if (alpha <= 0) {
+            clearInterval(fadeInterval);
+            setShowControls(false);
+            setControlsAlpha(1);
+          } else {
+            setControlsAlpha(alpha);
+          }
+        }, 50);
+      }
+    }, 4500);
+  };
+
+  // Save watch history periodically
+  const saveHistory = () => {
+    const { currentTime, duration } = state();
+    if (duration <= 0) return;
+
+    const progress = Math.min(100, (currentTime / duration) * 100);
+
+    history.update({
+      id: params.id,
+      type: params.type,
+      title: title(),
+      posterUrl: posterUrl(),
+      progress,
+      currentTime,
+      duration,
+    });
   };
 
   // Initialize player when stream data is available
@@ -122,12 +172,21 @@ const Player = () => {
   onMount(() => {
     console.log('[Player] Mounted');
     resetControlsTimeout();
+
+    // Save history every 10 seconds
+    historyInterval = window.setInterval(saveHistory, 10000);
   });
 
   // Cleanup - CRITICAL for memory management
   onCleanup(() => {
     console.log('[Player] Cleanup');
     if (controlsTimeout) clearTimeout(controlsTimeout);
+    if (seekFeedbackTimeout) clearTimeout(seekFeedbackTimeout);
+    if (historyInterval) clearInterval(historyInterval);
+
+    // Save final progress before leaving
+    saveHistory();
+
     PlayerManager.destroy();
   });
 
@@ -151,7 +210,29 @@ const Player = () => {
 
   const handleSeek = (delta: number) => {
     resetControlsTimeout();
-    PlayerManager.seek(delta);
+
+    // Accumulate seek for visual feedback
+    const newAccumulated = accumulatedSeek() + delta;
+    setAccumulatedSeek(newAccumulated);
+
+    // Show seek feedback
+    const sign = newAccumulated >= 0 ? '+' : '';
+    if (Math.abs(newAccumulated) >= 60) {
+      const mins = Math.floor(Math.abs(newAccumulated) / 60);
+      const secs = Math.abs(newAccumulated) % 60;
+      setSeekFeedback(`${sign}${newAccumulated >= 0 ? '' : '-'}${mins}m${secs > 0 ? ` ${secs}s` : ''}`);
+    } else {
+      setSeekFeedback(`${sign}${newAccumulated}s`);
+    }
+
+    // Clear previous timeout and set new one
+    if (seekFeedbackTimeout) clearTimeout(seekFeedbackTimeout);
+    seekFeedbackTimeout = window.setTimeout(() => {
+      // Execute the accumulated seek
+      PlayerManager.seek(accumulatedSeek());
+      setSeekFeedback(null);
+      setAccumulatedSeek(0);
+    }, 800);
   };
 
   const handleClose = () => {
@@ -210,7 +291,33 @@ const Player = () => {
         </View>
       </Show>
 
-      {/* Controls Overlay */}
+      {/* Seek Feedback - Center of screen */}
+      <Show when={seekFeedback()}>
+        <View
+          width={1920}
+          height={1080}
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          zIndex={100}
+        >
+          <View
+            width={200}
+            height={100}
+            color={0x000000aa}
+            borderRadius={16}
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+          >
+            <Text fontSize={42} fontWeight="bold" color={theme.primary}>
+              {seekFeedback()}
+            </Text>
+          </View>
+        </View>
+      </Show>
+
+      {/* Controls Overlay with fade animation */}
       <Show when={showControls() && !state().error}>
         {/* Top Bar - Title */}
         <View
@@ -218,6 +325,7 @@ const Player = () => {
           width={1920}
           height={120}
           color={0x333333ee}
+          alpha={controlsAlpha()}
         >
           <Text
             x={60}
@@ -240,6 +348,7 @@ const Player = () => {
           width={1920}
           height={200}
           color={0x333333ee}
+          alpha={controlsAlpha()}
         >
           {/* Progress Bar Background */}
           <View x={60} y={40} width={1800} height={8} color={0x444444ff} borderRadius={4}>

@@ -178,6 +178,24 @@ const init = async (cbs: PlayerCallbacks = {}): Promise<void> => {
       callbacks.onComplete?.();
     });
   } else {
+    // AVPlay: Hide the canvas completely so video layer is visible
+    // AVPlay renders on a hardware layer BEHIND the web content
+    // We must hide web content to see the video
+    const appElement = document.getElementById('app');
+    if (appElement) {
+      originalAppStyle = appElement.getAttribute('style');
+      // Hide the canvas completely - AVPlay has its own OSD
+      appElement.style.cssText = `
+        visibility: hidden !important;
+      `;
+    }
+
+    // Make body and html transparent
+    document.body.style.background = 'transparent';
+    document.documentElement.style.background = 'transparent';
+
+    console.log('[AVPlay] Canvas hidden for video playback');
+
     // AVPlay: Start time update interval
     timeUpdateInterval = window.setInterval(() => {
       try {
@@ -222,6 +240,13 @@ const loadAVPlay = async (url: string): Promise<void> => {
     // Open the stream
     webapis.avplay.open(url);
 
+    // Set display method to fullscreen
+    try {
+      webapis.avplay.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+    } catch (e) {
+      console.warn('[AVPlay] Could not set display method:', e);
+    }
+
     // Set display rect (fullscreen 1920x1080)
     webapis.avplay.setDisplayRect(0, 0, 1920, 1080);
 
@@ -247,9 +272,14 @@ const loadAVPlay = async (url: string): Promise<void> => {
         updateState({ playing: true });
 
         // Keep screen awake
-        try {
-          tizen.power.request('SCREEN', 'SCREEN_NORMAL');
-        } catch (e) {}
+        if (typeof tizen !== 'undefined' && tizen.power) {
+          try {
+            tizen.power.request('SCREEN', 'SCREEN_NORMAL');
+            console.log('[AVPlay] Screen wake lock acquired');
+          } catch (e) {
+            console.warn('[AVPlay] Failed to acquire screen wake lock:', e);
+          }
+        }
       },
       (error: any) => {
         console.error('[AVPlay] Prepare error:', error);
@@ -435,10 +465,36 @@ const destroy = async (): Promise<void> => {
 
   if (currentBackend === 'avplay') {
     try {
-      webapis.avplay.stop();
+      console.log('[AVPlay] Stopping playback...');
+      const state = webapis.avplay.getState();
+      console.log('[AVPlay] Current state:', state);
+      if (state !== 'NONE' && state !== 'IDLE') {
+        webapis.avplay.stop();
+        console.log('[AVPlay] Stopped');
+      }
       webapis.avplay.close();
-      tizen.power.release('SCREEN');
-    } catch (e) {}
+      console.log('[AVPlay] Closed');
+      if (typeof tizen !== 'undefined' && tizen.power) {
+        tizen.power.release('SCREEN');
+        console.log('[AVPlay] Screen wake lock released');
+      }
+    } catch (e) {
+      console.error('[AVPlay] Error during destroy:', e);
+    }
+  }
+
+  // Force stop AVPlay even if currentBackend is not set (failsafe)
+  if (typeof webapis !== 'undefined' && webapis.avplay) {
+    try {
+      const state = webapis.avplay.getState();
+      if (state !== 'NONE' && state !== 'IDLE') {
+        webapis.avplay.stop();
+        webapis.avplay.close();
+        console.log('[AVPlay] Failsafe cleanup executed');
+      }
+    } catch (e) {
+      // Ignore errors in failsafe
+    }
   }
 
   if (hlsInstance) {
@@ -467,6 +523,9 @@ const destroy = async (): Promise<void> => {
   } else if (rootElement) {
     rootElement.removeAttribute('style');
   }
+
+  // Restore body background (was made transparent for AVPlay)
+  document.body.style.background = '#0a0a0f';
 
   originalAppStyle = null;
   originalRootStyle = null;
