@@ -73,6 +73,7 @@ const Hero = (props: HeroProps) => {
           x={0}
           y={0}
           src={props.item!.backdrop_url}
+          color={0xffffffff}
           width={1700}
           height={600}
           borderRadius={16}
