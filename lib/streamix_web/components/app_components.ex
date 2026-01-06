@@ -124,22 +124,21 @@ defmodule StreamixWeb.AppComponents do
 
   @doc """
   Renders a live channel card.
+  Uses <.link> for reliable navigation instead of phx-click.
   """
   attr :channel, :map, required: true
   attr :current_program, :any, default: nil
   attr :is_favorite, :boolean, default: false
   attr :show_favorite, :boolean, default: true
   attr :show_epg, :boolean, default: true
-  attr :on_play, :string, default: "play_channel"
   attr :on_favorite, :string, default: "toggle_favorite"
 
   def live_channel_card(assigns) do
     ~H"""
-    <div class="group relative rounded-lg overflow-hidden bg-surface border border-border card-hover cursor-pointer">
-      <div
-        class="relative aspect-video bg-surface-hover"
-        phx-click={@on_play}
-        phx-value-id={@channel.id}
+    <div class="group relative rounded-lg overflow-hidden bg-surface border border-border card-hover">
+      <.link
+        navigate={~p"/watch/live_channel/#{@channel.id}"}
+        class="block relative aspect-video bg-surface-hover cursor-pointer"
       >
         <img
           :if={@channel.stream_icon}
@@ -158,15 +157,16 @@ defmodule StreamixWeb.AppComponents do
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <.icon name="hero-play-circle-solid" class="size-10 sm:size-16 text-brand" />
         </div>
-      </div>
+      </.link>
       <div class="p-2 sm:p-3">
         <div class="flex items-start justify-between gap-1.5 sm:gap-2">
-          <h3
-            class="font-medium text-xs sm:text-sm text-text-primary truncate flex-1"
+          <.link
+            navigate={~p"/watch/live_channel/#{@channel.id}"}
+            class="font-medium text-xs sm:text-sm text-text-primary truncate flex-1 hover:text-brand transition-colors"
             title={@channel.name}
           >
             {@channel.name}
-          </h3>
+          </.link>
           <button
             :if={@show_favorite}
             type="button"
