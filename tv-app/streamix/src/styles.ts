@@ -17,36 +17,53 @@ declare module '@lightningtv/solid' {
   }
 }
 
-// Theme colors
+// Theme colors - refined palette
 export const theme = {
+  // Primary brand
   primary: 0xe50914ff,       // Netflix Red
-  primaryLight: 0xff2d2dff,
-  background: 0x0a0a0fff,
-  surface: 0x1a1a2eff,
-  surfaceLight: 0x2a2a3eff,
+  primaryDark: 0xb5070fff,   // Darker red for depth
+  primaryLight: 0xff3d3dff,  // Lighter for hover/active
+
+  // Backgrounds
+  background: 0x0d0d12ff,    // Slightly warmer dark
+  backgroundLight: 0x141418ff,
+
+  // Surfaces
+  surface: 0x1c1c24ff,       // Card backgrounds
+  surfaceLight: 0x2a2a36ff,  // Elevated surfaces
+  surfaceHover: 0x363644ff,  // Hover state
+
+  // Text hierarchy
   textPrimary: 0xffffffff,
-  textSecondary: 0xccccccff,
-  textMuted: 0x888888ff,
+  textSecondary: 0xb8b8c0ff, // Slightly warmer gray
+  textMuted: 0x6e6e7aff,     // For less important info
+  textDisabled: 0x4a4a54ff,
+
+  // Accent colors
+  accent: 0x4dabf7ff,        // Blue for info
+  success: 0x51cf66ff,       // Green
+  warning: 0xfcc419ff,       // Yellow
+
+  // Borders
+  border: 0x2a2a36ff,
+  borderLight: 0x3a3a48ff,
 };
 
-// Card/Thumbnail style with $focus
+// Card/Thumbnail style with smooth focus
 export const CardStyle = {
   width: 240,
   height: 360,
   borderRadius: 12,
   color: theme.surface,
-  border: { width: 0, color: 0x00000000 },
-  transition: {
-    border: { duration: 200, easing: 'ease-out' },
-  },
+  border: { color: 0x00000000, width: 3 },
   $focus: {
-    border: { color: theme.primary, width: 4 },
+    border: { color: theme.primary, width: 3 },
   },
 } satisfies IntrinsicNodeStyleProps;
 
 // Card title text style
 export const CardTitleStyle = {
-  fontSize: 22,
+  fontSize: 20,
   color: theme.textSecondary,
   contain: 'both',
   textOverflow: 'ellipsis',
@@ -56,93 +73,118 @@ export const CardTitleStyle = {
   },
 } satisfies IntrinsicTextNodeStyleProps;
 
-// Sidebar item style
+// Sidebar item style - cleaner look
 export const SidebarItemStyle = {
   width: 200,
-  height: 60,
-  borderRadius: 8,
+  height: 56,
+  borderRadius: 10,
   color: 0x00000000,
-  transition: {
-    color: { duration: 150 },
-  },
   $focus: {
-    color: 0xe5091499,
+    color: theme.primary,
   },
 } satisfies IntrinsicNodeStyleProps;
 
 // Sidebar item text style
 export const SidebarItemTextStyle = {
-  fontSize: 22,
-  color: 0xaaaaaaff,
+  fontSize: 20,
+  color: theme.textMuted,
   $focus: {
     color: theme.textPrimary,
   },
 } satisfies IntrinsicTextNodeStyleProps;
 
-// Button style
+// Button style - more polished
 export const ButtonStyle = {
-  height: 50,
-  borderRadius: 8,
+  height: 48,
+  borderRadius: 10,
   color: theme.primary,
-  transition: {
-    color: { duration: 150 },
-  },
   $focus: {
-    color: theme.textPrimary,
+    color: theme.primaryLight,
   },
 } satisfies IntrinsicNodeStyleProps;
 
 // Button text style
 export const ButtonTextStyle = {
-  fontSize: 22,
+  fontSize: 18,
   fontWeight: 'bold',
   color: theme.textPrimary,
-  $focus: {
-    color: 0x000000ff,
-  },
 } satisfies IntrinsicTextNodeStyleProps;
+
+// Secondary button style
+export const SecondaryButtonStyle = {
+  height: 48,
+  borderRadius: 10,
+  color: theme.surfaceLight,
+  border: { color: theme.border, width: 2 },
+  $focus: {
+    color: theme.surfaceHover,
+    border: { color: theme.primary, width: 2 },
+  },
+} satisfies IntrinsicNodeStyleProps;
 
 // Channel card style
 export const ChannelCardStyle = {
   width: 200,
   height: 140,
-  borderRadius: 12,
   color: theme.surface,
-  border: { width: 0, color: 0x00000000 },
-  transition: {
-    border: { duration: 150 },
-    color: { duration: 150 },
-  },
+  borderRadius: 12,
+  border: { color: theme.border, width: 2 },
   $focus: {
     color: theme.surfaceLight,
-    border: { color: theme.primary, width: 3 },
+    border: { color: theme.primary, width: 2 },
   },
 } satisfies IntrinsicNodeStyleProps;
 
-// Category button style
+// Category button style (pills)
 export const CategoryButtonStyle = {
   height: 40,
   borderRadius: 20,
-  color: 0x222222ff,
-  transition: {
-    color: { duration: 150 },
-  },
+  color: theme.surface,
+  border: { color: theme.border, width: 1 },
   $focus: {
     color: theme.primary,
+    border: { color: theme.primary, width: 1 },
   },
+} satisfies IntrinsicNodeStyleProps;
+
+// Selected category style
+export const CategorySelectedStyle = {
+  height: 40,
+  borderRadius: 20,
+  color: theme.surfaceLight,
+  border: { color: theme.borderLight, width: 1 },
 } satisfies IntrinsicNodeStyleProps;
 
 // Keyboard key style
 export const KeyboardKeyStyle = {
-  height: 45,
-  borderRadius: 6,
-  color: 0x333333ff,
-  transition: {
-    color: { duration: 150 },
-  },
+  height: 48,
+  borderRadius: 8,
+  color: theme.surface,
+  border: { color: theme.border, width: 1 },
   $focus: {
-    color: theme.primary,
+    color: theme.surfaceHover,
+    border: { color: theme.primary, width: 2 },
   },
+} satisfies IntrinsicNodeStyleProps;
+
+// Progress bar styles
+export const ProgressBarStyle = {
+  height: 4,
+  borderRadius: 2,
+  color: theme.surfaceLight,
+} satisfies IntrinsicNodeStyleProps;
+
+export const ProgressFillStyle = {
+  height: 4,
+  borderRadius: 2,
+  color: theme.primary,
+} satisfies IntrinsicNodeStyleProps;
+
+// Badge style
+export const BadgeStyle = {
+  height: 24,
+  borderRadius: 4,
+  color: theme.primary,
 } satisfies IntrinsicNodeStyleProps;
 
 // Page styles
@@ -157,8 +199,13 @@ export default {
   SidebarItemText: SidebarItemTextStyle,
   Button: ButtonStyle,
   ButtonText: ButtonTextStyle,
+  SecondaryButton: SecondaryButtonStyle,
   ChannelCard: ChannelCardStyle,
   CategoryButton: CategoryButtonStyle,
+  CategorySelected: CategorySelectedStyle,
   KeyboardKey: KeyboardKeyStyle,
+  ProgressBar: ProgressBarStyle,
+  ProgressFill: ProgressFillStyle,
+  Badge: BadgeStyle,
   theme,
 };
