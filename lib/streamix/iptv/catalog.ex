@@ -10,6 +10,7 @@ defmodule Streamix.Iptv.Catalog do
   import Ecto.Query, warn: false
 
   alias Streamix.Cache
+  alias Streamix.Helpers
   alias Streamix.Iptv.{Category, LiveChannel, Movie, Provider, Series}
   alias Streamix.Repo
 
@@ -124,7 +125,7 @@ defmodule Streamix.Iptv.Catalog do
     Movie
     |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
     |> where([m, p], p.visibility in [:global, :public])
-    |> where([m, _p], ilike(m.genre, ^"%#{genre}%"))
+    |> where([m, _p], ilike(m.genre, ^"%#{Helpers.escape_like(genre)}%"))
     |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year)
     |> limit(^limit)

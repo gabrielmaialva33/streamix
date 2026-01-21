@@ -9,6 +9,7 @@ defmodule Streamix.Iptv.Movies do
 
   import Ecto.Query, warn: false
 
+  alias Streamix.Helpers
   alias Streamix.Iptv.{Access, AdultFilter, Movie, TmdbClient, XtreamClient}
   alias Streamix.Repo
 
@@ -43,7 +44,8 @@ defmodule Streamix.Iptv.Movies do
 
     query =
       if search && search != "" do
-        where(query, [m], ilike(m.name, ^"%#{search}%"))
+        escaped = Helpers.escape_like(search)
+        where(query, [m], ilike(m.name, ^"%#{escaped}%"))
       else
         query
       end
@@ -98,7 +100,8 @@ defmodule Streamix.Iptv.Movies do
 
     query =
       if search && search != "" do
-        search_term = "%#{search}%"
+        escaped = Helpers.escape_like(search)
+        search_term = "%#{escaped}%"
         where(query, [m], ilike(m.name, ^search_term) or ilike(m.title, ^search_term))
       else
         query

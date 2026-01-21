@@ -9,6 +9,7 @@ defmodule Streamix.Iptv.SeriesOps do
 
   import Ecto.Query, warn: false
 
+  alias Streamix.Helpers
   alias Streamix.Iptv.{Access, AdultFilter, Episode, Provider, Season, Series, Sync, TmdbClient}
   alias Streamix.Repo
 
@@ -37,7 +38,8 @@ defmodule Streamix.Iptv.SeriesOps do
 
     query =
       if search && search != "" do
-        where(query, [s], ilike(s.name, ^"%#{search}%") or ilike(s.title, ^"%#{search}%"))
+        escaped = Helpers.escape_like(search)
+        where(query, [s], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
       else
         query
       end
@@ -101,7 +103,8 @@ defmodule Streamix.Iptv.SeriesOps do
 
     query =
       if search && search != "" do
-        where(query, [s], ilike(s.name, ^"%#{search}%") or ilike(s.title, ^"%#{search}%"))
+        escaped = Helpers.escape_like(search)
+        where(query, [s], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
       else
         query
       end
@@ -169,7 +172,8 @@ defmodule Streamix.Iptv.SeriesOps do
 
     query =
       if search && search != "" do
-        where(query, [s], ilike(s.name, ^"%#{search}%"))
+        escaped = Helpers.escape_like(search)
+        where(query, [s], ilike(s.name, ^"%#{escaped}%"))
       else
         query
       end

@@ -8,6 +8,7 @@ defmodule Streamix.Iptv.Channels do
 
   import Ecto.Query, warn: false
 
+  alias Streamix.Helpers
   alias Streamix.Iptv.{Access, AdultFilter, EpgProgram, LiveChannel}
   alias Streamix.Repo
 
@@ -40,7 +41,8 @@ defmodule Streamix.Iptv.Channels do
 
     query =
       if search && search != "" do
-        where(query, [c], ilike(c.name, ^"%#{search}%"))
+        escaped = Helpers.escape_like(search)
+        where(query, [c], ilike(c.name, ^"%#{escaped}%"))
       else
         query
       end
@@ -112,7 +114,8 @@ defmodule Streamix.Iptv.Channels do
 
     query =
       if search && search != "" do
-        where(query, [c], ilike(c.name, ^"%#{search}%"))
+        escaped = Helpers.escape_like(search)
+        where(query, [c], ilike(c.name, ^"%#{escaped}%"))
       else
         query
       end
