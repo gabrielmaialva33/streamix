@@ -12,7 +12,20 @@ defmodule StreamixWeb.Router do
 
     plug :put_secure_browser_headers, %{
       "content-security-policy" =>
-        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; connect-src 'self' wss: https:;"
+        Enum.join(
+          [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: https: blob:",
+            "media-src 'self' https: blob:",
+            "font-src 'self' data:",
+            "connect-src 'self' wss: https: blob:",
+            "worker-src 'self' blob:",
+            "frame-src 'self' https:"
+          ],
+          "; "
+        )
     }
 
     plug :fetch_current_scope_for_user
