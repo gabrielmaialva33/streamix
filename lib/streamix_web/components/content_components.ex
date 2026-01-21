@@ -143,16 +143,16 @@ defmodule StreamixWeb.ContentComponents do
     <.link
       navigate={@href}
       class={[
-        "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+        "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-md text-[11px] sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
         @selected && "bg-brand text-white",
         !@selected && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
       ]}
     >
-      <.icon name={@icon} class="size-3.5 sm:size-4" />
-      <span>{@label}</span>
+      <.icon name={@icon} class="size-3 sm:size-4" />
+      <span class="hidden xs:inline sm:inline">{@label}</span>
       <span
         :if={@count && @count > 0}
-        class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20"
+        class="px-1 py-0.5 text-[9px] sm:text-xs rounded bg-black/20"
       >
         {format_count(@count)}
       </span>
@@ -200,27 +200,27 @@ defmodule StreamixWeb.ContentComponents do
       end)
 
     ~H"""
-    <div class="flex items-center bg-surface rounded-full p-1 gap-0.5">
+    <div class="flex items-center bg-surface rounded-full p-0.5 gap-0.5">
       <.link
         navigate={@iptv_target}
         class={[
-          "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
+          "flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap",
           @selected == "iptv" && "bg-brand text-white shadow-sm",
           @selected != "iptv" && "text-text-secondary hover:text-text-primary"
         ]}
       >
-        <.icon name="hero-signal" class="size-4" />
+        <.icon name="hero-signal" class="size-3.5 sm:size-4" />
         <span>IPTV</span>
       </.link>
       <.link
         navigate={@gindex_target}
         class={[
-          "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap",
+          "flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap",
           @selected == "gindex" && "bg-brand text-white shadow-sm",
           @selected != "gindex" && "text-text-secondary hover:text-text-primary"
         ]}
       >
-        <.icon name="hero-cloud" class="size-4" />
+        <.icon name="hero-cloud" class="size-3.5 sm:size-4" />
         <span>GDrive</span>
       </.link>
     </div>
