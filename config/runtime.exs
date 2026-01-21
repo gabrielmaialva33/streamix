@@ -120,12 +120,21 @@ cors_origins =
         host = get_env.("PHX_HOST") || "example.com"
         ["https://#{host}"]
       else
-        ["http://localhost:4000", "http://127.0.0.1:4000"]
+        [
+          "http://localhost:4000",
+          "http://127.0.0.1:4000",
+          # Vite Frontend
+          "http://localhost:5173"
+        ]
       end
 
     "*" ->
       # Explicitly allow all (not recommended for production)
-      :all
+      if config_env() == :prod do
+        raise "CORS wildcard '*' is not allowed in production!"
+      else
+        :all
+      end
 
     origins ->
       String.split(origins, ",") |> Enum.map(&String.trim/1)
