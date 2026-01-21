@@ -262,89 +262,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp upsert_single_anime(provider, anime_data, now) do
-    # Upsert the anime as a Series with content_type: "anime"
-    anime_attrs = %{
-      provider_id: provider.id,
-      series_id: anime_data.series_id,
-      name: anime_data.name,
-      title: anime_data.title,
-      year: anime_data.year,
-      gindex_path: anime_data.gindex_path,
-      season_count: anime_data.season_count,
-      episode_count: anime_data.episode_count,
-      content_type: "anime",
-      inserted_at: now,
-      updated_at: now
-    }
-
-    # First try to find existing anime
-    existing_anime =
-      from(s in Series,
-        where: s.provider_id == ^provider.id and s.series_id == ^anime_data.series_id
-      )
-      |> Repo.one()
-
-    anime =
-      case existing_anime do
-        nil ->
-          # Insert new anime
-          %Series{}
-          |> Series.changeset(anime_attrs)
-          |> Repo.insert!()
-
-        series ->
-          # Update existing anime
-          series
-          |> Series.changeset(anime_attrs)
-          |> Repo.update!()
-      end
-
-    # Sync releases (treated as seasons) and episodes
-    episode_count = sync_anime_releases(anime, anime_data.seasons, now)
-
-    Logger.debug("[GIndex Sync] Synced anime '#{anime.name}' with #{episode_count} episodes")
-
-    {:ok, episode_count}
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert anime #{anime_data.name}: #{inspect(e)}")
-      {:error, e}
-  end
-
-  defp sync_anime_releases(anime, releases_data, now) do
-    Enum.reduce(releases_data, 0, fn release_data, episode_acc ->
-      season = upsert_anime_release(anime, release_data, now)
-      episodes_count = upsert_episodes(season, release_data.episodes, now)
-      episode_acc + episodes_count
-    end)
-  end
-
-  defp upsert_anime_release(anime, release_data, now) do
-    # Find or create season (release)
-    existing_season =
-      from(s in Season,
-        where: s.series_id == ^anime.id and s.season_number == ^release_data.season_number
-      )
-      |> Repo.one()
-
-    season_attrs = %{
-      series_id: anime.id,
-      season_number: release_data.season_number,
-      name: release_data.name,
-      episode_count: release_data.episode_count
-    }
-
-    case existing_season do
-      nil ->
-        %Season{}
-        |> Season.changeset(Map.merge(season_attrs, %{inserted_at: now, updated_at: now}))
-        |> Repo.insert!()
-
-      season ->
-        season
-        |> Season.changeset(Map.put(season_attrs, :updated_at, now))
-        |> Repo.update!()
-    end
+    upsert_single_content(provider, anime_data, now, content_type: "anime")
   end
 
   # =============================================================================
@@ -403,55 +321,70 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp upsert_single_series(provider, series_data, now) do
-    # Upsert the series
-    series_attrs = %{
-      provider_id: provider.id,
-      series_id: series_data.series_id,
-      name: series_data.name,
-      title: series_data.title,
-      year: series_data.year,
-      gindex_path: series_data.gindex_path,
-      season_count: series_data.season_count,
-      episode_count: series_data.episode_count,
-      inserted_at: now,
-      updated_at: now
-    }
-
-    # First try to find existing series
-    existing_series =
-      from(s in Series,
-        where: s.provider_id == ^provider.id and s.series_id == ^series_data.series_id
-      )
-      |> Repo.one()
-
-    series =
-      case existing_series do
-        nil ->
-          # Insert new series
-          %Series{}
-          |> Series.changeset(series_attrs)
-          |> Repo.insert!()
-
-        series ->
-          # Update existing series
-          series
-          |> Series.changeset(series_attrs)
-          |> Repo.update!()
-      end
-
-    # Sync seasons and episodes
-    episode_count = sync_series_seasons(series, series_data.seasons, now)
-
-    Logger.debug("[GIndex Sync] Synced series '#{series.name}' with #{episode_count} episodes")
-
-    {:ok, episode_count}
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert series #{series_data.name}: #{inspect(e)}")
-      {:error, e}
+    upsert_single_content(provider, series_data, now, [])
   end
 
-  defp sync_series_seasons(series, seasons_data, now) do
+  # =============================================================================
+  # Generic Content Upsert (shared by anime and series)
+  # =============================================================================
+
+  defp upsert_single_content(provider, data, now, opts) do
+    content_type = Keyword.get(opts, :content_type)
+    type_label = content_type || "series"
+    content_name = data.name
+
+    try do
+      # Build base attrs
+      attrs = %{
+        provider_id: provider.id,
+        series_id: data.series_id,
+        name: data.name,
+        title: data.title,
+        year: data.year,
+        gindex_path: data.gindex_path,
+        season_count: data.season_count,
+        episode_count: data.episode_count,
+        inserted_at: now,
+        updated_at: now
+      }
+
+      # Add content_type if specified (for anime)
+      attrs = if content_type, do: Map.put(attrs, :content_type, content_type), else: attrs
+
+      # Find or create series
+      existing =
+        from(s in Series,
+          where: s.provider_id == ^provider.id and s.series_id == ^data.series_id
+        )
+        |> Repo.one()
+
+      series =
+        case existing do
+          nil ->
+            %Series{}
+            |> Series.changeset(attrs)
+            |> Repo.insert!()
+
+          series ->
+            series
+            |> Series.changeset(attrs)
+            |> Repo.update!()
+        end
+
+      # Sync seasons and episodes
+      episode_count = sync_seasons(series, data.seasons, now)
+
+      Logger.debug("[GIndex Sync] Synced #{type_label} '#{series.name}' with #{episode_count} episodes")
+
+      {:ok, episode_count}
+    rescue
+      e ->
+        Logger.error("[GIndex Sync] Failed to upsert #{type_label} #{content_name}: #{inspect(e)}")
+        {:error, e}
+    end
+  end
+
+  defp sync_seasons(series, seasons_data, now) do
     Enum.reduce(seasons_data, 0, fn season_data, episode_acc ->
       season = upsert_season(series, season_data, now)
       episodes_count = upsert_episodes(season, season_data.episodes, now)
@@ -460,29 +393,28 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp upsert_season(series, season_data, now) do
-    # Find or create season
-    existing_season =
+    existing =
       from(s in Season,
         where: s.series_id == ^series.id and s.season_number == ^season_data.season_number
       )
       |> Repo.one()
 
-    season_attrs = %{
+    attrs = %{
       series_id: series.id,
       season_number: season_data.season_number,
       name: season_data.name || "Season #{season_data.season_number}",
       episode_count: season_data.episode_count
     }
 
-    case existing_season do
+    case existing do
       nil ->
         %Season{}
-        |> Season.changeset(Map.merge(season_attrs, %{inserted_at: now, updated_at: now}))
+        |> Season.changeset(Map.merge(attrs, %{inserted_at: now, updated_at: now}))
         |> Repo.insert!()
 
       season ->
         season
-        |> Season.changeset(Map.put(season_attrs, :updated_at, now))
+        |> Season.changeset(Map.put(attrs, :updated_at, now))
         |> Repo.update!()
     end
   end
