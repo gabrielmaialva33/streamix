@@ -169,19 +169,28 @@ defmodule StreamixWeb.AppComponents do
         navigate={~p"/watch/live_channel/#{@channel.id}"}
         class="block relative aspect-video bg-surface-hover cursor-pointer"
       >
-        <img
-          :if={@channel.stream_icon}
-          src={@channel.stream_icon}
-          alt={@channel.name}
-          class="w-full h-full object-contain p-1.5 sm:p-2"
-          loading="lazy"
-          onerror="this.style.display='none'"
-        />
         <div
-          :if={!@channel.stream_icon}
-          class="w-full h-full flex items-center justify-center text-text-muted"
+          id={"channel-img-#{@channel.id}"}
+          phx-hook="ImageFallback"
+          class="w-full h-full"
         >
-          <.icon name="hero-tv" class="size-8 sm:size-12" />
+          <img
+            :if={@channel.stream_icon}
+            src={@channel.stream_icon}
+            alt={@channel.name}
+            class="w-full h-full object-contain p-1.5 sm:p-2"
+            loading="lazy"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "w-full h-full flex items-center justify-center text-text-muted",
+              @channel.stream_icon && "hidden"
+            ]}
+          >
+            <.icon name="hero-tv" class="size-8 sm:size-12" />
+          </div>
         </div>
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <.icon name="hero-play-circle-solid" class="size-10 sm:size-16 text-brand" />

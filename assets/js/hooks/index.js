@@ -1,5 +1,6 @@
 import ContentCard from "./content_card";
 import HeaderSearch from "./header_search";
+import ImageFallback from "./image_fallback";
 import InfiniteScroll from "./infinite_scroll";
 import Modal from "./modal";
 import OfflineSync from "./offline_sync";
@@ -16,4 +17,5 @@ export default {
   HeaderSearch,
   ContentCard,
   OfflineSync,
+  ImageFallback,
 };
