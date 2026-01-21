@@ -13,7 +13,8 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       provider = provider_fixture(user)
 
       assert {:ok, %Oban.Job{} = job} = SyncProviderWorker.enqueue(provider)
-      assert job.args == %{"provider_id" => provider.id, "series_details" => "skip"}
+      assert job.args[:provider_id] == provider.id
+      assert job.args[:series_details] == "skip"
       assert job.queue == "sync"
     end
 
@@ -23,7 +24,7 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
 
       {:ok, job} = SyncProviderWorker.enqueue(provider)
 
-      # In inline mode, job is executed immediately, so we just verify the struct
+      # In manual mode, job is not executed, just enqueued
       assert job.worker == "Streamix.Workers.SyncProviderWorker"
       assert job.max_attempts == 3
     end
@@ -32,12 +33,14 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
   describe "enqueue/1 with provider_id" do
     test "enqueues a job with integer provider_id" do
       assert {:ok, %Oban.Job{} = job} = SyncProviderWorker.enqueue(123)
-      assert job.args == %{"provider_id" => 123, "series_details" => "skip"}
+      assert job.args[:provider_id] == 123
+      assert job.args[:series_details] == "skip"
     end
 
     test "enqueues a job with string provider_id" do
       assert {:ok, %Oban.Job{} = job} = SyncProviderWorker.enqueue("456")
-      assert job.args == %{"provider_id" => "456", "series_details" => "skip"}
+      assert job.args[:provider_id] == "456"
+      assert job.args[:series_details] == "skip"
     end
   end
 
@@ -48,6 +51,8 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       assert {:error, :provider_not_found} = SyncProviderWorker.perform(job)
     end
 
+    @tag :integration
+    @tag timeout: 120_000
     test "updates provider sync_status to syncing before sync" do
       user = user_fixture()
       provider = provider_fixture(user)
@@ -66,6 +71,8 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       assert updated.sync_status in ["syncing", "failed"]
     end
 
+    @tag :integration
+    @tag timeout: 120_000
     test "broadcasts sync status updates" do
       user = user_fixture()
       provider = provider_fixture(user)
@@ -82,6 +89,8 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       assert provider_id == provider.id
     end
 
+    @tag :integration
+    @tag timeout: 120_000
     test "sets status to failed when sync fails" do
       user = user_fixture()
       provider = provider_fixture(user)

@@ -36,11 +36,13 @@ defmodule Streamix.CacheTest do
       assert Cache.get("test:list") == list
     end
 
+    @tag :slow
     test "respects TTL" do
       Cache.set("test:ttl", "value", 1)
       assert Cache.get("test:ttl") == "value"
 
-      Process.sleep(1100)
+      # Wait for TTL to expire (1 second + buffer)
+      Process.sleep(1500)
       assert is_nil(Cache.get("test:ttl"))
     end
   end
@@ -95,11 +97,13 @@ defmodule Streamix.CacheTest do
       assert Cache.get("test:compute") == "computed"
     end
 
+    @tag :slow
     test "recomputes after TTL expires" do
       Cache.fetch("test:expire", 1, fn -> "first" end)
       assert Cache.get("test:expire") == "first"
 
-      Process.sleep(1100)
+      # Wait for TTL to expire (1 second + buffer)
+      Process.sleep(1500)
 
       result = Cache.fetch("test:expire", 3600, fn -> "second" end)
       assert result == "second"

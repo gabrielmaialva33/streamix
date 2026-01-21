@@ -35,8 +35,8 @@ config :swoosh, :api_client, false
 # Print only warnings and errors during test
 config :logger, level: :warning
 
-# Disable Oban in tests
-config :streamix, Oban, testing: :inline
+# Disable Oban in tests (manual mode prevents auto-execution)
+config :streamix, Oban, testing: :manual
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
