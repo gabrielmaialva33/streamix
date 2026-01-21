@@ -234,7 +234,6 @@ defmodule StreamixWeb.SearchLive do
           :for={channel <- @limited_channels}
           channel={channel}
           is_favorite={channel.is_favorite}
-          on_play="play_channel"
           on_favorite="toggle_favorite"
         />
       </div>
