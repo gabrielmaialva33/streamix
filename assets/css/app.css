@@ -10,6 +10,34 @@
    ============================================ */
 
 :root {
+  /* Catppuccin Latte Palette (Raw Values) */
+  --latte-rosewater: hsl(11deg 59% 67%);
+  --latte-flamingo: hsl(0deg 60% 67%);
+  --latte-pink: hsl(316deg 73% 69%);
+  --latte-mauve: hsl(266deg 85% 58%);
+  --latte-red: hsl(347deg 87% 44%);
+  --latte-maroon: hsl(355deg 76% 59%);
+  --latte-peach: hsl(22deg 99% 52%);
+  --latte-yellow: hsl(35deg 77% 49%);
+  --latte-green: hsl(109deg 58% 40%);
+  --latte-teal: hsl(183deg 74% 35%);
+  --latte-sky: hsl(197deg 97% 46%);
+  --latte-sapphire: hsl(189deg 70% 42%);
+  --latte-blue: hsl(220deg 91% 54%);
+  --latte-lavender: hsl(231deg 97% 72%);
+  --latte-text: hsl(234deg 16% 35%);
+  --latte-subtext1: hsl(233deg 13% 41%);
+  --latte-subtext0: hsl(233deg 10% 47%);
+  --latte-overlay2: hsl(232deg 10% 53%);
+  --latte-overlay1: hsl(231deg 10% 59%);
+  --latte-overlay0: hsl(228deg 11% 65%);
+  --latte-surface2: hsl(227deg 12% 71%);
+  --latte-surface1: hsl(225deg 14% 77%);
+  --latte-surface0: hsl(223deg 16% 83%);
+  --latte-base: hsl(220deg 23% 95%);
+  --latte-mantle: hsl(220deg 22% 92%);
+  --latte-crust: hsl(220deg 21% 89%);
+
   /* Dark Mode (Default) */
   --bg-color: #0a0a0a;
   --surface-color: #141414;
@@ -34,28 +62,27 @@
 }
 
 :root.light {
-  /* Light Mode (Premium Clean) */
-  --bg-color: #ffffff;
-  --surface-color: #f3f4f6;
-  /* Gray 100 */
-  --surface-hover-color: #e5e7eb;
-  /* Gray 200 */
-  --border-color: #e5e7eb;
-  /* Gray 200 */
+  /* Light Mode - Catppuccin Latte */
+  --bg-color: var(--latte-base);
+  --surface-color: var(--latte-surface0);
+  --surface-hover-color: var(--latte-surface1);
+  --border-color: var(--latte-surface2);
 
   /* Text */
-  --text-primary: #111827;
-  /* Gray 900 */
-  --text-secondary: #4b5563;
-  /* Gray 600 */
-  --text-muted: #9ca3af;
-  /* Gray 400 */
+  --text-primary: var(--latte-text);
+  --text-secondary: var(--latte-subtext1);
+  --text-muted: var(--latte-overlay0);
 
-  /* Brand - slightly adjusted for light mode contrast if needed, keeping same for now for consistency */
-  --brand-color: #dc2626;
-  /* Red 600 - slightly darker for better contrast on white */
-  --brand-hover-color: #b91c1c;
-  /* Red 700 */
+  /* Brand */
+  --brand-color: var(--latte-red);
+  --brand-hover-color: var(--latte-maroon);
+  --accent-color: var(--latte-green);
+
+  /* Status Overrides for Light Mode (derived from Latte) */
+  --success-color: var(--latte-green);
+  --warning-color: var(--latte-yellow);
+  --error-color: var(--latte-red);
+  --info-color: var(--latte-blue);
 }
 
 @theme {
@@ -80,6 +107,34 @@
   --color-warning: var(--warning-color);
   --color-error: var(--error-color);
   --color-info: var(--info-color);
+
+  /* Latte Palette Extensions */
+  --color-latte-rosewater: var(--latte-rosewater);
+  --color-latte-flamingo: var(--latte-flamingo);
+  --color-latte-pink: var(--latte-pink);
+  --color-latte-mauve: var(--latte-mauve);
+  --color-latte-red: var(--latte-red);
+  --color-latte-maroon: var(--latte-maroon);
+  --color-latte-peach: var(--latte-peach);
+  --color-latte-yellow: var(--latte-yellow);
+  --color-latte-green: var(--latte-green);
+  --color-latte-teal: var(--latte-teal);
+  --color-latte-sky: var(--latte-sky);
+  --color-latte-sapphire: var(--latte-sapphire);
+  --color-latte-blue: var(--latte-blue);
+  --color-latte-lavender: var(--latte-lavender);
+  --color-latte-text: var(--latte-text);
+  --color-latte-subtext1: var(--latte-subtext1);
+  --color-latte-subtext0: var(--latte-subtext0);
+  --color-latte-overlay2: var(--latte-overlay2);
+  --color-latte-overlay1: var(--latte-overlay1);
+  --color-latte-overlay0: var(--latte-overlay0);
+  --color-latte-surface2: var(--latte-surface2);
+  --color-latte-surface1: var(--latte-surface1);
+  --color-latte-surface0: var(--latte-surface0);
+  --color-latte-base: var(--latte-base);
+  --color-latte-mantle: var(--latte-mantle);
+  --color-latte-crust: var(--latte-crust);
 
   /* Spacing */
   --spacing-gutter: 4%;

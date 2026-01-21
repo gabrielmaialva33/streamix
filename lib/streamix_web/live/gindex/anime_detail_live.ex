@@ -16,7 +16,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
       nil ->
         {:ok,
          socket
-         |> put_flash(:error, "Anime nao encontrado")
+         |> put_flash(:error, "Anime não encontrado")
          |> push_navigate(to: ~p"/browse/animes?source=gindex")}
 
       anime ->

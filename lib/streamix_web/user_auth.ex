@@ -157,7 +157,7 @@ defmodule StreamixWeb.UserAuth do
     else
       socket =
         socket
-        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+        |> Phoenix.LiveView.put_flash(:error, "Você precisa fazer login para acessar esta página.")
         |> Phoenix.LiveView.redirect(to: ~p"/login")
 
       {:halt, socket}
@@ -210,7 +210,7 @@ defmodule StreamixWeb.UserAuth do
       conn
     else
       conn
-      |> put_flash(:error, "You must log in to access this page.")
+      |> put_flash(:error, "Você precisa fazer login para acessar esta página.")
       |> maybe_store_return_to()
       |> redirect(to: ~p"/login")
       |> halt()
