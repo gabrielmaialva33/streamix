@@ -303,16 +303,12 @@ defmodule Streamix.Iptv.Gindex.UrlCache do
   defp cleanup_expired do
     now = System.monotonic_time(:millisecond)
 
-    # Find and delete expired entries
-    expired =
-      :ets.select(@table_name, [
-        {{:"$1", :"$2", :"$3"}, [{:<, :"$3", now}], [:"$1"]}
-      ])
+    # Use select_delete for atomic O(n) deletion
+    match_spec = [{{:_, :_, :"$1"}, [{:<, :"$1", now}], [true]}]
+    deleted_count = :ets.select_delete(@table_name, match_spec)
 
-    Enum.each(expired, &:ets.delete(@table_name, &1))
-
-    if expired != [] do
-      Logger.debug("[GIndex UrlCache] Cleaned up #{length(expired)} expired entries")
+    if deleted_count > 0 do
+      Logger.debug("[GIndex UrlCache] Cleaned up #{deleted_count} expired entries")
     end
   end
 

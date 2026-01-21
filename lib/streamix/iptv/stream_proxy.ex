@@ -196,19 +196,13 @@ defmodule Streamix.Iptv.StreamProxy do
   defp cleanup_expired_cache do
     now = System.system_time(:second)
 
-    expired_keys =
-      :ets.foldl(
-        fn {key, _data, expires_at}, acc ->
-          if expires_at < now, do: [key | acc], else: acc
-        end,
-        [],
-        @cache_table
-      )
+    # Use select_delete for O(n) atomic deletion instead of foldl + individual deletes
+    # Match spec: delete entries where expires_at (3rd element) < now
+    match_spec = [{{:_, :_, :"$1"}, [{:<, :"$1", now}], [true]}]
+    deleted_count = :ets.select_delete(@cache_table, match_spec)
 
-    Enum.each(expired_keys, &:ets.delete(@cache_table, &1))
-
-    unless Enum.empty?(expired_keys) do
-      Logger.debug("StreamProxy: Cleaned up #{Enum.count(expired_keys)} expired cache entries")
+    if deleted_count > 0 do
+      Logger.debug("StreamProxy: Cleaned up #{deleted_count} expired cache entries")
     end
   end
 
