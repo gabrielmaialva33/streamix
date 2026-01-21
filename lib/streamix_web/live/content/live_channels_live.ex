@@ -113,6 +113,9 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category
     {:noreply, push_patch(socket, to: build_path(socket, category, socket.assigns.search))}
@@ -308,6 +311,19 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           />
         </div>
       </div>
+      
+    <!-- Infinite Scroll Sentinel -->
+      <div
+        :if={@has_more && !@loading}
+        id="channels-sentinel"
+        phx-hook="InfiniteScroll"
+        data-page={@page}
+        class="h-4"
+      />
+
+      <div :if={@loading} class="flex justify-center py-8">
+        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+      </div>
 
       <div :if={@empty_results} class="py-12">
         <.empty_state
@@ -327,8 +343,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           </:action>
         </.empty_state>
       </div>
-
-      <.infinite_scroll has_more={@has_more} loading={@loading} />
 
       <.video_player_v2 :if={@playing_channel} channel={@playing_channel} provider={@provider} />
     </div>

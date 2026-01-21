@@ -560,25 +560,6 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
-  Renders infinite scroll trigger.
-  """
-  attr :has_more, :boolean, required: true
-  attr :loading, :boolean, default: false
-
-  def infinite_scroll(assigns) do
-    ~H"""
-    <div
-      :if={@has_more}
-      id="infinite-scroll-trigger"
-      phx-hook="InfiniteScroll"
-      class="flex justify-center py-8"
-    >
-      <.loading_spinner :if={@loading} />
-    </div>
-    """
-  end
-
-  @doc """
   Renders a history item card.
   """
   attr :entry, :map, required: true

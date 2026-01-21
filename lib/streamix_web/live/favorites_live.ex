@@ -45,6 +45,9 @@ defmodule StreamixWeb.FavoritesLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   @doc false
   def handle_event("filter", %{"type" => type}, socket) do
     socket =
@@ -99,6 +102,9 @@ defmodule StreamixWeb.FavoritesLive do
     {:noreply, socket}
   end
 
+  # OfflineSync hook events (client-side sync, no server action needed)
+  def handle_event("refresh_data", _params, socket), do: {:noreply, socket}
+
   # ============================================
   # Render
   # ============================================
@@ -145,7 +151,6 @@ defmodule StreamixWeb.FavoritesLive do
       <div
         id="favorites-grid"
         phx-update="stream"
-        phx-viewport-bottom={!@end_of_list && "load_more"}
         class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
         <.favorite_item
@@ -154,6 +159,15 @@ defmodule StreamixWeb.FavoritesLive do
           favorite={favorite}
         />
       </div>
+      
+    <!-- Infinite Scroll Sentinel -->
+      <div
+        :if={!@end_of_list && !@loading}
+        id="favorites-sentinel"
+        phx-hook="InfiniteScroll"
+        data-page={@page}
+        class="h-4"
+      />
 
       <div :if={@loading} class="flex justify-center py-8">
         <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />

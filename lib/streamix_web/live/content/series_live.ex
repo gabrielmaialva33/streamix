@@ -180,6 +180,9 @@ defmodule StreamixWeb.Content.SeriesLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category
     {:noreply, push_patch(socket, to: build_path(socket, category, socket.assigns.search))}
@@ -292,6 +295,19 @@ defmodule StreamixWeb.Content.SeriesLive do
           />
         </div>
       </div>
+      
+    <!-- Infinite Scroll Sentinel -->
+      <div
+        :if={@has_more && !@loading}
+        id="series-sentinel"
+        phx-hook="InfiniteScroll"
+        data-page={@page}
+        class="h-4"
+      />
+
+      <div :if={@loading} class="flex justify-center py-8">
+        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+      </div>
 
       <.empty_state
         :if={@empty_results && !@loading}
@@ -299,8 +315,6 @@ defmodule StreamixWeb.Content.SeriesLive do
         title="Nenhuma série encontrada"
         message="Tente ajustar os filtros ou fazer uma busca diferente."
       />
-
-      <.infinite_scroll has_more={@has_more} loading={@loading} />
     </div>
     """
   end

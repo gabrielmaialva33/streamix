@@ -230,6 +230,9 @@ defmodule StreamixWeb.Content.MoviesLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category
     {:noreply, push_patch(socket, to: build_path(socket, category, socket.assigns.search))}
@@ -241,13 +244,20 @@ defmodule StreamixWeb.Content.MoviesLive do
   end
 
   def handle_event("load_more", _, socket) do
-    socket =
-      socket
-      |> assign(page: socket.assigns.page + 1)
-      |> assign(loading: true)
-      |> load_movies()
+    if socket.assigns.loading do
+      {:noreply, socket}
+    else
+      require Logger
+      Logger.info("MoviesLive: load_more triggered. Page: #{socket.assigns.page + 1}")
 
-    {:noreply, socket}
+      socket =
+        socket
+        |> assign(page: socket.assigns.page + 1)
+        |> assign(loading: true)
+        |> load_movies()
+
+      {:noreply, socket}
+    end
   end
 
   def handle_event("play_movie", %{"id" => id}, socket) do
@@ -346,6 +356,19 @@ defmodule StreamixWeb.Content.MoviesLive do
           />
         </div>
       </div>
+      
+    <!-- Infinite Scroll Sentinel -->
+      <div
+        :if={@has_more && !@loading}
+        id="movies-sentinel"
+        phx-hook="InfiniteScroll"
+        data-page={@page}
+        class="h-4"
+      />
+
+      <div :if={@loading} class="flex justify-center py-8">
+        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+      </div>
 
       <.empty_state
         :if={@empty_results && !@loading}
@@ -353,8 +376,6 @@ defmodule StreamixWeb.Content.MoviesLive do
         title="Nenhum filme encontrado"
         message="Tente ajustar os filtros ou fazer uma busca diferente."
       />
-
-      <.infinite_scroll has_more={@has_more} loading={@loading} />
     </div>
     """
   end

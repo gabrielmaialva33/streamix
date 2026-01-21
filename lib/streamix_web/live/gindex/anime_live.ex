@@ -52,6 +52,9 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("search", %{"search" => search}, socket) do
     path =
       if search == "",
@@ -143,6 +146,19 @@ defmodule StreamixWeb.Gindex.AnimeLive do
           />
         </div>
       </div>
+      
+    <!-- Infinite Scroll Sentinel -->
+      <div
+        :if={@has_more && !@loading}
+        id="animes-sentinel"
+        phx-hook="InfiniteScroll"
+        data-page={@page}
+        class="h-4"
+      />
+
+      <div :if={@loading} class="flex justify-center py-8">
+        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+      </div>
 
       <.empty_state
         :if={@empty_results && !@loading}
@@ -150,8 +166,6 @@ defmodule StreamixWeb.Gindex.AnimeLive do
         title="Nenhum anime encontrado"
         message="Tente ajustar os filtros ou fazer uma busca diferente."
       />
-
-      <.infinite_scroll has_more={@has_more} loading={@loading} />
     </div>
     """
   end
