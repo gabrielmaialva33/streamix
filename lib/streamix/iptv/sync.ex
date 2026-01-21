@@ -168,7 +168,10 @@ defmodule Streamix.Iptv.Sync do
       # Partial success - log failures but continue
       true ->
         Logger.warning("[Sync] Partial sync failure: #{inspect(failures)}")
-        result = finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts)
+
+        result =
+          finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts)
+
         Telemetry.sync_stop(provider, start_time, :partial, Map.put(counts, :failures, failures))
         result
     end

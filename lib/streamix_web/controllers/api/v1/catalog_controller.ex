@@ -496,7 +496,10 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     movie = Repo.preload(movie, :provider)
     provider = movie.provider
     ext = movie.container_extension || "mp4"
-    raw_url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
+
+    raw_url =
+      "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
+
     build_pannxs_proxy_url(raw_url)
   end
 
@@ -504,14 +507,20 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     episode = Repo.preload(episode, season: [series: :provider])
     provider = episode.season.series.provider
     ext = episode.container_extension || "mp4"
-    raw_url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
+
+    raw_url =
+      "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
+
     build_pannxs_proxy_url(raw_url)
   end
 
   defp build_browser_channel_url(channel) do
     channel = Repo.preload(channel, :provider)
     provider = channel.provider
-    raw_url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
+
+    raw_url =
+      "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
+
     build_pannxs_proxy_url(raw_url)
   end
 

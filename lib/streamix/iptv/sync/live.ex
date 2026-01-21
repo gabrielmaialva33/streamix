@@ -69,8 +69,6 @@ defmodule Streamix.Iptv.Sync.Live do
   end
 
   defp build_category_assocs(streams, returned, category_lookup) do
-    Helpers.build_category_assocs(streams, returned, category_lookup,
-      fk_column: :live_channel_id
-    )
+    Helpers.build_category_assocs(streams, returned, category_lookup, fk_column: :live_channel_id)
   end
 end

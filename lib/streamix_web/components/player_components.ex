@@ -223,7 +223,11 @@ defmodule StreamixWeb.PlayerComponents do
           </div>
           <%!-- Countdown bar --%>
           <div class="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
-            <div id="next-countdown-bar" class="h-full bg-brand transition-all duration-1000" style="width: 100%" />
+            <div
+              id="next-countdown-bar"
+              class="h-full bg-brand transition-all duration-1000"
+              style="width: 100%"
+            />
           </div>
         </div>
       </div>

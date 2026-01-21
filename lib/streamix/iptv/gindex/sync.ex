@@ -374,12 +374,17 @@ defmodule Streamix.Iptv.Gindex.Sync do
       # Sync seasons and episodes
       episode_count = sync_seasons(series, data.seasons, now)
 
-      Logger.debug("[GIndex Sync] Synced #{type_label} '#{series.name}' with #{episode_count} episodes")
+      Logger.debug(
+        "[GIndex Sync] Synced #{type_label} '#{series.name}' with #{episode_count} episodes"
+      )
 
       {:ok, episode_count}
     rescue
       e ->
-        Logger.error("[GIndex Sync] Failed to upsert #{type_label} #{content_name}: #{inspect(e)}")
+        Logger.error(
+          "[GIndex Sync] Failed to upsert #{type_label} #{content_name}: #{inspect(e)}"
+        )
+
         {:error, e}
     end
   end

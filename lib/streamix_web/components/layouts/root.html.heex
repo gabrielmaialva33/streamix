@@ -2,10 +2,13 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
     <meta name="csrf-token" content={get_csrf_token()} />
-
-    <!-- Theme Initialization (nonce-protected) -->
+    
+<!-- Theme Initialization (nonce-protected) -->
     <script nonce={assigns[:csp_nonce]}>
       (function() {
         const theme = localStorage.getItem('theme');
@@ -18,8 +21,8 @@
         }
       })();
     </script>
-
-    <!-- PWA Meta Tags -->
+    
+<!-- PWA Meta Tags -->
     <meta name="theme-color" content="#e50914" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -28,8 +31,8 @@
     <meta name="application-name" content="Streamix" />
     <meta name="msapplication-TileColor" content="#e50914" />
     <meta name="msapplication-TileImage" content="/images/icon-192.png" />
-
-    <!-- PWA Manifest & Icons -->
+    
+<!-- PWA Manifest & Icons -->
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/images/icon-192.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png" />
@@ -39,7 +42,13 @@
       {assigns[:page_title]}
     </.live_title>
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"} nonce={assigns[:csp_nonce]}>
+    <script
+      defer
+      phx-track-static
+      type="text/javascript"
+      src={~p"/assets/js/app.js"}
+      nonce={assigns[:csp_nonce]}
+    >
     </script>
   </head>
   <body>
