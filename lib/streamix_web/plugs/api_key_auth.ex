@@ -64,7 +64,8 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
   defp validate_api_key(key) do
     valid_keys = Application.get_env(:streamix, :api_keys, [])
 
-    if key in valid_keys do
+    # Use secure_compare to prevent timing attacks
+    if Enum.any?(valid_keys, &Plug.Crypto.secure_compare(&1, key)) do
       :ok
     else
       {:error, :invalid_key}
