@@ -6,6 +6,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.AI.SemanticSearch
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -72,6 +73,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         do: "/browse/series/#{series.id}",
         else: "/providers/#{provider.id}/series/#{series.id}"
 
+    # Load similar series (async-safe, returns [] on error)
+    similar_series = load_similar_series(series.id)
+
     socket =
       socket
       |> assign(page_title: series.title || series.name)
@@ -86,6 +90,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       )
       |> assign(is_favorite: is_favorite)
       |> assign(user_id: user_id)
+      |> assign(similar_series: similar_series)
 
     {:ok, socket}
   end
@@ -107,6 +112,25 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     missing_extended = is_nil(series.content_rating) and is_nil(series.tagline)
 
     missing_basic or missing_extended
+  end
+
+  defp load_similar_series(series_id) do
+    case SemanticSearch.similar(series_id, :series, limit: 6) do
+      {:ok, results} ->
+        # Fetch full series data for results
+        series_ids = Enum.map(results, & &1.id)
+        Iptv.get_series_by_ids(series_ids)
+
+      {:error, reason} ->
+        require Logger
+        Logger.debug("[SeriesDetail] SemanticSearch unavailable: #{inspect(reason)}")
+        []
+    end
+  rescue
+    e ->
+      require Logger
+      Logger.warning("[SeriesDetail] Unexpected error in load_similar_series: #{inspect(e)}")
+      []
   end
 
   # ============================================
@@ -410,6 +434,40 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             </div>
           </div>
           
+    <!-- Similar Series -->
+          <div :if={@similar_series != []} class="mt-8 sm:mt-12">
+            <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">
+              Séries Similares
+            </h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+              <.link
+                :for={similar <- @similar_series}
+                navigate={similar_series_path(@mode, @provider, similar)}
+                class="group"
+              >
+                <div class="aspect-[2/3] rounded-lg overflow-hidden bg-surface ring-1 ring-white/10 group-hover:ring-brand transition-all">
+                  <img
+                    :if={similar.cover}
+                    src={ImageProxy.proxy(similar.cover)}
+                    alt={similar.title || similar.name}
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                  />
+                  <div
+                    :if={!similar.cover}
+                    class="w-full h-full flex items-center justify-center"
+                  >
+                    <.icon name="hero-tv" class="size-8 text-text-secondary/30" />
+                  </div>
+                </div>
+                <p class="mt-2 text-sm text-text-primary truncate group-hover:text-brand transition-colors">
+                  {similar.title || similar.name}
+                </p>
+                <p :if={similar.year} class="text-xs text-text-secondary">{similar.year}</p>
+              </.link>
+            </div>
+          </div>
+
     <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
             <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
@@ -534,6 +592,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp back_path(:browse, _provider), do: ~p"/browse/series"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/series"
+
+  defp similar_series_path(:browse, _provider, series), do: ~p"/browse/series/#{series.id}"
+  defp similar_series_path(:provider, provider, series), do: ~p"/providers/#{provider.id}/series/#{series.id}"
 
   defp episode_path(:browse, _provider, series_id, episode_id),
     do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"

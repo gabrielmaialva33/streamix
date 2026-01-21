@@ -6,6 +6,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.AI.SemanticSearch
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -57,6 +58,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
             do: "/browse/movies/#{movie.id}",
             else: "/providers/#{provider.id}/movies/#{movie.id}"
 
+        # Load similar movies (async-safe, returns [] on error)
+        similar_movies = load_similar_movies(movie.id)
+
         socket =
           socket
           |> assign(page_title: movie.title || movie.name)
@@ -66,9 +70,29 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(mode: mode)
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
+          |> assign(similar_movies: similar_movies)
 
         {:ok, socket}
     end
+  end
+
+  defp load_similar_movies(movie_id) do
+    case SemanticSearch.similar(movie_id, :movies, limit: 6) do
+      {:ok, results} ->
+        # Fetch full movie data for results
+        movie_ids = Enum.map(results, & &1.id)
+        Iptv.get_movies_by_ids(movie_ids)
+
+      {:error, reason} ->
+        require Logger
+        Logger.debug("[MovieDetail] SemanticSearch unavailable: #{inspect(reason)}")
+        []
+    end
+  rescue
+    e ->
+      require Logger
+      Logger.warning("[MovieDetail] Unexpected error in load_similar_movies: #{inspect(e)}")
+      []
   end
 
   defp maybe_fetch_movie_info(movie) do
@@ -337,7 +361,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               </div>
             </div>
           </div>
-          
+
     <!-- Image Gallery -->
           <div :if={@movie.images && @movie.images != []} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
@@ -355,6 +379,40 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               </div>
             </div>
           </div>
+
+          <!-- Similar Movies -->
+          <div :if={@similar_movies != []} class="mt-8 sm:mt-12">
+            <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">
+              Títulos Similares
+            </h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+              <.link
+                :for={similar <- @similar_movies}
+                navigate={similar_movie_path(@mode, @provider, similar)}
+                class="group"
+              >
+                <div class="aspect-[2/3] rounded-lg overflow-hidden bg-surface ring-1 ring-white/10 group-hover:ring-brand transition-all">
+                  <img
+                    :if={similar.stream_icon}
+                    src={ImageProxy.proxy(similar.stream_icon)}
+                    alt={similar.title || similar.name}
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                  />
+                  <div
+                    :if={!similar.stream_icon}
+                    class="w-full h-full flex items-center justify-center"
+                  >
+                    <.icon name="hero-film" class="size-8 text-text-secondary/30" />
+                  </div>
+                </div>
+                <p class="mt-2 text-sm text-text-primary truncate group-hover:text-brand transition-colors">
+                  {similar.title || similar.name}
+                </p>
+                <p :if={similar.year} class="text-xs text-text-secondary">{similar.year}</p>
+              </.link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -367,6 +425,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp back_path(:browse, _provider), do: ~p"/browse/movies"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/movies"
+
+  defp similar_movie_path(:browse, _provider, movie), do: ~p"/browse/movies/#{movie.id}"
+  defp similar_movie_path(:provider, provider, movie), do: ~p"/providers/#{provider.id}/movies/#{movie.id}"
 
   defp format_rating(%Decimal{} = rating) do
     rating
