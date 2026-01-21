@@ -420,6 +420,7 @@ defmodule StreamixWeb.StreamController do
     Mint.HTTP.close(mint_conn)
 
     conn
+    |> put_resp_content_type("application/octet-stream")
     |> send_resp(status, initial_data)
   end
 
@@ -438,6 +439,7 @@ defmodule StreamixWeb.StreamController do
         Logger.debug("Buffered #{byte_size(body)} bytes, sending response")
 
         conn
+        |> put_resp_content_type("application/octet-stream")
         |> send_resp(status, body)
 
       {:error, reason} ->
