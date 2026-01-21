@@ -330,7 +330,7 @@ defmodule Streamix.Cache do
 
   defp decode(value) do
     # Use Erlang binary_to_term to restore Elixir types
-    :erlang.binary_to_term(value)
+    :erlang.binary_to_term(value, [:safe])
   rescue
     _ -> nil
   end
