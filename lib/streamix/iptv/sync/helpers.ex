@@ -197,4 +197,118 @@ defmodule Streamix.Iptv.Sync.Helpers do
       params
     )
   end
+
+  # =============================================================================
+  # Generic Content Sync
+  # =============================================================================
+
+  @doc """
+  Generic batched upsert for content types (live channels, movies, etc).
+
+  ## Options
+    * `:schema` - The Ecto schema module (e.g., LiveChannel, Movie)
+    * `:attrs_fn` - Function (stream, provider_id, now) -> attrs map
+    * `:category_fn` - Function (streams, returned, lookup) -> assoc list
+    * `:join_table` - Join table name (e.g., "movie_categories")
+    * `:fk_column` - Foreign key column (e.g., "movie_id")
+  """
+  def upsert_content_batched(streams, provider_id, category_lookup, now, opts) do
+    schema = Keyword.fetch!(opts, :schema)
+    attrs_fn = Keyword.fetch!(opts, :attrs_fn)
+    category_fn = Keyword.fetch!(opts, :category_fn)
+    join_table = Keyword.fetch!(opts, :join_table)
+    fk_column = Keyword.fetch!(opts, :fk_column)
+
+    streams
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.reduce({0, []}, fn batch, {acc_count, acc_ids} ->
+      content_data = Enum.map(batch, &attrs_fn.(&1, provider_id, now))
+
+      {inserted, returned} =
+        Repo.insert_all(schema, content_data,
+          on_conflict: {:replace_all_except, [:id, :inserted_at]},
+          conflict_target: [:provider_id, :stream_id],
+          returning: [:id, :stream_id]
+        )
+
+      # Rebuild category associations for this batch
+      entity_ids = Enum.map(returned, & &1.id)
+      category_assocs = category_fn.(batch, returned, category_lookup)
+
+      rebuild_category_assocs_diff(
+        join_table,
+        fk_column,
+        "category_id",
+        entity_ids,
+        category_assocs
+      )
+
+      batch_stream_ids = Enum.map(batch, & &1["stream_id"])
+      {acc_count + inserted, acc_ids ++ batch_stream_ids}
+    end)
+  end
+
+  @doc """
+  Generic orphan deletion for content types.
+
+  ## Options
+    * `:schema` - The Ecto schema module
+    * `:table_name` - Main table name (e.g., "movies")
+    * `:join_table` - Join table name (e.g., "movie_categories")
+    * `:fk_column` - Foreign key column in join table
+  """
+  def delete_orphaned_content(provider_id, current_stream_ids, opts) do
+    schema = Keyword.fetch!(opts, :schema)
+    table_name = Keyword.fetch!(opts, :table_name)
+    join_table = Keyword.fetch!(opts, :join_table)
+    fk_column = Keyword.fetch!(opts, :fk_column)
+
+    # First delete category associations for orphaned content
+    Repo.query!(
+      """
+      DELETE FROM #{join_table}
+      WHERE #{fk_column} IN (
+        SELECT id FROM #{table_name}
+        WHERE provider_id = $1 AND stream_id != ALL($2)
+      )
+      """,
+      [provider_id, current_stream_ids]
+    )
+
+    # Then delete the orphaned content
+    {count, _} =
+      schema
+      |> where([c], c.provider_id == ^provider_id)
+      |> where([c], c.stream_id not in ^current_stream_ids)
+      |> Repo.delete_all()
+
+    count
+  end
+
+  @doc """
+  Builds category associations from streams and returned entities.
+  Generic version that works with any content type.
+
+  ## Options
+    * `:fk_column` - The foreign key atom (e.g., :movie_id, :live_channel_id)
+  """
+  def build_category_assocs(streams, returned_entities, category_lookup, opts) do
+    fk_column = Keyword.fetch!(opts, :fk_column)
+
+    stream_to_db_id =
+      Map.new(returned_entities, fn %{id: id, stream_id: stream_id} -> {stream_id, id} end)
+
+    streams
+    |> Enum.flat_map(fn stream ->
+      entity_id = stream_to_db_id[stream["stream_id"]]
+      cat_ext_id = to_string(stream["category_id"])
+      category_id = category_lookup[cat_ext_id]
+
+      if entity_id && category_id do
+        [%{fk_column => entity_id, :category_id => category_id}]
+      else
+        []
+      end
+    end)
+  end
 end

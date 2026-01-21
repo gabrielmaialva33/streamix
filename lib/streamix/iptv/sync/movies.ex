@@ -3,13 +3,18 @@ defmodule Streamix.Iptv.Sync.Movies do
   Movie (VOD) synchronization from Xtream Codes API.
   """
 
-  import Ecto.Query, warn: false
-
   alias Streamix.Iptv.{Movie, Provider, XtreamClient}
   alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
 
   require Logger
+
+  @sync_opts [
+    schema: Movie,
+    table_name: "movies",
+    join_table: "movie_categories",
+    fk_column: "movie_id"
+  ]
 
   @doc """
   Syncs movies for a provider.
@@ -22,12 +27,15 @@ defmodule Streamix.Iptv.Sync.Movies do
         category_lookup = Helpers.build_category_lookup(provider.id, "vod")
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        # Upsert in batches
-        {count, all_stream_ids} =
-          upsert_movies_batched(streams, provider.id, category_lookup, now)
+        upsert_opts =
+          @sync_opts
+          |> Keyword.put(:attrs_fn, &movie_attrs/3)
+          |> Keyword.put(:category_fn, &build_category_assocs/3)
 
-        # Delete orphaned movies
-        deleted_count = delete_orphaned_movies(provider.id, all_stream_ids)
+        {count, all_stream_ids} =
+          Helpers.upsert_content_batched(streams, provider.id, category_lookup, now, upsert_opts)
+
+        deleted_count = Helpers.delete_orphaned_content(provider.id, all_stream_ids, @sync_opts)
 
         now_utc = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -41,64 +49,6 @@ defmodule Streamix.Iptv.Sync.Movies do
       {:error, reason} ->
         {:error, {:vod_sync_failed, reason}}
     end
-  end
-
-  defp upsert_movies_batched(streams, provider_id, category_lookup, now) do
-    streams
-    |> Enum.chunk_every(Helpers.batch_size())
-    |> Enum.reduce({0, []}, fn batch, {acc_count, acc_ids} ->
-      movies_data = Enum.map(batch, &movie_attrs(&1, provider_id, now))
-
-      {inserted, returned} =
-        Repo.insert_all(Movie, movies_data,
-          on_conflict: {:replace_all_except, [:id, :inserted_at]},
-          conflict_target: [:provider_id, :stream_id],
-          returning: [:id, :stream_id]
-        )
-
-      # Rebuild category associations for this batch
-      rebuild_movie_category_assocs(batch, returned, category_lookup)
-
-      batch_stream_ids = Enum.map(batch, & &1["stream_id"])
-      {acc_count + inserted, acc_ids ++ batch_stream_ids}
-    end)
-  end
-
-  defp rebuild_movie_category_assocs(streams, returned_movies, category_lookup) do
-    movie_ids = Enum.map(returned_movies, & &1.id)
-    category_assocs = build_movie_category_assocs(streams, returned_movies, category_lookup)
-
-    # Use diff-based rebuild to avoid WAL bloat and visibility gaps
-    Helpers.rebuild_category_assocs_diff(
-      "movie_categories",
-      "movie_id",
-      "category_id",
-      movie_ids,
-      category_assocs
-    )
-  end
-
-  defp delete_orphaned_movies(provider_id, current_stream_ids) do
-    # First delete category associations for orphaned movies
-    Repo.query!(
-      """
-      DELETE FROM movie_categories
-      WHERE movie_id IN (
-        SELECT id FROM movies
-        WHERE provider_id = $1 AND stream_id != ALL($2)
-      )
-      """,
-      [provider_id, current_stream_ids]
-    )
-
-    # Then delete the orphaned movies
-    {count, _} =
-      Movie
-      |> where([m], m.provider_id == ^provider_id)
-      |> where([m], m.stream_id not in ^current_stream_ids)
-      |> Repo.delete_all()
-
-    count
   end
 
   defp movie_attrs(stream, provider_id, now) do
@@ -127,21 +77,7 @@ defmodule Streamix.Iptv.Sync.Movies do
     }
   end
 
-  defp build_movie_category_assocs(streams, returned_movies, category_lookup) do
-    stream_to_db_id =
-      Map.new(returned_movies, fn %{id: id, stream_id: stream_id} -> {stream_id, id} end)
-
-    streams
-    |> Enum.flat_map(fn stream ->
-      movie_id = stream_to_db_id[stream["stream_id"]]
-      cat_ext_id = to_string(stream["category_id"])
-      category_id = category_lookup[cat_ext_id]
-
-      if movie_id && category_id do
-        [%{movie_id: movie_id, category_id: category_id}]
-      else
-        []
-      end
-    end)
+  defp build_category_assocs(streams, returned, category_lookup) do
+    Helpers.build_category_assocs(streams, returned, category_lookup, fk_column: :movie_id)
   end
 end
