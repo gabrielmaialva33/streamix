@@ -68,7 +68,7 @@ defmodule Streamix.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"},
+      {:bandit, "~> 1.0"},
       {:dotenvy, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:cors_plug, "~> 3.0"},
@@ -82,7 +82,10 @@ defmodule Streamix.MixProject do
       # Override amqp_client to use latest version compatible with OTP 28
       {:amqp, "~> 3.3", override: true},
       {:rabbit_common, "~> 4.0", override: true},
-      {:amqp_client, "~> 4.0", override: true}
+      {:amqp_client, "~> 4.0", override: true},
+      # Security Tools
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
 
