@@ -164,7 +164,7 @@ defmodule StreamixWeb.AppComponents do
 
   def live_channel_card(assigns) do
     ~H"""
-    <div class="group relative rounded-lg overflow-hidden bg-surface border border-border card-hover">
+    <div class="group relative rounded-md sm:rounded-lg overflow-hidden bg-surface border border-border card-hover">
       <.link
         navigate={~p"/watch/live_channel/#{@channel.id}"}
         class="block relative aspect-video bg-surface-hover cursor-pointer"
@@ -178,7 +178,7 @@ defmodule StreamixWeb.AppComponents do
             :if={@channel.stream_icon}
             src={@channel.stream_icon}
             alt={@channel.name}
-            class="w-full h-full object-contain p-1.5 sm:p-2"
+            class="w-full h-full object-contain p-1 sm:p-2"
             loading="lazy"
             data-fallback-target
           />
@@ -189,18 +189,18 @@ defmodule StreamixWeb.AppComponents do
               @channel.stream_icon && "hidden"
             ]}
           >
-            <.icon name="hero-tv" class="size-8 sm:size-12" />
+            <.icon name="hero-tv" class="size-6 sm:size-12" />
           </div>
         </div>
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-10 sm:size-16 text-brand" />
+          <.icon name="hero-play-circle-solid" class="size-8 sm:size-16 text-brand" />
         </div>
       </.link>
-      <div class="p-2 sm:p-3">
-        <div class="flex items-start justify-between gap-1.5 sm:gap-2">
+      <div class="p-1.5 sm:p-3">
+        <div class="flex items-start justify-between gap-1">
           <.link
             navigate={~p"/watch/live_channel/#{@channel.id}"}
-            class="font-medium text-xs sm:text-sm text-text-primary truncate flex-1 hover:text-brand transition-colors"
+            class="font-medium text-[10px] sm:text-sm text-text-primary truncate flex-1 hover:text-brand transition-colors leading-tight"
             title={@channel.name}
           >
             {@channel.name}
@@ -210,11 +210,11 @@ defmodule StreamixWeb.AppComponents do
             type="button"
             phx-click={@on_favorite}
             phx-value-id={@channel.id}
-            class="shrink-0 p-0.5 sm:p-1 hover:scale-110 transition-transform"
+            class="shrink-0 p-0.5 hover:scale-110 transition-transform"
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-4 sm:size-5", @is_favorite && "text-brand"]}
+              class={["size-3.5 sm:size-5", @is_favorite && "text-brand"]}
             />
           </button>
         </div>
@@ -222,6 +222,7 @@ defmodule StreamixWeb.AppComponents do
         <StreamixWeb.EpgComponents.epg_now
           :if={@show_epg}
           current_program={@current_program || Map.get(@channel, :current_program)}
+          compact={true}
         />
       </div>
     </div>
