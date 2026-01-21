@@ -28,7 +28,11 @@ alias Streamix.{Accounts, Iptv}
 
 # Create admin user from env vars
 admin_email = env["ADMIN_EMAIL"] || "admin@streamix.local"
-admin_password = env["ADMIN_PASSWORD"] || "changeme12345"
+admin_password = env["ADMIN_PASSWORD"]
+
+unless admin_password do
+  raise "ADMIN_PASSWORD environment variable is required for seeding"
+end
 
 admin =
   case Accounts.get_user_by_email(admin_email) do
