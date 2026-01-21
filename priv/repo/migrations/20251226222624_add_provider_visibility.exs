@@ -7,7 +7,7 @@ defmodule Streamix.Repo.Migrations.AddProviderVisibility do
       add :is_system, :boolean, default: false, null: false
     end
 
-    # Permitir user_id nulo para provider global (is_system: true)
+    # Allow null user_id for global provider (is_system: true)
     execute "ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL",
             "ALTER TABLE providers ALTER COLUMN user_id SET NOT NULL"
 

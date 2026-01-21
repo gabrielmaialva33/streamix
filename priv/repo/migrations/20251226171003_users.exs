@@ -2,7 +2,7 @@ defmodule Streamix.Repo.Migrations.Users do
   use Ecto.Migration
 
   def change do
-    # Extensão para busca fuzzy (trigram)
+    # Extension for fuzzy search (trigram)
     execute "CREATE EXTENSION IF NOT EXISTS pg_trgm", "DROP EXTENSION IF EXISTS pg_trgm"
 
     create table(:users) do

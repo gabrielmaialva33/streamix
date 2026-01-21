@@ -1737,7 +1737,7 @@ const VideoPlayer = {
     // Priority order for Portuguese variants
     const ptPatterns = [
       /\bpt[-_]?br\b/i, // pt-br, pt_br, ptbr
-      /\bportugu[eê]s?\b/i, // portugues, português
+      /\bportugu[eê]s?\b/i, // portuguese
       /\bbrazil/i, // brazilian
       /\bpt\b/i, // pt (generic portuguese)
       /\bpor\b/i, // por (ISO 639-2)

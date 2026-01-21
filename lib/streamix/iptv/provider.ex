@@ -23,19 +23,19 @@ defmodule Streamix.Iptv.Provider do
     field :gindex_url, :string
     field :gindex_drives, :map
 
-    # Contadores por tipo
+    # Counters by type
     field :live_channels_count, :integer, default: 0
     field :movies_count, :integer, default: 0
     field :series_count, :integer, default: 0
 
-    # Timestamps de sync por tipo
+    # Sync timestamps by type
     field :live_synced_at, :utc_datetime
     field :vod_synced_at, :utc_datetime
     field :series_synced_at, :utc_datetime
     field :epg_synced_at, :utc_datetime
     field :epg_sync_interval_hours, :integer, default: 6
 
-    # Info do servidor (JSON)
+    # Server info (JSON)
     field :server_info, :map
 
     belongs_to :user, User
@@ -67,7 +67,7 @@ defmodule Streamix.Iptv.Provider do
     |> foreign_key_constraint(:user_id)
   end
 
-  # Provider de sistema (global) não precisa de user_id
+  # System provider (global) does not need user_id
   defp maybe_require_user_id(changeset) do
     if get_field(changeset, :is_system) do
       changeset

@@ -18,7 +18,7 @@ defmodule Streamix.Repo.Migrations.LiveChannels do
     create index(:live_channels, [:provider_id])
     create unique_index(:live_channels, [:provider_id, :stream_id])
 
-    # Índice para busca por nome (pg_trgm)
+    # Index for search by name (pg_trgm)
     execute(
       "CREATE INDEX live_channels_name_trgm_idx ON live_channels USING gin (name gin_trgm_ops)",
       "DROP INDEX live_channels_name_trgm_idx"
