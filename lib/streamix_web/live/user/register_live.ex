@@ -46,7 +46,7 @@ defmodule StreamixWeb.User.RegisterLive do
     ~H"""
     <div class="min-h-[calc(100vh-80px)] flex items-center justify-center -mx-[4%] px-4 sm:mx-0">
       <div class="w-full max-w-md bg-surface/90 backdrop-blur-sm rounded-none sm:rounded-lg p-6 sm:p-8 shadow-2xl border-y sm:border border-white/10">
-        <h1 class="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Criar conta</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary mb-1 sm:mb-2">Criar conta</h1>
         <p class="text-text-secondary text-sm sm:text-base mb-5 sm:mb-6">
           Já tem uma conta?
           <.link navigate={~p"/login"} class="text-brand hover:underline font-medium">

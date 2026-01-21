@@ -15,6 +15,8 @@ defmodule StreamixWeb.ContentComponents do
 
   import StreamixWeb.CoreComponents
 
+  alias StreamixWeb.Helpers.ImageProxy
+
   @doc """
   Renders content type navigation tabs.
 
@@ -45,7 +47,7 @@ defmodule StreamixWeb.ContentComponents do
       >
         <.icon name="hero-tv" class="size-3.5 sm:size-4" />
         <span>Ao Vivo</span>
-        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
+        <span :if={@counts[:live]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20">
           {format_count(@counts.live)}
         </span>
       </.link>
@@ -59,7 +61,7 @@ defmodule StreamixWeb.ContentComponents do
       >
         <.icon name="hero-film" class="size-3.5 sm:size-4" />
         <span>Filmes</span>
-        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
+        <span :if={@counts[:movies]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20">
           {format_count(@counts.movies)}
         </span>
       </.link>
@@ -73,7 +75,7 @@ defmodule StreamixWeb.ContentComponents do
       >
         <.icon name="hero-video-camera" class="size-3.5 sm:size-4" />
         <span>Séries</span>
-        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20">
+        <span :if={@counts[:series]} class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20">
           {format_count(@counts.series)}
         </span>
       </.link>
@@ -150,7 +152,7 @@ defmodule StreamixWeb.ContentComponents do
       <span>{@label}</span>
       <span
         :if={@count && @count > 0}
-        class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+        class="px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20"
       >
         {format_count(@count)}
       </span>
@@ -725,7 +727,7 @@ defmodule StreamixWeb.ContentComponents do
               type="button"
               phx-click={@on_details}
               phx-value-id={@content.id}
-              class="inline-flex items-center gap-2 px-6 py-3 bg-white/20 text-white font-semibold rounded-md hover:bg-white/30 transition-colors"
+              class="inline-flex items-center gap-2 px-6 py-3 bg-surface/60 text-text-primary font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
             >
               <.icon name="hero-information-circle" class="size-5" /> Mais Info
             </button>

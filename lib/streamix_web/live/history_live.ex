@@ -188,7 +188,7 @@ defmodule StreamixWeb.HistoryLive do
       {@label}
       <span
         :if={@count > 0}
-        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20"
       >
         {@count}
       </span>

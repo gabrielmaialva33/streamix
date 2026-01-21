@@ -212,7 +212,7 @@ defmodule StreamixWeb.SearchLive do
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-white/20">{@count}</span>
+      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-black/20">{@count}</span>
     </button>
     """
   end

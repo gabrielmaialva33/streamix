@@ -272,7 +272,7 @@ defmodule StreamixWeb.HomeLive do
         </.link>
         <.link
           navigate={content_info_path(@type, @content)}
-          class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white/20 text-white text-sm sm:text-base font-semibold rounded-md hover:bg-white/30 transition-colors backdrop-blur-sm"
+          class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-surface/60 text-text-primary text-sm sm:text-base font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
         >
           <.icon name="hero-information-circle" class="size-4 sm:size-6" /> <span class="hidden sm:inline">Mais </span>Info
         </.link>
@@ -283,7 +283,8 @@ defmodule StreamixWeb.HomeLive do
             class={[
               "inline-flex items-center justify-center w-9 h-9 sm:w-12 sm:h-12 rounded-full transition-colors backdrop-blur-sm",
               @featured_favorite && "bg-white text-black hover:bg-white/90",
-              !@featured_favorite && "bg-white/20 text-white hover:bg-white/30"
+              !@featured_favorite &&
+                "bg-surface/60 text-text-primary hover:bg-surface/80 border border-border"
             ]}
             title={
               if @featured_favorite, do: "Remover da Minha Lista", else: "Adicionar à Minha Lista"
@@ -347,7 +348,7 @@ defmodule StreamixWeb.HomeLive do
           </.link>
           <.link
             navigate={~p"/login"}
-            class="inline-flex items-center gap-2 px-8 py-4 bg-white/20 text-white text-lg font-semibold rounded-md hover:bg-white/30 transition-colors backdrop-blur-sm"
+            class="inline-flex items-center gap-2 px-8 py-4 bg-surface/60 text-text-primary text-lg font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
           >
             Entrar
           </.link>
@@ -459,13 +460,15 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="text-center p-4">
-        <div class="w-12 h-12 mx-auto mb-2 rounded-full bg-white/10 group-hover:bg-white/20 flex items-center justify-center transition-colors">
+        <div class="w-12 h-12 mx-auto mb-2 rounded-full bg-surface-hover group-hover:bg-surface flex items-center justify-center transition-colors">
           <.icon
             name="hero-arrow-right"
-            class="size-6 text-white/70 group-hover:text-white transition-colors"
+            class="size-6 text-text-secondary group-hover:text-text-primary transition-colors"
           />
         </div>
-        <span class="text-sm text-white/70 group-hover:text-white transition-colors">Ver mais</span>
+        <span class="text-sm text-text-secondary group-hover:text-text-primary transition-colors">
+          Ver mais
+        </span>
       </div>
     </.link>
     """
