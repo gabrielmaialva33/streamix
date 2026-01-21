@@ -38,6 +38,8 @@ defmodule Streamix.Application do
         Streamix.Iptv.Gindex.EndpointManager,
         # GIndex URL cache
         Streamix.Iptv.Gindex.UrlCache,
+        # Xtream circuit breaker (Netflix-style resilience)
+        Streamix.Iptv.XtreamCircuitBreaker,
         # Start to serve requests, typically the last entry
         StreamixWeb.Endpoint
       ] ++ Streamix.Queue.Supervisor.child_spec_if_enabled()
