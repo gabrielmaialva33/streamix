@@ -10,23 +10,16 @@ defmodule StreamixWeb.Router do
     plug :put_root_layout, html: {StreamixWeb.Layouts, :root}
     plug :protect_from_forgery
 
+    # Security headers (CSP is handled by CSPNonce plug)
     plug :put_secure_browser_headers, %{
-      "content-security-policy" =>
-        Enum.join(
-          [
-            "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
-            "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: https: blob:",
-            "media-src 'self' https: blob:",
-            "font-src 'self' data:",
-            "connect-src 'self' wss: https: blob:",
-            "worker-src 'self' blob:",
-            "frame-src 'self' https:"
-          ],
-          "; "
-        )
+      "x-frame-options" => "SAMEORIGIN",
+      "x-content-type-options" => "nosniff",
+      "x-permitted-cross-domain-policies" => "none",
+      "referrer-policy" => "strict-origin-when-cross-origin"
     }
+
+    # Dynamic CSP with nonces for script security
+    plug StreamixWeb.Plugs.CSPNonce
 
     plug :fetch_current_scope_for_user
   end
