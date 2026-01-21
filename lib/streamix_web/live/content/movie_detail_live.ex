@@ -118,6 +118,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("play_movie", _, socket) do
     {:noreply, push_navigate(socket, to: ~p"/watch/movie/#{socket.assigns.movie.id}")}
   end
@@ -361,7 +364,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               </div>
             </div>
           </div>
-
+          
     <!-- Image Gallery -->
           <div :if={@movie.images && @movie.images != []} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
@@ -379,8 +382,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               </div>
             </div>
           </div>
-
-          <!-- Similar Movies -->
+          
+    <!-- Similar Movies -->
           <div :if={@similar_movies != []} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">
               Títulos Similares
@@ -427,7 +430,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/movies"
 
   defp similar_movie_path(:browse, _provider, movie), do: ~p"/browse/movies/#{movie.id}"
-  defp similar_movie_path(:provider, provider, movie), do: ~p"/providers/#{provider.id}/movies/#{movie.id}"
+
+  defp similar_movie_path(:provider, provider, movie),
+    do: ~p"/providers/#{provider.id}/movies/#{movie.id}"
 
   defp format_rating(%Decimal{} = rating) do
     rating

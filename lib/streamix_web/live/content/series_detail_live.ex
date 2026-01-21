@@ -137,6 +137,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("toggle_season", %{"id" => season_id}, socket) do
     season_id = String.to_integer(season_id)
     expanded = socket.assigns.expanded_seasons
@@ -467,7 +470,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               </.link>
             </div>
           </div>
-
+          
     <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
             <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
@@ -594,7 +597,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/series"
 
   defp similar_series_path(:browse, _provider, series), do: ~p"/browse/series/#{series.id}"
-  defp similar_series_path(:provider, provider, series), do: ~p"/providers/#{provider.id}/series/#{series.id}"
+
+  defp similar_series_path(:provider, provider, series),
+    do: ~p"/providers/#{provider.id}/series/#{series.id}"
 
   defp episode_path(:browse, _provider, series_id, episode_id),
     do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"

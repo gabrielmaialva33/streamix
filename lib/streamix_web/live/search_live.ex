@@ -52,6 +52,9 @@ defmodule StreamixWeb.SearchLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   @doc false
   def handle_event("search", %{"query" => query}, socket) do
     if String.trim(query) == "" do

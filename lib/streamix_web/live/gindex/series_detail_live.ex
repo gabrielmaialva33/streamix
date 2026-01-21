@@ -49,6 +49,9 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("toggle_season", %{"id" => season_id}, socket) do
     season_id = String.to_integer(season_id)
     expanded = socket.assigns.expanded_seasons

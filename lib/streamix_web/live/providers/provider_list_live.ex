@@ -52,6 +52,9 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     |> assign(show_modal: false)
   end
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("sync_provider", %{"id" => id}, socket) do
     user_id = socket.assigns.current_scope.user.id
     provider = Iptv.get_user_provider(user_id, id)

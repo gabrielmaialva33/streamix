@@ -50,6 +50,9 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   # Event Handlers
   # ============================================
 
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
   def handle_event("toggle_release", %{"id" => release_id}, socket) do
     release_id = String.to_integer(release_id)
     expanded = socket.assigns.expanded_releases
