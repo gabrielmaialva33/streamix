@@ -48,8 +48,9 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       "default-src 'self'",
 
       # Scripts: nonce-based + strict-dynamic for loaded scripts
-      # unsafe-eval still needed for LiveView morphdom diffing
-      "script-src 'self' 'nonce-#{nonce}' 'strict-dynamic' 'unsafe-eval' https://static.cloudflareinsights.com",
+      # unsafe-eval needed for LiveView morphdom diffing
+      # Cloudflare: static.cloudflareinsights.com (analytics), ajax.cloudflare.com (rocket-loader)
+      "script-src 'self' 'nonce-#{nonce}' 'strict-dynamic' 'unsafe-eval' https://static.cloudflareinsights.com https://ajax.cloudflare.com https://cdnjs.cloudflare.com",
 
       # Styles: unsafe-inline still needed for Tailwind dynamic classes and LiveView
       "style-src 'self' 'unsafe-inline'",
