@@ -302,7 +302,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       <div
         id="channels"
         phx-update="stream"
-        class="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        class="grid gap-1.5 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
         <div :for={{dom_id, channel} <- @streams.channels} id={dom_id}>
           <.live_channel_card
