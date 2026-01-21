@@ -21,6 +21,9 @@ defmodule StreamixWeb.FavoritesLive do
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
+    # Load all favorites for offline sync (limited to recent 100)
+    sync_favorites = load_favorites_for_sync(user_id)
+
     socket =
       socket
       |> assign(page_title: "Favoritos")
@@ -31,6 +34,7 @@ defmodule StreamixWeb.FavoritesLive do
       |> assign(loading: false)
       |> assign(end_of_list: false)
       |> assign(counts: load_counts(user_id))
+      |> assign(sync_favorites: sync_favorites)
       |> stream(:favorites, [])
       |> load_favorites()
 
@@ -103,6 +107,15 @@ defmodule StreamixWeb.FavoritesLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6 sm:space-y-8">
+      <!-- Offline Sync Hook -->
+      <div
+        id="favorites-sync"
+        phx-hook="OfflineSync"
+        data-sync-type="favorites"
+        data-sync-data={Jason.encode!(@sync_favorites)}
+        class="hidden"
+      />
+
       <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
         <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Minha Lista</h1>
 
@@ -172,7 +185,7 @@ defmodule StreamixWeb.FavoritesLive do
       {@label}
       <span
         :if={@count > 0}
-        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-white/20"
+        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20"
       >
         {@count}
       </span>
@@ -260,6 +273,20 @@ defmodule StreamixWeb.FavoritesLive do
 
   defp load_counts(user_id) do
     Iptv.count_favorites_by_type(user_id)
+  end
+
+  defp load_favorites_for_sync(user_id) do
+    # Load recent favorites for offline sync
+    Iptv.list_favorites(user_id, limit: 100)
+    |> Enum.map(fn f ->
+      %{
+        id: f.id,
+        content_type: f.content_type,
+        content_id: f.content_id,
+        content_name: f.content_name,
+        content_icon: f.content_icon
+      }
+    end)
   end
 
   defp update_counts(counts, type, delta) do
