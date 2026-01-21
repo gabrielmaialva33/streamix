@@ -160,4 +160,27 @@ defmodule Streamix.IptvFixtures do
       }
     ]
   end
+
+  def valid_movie_attrs(provider, attrs \\ %{}) do
+    Enum.into(attrs, %{
+      stream_id: System.unique_integer([:positive]),
+      name: "Movie #{System.unique_integer([:positive])}",
+      title: "Movie Title #{System.unique_integer([:positive])}",
+      year: 2023,
+      container_extension: "mp4",
+      provider_id: provider.id,
+      rating: Decimal.new("8.5"),
+      added: DateTime.utc_now()
+    })
+  end
+
+  def movie_fixture(provider, attrs \\ %{}) do
+    alias Streamix.Iptv.Movie
+
+    attrs = valid_movie_attrs(provider, attrs)
+
+    %Movie{}
+    |> Movie.changeset(attrs)
+    |> Repo.insert!()
+  end
 end
