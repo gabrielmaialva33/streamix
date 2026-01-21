@@ -79,7 +79,40 @@ defmodule StreamixWeb.Telemetry do
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),
       summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
+      summary("vm.total_run_queue_lengths.io"),
+
+      # IPTV Sync Metrics
+      counter("streamix.sync.start.count",
+        tags: [:provider_id],
+        description: "Number of sync operations started"
+      ),
+      summary("streamix.sync.stop.duration",
+        tags: [:provider_id, :status],
+        unit: {:native, :second},
+        description: "Duration of sync operations"
+      ),
+      last_value("streamix.sync.progress.percent",
+        tags: [:provider_id, :phase],
+        description: "Current sync progress percentage"
+      ),
+      counter("streamix.sync.batch.count",
+        tags: [:provider_id, :type],
+        description: "Number of batches processed"
+      ),
+      summary("streamix.sync.batch.duration",
+        tags: [:provider_id, :type],
+        unit: {:native, :millisecond},
+        description: "Duration of batch operations"
+      ),
+      summary("streamix.sync.api_call.duration",
+        tags: [:action, :status],
+        unit: {:native, :millisecond},
+        description: "Duration of Xtream API calls"
+      ),
+      counter("streamix.sync.api_call.count",
+        tags: [:action, :status],
+        description: "Number of Xtream API calls"
+      )
     ]
   end
 

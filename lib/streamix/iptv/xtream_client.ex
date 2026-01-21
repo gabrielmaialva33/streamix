@@ -9,6 +9,8 @@ defmodule Streamix.Iptv.XtreamClient do
   - Series: get_series_categories, get_series, get_series_info
   """
 
+  alias Streamix.Iptv.Sync.Telemetry
+
   require Logger
 
   @timeout :timer.seconds(30)
@@ -115,7 +117,14 @@ defmodule Streamix.Iptv.XtreamClient do
 
   defp api_call(base_url, username, password, action, extra_params \\ %{}) do
     url = build_url(base_url, username, password, action, extra_params)
-    do_api_call(url, 0)
+    action_name = action || "account_info"
+
+    # Emit telemetry for API calls (provider_id extracted from URL hash for anonymity)
+    provider_hash = :erlang.phash2({base_url, username})
+
+    Telemetry.span_api_call(provider_hash, action_name, fn ->
+      do_api_call(url, 0)
+    end)
   end
 
   defp do_api_call(url, attempt) do

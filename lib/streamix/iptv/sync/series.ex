@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.Sync.Series do
   import Ecto.Query, warn: false
 
   alias Streamix.Iptv.{Episode, Provider, Season, Series, TmdbClient, XtreamClient}
-  alias Streamix.Iptv.Sync.Helpers
+  alias Streamix.Iptv.Sync.{Helpers, Telemetry}
   alias Streamix.Repo
 
   require Logger
@@ -58,6 +58,9 @@ defmodule Streamix.Iptv.Sync.Series do
 
     Logger.info("Syncing details for #{total} series (this may take a while)...")
 
+    # Emit initial progress
+    Telemetry.progress(provider, :details, current: 0, total: total, type: :series)
+
     # Stream series in chunks to avoid memory issues
     query = from(s in Series, where: s.provider_id == ^provider.id, order_by: s.id)
 
@@ -69,7 +72,16 @@ defmodule Streamix.Iptv.Sync.Series do
           |> Stream.chunk_every(@chunk_size)
           |> Enum.reduce(%{success: 0, failed: 0, episodes: 0, seasons: 0}, fn chunk, acc ->
             chunk_results = process_series_chunk(chunk)
-            merge_results(acc, chunk_results)
+            merged = merge_results(acc, chunk_results)
+
+            # Emit progress after each chunk
+            Telemetry.progress(provider, :details,
+              current: merged.success + merged.failed,
+              total: total,
+              type: :series
+            )
+
+            merged
           end)
         end,
         timeout: :infinity

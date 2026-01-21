@@ -16,7 +16,7 @@ defmodule Streamix.Iptv.Sync do
 
   alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Provider
-  alias Streamix.Iptv.Sync.{Categories, Cleanup, Live, Movies, Series}
+  alias Streamix.Iptv.Sync.{Categories, Cleanup, Live, Movies, Series, Telemetry}
   alias Streamix.Repo
 
   require Logger
@@ -57,27 +57,48 @@ defmodule Streamix.Iptv.Sync do
 
   def sync_all(%Provider{} = provider, opts) do
     Logger.info("Starting full sync for provider #{provider.id}")
+    start_time = Telemetry.sync_start(provider)
 
     update_status(provider, "syncing")
+
+    # Emit progress: starting categories
+    Telemetry.progress(provider, :categories, current: 0, total: 1)
 
     # First sync categories (required for live channel associations)
     case sync_categories(provider) do
       {:ok, _} ->
+        Telemetry.progress(provider, :categories, current: 1, total: 1)
         # Then sync live, movies, series in parallel
-        sync_content_parallel(provider, opts)
+        sync_content_parallel(provider, opts, start_time)
 
       {:error, reason} ->
+        Telemetry.sync_stop(provider, start_time, :error, %{error: reason})
         update_status(provider, "failed")
         {:error, reason}
     end
   end
 
   # Sync live channels, movies, and series in parallel with graceful error handling
-  defp sync_content_parallel(provider, opts) do
+  defp sync_content_parallel(provider, opts, start_time) do
+    # Emit progress: starting content sync (3 types)
+    Telemetry.progress(provider, :content, current: 0, total: 3)
+
     tasks = [
-      Task.async(fn -> {:live, safe_sync(fn -> sync_live_channels(provider) end)} end),
-      Task.async(fn -> {:movies, safe_sync(fn -> sync_movies(provider) end)} end),
-      Task.async(fn -> {:series, safe_sync(fn -> sync_series(provider) end)} end)
+      Task.async(fn ->
+        result = safe_sync(fn -> sync_live_channels(provider) end)
+        Telemetry.progress(provider, :content, current: 1, total: 3, type: :live)
+        {:live, result}
+      end),
+      Task.async(fn ->
+        result = safe_sync(fn -> sync_movies(provider) end)
+        Telemetry.progress(provider, :content, current: 2, total: 3, type: :movies)
+        {:movies, result}
+      end),
+      Task.async(fn ->
+        result = safe_sync(fn -> sync_series(provider) end)
+        Telemetry.progress(provider, :content, current: 3, total: 3, type: :series)
+        {:series, result}
+      end)
     ]
 
     # Wait for all tasks with a 10 minute timeout, catch exits gracefully
@@ -94,7 +115,7 @@ defmodule Streamix.Iptv.Sync do
           %{live: {:error, :timeout}, movies: {:error, :timeout}, series: {:error, :timeout}}
       end
 
-    handle_sync_results(provider, results, opts)
+    handle_sync_results(provider, results, opts, start_time)
   end
 
   # Wrap sync functions to catch unexpected errors
@@ -111,7 +132,7 @@ defmodule Streamix.Iptv.Sync do
   end
 
   # Handle results with partial success support
-  defp handle_sync_results(provider, results, opts) do
+  defp handle_sync_results(provider, results, opts, start_time) do
     live_result = results[:live] || {:error, :not_run}
     movies_result = results[:movies] || {:error, :not_run}
     series_result = results[:series] || {:error, :not_run}
@@ -128,13 +149,18 @@ defmodule Streamix.Iptv.Sync do
       |> maybe_add_failure(:movies, movies_result)
       |> maybe_add_failure(:series, series_result)
 
+    counts = %{live: live_count, movies: vod_count, series: series_count}
+
     cond do
       # All succeeded
       Enum.empty?(failures) ->
-        finalize_sync(provider, live_count, vod_count, series_count, opts)
+        result = finalize_sync(provider, live_count, vod_count, series_count, opts)
+        Telemetry.sync_stop(provider, start_time, :ok, counts)
+        result
 
       # All failed
       length(failures) == 3 ->
+        Telemetry.sync_stop(provider, start_time, :error, %{failures: failures})
         update_status(provider, "failed")
         Logger.error("[Sync] All sync types failed: #{inspect(failures)}")
         {:error, {:all_failed, failures}}
@@ -142,7 +168,9 @@ defmodule Streamix.Iptv.Sync do
       # Partial success - log failures but continue
       true ->
         Logger.warning("[Sync] Partial sync failure: #{inspect(failures)}")
-        finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts)
+        result = finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts)
+        Telemetry.sync_stop(provider, start_time, :partial, Map.put(counts, :failures, failures))
+        result
     end
   end
 

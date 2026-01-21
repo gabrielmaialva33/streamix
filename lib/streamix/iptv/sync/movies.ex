@@ -31,6 +31,8 @@ defmodule Streamix.Iptv.Sync.Movies do
           @sync_opts
           |> Keyword.put(:attrs_fn, &movie_attrs/3)
           |> Keyword.put(:category_fn, &build_category_assocs/3)
+          |> Keyword.put(:type, :movies)
+          |> Keyword.put(:provider, provider)
 
         {count, all_stream_ids} =
           Helpers.upsert_content_batched(streams, provider.id, category_lookup, now, upsert_opts)
