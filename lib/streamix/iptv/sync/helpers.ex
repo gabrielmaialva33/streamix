@@ -181,6 +181,14 @@ defmodule Streamix.Iptv.Sync.Helpers do
   end
 
   defp bulk_delete_assocs(table, fk_column, cat_column, pairs) do
+    # Sobelow: prevent SQL injection by validating table/column names against allowed list
+    valid_tables = ["movie_categories", "series_categories", "channel_categories"]
+    valid_cols = ["movie_id", "series_id", "channel_id", "category_id"]
+
+    if table not in valid_tables or fk_column not in valid_cols or cat_column not in valid_cols do
+      raise ArgumentError, "Invalid table or column name in bulk_delete_assocs"
+    end
+
     # Build parameterized VALUES clause for safe deletion
     values_clause =
       pairs
@@ -211,6 +219,8 @@ defmodule Streamix.Iptv.Sync.Helpers do
     * `:category_fn` - Function (streams, returned, lookup) -> assoc list
     * `:join_table` - Join table name (e.g., "movie_categories")
     * `:fk_column` - Foreign key column (e.g., "movie_id")
+    * `:type` - Content type for telemetry (optional, e.g., :live, :movies)
+    * `:provider` - Provider struct for telemetry (optional)
   """
   def upsert_content_batched(streams, provider_id, category_lookup, now, opts) do
     schema = Keyword.fetch!(opts, :schema)
@@ -219,9 +229,18 @@ defmodule Streamix.Iptv.Sync.Helpers do
     join_table = Keyword.fetch!(opts, :join_table)
     fk_column = Keyword.fetch!(opts, :fk_column)
 
+    # Optional telemetry context
+    content_type = Keyword.get(opts, :type)
+    provider = Keyword.get(opts, :provider)
+
+    total_batches = ceil(length(streams) / @batch_size)
+
     streams
     |> Enum.chunk_every(@batch_size)
-    |> Enum.reduce({0, []}, fn batch, {acc_count, acc_ids} ->
+    |> Enum.with_index(1)
+    |> Enum.reduce({0, []}, fn {batch, batch_num}, {acc_count, acc_ids} ->
+      batch_start = System.monotonic_time()
+
       content_data = Enum.map(batch, &attrs_fn.(&1, provider_id, now))
 
       {inserted, returned} =
@@ -243,9 +262,31 @@ defmodule Streamix.Iptv.Sync.Helpers do
         category_assocs
       )
 
+      # Emit batch telemetry if provider context available
+      if provider && content_type do
+        batch_duration = System.monotonic_time() - batch_start
+
+        :telemetry.execute(
+          [:streamix, :sync, :batch],
+          %{count: inserted, duration: batch_duration},
+          %{provider_id: provider.id, type: content_type, batch_number: batch_num}
+        )
+
+        # Emit progress within content type
+        percent = round(batch_num / total_batches * 100)
+
+        :telemetry.execute(
+          [:streamix, :sync, :batch_progress],
+          %{percent: percent, batch: batch_num, total_batches: total_batches},
+          %{provider_id: provider.id, type: content_type}
+        )
+      end
+
+      # Use prepend + reverse pattern to avoid O(n²)
       batch_stream_ids = Enum.map(batch, & &1["stream_id"])
-      {acc_count + inserted, acc_ids ++ batch_stream_ids}
+      {acc_count + inserted, batch_stream_ids ++ acc_ids}
     end)
+    |> then(fn {count, ids} -> {count, Enum.reverse(ids)} end)
   end
 
   @doc """
