@@ -197,6 +197,14 @@ if config_env() == :prod do
       origins -> String.split(origins, ",") |> Enum.map(&String.trim/1)
     end
 
+  # LiveView signing salt - generate with: mix phx.gen.secret 32
+  live_view_signing_salt =
+    System.get_env("LIVE_VIEW_SIGNING_SALT") ||
+      raise """
+      environment variable LIVE_VIEW_SIGNING_SALT is missing.
+      You can generate one by calling: mix phx.gen.secret 32
+      """
+
   config :streamix, StreamixWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
@@ -207,7 +215,8 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
     check_origin: check_origin,
-    secret_key_base: secret_key_base
+    secret_key_base: secret_key_base,
+    live_view: [signing_salt: live_view_signing_salt]
 
   # ## SSL Support
   #
