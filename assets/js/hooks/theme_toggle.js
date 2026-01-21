@@ -5,9 +5,14 @@ export default {
   },
 
   initTheme() {
-    // Check initial state
-    const isLight = document.documentElement.classList.contains("light");
-    this.pushEventTo(this.el, "theme_init", { theme: isLight ? "light" : "dark" });
+    // Theme is managed entirely on client (localStorage + classList)
+    // No need to notify server
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "light") {
+      document.documentElement.classList.add("light");
+    } else {
+      document.documentElement.classList.remove("light");
+    }
   },
 
   handleToggle() {
