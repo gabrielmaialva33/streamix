@@ -8,7 +8,9 @@ defmodule StreamixWeb.Endpoint do
     store: :cookie,
     key: "_streamix_key",
     signing_salt: "zYg6wPlT",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true,
+    http_only: true
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
