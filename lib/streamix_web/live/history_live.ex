@@ -21,6 +21,9 @@ defmodule StreamixWeb.HistoryLive do
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
+    # Load history for offline sync (limited to recent 100)
+    sync_history = load_history_for_sync(user_id)
+
     socket =
       socket
       |> assign(page_title: "Historico")
@@ -31,6 +34,7 @@ defmodule StreamixWeb.HistoryLive do
       |> assign(loading: false)
       |> assign(end_of_list: false)
       |> assign(counts: load_counts(user_id))
+      |> assign(sync_history: sync_history)
       |> stream(:history, [])
       |> load_history()
 
@@ -40,6 +44,12 @@ defmodule StreamixWeb.HistoryLive do
   # ============================================
   # Event Handlers
   # ============================================
+
+  # ThemeToggle hook event (client-side theme management, no server action needed)
+  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
+
+  # OfflineSync hook events (client-side sync, no server action needed)
+  def handle_event("refresh_data", _params, socket), do: {:noreply, socket}
 
   @doc false
   def handle_event("filter", %{"type" => type}, socket) do
@@ -110,6 +120,15 @@ defmodule StreamixWeb.HistoryLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-6">
+      <!-- Offline Sync Hook -->
+      <div
+        id="history-sync"
+        phx-hook="OfflineSync"
+        data-sync-type="history"
+        data-sync-data={Jason.encode!(@sync_history)}
+        class="hidden"
+      />
+
       <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
         <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Historico</h1>
 
@@ -152,11 +171,19 @@ defmodule StreamixWeb.HistoryLive do
       <div
         id="history-list"
         phx-update="stream"
-        phx-viewport-bottom={!@end_of_list && "load_more"}
         class="space-y-2 sm:space-y-3"
       >
         <.history_entry :for={{dom_id, entry} <- @streams.history} id={dom_id} entry={entry} />
       </div>
+      
+    <!-- Infinite Scroll Sentinel -->
+      <div
+        :if={!@end_of_list && !@loading}
+        id="history-sentinel"
+        phx-hook="InfiniteScroll"
+        data-page={@page}
+        class="h-4"
+      />
 
       <div :if={@loading} class="flex justify-center py-8">
         <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
@@ -295,6 +322,23 @@ defmodule StreamixWeb.HistoryLive do
 
   defp load_counts(user_id) do
     Iptv.count_watch_history_by_type(user_id)
+  end
+
+  defp load_history_for_sync(user_id) do
+    # Load recent history for offline sync
+    Iptv.list_watch_history(user_id, limit: 100)
+    |> Enum.map(fn h ->
+      %{
+        id: h.id,
+        content_type: h.content_type,
+        content_id: h.content_id,
+        content_name: h.content_name,
+        content_icon: h.content_icon,
+        progress_seconds: h.progress_seconds,
+        duration_seconds: h.duration_seconds,
+        watched_at: h.watched_at
+      }
+    end)
   end
 
   defp update_counts(counts, type, delta) do
