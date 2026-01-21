@@ -9,28 +9,77 @@
    Streamix Theme - Cinematic Streaming Design
    ============================================ */
 
-@theme {
-  /* Colors - Dark cinema palette */
-  --color-background: #0a0a0a;
-  --color-surface: #141414;
-  --color-surface-hover: #1f1f1f;
-  --color-border: #2a2a2a;
+:root {
+  /* Dark Mode (Default) */
+  --bg-color: #0a0a0a;
+  --surface-color: #141414;
+  --surface-hover-color: #1f1f1f;
+  --border-color: #2a2a2a;
 
   /* Text */
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #a3a3a3;
-  --color-text-muted: #6b6b6b;
+  --text-primary: #ffffff;
+  --text-secondary: #a3a3a3;
+  --text-muted: #6b6b6b;
+
+  /* Brand */
+  --brand-color: #e50914;
+  --brand-hover-color: #f6121d;
+  --accent-color: #46d369;
+
+  /* Status */
+  --success-color: #46d369;
+  --warning-color: #f59e0b;
+  --error-color: #ef4444;
+  --info-color: #3b82f6;
+}
+
+:root.light {
+  /* Light Mode (Premium Clean) */
+  --bg-color: #ffffff;
+  --surface-color: #f3f4f6;
+  /* Gray 100 */
+  --surface-hover-color: #e5e7eb;
+  /* Gray 200 */
+  --border-color: #e5e7eb;
+  /* Gray 200 */
+
+  /* Text */
+  --text-primary: #111827;
+  /* Gray 900 */
+  --text-secondary: #4b5563;
+  /* Gray 600 */
+  --text-muted: #9ca3af;
+  /* Gray 400 */
+
+  /* Brand - slightly adjusted for light mode contrast if needed, keeping same for now for consistency */
+  --brand-color: #dc2626;
+  /* Red 600 - slightly darker for better contrast on white */
+  --brand-hover-color: #b91c1c;
+  /* Red 700 */
+}
+
+@theme {
+  /* Colors - mapped to variables */
+  --color-background: var(--bg-color);
+  --color-surface: var(--surface-color);
+  --color-surface-hover: var(--surface-hover-color);
+  --color-border: var(--border-color);
+
+  /* Text */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
 
   /* Brand colors */
-  --color-brand: #e50914;
-  --color-brand-hover: #f6121d;
-  --color-accent: #46d369;
+  --color-brand: var(--brand-color);
+  --color-brand-hover: var(--brand-hover-color);
+  --color-accent: var(--accent-color);
 
   /* Status colors */
-  --color-success: #46d369;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
+  --color-success: var(--success-color);
+  --color-warning: var(--warning-color);
+  --color-error: var(--error-color);
+  --color-info: var(--info-color);
 
   /* Spacing */
   --spacing-gutter: 4%;
@@ -48,7 +97,8 @@
 }
 
 /* Base styles */
-html, body {
+html,
+body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
   font-family: system-ui, -apple-system, sans-serif;
@@ -72,6 +122,7 @@ html, body {
 
 @utility card-hover {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+
   &:hover {
     transform: scale(1.05);
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -80,14 +131,19 @@ html, body {
 }
 
 @utility shimmer {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* Keyboard shortcut feedback animation (YouTube-style) */
@@ -96,10 +152,12 @@ html, body {
     opacity: 0;
     transform: scale(0.8);
   }
+
   30% {
     opacity: 1;
     transform: scale(1.1);
   }
+
   100% {
     opacity: 0;
     transform: scale(1);
@@ -116,14 +174,17 @@ html, body {
     opacity: 0;
     transform: translateY(-8px);
   }
+
   15% {
     opacity: 1;
     transform: translateY(0);
   }
+
   85% {
     opacity: 1;
     transform: translateY(0);
   }
+
   100% {
     opacity: 0;
     transform: translateY(-8px);
@@ -159,7 +220,8 @@ html, body {
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
 /* LiveView wrapper transparency */
-[data-phx-session], [data-phx-teleported-src] {
+[data-phx-session],
+[data-phx-teleported-src] {
   display: contents;
 }
 
@@ -191,6 +253,7 @@ select:focus-visible {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -202,12 +265,14 @@ select:focus-visible {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
 .line-clamp-3 {
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -221,8 +286,13 @@ select:focus-visible {
 
 /* Fade in animation for images */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .animate-fade-in {
@@ -240,6 +310,7 @@ select:focus-visible {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -251,11 +322,25 @@ select:focus-visible {
 }
 
 /* Staggered animation delays for carousels */
-.stagger-1 { animation-delay: 0.1s; }
-.stagger-2 { animation-delay: 0.15s; }
-.stagger-3 { animation-delay: 0.2s; }
-.stagger-4 { animation-delay: 0.25s; }
-.stagger-5 { animation-delay: 0.3s; }
+.stagger-1 {
+  animation-delay: 0.1s;
+}
+
+.stagger-2 {
+  animation-delay: 0.15s;
+}
+
+.stagger-3 {
+  animation-delay: 0.2s;
+}
+
+.stagger-4 {
+  animation-delay: 0.25s;
+}
+
+.stagger-5 {
+  animation-delay: 0.3s;
+}
 
 /* Image loading states - smooth fade in when loaded */
 img {
@@ -313,7 +398,8 @@ img {
 }
 
 /* Button press effect */
-button:active, a:active {
+button:active,
+a:active {
   transform: scale(0.98);
 }
 
@@ -334,6 +420,7 @@ header {
 
 /* Minimum touch target size (44px recommended by Apple/Google) */
 @media (max-width: 640px) {
+
   /* Touch targets for interactive buttons only - not all links */
   .touch-target {
     min-height: 44px;
@@ -389,7 +476,9 @@ header {
 
 /* Active/pressed states for mobile */
 @media (hover: none) {
-  button:active, a:active {
+
+  button:active,
+  a:active {
     opacity: 0.8;
     transform: scale(0.95);
   }
@@ -401,6 +490,7 @@ header {
 
 /* Detect PWA standalone mode */
 @media (display-mode: standalone) {
+
   /* Prevent pull-to-refresh */
   body {
     overscroll-behavior-y: contain;
@@ -427,15 +517,18 @@ header {
 
 /* iOS-specific fixes */
 @supports (-webkit-touch-callout: none) {
+
   /* Prevent iOS rubber-banding */
-  html, body {
+  html,
+  body {
     position: fixed;
     width: 100%;
     height: 100%;
     overflow: hidden;
   }
 
-  #app-root, main {
+  #app-root,
+  main {
     height: 100%;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;

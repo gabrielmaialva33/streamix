@@ -11,6 +11,32 @@ defmodule StreamixWeb.AppComponents do
   alias Streamix.Iptv.LiveChannel
 
   @doc """
+  Renders a theme toggle button.
+  """
+  attr :class, :string, default: nil
+
+  def theme_toggle(assigns) do
+    ~H"""
+    <button
+      id={"theme-toggle-#{System.unique_integer()}"}
+      type="button"
+      phx-hook="ThemeToggle"
+      class={[
+        "flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors",
+        @class
+      ]}
+      title="Alternar tema"
+    >
+      <!-- Sun icon (for dark mode) -->
+      <.icon name="hero-sun" class="hidden dark:block size-5" />
+      <!-- Moon icon (for light mode) -->
+      <.icon name="hero-moon" class="block dark:hidden size-5" />
+      <span class="sr-only">Alternar tema</span>
+    </button>
+    """
+  end
+
+  @doc """
   Renders the sidebar navigation.
   """
   attr :current_scope, :any, default: nil
@@ -72,6 +98,9 @@ defmodule StreamixWeb.AppComponents do
             label="Configurações"
             current_path={@current_path}
           />
+          <div class="px-3 py-2">
+            <.theme_toggle class="w-full justify-start px-0" />
+          </div>
           <.link
             href={~p"/logout"}
             method="delete"

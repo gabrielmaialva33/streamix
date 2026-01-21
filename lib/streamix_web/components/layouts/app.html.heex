@@ -35,7 +35,7 @@
           </nav>
         <% end %>
       </div>
-      
+
 <!-- Right side: Search & User -->
       <div class="flex items-center gap-4">
         <%= if @current_scope do %>
@@ -78,7 +78,7 @@
               </div>
             </div>
           <% end %>
-          
+
 <!-- User dropdown -->
           <div class="relative" x-data="{ open: false }">
             <button
@@ -119,6 +119,12 @@
               >
                 <.icon name="hero-cog-6-tooth" class="size-4" /> Configurações
               </.link>
+              <div class="px-3 py-2">
+                <div class="flex items-center justify-between text-sm text-text-secondary">
+                  <span class="flex items-center gap-2"><.icon name="hero-sun" class="size-4" /> Tema</span>
+                  <StreamixWeb.AppComponents.theme_toggle />
+                </div>
+              </div>
               <div class="border-t border-border my-1"></div>
               <.link
                 href={~p"/logout"}
@@ -150,18 +156,18 @@
       </div>
     </div>
   </header>
-  
+
 <!-- Flash Messages (Toast style - top right) -->
   <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>
-  
+
 <!-- Main Content -->
   <main class="pt-16 sm:pt-20 pb-20 sm:pb-8 px-[4%]">
     {@inner_content}
   </main>
-  
+
 <!-- Bottom Navigation Bar (Mobile Only) -->
   <%= if @current_scope do %>
     <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-surface/95 backdrop-blur-lg border-t border-white/10 safe-area-bottom">
