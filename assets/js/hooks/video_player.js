@@ -590,6 +590,17 @@ const VideoPlayer = {
       this.playerUI.hideLoading();
       this.playerUI.hideError();
     });
+
+    // Also hide loading on canplaythrough (video exits buffering during playback)
+    // The "playing" event doesn't fire when video exits buffering if already playing
+    this.video?.addEventListener("canplaythrough", () => {
+      if (this._bufferingDebounce) {
+        clearTimeout(this._bufferingDebounce);
+        this._bufferingDebounce = null;
+      }
+      this.pushEvent("buffering", { buffering: false });
+      this.playerUI.hideLoading();
+    });
   },
 
   // ============================================
@@ -1217,11 +1228,22 @@ const VideoPlayer = {
       this.playerUI.hideLoading();
       if (e.name === "NotAllowedError") {
         this.playerUI.showPlayButton(() => this.video.play());
-      } else if (
-        e.name === "NotSupportedError" &&
-        (this.sourceType === "gindex" || this.currentStreamType === "mkv")
-      ) {
-        log.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
+      } else if (e.name === "NotSupportedError") {
+        // Check if AVPlayer fallback is available before showing error
+        const canTryAVPlayer =
+          this.contentType === "vod" &&
+          !this.avPlayerAttempted &&
+          (this.currentStreamType === "mp4" ||
+            this.currentStreamType === "mkv" ||
+            this.sourceType === "gindex" ||
+            this.currentStreamType === "unknown");
+
+        if (canTryAVPlayer) {
+          log.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
+          // Don't show error - errorHandler will try AVPlayer
+        } else {
+          this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
+        }
       } else {
         this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
       }
