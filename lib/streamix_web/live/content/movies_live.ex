@@ -346,7 +346,7 @@ defmodule StreamixWeb.Content.MoviesLive do
       <div
         id="movies"
         phx-update="stream"
-        class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+        class="grid gap-2 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
         <div :for={{dom_id, movie} <- @streams.movies} id={dom_id}>
           <.movie_card
