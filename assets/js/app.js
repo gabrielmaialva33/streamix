@@ -62,14 +62,109 @@ liveSocket.connect();
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket;
 
-// Register Service Worker for PWA
+// Register Service Worker for PWA with update notification
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
-      .then((reg) => console.log("SW registered:", reg.scope))
+      .then((reg) => {
+        console.log("SW registered:", reg.scope);
+
+        // Check for updates periodically (every 30 minutes)
+        setInterval(() => reg.update(), 30 * 60 * 1000);
+
+        // Listen for new SW waiting
+        reg.addEventListener("updatefound", () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener("statechange", () => {
+              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                // New SW is waiting - show update toast
+                showUpdateToast(newWorker);
+              }
+            });
+          }
+        });
+
+        // Also check if there's already a waiting SW
+        if (reg.waiting) {
+          showUpdateToast(reg.waiting);
+        }
+      })
       .catch((err) => console.warn("SW registration failed:", err));
+
+    // Reload when controller changes (new SW took over)
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
   });
+}
+
+// Show update toast notification (XSS-safe DOM construction)
+function showUpdateToast(waitingWorker) {
+  // Check if toast already exists
+  if (document.getElementById("sw-update-toast")) return;
+
+  const toast = document.createElement("div");
+  toast.id = "sw-update-toast";
+  toast.className =
+    "fixed bottom-4 right-4 z-[9999] flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-300";
+
+  // Content wrapper
+  const content = document.createElement("div");
+  content.className = "flex-1";
+
+  const title = document.createElement("p");
+  title.className = "text-sm font-medium text-text-primary";
+  title.textContent = "Nova versão disponível";
+
+  const subtitle = document.createElement("p");
+  subtitle.className = "text-xs text-text-secondary";
+  subtitle.textContent = "Clique para atualizar";
+
+  content.appendChild(title);
+  content.appendChild(subtitle);
+
+  // Update button
+  const updateBtn = document.createElement("button");
+  updateBtn.className =
+    "px-3 py-1.5 bg-brand text-white text-sm font-medium rounded-md hover:bg-brand-hover transition-colors";
+  updateBtn.textContent = "Atualizar";
+  updateBtn.addEventListener("click", () => {
+    waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    toast.remove();
+  });
+
+  // Dismiss button with SVG
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "p-1 text-text-secondary hover:text-text-primary transition-colors";
+  dismissBtn.setAttribute("aria-label", "Fechar");
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "w-4 h-4");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("viewBox", "0 0 24 24");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("d", "M6 18L18 6M6 6l12 12");
+
+  svg.appendChild(path);
+  dismissBtn.appendChild(svg);
+  dismissBtn.addEventListener("click", () => toast.remove());
+
+  // Assemble toast
+  toast.appendChild(content);
+  toast.appendChild(updateBtn);
+  toast.appendChild(dismissBtn);
+
+  document.body.appendChild(toast);
 }
 
 // The lines below enable quality of life phoenix_live_reload

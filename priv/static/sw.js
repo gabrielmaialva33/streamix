@@ -1,4 +1,4 @@
-const CACHE_NAME = 'streamix-v1';
+const CACHE_NAME = 'streamix-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -6,14 +6,14 @@ const STATIC_ASSETS = [
   '/images/icon-512.png'
 ];
 
-// Install - cache static assets
+// Install - cache static assets (don't auto-skip waiting)
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS);
     })
   );
-  self.skipWaiting();
+  // Don't auto skipWaiting - let user decide when to update
 });
 
 // Activate - clean old caches
@@ -26,6 +26,13 @@ self.addEventListener('activate', (event) => {
     })
   );
   self.clients.claim();
+});
+
+// Message handler - skip waiting when user requests update
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Fetch - network first, fallback to cache
