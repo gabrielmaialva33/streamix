@@ -194,6 +194,11 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("volume_changed", _params, socket), do: {:noreply, socket}
   def handle_event("audio_track_changed", _params, socket), do: {:noreply, socket}
   def handle_event("subtitle_track_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("qualities_available", _params, socket), do: {:noreply, socket}
+  def handle_event("pip_error", _params, socket), do: {:noreply, socket}
+  def handle_event("progress_update", _params, socket), do: {:noreply, socket}
+  def handle_event("request_token_refresh", _params, socket), do: {:noreply, socket}
+  def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
   # ============================================
   # Render
