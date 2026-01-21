@@ -69,6 +69,8 @@ defmodule Streamix.IptvFixtures do
   def watch_history_fixture(user, channel, duration \\ 0) do
     {:ok, history} =
       Iptv.add_watch_history(user.id, "live_channel", channel.id, %{
+        content_name: channel.name,
+        content_icon: channel.stream_icon,
         duration_seconds: duration
       })
 
@@ -182,5 +184,38 @@ defmodule Streamix.IptvFixtures do
     %Movie{}
     |> Movie.changeset(attrs)
     |> Repo.insert!()
+  end
+
+  @doc """
+  Creates a favorite for a movie.
+  """
+  def movie_favorite_fixture(user, movie) do
+    {:ok, favorite} =
+      Iptv.add_favorite(user.id, %{
+        content_type: "movie",
+        content_id: movie.id,
+        content_name: movie.name,
+        content_icon: movie.stream_icon
+      })
+
+    favorite
+  end
+
+  @doc """
+  Creates a watch history entry for a movie.
+  """
+  def movie_history_fixture(user, movie, attrs \\ %{}) do
+    duration = Map.get(attrs, :duration_seconds, 7200)
+    progress = Map.get(attrs, :progress_seconds, 0)
+
+    {:ok, history} =
+      Iptv.add_watch_history(user.id, "movie", movie.id, %{
+        content_name: movie.name,
+        content_icon: movie.stream_icon,
+        duration_seconds: duration,
+        progress_seconds: progress
+      })
+
+    history
   end
 end
