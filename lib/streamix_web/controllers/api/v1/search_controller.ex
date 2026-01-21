@@ -200,8 +200,8 @@ defmodule StreamixWeb.Api.V1.SearchController do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: movie.genre,
-      poster: movie.stream_icon,
-      backdrop: movie.backdrop_path,
+      poster: proxy_image(movie.stream_icon),
+      backdrop: proxy_image(movie.backdrop_path),
       plot: movie.plot,
       score: result.score
     }
@@ -215,11 +215,20 @@ defmodule StreamixWeb.Api.V1.SearchController do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: series.genre,
-      poster: series.cover,
-      backdrop: series.backdrop_path,
+      poster: proxy_image(series.cover),
+      backdrop: proxy_image(series.backdrop_path),
       plot: series.plot,
       score: result.score
     }
+  end
+
+  defp proxy_image(nil), do: nil
+  defp proxy_image(""), do: nil
+  defp proxy_image(urls) when is_list(urls), do: Enum.map(urls, &proxy_image/1)
+
+  defp proxy_image(url) when is_binary(url) do
+    alias StreamixWeb.Helpers.ImageProxy
+    ImageProxy.proxy(url)
   end
 
   defp fallback_search(conn, query, :movies) do

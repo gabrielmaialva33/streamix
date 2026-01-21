@@ -393,7 +393,7 @@ defmodule StreamixWeb.ContentComponents do
       >
         <img
           :if={Map.get(@series, :cover)}
-          src={@series.cover}
+          src={ImageProxy.proxy(@series.cover)}
           alt={@series.name}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"

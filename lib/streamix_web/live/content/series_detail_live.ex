@@ -193,7 +193,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         <div class="absolute inset-0">
           <img
             :if={get_backdrop(@series) || @series.cover}
-            src={get_backdrop(@series) || @series.cover}
+            src={get_backdrop(@series) || ImageProxy.proxy(@series.cover)}
             alt={@series.name}
             class="w-full h-full object-cover"
           />
@@ -226,7 +226,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                 <img
                   :if={@series.cover}
-                  src={@series.cover}
+                  src={ImageProxy.proxy(@series.cover)}
                   alt={@series.name}
                   class="w-full h-full object-cover"
                 />
@@ -488,7 +488,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       <div class="relative flex-shrink-0 w-24 sm:w-36 aspect-video bg-surface-hover rounded-lg overflow-hidden">
         <img
           :if={@episode.cover}
-          src={@episode.cover}
+          src={ImageProxy.proxy(@episode.cover)}
           alt={episode_title(@episode)}
           class="w-full h-full object-cover"
           loading="lazy"
@@ -556,7 +556,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp format_rating(_), do: nil
 
-  defp get_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: url
+  defp get_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: ImageProxy.proxy(url)
   defp get_backdrop(_), do: nil
 
   defp trailer_url(youtube_id) when is_binary(youtube_id) do

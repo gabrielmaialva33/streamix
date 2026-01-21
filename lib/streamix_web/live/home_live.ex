@@ -486,7 +486,7 @@ defmodule StreamixWeb.HomeLive do
       <div class="aspect-[2/3] bg-surface-hover relative">
         <img
           :if={@movie.stream_icon}
-          src={@movie.stream_icon}
+          src={ImageProxy.proxy(@movie.stream_icon)}
           alt={@movie.name}
           class="w-full h-full object-cover animate-fade-in"
           loading="lazy"
@@ -531,7 +531,7 @@ defmodule StreamixWeb.HomeLive do
       <div class="aspect-[2/3] bg-surface-hover relative">
         <img
           :if={@series.cover}
-          src={@series.cover}
+          src={ImageProxy.proxy(@series.cover)}
           alt={@series.name}
           class="w-full h-full object-cover animate-fade-in"
           loading="lazy"
@@ -689,7 +689,7 @@ defmodule StreamixWeb.HomeLive do
   # Helper functions
   defp get_backdrop(content) do
     case content.backdrop_path do
-      [first | _] -> first
+      [first | _] -> ImageProxy.proxy(first)
       _ -> nil
     end
   end

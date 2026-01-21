@@ -129,7 +129,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         <div class="absolute inset-0">
           <img
             :if={get_backdrop(@movie) || @movie.stream_icon}
-            src={get_backdrop(@movie) || @movie.stream_icon}
+            src={get_backdrop(@movie) || ImageProxy.proxy(@movie.stream_icon)}
             alt={@movie.name}
             class="w-full h-full object-cover"
           />
@@ -162,7 +162,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                 <img
                   :if={@movie.stream_icon}
-                  src={@movie.stream_icon}
+                  src={ImageProxy.proxy(@movie.stream_icon)}
                   alt={@movie.name}
                   class="w-full h-full object-cover"
                 />
@@ -381,7 +381,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp format_rating(_), do: nil
 
-  defp get_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: url
+  defp get_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: ImageProxy.proxy(url)
   defp get_backdrop(_), do: nil
 
   defp trailer_url(youtube_id) when is_binary(youtube_id) do

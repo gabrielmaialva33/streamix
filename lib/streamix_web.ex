@@ -92,6 +92,7 @@ defmodule StreamixWeb do
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias StreamixWeb.Layouts
+      alias StreamixWeb.Helpers.ImageProxy
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())
