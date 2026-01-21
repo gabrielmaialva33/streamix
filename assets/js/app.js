@@ -62,6 +62,16 @@ liveSocket.connect();
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket;
 
+// Register Service Worker for PWA
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((reg) => console.log("SW registered:", reg.scope))
+      .catch((err) => console.warn("SW registration failed:", err));
+  });
+}
+
 // The lines below enable quality of life phoenix_live_reload
 // development features:
 //
