@@ -62,16 +62,21 @@
 }
 
 :root.light {
-  /* Light Mode - Catppuccin Latte */
+  /* Light Mode - Catppuccin Latte (WCAG AA Accessible) */
   --bg-color: var(--latte-base);
-  --surface-color: var(--latte-surface0);
-  --surface-hover-color: var(--latte-surface1);
+  --surface-color: var(--latte-mantle);
+  --surface-hover-color: var(--latte-crust);
   --border-color: var(--latte-surface2);
 
-  /* Text */
+  /* Text - WCAG AA compliant (4.5:1 minimum contrast ratio)
+     Calculated against latte-base (95% lightness, ~0.88 luminance):
+     - text-primary: 35% L → ~7.5:1 ✓
+     - text-secondary: 41% L → ~5.2:1 ✓
+     - text-muted: 47% L → ~4.5:1 ✓ (borderline AA, safe for large text)
+  */
   --text-primary: var(--latte-text);
   --text-secondary: var(--latte-subtext1);
-  --text-muted: var(--latte-overlay0);
+  --text-muted: var(--latte-subtext0);
 
   /* Brand */
   --brand-color: var(--latte-red);
@@ -80,7 +85,7 @@
 
   /* Status Overrides for Light Mode (derived from Latte) */
   --success-color: var(--latte-green);
-  --warning-color: var(--latte-yellow);
+  --warning-color: var(--latte-peach);
   --error-color: var(--latte-red);
   --info-color: var(--latte-blue);
 }
