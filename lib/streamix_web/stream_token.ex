@@ -10,8 +10,8 @@ defmodule StreamixWeb.StreamToken do
   alias Streamix.Iptv
   alias Streamix.Repo
 
-  # Token expires in 24 hours
-  @token_max_age 86_400
+  # Token expires in 2 hours (reduced from 24h for security)
+  @token_max_age 7_200
 
   @doc """
   Generates a signed token for accessing a movie stream.
