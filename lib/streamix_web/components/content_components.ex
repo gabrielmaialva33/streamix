@@ -262,7 +262,7 @@ defmodule StreamixWeb.ContentComponents do
     assigns = assign(assigns, image_url: image_url, display_rating: rating)
 
     ~H"""
-    <div class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
+    <div class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
       <div
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_details}
@@ -281,7 +281,7 @@ defmodule StreamixWeb.ContentComponents do
           "w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900",
           @image_url && "hidden"
         ]}>
-          <.icon name="hero-film" class="size-16 text-zinc-600" />
+          <.icon name="hero-film" class="size-8 sm:size-16 text-zinc-600" />
         </div>
 
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -292,50 +292,37 @@ defmodule StreamixWeb.ContentComponents do
             phx-click={@on_play}
             phx-value-id={@movie.id}
             phx-value-provider_id={@movie.provider_id}
-            class="w-14 h-14 rounded-full bg-brand/90 backdrop-blur-sm flex items-center justify-center hover:bg-brand hover:scale-110 transition-all shadow-lg"
+            class="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-brand/90 backdrop-blur-sm flex items-center justify-center hover:bg-brand hover:scale-110 transition-all shadow-lg"
           >
-            <.icon name="hero-play-solid" class="size-7 text-white ml-0.5" />
+            <.icon name="hero-play-solid" class="size-5 sm:size-7 text-white ml-0.5" />
           </button>
         </div>
 
         <div
           :if={@display_rating}
-          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-black/70 backdrop-blur-sm text-yellow-400"
+          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded bg-black/70 backdrop-blur-sm text-yellow-400"
         >
-          <.icon name="hero-star-solid" class="size-3" />
+          <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
-        </div>
-
-        <div
-          :if={Map.get(@movie, :year)}
-          class="absolute top-2 right-2 px-2 py-1 text-xs font-medium rounded-md bg-black/70 backdrop-blur-sm text-white"
-        >
-          {@movie.year}
         </div>
 
         <span
           :if={@source == "gindex"}
-          class="absolute bottom-2 left-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
+          class="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 px-1 py-0.5 text-[8px] sm:text-[10px] font-bold rounded bg-purple-600/90 text-white"
         >
           GIndex
         </span>
       </div>
 
-      <div class="p-3">
-        <div class="flex items-start justify-between gap-2">
+      <div class="p-1.5 sm:p-3">
+        <div class="flex items-start justify-between gap-1">
           <div class="min-w-0 flex-1">
             <h3
-              class="font-medium text-sm text-text-primary line-clamp-2 leading-tight"
+              class="font-medium text-[10px] sm:text-sm text-text-primary line-clamp-2 leading-tight"
               title={@movie.name}
             >
               {Map.get(@movie, :title) || @movie.name}
             </h3>
-            <p
-              :if={Map.get(@movie, :genre) && @movie.genre != ""}
-              class="text-xs text-text-secondary mt-1 truncate"
-            >
-              {@movie.genre}
-            </p>
           </div>
           <button
             :if={@show_favorite}
@@ -344,14 +331,14 @@ defmodule StreamixWeb.ContentComponents do
             phx-value-id={@movie.id}
             phx-value-type="movie"
             class={[
-              "flex-shrink-0 p-1.5 rounded-full transition-all",
+              "flex-shrink-0 p-0.5 sm:p-1.5 rounded-full transition-all",
               @is_favorite && "text-red-500 bg-red-500/10",
               !@is_favorite && "text-text-secondary hover:text-red-400 hover:bg-red-500/10"
             ]}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class="size-5"
+              class="size-3.5 sm:size-5"
             />
           </button>
         </div>
@@ -387,7 +374,7 @@ defmodule StreamixWeb.ContentComponents do
     assigns = assign(assigns, display_rating: rating)
 
     ~H"""
-    <div class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
+    <div class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
       <div
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_click}
@@ -404,44 +391,41 @@ defmodule StreamixWeb.ContentComponents do
           :if={!Map.get(@series, :cover)}
           class="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900"
         >
-          <.icon name="hero-video-camera" class="size-16 text-zinc-600" />
+          <.icon name="hero-video-camera" class="size-8 sm:size-16 text-zinc-600" />
         </div>
 
         <div
           :if={@display_rating}
-          class="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-black/70 backdrop-blur-sm text-yellow-400"
+          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded bg-black/70 backdrop-blur-sm text-yellow-400"
         >
-          <.icon name="hero-star-solid" class="size-3" />
+          <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
         </div>
 
         <span
           :if={@source == "gindex"}
-          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
+          class="absolute top-1 right-1 sm:top-2 sm:right-2 px-1 py-0.5 text-[8px] sm:text-[10px] font-bold rounded bg-purple-600/90 text-white"
         >
           GDrive
         </span>
 
         <div
           :if={Map.get(@series, :episode_count) && @series.episode_count > 0}
-          class="absolute bottom-2 left-2 px-2 py-0.5 text-xs rounded bg-brand text-white"
+          class="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 px-1 py-0.5 sm:px-2 text-[9px] sm:text-xs rounded bg-brand text-white"
         >
           {@series.episode_count} eps
         </div>
       </div>
 
-      <div class="p-3">
-        <div class="flex items-start justify-between gap-2">
+      <div class="p-1.5 sm:p-3">
+        <div class="flex items-start justify-between gap-1">
           <div class="min-w-0 flex-1">
-            <h3 class="font-medium text-sm text-text-primary truncate" title={@series.name}>
+            <h3
+              class="font-medium text-[10px] sm:text-sm text-text-primary truncate leading-tight"
+              title={@series.name}
+            >
               {Map.get(@series, :title) || @series.name}
             </h3>
-            <p :if={Map.get(@series, :year)} class="text-xs text-text-secondary">
-              {@series.year}
-              <span :if={Map.get(@series, :season_count) && @series.season_count > 0}>
-                | {pluralize(@series.season_count, "temporada", "temporadas")}
-              </span>
-            </p>
           </div>
           <button
             :if={@show_favorite}
@@ -449,11 +433,11 @@ defmodule StreamixWeb.ContentComponents do
             phx-click={@on_favorite}
             phx-value-id={@series.id}
             phx-value-type="series"
-            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+            class="flex-shrink-0 p-0.5 hover:scale-110 transition-transform"
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-red-500"]}
+              class={["size-3.5 sm:size-5", @is_favorite && "text-red-500"]}
             />
           </button>
         </div>
