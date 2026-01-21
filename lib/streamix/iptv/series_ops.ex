@@ -402,6 +402,59 @@ defmodule Streamix.Iptv.SeriesOps do
     |> Repo.all()
   end
 
+  @doc """
+  Gets the next episode after the given episode.
+
+  First tries to find the next episode in the same season.
+  If not found, tries to find the first episode of the next season.
+  Returns nil if there's no next episode.
+  """
+  @spec get_next_episode(integer()) :: Episode.t() | nil
+  def get_next_episode(episode_id) do
+    episode = get_episode(episode_id)
+    if episode, do: find_next_episode(episode), else: nil
+  end
+
+  defp find_next_episode(episode) do
+    # Load season context if not loaded
+    episode = Repo.preload(episode, season: :series)
+    season = episode.season
+
+    # Try next episode in same season
+    next_in_season =
+      Episode
+      |> where([e], e.season_id == ^season.id)
+      |> where([e], e.episode_num > ^episode.episode_num)
+      |> order_by([e], asc: e.episode_num)
+      |> limit(1)
+      |> preload(season: [series: :provider])
+      |> Repo.one()
+
+    if next_in_season do
+      next_in_season
+    else
+      # Try first episode of next season
+      next_season =
+        Season
+        |> where([s], s.series_id == ^season.series_id)
+        |> where([s], s.season_number > ^season.season_number)
+        |> order_by([s], asc: s.season_number)
+        |> limit(1)
+        |> Repo.one()
+
+      if next_season do
+        Episode
+        |> where([e], e.season_id == ^next_season.id)
+        |> order_by([e], asc: e.episode_num)
+        |> limit(1)
+        |> preload(season: [series: :provider])
+        |> Repo.one()
+      else
+        nil
+      end
+    end
+  end
+
   # =============================================================================
   # Search
   # =============================================================================
@@ -412,10 +465,11 @@ defmodule Streamix.Iptv.SeriesOps do
   @spec search(integer(), String.t(), keyword()) :: [Series.t()]
   def search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    escaped = Helpers.escape_like(query)
 
     Series
     |> Access.visible_to_user(user_id)
-    |> where([s, _p], ilike(s.name, ^"%#{query}%") or ilike(s.title, ^"%#{query}%"))
+    |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
     |> Repo.all()
@@ -427,10 +481,11 @@ defmodule Streamix.Iptv.SeriesOps do
   @spec search_public(String.t(), keyword()) :: [Series.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    escaped = Helpers.escape_like(query)
 
     Series
     |> Access.public_providers()
-    |> where([s, _p], ilike(s.name, ^"%#{query}%") or ilike(s.title, ^"%#{query}%"))
+    |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
     |> Repo.all()

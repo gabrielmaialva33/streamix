@@ -242,10 +242,11 @@ defmodule Streamix.Iptv.Channels do
   @spec search(integer(), String.t(), keyword()) :: [LiveChannel.t()]
   def search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    escaped = Helpers.escape_like(query)
 
     LiveChannel
     |> Access.visible_to_user(user_id)
-    |> where([c, _p], ilike(c.name, ^"%#{query}%"))
+    |> where([c, _p], ilike(c.name, ^"%#{escaped}%"))
     |> order_by([c], asc: c.name)
     |> limit(^limit)
     |> Repo.all()
@@ -257,10 +258,11 @@ defmodule Streamix.Iptv.Channels do
   @spec search_public(String.t(), keyword()) :: [LiveChannel.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    escaped = Helpers.escape_like(query)
 
     LiveChannel
     |> Access.public_providers()
-    |> where([c, _p], ilike(c.name, ^"%#{query}%"))
+    |> where([c, _p], ilike(c.name, ^"%#{escaped}%"))
     |> order_by([c], asc: c.name)
     |> limit(^limit)
     |> Repo.all()

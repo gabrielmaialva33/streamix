@@ -243,10 +243,11 @@ defmodule Streamix.Iptv.Movies do
   @spec search(integer(), String.t(), keyword()) :: [Movie.t()]
   def search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    escaped = Helpers.escape_like(query)
 
     Movie
     |> Access.visible_to_user(user_id)
-    |> where([m, _p], ilike(m.name, ^"%#{query}%") or ilike(m.title, ^"%#{query}%"))
+    |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
     |> Repo.all()
@@ -258,10 +259,11 @@ defmodule Streamix.Iptv.Movies do
   @spec search_public(String.t(), keyword()) :: [Movie.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    escaped = Helpers.escape_like(query)
 
     Movie
     |> Access.public_providers()
-    |> where([m, _p], ilike(m.name, ^"%#{query}%") or ilike(m.title, ^"%#{query}%"))
+    |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
     |> Repo.all()
