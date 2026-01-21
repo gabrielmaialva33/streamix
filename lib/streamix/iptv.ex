@@ -160,6 +160,7 @@ defmodule Streamix.Iptv do
   defdelegate get_episode_with_context!(id), to: SeriesOps
   defdelegate list_season_episodes(season_id), to: SeriesOps
   defdelegate fetch_episode_info(episode), to: SeriesOps
+  defdelegate get_next_episode(episode_id), to: SeriesOps
 
   # =============================================================================
   # Providers

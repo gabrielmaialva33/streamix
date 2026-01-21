@@ -227,6 +227,26 @@ const VideoPlayer = {
     this.avPlayerMuted = false;
     this.avPlayerTimeInterval = null;
     this.preferAVPlayer = false; // Manual audio compatibility mode
+
+    // Next episode state (for pre-fetch)
+    this.nextEpisode = this.parseNextEpisode();
+    this.nextEpisodeShown = false;
+    this.nextEpisodeCountdown = null;
+    this.nextEpisodePreloader = null;
+  },
+
+  /**
+   * Parse next episode data from data attribute
+   */
+  parseNextEpisode() {
+    const data = this.el.dataset.nextEpisode;
+    if (!data) return null;
+    try {
+      return JSON.parse(data);
+    } catch {
+      log.warn("[VideoPlayer] Failed to parse next episode data");
+      return null;
+    }
   },
 
   loadPreferences() {
@@ -701,6 +721,9 @@ const VideoPlayer = {
 
     if (!duration || duration <= 0) return;
 
+    // Check for next episode trigger (30s before end or 90% progress)
+    this.checkNextEpisodeTrigger(currentTime, duration);
+
     if (Math.abs(currentTime - this.lastProgressReport) >= 10) {
       this.lastProgressReport = currentTime;
 
@@ -713,6 +736,178 @@ const VideoPlayer = {
         current_time: currentTime,
         duration: duration,
         percent: Math.round((currentTime / duration) * 100),
+      });
+    }
+  },
+
+  // ============================================
+  // Next Episode Pre-fetch (Netflix-style)
+  // ============================================
+
+  /**
+   * Check if we should show the next episode overlay
+   * Triggers at 30 seconds before end OR 90% progress (whichever comes first)
+   */
+  checkNextEpisodeTrigger(currentTime, duration) {
+    if (!this.nextEpisode || this.nextEpisodeShown) return;
+
+    const timeRemaining = duration - currentTime;
+    const percentComplete = (currentTime / duration) * 100;
+
+    // Trigger at 30s before end or 90% progress
+    const shouldTrigger = timeRemaining <= 30 || percentComplete >= 90;
+
+    if (shouldTrigger) {
+      this.showNextEpisodeOverlay();
+      this.preloadNextEpisode();
+    }
+  },
+
+  /**
+   * Show the next episode overlay with countdown
+   */
+  showNextEpisodeOverlay() {
+    if (this.nextEpisodeShown) return;
+    this.nextEpisodeShown = true;
+
+    const overlay = this.el.querySelector("#next-episode-overlay");
+    if (!overlay) return;
+
+    // Show overlay with animation
+    overlay.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      overlay.classList.add("opacity-100");
+      overlay.classList.remove("translate-x-4");
+    });
+
+    // Setup button handlers
+    const playBtn = overlay.querySelector("#play-next-btn");
+    const cancelBtn = overlay.querySelector("#cancel-next-btn");
+    const countdownBar = overlay.querySelector("#next-countdown-bar");
+
+    if (playBtn) {
+      playBtn.onclick = () => this.playNextEpisode();
+    }
+
+    if (cancelBtn) {
+      cancelBtn.onclick = () => this.hideNextEpisodeOverlay();
+    }
+
+    // Start 10-second countdown
+    let countdown = 10;
+    this.nextEpisodeCountdown = setInterval(() => {
+      countdown--;
+      if (countdownBar) {
+        countdownBar.style.width = `${countdown * 10}%`;
+      }
+      if (countdown <= 0) {
+        this.playNextEpisode();
+      }
+    }, 1000);
+
+    log.debug("[VideoPlayer] Showing next episode overlay:", this.nextEpisode.title);
+  },
+
+  /**
+   * Hide the next episode overlay
+   */
+  hideNextEpisodeOverlay() {
+    if (this.nextEpisodeCountdown) {
+      clearInterval(this.nextEpisodeCountdown);
+      this.nextEpisodeCountdown = null;
+    }
+
+    const overlay = this.el.querySelector("#next-episode-overlay");
+    if (overlay) {
+      overlay.classList.remove("opacity-100");
+      overlay.classList.add("translate-x-4");
+      setTimeout(() => overlay.classList.add("hidden"), 300);
+    }
+
+    // Cleanup preloader
+    if (this.nextEpisodePreloader) {
+      this.nextEpisodePreloader.destroy?.();
+      this.nextEpisodePreloader = null;
+    }
+  },
+
+  /**
+   * Navigate to next episode
+   */
+  playNextEpisode() {
+    if (!this.nextEpisode) return;
+
+    this.hideNextEpisodeOverlay();
+
+    // Whitelist validation to prevent path traversal
+    const ALLOWED_TYPES = ["episode", "movie", "live"];
+    const type = ALLOWED_TYPES.includes(this.nextEpisode.type)
+      ? this.nextEpisode.type
+      : "episode";
+
+    // Validate ID is numeric to prevent injection
+    const id = parseInt(this.nextEpisode.id, 10);
+    if (isNaN(id) || id <= 0) {
+      log.warn("[VideoPlayer] Invalid next episode ID:", this.nextEpisode.id);
+      return;
+    }
+
+    const path = `/watch/${type}/${id}`;
+
+    log.debug("[VideoPlayer] Navigating to next episode:", path);
+
+    // Navigate via direct URL (pushEvent is for server events, not navigation)
+    window.location.href = path;
+  },
+
+  /**
+   * Pre-load next episode stream for instant playback
+   * Uses HLS.js to pre-fetch manifest and first segments
+   */
+  preloadNextEpisode() {
+    if (!this.nextEpisode?.stream_url || this.nextEpisodePreloader) return;
+
+    const url = this.nextEpisode.stream_url;
+    log.debug("[VideoPlayer] Pre-loading next episode:", url);
+
+    // Add preconnect hint for the stream domain
+    try {
+      const streamDomain = new URL(url).origin;
+      const preconnect = document.createElement("link");
+      preconnect.rel = "preconnect";
+      preconnect.href = streamDomain;
+      preconnect.crossOrigin = "anonymous";
+      document.head.appendChild(preconnect);
+    } catch (e) {
+      // Ignore URL parsing errors
+    }
+
+    // Pre-load with HLS.js if it's an HLS stream
+    const streamType = getStreamType(url, this.nextEpisode.type);
+    if (streamType === "hls" && Hls.isSupported()) {
+      this.nextEpisodePreloader = new Hls({
+        // Minimal config for preloading only manifest + first segment
+        maxBufferLength: 5,
+        maxBufferSize: 1 * 1024 * 1024, // 1MB max
+        maxMaxBufferLength: 5,
+        startLevel: -1, // Auto quality
+        enableWorker: true,
+        lowLatencyMode: false,
+      });
+
+      // Don't attach to video element, just load manifest
+      this.nextEpisodePreloader.loadSource(url);
+
+      this.nextEpisodePreloader.on(Hls.Events.MANIFEST_PARSED, () => {
+        log.debug("[VideoPlayer] Next episode manifest pre-loaded");
+      });
+
+      this.nextEpisodePreloader.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          log.warn("[VideoPlayer] Next episode preload failed:", data.type);
+          this.nextEpisodePreloader?.destroy();
+          this.nextEpisodePreloader = null;
+        }
       });
     }
   },
@@ -2207,6 +2402,16 @@ const VideoPlayer = {
     this.playerUI?.clearHideControlsTimeout();
     this.playerUI?.destroy();
     this.stopAVPlayerTimeUpdates();
+
+    // Clear next episode resources
+    if (this.nextEpisodeCountdown) {
+      clearInterval(this.nextEpisodeCountdown);
+      this.nextEpisodeCountdown = null;
+    }
+    if (this.nextEpisodePreloader) {
+      this.nextEpisodePreloader.destroy?.();
+      this.nextEpisodePreloader = null;
+    }
 
     // Clear buffering debounce
     if (this._bufferingDebounce) {

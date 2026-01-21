@@ -21,6 +21,7 @@ defmodule StreamixWeb.PlayerComponents do
   attr :on_close, :string, default: nil
   attr :show_controls, :boolean, default: true
   attr :provider_type, :string, default: nil
+  attr :next_episode, :map, default: nil
 
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
@@ -29,11 +30,20 @@ defmodule StreamixWeb.PlayerComponents do
     # Provider type for JS player (gindex/xtream) - used for codec detection
     source_type = assigns.provider_type || Atom.to_string(assigns.content_type)
 
+    # Encode next episode data as JSON for JS
+    next_episode_json =
+      if assigns.next_episode do
+        Jason.encode!(assigns.next_episode)
+      else
+        nil
+      end
+
     assigns =
       assigns
       |> assign(:proxy_url, proxy_url)
       |> assign(:content_type_str, content_type_str)
       |> assign(:source_type, source_type)
+      |> assign(:next_episode_json, next_episode_json)
 
     ~H"""
     <div
@@ -46,6 +56,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-source-type={@source_type}
       data-content-id={@content.id}
       data-streaming-mode={@streaming_mode}
+      data-next-episode={@next_episode_json}
     >
       <%!-- Loading indicator --%>
       <div
@@ -157,6 +168,63 @@ defmodule StreamixWeb.PlayerComponents do
       >
         <div class="p-5 rounded-full bg-black/40 backdrop-blur-sm">
           <.icon name="hero-play-solid" class="size-16 text-white" />
+        </div>
+      </div>
+
+      <%!-- Next episode overlay (shows when near end) --%>
+      <div
+        :if={@next_episode}
+        id="next-episode-overlay"
+        class="absolute bottom-24 right-4 sm:right-8 z-30 hidden opacity-0 transition-all duration-300 transform translate-x-4"
+      >
+        <div class="bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl border border-white/10 p-4 max-w-xs sm:max-w-sm">
+          <div class="flex items-center gap-2 mb-2 text-white/60 text-xs uppercase tracking-wider">
+            <.icon name="hero-forward" class="size-4" />
+            <span>Próximo episódio</span>
+          </div>
+          <div class="flex gap-3">
+            <div class="relative flex-shrink-0">
+              <img
+                :if={@next_episode.cover}
+                src={@next_episode.cover}
+                alt=""
+                class="w-24 h-14 sm:w-32 sm:h-18 object-cover rounded"
+              />
+              <div
+                :if={!@next_episode.cover}
+                class="w-24 h-14 sm:w-32 sm:h-18 bg-white/10 rounded flex items-center justify-center"
+              >
+                <.icon name="hero-film" class="size-6 text-white/40" />
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-white font-medium text-sm truncate">{@next_episode.title}</p>
+              <p class="text-white/60 text-xs">
+                T{@next_episode.season_num}:E{@next_episode.episode_num}
+              </p>
+              <p class="text-white/40 text-xs truncate">{@next_episode.series_name}</p>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-3">
+            <button
+              type="button"
+              id="play-next-btn"
+              class="flex-1 px-4 py-2 bg-brand hover:bg-brand/80 text-white text-sm font-medium rounded transition-colors"
+            >
+              Reproduzir
+            </button>
+            <button
+              type="button"
+              id="cancel-next-btn"
+              class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+          <%!-- Countdown bar --%>
+          <div class="mt-2 h-1 bg-white/20 rounded-full overflow-hidden">
+            <div id="next-countdown-bar" class="h-full bg-brand transition-all duration-1000" style="width: 100%" />
+          </div>
         </div>
       </div>
     </div>

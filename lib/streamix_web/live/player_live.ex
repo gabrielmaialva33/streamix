@@ -35,6 +35,9 @@ defmodule StreamixWeb.PlayerLive do
           Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
         end
 
+        # Fetch next episode for prefetch (episodes only)
+        next_episode = load_next_episode(type, content, provider)
+
         socket =
           socket
           |> assign(page_title: content_title(content, type))
@@ -53,6 +56,7 @@ defmodule StreamixWeb.PlayerLive do
           |> assign(audio_tracks: [])
           |> assign(subtitle_tracks: [])
           |> assign(user_id: user_id)
+          |> assign(next_episode: next_episode)
 
         {:ok, socket}
 
@@ -208,6 +212,7 @@ defmodule StreamixWeb.PlayerLive do
         fullscreen={true}
         on_close="close_player"
         show_controls={true}
+        next_episode={@next_episode}
       />
     </div>
     """
@@ -360,6 +365,40 @@ defmodule StreamixWeb.PlayerLive do
 
       _ ->
         ~p"/"
+    end
+  end
+
+  defp load_next_episode(type, content, provider) when type in ["episode", "gindex_episode"] do
+    case Iptv.get_next_episode(content.id) do
+      nil ->
+        nil
+
+      next ->
+        stream_url =
+          case type do
+            "episode" -> Iptv.Episode.stream_url(next, provider)
+            "gindex_episode" -> get_gindex_episode_url(next)
+          end
+
+        %{
+          id: next.id,
+          title: next.title || "Episódio #{next.episode_num}",
+          episode_num: next.episode_num,
+          season_num: next.season.season_number,
+          series_name: next.season.series.name,
+          cover: ImageProxy.proxy(next.cover || next.still_path),
+          stream_url: stream_url,
+          type: type
+        }
+    end
+  end
+
+  defp load_next_episode(_, _, _), do: nil
+
+  defp get_gindex_episode_url(episode) do
+    case Gindex.get_episode_url(episode.id) do
+      {:ok, url} -> url
+      _ -> nil
     end
   end
 
