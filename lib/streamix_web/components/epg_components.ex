@@ -15,7 +15,17 @@ defmodule StreamixWeb.EpgComponents do
 
   def epg_now(assigns) do
     ~H"""
-    <div :if={@current_program} class="mt-1.5 space-y-1">
+    <div :if={@compact} class="mt-1 h-3">
+      <p
+        :if={@current_program}
+        class="text-[9px] text-text-secondary truncate leading-tight"
+        title={@current_program.title}
+      >
+        {@current_program.title}
+      </p>
+    </div>
+
+    <div :if={@current_program && !@compact} class="mt-1.5 space-y-1">
       <div class="flex items-center gap-1.5">
         <span class="inline-flex items-center px-1 py-0.5 text-[9px] font-semibold rounded bg-red-500/90 text-white uppercase tracking-wide">
           Ao Vivo
@@ -28,7 +38,7 @@ defmodule StreamixWeb.EpgComponents do
       <.epg_progress_bar program={@current_program} />
     </div>
 
-    <div :if={!@current_program} class="mt-1.5">
+    <div :if={!@current_program && !@compact} class="mt-1.5">
       <p class="text-[10px] text-text-muted italic">Sem programação</p>
     </div>
     """
