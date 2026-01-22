@@ -216,7 +216,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     ~H"""
     <div class="min-h-screen bg-background">
       <!-- Hero Section -->
-      <div class="relative h-[40vh] sm:h-[50vh] lg:h-[60vh] min-h-[280px] sm:min-h-[400px]">
+      <div class="relative h-[30vh] sm:h-[50vh] lg:h-[60vh] min-h-[200px] sm:min-h-[400px]">
         <div class="absolute inset-0">
           <img
             :if={get_backdrop(@series) || @series.cover}
@@ -245,11 +245,11 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       </div>
       
     <!-- Content Section -->
-      <div class="relative -mt-24 sm:-mt-32 lg:-mt-40 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
+      <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
         <div class="max-w-7xl mx-auto">
-          <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
+          <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
             <!-- Poster -->
-            <div class="flex-shrink-0 w-32 sm:w-48 lg:w-72 mx-auto lg:mx-0">
+            <div class="flex-shrink-0 w-24 sm:w-48 lg:w-72 mx-auto lg:mx-0">
               <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                 <img
                   :if={@series.cover}
@@ -267,10 +267,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             </div>
             
     <!-- Info -->
-            <div class="flex-1 space-y-3 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
+            <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <!-- Title -->
               <div class="space-y-1 sm:space-y-2">
-                <h1 class="text-xl sm:text-3xl lg:text-5xl font-bold text-text-primary leading-tight">
+                <h1 class="text-lg sm:text-3xl lg:text-5xl font-bold text-text-primary leading-tight">
                   {@series.title || @series.name}
                 </h1>
                 <p
@@ -338,7 +338,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 <button
                   type="button"
                   phx-click="play_first_episode"
-                  class="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30 text-sm sm:text-base"
+                  class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30 text-xs sm:text-base"
                 >
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir
                 </button>
@@ -442,7 +442,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">
               Séries Similares
             </h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
+            <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 sm:gap-4">
               <.link
                 :for={similar <- @similar_series}
                 navigate={similar_series_path(@mode, @provider, similar)}
