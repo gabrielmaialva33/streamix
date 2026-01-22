@@ -739,9 +739,9 @@ defmodule StreamixWeb.HomeLive do
 
     cond do
       diff < 60 -> "agora"
-      diff < 3600 -> "#{div(diff, 60)} min"
-      diff < 86_400 -> "#{div(diff, 3600)} h"
-      diff < 604_800 -> "#{div(diff, 86_400)} dias"
+      diff < 3600 -> "há #{div(diff, 60)} min"
+      diff < 86_400 -> "há #{div(diff, 3600)} h"
+      diff < 604_800 -> "há #{div(diff, 86_400)} dias"
       true -> Calendar.strftime(datetime, "%d/%m")
     end
   end
