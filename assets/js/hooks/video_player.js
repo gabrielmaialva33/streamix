@@ -173,6 +173,7 @@ const VideoPlayer = {
     this.sourceType = this.el.dataset.sourceType || null;
     this.contentId = this.el.dataset.contentId;
     this.initialMode = this.el.dataset.streamingMode || null;
+    this.expectedDuration = parseInt(this.el.dataset.expectedDuration, 10) || 0;
 
     // Player instances
     this.streamLoader = null;
@@ -2367,10 +2368,21 @@ const VideoPlayer = {
   },
 
   getDuration() {
+    let duration = 0;
+
     if (this.usingAVPlayer && this.avPlayer) {
-      return this.avPlayer.getDuration();
+      duration = this.avPlayer.getDuration();
+    } else {
+      duration = this.video?.duration || 0;
     }
-    return this.video?.duration || 0;
+
+    // Sanity check: if duration is absurd (>12 hours), use expected duration from DB
+    const MAX_SANE_DURATION = 12 * 60 * 60; // 12 hours in seconds
+    if (duration > MAX_SANE_DURATION && this.expectedDuration > 0) {
+      return this.expectedDuration;
+    }
+
+    return duration;
   },
 
   isPaused() {

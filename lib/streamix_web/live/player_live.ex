@@ -218,6 +218,7 @@ defmodule StreamixWeb.PlayerLive do
         on_close="close_player"
         show_controls={true}
         next_episode={@next_episode}
+        expected_duration={Map.get(@content, :duration_secs, 0) || 0}
       />
     </div>
     """

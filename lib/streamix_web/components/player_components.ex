@@ -22,6 +22,7 @@ defmodule StreamixWeb.PlayerComponents do
   attr :show_controls, :boolean, default: true
   attr :provider_type, :string, default: nil
   attr :next_episode, :map, default: nil
+  attr :expected_duration, :integer, default: 0
 
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
@@ -57,6 +58,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-content-id={@content.id}
       data-streaming-mode={@streaming_mode}
       data-next-episode={@next_episode_json}
+      data-expected-duration={@expected_duration}
     >
       <%!-- Loading indicator --%>
       <div
