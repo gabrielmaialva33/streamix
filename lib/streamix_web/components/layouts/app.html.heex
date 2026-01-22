@@ -36,50 +36,10 @@
         <% end %>
       </div>
       
-<!-- Right side: Search & User -->
+<!-- Right side: User -->
       <div class="flex items-center gap-4">
         <%= if @current_scope do %>
-          <!-- Expandable Search (hidden on catalog pages which have their own search) -->
-          <%= unless String.starts_with?(@current_path || "", "/browse") do %>
-            <div class="flex items-center" id="header-search" phx-hook="HeaderSearch">
-              <button
-                type="button"
-                id="search-toggle"
-                class="p-2 text-text-secondary hover:text-text-primary transition-colors"
-                aria-label="Buscar"
-              >
-                <.icon name="hero-magnifying-glass" class="size-5" />
-              </button>
-
-              <div
-                id="search-input-container"
-                class="hidden items-center bg-surface border-b sm:border border-border sm:rounded-lg overflow-hidden fixed sm:relative inset-x-0 sm:inset-x-auto top-0 sm:top-auto h-14 sm:h-auto z-50 px-[4%] sm:px-0"
-              >
-                <.icon
-                  name="hero-magnifying-glass"
-                  class="size-5 text-text-secondary sm:ml-3 flex-shrink-0"
-                />
-                <form action={~p"/search"} method="get" class="flex items-center flex-1">
-                  <input
-                    type="text"
-                    name="q"
-                    id="header-search-input"
-                    placeholder="Títulos, pessoas, gêneros"
-                    class="w-full sm:w-64 px-3 py-2.5 sm:py-2 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-secondary/50"
-                  />
-                </form>
-                <button
-                  type="button"
-                  id="search-close"
-                  class="p-2.5 sm:p-2 text-text-secondary hover:text-text-primary touch-manipulation"
-                >
-                  <.icon name="hero-x-mark" class="size-6 sm:size-4" />
-                </button>
-              </div>
-            </div>
-          <% end %>
-          
-<!-- User dropdown -->
+          <!-- User dropdown -->
           <div class="relative" x-data="{ open: false }">
             <button
               type="button"
