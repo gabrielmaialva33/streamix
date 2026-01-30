@@ -7,6 +7,10 @@ defmodule Streamix.Application do
 
   @impl true
   def start(_type, _args) do
+    # Configure DNS resolution to avoid stale cache issues in containers
+    # The BEAM's default inet resolver can cache DNS indefinitely
+    configure_dns_resolver()
+
     children =
       [
         StreamixWeb.Telemetry,
@@ -23,11 +27,17 @@ defmodule Streamix.Application do
            touch_on_read: true
          ]},
         # HTTP connection pool for sync operations (high concurrency)
+        # conn_opts includes DNS cache timeout to avoid stale connections
         {Finch,
          name: Streamix.Finch,
          pools: %{
            # Default pool for API calls during sync
-           :default => [size: 50, count: 4]
+           # conn_max_idle_time forces connection refresh for DNS changes
+           :default => [
+             size: 50,
+             count: 4,
+             conn_max_idle_time: :timer.minutes(1)
+           ]
          }},
         {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Streamix.PubSub},
@@ -122,5 +132,28 @@ defmodule Streamix.Application do
 
   defp redis_url do
     System.get_env("REDIS_URL", "redis://localhost:6379")
+  end
+
+  # Configure Erlang's DNS resolver to avoid stale cache in containers
+  # This is critical for Cloudflare Workers endpoints that use anycast IPs
+  defp configure_dns_resolver do
+    # Use inet_res (native Erlang resolver) with short cache TTL
+    # instead of the default inet resolver which can cache indefinitely
+    :inet_db.set_lookup([:dns, :file, :native])
+
+    # Set DNS cache timeout to 60 seconds (default is infinity in some cases)
+    # This forces re-resolution for hostnames after TTL expires
+    :inet_db.set_cache_refresh(60_000)
+
+    # Clear any existing DNS cache on startup
+    :inet_db.clear_cache()
+
+    :ok
+  rescue
+    # If inet_db operations fail, log warning but don't crash
+    error ->
+      require Logger
+      Logger.warning("[DNS] Failed to configure resolver: #{inspect(error)}")
+      :ok
   end
 end

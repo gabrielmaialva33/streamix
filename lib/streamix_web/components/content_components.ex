@@ -842,9 +842,6 @@ defmodule StreamixWeb.ContentComponents do
       "Episódio #{Map.get(episode, :episode_num) || Map.get(episode, :num) || "?"}"
   end
 
-  defp pluralize(1, singular, _plural), do: "1 #{singular}"
-  defp pluralize(count, _singular, plural), do: "#{count} #{plural}"
-
   # Returns a valid image URL or nil
   defp get_image_url(stream_icon, cover) do
     cond do

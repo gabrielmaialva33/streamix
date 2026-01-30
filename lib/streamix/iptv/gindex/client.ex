@@ -306,6 +306,13 @@ defmodule Streamix.Iptv.Gindex.Client do
 
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
         Logger.warning("[GIndex] Request failed (attempt #{attempt + 1}): #{inspect(reason)}")
+
+        # On DNS resolution failure, clear the DNS cache before retry
+        # This forces fresh DNS lookup and avoids stale cache issues in containers
+        if reason in [:nxdomain, :timeout] do
+          :inet_db.clear_cache()
+        end
+
         Process.sleep(@retry_delay)
         do_request_with_retry(method, url, body, base_url, opts, attempt + 1, rate_limit_attempt)
 
