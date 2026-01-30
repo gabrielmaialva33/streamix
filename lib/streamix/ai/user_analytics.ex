@@ -24,7 +24,7 @@ defmodule Streamix.AI.UserAnalytics do
   require Logger
 
   alias Streamix.AI.{Embeddings, Qdrant}
-  alias Streamix.Iptv.{History, Movie, Channel}
+  alias Streamix.Iptv.{History, Movie, LiveChannel}
   alias Streamix.{Cache, Repo}
 
   import Ecto.Query
@@ -220,7 +220,7 @@ defmodule Streamix.AI.UserAnalytics do
       watched_ids = Enum.map(history, & &1.content_id)
 
       recommended =
-        Channel
+        LiveChannel
         |> where([c], c.category in ^top_categories)
         |> where([c], c.id not in ^watched_ids)
         |> order_by([c], asc: fragment("RANDOM()"))
