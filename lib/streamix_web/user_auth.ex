@@ -9,6 +9,7 @@ defmodule StreamixWeb.UserAuth do
 
   alias Streamix.Accounts
   alias Streamix.Accounts.Scope
+  alias Streamix.Accounts.IpTracker
 
   # Session validity: 60 days
   @max_age 60 * 60 * 24 * 60
@@ -27,8 +28,13 @@ defmodule StreamixWeb.UserAuth do
   disconnected on log out.
   """
   def log_in_user(conn, user, params \\ %{}) do
-    token = Accounts.generate_user_session_token(user)
+    # Capture IP and device info for the session
+    ip_info = IpTracker.get_request_info(conn)
+    token = Accounts.generate_user_session_token(user, ip_info)
     user_return_to = get_session(conn, :user_return_to)
+
+    # Log the login access asynchronously
+    IpTracker.log_access_async(conn, user.id)
 
     conn
     |> renew_session()

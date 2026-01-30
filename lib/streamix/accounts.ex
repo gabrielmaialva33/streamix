@@ -229,9 +229,10 @@ defmodule Streamix.Accounts do
 
   @doc """
   Generates a session token.
+  Optionally accepts ip_info map with :ip_address, :user_agent, :country, :city
   """
-  def generate_user_session_token(user) do
-    {token, user_token} = UserToken.build_session_token(user)
+  def generate_user_session_token(user, ip_info \\ %{}) do
+    {token, user_token} = UserToken.build_session_token(user, ip_info)
     Repo.insert!(user_token)
     token
   end

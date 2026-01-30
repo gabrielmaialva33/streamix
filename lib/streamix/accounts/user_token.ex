@@ -20,6 +20,10 @@ defmodule Streamix.Accounts.UserToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime
+    field :ip_address, :string
+    field :user_agent, :string
+    field :country, :string
+    field :city, :string
     belongs_to :user, Streamix.Accounts.User
 
     timestamps(type: :utc_datetime, updated_at: false)
@@ -44,10 +48,22 @@ defmodule Streamix.Accounts.UserToken do
   and devices in the UI and allow users to explicitly expire any
   session they deem invalid.
   """
-  def build_session_token(user) do
+  def build_session_token(user, ip_info \\ %{}) do
     token = :crypto.strong_rand_bytes(@rand_size)
     dt = user.authenticated_at || DateTime.utc_now(:second)
-    {token, %UserToken{token: token, context: "session", user_id: user.id, authenticated_at: dt}}
+
+    user_token = %UserToken{
+      token: token,
+      context: "session",
+      user_id: user.id,
+      authenticated_at: dt,
+      ip_address: Map.get(ip_info, :ip_address),
+      user_agent: Map.get(ip_info, :user_agent),
+      country: Map.get(ip_info, :country),
+      city: Map.get(ip_info, :city)
+    }
+
+    {token, user_token}
   end
 
   @doc """

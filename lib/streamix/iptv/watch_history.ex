@@ -21,6 +21,8 @@ defmodule Streamix.Iptv.WatchHistory do
     field :content_icon, :string
     field :parent_name, :string
     field :episode_info, :string
+    field :ip_address, :string
+    field :device_type, :string
 
     belongs_to :user, User
 
@@ -40,7 +42,9 @@ defmodule Streamix.Iptv.WatchHistory do
       :content_icon,
       :parent_name,
       :episode_info,
-      :user_id
+      :user_id,
+      :ip_address,
+      :device_type
     ])
     |> validate_required([:content_type, :content_id, :watched_at, :user_id])
     |> validate_inclusion(:content_type, @content_types)
