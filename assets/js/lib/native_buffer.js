@@ -202,26 +202,33 @@ export class NativeBufferManager {
    * Periodic health check
    */
   _checkHealth() {
-    if (!this.video || this.video.paused) return;
+    if (!this.video) return;
 
     const bufferAhead = this.getBufferedAhead();
     const health = this.getBufferHealth();
     const avgBandwidth = this.getAverageBandwidth();
+    const readyState = this.video.readyState;
+    const networkState = this.video.networkState;
 
-    log.debug(
-      `[NativeBuffer] Health: ${health}, buffer: ${bufferAhead.toFixed(1)}s, bw: ${(avgBandwidth / 1_000_000).toFixed(2)}Mbps`
-    );
+    // Only log if playing or has meaningful buffer
+    if (!this.video.paused || bufferAhead > 0) {
+      log.debug(
+        `Health: ${health}, buffer: ${bufferAhead.toFixed(1)}s, ready: ${readyState}, network: ${networkState}`
+      );
+    }
 
     this.onBufferHealthChange({
       health,
       bufferAhead,
       bandwidth: avgBandwidth,
       stallCount: this.stallCount,
+      readyState,
+      networkState,
     });
 
-    // Proactive recovery if buffer is critically low
-    if (health === BufferHealth.CRITICAL && !this.isRecovering) {
-      log.warn("[NativeBuffer] Critical buffer level detected");
+    // Proactive recovery if buffer is critically low and video is trying to play
+    if (health === BufferHealth.CRITICAL && !this.isRecovering && !this.video.paused) {
+      log.warn("Critical buffer level detected");
       // Don't auto-pause, just log - browser handles this natively
     }
   }
@@ -299,22 +306,41 @@ export class NativeBufferManager {
    * Get seconds buffered ahead of current time
    */
   getBufferedAhead() {
-    if (!this.video || !this.video.buffered.length) return 0;
+    if (!this.video) return 0;
+
+    const buffered = this.video.buffered;
+    if (!buffered || buffered.length === 0) return 0;
 
     const currentTime = this.video.currentTime;
     let bufferedAhead = 0;
 
-    for (let i = 0; i < this.video.buffered.length; i++) {
-      const start = this.video.buffered.start(i);
-      const end = this.video.buffered.end(i);
+    // Find the buffer range that contains current time
+    for (let i = 0; i < buffered.length; i++) {
+      const start = buffered.start(i);
+      const end = buffered.end(i);
 
-      if (currentTime >= start && currentTime <= end) {
+      // If current time is within this range
+      if (currentTime >= start - 0.5 && currentTime <= end) {
         bufferedAhead = end - currentTime;
+        break;
+      }
+      // If current time is before this range (buffered ahead)
+      if (currentTime < start && i === 0) {
+        bufferedAhead = 0;
         break;
       }
     }
 
-    return bufferedAhead;
+    // Also check the last buffer range (common for progressive MP4)
+    if (bufferedAhead === 0 && buffered.length > 0) {
+      const lastEnd = buffered.end(buffered.length - 1);
+      const lastStart = buffered.start(buffered.length - 1);
+      if (currentTime >= lastStart && currentTime <= lastEnd) {
+        bufferedAhead = lastEnd - currentTime;
+      }
+    }
+
+    return Math.max(0, bufferedAhead);
   }
 
   /**
