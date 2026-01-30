@@ -9,7 +9,8 @@
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
 import { streamLogger as log } from "./logger";
-import { getStreamingConfig } from "./streaming_config";
+import { getStreamingConfig, StreamingMode } from "./streaming_config";
+import { AdaptiveBufferManager } from "./adaptive_buffer";
 
 /**
  * Stream type detection from URL
@@ -125,6 +126,9 @@ export class StreamLoader {
     this.hls = null;
     this.mpegtsPlayer = null;
 
+    // Adaptive buffer manager (for ADAPTIVE mode)
+    this.adaptiveBufferManager = null;
+
     // Callbacks
     this.onManifestParsed = options.onManifestParsed || (() => {});
     this.onError = options.onError || (() => {});
@@ -148,8 +152,13 @@ export class StreamLoader {
 
     const config = getStreamingConfig(this.streamingMode);
 
+    // Remove internal _adaptive config before passing to HLS.js
+    const hlsConfig = { ...config.hls };
+    const adaptiveConfig = hlsConfig._adaptive;
+    delete hlsConfig._adaptive;
+
     this.hls = new Hls({
-      ...config.hls,
+      ...hlsConfig,
       xhrSetup: (xhr) => {
         xhr.withCredentials = false;
       },
@@ -157,6 +166,13 @@ export class StreamLoader {
 
     this.hls.loadSource(url);
     this.hls.attachMedia(this.video);
+
+    // Initialize Adaptive Buffer Manager for ADAPTIVE mode
+    if (this.streamingMode === StreamingMode.ADAPTIVE && adaptiveConfig) {
+      this.adaptiveBufferManager = new AdaptiveBufferManager(this.hls, adaptiveConfig);
+      this.adaptiveBufferManager.start();
+      log.info("[StreamLoader] Adaptive buffer management enabled");
+    }
 
     // Track bandwidth
     this.hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
@@ -420,6 +436,12 @@ export class StreamLoader {
    * Destroy all players
    */
   destroy() {
+    // Stop adaptive buffer manager first
+    if (this.adaptiveBufferManager) {
+      this.adaptiveBufferManager.stop();
+      this.adaptiveBufferManager = null;
+    }
+
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
@@ -432,6 +454,16 @@ export class StreamLoader {
       this.mpegtsPlayer.destroy();
       this.mpegtsPlayer = null;
     }
+  }
+
+  /**
+   * Get adaptive buffer status (for debugging/UI)
+   */
+  getAdaptiveBufferStatus() {
+    if (this.adaptiveBufferManager) {
+      return this.adaptiveBufferManager.getStatus();
+    }
+    return null;
   }
 }
 

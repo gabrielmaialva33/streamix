@@ -326,10 +326,15 @@ defmodule StreamixWeb.PlayerLive do
     })
   end
 
+  # Streaming mode selection:
+  # - live_channel: balanced (good latency + stability)
+  # - VOD (movies, episodes): adaptive (intelligent buffering)
   defp default_streaming_mode("live_channel"), do: :balanced
-  defp default_streaming_mode("gindex"), do: :quality
-  defp default_streaming_mode("gindex_episode"), do: :quality
-  defp default_streaming_mode(_), do: :quality
+  defp default_streaming_mode("gindex"), do: :adaptive
+  defp default_streaming_mode("gindex_episode"), do: :adaptive
+  defp default_streaming_mode("movie"), do: :adaptive
+  defp default_streaming_mode("episode"), do: :adaptive
+  defp default_streaming_mode(_), do: :adaptive
 
   defp content_title(content, "live_channel"), do: content.name
   defp content_title(content, "movie"), do: content.title || content.name

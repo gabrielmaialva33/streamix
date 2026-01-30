@@ -11,6 +11,7 @@ export const StreamingMode = {
   LOW_LATENCY: "low_latency",
   BALANCED: "balanced",
   QUALITY: "quality",
+  ADAPTIVE: "adaptive", // New: Intelligent adaptive buffering
 };
 
 export const ContentType = {
@@ -153,6 +154,73 @@ export const StreamingProfiles = {
       lazyLoadMaxDuration: 60,
       lazyLoadRecoverDuration: 30,
       accurateSeek: true, // Accurate seeking for VOD
+      seekType: "range",
+    },
+  },
+
+  // NEW: Adaptive mode - intelligent buffering that adjusts based on network conditions
+  [StreamingMode.ADAPTIVE]: {
+    name: "Adaptive",
+    description: "Intelligent buffering: fast start, adapts to network conditions",
+    hls: {
+      lowLatencyMode: false,
+      // Start with moderate buffer for fast playback start
+      maxBufferLength: 30, // Start with 30s, will adapt
+      maxBufferSize: 40 * 1000 * 1000, // 40MB initial
+      maxMaxBufferLength: 60, // Can grow to 60s if network is good
+      backBufferLength: 30, // Keep 30s behind for seeking
+      maxFragLookUpTolerance: 0.1, // Smooth seeking
+
+      // ABR settings - responsive but stable
+      abrBandWidthFactor: 0.85, // Use 85% of measured bandwidth
+      abrBandWidthUpFactor: 0.6, // Be cautious upgrading quality
+      abrEwmaDefaultEstimate: 1000000, // Start assuming 1Mbps
+      abrEwmaFastLive: 3.0, // Fast adaptation window
+      abrEwmaSlowLive: 9.0, // Slow adaptation window
+
+      // Fragment loading - balanced timeouts
+      fragLoadingTimeOut: 15000,
+      fragLoadingMaxRetry: 4,
+      fragLoadingRetryDelay: 1000,
+
+      // Level loading
+      levelLoadingTimeOut: 10000,
+      levelLoadingMaxRetry: 4,
+      levelLoadingRetryDelay: 500,
+
+      // Buffer stall prevention
+      maxBufferHole: 0.3, // Smaller holes tolerated
+      highBufferWatchdogPeriod: 2, // Check buffer health every 2s
+      nudgeMaxRetry: 5, // Retry nudging on stall
+
+      // Other
+      startLevel: -1, // Auto quality
+      enableWorker: true,
+      progressive: true, // Progressive loading for smoother start
+
+      // Adaptive-specific: these are used by AdaptiveBufferManager
+      _adaptive: {
+        minBuffer: 15, // Minimum buffer (never go below)
+        maxBuffer: 60, // Maximum buffer (never exceed)
+        targetBuffer: 30, // Target buffer level
+        stallThreshold: 3, // Reduce buffer after N stalls
+        goodNetworkThreshold: 2000000, // 2Mbps = good network
+        bufferGrowthRate: 5, // Grow buffer by 5s when network is good
+        bufferShrinkRate: 10, // Shrink buffer by 10s on stall
+      },
+    },
+    mpegts: {
+      enableWorker: true,
+      enableStashBuffer: true,
+      stashInitialSize: 384 * 1024, // 384KB balanced
+      autoCleanupSourceBuffer: true,
+      autoCleanupMaxBackwardDuration: 45,
+      autoCleanupMinBackwardDuration: 20,
+      liveBufferLatencyChasing: false,
+      lazyLoad: true,
+      lazyLoadMaxDuration: 45,
+      lazyLoadRecoverDuration: 20,
+      accurateSeek: true,
       seekType: "range",
     },
   },
