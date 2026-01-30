@@ -377,17 +377,9 @@ defmodule Streamix.AI.UserAnalytics do
 
   Returns list of {value, label} tuples for dropdown.
   """
-  def get_user_genre_filters(user_id) do
-    base_genres = [
-      {"all", "Todos"},
-      {"action", "Ação"},
-      {"comedy", "Comédia"},
-      {"drama", "Drama"},
-      {"horror", "Terror"},
-      {"sci-fi", "Ficção"},
-      {"animation", "Animação"}
-    ]
+  def get_user_genre_filters(nil), do: default_genre_filters()
 
+  def get_user_genre_filters(user_id) do
     case get_user_insights(user_id) do
       %{favorite_genres: genres} when is_list(genres) and length(genres) > 0 ->
         # Prioritize user's favorite genres
@@ -399,8 +391,20 @@ defmodule Streamix.AI.UserAnalytics do
         [{"all", "Todos"}] ++ user_genres ++ [{"more", "Mais..."}]
 
       _ ->
-        base_genres
+        default_genre_filters()
     end
+  end
+
+  defp default_genre_filters do
+    [
+      {"all", "Todos"},
+      {"action", "Ação"},
+      {"comedy", "Comédia"},
+      {"drama", "Drama"},
+      {"horror", "Terror"},
+      {"sci-fi", "Ficção"},
+      {"animation", "Animação"}
+    ]
   end
 
   @doc """
