@@ -4,7 +4,13 @@ defmodule Streamix.Iptv.TmdbClient do
 
   Used to fetch enriched movie metadata like synopsis, cast, crew,
   trailers, and high-quality images.
+
+  All API calls are cached in Redis (L2) with in-memory L1 layer:
+  - Movie/Series metadata: 24h TTL (static content)
+  - Search results: 1h TTL (may change)
   """
+
+  alias Streamix.Cache
 
   @base_url "https://api.themoviedb.org/3"
   @image_base_url "https://tmdb.mahina.cloud/t/p"
@@ -21,6 +27,8 @@ defmodule Streamix.Iptv.TmdbClient do
   Fetches movie details from TMDB by movie ID.
   Returns {:ok, movie_data} or {:error, reason}.
 
+  Results are cached in Redis for 24h.
+
   The movie_data includes:
   - overview (synopsis)
   - credits (cast, crew)
@@ -31,10 +39,12 @@ defmodule Streamix.Iptv.TmdbClient do
   """
   def get_movie(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
-      url =
-        "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
+      Cache.fetch_tmdb_movie(tmdb_id, fn ->
+        url =
+          "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
 
-      do_request(url)
+        do_request(url)
+      end)
     else
       {:error, :tmdb_not_configured}
     end
@@ -42,13 +52,16 @@ defmodule Streamix.Iptv.TmdbClient do
 
   @doc """
   Fetches TV series details from TMDB by series ID.
+  Results are cached in Redis for 24h.
   """
   def get_series(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
-      url =
-        "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
+      Cache.fetch_tmdb_series(tmdb_id, fn ->
+        url =
+          "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
 
-      do_request(url)
+        do_request(url)
+      end)
     else
       {:error, :tmdb_not_configured}
     end
@@ -56,13 +69,16 @@ defmodule Streamix.Iptv.TmdbClient do
 
   @doc """
   Fetches a season with all episodes from TMDB.
+  Results are cached in Redis for 24h.
   Returns episode details including overview, still_path, air_date, runtime.
   """
   def get_season(series_tmdb_id, season_number)
       when (is_binary(series_tmdb_id) or is_integer(series_tmdb_id)) and is_integer(season_number) do
     if enabled?() do
-      url = "#{@base_url}/tv/#{series_tmdb_id}/season/#{season_number}?language=pt-BR"
-      do_request(url)
+      Cache.fetch_tmdb_season(series_tmdb_id, season_number, fn ->
+        url = "#{@base_url}/tv/#{series_tmdb_id}/season/#{season_number}?language=pt-BR"
+        do_request(url)
+      end)
     else
       {:error, :tmdb_not_configured}
     end
@@ -70,20 +86,23 @@ defmodule Streamix.Iptv.TmdbClient do
 
   @doc """
   Searches for a movie by title and optionally year.
+  Results are cached in Redis for 1h.
   """
   def search_movie(query, opts \\ []) do
     if enabled?() do
-      year = opts[:year]
-      query_encoded = URI.encode_www_form(query)
+      Cache.fetch_tmdb_search_movie(query, opts, fn ->
+        year = opts[:year]
+        query_encoded = URI.encode_www_form(query)
 
-      url =
-        if year do
-          "#{@base_url}/search/movie?query=#{query_encoded}&year=#{year}&language=pt-BR"
-        else
-          "#{@base_url}/search/movie?query=#{query_encoded}&language=pt-BR"
-        end
+        url =
+          if year do
+            "#{@base_url}/search/movie?query=#{query_encoded}&year=#{year}&language=pt-BR"
+          else
+            "#{@base_url}/search/movie?query=#{query_encoded}&language=pt-BR"
+          end
 
-      do_request(url)
+        do_request(url)
+      end)
     else
       {:error, :tmdb_not_configured}
     end
@@ -91,21 +110,24 @@ defmodule Streamix.Iptv.TmdbClient do
 
   @doc """
   Searches for a TV series by title and optionally year.
+  Results are cached in Redis for 1h.
   Returns {:ok, results} or {:error, reason}.
   """
   def search_series(query, opts \\ []) do
     if enabled?() do
-      year = opts[:year]
-      query_encoded = URI.encode_www_form(query)
+      Cache.fetch_tmdb_search_series(query, opts, fn ->
+        year = opts[:year]
+        query_encoded = URI.encode_www_form(query)
 
-      url =
-        if year do
-          "#{@base_url}/search/tv?query=#{query_encoded}&first_air_date_year=#{year}&language=pt-BR"
-        else
-          "#{@base_url}/search/tv?query=#{query_encoded}&language=pt-BR"
-        end
+        url =
+          if year do
+            "#{@base_url}/search/tv?query=#{query_encoded}&first_air_date_year=#{year}&language=pt-BR"
+          else
+            "#{@base_url}/search/tv?query=#{query_encoded}&language=pt-BR"
+          end
 
-      do_request(url)
+        do_request(url)
+      end)
     else
       {:error, :tmdb_not_configured}
     end

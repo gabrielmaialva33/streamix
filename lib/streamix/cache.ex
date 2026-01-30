@@ -176,6 +176,34 @@ defmodule Streamix.Cache do
   def epg_now_key(provider_id, epg_channel_id),
     do: "epg:now:#{provider_id}:#{epg_channel_id}"
 
+  @doc "Cache key for TMDB movie metadata"
+  @spec tmdb_movie_key(integer() | String.t()) :: String.t()
+  def tmdb_movie_key(tmdb_id), do: "tmdb:movie:#{tmdb_id}"
+
+  @doc "Cache key for TMDB series metadata"
+  @spec tmdb_series_key(integer() | String.t()) :: String.t()
+  def tmdb_series_key(tmdb_id), do: "tmdb:series:#{tmdb_id}"
+
+  @doc "Cache key for TMDB season metadata"
+  @spec tmdb_season_key(integer() | String.t(), integer()) :: String.t()
+  def tmdb_season_key(series_id, season_num), do: "tmdb:season:#{series_id}:#{season_num}"
+
+  @doc "Cache key for TMDB movie search"
+  @spec tmdb_search_movie_key(String.t(), Keyword.t()) :: String.t()
+  def tmdb_search_movie_key(query, opts) do
+    year = opts[:year]
+    hash = :erlang.phash2({query, year})
+    "tmdb:search:movie:#{hash}"
+  end
+
+  @doc "Cache key for TMDB series search"
+  @spec tmdb_search_series_key(String.t(), Keyword.t()) :: String.t()
+  def tmdb_search_series_key(query, opts) do
+    year = opts[:year]
+    hash = :erlang.phash2({query, year})
+    "tmdb:search:series:#{hash}"
+  end
+
   # =============================================================================
   # High-Level Caching Functions
   # =============================================================================
@@ -198,6 +226,36 @@ defmodule Streamix.Cache do
   @doc "Gets or computes featured content (cached daily)"
   def fetch_featured(fun) do
     fetch(featured_key(), @featured_ttl, fun)
+  end
+
+  # TMDB metadata is static, cache for 24h
+  @tmdb_ttl 24 * 3600
+  # Search results may change, cache for 1h
+  @tmdb_search_ttl 3600
+
+  @doc "Gets or computes TMDB movie metadata"
+  def fetch_tmdb_movie(tmdb_id, fun) do
+    fetch(tmdb_movie_key(tmdb_id), @tmdb_ttl, fun)
+  end
+
+  @doc "Gets or computes TMDB series metadata"
+  def fetch_tmdb_series(tmdb_id, fun) do
+    fetch(tmdb_series_key(tmdb_id), @tmdb_ttl, fun)
+  end
+
+  @doc "Gets or computes TMDB season metadata"
+  def fetch_tmdb_season(series_id, season_num, fun) do
+    fetch(tmdb_season_key(series_id, season_num), @tmdb_ttl, fun)
+  end
+
+  @doc "Gets or computes TMDB movie search results"
+  def fetch_tmdb_search_movie(query, opts, fun) do
+    fetch(tmdb_search_movie_key(query, opts), @tmdb_search_ttl, fun)
+  end
+
+  @doc "Gets or computes TMDB series search results"
+  def fetch_tmdb_search_series(query, opts, fun) do
+    fetch(tmdb_search_series_key(query, opts), @tmdb_search_ttl, fun)
   end
 
   # =============================================================================
