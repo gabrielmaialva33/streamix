@@ -484,7 +484,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             </div>
 
             <div class="space-y-3 sm:space-y-4">
-              <.season_accordion
+              <.render_season_accordion
                 :for={season <- @seasons}
                 season={season}
                 expanded={MapSet.member?(@expanded_seasons, season.id)}
@@ -497,7 +497,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     """
   end
 
-  defp season_accordion(assigns) do
+  defp render_season_accordion(assigns) do
     episodes = Enum.sort_by(assigns.season.episodes || [], & &1.episode_num)
     assigns = assign(assigns, :episodes, episodes)
 

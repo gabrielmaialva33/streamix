@@ -254,14 +254,15 @@ export class PlayerUI {
    * - Red: <30s buffer (may stall soon)
    */
   updateBufferHealthIndicator(bufferSeconds) {
-    let indicator = this.container.querySelector('#buffer-health');
+    let indicator = this.container.querySelector("#buffer-health");
 
     // Create indicator if it doesn't exist
     if (!indicator) {
-      indicator = document.createElement('div');
-      indicator.id = 'buffer-health';
-      indicator.className = 'absolute top-2 left-2 px-1.5 py-0.5 rounded text-xs font-medium opacity-0 transition-opacity duration-300 pointer-events-none';
-      indicator.setAttribute('aria-hidden', 'true');
+      indicator = document.createElement("div");
+      indicator.id = "buffer-health";
+      indicator.className =
+        "absolute top-2 left-2 px-1.5 py-0.5 rounded text-xs font-medium opacity-0 transition-opacity duration-300 pointer-events-none";
+      indicator.setAttribute("aria-hidden", "true");
 
       // Insert into controls
       const controls = this.elements.controls;
@@ -274,27 +275,27 @@ export class PlayerUI {
     let color, label, showIndicator;
 
     if (bufferSeconds >= 60) {
-      color = 'bg-green-500/80';
+      color = "bg-green-500/80";
       label = `${Math.round(bufferSeconds)}s`;
       showIndicator = false; // Hide when healthy
     } else if (bufferSeconds >= 30) {
-      color = 'bg-yellow-500/80';
+      color = "bg-yellow-500/80";
       label = `${Math.round(bufferSeconds)}s`;
       showIndicator = true;
     } else if (bufferSeconds > 0) {
-      color = 'bg-red-500/80';
+      color = "bg-red-500/80";
       label = `${Math.round(bufferSeconds)}s`;
       showIndicator = true;
     } else {
-      color = 'bg-red-500/80';
-      label = 'Buffering...';
+      color = "bg-red-500/80";
+      label = "Buffering...";
       showIndicator = true;
     }
 
     // Update indicator
     indicator.textContent = label;
     indicator.className = `absolute top-2 left-2 px-1.5 py-0.5 rounded text-xs font-medium text-white transition-opacity duration-300 pointer-events-none ${color}`;
-    indicator.style.opacity = showIndicator ? '1' : '0';
+    indicator.style.opacity = showIndicator ? "1" : "0";
   }
 
   formatTime(seconds) {

@@ -249,3 +249,161 @@ export function findQualityLevel(levels, targetHeight) {
 
   return bestMatch;
 }
+
+/**
+ * Codec-specific streaming profiles
+ * Optimized bitrate targets based on codec efficiency
+ */
+export const CodecProfiles = {
+  av1: {
+    name: "AV1",
+    efficiency: 0.5, // 50% of H.264 bitrate for same quality
+    maxBitrates: {
+      2160: 12000, // 4K
+      1080: 4500, // 1080p
+      720: 2500, // 720p
+      480: 1200, // 480p
+    },
+    preferHardwareAcceleration: true,
+    hlsOverrides: {
+      // AV1 decoding is heavy, use larger buffers
+      maxBufferLength: 120,
+      maxBufferSize: 120 * 1000 * 1000, // 120MB
+    },
+  },
+  hevc: {
+    name: "HEVC/H.265",
+    efficiency: 0.6, // 60% of H.264 bitrate
+    maxBitrates: {
+      2160: 15000,
+      1080: 6000,
+      720: 3500,
+      480: 1500,
+    },
+    preferHardwareAcceleration: true,
+    hlsOverrides: {
+      maxBufferLength: 90,
+      maxBufferSize: 90 * 1000 * 1000,
+    },
+  },
+  vp9: {
+    name: "VP9",
+    efficiency: 0.65,
+    maxBitrates: {
+      2160: 16000,
+      1080: 6500,
+      720: 3800,
+      480: 1700,
+    },
+    preferHardwareAcceleration: true,
+    hlsOverrides: {},
+  },
+  h264: {
+    name: "H.264/AVC",
+    efficiency: 1.0, // Baseline
+    maxBitrates: {
+      2160: 25000,
+      1080: 8000,
+      720: 5000,
+      480: 2500,
+    },
+    preferHardwareAcceleration: false, // Always hardware accelerated
+    hlsOverrides: {},
+  },
+};
+
+/**
+ * Advanced feature flags for experimental APIs
+ */
+export const FeatureFlags = {
+  // WebCodecs API (Chrome 94+)
+  webCodecs: {
+    enabled: true, // Enable feature detection
+    preferHardwareAcceleration: true,
+    fallbackToSoftware: true,
+  },
+
+  // MSE in Workers (Firefox 130+, Chrome 108+)
+  mseWorkers: {
+    enabled: true,
+    offloadParsing: true, // Offload HLS.js parsing to worker
+    useTransferables: true, // Use Transferable objects for data
+  },
+
+  // Codec Priority
+  codecPriority: {
+    enabled: true,
+    preferEfficient: true, // Prefer AV1/HEVC over H.264
+    adaptToNetwork: true, // Switch codecs based on network
+    adaptToDevice: true, // Consider device capabilities
+  },
+
+  // Advanced ABR
+  advancedABR: {
+    enabled: true,
+    useCodecEfficiency: true, // Factor codec efficiency into ABR
+    bandwidthEstimation: "ewma", // 'ewma' or 'sliding'
+    safetyFactor: 0.8, // Use 80% of estimated bandwidth
+  },
+};
+
+/**
+ * Get codec-optimized HLS config
+ * @param {string} mode - Streaming mode
+ * @param {string} codec - Detected/preferred codec
+ * @returns {object} Optimized config
+ */
+export function getCodecOptimizedConfig(mode, codec) {
+  const baseConfig = getStreamingConfig(mode);
+  const codecProfile = CodecProfiles[codec];
+
+  if (!codecProfile) {
+    return baseConfig;
+  }
+
+  return {
+    ...baseConfig,
+    hls: {
+      ...baseConfig.hls,
+      ...codecProfile.hlsOverrides,
+    },
+    codec: {
+      name: codec,
+      efficiency: codecProfile.efficiency,
+      maxBitrates: codecProfile.maxBitrates,
+    },
+  };
+}
+
+/**
+ * Determine if experimental features should be used
+ * @param {Object} capabilities - Device capabilities from codec_detector
+ * @returns {Object} Feature recommendations
+ */
+export function getFeatureRecommendations(capabilities) {
+  const recommendations = {
+    useWebCodecs: false,
+    useMSEWorkers: false,
+    preferAV1: false,
+    preferHEVC: false,
+  };
+
+  // WebCodecs: only if supported and hardware acceleration available
+  if (capabilities?.webcodecs?.supported && FeatureFlags.webCodecs.enabled) {
+    recommendations.useWebCodecs = true;
+  }
+
+  // MSE Workers: only if supported
+  if (capabilities?.mseWorkers?.supported && FeatureFlags.mseWorkers.enabled) {
+    recommendations.useMSEWorkers = true;
+  }
+
+  // Codec preference based on support and efficiency
+  if (capabilities?.video?.av1?.supported && FeatureFlags.codecPriority.preferEfficient) {
+    recommendations.preferAV1 = true;
+  } else if (capabilities?.video?.hevc?.supported && FeatureFlags.codecPriority.preferEfficient) {
+    recommendations.preferHEVC = true;
+  }
+
+  return recommendations;
+}

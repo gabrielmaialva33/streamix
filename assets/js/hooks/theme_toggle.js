@@ -26,5 +26,5 @@ export default {
       // Dispatch event for other components (if needed)
       window.dispatchEvent(new CustomEvent("theme-change", { detail: { theme } }));
     });
-  }
+  },
 };

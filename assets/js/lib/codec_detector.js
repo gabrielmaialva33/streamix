@@ -230,6 +230,78 @@ export async function detectHardwareAcceleration() {
 }
 
 /**
+ * Check WebCodecs API support
+ * Chrome 94+, hardware-accelerated video decoding
+ */
+export function detectWebCodecsSupport() {
+  const supported = typeof VideoDecoder !== "undefined" && typeof VideoEncoder !== "undefined";
+
+  return {
+    supported,
+    features: {
+      videoDecoder: typeof VideoDecoder !== "undefined",
+      videoEncoder: typeof VideoEncoder !== "undefined",
+      videoFrame: typeof VideoFrame !== "undefined",
+      encodedVideoChunk: typeof EncodedVideoChunk !== "undefined",
+      audioDecoder: typeof AudioDecoder !== "undefined",
+      audioEncoder: typeof AudioEncoder !== "undefined",
+    },
+  };
+}
+
+/**
+ * Check MSE in Workers support
+ * Firefox 130+, Chrome 108+
+ */
+export function detectMSEWorkersSupport() {
+  const mseInWorkers =
+    typeof MediaSource !== "undefined" && MediaSource.canConstructInDedicatedWorker === true;
+
+  return {
+    supported: mseInWorkers,
+    features: {
+      dedicatedWorker: typeof Worker !== "undefined",
+      sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
+      atomics: typeof Atomics !== "undefined",
+      transferableStreams:
+        typeof ReadableStream !== "undefined" && typeof MessageChannel !== "undefined",
+      offscreenCanvas: typeof OffscreenCanvas !== "undefined",
+    },
+  };
+}
+
+/**
+ * Check advanced streaming features
+ */
+export function detectAdvancedStreamingFeatures() {
+  return {
+    // Media Capabilities API (better than canPlayType)
+    mediaCapabilities: "mediaCapabilities" in navigator,
+
+    // Managed MediaSource (Chrome 121+)
+    managedMediaSource: typeof ManagedMediaSource !== "undefined",
+
+    // Encrypted Media Extensions
+    eme: "requestMediaKeySystemAccess" in navigator,
+
+    // Media Session API (for controls)
+    mediaSession: "mediaSession" in navigator,
+
+    // Remote Playback API
+    remotePlayback: "remote" in HTMLMediaElement.prototype,
+
+    // Picture-in-Picture
+    pictureInPicture: "pictureInPictureEnabled" in document,
+
+    // Document Picture-in-Picture (Chrome 116+)
+    documentPiP: "documentPictureInPicture" in window,
+
+    // Autoplay Policy
+    autoplayPolicy: "getAutoplayPolicy" in navigator,
+  };
+}
+
+/**
  * Get full codec capability report
  * This can be sent to the backend for optimal stream selection
  */
@@ -241,12 +313,25 @@ export async function getCodecCapabilityReport() {
     audio: detectAudioCodecs(),
     hdr: detectHDRSupport(),
     mse: detectMSESupport(),
+    webcodecs: detectWebCodecsSupport(),
+    mseWorkers: detectMSEWorkersSupport(),
+    advancedFeatures: detectAdvancedStreamingFeatures(),
     drm,
     hardware,
     browser: {
       userAgent: navigator.userAgent,
       platform: navigator.platform,
       vendor: navigator.vendor,
+      deviceMemory: navigator.deviceMemory || null,
+      hardwareConcurrency: navigator.hardwareConcurrency || null,
+      connection: navigator.connection
+        ? {
+            effectiveType: navigator.connection.effectiveType,
+            downlink: navigator.connection.downlink,
+            rtt: navigator.connection.rtt,
+            saveData: navigator.connection.saveData,
+          }
+        : null,
     },
     timestamp: Date.now(),
   };
@@ -304,6 +389,9 @@ export default {
   detectAudioCodecs,
   detectHDRSupport,
   detectMSESupport,
+  detectWebCodecsSupport,
+  detectMSEWorkersSupport,
+  detectAdvancedStreamingFeatures,
   detectDRMSupport,
   detectHardwareAcceleration,
   getCodecCapabilityReport,

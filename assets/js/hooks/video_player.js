@@ -1,6 +1,7 @@
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
-import { getCapabilitySummary } from "../lib/codec_detector";
+import { getCapabilitySummary, getCodecCapabilityReport } from "../lib/codec_detector";
+import { CodecAwareABR, getCodecRecommendation, selectOptimalQuality } from "../lib/codec_priority";
 import { createErrorReport, detectErrorPatterns, formatErrorForLog } from "../lib/error_telemetry";
 import { KeyboardManager } from "../lib/keyboard_manager";
 import { playerLogger as log, setErrorReporter } from "../lib/logger";
@@ -21,8 +22,17 @@ import {
 } from "../lib/player_preferences";
 import { PlayerUI } from "../lib/player_ui";
 import { getFileExtension, getStreamType, StreamLoader } from "../lib/stream_loader";
-import { ContentType, getStreamingConfig, selectStreamingMode } from "../lib/streaming_config";
+import {
+  ContentType,
+  FeatureFlags,
+  getCodecOptimizedConfig,
+  getFeatureRecommendations,
+  getStreamingConfig,
+  selectStreamingMode,
+} from "../lib/streaming_config";
 import { linearToPerceived, perceivedToLinear } from "../lib/volume_utils";
+import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../lib/webcodecs_decoder";
+import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../lib/worker_mse";
 
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
@@ -152,14 +162,121 @@ const VideoPlayer = {
         );
       }
 
+      // Detect advanced capabilities
+      const advancedCapabilities = await this.detectAdvancedCapabilities();
+
       // Send capabilities to backend for analytics
       this.pushEvent("device_diagnostics", {
         quick: quickDiag,
         capabilities: getCapabilitySummary(),
+        advanced: advancedCapabilities,
       });
+
+      // Initialize codec-aware ABR if supported
+      if (advancedCapabilities.codecRecommendation) {
+        this.initCodecAwareABR(advancedCapabilities.codecRecommendation);
+      }
     } catch (e) {
       log.debug("[VideoPlayer] Startup diagnostics failed (non-critical):", e);
     }
+  },
+
+  /**
+   * Detect advanced streaming capabilities
+   * WebCodecs, MSE Workers, codec priority
+   */
+  async detectAdvancedCapabilities() {
+    const capabilities = {
+      webCodecs: {
+        supported: isWebCodecsSupported(),
+        report: null,
+      },
+      mseWorkers: {
+        supported: isMSEInWorkersSupported(),
+        report: getMSEWorkerCapabilityReport(),
+      },
+      codecRecommendation: null,
+      featureRecommendations: null,
+    };
+
+    // Get detailed WebCodecs report if supported
+    if (capabilities.webCodecs.supported) {
+      try {
+        capabilities.webCodecs.report = await getWebCodecsCapabilityReport();
+        log.debug("[VideoPlayer] WebCodecs available:", capabilities.webCodecs.report);
+      } catch (e) {
+        log.debug("[VideoPlayer] WebCodecs report failed:", e.message);
+      }
+    }
+
+    // Get codec recommendation
+    try {
+      const networkInfo = navigator.connection;
+      capabilities.codecRecommendation = await getCodecRecommendation({
+        networkQuality: this.getNetworkQualityFromInfo(networkInfo),
+        deviceMemory: navigator.deviceMemory || 4,
+        cpuCores: navigator.hardwareConcurrency || 4,
+      });
+      log.debug("[VideoPlayer] Codec recommendation:", capabilities.codecRecommendation);
+    } catch (e) {
+      log.debug("[VideoPlayer] Codec recommendation failed:", e.message);
+    }
+
+    // Get feature recommendations
+    try {
+      const fullReport = await getCodecCapabilityReport();
+      capabilities.featureRecommendations = getFeatureRecommendations(fullReport);
+      log.debug("[VideoPlayer] Feature recommendations:", capabilities.featureRecommendations);
+
+      // Log experimental feature availability
+      if (capabilities.featureRecommendations.useWebCodecs) {
+        log.debug("[VideoPlayer] WebCodecs hardware acceleration available");
+      }
+      if (capabilities.featureRecommendations.useMSEWorkers) {
+        log.debug("[VideoPlayer] MSE in Workers available - smoother UI during buffering");
+      }
+      if (capabilities.featureRecommendations.preferAV1) {
+        log.debug("[VideoPlayer] AV1 codec available - 30% bandwidth savings possible");
+      }
+    } catch (e) {
+      log.debug("[VideoPlayer] Feature recommendations failed:", e.message);
+    }
+
+    return capabilities;
+  },
+
+  /**
+   * Convert Network Information API data to quality string
+   */
+  getNetworkQualityFromInfo(networkInfo) {
+    if (!networkInfo) return "good";
+
+    const effectiveType = networkInfo.effectiveType;
+    switch (effectiveType) {
+      case "slow-2g":
+      case "2g":
+        return "poor";
+      case "3g":
+        return "good";
+      case "4g":
+        return "excellent";
+      default:
+        return "good";
+    }
+  },
+
+  /**
+   * Initialize codec-aware ABR controller
+   */
+  initCodecAwareABR(recommendation) {
+    if (!FeatureFlags.advancedABR.enabled) return;
+
+    this.codecABR = new CodecAwareABR({
+      initialCodec: recommendation.codec,
+      safetyFactor: FeatureFlags.advancedABR.safetyFactor,
+    });
+
+    log.debug("[VideoPlayer] Codec-aware ABR initialized with", recommendation.codec);
   },
 
   initializeState() {
@@ -234,6 +351,11 @@ const VideoPlayer = {
     this.nextEpisodeShown = false;
     this.nextEpisodeCountdown = null;
     this.nextEpisodePreloader = null;
+
+    // Advanced features state
+    this.codecABR = null; // Codec-aware ABR controller
+    this.advancedCapabilities = null; // Cached advanced capabilities
+    this.preferredCodec = null; // User/auto selected codec preference
   },
 
   /**
@@ -344,6 +466,16 @@ const VideoPlayer = {
 
   setQuality(levelIndex) {
     if (this.streamLoader) {
+      // Use codec-aware ABR for auto quality selection
+      if (levelIndex === -1 && this.codecABR && FeatureFlags.advancedABR.enabled) {
+        const suggestion = this.codecABR.suggestQuality(this.availableQualities);
+        log.debug("[VideoPlayer] Codec ABR suggests:", suggestion.reason);
+        // Let HLS.js handle auto, but log the suggestion
+        this.pushEvent("codec_abr_suggestion", {
+          suggestedLevel: suggestion.levelIndex,
+          reason: suggestion.reason,
+        });
+      }
       this.streamLoader.setQuality(levelIndex);
     }
     this.manualQuality = levelIndex === -1 ? null : levelIndex;
@@ -362,14 +494,42 @@ const VideoPlayer = {
     this.availableQualities = this.streamLoader.getQualityLevels();
     const currentLevel = this.streamLoader.getCurrentLevel();
 
-    this.playerUI.updateQualityOptions(this.availableQualities, currentLevel, (level) =>
+    // Enhance quality list with codec information
+    const enhancedQualities = this.availableQualities.map((q) => ({
+      ...q,
+      codec: this.detectQualityCodec(q),
+    }));
+
+    this.playerUI.updateQualityOptions(enhancedQualities, currentLevel, (level) =>
       this.setQuality(level),
     );
 
+    // Include codec info in event
     this.pushEvent("qualities_available", {
-      qualities: [{ index: -1, label: "Automatico" }, ...this.availableQualities],
+      qualities: [{ index: -1, label: "Automatico" }, ...enhancedQualities],
       current: currentLevel,
+      codecABREnabled: !!this.codecABR,
     });
+
+    // Update codec ABR with current codec if available
+    if (this.codecABR && enhancedQualities.length > 0 && currentLevel >= 0) {
+      const currentQuality = enhancedQualities[currentLevel];
+      if (currentQuality?.codec) {
+        this.codecABR.setCodec(currentQuality.codec);
+      }
+    }
+  },
+
+  /**
+   * Detect codec from quality level
+   */
+  detectQualityCodec(quality) {
+    const codecs = quality.videoCodec || quality.codecs || "";
+    if (codecs.includes("av01") || codecs.includes("av1")) return "av1";
+    if (codecs.includes("hvc1") || codecs.includes("hev1") || codecs.includes("hevc")) return "hevc";
+    if (codecs.includes("vp09") || codecs.includes("vp9")) return "vp9";
+    if (codecs.includes("avc1") || codecs.includes("h264")) return "h264";
+    return "unknown";
   },
 
   // ============================================
@@ -998,6 +1158,17 @@ const VideoPlayer = {
     log.debug("Content type:", this.contentType);
     log.debug("Source type:", this.sourceType);
 
+    // Log advanced feature availability
+    if (isWebCodecsSupported()) {
+      log.debug("WebCodecs API available - hardware acceleration possible");
+    }
+    if (isMSEInWorkersSupported()) {
+      log.debug("MSE in Workers available - offloading parsing to worker thread");
+    }
+    if (this.codecABR) {
+      log.debug("Codec-aware ABR active - optimizing quality selection by codec efficiency");
+    }
+
     this.currentStreamType = getStreamType(this.streamUrl);
     log.debug("Detected stream type:", this.currentStreamType);
 
@@ -1047,7 +1218,13 @@ const VideoPlayer = {
       },
       onAudioTracksUpdated: () => this.updateAudioTracks(),
       onSubtitleTracksUpdated: () => this.updateSubtitleTracks(),
-      onFragLoaded: (bandwidth) => this.networkMonitor?.addSample(bandwidth),
+      onFragLoaded: (bandwidth) => {
+        this.networkMonitor?.addSample(bandwidth);
+        // Feed bandwidth to codec-aware ABR
+        if (this.codecABR) {
+          this.codecABR.recordBandwidth(bandwidth / 1000); // Convert to kbps
+        }
+      },
       onMediaInfo: () => {
         this.playerUI.hideLoading();
         this.playerUI.hideError();

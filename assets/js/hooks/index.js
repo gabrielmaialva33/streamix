@@ -5,8 +5,8 @@ import InfiniteScroll from "./infinite_scroll";
 import Modal from "./modal";
 import OfflineSync from "./offline_sync";
 import ProgressBar from "./progress_bar";
-import VideoPlayer from "./video_player";
 import ThemeToggle from "./theme_toggle";
+import VideoPlayer from "./video_player";
 
 export default {
   ThemeToggle,

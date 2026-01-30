@@ -32,7 +32,7 @@ const InfiniteScroll = {
         // Trigger 400px before sentinel is visible for smoother loading
         rootMargin: "400px",
         threshold: 0,
-      }
+      },
     );
 
     this.observer.observe(this.el);

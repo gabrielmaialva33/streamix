@@ -48,3 +48,6 @@ tmp
 # Tizen App artifacts
 *.wgt
 cookies.txt
+
+# Test results
+test-results

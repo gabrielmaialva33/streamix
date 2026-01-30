@@ -138,7 +138,7 @@ defmodule StreamixWeb.HomeLive do
         <.skeleton_page rows={4} />
       <% else %>
         <!-- Hero Section with Featured Content -->
-        <.hero_section
+        <.render_hero_section
           featured={@featured}
           stats={@stats}
           current_scope={@current_scope}
@@ -147,7 +147,7 @@ defmodule StreamixWeb.HomeLive do
 
         <div class="space-y-6 sm:space-y-8 pb-12">
           <!-- Continue Watching (logged in only) -->
-          <.content_carousel
+          <.render_content_carousel
             :if={@current_scope && @history != []}
             title="Continue Assistindo"
             items={@history}
@@ -155,7 +155,7 @@ defmodule StreamixWeb.HomeLive do
           />
 
       <!-- User's Favorites (logged in only) -->
-          <.content_carousel
+          <.render_content_carousel
             :if={@current_scope && @favorites != []}
             title="Minha Lista"
             items={@favorites}
@@ -169,7 +169,7 @@ defmodule StreamixWeb.HomeLive do
           />
 
       <!-- Featured Movies -->
-          <.content_carousel
+          <.render_content_carousel
             :if={@movies != []}
             title="Filmes em Destaque"
             items={@movies}
@@ -177,7 +177,7 @@ defmodule StreamixWeb.HomeLive do
           />
 
       <!-- Featured Series -->
-          <.content_carousel
+          <.render_content_carousel
             :if={@series != []}
             title="Séries Populares"
             items={@series}
@@ -185,7 +185,7 @@ defmodule StreamixWeb.HomeLive do
           />
 
       <!-- Live Channels -->
-          <.content_carousel
+          <.render_content_carousel
             :if={@channels != []}
             title="TV ao Vivo"
             items={@channels}
@@ -224,7 +224,7 @@ defmodule StreamixWeb.HomeLive do
   end
 
   # Hero Section Component
-  defp hero_section(assigns) do
+  defp render_hero_section(assigns) do
     ~H"""
     <div class="relative h-[45vh] sm:h-[60vh] lg:h-[70vh] min-h-[280px] sm:min-h-[400px] max-h-[800px] overflow-hidden -mt-16 sm:-mt-20 pt-14 sm:pt-16">
       <!-- Background Image -->
@@ -415,7 +415,7 @@ defmodule StreamixWeb.HomeLive do
   end
 
   # Content Carousel Component
-  defp content_carousel(assigns) do
+  defp render_content_carousel(assigns) do
     see_more_path = get_see_more_path(assigns.type, assigns.items)
     assigns = assign(assigns, :see_more_path, see_more_path)
 
@@ -458,11 +458,11 @@ defmodule StreamixWeb.HomeLive do
         ]}>
           <%= case @type do %>
             <% :movies -> %>
-              <.movie_card :for={movie <- Enum.take(@items, 6)} movie={movie} class="sm:hidden" />
-              <.movie_card :for={movie <- @items} movie={movie} class="hidden sm:block" />
+              <.render_movie_card :for={movie <- Enum.take(@items, 6)} movie={movie} class="sm:hidden" />
+              <.render_movie_card :for={movie <- @items} movie={movie} class="hidden sm:block" />
             <% :series -> %>
-              <.series_card :for={series <- Enum.take(@items, 6)} series={series} class="sm:hidden" />
-              <.series_card :for={series <- @items} series={series} class="hidden sm:block" />
+              <.render_series_card :for={series <- Enum.take(@items, 6)} series={series} class="sm:hidden" />
+              <.render_series_card :for={series <- @items} series={series} class="hidden sm:block" />
             <% :history -> %>
               <.history_item :for={entry <- Enum.take(@items, 3)} entry={entry} class="sm:hidden" />
               <.history_item :for={entry <- @items} entry={entry} class="hidden sm:block" />
@@ -531,7 +531,7 @@ defmodule StreamixWeb.HomeLive do
   end
 
   # Card Components
-  defp movie_card(assigns) do
+  defp render_movie_card(assigns) do
     assigns = assign_new(assigns, :class, fn -> nil end)
 
     ~H"""
@@ -576,7 +576,7 @@ defmodule StreamixWeb.HomeLive do
     """
   end
 
-  defp series_card(assigns) do
+  defp render_series_card(assigns) do
     assigns = assign_new(assigns, :class, fn -> nil end)
 
     ~H"""
