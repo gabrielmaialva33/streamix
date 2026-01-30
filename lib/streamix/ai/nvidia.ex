@@ -38,13 +38,26 @@ defmodule Streamix.AI.Nvidia do
   @doc """
   Generates embeddings for a single text.
 
+  ## Options
+  - `:input_type` - "query" for search queries, "passage" for documents (default: "passage")
+
   Returns `{:ok, [float]}` or `{:error, reason}`.
   """
-  def embed(text) when is_binary(text) do
-    case embed_batch([text]) do
+  def embed(text, opts \\ []) when is_binary(text) do
+    case embed_batch([text], opts) do
       {:ok, [embedding]} -> {:ok, embedding}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Generates query embedding optimized for search.
+
+  Uses input_type "query" which is optimized for short search queries
+  in the E5 bi-encoder architecture.
+  """
+  def embed_query(text) when is_binary(text) do
+    embed(text, input_type: "query")
   end
 
   @doc """
@@ -53,11 +66,15 @@ defmodule Streamix.AI.Nvidia do
   This is more efficient than calling `embed/1` multiple times
   due to rate limits (40 rpm).
 
+  ## Options
+  - `:input_type` - "query" for search queries, "passage" for documents (default: "passage")
+
   Returns `{:ok, [[float]]}` or `{:error, reason}`.
   """
-  def embed_batch(texts) when is_list(texts) do
+  def embed_batch(texts, opts \\ []) when is_list(texts) do
     if enabled?() do
-      do_embed_batch(texts)
+      input_type = Keyword.get(opts, :input_type, "passage")
+      do_embed_batch(texts, input_type)
     else
       {:error, :not_configured}
     end
@@ -99,14 +116,14 @@ defmodule Streamix.AI.Nvidia do
 
   # Private functions
 
-  defp do_embed_batch(texts) do
+  defp do_embed_batch(texts, input_type) do
     url = "#{@base_url}/embeddings"
 
     body =
       Jason.encode!(%{
         input: texts,
         model: model(),
-        input_type: "passage",
+        input_type: input_type,
         encoding_format: "float",
         truncate: "END"
       })
@@ -129,7 +146,7 @@ defmodule Streamix.AI.Nvidia do
       {:ok, %Req.Response{status: 429}} ->
         Logger.warning("[NVIDIA] Rate limited, retrying in 2s")
         Process.sleep(2000)
-        do_embed_batch(texts)
+        do_embed_batch(texts, input_type)
 
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("[NVIDIA] API error #{status}: #{inspect(body)}")

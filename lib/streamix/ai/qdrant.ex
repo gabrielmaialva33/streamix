@@ -178,9 +178,13 @@ defmodule Streamix.AI.Qdrant do
 
   Generates embedding from query text and searches the collection.
   Uses configured embedding provider with automatic fallback.
+
+  Note: Uses input_type "query" for optimal bi-encoder retrieval
+  (E5 models are trained with query/passage distinction).
   """
   def search_by_text(collection, query_text, opts \\ []) do
-    case Embeddings.embed(query_text) do
+    # Use query input type for search queries (E5 bi-encoder best practice)
+    case Embeddings.embed(query_text, input_type: :query) do
       {:ok, vector} ->
         search(collection, vector, opts)
 

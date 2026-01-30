@@ -60,11 +60,14 @@ defmodule Streamix.AI.Embeddings do
   @doc """
   Generates embedding for a single text.
   Uses configured provider with fallback.
+
+  ## Options
+  - `:input_type` - :query for search queries, :passage for documents (default: :passage)
   """
-  def embed(text) when is_binary(text) do
+  def embed(text, opts \\ []) when is_binary(text) do
     case provider() do
-      :nvidia -> embed_with_fallback(text, :nvidia, :gemini)
-      :gemini -> embed_with_fallback(text, :gemini, :nvidia)
+      :nvidia -> embed_with_fallback(text, :nvidia, :gemini, opts)
+      :gemini -> embed_with_fallback(text, :gemini, :nvidia, opts)
     end
   end
 
@@ -120,8 +123,8 @@ defmodule Streamix.AI.Embeddings do
       "nvidia"
   end
 
-  defp embed_with_fallback(text, primary, fallback) do
-    case do_embed(text, primary) do
+  defp embed_with_fallback(text, primary, fallback, opts \\ []) do
+    case do_embed(text, primary, opts) do
       {:ok, _} = result ->
         result
 
@@ -129,7 +132,7 @@ defmodule Streamix.AI.Embeddings do
         Logger.warning("[Embeddings] #{primary} failed: #{inspect(reason)}, trying #{fallback}")
 
         if provider_enabled?(fallback) do
-          do_embed(text, fallback)
+          do_embed(text, fallback, opts)
         else
           {:error, reason}
         end
@@ -154,8 +157,14 @@ defmodule Streamix.AI.Embeddings do
     end
   end
 
-  defp do_embed(text, :gemini), do: Gemini.embed(text)
-  defp do_embed(text, :nvidia), do: Nvidia.embed(text)
+  defp do_embed(text, :gemini, _opts), do: Gemini.embed(text)
+  defp do_embed(text, :nvidia, opts) do
+    input_type = case Keyword.get(opts, :input_type) do
+      :query -> "query"
+      _ -> "passage"
+    end
+    Nvidia.embed(text, input_type: input_type)
+  end
 
   defp do_embed_batch(texts, :gemini), do: Gemini.embed_batch(texts)
   defp do_embed_batch(texts, :nvidia), do: Nvidia.embed_batch(texts)

@@ -51,10 +51,40 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
   Schedules a profile update for a user.
 
   Called after watch history is updated. Debounced by Oban's unique constraint.
+  Priority based on user activity (more active = higher priority).
   """
-  def schedule(user_id) do
+  def schedule(user_id, opts \\ []) do
+    priority = calculate_priority(user_id, opts)
+
     %{user_id: user_id}
-    |> new(schedule_in: 60)
+    |> new(schedule_in: 60, priority: priority)
     |> Oban.insert()
+  end
+
+  # Calculate job priority based on user activity
+  # Oban: lower number = higher priority (0 = highest, 3 = default)
+  defp calculate_priority(user_id, opts) do
+    activity_score = Keyword.get(opts, :activity_score, 0)
+
+    cond do
+      # Power users (100+ items watched) - highest priority
+      activity_score >= 100 -> 0
+      # Active users (50+ items) - high priority
+      activity_score >= 50 -> 1
+      # Regular users (10+ items) - normal priority
+      activity_score >= 10 -> 2
+      # New users - default priority
+      true -> 3
+    end
+  end
+
+  @doc """
+  Schedules profile update with automatic activity detection.
+  """
+  def schedule_with_activity(user_id) do
+    activity = Streamix.Iptv.History.count_by_type(user_id)
+    total = Enum.reduce(activity, 0, fn {_, count}, acc -> acc + count end)
+
+    schedule(user_id, activity_score: total)
   end
 end
