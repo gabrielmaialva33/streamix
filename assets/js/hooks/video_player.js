@@ -651,7 +651,7 @@ const VideoPlayer = {
 
   updateBufferBar() {
     if (this.video?.buffered) {
-      this.playerUI.updateBufferBar(this.video.buffered, this.video.duration);
+      this.playerUI.updateBufferBar(this.video.buffered, this.video.duration, this.video.currentTime);
     }
   },
 

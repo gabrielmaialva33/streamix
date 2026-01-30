@@ -37,8 +37,9 @@ export const StreamingProfiles = {
       maxBufferSize: 20 * 1000 * 1000, // 20MB
       maxMaxBufferLength: 20,
       backBufferLength: 2,
-      liveSyncDurationCount: 2,
+      liveSyncDurationCount: 3, // Netflix: lower latency
       liveMaxLatencyDurationCount: 4,
+      maxFragLookUpTolerance: 0.1, // Smooth seeking
       // ABR settings - faster adaptation
       abrBandWidthFactor: 0.9,
       abrBandWidthUpFactor: 0.7,
@@ -76,10 +77,12 @@ export const StreamingProfiles = {
     description: "Good balance between latency and quality for regular live TV",
     hls: {
       lowLatencyMode: false,
-      maxBufferLength: 30,
-      maxBufferSize: 40 * 1000 * 1000, // 40MB
-      maxMaxBufferLength: 60,
-      backBufferLength: 30,
+      maxBufferLength: 60, // Netflix-style: 60s buffer
+      maxBufferSize: 60 * 1000 * 1000, // 60MB
+      maxMaxBufferLength: 120,
+      backBufferLength: 60,
+      liveSyncDurationCount: 3, // Reduce live latency
+      maxFragLookUpTolerance: 0.1, // Smooth seeking
       // ABR settings - balanced
       abrBandWidthFactor: 0.85,
       abrBandWidthUpFactor: 0.6,
@@ -116,10 +119,11 @@ export const StreamingProfiles = {
     description: "Maximum quality for VOD content with large buffers",
     hls: {
       lowLatencyMode: false,
-      maxBufferLength: 60,
-      maxBufferSize: 60 * 1000 * 1000, // 60MB
-      maxMaxBufferLength: 120,
-      backBufferLength: 120, // 2 minutes back buffer
+      maxBufferLength: 90, // Netflix-style: 90s for VOD
+      maxBufferSize: 90 * 1000 * 1000, // 90MB
+      maxMaxBufferLength: 180,
+      backBufferLength: 180, // 3 minutes back buffer
+      maxFragLookUpTolerance: 0.1, // Smooth seeking
       // ABR settings - conservative, prefer quality
       abrBandWidthFactor: 0.8,
       abrBandWidthUpFactor: 0.5,
