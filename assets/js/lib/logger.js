@@ -5,12 +5,21 @@
  * Disables verbose logs in production to improve performance.
  */
 
-// Detect environment
+// Detect environment and debug mode
+const urlParams = new URLSearchParams(window.location.search);
+const debugFromUrl = urlParams.get("debug") === "1" || urlParams.get("debug") === "true";
+
 const isDev =
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1" ||
   window.location.hostname.includes(".local") ||
-  window.__STREAMIX_DEBUG__ === true;
+  window.__STREAMIX_DEBUG__ === true ||
+  debugFromUrl;
+
+// Persist debug mode if set via URL
+if (debugFromUrl) {
+  window.__STREAMIX_DEBUG__ = true;
+}
 
 // Log levels
 const LogLevel = {
@@ -182,6 +191,7 @@ export function getEnvInfo() {
 // Pre-created loggers for common modules
 export const playerLogger = createLogger("VideoPlayer");
 export const streamLogger = createLogger("StreamLoader");
+export const bufferLogger = createLogger("NativeBuffer");
 export const avplayerLogger = createLogger("AVPlayer");
 export const uiLogger = createLogger("PlayerUI");
 export const prefsLogger = createLogger("Preferences");

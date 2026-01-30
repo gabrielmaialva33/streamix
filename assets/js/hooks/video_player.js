@@ -21,6 +21,7 @@ import {
   saveVolume,
 } from "../lib/player_preferences";
 import { PlayerUI } from "../lib/player_ui";
+import { NativeBufferManager } from "../lib/native_buffer";
 import { getFileExtension, getStreamType, StreamLoader } from "../lib/stream_loader";
 import {
   ContentType,
@@ -356,6 +357,9 @@ const VideoPlayer = {
     this.codecABR = null; // Codec-aware ABR controller
     this.advancedCapabilities = null; // Cached advanced capabilities
     this.preferredCodec = null; // User/auto selected codec preference
+
+    // Native buffer manager (for MP4/MKV streams)
+    this.nativeBufferManager = null;
   },
 
   /**
@@ -1508,6 +1512,24 @@ const VideoPlayer = {
         this.nativePlaybackTimeout = null;
       }
 
+      // Initialize Native Buffer Manager for MP4/MKV streams
+      if (!this.nativeBufferManager && this.contentType === "vod") {
+        this.nativeBufferManager = new NativeBufferManager(this.video, {
+          onBufferHealthChange: (status) => {
+            log.debug(`[NativeBuffer] Health: ${status.health}, buffer: ${status.bufferAhead.toFixed(1)}s`);
+          },
+          onStall: (info) => {
+            log.warn(`[NativeBuffer] Stall detected #${info.totalStalls}`);
+            this.playerUI.showLoading();
+          },
+          onRecovery: () => {
+            this.playerUI.hideLoading();
+          },
+        });
+        this.nativeBufferManager.start();
+        log.info("[VideoPlayer] Native buffer monitoring enabled");
+      }
+
       // Resume from saved position if available (VOD only)
       if (this._savedPosition && this.contentType === "vod") {
         log.debug("Resuming from saved position:", this._savedPosition.time);
@@ -2590,6 +2612,7 @@ const VideoPlayer = {
   destroyed() {
     this.cleanup();
     this.networkMonitor?.stop();
+    this.nativeBufferManager?.stop();
     this.playerUI?.clearHideControlsTimeout();
     this.playerUI?.destroy();
     this.stopAVPlayerTimeUpdates();
