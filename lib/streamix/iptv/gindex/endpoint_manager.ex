@@ -20,12 +20,12 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   @default_endpoints [
     %{
       name: :primary,
-      url: "https://animezey16082023.animezey16082023.workers.dev",
+      url: "https://1.animezeydl.workers.dev",
       priority: 1
     },
     %{
       name: :fallback_1,
-      url: "https://1.animezeydl.workers.dev",
+      url: "https://animezey16082023.animezey16082023.workers.dev",
       priority: 2
     },
     %{
