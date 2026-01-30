@@ -382,7 +382,7 @@ defmodule StreamixWeb.ContentComponents do
       >
         <img
           :if={Map.get(@series, :cover)}
-          src={ImageProxy.proxy(@series.cover)}
+          src={ImageProxy.card(@series.cover)}
           alt={@series.name}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
@@ -844,11 +844,15 @@ defmodule StreamixWeb.ContentComponents do
 
   # Returns a valid image URL or nil
   defp get_image_url(stream_icon, cover) do
-    cond do
-      is_binary(stream_icon) and stream_icon != "" -> stream_icon
-      is_binary(cover) and cover != "" -> cover
-      true -> nil
-    end
+    url =
+      cond do
+        is_binary(stream_icon) and stream_icon != "" -> stream_icon
+        is_binary(cover) and cover != "" -> cover
+        true -> nil
+      end
+
+    # Use optimized card size for thumbnails (Netflix uses 20-30KB)
+    ImageProxy.card(url)
   end
 
   # Returns display rating string or nil (hides 0 ratings)

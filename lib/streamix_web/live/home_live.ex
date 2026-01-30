@@ -694,8 +694,9 @@ defmodule StreamixWeb.HomeLive do
 
   # Helper functions
   defp get_backdrop(content) do
+    # Use hero size (w1280) for large backgrounds - Netflix pattern
     case content.backdrop_path do
-      [first | _] -> ImageProxy.proxy(first)
+      [first | _] -> ImageProxy.hero(first)
       _ -> nil
     end
   end
