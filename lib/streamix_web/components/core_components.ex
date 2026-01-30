@@ -577,6 +577,149 @@ defmodule StreamixWeb.CoreComponents do
     |> JS.toggle(to: "#user-dropdown")
   end
 
+  # ============================================
+  # Skeleton Components (Netflix-style loading)
+  # ============================================
+
+  @doc """
+  Renders a skeleton placeholder box with pulse animation.
+  Base component for all skeleton loaders.
+
+  ## Examples
+
+      <.skeleton class="h-4 w-32" />
+      <.skeleton class="h-64 w-full rounded-lg" />
+  """
+  attr :class, :string, default: ""
+
+  def skeleton(assigns) do
+    ~H"""
+    <div class={["animate-pulse bg-surface-hover rounded", @class]}></div>
+    """
+  end
+
+  @doc """
+  Renders a skeleton card for movies/series (Netflix-style).
+  Aspect ratio 2:3 (poster format).
+
+  ## Examples
+
+      <.skeleton_card />
+      <.skeleton_card class="w-40" />
+  """
+  attr :class, :string, default: ""
+
+  def skeleton_card(assigns) do
+    ~H"""
+    <div class={["flex flex-col gap-2", @class]}>
+      <div class="aspect-[2/3] animate-pulse bg-surface-hover rounded-lg"></div>
+      <div class="space-y-1.5 px-0.5">
+        <div class="h-3.5 animate-pulse bg-surface-hover rounded w-3/4"></div>
+        <div class="h-3 animate-pulse bg-surface-hover rounded w-1/2"></div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a skeleton for live channel cards.
+
+  ## Examples
+
+      <.skeleton_channel_card />
+  """
+  attr :class, :string, default: ""
+
+  def skeleton_channel_card(assigns) do
+    ~H"""
+    <div class={["flex flex-col gap-2", @class]}>
+      <div class="aspect-video animate-pulse bg-surface-hover rounded-lg"></div>
+      <div class="space-y-1.5 px-0.5">
+        <div class="h-3.5 animate-pulse bg-surface-hover rounded w-2/3"></div>
+        <div class="h-3 animate-pulse bg-surface-hover rounded w-1/3"></div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a skeleton carousel row (Netflix-style).
+  Shows a row title skeleton and multiple card skeletons.
+
+  ## Examples
+
+      <.skeleton_carousel />
+      <.skeleton_carousel count={8} />
+  """
+  attr :count, :integer, default: 6
+  attr :type, :string, values: ["card", "channel"], default: "card"
+
+  def skeleton_carousel(assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <div class="h-6 animate-pulse bg-surface-hover rounded w-48"></div>
+      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        <%= if @type == "channel" do %>
+          <.skeleton_channel_card :for={_ <- 1..@count} />
+        <% else %>
+          <.skeleton_card :for={_ <- 1..@count} />
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a skeleton hero section (Netflix-style).
+  Full-width backdrop with title, description, and buttons.
+
+  ## Examples
+
+      <.skeleton_hero />
+  """
+  def skeleton_hero(assigns) do
+    ~H"""
+    <div class="relative w-full aspect-[21/9] sm:aspect-[2.4/1] animate-pulse bg-surface-hover rounded-xl overflow-hidden">
+      <div class="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-transparent">
+        <div class="absolute bottom-0 left-0 p-6 sm:p-8 lg:p-12 space-y-4 max-w-2xl">
+          <div class="h-8 sm:h-10 bg-surface rounded w-3/4"></div>
+          <div class="space-y-2">
+            <div class="h-4 bg-surface rounded w-full"></div>
+            <div class="h-4 bg-surface rounded w-5/6"></div>
+            <div class="h-4 bg-surface rounded w-2/3"></div>
+          </div>
+          <div class="flex gap-3 pt-2">
+            <div class="h-10 w-28 bg-surface rounded-lg"></div>
+            <div class="h-10 w-28 bg-surface rounded-lg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a full page skeleton (Netflix-style home page).
+  Hero + multiple carousel rows.
+
+  ## Examples
+
+      <.skeleton_page />
+      <.skeleton_page rows={4} />
+  """
+  attr :rows, :integer, default: 3
+
+  def skeleton_page(assigns) do
+    ~H"""
+    <div class="space-y-8 pb-8">
+      <.skeleton_hero />
+      <div class="px-[4%] space-y-8">
+        <.skeleton_carousel :for={_ <- 1..@rows} />
+      </div>
+    </div>
+    """
+  end
+
   @doc """
   Translates an error message using gettext.
   """

@@ -8,10 +8,38 @@ defmodule StreamixWeb.HomeLive do
       socket
       |> assign(page_title: "Início")
       |> assign(current_path: "/")
-      |> load_public_catalog()
-      |> load_user_data()
+      |> assign(loading: true)
+      |> assign_empty_data()
+
+    # Load data asynchronously for skeleton screen effect
+    if connected?(socket) do
+      send(self(), :load_data)
+    end
 
     {:ok, socket}
+  end
+
+  # Initialize with empty data for skeleton display
+  defp assign_empty_data(socket) do
+    socket
+    |> assign(featured: nil)
+    |> assign(stats: %{movies_count: 0, series_count: 0, channels_count: 0})
+    |> assign(movies: [])
+    |> assign(series: [])
+    |> assign(channels: [])
+    |> assign(favorites: [])
+    |> assign(history: [])
+    |> assign(featured_favorite: false)
+  end
+
+  def handle_info(:load_data, socket) do
+    socket =
+      socket
+      |> load_public_catalog()
+      |> load_user_data()
+      |> assign(loading: false)
+
+    {:noreply, socket}
   end
 
   defp load_public_catalog(socket) do
@@ -91,81 +119,86 @@ defmodule StreamixWeb.HomeLive do
   def render(assigns) do
     ~H"""
     <div>
-      <!-- Hero Section with Featured Content -->
-      <.hero_section
-        featured={@featured}
-        stats={@stats}
-        current_scope={@current_scope}
-        featured_favorite={@featured_favorite}
-      />
+      <%= if @loading do %>
+        <!-- Skeleton Loading State (Netflix-style) -->
+        <.skeleton_page rows={4} />
+      <% else %>
+        <!-- Hero Section with Featured Content -->
+        <.hero_section
+          featured={@featured}
+          stats={@stats}
+          current_scope={@current_scope}
+          featured_favorite={@featured_favorite}
+        />
 
-      <div class="space-y-6 sm:space-y-8 pb-12">
-        <!-- Continue Watching (logged in only) -->
-        <.content_carousel
-          :if={@current_scope && @history != []}
-          title="Continue Assistindo"
-          items={@history}
-          type={:history}
-        />
-        
-    <!-- User's Favorites (logged in only) -->
-        <.content_carousel
-          :if={@current_scope && @favorites != []}
-          title="Minha Lista"
-          items={@favorites}
-          type={:favorites}
-        />
-        
-    <!-- Featured Movies -->
-        <.content_carousel
-          :if={@movies != []}
-          title="Filmes em Destaque"
-          items={@movies}
-          type={:movies}
-        />
-        
-    <!-- Featured Series -->
-        <.content_carousel
-          :if={@series != []}
-          title="Séries Populares"
-          items={@series}
-          type={:series}
-        />
-        
-    <!-- Live Channels -->
-        <.content_carousel
-          :if={@channels != []}
-          title="TV ao Vivo"
-          items={@channels}
-          type={:channels}
-        />
-        
-    <!-- Empty State when no content -->
-        <div
-          :if={@movies == [] && @series == [] && @channels == []}
-          class="px-[4%] py-24 text-center"
-        >
-          <.icon name="hero-film" class="size-16 text-text-muted mx-auto mb-4" />
-          <h2 class="text-2xl font-bold text-text-primary mb-2">Nenhum conteúdo disponível</h2>
-          <p class="text-text-secondary max-w-md mx-auto mb-6">
-            Configure um provedor IPTV para começar a explorar filmes, séries e canais ao vivo.
-          </p>
-          <.link
-            :if={@current_scope}
-            navigate={~p"/providers"}
-            class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
+        <div class="space-y-6 sm:space-y-8 pb-12">
+          <!-- Continue Watching (logged in only) -->
+          <.content_carousel
+            :if={@current_scope && @history != []}
+            title="Continue Assistindo"
+            items={@history}
+            type={:history}
+          />
+
+      <!-- User's Favorites (logged in only) -->
+          <.content_carousel
+            :if={@current_scope && @favorites != []}
+            title="Minha Lista"
+            items={@favorites}
+            type={:favorites}
+          />
+
+      <!-- Featured Movies -->
+          <.content_carousel
+            :if={@movies != []}
+            title="Filmes em Destaque"
+            items={@movies}
+            type={:movies}
+          />
+
+      <!-- Featured Series -->
+          <.content_carousel
+            :if={@series != []}
+            title="Séries Populares"
+            items={@series}
+            type={:series}
+          />
+
+      <!-- Live Channels -->
+          <.content_carousel
+            :if={@channels != []}
+            title="TV ao Vivo"
+            items={@channels}
+            type={:channels}
+          />
+
+      <!-- Empty State when no content -->
+          <div
+            :if={!@loading && @movies == [] && @series == [] && @channels == []}
+            class="px-[4%] py-24 text-center"
           >
-            <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
-          </.link>
-          <.link
-            :if={!@current_scope}
-            navigate={~p"/register"}
-            class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
-          >
-            Criar Conta
-          </.link>
+            <.icon name="hero-film" class="size-16 text-text-muted mx-auto mb-4" />
+            <h2 class="text-2xl font-bold text-text-primary mb-2">Nenhum conteúdo disponível</h2>
+            <p class="text-text-secondary max-w-md mx-auto mb-6">
+              Configure um provedor IPTV para começar a explorar filmes, séries e canais ao vivo.
+            </p>
+            <.link
+              :if={@current_scope}
+              navigate={~p"/providers"}
+              class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
+            >
+              <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
+            </.link>
+            <.link
+              :if={!@current_scope}
+              navigate={~p"/register"}
+              class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
+            >
+              Criar Conta
+            </.link>
+          </div>
         </div>
-      </div>
+      <% end %>
     </div>
     """
   end
