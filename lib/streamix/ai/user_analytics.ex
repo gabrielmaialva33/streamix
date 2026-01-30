@@ -232,6 +232,202 @@ defmodule Streamix.AI.UserAnalytics do
   end
 
   # ============================================================================
+  # Personalized Content (AI-Powered Sections)
+  # ============================================================================
+
+  @doc """
+  Gets personalized trending movies for user.
+
+  Uses watch history to reorder trending by user's taste profile.
+  Supports genre and period filters.
+
+  ## Options
+  - `:limit` - Number of results (default: 12)
+  - `:genre` - Filter by genre ("all" | "action" | "comedy" | etc)
+  - `:days` - Trending period (7 | 30 | nil for all time)
+  """
+  def get_personalized_trending(user_id, opts \\ []) do
+    limit = opts[:limit] || 12
+    genre = opts[:genre] || "all"
+    days = opts[:days] || 7
+
+    # Get base trending from catalog
+    trending = Streamix.Iptv.Catalog.list_trending_movies(limit: limit * 2, days: days)
+
+    # Apply genre filter if specified
+    filtered =
+      if genre == "all" do
+        trending
+      else
+        Enum.filter(trending, fn movie ->
+          movie_genre = movie.genre || ""
+          String.contains?(String.downcase(movie_genre), String.downcase(genre))
+        end)
+      end
+
+    # If user logged in, reorder by taste profile similarity
+    reordered =
+      case get_user_profile(user_id) do
+        nil ->
+          filtered
+
+        _profile_vector ->
+          # For now, boost content matching user's favorite genres
+          insights = get_user_insights(user_id)
+          favorite_genres = Map.get(insights, :favorite_genres, [])
+
+          Enum.sort_by(filtered, fn movie ->
+            movie_genre = movie.genre || ""
+            boost = Enum.any?(favorite_genres, fn g ->
+              String.contains?(String.downcase(movie_genre), String.downcase(g))
+            end)
+            if boost, do: 0, else: 1
+          end)
+      end
+
+    Enum.take(reordered, limit)
+  end
+
+  @doc """
+  Gets personalized series for user.
+
+  Uses watch history to recommend series matching user's taste.
+
+  ## Options
+  - `:limit` - Number of results (default: 12)
+  - `:genre` - Filter by genre
+  - `:days` - Recent additions period
+  """
+  def get_personalized_series(user_id, opts \\ []) do
+    limit = opts[:limit] || 12
+    genre = opts[:genre] || "all"
+
+    # Get base series from catalog
+    series = Streamix.Iptv.Catalog.list_top_10_series(limit: limit * 2)
+
+    # Apply genre filter
+    filtered =
+      if genre == "all" do
+        series
+      else
+        Enum.filter(series, fn s ->
+          s_genre = s.genre || ""
+          String.contains?(String.downcase(s_genre), String.downcase(genre))
+        end)
+      end
+
+    # Reorder by user taste if logged in
+    reordered =
+      case get_user_profile(user_id) do
+        nil ->
+          filtered
+
+        _profile_vector ->
+          insights = get_user_insights(user_id)
+          favorite_genres = Map.get(insights, :favorite_genres, [])
+
+          Enum.sort_by(filtered, fn s ->
+            s_genre = s.genre || ""
+            boost = Enum.any?(favorite_genres, fn g ->
+              String.contains?(String.downcase(s_genre), String.downcase(g))
+            end)
+            if boost, do: 0, else: 1
+          end)
+      end
+
+    Enum.take(reordered, limit)
+  end
+
+  @doc """
+  Gets personalized channel recommendations with category filter.
+
+  ## Options
+  - `:limit` - Number of results (default: 24)
+  - `:category` - Filter by category ("all" | "sports" | "movies" | "news")
+  """
+  def get_personalized_channels(user_id, opts \\ []) do
+    limit = opts[:limit] || 24
+    category = opts[:category] || "all"
+
+    {:ok, channels} = get_channel_recommendations(user_id, limit: limit * 2)
+
+    # If no recommendations, fallback to public channels
+    channels =
+      if Enum.empty?(channels) do
+        Streamix.Iptv.list_public_channels(limit: limit * 2)
+      else
+        channels
+      end
+
+    filtered =
+      if category == "all" do
+        channels
+      else
+        Enum.filter(channels, fn ch ->
+          ch_category = ch.category || ""
+          String.contains?(String.downcase(ch_category), String.downcase(category))
+        end)
+      end
+
+    Enum.take(filtered, limit)
+  end
+
+  @doc """
+  Gets user's favorite genres for dynamic filter options.
+
+  Returns list of {value, label} tuples for dropdown.
+  """
+  def get_user_genre_filters(user_id) do
+    base_genres = [
+      {"all", "Todos"},
+      {"action", "Ação"},
+      {"comedy", "Comédia"},
+      {"drama", "Drama"},
+      {"horror", "Terror"},
+      {"sci-fi", "Ficção"},
+      {"animation", "Animação"}
+    ]
+
+    case get_user_insights(user_id) do
+      %{favorite_genres: genres} when is_list(genres) and length(genres) > 0 ->
+        # Prioritize user's favorite genres
+        user_genres =
+          genres
+          |> Enum.take(3)
+          |> Enum.map(fn g -> {String.downcase(g), g} end)
+
+        [{"all", "Todos"}] ++ user_genres ++ [{"more", "Mais..."}]
+
+      _ ->
+        base_genres
+    end
+  end
+
+  @doc """
+  Gets period filter options (static).
+  """
+  def get_period_filters do
+    [
+      {7, "7 dias"},
+      {30, "30 dias"},
+      {nil, "Todos"}
+    ]
+  end
+
+  @doc """
+  Gets channel category filters.
+  """
+  def get_channel_category_filters do
+    [
+      {"all", "Todos"},
+      {"sports", "Esportes"},
+      {"movies", "Filmes"},
+      {"news", "Notícias"},
+      {"kids", "Infantil"}
+    ]
+  end
+
+  # ============================================================================
   # Analytics Insights
   # ============================================================================
 

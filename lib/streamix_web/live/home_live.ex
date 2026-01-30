@@ -35,6 +35,15 @@ defmodule StreamixWeb.HomeLive do
     |> assign(new_releases: [])
     |> assign(top_10: [])
     |> assign(featured_favorite: false)
+    # AI-powered section filters
+    |> assign(trending_genre: "all")
+    |> assign(trending_period: 7)
+    |> assign(series_genre: "all")
+    |> assign(channels_category: "all")
+    # Filter options (loaded with user data)
+    |> assign(genre_filters: UserAnalytics.get_user_genre_filters(nil))
+    |> assign(period_filters: UserAnalytics.get_period_filters())
+    |> assign(channel_filters: UserAnalytics.get_channel_category_filters())
   end
 
   def handle_info(:load_data, socket) do
@@ -52,15 +61,68 @@ defmodule StreamixWeb.HomeLive do
     featured = Iptv.get_featured_content()
     stats = Iptv.get_public_stats()
 
+    # Get user_id if logged in
+    user_id = get_user_id(socket)
+
+    # Get current filter values
+    trending_genre = socket.assigns.trending_genre
+    trending_period = socket.assigns.trending_period
+    series_genre = socket.assigns.series_genre
+    channels_category = socket.assigns.channels_category
+
     socket
     |> assign(featured: featured)
     |> assign(stats: stats)
-    |> assign(trending: Iptv.list_trending_movies(limit: 12))
+    |> assign(trending: load_trending(user_id, trending_genre, trending_period))
     |> assign(new_releases: Iptv.list_new_releases(limit: 12))
     |> assign(top_10: Iptv.list_top_10_movies(limit: 10))
     |> assign(movies: Iptv.list_public_movies(limit: 12))
-    |> assign(series: Iptv.list_public_series(limit: 12))
-    |> assign(channels: Iptv.list_public_channels(limit: 24))
+    |> assign(series: load_series(user_id, series_genre))
+    |> assign(channels: load_channels(user_id, channels_category))
+  end
+
+  # Load trending with AI personalization when user is logged in
+  defp load_trending(nil, _genre, period) do
+    Iptv.list_trending_movies(limit: 12, days: period)
+  end
+
+  defp load_trending(user_id, genre, period) do
+    UserAnalytics.get_personalized_trending(user_id,
+      limit: 12,
+      genre: genre,
+      days: period
+    )
+  end
+
+  # Load series with AI personalization
+  defp load_series(nil, _genre) do
+    Iptv.list_public_series(limit: 12)
+  end
+
+  defp load_series(user_id, genre) do
+    UserAnalytics.get_personalized_series(user_id,
+      limit: 12,
+      genre: genre
+    )
+  end
+
+  # Load channels with AI personalization
+  defp load_channels(nil, _category) do
+    Iptv.list_public_channels(limit: 24)
+  end
+
+  defp load_channels(user_id, category) do
+    UserAnalytics.get_personalized_channels(user_id,
+      limit: 24,
+      category: category
+    )
+  end
+
+  defp get_user_id(socket) do
+    case socket.assigns.current_scope do
+      nil -> nil
+      scope -> scope.user.id
+    end
   end
 
   defp load_user_data(socket) do
@@ -82,6 +144,8 @@ defmodule StreamixWeb.HomeLive do
         |> assign(history: Iptv.list_watch_history(user_id, limit: 6))
         |> assign(recommendations: recommendations)
         |> assign(featured_favorite: featured_favorite)
+        # Update genre filters based on user preferences
+        |> assign(genre_filters: UserAnalytics.get_user_genre_filters(user_id))
     end
   end
 
@@ -136,6 +200,49 @@ defmodule StreamixWeb.HomeLive do
     end
   end
 
+  # AI Section Filter Events
+  def handle_event("filter_trending_genre", %{"genre" => genre}, socket) do
+    user_id = get_user_id(socket)
+    trending = load_trending(user_id, genre, socket.assigns.trending_period)
+
+    {:noreply,
+     socket
+     |> assign(trending_genre: genre)
+     |> assign(trending: trending)}
+  end
+
+  def handle_event("filter_trending_period", %{"period" => period}, socket) do
+    user_id = get_user_id(socket)
+    # Parse period - "all" means nil, otherwise parse as integer
+    period_days = if period == "all", do: nil, else: String.to_integer(period)
+    trending = load_trending(user_id, socket.assigns.trending_genre, period_days)
+
+    {:noreply,
+     socket
+     |> assign(trending_period: period_days)
+     |> assign(trending: trending)}
+  end
+
+  def handle_event("filter_series_genre", %{"genre" => genre}, socket) do
+    user_id = get_user_id(socket)
+    series = load_series(user_id, genre)
+
+    {:noreply,
+     socket
+     |> assign(series_genre: genre)
+     |> assign(series: series)}
+  end
+
+  def handle_event("filter_channels_category", %{"genre" => category}, socket) do
+    user_id = get_user_id(socket)
+    channels = load_channels(user_id, category)
+
+    {:noreply,
+     socket
+     |> assign(channels_category: category)
+     |> assign(channels: channels)}
+  end
+
   def render(assigns) do
     ~H"""
     <div>
@@ -174,13 +281,15 @@ defmodule StreamixWeb.HomeLive do
             recommendations={@recommendations}
           />
 
-          <!-- Trending Now -->
-          <.render_content_carousel
+          <!-- Trending Now (AI-powered) -->
+          <.render_ai_trending_section
             :if={@trending != []}
-            title="Em Alta Agora"
             items={@trending}
-            type={:movies}
-            icon="hero-fire"
+            genre_filters={@genre_filters}
+            period_filters={@period_filters}
+            selected_genre={@trending_genre}
+            selected_period={@trending_period}
+            ai_powered={@current_scope != nil}
           />
 
           <!-- New Releases -->
@@ -207,20 +316,22 @@ defmodule StreamixWeb.HomeLive do
             type={:movies}
           />
 
-          <!-- Featured Series -->
-          <.render_content_carousel
+          <!-- Featured Series (AI-powered) -->
+          <.render_ai_series_section
             :if={@series != []}
-            title="Séries Populares"
             items={@series}
-            type={:series}
+            genre_filters={@genre_filters}
+            selected_genre={@series_genre}
+            ai_powered={@current_scope != nil}
           />
 
-          <!-- Live Channels -->
-          <.render_content_carousel
+          <!-- Live Channels (AI-powered) -->
+          <.render_ai_channels_section
             :if={@channels != []}
-            title="TV ao Vivo"
             items={@channels}
-            type={:channels}
+            category_filters={@channel_filters}
+            selected_category={@channels_category}
+            ai_powered={@current_scope != nil}
           />
 
       <!-- Empty State when no content -->
@@ -519,6 +630,78 @@ defmodule StreamixWeb.HomeLive do
           Ver mais <.icon name="hero-arrow-right" class="size-4" />
         </.link>
       <% end %>
+    </div>
+    """
+  end
+
+  # AI-Powered Trending Section with Filters
+  defp render_ai_trending_section(assigns) do
+    ~H"""
+    <div class="px-[4%]">
+      <.section_header
+        title="Em Alta Agora"
+        icon="hero-fire-solid"
+        icon_class="text-orange-500"
+        genre_filters={@genre_filters}
+        period_filters={@period_filters}
+        selected_genre={@selected_genre}
+        selected_period={@selected_period}
+        on_genre_change="filter_trending_genre"
+        on_period_change="filter_trending_period"
+        see_more_path={~p"/browse/movies"}
+        ai_powered={@ai_powered}
+      />
+      <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
+        <.render_movie_card :for={movie <- Enum.take(@items, 6)} movie={movie} class="sm:hidden" />
+        <.render_movie_card :for={movie <- @items} movie={movie} class="hidden sm:block" />
+        <.see_more_card path={~p"/browse/movies"} type={:movies} class="hidden sm:flex" />
+      </div>
+    </div>
+    """
+  end
+
+  # AI-Powered Series Section with Filters
+  defp render_ai_series_section(assigns) do
+    ~H"""
+    <div class="px-[4%]">
+      <.section_header
+        title="Séries Populares"
+        icon="hero-tv-solid"
+        icon_class="text-purple-500"
+        genre_filters={@genre_filters}
+        selected_genre={@selected_genre}
+        on_genre_change="filter_series_genre"
+        see_more_path={~p"/browse/series"}
+        ai_powered={@ai_powered}
+      />
+      <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
+        <.render_series_card :for={series <- Enum.take(@items, 6)} series={series} class="sm:hidden" />
+        <.render_series_card :for={series <- @items} series={series} class="hidden sm:block" />
+        <.see_more_card path={~p"/browse/series"} type={:series} class="hidden sm:flex" />
+      </div>
+    </div>
+    """
+  end
+
+  # AI-Powered Channels Section with Filters
+  defp render_ai_channels_section(assigns) do
+    ~H"""
+    <div class="px-[4%]">
+      <.section_header
+        title="TV ao Vivo"
+        icon="hero-signal-solid"
+        icon_class="text-red-500"
+        genre_filters={@category_filters}
+        selected_genre={@selected_category}
+        on_genre_change="filter_channels_category"
+        see_more_path={~p"/browse"}
+        ai_powered={@ai_powered}
+      />
+      <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[160px]">
+        <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
+        <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
+        <.see_more_card path={~p"/browse"} type={:channels} class="hidden sm:flex" />
+      </div>
     </div>
     """
   end
