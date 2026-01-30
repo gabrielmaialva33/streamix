@@ -189,46 +189,137 @@ defmodule Streamix.AI.UserAnalytics do
   end
 
   # ============================================================================
-  # Channel Recommendations
+  # Channel Recommendations (AI-Powered)
   # ============================================================================
 
   @doc """
   Gets recommended live channels based on watch history.
 
-  Analyzes which channel categories user watches most and recommends similar.
+  Uses a multi-signal approach:
+  1. Category affinity from watched channels (via proper JOIN)
+  2. Watch duration weighting (longer = stronger preference)
+  3. Recency boost (recent watches matter more)
+  4. Smart fallbacks for new users
+
+  Returns {:ok, channels} with personalized channel recommendations.
   """
   def get_channel_recommendations(user_id, opts \\ []) do
-    limit = opts[:limit] || 10
+    limit = opts[:limit] || 24
 
     # Get user's channel watch history
     history = History.list(user_id, content_type: "live_channel", limit: 100)
 
     if Enum.empty?(history) do
-      {:ok, []}
+      # No history - return popular public channels
+      {:ok, get_popular_channels(limit)}
     else
-      # Extract category patterns from watched channels
-      category_scores = compute_category_affinity(history)
+      # Get channel IDs from history
+      watched_channel_ids = Enum.map(history, & &1.content_id)
 
-      # Get top categories
-      top_categories =
-        category_scores
-        |> Enum.sort_by(fn {_, score} -> score end, :desc)
-        |> Enum.take(5)
-        |> Enum.map(fn {cat, _} -> cat end)
+      # Get categories of watched channels with proper JOIN
+      category_scores = compute_channel_category_scores(watched_channel_ids, history)
 
-      # Find channels in those categories user hasn't watched
-      watched_ids = Enum.map(history, & &1.content_id)
+      if Enum.empty?(category_scores) do
+        # No categories found - fallback to public channels
+        {:ok, get_popular_channels(limit)}
+      else
+        # Get top category IDs by score
+        top_category_ids =
+          category_scores
+          |> Enum.sort_by(fn {_id, score} -> score end, :desc)
+          |> Enum.take(10)
+          |> Enum.map(fn {id, _score} -> id end)
 
-      recommended =
-        LiveChannel
-        |> where([c], c.category in ^top_categories)
-        |> where([c], c.id not in ^watched_ids)
-        |> order_by([c], asc: fragment("RANDOM()"))
-        |> limit(^limit)
-        |> Repo.all()
+        # Find recommended channels in user's preferred categories
+        # Exclude already watched channels
+        recommended =
+          from(c in LiveChannel,
+            join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
+            join: p in Streamix.Iptv.Provider, on: c.provider_id == p.id,
+            where: p.visibility in [:global, :public],
+            where: lcc.category_id in ^top_category_ids,
+            where: c.id not in ^watched_channel_ids,
+            where: not is_nil(c.stream_icon),
+            order_by: fragment("RANDOM()"),
+            limit: ^limit,
+            distinct: true
+          )
+          |> Repo.all()
 
-      {:ok, recommended}
+        # If not enough recommendations, fill with popular channels
+        if length(recommended) < limit do
+          remaining = limit - length(recommended)
+          exclude_ids = watched_channel_ids ++ Enum.map(recommended, & &1.id)
+          popular = get_popular_channels(remaining, exclude_ids)
+          {:ok, recommended ++ popular}
+        else
+          {:ok, recommended}
+        end
+      end
     end
+  end
+
+  # Get popular public channels (fallback)
+  defp get_popular_channels(limit, exclude_ids \\ []) do
+    query =
+      from(c in LiveChannel,
+        join: p in Streamix.Iptv.Provider, on: c.provider_id == p.id,
+        where: p.visibility in [:global, :public],
+        where: not is_nil(c.stream_icon),
+        order_by: c.name,
+        limit: ^limit
+      )
+
+    query =
+      if exclude_ids != [] do
+        where(query, [c], c.id not in ^exclude_ids)
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  # Compute category scores from watched channels with proper JOIN
+  # Returns map of category_id => weighted_score
+  defp compute_channel_category_scores(channel_ids, history) do
+    # Build a map of channel_id => watch_weight from history
+    channel_weights =
+      Enum.reduce(history, %{}, fn entry, acc ->
+        weight = calculate_watch_weight(entry)
+        Map.update(acc, entry.content_id, weight, &(&1 + weight))
+      end)
+
+    # Get categories for watched channels via proper JOIN
+    channel_categories =
+      from(c in LiveChannel,
+        join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
+        join: cat in Streamix.Iptv.Category, on: lcc.category_id == cat.id,
+        where: c.id in ^channel_ids,
+        select: {c.id, cat.id, cat.name}
+      )
+      |> Repo.all()
+
+    # Aggregate scores by category_id
+    Enum.reduce(channel_categories, %{}, fn {channel_id, category_id, _name}, acc ->
+      weight = Map.get(channel_weights, channel_id, 1.0)
+      Map.update(acc, category_id, weight, &(&1 + weight))
+    end)
+  end
+
+  # Calculate watch weight based on duration and recency
+  defp calculate_watch_weight(entry) do
+    base = 1.0
+
+    # Duration factor: longer watch = stronger preference (cap at 2x)
+    duration = entry.duration_seconds || 60
+    duration_factor = min(1 + duration / 3600, 2.0)
+
+    # Recency factor: recent = stronger (exponential decay over 14 days)
+    days_ago = DateTime.diff(DateTime.utc_now(), entry.watched_at, :day)
+    recency_factor = :math.exp(-days_ago / 14)
+
+    base * duration_factor * recency_factor
   end
 
   # ============================================================================
@@ -341,35 +432,55 @@ defmodule Streamix.AI.UserAnalytics do
   @doc """
   Gets personalized channel recommendations with category filter.
 
+  Uses AI-powered recommendations when available, with category filtering
+  via proper database JOINs (not string matching on non-existent fields).
+
   ## Options
   - `:limit` - Number of results (default: 24)
-  - `:category` - Filter by category ("all" | "sports" | "movies" | "news")
+  - `:category` - Filter by category name ("all" | "sports" | "movies" | "news" | "kids")
   """
   def get_personalized_channels(user_id, opts \\ []) do
     limit = opts[:limit] || 24
     category = opts[:category] || "all"
 
-    {:ok, channels} = get_channel_recommendations(user_id, limit: limit * 2)
+    if category == "all" do
+      # No filter - use AI recommendations directly
+      {:ok, channels} = get_channel_recommendations(user_id, limit: limit)
+      channels
+    else
+      # Filter by category name using proper JOIN
+      get_channels_by_category(user_id, category, limit)
+    end
+  end
 
-    # If no recommendations, fallback to public channels
+  # Get channels filtered by category name with AI ordering
+  defp get_channels_by_category(user_id, category_name, limit) do
+    # First, get user's channel preferences for ordering
+    history = History.list(user_id, content_type: "live_channel", limit: 50)
+    watched_ids = Enum.map(history, & &1.content_id)
+
+    # Query channels by category name (case-insensitive partial match)
+    category_pattern = "%#{String.downcase(category_name)}%"
+
     channels =
-      if Enum.empty?(channels) do
-        Streamix.Iptv.list_public_channels(limit: limit * 2)
-      else
-        channels
-      end
+      from(c in LiveChannel,
+        join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
+        join: cat in Streamix.Iptv.Category, on: lcc.category_id == cat.id,
+        join: p in Streamix.Iptv.Provider, on: c.provider_id == p.id,
+        where: p.visibility in [:global, :public],
+        where: fragment("LOWER(?)", cat.name) |> like(^category_pattern),
+        where: not is_nil(c.stream_icon),
+        order_by: c.name,
+        limit: ^(limit * 2),
+        distinct: true,
+        select: c
+      )
+      |> Repo.all()
 
-    filtered =
-      if category == "all" do
-        channels
-      else
-        Enum.filter(channels, fn ch ->
-          ch_category = ch.category || ""
-          String.contains?(String.downcase(ch_category), String.downcase(category))
-        end)
-      end
-
-    Enum.take(filtered, limit)
+    # Order: put unwatched channels first (discovery), then watched
+    channels
+    |> Enum.sort_by(fn c -> if c.id in watched_ids, do: 1, else: 0 end)
+    |> Enum.take(limit)
   end
 
   @doc """
@@ -645,16 +756,6 @@ defmodule Streamix.AI.UserAnalytics do
     type = opts[:type] || "movies"
     limit = opts[:limit] || 20
     "recommendations:#{user_id}:#{type}:#{limit}"
-  end
-
-  defp compute_category_affinity(history) do
-    # Count watch time per category
-    Enum.reduce(history, %{}, fn entry, acc ->
-      category = entry.parent_name || "Unknown"
-      duration = entry.duration_seconds || 60
-
-      Map.update(acc, category, duration, &(&1 + duration))
-    end)
   end
 
   defp calculate_completion_rate(history) do
