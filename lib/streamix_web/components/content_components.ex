@@ -257,9 +257,16 @@ defmodule StreamixWeb.ContentComponents do
   attr :on_details, :string, default: "show_details"
 
   def movie_card(assigns) do
-    image_url = get_image_url(assigns.movie.stream_icon, Map.get(assigns.movie, :cover))
+    image_url = get_image_url(Map.get(assigns.movie, :stream_icon), Map.get(assigns.movie, :cover))
     rating = get_display_rating(assigns.movie)
-    assigns = assign(assigns, image_url: image_url, display_rating: rating)
+    # Safe access for AI recommendations that may not have all fields
+    movie_name = Map.get(assigns.movie, :title) || Map.get(assigns.movie, :name, "")
+    provider_id = Map.get(assigns.movie, :provider_id)
+
+    assigns =
+      assigns
+      |> assign(image_url: image_url, display_rating: rating)
+      |> assign(movie_name: movie_name, provider_id: provider_id)
 
     ~H"""
     <div
@@ -269,8 +276,8 @@ defmodule StreamixWeb.ContentComponents do
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
-      data-provider-id={@movie.provider_id}
-      data-title={Map.get(@movie, :title) || @movie.name}
+      data-provider-id={@provider_id}
+      data-title={@movie_name}
       data-year={Map.get(@movie, :year)}
       data-rating={@display_rating}
       data-plot={Map.get(@movie, :plot)}
@@ -283,12 +290,12 @@ defmodule StreamixWeb.ContentComponents do
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_details}
         phx-value-id={@movie.id}
-        phx-value-provider_id={@movie.provider_id}
+        phx-value-provider_id={@provider_id}
       >
         <img
           :if={@image_url}
           src={@image_url}
-          alt={@movie.name}
+          alt={@movie_name}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 peer"
           loading="lazy"
           onerror="this.classList.add('hidden'); this.nextElementSibling?.classList.remove('hidden')"
@@ -307,7 +314,7 @@ defmodule StreamixWeb.ContentComponents do
             type="button"
             phx-click={@on_play}
             phx-value-id={@movie.id}
-            phx-value-provider_id={@movie.provider_id}
+            phx-value-provider_id={@provider_id}
             class="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-brand/90 backdrop-blur-sm flex items-center justify-center hover:bg-brand hover:scale-110 transition-all shadow-lg"
           >
             <.icon name="hero-play-solid" class="size-5 sm:size-7 text-white ml-0.5" />
@@ -335,9 +342,9 @@ defmodule StreamixWeb.ContentComponents do
           <div class="min-w-0 flex-1">
             <h3
               class="font-medium text-[10px] sm:text-sm text-text-primary line-clamp-2 leading-tight"
-              title={@movie.name}
+              title={@movie_name}
             >
-              {Map.get(@movie, :title) || @movie.name}
+              {@movie_name}
             </h3>
           </div>
           <button
