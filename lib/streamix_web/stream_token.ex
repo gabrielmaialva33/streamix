@@ -107,7 +107,7 @@ defmodule StreamixWeb.StreamToken do
   end
 
   defp get_stream_url("channel", id) do
-    case Iptv.get_channel(id) do
+    case Iptv.get_live_channel(id) do
       nil ->
         {:error, :not_found}
 

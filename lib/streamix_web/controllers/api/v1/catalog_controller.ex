@@ -454,7 +454,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   Returns stream URL for a channel.
   """
   def channel_stream(conn, %{"id" => id}) do
-    case Iptv.get_channel(id) do
+    case Iptv.get_live_channel(id) do
       nil ->
         conn |> put_status(:not_found) |> json(%{error: "Channel not found"})
 

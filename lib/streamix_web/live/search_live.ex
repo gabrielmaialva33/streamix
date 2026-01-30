@@ -368,7 +368,7 @@ defmodule StreamixWeb.SearchLive do
     end)
   end
 
-  defp get_content("live_channel", id), do: Iptv.get_channel(id)
+  defp get_content("live_channel", id), do: Iptv.get_live_channel(id)
   defp get_content("movie", id), do: Iptv.get_movie(id)
   defp get_content("series", id), do: Iptv.get_series(id)
   defp get_content(_, _), do: nil

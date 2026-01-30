@@ -34,7 +34,6 @@ defmodule Streamix.Iptv do
   # Favorites (Polymorphic)
   # =============================================================================
   defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
-  defdelegate favorite?(user_id, content_type, content_id), to: Favorites, as: :exists?
   defdelegate is_favorite?(user_id, content_type, content_id), to: Favorites
   defdelegate count_favorites_by_type(user_id), to: Favorites, as: :count_by_type
   defdelegate list_favorite_ids(user_id, content_type), to: Favorites, as: :list_ids
@@ -81,7 +80,6 @@ defmodule Streamix.Iptv do
   defdelegate count_live_channels(provider_id), to: Channels, as: :count
   defdelegate get_live_channel!(id), to: Channels, as: :get!
   defdelegate get_live_channel(id), to: Channels, as: :get
-  defdelegate get_channel(id), to: Channels, as: :get
   defdelegate get_user_live_channel(user_id, channel_id), to: Channels, as: :get_user_channel
   defdelegate get_playable_channel(user_id, channel_id), to: Channels, as: :get_playable
   defdelegate get_public_channel(channel_id), to: Channels, as: :get_public
