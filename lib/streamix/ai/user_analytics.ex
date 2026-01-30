@@ -232,6 +232,7 @@ defmodule Streamix.AI.UserAnalytics do
 
         # Find recommended channels in user's preferred categories
         # Exclude already watched channels
+        # Note: Using subquery pattern to avoid PostgreSQL DISTINCT + ORDER BY RANDOM() conflict
         recommended =
           from(c in LiveChannel,
             join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
@@ -240,11 +241,13 @@ defmodule Streamix.AI.UserAnalytics do
             where: lcc.category_id in ^top_category_ids,
             where: c.id not in ^watched_channel_ids,
             where: not is_nil(c.stream_icon),
-            order_by: fragment("RANDOM()"),
-            limit: ^limit,
-            distinct: true
+            limit: ^(limit * 3),
+            select: c
           )
           |> Repo.all()
+          |> Enum.uniq_by(& &1.id)
+          |> Enum.shuffle()
+          |> Enum.take(limit)
 
         # If not enough recommendations, fill with popular channels
         if length(recommended) < limit do
