@@ -461,16 +461,47 @@ export class AVPlayerWrapper {
               typeof stream.duration === "bigint" ? Number(stream.duration) : stream.duration;
             if (durationValue > 0) {
               // Duration might be in various units, try to detect
-              // If it's very large (> 1000000), it's likely in microseconds
+              // Common timebase values and max reasonable duration (12 hours)
+              const MAX_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours in ms
+
+              let detectedMs;
               if (durationValue > 1000000000) {
-                this._durationMs = durationValue / 1000; // microseconds to ms
+                // Very large: likely microseconds (divide by 1000 to get ms)
+                detectedMs = durationValue / 1000;
               } else if (durationValue > 1000000) {
-                this._durationMs = durationValue; // already in ms
+                // Large: likely already in ms
+                detectedMs = durationValue;
               } else {
-                this._durationMs = durationValue * 1000; // seconds to ms
+                // Small: likely seconds
+                detectedMs = durationValue * 1000;
               }
-              console.log("[AVPlayerWrapper] Cached duration:", this._durationMs, "ms");
-              break;
+
+              // Validate: if still too large, try more aggressive conversion
+              if (detectedMs > MAX_DURATION_MS) {
+                // Might be in timescale units (e.g., 90000 Hz for MPEG-TS)
+                // Try dividing by common timescales
+                const timescales = [90000, 48000, 44100, 1000000];
+                for (const ts of timescales) {
+                  const tryMs = (durationValue / ts) * 1000;
+                  if (tryMs > 0 && tryMs < MAX_DURATION_MS) {
+                    detectedMs = tryMs;
+                    console.log(`[AVPlayerWrapper] Duration adjusted with timescale ${ts}`);
+                    break;
+                  }
+                }
+              }
+
+              // Final sanity check: cap at max duration
+              if (detectedMs > MAX_DURATION_MS) {
+                console.warn(`[AVPlayerWrapper] Duration ${detectedMs}ms exceeds max, ignoring`);
+                detectedMs = 0; // Will fallback to other methods
+              }
+
+              if (detectedMs > 0) {
+                this._durationMs = detectedMs;
+                console.log("[AVPlayerWrapper] Cached duration:", this._durationMs, "ms");
+                break;
+              }
             }
           }
         }
