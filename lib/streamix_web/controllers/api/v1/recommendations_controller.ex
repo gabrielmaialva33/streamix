@@ -98,16 +98,9 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     user_id = conn.assigns.current_scope.user.id
     limit = parse_int(params["limit"], 10)
 
-    case UserAnalytics.get_channel_recommendations(user_id, limit: limit) do
-      {:ok, channels} ->
-        serialized = Enum.map(channels, &serialize_channel/1)
-        json(conn, %{channels: serialized, personalized: true})
-
-      {:error, reason} ->
-        conn
-        |> put_status(:service_unavailable)
-        |> json(%{error: "Channel recommendations unavailable", reason: inspect(reason)})
-    end
+    {:ok, channels} = UserAnalytics.get_channel_recommendations(user_id, limit: limit)
+    serialized = Enum.map(channels, &serialize_channel/1)
+    json(conn, %{channels: serialized, personalized: true})
   end
 
   @doc """

@@ -191,6 +191,11 @@ defmodule Streamix.Iptv do
     as: :list_movies_by_genre
 
   defdelegate list_recently_added(opts \\ []), to: Catalog
+  defdelegate list_trending_movies(opts \\ []), to: Catalog
+  defdelegate list_trending_series(opts \\ []), to: Catalog
+  defdelegate list_new_releases(opts \\ []), to: Catalog
+  defdelegate list_top_10_movies(opts \\ []), to: Catalog
+  defdelegate list_top_10_series(opts \\ []), to: Catalog
   defdelegate list_categories(provider_id, type \\ nil), to: Catalog
   defdelegate get_category!(id), to: Catalog
 

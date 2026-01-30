@@ -123,7 +123,7 @@ defmodule Streamix.AI.Embeddings do
       "nvidia"
   end
 
-  defp embed_with_fallback(text, primary, fallback, opts \\ []) do
+  defp embed_with_fallback(text, primary, fallback, opts) do
     case do_embed(text, primary, opts) do
       {:ok, _} = result ->
         result

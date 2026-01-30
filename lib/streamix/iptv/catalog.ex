@@ -166,6 +166,153 @@ defmodule Streamix.Iptv.Catalog do
   end
 
   # =============================================================================
+  # Trending & Top 10 (Netflix-style)
+  # =============================================================================
+
+  @doc """
+  Gets trending movies based on recent watch history (last 7 days).
+  More watches = higher trending score.
+  """
+  @spec list_trending_movies(keyword()) :: [Movie.t()]
+  def list_trending_movies(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+    days = Keyword.get(opts, :days, 7)
+    since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
+
+    # Get movie IDs with watch counts from history
+    trending_ids =
+      from(h in Streamix.Iptv.WatchHistory,
+        where: h.content_type == "movie",
+        where: h.watched_at >= ^since,
+        group_by: h.content_id,
+        select: {h.content_id, count(h.id)},
+        order_by: [desc: count(h.id)],
+        limit: ^(limit * 2)
+      )
+      |> Repo.all()
+      |> Enum.map(fn {id, _count} -> id end)
+
+    if trending_ids == [] do
+      # Fallback to high-rated recent movies
+      list_new_releases(limit: limit)
+    else
+      Movie
+      |> where([m], m.id in ^trending_ids)
+      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+      |> where([m, p], p.visibility in [:global, :public])
+      |> Repo.all()
+      |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
+      |> Enum.take(limit)
+    end
+  end
+
+  @doc """
+  Gets trending series based on recent watch history.
+  """
+  @spec list_trending_series(keyword()) :: [Series.t()]
+  def list_trending_series(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+    days = Keyword.get(opts, :days, 7)
+    since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
+
+    # Get series IDs from episode watches
+    trending_ids =
+      from(h in Streamix.Iptv.WatchHistory,
+        where: h.content_type == "episode",
+        where: h.watched_at >= ^since,
+        group_by: h.content_id,
+        select: {h.content_id, count(h.id)},
+        order_by: [desc: count(h.id)],
+        limit: ^(limit * 3)
+      )
+      |> Repo.all()
+
+    if trending_ids == [] do
+      # Fallback to high-rated series
+      Series
+      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+      |> where([s, p], p.visibility in [:global, :public])
+      |> where([s, _p], not is_nil(s.cover))
+      |> order_by([s], desc: s.rating)
+      |> limit(^limit)
+      |> Repo.all()
+    else
+      # Map episode IDs to series IDs
+      episode_ids = Enum.map(trending_ids, fn {id, _} -> id end)
+
+      series_ids =
+        from(e in Streamix.Iptv.Episode,
+          where: e.id in ^episode_ids,
+          join: s in Streamix.Iptv.Season, on: e.season_id == s.id,
+          select: s.series_id,
+          distinct: true
+        )
+        |> Repo.all()
+
+      Series
+      |> where([s], s.id in ^series_ids)
+      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+      |> where([s, p], p.visibility in [:global, :public])
+      |> Repo.all()
+      |> Enum.take(limit)
+    end
+  end
+
+  @doc """
+  Gets new releases (movies from 2024-2026 with good ratings).
+  """
+  @spec list_new_releases(keyword()) :: [Movie.t()]
+  def list_new_releases(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 12)
+    current_year = Date.utc_today().year
+
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], m.year >= ^(current_year - 2))
+    |> where([m, _p], not is_nil(m.stream_icon))
+    |> order_by([m], [desc: m.year, desc: m.rating])
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets Top 10 movies (highest rated with good data).
+  Netflix-style numbered list.
+  """
+  @spec list_top_10_movies(keyword()) :: [Movie.t()]
+  def list_top_10_movies(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], not is_nil(m.rating))
+    |> where([m, _p], not is_nil(m.stream_icon))
+    |> where([m, _p], not is_nil(m.plot))
+    |> order_by([m], desc: m.rating)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets Top 10 series.
+  """
+  @spec list_top_10_series(keyword()) :: [Series.t()]
+  def list_top_10_series(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+
+    Series
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> where([s, p], p.visibility in [:global, :public])
+    |> where([s, _p], not is_nil(s.rating))
+    |> where([s, _p], not is_nil(s.cover))
+    |> order_by([s], desc: s.rating)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  # =============================================================================
   # Categories
   # =============================================================================
 

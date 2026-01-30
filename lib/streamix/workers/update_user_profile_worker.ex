@@ -63,7 +63,7 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
 
   # Calculate job priority based on user activity
   # Oban: lower number = higher priority (0 = highest, 3 = default)
-  defp calculate_priority(user_id, opts) do
+  defp calculate_priority(_user_id, opts) do
     activity_score = Keyword.get(opts, :activity_score, 0)
 
     cond do

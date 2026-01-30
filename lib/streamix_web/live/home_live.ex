@@ -31,6 +31,9 @@ defmodule StreamixWeb.HomeLive do
     |> assign(favorites: [])
     |> assign(history: [])
     |> assign(recommendations: [])
+    |> assign(trending: [])
+    |> assign(new_releases: [])
+    |> assign(top_10: [])
     |> assign(featured_favorite: false)
   end
 
@@ -52,6 +55,9 @@ defmodule StreamixWeb.HomeLive do
     socket
     |> assign(featured: featured)
     |> assign(stats: stats)
+    |> assign(trending: Iptv.list_trending_movies(limit: 12))
+    |> assign(new_releases: Iptv.list_new_releases(limit: 12))
+    |> assign(top_10: Iptv.list_top_10_movies(limit: 10))
     |> assign(movies: Iptv.list_public_movies(limit: 12))
     |> assign(series: Iptv.list_public_series(limit: 12))
     |> assign(channels: Iptv.list_public_channels(limit: 24))
@@ -154,7 +160,7 @@ defmodule StreamixWeb.HomeLive do
             type={:history}
           />
 
-      <!-- User's Favorites (logged in only) -->
+          <!-- User's Favorites (logged in only) -->
           <.render_content_carousel
             :if={@current_scope && @favorites != []}
             title="Minha Lista"
@@ -168,7 +174,32 @@ defmodule StreamixWeb.HomeLive do
             recommendations={@recommendations}
           />
 
-      <!-- Featured Movies -->
+          <!-- Trending Now -->
+          <.render_content_carousel
+            :if={@trending != []}
+            title="Em Alta Agora"
+            items={@trending}
+            type={:movies}
+            icon="hero-fire"
+          />
+
+          <!-- New Releases -->
+          <.render_content_carousel
+            :if={@new_releases != []}
+            title="Lançamentos"
+            items={@new_releases}
+            type={:movies}
+            icon="hero-sparkles"
+          />
+
+          <!-- Top 10 Movies -->
+          <.render_top_10
+            :if={@top_10 != []}
+            title="Top 10 Filmes"
+            items={@top_10}
+          />
+
+          <!-- Featured Movies -->
           <.render_content_carousel
             :if={@movies != []}
             title="Filmes em Destaque"
@@ -176,7 +207,7 @@ defmodule StreamixWeb.HomeLive do
             type={:movies}
           />
 
-      <!-- Featured Series -->
+          <!-- Featured Series -->
           <.render_content_carousel
             :if={@series != []}
             title="Séries Populares"
@@ -184,7 +215,7 @@ defmodule StreamixWeb.HomeLive do
             type={:series}
           />
 
-      <!-- Live Channels -->
+          <!-- Live Channels -->
           <.render_content_carousel
             :if={@channels != []}
             title="TV ao Vivo"
@@ -417,12 +448,15 @@ defmodule StreamixWeb.HomeLive do
   # Content Carousel Component
   defp render_content_carousel(assigns) do
     see_more_path = get_see_more_path(assigns.type, assigns.items)
-    assigns = assign(assigns, :see_more_path, see_more_path)
+    assigns = assigns |> assign(:see_more_path, see_more_path) |> assign_new(:icon, fn -> nil end)
 
     ~H"""
     <div class="px-[4%]">
       <div class="flex items-center justify-between mb-3 sm:mb-4">
-        <h2 class="text-base sm:text-xl font-semibold text-text-primary">{@title}</h2>
+        <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
+          <.icon :if={@icon} name={@icon} class="size-5 text-brand" />
+          {@title}
+        </h2>
         <.link
           :if={@see_more_path}
           navigate={@see_more_path}
@@ -486,6 +520,82 @@ defmodule StreamixWeb.HomeLive do
         </.link>
       <% end %>
     </div>
+    """
+  end
+
+  # Top 10 Component (Netflix-style with numbers)
+  defp render_top_10(assigns) do
+    ~H"""
+    <div class="px-[4%]">
+      <div class="flex items-center justify-between mb-3 sm:mb-4">
+        <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
+          <.icon name="hero-trophy" class="size-5 text-yellow-500" />
+          {@title}
+        </h2>
+        <.link
+          navigate={~p"/browse/movies"}
+          class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
+        >
+          Ver mais <.icon name="hero-chevron-right" class="size-4" />
+        </.link>
+      </div>
+      <div class="flex gap-3 sm:gap-4 overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
+        <.top_10_card :for={{movie, index} <- Enum.with_index(@items, 1)} movie={movie} rank={index} />
+      </div>
+    </div>
+    """
+  end
+
+  # Top 10 Card with big number
+  defp top_10_card(assigns) do
+    ~H"""
+    <.link
+      navigate={~p"/browse/movies/#{@movie.id}"}
+      class="group flex-shrink-0 relative"
+    >
+      <div class="flex items-end">
+        <!-- Big Number -->
+        <div class="relative z-10 -mr-4 sm:-mr-6">
+          <span class={[
+            "text-[80px] sm:text-[120px] font-black leading-none",
+            "bg-gradient-to-b from-text-primary to-text-muted bg-clip-text text-transparent",
+            "drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]",
+            @rank == 1 && "from-yellow-400 to-yellow-600",
+            @rank == 2 && "from-gray-300 to-gray-500",
+            @rank == 3 && "from-amber-600 to-amber-800"
+          ]}>
+            {@rank}
+          </span>
+        </div>
+        <!-- Movie Poster -->
+        <div class="w-[100px] sm:w-[140px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all">
+          <div class="aspect-[2/3] bg-surface-hover relative">
+            <img
+              :if={@movie.stream_icon}
+              src={ImageProxy.card(@movie.stream_icon)}
+              alt={@movie.name}
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+            <div :if={!@movie.stream_icon} class="w-full h-full flex items-center justify-center">
+              <.icon name="hero-film" class="size-8 text-text-muted" />
+            </div>
+            <!-- Hover overlay -->
+            <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
+              <.icon name="hero-play-circle-solid" class="size-12 text-white" />
+            </div>
+            <!-- Rating badge -->
+            <div
+              :if={@movie.rating}
+              class="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 bg-black/70 rounded text-[10px] text-white"
+            >
+              <.icon name="hero-star-solid" class="size-2.5 text-yellow-500" />
+              {Float.round(Decimal.to_float(@movie.rating), 1)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </.link>
     """
   end
 
