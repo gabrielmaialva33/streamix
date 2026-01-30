@@ -2,6 +2,7 @@ defmodule StreamixWeb.HomeLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.AI.UserAnalytics
 
   def mount(_params, _session, socket) do
     socket =
@@ -29,6 +30,7 @@ defmodule StreamixWeb.HomeLive do
     |> assign(channels: [])
     |> assign(favorites: [])
     |> assign(history: [])
+    |> assign(recommendations: [])
     |> assign(featured_favorite: false)
   end
 
@@ -61,16 +63,28 @@ defmodule StreamixWeb.HomeLive do
         socket
         |> assign(favorites: [])
         |> assign(history: [])
+        |> assign(recommendations: [])
         |> assign(featured_favorite: false)
 
       scope ->
         user_id = scope.user.id
         featured_favorite = check_featured_favorite(socket.assigns.featured, user_id)
+        recommendations = load_recommendations(user_id)
 
         socket
         |> assign(favorites: Iptv.list_favorites(user_id, limit: 12))
         |> assign(history: Iptv.list_watch_history(user_id, limit: 6))
+        |> assign(recommendations: recommendations)
         |> assign(featured_favorite: featured_favorite)
+    end
+  end
+
+  # Load AI-powered personalized recommendations
+  defp load_recommendations(user_id) do
+    case UserAnalytics.get_recommendations(user_id, limit: 12) do
+      recommendations when is_list(recommendations) -> recommendations
+      {:ok, recommendations} -> recommendations
+      _ -> []
     end
   end
 
@@ -146,6 +160,12 @@ defmodule StreamixWeb.HomeLive do
             title="Minha Lista"
             items={@favorites}
             type={:favorites}
+          />
+
+          <!-- AI-powered Recommendations (logged in only) -->
+          <.for_you_section
+            :if={@current_scope && @recommendations != []}
+            recommendations={@recommendations}
           />
 
       <!-- Featured Movies -->

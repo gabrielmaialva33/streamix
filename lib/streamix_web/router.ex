@@ -100,6 +100,15 @@ defmodule StreamixWeb.Router do
     get "/search/similar/:collection/:id", SearchController, :similar
     get "/search/status", SearchController, :status
     get "/search/info", SearchController, :info
+
+    # Recommendations API
+    scope "/recommendations" do
+      get "/", RecommendationsController, :index
+      get "/similar/:id", RecommendationsController, :similar
+      get "/channels", RecommendationsController, :channels
+      get "/insights", RecommendationsController, :insights
+      post "/refresh", RecommendationsController, :refresh
+    end
   end
 
   # Public routes - landing page only

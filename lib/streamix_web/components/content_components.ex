@@ -833,6 +833,70 @@ defmodule StreamixWeb.ContentComponents do
     """
   end
 
+  @doc """
+  Renders a "For You" recommendations section with horizontal carousel.
+
+  ## Attributes
+
+    * `:recommendations` - List of recommended movies/series
+    * `:on_play` - Event name for play action (default: "play_movie")
+    * `:on_details` - Event name for showing details (default: "show_details")
+
+  ## Examples
+
+      <.for_you_section recommendations={@recommendations} />
+  """
+  attr :recommendations, :list, required: true
+  attr :on_play, :string, default: "play_movie"
+  attr :on_details, :string, default: "show_details"
+
+  def for_you_section(assigns) do
+    ~H"""
+    <section class="px-[4%]">
+      <div class="flex items-center justify-between mb-3 sm:mb-4">
+        <h2 class="flex items-center gap-2 text-base sm:text-xl font-semibold text-text-primary">
+          <.icon name="hero-sparkles-solid" class="size-4 sm:size-5 text-yellow-400" />
+          Para Voce
+        </h2>
+      </div>
+
+      <%= if @recommendations == [] do %>
+        <div class="flex flex-col items-center justify-center py-12 sm:py-16 bg-surface/30 rounded-xl border border-border/50">
+          <.icon name="hero-sparkles" class="size-12 sm:size-16 text-text-muted mb-4" />
+          <h3 class="text-base sm:text-lg font-medium text-text-secondary mb-2">
+            Ainda estamos conhecendo voce
+          </h3>
+          <p class="text-sm text-text-muted text-center max-w-md px-4">
+            Continue assistindo para receber recomendacoes personalizadas baseadas no seu gosto.
+          </p>
+        </div>
+      <% else %>
+        <!-- Mobile: 3-column grid showing first 6 items -->
+        <div class="grid grid-cols-3 gap-2 sm:hidden">
+          <.movie_card
+            :for={item <- Enum.take(@recommendations, 6)}
+            movie={item}
+            show_favorite={false}
+            on_play={@on_play}
+            on_details={@on_details}
+          />
+        </div>
+        <!-- Desktop: horizontal scrollable carousel -->
+        <div class="hidden sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
+          <div :for={item <- @recommendations} class="flex-shrink-0 w-[180px]">
+            <.movie_card
+              movie={item}
+              show_favorite={false}
+              on_play={@on_play}
+              on_details={@on_details}
+            />
+          </div>
+        </div>
+      <% end %>
+    </section>
+    """
+  end
+
   # ============================================
   # Private Helpers
   # ============================================
