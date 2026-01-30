@@ -15,6 +15,7 @@ defmodule Streamix.Iptv.Gindex.Client do
   require Logger
 
   alias Streamix.Iptv.Gindex.EndpointManager
+  alias Streamix.Iptv.Gindex.HealthTracker
 
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(5)
@@ -40,7 +41,8 @@ defmodule Streamix.Iptv.Gindex.Client do
   def list_folder(path_or_base_url, path_or_opts \\ [])
 
   def list_folder(path, opts) when is_binary(path) and is_list(opts) do
-    case EndpointManager.get_endpoint() do
+    # Use smart endpoint selection based on :list operation health
+    case get_best_endpoint_for(:list) do
       {:ok, base_url} ->
         list_folder(base_url, path, opts)
 
@@ -247,6 +249,35 @@ defmodule Streamix.Iptv.Gindex.Client do
     EndpointManager.get_endpoint()
   end
 
+  @doc """
+  Gets the best endpoint for a specific operation type.
+  Uses HealthTracker to select endpoints based on per-operation health status.
+  Falls back to EndpointManager if HealthTracker is unavailable.
+  """
+  def get_best_endpoint_for(operation) when operation in [:list, :stream, :file_info] do
+    case EndpointManager.get_all_endpoints() do
+      {:ok, endpoints} when is_list(endpoints) and length(endpoints) > 0 ->
+        # Convert to format expected by HealthTracker
+        endpoints_list = Enum.map(endpoints, fn %{name: name, url: url, priority: priority} ->
+          {name, url, priority}
+        end)
+
+        # Get best endpoint for this operation based on health
+        case HealthTracker.get_best_endpoint_for(endpoints_list, operation) do
+          {_name, url, _priority} -> {:ok, url}
+          nil -> EndpointManager.get_endpoint()
+        end
+
+      _ ->
+        # Fallback to default selection
+        EndpointManager.get_endpoint()
+    end
+  end
+
+  def get_best_endpoint_for(_operation) do
+    EndpointManager.get_endpoint()
+  end
+
   # Private functions
 
   defp do_request(method, url, body, base_url, opts \\ []) do
@@ -287,16 +318,24 @@ defmodule Streamix.Iptv.Gindex.Client do
             rate_limit_attempt
           )
 
-        # Report success/failure to EndpointManager
+        # Detect operation type from URL/body
+        operation = detect_operation(url, body)
+
+        # Report success/failure to EndpointManager and HealthTracker
         case result do
           {:ok, %{status: 200}} ->
             EndpointManager.report_success(base_url)
+            HealthTracker.record_success(base_url, operation)
 
-          {:ok, %{status: status}} when status >= 500 ->
+          {:ok, %{status: status, body: resp_body}} when status >= 500 ->
+            # Detect specific JS errors from GIndex workers
+            error_type = detect_error_type(resp_body)
             EndpointManager.report_error(base_url)
+            HealthTracker.record_error(base_url, operation, error_type)
 
-          {:error, _} ->
+          {:error, reason} ->
             EndpointManager.report_error(base_url)
+            HealthTracker.record_error(base_url, operation, reason)
 
           _ ->
             :ok
@@ -615,4 +654,34 @@ defmodule Streamix.Iptv.Gindex.Client do
   defp uri_char?(char) do
     char in ?0..?9 or char in ?a..?z or char in ?A..?Z or char in ~c"-._~!$&'()*+,;=@"
   end
+
+  # Detect operation type from URL and body for health tracking
+  defp detect_operation(url, body) do
+    cond do
+      # Stream/download operations
+      String.contains?(url, "?a=") or String.contains?(url, "download") ->
+        :stream
+
+      # File info operations (getting direct links)
+      is_binary(body) and String.contains?(body, "\"type\":\"file\"") ->
+        :file_info
+
+      # Default: folder listing
+      true ->
+        :list
+    end
+  end
+
+  # Detect specific error types from response body
+  defp detect_error_type(body) when is_binary(body) do
+    cond do
+      String.contains?(body, "TypeError") -> :javascript_error
+      String.contains?(body, "Cannot read properties") -> :javascript_error
+      String.contains?(body, "rate limit") -> :rate_limit
+      String.contains?(body, "quota") -> :quota_exceeded
+      true -> :unknown_server_error
+    end
+  end
+
+  defp detect_error_type(_), do: :unknown
 end

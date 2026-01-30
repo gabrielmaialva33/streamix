@@ -20,12 +20,12 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   @default_endpoints [
     %{
       name: :primary,
-      url: "https://1.animezeydl.workers.dev",
+      url: "https://animezey16082023.animezey16082023.workers.dev",
       priority: 1
     },
     %{
       name: :fallback_1,
-      url: "https://animezey16082023.animezey16082023.workers.dev",
+      url: "https://1.animezeydl.workers.dev",
       priority: 2
     },
     %{
@@ -173,16 +173,11 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
     endpoints =
       :ets.tab2list(@table_name)
       |> Enum.map(fn {name, endpoint_state} ->
-        {name, endpoint_state.url}
+        %{name: name, url: endpoint_state.url, priority: endpoint_state.priority}
       end)
-      |> Enum.sort_by(fn {name, _url} ->
-        case :ets.lookup(@table_name, name) do
-          [{^name, es}] -> es.priority
-          [] -> 999
-        end
-      end)
+      |> Enum.sort_by(& &1.priority)
 
-    {:reply, endpoints, state}
+    {:reply, {:ok, endpoints}, state}
   end
 
   @impl true
