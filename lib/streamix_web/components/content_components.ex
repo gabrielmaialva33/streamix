@@ -262,7 +262,23 @@ defmodule StreamixWeb.ContentComponents do
     assigns = assign(assigns, image_url: image_url, display_rating: rating)
 
     ~H"""
-    <div class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
+    <div
+      id={"movie-card-#{@movie.id}"}
+      phx-hook="ContentCard"
+      class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer"
+      data-content-id={@movie.id}
+      data-content-type="movie"
+      data-source-type={@source}
+      data-provider-id={@movie.provider_id}
+      data-title={Map.get(@movie, :title) || @movie.name}
+      data-year={Map.get(@movie, :year)}
+      data-rating={@display_rating}
+      data-plot={Map.get(@movie, :plot)}
+      data-cover={ImageProxy.card(Map.get(@movie, :backdrop) || Map.get(@movie, :cover))}
+      data-genre={Map.get(@movie, :genre)}
+      data-duration={format_duration(Map.get(@movie, :duration))}
+      data-favorite={to_string(@is_favorite)}
+    >
       <div
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_details}
@@ -374,7 +390,21 @@ defmodule StreamixWeb.ContentComponents do
     assigns = assign(assigns, display_rating: rating)
 
     ~H"""
-    <div class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer">
+    <div
+      id={"series-card-#{@series.id}"}
+      phx-hook="ContentCard"
+      class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer"
+      data-content-id={@series.id}
+      data-content-type="series"
+      data-source-type={@source}
+      data-title={Map.get(@series, :title) || @series.name}
+      data-year={Map.get(@series, :year)}
+      data-rating={@display_rating}
+      data-plot={Map.get(@series, :plot)}
+      data-cover={ImageProxy.card(Map.get(@series, :backdrop) || Map.get(@series, :cover))}
+      data-genre={Map.get(@series, :genre)}
+      data-favorite={to_string(@is_favorite)}
+    >
       <div
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-click={@on_click}

@@ -10,13 +10,10 @@
  */
 
 import {
-  syncFavorites,
-  syncHistory,
-  getFavorites,
-  getHistory,
-  isOffline,
   addFavorite,
   removeFavorite,
+  syncFavorites,
+  syncHistory,
   upsertHistory,
 } from "../lib/offline_store";
 
@@ -132,7 +129,7 @@ const OfflineSync = {
     path.setAttribute("stroke-width", "2");
     path.setAttribute(
       "d",
-      "M18.364 5.636a9 9 0 010 12.728m-3.536-3.536a4 4 0 010-5.656M6.343 6.343a8 8 0 000 11.314"
+      "M18.364 5.636a9 9 0 010 12.728m-3.536-3.536a4 4 0 010-5.656M6.343 6.343a8 8 0 000 11.314",
     );
 
     svg.appendChild(path);

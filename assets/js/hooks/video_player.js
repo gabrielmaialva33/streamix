@@ -651,7 +651,11 @@ const VideoPlayer = {
 
   updateBufferBar() {
     if (this.video?.buffered) {
-      this.playerUI.updateBufferBar(this.video.buffered, this.video.duration, this.video.currentTime);
+      this.playerUI.updateBufferBar(
+        this.video.buffered,
+        this.video.duration,
+        this.video.currentTime,
+      );
     }
   },
 
@@ -842,13 +846,11 @@ const VideoPlayer = {
 
     // Whitelist validation to prevent path traversal
     const ALLOWED_TYPES = ["episode", "movie", "live"];
-    const type = ALLOWED_TYPES.includes(this.nextEpisode.type)
-      ? this.nextEpisode.type
-      : "episode";
+    const type = ALLOWED_TYPES.includes(this.nextEpisode.type) ? this.nextEpisode.type : "episode";
 
     // Validate ID is numeric to prevent injection
     const id = parseInt(this.nextEpisode.id, 10);
-    if (isNaN(id) || id <= 0) {
+    if (Number.isNaN(id) || id <= 0) {
       log.warn("[VideoPlayer] Invalid next episode ID:", this.nextEpisode.id);
       return;
     }
@@ -879,7 +881,7 @@ const VideoPlayer = {
       preconnect.href = streamDomain;
       preconnect.crossOrigin = "anonymous";
       document.head.appendChild(preconnect);
-    } catch (e) {
+    } catch (_e) {
       // Ignore URL parsing errors
     }
 
