@@ -127,21 +127,35 @@ export class NativeBufferManager {
     // Ignore stalls within 1s of each other (same event)
     if (now - this.lastStallTime < 1000) return;
 
+    // Ignore "waiting" events during seek operations
+    if (this.video && this.video.seeking) {
+      log.debug("Ignoring waiting event during seek");
+      return;
+    }
+
     this.stallCount++;
     this.totalStalls++;
     this.lastStallTime = now;
 
     const bufferAhead = this.getBufferedAhead();
-    log.warn(`[NativeBuffer] Stall #${this.totalStalls} (buffer: ${bufferAhead.toFixed(1)}s)`);
+    const readyState = this.video?.readyState || 0;
+
+    // Only warn if this seems like a real stall (low readyState)
+    if (readyState < 3) {
+      log.warn(`Stall #${this.totalStalls} (buffer: ${bufferAhead.toFixed(1)}s, ready: ${readyState})`);
+    } else {
+      log.debug(`Brief pause #${this.totalStalls} (buffer: ${bufferAhead.toFixed(1)}s, ready: ${readyState})`);
+    }
 
     this.onStall({
       stallCount: this.stallCount,
       totalStalls: this.totalStalls,
       bufferAhead,
+      readyState,
     });
 
-    // If too many stalls, try recovery
-    if (this.stallCount >= this.config.stallThreshold && !this.isRecovering) {
+    // Only attempt recovery for real stalls (low readyState + multiple occurrences)
+    if (this.stallCount >= this.config.stallThreshold && !this.isRecovering && readyState < 3) {
       this._attemptRecovery();
     }
   }
@@ -345,9 +359,19 @@ export class NativeBufferManager {
 
   /**
    * Get current buffer health state
+   * Takes into account video readyState to avoid false alarms
    */
   getBufferHealth() {
     const buffered = this.getBufferedAhead();
+
+    // If video reports HAVE_ENOUGH_DATA, trust it even if buffer calc shows 0
+    // This handles resume scenarios where playback is from cache, not buffer
+    if (this.video && this.video.readyState >= 3 && buffered === 0) {
+      // Check if video is actually playing smoothly
+      if (!this.video.paused && !this.video.seeking) {
+        return BufferHealth.GOOD; // Trust browser's readyState
+      }
+    }
 
     if (buffered < this.config.criticalBuffer) return BufferHealth.CRITICAL;
     if (buffered < this.config.lowBuffer) return BufferHealth.LOW;
