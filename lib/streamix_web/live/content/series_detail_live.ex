@@ -344,9 +344,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 </button>
 
                 <StreamixWeb.WatchPartyComponents.create_party_button
-                  :if={@sorted_seasons != [] and List.first(@sorted_seasons).episodes != []}
+                  :if={Enum.any?(@seasons, fn s -> s.episodes != [] end)}
                   content_type="episode"
-                  content_id={List.first(List.first(@sorted_seasons).episodes).id}
+                  content_id={Enum.find_value(@seasons, fn s -> List.first(s.episodes) end).id}
                 />
 
                 <button
