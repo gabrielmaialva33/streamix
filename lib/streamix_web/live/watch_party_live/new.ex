@@ -10,6 +10,7 @@ defmodule StreamixWeb.WatchPartyLive.New do
 
   def mount(%{"type" => type, "id" => id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
+    socket = assign(socket, current_path: "/party")
 
     case load_content(type, id, user_id) do
       {:ok, content, _provider, _stream_url} ->

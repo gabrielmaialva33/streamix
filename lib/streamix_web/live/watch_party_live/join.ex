@@ -21,6 +21,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
         socket =
           socket
           |> assign(page_title: "Watch Party — #{room.content_name}")
+          |> assign(current_path: "/party")
           |> assign(room: room)
 
         {:ok, socket}

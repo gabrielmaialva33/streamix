@@ -10,6 +10,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
     socket =
       socket
       |> assign(page_title: "Watch Party")
+      |> assign(current_path: "/party")
       |> assign(invite_input: "")
       |> assign(error: nil)
 
