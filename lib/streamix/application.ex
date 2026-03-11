@@ -50,6 +50,10 @@ defmodule Streamix.Application do
         Streamix.Iptv.Gindex.UrlCache,
         # Xtream circuit breaker (Netflix-style resilience)
         Streamix.Iptv.XtreamCircuitBreaker,
+        # Watch Party infrastructure
+        {Registry, keys: :unique, name: Streamix.WatchParty.Registry},
+        {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one},
+        StreamixWeb.Presence,
         # Start to serve requests, typically the last entry
         StreamixWeb.Endpoint
       ] ++ Streamix.Queue.Supervisor.child_spec_if_enabled()
