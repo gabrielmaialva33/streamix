@@ -1200,6 +1200,7 @@ const VideoPlayer = {
         }
 
         this.video.play().catch((e) => {
+          if (e.name === "AbortError") return; // play() interrupted by pause — harmless
           log.debug("Autoplay prevented:", e);
           this.playerUI.showPlayButton(() => this.video.play());
         });
@@ -1472,6 +1473,7 @@ const VideoPlayer = {
       this.mpegtsPlayer = this.streamLoader.loadMpegts(this.currentUrl, type);
 
       this.video.play().catch((e) => {
+        if (e.name === "AbortError") return; // play() interrupted by pause — harmless
         log.debug("Autoplay prevented:", e);
         if (e.name === "NotAllowedError") {
           this.playerUI.hideLoading();
@@ -1621,6 +1623,7 @@ const VideoPlayer = {
     });
 
     this.video.play().catch((e) => {
+      if (e.name === "AbortError") return; // play() interrupted by pause — harmless
       log.debug("Native autoplay prevented:", e);
       this.playerUI.hideLoading();
       if (e.name === "NotAllowedError") {
