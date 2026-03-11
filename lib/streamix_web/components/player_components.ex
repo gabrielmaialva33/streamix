@@ -100,7 +100,7 @@ defmodule StreamixWeb.PlayerComponents do
       <div
         :if={@show_controls}
         id="player-controls"
-        class="absolute inset-0 flex flex-col justify-between opacity-0 group-hover/player:opacity-100 transition-opacity duration-300 z-10"
+        class="absolute inset-0 flex flex-col justify-between opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto transition-opacity duration-300 z-10"
       >
         <%!-- Top bar --%>
         <div class="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-3 sm:p-6">

@@ -501,6 +501,7 @@ export class PlayerUI {
     if (controls) {
       controls.classList.remove("controls-hidden");
       controls.style.opacity = "1";
+      controls.style.pointerEvents = "auto";
       this.controlsVisible = true;
     }
   }
@@ -510,6 +511,7 @@ export class PlayerUI {
     if (controls && this.video && !this.video.paused) {
       controls.classList.add("controls-hidden");
       controls.style.opacity = "0";
+      controls.style.pointerEvents = "none";
       this.controlsVisible = false;
     }
   }
