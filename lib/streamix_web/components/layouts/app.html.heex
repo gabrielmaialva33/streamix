@@ -32,6 +32,13 @@
             >
               Minha Lista
             </.link>
+            <button
+              type="button"
+              phx-click={Phoenix.LiveView.JS.toggle(to: "#join-party-modal")}
+              class="text-sm font-medium text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1"
+            >
+              <.icon name="hero-users" class="size-4" /> Watch Party
+            </button>
           </nav>
         <% end %>
       </div>
@@ -125,6 +132,38 @@
     <.flash flash={@flash} kind={:error} />
   </div>
   
+<!-- Join Watch Party Modal -->
+  <%= if @current_scope do %>
+    <div
+      id="join-party-modal"
+      class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      phx-click={Phoenix.LiveView.JS.hide(to: "#join-party-modal")}
+    >
+      <div
+        class="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
+        phx-click-away={Phoenix.LiveView.JS.hide(to: "#join-party-modal")}
+      >
+        <h3 class="text-lg font-bold text-text-primary mb-1">Entrar em Watch Party</h3>
+        <p class="text-sm text-text-secondary mb-4">Cole o link ou digite o código de convite</p>
+        <form id="join-party-form" phx-hook="JoinPartyForm" class="flex gap-2">
+          <input
+            type="text"
+            name="invite"
+            placeholder="Código ou link..."
+            autocomplete="off"
+            class="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <button
+            type="submit"
+            class="px-4 py-2.5 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors text-sm"
+          >
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+  <% end %>
+
 <!-- Main Content -->
   <main class="pt-16 sm:pt-20 pb-20 sm:pb-8 px-[4%]">
     {@inner_content}
@@ -181,6 +220,14 @@
           />
           <span class="text-[10px] mt-0.5 font-medium">Favoritos</span>
         </.link>
+        <button
+          type="button"
+          phx-click={Phoenix.LiveView.JS.toggle(to: "#join-party-modal")}
+          class="flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation text-purple-400 active:text-purple-300"
+        >
+          <.icon name="hero-users" class="size-5" />
+          <span class="text-[10px] mt-0.5 font-medium">Party</span>
+        </button>
         <.link
           navigate={~p"/settings"}
           class={[

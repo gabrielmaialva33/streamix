@@ -148,6 +148,8 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
                   <.icon name="hero-play-solid" class="size-5" /> Assistir
                 </button>
 
+                <StreamixWeb.WatchPartyComponents.create_party_button content_type="gindex" content_id={@movie.id} />
+
                 <button
                   type="button"
                   phx-click="toggle_favorite"

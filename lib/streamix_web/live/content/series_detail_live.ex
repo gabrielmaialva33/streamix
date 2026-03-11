@@ -343,6 +343,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir
                 </button>
 
+                <StreamixWeb.WatchPartyComponents.create_party_button
+                  :if={@sorted_seasons != [] and List.first(@sorted_seasons).episodes != []}
+                  content_type="episode"
+                  content_id={List.first(List.first(@sorted_seasons).episodes).id}
+                />
+
                 <button
                   type="button"
                   phx-click="toggle_favorite"

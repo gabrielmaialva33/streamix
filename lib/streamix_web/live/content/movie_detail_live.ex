@@ -289,6 +289,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir Agora
                 </button>
 
+                <StreamixWeb.WatchPartyComponents.create_party_button content_type="movie" content_id={@movie.id} />
+
                 <button
                   type="button"
                   phx-click="toggle_favorite"
