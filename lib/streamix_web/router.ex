@@ -187,6 +187,7 @@ defmodule StreamixWeb.Router do
       live "/gindex/animes/:id", Gindex.AnimeDetailLive, :show
 
       # Watch Party
+      live "/party", WatchPartyLive.Index, :index
       live "/party/new/:type/:id", WatchPartyLive.New, :new
       live "/party/:invite_code", WatchPartyLive.Join, :join
     end

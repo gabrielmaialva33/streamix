@@ -8,7 +8,6 @@ import ProgressBar from "./progress_bar";
 import ThemeToggle from "./theme_toggle";
 import VideoPlayer from "./video_player";
 import WatchPartySync from "./watch_party_sync";
-import JoinPartyForm from "./join_party_form";
 
 export default {
   ThemeToggle,
@@ -21,5 +20,4 @@ export default {
   OfflineSync,
   ImageFallback,
   WatchPartySync,
-  JoinPartyForm,
 };
