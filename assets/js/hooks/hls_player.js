@@ -37,9 +37,14 @@ const HlsPlayer = {
       this.hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
+        progressive: true,
         backBufferLength: 90,
         maxBufferLength: 30,
         maxMaxBufferLength: 600,
+        maxStarvationDelay: 2,
+        highBufferWatchdogPeriod: 2,
+        nudgeMaxRetry: 5,
+        capLevelToPlayerSize: true,
         startLevel: -1,
       });
 

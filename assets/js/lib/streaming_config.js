@@ -1,17 +1,21 @@
 /**
  * Streaming Configuration Profiles for Streamix
  *
- * Three optimized profiles for different use cases:
+ * Four optimized profiles for different use cases:
  * - low_latency: Live sports/events (2-5s delay)
  * - balanced: Regular live TV (10-15s delay)
  * - quality: VOD content (maximum quality, larger buffers)
+ * - adaptive: Intelligent adaptive buffering
+ *
+ * v2: Enhanced with buffer stall prevention, progressive loading,
+ *     mobile optimization, and live edge catchup.
  */
 
 export const StreamingMode = {
   LOW_LATENCY: "low_latency",
   BALANCED: "balanced",
   QUALITY: "quality",
-  ADAPTIVE: "adaptive", // New: Intelligent adaptive buffering
+  ADAPTIVE: "adaptive",
 };
 
 export const ContentType = {
@@ -25,6 +29,20 @@ export const NetworkQuality = {
   EXCELLENT: "excellent", // > 5Mbps
 };
 
+// Shared settings that prevent buffer stalls across all profiles
+const sharedStallPrevention = {
+  maxFragLookUpTolerance: 0.1, // Smooth seeking
+  highBufferWatchdogPeriod: 2, // Check buffer health every 2s
+  nudgeMaxRetry: 5, // Retry nudging on stall
+  nudgeOnVideoHole: true, // Seek past holes in video buffer
+  maxStarvationDelay: 2, // Max 2s rebuffer before ABR drops quality (default 4s)
+  maxLoadingDelay: 3, // Max loading delay for start level selection
+  startLevel: -1, // Auto quality
+  enableWorker: true,
+  progressive: true, // Progressive loading for smoother start
+  capLevelToPlayerSize: true, // Don't waste bandwidth on resolutions larger than player
+};
+
 /**
  * Streaming configuration profiles for HLS.js and mpegts.js
  */
@@ -33,38 +51,38 @@ export const StreamingProfiles = {
     name: "Low Latency",
     description: "Optimized for live events with minimal delay",
     hls: {
+      ...sharedStallPrevention,
       lowLatencyMode: true,
       maxBufferLength: 10,
       maxBufferSize: 20 * 1000 * 1000, // 20MB
       maxMaxBufferLength: 20,
       backBufferLength: 2,
-      liveSyncDurationCount: 3, // Netflix: lower latency
+      liveSyncDurationCount: 3,
       liveMaxLatencyDurationCount: 4,
-      maxFragLookUpTolerance: 0.1, // Smooth seeking
+      maxLiveSyncPlaybackRate: 1.5, // Speed up to 1.5x to catch live edge
       // ABR settings - faster adaptation
       abrBandWidthFactor: 0.9,
       abrBandWidthUpFactor: 0.7,
       abrEwmaDefaultEstimate: 500000,
-      // Fragment loading - shorter timeouts
+      // Fragment loading - shorter timeouts for live
       fragLoadingTimeOut: 10000,
       fragLoadingMaxRetry: 3,
       fragLoadingRetryDelay: 500,
+      fragLoadingMaxRetryDelay: 4000, // Cap retry delay
       // Level loading
       levelLoadingTimeOut: 8000,
       levelLoadingMaxRetry: 3,
-      // Other
-      startLevel: -1,
-      enableWorker: true,
+      // Buffer holes
       maxBufferHole: 0.3,
     },
     mpegts: {
       enableWorker: true,
       enableStashBuffer: true,
-      stashInitialSize: 256 * 1024, // 256KB - smaller for faster start
+      stashInitialSize: 256 * 1024,
       autoCleanupSourceBuffer: true,
       autoCleanupMaxBackwardDuration: 30,
       autoCleanupMinBackwardDuration: 15,
-      liveBufferLatencyChasing: true, // Chase latency for live
+      liveBufferLatencyChasing: true,
       liveBufferLatencyMaxLatency: 1.5,
       liveBufferLatencyMinRemain: 0.5,
       lazyLoad: false,
@@ -77,13 +95,15 @@ export const StreamingProfiles = {
     name: "Balanced",
     description: "Good balance between latency and quality for regular live TV",
     hls: {
+      ...sharedStallPrevention,
       lowLatencyMode: false,
-      maxBufferLength: 60, // Netflix-style: 60s buffer
+      maxBufferLength: 60,
       maxBufferSize: 60 * 1000 * 1000, // 60MB
       maxMaxBufferLength: 120,
       backBufferLength: 60,
-      liveSyncDurationCount: 3, // Reduce live latency
-      maxFragLookUpTolerance: 0.1, // Smooth seeking
+      frontBufferFlushThreshold: 300, // Flush forward buffer after 5min to save memory
+      liveSyncDurationCount: 3,
+      maxLiveSyncPlaybackRate: 1.3, // Moderate catchup for live
       // ABR settings - balanced
       abrBandWidthFactor: 0.85,
       abrBandWidthUpFactor: 0.6,
@@ -92,22 +112,21 @@ export const StreamingProfiles = {
       fragLoadingTimeOut: 15000,
       fragLoadingMaxRetry: 4,
       fragLoadingRetryDelay: 1000,
+      fragLoadingMaxRetryDelay: 8000,
       // Level loading
       levelLoadingTimeOut: 10000,
       levelLoadingMaxRetry: 4,
-      // Other
-      startLevel: -1,
-      enableWorker: true,
+      // Buffer holes
       maxBufferHole: 0.5,
     },
     mpegts: {
       enableWorker: true,
       enableStashBuffer: true,
-      stashInitialSize: 384 * 1024, // 384KB
+      stashInitialSize: 384 * 1024,
       autoCleanupSourceBuffer: true,
       autoCleanupMaxBackwardDuration: 45,
       autoCleanupMinBackwardDuration: 30,
-      liveBufferLatencyChasing: false, // Don't chase, prioritize stability
+      liveBufferLatencyChasing: false,
       lazyLoad: false,
       lazyLoadMaxDuration: 45,
       accurateSeek: false,
@@ -119,12 +138,13 @@ export const StreamingProfiles = {
     name: "Quality",
     description: "Maximum quality for VOD content with large buffers",
     hls: {
+      ...sharedStallPrevention,
       lowLatencyMode: false,
-      maxBufferLength: 90, // Netflix-style: 90s for VOD
+      maxBufferLength: 90,
       maxBufferSize: 90 * 1000 * 1000, // 90MB
       maxMaxBufferLength: 180,
-      backBufferLength: 180, // 3 minutes back buffer
-      maxFragLookUpTolerance: 0.1, // Smooth seeking
+      backBufferLength: 180,
+      frontBufferFlushThreshold: 600, // Flush forward buffer after 10min
       // ABR settings - conservative, prefer quality
       abrBandWidthFactor: 0.8,
       abrBandWidthUpFactor: 0.5,
@@ -133,19 +153,18 @@ export const StreamingProfiles = {
       fragLoadingTimeOut: 20000,
       fragLoadingMaxRetry: 6,
       fragLoadingRetryDelay: 1000,
+      fragLoadingMaxRetryDelay: 12000,
       // Level loading
       levelLoadingTimeOut: 10000,
       levelLoadingMaxRetry: 4,
       levelLoadingRetryDelay: 1000,
-      // Other
-      startLevel: -1, // Auto, will ramp up to best quality
-      enableWorker: true,
+      // Buffer holes
       maxBufferHole: 0.5,
     },
     mpegts: {
       enableWorker: true,
       enableStashBuffer: true,
-      stashInitialSize: 512 * 1024, // 512KB - larger for VOD
+      stashInitialSize: 512 * 1024,
       autoCleanupSourceBuffer: true,
       autoCleanupMaxBackwardDuration: 60,
       autoCleanupMinBackwardDuration: 30,
@@ -153,66 +172,56 @@ export const StreamingProfiles = {
       lazyLoad: true,
       lazyLoadMaxDuration: 60,
       lazyLoadRecoverDuration: 30,
-      accurateSeek: true, // Accurate seeking for VOD
+      accurateSeek: true,
       seekType: "range",
     },
   },
 
-  // NEW: Adaptive mode - intelligent buffering that adjusts based on network conditions
   [StreamingMode.ADAPTIVE]: {
     name: "Adaptive",
     description: "Intelligent buffering: fast start, adapts to network conditions",
     hls: {
+      ...sharedStallPrevention,
       lowLatencyMode: false,
-      // Start with moderate buffer for fast playback start
-      maxBufferLength: 30, // Start with 30s, will adapt
-      maxBufferSize: 40 * 1000 * 1000, // 40MB initial
-      maxMaxBufferLength: 60, // Can grow to 60s if network is good
-      backBufferLength: 30, // Keep 30s behind for seeking
-      maxFragLookUpTolerance: 0.1, // Smooth seeking
-
+      maxBufferLength: 30,
+      maxBufferSize: 40 * 1000 * 1000, // 40MB
+      maxMaxBufferLength: 60,
+      backBufferLength: 30,
+      frontBufferFlushThreshold: 300,
+      maxLiveSyncPlaybackRate: 1.3,
       // ABR settings - responsive but stable
-      abrBandWidthFactor: 0.85, // Use 85% of measured bandwidth
-      abrBandWidthUpFactor: 0.6, // Be cautious upgrading quality
-      abrEwmaDefaultEstimate: 1000000, // Start assuming 1Mbps
-      abrEwmaFastLive: 3.0, // Fast adaptation window
-      abrEwmaSlowLive: 9.0, // Slow adaptation window
-
-      // Fragment loading - balanced timeouts
+      abrBandWidthFactor: 0.85,
+      abrBandWidthUpFactor: 0.6,
+      abrEwmaDefaultEstimate: 1000000, // 1Mbps default
+      abrEwmaFastLive: 3.0,
+      abrEwmaSlowLive: 9.0,
+      // Fragment loading
       fragLoadingTimeOut: 15000,
       fragLoadingMaxRetry: 4,
       fragLoadingRetryDelay: 1000,
-
+      fragLoadingMaxRetryDelay: 8000,
       // Level loading
       levelLoadingTimeOut: 10000,
       levelLoadingMaxRetry: 4,
       levelLoadingRetryDelay: 500,
+      // Buffer holes
+      maxBufferHole: 0.3,
 
-      // Buffer stall prevention
-      maxBufferHole: 0.3, // Smaller holes tolerated
-      highBufferWatchdogPeriod: 2, // Check buffer health every 2s
-      nudgeMaxRetry: 5, // Retry nudging on stall
-
-      // Other
-      startLevel: -1, // Auto quality
-      enableWorker: true,
-      progressive: true, // Progressive loading for smoother start
-
-      // Adaptive-specific: these are used by AdaptiveBufferManager
+      // Adaptive-specific: used by AdaptiveBufferManager
       _adaptive: {
-        minBuffer: 15, // Minimum buffer (never go below)
-        maxBuffer: 60, // Maximum buffer (never exceed)
-        targetBuffer: 30, // Target buffer level
-        stallThreshold: 3, // Reduce buffer after N stalls
-        goodNetworkThreshold: 2000000, // 2Mbps = good network
-        bufferGrowthRate: 5, // Grow buffer by 5s when network is good
-        bufferShrinkRate: 10, // Shrink buffer by 10s on stall
+        minBuffer: 15,
+        maxBuffer: 60,
+        targetBuffer: 30,
+        stallThreshold: 3,
+        goodNetworkThreshold: 2000000, // 2Mbps
+        bufferGrowthRate: 5,
+        bufferShrinkRate: 10,
       },
     },
     mpegts: {
       enableWorker: true,
       enableStashBuffer: true,
-      stashInitialSize: 384 * 1024, // 384KB balanced
+      stashInitialSize: 384 * 1024,
       autoCleanupSourceBuffer: true,
       autoCleanupMaxBackwardDuration: 45,
       autoCleanupMinBackwardDuration: 20,
@@ -228,34 +237,24 @@ export const StreamingProfiles = {
 
 /**
  * Select the optimal streaming mode based on content type and network quality
- * @param {string} contentType - 'live' or 'vod'
- * @param {string} networkQuality - 'poor', 'good', or 'excellent'
- * @returns {string} The recommended streaming mode
  */
 export function selectStreamingMode(contentType, networkQuality) {
-  // VOD always uses quality mode for best viewing experience
   if (contentType === ContentType.VOD) {
     return StreamingMode.QUALITY;
   }
 
-  // For live content, adapt based on network conditions
   switch (networkQuality) {
     case NetworkQuality.POOR:
-      // Poor network: use low latency (smaller buffers = faster adaptation)
       return StreamingMode.LOW_LATENCY;
     case NetworkQuality.EXCELLENT:
-      // Excellent network: can afford larger buffers for quality
       return StreamingMode.QUALITY;
     default:
-      // Good network: balanced approach
       return StreamingMode.BALANCED;
   }
 }
 
 /**
  * Get the configuration for a specific streaming mode
- * @param {string} mode - The streaming mode
- * @returns {object} The configuration object with hls and mpegts settings
  */
 export function getStreamingConfig(mode) {
   return StreamingProfiles[mode] || StreamingProfiles[StreamingMode.BALANCED];
@@ -263,9 +262,6 @@ export function getStreamingConfig(mode) {
 
 /**
  * Merge user overrides with base configuration
- * @param {string} mode - The streaming mode
- * @param {object} overrides - User configuration overrides
- * @returns {object} Merged configuration
  */
 export function mergeConfig(mode, overrides = {}) {
   const baseConfig = getStreamingConfig(mode);
@@ -290,13 +286,10 @@ export const QualityLevels = {
 
 /**
  * Find the best matching quality level index from HLS levels
- * @param {Array} levels - HLS.js levels array
- * @param {number} targetHeight - Target resolution height
- * @returns {number} Level index or -1 for auto
  */
 export function findQualityLevel(levels, targetHeight) {
   if (!levels || levels.length === 0 || targetHeight === -1) {
-    return -1; // Auto
+    return -1;
   }
 
   let bestMatch = -1;
@@ -310,7 +303,6 @@ export function findQualityLevel(levels, targetHeight) {
     }
   });
 
-  // If no match found below target, use lowest available
   if (bestMatch === -1 && levels.length > 0) {
     bestMatch = 0;
   }
@@ -320,28 +312,26 @@ export function findQualityLevel(levels, targetHeight) {
 
 /**
  * Codec-specific streaming profiles
- * Optimized bitrate targets based on codec efficiency
  */
 export const CodecProfiles = {
   av1: {
     name: "AV1",
-    efficiency: 0.5, // 50% of H.264 bitrate for same quality
+    efficiency: 0.5,
     maxBitrates: {
-      2160: 12000, // 4K
-      1080: 4500, // 1080p
-      720: 2500, // 720p
-      480: 1200, // 480p
+      2160: 12000,
+      1080: 4500,
+      720: 2500,
+      480: 1200,
     },
     preferHardwareAcceleration: true,
     hlsOverrides: {
-      // AV1 decoding is heavy, use larger buffers
       maxBufferLength: 120,
-      maxBufferSize: 120 * 1000 * 1000, // 120MB
+      maxBufferSize: 120 * 1000 * 1000,
     },
   },
   hevc: {
     name: "HEVC/H.265",
-    efficiency: 0.6, // 60% of H.264 bitrate
+    efficiency: 0.6,
     maxBitrates: {
       2160: 15000,
       1080: 6000,
@@ -368,14 +358,14 @@ export const CodecProfiles = {
   },
   h264: {
     name: "H.264/AVC",
-    efficiency: 1.0, // Baseline
+    efficiency: 1.0,
     maxBitrates: {
       2160: 25000,
       1080: 8000,
       720: 5000,
       480: 2500,
     },
-    preferHardwareAcceleration: false, // Always hardware accelerated
+    preferHardwareAcceleration: false,
     hlsOverrides: {},
   },
 };
@@ -384,42 +374,32 @@ export const CodecProfiles = {
  * Advanced feature flags for experimental APIs
  */
 export const FeatureFlags = {
-  // WebCodecs API (Chrome 94+)
   webCodecs: {
-    enabled: true, // Enable feature detection
+    enabled: true,
     preferHardwareAcceleration: true,
     fallbackToSoftware: true,
   },
-
-  // MSE in Workers (Firefox 130+, Chrome 108+)
   mseWorkers: {
     enabled: true,
-    offloadParsing: true, // Offload HLS.js parsing to worker
-    useTransferables: true, // Use Transferable objects for data
+    offloadParsing: true,
+    useTransferables: true,
   },
-
-  // Codec Priority
   codecPriority: {
     enabled: true,
-    preferEfficient: true, // Prefer AV1/HEVC over H.264
-    adaptToNetwork: true, // Switch codecs based on network
-    adaptToDevice: true, // Consider device capabilities
+    preferEfficient: true,
+    adaptToNetwork: true,
+    adaptToDevice: true,
   },
-
-  // Advanced ABR
   advancedABR: {
     enabled: true,
-    useCodecEfficiency: true, // Factor codec efficiency into ABR
-    bandwidthEstimation: "ewma", // 'ewma' or 'sliding'
-    safetyFactor: 0.8, // Use 80% of estimated bandwidth
+    useCodecEfficiency: true,
+    bandwidthEstimation: "ewma",
+    safetyFactor: 0.8,
   },
 };
 
 /**
  * Get codec-optimized HLS config
- * @param {string} mode - Streaming mode
- * @param {string} codec - Detected/preferred codec
- * @returns {object} Optimized config
  */
 export function getCodecOptimizedConfig(mode, codec) {
   const baseConfig = getStreamingConfig(mode);
@@ -445,8 +425,6 @@ export function getCodecOptimizedConfig(mode, codec) {
 
 /**
  * Determine if experimental features should be used
- * @param {Object} capabilities - Device capabilities from codec_detector
- * @returns {Object} Feature recommendations
  */
 export function getFeatureRecommendations(capabilities) {
   const recommendations = {
@@ -456,17 +434,14 @@ export function getFeatureRecommendations(capabilities) {
     preferHEVC: false,
   };
 
-  // WebCodecs: only if supported and hardware acceleration available
   if (capabilities?.webcodecs?.supported && FeatureFlags.webCodecs.enabled) {
     recommendations.useWebCodecs = true;
   }
 
-  // MSE Workers: only if supported
   if (capabilities?.mseWorkers?.supported && FeatureFlags.mseWorkers.enabled) {
     recommendations.useMSEWorkers = true;
   }
 
-  // Codec preference based on support and efficiency
   if (capabilities?.video?.av1?.supported && FeatureFlags.codecPriority.preferEfficient) {
     recommendations.preferAV1 = true;
   } else if (capabilities?.video?.hevc?.supported && FeatureFlags.codecPriority.preferEfficient) {
