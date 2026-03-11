@@ -2,10 +2,11 @@ defmodule Streamix.WatchParty.RoomServer do
   @moduledoc """
   GenServer managing real-time playback state for a Watch Party room.
 
-  Uses leader-follower protocol:
-  - Host controls playback (play/pause/seek)
-  - Followers adjust their position via sync commands
-  - Drift correction: <40ms ignore, <2s playbackRate, >2s force seek
+  v2 — Enhanced sync protocol:
+  - Server-authoritative time for clock offset estimation
+  - Per-participant drift tracking from sync beacons
+  - Adaptive sync broadcast (faster during catchup)
+  - Immediate sync on join
   """
   use GenServer
 
@@ -14,6 +15,7 @@ defmodule Streamix.WatchParty.RoomServer do
   @sync_interval :timer.seconds(5)
   @idle_check_interval :timer.seconds(60)
   @idle_timeout :timer.minutes(5)
+  @max_drift_log 2.0
 
   # --- Public API ---
 
@@ -34,8 +36,11 @@ defmodule Streamix.WatchParty.RoomServer do
     GenServer.call(via(room_id), {:playback_action, user_id, action})
   end
 
-  def sync_beacon(room_id, user_id, position, client_time) do
-    GenServer.cast(via(room_id), {:sync_beacon, user_id, position, client_time})
+  def sync_beacon(room_id, user_id, position, state, buffering, client_time) do
+    GenServer.cast(
+      via(room_id),
+      {:sync_beacon, user_id, position, state, buffering, client_time}
+    )
   end
 
   def get_state(room_id) do
@@ -76,6 +81,8 @@ defmodule Streamix.WatchParty.RoomServer do
         updated_at: System.monotonic_time(:millisecond)
       },
       participants: MapSet.new([host_user_id]),
+      # Per-participant tracking: %{user_id => %{position, state, buffering, last_seen}}
+      participant_states: %{},
       last_activity: System.monotonic_time(:millisecond)
     }
 
@@ -86,7 +93,12 @@ defmodule Streamix.WatchParty.RoomServer do
 
   @impl true
   def handle_call({:join, user_id}, _from, state) do
-    state = %{state | participants: MapSet.put(state.participants, user_id), last_activity: now()}
+    state = %{
+      state
+      | participants: MapSet.put(state.participants, user_id),
+        last_activity: now()
+    }
+
     {:reply, {:ok, state.playback}, state}
   end
 
@@ -103,14 +115,17 @@ defmodule Streamix.WatchParty.RoomServer do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    # Calculate current position based on elapsed time
     playback = compute_current_playback(state.playback)
     {:reply, {:ok, playback, state.host_user_id}, state}
   end
 
   @impl true
   def handle_cast({:leave, user_id}, state) do
-    state = %{state | participants: MapSet.delete(state.participants, user_id)}
+    state = %{
+      state
+      | participants: MapSet.delete(state.participants, user_id),
+        participant_states: Map.delete(state.participant_states, user_id)
+    }
 
     if MapSet.size(state.participants) == 0 do
       Logger.info("[WatchParty] Room #{state.room_id} empty, will idle-terminate")
@@ -120,17 +135,39 @@ defmodule Streamix.WatchParty.RoomServer do
   end
 
   @impl true
-  def handle_cast({:sync_beacon, _user_id, _position, _client_time}, state) do
-    # Track participant position for drift detection
-    # The actual drift correction happens client-side via sync broadcasts
-    {:noreply, %{state | last_activity: now()}}
+  def handle_cast(
+        {:sync_beacon, user_id, position, participant_state, buffering, _client_time},
+        state
+      ) do
+    # Track per-participant state
+    participant_states =
+      Map.put(state.participant_states, user_id, %{
+        position: position,
+        state: participant_state,
+        buffering: buffering,
+        last_seen: now()
+      })
+
+    # Log significant drift for host awareness
+    if user_id != state.host_user_id do
+      playback = compute_current_playback(state.playback)
+      drift = abs(position - playback.position)
+
+      if drift > @max_drift_log do
+        Logger.warning(
+          "[WatchParty] Room #{state.room_id}: user #{user_id} drift #{Float.round(drift, 2)}s"
+        )
+      end
+    end
+
+    {:noreply, %{state | participant_states: participant_states, last_activity: now()}}
   end
 
   @impl true
   def handle_info(:sync_broadcast, state) do
     schedule_sync_broadcast()
 
-    if MapSet.size(state.participants) > 0 do
+    if MapSet.size(state.participants) > 1 do
       playback = compute_current_playback(state.playback)
 
       Phoenix.PubSub.broadcast(
@@ -204,8 +241,8 @@ defmodule Streamix.WatchParty.RoomServer do
 
   defp broadcast_sync_command(state, action) do
     playback = compute_current_playback(state.playback)
-    # Add 300ms delay for network jitter compensation
-    target_time = System.system_time(:millisecond) + 300
+    # 200ms delay for network jitter compensation
+    target_time = System.system_time(:millisecond) + 200
 
     Phoenix.PubSub.broadcast(
       Streamix.PubSub,

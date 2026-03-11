@@ -116,8 +116,8 @@ defmodule Streamix.WatchParty do
     RoomServer.playback_action(room_id, user_id, action)
   end
 
-  def send_sync_beacon(room_id, user_id, position, client_time) do
-    RoomServer.sync_beacon(room_id, user_id, position, client_time)
+  def send_sync_beacon(room_id, user_id, position, state, buffering, client_time) do
+    RoomServer.sync_beacon(room_id, user_id, position, state, buffering, client_time)
   end
 
   def get_playback_state(room_id) do

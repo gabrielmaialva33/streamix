@@ -134,9 +134,38 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     {:noreply, socket}
   end
 
-  def handle_event("wp_sync_beacon", %{"position" => pos, "client_time" => ct}, socket) do
-    WatchParty.send_sync_beacon(socket.assigns.room.id, socket.assigns.user_id, pos, ct)
+  def handle_event("wp_sync_beacon", params, socket) do
+    WatchParty.send_sync_beacon(
+      socket.assigns.room.id,
+      socket.assigns.user_id,
+      params["position"] || 0.0,
+      params["state"] || "paused",
+      params["buffering"] || false,
+      params["client_time"] || 0
+    )
+
     {:noreply, socket}
+  end
+
+  def handle_event("wp_clock_ping", %{"id" => id}, socket) do
+    {:noreply, push_event(socket, "wp_clock_pong", %{id: id, server_time: System.system_time(:millisecond)})}
+  end
+
+  def handle_event("wp_request_sync", _params, socket) do
+    # Immediate sync for newly joined followers
+    case WatchParty.get_playback_state(socket.assigns.room.id) do
+      {:ok, playback, _host_id} ->
+        {:noreply,
+         push_event(socket, "wp_sync_command", %{
+           type: "sync",
+           state: Atom.to_string(playback.state),
+           position: playback.position,
+           server_time: System.system_time(:millisecond)
+         })}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_chat", _, socket) do
