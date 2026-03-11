@@ -81,7 +81,7 @@ defmodule StreamixWeb.WatchPartyComponents do
       title="Copiar link"
     >
       <.icon name="hero-link-micro" class="size-3" />
-      <span class="font-mono tracking-wider">{@invite_code}</span>
+      <span class="font-mono tracking-wider">{String.upcase(@invite_code)}</span>
     </button>
     """
   end

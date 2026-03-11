@@ -84,16 +84,16 @@ defmodule StreamixWeb.WatchPartyLive.Index do
                 type="text"
                 name="invite"
                 value={@invite_input}
-                placeholder="Ex: a3b2c1 ou https://streamix.mahina.cloud/party/a3b2c1"
+                placeholder="Código da sala ou link de convite"
                 autocomplete="off"
                 autofocus
                 class={[
-                  "w-full bg-white/5 border rounded-xl px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 transition-colors text-sm",
+                  "w-full bg-white/5 border rounded-xl px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 transition-colors text-center font-mono text-lg uppercase tracking-widest",
                   @error && "border-red-500 focus:ring-red-500",
                   !@error && "border-border focus:ring-purple-500"
                 ]}
               />
-              <p :if={@error} class="text-red-400 text-xs mt-1.5">{@error}</p>
+              <p :if={@error} class="text-red-400 text-xs mt-1.5 text-center">{@error}</p>
             </div>
 
             <button
