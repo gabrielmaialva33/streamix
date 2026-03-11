@@ -19,9 +19,9 @@ defmodule StreamixWeb.PlayerLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.PlayerComponents
+  import StreamixWeb.PlayerHelpers
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Gindex
 
   @doc false
   def mount(%{"type" => type, "id" => id}, _session, socket) do
@@ -228,95 +228,6 @@ defmodule StreamixWeb.PlayerLive do
   # Private Helpers
   # ============================================
 
-  defp load_content("live_channel", id, user_id) do
-    case Iptv.get_playable_channel(user_id, id) do
-      nil -> {:error, :not_found}
-      channel -> load_channel(channel)
-    end
-  end
-
-  defp load_content("movie", id, user_id) do
-    case Iptv.get_playable_movie(user_id, id) do
-      nil -> {:error, :not_found}
-      movie -> load_movie(movie)
-    end
-  end
-
-  defp load_content("episode", id, user_id) do
-    case Iptv.get_playable_episode(user_id, id) do
-      nil -> {:error, :not_found}
-      episode -> load_episode(episode)
-    end
-  end
-
-  defp load_content("gindex", id, _user_id) do
-    movie = Iptv.get_movie_with_provider!(id)
-
-    if movie && movie.gindex_path do
-      load_gindex_movie(movie)
-    else
-      {:error, :not_found}
-    end
-  rescue
-    Ecto.NoResultsError -> {:error, :not_found}
-  end
-
-  defp load_content("gindex_episode", id, _user_id) do
-    episode = Iptv.get_episode_with_context!(id)
-
-    if episode && episode.gindex_path do
-      load_gindex_episode(episode)
-    else
-      {:error, :not_found}
-    end
-  rescue
-    Ecto.NoResultsError -> {:error, :not_found}
-  end
-
-  defp load_content(_, _, _), do: {:error, :not_found}
-
-  defp load_channel(channel) do
-    provider = channel.provider
-    stream_url = Iptv.LiveChannel.stream_url(channel, provider)
-    {:ok, channel, provider, stream_url}
-  end
-
-  defp load_movie(movie) do
-    provider = movie.provider
-    stream_url = Iptv.Movie.stream_url(movie, provider)
-    {:ok, movie, provider, stream_url}
-  end
-
-  defp load_episode(episode) do
-    provider = episode.season.series.provider
-    stream_url = Iptv.Episode.stream_url(episode, provider)
-    {:ok, episode, provider, stream_url}
-  end
-
-  defp load_gindex_movie(movie) do
-    provider = movie.provider
-
-    case Gindex.get_movie_url(movie.id) do
-      {:ok, stream_url} ->
-        {:ok, movie, provider, stream_url}
-
-      {:error, _reason} ->
-        {:error, :not_found}
-    end
-  end
-
-  defp load_gindex_episode(episode) do
-    provider = episode.season.series.provider
-
-    case Gindex.get_episode_url(episode.id) do
-      {:ok, stream_url} ->
-        {:ok, episode, provider, stream_url}
-
-      {:error, _reason} ->
-        {:error, :not_found}
-    end
-  end
-
   defp record_watch_history(user_id, type, content) do
     Iptv.add_to_watch_history(user_id, %{
       content_type: type,
@@ -325,35 +236,6 @@ defmodule StreamixWeb.PlayerLive do
       content_icon: content_icon(content, type)
     })
   end
-
-  # Streaming mode selection:
-  # - live_channel: balanced (good latency + stability)
-  # - VOD (movies, episodes): adaptive (intelligent buffering)
-  defp default_streaming_mode("live_channel"), do: :balanced
-  defp default_streaming_mode("gindex"), do: :adaptive
-  defp default_streaming_mode("gindex_episode"), do: :adaptive
-  defp default_streaming_mode("movie"), do: :adaptive
-  defp default_streaming_mode("episode"), do: :adaptive
-  defp default_streaming_mode(_), do: :adaptive
-
-  defp content_title(content, "live_channel"), do: content.name
-  defp content_title(content, "movie"), do: content.title || content.name
-  defp content_title(content, "gindex"), do: content.title || content.name
-
-  defp content_title(content, "episode"),
-    do: content.title || "Episódio #{content.episode_num || ""}"
-
-  defp content_title(content, "gindex_episode"),
-    do: content.title || "Episódio #{content.episode_num || ""}"
-
-  defp content_title(content, _), do: content.name
-
-  defp content_icon(content, "live_channel"), do: content.stream_icon
-  defp content_icon(content, "movie"), do: content.stream_icon || Map.get(content, :cover)
-  defp content_icon(content, "gindex"), do: content.stream_icon
-  defp content_icon(content, "episode"), do: Map.get(content, :cover)
-  defp content_icon(content, "gindex_episode"), do: Map.get(content, :cover)
-  defp content_icon(_, _), do: nil
 
   defp get_back_path(socket) do
     case socket.assigns.content_type do
@@ -376,40 +258,6 @@ defmodule StreamixWeb.PlayerLive do
 
       _ ->
         ~p"/"
-    end
-  end
-
-  defp load_next_episode(type, content, provider) when type in ["episode", "gindex_episode"] do
-    case Iptv.get_next_episode(content.id) do
-      nil ->
-        nil
-
-      next ->
-        stream_url =
-          case type do
-            "episode" -> Iptv.Episode.stream_url(next, provider)
-            "gindex_episode" -> get_gindex_episode_url(next)
-          end
-
-        %{
-          id: next.id,
-          title: next.title || "Episódio #{next.episode_num}",
-          episode_num: next.episode_num,
-          season_num: next.season.season_number,
-          series_name: next.season.series.name,
-          cover: ImageProxy.proxy(next.cover || next.still_path),
-          stream_url: stream_url,
-          type: type
-        }
-    end
-  end
-
-  defp load_next_episode(_, _, _), do: nil
-
-  defp get_gindex_episode_url(episode) do
-    case Gindex.get_episode_url(episode.id) do
-      {:ok, url} -> url
-      _ -> nil
     end
   end
 
