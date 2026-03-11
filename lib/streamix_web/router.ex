@@ -185,6 +185,10 @@ defmodule StreamixWeb.Router do
       live "/gindex/movies/:id", Gindex.MovieDetailLive, :show
       live "/gindex/series/:id", Gindex.SeriesDetailLive, :show
       live "/gindex/animes/:id", Gindex.AnimeDetailLive, :show
+
+      # Watch Party
+      live "/party/new/:type/:id", WatchPartyLive.New, :new
+      live "/party/:invite_code", WatchPartyLive.Join, :join
     end
 
     # Player with fullscreen layout (requires auth)
@@ -192,6 +196,7 @@ defmodule StreamixWeb.Router do
       on_mount: [{StreamixWeb.UserAuth, :require_authenticated}],
       layout: {StreamixWeb.Layouts, :player} do
       live "/watch/:type/:id", PlayerLive, :show
+      live "/party/:invite_code/watch", WatchPartyLive.Show, :show
     end
 
     delete "/logout", UserSessionController, :delete

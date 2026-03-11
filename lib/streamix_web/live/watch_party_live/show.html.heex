@@ -1,0 +1,83 @@
+<div class="fixed inset-0 bg-black flex">
+  <%!-- Video area --%>
+  <div class={["flex-1 relative", @chat_open && "mr-80"]}>
+    <.video_player
+      content={@content}
+      content_type={@content_type}
+      stream_url={@stream_url}
+      streaming_mode={@streaming_mode}
+      provider_type={@provider.provider_type}
+      fullscreen={true}
+      on_close="close_player"
+      show_controls={true}
+      next_episode={@next_episode}
+      expected_duration={Map.get(@content, :duration_secs, 0) || 0}
+    />
+
+    <%!-- Watch Party Sync Hook --%>
+    <div
+      id="watch-party-sync"
+      phx-hook="WatchPartySync"
+      data-is-host={to_string(@is_host)}
+      data-room-id={@room.id}
+      class="hidden"
+    />
+
+    <%!-- Floating reactions container --%>
+    <div id="wp-reactions-container" class="absolute bottom-20 right-4 pointer-events-none z-50" />
+
+    <%!-- Top bar overlay --%>
+    <div class="absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-black/80 to-transparent p-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button phx-click="wp_leave" class="text-white/80 hover:text-white transition-colors">
+            <.icon name="hero-arrow-left" class="size-6" />
+          </button>
+          <div>
+            <h2 class="text-white font-semibold text-sm">{@room.content_name}</h2>
+            <.invite_badge invite_code={@room.invite_code} />
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <.presence_indicators presences={@presences} />
+
+          <button
+            phx-click="toggle_chat"
+            class={[
+              "p-2 rounded-lg transition-colors",
+              @chat_open && "bg-purple-600 text-white",
+              !@chat_open && "bg-white/10 text-white/80 hover:bg-white/20"
+            ]}
+          >
+            <.icon name="hero-chat-bubble-left-right" class="size-5" />
+          </button>
+
+          <button
+            :if={@is_host}
+            phx-click="wp_end_party"
+            data-confirm="Encerrar a Watch Party para todos?"
+            class="p-2 rounded-lg bg-red-600/80 text-white hover:bg-red-600 transition-colors"
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <%!-- Host indicator --%>
+    <div :if={!@is_host} class="absolute bottom-4 left-4 z-40">
+      <span class="px-3 py-1 rounded-full bg-purple-600/80 text-white text-xs font-medium backdrop-blur-sm">
+        Sincronizado com o host
+      </span>
+    </div>
+  </div>
+
+  <%!-- Chat sidebar --%>
+  <.chat_sidebar
+    :if={@chat_open}
+    messages={@streams.messages}
+    message_input={@message_input}
+    room_id={@room.id}
+  />
+</div>
