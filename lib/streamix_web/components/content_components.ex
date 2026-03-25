@@ -306,28 +306,42 @@ defmodule StreamixWeb.ContentComponents do
             name="genre"
             class="appearance-none bg-surface hover:bg-surface-hover text-text-primary text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 pr-6 sm:pr-8 rounded-md border border-border cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand"
           >
-            <option :for={{value, label} <- @genre_filters} value={value} selected={@selected_genre == value}>
+            <option
+              :for={{value, label} <- @genre_filters}
+              value={value}
+              selected={@selected_genre == value}
+            >
               {label}
             </option>
           </select>
-          <.icon name="hero-chevron-down-mini" class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 size-3 sm:size-4 text-text-muted pointer-events-none" />
+          <.icon
+            name="hero-chevron-down-mini"
+            class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 size-3 sm:size-4 text-text-muted pointer-events-none"
+          />
         </div>
-
-        <!-- Period Filter Dropdown -->
+        
+    <!-- Period Filter Dropdown -->
         <div :if={@period_filters != [] and @on_period_change} class="relative">
           <select
             phx-change={@on_period_change}
             name="period"
             class="appearance-none bg-surface hover:bg-surface-hover text-text-primary text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 pr-6 sm:pr-8 rounded-md border border-border cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand"
           >
-            <option :for={{days, label} <- @period_filters} value={days || "all"} selected={@selected_period == days}>
+            <option
+              :for={{days, label} <- @period_filters}
+              value={days || "all"}
+              selected={@selected_period == days}
+            >
               {label}
             </option>
           </select>
-          <.icon name="hero-chevron-down-mini" class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 size-3 sm:size-4 text-text-muted pointer-events-none" />
+          <.icon
+            name="hero-chevron-down-mini"
+            class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 size-3 sm:size-4 text-text-muted pointer-events-none"
+          />
         </div>
-
-        <!-- Ver mais link -->
+        
+    <!-- Ver mais link -->
         <.link
           :if={@see_more_path}
           navigate={@see_more_path}
@@ -361,12 +375,15 @@ defmodule StreamixWeb.ContentComponents do
   attr :is_favorite, :boolean, default: false
   attr :show_favorite, :boolean, default: true
   attr :source, :string, default: nil
+  attr :progress, :float, default: nil
   attr :on_play, :string, default: "play_movie"
   attr :on_favorite, :string, default: "toggle_favorite"
   attr :on_details, :string, default: "show_details"
 
   def movie_card(assigns) do
-    image_url = get_image_url(Map.get(assigns.movie, :stream_icon), Map.get(assigns.movie, :cover))
+    image_url =
+      get_image_url(Map.get(assigns.movie, :stream_icon), Map.get(assigns.movie, :cover))
+
     rating = get_display_rating(assigns.movie)
     # Safe access for AI recommendations that may not have all fields
     movie_name = Map.get(assigns.movie, :title) || Map.get(assigns.movie, :name, "")
@@ -414,7 +431,9 @@ defmodule StreamixWeb.ContentComponents do
           @image_url && "hidden"
         ]}>
           <.icon name="hero-film" class="size-8 sm:size-12 text-brand/60 mb-2" />
-          <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">{@movie_name}</span>
+          <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
+            {@movie_name}
+          </span>
         </div>
 
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -445,6 +464,10 @@ defmodule StreamixWeb.ContentComponents do
         >
           GIndex
         </span>
+
+        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
+          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
+        </div>
       </div>
 
       <div class="p-1.5 sm:p-3">
@@ -498,6 +521,7 @@ defmodule StreamixWeb.ContentComponents do
   attr :series, :map, required: true
   attr :is_favorite, :boolean, default: false
   attr :show_favorite, :boolean, default: true
+  attr :progress, :float, default: nil
   attr :on_click, :string, default: "view_series"
   attr :on_favorite, :string, default: "toggle_favorite"
   attr :source, :string, default: nil
@@ -561,6 +585,10 @@ defmodule StreamixWeb.ContentComponents do
           class="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 px-1 py-0.5 sm:px-2 text-[9px] sm:text-xs rounded bg-brand text-white"
         >
           {@series.episode_count} eps
+        </div>
+
+        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
+          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
         </div>
       </div>
 
@@ -972,8 +1000,7 @@ defmodule StreamixWeb.ContentComponents do
     <section class="px-[4%]">
       <div class="flex items-center justify-between mb-3 sm:mb-4">
         <h2 class="flex items-center gap-2 text-base sm:text-xl font-semibold text-text-primary">
-          <.icon name="hero-sparkles-solid" class="size-4 sm:size-5 text-yellow-400" />
-          Para Voce
+          <.icon name="hero-sparkles-solid" class="size-4 sm:size-5 text-yellow-400" /> Para Voce
         </h2>
       </div>
 

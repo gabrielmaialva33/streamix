@@ -41,6 +41,28 @@
     <.live_title default="Streamix" suffix=" · Streamix">
       {assigns[:page_title]}
     </.live_title>
+    
+<!-- Open Graph / Twitter Meta Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Streamix" />
+    <meta property="og:title" content={assigns[:page_title] || "Streamix"} />
+    <meta
+      property="og:description"
+      content={
+        assigns[:page_description] || "Filmes, séries e canais ao vivo — tudo em um só lugar."
+      }
+    />
+    <meta :if={assigns[:og_image]} property="og:image" content={assigns[:og_image]} />
+    <meta property="og:url" content={assigns[:og_url] || ""} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={assigns[:page_title] || "Streamix"} />
+    <meta
+      name="twitter:description"
+      content={
+        assigns[:page_description] || "Filmes, séries e canais ao vivo — tudo em um só lugar."
+      }
+    />
+    <meta :if={assigns[:og_image]} name="twitter:image" content={assigns[:og_image]} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script
       defer

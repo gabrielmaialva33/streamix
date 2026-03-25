@@ -110,8 +110,16 @@ const ContentCard = {
       this.observer.disconnect();
     }
 
-    if (previewTimeout && this.pendingPreview) {
+    // Always clear pending timeout, regardless of pendingPreview flag
+    if (previewTimeout) {
       clearTimeout(previewTimeout);
+      previewTimeout = null;
+    }
+    this.pendingPreview = false;
+
+    // Close preview if it belongs to this card
+    if (activePreview && activePreview.dataset.contentId === this.contentId) {
+      closeActivePreview();
     }
   },
 
@@ -128,6 +136,7 @@ const ContentCard = {
 
     // Delay before showing preview
     previewTimeout = setTimeout(() => {
+      previewTimeout = null;
       if (this.pendingPreview) {
         this.showPreview();
       }
@@ -165,83 +174,89 @@ const ContentCard = {
   },
 
   showPreview() {
-    closeActivePreview();
+    try {
+      closeActivePreview();
 
-    // Don't show preview if no metadata
-    if (!this.title && !this.plot) {
-      return;
+      // Don't show preview if no metadata
+      if (!this.title && !this.plot) {
+        return;
+      }
+
+      const card = this.el;
+      const rect = card.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Create preview element
+      const preview = document.createElement("div");
+      preview.dataset.contentId = this.contentId;
+      preview.className =
+        "content-preview fixed z-50 bg-surface rounded-lg shadow-2xl overflow-hidden transition-all duration-200 ease-out";
+      preview.style.cssText = `
+        width: ${Math.min(rect.width * 1.5, 380)}px;
+        opacity: 0;
+        transform: scale(0.95);
+      `;
+
+      // Build preview HTML
+      preview.innerHTML = this.buildPreviewHTML();
+
+      // Add to DOM
+      document.body.appendChild(preview);
+      activePreview = preview;
+
+      // Calculate position
+      const previewRect = preview.getBoundingClientRect();
+      let left = rect.left + (rect.width - previewRect.width) / 2;
+      let top = rect.top - 10;
+
+      // Adjust for viewport edges
+      const padding = 16;
+
+      // Horizontal bounds
+      if (left < padding) {
+        left = padding;
+      } else if (left + previewRect.width > viewportWidth - padding) {
+        left = viewportWidth - previewRect.width - padding;
+      }
+
+      // Vertical bounds - prefer above, fallback to below
+      if (top - previewRect.height < padding) {
+        top = rect.bottom + 10;
+      } else {
+        top = top - previewRect.height;
+      }
+
+      // Ensure doesn't go below viewport
+      if (top + previewRect.height > viewportHeight - padding) {
+        top = viewportHeight - previewRect.height - padding;
+      }
+
+      preview.style.left = `${left}px`;
+      preview.style.top = `${top}px`;
+
+      // Animate in
+      requestAnimationFrame(() => {
+        preview.style.opacity = "1";
+        preview.style.transform = "scale(1)";
+      });
+
+      // Add event listeners for preview
+      preview.addEventListener("mouseleave", () => {
+        setTimeout(() => {
+          if (!this.el.matches(":hover") && !preview.matches(":hover")) {
+            closeActivePreview();
+          }
+        }, 100);
+      });
+
+      // Bind action buttons
+      this.bindPreviewActions(preview);
+    } catch (e) {
+      // Clean up on error to prevent orphaned DOM elements
+      closeActivePreview();
+      console.debug("[ContentCard] showPreview error:", e.message);
     }
-
-    const card = this.el;
-    const rect = card.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    // Create preview element
-    const preview = document.createElement("div");
-    preview.dataset.contentId = this.contentId;
-    preview.className =
-      "content-preview fixed z-50 bg-surface rounded-lg shadow-2xl overflow-hidden transition-all duration-200 ease-out";
-    preview.style.cssText = `
-      width: ${Math.min(rect.width * 1.5, 380)}px;
-      opacity: 0;
-      transform: scale(0.95);
-    `;
-
-    // Build preview HTML
-    preview.innerHTML = this.buildPreviewHTML();
-
-    // Add to DOM
-    document.body.appendChild(preview);
-    activePreview = preview;
-
-    // Calculate position
-    const previewRect = preview.getBoundingClientRect();
-    let left = rect.left + (rect.width - previewRect.width) / 2;
-    let top = rect.top - 10;
-
-    // Adjust for viewport edges
-    const padding = 16;
-
-    // Horizontal bounds
-    if (left < padding) {
-      left = padding;
-    } else if (left + previewRect.width > viewportWidth - padding) {
-      left = viewportWidth - previewRect.width - padding;
-    }
-
-    // Vertical bounds - prefer above, fallback to below
-    if (top - previewRect.height < padding) {
-      top = rect.bottom + 10;
-    } else {
-      top = top - previewRect.height;
-    }
-
-    // Ensure doesn't go below viewport
-    if (top + previewRect.height > viewportHeight - padding) {
-      top = viewportHeight - previewRect.height - padding;
-    }
-
-    preview.style.left = `${left}px`;
-    preview.style.top = `${top}px`;
-
-    // Animate in
-    requestAnimationFrame(() => {
-      preview.style.opacity = "1";
-      preview.style.transform = "scale(1)";
-    });
-
-    // Add event listeners for preview
-    preview.addEventListener("mouseleave", () => {
-      setTimeout(() => {
-        if (!this.el.matches(":hover") && !preview.matches(":hover")) {
-          closeActivePreview();
-        }
-      }, 100);
-    });
-
-    // Bind action buttons
-    this.bindPreviewActions(preview);
   },
 
   buildPreviewHTML() {

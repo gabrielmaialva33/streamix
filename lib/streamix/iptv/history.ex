@@ -162,4 +162,25 @@ defmodule Streamix.Iptv.History do
 
     {:ok, count}
   end
+
+  @doc """
+  Returns a map of content_id => progress (0.0..1.0) for the given content IDs.
+  Used for showing progress bars on content cards.
+  """
+  @spec get_progress_map(integer(), String.t(), [integer()]) :: %{integer() => float()}
+  def get_progress_map(_user_id, _content_type, []), do: %{}
+
+  def get_progress_map(user_id, content_type, content_ids) do
+    WatchHistory
+    |> where(
+      [w],
+      w.user_id == ^user_id and w.content_type == ^content_type and w.content_id in ^content_ids
+    )
+    |> where([w], w.duration_seconds > 0 and w.progress_seconds > 0)
+    |> select([w], {w.content_id, w.progress_seconds, w.duration_seconds})
+    |> Repo.all()
+    |> Map.new(fn {id, progress, duration} ->
+      {id, Float.round(progress / duration, 2)}
+    end)
+  end
 end

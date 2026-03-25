@@ -64,6 +64,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         socket =
           socket
           |> assign(page_title: movie.title || movie.name)
+          |> assign(
+            page_description: movie.plot || "Assista #{movie.title || movie.name} no Streamix"
+          )
+          |> assign(og_image: og_image_url(movie))
           |> assign(current_path: current_path)
           |> assign(provider: provider)
           |> assign(movie: movie)
@@ -210,7 +214,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   ]}
                 >
                   <.icon name="hero-film" class="size-10 sm:size-16 text-brand/50 mb-2 sm:mb-3" />
-                  <span class="text-xs sm:text-sm text-text-muted leading-tight line-clamp-3">{@movie.title || @movie.name}</span>
+                  <span class="text-xs sm:text-sm text-text-muted leading-tight line-clamp-3">
+                    {@movie.title || @movie.name}
+                  </span>
                 </div>
               </div>
             </div>
@@ -302,7 +308,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir Agora
                 </button>
 
-                <StreamixWeb.WatchPartyComponents.create_party_button content_type="movie" content_id={@movie.id} />
+                <StreamixWeb.WatchPartyComponents.create_party_button
+                  content_type="movie"
+                  content_id={@movie.id}
+                />
 
                 <button
                   type="button"
@@ -430,7 +439,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                     ]}
                   >
                     <.icon name="hero-film" class="size-6 text-brand/60 mb-1" />
-                    <span class="text-[9px] text-text-muted leading-tight line-clamp-2">{similar.title || similar.name}</span>
+                    <span class="text-[9px] text-text-muted leading-tight line-clamp-2">
+                      {similar.title || similar.name}
+                    </span>
                   </div>
                 </div>
                 <p class="mt-2 text-sm text-text-primary truncate group-hover:text-brand transition-colors">
@@ -449,6 +460,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp og_image_url(%{backdrop_path: [url | _]}) when is_binary(url), do: url
+  defp og_image_url(%{stream_icon: icon}) when is_binary(icon) and icon != "", do: icon
+  defp og_image_url(_), do: nil
 
   defp back_path(:browse, _provider), do: ~p"/browse/movies"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/movies"

@@ -19,12 +19,18 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   # TMDB image sizes (Netflix uses 20-30KB for thumbnails)
   @tmdb_sizes %{
-    thumbnail: "w185",   # ~10-20KB - small grids
-    card: "w342",        # ~25-40KB - movie cards
-    detail: "w500",      # ~50-80KB - detail pages
-    hero: "w1280",       # ~100-200KB - hero backgrounds
-    backdrop: "w780",    # ~60-100KB - backdrop images
-    original: "original" # full quality
+    # ~10-20KB - small grids
+    thumbnail: "w185",
+    # ~25-40KB - movie cards
+    card: "w342",
+    # ~50-80KB - detail pages
+    detail: "w500",
+    # ~100-200KB - hero backgrounds
+    hero: "w1280",
+    # ~60-100KB - backdrop images
+    backdrop: "w780",
+    # full quality
+    original: "original"
   }
 
   @doc """
@@ -72,9 +78,15 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   # gstaticontent URLs with /t/p/ are TMDB mirrors, others go through stream proxy
   defp normalize_gstatic(url) do
     cond do
-      String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/+.*/t/p/|https?://(?:file\.)?gstaticontent\.com/+t/p/}) ->
+      String.match?(
+        url,
+        ~r{https?://(?:file\.)?gstaticontent\.com/+.*/t/p/|https?://(?:file\.)?gstaticontent\.com/+t/p/}
+      ) ->
         url
-        |> String.replace(~r{https?://(?:file\.)?gstaticontent\.com/+}, "https://tmdb.mahina.cloud/")
+        |> String.replace(
+          ~r{https?://(?:file\.)?gstaticontent\.com/+},
+          "https://tmdb.mahina.cloud/"
+        )
         |> String.replace("//t/p/", "/t/p/")
 
       String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/}) ->
@@ -169,7 +181,10 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     # Also handles gstaticontent-style sizes like w600_and_h900_bestv2
     url
     |> String.replace(~r{/t/p/(w\d+(?:_and_h\d+_bestv2)?|original)/}, "/t/p/#{target_size}/")
-    |> String.replace(~r{image\.tmdb\.org/t/p/(w\d+|original)/}, "image.tmdb.org/t/p/#{target_size}/")
+    |> String.replace(
+      ~r{image\.tmdb\.org/t/p/(w\d+|original)/},
+      "image.tmdb.org/t/p/#{target_size}/"
+    )
   end
 
   def resize(url, _size), do: url
@@ -205,7 +220,9 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   defp extract_tmdb_path(url) do
     # Match TMDB path pattern: /abc123.jpg
     case Regex.run(~r{/t/p/(?:w\d+|original)(/[^?]+)}, url) do
-      [_, path] -> path
+      [_, path] ->
+        path
+
       _ ->
         # Maybe it's just a path
         if String.starts_with?(url, "/") and String.ends_with?(url, ".jpg"),

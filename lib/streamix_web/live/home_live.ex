@@ -2,6 +2,7 @@ defmodule StreamixWeb.HomeLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.Cache
   alias Streamix.AI.UserAnalytics
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -36,6 +37,9 @@ defmodule StreamixWeb.HomeLive do
     |> assign(new_releases: [])
     |> assign(top_10: [])
     |> assign(featured_favorite: false)
+    # Watch progress maps (content_id => 0.0..1.0)
+    |> assign(movie_progress: %{})
+    |> assign(series_progress: %{})
     # AI-powered section filters
     |> assign(trending_genre: "all")
     |> assign(trending_period: 7)
@@ -76,23 +80,39 @@ defmodule StreamixWeb.HomeLive do
     |> assign(stats: stats)
     |> assign(trending: load_trending(user_id, trending_genre, trending_period))
     |> assign(new_releases: Iptv.list_new_releases(limit: 12))
-    |> assign(top_10: Iptv.list_top_10_movies(limit: 10))
+    |> assign(top_10: load_top_10())
     |> assign(movies: Iptv.list_public_movies(limit: 12))
     |> assign(series: load_series(user_id, series_genre))
     |> assign(channels: load_channels(user_id, channels_category))
   end
 
   # Load trending with AI personalization when user is logged in
+  # Cached for 3 hours to avoid repeated heavy queries
+  @trending_ttl 3 * 3600
+
   defp load_trending(nil, _genre, period) do
-    Iptv.list_trending_movies(limit: 12, days: period)
+    Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
+      Iptv.list_trending_movies(limit: 12, days: period)
+    end)
   end
 
   defp load_trending(user_id, genre, period) do
-    UserAnalytics.get_personalized_trending(user_id,
-      limit: 12,
-      genre: genre,
-      days: period
-    )
+    Cache.fetch("home:trending:user:#{user_id}:#{genre}:#{period}", @trending_ttl, fn ->
+      UserAnalytics.get_personalized_trending(user_id,
+        limit: 12,
+        genre: genre,
+        days: period
+      )
+    end)
+  end
+
+  # Load top 10 movies, cached for 24 hours (changes rarely)
+  @top_10_ttl 24 * 3600
+
+  defp load_top_10 do
+    Cache.fetch("home:top_10", @top_10_ttl, fn ->
+      Iptv.list_top_10_movies(limit: 10)
+    end)
   end
 
   # Load series with AI personalization
@@ -140,14 +160,32 @@ defmodule StreamixWeb.HomeLive do
         featured_favorite = check_featured_favorite(socket.assigns.featured, user_id)
         recommendations = load_recommendations(user_id)
 
+        # Collect all movie/series IDs from loaded catalog for progress lookup
+        movie_ids =
+          collect_content_ids(socket.assigns, [:movies, :trending, :new_releases, :top_10])
+
+        series_ids = collect_content_ids(socket.assigns, [:series])
+
+        movie_progress = Iptv.get_watch_progress_map(user_id, "movie", movie_ids)
+        series_progress = Iptv.get_watch_progress_map(user_id, "episode", series_ids)
+
         socket
         |> assign(favorites: Iptv.list_favorites(user_id, limit: 12))
         |> assign(history: Iptv.list_watch_history(user_id, limit: 6))
         |> assign(recommendations: recommendations)
         |> assign(featured_favorite: featured_favorite)
-        # Update genre filters based on user preferences
-        |> assign(genre_filters: UserAnalytics.get_user_genre_filters(user_id))
+        |> assign(movie_progress: movie_progress)
+        |> assign(series_progress: series_progress)
+        # Update genre filters based on user preferences (cached 1h per user)
+        |> assign(genre_filters: load_genre_filters(user_id))
     end
+  end
+
+  defp collect_content_ids(assigns, keys) do
+    keys
+    |> Enum.flat_map(fn key -> Map.get(assigns, key, []) end)
+    |> Enum.map(& &1.id)
+    |> Enum.uniq()
   end
 
   # Load AI-powered personalized recommendations
@@ -157,6 +195,15 @@ defmodule StreamixWeb.HomeLive do
       {:ok, recommendations} -> recommendations
       _ -> []
     end
+  end
+
+  # Load user genre filters with cache (1 hour TTL)
+  @genre_filters_ttl 3600
+
+  defp load_genre_filters(user_id) do
+    Cache.fetch("home:genre_filters:user:#{user_id}", @genre_filters_ttl, fn ->
+      UserAnalytics.get_user_genre_filters(user_id)
+    end)
   end
 
   defp check_featured_favorite(nil, _user_id), do: false
@@ -267,22 +314,22 @@ defmodule StreamixWeb.HomeLive do
             items={@history}
             type={:history}
           />
-
-          <!-- User's Favorites (logged in only) -->
+          
+    <!-- User's Favorites (logged in only) -->
           <.render_content_carousel
             :if={@current_scope && @favorites != []}
             title="Minha Lista"
             items={@favorites}
             type={:favorites}
           />
-
-          <!-- AI-powered Recommendations (logged in only) -->
+          
+    <!-- AI-powered Recommendations (logged in only) -->
           <.for_you_section
             :if={@current_scope && @recommendations != []}
             recommendations={@recommendations}
           />
-
-          <!-- Trending Now (AI-powered) -->
+          
+    <!-- Trending Now (AI-powered) -->
           <.render_ai_trending_section
             :if={@trending != []}
             items={@trending}
@@ -291,42 +338,46 @@ defmodule StreamixWeb.HomeLive do
             selected_genre={@trending_genre}
             selected_period={@trending_period}
             ai_powered={@current_scope != nil}
+            progress_map={@movie_progress}
           />
-
-          <!-- New Releases -->
+          
+    <!-- New Releases -->
           <.render_content_carousel
             :if={@new_releases != []}
             title="Lançamentos"
             items={@new_releases}
             type={:movies}
             icon="hero-sparkles"
+            progress_map={@movie_progress}
           />
-
-          <!-- Top 10 Movies -->
+          
+    <!-- Top 10 Movies -->
           <.render_top_10
             :if={@top_10 != []}
             title="Top 10 Filmes"
             items={@top_10}
           />
-
-          <!-- Featured Movies -->
+          
+    <!-- Featured Movies -->
           <.render_content_carousel
             :if={@movies != []}
             title="Filmes em Destaque"
             items={@movies}
             type={:movies}
+            progress_map={@movie_progress}
           />
-
-          <!-- Featured Series (AI-powered) -->
+          
+    <!-- Featured Series (AI-powered) -->
           <.render_ai_series_section
             :if={@series != []}
             items={@series}
             genre_filters={@genre_filters}
             selected_genre={@series_genre}
             ai_powered={@current_scope != nil}
+            progress_map={@series_progress}
           />
-
-          <!-- Live Channels (AI-powered) -->
+          
+    <!-- Live Channels (AI-powered) -->
           <.render_ai_channels_section
             :if={@channels != []}
             items={@channels}
@@ -334,8 +385,8 @@ defmodule StreamixWeb.HomeLive do
             selected_category={@channels_category}
             ai_powered={@current_scope != nil}
           />
-
-      <!-- Empty State when no content -->
+          
+    <!-- Empty State when no content -->
           <div
             :if={!@loading && @movies == [] && @series == [] && @channels == []}
             class="px-[4%] py-24 text-center"
@@ -560,7 +611,12 @@ defmodule StreamixWeb.HomeLive do
   # Content Carousel Component
   defp render_content_carousel(assigns) do
     see_more_path = get_see_more_path(assigns.type, assigns.items)
-    assigns = assigns |> assign(:see_more_path, see_more_path) |> assign_new(:icon, fn -> nil end)
+
+    assigns =
+      assigns
+      |> assign(:see_more_path, see_more_path)
+      |> assign_new(:icon, fn -> nil end)
+      |> assign_new(:progress_map, fn -> %{} end)
 
     ~H"""
     <div class="px-[4%]">
@@ -604,11 +660,31 @@ defmodule StreamixWeb.HomeLive do
         ]}>
           <%= case @type do %>
             <% :movies -> %>
-              <.render_movie_card :for={movie <- Enum.take(@items, 6)} movie={movie} class="sm:hidden" />
-              <.render_movie_card :for={movie <- @items} movie={movie} class="hidden sm:block" />
+              <.render_movie_card
+                :for={movie <- Enum.take(@items, 6)}
+                movie={movie}
+                progress={Map.get(@progress_map, movie.id)}
+                class="sm:hidden"
+              />
+              <.render_movie_card
+                :for={movie <- @items}
+                movie={movie}
+                progress={Map.get(@progress_map, movie.id)}
+                class="hidden sm:block"
+              />
             <% :series -> %>
-              <.render_series_card :for={series <- Enum.take(@items, 6)} series={series} class="sm:hidden" />
-              <.render_series_card :for={series <- @items} series={series} class="hidden sm:block" />
+              <.render_series_card
+                :for={series <- Enum.take(@items, 6)}
+                series={series}
+                progress={Map.get(@progress_map, series.id)}
+                class="sm:hidden"
+              />
+              <.render_series_card
+                :for={series <- @items}
+                series={series}
+                progress={Map.get(@progress_map, series.id)}
+                class="hidden sm:block"
+              />
             <% :history -> %>
               <.history_item :for={entry <- Enum.take(@items, 3)} entry={entry} class="sm:hidden" />
               <.history_item :for={entry <- @items} entry={entry} class="hidden sm:block" />
@@ -637,6 +713,8 @@ defmodule StreamixWeb.HomeLive do
 
   # AI-Powered Trending Section with Filters
   defp render_ai_trending_section(assigns) do
+    assigns = assign_new(assigns, :progress_map, fn -> %{} end)
+
     ~H"""
     <div class="px-[4%]">
       <.section_header
@@ -653,8 +731,18 @@ defmodule StreamixWeb.HomeLive do
         ai_powered={@ai_powered}
       />
       <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
-        <.render_movie_card :for={movie <- Enum.take(@items, 6)} movie={movie} class="sm:hidden" />
-        <.render_movie_card :for={movie <- @items} movie={movie} class="hidden sm:block" />
+        <.render_movie_card
+          :for={movie <- Enum.take(@items, 6)}
+          movie={movie}
+          progress={Map.get(@progress_map, movie.id)}
+          class="sm:hidden"
+        />
+        <.render_movie_card
+          :for={movie <- @items}
+          movie={movie}
+          progress={Map.get(@progress_map, movie.id)}
+          class="hidden sm:block"
+        />
         <.see_more_card path={~p"/browse/movies"} type={:movies} class="hidden sm:flex" />
       </div>
     </div>
@@ -663,6 +751,8 @@ defmodule StreamixWeb.HomeLive do
 
   # AI-Powered Series Section with Filters
   defp render_ai_series_section(assigns) do
+    assigns = assign_new(assigns, :progress_map, fn -> %{} end)
+
     ~H"""
     <div class="px-[4%]">
       <.section_header
@@ -676,8 +766,18 @@ defmodule StreamixWeb.HomeLive do
         ai_powered={@ai_powered}
       />
       <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
-        <.render_series_card :for={series <- Enum.take(@items, 6)} series={series} class="sm:hidden" />
-        <.render_series_card :for={series <- @items} series={series} class="hidden sm:block" />
+        <.render_series_card
+          :for={series <- Enum.take(@items, 6)}
+          series={series}
+          progress={Map.get(@progress_map, series.id)}
+          class="sm:hidden"
+        />
+        <.render_series_card
+          :for={series <- @items}
+          series={series}
+          progress={Map.get(@progress_map, series.id)}
+          class="hidden sm:block"
+        />
         <.see_more_card path={~p"/browse/series"} type={:series} class="hidden sm:flex" />
       </div>
     </div>
@@ -771,7 +871,9 @@ defmodule StreamixWeb.HomeLive do
                 ]}
               >
                 <.icon name="hero-film" class="size-6 text-brand/60 mb-1" />
-                <span class="text-[9px] text-text-muted leading-tight line-clamp-2">{@movie.name}</span>
+                <span class="text-[9px] text-text-muted leading-tight line-clamp-2">
+                  {@movie.name}
+                </span>
               </div>
             </div>
             <!-- Hover overlay -->
@@ -836,7 +938,7 @@ defmodule StreamixWeb.HomeLive do
 
   # Card Components
   defp render_movie_card(assigns) do
-    assigns = assign_new(assigns, :class, fn -> nil end)
+    assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
 
     ~H"""
     <.link
@@ -864,7 +966,9 @@ defmodule StreamixWeb.HomeLive do
             ]}
           >
             <.icon name="hero-film" class="size-8 sm:size-10 text-brand/60 mb-2" />
-            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">{@movie.name}</span>
+            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
+              {@movie.name}
+            </span>
           </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
@@ -879,6 +983,10 @@ defmodule StreamixWeb.HomeLive do
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3 text-yellow-500" />
           {Float.round(Decimal.to_float(@movie.rating), 1)}
         </div>
+        <!-- Progress bar -->
+        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
+          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
+        </div>
       </div>
       <div class="p-1.5 sm:p-2">
         <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
@@ -891,7 +999,7 @@ defmodule StreamixWeb.HomeLive do
   end
 
   defp render_series_card(assigns) do
-    assigns = assign_new(assigns, :class, fn -> nil end)
+    assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
 
     ~H"""
     <.link
@@ -919,7 +1027,9 @@ defmodule StreamixWeb.HomeLive do
             ]}
           >
             <.icon name="hero-tv" class="size-8 sm:size-10 text-brand/60 mb-2" />
-            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">{@series.name}</span>
+            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
+              {@series.name}
+            </span>
           </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
@@ -933,6 +1043,10 @@ defmodule StreamixWeb.HomeLive do
         >
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3 text-yellow-500" />
           {Float.round(Decimal.to_float(@series.rating), 1)}
+        </div>
+        <!-- Progress bar -->
+        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
+          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
         </div>
       </div>
       <div class="p-1.5 sm:p-2">

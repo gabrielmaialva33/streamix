@@ -81,7 +81,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
     if provider do
       opts = [
-        limit: parse_int(params["limit"], 20),
+        limit: min(parse_int(params["limit"], 20), 100),
         offset: parse_int(params["offset"], 0),
         category_id: parse_int(params["category_id"], nil),
         search: params["search"]
@@ -127,7 +127,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
     if provider do
       opts = [
-        limit: parse_int(params["limit"], 20),
+        limit: min(parse_int(params["limit"], 20), 100),
         offset: parse_int(params["offset"], 0),
         category_id: parse_int(params["category_id"], nil),
         search: params["search"]
@@ -187,7 +187,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
     if provider do
       opts = [
-        limit: parse_int(params["limit"], 30),
+        limit: min(parse_int(params["limit"], 30), 100),
         offset: parse_int(params["offset"], 0),
         category_id: parse_int(params["category_id"], nil),
         search: params["search"]
@@ -279,6 +279,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   Searches across movies, series, and channels.
   """
   def search(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
+    query = String.slice(query, 0, 200)
     movies = Iptv.search_public_movies(query, limit: 10)
     series = Iptv.search_public_series(query, limit: 10)
     channels = Iptv.search_public_channels(query, limit: 10)

@@ -582,19 +582,75 @@ defmodule StreamixWeb.CoreComponents do
   # ============================================
 
   @doc """
-  Renders a skeleton placeholder box with pulse animation.
-  Base component for all skeleton loaders.
+  Renders a skeleton placeholder with pulse animation.
+
+  When a `type` is given, renders a pre-built skeleton shape.
+  Without `type`, renders a simple animated box styled via `class`.
+
+  ## Types
+
+    * `"card"` — movie/series card placeholder (2:3 poster)
+    * `"row"` — horizontal row of card placeholders
+    * `"hero"` — hero banner placeholder
 
   ## Examples
 
+      <.skeleton type="card" />
+      <.skeleton type="row" />
+      <.skeleton type="hero" />
       <.skeleton class="h-4 w-32" />
-      <.skeleton class="h-64 w-full rounded-lg" />
   """
+  attr :type, :string, default: nil, values: [nil, "card", "row", "hero"]
   attr :class, :string, default: ""
+  attr :count, :integer, default: 6
+
+  def skeleton(%{type: "card"} = assigns) do
+    ~H"""
+    <div class={["flex flex-col gap-2", @class]}>
+      <div class="aspect-[2/3] animate-pulse bg-zinc-800 rounded-lg"></div>
+      <div class="space-y-1.5 px-0.5">
+        <div class="h-3.5 animate-pulse bg-zinc-800 rounded w-3/4"></div>
+        <div class="h-3 animate-pulse bg-zinc-800 rounded w-1/2"></div>
+      </div>
+    </div>
+    """
+  end
+
+  def skeleton(%{type: "row"} = assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <div class="h-6 animate-pulse bg-zinc-800 rounded w-48"></div>
+      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        <.skeleton :for={_ <- 1..@count} type="card" />
+      </div>
+    </div>
+    """
+  end
+
+  def skeleton(%{type: "hero"} = assigns) do
+    ~H"""
+    <div class="relative w-full aspect-[21/9] sm:aspect-[2.4/1] animate-pulse bg-zinc-800 rounded-xl overflow-hidden">
+      <div class="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-transparent">
+        <div class="absolute bottom-0 left-0 p-6 sm:p-8 lg:p-12 space-y-4 max-w-2xl">
+          <div class="h-8 sm:h-10 bg-zinc-800 rounded w-3/4"></div>
+          <div class="space-y-2">
+            <div class="h-4 bg-zinc-800 rounded w-full"></div>
+            <div class="h-4 bg-zinc-800 rounded w-5/6"></div>
+            <div class="h-4 bg-zinc-800 rounded w-2/3"></div>
+          </div>
+          <div class="flex gap-3 pt-2">
+            <div class="h-10 w-28 bg-zinc-800 rounded-lg"></div>
+            <div class="h-10 w-28 bg-zinc-800 rounded-lg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
 
   def skeleton(assigns) do
     ~H"""
-    <div class={["animate-pulse bg-surface-hover rounded", @class]}></div>
+    <div class={["animate-pulse bg-zinc-800 rounded", @class]}></div>
     """
   end
 

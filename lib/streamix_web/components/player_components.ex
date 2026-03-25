@@ -29,7 +29,7 @@ defmodule StreamixWeb.PlayerComponents do
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
     proxy_url = build_proxy_url(assigns.stream_url, assigns.content_type)
-    content_type_str = if assigns.content_type == :live, do: "live", else: "vod"
+    content_type_str = if assigns.content_type in [:live, :live_channel], do: "live", else: "vod"
     # Provider type for JS player (gindex/xtream) - used for codec detection
     source_type = assigns.provider_type || Atom.to_string(assigns.content_type)
 
@@ -143,7 +143,7 @@ defmodule StreamixWeb.PlayerComponents do
         <%!-- Bottom bar --%>
         <div class="bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6">
           <%!-- Progress bar --%>
-          <.progress_bar :if={@content_type != :live} />
+          <.progress_bar :if={@content_type not in [:live, :live_channel]} />
 
           <%!-- Controls --%>
           <div class="flex items-center justify-between mt-4">
@@ -151,8 +151,8 @@ defmodule StreamixWeb.PlayerComponents do
             <div class="flex items-center gap-2 sm:gap-4">
               <.play_pause_button />
               <.volume_control />
-              <.time_display :if={@content_type != :live} />
-              <.live_badge :if={@content_type == :live} />
+              <.time_display :if={@content_type not in [:live, :live_channel]} />
+              <.live_badge :if={@content_type in [:live, :live_channel]} />
             </div>
 
             <%!-- Right --%>

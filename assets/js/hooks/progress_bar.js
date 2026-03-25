@@ -35,49 +35,55 @@ const ProgressBar = {
   },
 
   setupEventListeners() {
-    // Click to seek
-    this.progressContainer.addEventListener("click", (e) => {
-      this.seekToPosition(e);
-    });
-
-    // Drag functionality
-    this.progressContainer.addEventListener("mousedown", (e) => {
+    // Bind handlers so we can remove them later
+    this.handleClick = (e) => this.seekToPosition(e);
+    this.handleMouseDown = (e) => {
       this.isDragging = true;
       this.seekToPosition(e);
-    });
-
-    document.addEventListener("mousemove", (e) => {
+    };
+    this.handleMouseMove = (e) => {
       if (this.isDragging) {
         this.seekToPosition(e);
       }
-    });
-
-    document.addEventListener("mouseup", () => {
+    };
+    this.handleMouseUp = () => {
       this.isDragging = false;
-    });
-
-    // Touch support
-    this.progressContainer.addEventListener("touchstart", (e) => {
+    };
+    this.handleTouchStart = (e) => {
       this.isDragging = true;
       this.seekToPosition(e.touches[0]);
-    });
-
-    document.addEventListener("touchmove", (e) => {
+    };
+    this.handleTouchMove = (e) => {
       if (this.isDragging) {
         this.seekToPosition(e.touches[0]);
       }
-    });
-
-    document.addEventListener("touchend", () => {
+    };
+    this.handleTouchEnd = () => {
       this.isDragging = false;
-    });
+    };
+    this.handleTimeUpdate = () => this.updateProgress();
+    this.handleProgress = () => this.updateBuffer();
+    this.handleLoadedMetadata = () => this.updateProgress();
+
+    // Click to seek
+    this.progressContainer.addEventListener("click", this.handleClick);
+
+    // Drag functionality
+    this.progressContainer.addEventListener("mousedown", this.handleMouseDown);
+    document.addEventListener("mousemove", this.handleMouseMove);
+    document.addEventListener("mouseup", this.handleMouseUp);
+
+    // Touch support
+    this.progressContainer.addEventListener("touchstart", this.handleTouchStart);
+    document.addEventListener("touchmove", this.handleTouchMove);
+    document.addEventListener("touchend", this.handleTouchEnd);
 
     // Update progress bar on timeupdate (for native video)
     // AVPlayer updates are handled by VideoPlayer hook's time interval
     if (this.video) {
-      this.video.addEventListener("timeupdate", () => this.updateProgress());
-      this.video.addEventListener("progress", () => this.updateBuffer());
-      this.video.addEventListener("loadedmetadata", () => this.updateProgress());
+      this.video.addEventListener("timeupdate", this.handleTimeUpdate);
+      this.video.addEventListener("progress", this.handleProgress);
+      this.video.addEventListener("loadedmetadata", this.handleLoadedMetadata);
     }
   },
 
@@ -142,6 +148,26 @@ const ProgressBar = {
 
   destroyed() {
     this.isDragging = false;
+
+    // Remove container listeners
+    if (this.progressContainer) {
+      this.progressContainer.removeEventListener("click", this.handleClick);
+      this.progressContainer.removeEventListener("mousedown", this.handleMouseDown);
+      this.progressContainer.removeEventListener("touchstart", this.handleTouchStart);
+    }
+
+    // Remove document-level listeners
+    document.removeEventListener("mousemove", this.handleMouseMove);
+    document.removeEventListener("mouseup", this.handleMouseUp);
+    document.removeEventListener("touchmove", this.handleTouchMove);
+    document.removeEventListener("touchend", this.handleTouchEnd);
+
+    // Remove video element listeners
+    if (this.video) {
+      this.video.removeEventListener("timeupdate", this.handleTimeUpdate);
+      this.video.removeEventListener("progress", this.handleProgress);
+      this.video.removeEventListener("loadedmetadata", this.handleLoadedMetadata);
+    }
   },
 };
 
