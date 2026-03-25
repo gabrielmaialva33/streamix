@@ -182,8 +182,13 @@ defmodule Streamix.Iptv.Sync.Helpers do
 
   defp bulk_delete_assocs(table, fk_column, cat_column, pairs) do
     # Sobelow: prevent SQL injection by validating table/column names against allowed list
-    valid_tables = ["movie_categories", "series_categories", "channel_categories"]
-    valid_cols = ["movie_id", "series_id", "channel_id", "category_id"]
+    valid_tables = [
+      "movie_categories",
+      "series_categories",
+      "live_channel_categories"
+    ]
+
+    valid_cols = ["movie_id", "series_id", "live_channel_id", "category_id"]
 
     if table not in valid_tables or fk_column not in valid_cols or cat_column not in valid_cols do
       raise ArgumentError, "Invalid table or column name in bulk_delete_assocs"

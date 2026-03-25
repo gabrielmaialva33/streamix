@@ -5,57 +5,93 @@ defmodule StreamixWeb.StreamToken do
   This prevents exposing provider credentials in API responses.
   Instead of returning URLs with embedded username/password, we return
   a signed token that can be exchanged for the actual stream URL server-side.
+
+  Tokens are bound to a specific user_id, ensuring a leaked token cannot be
+  used by a different user. The embedded user_id is verified against provider
+  ownership at consumption time.
   """
 
   alias Streamix.Iptv
   alias Streamix.Repo
+  alias StreamixWeb.UrlValidator
 
   # Token expires in 2 hours (reduced from 24h for security)
   @token_max_age 7_200
 
   @doc """
   Generates a signed token for accessing a movie stream.
+  The `user_id` is embedded in the token and verified on consumption.
+  Pass `nil` for public/global provider content (catalog API).
   """
-  def sign_movie(movie_id) when is_integer(movie_id) do
-    sign_content("movie", movie_id)
+  def sign_movie(movie_id, user_id) when is_integer(movie_id) do
+    sign_content("movie", movie_id, user_id)
   end
 
   @doc """
   Generates a signed token for accessing an episode stream.
+  The `user_id` is embedded in the token and verified on consumption.
+  Pass `nil` for public/global provider content (catalog API).
   """
-  def sign_episode(episode_id) when is_integer(episode_id) do
-    sign_content("episode", episode_id)
+  def sign_episode(episode_id, user_id) when is_integer(episode_id) do
+    sign_content("episode", episode_id, user_id)
   end
 
   @doc """
   Generates a signed token for accessing a channel stream.
+  The `user_id` is embedded in the token and verified on consumption.
+  Pass `nil` for public/global provider content (catalog API).
   """
-  def sign_channel(channel_id) when is_integer(channel_id) do
-    sign_content("channel", channel_id)
+  def sign_channel(channel_id, user_id) when is_integer(channel_id) do
+    sign_content("channel", channel_id, user_id)
   end
 
   @doc """
   Generates a signed token for proxying an external URL.
   Used for GIndex and other external sources that need CORS headers.
-  Token expires in 1 hour for security.
+  The `user_id` is embedded in the token and verified on consumption.
   """
-  def sign_url(url) when is_binary(url) do
-    data = %{type: "url", url: url}
-    Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
+  def sign_url(url, user_id) when is_binary(url) do
+    case UrlValidator.validate_url(url) do
+      :ok ->
+        data = %{type: "url", url: url, user_id: user_id}
+        Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
+
+      {:error, :unsafe_url} ->
+        {:error, :unsafe_url}
+    end
   end
 
   @doc """
   Verifies a token and returns the actual stream URL if valid.
   Returns {:ok, url} or {:error, reason}.
+
+  The embedded user_id is checked against provider ownership:
+  - If user_id is present, the content's provider must belong to that user
+    or be a public/global provider.
+  - If user_id is nil (public catalog token), the provider must be public/global.
   """
   def verify_and_get_url(token) do
     case Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age) do
-      {:ok, %{type: "url", url: url}} ->
-        # Direct URL token (for GIndex and external sources)
-        {:ok, url}
+      {:ok, %{type: "url", url: url, user_id: _user_id}} ->
+        # Direct URL token — re-validate at use time to prevent DNS rebinding
+        case UrlValidator.validate_url(url) do
+          :ok -> {:ok, url}
+          {:error, :unsafe_url} -> {:error, :unsafe_url}
+        end
 
-      {:ok, %{type: type, id: id}} ->
-        get_stream_url(type, id)
+      # Legacy tokens without user_id (URL type only) — allow with re-validation
+      {:ok, %{type: "url", url: url}} ->
+        case UrlValidator.validate_url(url) do
+          :ok -> {:ok, url}
+          {:error, :unsafe_url} -> {:error, :unsafe_url}
+        end
+
+      {:ok, %{type: type, id: id, user_id: user_id}} ->
+        get_stream_url(type, id, user_id)
+
+      # Reject legacy content tokens without user_id binding
+      {:ok, %{type: _type, id: _id}} ->
+        {:error, :invalid_token}
 
       {:error, :expired} ->
         {:error, :token_expired}
@@ -67,12 +103,12 @@ defmodule StreamixWeb.StreamToken do
 
   # Private functions
 
-  defp sign_content(type, id) do
-    data = %{type: type, id: id}
+  defp sign_content(type, id, user_id) do
+    data = %{type: type, id: id, user_id: user_id}
     Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
   end
 
-  defp get_stream_url("movie", id) do
+  defp get_stream_url("movie", id, user_id) do
     case Iptv.get_movie(id) do
       nil ->
         {:error, :not_found}
@@ -80,16 +116,21 @@ defmodule StreamixWeb.StreamToken do
       movie ->
         movie = Repo.preload(movie, :provider)
         provider = movie.provider
-        ext = movie.container_extension || "mp4"
 
-        url =
-          "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
+        if authorized_for_provider?(user_id, provider) do
+          ext = movie.container_extension || "mp4"
 
-        {:ok, url}
+          url =
+            "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
+
+          {:ok, url}
+        else
+          {:error, :unauthorized}
+        end
     end
   end
 
-  defp get_stream_url("episode", id) do
+  defp get_stream_url("episode", id, user_id) do
     case Iptv.get_episode(id) do
       nil ->
         {:error, :not_found}
@@ -97,16 +138,21 @@ defmodule StreamixWeb.StreamToken do
       episode ->
         episode = Repo.preload(episode, season: [series: :provider])
         provider = episode.season.series.provider
-        ext = episode.container_extension || "mp4"
 
-        url =
-          "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
+        if authorized_for_provider?(user_id, provider) do
+          ext = episode.container_extension || "mp4"
 
-        {:ok, url}
+          url =
+            "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
+
+          {:ok, url}
+        else
+          {:error, :unauthorized}
+        end
     end
   end
 
-  defp get_stream_url("channel", id) do
+  defp get_stream_url("channel", id, user_id) do
     case Iptv.get_live_channel(id) do
       nil ->
         {:error, :not_found}
@@ -115,12 +161,30 @@ defmodule StreamixWeb.StreamToken do
         channel = Repo.preload(channel, :provider)
         provider = channel.provider
 
-        # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
-        # This avoids mixed content issues with HLS segment URLs
-        url =
-          "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
+        if authorized_for_provider?(user_id, provider) do
+          # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
+          # This avoids mixed content issues with HLS segment URLs
+          url =
+            "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
 
-        {:ok, url}
+          {:ok, url}
+        else
+          {:error, :unauthorized}
+        end
     end
   end
+
+  # Verifies that the token's user_id is authorized to access content from this provider.
+  # A user can access a provider if:
+  # 1. The provider is public or global (accessible to everyone)
+  # 2. The user_id matches the provider's owner
+  defp authorized_for_provider?(_user_id, %{visibility: visibility})
+       when visibility in [:public, :global],
+       do: true
+
+  defp authorized_for_provider?(user_id, %{user_id: provider_user_id})
+       when is_integer(user_id) and user_id == provider_user_id,
+       do: true
+
+  defp authorized_for_provider?(_user_id, _provider), do: false
 end

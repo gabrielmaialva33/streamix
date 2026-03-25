@@ -22,6 +22,12 @@ defmodule Streamix.Iptv.StreamProxy do
   @cleanup_interval_ms 60_000
   # 30 seconds timeout
   @request_timeout 30_000
+  # Max total cache size: 500 MB
+  @max_cache_bytes 500 * 1024 * 1024
+  # Max single entry size: 50 MB — don't cache anything larger
+  @max_entry_bytes 50 * 1024 * 1024
+  # Max number of cached entries
+  @max_cache_entries 50
 
   # Client API
 
@@ -143,8 +149,46 @@ defmodule Streamix.Iptv.StreamProxy do
   end
 
   defp put_cache(key, data) do
-    expires_at = System.system_time(:second) + @cache_ttl_seconds
-    :ets.insert(@cache_table, {key, data, expires_at})
+    entry_size = byte_size(data)
+
+    # Skip caching entries larger than the single-entry limit
+    if entry_size > @max_entry_bytes do
+      Logger.debug(
+        "StreamProxy: Skipping cache for #{key}, entry too large (#{entry_size} bytes)"
+      )
+    else
+      maybe_evict(entry_size)
+      expires_at = System.system_time(:second) + @cache_ttl_seconds
+      :ets.insert(@cache_table, {key, data, expires_at})
+    end
+  end
+
+  # Evict oldest entries until we're under both the memory and entry count limits
+  defp maybe_evict(incoming_size) do
+    current_memory = :ets.info(@cache_table, :memory) * :erlang.system_info(:wordsize)
+    current_count = :ets.info(@cache_table, :size)
+
+    if current_memory + incoming_size > @max_cache_bytes or current_count >= @max_cache_entries do
+      # Collect all entries with their expiry timestamps, sort oldest first
+      entries =
+        :ets.tab2list(@cache_table)
+        |> Enum.sort_by(fn {_key, _data, expires_at} -> expires_at end)
+
+      evict_until_under_limit(entries, current_memory, incoming_size, current_count)
+    end
+  end
+
+  defp evict_until_under_limit([], _mem, _incoming, _count), do: :ok
+
+  defp evict_until_under_limit([{key, data, _} | rest], mem, incoming, count) do
+    if mem + incoming <= @max_cache_bytes and count < @max_cache_entries do
+      :ok
+    else
+      freed = byte_size(data)
+      :ets.delete(@cache_table, key)
+
+      evict_until_under_limit(rest, mem - freed, incoming, count - 1)
+    end
   end
 
   defp stream_from_url(url, cache_key) do

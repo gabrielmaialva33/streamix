@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.Provider do
     field :name, :string
     field :url, :string
     field :username, :string
-    field :password, :string, redact: true
+    field :password, Streamix.Iptv.EncryptedField, redact: true
     field :is_active, :boolean, default: true
     field :sync_status, :string, default: "idle"
     field :visibility, Ecto.Enum, values: [:private, :public, :global], default: :private

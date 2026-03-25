@@ -76,7 +76,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
           |> assign(page_title: "Watch Party — #{room.content_name}")
           |> assign(room: room)
           |> assign(content: content)
-          |> assign(content_type: String.to_atom(room.content_type))
+          |> assign(content_type: safe_content_type(room.content_type))
           |> assign(provider: provider)
           |> assign(stream_url: stream_url)
           |> assign(streaming_mode: default_streaming_mode(room.content_type))
@@ -148,7 +148,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   def handle_event("wp_clock_ping", %{"id" => id}, socket) do
-    {:noreply, push_event(socket, "wp_clock_pong", %{id: id, server_time: System.system_time(:millisecond)})}
+    {:noreply,
+     push_event(socket, "wp_clock_pong", %{id: id, server_time: System.system_time(:millisecond)})}
   end
 
   def handle_event("wp_request_sync", _params, socket) do
@@ -276,4 +277,11 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   defp maybe_push_reaction(socket, _), do: socket
+
+  defp safe_content_type("live_channel"), do: :live_channel
+  defp safe_content_type("movie"), do: :movie
+  defp safe_content_type("episode"), do: :episode
+  defp safe_content_type("gindex"), do: :gindex
+  defp safe_content_type("gindex_episode"), do: :gindex_episode
+  defp safe_content_type(_), do: :live_channel
 end

@@ -41,7 +41,7 @@ defmodule StreamixWeb.PlayerLive do
         socket =
           socket
           |> assign(page_title: content_title(content, type))
-          |> assign(content_type: String.to_atom(type))
+          |> assign(content_type: safe_content_type(type))
           |> assign(content: content)
           |> assign(provider: provider)
           |> assign(stream_url: stream_url)
@@ -91,7 +91,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("streaming_mode_changed", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, streaming_mode: String.to_atom(mode))}
+    {:noreply, assign(socket, streaming_mode: safe_streaming_mode(mode))}
   end
 
   def handle_event(
@@ -269,4 +269,17 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp find_quality_label(_, _), do: "Automático"
+
+  defp safe_content_type("live_channel"), do: :live_channel
+  defp safe_content_type("movie"), do: :movie
+  defp safe_content_type("episode"), do: :episode
+  defp safe_content_type("gindex"), do: :gindex
+  defp safe_content_type("gindex_episode"), do: :gindex_episode
+  defp safe_content_type(_), do: :live_channel
+
+  defp safe_streaming_mode("low_latency"), do: :low_latency
+  defp safe_streaming_mode("balanced"), do: :balanced
+  defp safe_streaming_mode("quality"), do: :quality
+  defp safe_streaming_mode("adaptive"), do: :adaptive
+  defp safe_streaming_mode(_), do: :balanced
 end

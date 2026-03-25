@@ -472,17 +472,18 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   # - browser_stream_url: Pannxs proxy for browser testing (handles CORS)
 
   defp build_stream_url(movie) do
-    token = StreamToken.sign_movie(movie.id)
+    # Public catalog API — no user context, global provider content only
+    token = StreamToken.sign_movie(movie.id, nil)
     build_token_proxy_url(token)
   end
 
   defp build_episode_stream_url(episode, _series) do
-    token = StreamToken.sign_episode(episode.id)
+    token = StreamToken.sign_episode(episode.id, nil)
     build_token_proxy_url(token)
   end
 
   defp build_channel_stream_url(channel) do
-    token = StreamToken.sign_channel(channel.id)
+    token = StreamToken.sign_channel(channel.id, nil)
     build_token_proxy_url(token)
   end
 

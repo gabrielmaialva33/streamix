@@ -15,6 +15,7 @@ defmodule StreamixWeb.StreamController do
   @max_redirects 5
 
   alias StreamixWeb.StreamToken
+  alias StreamixWeb.UrlValidator
 
   @doc """
   Handle OPTIONS preflight request for CORS.
@@ -56,6 +57,16 @@ defmodule StreamixWeb.StreamController do
         conn
         |> put_status(:not_found)
         |> json(%{error: "Content not found"})
+
+      {:error, :unauthorized} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{error: "Token not authorized for this content"})
+
+      {:error, :unsafe_url} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{error: "URL blocked by security policy"})
     end
   end
 
@@ -175,7 +186,18 @@ defmodule StreamixWeb.StreamController do
 
       location ->
         redirect_url = resolve_url(original_url, location)
-        head_request(conn, redirect_url, redirect_count + 1)
+
+        case UrlValidator.validate_url(redirect_url) do
+          :ok ->
+            head_request(conn, redirect_url, redirect_count + 1)
+
+          {:error, :unsafe_url} ->
+            Logger.warning("Stream proxy HEAD: blocked redirect to unsafe URL #{redirect_url}")
+
+            conn
+            |> put_status(:forbidden)
+            |> json(%{error: "Redirect blocked by security policy"})
+        end
     end
   end
 
@@ -282,10 +304,20 @@ defmodule StreamixWeb.StreamController do
         |> json(%{error: "Redirect without Location header"})
 
       location ->
-        # Resolve relative URLs
         redirect_url = resolve_url(original_url, location)
-        Logger.info("Stream proxy: following redirect to #{redirect_url}")
-        stream_url(conn, redirect_url, redirect_count + 1)
+
+        case UrlValidator.validate_url(redirect_url) do
+          :ok ->
+            Logger.info("Stream proxy: following redirect to #{redirect_url}")
+            stream_url(conn, redirect_url, redirect_count + 1)
+
+          {:error, :unsafe_url} ->
+            Logger.warning("Stream proxy: blocked redirect to unsafe URL #{redirect_url}")
+
+            conn
+            |> put_status(:forbidden)
+            |> json(%{error: "Redirect blocked by security policy"})
+        end
     end
   end
 

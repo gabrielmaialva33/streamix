@@ -18,6 +18,10 @@ get_env = fn key ->
   end
 end
 
+# Provider password encryption key (AES-256-GCM)
+# Generate with: mix phx.gen.secret 32
+config :streamix, :provider_encryption_key, get_env.("PROVIDER_ENCRYPTION_KEY")
+
 # Global provider configuration (optional)
 # Set GLOBAL_PROVIDER_ENABLED=true to enable
 if get_env.("GLOBAL_PROVIDER_ENABLED") == "true" do
