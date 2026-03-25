@@ -182,15 +182,19 @@ defmodule StreamixWeb.AppComponents do
             class="w-full h-full object-contain p-1 sm:p-2"
             loading="lazy"
             data-fallback-target
+            onerror="this.classList.add('hidden');this.nextElementSibling&&this.nextElementSibling.classList.remove('hidden')"
           />
           <div
             data-fallback
             class={[
-              "w-full h-full flex items-center justify-center text-text-muted",
+              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
               @channel.stream_icon && "hidden"
             ]}
           >
-            <.icon name="hero-tv" class="size-6 sm:size-12" />
+            <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />
+            <span class="text-[8px] sm:text-xs text-text-muted leading-tight line-clamp-2">
+              {@channel.name}
+            </span>
           </div>
         </div>
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

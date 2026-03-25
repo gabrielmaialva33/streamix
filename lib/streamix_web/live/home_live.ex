@@ -969,15 +969,19 @@ defmodule StreamixWeb.HomeLive do
             class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
             loading="lazy"
             data-fallback-target
+            onerror="this.classList.add('hidden');this.nextElementSibling&&this.nextElementSibling.classList.remove('hidden')"
           />
           <div
             data-fallback
             class={[
-              "w-full h-full flex items-center justify-center text-text-muted",
+              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
               @channel.stream_icon && "hidden"
             ]}
           >
-            <.icon name="hero-tv" class="size-6 sm:size-10" />
+            <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />
+            <span class="text-[8px] sm:text-xs text-text-muted leading-tight line-clamp-2">
+              {@channel.name}
+            </span>
           </div>
         </div>
         <!-- Live badge -->
