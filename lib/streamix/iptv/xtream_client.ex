@@ -163,7 +163,11 @@ defmodule Streamix.Iptv.XtreamClient do
 
   defp do_api_call(url, attempt) do
     # Use dedicated Finch pool for connection reuse during sync
-    case Req.get(url, receive_timeout: @timeout, finch: Streamix.Finch) do
+    case Req.get(url,
+           receive_timeout: @timeout,
+           finch: Streamix.Finch,
+           headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}]
+         ) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
         {:ok, body}
 
