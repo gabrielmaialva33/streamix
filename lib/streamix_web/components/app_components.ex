@@ -176,19 +176,18 @@ defmodule StreamixWeb.AppComponents do
           class="w-full h-full"
         >
           <img
-            :if={@channel.stream_icon}
+            :if={@channel.stream_icon not in [nil, ""]}
             src={ImageProxy.proxy(@channel.stream_icon)}
             alt={@channel.name}
             class="w-full h-full object-contain p-1 sm:p-2"
             loading="lazy"
             data-fallback-target
-            onerror="this.classList.add('hidden');this.nextElementSibling&&this.nextElementSibling.classList.remove('hidden')"
           />
           <div
             data-fallback
             class={[
               "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
-              @channel.stream_icon && "hidden"
+              @channel.stream_icon not in [nil, ""] && "hidden"
             ]}
           >
             <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />

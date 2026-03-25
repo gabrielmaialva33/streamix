@@ -37,8 +37,8 @@ const ImageFallback = {
 
     img.addEventListener("error", this._errorHandler);
 
-    // Check if image already failed (cached error state)
-    if (img.complete && img.naturalHeight === 0 && img.src) {
+    // Check if image already failed (cached error state or empty src)
+    if (img.complete && img.naturalHeight === 0) {
       this._errorHandler();
     }
   },
