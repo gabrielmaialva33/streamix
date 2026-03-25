@@ -8,6 +8,8 @@ defmodule StreamixWeb.PlayerComponents do
 
   import StreamixWeb.CoreComponents
 
+  alias StreamixWeb.Helpers.ImageProxy
+
   alias Phoenix.LiveView.JS
 
   @doc """
@@ -188,7 +190,7 @@ defmodule StreamixWeb.PlayerComponents do
             <div class="relative flex-shrink-0">
               <img
                 :if={@next_episode.cover}
-                src={@next_episode.cover}
+                src={ImageProxy.proxy(@next_episode.cover)}
                 alt=""
                 class="w-24 h-14 sm:w-32 sm:h-18 object-cover rounded"
               />

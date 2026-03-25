@@ -9,6 +9,7 @@ defmodule StreamixWeb.AppComponents do
   import StreamixWeb.CoreComponents
 
   alias Streamix.Iptv.LiveChannel
+  alias StreamixWeb.Helpers.ImageProxy
 
   @doc """
   Renders a theme toggle button.
@@ -176,7 +177,7 @@ defmodule StreamixWeb.AppComponents do
         >
           <img
             :if={@channel.stream_icon}
-            src={@channel.stream_icon}
+            src={ImageProxy.proxy(@channel.stream_icon)}
             alt={@channel.name}
             class="w-full h-full object-contain p-1 sm:p-2"
             loading="lazy"

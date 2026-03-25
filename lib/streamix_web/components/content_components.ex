@@ -617,7 +617,7 @@ defmodule StreamixWeb.ContentComponents do
       <div class="relative w-40 aspect-video flex-shrink-0 bg-surface-hover rounded overflow-hidden">
         <img
           :if={Map.get(@episode, :cover)}
-          src={@episode.cover}
+          src={ImageProxy.proxy(@episode.cover)}
           alt={episode_title(@episode)}
           class="w-full h-full object-cover"
           loading="lazy"

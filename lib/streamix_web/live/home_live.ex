@@ -3,6 +3,7 @@ defmodule StreamixWeb.HomeLive do
 
   alias Streamix.Iptv
   alias Streamix.AI.UserAnalytics
+  alias StreamixWeb.Helpers.ImageProxy
 
   def mount(_params, _session, socket) do
     socket =
@@ -930,14 +931,25 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
-        <img
-          :if={@channel.stream_icon}
-          src={@channel.stream_icon}
-          alt={@channel.name}
-          class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
-          loading="lazy"
-        />
-        <.icon :if={!@channel.stream_icon} name="hero-tv" class="size-6 sm:size-10 text-text-muted" />
+        <div id={"home-ch-img-#{@channel.id}"} phx-hook="ImageFallback" class="w-full h-full">
+          <img
+            :if={@channel.stream_icon}
+            src={ImageProxy.proxy(@channel.stream_icon)}
+            alt={@channel.name}
+            class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
+            loading="lazy"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "w-full h-full flex items-center justify-center text-text-muted",
+              @channel.stream_icon && "hidden"
+            ]}
+          >
+            <.icon name="hero-tv" class="size-6 sm:size-10" />
+          </div>
+        </div>
         <!-- Live badge -->
         <div class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-brand rounded text-[8px] sm:text-xs text-white font-semibold">
           <span class="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-white rounded-full animate-pulse" /> AO VIVO
