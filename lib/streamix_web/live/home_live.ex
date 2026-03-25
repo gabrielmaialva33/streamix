@@ -978,18 +978,25 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
-        <img
-          :if={@entry.content_icon}
-          src={@entry.content_icon}
-          alt={@entry.content_name}
-          class="w-full h-full object-cover"
-          loading="lazy"
-        />
-        <.icon
-          :if={!@entry.content_icon}
-          name={content_type_icon(@entry.content_type)}
-          class="size-8 sm:size-12 text-text-muted"
-        />
+        <div id={"history-img-#{@entry.id}"} phx-hook="ImageFallback" class="w-full h-full">
+          <img
+            :if={@entry.content_icon}
+            src={ImageProxy.proxy(@entry.content_icon)}
+            alt={@entry.content_name}
+            class="w-full h-full object-cover"
+            loading="lazy"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "w-full h-full flex items-center justify-center text-text-muted",
+              @entry.content_icon && "hidden"
+            ]}
+          >
+            <.icon name={content_type_icon(@entry.content_type)} class="size-8 sm:size-12" />
+          </div>
+        </div>
         <!-- Progress bar -->
         <div
           :if={@entry.progress_seconds && @entry.duration_seconds}
@@ -1029,18 +1036,25 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative flex items-center justify-center">
-        <img
-          :if={@favorite.content_icon}
-          src={@favorite.content_icon}
-          alt={@favorite.content_name}
-          class="w-full h-full object-cover"
-          loading="lazy"
-        />
-        <.icon
-          :if={!@favorite.content_icon}
-          name={content_type_icon(@favorite.content_type)}
-          class="size-6 sm:size-10 text-text-muted"
-        />
+        <div id={"fav-img-#{@favorite.id}"} phx-hook="ImageFallback" class="w-full h-full">
+          <img
+            :if={@favorite.content_icon}
+            src={ImageProxy.proxy(@favorite.content_icon)}
+            alt={@favorite.content_name}
+            class="w-full h-full object-cover"
+            loading="lazy"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "w-full h-full flex items-center justify-center text-text-muted",
+              @favorite.content_icon && "hidden"
+            ]}
+          >
+            <.icon name={content_type_icon(@favorite.content_type)} class="size-6 sm:size-10" />
+          </div>
+        </div>
         <!-- Hover overlay (hidden on touch devices) -->
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-10 text-white" />

@@ -72,8 +72,10 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   # gstaticontent URLs with /t/p/ are TMDB mirrors, others go through stream proxy
   defp normalize_gstatic(url) do
     cond do
-      String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/.*/t/p/}) ->
-        String.replace(url, ~r{https?://(?:file\.)?gstaticontent\.com/}, "https://tmdb.mahina.cloud/")
+      String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/+.*/t/p/|https?://(?:file\.)?gstaticontent\.com/+t/p/}) ->
+        url
+        |> String.replace(~r{https?://(?:file\.)?gstaticontent\.com/+}, "https://tmdb.mahina.cloud/")
+        |> String.replace("//t/p/", "/t/p/")
 
       String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/}) ->
         http_url = String.replace(url, "https://", "http://")
