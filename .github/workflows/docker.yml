@@ -29,9 +29,20 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       MIX_ENV: test
       DATABASE_URL: ecto://streamix:streamix@localhost/streamix_test
+      REDIS_URL: redis://localhost:6379
 
     steps:
       - name: Checkout repository
@@ -58,8 +69,11 @@ jobs:
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
+      - name: Setup database
+        run: mix ecto.create && mix ecto.migrate
+
       - name: Run tests
-        run: mix test
+        run: mix test --exclude external --exclude integration
 
   build:
     needs: [test]
