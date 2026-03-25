@@ -44,9 +44,14 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   def proxy(url) when is_binary(url) do
     url
+    # Normalize TMDB mirror domains to our proxy
+    |> String.replace(~r{https?://(?:file\.)?gstaticontent\.com/}, "https://tmdb.mahina.cloud/")
+    |> String.replace(~r{https?://www\.acstatic\.co/}, "https://tmdb.mahina.cloud/")
     |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
     |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
     |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
+    # Provider logos via our nginx proxy (port 8084)
+    |> proxy_provider_logos()
     |> add_cache_buster()
   end
 
@@ -58,9 +63,19 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   def proxy_raw(url) when is_binary(url) do
     url
+    |> String.replace(~r{https?://(?:file\.)?gstaticontent\.com/}, "https://tmdb.mahina.cloud/")
+    |> String.replace(~r{https?://www\.acstatic\.co/}, "https://tmdb.mahina.cloud/")
     |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
     |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
     |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
+  end
+
+  defp proxy_provider_logos(url) do
+    if String.contains?(url, "cb.chokitecnologia.com") do
+      "https://stream.mahina.cloud/proxy?url=#{URI.encode_www_form(url)}"
+    else
+      url
+    end
   end
 
   defp add_cache_buster(url) do
@@ -131,8 +146,9 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     target_size = Map.get(@tmdb_sizes, size, @tmdb_sizes.card)
 
     # Replace TMDB size in URL (handles both original and proxied URLs)
+    # Also handles gstaticontent-style sizes like w600_and_h900_bestv2
     url
-    |> String.replace(~r{/t/p/(w\d+|original)/}, "/t/p/#{target_size}/")
+    |> String.replace(~r{/t/p/(w\d+(?:_and_h\d+_bestv2)?|original)/}, "/t/p/#{target_size}/")
     |> String.replace(~r{image\.tmdb\.org/t/p/(w\d+|original)/}, "image.tmdb.org/t/p/#{target_size}/")
   end
 

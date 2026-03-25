@@ -166,7 +166,7 @@ defmodule Streamix.Iptv.XtreamClient do
     case Req.get(url,
            receive_timeout: @timeout,
            finch: Streamix.Finch,
-           headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}]
+           headers: [{"user-agent", "xciptv-v6.0.0"}]
          ) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
         {:ok, body}
