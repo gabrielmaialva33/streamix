@@ -153,16 +153,20 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     <div class="min-h-screen bg-background">
       <!-- Hero Section -->
       <div class="relative h-[30vh] sm:h-[50vh] lg:h-[60vh] min-h-[200px] sm:min-h-[400px]">
-        <div class="absolute inset-0">
+        <div id={"detail-hero-#{@movie.id}"} phx-hook="ImageFallback" class="absolute inset-0">
           <img
             :if={get_backdrop(@movie) || @movie.stream_icon}
             src={get_backdrop(@movie) || ImageProxy.proxy(@movie.stream_icon)}
             alt={@movie.name}
             class="w-full h-full object-cover"
+            data-fallback-target
           />
           <div
-            :if={!get_backdrop(@movie) && !@movie.stream_icon}
-            class="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900"
+            data-fallback
+            class={[
+              "w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900",
+              (get_backdrop(@movie) || @movie.stream_icon) && "hidden"
+            ]}
           />
         </div>
 
@@ -186,16 +190,24 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
             <!-- Poster -->
             <div class="flex-shrink-0 w-24 sm:w-48 lg:w-72 mx-auto lg:mx-0">
-              <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+              <div
+                id={"detail-poster-#{@movie.id}"}
+                phx-hook="ImageFallback"
+                class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10"
+              >
                 <img
                   :if={@movie.stream_icon}
                   src={ImageProxy.proxy(@movie.stream_icon)}
                   alt={@movie.name}
                   class="w-full h-full object-cover"
+                  data-fallback-target
                 />
                 <div
-                  :if={!@movie.stream_icon}
-                  class="w-full h-full bg-gradient-to-br from-zinc-800 to-zinc-900 flex flex-col items-center justify-center p-4 text-center"
+                  data-fallback
+                  class={[
+                    "w-full h-full bg-gradient-to-br from-zinc-800 to-zinc-900 flex flex-col items-center justify-center p-4 text-center",
+                    @movie.stream_icon && "hidden"
+                  ]}
                 >
                   <.icon name="hero-film" class="size-10 sm:size-16 text-brand/50 mb-2 sm:mb-3" />
                   <span class="text-xs sm:text-sm text-text-muted leading-tight line-clamp-3">{@movie.title || @movie.name}</span>
@@ -397,19 +409,28 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 navigate={similar_movie_path(@mode, @provider, similar)}
                 class="group"
               >
-                <div class="aspect-[2/3] rounded-lg overflow-hidden bg-surface ring-1 ring-white/10 group-hover:ring-brand transition-all">
+                <div
+                  id={"similar-img-#{similar.id}"}
+                  phx-hook="ImageFallback"
+                  class="aspect-[2/3] rounded-lg overflow-hidden bg-surface ring-1 ring-white/10 group-hover:ring-brand transition-all"
+                >
                   <img
                     :if={similar.stream_icon}
                     src={ImageProxy.proxy(similar.stream_icon)}
                     alt={similar.title || similar.name}
                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     loading="lazy"
+                    data-fallback-target
                   />
                   <div
-                    :if={!similar.stream_icon}
-                    class="w-full h-full flex items-center justify-center"
+                    data-fallback
+                    class={[
+                      "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
+                      similar.stream_icon && "hidden"
+                    ]}
                   >
-                    <.icon name="hero-film" class="size-8 text-text-secondary/30" />
+                    <.icon name="hero-film" class="size-6 text-brand/60 mb-1" />
+                    <span class="text-[9px] text-text-muted leading-tight line-clamp-2">{similar.title || similar.name}</span>
                   </div>
                 </div>
                 <p class="mt-2 text-sm text-text-primary truncate group-hover:text-brand transition-colors">
