@@ -195,9 +195,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 />
                 <div
                   :if={!@movie.stream_icon}
-                  class="w-full h-full bg-surface flex items-center justify-center"
+                  class="w-full h-full bg-gradient-to-br from-zinc-800 to-zinc-900 flex flex-col items-center justify-center p-4 text-center"
                 >
-                  <.icon name="hero-film" class="size-12 sm:size-20 text-text-secondary/30" />
+                  <.icon name="hero-film" class="size-10 sm:size-16 text-brand/50 mb-2 sm:mb-3" />
+                  <span class="text-xs sm:text-sm text-text-muted leading-tight line-clamp-3">{@movie.title || @movie.name}</span>
                 </div>
               </div>
             </div>

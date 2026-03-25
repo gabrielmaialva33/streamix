@@ -754,15 +754,25 @@ defmodule StreamixWeb.HomeLive do
         <!-- Movie Poster -->
         <div class="w-[100px] sm:w-[140px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all">
           <div class="aspect-[2/3] bg-surface-hover relative">
-            <img
-              :if={@movie.stream_icon}
-              src={ImageProxy.card(@movie.stream_icon)}
-              alt={@movie.name}
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              loading="lazy"
-            />
-            <div :if={!@movie.stream_icon} class="w-full h-full flex items-center justify-center">
-              <.icon name="hero-film" class="size-8 text-text-muted" />
+            <div id={"top10-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
+              <img
+                :if={@movie.stream_icon}
+                src={ImageProxy.card(@movie.stream_icon)}
+                alt={@movie.name}
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                loading="lazy"
+                data-fallback-target
+              />
+              <div
+                data-fallback
+                class={[
+                  "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
+                  @movie.stream_icon && "hidden"
+                ]}
+              >
+                <.icon name="hero-film" class="size-6 text-brand/60 mb-1" />
+                <span class="text-[9px] text-text-muted leading-tight line-clamp-2">{@movie.name}</span>
+              </div>
             </div>
             <!-- Hover overlay -->
             <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
@@ -837,15 +847,25 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
-        <img
-          :if={@movie.stream_icon}
-          src={ImageProxy.proxy(@movie.stream_icon)}
-          alt={@movie.name}
-          class="w-full h-full object-cover animate-fade-in"
-          loading="lazy"
-        />
-        <div :if={!@movie.stream_icon} class="w-full h-full flex items-center justify-center">
-          <.icon name="hero-film" class="size-8 sm:size-12 text-text-muted" />
+        <div id={"movie-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
+          <img
+            :if={@movie.stream_icon}
+            src={ImageProxy.proxy(@movie.stream_icon)}
+            alt={@movie.name}
+            class="w-full h-full object-cover animate-fade-in"
+            loading="lazy"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
+              @movie.stream_icon && "hidden"
+            ]}
+          >
+            <.icon name="hero-film" class="size-8 sm:size-10 text-brand/60 mb-2" />
+            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">{@movie.name}</span>
+          </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
@@ -882,15 +902,25 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative">
-        <img
-          :if={@series.cover}
-          src={ImageProxy.proxy(@series.cover)}
-          alt={@series.name}
-          class="w-full h-full object-cover animate-fade-in"
-          loading="lazy"
-        />
-        <div :if={!@series.cover} class="w-full h-full flex items-center justify-center">
-          <.icon name="hero-tv" class="size-8 sm:size-12 text-text-muted" />
+        <div id={"series-img-#{@series.id}"} phx-hook="ImageFallback" class="w-full h-full">
+          <img
+            :if={@series.cover}
+            src={ImageProxy.proxy(@series.cover)}
+            alt={@series.name}
+            class="w-full h-full object-cover animate-fade-in"
+            loading="lazy"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
+              @series.cover && "hidden"
+            ]}
+          >
+            <.icon name="hero-tv" class="size-8 sm:size-10 text-brand/60 mb-2" />
+            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">{@series.name}</span>
+          </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
         <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">

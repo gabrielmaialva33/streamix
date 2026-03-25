@@ -410,10 +410,11 @@ defmodule StreamixWeb.ContentComponents do
           onerror="this.classList.add('hidden'); this.nextElementSibling?.classList.remove('hidden')"
         />
         <div class={[
-          "w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900",
+          "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
           @image_url && "hidden"
         ]}>
-          <.icon name="hero-film" class="size-8 sm:size-16 text-zinc-600" />
+          <.icon name="hero-film" class="size-8 sm:size-12 text-brand/60 mb-2" />
+          <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">{@movie_name}</span>
         </div>
 
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
