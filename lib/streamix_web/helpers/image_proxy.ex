@@ -44,9 +44,8 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   def proxy(url) when is_binary(url) do
     url
-    # Normalize TMDB mirror domains to our proxy
-    |> String.replace(~r{https?://(?:file\.)?gstaticontent\.com/}, "https://tmdb.mahina.cloud/")
-    |> String.replace(~r{https?://www\.acstatic\.co/}, "https://tmdb.mahina.cloud/")
+    # Normalize TMDB mirror domains to our proxy (only /t/p/ paths are TMDB)
+    |> normalize_gstatic()
     |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
     |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
     |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
@@ -63,16 +62,35 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   def proxy_raw(url) when is_binary(url) do
     url
-    |> String.replace(~r{https?://(?:file\.)?gstaticontent\.com/}, "https://tmdb.mahina.cloud/")
-    |> String.replace(~r{https?://www\.acstatic\.co/}, "https://tmdb.mahina.cloud/")
+    |> normalize_gstatic()
     |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
     |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
     |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
+    |> proxy_provider_logos()
   end
 
+  # gstaticontent URLs with /t/p/ are TMDB mirrors, others go through stream proxy
+  defp normalize_gstatic(url) do
+    cond do
+      String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/.*/t/p/}) ->
+        String.replace(url, ~r{https?://(?:file\.)?gstaticontent\.com/}, "https://tmdb.mahina.cloud/")
+
+      String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/}) ->
+        http_url = String.replace(url, "https://", "http://")
+        "https://stream.mahina.cloud/proxy?url=#{URI.encode_www_form(http_url)}"
+
+      true ->
+        url
+    end
+  end
+
+  @provider_logo_domains ["cb.chokitecnologia.com", "www.acstatic.co", "fanc.tmsimg.com"]
+
   defp proxy_provider_logos(url) do
-    if String.contains?(url, "cb.chokitecnologia.com") do
-      "https://stream.mahina.cloud/proxy?url=#{URI.encode_www_form(url)}"
+    if Enum.any?(@provider_logo_domains, &String.contains?(url, &1)) do
+      # Force HTTP for provider logos (HTTPS certs are invalid)
+      http_url = String.replace(url, "https://", "http://")
+      "https://stream.mahina.cloud/proxy?url=#{URI.encode_www_form(http_url)}"
     else
       url
     end
