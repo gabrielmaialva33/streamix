@@ -180,7 +180,7 @@ defmodule StreamixWeb.StreamController do
 
   defp stream_from_multiplexer(conn, stream_key, url) do
     case StreamMultiplexer.subscribe(stream_key, url) do
-      :ok ->
+      {:ok, backlog} ->
         conn =
           conn
           |> put_cors_headers()
@@ -188,6 +188,15 @@ defmodule StreamixWeb.StreamController do
           |> put_resp_header("cache-control", "no-cache, no-store")
           |> put_resp_header("x-accel-buffering", "no")
           |> send_chunked(200)
+
+        # Send backlog chunks for instant playback
+        conn =
+          Enum.reduce_while(backlog, conn, fn data, acc ->
+            case chunk(acc, data) do
+              {:ok, acc} -> {:cont, acc}
+              {:error, _} -> {:halt, acc}
+            end
+          end)
 
         mux_receive_loop(conn, stream_key)
 
