@@ -63,7 +63,9 @@
       }
     />
     <meta :if={assigns[:og_image]} name="twitter:image" content={assigns[:og_image]} />
-    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <link rel="preconnect" href="https://pannxs.mahina.cloud" />
+    <link rel="preconnect" href="https://tmdb.mahina.cloud" />
+    <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} fetchpriority="high" />
     <script
       defer
       phx-track-static
@@ -71,6 +73,21 @@
       src={~p"/assets/js/app.js"}
       nonce={assigns[:csp_nonce]}
     >
+    </script>
+    <script type="speculationrules" nonce={assigns[:csp_nonce]}>
+      {Phoenix.HTML.raw(Jason.encode!(%{
+        "prefetch" => [%{
+          "where" => %{
+            "and" => [
+              %{"href_matches" => "/*"},
+              %{"not" => %{"href_matches" => "/watch/*"}},
+              %{"not" => %{"href_matches" => "/api/*"}},
+              %{"not" => %{"selector_matches" => ".no-prefetch"}}
+            ]
+          },
+          "eagerness" => "moderate"
+        }]
+      }))}
     </script>
   </head>
   <body>

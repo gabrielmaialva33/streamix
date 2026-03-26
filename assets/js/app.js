@@ -62,6 +62,15 @@ liveSocket.connect();
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket;
 
+// View Transitions API for smooth LiveView navigation
+if (document.startViewTransition) {
+  document.addEventListener("phx:page-loading-start", (info) => {
+    if (info.detail?.kind === "redirect") {
+      document.startViewTransition();
+    }
+  });
+}
+
 // Register Service Worker for PWA with update notification
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
