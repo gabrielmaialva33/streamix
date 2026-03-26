@@ -1,5 +1,4 @@
-import Hls from "hls.js";
-import mpegts from "mpegts.js";
+import { getHls, getMpegts, isHlsJsSupported, isMpegtsSupported } from "../lib/player_libs";
 import { getCapabilitySummary, getCodecCapabilityReport } from "../lib/codec_detector";
 import { CodecAwareABR, getCodecRecommendation, selectOptimalQuality } from "../lib/codec_priority";
 import { createErrorReport, detectErrorPatterns, formatErrorForLog } from "../lib/error_telemetry";
@@ -1084,30 +1083,34 @@ const VideoPlayer = {
 
     // Pre-load with HLS.js if it's an HLS stream
     const streamType = getStreamType(url, this.nextEpisode.type);
-    if (streamType === "hls" && Hls.isSupported()) {
-      this.nextEpisodePreloader = new Hls({
-        // Minimal config for preloading only manifest + first segment
-        maxBufferLength: 5,
-        maxBufferSize: 1 * 1024 * 1024, // 1MB max
-        maxMaxBufferLength: 5,
-        startLevel: -1, // Auto quality
-        enableWorker: true,
-        lowLatencyMode: false,
-      });
+    if (streamType === "hls" && isHlsJsSupported()) {
+      getHls().then((Hls) => {
+        this.nextEpisodePreloader = new Hls({
+          // Minimal config for preloading only manifest + first segment
+          maxBufferLength: 5,
+          maxBufferSize: 1 * 1024 * 1024, // 1MB max
+          maxMaxBufferLength: 5,
+          startLevel: -1, // Auto quality
+          enableWorker: true,
+          lowLatencyMode: false,
+        });
 
-      // Don't attach to video element, just load manifest
-      this.nextEpisodePreloader.loadSource(url);
+        // Don't attach to video element, just load manifest
+        this.nextEpisodePreloader.loadSource(url);
 
-      this.nextEpisodePreloader.on(Hls.Events.MANIFEST_PARSED, () => {
-        log.debug("[VideoPlayer] Next episode manifest pre-loaded");
-      });
+        this.nextEpisodePreloader.on(Hls.Events.MANIFEST_PARSED, () => {
+          log.debug("[VideoPlayer] Next episode manifest pre-loaded");
+        });
 
-      this.nextEpisodePreloader.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          log.warn("[VideoPlayer] Next episode preload failed:", data.type);
-          this.nextEpisodePreloader?.destroy();
-          this.nextEpisodePreloader = null;
-        }
+        this.nextEpisodePreloader.on(Hls.Events.ERROR, (_, data) => {
+          if (data.fatal) {
+            log.warn("[VideoPlayer] Next episode preload failed:", data.type);
+            this.nextEpisodePreloader?.destroy();
+            this.nextEpisodePreloader = null;
+          }
+        });
+      }).catch((e) => {
+        log.debug("[VideoPlayer] Failed to preload next episode:", e.message);
       });
     }
   },
@@ -1310,16 +1313,16 @@ const VideoPlayer = {
         break;
       case "ts":
       case "xtream":
-        if (mpegts.getFeatureList().mseLivePlayback) {
+        if (isMpegtsSupported()) {
           this.playWithMpegts();
-        } else if (Hls.isSupported()) {
+        } else if (isHlsJsSupported()) {
           this.playWithHls();
         } else {
           this.playNative();
         }
         break;
       case "flv":
-        if (mpegts.getFeatureList().mseLivePlayback) {
+        if (isMpegtsSupported()) {
           this.playWithMpegts("flv");
         } else {
           this.playerUI.showError("Reproducao FLV nao suportada neste navegador");
@@ -1330,9 +1333,9 @@ const VideoPlayer = {
         this.playNative();
         break;
       default:
-        if (Hls.isSupported()) {
+        if (isHlsJsSupported()) {
           this.playWithHls();
-        } else if (mpegts.getFeatureList().mseLivePlayback) {
+        } else if (isMpegtsSupported()) {
           this.playWithMpegts();
         } else {
           this.playNative();
@@ -1389,10 +1392,10 @@ const VideoPlayer = {
       }
 
       switch (data.type) {
-        case Hls.ErrorTypes.NETWORK_ERROR:
+        case "networkError":
           if (
-            data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
-            data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR
+            data.details === "manifestLoadError" ||
+            data.details === "manifestParsingError"
           ) {
             // First try soft reload
             if (this._hlsRecoveryAttempts < 2 && this.streamLoader?.canSoftReload("hls")) {
@@ -1404,7 +1407,7 @@ const VideoPlayer = {
               return;
             }
             // Then try different player
-            if (this.retryCount < this.maxRetries && mpegts.getFeatureList().mseLivePlayback) {
+            if (this.retryCount < this.maxRetries && isMpegtsSupported()) {
               this.retryCount++;
               log.warn("HLS failed, trying mpegts.js...");
               this.cleanup();
@@ -1429,7 +1432,7 @@ const VideoPlayer = {
             }
           }
           break;
-        case Hls.ErrorTypes.MEDIA_ERROR:
+        case "mediaError":
           if (this._hlsRecoveryAttempts < 2) {
             this._hlsRecoveryAttempts++;
             log.warn(`Media error, recovering (attempt ${this._hlsRecoveryAttempts})...`);
@@ -1444,7 +1447,7 @@ const VideoPlayer = {
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
             this.cleanup();
-            if (mpegts.getFeatureList().mseLivePlayback) {
+            if (isMpegtsSupported()) {
               this.playWithMpegts();
             } else {
               this.playNative();
@@ -1474,7 +1477,7 @@ const VideoPlayer = {
         log.warn(`Retrying with different method (${this.retryCount}/${this.maxRetries})`);
         this.cleanup();
 
-        if (Hls.isSupported()) {
+        if (isHlsJsSupported()) {
           this.playWithHls();
         } else {
           this.playNative();
@@ -1485,10 +1488,10 @@ const VideoPlayer = {
     }
   },
 
-  playWithHls() {
+  async playWithHls() {
     log.info("Playing with HLS.js, url:", this.currentUrl);
 
-    if (!Hls.isSupported()) {
+    if (!isHlsJsSupported()) {
       if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
         this.playNative();
       } else {
@@ -1497,14 +1500,14 @@ const VideoPlayer = {
       return;
     }
 
-    this.hls = this.streamLoader.loadHls(this.currentUrl);
+    this.hls = await this.streamLoader.loadHls(this.currentUrl);
   },
 
-  playWithMpegts(type = "mpegts") {
+  async playWithMpegts(type = "mpegts") {
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
 
     try {
-      this.mpegtsPlayer = this.streamLoader.loadMpegts(this.currentUrl, type);
+      this.mpegtsPlayer = await this.streamLoader.loadMpegts(this.currentUrl, type);
 
       this.video.play().catch((e) => {
         if (e.name === "AbortError") return; // play() interrupted by pause — harmless
@@ -1525,7 +1528,7 @@ const VideoPlayer = {
       );
     } catch (e) {
       console.error("mpegts.js initialization error:", e);
-      if (Hls.isSupported()) {
+      if (isHlsJsSupported()) {
         this.playWithHls();
       } else {
         this.playNative();

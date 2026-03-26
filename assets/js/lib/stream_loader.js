@@ -4,13 +4,14 @@
  * Handles loading different stream types (HLS, MPEG-TS, native).
  * Extracted from video_player.js for better modularity.
  * Supports soft reload (reusing player instances) for faster channel switching.
+ *
+ * Player libraries (hls.js, mpegts.js) are lazy-loaded on first use
+ * to keep the main bundle small for non-player pages.
  */
 
-import Hls from "hls.js";
-import mpegts from "mpegts.js";
 import { streamLogger as log } from "./logger";
+import { getHls, getMpegts } from "./player_libs";
 import { getStreamingConfig, StreamingMode } from "./streaming_config";
-import { AdaptiveBufferManager } from "./adaptive_buffer";
 
 /**
  * Stream type detection from URL
@@ -92,17 +93,21 @@ export function supportsHEVCNatively() {
 }
 
 /**
- * Check if HLS is supported
+ * Check if HLS is supported (lightweight, no library import needed)
  */
 export function isHlsSupported() {
-  return Hls.isSupported();
+  const mediaSource = window.MediaSource || window.ManagedMediaSource;
+  if (!mediaSource) return false;
+  return typeof mediaSource.isTypeSupported === "function";
 }
 
 /**
- * Check if MPEG-TS is supported
+ * Check if MPEG-TS is supported (lightweight, no library import needed)
  */
 export function isMpegtsSupported() {
-  return mpegts.getFeatureList().mseLivePlayback;
+  const mediaSource = window.MediaSource || window.ManagedMediaSource;
+  if (!mediaSource) return false;
+  return typeof mediaSource.isTypeSupported === "function";
 }
 
 /**
@@ -111,6 +116,18 @@ export function isMpegtsSupported() {
 export function isNativeHlsSupported() {
   const video = document.createElement("video");
   return video.canPlayType("application/vnd.apple.mpegurl") !== "";
+}
+
+/**
+ * Lazy-load AdaptiveBufferManager only when ADAPTIVE mode is used
+ */
+let _AdaptiveBufferManager = null;
+async function getAdaptiveBufferManager() {
+  if (!_AdaptiveBufferManager) {
+    const mod = await import("./adaptive_buffer");
+    _AdaptiveBufferManager = mod.AdaptiveBufferManager;
+  }
+  return _AdaptiveBufferManager;
 }
 
 /**
@@ -125,6 +142,10 @@ export class StreamLoader {
     // Player instances
     this.hls = null;
     this.mpegtsPlayer = null;
+
+    // Cached library references (set after first lazy load)
+    this._Hls = null;
+    this._mpegts = null;
 
     // Adaptive buffer manager (for ADAPTIVE mode)
     this.adaptiveBufferManager = null;
@@ -141,10 +162,13 @@ export class StreamLoader {
   }
 
   /**
-   * Load HLS stream
+   * Load HLS stream (async - lazy loads hls.js on first call)
    */
-  loadHls(url) {
+  async loadHls(url) {
     log.debug("Loading HLS:", url);
+
+    const Hls = await getHls();
+    this._Hls = Hls;
 
     if (!Hls.isSupported()) {
       throw new Error("HLS not supported");
@@ -169,9 +193,14 @@ export class StreamLoader {
 
     // Initialize Adaptive Buffer Manager for ADAPTIVE mode
     if (this.streamingMode === StreamingMode.ADAPTIVE && adaptiveConfig) {
-      this.adaptiveBufferManager = new AdaptiveBufferManager(this.hls, adaptiveConfig);
-      this.adaptiveBufferManager.start();
-      log.info("[StreamLoader] Adaptive buffer management enabled");
+      try {
+        const AdaptiveBufferManager = await getAdaptiveBufferManager();
+        this.adaptiveBufferManager = new AdaptiveBufferManager(this.hls, adaptiveConfig);
+        this.adaptiveBufferManager.start();
+        log.info("[StreamLoader] Adaptive buffer management enabled");
+      } catch (e) {
+        log.warn("[StreamLoader] Failed to load adaptive buffer manager:", e.message);
+      }
     }
 
     // Track bandwidth
@@ -210,10 +239,13 @@ export class StreamLoader {
   }
 
   /**
-   * Load MPEG-TS stream
+   * Load MPEG-TS stream (async - lazy loads mpegts.js on first call)
    */
-  loadMpegts(url, type = "mpegts") {
+  async loadMpegts(url, type = "mpegts") {
     log.debug("Loading MPEG-TS:", url, "type:", type);
+
+    const mpegts = await getMpegts();
+    this._mpegts = mpegts;
 
     const config = getStreamingConfig(this.streamingMode);
 
@@ -252,7 +284,7 @@ export class StreamLoader {
    * Soft reload HLS stream (reuses existing player instance)
    * Returns true if soft reload was used, false if full reload needed
    */
-  loadHlsSoft(url) {
+  async loadHlsSoft(url) {
     if (!this.hls) {
       log.debug("No existing HLS instance, using full load");
       return this.loadHls(url);
@@ -274,13 +306,16 @@ export class StreamLoader {
    * Soft reload MPEG-TS stream (reuses existing player instance)
    * Returns player instance
    */
-  loadMpegtsSoft(url, type = "mpegts") {
+  async loadMpegtsSoft(url, type = "mpegts") {
     if (!this.mpegtsPlayer) {
       log.debug("No existing MPEG-TS instance, using full load");
       return this.loadMpegts(url, type);
     }
 
     log.debug("Soft reloading MPEG-TS:", url);
+
+    const mpegts = this._mpegts || (await getMpegts());
+    this._mpegts = mpegts;
 
     // Unload current stream but keep player
     this.mpegtsPlayer.unload();

@@ -102,8 +102,14 @@ defmodule Streamix.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind streamix", "esbuild streamix"],
+      "assets.build": [
+        "cmd --cd priv/static/assets/js sh -c 'rm -f *.js'",
+        "compile",
+        "tailwind streamix",
+        "esbuild streamix"
+      ],
       "assets.deploy": [
+        "cmd --cd priv/static/assets/js sh -c 'rm -f *.js'",
         "tailwind streamix --minify",
         "esbuild streamix --minify",
         "phx.digest"
