@@ -229,8 +229,7 @@ if config_env() == :prod do
         transport_options: [keepalive: true]
       ],
       http_options: [
-        response_encodings: [:zstd, :gzip, :deflate],
-        gc_every_n_keepalive_requests: 5
+        response_encodings: [:zstd, :gzip, :deflate]
       ],
       http_2_options: [
         max_concurrent_streams: 128
