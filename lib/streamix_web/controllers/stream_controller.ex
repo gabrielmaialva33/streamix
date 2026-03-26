@@ -39,13 +39,11 @@ defmodule StreamixWeb.StreamController do
   def proxy(conn, %{"token" => token}) do
     case StreamToken.verify_and_get_url(token) do
       {:ok, url, content_type} ->
-        # Check original method before Plug.Head converted HEAD to GET
-        if conn.assigns[:original_method] == "HEAD" do
-          head_request(conn, url, 0)
-        else
-          case content_type do
-            "channel" ->
-              # Live channels use the multiplexer for 1:N fan-out
+        case content_type do
+          "channel" ->
+            if conn.assigns[:original_method] == "HEAD" do
+              head_request(conn, url, 0)
+            else
               stream_key = :crypto.hash(:md5, url) |> Base.encode16(case: :lower)
 
               Logger.info(
@@ -53,14 +51,14 @@ defmodule StreamixWeb.StreamController do
               )
 
               stream_from_multiplexer(conn, stream_key, url)
+            end
 
-            _vod ->
-              # VOD content needs Range support for MP4 seeking (moov atom).
-              # Resolve provider redirects server-side, then send browser to nginx
-              # proxy with the final URL (no credentials, just delivery JWT).
-              Logger.info("Stream proxy: VOD content (#{content_type}) url=#{sanitize_url(url)}")
-              resolve_and_redirect_to_proxy(conn, url, 0)
-          end
+          _vod ->
+            # VOD: resolve provider redirects, then 302 to nginx for Range support.
+            # Both HEAD and GET go through this path so the browser gets proper
+            # Content-Length and Accept-Ranges from nginx.
+            Logger.info("Stream proxy: VOD content (#{content_type}) url=#{sanitize_url(url)}")
+            resolve_and_redirect_to_proxy(conn, url, 0)
         end
 
       {:error, :token_expired} ->
@@ -114,34 +112,45 @@ defmodule StreamixWeb.StreamController do
     path = build_request_path(uri)
     headers = build_upstream_headers(conn, uri.host)
 
-    case connect_and_head_request(scheme, uri.host, port, path, headers) do
-      {:ok, mint_conn, request_ref} ->
-        case receive_headers(mint_conn, request_ref) do
-          {:ok, _mint_conn, status, resp_headers, _data, _done} ->
-            if status in [301, 302, 303, 307, 308] do
-              handle_vod_redirect(conn, url, resp_headers, redirect_count)
-            else
-              # Final URL reached — redirect browser to nginx proxy
-              proxy_base =
-                Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    # Use GET (not HEAD) because IPTV providers only redirect GET requests
+    case connect_and_get_headers(scheme, uri.host, port, path, headers) do
+      {:ok, mint_conn, status, resp_headers} ->
+        # Close connection immediately — we only needed the status + headers
+        Mint.HTTP.close(mint_conn)
 
-              final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(url)}"
-              Logger.info("Stream proxy: VOD resolved, redirecting to nginx proxy")
+        if status in [301, 302, 303, 307, 308] do
+          handle_vod_redirect(conn, url, resp_headers, redirect_count)
+        else
+          # Final URL reached — redirect browser to nginx proxy
+          proxy_base =
+            Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
 
-              conn
-              |> put_resp_header("access-control-allow-origin", "*")
-              |> put_resp_header("cache-control", "no-cache, no-store")
-              |> redirect(external: final_proxy)
-            end
+          final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(url)}"
+          Logger.info("Stream proxy: VOD resolved, redirecting to nginx proxy")
 
-          {:error, _mint_conn, reason} ->
-            Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
-            conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+          conn
+          |> put_resp_header("access-control-allow-origin", "*")
+          |> put_resp_header("cache-control", "no-cache, no-store")
+          |> redirect(external: final_proxy)
         end
 
       {:error, reason} ->
-        Logger.error("Stream proxy: VOD resolve connect failed: #{inspect(reason)}")
+        Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
         conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+    end
+  end
+
+  # GET request that only reads status + headers, then returns (ignoring body)
+  defp connect_and_get_headers(scheme, host, port, path, headers) do
+    with {:ok, mint_conn} <- Mint.HTTP.connect(scheme, host, port, timeout: @connect_timeout),
+         {:ok, mint_conn, request_ref} <- Mint.HTTP.request(mint_conn, "GET", path, headers, nil) do
+      case receive_headers(mint_conn, request_ref) do
+        {:ok, mint_conn, status, resp_headers, _data, _done} ->
+          {:ok, mint_conn, status, resp_headers}
+
+        {:error, _mint_conn, reason} ->
+          {:error, reason}
+      end
     end
   end
 
