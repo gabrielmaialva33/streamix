@@ -413,7 +413,9 @@ defmodule StreamixWeb.ContentComponents do
       data-favorite={to_string(@is_favorite)}
     >
       <div
+        id={"movie-img-fb-#{@movie.id}"}
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
+        phx-hook="ImageFallback"
         phx-click={@on_details}
         phx-value-id={@movie.id}
         phx-value-provider_id={@provider_id}
@@ -424,12 +426,15 @@ defmodule StreamixWeb.ContentComponents do
           alt={@movie_name}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 peer"
           loading="lazy"
-          onerror="this.classList.add('hidden'); this.nextElementSibling?.classList.remove('hidden')"
+          data-fallback-target
         />
-        <div class={[
-          "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
-          @image_url && "hidden"
-        ]}>
+        <div
+          class={[
+            "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
+            @image_url && "hidden"
+          ]}
+          data-fallback
+        >
           <.icon name="hero-film" class="size-8 sm:size-12 text-brand/60 mb-2" />
           <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
             {@movie_name}
@@ -547,7 +552,9 @@ defmodule StreamixWeb.ContentComponents do
       data-favorite={to_string(@is_favorite)}
     >
       <div
+        id={"series-img-fb-#{@series.id}"}
         class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
+        phx-hook="ImageFallback"
         phx-click={@on_click}
         phx-value-id={@series.id}
       >
@@ -557,10 +564,14 @@ defmodule StreamixWeb.ContentComponents do
           alt={@series.name}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          data-fallback-target
         />
         <div
-          :if={!Map.get(@series, :cover)}
-          class="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900"
+          class={[
+            "w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900",
+            Map.get(@series, :cover) && "hidden"
+          ]}
+          data-fallback
         >
           <.icon name="hero-video-camera" class="size-8 sm:size-16 text-zinc-600" />
         </div>
@@ -643,17 +654,25 @@ defmodule StreamixWeb.ContentComponents do
       phx-click={@on_play}
       phx-value-id={@episode.id}
     >
-      <div class="relative w-40 aspect-video flex-shrink-0 bg-surface-hover rounded overflow-hidden">
+      <div
+        id={"ep-img-fb-#{@episode.id}"}
+        class="relative w-40 aspect-video flex-shrink-0 bg-surface-hover rounded overflow-hidden"
+        phx-hook="ImageFallback"
+      >
         <img
           :if={Map.get(@episode, :cover)}
           src={ImageProxy.proxy(@episode.cover)}
           alt={episode_title(@episode)}
           class="w-full h-full object-cover"
           loading="lazy"
+          data-fallback-target
         />
         <div
-          :if={!Map.get(@episode, :cover)}
-          class="w-full h-full flex items-center justify-center text-text-secondary/30"
+          class={[
+            "w-full h-full flex items-center justify-center text-text-secondary/30",
+            Map.get(@episode, :cover) && "hidden"
+          ]}
+          data-fallback
         >
           <.icon name="hero-play" class="size-8" />
         </div>
