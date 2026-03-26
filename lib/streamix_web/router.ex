@@ -22,6 +22,7 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.CSPNonce
 
     plug :fetch_current_scope_for_user
+    plug :put_early_hints
   end
 
   pipeline :api do
@@ -213,5 +214,9 @@ defmodule StreamixWeb.Router do
       live_dashboard "/dashboard", metrics: StreamixWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+  end
+
+  defp put_early_hints(conn, _opts) do
+    Plug.Conn.put_resp_header(conn, "link", "<https://pannxs.mahina.cloud>; rel=preconnect")
   end
 end

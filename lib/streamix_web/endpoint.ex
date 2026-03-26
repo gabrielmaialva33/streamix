@@ -25,8 +25,9 @@ defmodule StreamixWeb.Endpoint do
   plug Plug.Static,
     at: "/",
     from: :streamix,
-    gzip: not code_reloading?,
+    gzip: true,
     only: StreamixWeb.static_paths(),
+    cache_control_for_etags: "public, max-age=31536000, immutable",
     raise_on_missing_only: code_reloading?
 
   # Code reloading can be explicitly enabled under the

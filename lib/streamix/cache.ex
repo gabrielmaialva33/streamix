@@ -19,7 +19,7 @@ defmodule Streamix.Cache do
   @l1_cache :streamix_l1_cache
   @redis :streamix_redis
   @default_ttl 3600
-  @l1_ttl :timer.minutes(5)
+  @l1_ttl :timer.minutes(30)
   @scan_count 100
 
   # =============================================================================

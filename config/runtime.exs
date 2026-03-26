@@ -182,9 +182,9 @@ if config_env() == :prod do
   config :streamix, Streamix.Repo,
     # ssl: true,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    # For machines with several cores, consider starting multiple pools of `pool_size`
-    # pool_count: 4,
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20"),
+    queue_target: 5_000,
+    queue_interval: 10_000,
     socket_options: maybe_ipv6
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
@@ -222,10 +222,19 @@ if config_env() == :prod do
     url: [host: host, port: 443, scheme: "https"],
     http: [
       # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
+      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      port: String.to_integer(System.get_env("PORT") || "4000"),
+      # Bandit performance tuning
+      thousand_island_options: [
+        transport_options: [keepalive: true]
+      ],
+      http_options: [
+        response_encodings: [:zstd, :gzip, :deflate],
+        gc_every_n_keepalive_requests: 5
+      ],
+      http_2_options: [
+        max_concurrent_streams: 128
+      ]
     ],
     check_origin: check_origin,
     secret_key_base: secret_key_base,
