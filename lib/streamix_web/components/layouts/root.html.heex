@@ -74,20 +74,8 @@
       nonce={assigns[:csp_nonce]}
     >
     </script>
-    <script type="speculationrules" nonce={assigns[:csp_nonce]}>
-      {Phoenix.HTML.raw(Jason.encode!(%{
-        "prefetch" => [%{
-          "where" => %{
-            "and" => [
-              %{"href_matches" => "/*"},
-              %{"not" => %{"href_matches" => "/watch/*"}},
-              %{"not" => %{"href_matches" => "/api/*"}},
-              %{"not" => %{"selector_matches" => ".no-prefetch"}}
-            ]
-          },
-          "eagerness" => "moderate"
-        }]
-      }))}
+    <script type="speculationrules">
+      {"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"/watch/*"}},{"not":{"href_matches":"/api/*"}},{"not":{"selector_matches":".no-prefetch"}}]},"eagerness":"moderate"}]}
     </script>
   </head>
   <body>
