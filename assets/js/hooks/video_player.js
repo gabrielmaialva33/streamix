@@ -695,12 +695,31 @@ const VideoPlayer = {
     this.video?.addEventListener("play", () => this.playerUI.updatePlayPauseUI(false));
     this.video?.addEventListener("pause", () => this.playerUI.updatePlayPauseUI(true));
     this.video?.addEventListener("volumechange", () => this.updateVolumeUI());
-    this.video?.addEventListener("timeupdate", () => this.updateTimeUI());
+    this.video?.addEventListener("timeupdate", () => {
+      this.updateTimeUI();
+
+      // Safety net: if video time is advancing, loading should be hidden
+      // Fixes "infinite loading" on live streams where playing/canplaythrough don't re-fire
+      if (this.video && !this.video.paused && this.video.readyState >= 3) {
+        this.playerUI.hideLoading();
+      }
+    });
     this.video?.addEventListener("loadedmetadata", () => this.updateTimeUI());
     this.video?.addEventListener("ratechange", () =>
       this.playerUI.updateSpeedUI(this.video.playbackRate),
     );
-    this.video?.addEventListener("progress", () => this.updateBufferBar());
+    this.video?.addEventListener("progress", () => {
+      this.updateBufferBar();
+
+      // For live streams: if buffer is filling, stream is healthy → hide loading
+      if (this.video && !this.video.paused && this.video.buffered.length > 0) {
+        const bufferedEnd = this.video.buffered.end(this.video.buffered.length - 1);
+        const bufferAhead = bufferedEnd - this.video.currentTime;
+        if (bufferAhead > 1) {
+          this.playerUI.hideLoading();
+        }
+      }
+    });
 
     // Fullscreen events
     document.addEventListener("fullscreenchange", () =>

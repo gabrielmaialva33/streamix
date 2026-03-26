@@ -132,10 +132,25 @@ export class PlayerUI {
 
   showLoading() {
     this.elements.loadingIndicator?.classList.remove("hidden");
+
+    // Safety timeout: auto-hide after 10s if loading gets stuck
+    // This prevents the "infinite loading" bug on live streams
+    if (this._loadingSafetyTimeout) {
+      clearTimeout(this._loadingSafetyTimeout);
+    }
+    this._loadingSafetyTimeout = setTimeout(() => {
+      if (this.video && !this.video.paused && this.video.readyState >= 2) {
+        this.hideLoading();
+      }
+    }, 10000);
   }
 
   hideLoading() {
     this.elements.loadingIndicator?.classList.add("hidden");
+    if (this._loadingSafetyTimeout) {
+      clearTimeout(this._loadingSafetyTimeout);
+      this._loadingSafetyTimeout = null;
+    }
   }
 
   showError(message) {
@@ -677,6 +692,12 @@ export class PlayerUI {
 
   destroy() {
     this.clearHideControlsTimeout();
+
+    // Clear loading safety timeout
+    if (this._loadingSafetyTimeout) {
+      clearTimeout(this._loadingSafetyTimeout);
+      this._loadingSafetyTimeout = null;
+    }
 
     // Cleanup focus traps
     for (const focusTrap of this.focusTraps.values()) {
