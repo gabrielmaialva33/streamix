@@ -17,23 +17,20 @@ defmodule Streamix.Repo.Migrations.AddPerformanceIndexes do
                            name: :favorites_batch_lookup
                          )
 
-    # Partial indexes for public content (90%+ of queries filter by visibility)
-    create_if_not_exists index(:movies, [:provider_id],
+    # Provider lookups for content tables
+    create_if_not_exists index(:movies, [:provider_id, :name],
                            concurrently: true,
-                           where: "visibility IN ('public', 'global')",
-                           name: :movies_public_visibility
+                           name: :movies_provider_name
                          )
 
-    create_if_not_exists index(:series, [:provider_id],
+    create_if_not_exists index(:series, [:provider_id, :name],
                            concurrently: true,
-                           where: "visibility IN ('public', 'global')",
-                           name: :series_public_visibility
+                           name: :series_provider_name
                          )
 
-    create_if_not_exists index(:live_channels, [:provider_id],
+    create_if_not_exists index(:live_channels, [:provider_id, :name],
                            concurrently: true,
-                           where: "visibility IN ('public', 'global')",
-                           name: :live_channels_public_visibility
+                           name: :live_channels_provider_name
                          )
 
     # Categories filtering
