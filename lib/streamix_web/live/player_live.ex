@@ -23,7 +23,7 @@ defmodule StreamixWeb.PlayerLive do
 
   alias Streamix.Iptv
 
-  @doc false
+  @impl true
   def mount(%{"type" => type, "id" => id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -72,7 +72,7 @@ defmodule StreamixWeb.PlayerLive do
   # Event Handlers
   # ============================================
 
-  @doc false
+  @impl true
   def handle_event(
         "progress_update",
         %{"current_time" => current_time, "duration" => duration},
@@ -200,11 +200,20 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("request_token_refresh", _params, socket), do: {:noreply, socket}
   def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, socket) do
+    if Map.has_key?(socket.assigns, :user_id) && socket.assigns.user_id do
+      Phoenix.PubSub.unsubscribe(Streamix.PubSub, "user:#{socket.assigns.user_id}:progress")
+    end
+
+    :ok
+  end
+
   # ============================================
   # Render
   # ============================================
 
-  @doc false
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="fixed inset-0 bg-black">

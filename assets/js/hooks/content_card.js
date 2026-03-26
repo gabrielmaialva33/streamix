@@ -27,19 +27,13 @@ async function ensurePreloadFunctionLoaded() {
   return preloadAVPlayerWasm;
 }
 
-// Global preview state
-let activePreview = null;
-let previewTimeout = null;
+// Track the currently active preview instance (weak reference to avoid cross-instance races)
+let activePreviewInstance = null;
 
-// Close any active preview
+// Close any active preview (called via the owning instance)
 function closeActivePreview() {
-  if (activePreview) {
-    activePreview.remove();
-    activePreview = null;
-  }
-  if (previewTimeout) {
-    clearTimeout(previewTimeout);
-    previewTimeout = null;
+  if (activePreviewInstance) {
+    activePreviewInstance._closePreview();
   }
 }
 
@@ -61,6 +55,10 @@ document.addEventListener(
 
 const ContentCard = {
   mounted() {
+    // Instance-level preview state (not shared globals)
+    this.activePreview = null;
+    this.previewTimeout = null;
+
     // Get content data from attributes
     this.contentId = this.el.dataset.contentId;
     this.contentType = this.el.dataset.contentType; // movie, series
@@ -111,15 +109,18 @@ const ContentCard = {
     }
 
     // Always clear pending timeout, regardless of pendingPreview flag
-    if (previewTimeout) {
-      clearTimeout(previewTimeout);
-      previewTimeout = null;
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
+      this.previewTimeout = null;
     }
     this.pendingPreview = false;
 
     // Close preview if it belongs to this card
-    if (activePreview && activePreview.dataset.contentId === this.contentId) {
-      closeActivePreview();
+    if (this.activePreview) {
+      this._closePreview();
+    }
+    if (activePreviewInstance === this) {
+      activePreviewInstance = null;
     }
   },
 
@@ -127,16 +128,16 @@ const ContentCard = {
     this.pendingPreview = true;
 
     // Cancel any existing timeout
-    if (previewTimeout) {
-      clearTimeout(previewTimeout);
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
     }
 
     // Start WASM preload immediately
     this.preloadWasm();
 
     // Delay before showing preview
-    previewTimeout = setTimeout(() => {
-      previewTimeout = null;
+    this.previewTimeout = setTimeout(() => {
+      this.previewTimeout = null;
       if (this.pendingPreview) {
         this.showPreview();
       }
@@ -146,15 +147,15 @@ const ContentCard = {
   handleMouseLeave() {
     this.pendingPreview = false;
 
-    if (previewTimeout) {
-      clearTimeout(previewTimeout);
-      previewTimeout = null;
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
+      this.previewTimeout = null;
     }
 
     // Close preview if we're not hovering over it
     setTimeout(() => {
-      if (activePreview && !activePreview.matches(":hover") && !this.el.matches(":hover")) {
-        closeActivePreview();
+      if (this.activePreview && !this.activePreview.matches(":hover") && !this.el.matches(":hover")) {
+        this._closePreview();
       }
     }, 100);
   },
@@ -165,17 +166,32 @@ const ContentCard = {
 
   handleTouchStart(_e) {
     // On touch, tap toggles preview
-    if (activePreview && activePreview.dataset.contentId === this.contentId) {
-      closeActivePreview();
+    if (this.activePreview) {
+      this._closePreview();
     } else {
-      closeActivePreview();
+      closeActivePreview(); // Close any other instance's preview
       this.showPreview();
+    }
+  },
+
+  _closePreview() {
+    if (this.activePreview) {
+      this.activePreview.remove();
+      this.activePreview = null;
+    }
+    if (this.previewTimeout) {
+      clearTimeout(this.previewTimeout);
+      this.previewTimeout = null;
+    }
+    if (activePreviewInstance === this) {
+      activePreviewInstance = null;
     }
   },
 
   showPreview() {
     try {
-      closeActivePreview();
+      closeActivePreview(); // Close any other instance's preview
+      this._closePreview(); // Close our own if lingering
 
       // Don't show preview if no metadata
       if (!this.title && !this.plot) {
@@ -203,7 +219,8 @@ const ContentCard = {
 
       // Add to DOM
       document.body.appendChild(preview);
-      activePreview = preview;
+      this.activePreview = preview;
+      activePreviewInstance = this;
 
       // Calculate position
       const previewRect = preview.getBoundingClientRect();
@@ -245,7 +262,7 @@ const ContentCard = {
       preview.addEventListener("mouseleave", () => {
         setTimeout(() => {
           if (!this.el.matches(":hover") && !preview.matches(":hover")) {
-            closeActivePreview();
+            this._closePreview();
           }
         }, 100);
       });
@@ -254,7 +271,7 @@ const ContentCard = {
       this.bindPreviewActions(preview);
     } catch (e) {
       // Clean up on error to prevent orphaned DOM elements
-      closeActivePreview();
+      this._closePreview();
       console.debug("[ContentCard] showPreview error:", e.message);
     }
   },

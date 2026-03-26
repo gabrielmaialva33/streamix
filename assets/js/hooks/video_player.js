@@ -947,7 +947,11 @@ const VideoPlayer = {
 
     if (shouldTrigger) {
       this.showNextEpisodeOverlay();
-      this.preloadNextEpisode();
+      try {
+        this.preloadNextEpisode();
+      } catch (e) {
+        log.debug("[VideoPlayer] Next episode preload error:", e.message);
+      }
     }
   },
 
@@ -974,7 +978,13 @@ const VideoPlayer = {
     const countdownBar = overlay.querySelector("#next-countdown-bar");
 
     if (playBtn) {
-      playBtn.onclick = () => this.playNextEpisode();
+      playBtn.onclick = () => {
+        try {
+          this.playNextEpisode();
+        } catch (e) {
+          log.debug("[VideoPlayer] playNextEpisode error:", e.message);
+        }
+      };
     }
 
     if (cancelBtn) {
@@ -989,7 +999,11 @@ const VideoPlayer = {
         countdownBar.style.width = `${countdown * 10}%`;
       }
       if (countdown <= 0) {
-        this.playNextEpisode();
+        try {
+          this.playNextEpisode();
+        } catch (e) {
+          log.debug("[VideoPlayer] playNextEpisode countdown error:", e.message);
+        }
       }
     }, 1000);
 
@@ -1691,6 +1705,7 @@ const VideoPlayer = {
         }
       } catch (e) {
         console.warn("[VideoPlayer] Could not check audio:", e);
+        this.audioCheckTimeout = null;
       }
     }, 2000);
   },
@@ -2516,7 +2531,10 @@ const VideoPlayer = {
       }
     } else {
       if (this.video.paused) {
-        this.video.play();
+        this.video.play().catch((e) => {
+          if (e.name === "AbortError") return;
+          log.debug("[VideoPlayer] togglePlayPause play() failed:", e.message);
+        });
       } else {
         this.video.pause();
       }
@@ -2620,6 +2638,10 @@ const VideoPlayer = {
   // ============================================
 
   trackWatchTime() {
+    // Guard: clear existing interval to prevent stacking
+    if (this.watchInterval) {
+      clearInterval(this.watchInterval);
+    }
     // Run directly every 30s instead of checking every 1s
     this.watchInterval = setInterval(() => {
       const duration = Math.floor((Date.now() - this.startTime) / 1000);
@@ -2638,6 +2660,12 @@ const VideoPlayer = {
     this.playerUI?.clearHideControlsTimeout();
     this.playerUI?.destroy();
     this.stopAVPlayerTimeUpdates();
+
+    // Clear audio check timeout
+    if (this.audioCheckTimeout) {
+      clearTimeout(this.audioCheckTimeout);
+      this.audioCheckTimeout = null;
+    }
 
     // Clear next episode resources
     if (this.nextEpisodeCountdown) {

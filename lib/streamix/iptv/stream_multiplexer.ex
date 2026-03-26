@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   @max_redirects 5
   @idle_timeout 30_000
   @default_buffer_size 30
+  @max_buffer_bytes 5 * 1_024 * 1_024
 
   # -- Public API --
 
@@ -58,23 +59,24 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   # -- Internals --
 
   defp start_or_lookup(stream_key, url) do
-    case Registry.lookup(Streamix.StreamRegistry, stream_key) do
-      [{pid, _}] ->
+    # Skip Registry.lookup — go straight to start_child which is atomic
+    # via the :via Registry name. This avoids the lookup-then-start race.
+    case Streamix.Iptv.StreamMultiplexerSupervisor.start_child(
+           stream_key: stream_key,
+           url: url
+         ) do
+      {:ok, pid} ->
         {:ok, pid}
 
-      [] ->
-        case Streamix.Iptv.StreamMultiplexerSupervisor.start_child(
-               stream_key: stream_key,
-               url: url
-             ) do
-          {:ok, pid} ->
-            {:ok, pid}
+      {:error, {:already_started, pid}} ->
+        {:ok, pid}
 
-          {:error, {:already_started, pid}} ->
-            {:ok, pid}
-
-          {:error, reason} ->
-            {:error, reason}
+      {:error, reason} ->
+        # Another process may have started and already stopped.
+        # Final lookup to be safe before giving up.
+        case Registry.lookup(Streamix.StreamRegistry, stream_key) do
+          [{pid, _}] -> {:ok, pid}
+          [] -> {:error, reason}
         end
     end
   end
@@ -98,6 +100,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
       buffer: :queue.new(),
       buffer_size: buffer_size,
       buffer_count: 0,
+      buffer_bytes: 0,
       status: :connecting,
       idle_timer: nil
     }
@@ -181,9 +184,11 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     if MapSet.size(state.subscribers) == 0 do
       Logger.info("[StreamMux] Idle timeout, shutting down #{state.stream_key}")
       close_upstream(state)
-      {:stop, :normal, state}
+      {:stop, :normal, %{state | idle_timer: nil}}
     else
-      {:noreply, %{state | idle_timer: nil}}
+      # Subscribers joined between timer fire and check — keep running.
+      # Don't touch idle_timer; a new one will be set when subscribers leave.
+      {:noreply, state}
     end
   end
 
@@ -211,8 +216,14 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
       {:ok, mint_conn, responses} ->
         state = %{state | mint_conn: mint_conn}
-        state = process_responses(responses, state)
-        {:noreply, state}
+
+        case process_responses(responses, state) do
+          {:ok, state} ->
+            {:noreply, state}
+
+          {:stop, state} ->
+            {:stop, {:shutdown, :redirect_failed}, state}
+        end
 
       {:error, mint_conn, reason, _responses} ->
         Logger.error("[StreamMux] Stream error for #{state.stream_key}: #{inspect(reason)}")
@@ -223,18 +234,18 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     end
   end
 
-  defp process_responses([], state), do: state
+  defp process_responses([], state), do: {:ok, state}
 
   defp process_responses([response | rest], state) do
-    state =
+    result =
       case response do
         {:status, _ref, status} ->
           Logger.debug("[StreamMux] Upstream status: #{status}")
 
           if status in [301, 302, 303, 307, 308] do
-            %{state | status: {:redirect, status}}
+            {:ok, %{state | status: {:redirect, status}}}
           else
-            state
+            {:ok, state}
           end
 
         {:headers, _ref, headers} ->
@@ -244,28 +255,31 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
             _ ->
               Logger.debug("[StreamMux] Upstream headers received")
-              state
+              {:ok, state}
           end
 
         {:data, _ref, chunk} ->
-          push_chunk(chunk, state)
+          {:ok, push_chunk(chunk, state)}
 
         {:done, _ref} ->
           Logger.info("[StreamMux] Upstream done for #{state.stream_key}")
           broadcast(state.stream_key, :stream_done)
-          state
+          {:ok, state}
 
         {:error, _ref, reason} ->
           Logger.error("[StreamMux] Upstream error for #{state.stream_key}: #{inspect(reason)}")
 
           broadcast(state.stream_key, {:stream_error, reason})
-          state
+          {:ok, state}
 
         _ ->
-          state
+          {:ok, state}
       end
 
-    process_responses(rest, state)
+    case result do
+      {:ok, new_state} -> process_responses(rest, new_state)
+      {:stop, _state} = stop -> stop
+    end
   end
 
   defp handle_redirect_headers(headers, state) do
@@ -278,28 +292,39 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     if location do
       redirect_url = resolve_url(state.url, location)
 
-      Logger.info("[StreamMux] Following redirect to #{redirect_url}")
+      # Validate redirect target to prevent SSRF via open redirects
+      case StreamixWeb.UrlValidator.validate_url(redirect_url) do
+        :ok ->
+          Logger.info("[StreamMux] Following redirect to #{redirect_url}")
 
-      close_upstream(state)
+          close_upstream(state)
 
-      case connect_upstream(redirect_url, 0) do
-        {:ok, mint_conn, request_ref} ->
-          %{
-            state
-            | mint_conn: mint_conn,
-              request_ref: request_ref,
-              url: redirect_url,
-              status: :streaming
-          }
+          case connect_upstream(redirect_url, 0) do
+            {:ok, mint_conn, request_ref} ->
+              {:ok,
+               %{
+                 state
+                 | mint_conn: mint_conn,
+                   request_ref: request_ref,
+                   url: redirect_url,
+                   status: :streaming
+               }}
+
+            {:error, reason} ->
+              Logger.error("[StreamMux] Redirect connect failed: #{inspect(reason)}")
+              broadcast(state.stream_key, {:stream_error, reason})
+              {:stop, %{state | mint_conn: nil, request_ref: nil, status: :error}}
+          end
 
         {:error, reason} ->
-          Logger.error("[StreamMux] Redirect connect failed: #{inspect(reason)}")
+          Logger.error("[StreamMux] SSRF blocked redirect to #{redirect_url}")
           broadcast(state.stream_key, {:stream_error, reason})
-          %{state | mint_conn: nil, request_ref: nil, status: :error}
+          close_upstream(state)
+          {:stop, %{state | mint_conn: nil, request_ref: nil, status: :error}}
       end
     else
       Logger.error("[StreamMux] Redirect without Location header")
-      state
+      {:ok, state}
     end
   end
 
@@ -307,17 +332,36 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     # Broadcast to all subscribers
     broadcast(state.stream_key, {:stream_chunk, chunk})
 
-    # Add to ring buffer
-    {buffer, count} =
-      if state.buffer_count >= state.buffer_size do
-        {_, buffer} = :queue.out(state.buffer)
-        {:queue.in(chunk, buffer), state.buffer_size}
-      else
-        {:queue.in(chunk, state.buffer), state.buffer_count + 1}
-      end
+    chunk_size = byte_size(chunk)
 
-    %{state | buffer: buffer, buffer_count: count}
+    # Add to ring buffer
+    buffer = :queue.in(chunk, state.buffer)
+    count = state.buffer_count + 1
+    bytes = state.buffer_bytes + chunk_size
+
+    # Trim by chunk count limit
+    {buffer, count, bytes} = trim_buffer_by_count(buffer, count, bytes, state.buffer_size)
+
+    # Trim by byte size limit
+    {buffer, count, bytes} = trim_buffer_by_bytes(buffer, count, bytes, @max_buffer_bytes)
+
+    %{state | buffer: buffer, buffer_count: count, buffer_bytes: bytes}
   end
+
+  defp trim_buffer_by_count(buffer, count, bytes, max_count) when count > max_count do
+    {{:value, old_chunk}, buffer} = :queue.out(buffer)
+    trim_buffer_by_count(buffer, count - 1, bytes - byte_size(old_chunk), max_count)
+  end
+
+  defp trim_buffer_by_count(buffer, count, bytes, _max_count), do: {buffer, count, bytes}
+
+  defp trim_buffer_by_bytes(buffer, count, bytes, max_bytes)
+       when count > 1 and bytes > max_bytes do
+    {{:value, old_chunk}, buffer} = :queue.out(buffer)
+    trim_buffer_by_bytes(buffer, count - 1, bytes - byte_size(old_chunk), max_bytes)
+  end
+
+  defp trim_buffer_by_bytes(buffer, count, bytes, _max_bytes), do: {buffer, count, bytes}
 
   # -- Upstream connection --
 

@@ -38,7 +38,7 @@ defmodule StreamixWeb.HistoryLive do
       |> stream(:history, [])
       |> load_history()
 
-    {:ok, socket}
+    {:ok, socket, temporary_assigns: [loading: false]}
   end
 
   # ============================================

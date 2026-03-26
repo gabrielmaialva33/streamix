@@ -38,7 +38,7 @@ defmodule StreamixWeb.FavoritesLive do
       |> stream(:favorites, [])
       |> load_favorites()
 
-    {:ok, socket}
+    {:ok, socket, temporary_assigns: [loading: false]}
   end
 
   # ============================================

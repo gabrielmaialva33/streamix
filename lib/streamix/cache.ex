@@ -132,14 +132,37 @@ defmodule Streamix.Cache do
   """
   @spec fetch(String.t(), pos_integer(), (-> term())) :: term()
   def fetch(key, ttl \\ @default_ttl, fun) when is_function(fun, 0) do
-    case get(key) do
-      nil ->
-        value = fun.()
-        set(key, value, ttl)
-        value
+    # Use ConCache.get_or_store for L1 to prevent stampede —
+    # concurrent callers on the same key will block on the first computation
+    # instead of all computing simultaneously.
+    l1_ttl_ms = min(ttl * 1000, @l1_ttl)
 
-      value ->
-        value
+    ConCache.get_or_store(@l1_cache, key, fn ->
+      # L1 miss — check L2 (Redis) before computing
+      case get_from_l2(key) do
+        nil ->
+          value = fun.()
+          # Write-through to L2
+          set_l2(key, value, ttl)
+          %ConCache.Item{value: value, ttl: l1_ttl_ms}
+
+        value ->
+          %ConCache.Item{value: value, ttl: l1_ttl_ms}
+      end
+    end)
+  end
+
+  # Write only to L2 (Redis), used by fetch to avoid double L1 write
+  defp set_l2(key, value, ttl) do
+    case encode(value) do
+      {:ok, encoded} ->
+        case Redix.command(@redis, ["SETEX", key, ttl, encoded]) do
+          {:ok, _} -> :ok
+          {:error, reason} -> log_error("SETEX", key, reason)
+        end
+
+      {:error, reason} ->
+        log_error("encode", key, reason)
     end
   end
 
