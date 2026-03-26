@@ -13,10 +13,7 @@ defmodule StreamixWeb.StreamController do
   @connect_timeout 10_000
   @recv_timeout 30_000
   @max_redirects 5
-  # Timeout for receiving multiplexer chunks before considering the stream dead
-  @mux_recv_timeout 30_000
 
-  alias Streamix.Iptv.StreamMultiplexer
   alias StreamixWeb.StreamToken
   alias StreamixWeb.UrlValidator
 
@@ -39,25 +36,19 @@ defmodule StreamixWeb.StreamController do
   def proxy(conn, %{"token" => token}) do
     case StreamToken.verify_and_get_url(token) do
       {:ok, url, content_type} ->
+        # All content types redirect to nginx proxy which handles redirects,
+        # Range headers, and CORS natively. For VOD we resolve the redirects
+        # first so credentials never reach the browser. For live channels,
+        # we send straight to nginx which follows redirects via @handle_redirect.
+        Logger.info("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
+
         case content_type do
           "channel" ->
-            if conn.assigns[:original_method] == "HEAD" do
-              head_request(conn, url, 0)
-            else
-              stream_key = :crypto.hash(:md5, url) |> Base.encode16(case: :lower)
+            # Live: nginx handles redirects + streaming natively
+            redirect_to_nginx_proxy(conn, url)
 
-              Logger.info(
-                "Stream proxy: live channel via multiplexer, key=#{stream_key} url=#{sanitize_url(url)}"
-              )
-
-              stream_from_multiplexer(conn, stream_key, url)
-            end
-
-          _vod ->
-            # VOD: resolve provider redirects, then 302 to nginx for Range support.
-            # Both HEAD and GET go through this path so the browser gets proper
-            # Content-Length and Accept-Ranges from nginx.
-            Logger.info("Stream proxy: VOD content (#{content_type}) url=#{sanitize_url(url)}")
+          _ ->
+            # VOD: resolve redirects server-side to get final delivery URL
             resolve_and_redirect_to_proxy(conn, url, 0)
         end
 
@@ -105,6 +96,7 @@ defmodule StreamixWeb.StreamController do
     |> json(%{error: "Too many redirects"})
   end
 
+  # VOD: resolve IPTV provider redirects, then redirect to nginx with final URL
   defp resolve_and_redirect_to_proxy(conn, url, redirect_count) do
     uri = URI.parse(url)
     scheme = if uri.scheme == "https", do: :https, else: :http
@@ -138,6 +130,17 @@ defmodule StreamixWeb.StreamController do
         Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
         conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
     end
+  end
+
+  # Live channels: redirect to nginx proxy directly (nginx follows redirects natively)
+  defp redirect_to_nginx_proxy(conn, url) do
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(url)}"
+
+    conn
+    |> put_resp_header("access-control-allow-origin", "*")
+    |> put_resp_header("cache-control", "no-cache, no-store")
+    |> redirect(external: final_proxy)
   end
 
   # GET request that only reads status + headers, then returns (ignoring body)
@@ -175,188 +178,6 @@ defmodule StreamixWeb.StreamController do
         end
     end
   end
-
-  # --- Live channel streaming via StreamMultiplexer ---
-
-  defp stream_from_multiplexer(conn, stream_key, url) do
-    case StreamMultiplexer.subscribe(stream_key, url) do
-      {:ok, backlog} ->
-        conn =
-          conn
-          |> put_cors_headers()
-          |> put_resp_content_type("video/mp2t")
-          |> put_resp_header("cache-control", "no-cache, no-store")
-          |> put_resp_header("x-accel-buffering", "no")
-          |> send_chunked(200)
-
-        # Send backlog chunks for instant playback
-        conn =
-          Enum.reduce_while(backlog, conn, fn data, acc ->
-            case chunk(acc, data) do
-              {:ok, acc} -> {:cont, acc}
-              {:error, _} -> {:halt, acc}
-            end
-          end)
-
-        mux_receive_loop(conn, stream_key)
-
-      {:error, reason} ->
-        Logger.error(
-          "Stream proxy: multiplexer subscribe failed key=#{stream_key} reason=#{inspect(reason)}"
-        )
-
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "Failed to start live stream", reason: inspect(reason)})
-    end
-  end
-
-  defp mux_receive_loop(conn, stream_key) do
-    receive do
-      {:stream_chunk, data} ->
-        case chunk(conn, data) do
-          {:ok, conn} ->
-            mux_receive_loop(conn, stream_key)
-
-          {:error, _reason} ->
-            # Client disconnected
-            Logger.info("Stream proxy: client disconnected from live stream key=#{stream_key}")
-            StreamMultiplexer.unsubscribe(stream_key)
-            conn
-        end
-
-      :stream_done ->
-        Logger.info("Stream proxy: live stream ended key=#{stream_key}")
-        StreamMultiplexer.unsubscribe(stream_key)
-        conn
-
-      {:stream_error, reason} ->
-        Logger.error(
-          "Stream proxy: live stream error key=#{stream_key} reason=#{inspect(reason)}"
-        )
-
-        StreamMultiplexer.unsubscribe(stream_key)
-        conn
-    after
-      @mux_recv_timeout ->
-        Logger.warning("Stream proxy: live stream timeout key=#{stream_key}")
-        StreamMultiplexer.unsubscribe(stream_key)
-        conn
-    end
-  end
-
-  # Handle HEAD requests - return only headers, no body
-  defp head_request(conn, _url, redirect_count) when redirect_count > @max_redirects do
-    Logger.error("Stream proxy HEAD: too many redirects")
-
-    conn
-    |> put_status(:bad_gateway)
-    |> json(%{error: "Too many redirects"})
-  end
-
-  defp head_request(conn, url, redirect_count) do
-    uri = URI.parse(url)
-    scheme = if uri.scheme == "https", do: :https, else: :http
-    port = uri.port || default_port(scheme)
-    path = build_request_path(uri)
-    headers = build_upstream_headers(conn, uri.host)
-
-    Logger.info("Stream proxy HEAD: connecting to #{uri.host}:#{port}#{sanitize_url(path)}")
-
-    case connect_and_head_request(scheme, uri.host, port, path, headers) do
-      {:ok, mint_conn, request_ref} ->
-        handle_head_response(conn, mint_conn, request_ref, url, redirect_count)
-
-      {:error, reason} ->
-        Logger.error("Stream proxy HEAD connection error: #{inspect(reason)}")
-
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "Failed to connect to stream", reason: inspect(reason)})
-    end
-  end
-
-  defp connect_and_head_request(scheme, host, port, path, headers) do
-    transport_opts =
-      case scheme do
-        :https -> [cacerts: :public_key.cacerts_get(), timeout: @connect_timeout]
-        :http -> [timeout: @connect_timeout]
-      end
-
-    case Mint.HTTP.connect(scheme, host, port, transport_opts: transport_opts) do
-      {:ok, mint_conn} ->
-        case Mint.HTTP.request(mint_conn, "HEAD", path, headers, nil) do
-          {:ok, mint_conn, request_ref} ->
-            {:ok, mint_conn, request_ref}
-
-          {:error, mint_conn, reason} ->
-            Mint.HTTP.close(mint_conn)
-            {:error, reason}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp handle_head_response(conn, mint_conn, request_ref, original_url, redirect_count) do
-    case receive_headers(mint_conn, request_ref) do
-      {:ok, _mint_conn, status, headers, _initial_data, _body_complete?} ->
-        Mint.HTTP.close(mint_conn)
-        process_head_response(conn, status, headers, original_url, redirect_count)
-
-      {:error, _mint_conn, reason} ->
-        Logger.error("Stream proxy HEAD header error: #{inspect(reason)}")
-
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "Failed to read stream headers", reason: inspect(reason)})
-    end
-  end
-
-  defp process_head_response(conn, status, headers, original_url, redirect_count)
-       when status in [301, 302, 303, 307, 308] do
-    # Handle redirects
-    case get_header(headers, "location") do
-      nil ->
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "Redirect without Location header"})
-
-      location ->
-        redirect_url = resolve_url(original_url, location)
-
-        case UrlValidator.validate_url(redirect_url) do
-          :ok ->
-            head_request(conn, redirect_url, redirect_count + 1)
-
-          {:error, :unsafe_url} ->
-            Logger.warning(
-              "Stream proxy HEAD: blocked redirect to unsafe URL #{sanitize_url(redirect_url)}"
-            )
-
-            conn
-            |> put_status(:forbidden)
-            |> json(%{error: "Redirect blocked by security policy"})
-        end
-    end
-  end
-
-  defp process_head_response(conn, status, headers, _original_url, _redirect_count) do
-    # Return headers only (no body for HEAD)
-    content_length = get_header(headers, "content-length")
-    content_type = get_header(headers, "content-type")
-
-    conn
-    |> put_cors_headers()
-    |> put_resp_header("accept-ranges", "bytes")
-    |> maybe_put_header("content-length", content_length)
-    |> maybe_put_header("content-type", content_type)
-    |> send_resp(normalize_status(status), "")
-  end
-
-  defp default_port(:https), do: 443
-  defp default_port(:http), do: 80
 
   defp build_request_path(uri) do
     path = uri.path || "/"
@@ -471,9 +292,6 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp normalize_status(206), do: 206
-  defp normalize_status(_), do: 200
-
   defp put_cors_headers(conn) do
     origin = get_cors_origin(conn)
 
@@ -503,10 +321,6 @@ defmodule StreamixWeb.StreamController do
   defp origin_allowed?(_origin, :all), do: true
   defp origin_allowed?(origin, origins) when is_list(origins), do: origin in origins
   defp origin_allowed?(_origin, _), do: false
-
-  # Helper to add optional header without deep nesting
-  defp maybe_put_header(conn, _name, nil), do: conn
-  defp maybe_put_header(conn, name, value), do: put_resp_header(conn, name, value)
 
   # Sanitize XUI URLs to strip credentials from log output.
   # Replaces /live/USERNAME/PASSWORD/, /movie/USERNAME/PASSWORD/,
