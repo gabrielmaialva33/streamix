@@ -63,7 +63,9 @@ defmodule StreamixWeb.StreamToken do
 
   @doc """
   Verifies a token and returns the actual stream URL if valid.
-  Returns {:ok, url} or {:error, reason}.
+  Returns {:ok, url, content_type} or {:error, reason}.
+
+  `content_type` is "channel", "movie", "episode", or "url".
 
   The embedded user_id is checked against provider ownership:
   - If user_id is present, the content's provider must belong to that user
@@ -75,19 +77,22 @@ defmodule StreamixWeb.StreamToken do
       {:ok, %{type: "url", url: url, user_id: _user_id}} ->
         # Direct URL token — re-validate at use time to prevent DNS rebinding
         case UrlValidator.validate_url(url) do
-          :ok -> {:ok, url}
+          :ok -> {:ok, url, "url"}
           {:error, :unsafe_url} -> {:error, :unsafe_url}
         end
 
       # Legacy tokens without user_id (URL type only) — allow with re-validation
       {:ok, %{type: "url", url: url}} ->
         case UrlValidator.validate_url(url) do
-          :ok -> {:ok, url}
+          :ok -> {:ok, url, "url"}
           {:error, :unsafe_url} -> {:error, :unsafe_url}
         end
 
       {:ok, %{type: type, id: id, user_id: user_id}} ->
-        get_stream_url(type, id, user_id)
+        case get_stream_url(type, id, user_id) do
+          {:ok, url} -> {:ok, url, type}
+          error -> error
+        end
 
       # Reject legacy content tokens without user_id binding
       {:ok, %{type: _type, id: _id}} ->

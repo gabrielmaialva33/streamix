@@ -13,7 +13,10 @@ defmodule StreamixWeb.StreamController do
   @connect_timeout 10_000
   @recv_timeout 30_000
   @max_redirects 5
+  # Timeout for receiving multiplexer chunks before considering the stream dead
+  @mux_recv_timeout 30_000
 
+  alias Streamix.Iptv.StreamMultiplexer
   alias StreamixWeb.StreamToken
   alias StreamixWeb.UrlValidator
 
@@ -35,12 +38,27 @@ defmodule StreamixWeb.StreamController do
   """
   def proxy(conn, %{"token" => token}) do
     case StreamToken.verify_and_get_url(token) do
-      {:ok, url} ->
+      {:ok, url, content_type} ->
         # Check original method before Plug.Head converted HEAD to GET
         if conn.assigns[:original_method] == "HEAD" do
           head_request(conn, url, 0)
         else
-          stream_url(conn, url, 0)
+          case content_type do
+            "channel" ->
+              # Live channels use the multiplexer for 1:N fan-out
+              stream_key = :crypto.hash(:md5, url) |> Base.encode16(case: :lower)
+
+              Logger.info(
+                "Stream proxy: live channel via multiplexer, key=#{stream_key} url=#{sanitize_url(url)}"
+              )
+
+              stream_from_multiplexer(conn, stream_key, url)
+
+            _vod ->
+              # VOD content (movie, episode, url) uses direct Mint connection
+              Logger.info("Stream proxy: VOD content (#{content_type}) url=#{sanitize_url(url)}")
+              stream_url(conn, url, 0)
+          end
         end
 
       {:error, :token_expired} ->
@@ -76,6 +94,68 @@ defmodule StreamixWeb.StreamController do
     |> json(%{error: "Missing token parameter"})
   end
 
+  # --- Live channel streaming via StreamMultiplexer ---
+
+  defp stream_from_multiplexer(conn, stream_key, url) do
+    case StreamMultiplexer.subscribe(stream_key, url) do
+      :ok ->
+        conn =
+          conn
+          |> put_cors_headers()
+          |> put_resp_content_type("video/mp2t")
+          |> put_resp_header("cache-control", "no-cache, no-store")
+          |> put_resp_header("x-accel-buffering", "no")
+          |> send_chunked(200)
+
+        mux_receive_loop(conn, stream_key)
+
+      {:error, reason} ->
+        Logger.error(
+          "Stream proxy: multiplexer subscribe failed key=#{stream_key} reason=#{inspect(reason)}"
+        )
+
+        conn
+        |> put_status(:bad_gateway)
+        |> json(%{error: "Failed to start live stream", reason: inspect(reason)})
+    end
+  end
+
+  defp mux_receive_loop(conn, stream_key) do
+    receive do
+      {:stream_chunk, data} ->
+        case chunk(conn, data) do
+          {:ok, conn} ->
+            mux_receive_loop(conn, stream_key)
+
+          {:error, _reason} ->
+            # Client disconnected
+            Logger.info("Stream proxy: client disconnected from live stream key=#{stream_key}")
+            StreamMultiplexer.unsubscribe(stream_key)
+            conn
+        end
+
+      :stream_done ->
+        Logger.info("Stream proxy: live stream ended key=#{stream_key}")
+        StreamMultiplexer.unsubscribe(stream_key)
+        conn
+
+      {:stream_error, reason} ->
+        Logger.error(
+          "Stream proxy: live stream error key=#{stream_key} reason=#{inspect(reason)}"
+        )
+
+        StreamMultiplexer.unsubscribe(stream_key)
+        conn
+    after
+      @mux_recv_timeout ->
+        Logger.warning("Stream proxy: live stream timeout key=#{stream_key}")
+        StreamMultiplexer.unsubscribe(stream_key)
+        conn
+    end
+  end
+
+  # --- VOD streaming via direct Mint connection ---
+
   defp stream_url(conn, _url, redirect_count) when redirect_count > @max_redirects do
     Logger.error("Stream proxy: too many redirects")
 
@@ -91,7 +171,7 @@ defmodule StreamixWeb.StreamController do
     path = build_request_path(uri)
     headers = build_upstream_headers(conn, uri.host)
 
-    Logger.info("Stream proxy: connecting to #{uri.host}:#{port}#{path}")
+    Logger.info("Stream proxy: connecting to #{uri.host}:#{port}#{sanitize_url(path)}")
 
     case connect_and_request(scheme, uri.host, port, path, headers) do
       {:ok, mint_conn, request_ref} ->
@@ -122,7 +202,7 @@ defmodule StreamixWeb.StreamController do
     path = build_request_path(uri)
     headers = build_upstream_headers(conn, uri.host)
 
-    Logger.info("Stream proxy HEAD: connecting to #{uri.host}:#{port}#{path}")
+    Logger.info("Stream proxy HEAD: connecting to #{uri.host}:#{port}#{sanitize_url(path)}")
 
     case connect_and_head_request(scheme, uri.host, port, path, headers) do
       {:ok, mint_conn, request_ref} ->
@@ -192,7 +272,9 @@ defmodule StreamixWeb.StreamController do
             head_request(conn, redirect_url, redirect_count + 1)
 
           {:error, :unsafe_url} ->
-            Logger.warning("Stream proxy HEAD: blocked redirect to unsafe URL #{redirect_url}")
+            Logger.warning(
+              "Stream proxy HEAD: blocked redirect to unsafe URL #{sanitize_url(redirect_url)}"
+            )
 
             conn
             |> put_status(:forbidden)
@@ -308,11 +390,13 @@ defmodule StreamixWeb.StreamController do
 
         case UrlValidator.validate_url(redirect_url) do
           :ok ->
-            Logger.info("Stream proxy: following redirect to #{redirect_url}")
+            Logger.info("Stream proxy: following redirect to #{sanitize_url(redirect_url)}")
             stream_url(conn, redirect_url, redirect_count + 1)
 
           {:error, :unsafe_url} ->
-            Logger.warning("Stream proxy: blocked redirect to unsafe URL #{redirect_url}")
+            Logger.warning(
+              "Stream proxy: blocked redirect to unsafe URL #{sanitize_url(redirect_url)}"
+            )
 
             conn
             |> put_status(:forbidden)
@@ -739,4 +823,12 @@ defmodule StreamixWeb.StreamController do
   # Helper to add optional header without deep nesting
   defp maybe_put_header(conn, _name, nil), do: conn
   defp maybe_put_header(conn, name, value), do: put_resp_header(conn, name, value)
+
+  # Sanitize XUI URLs to strip credentials from log output.
+  # Replaces /live/USERNAME/PASSWORD/, /movie/USERNAME/PASSWORD/,
+  # and /series/USERNAME/PASSWORD/ with redacted placeholders.
+  defp sanitize_url(url) do
+    url
+    |> String.replace(~r{/(live|movie|series)/[^/]+/[^/]+/}, "/\\1/[REDACTED]/[REDACTED]/")
+  end
 end

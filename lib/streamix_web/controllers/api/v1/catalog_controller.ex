@@ -493,42 +493,28 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
 
-  # Browser-compatible proxy URL using pannxs for CORS support
-  defp build_browser_stream_url(movie) when is_struct(movie, Streamix.Iptv.Movie) do
-    movie = Repo.preload(movie, :provider)
-    provider = movie.provider
-    ext = movie.container_extension || "mp4"
-
-    raw_url =
-      "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
-
-    build_pannxs_proxy_url(raw_url)
+  # Browser-compatible proxy URLs using signed tokens
+  # Credentials are never exposed — the token is resolved server-side
+  defp build_browser_stream_url(movie) do
+    token = StreamToken.sign_movie(movie.id, nil)
+    build_browser_token_proxy_url(token)
   end
 
   defp build_browser_episode_url(episode) do
-    episode = Repo.preload(episode, season: [series: :provider])
-    provider = episode.season.series.provider
-    ext = episode.container_extension || "mp4"
-
-    raw_url =
-      "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
-
-    build_pannxs_proxy_url(raw_url)
+    token = StreamToken.sign_episode(episode.id, nil)
+    build_browser_token_proxy_url(token)
   end
 
   defp build_browser_channel_url(channel) do
-    channel = Repo.preload(channel, :provider)
-    provider = channel.provider
-
-    raw_url =
-      "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
-
-    build_pannxs_proxy_url(raw_url)
+    token = StreamToken.sign_channel(channel.id, nil)
+    build_browser_token_proxy_url(token)
   end
 
-  defp build_pannxs_proxy_url(stream_url) do
+  defp build_browser_token_proxy_url(token) do
     proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
-    "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
+    base_url = StreamixWeb.Endpoint.url()
+    token_url = "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+    "#{proxy_base}/proxy?url=#{URI.encode_www_form(token_url)}"
   end
 
   # Image proxy helper - proxies TMDB images through our Cloudflare tunnel

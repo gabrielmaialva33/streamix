@@ -50,6 +50,9 @@ defmodule Streamix.Application do
         Streamix.Iptv.Gindex.UrlCache,
         # Xtream circuit breaker (Netflix-style resilience)
         Streamix.Iptv.XtreamCircuitBreaker,
+        # Stream multiplexer infrastructure (1 upstream → N downstream)
+        {Registry, keys: :unique, name: Streamix.StreamRegistry},
+        {Streamix.Iptv.StreamMultiplexerSupervisor, []},
         # Watch Party infrastructure
         {Registry, keys: :unique, name: Streamix.WatchParty.Registry},
         {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one},

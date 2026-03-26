@@ -7,33 +7,34 @@ defmodule StreamixWeb.PlayerHelpers do
   alias Streamix.Iptv
   alias Streamix.Iptv.Gindex
   alias StreamixWeb.Helpers.ImageProxy
+  alias StreamixWeb.StreamToken
 
   def load_content("live_channel", id, user_id) do
     case Iptv.get_playable_channel(user_id, id) do
       nil -> {:error, :not_found}
-      channel -> load_channel(channel)
+      channel -> load_channel(channel, user_id)
     end
   end
 
   def load_content("movie", id, user_id) do
     case Iptv.get_playable_movie(user_id, id) do
       nil -> {:error, :not_found}
-      movie -> load_movie(movie)
+      movie -> load_movie(movie, user_id)
     end
   end
 
   def load_content("episode", id, user_id) do
     case Iptv.get_playable_episode(user_id, id) do
       nil -> {:error, :not_found}
-      episode -> load_episode(episode)
+      episode -> load_episode(episode, user_id)
     end
   end
 
-  def load_content("gindex", id, _user_id) do
+  def load_content("gindex", id, user_id) do
     movie = Iptv.get_movie_with_provider!(id)
 
     if movie && movie.gindex_path do
-      load_gindex_movie(movie)
+      load_gindex_movie(movie, user_id)
     else
       {:error, :not_found}
     end
@@ -41,11 +42,11 @@ defmodule StreamixWeb.PlayerHelpers do
     Ecto.NoResultsError -> {:error, :not_found}
   end
 
-  def load_content("gindex_episode", id, _user_id) do
+  def load_content("gindex_episode", id, user_id) do
     episode = Iptv.get_episode_with_context!(id)
 
     if episode && episode.gindex_path do
-      load_gindex_episode(episode)
+      load_gindex_episode(episode, user_id)
     else
       {:error, :not_found}
     end
@@ -55,7 +56,10 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_content(_, _, _), do: {:error, :not_found}
 
-  def load_next_episode(type, content, provider) when type in ["episode", "gindex_episode"] do
+  def load_next_episode(type, content, provider, user_id \\ nil)
+
+  def load_next_episode(type, content, _provider, user_id)
+      when type in ["episode", "gindex_episode"] do
     case Iptv.get_next_episode(content.id) do
       nil ->
         nil
@@ -63,8 +67,15 @@ defmodule StreamixWeb.PlayerHelpers do
       next ->
         stream_url =
           case type do
-            "episode" -> Iptv.Episode.stream_url(next, provider)
-            "gindex_episode" -> get_gindex_episode_url(next)
+            "episode" ->
+              token = StreamToken.sign_episode(next.id, user_id)
+              build_token_proxy_url(token)
+
+            "gindex_episode" ->
+              case get_gindex_episode_url(next) do
+                nil -> nil
+                url -> sign_and_build_url_proxy(url, user_id)
+              end
           end
 
         %{
@@ -80,7 +91,7 @@ defmodule StreamixWeb.PlayerHelpers do
     end
   end
 
-  def load_next_episode(_, _, _), do: nil
+  def load_next_episode(_, _, _, _), do: nil
 
   def content_title(content, "live_channel"), do: content.name
   def content_title(content, "movie"), do: content.title || content.name
@@ -106,39 +117,50 @@ defmodule StreamixWeb.PlayerHelpers do
 
   # --- Private ---
 
-  defp load_channel(channel) do
+  defp load_channel(channel, user_id) do
     provider = channel.provider
-    stream_url = Iptv.LiveChannel.stream_url(channel, provider)
+    token = StreamToken.sign_channel(channel.id, user_id)
+    stream_url = build_token_proxy_url(token)
     {:ok, channel, provider, stream_url}
   end
 
-  defp load_movie(movie) do
+  defp load_movie(movie, user_id) do
     provider = movie.provider
-    stream_url = Iptv.Movie.stream_url(movie, provider)
+    token = StreamToken.sign_movie(movie.id, user_id)
+    stream_url = build_token_proxy_url(token)
     {:ok, movie, provider, stream_url}
   end
 
-  defp load_episode(episode) do
+  defp load_episode(episode, user_id) do
     provider = episode.season.series.provider
-    stream_url = Iptv.Episode.stream_url(episode, provider)
+    token = StreamToken.sign_episode(episode.id, user_id)
+    stream_url = build_token_proxy_url(token)
     {:ok, episode, provider, stream_url}
   end
 
-  defp load_gindex_movie(movie) do
+  defp load_gindex_movie(movie, user_id) do
     provider = movie.provider
 
     case Gindex.get_movie_url(movie.id) do
-      {:ok, stream_url} -> {:ok, movie, provider, stream_url}
-      {:error, _reason} -> {:error, :not_found}
+      {:ok, raw_url} ->
+        stream_url = sign_and_build_url_proxy(raw_url, user_id)
+        {:ok, movie, provider, stream_url}
+
+      {:error, _reason} ->
+        {:error, :not_found}
     end
   end
 
-  defp load_gindex_episode(episode) do
+  defp load_gindex_episode(episode, user_id) do
     provider = episode.season.series.provider
 
     case Gindex.get_episode_url(episode.id) do
-      {:ok, stream_url} -> {:ok, episode, provider, stream_url}
-      {:error, _reason} -> {:error, :not_found}
+      {:ok, raw_url} ->
+        stream_url = sign_and_build_url_proxy(raw_url, user_id)
+        {:ok, episode, provider, stream_url}
+
+      {:error, _reason} ->
+        {:error, :not_found}
     end
   end
 
@@ -146,6 +168,18 @@ defmodule StreamixWeb.PlayerHelpers do
     case Gindex.get_episode_url(episode.id) do
       {:ok, url} -> url
       _ -> nil
+    end
+  end
+
+  defp build_token_proxy_url(token) do
+    base_url = StreamixWeb.Endpoint.url()
+    "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+  end
+
+  defp sign_and_build_url_proxy(url, user_id) do
+    case StreamToken.sign_url(url, user_id) do
+      {:error, _} -> nil
+      token -> build_token_proxy_url(token)
     end
   end
 end

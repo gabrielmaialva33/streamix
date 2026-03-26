@@ -465,21 +465,18 @@ defmodule StreamixWeb.PlayerComponents do
   # Private Helpers
   # ============================================
 
-  # GIndex streams use animezey.mahina.cloud proxy (specific for GIndex/animezey)
-  # URL must be encoded to preserve query params when passed as query parameter
-  defp build_proxy_url(stream_url, :gindex) when is_binary(stream_url) do
-    "https://animezey.mahina.cloud/proxy?url=#{URI.encode_www_form(stream_url)}"
-  end
-
-  defp build_proxy_url(stream_url, :gindex_episode) when is_binary(stream_url) do
-    "https://animezey.mahina.cloud/proxy?url=#{URI.encode_www_form(stream_url)}"
-  end
-
-  # IPTV streams use pannxs.mahina.cloud proxy
-  # URL must be encoded to preserve query params when passed as query parameter
+  # Token-based URLs (already proxied through /api/stream/proxy?token=) — pass through as-is
+  # These never contain credentials and are already ready for the player
   defp build_proxy_url(stream_url, _content_type) when is_binary(stream_url) do
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
-    "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
+    if String.contains?(stream_url, "/api/stream/proxy?token=") do
+      stream_url
+    else
+      # Fallback for any non-token URLs (e.g., direct external URLs)
+      proxy_base =
+        Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+
+      "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
+    end
   end
 
   defp build_proxy_url(_, _), do: nil

@@ -69,7 +69,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         presence_topic = @presence_topic_prefix <> to_string(room.id)
         presences = Presence.list(presence_topic)
 
-        next_episode = load_next_episode(room.content_type, content, provider)
+        next_episode = load_next_episode(room.content_type, content, provider, user_id)
 
         socket =
           socket

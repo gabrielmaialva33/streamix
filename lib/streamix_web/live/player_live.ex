@@ -36,7 +36,7 @@ defmodule StreamixWeb.PlayerLive do
         end
 
         # Fetch next episode for prefetch (episodes only)
-        next_episode = load_next_episode(type, content, provider)
+        next_episode = load_next_episode(type, content, provider, user_id)
 
         socket =
           socket
