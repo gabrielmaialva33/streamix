@@ -158,11 +158,14 @@ defmodule Streamix.AI.Embeddings do
   end
 
   defp do_embed(text, :gemini, _opts), do: Gemini.embed(text)
+
   defp do_embed(text, :nvidia, opts) do
-    input_type = case Keyword.get(opts, :input_type) do
-      :query -> "query"
-      _ -> "passage"
-    end
+    input_type =
+      case Keyword.get(opts, :input_type) do
+        :query -> "query"
+        _ -> "passage"
+      end
+
     Nvidia.embed(text, input_type: input_type)
   end
 

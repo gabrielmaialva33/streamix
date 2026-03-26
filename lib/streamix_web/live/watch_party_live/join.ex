@@ -73,7 +73,10 @@ defmodule StreamixWeb.WatchPartyLive.Join do
             <.icon name="hero-users" class="size-5 inline mr-2" /> Entrar na Sala
           </button>
 
-          <.link navigate={~p"/"} class="block text-sm text-text-muted hover:text-text-secondary transition-colors">
+          <.link
+            navigate={~p"/"}
+            class="block text-sm text-text-muted hover:text-text-secondary transition-colors"
+          >
             Voltar
           </.link>
         </div>

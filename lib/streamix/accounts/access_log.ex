@@ -25,7 +25,18 @@ defmodule Streamix.Accounts.AccessLog do
   @doc false
   def changeset(access_log, attrs) do
     access_log
-    |> cast(attrs, [:user_id, :ip_address, :user_agent, :path, :method, :country, :city, :device_type, :browser, :os])
+    |> cast(attrs, [
+      :user_id,
+      :ip_address,
+      :user_agent,
+      :path,
+      :method,
+      :country,
+      :city,
+      :device_type,
+      :browser,
+      :os
+    ])
     |> validate_required([:ip_address])
   end
 end

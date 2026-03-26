@@ -15,7 +15,8 @@ defmodule Streamix.Iptv.Gindex.HealthTracker do
   require Logger
 
   @redis_prefix "gindex:health:"
-  @error_ttl 300  # 5 minutes
+  # 5 minutes
+  @error_ttl 300
   @error_threshold 3
 
   @operations [:list, :stream, :file_info]
@@ -36,16 +37,20 @@ defmodule Streamix.Iptv.Gindex.HealthTracker do
   Records a failed operation for an endpoint.
   Returns {:ok, :healthy} or {:ok, :unhealthy} based on error count.
   """
-  def record_error(endpoint_url, operation, error_type \\ :unknown) when operation in @operations do
+  def record_error(endpoint_url, operation, error_type \\ :unknown)
+      when operation in @operations do
     key = build_key(endpoint_url, operation)
 
     case Redix.pipeline(:streamix_redis, [
-      ["INCR", key],
-      ["EXPIRE", key, @error_ttl]
-    ]) do
+           ["INCR", key],
+           ["EXPIRE", key, @error_ttl]
+         ]) do
       {:ok, [count, _]} when is_integer(count) ->
         if count >= @error_threshold do
-          Logger.warning("[GIndex HealthTracker] Endpoint #{endpoint_url} unhealthy for #{operation} (#{count} errors, type: #{error_type})")
+          Logger.warning(
+            "[GIndex HealthTracker] Endpoint #{endpoint_url} unhealthy for #{operation} (#{count} errors, type: #{error_type})"
+          )
+
           {:ok, :unhealthy}
         else
           {:ok, :healthy}
@@ -91,12 +96,15 @@ defmodule Streamix.Iptv.Gindex.HealthTracker do
   """
   def get_status(endpoints) do
     Enum.map(endpoints, fn {name, url, priority} ->
-      ops_status = Enum.map(@operations, fn op ->
-        {op, %{
-          healthy: healthy?(url, op),
-          errors: get_error_count(url, op)
-        }}
-      end) |> Map.new()
+      ops_status =
+        Enum.map(@operations, fn op ->
+          {op,
+           %{
+             healthy: healthy?(url, op),
+             errors: get_error_count(url, op)
+           }}
+        end)
+        |> Map.new()
 
       %{
         name: name,
@@ -116,6 +124,7 @@ defmodule Streamix.Iptv.Gindex.HealthTracker do
       key = build_key(url, operation)
       Redix.command(:streamix_redis, ["DEL", key])
     end
+
     :ok
   rescue
     _ -> :ok

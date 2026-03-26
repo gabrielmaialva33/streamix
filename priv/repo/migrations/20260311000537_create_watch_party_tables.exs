@@ -35,9 +35,9 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
     create index(:watch_party_participants, [:user_id])
 
     create unique_index(:watch_party_participants, [:room_id, :user_id],
-      where: "left_at IS NULL",
-      name: :watch_party_participants_active_unique
-    )
+             where: "left_at IS NULL",
+             name: :watch_party_participants_active_unique
+           )
 
     create table(:watch_party_messages) do
       add :room_id, references(:watch_party_rooms, on_delete: :delete_all), null: false

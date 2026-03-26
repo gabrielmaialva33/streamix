@@ -19,7 +19,8 @@ defmodule Streamix.Repo.Migrations.AddIpTracking do
       add :method, :string
       add :country, :string
       add :city, :string
-      add :device_type, :string  # mobile, desktop, tablet, tv
+      # mobile, desktop, tablet, tv
+      add :device_type, :string
       add :browser, :string
       add :os, :string
 

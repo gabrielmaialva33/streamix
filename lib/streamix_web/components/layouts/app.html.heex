@@ -195,7 +195,10 @@
             @current_path != "/party" && "text-purple-400 active:text-purple-300"
           ]}
         >
-          <.icon name={if @current_path == "/party", do: "hero-users-solid", else: "hero-users"} class="size-5" />
+          <.icon
+            name={if @current_path == "/party", do: "hero-users-solid", else: "hero-users"}
+            class="size-5"
+          />
           <span class="text-[10px] mt-0.5 font-medium">Party</span>
         </.link>
         <.link

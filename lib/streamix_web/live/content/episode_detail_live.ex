@@ -279,7 +279,10 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir Episódio
                 </button>
 
-                <StreamixWeb.WatchPartyComponents.create_party_button content_type="episode" content_id={@episode.id} />
+                <StreamixWeb.WatchPartyComponents.create_party_button
+                  content_type="episode"
+                  content_id={@episode.id}
+                />
 
                 <button
                   type="button"

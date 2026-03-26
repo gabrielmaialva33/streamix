@@ -24,7 +24,15 @@ defmodule Streamix.WatchParty.Room do
 
   def create_changeset(room, attrs) do
     room
-    |> cast(attrs, [:host_user_id, :content_type, :content_id, :content_name, :content_icon, :max_participants, :settings])
+    |> cast(attrs, [
+      :host_user_id,
+      :content_type,
+      :content_id,
+      :content_name,
+      :content_icon,
+      :max_participants,
+      :settings
+    ])
     |> validate_required([:host_user_id, :content_type, :content_id])
     |> validate_inclusion(:content_type, @valid_content_types)
     |> validate_number(:max_participants, greater_than: 1, less_than_or_equal_to: 50)

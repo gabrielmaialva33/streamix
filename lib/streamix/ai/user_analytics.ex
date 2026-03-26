@@ -121,19 +121,23 @@ defmodule Streamix.AI.UserAnalytics do
           exclude_watched = Keyword.get(opts, :exclude_watched, true)
 
           # Build filter to exclude already watched content
-          filter = if exclude_watched do
-            watched_ids = get_watched_content_ids(user_id, collection)
-            if Enum.empty?(watched_ids) do
-              nil
+          filter =
+            if exclude_watched do
+              watched_ids = get_watched_content_ids(user_id, collection)
+
+              if Enum.empty?(watched_ids) do
+                nil
+              else
+                %{must_not: [%{has_id: watched_ids}]}
+              end
             else
-              %{must_not: [%{has_id: watched_ids}]}
+              nil
             end
-          else
-            nil
-          end
 
           search_opts = [limit: limit, score_threshold: 0.5]
-          search_opts = if filter, do: Keyword.put(search_opts, :filter, filter), else: search_opts
+
+          search_opts =
+            if filter, do: Keyword.put(search_opts, :filter, filter), else: search_opts
 
           case Qdrant.search(collection, profile_vector, search_opts) do
             {:ok, results} ->
@@ -235,8 +239,10 @@ defmodule Streamix.AI.UserAnalytics do
         # Note: Using subquery pattern to avoid PostgreSQL DISTINCT + ORDER BY RANDOM() conflict
         recommended =
           from(c in LiveChannel,
-            join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
-            join: p in Streamix.Iptv.Provider, on: c.provider_id == p.id,
+            join: lcc in "live_channel_categories",
+            on: lcc.live_channel_id == c.id,
+            join: p in Streamix.Iptv.Provider,
+            on: c.provider_id == p.id,
             where: p.visibility in [:global, :public],
             where: lcc.category_id in ^top_category_ids,
             where: c.id not in ^watched_channel_ids,
@@ -266,7 +272,8 @@ defmodule Streamix.AI.UserAnalytics do
   defp get_popular_channels(limit, exclude_ids \\ []) do
     query =
       from(c in LiveChannel,
-        join: p in Streamix.Iptv.Provider, on: c.provider_id == p.id,
+        join: p in Streamix.Iptv.Provider,
+        on: c.provider_id == p.id,
         where: p.visibility in [:global, :public],
         where: not is_nil(c.stream_icon),
         order_by: c.name,
@@ -296,8 +303,10 @@ defmodule Streamix.AI.UserAnalytics do
     # Get categories for watched channels via proper JOIN
     channel_categories =
       from(c in LiveChannel,
-        join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
-        join: cat in Streamix.Iptv.Category, on: lcc.category_id == cat.id,
+        join: lcc in "live_channel_categories",
+        on: lcc.live_channel_id == c.id,
+        join: cat in Streamix.Iptv.Category,
+        on: lcc.category_id == cat.id,
         where: c.id in ^channel_ids,
         select: {c.id, cat.id, cat.name}
       )
@@ -372,9 +381,12 @@ defmodule Streamix.AI.UserAnalytics do
 
           Enum.sort_by(filtered, fn movie ->
             movie_genre = movie.genre || ""
-            boost = Enum.any?(favorite_genres, fn g ->
-              String.contains?(String.downcase(movie_genre), String.downcase(g))
-            end)
+
+            boost =
+              Enum.any?(favorite_genres, fn g ->
+                String.contains?(String.downcase(movie_genre), String.downcase(g))
+              end)
+
             if boost, do: 0, else: 1
           end)
       end
@@ -422,9 +434,12 @@ defmodule Streamix.AI.UserAnalytics do
 
           Enum.sort_by(filtered, fn s ->
             s_genre = s.genre || ""
-            boost = Enum.any?(favorite_genres, fn g ->
-              String.contains?(String.downcase(s_genre), String.downcase(g))
-            end)
+
+            boost =
+              Enum.any?(favorite_genres, fn g ->
+                String.contains?(String.downcase(s_genre), String.downcase(g))
+              end)
+
             if boost, do: 0, else: 1
           end)
       end
@@ -467,9 +482,12 @@ defmodule Streamix.AI.UserAnalytics do
 
     channels =
       from(c in LiveChannel,
-        join: lcc in "live_channel_categories", on: lcc.live_channel_id == c.id,
-        join: cat in Streamix.Iptv.Category, on: lcc.category_id == cat.id,
-        join: p in Streamix.Iptv.Provider, on: c.provider_id == p.id,
+        join: lcc in "live_channel_categories",
+        on: lcc.live_channel_id == c.id,
+        join: cat in Streamix.Iptv.Category,
+        on: lcc.category_id == cat.id,
+        join: p in Streamix.Iptv.Provider,
+        on: c.provider_id == p.id,
         where: p.visibility in [:global, :public],
         where: fragment("LOWER(?)", cat.name) |> like(^category_pattern),
         where: not is_nil(c.stream_icon),
@@ -606,7 +624,10 @@ defmodule Streamix.AI.UserAnalytics do
         Qdrant.upsert_point(collection, content.id, vector, payload)
 
       {:error, reason} ->
-        Logger.warning("[UserAnalytics] Failed to embed content #{content.id}: #{inspect(reason)}")
+        Logger.warning(
+          "[UserAnalytics] Failed to embed content #{content.id}: #{inspect(reason)}"
+        )
+
         {:error, reason}
     end
   end
@@ -685,7 +706,11 @@ defmodule Streamix.AI.UserAnalytics do
       dimensions = length(hd(content_with_vectors).vector)
 
       profile =
-        Enum.reduce(content_with_vectors, List.duplicate(0.0, dimensions), fn %{vector: vec, weight: w}, acc ->
+        Enum.reduce(content_with_vectors, List.duplicate(0.0, dimensions), fn %{
+                                                                                vector: vec,
+                                                                                weight: w
+                                                                              },
+                                                                              acc ->
           Enum.zip(acc, vec)
           |> Enum.map(fn {a, v} -> a + v * w / total_weight end)
         end)
@@ -699,14 +724,16 @@ defmodule Streamix.AI.UserAnalytics do
 
     # Recency: more recent = higher weight
     days_ago = DateTime.diff(DateTime.utc_now(), entry.watched_at, :day)
-    recency_factor = :math.exp(-days_ago / 30) # Decay over 30 days
+    # Decay over 30 days
+    recency_factor = :math.exp(-days_ago / 30)
 
     # Completion: completed = 1.5x weight
     completion_factor = if entry.completed, do: 1.5, else: 1.0
 
     # Watch time: longer sessions = higher weight
     duration = entry.duration_seconds || 0
-    duration_factor = min(1 + duration / 3600, 2.0) # Cap at 2x
+    # Cap at 2x
+    duration_factor = min(1 + duration / 3600, 2.0)
 
     base_weight * recency_factor * completion_factor * duration_factor
   end
@@ -799,10 +826,11 @@ defmodule Streamix.AI.UserAnalytics do
       |> Enum.map(fn {hour, entries} -> {hour, length(entries)} end)
       |> Enum.sort_by(fn {_, count} -> count end, :desc)
 
-    peak_hour = case by_hour do
-      [{hour, _} | _] -> hour
-      _ -> nil
-    end
+    peak_hour =
+      case by_hour do
+        [{hour, _} | _] -> hour
+        _ -> nil
+      end
 
     # Analyze by day of week
     by_day =
@@ -810,10 +838,13 @@ defmodule Streamix.AI.UserAnalytics do
       |> Enum.group_by(fn entry -> Date.day_of_week(DateTime.to_date(entry.watched_at)) end)
       |> Enum.map(fn {day, entries} -> {day, length(entries)} end)
 
-    weekend_count = Enum.filter(by_day, fn {day, _} -> day in [6, 7] end)
-                    |> Enum.reduce(0, fn {_, c}, acc -> acc + c end)
-    weekday_count = Enum.filter(by_day, fn {day, _} -> day in [1, 2, 3, 4, 5] end)
-                    |> Enum.reduce(0, fn {_, c}, acc -> acc + c end)
+    weekend_count =
+      Enum.filter(by_day, fn {day, _} -> day in [6, 7] end)
+      |> Enum.reduce(0, fn {_, c}, acc -> acc + c end)
+
+    weekday_count =
+      Enum.filter(by_day, fn {day, _} -> day in [1, 2, 3, 4, 5] end)
+      |> Enum.reduce(0, fn {_, c}, acc -> acc + c end)
 
     %{
       peak_hour: peak_hour,
@@ -847,7 +878,8 @@ defmodule Streamix.AI.UserAnalytics do
       0
     else
       avg = Enum.sum(durations) / length(durations)
-      round(avg / 60) # Return in minutes
+      # Return in minutes
+      round(avg / 60)
     end
   end
 end

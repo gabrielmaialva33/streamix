@@ -71,7 +71,10 @@ defmodule Streamix.Iptv do
   defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds), to: History
   defdelegate remove_from_watch_history(user_id, entry_id), to: History, as: :remove
   defdelegate clear_watch_history(user_id), to: History, as: :clear
-  defdelegate get_watch_progress_map(user_id, content_type, content_ids), to: History, as: :get_progress_map
+
+  defdelegate get_watch_progress_map(user_id, content_type, content_ids),
+    to: History,
+    as: :get_progress_map
 
   # =============================================================================
   # Live Channels

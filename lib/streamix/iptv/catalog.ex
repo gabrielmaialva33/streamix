@@ -243,7 +243,8 @@ defmodule Streamix.Iptv.Catalog do
       series_ids =
         from(e in Streamix.Iptv.Episode,
           where: e.id in ^episode_ids,
-          join: s in Streamix.Iptv.Season, on: e.season_id == s.id,
+          join: s in Streamix.Iptv.Season,
+          on: e.season_id == s.id,
           select: s.series_id,
           distinct: true
         )
@@ -271,7 +272,7 @@ defmodule Streamix.Iptv.Catalog do
     |> where([m, p], p.visibility in [:global, :public])
     |> where([m, _p], m.year >= ^(current_year - 2))
     |> where([m, _p], not is_nil(m.stream_icon))
-    |> order_by([m], [desc: m.year, desc: m.rating])
+    |> order_by([m], desc: m.year, desc: m.rating)
     |> limit(^limit)
     |> Repo.all()
   end

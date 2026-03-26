@@ -68,7 +68,9 @@ defmodule Streamix.Accounts.IpTracker do
 
   defp get_forwarded_for(conn) do
     case get_header(conn, "x-forwarded-for") do
-      nil -> nil
+      nil ->
+        nil
+
       value ->
         value
         |> String.split(",")
@@ -94,7 +96,16 @@ defmodule Streamix.Accounts.IpTracker do
     ua_lower = String.downcase(ua)
 
     cond do
-      String.contains?(ua_lower, ["smart-tv", "smarttv", "tv", "webos", "tizen", "roku", "firetv", "appletv"]) ->
+      String.contains?(ua_lower, [
+        "smart-tv",
+        "smarttv",
+        "tv",
+        "webos",
+        "tizen",
+        "roku",
+        "firetv",
+        "appletv"
+      ]) ->
         "tv"
 
       String.contains?(ua_lower, ["mobile", "android", "iphone", "ipod", "windows phone"]) ->

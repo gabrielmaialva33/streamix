@@ -258,9 +258,10 @@ defmodule Streamix.Iptv.Gindex.Client do
     case EndpointManager.get_all_endpoints() do
       {:ok, endpoints} when is_list(endpoints) and length(endpoints) > 0 ->
         # Convert to format expected by HealthTracker
-        endpoints_list = Enum.map(endpoints, fn %{name: name, url: url, priority: priority} ->
-          {name, url, priority}
-        end)
+        endpoints_list =
+          Enum.map(endpoints, fn %{name: name, url: url, priority: priority} ->
+            {name, url, priority}
+          end)
 
         # Get best endpoint for this operation based on health
         case HealthTracker.get_best_endpoint_for(endpoints_list, operation) do

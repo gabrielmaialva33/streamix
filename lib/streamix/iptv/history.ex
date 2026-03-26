@@ -70,7 +70,16 @@ defmodule Streamix.Iptv.History do
     )
     |> Repo.insert(
       on_conflict:
-        {:replace, [:watched_at, :progress_seconds, :duration_seconds, :completed, :updated_at, :ip_address, :device_type]},
+        {:replace,
+         [
+           :watched_at,
+           :progress_seconds,
+           :duration_seconds,
+           :completed,
+           :updated_at,
+           :ip_address,
+           :device_type
+         ]},
       conflict_target: [:user_id, :content_type, :content_id]
     )
   end
