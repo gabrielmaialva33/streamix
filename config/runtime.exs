@@ -230,9 +230,6 @@ if config_env() == :prod do
       ],
       http_options: [
         response_encodings: [:zstd, :gzip, :deflate]
-      ],
-      http_2_options: [
-        max_concurrent_streams: 128
       ]
     ],
     check_origin: check_origin,
