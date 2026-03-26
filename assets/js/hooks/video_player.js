@@ -1206,7 +1206,8 @@ const VideoPlayer = {
       log.debug("Codec-aware ABR active - optimizing quality selection by codec efficiency");
     }
 
-    this.currentStreamType = getStreamType(this.streamUrl);
+    // Use explicit stream type hint from backend if available (token-based URLs have no extension)
+    this.currentStreamType = this.el.dataset.streamType || getStreamType(this.streamUrl);
     log.debug("Detected stream type:", this.currentStreamType);
 
     this.cleanup();

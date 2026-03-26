@@ -33,6 +33,15 @@ defmodule StreamixWeb.PlayerComponents do
     # Provider type for JS player (gindex/xtream) - used for codec detection
     source_type = assigns.provider_type || Atom.to_string(assigns.content_type)
 
+    # Explicit stream type hint for token-based URLs where extension is not in the URL
+    stream_type =
+      case assigns.content_type do
+        ct when ct in [:live, :live_channel] -> "ts"
+        :movie -> "mp4"
+        :episode -> "mp4"
+        _ -> nil
+      end
+
     # Encode next episode data as JSON for JS
     next_episode_json =
       if assigns.next_episode do
@@ -46,6 +55,7 @@ defmodule StreamixWeb.PlayerComponents do
       |> assign(:proxy_url, proxy_url)
       |> assign(:content_type_str, content_type_str)
       |> assign(:source_type, source_type)
+      |> assign(:stream_type, stream_type)
       |> assign(:next_episode_json, next_episode_json)
 
     ~H"""
@@ -61,6 +71,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-streaming-mode={@streaming_mode}
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}
+      data-stream-type={@stream_type}
     >
       <%!-- Loading indicator --%>
       <div
