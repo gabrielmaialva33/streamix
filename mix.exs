@@ -103,13 +103,13 @@ defmodule Streamix.MixProject do
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": [
-        "cmd --cd priv/static/assets/js sh -c 'rm -f *.js'",
+        "cmd sh -c 'mkdir -p priv/static/assets/js && rm -f priv/static/assets/js/*.js'",
         "compile",
         "tailwind streamix",
         "esbuild streamix"
       ],
       "assets.deploy": [
-        "cmd --cd priv/static/assets/js sh -c 'rm -f *.js'",
+        "cmd sh -c 'mkdir -p priv/static/assets/js && rm -f priv/static/assets/js/*.js'",
         "tailwind streamix --minify",
         "esbuild streamix --minify",
         "phx.digest"
