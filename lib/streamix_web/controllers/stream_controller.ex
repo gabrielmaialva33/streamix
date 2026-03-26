@@ -55,9 +55,11 @@ defmodule StreamixWeb.StreamController do
               stream_from_multiplexer(conn, stream_key, url)
 
             _vod ->
-              # VOD content (movie, episode, url) uses direct Mint connection
+              # VOD content needs Range support for MP4 seeking (moov atom).
+              # Resolve provider redirects server-side, then send browser to nginx
+              # proxy with the final URL (no credentials, just delivery JWT).
               Logger.info("Stream proxy: VOD content (#{content_type}) url=#{sanitize_url(url)}")
-              stream_url(conn, url, 0)
+              resolve_and_redirect_to_proxy(conn, url, 0)
           end
         end
 
@@ -92,6 +94,77 @@ defmodule StreamixWeb.StreamController do
     conn
     |> put_status(:bad_request)
     |> json(%{error: "Missing token parameter"})
+  end
+
+  # --- VOD: resolve redirects and send to nginx proxy for Range support ---
+
+  defp resolve_and_redirect_to_proxy(conn, url, redirect_count)
+       when redirect_count > @max_redirects do
+    Logger.error("Stream proxy: too many redirects resolving VOD URL")
+
+    conn
+    |> put_status(:bad_gateway)
+    |> json(%{error: "Too many redirects"})
+  end
+
+  defp resolve_and_redirect_to_proxy(conn, url, redirect_count) do
+    uri = URI.parse(url)
+    scheme = if uri.scheme == "https", do: :https, else: :http
+    port = uri.port || if(scheme == :https, do: 443, else: 80)
+    path = build_request_path(uri)
+    headers = build_upstream_headers(conn, uri.host)
+
+    case connect_and_head_request(scheme, uri.host, port, path, headers) do
+      {:ok, mint_conn, request_ref} ->
+        case receive_headers(mint_conn, request_ref) do
+          {:ok, _mint_conn, status, resp_headers, _data, _done} ->
+            if status in [301, 302, 303, 307, 308] do
+              handle_vod_redirect(conn, url, resp_headers, redirect_count)
+            else
+              # Final URL reached — redirect browser to nginx proxy
+              proxy_base =
+                Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+
+              final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(url)}"
+              Logger.info("Stream proxy: VOD resolved, redirecting to nginx proxy")
+
+              conn
+              |> put_resp_header("access-control-allow-origin", "*")
+              |> put_resp_header("cache-control", "no-cache, no-store")
+              |> redirect(external: final_proxy)
+            end
+
+          {:error, _mint_conn, reason} ->
+            Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
+            conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+        end
+
+      {:error, reason} ->
+        Logger.error("Stream proxy: VOD resolve connect failed: #{inspect(reason)}")
+        conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+    end
+  end
+
+  defp handle_vod_redirect(conn, original_url, headers, redirect_count) do
+    case get_header(headers, "location") do
+      nil ->
+        conn |> put_status(:bad_gateway) |> json(%{error: "Missing redirect location"})
+
+      location ->
+        redirect_url = resolve_url(original_url, location)
+
+        case UrlValidator.validate_url(redirect_url) do
+          :ok ->
+            Logger.info(
+              "Stream proxy: VOD resolve redirect #{redirect_count + 1} to #{sanitize_url(redirect_url)}"
+            )
+
+            resolve_and_redirect_to_proxy(conn, redirect_url, redirect_count + 1)
+
+          {:error, :unsafe_url} ->
+            conn |> put_status(:forbidden) |> json(%{error: "Blocked redirect to unsafe URL"})
+        end
+    end
   end
 
   # --- Live channel streaming via StreamMultiplexer ---
