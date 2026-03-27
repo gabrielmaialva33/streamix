@@ -96,20 +96,10 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp resolve_and_redirect_to_proxy(conn, url, _redirect_count) do
-    # Follow all redirects automatically to get the final URL (no credentials).
-    # Use into: fn to halt after headers — avoids downloading the video body.
-    case Req.get(url,
-           redirect: true,
-           max_redirects: @max_redirects,
-           headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
-           into: fn {:data, _chunk}, {req, resp} -> {:halt, {req, resp}} end,
-           receive_timeout: 10_000,
-           connect_options: [timeout: 5_000]
-         ) do
-      {:ok, resp} ->
-        # The final URL is in the private field after redirects
-        final_url = get_final_url(resp, url)
-
+    # Follow redirects step by step to track the final URL.
+    # Use redirect: false and follow manually so we know each hop.
+    case resolve_final_url(url, 0) do
+      {:ok, final_url} ->
         # Security: NEVER send original provider URL (has credentials) to the browser.
         # Only send the final delivery URL (has only a short-lived JWT token).
         if credentials_in_url?(final_url) do
@@ -134,20 +124,49 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  # Extract the final URL after Req followed all redirects
-  defp get_final_url(resp, original_url) do
-    # Req stores redirect history in the private map
-    case get_in(resp.private, [:req_redirect_count]) do
-      nil ->
-        # No redirects happened — use original (will be blocked by credentials check)
-        original_url
+  # Resolve all redirects step by step using HEAD-then-GET fallback.
+  # Returns the final URL after all redirects are followed.
+  defp resolve_final_url(_url, count) when count > @max_redirects do
+    {:error, :too_many_redirects}
+  end
 
-      _count ->
-        # Get the last location header from the response trail
-        case Map.get(resp.headers, "location") do
-          [loc | _] -> loc
-          _ -> original_url
+  defp resolve_final_url(url, count) do
+    case Req.get(url,
+           redirect: false,
+           headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
+           decode_body: false,
+           receive_timeout: 5_000,
+           connect_options: [timeout: 5_000],
+           # Only read up to 1KB (redirect responses are tiny HTML)
+           max_body: 1_024
+         ) do
+      {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
+        case List.first(Map.get(headers, "location", [])) do
+          nil ->
+            {:error, :missing_location}
+
+          location ->
+            next_url =
+              if String.starts_with?(location, "http"),
+                do: location,
+                else: URI.merge(url, location) |> URI.to_string()
+
+            Logger.info("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
+            resolve_final_url(next_url, count + 1)
         end
+
+      {:ok, %{status: status}} when status in 200..299 ->
+        {:ok, url}
+
+      {:ok, %{status: status}} ->
+        Logger.error(
+          "Stream proxy: resolve got unexpected status #{status} for #{sanitize_url(url)}"
+        )
+
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
