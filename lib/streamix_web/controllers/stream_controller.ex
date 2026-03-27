@@ -39,15 +39,9 @@ defmodule StreamixWeb.StreamController do
         # we send straight to nginx which follows redirects via @handle_redirect.
         Logger.info("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
 
-        case content_type do
-          "channel" ->
-            # Live: nginx handles redirects + streaming natively
-            redirect_to_nginx_proxy(conn, url)
-
-          _ ->
-            # VOD: resolve redirects server-side to get final delivery URL
-            resolve_and_redirect_to_proxy(conn, url, 0)
-        end
+        # ALL content types resolve redirects server-side to strip credentials.
+        # The final delivery URL (JWT only, no credentials) goes to nginx proxy.
+        resolve_and_redirect_to_proxy(conn, url, 0)
 
       {:error, :token_expired} ->
         conn
@@ -101,51 +95,38 @@ defmodule StreamixWeb.StreamController do
     conn |> put_status(:bad_gateway) |> json(%{error: "Too many redirects"})
   end
 
-  defp resolve_and_redirect_to_proxy(conn, url, redirect_count) do
+  defp resolve_and_redirect_to_proxy(conn, url, _redirect_count) do
+    # Follow all redirects automatically to get the final URL (no credentials).
+    # Use into: fn to halt after headers — avoids downloading the video body.
     case Req.get(url,
-           redirect: false,
+           redirect: true,
+           max_redirects: @max_redirects,
            headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
-           into: :self,
-           receive_timeout: 5_000,
+           into: fn {:data, _chunk}, {req, resp} -> {:halt, {req, resp}} end,
+           receive_timeout: 10_000,
            connect_options: [timeout: 5_000]
          ) do
-      {:ok, %Req.Response{status: status, headers: headers} = resp}
-      when status in [301, 302, 303, 307, 308] ->
-        Req.cancel_async_response(resp)
+      {:ok, resp} ->
+        # The final URL is in the private field after redirects
+        final_url = get_final_url(resp, url)
 
-        case List.first(Map.get(headers, "location", [])) do
-          nil ->
-            conn |> put_status(:bad_gateway) |> json(%{error: "Missing redirect location"})
+        # Security: NEVER send original provider URL (has credentials) to the browser.
+        # Only send the final delivery URL (has only a short-lived JWT token).
+        if credentials_in_url?(final_url) do
+          Logger.error("Stream proxy: BLOCKED — final URL still contains credentials")
+          conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
+        else
+          proxy_base =
+            Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
 
-          location ->
-            redirect_url =
-              if String.starts_with?(location, "http") do
-                location
-              else
-                URI.merge(url, location) |> URI.to_string()
-              end
+          final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(final_url)}"
+          Logger.info("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")
 
-            Logger.info(
-              "Stream proxy: VOD redirect #{redirect_count + 1} → #{sanitize_url(redirect_url)}"
-            )
-
-            resolve_and_redirect_to_proxy(conn, redirect_url, redirect_count + 1)
+          conn
+          |> put_resp_header("access-control-allow-origin", "*")
+          |> put_resp_header("cache-control", "no-cache, no-store")
+          |> redirect(external: final_proxy)
         end
-
-      {:ok, %Req.Response{} = resp} ->
-        # Final URL — got 200 or similar. Send browser to nginx proxy.
-        Req.cancel_async_response(resp)
-
-        proxy_base =
-          Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
-
-        final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(url)}"
-        Logger.info("Stream proxy: VOD resolved → #{sanitize_url(url)}")
-
-        conn
-        |> put_resp_header("access-control-allow-origin", "*")
-        |> put_resp_header("cache-control", "no-cache, no-store")
-        |> redirect(external: final_proxy)
 
       {:error, reason} ->
         Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
@@ -153,15 +134,31 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  # Live channels: redirect to nginx proxy directly (nginx follows redirects natively)
-  defp redirect_to_nginx_proxy(conn, url) do
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
-    final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(url)}"
+  # Extract the final URL after Req followed all redirects
+  defp get_final_url(resp, original_url) do
+    # Req stores redirect history in the private map
+    case get_in(resp.private, [:req_redirect_count]) do
+      nil ->
+        # No redirects happened — use original (will be blocked by credentials check)
+        original_url
 
-    conn
-    |> put_resp_header("access-control-allow-origin", "*")
-    |> put_resp_header("cache-control", "no-cache, no-store")
-    |> redirect(external: final_proxy)
+      _count ->
+        # Get the last location header from the response trail
+        case Map.get(resp.headers, "location") do
+          [loc | _] -> loc
+          _ -> original_url
+        end
+    end
+  end
+
+  # Check if URL contains IPTV provider credentials
+  defp credentials_in_url?(url) do
+    uri = URI.parse(url)
+    # Provider URLs have pattern: /live|movie|series/USERNAME/PASSWORD/...
+    case uri.path do
+      nil -> false
+      path -> Regex.match?(~r{/(live|movie|series)/[^/]+/[^/]+/}, path)
+    end
   end
 
   defp put_cors_headers(conn) do
