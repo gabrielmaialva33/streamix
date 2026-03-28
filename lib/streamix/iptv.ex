@@ -176,7 +176,8 @@ defmodule Streamix.Iptv do
   defdelegate get_public_provider(provider_id), to: Providers, as: :get_public
   defdelegate get_global_provider(), to: Providers, as: :get_global
   defdelegate get_playable_provider(user_id, provider_id), to: Providers, as: :get_playable
-  defdelegate create_provider(attrs \\ %{}), to: Providers, as: :create
+  defdelegate create_provider(attrs), to: Providers, as: :create
+  defdelegate create_provider(user_id, attrs), to: Providers, as: :create_for_user
   defdelegate update_provider(provider, attrs), to: Providers, as: :update
   defdelegate delete_provider(provider), to: Providers, as: :delete
   defdelegate change_provider(provider, attrs \\ %{}), to: Providers, as: :change

@@ -24,30 +24,31 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
+    iptv = iptv_module()
     provider_id = args["provider_id"]
     series_details = parse_series_details_option(args["series_details"])
 
-    case Iptv.get_provider(provider_id) do
+    case iptv.get_provider(provider_id) do
       nil ->
         {:error, :provider_not_found}
 
       provider ->
         # Update status to syncing
-        Iptv.update_provider(provider, %{sync_status: "syncing"})
+        iptv.update_provider(provider, %{sync_status: "syncing"})
         broadcast_sync_status(provider, "syncing")
 
         sync_opts = [series_details: series_details]
 
-        case Iptv.sync_provider(provider, sync_opts) do
+        case iptv.sync_provider(provider, sync_opts) do
           {:ok, _result} ->
             # Reload provider to get updated counts
-            updated_provider = Iptv.get_provider!(provider.id)
+            updated_provider = iptv.get_provider!(provider.id)
 
             # Update status to completed
-            Iptv.update_provider(provider, %{sync_status: "completed"})
+            iptv.update_provider(provider, %{sync_status: "completed"})
 
             broadcast_sync_status(provider, "completed", %{
-              live_count: updated_provider.live_count,
+              live_channels_count: updated_provider.live_channels_count,
               movies_count: updated_provider.movies_count,
               series_count: updated_provider.series_count
             })
@@ -56,7 +57,7 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
           {:error, reason} ->
             # Update status to failed
-            Iptv.update_provider(provider, %{sync_status: "failed"})
+            iptv.update_provider(provider, %{sync_status: "failed"})
             broadcast_sync_status(provider, "failed", %{error: inspect(reason)})
             {:error, reason}
         end
@@ -93,6 +94,10 @@ defmodule Streamix.Workers.SyncProviderWorker do
     %{provider_id: provider_id, series_details: to_string(series_details)}
     |> new()
     |> Oban.insert()
+  end
+
+  defp iptv_module do
+    Application.get_env(:streamix, :sync_provider_worker_iptv_module, Iptv)
   end
 
   defp broadcast_sync_status(provider, status, extra \\ %{}) do

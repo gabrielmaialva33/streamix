@@ -99,7 +99,7 @@ defmodule Streamix.IptvTest do
     end
   end
 
-  describe "create_provider/1" do
+  describe "create_provider/2" do
     test "creates a provider with valid data" do
       user = user_fixture()
 
@@ -107,11 +107,10 @@ defmodule Streamix.IptvTest do
         name: "Test Provider",
         url: "http://provider.example.com",
         username: "user",
-        password: "pass",
-        user_id: user.id
+        password: "pass"
       }
 
-      assert {:ok, %Provider{} = provider} = Iptv.create_provider(attrs)
+      assert {:ok, %Provider{} = provider} = Iptv.create_provider(user.id, attrs)
       assert provider.name == "Test Provider"
       assert provider.url == "http://provider.example.com"
       assert provider.username == "user"
@@ -123,11 +122,13 @@ defmodule Streamix.IptvTest do
     end
 
     test "returns error changeset with invalid data" do
-      assert {:error, %Ecto.Changeset{}} = Iptv.create_provider(%{})
+      user = user_fixture()
+      assert {:error, %Ecto.Changeset{}} = Iptv.create_provider(user.id, %{})
     end
 
     test "validates required fields" do
-      assert {:error, changeset} = Iptv.create_provider(%{})
+      user = user_fixture()
+      assert {:error, changeset} = Iptv.create_provider(user.id, %{})
 
       assert "can't be blank" in errors_on(changeset).name
       assert "can't be blank" in errors_on(changeset).url
@@ -138,8 +139,8 @@ defmodule Streamix.IptvTest do
     test "validates URL format" do
       user = user_fixture()
 
-      attrs = valid_provider_attrs(%{url: "not-a-url", user_id: user.id})
-      assert {:error, changeset} = Iptv.create_provider(attrs)
+      attrs = valid_provider_attrs(%{url: "not-a-url"})
+      assert {:error, changeset} = Iptv.create_provider(user.id, attrs)
       assert "must be a valid HTTP/HTTPS URL" in errors_on(changeset).url
     end
 
@@ -151,11 +152,10 @@ defmodule Streamix.IptvTest do
         name: "Duplicate",
         url: provider.url,
         username: provider.username,
-        password: "different",
-        user_id: user.id
+        password: "different"
       }
 
-      assert {:error, changeset} = Iptv.create_provider(duplicate_attrs)
+      assert {:error, changeset} = Iptv.create_provider(user.id, duplicate_attrs)
       assert "has already been taken" in errors_on(changeset).user_id
     end
   end
@@ -320,9 +320,14 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       ch1 = channel_fixture(provider, %{name: "First"})
       ch2 = channel_fixture(provider, %{name: "Second"})
-      favorite_fixture(user, ch1)
-      Process.sleep(1000)
-      favorite_fixture(user, ch2)
+      first = favorite_fixture(user, ch1)
+      second = favorite_fixture(user, ch2)
+
+      older = DateTime.utc_now() |> DateTime.add(-2, :second) |> DateTime.truncate(:second)
+      newer = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.update_all(from(f in Favorite, where: f.id == ^first.id), set: [inserted_at: older])
+      Repo.update_all(from(f in Favorite, where: f.id == ^second.id), set: [inserted_at: newer])
 
       favorites = Iptv.list_favorites(user.id)
 
@@ -490,9 +495,21 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       ch1 = channel_fixture(provider, %{name: "First"})
       ch2 = channel_fixture(provider, %{name: "Second"})
-      watch_history_fixture(user, ch1)
-      Process.sleep(1000)
-      watch_history_fixture(user, ch2)
+      first = watch_history_fixture(user, ch1)
+      second = watch_history_fixture(user, ch2)
+
+      older = DateTime.utc_now() |> DateTime.add(-2, :second) |> DateTime.truncate(:second)
+      newer = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.update_all(
+        from(h in WatchHistory, where: h.id == ^first.id),
+        set: [watched_at: older]
+      )
+
+      Repo.update_all(
+        from(h in WatchHistory, where: h.id == ^second.id),
+        set: [watched_at: newer]
+      )
 
       history = Iptv.list_watch_history(user.id)
 

@@ -48,7 +48,7 @@ defmodule Streamix.Iptv.Provider do
     timestamps(type: :utc_datetime)
   end
 
-  @all_fields ~w(name url username password user_id is_active sync_status visibility is_system
+  @all_fields ~w(name url username password is_active sync_status visibility is_system
                       live_channels_count movies_count series_count
                       live_synced_at vod_synced_at series_synced_at
                       epg_synced_at epg_sync_interval_hours server_info

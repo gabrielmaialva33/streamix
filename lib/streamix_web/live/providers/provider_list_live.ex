@@ -35,7 +35,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     |> assign(show_modal: true)
   end
 
-  defp apply_action(socket, :edit, %{"id" => id}) do
+  defp apply_action(socket, :edit, %{"provider_id" => id}) do
     user_id = socket.assigns.current_scope.user.id
     provider = Iptv.get_user_provider(user_id, id)
 

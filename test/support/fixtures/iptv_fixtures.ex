@@ -23,9 +23,8 @@ defmodule Streamix.IptvFixtures do
     attrs =
       attrs
       |> valid_provider_attrs()
-      |> Map.put(:user_id, user.id)
 
-    {:ok, provider} = Iptv.create_provider(attrs)
+    {:ok, provider} = Iptv.create_provider(user.id, attrs)
     provider
   end
 

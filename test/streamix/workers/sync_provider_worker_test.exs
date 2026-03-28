@@ -7,6 +7,16 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  setup do
+    previous = Application.get_env(:streamix, :sync_provider_worker_iptv_module, Iptv)
+
+    on_exit(fn ->
+      Application.put_env(:streamix, :sync_provider_worker_iptv_module, previous)
+    end)
+
+    :ok
+  end
+
   describe "enqueue/1 with Provider struct" do
     test "enqueues a job with provider_id" do
       user = user_fixture()
@@ -87,6 +97,42 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
       # Should receive at least the "syncing" status
       assert_receive {:sync_status, %{status: "syncing", provider_id: provider_id}}
       assert provider_id == provider.id
+    end
+
+    test "broadcasts completed payload with schema field names on successful sync" do
+      user = user_fixture()
+
+      provider =
+        provider_fixture(user, %{
+          live_channels_count: 7,
+          movies_count: 8,
+          series_count: 9
+        })
+
+      provider_id = provider.id
+
+      Application.put_env(
+        :streamix,
+        :sync_provider_worker_iptv_module,
+        Streamix.TestSupport.SyncProviderWorkerIptvStub
+      )
+
+      Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
+
+      job = %Oban.Job{args: %{"provider_id" => provider.id}}
+
+      assert :ok = SyncProviderWorker.perform(job)
+
+      assert_receive {:sync_status, %{status: "syncing", provider_id: ^provider_id}}
+
+      assert_receive {:sync_status,
+                      %{
+                        status: "completed",
+                        provider_id: ^provider_id,
+                        live_channels_count: 7,
+                        movies_count: 8,
+                        series_count: 9
+                      }}
     end
 
     @tag :integration

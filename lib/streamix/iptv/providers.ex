@@ -140,6 +140,17 @@ defmodule Streamix.Iptv.Providers do
   end
 
   @doc """
+  Creates a new provider owned by the given user.
+  Ownership is assigned server-side and cannot be overridden via params.
+  """
+  @spec create_for_user(integer(), map()) :: {:ok, Provider.t()} | {:error, Ecto.Changeset.t()}
+  def create_for_user(user_id, attrs \\ %{}) do
+    %Provider{user_id: user_id}
+    |> Provider.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
   Updates a provider.
   """
   @spec update(Provider.t(), map()) :: {:ok, Provider.t()} | {:error, Ecto.Changeset.t()}

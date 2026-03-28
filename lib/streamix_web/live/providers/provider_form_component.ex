@@ -60,23 +60,18 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   end
 
   def handle_event("save", %{"provider" => params}, socket) do
-    user_id = socket.assigns.current_scope.user.id
-
-    params =
-      params
-      |> Map.put("user_id", user_id)
-      |> process_visibility()
+    params = process_visibility(params)
 
     case socket.assigns.provider do
-      nil -> create_provider(socket, params)
+      nil -> create_provider(socket, socket.assigns.current_scope.user.id, params)
       provider -> update_provider(socket, provider, params)
     end
   end
 
-  defp create_provider(socket, params) do
+  defp create_provider(socket, user_id, params) do
     with {:ok, _account_info} <-
            Iptv.test_connection(params["url"], params["username"], params["password"]),
-         {:ok, provider} <- Iptv.create_provider(params) do
+         {:ok, provider} <- Iptv.create_provider(user_id, params) do
       notify_parent({:saved, provider})
       {:noreply, socket}
     else
