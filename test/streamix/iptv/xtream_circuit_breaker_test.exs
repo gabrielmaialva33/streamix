@@ -22,8 +22,7 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
         XtreamCircuitBreaker.report_error(provider_id, :server_error)
       end
 
-      # Give GenServer time to process casts
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       # Circuit should be open now
       assert {:error, {:circuit_open, _remaining}} =
@@ -37,7 +36,7 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
         XtreamCircuitBreaker.report_error(provider_id, :timeout)
       end
 
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       {:error, {:circuit_open, remaining}} = XtreamCircuitBreaker.allow_request?(provider_id)
 
@@ -55,11 +54,11 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
         XtreamCircuitBreaker.report_error(provider_id, :server_error)
       end
 
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       # Report success
       XtreamCircuitBreaker.report_success(provider_id)
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       # Should still allow requests
       assert :ok = XtreamCircuitBreaker.allow_request?(provider_id)
@@ -78,7 +77,7 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
         XtreamCircuitBreaker.report_error(provider_id, :server_error)
       end
 
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       assert :open = XtreamCircuitBreaker.get_state(provider_id)
     end
@@ -93,7 +92,7 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
       XtreamCircuitBreaker.allow_request?(333)
       XtreamCircuitBreaker.report_success(333)
 
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       status = XtreamCircuitBreaker.get_all_status()
 
@@ -111,12 +110,12 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
         XtreamCircuitBreaker.report_error(provider_id, :server_error)
       end
 
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
       assert :open = XtreamCircuitBreaker.get_state(provider_id)
 
       # Reset
       XtreamCircuitBreaker.reset(provider_id)
-      Process.sleep(50)
+      _ = :sys.get_state(XtreamCircuitBreaker)
 
       assert :closed = XtreamCircuitBreaker.get_state(provider_id)
     end

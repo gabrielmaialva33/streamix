@@ -107,9 +107,6 @@ defmodule Streamix.Iptv.EpgSyncTest do
       {:ok, first_update} = EpgSync.update_epg_synced_at(provider)
       first_time = first_update.epg_synced_at
 
-      # Wait a tiny bit to ensure different timestamp
-      Process.sleep(10)
-
       {:ok, second_update} = EpgSync.update_epg_synced_at(first_update)
       second_time = second_update.epg_synced_at
 
