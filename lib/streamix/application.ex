@@ -17,13 +17,14 @@ defmodule Streamix.Application do
         Streamix.Repo,
         {Streamix.RateLimit, clean_period: :timer.minutes(10)},
         {Oban, Application.fetch_env!(:streamix, Oban)},
+        {Task.Supervisor, name: Streamix.TaskSupervisor},
         {Redix, {redis_url(), [name: :streamix_redis]}},
         # L1 in-memory cache (ConCache) for hot data
         {ConCache,
          [
            name: :streamix_l1_cache,
-           ttl_check_interval: :timer.seconds(30),
-           global_ttl: :timer.hours(1),
+           ttl_check_interval: Streamix.Cache.l1_ttl_check_interval(),
+           global_ttl: Streamix.Cache.l1_ttl(),
            touch_on_read: true
          ]},
         # HTTP connection pool for sync operations (high concurrency)
@@ -76,10 +77,20 @@ defmodule Streamix.Application do
     # Skip provider initialization during tests (Sandbox mode doesn't work with spawned tasks)
     unless Application.get_env(:streamix, :env) == :test do
       # Run in a separate process to not block app startup
-      Task.start(fn ->
-        wait_for_repo_with_retry()
-        init_system_providers()
-      end)
+      case Streamix.TaskLauncher.start_child(fn ->
+             wait_for_repo_with_retry()
+             init_system_providers()
+           end) do
+        {:ok, _pid} ->
+          :ok
+
+        {:error, reason} ->
+          require Logger
+
+          Logger.warning(
+            "[Application] Failed to start provider initialization task: #{inspect(reason)}"
+          )
+      end
     end
   end
 

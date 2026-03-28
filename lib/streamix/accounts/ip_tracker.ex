@@ -4,8 +4,8 @@ defmodule Streamix.Accounts.IpTracker do
   Handles Cloudflare headers for real client IP.
   """
 
-  alias Streamix.Repo
   alias Streamix.Accounts.AccessLog
+  alias Streamix.Repo
 
   @doc """
   Extracts client IP from conn, handling proxies and Cloudflare.
@@ -53,8 +53,10 @@ defmodule Streamix.Accounts.IpTracker do
   Logs access asynchronously (non-blocking).
   """
   def log_access_async(conn, user_id \\ nil) do
-    Task.start(fn -> log_access(conn, user_id) end)
-    :ok
+    case task_launcher().start_child(fn -> log_access(conn, user_id) end) do
+      {:ok, _pid} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # Private helpers
@@ -89,6 +91,10 @@ defmodule Streamix.Accounts.IpTracker do
 
   defp or_else(nil, func), do: func.()
   defp or_else(value, _func), do: value
+
+  defp task_launcher do
+    Application.get_env(:streamix, :ip_tracker_task_launcher, Streamix.TaskLauncher)
+  end
 
   # Device detection from User-Agent
 
@@ -135,17 +141,24 @@ defmodule Streamix.Accounts.IpTracker do
   defp detect_browser(_), do: "unknown"
 
   defp detect_os(ua) when is_binary(ua) do
-    cond do
-      String.contains?(ua, "Windows") -> "Windows"
-      String.contains?(ua, "Mac OS") -> "macOS"
-      String.contains?(ua, "Linux") -> "Linux"
-      String.contains?(ua, "Android") -> "Android"
-      String.contains?(ua, "iPhone") or String.contains?(ua, "iPad") -> "iOS"
-      String.contains?(ua, "Tizen") -> "Tizen"
-      String.contains?(ua, "webOS") -> "webOS"
-      true -> "Other"
-    end
+    ua
+    |> detect_from_signatures([
+      {["Windows"], "Windows"},
+      {["Mac OS"], "macOS"},
+      {["Linux"], "Linux"},
+      {["Android"], "Android"},
+      {["iPhone", "iPad"], "iOS"},
+      {["Tizen"], "Tizen"},
+      {["webOS"], "webOS"}
+    ])
+    |> Kernel.||("Other")
   end
 
   defp detect_os(_), do: "unknown"
+
+  defp detect_from_signatures(ua, signatures) do
+    Enum.find_value(signatures, fn {needles, label} ->
+      if String.contains?(ua, needles), do: label
+    end)
+  end
 end

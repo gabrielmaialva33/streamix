@@ -8,8 +8,8 @@ defmodule StreamixWeb.UserAuth do
   import Phoenix.Controller
 
   alias Streamix.Accounts
-  alias Streamix.Accounts.Scope
   alias Streamix.Accounts.IpTracker
+  alias Streamix.Accounts.Scope
 
   # Session validity: 60 days
   @max_age 60 * 60 * 24 * 60
