@@ -41,8 +41,7 @@ defmodule Streamix.CacheTest do
       Cache.set("test:ttl", "value", 1)
       assert Cache.get("test:ttl") == "value"
 
-      # Wait for TTL to expire (1 second + buffer)
-      Process.sleep(1500)
+      wait(1_500)
       assert is_nil(Cache.get("test:ttl"))
     end
   end
@@ -102,8 +101,7 @@ defmodule Streamix.CacheTest do
       Cache.fetch("test:expire", 1, fn -> "first" end)
       assert Cache.get("test:expire") == "first"
 
-      # Wait for TTL to expire (1 second + buffer)
-      Process.sleep(1500)
+      wait(1_500)
 
       result = Cache.fetch("test:expire", 3600, fn -> "second" end)
       assert result == "second"
@@ -171,6 +169,13 @@ defmodule Streamix.CacheTest do
       assert is_nil(Cache.get("key1"))
       assert is_nil(Cache.get("key2"))
       assert is_nil(Cache.get("key3"))
+    end
+  end
+
+  defp wait(timeout_ms) do
+    receive do
+    after
+      timeout_ms -> :ok
     end
   end
 end

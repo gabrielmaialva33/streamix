@@ -20,6 +20,7 @@ defmodule Streamix.Cache do
   @redis :streamix_redis
   @default_ttl 3600
   @l1_ttl :timer.minutes(30)
+  @l1_ttl_check_interval :timer.seconds(30)
   @scan_count 100
 
   # =============================================================================
@@ -45,15 +46,20 @@ defmodule Streamix.Cache do
   end
 
   # Get from L2 and populate L1 on hit
-  defp get_from_l2(key) do
-    case Redix.command(@redis, ["GET", key]) do
-      {:ok, nil} ->
+  defp get_from_l2(key, opts \\ []) do
+    populate_l1? = Keyword.get(opts, :populate_l1?, true)
+
+    case Redix.pipeline(@redis, [["GET", key], ["PTTL", key]]) do
+      {:ok, [nil, _ttl_ms]} ->
         nil
 
-      {:ok, value} ->
+      {:ok, [value, ttl_ms]} ->
         decoded = decode(value)
-        # Populate L1 for future reads (shorter TTL)
-        if decoded, do: ConCache.put(@l1_cache, key, %ConCache.Item{value: decoded, ttl: @l1_ttl})
+
+        if populate_l1? do
+          maybe_put_l1(key, decoded, ttl_ms)
+        end
+
         decoded
 
       {:error, reason} ->
@@ -69,8 +75,7 @@ defmodule Streamix.Cache do
   @spec set(String.t(), term(), pos_integer()) :: :ok | {:error, term()}
   def set(key, value, ttl \\ @default_ttl) do
     # Write to L1 first (local node)
-    l1_ttl_ms = min(ttl * 1000, @l1_ttl)
-    ConCache.put(@l1_cache, key, %ConCache.Item{value: value, ttl: l1_ttl_ms})
+    maybe_put_l1(key, value, ttl * 1000)
 
     # Write to L2 (Redis) for persistence and cluster sharing
     case encode(value) do
@@ -132,24 +137,13 @@ defmodule Streamix.Cache do
   """
   @spec fetch(String.t(), pos_integer(), (-> term())) :: term()
   def fetch(key, ttl \\ @default_ttl, fun) when is_function(fun, 0) do
-    # Use ConCache.get_or_store for L1 to prevent stampede —
-    # concurrent callers on the same key will block on the first computation
-    # instead of all computing simultaneously.
-    l1_ttl_ms = min(ttl * 1000, @l1_ttl)
+    ttl_ms = ttl * 1000
 
-    ConCache.get_or_store(@l1_cache, key, fn ->
-      # L1 miss — check L2 (Redis) before computing
-      case get_from_l2(key) do
-        nil ->
-          value = fun.()
-          # Write-through to L2
-          set_l2(key, value, ttl)
-          %ConCache.Item{value: value, ttl: l1_ttl_ms}
-
-        value ->
-          %ConCache.Item{value: value, ttl: l1_ttl_ms}
-      end
-    end)
+    if cache_in_l1?(ttl_ms) do
+      fetch_with_l1(key, ttl, ttl_ms, fun)
+    else
+      fetch_without_l1(key, ttl, fun)
+    end
   end
 
   # Write only to L2 (Redis), used by fetch to avoid double L1 write
@@ -173,6 +167,9 @@ defmodule Streamix.Cache do
   @doc "Cache key for user categories"
   @spec categories_key(integer()) :: String.t()
   def categories_key(user_id), do: "categories:user:#{user_id}"
+
+  def l1_ttl, do: @l1_ttl
+  def l1_ttl_check_interval, do: @l1_ttl_check_interval
 
   @doc "Cache key for provider categories"
   @spec provider_categories_key(integer()) :: String.t()
@@ -418,5 +415,55 @@ defmodule Streamix.Cache do
 
   defp log_error(operation, key, reason) do
     Logger.warning("Cache #{operation} failed for #{key}: #{inspect(reason)}")
+  end
+
+  defp maybe_put_l1(_key, nil, _ttl_ms), do: :ok
+
+  defp maybe_put_l1(key, value, ttl_ms) do
+    if cache_in_l1?(ttl_ms) do
+      ConCache.put(@l1_cache, key, %ConCache.Item{value: value, ttl: min(ttl_ms, @l1_ttl)})
+    end
+  end
+
+  defp cache_in_l1?(ttl_ms) when ttl_ms == -1, do: true
+  defp cache_in_l1?(ttl_ms) when ttl_ms > @l1_ttl_check_interval, do: true
+  defp cache_in_l1?(_ttl_ms), do: false
+
+  defp fetch_with_l1(key, ttl, ttl_ms, fun) do
+    # Use ConCache.get_or_store for L1 to prevent stampede —
+    # concurrent callers on the same key will block on the first computation
+    # instead of all computing simultaneously.
+    l1_ttl_ms = min(ttl_ms, @l1_ttl)
+
+    ConCache.get_or_store(@l1_cache, key, fn ->
+      build_l1_cache_item(key, ttl, l1_ttl_ms, fun)
+    end)
+  end
+
+  defp build_l1_cache_item(key, ttl, l1_ttl_ms, fun) do
+    value =
+      case get_from_l2(key) do
+        nil ->
+          computed = fun.()
+          set_l2(key, computed, ttl)
+          computed
+
+        cached ->
+          cached
+      end
+
+    %ConCache.Item{value: value, ttl: l1_ttl_ms}
+  end
+
+  defp fetch_without_l1(key, ttl, fun) do
+    case get_from_l2(key, populate_l1?: false) do
+      nil ->
+        value = fun.()
+        set_l2(key, value, ttl)
+        value
+
+      value ->
+        value
+    end
   end
 end
