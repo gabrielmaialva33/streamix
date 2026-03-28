@@ -48,7 +48,8 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   # Client API
 
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    name = Keyword.get(opts, :name, __MODULE__)
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
   @doc """
@@ -62,7 +63,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   @doc """
   Gets a specific endpoint by name.
   """
-  def get_endpoint(name) when is_atom(name) do
+  def get_endpoint(name) when is_atom(name) or is_binary(name) do
     GenServer.call(__MODULE__, {:get_endpoint, name})
   end
 
@@ -108,31 +109,33 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   # Server callbacks
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
+    table_name = Keyword.get(opts, :table_name, @table_name)
+
     # Create ETS table for fast reads
-    :ets.new(@table_name, [:named_table, :public, :set, read_concurrency: true])
+    :ets.new(table_name, [:named_table, :public, :set, read_concurrency: true])
 
     # Initialize endpoints from config or defaults
-    endpoints = get_configured_endpoints()
+    endpoints = get_configured_endpoints(opts)
 
     for endpoint <- endpoints do
-      init_endpoint(endpoint)
+      init_endpoint(endpoint, table_name)
     end
 
     Logger.info("[GIndex EndpointManager] Initialized with #{length(endpoints)} endpoints")
 
-    {:ok, %{endpoints: endpoints}}
+    {:ok, %{endpoints: endpoints, table_name: table_name}}
   end
 
   @impl true
   def handle_call(:get_endpoint, _from, state) do
-    endpoint = find_best_endpoint()
+    endpoint = find_best_endpoint(state.table_name)
     {:reply, endpoint, state}
   end
 
   @impl true
   def handle_call({:get_endpoint, name}, _from, state) do
-    case :ets.lookup(@table_name, name) do
+    case :ets.lookup(state.table_name, name) do
       [{^name, endpoint_state}] -> {:reply, {:ok, endpoint_state.url}, state}
       [] -> {:reply, {:error, :not_found}, state}
     end
@@ -141,7 +144,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   @impl true
   def handle_call(:get_status, _from, state) do
     status =
-      :ets.tab2list(@table_name)
+      :ets.tab2list(state.table_name)
       |> Enum.map(fn {name, endpoint_state} ->
         %{
           name: name,
@@ -160,8 +163,8 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
 
   @impl true
   def handle_call(:reset_all, _from, state) do
-    for {name, endpoint_state} <- :ets.tab2list(@table_name) do
-      :ets.insert(@table_name, {name, reset_endpoint_state(endpoint_state)})
+    for {name, endpoint_state} <- :ets.tab2list(state.table_name) do
+      :ets.insert(state.table_name, {name, reset_endpoint_state(endpoint_state)})
     end
 
     Logger.info("[GIndex EndpointManager] All circuit breakers reset")
@@ -171,7 +174,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   @impl true
   def handle_call(:get_all_endpoints, _from, state) do
     endpoints =
-      :ets.tab2list(@table_name)
+      :ets.tab2list(state.table_name)
       |> Enum.map(fn {name, endpoint_state} ->
         %{name: name, url: endpoint_state.url, priority: endpoint_state.priority}
       end)
@@ -182,7 +185,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
 
   @impl true
   def handle_cast({:report_success, url}, state) do
-    case find_endpoint_by_url(url) do
+    case find_endpoint_by_url(state.table_name, url) do
       {name, endpoint_state} ->
         new_state =
           endpoint_state
@@ -190,7 +193,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
           |> Map.put(:last_success, System.monotonic_time(:millisecond))
           |> maybe_close_circuit()
 
-        :ets.insert(@table_name, {name, new_state})
+        :ets.insert(state.table_name, {name, new_state})
 
         if endpoint_state.circuit_state != @state_closed and
              new_state.circuit_state == @state_closed do
@@ -206,7 +209,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
 
   @impl true
   def handle_cast({:report_error, url}, state) do
-    case find_endpoint_by_url(url) do
+    case find_endpoint_by_url(state.table_name, url) do
       {name, endpoint_state} ->
         new_error_count = endpoint_state.error_count + 1
         now = System.monotonic_time(:millisecond)
@@ -217,7 +220,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
           |> Map.put(:last_error, now)
           |> maybe_open_circuit(new_error_count, now)
 
-        :ets.insert(@table_name, {name, new_state})
+        :ets.insert(state.table_name, {name, new_state})
 
         if endpoint_state.circuit_state != @state_open and new_state.circuit_state == @state_open do
           Logger.warning(
@@ -235,10 +238,26 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
 
   # Private functions
 
-  defp get_configured_endpoints do
-    case Application.get_env(:streamix, :gindex_provider) do
-      config when is_list(config) -> parse_gindex_config(config)
-      _ -> @default_endpoints
+  defp get_configured_endpoints(opts) do
+    case Keyword.get(opts, :endpoints) do
+      [_ | _] = endpoints when is_binary(hd(endpoints)) ->
+        build_endpoints_from_list(endpoints)
+
+      [_ | _] = endpoints ->
+        endpoints
+
+      _ ->
+        @default_endpoints
+    end
+    |> case do
+      @default_endpoints = default_endpoints ->
+        case Application.get_env(:streamix, :gindex_provider) do
+          config when is_list(config) -> parse_gindex_config(config)
+          _ -> default_endpoints
+        end
+
+      endpoints ->
+        endpoints
     end
   end
 
@@ -253,7 +272,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
     endpoints
     |> Enum.with_index(1)
     |> Enum.map(fn {url, priority} ->
-      name = String.to_atom("endpoint_#{priority}")
+      name = "endpoint_#{priority}"
       %{name: name, url: url, priority: priority}
     end)
   end
@@ -275,7 +294,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
     ]
   end
 
-  defp init_endpoint(endpoint) do
+  defp init_endpoint(endpoint, table_name) do
     state = %{
       url: endpoint.url,
       priority: endpoint.priority,
@@ -287,7 +306,7 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
       opened_at: nil
     }
 
-    :ets.insert(@table_name, {endpoint.name, state})
+    :ets.insert(table_name, {endpoint.name, state})
   end
 
   defp reset_endpoint_state(endpoint_state) do
@@ -301,54 +320,54 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
     }
   end
 
-  defp find_best_endpoint do
+  defp find_best_endpoint(table_name) do
     now = System.monotonic_time(:millisecond)
 
-    :ets.tab2list(@table_name)
+    :ets.tab2list(table_name)
     |> Enum.map(fn {name, state} -> {name, maybe_transition_to_half_open(state, now)} end)
     |> Enum.filter(fn {_name, state} ->
       state.circuit_state in [@state_closed, @state_half_open]
     end)
     |> Enum.sort_by(fn {_name, state} -> state.priority end)
-    |> select_endpoint()
+    |> select_endpoint(table_name)
   end
 
-  defp select_endpoint([{name, state} | _]) do
+  defp select_endpoint([{name, state} | _], table_name) do
     # Update state if transitioned to half-open
     if state.circuit_state == @state_half_open do
       new_state = %{state | half_open_requests: state.half_open_requests + 1}
-      :ets.insert(@table_name, {name, new_state})
+      :ets.insert(table_name, {name, new_state})
     end
 
     {:ok, state.url}
   end
 
-  defp select_endpoint([]) do
+  defp select_endpoint([], table_name) do
     # All circuits open - return primary anyway (will likely fail but allows retry)
     Logger.warning("[GIndex EndpointManager] All circuits OPEN - forcing primary endpoint")
-    get_fallback_endpoint()
+    get_fallback_endpoint(table_name)
   end
 
-  defp get_fallback_endpoint do
-    case :ets.lookup(@table_name, :primary) do
+  defp get_fallback_endpoint(table_name) do
+    case :ets.lookup(table_name, :primary) do
       [{:primary, state}] -> {:ok, state.url}
-      [] -> get_first_available_endpoint()
+      [] -> get_first_available_endpoint(table_name)
     end
   end
 
-  defp get_first_available_endpoint do
-    case :ets.first(@table_name) do
+  defp get_first_available_endpoint(table_name) do
+    case :ets.first(table_name) do
       :"$end_of_table" ->
         {:error, :no_endpoints}
 
       name ->
-        [{^name, state}] = :ets.lookup(@table_name, name)
+        [{^name, state}] = :ets.lookup(table_name, name)
         {:ok, state.url}
     end
   end
 
-  defp find_endpoint_by_url(url) do
-    :ets.tab2list(@table_name)
+  defp find_endpoint_by_url(table_name, url) do
+    :ets.tab2list(table_name)
     |> Enum.find(fn {_name, state} -> state.url == url end)
   end
 
