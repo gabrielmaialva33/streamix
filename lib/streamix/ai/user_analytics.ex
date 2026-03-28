@@ -23,9 +23,14 @@ defmodule Streamix.AI.UserAnalytics do
 
   require Logger
 
-  alias Streamix.AI.{Embeddings, Qdrant}
-  alias Streamix.Iptv.{History, Movie, LiveChannel}
-  alias Streamix.{Cache, Repo}
+  alias Streamix.AI.Embeddings
+  alias Streamix.AI.Qdrant
+  alias Streamix.Cache
+  alias Streamix.Iptv.Catalog
+  alias Streamix.Iptv.History
+  alias Streamix.Iptv.LiveChannel
+  alias Streamix.Iptv.Movie
+  alias Streamix.Repo
 
   import Ecto.Query
 
@@ -76,19 +81,7 @@ defmodule Streamix.AI.UserAnalytics do
     cache_key = "user_profile:#{user_id}"
 
     Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      case Qdrant.get_point(@user_profile_collection, user_id) do
-        {:ok, %{vector: vector}} ->
-          vector
-
-        {:error, :not_found} ->
-          case compute_user_profile(user_id) do
-            {:ok, vector} -> vector
-            {:error, _} -> nil
-          end
-
-        {:error, _} ->
-          nil
-      end
+      fetch_or_compute_profile(user_id)
     end)
   end
 
@@ -116,37 +109,7 @@ defmodule Streamix.AI.UserAnalytics do
           {:ok, []}
 
         profile_vector ->
-          collection = opts[:type] || "movies"
-          limit = opts[:limit] || 20
-          exclude_watched = Keyword.get(opts, :exclude_watched, true)
-
-          # Build filter to exclude already watched content
-          filter =
-            if exclude_watched do
-              watched_ids = get_watched_content_ids(user_id, collection)
-
-              if Enum.empty?(watched_ids) do
-                nil
-              else
-                %{must_not: [%{has_id: watched_ids}]}
-              end
-            else
-              nil
-            end
-
-          search_opts = [limit: limit, score_threshold: 0.5]
-
-          search_opts =
-            if filter, do: Keyword.put(search_opts, :filter, filter), else: search_opts
-
-          case Qdrant.search(collection, profile_vector, search_opts) do
-            {:ok, results} ->
-              format_recommendations(results)
-
-            {:error, reason} ->
-              Logger.warning("[UserAnalytics] Recommendation search failed: #{inspect(reason)}")
-              []
-          end
+          search_recommendations(user_id, profile_vector, opts)
       end
     end)
   end
@@ -213,58 +176,12 @@ defmodule Streamix.AI.UserAnalytics do
     # Get user's channel watch history
     history = History.list(user_id, content_type: "live_channel", limit: 100)
 
-    if Enum.empty?(history) do
-      # No history - return popular public channels
-      {:ok, get_popular_channels(limit)}
-    else
-      # Get channel IDs from history
-      watched_channel_ids = Enum.map(history, & &1.content_id)
-
-      # Get categories of watched channels with proper JOIN
-      category_scores = compute_channel_category_scores(watched_channel_ids, history)
-
-      if Enum.empty?(category_scores) do
-        # No categories found - fallback to public channels
+    case history do
+      [] ->
         {:ok, get_popular_channels(limit)}
-      else
-        # Get top category IDs by score
-        top_category_ids =
-          category_scores
-          |> Enum.sort_by(fn {_id, score} -> score end, :desc)
-          |> Enum.take(10)
-          |> Enum.map(fn {id, _score} -> id end)
 
-        # Find recommended channels in user's preferred categories
-        # Exclude already watched channels
-        # Note: Using subquery pattern to avoid PostgreSQL DISTINCT + ORDER BY RANDOM() conflict
-        recommended =
-          from(c in LiveChannel,
-            join: lcc in "live_channel_categories",
-            on: lcc.live_channel_id == c.id,
-            join: p in Streamix.Iptv.Provider,
-            on: c.provider_id == p.id,
-            where: p.visibility in [:global, :public],
-            where: lcc.category_id in ^top_category_ids,
-            where: c.id not in ^watched_channel_ids,
-            where: not is_nil(c.stream_icon),
-            limit: ^(limit * 3),
-            select: c
-          )
-          |> Repo.all()
-          |> Enum.uniq_by(& &1.id)
-          |> Enum.shuffle()
-          |> Enum.take(limit)
-
-        # If not enough recommendations, fill with popular channels
-        if length(recommended) < limit do
-          remaining = limit - length(recommended)
-          exclude_ids = watched_channel_ids ++ Enum.map(recommended, & &1.id)
-          popular = get_popular_channels(remaining, exclude_ids)
-          {:ok, recommended ++ popular}
-        else
-          {:ok, recommended}
-        end
-      end
+      history ->
+        recommend_channels_from_history(history, limit)
     end
   end
 
@@ -355,43 +272,12 @@ defmodule Streamix.AI.UserAnalytics do
     days = opts[:days] || 7
 
     # Get base trending from catalog
-    trending = Streamix.Iptv.Catalog.list_trending_movies(limit: limit * 2, days: days)
+    trending = Catalog.list_trending_movies(limit: limit * 2, days: days)
 
-    # Apply genre filter if specified
-    filtered =
-      if genre == "all" do
-        trending
-      else
-        Enum.filter(trending, fn movie ->
-          movie_genre = movie.genre || ""
-          String.contains?(String.downcase(movie_genre), String.downcase(genre))
-        end)
-      end
-
-    # If user logged in, reorder by taste profile similarity
-    reordered =
-      case get_user_profile(user_id) do
-        nil ->
-          filtered
-
-        _profile_vector ->
-          # For now, boost content matching user's favorite genres
-          insights = get_user_insights(user_id)
-          favorite_genres = Map.get(insights, :favorite_genres, [])
-
-          Enum.sort_by(filtered, fn movie ->
-            movie_genre = movie.genre || ""
-
-            boost =
-              Enum.any?(favorite_genres, fn g ->
-                String.contains?(String.downcase(movie_genre), String.downcase(g))
-              end)
-
-            if boost, do: 0, else: 1
-          end)
-      end
-
-    Enum.take(reordered, limit)
+    trending
+    |> filter_by_genre(genre)
+    |> maybe_reorder_by_user_taste(user_id)
+    |> Enum.take(limit)
   end
 
   @doc """
@@ -409,42 +295,10 @@ defmodule Streamix.AI.UserAnalytics do
     genre = opts[:genre] || "all"
 
     # Get base series from catalog
-    series = Streamix.Iptv.Catalog.list_top_10_series(limit: limit * 2)
-
-    # Apply genre filter
-    filtered =
-      if genre == "all" do
-        series
-      else
-        Enum.filter(series, fn s ->
-          s_genre = s.genre || ""
-          String.contains?(String.downcase(s_genre), String.downcase(genre))
-        end)
-      end
-
-    # Reorder by user taste if logged in
-    reordered =
-      case get_user_profile(user_id) do
-        nil ->
-          filtered
-
-        _profile_vector ->
-          insights = get_user_insights(user_id)
-          favorite_genres = Map.get(insights, :favorite_genres, [])
-
-          Enum.sort_by(filtered, fn s ->
-            s_genre = s.genre || ""
-
-            boost =
-              Enum.any?(favorite_genres, fn g ->
-                String.contains?(String.downcase(s_genre), String.downcase(g))
-              end)
-
-            if boost, do: 0, else: 1
-          end)
-      end
-
-    Enum.take(reordered, limit)
+    Catalog.list_top_10_series(limit: limit * 2)
+    |> filter_by_genre(genre)
+    |> maybe_reorder_by_user_taste(user_id)
+    |> Enum.take(limit)
   end
 
   @doc """
@@ -513,7 +367,7 @@ defmodule Streamix.AI.UserAnalytics do
 
   def get_user_genre_filters(user_id) do
     case get_user_insights(user_id) do
-      %{favorite_genres: genres} when is_list(genres) and length(genres) > 0 ->
+      %{favorite_genres: [_ | _] = genres} ->
         # Prioritize user's favorite genres
         user_genres =
           genres
@@ -668,31 +522,15 @@ defmodule Streamix.AI.UserAnalytics do
   defp get_watched_content_with_embeddings(user_id) do
     history = History.list(user_id, limit: 100)
 
-    if Enum.empty?(history) do
-      {:error, :no_history}
-    else
-      # Group by content type and fetch embeddings
-      content_with_vectors =
-        history
-        |> Enum.map(fn entry ->
-          collection = content_type_to_collection(entry.content_type)
-          weight = calculate_weight(entry)
+    case history do
+      [] ->
+        {:error, :no_history}
 
-          case Qdrant.get_point(collection, entry.content_id) do
-            {:ok, %{vector: vector}} ->
-              %{vector: vector, weight: weight}
-
-            _ ->
-              nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
-
-      if Enum.empty?(content_with_vectors) do
-        {:error, :no_embeddings}
-      else
-        {:ok, content_with_vectors}
-      end
+      history ->
+        case map_embeddings(history) do
+          [] -> {:error, :no_embeddings}
+          content_with_vectors -> {:ok, content_with_vectors}
+        end
     end
   end
 
@@ -700,22 +538,14 @@ defmodule Streamix.AI.UserAnalytics do
     # Weighted average of all vectors
     total_weight = Enum.reduce(content_with_vectors, 0, fn %{weight: w}, acc -> acc + w end)
 
-    if total_weight == 0 do
-      {:error, :zero_weight}
-    else
-      dimensions = length(hd(content_with_vectors).vector)
+    case total_weight do
+      0 ->
+        {:error, :zero_weight}
 
-      profile =
-        Enum.reduce(content_with_vectors, List.duplicate(0.0, dimensions), fn %{
-                                                                                vector: vec,
-                                                                                weight: w
-                                                                              },
-                                                                              acc ->
-          Enum.zip(acc, vec)
-          |> Enum.map(fn {a, v} -> a + v * w / total_weight end)
-        end)
-
-      {:ok, profile}
+      _ ->
+        dimensions = length(hd(content_with_vectors).vector)
+        profile = weighted_profile(content_with_vectors, dimensions, total_weight)
+        {:ok, profile}
     end
   end
 
@@ -764,9 +594,177 @@ defmodule Streamix.AI.UserAnalytics do
     ]
 
     parts
-    |> Enum.reject(&is_nil/1)
-    |> Enum.reject(&(&1 == ""))
+    |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" ")
+  end
+
+  defp fetch_or_compute_profile(user_id) do
+    case Qdrant.get_point(@user_profile_collection, user_id) do
+      {:ok, %{vector: vector}} -> vector
+      {:error, :not_found} -> compute_profile_vector(user_id)
+      {:error, _} -> nil
+    end
+  end
+
+  defp compute_profile_vector(user_id) do
+    case compute_user_profile(user_id) do
+      {:ok, vector} -> vector
+      {:error, _} -> nil
+    end
+  end
+
+  defp search_recommendations(user_id, profile_vector, opts) do
+    collection = opts[:type] || "movies"
+    limit = opts[:limit] || 20
+    exclude_watched = Keyword.get(opts, :exclude_watched, true)
+    search_opts = build_search_opts(user_id, collection, limit, exclude_watched)
+
+    case Qdrant.search(collection, profile_vector, search_opts) do
+      {:ok, results} ->
+        format_recommendations(results)
+
+      {:error, reason} ->
+        Logger.warning("[UserAnalytics] Recommendation search failed: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp build_search_opts(user_id, collection, limit, exclude_watched) do
+    search_opts = [limit: limit, score_threshold: 0.5]
+
+    case build_exclusion_filter(user_id, collection, exclude_watched) do
+      nil -> search_opts
+      filter -> Keyword.put(search_opts, :filter, filter)
+    end
+  end
+
+  defp build_exclusion_filter(_user_id, _collection, false), do: nil
+
+  defp build_exclusion_filter(user_id, collection, true) do
+    case get_watched_content_ids(user_id, collection) do
+      [] -> nil
+      watched_ids -> %{must_not: [%{has_id: watched_ids}]}
+    end
+  end
+
+  defp recommend_channels_from_history(history, limit) do
+    watched_channel_ids = Enum.map(history, & &1.content_id)
+    category_scores = compute_channel_category_scores(watched_channel_ids, history)
+
+    case category_scores do
+      scores when map_size(scores) == 0 ->
+        {:ok, get_popular_channels(limit)}
+
+      scores ->
+        top_category_ids = top_category_ids(scores)
+        recommended = recommended_channels(top_category_ids, watched_channel_ids, limit)
+        {:ok, fill_channel_recommendations(recommended, watched_channel_ids, limit)}
+    end
+  end
+
+  defp top_category_ids(category_scores) do
+    category_scores
+    |> Enum.sort_by(fn {_id, score} -> score end, :desc)
+    |> Enum.take(10)
+    |> Enum.map(fn {id, _score} -> id end)
+  end
+
+  defp recommended_channels(top_category_ids, watched_channel_ids, limit) do
+    from(c in LiveChannel,
+      join: lcc in "live_channel_categories",
+      on: lcc.live_channel_id == c.id,
+      join: p in Streamix.Iptv.Provider,
+      on: c.provider_id == p.id,
+      where: p.visibility in [:global, :public],
+      where: lcc.category_id in ^top_category_ids,
+      where: c.id not in ^watched_channel_ids,
+      where: not is_nil(c.stream_icon),
+      limit: ^(limit * 3),
+      select: c
+    )
+    |> Repo.all()
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.shuffle()
+    |> Enum.take(limit)
+  end
+
+  defp fill_channel_recommendations(recommended, watched_channel_ids, limit) do
+    case recommended do
+      channels when length(channels) < limit ->
+        remaining = limit - length(channels)
+        exclude_ids = watched_channel_ids ++ Enum.map(channels, & &1.id)
+        channels ++ get_popular_channels(remaining, exclude_ids)
+
+      channels ->
+        channels
+    end
+  end
+
+  defp filter_by_genre(items, "all"), do: items
+
+  defp filter_by_genre(items, genre) do
+    downcased_genre = String.downcase(genre)
+
+    Enum.filter(items, fn item ->
+      item.genre
+      |> Kernel.||("")
+      |> String.downcase()
+      |> String.contains?(downcased_genre)
+    end)
+  end
+
+  defp maybe_reorder_by_user_taste(items, user_id) do
+    case get_user_profile(user_id) do
+      nil -> items
+      _profile_vector -> reorder_by_favorite_genres(items, user_id)
+    end
+  end
+
+  defp reorder_by_favorite_genres(items, user_id) do
+    favorite_genres = user_id |> get_user_insights() |> Map.get(:favorite_genres, [])
+    Enum.sort_by(items, &genre_priority(&1, favorite_genres))
+  end
+
+  defp genre_priority(item, favorite_genres) do
+    item_genre = item.genre || ""
+    if matches_favorite_genre?(item_genre, favorite_genres), do: 0, else: 1
+  end
+
+  defp matches_favorite_genre?(item_genre, favorite_genres) do
+    item_genre = String.downcase(item_genre)
+
+    Enum.any?(favorite_genres, fn genre ->
+      String.contains?(item_genre, String.downcase(genre))
+    end)
+  end
+
+  defp map_embeddings(history) do
+    Enum.reduce(history, [], fn entry, acc ->
+      case Qdrant.get_point(content_type_to_collection(entry.content_type), entry.content_id) do
+        {:ok, %{vector: vector}} ->
+          [%{vector: vector, weight: calculate_weight(entry)} | acc]
+
+        _ ->
+          acc
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  defp weighted_profile(content_with_vectors, dimensions, total_weight) do
+    Enum.reduce(content_with_vectors, List.duplicate(0.0, dimensions), fn %{
+                                                                            vector: vec,
+                                                                            weight: weight
+                                                                          },
+                                                                          acc ->
+      apply_weighted_vector(acc, vec, weight, total_weight)
+    end)
+  end
+
+  defp apply_weighted_vector(acc, vector, weight, total_weight) do
+    acc
+    |> Enum.zip(vector)
+    |> Enum.map(fn {current, value} -> current + value * weight / total_weight end)
   end
 
   defp format_recommendations(results) do
