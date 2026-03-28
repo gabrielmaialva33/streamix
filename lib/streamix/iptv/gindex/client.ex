@@ -256,7 +256,7 @@ defmodule Streamix.Iptv.Gindex.Client do
   """
   def get_best_endpoint_for(operation) when operation in [:list, :stream, :file_info] do
     case EndpointManager.get_all_endpoints() do
-      {:ok, endpoints} when is_list(endpoints) and length(endpoints) > 0 ->
+      {:ok, [_ | _] = endpoints} ->
         # Convert to format expected by HealthTracker
         endpoints_list =
           Enum.map(endpoints, fn %{name: name, url: url, priority: priority} ->
@@ -286,80 +286,104 @@ defmodule Streamix.Iptv.Gindex.Client do
   end
 
   defp do_request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt) do
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
-    follow_redirects = Keyword.get(opts, :follow_redirects, true)
-
-    req_opts = [
-      method: method,
-      url: url,
-      headers: build_headers(method),
-      receive_timeout: timeout,
-      redirect: follow_redirects,
-      finch: Streamix.Finch
-    ]
-
-    req_opts =
-      if body do
-        Keyword.put(req_opts, :body, body)
-      else
-        req_opts
-      end
-
-    case Req.request(req_opts) do
+    case Req.request(build_request_opts(method, url, body, opts)) do
       {:ok, response} ->
-        result =
-          handle_response(
-            response,
-            method,
-            url,
-            body,
-            base_url,
-            opts,
-            attempt,
-            rate_limit_attempt
-          )
-
-        # Detect operation type from URL/body
-        operation = detect_operation(url, body)
-
-        # Report success/failure to EndpointManager and HealthTracker
-        case result do
-          {:ok, %{status: 200}} ->
-            EndpointManager.report_success(base_url)
-            HealthTracker.record_success(base_url, operation)
-
-          {:ok, %{status: status, body: resp_body}} when status >= 500 ->
-            # Detect specific JS errors from GIndex workers
-            error_type = detect_error_type(resp_body)
-            EndpointManager.report_error(base_url)
-            HealthTracker.record_error(base_url, operation, error_type)
-
-          {:error, reason} ->
-            EndpointManager.report_error(base_url)
-            HealthTracker.record_error(base_url, operation, reason)
-
-          _ ->
-            :ok
-        end
-
-        result
+        handle_request_response(
+          response,
+          method,
+          url,
+          body,
+          base_url,
+          opts,
+          attempt,
+          rate_limit_attempt
+        )
 
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
-        Logger.warning("[GIndex] Request failed (attempt #{attempt + 1}): #{inspect(reason)}")
-
-        # On DNS resolution failure, clear the DNS cache before retry
-        # This forces fresh DNS lookup and avoids stale cache issues in containers
-        if reason in [:nxdomain, :timeout] do
-          :inet_db.clear_cache()
-        end
-
-        Process.sleep(@retry_delay)
-        do_request_with_retry(method, url, body, base_url, opts, attempt + 1, rate_limit_attempt)
+        retry_transport_error(
+          reason,
+          method,
+          url,
+          body,
+          base_url,
+          opts,
+          attempt,
+          rate_limit_attempt
+        )
 
       {:error, reason} ->
         EndpointManager.report_error(base_url)
         {:error, reason}
     end
+  end
+
+  defp build_request_opts(method, url, body, opts) do
+    req_opts = [
+      method: method,
+      url: url,
+      headers: build_headers(method),
+      receive_timeout: Keyword.get(opts, :timeout, @default_timeout),
+      redirect: Keyword.get(opts, :follow_redirects, true),
+      finch: Streamix.Finch
+    ]
+
+    if body, do: Keyword.put(req_opts, :body, body), else: req_opts
+  end
+
+  defp handle_request_response(
+         response,
+         method,
+         url,
+         body,
+         base_url,
+         opts,
+         attempt,
+         rate_limit_attempt
+       ) do
+    result =
+      handle_response(response, method, url, body, base_url, opts, attempt, rate_limit_attempt)
+
+    report_request_result(base_url, detect_operation(url, body), result)
+    result
+  end
+
+  defp report_request_result(base_url, operation, {:ok, %{status: 200}}) do
+    EndpointManager.report_success(base_url)
+    HealthTracker.record_success(base_url, operation)
+  end
+
+  defp report_request_result(base_url, operation, {:ok, %{status: status, body: resp_body}})
+       when status >= 500 do
+    error_type = detect_error_type(resp_body)
+    EndpointManager.report_error(base_url)
+    HealthTracker.record_error(base_url, operation, error_type)
+  end
+
+  defp report_request_result(base_url, operation, {:error, reason}) do
+    EndpointManager.report_error(base_url)
+    HealthTracker.record_error(base_url, operation, reason)
+  end
+
+  defp report_request_result(_base_url, _operation, _result), do: :ok
+
+  defp retry_transport_error(
+         reason,
+         method,
+         url,
+         body,
+         base_url,
+         opts,
+         attempt,
+         rate_limit_attempt
+       ) do
+    Logger.warning("[GIndex] Request failed (attempt #{attempt + 1}): #{inspect(reason)}")
+
+    if reason in [:nxdomain, :timeout] do
+      :inet_db.clear_cache()
+    end
+
+    Process.sleep(@retry_delay)
+    do_request_with_retry(method, url, body, base_url, opts, attempt + 1, rate_limit_attempt)
   end
 
   # Handle rate limiting (429) and service unavailable (503) with exponential backoff

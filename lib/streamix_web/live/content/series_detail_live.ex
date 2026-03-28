@@ -5,8 +5,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Iptv
   alias Streamix.AI.SemanticSearch
+  alias Streamix.Iptv
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 

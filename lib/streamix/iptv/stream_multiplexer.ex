@@ -10,6 +10,8 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   require Logger
 
+  alias Streamix.Iptv.StreamMultiplexerSupervisor
+
   @connect_timeout 10_000
   @max_redirects 5
   @idle_timeout 30_000
@@ -61,10 +63,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   defp start_or_lookup(stream_key, url) do
     # Skip Registry.lookup — go straight to start_child which is atomic
     # via the :via Registry name. This avoids the lookup-then-start race.
-    case Streamix.Iptv.StreamMultiplexerSupervisor.start_child(
-           stream_key: stream_key,
-           url: url
-         ) do
+    case StreamMultiplexerSupervisor.start_child(stream_key: stream_key, url: url) do
       {:ok, pid} ->
         {:ok, pid}
 
@@ -237,50 +236,46 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   defp process_responses([], state), do: {:ok, state}
 
   defp process_responses([response | rest], state) do
-    result =
-      case response do
-        {:status, _ref, status} ->
-          Logger.debug("[StreamMux] Upstream status: #{status}")
-
-          if status in [301, 302, 303, 307, 308] do
-            {:ok, %{state | status: {:redirect, status}}}
-          else
-            {:ok, state}
-          end
-
-        {:headers, _ref, headers} ->
-          case state.status do
-            {:redirect, _} ->
-              handle_redirect_headers(headers, state)
-
-            _ ->
-              Logger.debug("[StreamMux] Upstream headers received")
-              {:ok, state}
-          end
-
-        {:data, _ref, chunk} ->
-          {:ok, push_chunk(chunk, state)}
-
-        {:done, _ref} ->
-          Logger.info("[StreamMux] Upstream done for #{state.stream_key}")
-          broadcast(state.stream_key, :stream_done)
-          {:ok, state}
-
-        {:error, _ref, reason} ->
-          Logger.error("[StreamMux] Upstream error for #{state.stream_key}: #{inspect(reason)}")
-
-          broadcast(state.stream_key, {:stream_error, reason})
-          {:ok, state}
-
-        _ ->
-          {:ok, state}
-      end
-
-    case result do
+    case process_response(response, state) do
       {:ok, new_state} -> process_responses(rest, new_state)
       {:stop, _state} = stop -> stop
     end
   end
+
+  defp process_response({:status, _ref, status}, state) do
+    Logger.debug("[StreamMux] Upstream status: #{status}")
+
+    if status in [301, 302, 303, 307, 308] do
+      {:ok, %{state | status: {:redirect, status}}}
+    else
+      {:ok, state}
+    end
+  end
+
+  defp process_response({:headers, _ref, headers}, %{status: {:redirect, _}} = state) do
+    handle_redirect_headers(headers, state)
+  end
+
+  defp process_response({:headers, _ref, _headers}, state) do
+    Logger.debug("[StreamMux] Upstream headers received")
+    {:ok, state}
+  end
+
+  defp process_response({:data, _ref, chunk}, state), do: {:ok, push_chunk(chunk, state)}
+
+  defp process_response({:done, _ref}, state) do
+    Logger.info("[StreamMux] Upstream done for #{state.stream_key}")
+    broadcast(state.stream_key, :stream_done)
+    {:ok, state}
+  end
+
+  defp process_response({:error, _ref, reason}, state) do
+    Logger.error("[StreamMux] Upstream error for #{state.stream_key}: #{inspect(reason)}")
+    broadcast(state.stream_key, {:stream_error, reason})
+    {:ok, state}
+  end
+
+  defp process_response(_response, state), do: {:ok, state}
 
   defp handle_redirect_headers(headers, state) do
     location =
@@ -289,43 +284,52 @@ defmodule Streamix.Iptv.StreamMultiplexer do
         _ -> nil
       end)
 
-    if location do
-      redirect_url = resolve_url(state.url, location)
+    case location do
+      nil ->
+        Logger.error("[StreamMux] Redirect without Location header")
+        {:ok, state}
 
-      # Validate redirect target to prevent SSRF via open redirects
-      case StreamixWeb.UrlValidator.validate_url(redirect_url) do
-        :ok ->
-          Logger.info("[StreamMux] Following redirect to #{redirect_url}")
-
-          close_upstream(state)
-
-          case connect_upstream(redirect_url, 0) do
-            {:ok, mint_conn, request_ref} ->
-              {:ok,
-               %{
-                 state
-                 | mint_conn: mint_conn,
-                   request_ref: request_ref,
-                   url: redirect_url,
-                   status: :streaming
-               }}
-
-            {:error, reason} ->
-              Logger.error("[StreamMux] Redirect connect failed: #{inspect(reason)}")
-              broadcast(state.stream_key, {:stream_error, reason})
-              {:stop, %{state | mint_conn: nil, request_ref: nil, status: :error}}
-          end
-
-        {:error, reason} ->
-          Logger.error("[StreamMux] SSRF blocked redirect to #{redirect_url}")
-          broadcast(state.stream_key, {:stream_error, reason})
-          close_upstream(state)
-          {:stop, %{state | mint_conn: nil, request_ref: nil, status: :error}}
-      end
-    else
-      Logger.error("[StreamMux] Redirect without Location header")
-      {:ok, state}
+      location ->
+        follow_redirect(resolve_url(state.url, location), state)
     end
+  end
+
+  defp follow_redirect(redirect_url, state) do
+    case StreamixWeb.UrlValidator.validate_url(redirect_url) do
+      :ok ->
+        reconnect_redirect(redirect_url, state)
+
+      {:error, reason} ->
+        Logger.error("[StreamMux] SSRF blocked redirect to #{redirect_url}")
+        close_upstream(state)
+        stop_with_stream_error(reason, state)
+    end
+  end
+
+  defp reconnect_redirect(redirect_url, state) do
+    Logger.info("[StreamMux] Following redirect to #{redirect_url}")
+    close_upstream(state)
+
+    case connect_upstream(redirect_url, 0) do
+      {:ok, mint_conn, request_ref} ->
+        {:ok,
+         %{
+           state
+           | mint_conn: mint_conn,
+             request_ref: request_ref,
+             url: redirect_url,
+             status: :streaming
+         }}
+
+      {:error, reason} ->
+        Logger.error("[StreamMux] Redirect connect failed: #{inspect(reason)}")
+        stop_with_stream_error(reason, state)
+    end
+  end
+
+  defp stop_with_stream_error(reason, state) do
+    broadcast(state.stream_key, {:stream_error, reason})
+    {:stop, %{state | mint_conn: nil, request_ref: nil, status: :error}}
   end
 
   defp push_chunk(chunk, state) do

@@ -1,9 +1,9 @@
 defmodule StreamixWeb.HomeLive do
   use StreamixWeb, :live_view
 
-  alias Streamix.Iptv
-  alias Streamix.Cache
   alias Streamix.AI.UserAnalytics
+  alias Streamix.Cache
+  alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
   def mount(_params, _session, socket) do

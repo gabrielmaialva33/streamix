@@ -89,23 +89,7 @@ defmodule Streamix.Iptv.TmdbClient do
   Results are cached in Redis for 1h.
   """
   def search_movie(query, opts \\ []) do
-    if enabled?() do
-      Cache.fetch_tmdb_search_movie(query, opts, fn ->
-        year = opts[:year]
-        query_encoded = URI.encode_www_form(query)
-
-        url =
-          if year do
-            "#{@base_url}/search/movie?query=#{query_encoded}&year=#{year}&language=pt-BR"
-          else
-            "#{@base_url}/search/movie?query=#{query_encoded}&language=pt-BR"
-          end
-
-        do_request(url)
-      end)
-    else
-      {:error, :tmdb_not_configured}
-    end
+    search(:movie, query, opts)
   end
 
   @doc """
@@ -114,23 +98,7 @@ defmodule Streamix.Iptv.TmdbClient do
   Returns {:ok, results} or {:error, reason}.
   """
   def search_series(query, opts \\ []) do
-    if enabled?() do
-      Cache.fetch_tmdb_search_series(query, opts, fn ->
-        year = opts[:year]
-        query_encoded = URI.encode_www_form(query)
-
-        url =
-          if year do
-            "#{@base_url}/search/tv?query=#{query_encoded}&first_air_date_year=#{year}&language=pt-BR"
-          else
-            "#{@base_url}/search/tv?query=#{query_encoded}&language=pt-BR"
-          end
-
-        do_request(url)
-      end)
-    else
-      {:error, :tmdb_not_configured}
-    end
+    search(:series, query, opts)
   end
 
   @doc """
@@ -223,6 +191,41 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   def parse_episode_response(_), do: %{}
+
+  defp search(type, query, opts) do
+    if enabled?() do
+      fetch_search(type, query, opts, fn ->
+        type
+        |> search_url(query, opts[:year])
+        |> do_request()
+      end)
+    else
+      {:error, :tmdb_not_configured}
+    end
+  end
+
+  defp fetch_search(:movie, query, opts, fun), do: Cache.fetch_tmdb_search_movie(query, opts, fun)
+
+  defp fetch_search(:series, query, opts, fun),
+    do: Cache.fetch_tmdb_search_series(query, opts, fun)
+
+  defp search_url(type, query, year) do
+    query_encoded = URI.encode_www_form(query)
+
+    case {type, year} do
+      {:movie, nil} ->
+        "#{@base_url}/search/movie?query=#{query_encoded}&language=pt-BR"
+
+      {:movie, year} ->
+        "#{@base_url}/search/movie?query=#{query_encoded}&year=#{year}&language=pt-BR"
+
+      {:series, nil} ->
+        "#{@base_url}/search/tv?query=#{query_encoded}&language=pt-BR"
+
+      {:series, year} ->
+        "#{@base_url}/search/tv?query=#{query_encoded}&first_air_date_year=#{year}&language=pt-BR"
+    end
+  end
 
   # ============================================================================
   # Private

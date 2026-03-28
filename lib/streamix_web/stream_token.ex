@@ -73,28 +73,13 @@ defmodule StreamixWeb.StreamToken do
   - If user_id is nil (public catalog token), the provider must be public/global.
   """
   def verify_and_get_url(token) do
-    case Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age) do
-      {:ok, %{type: "url", url: url, user_id: _user_id}} ->
-        # Direct URL token — re-validate at use time to prevent DNS rebinding
-        case UrlValidator.validate_url(url) do
-          :ok -> {:ok, url, "url"}
-          {:error, :unsafe_url} -> {:error, :unsafe_url}
-        end
-
-      # Legacy tokens without user_id (URL type only) — allow with re-validation
+    case verify_token(token) do
       {:ok, %{type: "url", url: url}} ->
-        case UrlValidator.validate_url(url) do
-          :ok -> {:ok, url, "url"}
-          {:error, :unsafe_url} -> {:error, :unsafe_url}
-        end
+        validate_direct_url(url)
 
       {:ok, %{type: type, id: id, user_id: user_id}} ->
-        case get_stream_url(type, id, user_id) do
-          {:ok, url} -> {:ok, url, type}
-          error -> error
-        end
+        handle_content_token(type, id, user_id)
 
-      # Reject legacy content tokens without user_id binding
       {:ok, %{type: _type, id: _id}} ->
         {:error, :invalid_token}
 
@@ -111,6 +96,24 @@ defmodule StreamixWeb.StreamToken do
   defp sign_content(type, id, user_id) do
     data = %{type: type, id: id, user_id: user_id}
     Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
+  end
+
+  defp verify_token(token) do
+    Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age)
+  end
+
+  defp validate_direct_url(url) do
+    case UrlValidator.validate_url(url) do
+      :ok -> {:ok, url, "url"}
+      {:error, :unsafe_url} -> {:error, :unsafe_url}
+    end
+  end
+
+  defp handle_content_token(type, id, user_id) do
+    case get_stream_url(type, id, user_id) do
+      {:ok, url} -> {:ok, url, type}
+      error -> error
+    end
   end
 
   defp get_stream_url("movie", id, user_id) do

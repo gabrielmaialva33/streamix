@@ -87,14 +87,6 @@ defmodule StreamixWeb.StreamController do
     |> json(%{error: "Too many redirects"})
   end
 
-  # VOD: resolve IPTV provider redirects, then redirect to nginx with final URL.
-  # Follows redirects manually with Req (redirect: false) to track the final URL.
-  defp resolve_and_redirect_to_proxy(conn, _url, redirect_count)
-       when redirect_count > @max_redirects do
-    Logger.error("Stream proxy: too many redirects resolving VOD URL")
-    conn |> put_status(:bad_gateway) |> json(%{error: "Too many redirects"})
-  end
-
   defp resolve_and_redirect_to_proxy(conn, url, _redirect_count) do
     # Follow redirects step by step to track the final URL.
     # Use redirect: false and follow manually so we know each hop.
@@ -141,19 +133,7 @@ defmodule StreamixWeb.StreamController do
            max_body: 1_024
          ) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
-        case List.first(Map.get(headers, "location", [])) do
-          nil ->
-            {:error, :missing_location}
-
-          location ->
-            next_url =
-              if String.starts_with?(location, "http"),
-                do: location,
-                else: URI.merge(url, location) |> URI.to_string()
-
-            Logger.info("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
-            resolve_final_url(next_url, count + 1)
-        end
+        follow_resolved_redirect(url, headers, count)
 
       {:ok, %{status: status}} when status in 200..299 ->
         {:ok, url}
@@ -167,6 +147,28 @@ defmodule StreamixWeb.StreamController do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp follow_resolved_redirect(url, headers, count) do
+    case List.first(Map.get(headers, "location", [])) do
+      nil ->
+        {:error, :missing_location}
+
+      location ->
+        next_url = resolve_redirect_location(url, location)
+        Logger.info("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
+        resolve_final_url(next_url, count + 1)
+    end
+  end
+
+  defp resolve_redirect_location(url, location) do
+    if String.starts_with?(location, "http") do
+      location
+    else
+      url
+      |> URI.merge(location)
+      |> URI.to_string()
     end
   end
 

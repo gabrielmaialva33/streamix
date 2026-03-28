@@ -6,7 +6,7 @@ defmodule Streamix.WatchParty do
   import Ecto.Query
 
   alias Streamix.Repo
-  alias Streamix.WatchParty.{Room, Participant, Message, RoomServer}
+  alias Streamix.WatchParty.{Message, Participant, Room, RoomServer}
 
   @topic_prefix "watch_party:room:"
 

@@ -65,29 +65,7 @@ defmodule StreamixWeb.PlayerHelpers do
         nil
 
       next ->
-        stream_url =
-          case type do
-            "episode" ->
-              token = StreamToken.sign_episode(next.id, user_id)
-              build_token_proxy_url(token)
-
-            "gindex_episode" ->
-              case get_gindex_episode_url(next) do
-                nil -> nil
-                url -> sign_and_build_url_proxy(url, user_id)
-              end
-          end
-
-        %{
-          id: next.id,
-          title: next.title || "Episódio #{next.episode_num}",
-          episode_num: next.episode_num,
-          season_num: next.season.season_number,
-          series_name: next.season.series.name,
-          cover: ImageProxy.proxy(next.cover || next.still_path),
-          stream_url: stream_url,
-          type: type
-        }
+        build_next_episode_payload(next, type, user_id)
     end
   end
 
@@ -169,6 +147,32 @@ defmodule StreamixWeb.PlayerHelpers do
       {:ok, url} -> url
       _ -> nil
     end
+  end
+
+  defp next_episode_stream_url("episode", next, user_id) do
+    next.id
+    |> StreamToken.sign_episode(user_id)
+    |> build_token_proxy_url()
+  end
+
+  defp next_episode_stream_url("gindex_episode", next, user_id) do
+    case get_gindex_episode_url(next) do
+      nil -> nil
+      url -> sign_and_build_url_proxy(url, user_id)
+    end
+  end
+
+  defp build_next_episode_payload(next, type, user_id) do
+    %{
+      id: next.id,
+      title: next.title || "Episódio #{next.episode_num}",
+      episode_num: next.episode_num,
+      season_num: next.season.season_number,
+      series_name: next.season.series.name,
+      cover: ImageProxy.proxy(next.cover || next.still_path),
+      stream_url: next_episode_stream_url(type, next, user_id),
+      type: type
+    }
   end
 
   defp build_token_proxy_url(token) do

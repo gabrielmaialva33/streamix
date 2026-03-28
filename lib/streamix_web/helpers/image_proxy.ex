@@ -210,10 +210,9 @@ defmodule StreamixWeb.Helpers.ImageProxy do
         {"w342", "342w"},
         {"w500", "500w"}
       ]
-      |> Enum.map(fn {size, width} ->
+      |> Enum.map_join(", ", fn {size, width} ->
         "https://tmdb.mahina.cloud/t/p/#{size}#{clean_path} #{width}"
       end)
-      |> Enum.join(", ")
     end
   end
 

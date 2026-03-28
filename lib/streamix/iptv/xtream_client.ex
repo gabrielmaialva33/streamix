@@ -130,35 +130,7 @@ defmodule Streamix.Iptv.XtreamClient do
     provider_id = :erlang.phash2({base_url, username})
 
     # Check circuit breaker before making request
-    case XtreamCircuitBreaker.allow_request?(provider_id) do
-      :ok ->
-        Telemetry.span_api_call(provider_id, action_name, fn ->
-          result = do_api_call(url, 0)
-
-          # Report result to circuit breaker
-          case result do
-            {:ok, _} ->
-              XtreamCircuitBreaker.report_success(provider_id)
-
-            {:error, error_type} ->
-              XtreamCircuitBreaker.report_error(provider_id, categorize_error(error_type))
-          end
-
-          result
-        end)
-
-      {:error, {:circuit_open, remaining_seconds}} ->
-        Logger.warning(
-          "[XtreamClient] Circuit OPEN for provider #{provider_id}, failing fast " <>
-            "(retry in #{remaining_seconds}s)"
-        )
-
-        {:error, {:circuit_open, remaining_seconds}}
-
-      {:error, :circuit_half_open_limit} ->
-        Logger.debug("[XtreamClient] Circuit HALF-OPEN limit reached, waiting for test results")
-        {:error, :circuit_half_open_limit}
-    end
+    with_circuit_breaker(provider_id, action_name, fn -> do_api_call(url, 0) end)
   end
 
   defp do_api_call(url, attempt) do
@@ -214,6 +186,37 @@ defmodule Streamix.Iptv.XtreamClient do
   defp categorize_error({:transport_error, :timeout}), do: :timeout
   defp categorize_error({:transport_error, _}), do: :transport_error
   defp categorize_error(_), do: :unknown
+
+  defp with_circuit_breaker(provider_id, action_name, fun) do
+    case XtreamCircuitBreaker.allow_request?(provider_id) do
+      :ok ->
+        Telemetry.span_api_call(provider_id, action_name, fn ->
+          result = fun.()
+          report_api_result(provider_id, result)
+          result
+        end)
+
+      {:error, {:circuit_open, remaining_seconds}} ->
+        Logger.warning(
+          "[XtreamClient] Circuit OPEN for provider #{provider_id}, failing fast " <>
+            "(retry in #{remaining_seconds}s)"
+        )
+
+        {:error, {:circuit_open, remaining_seconds}}
+
+      {:error, :circuit_half_open_limit} ->
+        Logger.debug("[XtreamClient] Circuit HALF-OPEN limit reached, waiting for test results")
+        {:error, :circuit_half_open_limit}
+    end
+  end
+
+  defp report_api_result(provider_id, {:ok, _}) do
+    XtreamCircuitBreaker.report_success(provider_id)
+  end
+
+  defp report_api_result(provider_id, {:error, error_type}) do
+    XtreamCircuitBreaker.report_error(provider_id, categorize_error(error_type))
+  end
 
   defp build_url(base_url, username, password, action, extra_params) do
     base = String.trim_trailing(base_url, "/")

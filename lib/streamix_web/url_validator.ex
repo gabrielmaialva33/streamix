@@ -26,9 +26,8 @@ defmodule StreamixWeb.UrlValidator do
 
     with :ok <- validate_scheme(uri.scheme),
          :ok <- validate_host_present(uri.host),
-         :ok <- validate_host_not_ip_literal(uri.host),
-         :ok <- validate_resolved_ip(uri.host) do
-      :ok
+         :ok <- validate_host_not_ip_literal(uri.host) do
+      validate_resolved_ip(uri.host)
     end
   end
 
@@ -73,33 +72,39 @@ defmodule StreamixWeb.UrlValidator do
   end
 
   defp validate_resolved_ip(host) do
-    case :inet.getaddr(String.to_charlist(host), :inet) do
+    case resolve_host(host, :inet) do
       {:ok, ip} ->
-        if private_ip?(ip) do
-          Logger.warning("SSRF blocked: #{host} resolves to private IP #{format_ip(ip)}")
-          {:error, :unsafe_url}
-        else
-          :ok
-        end
+        validate_resolved_address(host, ip)
 
       {:error, _} ->
-        # Also try IPv6
-        case :inet.getaddr(String.to_charlist(host), :inet6) do
-          {:ok, ip6} ->
-            if private_ip?(ip6) do
-              Logger.warning("SSRF blocked: #{host} resolves to private IPv6")
-              {:error, :unsafe_url}
-            else
-              :ok
-            end
-
-          {:error, _} ->
-            # DNS resolution failed — allow it through and let Mint handle the connection error.
-            # Blocking here would break URLs that are temporarily unresolvable from the server
-            # but valid IPTV endpoints.
-            :ok
-        end
+        validate_ipv6_resolution(host)
     end
+  end
+
+  defp validate_ipv6_resolution(host) do
+    case resolve_host(host, :inet6) do
+      {:ok, ip6} ->
+        validate_resolved_address(host, ip6)
+
+      {:error, _} ->
+        # DNS resolution failed — allow it through and let Mint handle the connection error.
+        # Blocking here would break URLs that are temporarily unresolvable from the server
+        # but valid IPTV endpoints.
+        :ok
+    end
+  end
+
+  defp validate_resolved_address(host, ip) do
+    if private_ip?(ip) do
+      Logger.warning("SSRF blocked: #{host} resolves to private IP #{format_ip(ip)}")
+      {:error, :unsafe_url}
+    else
+      :ok
+    end
+  end
+
+  defp resolve_host(host, family) do
+    :inet.getaddr(String.to_charlist(host), family)
   end
 
   # IPv4 private/reserved ranges
