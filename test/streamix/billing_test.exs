@@ -149,9 +149,13 @@ defmodule Streamix.BillingTest do
       Subscription.create_changeset(%Subscription{}, user, plan, %{
         status: "active",
         starts_at: DateTime.add(DateTime.utc_now(), 1, :day),
-        expires_at: DateTime.utc_now()
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day),
+        user_id: -1,
+        plan_id: -1
       })
 
+    assert Ecto.Changeset.get_field(changeset, :user_id) == user.id
+    assert Ecto.Changeset.get_field(changeset, :plan_id) == plan.id
     assert %{expires_at: ["must be after starts_at"]} = errors_on(changeset)
   end
 end

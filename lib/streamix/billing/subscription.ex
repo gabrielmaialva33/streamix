@@ -59,8 +59,8 @@ defmodule Streamix.Billing.Subscription do
     else
       case DateTime.compare(starts_at, expires_at) do
         :lt -> changeset
-        :eq -> changeset
         :gt -> add_error(changeset, :expires_at, "must be after starts_at")
+        :eq -> add_error(changeset, :expires_at, "must be after starts_at")
       end
     end
   end
