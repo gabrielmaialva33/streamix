@@ -10,6 +10,21 @@ defmodule Streamix.TestSupport.StreamProxyTestServer do
     path = request_path(conn.request_path)
 
     case {conn.method, path} do
+      {"HEAD", "/redirect-to-xtream.mp4"} ->
+        conn
+        |> put_resp_header(
+          "location",
+          "http://cdn.example.test/movie/final_user/final_pass/99807.mp4"
+        )
+        |> send_resp(302, "")
+
+      {"HEAD", "/movie/final_user/final_pass/99807.mp4"} ->
+        send_resp(conn, 200, "")
+
+      {"GET", "/movie/final_user/final_pass/99807.mp4"} ->
+        conn = send_chunked(conn, 200)
+        stream_body(conn, body_counter, 1)
+
       {"HEAD", "/video.mp4"} ->
         send_resp(conn, 405, "")
 

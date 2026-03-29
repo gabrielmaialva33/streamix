@@ -95,22 +95,28 @@ defmodule StreamixWeb.StreamController do
   defp resolve_and_redirect_to_proxy(conn, url, _redirect_count) do
     case resolve_final_url(url, 0) do
       {:ok, final_url} ->
-        # Security: NEVER send original provider URL (has credentials) to the browser.
-        # Only send the final delivery URL (has only a short-lived JWT token).
-        if credentials_in_url?(final_url) do
-          Logger.error("Stream proxy: BLOCKED — final URL still contains credentials")
-          conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
-        else
-          proxy_base =
-            Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+        proxy_base =
+          Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
 
-          final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(final_url)}"
+        with {:ok, final_proxy} <- build_proxy_redirect_url(proxy_base, final_url),
+             :ok <- ensure_final_url_stays_server_side(final_url, proxy_base) do
           Logger.info("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")
 
           conn
           |> put_resp_header("access-control-allow-origin", "*")
           |> put_resp_header("cache-control", "no-cache, no-store")
           |> redirect(external: final_proxy)
+        else
+          {:error, :unsafe_proxy_base} ->
+            Logger.error(
+              "Stream proxy: BLOCKED — invalid stream proxy base #{inspect(proxy_base)}"
+            )
+
+            conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
+
+          {:error, :credentials_would_escape} ->
+            Logger.error("Stream proxy: BLOCKED — final URL still contains credentials")
+            conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
         end
 
       {:error, reason} ->
@@ -225,6 +231,36 @@ defmodule StreamixWeb.StreamController do
       path -> Regex.match?(~r{/(live|movie|series)/[^/]+/[^/]+/}, path)
     end
   end
+
+  defp ensure_final_url_stays_server_side(final_url, proxy_base) do
+    if credentials_in_url?(final_url) and not trusted_proxy_base?(proxy_base) do
+      {:error, :credentials_would_escape}
+    else
+      :ok
+    end
+  end
+
+  defp build_proxy_redirect_url(proxy_base, final_url) do
+    if trusted_proxy_base?(proxy_base) do
+      normalized_base = String.trim_trailing(proxy_base, "/")
+      {:ok, "#{normalized_base}/proxy?url=#{URI.encode_www_form(final_url)}"}
+    else
+      {:error, :unsafe_proxy_base}
+    end
+  end
+
+  defp trusted_proxy_base?(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host, userinfo: nil}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp trusted_proxy_base?(_), do: false
 
   defp put_cors_headers(conn) do
     origin = get_cors_origin(conn)
