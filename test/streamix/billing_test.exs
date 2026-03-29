@@ -39,9 +39,7 @@ defmodule Streamix.BillingTest do
       })
 
     %Subscription{}
-    |> Subscription.changeset(params)
-    |> Ecto.Changeset.put_change(:user_id, user.id)
-    |> Ecto.Changeset.put_change(:plan_id, plan.id)
+    |> Subscription.create_changeset(user, plan, params)
     |> Repo.insert!()
   end
 
@@ -63,6 +61,7 @@ defmodule Streamix.BillingTest do
 
     create_subscription!(user, plan,
       status: "active",
+      starts_at: DateTime.add(DateTime.utc_now(), -2, :day),
       expires_at: DateTime.add(DateTime.utc_now(), -1, :day)
     )
 
@@ -99,17 +98,27 @@ defmodule Streamix.BillingTest do
     user = user_fixture()
     plan = plan_fixture()
 
-    subscription =
+    older_subscription =
+      create_subscription!(user, plan,
+        status: "active",
+        starts_at: DateTime.add(DateTime.utc_now(), -2, :day),
+        expires_at: DateTime.add(DateTime.utc_now(), 2, :day),
+        external_reference: "sub_old"
+      )
+
+    newer_subscription =
       create_subscription!(user, plan,
         status: "active",
         starts_at: DateTime.add(DateTime.utc_now(), -1, :day),
-        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+        expires_at: DateTime.add(DateTime.utc_now(), 3, :day),
+        external_reference: "sub_new"
       )
 
     assert %{id: subscription_id, plan: %Plan{id: plan_id}} =
              Billing.active_subscription_for_user(user)
 
-    assert subscription_id == subscription.id
+    assert subscription_id == newer_subscription.id
+    assert subscription_id != older_subscription.id
     assert plan_id == plan.id
   end
 
@@ -130,5 +139,19 @@ defmodule Streamix.BillingTest do
     changeset = Subscription.changeset(%Subscription{}, %{status: "unknown"})
 
     assert %{status: ["is invalid"]} = errors_on(changeset)
+  end
+
+  test "create_changeset validates ownership and start/end ordering" do
+    user = user_fixture()
+    plan = plan_fixture()
+
+    changeset =
+      Subscription.create_changeset(%Subscription{}, user, plan, %{
+        status: "active",
+        starts_at: DateTime.add(DateTime.utc_now(), 1, :day),
+        expires_at: DateTime.utc_now()
+      })
+
+    assert %{expires_at: ["must be after starts_at"]} = errors_on(changeset)
   end
 end

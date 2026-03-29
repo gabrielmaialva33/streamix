@@ -30,7 +30,7 @@ defmodule Streamix.Billing do
       where: is_nil(s.starts_at) or s.starts_at <= ^now,
       where: is_nil(s.expires_at) or s.expires_at > ^now,
       preload: [:plan],
-      order_by: [desc: s.inserted_at],
+      order_by: [desc: s.inserted_at, desc: s.id],
       limit: 1
     )
     |> Repo.one()

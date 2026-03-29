@@ -40,4 +40,28 @@ defmodule Streamix.Billing.Subscription do
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:plan_id)
   end
+
+  def create_changeset(subscription, user, plan, attrs) do
+    subscription
+    |> changeset(attrs)
+    |> put_change(:user_id, user.id)
+    |> put_change(:plan_id, plan.id)
+    |> validate_required([:user_id, :plan_id, :status])
+    |> validate_start_before_expiration()
+  end
+
+  defp validate_start_before_expiration(changeset) do
+    starts_at = get_field(changeset, :starts_at)
+    expires_at = get_field(changeset, :expires_at)
+
+    if is_nil(starts_at) or is_nil(expires_at) do
+      changeset
+    else
+      case DateTime.compare(starts_at, expires_at) do
+        :lt -> changeset
+        :eq -> changeset
+        :gt -> add_error(changeset, :expires_at, "must be after starts_at")
+      end
+    end
+  end
 end
