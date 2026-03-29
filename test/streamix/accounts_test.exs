@@ -148,6 +148,21 @@ defmodule Streamix.AccountsTest do
     end
   end
 
+  describe "ensure_admin_user!/2" do
+    test "promotes an existing user without duplicating it" do
+      user = user_fixture()
+
+      first_admin = Accounts.ensure_admin_user!(user.email, valid_user_password())
+      second_admin = Accounts.ensure_admin_user!(user.email, valid_user_password())
+
+      assert first_admin.id == user.id
+      assert first_admin.role == "admin"
+      assert second_admin.id == user.id
+      assert second_admin.role == "admin"
+      assert Repo.aggregate(from(u in User, where: u.email == ^user.email), :count, :id) == 1
+    end
+  end
+
   describe "sudo_mode?/2" do
     test "validates the authenticated_at time" do
       now = DateTime.utc_now()

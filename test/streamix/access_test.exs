@@ -102,4 +102,42 @@ defmodule Streamix.AccessTest do
     assert fetched_permission.name == permission.name
     assert fetched_permission.id == permission.id
   end
+
+  test "ensure_permission!/1 updates an existing permission without duplicating it" do
+    attrs = %{
+      name: "play_global_content",
+      description: "Allows playing global content"
+    }
+
+    first_permission = Access.ensure_permission!(attrs)
+
+    updated_permission =
+      Access.ensure_permission!(Map.put(attrs, :description, "Updated permission description"))
+
+    assert first_permission.id == updated_permission.id
+    assert updated_permission.description == "Updated permission description"
+    assert Repo.aggregate(from(p in Permission, where: p.name == ^attrs.name), :count, :id) == 1
+  end
+
+  test "ensure_role_permission!/2 reuses the same role permission" do
+    permission =
+      Access.ensure_permission!(%{
+        name: "play_global_content_role",
+        description: "Allows playing global content"
+      })
+
+    first_role_permission = Access.ensure_role_permission!("admin", permission)
+    second_role_permission = Access.ensure_role_permission!("admin", permission)
+
+    assert first_role_permission.id == second_role_permission.id
+    assert first_role_permission.role == "admin"
+
+    assert Repo.aggregate(
+             from(rp in RolePermission,
+               where: rp.role == "admin" and rp.permission_id == ^permission.id
+             ),
+             :count,
+             :id
+           ) == 1
+  end
 end

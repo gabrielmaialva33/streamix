@@ -24,7 +24,7 @@ if env["GLOBAL_PROVIDER_ENABLED"] == "true" do
   )
 end
 
-alias Streamix.{Accounts, Iptv}
+alias Streamix.{Accounts, Access, Billing, Iptv}
 
 # Create admin user from env vars
 admin_email = env["ADMIN_EMAIL"] || "admin@streamix.local"
@@ -34,19 +34,101 @@ unless admin_password do
   raise "ADMIN_PASSWORD environment variable is required for seeding"
 end
 
-admin =
-  case Accounts.get_user_by_email(admin_email) do
-    nil ->
-      {:ok, user} =
-        Accounts.register_user_with_password(%{email: admin_email, password: admin_password})
+admin = Accounts.ensure_admin_user!(admin_email, admin_password)
+IO.puts("✓ Admin user ready: #{admin.email} (role=#{admin.role})")
 
-      IO.puts("✓ Created admin user: #{admin_email}")
-      user
+default_plan =
+  Billing.ensure_plan!(%{
+    name: "Default",
+    slug: "default",
+    description: "Default active plan",
+    price_cents: 0,
+    currency: "USD",
+    billing_interval: "month",
+    active: true,
+    grants_global_access: false
+  })
 
-    user ->
-      IO.puts("→ Admin user already exists: #{admin_email}")
-      user
-  end
+premium_plan =
+  Billing.ensure_plan!(%{
+    name: "Premium",
+    slug: "premium",
+    description: "Premium plan with global access",
+    price_cents: 1_999,
+    currency: "USD",
+    billing_interval: "month",
+    active: true,
+    grants_global_access: true
+  })
+
+IO.puts("✓ Billing plans ready: #{default_plan.slug}, #{premium_plan.slug}")
+
+global_permission =
+  Access.ensure_permission!(%{
+    name: "play_global_content",
+    description: "Allows playing global content"
+  })
+
+Access.ensure_role_permission!("admin", global_permission)
+IO.puts("✓ Permission ready: #{global_permission.name} (linked to admin)")
+
+parse_datetime = fn
+  nil ->
+    nil
+
+  "" ->
+    nil
+
+  value ->
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} ->
+        datetime
+
+      {:error, reason} ->
+        raise "Invalid SEED_SUBSCRIPTION_EXPIRES_AT value #{inspect(value)}: #{inspect(reason)}"
+    end
+end
+
+# Create a manual subscription only when explicitly requested.
+subscription_email = env["SEED_SUBSCRIPTION_EMAIL"]
+
+if subscription_email do
+  plan_slug = env["SEED_SUBSCRIPTION_PLAN_SLUG"] || premium_plan.slug
+
+  subscription_plan =
+    case Enum.find([default_plan, premium_plan], &(&1.slug == plan_slug)) do
+      nil ->
+        raise(
+          "SEED_SUBSCRIPTION_PLAN_SLUG must match one of the seeded plans: #{default_plan.slug}, #{premium_plan.slug}"
+        )
+
+      plan ->
+        plan
+    end
+
+  subscription_user =
+    case Accounts.get_user_by_email(subscription_email) do
+      nil ->
+        raise("SEED_SUBSCRIPTION_EMAIL must match an existing user: #{subscription_email}")
+
+      user ->
+        user
+    end
+
+  Billing.ensure_manual_subscription!(subscription_user, subscription_plan, %{
+    status: "active",
+    source: "manual",
+    external_reference: "seed:manual:#{subscription_user.id}:#{subscription_plan.id}",
+    starts_at: DateTime.utc_now() |> DateTime.truncate(:second),
+    expires_at: parse_datetime.(env["SEED_SUBSCRIPTION_EXPIRES_AT"])
+  })
+
+  IO.puts(
+    "✓ Manual subscription ready for #{subscription_user.email} on #{subscription_plan.slug}"
+  )
+else
+  IO.puts("→ Skipping manual subscription (SEED_SUBSCRIPTION_EMAIL not set)")
+end
 
 # Create default IPTV provider from env vars (if configured)
 provider_name = env["IPTV_PROVIDER_NAME"]

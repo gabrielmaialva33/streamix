@@ -97,6 +97,28 @@ defmodule Streamix.Accounts do
     |> Repo.insert()
   end
 
+  @doc """
+  Finds or creates a user and guarantees the admin role.
+  """
+  def ensure_admin_user!(email, password) when is_binary(email) and is_binary(password) do
+    user =
+      case get_user_by_email(email) do
+        nil ->
+          {:ok, user} = register_user_with_password(%{email: email, password: password})
+          user
+
+        %User{} = user ->
+          user
+      end
+
+    if admin?(user) do
+      user
+    else
+      {:ok, admin_user} = make_admin_user(user)
+      admin_user
+    end
+  end
+
   def make_admin_user(%User{} = user) do
     user
     |> User.admin_changeset()

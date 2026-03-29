@@ -200,4 +200,75 @@ defmodule Streamix.BillingTest do
     refute Billing.subscribed?(user)
     assert Billing.active_subscription_for_user(user) == nil
   end
+
+  test "ensure_plan!/1 updates an existing plan without duplicating it" do
+    attrs = %{
+      name: "Premium",
+      slug: "premium",
+      description: "Access to all content",
+      price_cents: 1_999,
+      currency: "USD",
+      billing_interval: "month",
+      active: true,
+      grants_global_access: true
+    }
+
+    first_plan = Billing.ensure_plan!(attrs)
+
+    updated_plan =
+      Billing.ensure_plan!(Map.put(attrs, :description, "Updated global access plan"))
+
+    assert first_plan.id == updated_plan.id
+    assert updated_plan.description == "Updated global access plan"
+    assert Repo.aggregate(from(p in Plan, where: p.slug == ^attrs.slug), :count, :id) == 1
+  end
+
+  test "ensure_manual_subscription!/3 reuses the same manual subscription" do
+    user = user_fixture()
+
+    plan =
+      Billing.ensure_plan!(%{
+        name: "Premium",
+        slug: "premium-manual",
+        description: "Access to all content",
+        price_cents: 1_999,
+        currency: "USD",
+        billing_interval: "month",
+        active: true,
+        grants_global_access: true
+      })
+
+    starts_at = DateTime.utc_now() |> DateTime.truncate(:second)
+    first_expires_at = DateTime.add(starts_at, 30, :day)
+    second_expires_at = DateTime.add(starts_at, 60, :day)
+
+    first_subscription =
+      Billing.ensure_manual_subscription!(user, plan, %{
+        status: "active",
+        source: "manual",
+        external_reference: "seed:#{user.email}:#{plan.slug}",
+        starts_at: starts_at,
+        expires_at: first_expires_at
+      })
+
+    second_subscription =
+      Billing.ensure_manual_subscription!(user, plan, %{
+        status: "active",
+        source: "manual",
+        external_reference: "seed:#{user.email}:#{plan.slug}",
+        starts_at: starts_at,
+        expires_at: second_expires_at
+      })
+
+    assert first_subscription.id == second_subscription.id
+    assert second_subscription.expires_at == second_expires_at
+
+    assert Repo.aggregate(
+             from(s in Subscription,
+               where: s.user_id == ^user.id and s.plan_id == ^plan.id and s.source == "manual"
+             ),
+             :count,
+             :id
+           ) == 1
+  end
 end

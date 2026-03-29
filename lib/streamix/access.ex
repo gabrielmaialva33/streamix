@@ -60,6 +60,41 @@ defmodule Streamix.Access do
 
   def permission_by_name(_name), do: nil
 
+  @doc """
+  Finds or creates a permission keyed by name and keeps its attributes in sync.
+  """
+  def ensure_permission!(attrs) when is_map(attrs) do
+    name = Map.fetch!(attrs, :name)
+
+    case Repo.get_by(Permission, name: name) do
+      nil ->
+        %Permission{}
+        |> Permission.changeset(attrs)
+        |> Repo.insert!()
+
+      %Permission{} = permission ->
+        permission
+        |> Permission.changeset(Map.merge(current_permission_attrs(permission), attrs))
+        |> Repo.update!()
+    end
+  end
+
+  @doc """
+  Finds or creates a role permission join.
+  """
+  def ensure_role_permission!(role, %Permission{id: permission_id})
+      when is_binary(role) do
+    case Repo.get_by(RolePermission, role: role, permission_id: permission_id) do
+      nil ->
+        %RolePermission{}
+        |> RolePermission.changeset(%{role: role, permission_id: permission_id})
+        |> Repo.insert!()
+
+      %RolePermission{} = role_permission ->
+        role_permission
+    end
+  end
+
   defp permission_exists_for_user?(user_id, permission_name) do
     from(up in UserPermission,
       join: p in assoc(up, :permission),
@@ -84,5 +119,9 @@ defmodule Streamix.Access do
 
   defp provider_global_system?(provider) do
     Map.get(provider, :is_system) == true or Map.get(provider, :visibility) in [:global, "global"]
+  end
+
+  defp current_permission_attrs(%Permission{} = permission) do
+    Map.take(permission, [:name, :description])
   end
 end
