@@ -158,56 +158,15 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  # Resolve all redirects step by step using HEAD-then-GET fallback.
-  # Returns the final URL after all redirects are followed.
+  # Resolve all redirects using GET with immediate halt.
+  # HEAD is unreliable (many IPTV providers return 200 for HEAD on all URLs).
+  # GET with halt_after_first_chunk follows the real redirect chain without
+  # downloading the full response body.
   defp resolve_final_url(_url, count) when count > @max_redirects do
     {:error, :too_many_redirects}
   end
 
   defp resolve_final_url(url, count) do
-    case resolve_final_url_head(url, count) do
-      {:ok, resolved_url} ->
-        # If HEAD returned 200 but URL still has provider credentials,
-        # the server may not support HEAD redirects. Try GET instead.
-        if credentials_in_url?(resolved_url) do
-          resolve_final_url_get(url, count)
-        else
-          {:ok, resolved_url}
-        end
-
-      {:error, {:fallback_to_get, _status}} ->
-        # Only fallback to GET for credential URLs. Non-credential URLs
-        # have single-use tokens — never consume with GET probe.
-        if credentials_in_url?(url) do
-          resolve_final_url_get(url, count)
-        else
-          {:ok, url}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp resolve_final_url_head(url, count) do
-    case Req.head(url, req_options()) do
-      {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
-        follow_resolved_redirect(url, headers, count)
-
-      {:ok, %{status: status}} when status in 200..299 ->
-        {:ok, url}
-
-      {:ok, %{status: status}} ->
-        Logger.debug("Stream proxy: HEAD fallback to GET (#{status}) for #{sanitize_url(url)}")
-
-        {:error, {:fallback_to_get, status}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp resolve_final_url_get(url, count) do
     case Req.get(url, req_options(into: &halt_after_first_chunk/2)) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_resolved_redirect(url, headers, count)
@@ -227,7 +186,7 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp req_options(extra \\ []) do
+  defp req_options(extra) do
     [
       redirect: false,
       headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
