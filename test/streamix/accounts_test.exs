@@ -65,6 +65,17 @@ defmodule Streamix.AccountsTest do
       assert user.role == "customer"
     end
 
+    test "register_user_with_password/1 ignores attempts to self-assign admin role" do
+      {:ok, user} =
+        Accounts.register_user_with_password(%{
+          email: unique_user_email(),
+          password: valid_user_password(),
+          role: "admin"
+        })
+
+      assert user.role == "customer"
+    end
+
     test "validates email when given" do
       {:error, changeset} =
         Accounts.register_user_with_password(%{
@@ -126,6 +137,14 @@ defmodule Streamix.AccountsTest do
     test "returns true only for admin users" do
       assert Accounts.admin?(%User{role: "admin"})
       refute Accounts.admin?(%User{role: "customer"})
+    end
+  end
+
+  describe "admin_user_fixture/1" do
+    test "returns an admin user" do
+      user = admin_user_fixture()
+
+      assert user.role == "admin"
     end
   end
 

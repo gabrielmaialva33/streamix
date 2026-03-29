@@ -97,6 +97,12 @@ defmodule Streamix.Accounts do
     |> Repo.insert()
   end
 
+  def make_admin_user(%User{} = user) do
+    user
+    |> User.admin_changeset()
+    |> Repo.update()
+  end
+
   def admin?(%User{role: "admin"}), do: true
   def admin?(_user), do: false
 

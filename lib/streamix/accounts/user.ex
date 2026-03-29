@@ -83,6 +83,15 @@ defmodule Streamix.Accounts.User do
   end
 
   @doc """
+  A user changeset for promoting a user to admin in trusted test/setup paths.
+  """
+  def admin_changeset(user) do
+    user
+    |> change(role: "admin")
+    |> validate_inclusion(:role, ~w(admin customer))
+  end
+
+  @doc """
   A user changeset for changing the password.
 
   It is important to validate the length of the password, as long passwords may
