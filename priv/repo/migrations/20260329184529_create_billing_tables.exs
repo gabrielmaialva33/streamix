@@ -40,9 +40,9 @@ defmodule Streamix.Repo.Migrations.CreateBillingTables do
 
     # Partial index — only active subscriptions for auth checks
     create index(:subscriptions, [:user_id, :expires_at],
-      where: "status = 'active'",
-      name: :subscriptions_active_idx
-    )
+             where: "status = 'active'",
+             name: :subscriptions_active_idx
+           )
 
     execute(
       "ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_status_check CHECK (status IN ('active', 'expired', 'canceled', 'pending'))",

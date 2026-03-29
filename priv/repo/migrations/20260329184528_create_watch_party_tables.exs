@@ -23,9 +23,9 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
 
     # Partial index — only active rooms for invite lookups
     create index(:watch_party_rooms, [:invite_code],
-      where: "status = 'active'",
-      name: :watch_party_rooms_active_invite_idx
-    )
+             where: "status = 'active'",
+             name: :watch_party_rooms_active_invite_idx
+           )
 
     execute(
       "ALTER TABLE watch_party_rooms ADD CONSTRAINT watch_party_rooms_status_check CHECK (status IN ('active', 'ended'))",
@@ -52,9 +52,9 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
     create index(:watch_party_participants, [:user_id])
 
     create unique_index(:watch_party_participants, [:room_id, :user_id],
-      where: "left_at IS NULL",
-      name: :watch_party_participants_active_unique
-    )
+             where: "left_at IS NULL",
+             name: :watch_party_participants_active_unique
+           )
 
     execute(
       "ALTER TABLE watch_party_participants ADD CONSTRAINT watch_party_participants_role_check CHECK (role IN ('host', 'viewer'))",

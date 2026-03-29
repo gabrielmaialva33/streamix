@@ -28,9 +28,9 @@ defmodule Streamix.Repo.Migrations.CreateWatchHistory do
 
     # Partial index — "continue watching" feature (incomplete items only)
     create index(:watch_history, [:user_id, :watched_at],
-      where: "completed = false AND progress_seconds > 0",
-      name: :watch_history_continue_watching_idx
-    )
+             where: "completed = false AND progress_seconds > 0",
+             name: :watch_history_continue_watching_idx
+           )
 
     execute(
       "ALTER TABLE watch_history ADD CONSTRAINT watch_history_content_type_check CHECK (content_type IN ('live_channel', 'movie', 'episode'))",

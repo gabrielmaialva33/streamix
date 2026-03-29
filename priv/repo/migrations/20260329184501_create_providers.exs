@@ -42,9 +42,9 @@ defmodule Streamix.Repo.Migrations.CreateProviders do
 
     # Partial index — active public providers (catalog queries)
     create index(:providers, [:visibility, :is_system],
-      where: "is_active = true",
-      name: :providers_active_catalog_idx
-    )
+             where: "is_active = true",
+             name: :providers_active_catalog_idx
+           )
 
     # CHECK constraints
     execute(
