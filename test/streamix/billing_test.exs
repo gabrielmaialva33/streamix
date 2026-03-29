@@ -94,4 +94,16 @@ defmodule Streamix.BillingTest do
 
     refute Billing.subscribed?(user)
   end
+
+  test "non-active subscriptions do not grant access even when not expired" do
+    user = user_fixture()
+    plan = plan_fixture()
+
+    create_subscription!(user, plan,
+      status: "pending",
+      expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+    )
+
+    refute Billing.subscribed?(user)
+  end
 end
