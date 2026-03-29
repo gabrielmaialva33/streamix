@@ -33,15 +33,19 @@ defmodule StreamixWeb.StreamController do
   def proxy(conn, %{"token" => token}) do
     case StreamToken.verify_and_get_url(token) do
       {:ok, url, content_type} ->
-        # All content types redirect to nginx proxy which handles redirects,
-        # Range headers, and CORS natively. For VOD we resolve the redirects
-        # first so credentials never reach the browser. For live channels,
-        # we send straight to nginx which follows redirects via @handle_redirect.
         Logger.info("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
 
-        # ALL content types resolve redirects server-side to strip credentials.
-        # The final delivery URL (JWT only, no credentials) goes to nginx proxy.
-        resolve_and_redirect_to_proxy(conn, url, 0)
+        case content_type do
+          "channel" ->
+            # Live channels: stream directly through Elixir to avoid
+            # cross-origin redirect issues with mpegts.js FetchStreamLoader.
+            # Browser fetch() with 302 to a different origin fails CORS.
+            stream_live_channel(conn, url)
+
+          _ ->
+            # VOD (movie, episode, url): redirect to nginx proxy for Range support.
+            resolve_and_redirect_to_proxy(conn, url, 0)
+        end
 
       {:error, :token_expired} ->
         conn
@@ -79,6 +83,56 @@ defmodule StreamixWeb.StreamController do
     conn
     |> put_status(:bad_request)
     |> json(%{error: "Missing token parameter"})
+  end
+
+  # --- Live channels: stream directly through Elixir (no redirect) ---
+
+  defp stream_live_channel(conn, url) do
+    case resolve_final_url(url, 0) do
+      {:ok, final_url} ->
+        do_stream_live(conn, final_url)
+
+      {:error, reason} ->
+        Logger.error("Stream proxy: live resolve failed: #{inspect(reason)}")
+        conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+    end
+  end
+
+  defp do_stream_live(conn, final_url) do
+    Logger.info("Stream proxy: live streaming → #{sanitize_url(final_url)}")
+
+    conn =
+      conn
+      |> put_resp_content_type("video/mp2t")
+      |> put_resp_header("access-control-allow-origin", "*")
+      |> put_resp_header("access-control-expose-headers", "Content-Type")
+      |> put_resp_header("cache-control", "no-cache, no-store")
+      |> send_chunked(200)
+
+    result =
+      Req.get(
+        final_url,
+        req_options(
+          receive_timeout: :infinity,
+          compressed: false,
+          into: fn {:data, data}, {req, resp} ->
+            case Plug.Conn.chunk(conn, data) do
+              {:ok, _conn} -> {:cont, {req, resp}}
+              {:error, :closed} -> {:halt, {req, resp}}
+            end
+          end
+        )
+      )
+
+    case result do
+      {:ok, _} ->
+        Logger.info("Stream proxy: live stream ended normally")
+        conn
+
+      {:error, reason} ->
+        Logger.warning("Stream proxy: live stream error: #{inspect(reason)}")
+        conn
+    end
   end
 
   # --- VOD: resolve redirects and send to nginx proxy for Range support ---
