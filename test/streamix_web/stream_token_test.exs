@@ -81,8 +81,37 @@ defmodule StreamixWeb.StreamTokenTest do
 
   test "premium url token without entitlement is rejected" do
     user = user_fixture()
-    token = StreamToken.sign_url("http://example.com/video.mp4", user.id, premium_required: true)
+
+    provider =
+      provider_fixture(user, %{
+        visibility: "global",
+        is_system: true
+      })
+
+    token =
+      StreamToken.sign_url("http://example.com/video.mp4", user.id,
+        premium_required: true,
+        provider_id: provider.id
+      )
 
     assert {:error, :subscription_required} = StreamToken.verify_and_get_url(token)
+  end
+
+  test "private url token requires the provider owner" do
+    owner = user_fixture()
+    other_user = user_fixture()
+
+    provider =
+      provider_fixture(owner, %{
+        visibility: "private",
+        is_system: false
+      })
+
+    token =
+      StreamToken.sign_url("http://example.com/video.mp4", other_user.id,
+        provider_id: provider.id
+      )
+
+    assert {:error, :unauthorized} = StreamToken.verify_and_get_url(token)
   end
 end

@@ -214,7 +214,10 @@ defmodule StreamixWeb.PlayerHelpers do
   defp sign_and_build_url_proxy(url, user_id, provider) do
     premium_required = Access.global_content?(provider)
 
-    case StreamToken.sign_url(url, user_id, premium_required: premium_required) do
+    case StreamToken.sign_url(url, user_id,
+           premium_required: premium_required,
+           provider_id: provider.id
+         ) do
       {:error, _} -> nil
       token -> build_token_proxy_url(token)
     end

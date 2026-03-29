@@ -51,12 +51,23 @@ defmodule StreamixWeb.StreamToken do
   Generates a signed token for proxying an external URL.
   Used for GIndex and other external sources that need CORS headers.
   The `user_id` is embedded in the token and verified on consumption.
+  Pass `provider_id` so provider visibility/ownership can be revalidated
+  when the token is consumed.
   """
   def sign_url(url, user_id, opts \\ []) when is_binary(url) do
     case UrlValidator.validate_url(url) do
       :ok ->
         premium_required = Keyword.get(opts, :premium_required, false)
-        data = %{type: "url", url: url, user_id: user_id, premium_required: premium_required}
+        provider_id = Keyword.get(opts, :provider_id)
+
+        data = %{
+          type: "url",
+          url: url,
+          user_id: user_id,
+          provider_id: provider_id,
+          premium_required: premium_required
+        }
+
         Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
 
       {:error, :unsafe_url} ->
@@ -77,11 +88,21 @@ defmodule StreamixWeb.StreamToken do
   """
   def verify_and_get_url(token) do
     case verify_token(token) do
-      {:ok, %{type: "url", url: url, user_id: user_id, premium_required: premium_required}} ->
-        handle_url_token(url, user_id, premium_required)
+      {:ok,
+       %{
+         type: "url",
+         url: url,
+         user_id: user_id,
+         provider_id: provider_id,
+         premium_required: premium_required
+       }} ->
+        handle_url_token(url, user_id, provider_id, premium_required)
 
-      {:ok, %{type: "url", url: url, user_id: user_id}} ->
-        handle_url_token(url, user_id, false)
+      {:ok, %{type: "url", url: _url, user_id: _user_id}} ->
+        {:error, :invalid_token}
+
+      {:ok, %{type: "url", url: _url}} ->
+        {:error, :invalid_token}
 
       {:ok, %{type: type, id: id, user_id: user_id}} ->
         handle_content_token(type, id, user_id)
@@ -115,32 +136,74 @@ defmodule StreamixWeb.StreamToken do
     end
   end
 
-  defp handle_url_token(url, user_id, premium_required) do
-    if premium_required do
-      case user_has_global_access?(user_id) do
-        :ok -> validate_direct_url(url)
-        error -> error
-      end
-    else
-      validate_direct_url(url)
-    end
-  end
-
-  defp user_has_global_access?(nil), do: {:error, :subscription_required}
-
-  defp user_has_global_access?(user_id) do
-    case Repo.get(User, user_id) do
+  defp handle_url_token(url, user_id, provider_id, premium_required) do
+    case Iptv.get_provider(provider_id) do
       nil ->
         {:error, :invalid_token}
 
+      provider ->
+        if premium_required and not Access.global_content?(provider) do
+          {:error, :invalid_token}
+        else
+          authorize_url_token(url, user_id, provider)
+        end
+    end
+  end
+
+  defp authorize_url_token(url, user_id, provider) do
+    cond do
+      Access.global_content?(provider) ->
+        user_has_global_access?(user_id, provider, url)
+
+      provider.visibility in [:public, "public"] ->
+        validate_direct_url(url)
+
+      provider.visibility in [:private, "private"] ->
+        authorized_private_url_token?(url, user_id, provider)
+
+      true ->
+        {:error, :invalid_token}
+    end
+  end
+
+  defp user_has_global_access?(nil, _provider, _url), do: {:error, :subscription_required}
+
+  defp user_has_global_access?(user_id, provider, url) do
+    case Repo.get(User, user_id) do
+      nil ->
+        {:error, :subscription_required}
+
       %User{} = user ->
-        if Access.can_play_global_content?(user, %{is_system: true, visibility: :global}) do
+        if Access.can_play_global_content?(user, provider) do
           :ok
         else
           {:error, :subscription_required}
         end
+        |> case do
+          :ok -> validate_direct_url(url)
+          error -> error
+        end
     end
   end
+
+  defp authorized_private_url_token?(_url, nil, _provider), do: {:error, :unauthorized}
+
+  defp authorized_private_url_token?(url, user_id, %{user_id: provider_user_id})
+       when is_integer(provider_user_id) do
+    case Repo.get(User, user_id) do
+      nil ->
+        {:error, :invalid_token}
+
+      %User{} ->
+        if user_id == provider_user_id do
+          validate_direct_url(url)
+        else
+          {:error, :unauthorized}
+        end
+    end
+  end
+
+  defp authorized_private_url_token?(_url, _user_id, _provider), do: {:error, :invalid_token}
 
   defp handle_content_token(type, id, user_id) do
     case get_stream_url(type, id, user_id) do
