@@ -69,7 +69,7 @@ defmodule Streamix.AccessTest do
     assert Access.can_play_global_content?(user, provider)
   end
 
-  test "content with provider_id but without preloaded provider is not authorized for customer without subscription or permission" do
+  test "global content with provider_id but without preloaded provider is still blocked for customer without subscription or permission" do
     user = user_fixture()
     provider = provider_fixture(user, %{is_system: true, visibility: "global"})
     content = %LiveChannel{provider_id: provider.id}
@@ -77,12 +77,29 @@ defmodule Streamix.AccessTest do
     refute Access.can_play_global_content?(user, content)
   end
 
+  test "private or public content with provider_id but without preloaded provider is still allowed for customer without subscription or permission" do
+    owner = user_fixture()
+    user = user_fixture()
+
+    for visibility <- [:private, :public] do
+      provider = provider_fixture(owner, %{visibility: visibility})
+      content = %LiveChannel{provider_id: provider.id}
+
+      assert Access.can_play_global_content?(user, content)
+    end
+  end
+
   test "permission_by_name/1 returns the persisted permission" do
-    permission = permission_fixture(name: "custom_permission", description: "Custom")
+    permission =
+      permission_fixture(
+        name: "custom_permission_#{System.unique_integer([:positive])}",
+        description: "Custom"
+      )
 
-    fetched_permission = Access.permission_by_name("custom_permission")
+    fetched_permission = Access.permission_by_name(permission.name)
 
-    assert %Permission{name: "custom_permission", description: "Custom"} = fetched_permission
+    assert %Permission{description: "Custom"} = fetched_permission
+    assert fetched_permission.name == permission.name
     assert fetched_permission.id == permission.id
   end
 end

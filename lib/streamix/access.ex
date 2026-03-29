@@ -9,6 +9,8 @@ defmodule Streamix.Access do
   alias Streamix.Accounts
   alias Streamix.Accounts.User
   alias Streamix.Billing
+  alias Streamix.Iptv
+  alias Streamix.Iptv.Provider
   alias Streamix.Repo
 
   def can_play_global_content?(user, provider_or_content) do
@@ -18,14 +20,18 @@ defmodule Streamix.Access do
       not global_content?(provider_or_content)
   end
 
-  def global_content?(%{provider_id: _provider_id, provider: %Ecto.Association.NotLoaded{}}),
-    do: true
+  def global_content?(%{provider_id: provider_id, provider: %Ecto.Association.NotLoaded{}})
+      when is_integer(provider_id) do
+    case Iptv.get_provider(provider_id) do
+      %Provider{} = provider -> provider_global_system?(provider)
+      _ -> false
+    end
+  end
 
   def global_content?(%{provider_id: _provider_id, provider: provider}) when is_map(provider) do
     provider_global_system?(provider)
   end
 
-  def global_content?(%{provider_id: _provider_id}), do: true
   def global_content?(%{is_system: _} = provider), do: provider_global_system?(provider)
 
   def global_content?(%{provider: provider}) when is_map(provider),
