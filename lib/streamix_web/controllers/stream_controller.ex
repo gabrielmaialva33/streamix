@@ -134,7 +134,7 @@ defmodule StreamixWeb.StreamController do
   defp resolve_final_url(url, count) do
     case resolve_final_url_head(url, count) do
       {:ok, resolved_url} ->
-        {:ok, resolved_url}
+        maybe_probe_get_redirects(resolved_url, count)
 
       {:error, {:fallback_to_get, _status}} ->
         resolve_final_url_get(url, count)
@@ -142,6 +142,21 @@ defmodule StreamixWeb.StreamController do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp maybe_probe_get_redirects(url, count) do
+    if stream_probe_url?(url) do
+      resolve_final_url_get(url, count)
+    else
+      {:ok, url}
+    end
+  end
+
+  defp stream_probe_url?(url) do
+    uri = URI.parse(url)
+    path = uri.path || ""
+
+    credentials_in_url?(url) or String.match?(path, ~r{\.(m3u8|mp4|mkv|ts)$}i)
   end
 
   defp resolve_final_url_head(url, count) do

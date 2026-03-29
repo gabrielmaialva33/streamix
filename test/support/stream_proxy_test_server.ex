@@ -25,6 +25,29 @@ defmodule Streamix.TestSupport.StreamProxyTestServer do
         conn = send_chunked(conn, 200)
         stream_body(conn, body_counter, 1)
 
+      {"HEAD", "/redirect-chain.mp4"} ->
+        send_resp(conn, 200, "")
+
+      {"GET", "/redirect-chain.mp4"} ->
+        conn
+        |> put_resp_header("location", "http://cdn.example.test/vauth/redirect-chain.mp4")
+        |> send_resp(302, "")
+
+      {"HEAD", "/vauth/redirect-chain.mp4"} ->
+        send_resp(conn, 200, "")
+
+      {"GET", "/vauth/redirect-chain.mp4"} ->
+        conn
+        |> put_resp_header("location", "http://cdn.example.test/deliver/redirect-chain.mp4")
+        |> send_resp(302, "")
+
+      {"HEAD", "/deliver/redirect-chain.mp4"} ->
+        send_resp(conn, 200, "")
+
+      {"GET", "/deliver/redirect-chain.mp4"} ->
+        conn = send_chunked(conn, 200)
+        stream_body(conn, body_counter, 1)
+
       {"HEAD", "/video.mp4"} ->
         send_resp(conn, 405, "")
 
