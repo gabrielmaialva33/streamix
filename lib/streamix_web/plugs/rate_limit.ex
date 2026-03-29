@@ -11,6 +11,8 @@ defmodule StreamixWeb.Plugs.RateLimit do
   import Plug.Conn
   require Logger
 
+  alias Streamix.Accounts.IpTracker
+
   @default_limit 100
   @default_period 60_000
 
@@ -48,9 +50,7 @@ defmodule StreamixWeb.Plugs.RateLimit do
   end
 
   defp build_key(conn, :ip) do
-    conn.remote_ip
-    |> Tuple.to_list()
-    |> Enum.join(".")
+    IpTracker.get_client_ip(conn)
   end
 
   defp build_key(conn, :user) do
