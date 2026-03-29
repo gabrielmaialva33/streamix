@@ -52,12 +52,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Pull and restart on VPS
-        uses: appleboy/ssh-action@v1
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            docker pull ghcr.io/gabrielmaialva33/streamix:latest
-            cd /root && docker compose up -d streamix
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Pull and restart on VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '/root/deploy-streamix.sh'
