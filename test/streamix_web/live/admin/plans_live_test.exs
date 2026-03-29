@@ -60,16 +60,16 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
       assert Enum.any?(plans, &(&1.slug == "anual"))
     end
 
-    test "shows errors with invalid data", %{conn: conn} do
+    test "rejects invalid data", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/admin/plans/new")
 
-      html =
-        lv
-        |> form("#plan-form", plan: %{name: "", slug: ""})
-        |> render_submit()
+      lv
+      |> form("#plan-form", plan: %{name: "", slug: ""})
+      |> render_submit()
 
-      assert html =~ "can&#39;t be blank" or html =~ "can't be blank" or
-               html =~ "não pode ficar em branco"
+      # Stays on form (no plan created)
+      assert render(lv) =~ "Novo Plano"
+      assert Billing.list_plans() == []
     end
   end
 
