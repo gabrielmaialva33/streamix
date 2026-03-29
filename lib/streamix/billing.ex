@@ -97,6 +97,88 @@ defmodule Streamix.Billing do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Admin functions
+  # ---------------------------------------------------------------------------
+
+  def list_plans do
+    from(p in Plan, order_by: [asc: p.inserted_at])
+    |> Repo.all()
+  end
+
+  def get_plan!(id), do: Repo.get!(Plan, id)
+
+  def create_plan(attrs) do
+    %Plan{}
+    |> Plan.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_plan(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def create_manual_subscription(%User{} = user, %Plan{} = plan, attrs) do
+    %Subscription{}
+    |> Subscription.create_changeset(user, plan, Map.merge(%{source: "manual"}, attrs))
+    |> Repo.insert()
+  end
+
+  def cancel_subscription!(%Subscription{} = subscription) do
+    subscription
+    |> Ecto.Changeset.change(%{
+      status: "canceled",
+      canceled_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.update!()
+  end
+
+  def list_subscriptions(opts \\ []) do
+    query = from(s in Subscription, preload: [:plan, :user], order_by: [desc: s.inserted_at])
+
+    query =
+      case Keyword.get(opts, :user_id) do
+        nil -> query
+        user_id -> from(s in query, where: s.user_id == ^user_id)
+      end
+
+    query =
+      case Keyword.get(opts, :status) do
+        nil -> query
+        status -> from(s in query, where: s.status == ^status)
+      end
+
+    Repo.all(query)
+  end
+
+  def admin_stats do
+    now = DateTime.utc_now()
+
+    %{
+      total_users: Repo.aggregate(User, :count),
+      active_subscriptions:
+        from(s in Subscription, where: s.status == "active")
+        |> Repo.aggregate(:count),
+      active_plans:
+        from(p in Plan, where: p.active == true)
+        |> Repo.aggregate(:count),
+      monthly_revenue_cents:
+        from(s in Subscription,
+          join: p in assoc(s, :plan),
+          where: s.status == "active",
+          where: is_nil(s.expires_at) or s.expires_at > ^now,
+          select: coalesce(sum(p.price_cents), 0)
+        )
+        |> Repo.one()
+    }
+  end
+
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
+
   defp current_plan_attrs(%Plan{} = plan) do
     Map.take(plan, [
       :name,
