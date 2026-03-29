@@ -130,9 +130,7 @@ const WatchPartySync = {
     // Use the sample with lowest RTT (most accurate)
     this.clockOffset = sorted[0].offset;
 
-    console.debug(
-      `[WPSync] Clock offset: ${this.clockOffset.toFixed(1)}ms (RTT: ${sorted[0].rtt}ms, samples: ${sorted.length})`,
-    );
+    // clock synced
   },
 
   _serverNow() {

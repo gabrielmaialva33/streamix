@@ -153,9 +153,6 @@ defmodule StreamixWeb.Content.MoviesLive do
     if socket.assigns.loading do
       {:noreply, socket}
     else
-      require Logger
-      Logger.info("MoviesLive: load_more triggered. Page: #{socket.assigns.page + 1}")
-
       socket =
         socket
         |> assign(page: socket.assigns.page + 1)

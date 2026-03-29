@@ -33,49 +33,11 @@ defmodule StreamixWeb.StreamController do
   def proxy(conn, %{"token" => token}) do
     case StreamToken.verify_and_get_url(token) do
       {:ok, url, content_type} ->
-        Logger.info("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
+        Logger.debug("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
+        stream_by_type(conn, url, content_type)
 
-        case content_type do
-          "channel" ->
-            # Live channels: stream directly through Elixir to avoid
-            # cross-origin redirect issues with mpegts.js FetchStreamLoader.
-            # Browser fetch() with 302 to a different origin fails CORS.
-            stream_live_channel(conn, url)
-
-          _ ->
-            # VOD (movie, episode, url): redirect to nginx proxy for Range support.
-            resolve_and_redirect_to_proxy(conn, url, 0)
-        end
-
-      {:error, :token_expired} ->
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: "Stream token expired"})
-
-      {:error, :invalid_token} ->
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: "Invalid stream token"})
-
-      {:error, :subscription_required} ->
-        conn
-        |> put_status(:forbidden)
-        |> json(%{error: "Subscription required"})
-
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: "Content not found"})
-
-      {:error, :unauthorized} ->
-        conn
-        |> put_status(:forbidden)
-        |> json(%{error: "Token not authorized for this content"})
-
-      {:error, :unsafe_url} ->
-        conn
-        |> put_status(:forbidden)
-        |> json(%{error: "URL blocked by security policy"})
+      {:error, reason} ->
+        token_error(conn, reason)
     end
   end
 
@@ -83,6 +45,25 @@ defmodule StreamixWeb.StreamController do
     conn
     |> put_status(:bad_request)
     |> json(%{error: "Missing token parameter"})
+  end
+
+  # Live channels: stream directly to avoid cross-origin redirect CORS failures.
+  # VOD: redirect to nginx proxy for Range header support.
+  defp stream_by_type(conn, url, "channel"), do: stream_live_channel(conn, url)
+  defp stream_by_type(conn, url, _type), do: resolve_and_redirect_to_proxy(conn, url, 0)
+
+  @token_errors %{
+    token_expired: {:unauthorized, "Stream token expired"},
+    invalid_token: {:unauthorized, "Invalid stream token"},
+    subscription_required: {:forbidden, "Subscription required"},
+    not_found: {:not_found, "Content not found"},
+    unauthorized: {:forbidden, "Token not authorized for this content"},
+    unsafe_url: {:forbidden, "URL blocked by security policy"}
+  }
+
+  defp token_error(conn, reason) do
+    {status, message} = Map.get(@token_errors, reason, {:bad_request, "Unknown error"})
+    conn |> put_status(status) |> json(%{error: message})
   end
 
   # --- Live channels: stream directly through Elixir (no redirect) ---
@@ -99,7 +80,7 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp do_stream_live(conn, final_url) do
-    Logger.info("Stream proxy: live streaming → #{sanitize_url(final_url)}")
+    Logger.debug("Stream proxy: live streaming → #{sanitize_url(final_url)}")
 
     conn =
       conn
@@ -126,11 +107,10 @@ defmodule StreamixWeb.StreamController do
 
     case result do
       {:ok, _} ->
-        Logger.info("Stream proxy: live stream ended normally")
         conn
 
       {:error, reason} ->
-        Logger.warning("Stream proxy: live stream error: #{inspect(reason)}")
+        Logger.debug("Stream proxy: live stream ended: #{inspect(reason)}")
         conn
     end
   end
@@ -154,7 +134,7 @@ defmodule StreamixWeb.StreamController do
 
         with {:ok, final_proxy} <- build_proxy_redirect_url(proxy_base, final_url),
              :ok <- ensure_final_url_stays_server_side(final_url, proxy_base) do
-          Logger.info("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")
+          Logger.debug("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")
 
           conn
           |> put_resp_header("access-control-allow-origin", "*")
@@ -222,9 +202,7 @@ defmodule StreamixWeb.StreamController do
         {:ok, url}
 
       {:ok, %{status: status}} ->
-        Logger.warning(
-          "Stream proxy: HEAD resolve fell back to GET after status #{status} for #{sanitize_url(url)}"
-        )
+        Logger.debug("Stream proxy: HEAD fallback to GET (#{status}) for #{sanitize_url(url)}")
 
         {:error, {:fallback_to_get, status}}
 
@@ -276,7 +254,7 @@ defmodule StreamixWeb.StreamController do
 
       location ->
         next_url = resolve_redirect_location(url, location)
-        Logger.info("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
+        Logger.debug("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
         resolve_final_url(next_url, count + 1)
     end
   end

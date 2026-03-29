@@ -65,13 +65,13 @@ const OfflineSync = {
   },
 
   async onOnline() {
-    console.log("[OfflineSync] Back online");
+    // back online
     // Optionally trigger a refresh from server
     this.pushEvent("refresh_data", {});
   },
 
   onOffline() {
-    console.log("[OfflineSync] Now offline");
+    // now offline
     // Show offline indicator
     this.showOfflineIndicator();
   },
@@ -79,7 +79,7 @@ const OfflineSync = {
   async onFavoriteAdd(data) {
     try {
       await addFavorite(data);
-      console.log("[OfflineSync] Added favorite to IndexedDB");
+      // stored
     } catch (err) {
       console.warn("[OfflineSync] Failed to add favorite:", err);
     }
@@ -88,7 +88,7 @@ const OfflineSync = {
   async onFavoriteRemove({ content_type, content_id }) {
     try {
       await removeFavorite(content_type, content_id);
-      console.log("[OfflineSync] Removed favorite from IndexedDB");
+      // removed
     } catch (err) {
       console.warn("[OfflineSync] Failed to remove favorite:", err);
     }
@@ -97,7 +97,7 @@ const OfflineSync = {
   async onHistoryUpdate(data) {
     try {
       await upsertHistory(data);
-      console.log("[OfflineSync] Updated history in IndexedDB");
+      // updated
     } catch (err) {
       console.warn("[OfflineSync] Failed to update history:", err);
     }

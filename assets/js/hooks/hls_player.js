@@ -69,7 +69,7 @@ const HlsPlayer = {
 
       this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
         this.video.play().catch((e) => {
-          console.log("Autoplay prevented:", e);
+          // autoplay prevented
         });
       });
 
@@ -79,7 +79,7 @@ const HlsPlayer = {
       this.video.src = streamUrl;
       this.video.addEventListener("loadedmetadata", () => {
         this.video.play().catch((e) => {
-          console.log("Autoplay prevented:", e);
+          // autoplay prevented
         });
       });
     } else {
@@ -176,7 +176,7 @@ const HlsPlayer = {
       document.exitFullscreen();
     } else {
       container.requestFullscreen().catch((e) => {
-        console.log("Fullscreen error:", e);
+        // fullscreen not available
       });
     }
   },

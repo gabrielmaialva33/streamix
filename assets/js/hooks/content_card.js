@@ -272,7 +272,7 @@ const ContentCard = {
     } catch (e) {
       // Clean up on error to prevent orphaned DOM elements
       this._closePreview();
-      console.debug("[ContentCard] showPreview error:", e.message);
+      // preview error, cleaned up
     }
   },
 
@@ -420,11 +420,11 @@ const ContentCard = {
       const preload = await ensurePreloadFunctionLoaded();
       if (preload && !hasPreloadedWasm) {
         hasPreloadedWasm = true;
-        console.log("[ContentCard] Pre-loading AVPlayer WASM");
+        // pre-loading AVPlayer WASM
         preload();
       }
     } catch (e) {
-      console.debug("[ContentCard] Pre-load failed:", e.message);
+      // pre-load failed, non-critical
     }
   },
 

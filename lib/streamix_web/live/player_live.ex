@@ -103,30 +103,19 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   # Netflix-inspired telemetry events (just log for now, could store for analytics)
-  def handle_event("device_diagnostics", params, socket) do
-    # Log device capabilities for debugging/analytics
-    require Logger
-    Logger.debug("Device diagnostics: #{inspect(params["capabilities"])}")
+  def handle_event("device_diagnostics", _params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("player_error", params, socket) do
-    # Log enriched error for debugging/analytics
-    require Logger
-    Logger.warning("Player error: #{inspect(params["error"])} - Category: #{params["category"]}")
+  def handle_event("player_error", _params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("player_debug", params, socket) do
-    require Logger
-    Logger.warning("Player debug: #{inspect(params)}")
+  def handle_event("player_debug", _params, socket) do
     {:noreply, socket}
   end
 
-  def handle_event("diagnostic_suggestion", params, socket) do
-    # Could show UI suggestion to user in the future
-    require Logger
-    Logger.info("Diagnostic suggestion: #{params["player"]} - #{params["reason"]}")
+  def handle_event("diagnostic_suggestion", _params, socket) do
     {:noreply, socket}
   end
 
