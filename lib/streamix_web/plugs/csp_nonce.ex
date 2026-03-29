@@ -47,10 +47,10 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       # Default: only allow same origin
       "default-src 'self'",
 
-      # Scripts: nonce-based + strict-dynamic for loaded scripts
+      # Scripts: nonce-based (no strict-dynamic — conflicts with Cloudflare injected scripts)
       # unsafe-eval needed for LiveView morphdom diffing
-      # Cloudflare: static.cloudflareinsights.com (analytics), ajax.cloudflare.com (rocket-loader)
-      "script-src 'self' 'nonce-#{nonce}' 'strict-dynamic' 'unsafe-eval' https://static.cloudflareinsights.com https://ajax.cloudflare.com https://cdnjs.cloudflare.com",
+      # Hash: Cloudflare Speed Brain inline speculation rules
+      "script-src 'self' 'nonce-#{nonce}' 'unsafe-eval' 'sha256-iIs9B1z3EnV2hTwzvh58h4Re7d6yNBJdIX4csEJo7c0=' https://static.cloudflareinsights.com https://ajax.cloudflare.com https://cdnjs.cloudflare.com",
 
       # Styles: unsafe-inline still needed for Tailwind dynamic classes and LiveView
       "style-src 'self' 'unsafe-inline'",
