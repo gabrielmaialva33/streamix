@@ -125,7 +125,10 @@ defmodule StreamixWeb.Admin.PlanFormLive do
             <.button type="submit" phx-disable-with="Salvando...">
               {if @live_action == :new, do: "Criar plano", else: "Salvar alteracoes"}
             </.button>
-            <.link navigate={~p"/admin/plans"} class="text-sm text-text-secondary hover:text-text-primary">
+            <.link
+              navigate={~p"/admin/plans"}
+              class="text-sm text-text-secondary hover:text-text-primary"
+            >
               Cancelar
             </.link>
           </div>

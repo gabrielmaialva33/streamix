@@ -63,7 +63,10 @@ defmodule Streamix.AccountsAdminTest do
   describe "update_user_settings_admin/2" do
     test "toggles show_adult_content" do
       user = user_fixture()
-      assert {:ok, updated} = Accounts.update_user_settings_admin(user, %{show_adult_content: true})
+
+      assert {:ok, updated} =
+               Accounts.update_user_settings_admin(user, %{show_adult_content: true})
+
       assert updated.show_adult_content == true
     end
   end

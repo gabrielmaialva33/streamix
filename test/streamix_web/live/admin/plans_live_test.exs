@@ -44,14 +44,16 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/admin/plans/new")
 
       lv
-      |> form("#plan-form", plan: %{
-        name: "Anual",
-        slug: "anual",
-        description: "Plano anual",
-        price_cents: 9990,
-        currency: "BRL",
-        billing_interval: "year"
-      })
+      |> form("#plan-form",
+        plan: %{
+          name: "Anual",
+          slug: "anual",
+          description: "Plano anual",
+          price_cents: 9990,
+          currency: "BRL",
+          billing_interval: "year"
+        }
+      )
       |> render_submit()
 
       assert_redirected(lv, ~p"/admin/plans")

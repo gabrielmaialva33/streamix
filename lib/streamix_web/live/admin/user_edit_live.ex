@@ -46,7 +46,9 @@ defmodule StreamixWeb.Admin.UserEditLive do
   def handle_event("save_settings", %{"user" => attrs}, socket) do
     show_adult = Map.get(attrs, "show_adult_content", "false") == "true"
 
-    case Accounts.update_user_settings_admin(socket.assigns.user, %{show_adult_content: show_adult}) do
+    case Accounts.update_user_settings_admin(socket.assigns.user, %{
+           show_adult_content: show_adult
+         }) do
       {:ok, updated_user} ->
         {:noreply,
          socket

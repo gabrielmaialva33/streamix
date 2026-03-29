@@ -13,7 +13,9 @@ defmodule Streamix.Iptv.TmdbClient do
   alias Streamix.Cache
 
   @base_url "https://api.themoviedb.org/3"
-  defp image_base_url, do: "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}/t/p"
+  defp image_base_url,
+    do: "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}/t/p"
+
   @timeout :timer.seconds(10)
 
   @doc """

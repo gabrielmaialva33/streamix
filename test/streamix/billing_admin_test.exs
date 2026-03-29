@@ -18,7 +18,9 @@ defmodule Streamix.BillingAdminTest do
   describe "list_plans/0" do
     test "returns all plans including inactive" do
       {:ok, _active} = Billing.create_plan(@valid_plan_attrs)
-      {:ok, _inactive} = Billing.create_plan(Map.merge(@valid_plan_attrs, %{slug: "inactive", active: false}))
+
+      {:ok, _inactive} =
+        Billing.create_plan(Map.merge(@valid_plan_attrs, %{slug: "inactive", active: false}))
 
       plans = Billing.list_plans()
       slugs = Enum.map(plans, & &1.slug)

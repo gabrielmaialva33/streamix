@@ -48,7 +48,9 @@ defmodule StreamixWeb.Admin.PlansLive do
             <tr :for={plan <- @plans} class="border-b border-border/50 hover:bg-surface-hover/30">
               <td class="px-4 py-3 font-medium text-text-primary">{plan.name}</td>
               <td class="px-4 py-3 text-text-secondary font-mono text-xs">{plan.slug}</td>
-              <td class="px-4 py-3 text-text-primary">{format_price(plan.price_cents, plan.currency)}</td>
+              <td class="px-4 py-3 text-text-primary">
+                {format_price(plan.price_cents, plan.currency)}
+              </td>
               <td class="px-4 py-3 text-text-secondary">{plan.billing_interval}</td>
               <td class="px-4 py-3">
                 <.icon
@@ -64,7 +66,10 @@ defmodule StreamixWeb.Admin.PlansLive do
                 <.status_badge status={if plan.active, do: "active", else: "expired"} />
               </td>
               <td class="px-4 py-3">
-                <.link navigate={~p"/admin/plans/#{plan.id}"} class="text-brand hover:underline text-sm">
+                <.link
+                  navigate={~p"/admin/plans/#{plan.id}"}
+                  class="text-brand hover:underline text-sm"
+                >
                   Editar
                 </.link>
               </td>
