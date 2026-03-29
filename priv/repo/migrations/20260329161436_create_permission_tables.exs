@@ -2,13 +2,6 @@ defmodule Streamix.Repo.Migrations.CreatePermissionTables do
   use Ecto.Migration
 
   def change do
-  end
-end
-
-defmodule Streamix.Repo.Migrations.CreatePermissionTables do
-  use Ecto.Migration
-
-  def change do
     create table(:permissions) do
       add :name, :string, null: false
       add :description, :string
