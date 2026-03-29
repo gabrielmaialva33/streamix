@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   """
   use StreamixWeb, :live_view
 
+  alias Streamix.Access
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
 
@@ -81,6 +82,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> assign(page_title: series.title || series.name)
       |> assign(current_path: current_path)
       |> assign(provider: provider)
+      |> assign(
+        premium_access:
+          Access.can_play_global_content?(socket.assigns.current_scope.user, provider)
+      )
       |> assign(series: series)
       |> assign(mode: mode)
       |> assign(seasons: sorted_seasons)
@@ -287,6 +292,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   "{@series.tagline}"
                 </p>
               </div>
+
+              <div :if={@mode == :browse and not @premium_access} data-premium-badge>
+                <.premium_badge />
+              </div>
               
     <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
@@ -392,6 +401,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   TMDB
                 </a>
               </div>
+
+              <.premium_cta_banner
+                :if={@mode == :browse and not @premium_access}
+                id="series-detail-premium-cta"
+                current_scope={@current_scope}
+              />
               
     <!-- Synopsis -->
               <div :if={@series.plot} class="pt-2 sm:pt-4">

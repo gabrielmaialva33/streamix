@@ -13,6 +13,7 @@ defmodule StreamixWeb.ContentComponents do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
+  import StreamixWeb.AppComponents
   import StreamixWeb.CoreComponents
 
   alias StreamixWeb.Helpers.ImageProxy
@@ -375,6 +376,7 @@ defmodule StreamixWeb.ContentComponents do
   attr :is_favorite, :boolean, default: false
   attr :show_favorite, :boolean, default: true
   attr :source, :string, default: nil
+  attr :show_premium_badge, :boolean, default: false
   attr :progress, :float, default: nil
   attr :on_play, :string, default: "play_movie"
   attr :on_favorite, :string, default: "toggle_favorite"
@@ -463,6 +465,14 @@ defmodule StreamixWeb.ContentComponents do
           {@display_rating}
         </div>
 
+        <div
+          :if={@show_premium_badge}
+          data-premium-badge
+          class="absolute top-1 right-1 sm:top-2 sm:right-2"
+        >
+          <.premium_badge class="shadow-lg bg-black/60 text-white border-white/10" />
+        </div>
+
         <span
           :if={@source == "gindex"}
           class="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 px-1 py-0.5 text-[8px] sm:text-[10px] font-bold rounded bg-purple-600/90 text-white"
@@ -531,6 +541,7 @@ defmodule StreamixWeb.ContentComponents do
   attr :on_click, :string, default: "view_series"
   attr :on_favorite, :string, default: "toggle_favorite"
   attr :source, :string, default: nil
+  attr :show_premium_badge, :boolean, default: false
 
   def series_card(assigns) do
     rating = get_display_rating(assigns.series)
@@ -583,6 +594,14 @@ defmodule StreamixWeb.ContentComponents do
         >
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
+        </div>
+
+        <div
+          :if={@show_premium_badge}
+          data-premium-badge
+          class="absolute top-1 right-1 sm:top-2 sm:right-2"
+        >
+          <.premium_badge class="shadow-lg bg-black/60 text-white border-white/10" />
         </div>
 
         <span

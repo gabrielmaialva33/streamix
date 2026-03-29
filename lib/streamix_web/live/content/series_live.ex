@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.SeriesLive do
   import StreamixWeb.AppComponents
   import StreamixWeb.ContentComponents
 
+  alias Streamix.Access
   alias Streamix.Iptv
 
   @per_page 24
@@ -23,6 +24,7 @@ defmodule StreamixWeb.Content.SeriesLive do
       socket
       |> assign(user_id: user_id)
       |> assign(user: user)
+      |> assign(premium_access: premium_access?(user))
       |> assign(mode: :browse)
       |> assign(source: "iptv")
       |> assign(provider: nil)
@@ -78,6 +80,7 @@ defmodule StreamixWeb.Content.SeriesLive do
       |> assign(current_path: current_path)
       |> assign(provider: provider)
       |> assign(mode: mode)
+      |> assign(premium_access: premium_access?(user))
       |> assign(source: "iptv")
       |> assign(categories: categories)
       |> assign(selected_category: nil)
@@ -271,6 +274,12 @@ defmodule StreamixWeb.Content.SeriesLive do
           <% end %>
         </div>
 
+        <.premium_cta_banner
+          :if={@mode == :browse and not @premium_access}
+          id="browse-premium-cta"
+          current_scope={@current_scope}
+        />
+
         <%!-- Filters row --%>
         <div class="flex flex-wrap items-center gap-3">
           <.category_filter_v2
@@ -292,6 +301,7 @@ defmodule StreamixWeb.Content.SeriesLive do
             series={series}
             is_favorite={MapSet.member?(@favorites_map, series.id)}
             source={@source}
+            show_premium_badge={@mode == :browse and @source == "iptv"}
           />
         </div>
       </div>
@@ -342,6 +352,10 @@ defmodule StreamixWeb.Content.SeriesLive do
       movies: provider.movies_count,
       series: provider.series_count
     }
+  end
+
+  defp premium_access?(user) do
+    Access.can_play_global_content?(user, Iptv.get_global_provider())
   end
 
   defp load_series(%{assigns: %{source: "gindex"}} = socket) do

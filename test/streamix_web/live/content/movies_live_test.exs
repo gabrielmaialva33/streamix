@@ -17,12 +17,14 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
           is_active: true
         })
 
+      featured_movie = movie_fixture(provider, %{name: "A Premium Movie"})
+
       # Create 50 movies (2 pages + 2 items)
       for i <- 1..50 do
         movie_fixture(provider, %{name: "Movie #{i}"})
       end
 
-      %{user: user, provider: provider}
+      %{user: user, provider: provider, featured_movie: featured_movie}
     end
 
     test "loads more movies when load_more event is triggered", %{conn: conn, user: user} do
@@ -38,6 +40,36 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
 
       # Should now have 48 items
       assert view |> has_element?("#movies > div:nth-child(48)")
+    end
+  end
+
+  describe "premium signals" do
+    setup do
+      user = user_fixture()
+
+      global_provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      featured_movie = movie_fixture(global_provider, %{name: "A Premium Movie"})
+
+      %{user: user, global_provider: global_provider, featured_movie: featured_movie}
+    end
+
+    test "shows premium cta banner and badge in browse mode", %{
+      conn: conn,
+      user: user,
+      featured_movie: featured_movie
+    } do
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies")
+
+      assert has_element?(view, "#browse-premium-cta")
+      assert has_element?(view, "#movie-card-#{featured_movie.id} [data-premium-badge]")
     end
   end
 end

@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   """
   use StreamixWeb, :live_view
 
+  alias Streamix.Access
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
 
@@ -42,6 +43,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp mount_with_provider(socket, provider, movie_id, user_id, mode) do
+    user = socket.assigns.current_scope.user
+
     case Iptv.get_movie(movie_id) do
       nil ->
         {:ok,
@@ -70,6 +73,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(og_image: og_image_url(movie))
           |> assign(current_path: current_path)
           |> assign(provider: provider)
+          |> assign(premium_access: Access.can_play_global_content?(user, provider))
           |> assign(movie: movie)
           |> assign(mode: mode)
           |> assign(is_favorite: is_favorite)
@@ -242,6 +246,10 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   "{@movie.tagline}"
                 </p>
               </div>
+
+              <div :if={@mode == :browse and not @premium_access} data-premium-badge>
+                <.premium_badge />
+              </div>
               
     <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
@@ -356,6 +364,12 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   TMDB
                 </a>
               </div>
+
+              <.premium_cta_banner
+                :if={@mode == :browse and not @premium_access}
+                id="movie-detail-premium-cta"
+                current_scope={@current_scope}
+              />
               
     <!-- Synopsis -->
               <div :if={@movie.plot} class="pt-2 sm:pt-4">

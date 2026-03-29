@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   import StreamixWeb.AppComponents
   import StreamixWeb.ContentComponents
 
+  alias Streamix.Access
   alias Streamix.Iptv
 
   @per_page 50
@@ -72,6 +73,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       |> assign(current_path: current_path)
       |> assign(provider: provider)
       |> assign(mode: mode)
+      |> assign(premium_access: premium_access?(user))
       |> assign(categories: categories)
       |> assign(selected_category: nil)
       |> assign(search: "")
@@ -277,6 +279,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           />
         <% end %>
 
+        <.premium_cta_banner
+          :if={@mode == :browse and not @premium_access}
+          id="browse-premium-cta"
+          current_scope={@current_scope}
+        />
+
         <.category_filter_v2 categories={@categories} selected={@selected_category} />
         <.search_input value={@search} placeholder="Buscar canais ao vivo..." />
 
@@ -379,6 +387,10 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     |> assign(has_more: has_more)
     |> assign(loading: false)
     |> assign(empty_results: empty_results)
+  end
+
+  defp premium_access?(user) do
+    Access.can_play_global_content?(user, Iptv.get_global_provider())
   end
 
   defp load_favorites_map(socket) do
