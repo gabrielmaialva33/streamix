@@ -56,8 +56,15 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
         })
 
       featured_movie = movie_fixture(global_provider, %{name: "A Premium Movie"})
+      owned_provider = provider_fixture(user)
+      _owned_movie = movie_fixture(owned_provider, %{name: "A Private Movie"})
 
-      %{user: user, global_provider: global_provider, featured_movie: featured_movie}
+      %{
+        user: user,
+        global_provider: global_provider,
+        featured_movie: featured_movie,
+        owned_provider: owned_provider
+      }
     end
 
     test "shows premium cta banner and badge in browse mode", %{
@@ -76,6 +83,18 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
     test "does not show premium cta banner for gindex browse", %{conn: conn, user: user} do
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/browse/movies?source=gindex")
+
+      refute has_element?(view, "#browse-premium-cta")
+      refute has_element?(view, "#browse-premium-cta a[href=\"/plans\"]")
+    end
+
+    test "does not show premium cta banner in provider mode", %{
+      conn: conn,
+      user: user,
+      owned_provider: owned_provider
+    } do
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/providers/#{owned_provider.id}/movies")
 
       refute has_element?(view, "#browse-premium-cta")
       refute has_element?(view, "#browse-premium-cta a[href=\"/plans\"]")

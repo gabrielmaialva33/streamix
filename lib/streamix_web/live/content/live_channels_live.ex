@@ -13,68 +13,18 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   @per_page 50
 
-  # Mount for /browse (global provider)
-  def mount(%{}, _session, socket) when not is_map_key(socket.assigns, :provider) do
-    user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_global_provider()
-
-    if provider do
-      mount_with_provider(socket, provider, user_id, :browse)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Catálogo não disponível. Configure um provedor.")
-       |> push_navigate(to: ~p"/providers")}
-    end
-  end
-
-  # Mount for /providers/:provider_id (user provider)
-  def mount(%{"provider_id" => provider_id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_playable_provider(user_id, provider_id)
-
-    if provider do
-      mount_with_provider(socket, provider, user_id, :provider)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Provedor não encontrado")
-       |> push_navigate(to: ~p"/providers")}
-    end
-  end
-
-  defp mount_with_provider(socket, provider, user_id, mode) do
-    epg_syncing =
-      if connected?(socket) do
-        Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
-        # Trigger async EPG sync if needed, returns true if sync started
-        maybe_sync_epg(provider)
-      else
-        false
-      end
-
+  def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
-    categories = Iptv.list_categories(provider.id, "live")
-    categories = filter_adult_categories(categories, user.show_adult_content)
-
-    current_path =
-      if mode == :browse,
-        do: "/browse",
-        else: "/providers/#{provider.id}"
-
-    page_title =
-      if mode == :browse,
-        do: "Ao Vivo",
-        else: "#{provider.name} - Ao Vivo"
+    user_id = user.id
 
     socket =
       socket
-      |> assign(page_title: page_title)
-      |> assign(current_path: current_path)
-      |> assign(provider: provider)
-      |> assign(mode: mode)
+      |> assign(page_title: "Ao Vivo")
+      |> assign(current_path: "/browse")
+      |> assign(provider: nil)
+      |> assign(mode: :browse)
       |> assign(premium_access: premium_access?(user))
-      |> assign(categories: categories)
+      |> assign(categories: [])
       |> assign(selected_category: nil)
       |> assign(search: "")
       |> assign(page: 1)
@@ -84,7 +34,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
       |> assign(favorites_map: %{})
       |> assign(empty_results: false)
       |> assign(user_id: user_id)
-      |> assign(epg_syncing: epg_syncing)
+      |> assign(epg_syncing: false)
       |> stream(:channels, [])
       |> load_favorites_map()
 
@@ -95,15 +45,21 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     category = parse_integer_param(params["category"])
     search = params["search"] || ""
 
-    socket =
-      socket
-      |> assign(selected_category: category)
-      |> assign(search: search)
-      |> assign(page: 1)
-      |> stream(:channels, [], reset: true)
-      |> load_channels()
+    case apply_route_context(socket, params) do
+      {:ok, socket} ->
+        socket =
+          socket
+          |> assign(selected_category: category)
+          |> assign(search: search)
+          |> assign(page: 1)
+          |> stream(:channels, [], reset: true)
+          |> load_channels()
 
-    {:noreply, socket}
+        {:noreply, socket}
+
+      {:redirect, socket} ->
+        {:noreply, socket}
+    end
   end
 
   defp parse_integer_param(nil), do: nil
@@ -406,6 +362,62 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   defp filter_adult_categories(categories, true), do: categories
   defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
+
+  defp apply_route_context(socket, %{"provider_id" => provider_id}) do
+    user = socket.assigns.current_scope.user
+    provider = Iptv.get_playable_provider(user.id, provider_id)
+
+    if provider do
+      {:ok, assign_provider_context(socket, provider, :provider)}
+    else
+      {:redirect,
+       socket
+       |> put_flash(:error, "Provedor não encontrado")
+       |> push_navigate(to: ~p"/providers")}
+    end
+  end
+
+  defp apply_route_context(socket, _params) do
+    provider = Iptv.get_global_provider()
+
+    if provider do
+      {:ok, assign_provider_context(socket, provider, :browse)}
+    else
+      {:redirect,
+       socket
+       |> put_flash(:error, "Catálogo não disponível. Configure um provedor.")
+       |> push_navigate(to: ~p"/providers")}
+    end
+  end
+
+  defp assign_provider_context(socket, provider, mode) do
+    user = socket.assigns.current_scope.user
+    categories = Iptv.list_categories(provider.id, "live")
+    categories = filter_adult_categories(categories, user.show_adult_content)
+
+    socket
+    |> assign(page_title: provider_page_title(provider, mode))
+    |> assign(current_path: provider_current_path(provider, mode))
+    |> assign(provider: provider)
+    |> assign(mode: mode)
+    |> assign(categories: categories)
+    |> assign(epg_syncing: maybe_prepare_provider_updates(socket, provider))
+  end
+
+  defp provider_page_title(_provider, :browse), do: "Ao Vivo"
+  defp provider_page_title(provider, :provider), do: "#{provider.name} - Ao Vivo"
+
+  defp provider_current_path(_provider, :browse), do: "/browse"
+  defp provider_current_path(provider, :provider), do: "/providers/#{provider.id}"
+
+  defp maybe_prepare_provider_updates(socket, provider) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
+      maybe_sync_epg(provider)
+    else
+      false
+    end
+  end
 
   # Path builders based on mode
   defp build_path(%{assigns: %{mode: :browse}}, nil, ""), do: ~p"/browse"

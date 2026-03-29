@@ -9,7 +9,12 @@ defmodule Streamix.AccountsFixtures do
   alias Streamix.Accounts
   alias Streamix.Accounts.Scope
 
-  def unique_user_email, do: "user#{System.unique_integer()}@example.com"
+  def unique_user_email do
+    unique = System.unique_integer([:positive, :monotonic])
+    timestamp = System.system_time(:nanosecond)
+    "user#{unique}-#{timestamp}@example.com"
+  end
+
   def valid_user_password, do: "hello world!"
 
   def valid_user_attributes(attrs \\ %{}) do

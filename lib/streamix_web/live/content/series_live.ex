@@ -44,134 +44,87 @@ defmodule StreamixWeb.Content.SeriesLive do
     {:ok, socket}
   end
 
-  # Mount for /providers/:provider_id/series (user provider)
-  def mount(%{"provider_id" => provider_id}, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_playable_provider(user_id, provider_id)
+  def handle_params(params, _url, socket) do
+    source = params["source"] || "iptv"
+    category = parse_integer_param(params["category"])
+    search = params["search"] || ""
+
+    case apply_route_context(socket, params, source) do
+      {:ok, socket} ->
+        socket =
+          socket
+          |> assign(selected_category: category)
+          |> assign(search: search)
+          |> assign(page: 1)
+          |> stream(:series, [], reset: true)
+          |> load_series()
+          |> load_favorites_map()
+
+        {:noreply, socket}
+
+      {:redirect, socket} ->
+        {:noreply, socket}
+    end
+  end
+
+  defp apply_route_context(socket, %{"provider_id" => provider_id}, _source) do
+    provider = Iptv.get_playable_provider(socket.assigns.user_id, provider_id)
 
     if provider do
-      mount_with_provider(socket, provider, user_id, :provider)
-    else
+      user = socket.assigns.user
+      categories = Iptv.list_categories(provider.id, "series")
+      categories = filter_adult_categories(categories, user.show_adult_content)
+
       {:ok,
+       socket
+       |> assign(page_title: "Séries - #{provider.name}")
+       |> assign(current_path: "/providers/#{provider.id}/series")
+       |> assign(provider: provider)
+       |> assign(mode: :provider)
+       |> assign(source: "iptv")
+       |> assign(categories: categories)
+       |> assign(gindex_counts: Iptv.gindex_counts())}
+    else
+      {:redirect,
        socket
        |> put_flash(:error, "Provedor não encontrado")
        |> push_navigate(to: ~p"/providers")}
     end
   end
 
-  defp mount_with_provider(socket, provider, user_id, mode) do
-    user = socket.assigns.current_scope.user
-    categories = Iptv.list_categories(provider.id, "series")
-    categories = filter_adult_categories(categories, user.show_adult_content)
-
-    current_path =
-      if mode == :browse,
-        do: "/browse/series",
-        else: "/providers/#{provider.id}/series"
-
-    page_title =
-      if mode == :browse,
-        do: "Séries",
-        else: "Séries - #{provider.name}"
-
-    socket =
-      socket
-      |> assign(page_title: page_title)
-      |> assign(current_path: current_path)
-      |> assign(provider: provider)
-      |> assign(mode: mode)
-      |> assign(premium_access: premium_access?(user))
-      |> assign(source: "iptv")
-      |> assign(categories: categories)
-      |> assign(selected_category: nil)
-      |> assign(search: "")
-      |> assign(page: 1)
-      |> assign(has_more: true)
-      |> assign(loading: false)
-      |> assign(favorites_map: %{})
-      |> assign(empty_results: false)
-      |> assign(user_id: user_id)
-      |> assign(user: user)
-      |> assign(gindex_count: 0)
-      |> stream(:series, [])
-      |> load_series()
-      |> load_favorites_map()
-
-    {:ok, socket}
+  defp apply_route_context(socket, _params, "gindex") do
+    {:ok,
+     socket
+     |> assign(page_title: "Séries - GDrive")
+     |> assign(current_path: "/browse/series")
+     |> assign(provider: nil)
+     |> assign(mode: :browse)
+     |> assign(source: "gindex")
+     |> assign(categories: [])
+     |> assign(gindex_counts: Iptv.gindex_counts())}
   end
 
-  def handle_params(params, _url, socket) do
-    source = params["source"] || "iptv"
-    category = parse_integer_param(params["category"])
-    search = params["search"] || ""
-
-    socket =
-      socket
-      |> assign(source: source)
-      |> assign(selected_category: category)
-      |> assign(search: search)
-      |> assign(page: 1)
-      |> stream(:series, [], reset: true)
-      |> maybe_reload_provider_and_categories(source)
-      |> load_series()
-      |> load_favorites_map()
-
-    {:noreply, socket}
-  end
-
-  defp maybe_reload_provider_and_categories(socket, source) do
-    case source do
-      "gindex" ->
-        # If we have a provider, it means we were in IPTV mode, so switch.
-        if socket.assigns.provider != nil or socket.assigns.gindex_count == 0 do
-          load_gindex_provider(socket)
-        else
-          socket
-        end
-
-      "iptv" ->
-        # If we don't have a provider, we need to load it.
-        if socket.assigns.provider == nil do
-          load_iptv_provider(socket)
-        else
-          socket
-        end
-
-      _ ->
-        socket
-    end
-  end
-
-  defp load_gindex_provider(socket) do
-    gindex_counts = Iptv.gindex_counts()
-
-    socket
-    |> assign(provider: nil)
-    |> assign(categories: [])
-    |> assign(page_title: "Séries - GDrive")
-    |> assign(gindex_counts: gindex_counts)
-  end
-
-  defp load_iptv_provider(socket) do
+  defp apply_route_context(socket, _params, _source) do
     user = socket.assigns.user
     provider = Iptv.get_global_provider()
 
-    if provider do
-      categories = Iptv.list_categories(provider.id, "series")
-      categories = filter_adult_categories(categories, user.show_adult_content)
+    categories =
+      case provider do
+        nil -> []
+        provider -> Iptv.list_categories(provider.id, "series")
+      end
 
-      socket
-      |> assign(provider: provider)
-      |> assign(categories: categories)
-      |> assign(page_title: "Séries")
-      |> assign(gindex_counts: Iptv.gindex_counts())
-    else
-      socket
-      |> assign(provider: nil)
-      |> assign(categories: [])
-      |> assign(page_title: "Séries")
-      |> assign(gindex_counts: Iptv.gindex_counts())
-    end
+    categories = filter_adult_categories(categories, user.show_adult_content)
+
+    {:ok,
+     socket
+     |> assign(page_title: "Séries")
+     |> assign(current_path: "/browse/series")
+     |> assign(provider: provider)
+     |> assign(mode: :browse)
+     |> assign(source: "iptv")
+     |> assign(categories: categories)
+     |> assign(gindex_counts: Iptv.gindex_counts())}
   end
 
   defp parse_integer_param(nil), do: nil
