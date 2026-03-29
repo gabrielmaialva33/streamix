@@ -307,7 +307,12 @@ defmodule StreamixWeb.HomeLive do
         />
 
         <div class="space-y-6 sm:space-y-8 pb-12">
-          <!-- Continue Watching (logged in only) -->
+          <.premium_cta_banner
+            id="home-premium-cta"
+            current_scope={@current_scope}
+          />
+          
+    <!-- Continue Watching (logged in only) -->
           <.render_content_carousel
             :if={@current_scope && @history != []}
             title="Continue Assistindo"

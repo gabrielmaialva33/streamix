@@ -6,8 +6,17 @@ defmodule Streamix.Billing do
   import Ecto.Query, warn: false
 
   alias Streamix.Accounts.User
+  alias Streamix.Billing.Plan
   alias Streamix.Billing.Subscription
   alias Streamix.Repo
+
+  def list_active_plans do
+    from(p in Plan,
+      where: p.active == true,
+      order_by: [asc: p.price_cents, asc: p.inserted_at]
+    )
+    |> Repo.all()
+  end
 
   def subscribed?(%User{id: user_id}) do
     now = DateTime.utc_now()

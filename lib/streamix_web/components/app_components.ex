@@ -70,6 +70,12 @@ defmodule StreamixWeb.AppComponents do
             label="Buscar"
             current_path={@current_path}
           />
+          <.nav_item
+            path={~p"/plans"}
+            icon="hero-sparkles"
+            label="Planos"
+            current_path={@current_path}
+          />
         </div>
 
         <div :if={@current_scope} class="space-y-1">
@@ -114,6 +120,13 @@ defmodule StreamixWeb.AppComponents do
 
         <div :if={!@current_scope} class="space-y-2">
           <.link
+            navigate={~p"/plans"}
+            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-colors w-full"
+          >
+            <.icon name="hero-sparkles" class="size-5" />
+            <span>Ver planos premium</span>
+          </.link>
+          <.link
             navigate={~p"/login"}
             class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors w-full"
           >
@@ -149,6 +162,88 @@ defmodule StreamixWeb.AppComponents do
       <.icon name={@icon} class="size-5" />
       <span>{@label}</span>
     </.link>
+    """
+  end
+
+  @doc """
+  Renders a compact premium badge.
+  """
+  attr :class, :string, default: nil
+  attr :label, :string, default: "Premium"
+
+  def premium_badge(assigns) do
+    ~H"""
+    <span class={[
+      "inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand",
+      @class
+    ]}>
+      <.icon name="hero-sparkles" class="size-3.5" />
+      {@label}
+    </span>
+    """
+  end
+
+  @doc """
+  Renders a premium upsell banner with a CTA to the plans page.
+  """
+  attr :class, :string, default: nil
+  attr :current_scope, :any, default: nil
+  attr :description, :string, default: nil
+  attr :id, :string, default: "premium-cta-banner"
+  attr :navigate, :string, default: nil
+  attr :title, :string, default: nil
+  attr :cta_label, :string, default: nil
+
+  def premium_cta_banner(assigns) do
+    assigns = assign_new(assigns, :navigate, fn -> ~p"/plans" end)
+
+    defaults =
+      if assigns.current_scope do
+        %{
+          title: "Liberte o acesso global ao catálogo",
+          description:
+            "Ative um plano premium para acessar o catálogo global sem bloqueios e acompanhar sua assinatura em um só lugar.",
+          cta_label: "Ver planos"
+        }
+      else
+        %{
+          title: "Conheça os planos premium",
+          description:
+            "Acesse o catálogo global e confira o que cada plano oferece antes de entrar ou criar sua conta.",
+          cta_label: "Explorar planos"
+        }
+      end
+
+    assigns =
+      assigns
+      |> assign_new(:title, fn -> defaults.title end)
+      |> assign_new(:description, fn -> defaults.description end)
+      |> assign_new(:cta_label, fn -> defaults.cta_label end)
+
+    ~H"""
+    <section
+      id={@id}
+      class={[
+        "rounded-2xl border border-brand/20 bg-gradient-to-br from-brand/15 via-surface to-accent/10 p-5 sm:p-6 shadow-lg shadow-brand/10",
+        @class
+      ]}
+    >
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="space-y-2">
+          <.premium_badge />
+          <h2 class="text-xl sm:text-2xl font-semibold text-text-primary">{@title}</h2>
+          <p class="text-sm sm:text-base text-text-secondary max-w-2xl">{@description}</p>
+        </div>
+
+        <.link
+          navigate={@navigate}
+          class="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-brand-hover"
+        >
+          <.icon name="hero-sparkles" class="size-5" />
+          {@cta_label}
+        </.link>
+      </div>
+    </section>
     """
   end
 

@@ -120,6 +120,7 @@ defmodule StreamixWeb.Router do
       on_mount: [{StreamixWeb.UserAuth, :mount_current_scope}],
       layout: {StreamixWeb.Layouts, :app} do
       live "/", HomeLive, :index
+      live "/plans", PlansLive, :index
     end
   end
 
