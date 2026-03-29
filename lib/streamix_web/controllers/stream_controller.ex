@@ -168,7 +168,7 @@ defmodule StreamixWeb.StreamController do
   defp resolve_final_url(url, count) do
     case resolve_final_url_head(url, count) do
       {:ok, resolved_url} ->
-        maybe_probe_get_redirects(resolved_url, count)
+        {:ok, resolved_url}
 
       {:error, {:fallback_to_get, _status}} ->
         resolve_final_url_get(url, count)
@@ -176,21 +176,6 @@ defmodule StreamixWeb.StreamController do
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  defp maybe_probe_get_redirects(url, count) do
-    if stream_probe_url?(url) do
-      resolve_final_url_get(url, count)
-    else
-      {:ok, url}
-    end
-  end
-
-  defp stream_probe_url?(url) do
-    # Only probe with GET if URL still contains provider credentials.
-    # Clean auth-token URLs (post-redirect) must NOT be probed because
-    # the GET consumes the single-use token, causing 502 on the real fetch.
-    credentials_in_url?(url)
   end
 
   defp resolve_final_url_head(url, count) do
@@ -255,7 +240,15 @@ defmodule StreamixWeb.StreamController do
       location ->
         next_url = resolve_redirect_location(url, location)
         Logger.debug("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
-        resolve_final_url(next_url, count + 1)
+
+        # If the redirected URL no longer has provider credentials, it's a
+        # single-use auth token URL — return immediately without probing
+        # (HEAD/GET would consume the token before the real player request).
+        if credentials_in_url?(next_url) do
+          resolve_final_url(next_url, count + 1)
+        else
+          {:ok, next_url}
+        end
     end
   end
 
