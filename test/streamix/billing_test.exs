@@ -141,6 +141,19 @@ defmodule Streamix.BillingTest do
     assert %{status: ["is invalid"]} = errors_on(changeset)
   end
 
+  test "subscription changeset rejects non-strict start and end ordering" do
+    timestamp = DateTime.utc_now()
+
+    changeset =
+      Subscription.changeset(%Subscription{}, %{
+        status: "active",
+        starts_at: timestamp,
+        expires_at: timestamp
+      })
+
+    assert %{expires_at: ["must be after starts_at"]} = errors_on(changeset)
+  end
+
   test "create_changeset validates ownership and start/end ordering" do
     user = user_fixture()
     plan = plan_fixture()
@@ -158,5 +171,33 @@ defmodule Streamix.BillingTest do
     assert Ecto.Changeset.get_field(changeset, :user_id) == user.id
     assert Ecto.Changeset.get_field(changeset, :plan_id) == plan.id
     assert %{expires_at: ["must be after starts_at"]} = errors_on(changeset)
+  end
+
+  test "inactive plans do not grant entitlement" do
+    user = user_fixture()
+    plan = plan_fixture(active: false)
+
+    create_subscription!(user, plan,
+      status: "active",
+      starts_at: DateTime.add(DateTime.utc_now(), -1, :day),
+      expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+    )
+
+    refute Billing.subscribed?(user)
+    assert Billing.active_subscription_for_user(user) == nil
+  end
+
+  test "plans without global access do not grant entitlement" do
+    user = user_fixture()
+    plan = plan_fixture(grants_global_access: false)
+
+    create_subscription!(user, plan,
+      status: "active",
+      starts_at: DateTime.add(DateTime.utc_now(), -1, :day),
+      expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+    )
+
+    refute Billing.subscribed?(user)
+    assert Billing.active_subscription_for_user(user) == nil
   end
 end

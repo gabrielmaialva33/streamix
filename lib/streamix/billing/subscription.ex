@@ -37,6 +37,7 @@ defmodule Streamix.Billing.Subscription do
     ])
     |> validate_required([:status])
     |> validate_inclusion(:status, @allowed_statuses)
+    |> validate_start_before_expiration()
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:plan_id)
   end
@@ -47,7 +48,6 @@ defmodule Streamix.Billing.Subscription do
     |> put_change(:user_id, user.id)
     |> put_change(:plan_id, plan.id)
     |> validate_required([:user_id, :plan_id, :status])
-    |> validate_start_before_expiration()
   end
 
   defp validate_start_before_expiration(changeset) do

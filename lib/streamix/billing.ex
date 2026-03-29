@@ -13,7 +13,9 @@ defmodule Streamix.Billing do
     now = DateTime.utc_now()
 
     from(s in Subscription,
+      join: p in assoc(s, :plan),
       where: s.user_id == ^user_id and s.status == "active",
+      where: p.active == true and p.grants_global_access == true,
       where: is_nil(s.starts_at) or s.starts_at <= ^now,
       where: is_nil(s.expires_at) or s.expires_at > ^now
     )
@@ -26,10 +28,12 @@ defmodule Streamix.Billing do
     now = DateTime.utc_now()
 
     from(s in Subscription,
+      join: p in assoc(s, :plan),
       where: s.user_id == ^user_id and s.status == "active",
+      where: p.active == true and p.grants_global_access == true,
       where: is_nil(s.starts_at) or s.starts_at <= ^now,
       where: is_nil(s.expires_at) or s.expires_at > ^now,
-      preload: [:plan],
+      preload: [plan: p],
       order_by: [desc: s.inserted_at, desc: s.id],
       limit: 1
     )
