@@ -11,6 +11,8 @@ defmodule StreamixWeb.StreamToken do
   ownership at consumption time.
   """
 
+  alias Streamix.Access
+  alias Streamix.Accounts.User
   alias Streamix.Iptv
   alias Streamix.Repo
   alias StreamixWeb.UrlValidator
@@ -125,16 +127,14 @@ defmodule StreamixWeb.StreamToken do
         movie = Repo.preload(movie, :provider)
         provider = movie.provider
 
-        if authorized_for_provider?(user_id, provider) do
-          ext = movie.container_extension || "mp4"
-
-          url =
-            "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.#{ext}"
-
-          {:ok, url}
-        else
-          {:error, :unauthorized}
-        end
+        build_content_url(
+          provider,
+          user_id,
+          movie,
+          "movie",
+          movie.stream_id,
+          movie.container_extension
+        )
     end
   end
 
@@ -147,16 +147,14 @@ defmodule StreamixWeb.StreamToken do
         episode = Repo.preload(episode, season: [series: :provider])
         provider = episode.season.series.provider
 
-        if authorized_for_provider?(user_id, provider) do
-          ext = episode.container_extension || "mp4"
-
-          url =
-            "#{provider.url}/series/#{provider.username}/#{provider.password}/#{episode.episode_id}.#{ext}"
-
-          {:ok, url}
-        else
-          {:error, :unauthorized}
-        end
+        build_content_url(
+          provider,
+          user_id,
+          episode,
+          "series",
+          episode.episode_id,
+          episode.container_extension
+        )
     end
   end
 
@@ -169,17 +167,58 @@ defmodule StreamixWeb.StreamToken do
         channel = Repo.preload(channel, :provider)
         provider = channel.provider
 
-        if authorized_for_provider?(user_id, provider) do
-          # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
-          # This avoids mixed content issues with HLS segment URLs
-          url =
-            "#{provider.url}/live/#{provider.username}/#{provider.password}/#{channel.stream_id}.ts"
+        build_content_url(provider, user_id, channel, "live", channel.stream_id, "ts")
+    end
+  end
 
-          {:ok, url}
+  defp build_content_url(provider, user_id, content, content_path, stream_id, extension) do
+    cond do
+      Access.global_content?(provider) ->
+        build_global_content_url(provider, user_id, content, content_path, stream_id, extension)
+
+      authorized_for_provider?(user_id, provider) ->
+        build_provider_content_url(provider, content_path, stream_id, extension)
+
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  defp build_global_content_url(_provider, nil, _content, _content_path, _stream_id, _extension) do
+    {:error, :subscription_required}
+  end
+
+  defp build_global_content_url(provider, user_id, content, content_path, stream_id, extension) do
+    case Repo.get(User, user_id) do
+      nil ->
+        {:error, :invalid_token}
+
+      %User{} = user ->
+        if Access.can_play_global_content?(user, content) do
+          build_provider_content_url(provider, content_path, stream_id, extension)
         else
           {:error, :unauthorized}
         end
     end
+  end
+
+  defp build_provider_content_url(provider, "movie", stream_id, extension) do
+    ext = extension || "mp4"
+    url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+    {:ok, url}
+  end
+
+  defp build_provider_content_url(provider, "series", stream_id, extension) do
+    ext = extension || "mp4"
+    url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+    {:ok, url}
+  end
+
+  defp build_provider_content_url(provider, "live", stream_id, _extension) do
+    # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
+    # This avoids mixed content issues with HLS segment URLs
+    url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
+    {:ok, url}
   end
 
   # Verifies that the token's user_id is authorized to access content from this provider.

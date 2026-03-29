@@ -53,6 +53,11 @@ defmodule StreamixWeb.StreamController do
         |> put_status(:unauthorized)
         |> json(%{error: "Invalid stream token"})
 
+      {:error, :subscription_required} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{error: "Subscription required"})
+
       {:error, :not_found} ->
         conn
         |> put_status(:not_found)
@@ -128,9 +133,7 @@ defmodule StreamixWeb.StreamController do
            headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
            decode_body: false,
            receive_timeout: 5_000,
-           connect_options: [timeout: 5_000],
-           # Only read up to 1KB (redirect responses are tiny HTML)
-           max_body: 1_024
+           connect_options: [timeout: 5_000]
          ) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_resolved_redirect(url, headers, count)
