@@ -176,7 +176,13 @@ defmodule StreamixWeb.StreamController do
         end
 
       {:error, {:fallback_to_get, _status}} ->
-        resolve_final_url_get(url, count)
+        # Only fallback to GET for credential URLs. Non-credential URLs
+        # have single-use tokens — never consume with GET probe.
+        if credentials_in_url?(url) do
+          resolve_final_url_get(url, count)
+        else
+          {:ok, url}
+        end
 
       {:error, reason} ->
         {:error, reason}
@@ -245,15 +251,7 @@ defmodule StreamixWeb.StreamController do
       location ->
         next_url = resolve_redirect_location(url, location)
         Logger.debug("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
-
-        # If the redirected URL no longer has provider credentials, it's a
-        # single-use auth token URL — return immediately without probing
-        # (HEAD/GET would consume the token before the real player request).
-        if credentials_in_url?(next_url) do
-          resolve_final_url(next_url, count + 1)
-        else
-          {:ok, next_url}
-        end
+        resolve_final_url(next_url, count + 1)
     end
   end
 

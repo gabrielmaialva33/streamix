@@ -85,8 +85,8 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       # Object: disable plugins
       "object-src 'none'",
 
-      # Upgrade insecure requests in production
-      "upgrade-insecure-requests"
+      # NOTE: upgrade-insecure-requests removed — IPTV providers serve
+      # HTTP-only streams on bare IPs, upgrading breaks playback
     ]
     |> Enum.join("; ")
   end
