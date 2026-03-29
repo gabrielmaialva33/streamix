@@ -229,7 +229,7 @@ defmodule StreamixWeb.AppComponents do
   attr :cta_label, :string, default: nil
 
   def premium_cta_banner(assigns) do
-    assigns = assign_new(assigns, :navigate, fn -> ~p"/plans" end)
+    assigns = assign(assigns, :navigate, assigns.navigate || ~p"/plans")
 
     defaults =
       if assigns.current_scope do

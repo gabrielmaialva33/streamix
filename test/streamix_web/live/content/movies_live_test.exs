@@ -69,7 +69,16 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       {:ok, view, _html} = live(conn, ~p"/browse/movies")
 
       assert has_element?(view, "#browse-premium-cta")
+      assert render(view |> element("#browse-premium-cta a")) =~ ~s(href="/plans")
       assert has_element?(view, "#movie-card-#{featured_movie.id} [data-premium-badge]")
+    end
+
+    test "does not show premium cta banner for gindex browse", %{conn: conn, user: user} do
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?source=gindex")
+
+      refute has_element?(view, "#browse-premium-cta")
+      refute has_element?(view, "#browse-premium-cta a[href=\"/plans\"]")
     end
   end
 end

@@ -336,7 +336,7 @@ defmodule StreamixWeb.Content.MoviesLive do
         </div>
 
         <.premium_cta_banner
-          :if={@mode == :browse and not @premium_access}
+          :if={@mode == :browse and @source == "iptv" and not @premium_access}
           id="browse-premium-cta"
           current_scope={@current_scope}
         />
