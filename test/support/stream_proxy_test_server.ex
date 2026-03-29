@@ -17,6 +17,13 @@ defmodule Streamix.TestSupport.StreamProxyTestServer do
         conn = send_chunked(conn, 200)
         stream_body(conn, body_counter, 200)
 
+      {"HEAD", "/head-blocked.mp4"} ->
+        send_resp(conn, 403, "")
+
+      {"GET", "/head-blocked.mp4"} ->
+        conn = send_chunked(conn, 200)
+        stream_body(conn, body_counter, 200)
+
       _ ->
         send_resp(conn, 404, "not found")
     end

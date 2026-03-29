@@ -130,7 +130,7 @@ defmodule StreamixWeb.StreamController do
       {:ok, resolved_url} ->
         {:ok, resolved_url}
 
-      {:error, :head_not_supported} ->
+      {:error, {:fallback_to_get, _status}} ->
         resolve_final_url_get(url, count)
 
       {:error, reason} ->
@@ -146,15 +146,12 @@ defmodule StreamixWeb.StreamController do
       {:ok, %{status: status}} when status in 200..299 ->
         {:ok, url}
 
-      {:ok, %{status: status}} when status in [405, 501] ->
-        {:error, :head_not_supported}
-
       {:ok, %{status: status}} ->
-        Logger.error(
-          "Stream proxy: HEAD resolve got unexpected status #{status} for #{sanitize_url(url)}"
+        Logger.warning(
+          "Stream proxy: HEAD resolve fell back to GET after status #{status} for #{sanitize_url(url)}"
         )
 
-        {:error, {:unexpected_status, status}}
+        {:error, {:fallback_to_get, status}}
 
       {:error, reason} ->
         {:error, reason}

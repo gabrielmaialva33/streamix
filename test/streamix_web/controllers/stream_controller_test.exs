@@ -69,6 +69,49 @@ defmodule StreamixWeb.StreamControllerTest do
     assert Agent.get(body_counter, & &1) < 200
   end
 
+  test "url token falls back to GET when upstream rejects HEAD but serves GET", %{conn: conn} do
+    owner = user_fixture()
+
+    provider =
+      provider_fixture(owner, %{
+        visibility: "public",
+        is_system: false,
+        url: "http://example.com"
+      })
+
+    body_counter = start_supervised!({Agent, fn -> 0 end})
+    server = start_stream_proxy_server(body_counter)
+    {:ok, {address, port}} = ThousandIsland.listener_info(server)
+    assert address == {127, 0, 0, 1}
+
+    original_req_options = Application.get_env(:streamix, :stream_proxy_req_options)
+
+    on_exit(fn ->
+      case original_req_options do
+        nil -> Application.delete_env(:streamix, :stream_proxy_req_options)
+        value -> Application.put_env(:streamix, :stream_proxy_req_options, value)
+      end
+    end)
+
+    Application.put_env(:streamix, :stream_proxy_req_options,
+      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
+    )
+
+    token =
+      StreamToken.sign_url(
+        "http://example.com/head-blocked.mp4",
+        owner.id,
+        provider_id: provider.id
+      )
+
+    conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+    assert response(conn, 302) =~ "redirected"
+    location = get_resp_header(conn, "location") |> List.first()
+    assert String.contains?(location, "head-blocked.mp4")
+    assert Agent.get(body_counter, & &1) < 200
+  end
+
   defp start_stream_proxy_server(body_counter) do
     start_supervised!({
       Bandit,
