@@ -484,7 +484,7 @@ defmodule StreamixWeb.PlayerComponents do
     else
       # Fallback for any non-token URLs (e.g., direct external URLs)
       proxy_base =
-        Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
 
       "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
     end

@@ -101,10 +101,10 @@ end
 # Proxy URLs for CDN / reverse proxy domains
 # These proxies handle mixed content, image caching, and stream delivery
 config :streamix,
-  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://pannxs.mahina.cloud",
+  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
   imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.cloud",
-  image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://stream.mahina.cloud"
+  image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud"
 
 # API Keys for TV app and external clients
 # Comma-separated list of valid API keys

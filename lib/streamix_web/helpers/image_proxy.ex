@@ -19,7 +19,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   defp tmdb_proxy_url, do: Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")
   defp imgmxa_proxy_url, do: Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.cloud")
-  defp image_proxy_url, do: Application.get_env(:streamix, :image_proxy_url, "https://stream.mahina.cloud")
+  defp image_proxy_url, do: Application.get_env(:streamix, :image_proxy_url, "https://img.mahina.cloud")
 
   # TMDB image sizes (Netflix uses 20-30KB for thumbnails)
   @tmdb_sizes %{

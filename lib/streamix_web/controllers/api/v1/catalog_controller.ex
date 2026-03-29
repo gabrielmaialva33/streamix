@@ -511,7 +511,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   end
 
   defp build_browser_token_proxy_url(token) do
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
     base_url = StreamixWeb.Endpoint.url()
     token_url = "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
     "#{proxy_base}/proxy?url=#{URI.encode_www_form(token_url)}"

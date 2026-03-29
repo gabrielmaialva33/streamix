@@ -218,7 +218,7 @@ defmodule StreamixWeb.Router do
   end
 
   defp put_early_hints(conn, _opts) do
-    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
     Plug.Conn.put_resp_header(conn, "link", "<#{proxy}>; rel=preconnect")
   end
 end

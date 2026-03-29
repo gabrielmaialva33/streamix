@@ -102,7 +102,7 @@ defmodule StreamixWeb.StreamController do
           conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
         else
           proxy_base =
-            Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")
+            Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
 
           final_proxy = "#{proxy_base}/proxy?url=#{URI.encode_www_form(final_url)}"
           Logger.info("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")

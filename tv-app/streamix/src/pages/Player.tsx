@@ -15,12 +15,12 @@ type PlayerType = 'movie' | 'series' | 'channel';
  * Note: We prefer browser_stream_url even on Tizen because:
  * - The Phoenix proxy (stream_url) doesn't respond without Range header
  * - AVPlay makes initial requests without Range, causing PLAYER_ERROR_CONNECTION_FAILED
- * - browser_stream_url (pannxs proxy) works correctly with AVPlay
+ * - browser_stream_url (stream proxy) works correctly with AVPlay
  */
 const getStreamUrl = (info: any, _isBrowser: boolean): string => {
   // Prefer browser_stream_url for all platforms (it works without Range header)
   if (info.browser_stream_url) {
-    console.log('[Player] Using browser stream URL (pannxs proxy)');
+    console.log('[Player] Using browser stream URL (stream proxy)');
     return info.browser_stream_url;
   }
   console.log('[Player] Using stream_url (Phoenix proxy)');
