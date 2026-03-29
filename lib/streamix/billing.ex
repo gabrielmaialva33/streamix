@@ -89,6 +89,8 @@ defmodule Streamix.Billing do
         |> Repo.insert!()
 
       %Subscription{} = subscription ->
+        attrs = Map.put(attrs, :starts_at, subscription.starts_at)
+
         subscription
         |> Subscription.create_changeset(user, plan, attrs)
         |> Repo.update!()

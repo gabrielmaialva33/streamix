@@ -223,7 +223,7 @@ defmodule Streamix.BillingTest do
     assert Repo.aggregate(from(p in Plan, where: p.slug == ^attrs.slug), :count, :id) == 1
   end
 
-  test "ensure_manual_subscription!/3 reuses the same manual subscription" do
+  test "ensure_manual_subscription!/3 preserves the existing starts_at on rerun" do
     user = user_fixture()
 
     plan =
@@ -238,16 +238,17 @@ defmodule Streamix.BillingTest do
         grants_global_access: true
       })
 
-    starts_at = DateTime.utc_now() |> DateTime.truncate(:second)
-    first_expires_at = DateTime.add(starts_at, 30, :day)
-    second_expires_at = DateTime.add(starts_at, 60, :day)
+    first_starts_at = DateTime.utc_now() |> DateTime.truncate(:second)
+    second_starts_at = DateTime.add(first_starts_at, 1, :day)
+    first_expires_at = DateTime.add(first_starts_at, 30, :day)
+    second_expires_at = DateTime.add(second_starts_at, 60, :day)
 
     first_subscription =
       Billing.ensure_manual_subscription!(user, plan, %{
         status: "active",
         source: "manual",
         external_reference: "seed:#{user.email}:#{plan.slug}",
-        starts_at: starts_at,
+        starts_at: first_starts_at,
         expires_at: first_expires_at
       })
 
@@ -256,11 +257,12 @@ defmodule Streamix.BillingTest do
         status: "active",
         source: "manual",
         external_reference: "seed:#{user.email}:#{plan.slug}",
-        starts_at: starts_at,
+        starts_at: second_starts_at,
         expires_at: second_expires_at
       })
 
     assert first_subscription.id == second_subscription.id
+    assert second_subscription.starts_at == first_starts_at
     assert second_subscription.expires_at == second_expires_at
 
     assert Repo.aggregate(
