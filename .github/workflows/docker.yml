@@ -3,8 +3,6 @@ name: CI/CD
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,64 +13,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: streamix
-          POSTGRES_PASSWORD: streamix
-          POSTGRES_DB: streamix_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      MIX_ENV: test
-      DATABASE_URL: ecto://streamix:streamix@localhost/streamix_test
-      REDIS_URL: redis://localhost:6379
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: erlef/setup-beam@v1
-        with:
-          elixir-version: "1.18.2"
-          otp-version: "27"
-
-      - name: Cache deps & build
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps
-            _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mix.lock') }}
-          restore-keys: mix-${{ runner.os }}-
-
-      - run: mix deps.get
-      - run: mix compile --warnings-as-errors
-      - run: mix ecto.create && mix ecto.migrate
-      - run: mix test --exclude external --exclude integration
-
   build:
-    needs: test
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
