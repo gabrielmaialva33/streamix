@@ -3,6 +3,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
 
   import Phoenix.LiveViewTest
   import Streamix.AccountsFixtures
+  alias Streamix.Billing.{Plan, Subscription}
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv.{Season, Series}
@@ -37,6 +38,42 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
 
     %Season{}
     |> Season.changeset(params)
+    |> Repo.insert!()
+  end
+
+  defp plan_fixture(attrs \\ %{}) do
+    unique = System.unique_integer([:positive])
+
+    params =
+      Enum.into(attrs, %{
+        name: "Premium #{unique}",
+        slug: "premium-#{unique}",
+        description: "Access to global content",
+        price_cents: 1_999,
+        currency: "USD",
+        billing_interval: "month",
+        active: true,
+        grants_global_access: true
+      })
+
+    %Plan{}
+    |> Plan.changeset(params)
+    |> Repo.insert!()
+  end
+
+  defp create_subscription!(user, plan, attrs \\ %{}) do
+    params =
+      Enum.into(attrs, %{
+        status: "active",
+        starts_at: DateTime.add(DateTime.utc_now(), -1, :day),
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day),
+        canceled_at: nil,
+        source: "stripe",
+        external_reference: "sub_#{System.unique_integer([:positive])}"
+      })
+
+    %Subscription{}
+    |> Subscription.create_changeset(user, plan, params)
     |> Repo.insert!()
   end
 
@@ -90,6 +127,21 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       assert has_element?(view, "[data-premium-badge]")
     end
 
+    test "movie detail browse keeps premium badge visible for entitled users", %{
+      conn: conn,
+      user: user,
+      movie: movie
+    } do
+      plan = plan_fixture()
+      _subscription = create_subscription!(user, plan)
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies/#{movie.id}")
+
+      assert has_element?(view, "[data-premium-badge]")
+      refute has_element?(view, "#movie-detail-premium-cta")
+    end
+
     test "series detail browse shows premium badge and cta for non-entitled users", %{
       conn: conn,
       user: user,
@@ -100,6 +152,21 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
 
       assert has_element?(view, "#series-detail-premium-cta")
       assert has_element?(view, "[data-premium-badge]")
+    end
+
+    test "series detail browse keeps premium badge visible for entitled users", %{
+      conn: conn,
+      user: user,
+      series: series
+    } do
+      plan = plan_fixture()
+      _subscription = create_subscription!(user, plan)
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/series/#{series.id}")
+
+      assert has_element?(view, "[data-premium-badge]")
+      refute has_element?(view, "#series-detail-premium-cta")
     end
   end
 end
