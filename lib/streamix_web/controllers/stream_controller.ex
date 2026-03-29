@@ -153,10 +153,10 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp stream_probe_url?(url) do
-    uri = URI.parse(url)
-    path = uri.path || ""
-
-    credentials_in_url?(url) or String.match?(path, ~r{\.(m3u8|mp4|mkv|ts)$}i)
+    # Only probe with GET if URL still contains provider credentials.
+    # Clean auth-token URLs (post-redirect) must NOT be probed because
+    # the GET consumes the single-use token, causing 502 on the real fetch.
+    credentials_in_url?(url)
   end
 
   defp resolve_final_url_head(url, count) do
