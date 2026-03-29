@@ -117,6 +117,12 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
+  def handle_event("player_debug", params, socket) do
+    require Logger
+    Logger.warning("Player debug: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
   def handle_event("diagnostic_suggestion", params, socket) do
     # Could show UI suggestion to user in the future
     require Logger

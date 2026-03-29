@@ -1146,6 +1146,27 @@ const VideoPlayer = {
     return this.currentStreamType === "ts" && this.contentType === "live" && isFirefoxBrowser();
   },
 
+  reportPlayerDebug(stage, extra = {}) {
+    this.pushEvent("player_debug", {
+      stage,
+      current_stream_type: this.currentStreamType,
+      content_type: this.contentType,
+      source_type: this.sourceType,
+      use_proxy: this.useProxy,
+      current_url: this.currentUrl,
+      stream_url: this.streamUrl,
+      proxy_url: this.proxyUrl,
+      prefer_avplayer: this.preferAVPlayer,
+      using_avplayer: this.usingAVPlayer,
+      avplayer_attempted: this.avPlayerAttempted,
+      should_prefer_avplayer_for_live_ts: this.shouldPreferAVPlayerForLiveTs(),
+      hls_supported: isHlsJsSupported(),
+      mpegts_supported: isMpegtsSupported(),
+      user_agent: navigator.userAgent,
+      ...extra,
+    });
+  },
+
   toAbsoluteUrl(url) {
     if (!url) return url;
     if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -1305,6 +1326,9 @@ const VideoPlayer = {
       hlsSupported: isHlsJsSupported(),
       mpegtsSupported: isMpegtsSupported(),
       userAgent: navigator.userAgent,
+    });
+    this.reportPlayerDebug("init_player_decision", {
+      recommended_player: recommendedPlayer,
     });
 
     if (recommendedPlayer === "avplayer" && !this.avPlayerAttempted) {
@@ -1491,6 +1515,10 @@ const VideoPlayer = {
 
       if (this.shouldPreferAVPlayerForLiveTs() && !this.usingAVPlayer && !this.avPlayerAttempted) {
         log.warn("mpegts.js failed for live TS on Firefox, trying AVPlayer...");
+        this.reportPlayerDebug("mpegts_error_try_avplayer", {
+          error_type: errorType,
+          error_detail: errorDetail,
+        });
         this.cleanup();
         this.tryAVPlayerFallback();
         return;
@@ -1539,11 +1567,13 @@ const VideoPlayer = {
   async playWithMpegts(type = "mpegts") {
     if (type === "mpegts" && this.shouldPreferAVPlayerForLiveTs()) {
       log.debug("Skipping mpegts.js for live TS on Firefox, forcing AVPlayer");
+      this.reportPlayerDebug("skip_mpegts_for_firefox_live_ts", { requested_type: type });
       this.tryAVPlayerFallback();
       return;
     }
 
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
+    this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
 
     try {
       this.mpegtsPlayer = await this.streamLoader.loadMpegts(this.currentUrl, type);
@@ -1824,6 +1854,9 @@ const VideoPlayer = {
       contentType: this.contentType,
       proxyUrl: this.proxyUrl,
       streamUrl: this.streamUrl,
+    });
+    this.reportPlayerDebug("try_avplayer_fallback", {
+      fallback_attempts: this.fallbackAttempts,
     });
     this.playerUI.hideError();
 
