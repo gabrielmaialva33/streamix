@@ -21,6 +21,9 @@ defmodule Streamix.Billing.Plan do
     timestamps(type: :utc_datetime)
   end
 
+  @allowed_currencies ~w(USD BRL EUR)
+  @allowed_billing_intervals ~w(day week month year)
+
   def changeset(plan, attrs) do
     plan
     |> cast(attrs, [
@@ -40,6 +43,9 @@ defmodule Streamix.Billing.Plan do
       :currency,
       :billing_interval
     ])
+    |> validate_number(:price_cents, greater_than_or_equal_to: 0)
+    |> validate_inclusion(:currency, @allowed_currencies)
+    |> validate_inclusion(:billing_interval, @allowed_billing_intervals)
     |> unique_constraint(:slug)
   end
 end

@@ -23,11 +23,11 @@ defmodule Streamix.Billing.Subscription do
     timestamps(type: :utc_datetime)
   end
 
+  @allowed_statuses ~w(active pending canceled expired)
+
   def changeset(subscription, attrs) do
     subscription
     |> cast(attrs, [
-      :user_id,
-      :plan_id,
       :status,
       :starts_at,
       :expires_at,
@@ -35,7 +35,8 @@ defmodule Streamix.Billing.Subscription do
       :source,
       :external_reference
     ])
-    |> validate_required([:user_id, :plan_id, :status])
+    |> validate_required([:status])
+    |> validate_inclusion(:status, @allowed_statuses)
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:plan_id)
   end

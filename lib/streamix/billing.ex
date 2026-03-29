@@ -14,6 +14,7 @@ defmodule Streamix.Billing do
 
     from(s in Subscription,
       where: s.user_id == ^user_id and s.status == "active",
+      where: is_nil(s.starts_at) or s.starts_at <= ^now,
       where: is_nil(s.expires_at) or s.expires_at > ^now
     )
     |> Repo.exists?()
@@ -26,6 +27,7 @@ defmodule Streamix.Billing do
 
     from(s in Subscription,
       where: s.user_id == ^user_id and s.status == "active",
+      where: is_nil(s.starts_at) or s.starts_at <= ^now,
       where: is_nil(s.expires_at) or s.expires_at > ^now,
       preload: [:plan],
       order_by: [desc: s.inserted_at],
