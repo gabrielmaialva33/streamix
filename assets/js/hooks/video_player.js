@@ -1294,6 +1294,18 @@ const VideoPlayer = {
     // Check Device Codec Memory for recommended player (Netflix pattern)
     const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
     const recommendedPlayer = getRecommendedPlayer(contentKey);
+    log.debug("[VideoPlayer] Engine decision context", {
+      currentStreamType: this.currentStreamType,
+      contentType: this.contentType,
+      sourceType: this.sourceType,
+      recommendedPlayer,
+      preferAVPlayer: this.preferAVPlayer,
+      useProxy: this.useProxy,
+      shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
+      hlsSupported: isHlsJsSupported(),
+      mpegtsSupported: isMpegtsSupported(),
+      userAgent: navigator.userAgent,
+    });
 
     if (recommendedPlayer === "avplayer" && !this.avPlayerAttempted) {
       log.debug("Using AVPlayer based on device compatibility history");
@@ -1807,7 +1819,12 @@ const VideoPlayer = {
       this.audioCheckTimeout = null;
     }
 
-    log.debug("[VideoPlayer] Attempting AVPlayer fallback (seamless)");
+    log.debug("[VideoPlayer] Attempting AVPlayer fallback (seamless)", {
+      currentStreamType: this.currentStreamType,
+      contentType: this.contentType,
+      proxyUrl: this.proxyUrl,
+      streamUrl: this.streamUrl,
+    });
     this.playerUI.hideError();
 
     const currentTime = this.video.currentTime || 0;
