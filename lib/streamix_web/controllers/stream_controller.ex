@@ -137,7 +137,6 @@ defmodule StreamixWeb.StreamController do
           Logger.debug("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")
 
           conn
-          |> put_resp_header("access-control-allow-origin", "*")
           |> put_resp_header("cache-control", "no-cache, no-store")
           |> redirect(external: final_proxy)
         else
@@ -168,7 +167,13 @@ defmodule StreamixWeb.StreamController do
   defp resolve_final_url(url, count) do
     case resolve_final_url_head(url, count) do
       {:ok, resolved_url} ->
-        {:ok, resolved_url}
+        # If HEAD returned 200 but URL still has provider credentials,
+        # the server may not support HEAD redirects. Try GET instead.
+        if credentials_in_url?(resolved_url) do
+          resolve_final_url_get(url, count)
+        else
+          {:ok, resolved_url}
+        end
 
       {:error, {:fallback_to_get, _status}} ->
         resolve_final_url_get(url, count)

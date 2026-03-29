@@ -236,6 +236,15 @@ defmodule StreamixWeb.AppComponents do
   attr :cta_label, :string, default: nil
 
   def premium_cta_banner(assigns) do
+    # Hide for admin users
+    if assigns.current_scope && assigns.current_scope.user.role == "admin" do
+      ~H""
+    else
+      render_premium_cta_banner(assigns)
+    end
+  end
+
+  defp render_premium_cta_banner(assigns) do
     assigns = assign(assigns, :navigate, assigns.navigate || ~p"/plans")
 
     defaults =

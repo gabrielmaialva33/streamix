@@ -85,6 +85,13 @@
               >
                 <.icon name="hero-cog-6-tooth" class="size-4" /> Configurações
               </.link>
+              <.link
+                :if={@current_scope.user.role == "admin"}
+                navigate={~p"/admin"}
+                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+              >
+                <.icon name="hero-shield-check" class="size-4" /> Gerenciamento
+              </.link>
               <div class="px-3 py-2">
                 <div class="flex items-center justify-between text-sm text-text-secondary">
                   <span class="flex items-center gap-2">

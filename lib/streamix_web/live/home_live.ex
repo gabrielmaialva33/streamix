@@ -640,7 +640,7 @@ defmodule StreamixWeb.HomeLive do
       </div>
       <%= if @type == :channels do %>
         <!-- Grid layout for channels - 3 cols mobile, scrollable on larger -->
-        <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[160px]">
+        <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]">
           <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
           <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
           <.see_more_card
@@ -803,7 +803,7 @@ defmodule StreamixWeb.HomeLive do
         see_more_path={~p"/browse"}
         ai_powered={@ai_powered}
       />
-      <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[160px]">
+      <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]">
         <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
         <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
         <.see_more_card path={~p"/browse"} type={:channels} class="hidden sm:flex" />

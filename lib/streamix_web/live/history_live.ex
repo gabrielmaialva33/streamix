@@ -14,6 +14,7 @@ defmodule StreamixWeb.HistoryLive do
   import StreamixWeb.AppComponents
 
   alias Streamix.Iptv
+  alias StreamixWeb.Helpers.ImageProxy
 
   @page_size 20
 
@@ -237,7 +238,7 @@ defmodule StreamixWeb.HistoryLive do
       >
         <img
           :if={@entry.content_icon}
-          src={@entry.content_icon}
+          src={ImageProxy.proxy(@entry.content_icon)}
           alt={@entry.content_name}
           class="w-full h-full object-contain"
           loading="lazy"

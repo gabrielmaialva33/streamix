@@ -14,6 +14,7 @@ defmodule StreamixWeb.FavoritesLive do
   import StreamixWeb.AppComponents
 
   alias Streamix.Iptv
+  alias StreamixWeb.Helpers.ImageProxy
 
   @page_size 24
 
@@ -221,7 +222,7 @@ defmodule StreamixWeb.FavoritesLive do
       >
         <img
           :if={@favorite.content_icon}
-          src={@favorite.content_icon}
+          src={ImageProxy.proxy(@favorite.content_icon)}
           alt={@favorite.content_name}
           class="w-full h-full object-contain p-2"
           loading="lazy"
