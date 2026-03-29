@@ -144,12 +144,13 @@ defmodule Streamix.BillingTest do
   test "create_changeset validates ownership and start/end ordering" do
     user = user_fixture()
     plan = plan_fixture()
+    timestamp = DateTime.utc_now()
 
     changeset =
       Subscription.create_changeset(%Subscription{}, user, plan, %{
         status: "active",
-        starts_at: DateTime.add(DateTime.utc_now(), 1, :day),
-        expires_at: DateTime.add(DateTime.utc_now(), 1, :day),
+        starts_at: timestamp,
+        expires_at: timestamp,
         user_id: -1,
         plan_id: -1
       })
