@@ -97,6 +97,9 @@ defmodule Streamix.Accounts do
     |> Repo.insert()
   end
 
+  def admin?(%User{role: "admin"}), do: true
+  def admin?(_user), do: false
+
   @doc """
   Returns an `%Ecto.Changeset{}` for tracking user registration changes.
 

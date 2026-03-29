@@ -7,6 +7,7 @@ defmodule Streamix.Accounts.User do
 
   schema "users" do
     field :email, :string
+    field :role, :string, default: "customer"
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
@@ -74,6 +75,8 @@ defmodule Streamix.Accounts.User do
   def registration_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:email, :password])
+    |> put_change(:role, "customer")
+    |> validate_inclusion(:role, ~w(admin customer))
     |> validate_email(opts)
     |> validate_confirmation(:password, message: "as senhas não conferem")
     |> validate_password(opts)

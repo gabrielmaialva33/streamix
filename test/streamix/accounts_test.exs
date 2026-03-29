@@ -55,6 +55,16 @@ defmodule Streamix.AccountsTest do
       assert %{email: ["can't be blank"], password: ["can't be blank"]} = errors_on(changeset)
     end
 
+    test "register_user_with_password/1 assigns customer role by default" do
+      {:ok, user} =
+        Accounts.register_user_with_password(%{
+          email: unique_user_email(),
+          password: valid_user_password()
+        })
+
+      assert user.role == "customer"
+    end
+
     test "validates email when given" do
       {:error, changeset} =
         Accounts.register_user_with_password(%{
@@ -109,6 +119,13 @@ defmodule Streamix.AccountsTest do
       assert user.hashed_password != nil
       assert is_nil(user.confirmed_at)
       assert is_nil(user.password)
+    end
+  end
+
+  describe "admin?/1" do
+    test "returns true only for admin users" do
+      assert Accounts.admin?(%User{role: "admin"})
+      refute Accounts.admin?(%User{role: "customer"})
     end
   end
 

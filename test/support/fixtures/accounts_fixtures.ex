@@ -20,12 +20,21 @@ defmodule Streamix.AccountsFixtures do
   end
 
   def unconfirmed_user_fixture(attrs \\ %{}) do
+    role = Map.get(attrs, :role)
+
     {:ok, user} =
       attrs
+      |> Map.delete(:role)
       |> valid_user_attributes()
       |> Accounts.register_user_with_password()
 
-    user
+    if role do
+      user
+      |> Ecto.Changeset.change(role: role)
+      |> Streamix.Repo.update!()
+    else
+      user
+    end
   end
 
   def user_fixture(attrs \\ %{}) do
@@ -35,6 +44,10 @@ defmodule Streamix.AccountsFixtures do
     user
     |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now(:second))
     |> Streamix.Repo.update!()
+  end
+
+  def admin_user_fixture(attrs \\ %{}) do
+    user_fixture(Map.merge(%{role: "admin"}, attrs))
   end
 
   def user_scope_fixture do
