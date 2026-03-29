@@ -42,6 +42,20 @@ defmodule StreamixWeb.PlayerLiveTest do
     |> Repo.insert!()
   end
 
+  defp global_gindex_provider_fixture(user, attrs \\ %{}) do
+    provider_fixture(
+      user,
+      Enum.into(attrs, %{
+        visibility: "global",
+        is_system: true,
+        provider_type: :gindex,
+        is_active: true,
+        url: "http://127.0.0.1:65535",
+        gindex_url: "http://127.0.0.1:65535"
+      })
+    )
+  end
+
   describe "mount access control" do
     setup :register_and_log_in_user
 
@@ -67,6 +81,45 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       {:ok, _plans_view, html} = follow_redirect(result, conn, ~p"/plans")
       refute html =~ "Canal Global Bloqueado"
+    end
+
+    test "customer without subscription is redirected to /plans when opening global movie content",
+         %{
+           conn: conn,
+           user: user
+         } do
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{title: "Filme Global Bloqueado", name: "Filme Global"})
+
+      result = live(conn, ~p"/watch/movie/#{movie.id}")
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} = result
+      assert to == ~p"/plans"
+      assert flash["error"] =~ "assinatura"
+    end
+
+    test "customer without subscription is redirected to /plans before resolving gindex content",
+         %{
+           conn: conn,
+           user: user
+         } do
+      provider = global_gindex_provider_fixture(user)
+
+      movie =
+        movie_fixture(provider, %{name: "GIndex Bloqueado", gindex_path: "/1:/Filmes/demo.mp4"})
+
+      result = live(conn, ~p"/watch/gindex/#{movie.id}")
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} = result
+      assert to == ~p"/plans"
+      assert flash["error"] =~ "assinatura"
     end
 
     test "customer with active subscription can open global content", %{conn: conn, user: user} do
