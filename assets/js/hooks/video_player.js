@@ -1142,6 +1142,10 @@ const VideoPlayer = {
     return this.streamUrl;
   },
 
+  shouldPreferAVPlayerForLiveTs() {
+    return this.currentStreamType === "ts" && this.contentType === "live" && isFirefoxBrowser();
+  },
+
   toAbsoluteUrl(url) {
     if (!url) return url;
     if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -1317,7 +1321,7 @@ const VideoPlayer = {
         break;
       case "ts":
       case "xtream":
-        if (this.currentStreamType === "ts" && this.contentType === "live" && isFirefoxBrowser()) {
+        if (this.shouldPreferAVPlayerForLiveTs()) {
           log.debug("Using AVPlayer for live TS on Firefox");
           this.tryAVPlayerFallback();
           break;
@@ -1473,6 +1477,13 @@ const VideoPlayer = {
     } else if (type === "mpegts") {
       const { errorType, errorDetail } = data;
 
+      if (this.shouldPreferAVPlayerForLiveTs() && !this.usingAVPlayer && !this.avPlayerAttempted) {
+        log.warn("mpegts.js failed for live TS on Firefox, trying AVPlayer...");
+        this.cleanup();
+        this.tryAVPlayerFallback();
+        return;
+      }
+
       if (this.useProxy && this.currentUrl !== this.streamUrl) {
         log.warn("Proxy failed, trying direct URL...");
         this.useProxy = false;
@@ -1514,6 +1525,12 @@ const VideoPlayer = {
   },
 
   async playWithMpegts(type = "mpegts") {
+    if (type === "mpegts" && this.shouldPreferAVPlayerForLiveTs()) {
+      log.debug("Skipping mpegts.js for live TS on Firefox, forcing AVPlayer");
+      this.tryAVPlayerFallback();
+      return;
+    }
+
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
 
     try {
