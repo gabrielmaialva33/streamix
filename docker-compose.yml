@@ -11,7 +11,7 @@ services:
     volumes:
       - streamix_postgres_data:/home/postgres/pgdata/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U streamix -d streamix_dev"]
+      test: [ "CMD-SHELL", "pg_isready -U streamix -d streamix_dev" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,7 +25,7 @@ services:
       - streamix_redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,7 +34,7 @@ services:
     image: rabbitmq:4-management-alpine
     container_name: streamix-rabbitmq
     ports:
-      - "5672:5672"   # AMQP
+      - "5672:5672" # AMQP
       - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: streamix
@@ -43,7 +43,7 @@ services:
     volumes:
       - streamix_rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,14 +52,14 @@ services:
     image: qdrant/qdrant:latest
     container_name: streamix-qdrant
     ports:
-      - "6333:6333"   # REST API
-      - "6334:6334"   # gRPC
+      - "6333:6333" # REST API
+      - "6334:6334" # gRPC
     volumes:
       - streamix_qdrant_data:/qdrant/storage
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      test: [ "CMD", "curl", "-f", "http://localhost:6333/" ]
       interval: 10s
       timeout: 5s
       retries: 5
