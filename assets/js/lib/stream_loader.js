@@ -45,15 +45,16 @@ export function getStreamType(url) {
  * Get file extension for format detection
  */
 export function getFileExtension(streamUrl, sourceType, currentStreamType) {
+  const directExtensions = ["ts", "mkv", "mp4", "webm", "avi", "mov", "flv"];
   const videoExtensions = ["mkv", "mp4", "webm", "avi", "mov", "flv"];
 
-  if (videoExtensions.includes(currentStreamType)) {
+  if (directExtensions.includes(currentStreamType)) {
     return currentStreamType;
   }
 
   if (streamUrl) {
     const url = streamUrl.toLowerCase();
-    for (const ext of videoExtensions) {
+    for (const ext of directExtensions) {
       if (url.includes(`.${ext}`)) {
         return ext;
       }

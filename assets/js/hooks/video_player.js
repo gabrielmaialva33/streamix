@@ -51,6 +51,10 @@ async function loadAVPlayer() {
   return { AVPlayerWrapper, detectAudioIssue, preloadCommonWasm };
 }
 
+function isFirefoxBrowser() {
+  return /firefox/i.test(navigator.userAgent);
+}
+
 // Advanced WASM pre-loading with WebAssembly.compile for faster startup
 let wasmPreloaded = false;
 async function preloadAVPlayerWasm() {
@@ -1313,6 +1317,12 @@ const VideoPlayer = {
         break;
       case "ts":
       case "xtream":
+        if (this.currentStreamType === "ts" && this.contentType === "live" && isFirefoxBrowser()) {
+          log.debug("Using AVPlayer for live TS on Firefox");
+          this.tryAVPlayerFallback();
+          break;
+        }
+
         if (isMpegtsSupported()) {
           this.playWithMpegts();
         } else if (isHlsJsSupported()) {
