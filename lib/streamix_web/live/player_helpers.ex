@@ -4,6 +4,7 @@ defmodule StreamixWeb.PlayerHelpers do
   Used by PlayerLive and WatchPartyLive.Show.
   """
 
+  alias Streamix.Access
   alias Streamix.Iptv
   alias Streamix.Iptv.Gindex
   alias StreamixWeb.Helpers.ImageProxy
@@ -153,7 +154,7 @@ defmodule StreamixWeb.PlayerHelpers do
   def resolve_stream_url("gindex", movie, _provider, user_id) do
     case Gindex.get_movie_url(movie.id) do
       {:ok, raw_url} ->
-        {:ok, sign_and_build_url_proxy(raw_url, user_id)}
+        {:ok, sign_and_build_url_proxy(raw_url, user_id, movie.provider)}
 
       {:error, _reason} ->
         {:error, :not_found}
@@ -163,7 +164,7 @@ defmodule StreamixWeb.PlayerHelpers do
   def resolve_stream_url("gindex_episode", episode, _provider, user_id) do
     case Gindex.get_episode_url(episode.id) do
       {:ok, raw_url} ->
-        {:ok, sign_and_build_url_proxy(raw_url, user_id)}
+        {:ok, sign_and_build_url_proxy(raw_url, user_id, episode.season.series.provider)}
 
       {:error, _reason} ->
         {:error, :not_found}
@@ -188,7 +189,7 @@ defmodule StreamixWeb.PlayerHelpers do
   defp next_episode_stream_url("gindex_episode", next, user_id) do
     case get_gindex_episode_url(next) do
       nil -> nil
-      url -> sign_and_build_url_proxy(url, user_id)
+      url -> sign_and_build_url_proxy(url, user_id, next.season.series.provider)
     end
   end
 
@@ -210,8 +211,10 @@ defmodule StreamixWeb.PlayerHelpers do
     "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
 
-  defp sign_and_build_url_proxy(url, user_id) do
-    case StreamToken.sign_url(url, user_id) do
+  defp sign_and_build_url_proxy(url, user_id, provider) do
+    premium_required = Access.global_content?(provider)
+
+    case StreamToken.sign_url(url, user_id, premium_required: premium_required) do
       {:error, _} -> nil
       token -> build_token_proxy_url(token)
     end

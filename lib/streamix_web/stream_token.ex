@@ -52,10 +52,11 @@ defmodule StreamixWeb.StreamToken do
   Used for GIndex and other external sources that need CORS headers.
   The `user_id` is embedded in the token and verified on consumption.
   """
-  def sign_url(url, user_id) when is_binary(url) do
+  def sign_url(url, user_id, opts \\ []) when is_binary(url) do
     case UrlValidator.validate_url(url) do
       :ok ->
-        data = %{type: "url", url: url, user_id: user_id}
+        premium_required = Keyword.get(opts, :premium_required, false)
+        data = %{type: "url", url: url, user_id: user_id, premium_required: premium_required}
         Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
 
       {:error, :unsafe_url} ->
@@ -76,8 +77,11 @@ defmodule StreamixWeb.StreamToken do
   """
   def verify_and_get_url(token) do
     case verify_token(token) do
-      {:ok, %{type: "url", url: url}} ->
-        validate_direct_url(url)
+      {:ok, %{type: "url", url: url, user_id: user_id, premium_required: premium_required}} ->
+        handle_url_token(url, user_id, premium_required)
+
+      {:ok, %{type: "url", url: url, user_id: user_id}} ->
+        handle_url_token(url, user_id, false)
 
       {:ok, %{type: type, id: id, user_id: user_id}} ->
         handle_content_token(type, id, user_id)
@@ -108,6 +112,33 @@ defmodule StreamixWeb.StreamToken do
     case UrlValidator.validate_url(url) do
       :ok -> {:ok, url, "url"}
       {:error, :unsafe_url} -> {:error, :unsafe_url}
+    end
+  end
+
+  defp handle_url_token(url, user_id, premium_required) do
+    if premium_required do
+      case user_has_global_access?(user_id) do
+        :ok -> validate_direct_url(url)
+        error -> error
+      end
+    else
+      validate_direct_url(url)
+    end
+  end
+
+  defp user_has_global_access?(nil), do: {:error, :subscription_required}
+
+  defp user_has_global_access?(user_id) do
+    case Repo.get(User, user_id) do
+      nil ->
+        {:error, :invalid_token}
+
+      %User{} = user ->
+        if Access.can_play_global_content?(user, %{is_system: true, visibility: :global}) do
+          :ok
+        else
+          {:error, :subscription_required}
+        end
     end
   end
 
@@ -191,13 +222,13 @@ defmodule StreamixWeb.StreamToken do
   defp build_global_content_url(provider, user_id, content, content_path, stream_id, extension) do
     case Repo.get(User, user_id) do
       nil ->
-        {:error, :invalid_token}
+        {:error, :subscription_required}
 
       %User{} = user ->
         if Access.can_play_global_content?(user, content) do
           build_provider_content_url(provider, content_path, stream_id, extension)
         else
-          {:error, :unauthorized}
+          {:error, :subscription_required}
         end
     end
   end

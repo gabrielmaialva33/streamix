@@ -93,8 +93,6 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp resolve_and_redirect_to_proxy(conn, url, _redirect_count) do
-    # Follow redirects step by step to track the final URL.
-    # Use redirect: false and follow manually so we know each hop.
     case resolve_final_url(url, 0) do
       {:ok, final_url} ->
         # Security: NEVER send original provider URL (has credentials) to the browser.
@@ -128,13 +126,43 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp resolve_final_url(url, count) do
-    case Req.get(url,
-           redirect: false,
-           headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
-           decode_body: false,
-           receive_timeout: 5_000,
-           connect_options: [timeout: 5_000]
-         ) do
+    case resolve_final_url_head(url, count) do
+      {:ok, resolved_url} ->
+        {:ok, resolved_url}
+
+      {:error, :head_not_supported} ->
+        resolve_final_url_get(url, count)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp resolve_final_url_head(url, count) do
+    case Req.head(url, req_options()) do
+      {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
+        follow_resolved_redirect(url, headers, count)
+
+      {:ok, %{status: status}} when status in 200..299 ->
+        {:ok, url}
+
+      {:ok, %{status: status}} when status in [405, 501] ->
+        {:error, :head_not_supported}
+
+      {:ok, %{status: status}} ->
+        Logger.error(
+          "Stream proxy: HEAD resolve got unexpected status #{status} for #{sanitize_url(url)}"
+        )
+
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp resolve_final_url_get(url, count) do
+    case Req.get(url, req_options(into: &halt_after_first_chunk/2)) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_resolved_redirect(url, headers, count)
 
@@ -143,7 +171,7 @@ defmodule StreamixWeb.StreamController do
 
       {:ok, %{status: status}} ->
         Logger.error(
-          "Stream proxy: resolve got unexpected status #{status} for #{sanitize_url(url)}"
+          "Stream proxy: GET resolve got unexpected status #{status} for #{sanitize_url(url)}"
         )
 
         {:error, {:unexpected_status, status}}
@@ -151,6 +179,22 @@ defmodule StreamixWeb.StreamController do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp req_options(extra \\ []) do
+    [
+      redirect: false,
+      headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
+      decode_body: false,
+      receive_timeout: 5_000,
+      connect_options: [timeout: 5_000]
+    ]
+    |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
+    |> Keyword.merge(extra)
+  end
+
+  defp halt_after_first_chunk({:data, _chunk}, {request, response}) do
+    {:halt, {request, response}}
   end
 
   defp follow_resolved_redirect(url, headers, count) do

@@ -78,4 +78,11 @@ defmodule StreamixWeb.StreamTokenTest do
       assert url =~ "/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.mp4"
     end
   end
+
+  test "premium url token without entitlement is rejected" do
+    user = user_fixture()
+    token = StreamToken.sign_url("http://example.com/video.mp4", user.id, premium_required: true)
+
+    assert {:error, :subscription_required} = StreamToken.verify_and_get_url(token)
+  end
 end
