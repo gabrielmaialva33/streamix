@@ -18,6 +18,7 @@ defmodule StreamixWeb.PlayerLive do
   """
   use StreamixWeb, :live_view
 
+  alias Streamix.Access
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
@@ -29,36 +30,7 @@ defmodule StreamixWeb.PlayerLive do
 
     case load_content(type, id, user_id) do
       {:ok, content, provider, stream_url} ->
-        record_watch_history(user_id, type, content)
-
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
-        end
-
-        # Fetch next episode for prefetch (episodes only)
-        next_episode = load_next_episode(type, content, provider, user_id)
-
-        socket =
-          socket
-          |> assign(page_title: content_title(content, type))
-          |> assign(content_type: safe_content_type(type))
-          |> assign(content: content)
-          |> assign(provider: provider)
-          |> assign(stream_url: stream_url)
-          |> assign(streaming_mode: default_streaming_mode(type))
-          |> assign(player_state: :loading)
-          |> assign(current_time: 0)
-          |> assign(duration: 0)
-          |> assign(buffering: false)
-          |> assign(pip_active: false)
-          |> assign(available_qualities: [])
-          |> assign(current_quality: "Automático")
-          |> assign(audio_tracks: [])
-          |> assign(subtitle_tracks: [])
-          |> assign(user_id: user_id)
-          |> assign(next_episode: next_episode)
-
-        {:ok, socket}
+        handle_loaded_content(socket, type, user_id, content, provider, stream_url)
 
       {:error, :not_found} ->
         {:ok,
@@ -236,6 +208,49 @@ defmodule StreamixWeb.PlayerLive do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp handle_loaded_content(socket, type, user_id, content, provider, stream_url) do
+    if Access.can_play_global_content?(socket.assigns.current_scope.user, provider) do
+      record_watch_history(user_id, type, content)
+
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
+      end
+
+      # Fetch next episode for prefetch (episodes only)
+      next_episode = load_next_episode(type, content, provider, user_id)
+
+      socket =
+        socket
+        |> assign(page_title: content_title(content, type))
+        |> assign(content_type: safe_content_type(type))
+        |> assign(content: content)
+        |> assign(provider: provider)
+        |> assign(stream_url: stream_url)
+        |> assign(streaming_mode: default_streaming_mode(type))
+        |> assign(player_state: :loading)
+        |> assign(current_time: 0)
+        |> assign(duration: 0)
+        |> assign(buffering: false)
+        |> assign(pip_active: false)
+        |> assign(available_qualities: [])
+        |> assign(current_quality: "Automático")
+        |> assign(audio_tracks: [])
+        |> assign(subtitle_tracks: [])
+        |> assign(user_id: user_id)
+        |> assign(next_episode: next_episode)
+
+      {:ok, socket}
+    else
+      {:ok,
+       socket
+       |> put_flash(
+         :error,
+         "Você precisa de uma assinatura ativa ou permissão para assistir conteúdo global."
+       )
+       |> push_navigate(to: ~p"/plans")}
+    end
+  end
 
   defp record_watch_history(user_id, type, content) do
     Iptv.add_to_watch_history(user_id, %{
