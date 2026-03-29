@@ -70,6 +70,51 @@ defmodule StreamixWeb.PlansLiveTest do
       assert has_element?(view, "#current-subscription[data-status='active']")
       assert render(view) =~ plan.name
     end
+
+    test "current plan card renders a non-clickable current-state CTA", %{conn: conn, user: user} do
+      plan = plan_fixture(name: "Atual", slug: "atual")
+      _subscription = subscription_fixture(user, plan)
+
+      {:ok, view, _html} = live(conn, ~p"/plans")
+
+      assert has_element?(view, "#plan-cta-atual[data-cta-state='current']")
+      refute has_element?(view, "#plan-card-atual a[href='/register']")
+    end
+
+    test "logged in users see a neutral activation CTA for non-current plans", %{
+      conn: conn,
+      user: user
+    } do
+      current_plan = plan_fixture(name: "Atual", slug: "atual")
+      _subscription = subscription_fixture(user, current_plan)
+      _plan = plan_fixture(name: "Essencial", slug: "essencial", grants_global_access: false)
+
+      {:ok, view, _html} = live(conn, ~p"/plans")
+
+      assert has_element?(view, "#plan-badge-essencial[data-variant='neutral']")
+      assert has_element?(view, "#plan-cta-essencial[data-cta-state='manual']")
+      refute has_element?(view, "#plan-card-essencial a[href='/register']")
+    end
+
+    test "plans without global access do not claim global access", %{conn: conn, user: user} do
+      current_plan = plan_fixture(name: "Atual", slug: "atual")
+      _subscription = subscription_fixture(user, current_plan)
+      plan = plan_fixture(name: "Essencial", slug: "essencial", grants_global_access: false)
+
+      {:ok, view, _html} = live(conn, ~p"/plans")
+
+      assert has_element?(view, "#plan-card-essencial", "Ativação manual antes da liberação")
+
+      refute has_element?(
+               view,
+               "#plan-card-essencial",
+               "Libera o catálogo global em toda a plataforma"
+             )
+
+      refute has_element?(view, "#plan-card-essencial", "Acesso premium")
+      assert has_element?(view, "#plan-badge-essencial[data-variant='neutral']")
+      assert render(view) =~ plan.name
+    end
   end
 
   describe "billing plans" do

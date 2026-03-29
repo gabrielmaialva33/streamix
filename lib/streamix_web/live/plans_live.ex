@@ -108,7 +108,10 @@ defmodule StreamixWeb.PlansLive do
                 <h3 class="text-lg sm:text-xl font-semibold text-text-primary">{plan.name}</h3>
                 <p class="text-sm text-text-secondary">{plan.description}</p>
               </div>
-              <.premium_badge :if={plan.grants_global_access} />
+              <.plan_access_badge
+                id={"plan-badge-#{plan.slug}"}
+                grants_global_access={plan.grants_global_access}
+              />
             </div>
 
             <div class="mt-6 flex items-end gap-2">
@@ -121,35 +124,69 @@ defmodule StreamixWeb.PlansLive do
             </div>
 
             <div class="mt-5 flex items-center gap-2 text-sm text-text-secondary">
-              <.icon name="hero-check-circle" class="size-4 text-brand" />
-              <span>Atualizações contínuas e acesso premium</span>
+              <.icon
+                name={if plan.grants_global_access, do: "hero-check-circle", else: "hero-clock"}
+                class={["size-4", plan.grants_global_access && "text-brand"]}
+              />
+              <span>
+                <%= if plan.grants_global_access do %>
+                  Atualizações contínuas e acesso premium
+                <% else %>
+                  Ativação manual antes da liberação
+                <% end %>
+              </span>
             </div>
 
             <div class="mt-4 flex items-center gap-2 text-sm text-text-secondary">
-              <.icon name="hero-check-circle" class="size-4 text-brand" />
-              <span>Libera o catálogo global em toda a plataforma</span>
+              <.icon
+                name={
+                  if plan.grants_global_access,
+                    do: "hero-check-circle",
+                    else: "hero-information-circle"
+                }
+                class={["size-4", plan.grants_global_access && "text-brand"]}
+              />
+              <span>
+                <%= if plan.grants_global_access do %>
+                  Libera o catálogo global em toda a plataforma
+                <% else %>
+                  Disponível sob ativação manual
+                <% end %>
+              </span>
             </div>
 
             <div class="mt-6 pt-4 border-t border-border flex items-center justify-between gap-3">
               <p class="text-xs uppercase tracking-[0.18em] text-text-muted">
                 {if plan.grants_global_access, do: "Premium", else: "Plano"}
               </p>
-              <.link
-                navigate={~p"/register"}
-                class={[
-                  "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors",
-                  plan.id == @current_plan_id &&
-                    "bg-brand text-white hover:bg-brand-hover",
-                  plan.id != @current_plan_id &&
-                    "bg-surface-hover text-text-primary hover:bg-brand/20 hover:text-brand"
-                ]}
-              >
-                <.icon
-                  name={if plan.id == @current_plan_id, do: "hero-check", else: "hero-sparkles"}
-                  class="size-4"
-                />
-                {if plan.id == @current_plan_id, do: "Plano atual", else: "Escolher plano"}
-              </.link>
+              <%= if plan.id == @current_plan_id do %>
+                <span
+                  id={"plan-cta-#{plan.slug}"}
+                  data-cta-state="current"
+                  class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  <.icon name="hero-check" class="size-4" /> Plano atual
+                </span>
+              <% else %>
+                <%= if @current_scope do %>
+                  <span
+                    id={"plan-cta-#{plan.slug}"}
+                    data-cta-state="manual"
+                    class="inline-flex items-center gap-2 rounded-xl bg-surface-hover px-4 py-2.5 text-sm font-semibold text-text-primary"
+                  >
+                    <.icon name="hero-clock" class="size-4" /> Disponível sob ativação
+                  </span>
+                <% else %>
+                  <.link
+                    id={"plan-cta-#{plan.slug}"}
+                    navigate={~p"/register"}
+                    data-cta-state="register"
+                    class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
+                  >
+                    <.icon name="hero-user-plus" class="size-4" /> Criar conta
+                  </.link>
+                <% end %>
+              <% end %>
             </div>
           </article>
         </div>

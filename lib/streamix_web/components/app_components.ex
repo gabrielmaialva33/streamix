@@ -184,6 +184,40 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
+  Renders a plan entitlement badge.
+  """
+  attr :class, :string, default: nil
+  attr :grants_global_access, :boolean, default: false
+  attr :id, :string, default: nil
+
+  def plan_access_badge(assigns) do
+    assigns =
+      assign(assigns,
+        label: if(assigns.grants_global_access, do: "Premium", else: "Disponível sob ativação"),
+        icon: if(assigns.grants_global_access, do: "hero-sparkles", else: "hero-clock"),
+        variant: if(assigns.grants_global_access, do: "premium", else: "neutral")
+      )
+
+    ~H"""
+    <span
+      id={@id}
+      data-variant={@variant}
+      class={[
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+        @grants_global_access &&
+          "border-brand/30 bg-brand/10 text-brand",
+        !@grants_global_access &&
+          "border-border bg-surface-hover text-text-secondary",
+        @class
+      ]}
+    >
+      <.icon name={@icon} class="size-3.5" />
+      {@label}
+    </span>
+    """
+  end
+
+  @doc """
   Renders a premium upsell banner with a CTA to the plans page.
   """
   attr :class, :string, default: nil
