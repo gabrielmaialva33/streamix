@@ -165,10 +165,10 @@ defmodule StreamixWeb.AppComponents do
 
   def live_channel_card(assigns) do
     ~H"""
-    <div class="group relative rounded-md sm:rounded-lg overflow-hidden bg-surface border border-border card-hover">
+    <div class="group relative flex flex-col gap-1 sm:gap-2 transition-all duration-300">
       <.link
         navigate={~p"/watch/live_channel/#{@channel.id}"}
-        class="block relative aspect-video bg-surface-hover cursor-pointer"
+        class="block relative aspect-video bg-surface-hover cursor-pointer rounded-md sm:rounded-lg overflow-hidden shadow-md group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1"
       >
         <div
           id={"channel-img-#{@channel.id}"}
@@ -200,11 +200,11 @@ defmodule StreamixWeb.AppComponents do
           <.icon name="hero-play-circle-solid" class="size-8 sm:size-16 text-brand" />
         </div>
       </.link>
-      <div class="p-1.5 sm:p-3">
+      <div class="px-0.5 sm:px-1">
         <div class="flex items-start justify-between gap-1">
           <.link
             navigate={~p"/watch/live_channel/#{@channel.id}"}
-            class="font-medium text-[10px] sm:text-sm text-text-primary truncate flex-1 hover:text-brand transition-colors leading-tight"
+            class="font-medium text-[11px] sm:text-sm text-text-primary truncate flex-1 group-hover:text-brand transition-colors leading-tight mt-0.5"
             title={@channel.name}
           >
             {@channel.name}
@@ -214,7 +214,12 @@ defmodule StreamixWeb.AppComponents do
             type="button"
             phx-click={@on_favorite}
             phx-value-id={@channel.id}
-            class="shrink-0 p-0.5 hover:scale-110 transition-transform"
+            class={[
+              "shrink-0 p-1 sm:p-1.5 rounded-full transition-all focus:opacity-100 mt-0.5",
+              @is_favorite && "text-brand bg-brand/10 opacity-100",
+              !@is_favorite &&
+                "text-text-secondary hover:text-brand hover:bg-brand/10 opacity-0 group-hover:opacity-100"
+            ]}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
@@ -580,8 +585,8 @@ defmodule StreamixWeb.AppComponents do
 
   def history_card_v2(assigns) do
     ~H"""
-    <div class="flex items-center gap-4 p-3 rounded-lg bg-surface border border-border hover:border-brand/30 transition-colors cursor-pointer">
-      <div class="w-16 h-12 rounded-md bg-surface-hover flex items-center justify-center shrink-0 overflow-hidden">
+    <div class="group flex items-center gap-3 sm:gap-4 p-2 sm:p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-surface-hover/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand/5 border border-transparent hover:border-border/40">
+      <div class="w-16 h-12 sm:w-20 sm:h-14 rounded-lg bg-surface-hover flex items-center justify-center shrink-0 overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
         <img
           :if={@entry.content_icon}
           src={@entry.content_icon}
@@ -596,7 +601,7 @@ defmodule StreamixWeb.AppComponents do
         />
       </div>
       <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-text-primary truncate">
+        <h4 class="font-medium text-sm sm:text-base text-text-primary truncate group-hover:text-brand transition-colors">
           {@entry.content_name || "Desconhecido"}
         </h4>
         <p class="text-sm text-text-secondary flex items-center gap-2">
@@ -619,8 +624,8 @@ defmodule StreamixWeb.AppComponents do
 
   def favorite_card(assigns) do
     ~H"""
-    <div class="group rounded-lg overflow-hidden bg-surface border border-border card-hover cursor-pointer">
-      <div class="aspect-video bg-surface-hover flex items-center justify-center relative">
+    <div class="group cursor-pointer flex flex-col gap-1 sm:gap-2 transition-all duration-300">
+      <div class="relative aspect-video bg-surface-hover flex items-center justify-center rounded-lg overflow-hidden shadow-md group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
         <img
           :if={@favorite.content_icon}
           src={@favorite.content_icon}
@@ -637,8 +642,11 @@ defmodule StreamixWeb.AppComponents do
           <.icon name="hero-play-circle-solid" class="size-12 text-brand" />
         </div>
       </div>
-      <div class="p-3">
-        <h3 class="font-medium text-sm text-text-primary truncate" title={@favorite.content_name}>
+      <div class="px-0.5 sm:px-1">
+        <h3
+          class="font-medium text-sm text-text-primary truncate group-hover:text-brand transition-colors mt-0.5"
+          title={@favorite.content_name}
+        >
           {@favorite.content_name || "Desconhecido"}
         </h3>
         <span class="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs bg-surface-hover text-text-muted">

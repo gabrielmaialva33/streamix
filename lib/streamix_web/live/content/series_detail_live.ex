@@ -452,14 +452,14 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               <.link
                 :for={similar <- @similar_series}
                 navigate={similar_series_path(@mode, @provider, similar)}
-                class="group"
+                class="group block transition-all duration-300"
               >
-                <div class="aspect-[2/3] rounded-lg overflow-hidden bg-surface ring-1 ring-white/10 group-hover:ring-brand transition-all">
+                <div class="aspect-[2/3] bg-surface-hover relative rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1 block">
                   <img
                     :if={similar.cover}
                     src={ImageProxy.proxy(similar.cover)}
                     alt={similar.title || similar.name}
-                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    class="w-full h-full object-cover transition-transform duration-300"
                     loading="lazy"
                   />
                   <div
@@ -469,10 +469,14 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                     <.icon name="hero-tv" class="size-8 text-text-secondary/30" />
                   </div>
                 </div>
-                <p class="mt-2 text-sm text-text-primary truncate group-hover:text-brand transition-colors">
-                  {similar.title || similar.name}
-                </p>
-                <p :if={similar.year} class="text-xs text-text-secondary">{similar.year}</p>
+                <div class="px-0.5 pt-1.5 sm:pt-2">
+                  <p class="text-[11px] sm:text-sm text-text-primary font-medium truncate group-hover:text-brand transition-colors mt-0.5">
+                    {similar.title || similar.name}
+                  </p>
+                  <p :if={similar.year} class="text-[10px] sm:text-xs text-text-secondary">
+                    {similar.year}
+                  </p>
+                </div>
               </.link>
             </div>
           </div>

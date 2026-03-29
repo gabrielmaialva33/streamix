@@ -398,7 +398,7 @@ defmodule StreamixWeb.ContentComponents do
     <div
       id={"movie-card-#{@movie.id}"}
       phx-hook="ContentCard"
-      class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer"
+      class="group cursor-pointer flex flex-col gap-1 sm:gap-2 transition-all duration-300"
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
@@ -414,7 +414,7 @@ defmodule StreamixWeb.ContentComponents do
     >
       <div
         id={"movie-img-fb-#{@movie.id}"}
-        class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
+        class="relative aspect-[2/3] bg-surface-hover overflow-hidden rounded-md sm:rounded-lg shadow-md group-hover:shadow-2xl group-hover:shadow-brand/30 transition-all duration-300 group-hover:-translate-y-1"
         phx-hook="ImageFallback"
         phx-click={@on_details}
         phx-value-id={@movie.id}
@@ -457,7 +457,7 @@ defmodule StreamixWeb.ContentComponents do
 
         <div
           :if={@display_rating}
-          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded bg-black/70 backdrop-blur-sm text-yellow-400"
+          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded-md bg-black/50 backdrop-blur-md text-yellow-400 shadow-sm"
         >
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
@@ -475,11 +475,11 @@ defmodule StreamixWeb.ContentComponents do
         </div>
       </div>
 
-      <div class="p-1.5 sm:p-3">
+      <div class="px-0.5 sm:px-1">
         <div class="flex items-start justify-between gap-1">
-          <div class="min-w-0 flex-1">
+          <div class="min-w-0 flex-1 mt-0.5">
             <h3
-              class="font-medium text-[10px] sm:text-sm text-text-primary line-clamp-2 leading-tight"
+              class="font-medium text-[11px] sm:text-sm text-text-primary line-clamp-2 leading-tight group-hover:text-brand transition-colors"
               title={@movie_name}
             >
               {@movie_name}
@@ -492,9 +492,10 @@ defmodule StreamixWeb.ContentComponents do
             phx-value-id={@movie.id}
             phx-value-type="movie"
             class={[
-              "flex-shrink-0 p-0.5 sm:p-1.5 rounded-full transition-all",
-              @is_favorite && "text-red-500 bg-red-500/10",
-              !@is_favorite && "text-text-secondary hover:text-red-400 hover:bg-red-500/10"
+              "flex-shrink-0 p-1 sm:p-1.5 rounded-full transition-all mt-0.5 focus:opacity-100",
+              @is_favorite && "text-red-500 bg-red-500/10 opacity-100",
+              !@is_favorite &&
+                "text-text-secondary hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
             ]}
           >
             <.icon
@@ -539,7 +540,7 @@ defmodule StreamixWeb.ContentComponents do
     <div
       id={"series-card-#{@series.id}"}
       phx-hook="ContentCard"
-      class="bg-surface rounded-md sm:rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all group cursor-pointer"
+      class="group cursor-pointer flex flex-col gap-1 sm:gap-2 transition-all duration-300"
       data-content-id={@series.id}
       data-content-type="series"
       data-source-type={@source}
@@ -553,7 +554,7 @@ defmodule StreamixWeb.ContentComponents do
     >
       <div
         id={"series-img-fb-#{@series.id}"}
-        class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
+        class="relative aspect-[2/3] bg-surface-hover overflow-hidden rounded-md sm:rounded-lg shadow-md group-hover:shadow-2xl group-hover:shadow-brand/30 transition-all duration-300 group-hover:-translate-y-1"
         phx-hook="ImageFallback"
         phx-click={@on_click}
         phx-value-id={@series.id}
@@ -578,7 +579,7 @@ defmodule StreamixWeb.ContentComponents do
 
         <div
           :if={@display_rating}
-          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded bg-black/70 backdrop-blur-sm text-yellow-400"
+          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded-md bg-black/50 backdrop-blur-md text-yellow-400 shadow-sm"
         >
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
@@ -603,11 +604,11 @@ defmodule StreamixWeb.ContentComponents do
         </div>
       </div>
 
-      <div class="p-1.5 sm:p-3">
+      <div class="px-0.5 sm:px-1">
         <div class="flex items-start justify-between gap-1">
-          <div class="min-w-0 flex-1">
+          <div class="min-w-0 flex-1 mt-0.5">
             <h3
-              class="font-medium text-[10px] sm:text-sm text-text-primary truncate leading-tight"
+              class="font-medium text-[11px] sm:text-sm text-text-primary truncate leading-tight group-hover:text-brand transition-colors"
               title={@series.name}
             >
               {Map.get(@series, :title) || @series.name}
@@ -619,7 +620,12 @@ defmodule StreamixWeb.ContentComponents do
             phx-click={@on_favorite}
             phx-value-id={@series.id}
             phx-value-type="series"
-            class="flex-shrink-0 p-0.5 hover:scale-110 transition-transform"
+            class={[
+              "flex-shrink-0 p-1 sm:p-1.5 rounded-full transition-all mt-0.5 focus:opacity-100",
+              @is_favorite && "text-red-500 bg-red-500/10 opacity-100",
+              !@is_favorite &&
+                "text-text-secondary hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
+            ]}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
@@ -650,13 +656,13 @@ defmodule StreamixWeb.ContentComponents do
   def episode_card(assigns) do
     ~H"""
     <div
-      class="flex gap-4 p-3 bg-surface hover:bg-surface-hover rounded-lg cursor-pointer transition-all group"
+      class="flex gap-3 sm:gap-4 p-2 sm:p-3 rounded-xl cursor-pointer transition-all duration-300 group hover:bg-surface-hover/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand/5 border border-transparent hover:border-border/40"
       phx-click={@on_play}
       phx-value-id={@episode.id}
     >
       <div
         id={"ep-img-fb-#{@episode.id}"}
-        class="relative w-40 aspect-video flex-shrink-0 bg-surface-hover rounded overflow-hidden"
+        class="relative w-32 sm:w-40 aspect-video flex-shrink-0 bg-surface-hover rounded-lg overflow-hidden shadow-sm group-hover:shadow-md transition-all"
         phx-hook="ImageFallback"
       >
         <img
@@ -686,8 +692,10 @@ defmodule StreamixWeb.ContentComponents do
         </div>
       </div>
 
-      <div class="flex-1 min-w-0 py-1">
-        <h4 class="font-medium text-text-primary truncate">{episode_title(@episode)}</h4>
+      <div class="flex-1 min-w-0 py-0.5 sm:py-1">
+        <h4 class="font-medium text-sm sm:text-base text-text-primary truncate group-hover:text-brand transition-colors">
+          {episode_title(@episode)}
+        </h4>
         <p :if={Map.get(@episode, :plot)} class="text-sm text-text-secondary line-clamp-2 mt-1">
           {@episode.plot}
         </p>

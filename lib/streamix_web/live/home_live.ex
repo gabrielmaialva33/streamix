@@ -851,15 +851,14 @@ defmodule StreamixWeb.HomeLive do
             {@rank}
           </span>
         </div>
-        <!-- Movie Poster -->
-        <div class="w-[100px] sm:w-[140px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all">
-          <div class="aspect-[2/3] bg-surface-hover relative">
+        <div class="w-[100px] sm:w-[140px] rounded-lg overflow-hidden bg-surface-hover shadow-lg transition-all group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-yellow-500/20">
+          <div class="aspect-[2/3] relative">
             <div id={"top10-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
               <img
                 :if={@movie.stream_icon}
-                src={ImageProxy.card(@movie.stream_icon)}
+                src={ImageProxy.proxy(@movie.stream_icon)}
                 alt={@movie.name}
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                class="w-full h-full object-cover transition-transform duration-300"
                 loading="lazy"
                 data-fallback-target
               />
@@ -944,11 +943,11 @@ defmodule StreamixWeb.HomeLive do
     <.link
       navigate={~p"/browse/movies/#{@movie.id}"}
       class={[
-        "group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50",
+        "group flex-shrink-0 w-full sm:w-[180px] block transition-all duration-300 content-card",
         @class
       ]}
     >
-      <div class="aspect-[2/3] bg-surface-hover relative">
+      <div class="aspect-[2/3] bg-surface-hover relative rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1 block">
         <div id={"movie-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
             :if={@movie.stream_icon}
@@ -988,8 +987,8 @@ defmodule StreamixWeb.HomeLive do
           <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
         </div>
       </div>
-      <div class="p-1.5 sm:p-2">
-        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
+      <div class="pt-1.5 sm:pt-2 px-0.5">
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
           {@movie.title || @movie.name}
         </h3>
         <p class="text-[10px] sm:text-xs text-text-muted">{@movie.year}</p>
@@ -1005,11 +1004,11 @@ defmodule StreamixWeb.HomeLive do
     <.link
       navigate={~p"/browse/series/#{@series.id}"}
       class={[
-        "group flex-shrink-0 w-full sm:w-[180px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50",
+        "group flex-shrink-0 w-full sm:w-[180px] block transition-all duration-300 content-card",
         @class
       ]}
     >
-      <div class="aspect-[2/3] bg-surface-hover relative">
+      <div class="aspect-[2/3] bg-surface-hover relative rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1 block">
         <div id={"series-img-#{@series.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
             :if={@series.cover}
@@ -1049,8 +1048,8 @@ defmodule StreamixWeb.HomeLive do
           <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
         </div>
       </div>
-      <div class="p-1.5 sm:p-2">
-        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
+      <div class="pt-1.5 sm:pt-2 px-0.5">
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
           {@series.title || @series.name}
         </h3>
         <p class="text-[10px] sm:text-xs text-text-muted">
@@ -1070,11 +1069,11 @@ defmodule StreamixWeb.HomeLive do
     <.link
       navigate={~p"/watch/live_channel/#{@channel.id}"}
       class={[
-        "group rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-brand/50",
+        "group block transition-all duration-300 content-card w-full sm:w-[220px] lg:w-[280px]",
         @class
       ]}
     >
-      <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
+      <div class="aspect-video bg-surface-hover relative flex items-center justify-center rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
         <div id={"home-ch-img-#{@channel.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
             :if={@channel.stream_icon not in [nil, ""]}
@@ -1106,8 +1105,10 @@ defmodule StreamixWeb.HomeLive do
           <.icon name="hero-play-solid" class="size-12 text-white" />
         </div>
       </div>
-      <div class="p-1.5 sm:p-2">
-        <h3 class="text-[10px] sm:text-sm font-medium text-text-primary truncate">{@channel.name}</h3>
+      <div class="pt-1.5 sm:pt-2 px-0.5">
+        <h3 class="text-[11px] sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors mt-0.5">
+          {@channel.name}
+        </h3>
       </div>
     </.link>
     """
@@ -1120,11 +1121,11 @@ defmodule StreamixWeb.HomeLive do
     <.link
       navigate={watch_path(@entry.content_type, @entry.content_id)}
       class={[
-        "group flex-shrink-0 w-full sm:w-[280px] rounded-lg overflow-hidden bg-surface hover:ring-2 hover:ring-white/50 transition-all duration-200",
+        "group flex-shrink-0 w-full sm:w-[280px] block transition-all duration-300",
         @class
       ]}
     >
-      <div class="aspect-video bg-surface-hover relative flex items-center justify-center">
+      <div class="aspect-video bg-surface-hover relative flex items-center justify-center rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
         <div id={"history-img-#{@entry.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
             :if={@entry.content_icon}
@@ -1156,12 +1157,12 @@ defmodule StreamixWeb.HomeLive do
           <.icon name="hero-play-solid" class="size-12 text-white" />
         </div>
       </div>
-      <div class="p-2 sm:p-3">
-        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate">
+      <div class="pt-2 px-0.5">
+        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
           {@entry.content_name || "Desconhecido"}
         </h3>
-        <p class="text-[10px] sm:text-xs text-text-muted flex items-center gap-1 sm:gap-2">
-          <span class="px-1 sm:px-1.5 py-0.5 rounded bg-surface-hover">
+        <p class="text-[10px] sm:text-xs text-text-muted flex items-center gap-1 sm:gap-2 mt-1">
+          <span class="px-1 sm:px-1.5 py-0.5 rounded bg-surface-hover text-text-secondary">
             {format_content_type(@entry.content_type)}
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
