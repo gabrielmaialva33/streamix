@@ -203,9 +203,9 @@ defmodule Streamix.BillingTest do
 
   test "ensure_plan!/1 updates an existing plan without duplicating it" do
     attrs = %{
-      name: "Premium",
-      slug: "premium",
-      description: "Access to all content",
+      name: "Premium Mensal",
+      slug: "premium-monthly",
+      description: "Plano premium com acesso global",
       price_cents: 1_999,
       currency: "USD",
       billing_interval: "month",
@@ -228,9 +228,9 @@ defmodule Streamix.BillingTest do
 
     plan =
       Billing.ensure_plan!(%{
-        name: "Premium",
-        slug: "premium-manual",
-        description: "Access to all content",
+        name: "Premium Mensal",
+        slug: "premium-monthly",
+        description: "Plano premium com acesso global",
         price_cents: 1_999,
         currency: "USD",
         billing_interval: "month",

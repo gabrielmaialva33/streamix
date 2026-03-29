@@ -103,38 +103,34 @@ defmodule Streamix.AccessTest do
     assert fetched_permission.id == permission.id
   end
 
-  test "ensure_permission!/1 updates an existing permission without duplicating it" do
-    attrs = %{
-      name: "play_global_content",
-      description: "Allows playing global content"
-    }
+  test "ensure_permission!/1 does not duplicate a permission by name" do
+    permission_name = "play_global_content_#{System.unique_integer([:positive])}"
 
-    first_permission = Access.ensure_permission!(attrs)
+    first_permission = Access.ensure_permission!(permission_name)
+    second_permission = Access.ensure_permission!(permission_name)
 
-    updated_permission =
-      Access.ensure_permission!(Map.put(attrs, :description, "Updated permission description"))
+    assert first_permission.id == second_permission.id
+    assert first_permission.name == permission_name
 
-    assert first_permission.id == updated_permission.id
-    assert updated_permission.description == "Updated permission description"
-    assert Repo.aggregate(from(p in Permission, where: p.name == ^attrs.name), :count, :id) == 1
+    assert Repo.aggregate(from(p in Permission, where: p.name == ^permission_name), :count, :id) ==
+             1
   end
 
-  test "ensure_role_permission!/2 reuses the same role permission" do
-    permission =
-      Access.ensure_permission!(%{
-        name: "play_global_content_role",
-        description: "Allows playing global content"
-      })
+  test "ensure_role_permissions!/2 does not duplicate role permission links" do
+    permission_name = "play_global_content_role_#{System.unique_integer([:positive])}"
+    Access.ensure_permission!(permission_name)
 
-    first_role_permission = Access.ensure_role_permission!("admin", permission)
-    second_role_permission = Access.ensure_role_permission!("admin", permission)
+    first_role_permissions = Access.ensure_role_permissions!("admin", [permission_name])
+    second_role_permissions = Access.ensure_role_permissions!("admin", [permission_name])
 
-    assert first_role_permission.id == second_role_permission.id
-    assert first_role_permission.role == "admin"
+    assert [%RolePermission{id: first_id, role: "admin"}] = first_role_permissions
+    assert [%RolePermission{id: second_id, role: "admin"}] = second_role_permissions
+    assert first_id == second_id
 
     assert Repo.aggregate(
              from(rp in RolePermission,
-               where: rp.role == "admin" and rp.permission_id == ^permission.id
+               join: p in assoc(rp, :permission),
+               where: rp.role == "admin" and p.name == ^permission_name
              ),
              :count,
              :id

@@ -37,23 +37,11 @@ end
 admin = Accounts.ensure_admin_user!(admin_email, admin_password)
 IO.puts("✓ Admin user ready: #{admin.email} (role=#{admin.role})")
 
-default_plan =
-  Billing.ensure_plan!(%{
-    name: "Default",
-    slug: "default",
-    description: "Default active plan",
-    price_cents: 0,
-    currency: "USD",
-    billing_interval: "month",
-    active: true,
-    grants_global_access: false
-  })
-
 premium_plan =
   Billing.ensure_plan!(%{
-    name: "Premium",
-    slug: "premium",
-    description: "Premium plan with global access",
+    name: "Premium Mensal",
+    slug: "premium-monthly",
+    description: "Plano premium com acesso global",
     price_cents: 1_999,
     currency: "USD",
     billing_interval: "month",
@@ -61,15 +49,11 @@ premium_plan =
     grants_global_access: true
   })
 
-IO.puts("✓ Billing plans ready: #{default_plan.slug}, #{premium_plan.slug}")
+IO.puts("✓ Billing plan ready: #{premium_plan.slug}")
 
-global_permission =
-  Access.ensure_permission!(%{
-    name: "play_global_content",
-    description: "Allows playing global content"
-  })
+global_permission = Access.ensure_permission!("play_global_content")
 
-Access.ensure_role_permission!("admin", global_permission)
+Access.ensure_role_permissions!("admin", [global_permission.name])
 IO.puts("✓ Permission ready: #{global_permission.name} (linked to admin)")
 
 parse_datetime = fn
@@ -95,16 +79,11 @@ subscription_email = env["SEED_SUBSCRIPTION_EMAIL"]
 if subscription_email do
   plan_slug = env["SEED_SUBSCRIPTION_PLAN_SLUG"] || premium_plan.slug
 
-  subscription_plan =
-    case Enum.find([default_plan, premium_plan], &(&1.slug == plan_slug)) do
-      nil ->
-        raise(
-          "SEED_SUBSCRIPTION_PLAN_SLUG must match one of the seeded plans: #{default_plan.slug}, #{premium_plan.slug}"
-        )
+  unless plan_slug == premium_plan.slug do
+    raise("SEED_SUBSCRIPTION_PLAN_SLUG must match the seeded plan: #{premium_plan.slug}")
+  end
 
-      plan ->
-        plan
-    end
+  subscription_plan = premium_plan
 
   subscription_user =
     case Accounts.get_user_by_email(subscription_email) do
