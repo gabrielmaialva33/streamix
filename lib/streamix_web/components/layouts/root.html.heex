@@ -63,8 +63,8 @@
       }
     />
     <meta :if={assigns[:og_image]} name="twitter:image" content={assigns[:og_image]} />
-    <link rel="preconnect" href="https://pannxs.mahina.cloud" />
-    <link rel="preconnect" href="https://tmdb.mahina.cloud" />
+    <link rel="preconnect" href={Application.get_env(:streamix, :stream_proxy_url, "https://pannxs.mahina.cloud")} />
+    <link rel="preconnect" href={Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} fetchpriority="high" />
     <script
       defer

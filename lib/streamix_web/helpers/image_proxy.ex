@@ -17,6 +17,10 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   @image_cache_version "v2"
 
+  defp tmdb_proxy_url, do: Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")
+  defp imgmxa_proxy_url, do: Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.cloud")
+  defp image_proxy_url, do: Application.get_env(:streamix, :image_proxy_url, "https://stream.mahina.cloud")
+
   # TMDB image sizes (Netflix uses 20-30KB for thumbnails)
   @tmdb_sizes %{
     # ~10-20KB - small grids
@@ -52,9 +56,9 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     url
     # Normalize TMDB mirror domains to our proxy (only /t/p/ paths are TMDB)
     |> normalize_gstatic()
-    |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
-    |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
-    |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
+    |> String.replace("https://image.tmdb.org", tmdb_proxy_url())
+    |> String.replace("https://imgmxa.net", imgmxa_proxy_url())
+    |> String.replace("http://imgmxa.net", imgmxa_proxy_url())
     # Provider logos via our nginx proxy (port 8084)
     |> proxy_provider_logos()
     |> add_cache_buster()
@@ -69,9 +73,9 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   def proxy_raw(url) when is_binary(url) do
     url
     |> normalize_gstatic()
-    |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
-    |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
-    |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
+    |> String.replace("https://image.tmdb.org", tmdb_proxy_url())
+    |> String.replace("https://imgmxa.net", imgmxa_proxy_url())
+    |> String.replace("http://imgmxa.net", imgmxa_proxy_url())
     |> proxy_provider_logos()
   end
 
@@ -85,13 +89,13 @@ defmodule StreamixWeb.Helpers.ImageProxy do
         url
         |> String.replace(
           ~r{https?://(?:file\.)?gstaticontent\.com/+},
-          "https://tmdb.mahina.cloud/"
+          "#{tmdb_proxy_url()}/"
         )
         |> String.replace("//t/p/", "/t/p/")
 
       String.match?(url, ~r{https?://(?:file\.)?gstaticontent\.com/}) ->
         http_url = String.replace(url, "https://", "http://")
-        "https://stream.mahina.cloud/proxy?url=#{URI.encode_www_form(http_url)}"
+        "#{image_proxy_url()}/proxy?url=#{URI.encode_www_form(http_url)}"
 
       true ->
         url
@@ -104,7 +108,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     if Enum.any?(@provider_logo_domains, &String.contains?(url, &1)) do
       # Force HTTP for provider logos (HTTPS certs are invalid)
       http_url = String.replace(url, "https://", "http://")
-      "https://stream.mahina.cloud/proxy?url=#{URI.encode_www_form(http_url)}"
+      "#{image_proxy_url()}/proxy?url=#{URI.encode_www_form(http_url)}"
     else
       url
     end
@@ -211,7 +215,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
         {"w500", "500w"}
       ]
       |> Enum.map_join(", ", fn {size, width} ->
-        "https://tmdb.mahina.cloud/t/p/#{size}#{clean_path} #{width}"
+        "#{tmdb_proxy_url()}/t/p/#{size}#{clean_path} #{width}"
       end)
     end
   end

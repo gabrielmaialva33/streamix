@@ -526,10 +526,13 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   defp proxy_image(urls) when is_list(urls), do: Enum.map(urls, &proxy_image/1)
 
   defp proxy_image(url) when is_binary(url) do
+    tmdb = Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")
+    imgmxa = Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.cloud")
+
     url
-    |> String.replace("https://image.tmdb.org", "https://tmdb.mahina.cloud")
-    |> String.replace("https://imgmxa.net", "https://imgmxa.mahina.cloud")
-    |> String.replace("http://imgmxa.net", "https://imgmxa.mahina.cloud")
+    |> String.replace("https://image.tmdb.org", tmdb)
+    |> String.replace("https://imgmxa.net", imgmxa)
+    |> String.replace("http://imgmxa.net", imgmxa)
     |> add_cache_buster()
   end
 

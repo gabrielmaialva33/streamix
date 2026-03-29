@@ -13,7 +13,7 @@ defmodule Streamix.Iptv.TmdbClient do
   alias Streamix.Cache
 
   @base_url "https://api.themoviedb.org/3"
-  @image_base_url "https://tmdb.mahina.cloud/t/p"
+  defp image_base_url, do: "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}/t/p"
   @timeout :timer.seconds(10)
 
   @doc """
@@ -113,7 +113,7 @@ defmodule Streamix.Iptv.TmdbClient do
   def image_url("", _size), do: nil
 
   def image_url(path, size) do
-    "#{@image_base_url}/#{size}#{path}"
+    "#{image_base_url()}/#{size}#{path}"
   end
 
   @doc """
