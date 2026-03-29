@@ -256,6 +256,61 @@ defmodule Streamix.Accounts do
     |> Repo.update()
   end
 
+  ## Admin functions
+
+  @doc """
+  Lists users with optional search and pagination.
+
+  ## Options
+
+    * `:search` - Filters users by email (ilike).
+    * `:page` - Page number (default 1).
+    * `:per_page` - Results per page (default 20).
+  """
+  def list_users(opts \\ []) do
+    search = Keyword.get(opts, :search)
+    page = Keyword.get(opts, :page, 1)
+    per_page = Keyword.get(opts, :per_page, 20)
+    offset = (page - 1) * per_page
+
+    query = from(u in User, order_by: [desc: u.inserted_at], limit: ^per_page, offset: ^offset)
+
+    query =
+      if search && search != "" do
+        term = "%#{search}%"
+        from(u in query, where: ilike(u.email, ^term))
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Returns the total number of users.
+  """
+  def count_users do
+    Repo.aggregate(User, :count)
+  end
+
+  @doc """
+  Updates the role of a user.
+  """
+  def update_user_role(%User{} = user, role) do
+    user
+    |> User.role_changeset(role)
+    |> Repo.update()
+  end
+
+  @doc """
+  Updates user settings from admin panel (e.g. show_adult_content).
+  """
+  def update_user_settings_admin(%User{} = user, attrs) do
+    user
+    |> User.settings_changeset(attrs)
+    |> Repo.update()
+  end
+
   ## Session
 
   @doc """

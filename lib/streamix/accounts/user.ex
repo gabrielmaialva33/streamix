@@ -91,6 +91,19 @@ defmodule Streamix.Accounts.User do
     |> validate_inclusion(:role, ~w(admin customer))
   end
 
+  @allowed_roles ~w(admin customer moderator)
+
+  @doc """
+  A user changeset for updating the role.
+  Accepts any role in #{inspect(~w(admin customer moderator))}.
+  """
+  def role_changeset(user, role) do
+    user
+    |> change(role: role)
+    |> validate_required([:role])
+    |> validate_inclusion(:role, @allowed_roles)
+  end
+
   @doc """
   A user changeset for changing the password.
 
