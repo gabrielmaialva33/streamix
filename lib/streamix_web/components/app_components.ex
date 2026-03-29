@@ -100,6 +100,13 @@ defmodule StreamixWeb.AppComponents do
       <div class="p-4 border-t border-border">
         <div :if={@current_scope} class="space-y-1">
           <.nav_item
+            :if={@current_scope.user.role == "admin"}
+            path={~p"/admin"}
+            icon="hero-shield-check"
+            label="Gerenciamento"
+            current_path={@current_path}
+          />
+          <.nav_item
             path={~p"/settings"}
             icon="hero-cog-6-tooth"
             label="Configurações"
