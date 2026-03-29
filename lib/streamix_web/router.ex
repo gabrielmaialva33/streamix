@@ -202,6 +202,21 @@ defmodule StreamixWeb.Router do
       live "/party/:invite_code/watch", WatchPartyLive.Show, :show
     end
 
+    # Admin panel (requires admin role)
+    live_session :admin,
+      on_mount: [
+        {StreamixWeb.UserAuth, :require_authenticated},
+        {StreamixWeb.UserAuth, :require_admin}
+      ],
+      layout: {StreamixWeb.Layouts, :app} do
+      live "/admin", Admin.DashboardLive, :index
+      live "/admin/plans", Admin.PlansLive, :index
+      live "/admin/plans/new", Admin.PlanFormLive, :new
+      live "/admin/plans/:id", Admin.PlanFormLive, :edit
+      live "/admin/users", Admin.UsersLive, :index
+      live "/admin/users/:id", Admin.UserEditLive, :edit
+    end
+
     delete "/logout", UserSessionController, :delete
   end
 

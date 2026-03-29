@@ -173,6 +173,20 @@ defmodule StreamixWeb.UserAuth do
     end
   end
 
+  def on_mount(:require_admin, _params, _session, socket) do
+    if socket.assigns.current_scope &&
+         socket.assigns.current_scope.user.role == "admin" do
+      {:cont, socket}
+    else
+      socket =
+        socket
+        |> Phoenix.LiveView.put_flash(:error, "Acesso restrito a administradores.")
+        |> Phoenix.LiveView.redirect(to: ~p"/")
+
+      {:halt, socket}
+    end
+  end
+
   def on_mount(:redirect_if_authenticated, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
