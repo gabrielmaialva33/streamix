@@ -36,7 +36,7 @@ defmodule StreamixWeb.PlansLive do
             Acesso premium para todo o catálogo
           </h1>
           <p class="text-base sm:text-lg text-text-secondary max-w-2xl">
-            Escolha um plano ativo para liberar o acesso global, acompanhar a assinatura atual e evoluir sem sair da experiência Streamix.
+            A página reúne os planos disponíveis, destaca quais liberam acesso global e mostra o estado atual da sua assinatura.
           </p>
         </div>
       </section>
