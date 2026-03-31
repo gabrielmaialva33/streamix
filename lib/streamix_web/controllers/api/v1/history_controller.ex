@@ -99,33 +99,16 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
   # Auth plug
   defp authenticate(conn, _opts) do
-    case get_bearer_token(conn) do
-      nil ->
+    with token_str when is_binary(token_str) <- get_bearer_token(conn),
+         {:ok, token} <- Base.url_decode64(token_str),
+         {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
+      assign(conn, :current_user, user)
+    else
+      _ ->
         conn
         |> put_status(:unauthorized)
-        |> json(%{error: %{code: "unauthorized", message: "Bearer token required"}})
+        |> json(%{error: %{code: "unauthorized", message: "Invalid or missing token"}})
         |> halt()
-
-      token_str ->
-        case Base.url_decode64(token_str) do
-          {:ok, token} ->
-            case Accounts.get_user_by_session_token(token) do
-              {user, _inserted_at} ->
-                assign(conn, :current_user, user)
-
-              nil ->
-                conn
-                |> put_status(:unauthorized)
-                |> json(%{error: %{code: "unauthorized", message: "Invalid or expired token"}})
-                |> halt()
-            end
-
-          :error ->
-            conn
-            |> put_status(:unauthorized)
-            |> json(%{error: %{code: "unauthorized", message: "Malformed token"}})
-            |> halt()
-        end
     end
   end
 
@@ -137,11 +120,13 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   end
 
   defp parse_int(nil, default), do: default
+
   defp parse_int(val, default) when is_binary(val) do
     case Integer.parse(val) do
       {int, _} -> int
       :error -> default
     end
   end
+
   defp parse_int(_, default), do: default
 end

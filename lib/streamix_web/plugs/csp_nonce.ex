@@ -83,7 +83,7 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       "frame-ancestors 'self'",
 
       # Object: disable plugins
-      "object-src 'none'",
+      "object-src 'none'"
 
       # NOTE: upgrade-insecure-requests removed — IPTV providers serve
       # HTTP-only streams on bare IPs, upgrading breaks playback

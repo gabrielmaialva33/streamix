@@ -111,7 +111,9 @@ defmodule StreamixWeb.Api.V1.AuthController do
 
   defp get_token_user(conn) do
     case get_bearer_token(conn) do
-      nil -> nil
+      nil ->
+        nil
+
       token_str ->
         case Base.url_decode64(token_str) do
           {:ok, token} -> Accounts.get_user_by_session_token(token)
@@ -149,7 +151,6 @@ defmodule StreamixWeb.Api.V1.AuthController do
         opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
-    |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
-    |> Enum.join("; ")
+    |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
   end
 end
