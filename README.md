@@ -2,12 +2,12 @@
   <br>
   <img src=".github/assets/web-data.png" alt="Streamix" width="200">
   <br>
-  Streamix - Next-Gen Unified IPTV Platform
+  Streamix - Unified IPTV Streaming Platform
   <br>
 </h1>
 
 <p align="center">
-  <strong>A premium, consolidated streaming experience bringing all your IPTV providers into one intelligent, beautiful interface.</strong>
+  <strong>All your IPTV providers in one cinematic, intelligent interface. Live TV, Movies, Series, and more.</strong>
 </p>
 
 <p align="center">
@@ -15,12 +15,12 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Elixir-1.15+-purple?style=flat&logo=elixir" alt="Elixir" />
-  <img src="https://img.shields.io/badge/Phoenix-1.8.2+-orange?style=flat&logo=phoenix-framework" alt="Phoenix" />
-  <img src="https://img.shields.io/badge/LiveView-1.1.0+-blue?style=flat&logo=phoenix-framework" alt="LiveView" />
-  <img src="https://img.shields.io/badge/PostgreSQL-14+-blue?style=flat&logo=postgresql" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Elixir-1.18+-purple?style=flat&logo=elixir" alt="Elixir" />
+  <img src="https://img.shields.io/badge/Phoenix-1.8+-orange?style=flat&logo=phoenix-framework" alt="Phoenix" />
+  <img src="https://img.shields.io/badge/LiveView-1.1+-blue?style=flat&logo=phoenix-framework" alt="LiveView" />
+  <img src="https://img.shields.io/badge/TimescaleDB-pg17-blue?style=flat&logo=postgresql" alt="TimescaleDB" />
   <img src="https://img.shields.io/badge/Redis-7+-red?style=flat&logo=redis" alt="Redis" />
-  <img src="https://img.shields.io/badge/Tailwind-v4+-38bdf8?style=flat&logo=tailwindcss" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/Tailwind-v4-38bdf8?style=flat&logo=tailwindcss" alt="Tailwind CSS" />
   <img src="https://img.shields.io/badge/PWA-Ready-5A0FC8?style=flat&logo=pwa" alt="PWA Ready" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat&logo=appveyor" alt="License" />
   <img src="https://img.shields.io/badge/Made%20with-Love%20by%20Maia-red?style=flat&logo=appveyor" alt="Made with Love" />
@@ -30,7 +30,7 @@
 
 <p align="center">
   <a href="#sparkles-features">Features</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
-  <a href="#rocket-capabilities">Capabilities</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#art-architecture">Architecture</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
   <a href="#computer-technologies">Technologies</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
   <a href="#package-installation">Installation</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
   <a href="#electric_plug-usage">Usage</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
@@ -41,112 +41,66 @@
 
 ## :sparkles: Features
 
-### Unified Content Management
+### Content Management
 
-- **Multi-Provider Aggregation** - Connect unlimited Xtream Codes IPTV providers in one place
-- **Intelligent Sync** - Background synchronization of Live TV, Movies, and Series
-- **Global & Private Providers** - System-wide providers for all users or personal private subscriptions
-- **Smart Categorization** - Automatic organization of content by genre, country, and resolution
-- **Unified Search** - Search across all your providers instantly with pg_trgm optimization
-- **Favorites & History** - Keep track of what you love and resume where you left off
-- **Cross-Provider Playlists** - Create custom playlists mixing content from different sources
-- **Cloud Drive Integration** - Seamlessly stream movies and series directly from GIndex/Google Drive
-- **Metadata Enrichment** - Automatic fetching of logos, posters, and EPG data
-- **EPG (Electronic Program Guide)** - Live program info with progress bars on channel cards
+- **Multi-Provider Aggregation** - Connect multiple Xtream Codes IPTV providers (global or private per user)
+- **Background Sync** - Automatic synchronization of Live TV, Movies, and Series via Oban scheduled jobs
+- **GIndex Integration** - Stream movies and series directly from Google Drive with multi-endpoint failover
+- **Unified Search** - Search across all providers with pg_trgm fuzzy matching and AI semantic search
+- **Favorites & Watch History** - Track what you love and resume where you left off
+- **TMDB Enrichment** - Automatic metadata, posters, and descriptions from The Movie Database
+- **EPG (Electronic Program Guide)** - Live program info with caching and now/next queries
 
-### Advanced Streaming Engine
+### Streaming Engine
 
-- **Adaptive Stream Proxying** - Smart proxy system to bypass geo-blocks and insecure content (HLS/MPEG-TS)
-- **Low-Latency Playback** - Optimized buffer settings for instant channel zapping
-- **Format Intelligence** - Automatic detection and handling of m3u8 and ts stream formats
-- **Bandwidth Optimization** - Smart transcoding and stream relay capability
-- **Error Recovery** - Automatic reconnection strategies for unstable streams
-- **Multi-Format Support** - Seamless playback of Live Streams, VOD Movies, and Series Episodes
-- **Player API** - Dedicated API endpoints for external player integration
-- **Next Episode Pre-fetch** - Automatically loads next episode for seamless binge-watching
+- **Stream Proxy** - HTTP-to-HTTPS proxy to bypass mixed-content blocks (HLS/MPEG-TS)
+- **Stream Multiplexer** - Single upstream connection serving multiple downstream clients
+- **Circuit Breaker** - Netflix-style resilience per provider (open/half-open/closed states)
+- **Format Detection** - Automatic handling of m3u8 and ts stream formats
+- **Error Recovery** - Automatic reconnection for unstable streams
+- **Multi-Format Playback** - Live Streams, VOD Movies, and Series Episodes
 
-### Premium User Experience
+### AI-Powered
 
-- **Cinematic UI** - Dark-mode first, glassmorphism-inspired design
-- **Responsive Layouts** - Perfectly optimized for Desktop, Tablet, and Mobile
-- **Instant Navigation** - Powered by Phoenix LiveView for app-like speed without page loads
-- **Visual Feedback** - Micro-interactions and smooth transitions
-- **Player Controls** - Full suite of controls including quality selection, audio tracks, and subtitles
+- **Semantic Search** - Gemini/NVIDIA NIM embeddings stored in Qdrant vector database
+- **Smart Recommendations** - Content similarity, featured picks, and personalized insights
+- **Fuzzy Matching** - pg_trgm trigram search for typo tolerance
 
-### Distributed Processing
+### User Experience
 
-- **Broadway + RabbitMQ** - Distributed sync pipeline for high-throughput provider synchronization
-- **Background Jobs** - Robust job processing with Oban for reliable task execution
+- **Cinematic UI** - Dark mode (default) + Light mode with Catppuccin Latte palette
+- **Responsive Design** - Optimized for Desktop, Tablet, and Mobile
+- **LiveView SPA** - App-like navigation without page reloads
+- **Watch Party** - Real-time synchronized watching with invite codes
+- **PWA Support** - Install as native app on any device with offline metadata caching
+- **Keyboard Shortcuts** - YouTube-style player controls
 
-### AI-Powered Features
+### Mobile API
 
-- **Semantic Similarity** - AI-powered recommendations based on content similarity
-- **Smart Search** - pg_trgm trigram search for fuzzy matching and typo tolerance
+- **REST API v1** - Full-featured API for mobile/external clients
+- **Auth Endpoints** - Register, login, logout with bearer token auth
+- **Complete Catalog** - Browse, search, stream, favorites, history, EPG
+- **Telemetry** - Playback analytics and monitoring
+- **Rate Limited** - Per-endpoint throttling (Hammer)
 
-### PWA & Offline Support
+### Admin Panel
 
-- **Progressive Web App** - Install Streamix as a native-like app on any device
-- **IndexedDB Caching** - Offline metadata storage for browsing without connection
-- **Service Worker Updates** - Automatic background updates with user notification
+- **Dashboard** - System overview and management
+- **Plan Management** - Create and manage subscription plans
+- **User Management** - Role-based access (admin, moderator, customer)
 
-### Security & Resilience
+### Infrastructure
 
-- **Circuit Breaker** - Netflix-style resilience patterns for external service calls
-- **Rate Limiting** - Hammer-based protection against abuse
+- **L1+L2 Cache** - ConCache (in-memory) + Redis (distributed) with write-through
+- **Broadway + RabbitMQ** - Optional distributed sync pipeline (falls back to Oban)
+- **Rate Limiting** - Per-endpoint throttling with Hammer
+- **AES-256-GCM Encryption** - Provider credentials encrypted at rest
 - **CSP Nonces** - Content Security Policy with dynamic nonces
-- **Security Headers** - Comprehensive HTTP security headers
+- **Health Check** - `/api/health` endpoint for container orchestration
 
 <br>
 
-## :rocket: Capabilities
-
-### IPTV Protocol Support
-
-```bash
-# Supported Standards:
-- Xtream Codes API - Full integration with standard IPTV panels
-- M3U Playlists - Advanced parsing and categorization
-- EPG (XMLTV) - Electronic Program Guide synchronization
-- HLS (HTTP Live Streaming) - Native .m3u8 playback
-- MPEG-TS - Transport stream support via proxy
-- VOD Metadata - Movie and Series information fetching
-```
-
-### Cloud Integration
-
-```bash
-# GIndex Support:
-- Direct Indexing - Stream directly from Google Drive
-- Secure Links - Signed URL generation with expiration caching
-- Smart Scraping - Automatic folder structure parsing
-```
-
-### Content Intelligence
-
-```bash
-# Smart Features:
-- Automatic provider health checks
-- Stream availability monitoring
-- Duplicate channel detection
-- Intelligent grouped search
-- Resource usage optimization (lazy loading)
-- Secure credential management (Redacted in DB)
-```
-
-### Resilience Patterns
-
-```bash
-# Fault Tolerance:
-- Circuit Breaker - Prevents cascade failures with open/half-open/closed states
-- Multi-Layer Cache (L1+L2) - ETS (L1) + Redis (L2) for optimal performance
-- Rate Limiting - Per-user and per-IP request throttling
-- Connection Pooling - Finch pools for efficient HTTP connections
-- Graceful Degradation - Fallback strategies when services are unavailable
-```
-
-<br>
-
-## :art: System Architecture
+## :art: Architecture
 
 ### High-Level Overview
 
@@ -157,27 +111,29 @@ graph TD
     subgraph "Streamix Platform"
         LB[Phoenix Endpoint]
         LV[LiveView UI]
-        API[REST API]
-        Proxy[Stream Proxy]
+        API[REST API v1]
+        Proxy[Stream Proxy / Multiplexer]
         CB[Circuit Breaker]
-        Sync[Sync Engine]
+        Sync[Oban Workers]
         Broadway[Broadway Pipeline]
     end
 
     subgraph "Cache Layer"
-        L1[(L1: ETS/ConCache)]
+        L1[(L1: ConCache)]
         L2[(L2: Redis)]
     end
 
     subgraph "Data Layer"
-        DB[(PostgreSQL)]
+        DB[(TimescaleDB pg17)]
         RMQ[RabbitMQ]
+        QD[Qdrant Vector DB]
     end
 
-    subgraph "External World"
-        P1[IPTV Provider A]
-        P2[IPTV Provider B]
-        TM[TMDB / Metadata]
+    subgraph "External"
+        P1[IPTV Providers]
+        TM[TMDB]
+        GI[GIndex / GDrive]
+        AI[Gemini / NVIDIA NIM]
     end
 
     User -->|HTTPS| LB
@@ -186,19 +142,21 @@ graph TD
     LB --> Proxy
 
     LV --> L1
-    L1 -->|Cache Miss| L2
-    L2 -->|Cache Miss| DB
+    L1 -->|Miss| L2
+    L2 -->|Miss| DB
 
     LV --> CB
     CB --> P1
-    CB --> P2
 
     Sync --> RMQ
     RMQ --> Broadway
     Broadway -->|Bulk Insert| DB
-    Broadway -->|Enrichment| TM
+    Sync -->|Enrichment| TM
+    Sync -->|Embeddings| AI
+    AI -->|Store| QD
 
     Proxy -->|HLS/TS| P1
+    Sync -->|Scrape| GI
 ```
 
 ### Cache Flow (L1 + L2)
@@ -206,9 +164,9 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant L1 as L1 Cache (ETS)
+    participant L1 as L1 Cache (ConCache)
     participant L2 as L2 Cache (Redis)
-    participant DB as PostgreSQL
+    participant DB as TimescaleDB
 
     C->>L1: Get Data
     alt L1 Hit
@@ -227,85 +185,62 @@ sequenceDiagram
     end
 ```
 
-### Streaming Pipeline
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant CB as Circuit Breaker
-    participant S as Streamix Core
-    participant P as Stream Proxy
-    participant X as IPTV Service
-
-    C->>S: Request Stream (Channel 101)
-    S->>S: Check User Access & Settings
-    S->>CB: Check Circuit State
-
-    alt Circuit Open
-        CB-->>C: Return Cached/Fallback
-    else Circuit Closed
-        alt Direct Mode
-            S-->>C: Redirect to Provider URL (302)
-            C->>X: Play Stream Direct
-        else Proxy Mode (Secure/Fix)
-            S->>P: Initialize Proxy Session
-            P->>X: Open Connection
-            X-->>P: Stream Data (MPEG-TS/HLS)
-            P-->>P: Buffer & Transcode (Optional)
-            P-->>C: Stream Chunks
-        end
-    end
-```
-
 <br>
 
 ## :computer: Technologies
 
-### Core Framework
+### Core
 
 | Technology | Version | Description |
 |------------|---------|-------------|
-| [Elixir](https://elixir-lang.org/) | 1.15+ | The backbone of our concurrent architecture |
-| [Phoenix Framework](https://www.phoenixframework.org/) | 1.8.2+ | High-performance web interface |
-| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1.0+ | Real-time smooth UX |
-| [OTP](https://www.erlang.org/doc/design_principles/des_princ.html) | 26+ | Fault tolerance and supervision |
+| [Elixir](https://elixir-lang.org/) | 1.18+ | Concurrent, fault-tolerant runtime |
+| [Phoenix](https://www.phoenixframework.org/) | 1.8+ | Real-time web framework |
+| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1+ | Server-rendered reactive UI |
+| [OTP](https://www.erlang.org/) | 27+ | Supervision trees and fault tolerance |
+| [Bandit](https://hexdocs.pm/bandit/) | 1.0+ | HTTP/2 server |
 
-### Data & Connectivity
+### Data
 
-| Technology | Version | Description |
-|------------|---------|-------------|
-| [PostgreSQL](https://www.postgresql.org/) | 14+ | Robust relational data storage with pg_trgm |
-| [Redis](https://redis.io/) | 7+ | L2 cache and session storage |
-| [RabbitMQ](https://www.rabbitmq.com/) | 3.12+ | Message broker for distributed sync |
-| [Ecto](https://hexdocs.pm/ecto/) | 3.13+ | Database interaction and query composition |
-| [Req](https://hexdocs.pm/req/) | 0.5+ | Powerful HTTP client for provider communication |
-| [Finch](https://hexdocs.pm/finch/) | 0.19+ | HTTP client with connection pooling |
-| [Bandit](https://hexdocs.pm/bandit/) | 1.6+ | Next-gen HTTP server for Elixir |
+| Technology | Description |
+|------------|-------------|
+| [TimescaleDB](https://www.timescale.com/) (pg17) | PostgreSQL with time-series extensions + pg_trgm |
+| [Redis](https://redis.io/) 7+ | L2 distributed cache |
+| [Qdrant](https://qdrant.tech/) | Vector database for semantic search |
+| [Ecto](https://hexdocs.pm/ecto/) | Database queries and migrations |
 
 ### Background Processing
 
 | Technology | Description |
 |------------|-------------|
-| [Oban](https://getoban.pro/) | Robust background job processing |
-| [Broadway](https://hexdocs.pm/broadway/) | Concurrent data processing pipelines |
-| [ConCache](https://hexdocs.pm/con_cache/) | ETS-based L1 cache with TTL |
+| [Oban](https://getoban.pro/) | Background jobs with cron scheduling |
+| [Broadway](https://hexdocs.pm/broadway/) | High-throughput data pipelines (optional, with RabbitMQ) |
+| [ConCache](https://hexdocs.pm/con_cache/) | ETS-based L1 in-memory cache |
 
-### Frontend & Design
-
-| Technology | Version | Description |
-|------------|---------|-------------|
-| [Tailwind CSS](https://tailwindcss.com/) | v4 | Utility-first styling with modern syntax |
-| [Heroicons](https://heroicons.com/) | 2.1+ | Beautiful SVG icons |
-| [JS Hooks](https://hexdocs.pm/phoenix_live_view/js-interop.html) | - | Video players and advanced interactions |
-
-### Security & Quality
+### Frontend
 
 | Technology | Description |
 |------------|-------------|
-| [Hammer](https://hexdocs.pm/hammer/) | Rate limiting and throttling |
-| [Sobelow](https://hexdocs.pm/sobelow/) | Security-focused static analysis |
-| [Credo](https://hexdocs.pm/credo/) | Code consistency and quality |
-| [ExUnit](https://hexdocs.pm/ex_unit/) | Comprehensive testing framework |
+| [Tailwind CSS](https://tailwindcss.com/) v4 | Utility-first styling |
+| [Catppuccin](https://catppuccin.com/) | Color palette (Latte for light mode) |
+| [Heroicons](https://heroicons.com/) | SVG icons |
+| [hls.js](https://github.com/video-dev/hls.js/) | HLS video playback |
+
+### External Services
+
+| Service | Description |
+|---------|-------------|
+| [TMDB](https://www.themoviedb.org/) | Movie/series metadata and posters |
+| [Gemini](https://ai.google.dev/) / [NVIDIA NIM](https://build.nvidia.com/) | AI embeddings for semantic search |
+| [GIndex](https://github.com/LeeluPrad662/G-Index) | Google Drive content indexing |
+
+### Quality & Security
+
+| Tool | Description |
+|------|-------------|
+| [Hammer](https://hexdocs.pm/hammer/) | Rate limiting |
+| [Sobelow](https://hexdocs.pm/sobelow/) | Security static analysis |
+| [Credo](https://hexdocs.pm/credo/) | Code quality |
+| [ExUnit](https://hexdocs.pm/ex_unit/) | Testing |
 
 <br>
 
@@ -313,114 +248,88 @@ sequenceDiagram
 
 ### Prerequisites
 
-- **[Elixir](https://elixir-lang.org/install.html)** 1.15+
-- **[PostgreSQL](https://www.postgresql.org/download/)** 14+
-- **[Redis](https://redis.io/download/)** 7+
-- **[Node.js](https://nodejs.org/)** 20+ (for asset building)
-- **[RabbitMQ](https://www.rabbitmq.com/download.html)** 3.12+ (optional, for distributed sync)
+- **[Elixir](https://elixir-lang.org/install.html)** 1.18+ (with OTP 27+)
+- **[Docker](https://www.docker.com/)** (for infrastructure services)
 
 ### Quick Start
 
-1. **Clone the repository**
+1. **Clone and enter**
 
 ```bash
 git clone https://github.com/gabrielmaialva33/streamix.git
 cd streamix
 ```
 
-2. **Configure environment**
+2. **Start infrastructure**
+
+```bash
+docker compose up -d  # TimescaleDB, Redis, RabbitMQ, Qdrant
+```
+
+3. **Configure environment**
 
 ```bash
 cp .env.example .env
-# Edit .env with your database, Redis, and RabbitMQ credentials
+# Edit .env with your credentials (IPTV provider, TMDB API key, etc.)
 ```
 
-3. **Install dependencies**
+4. **Setup and run**
 
 ```bash
-mix deps.get
-```
-
-4. **Setup database**
-
-```bash
-mix ecto.setup
-```
-
-5. **Start the Phoenix server**
-
-```bash
+mix setup    # deps, database, assets
 mix phx.server
 ```
 
-6. **Access the Application**
+5. **Open** [http://localhost:4000](http://localhost:4000)
 
-Open [http://localhost:4000](http://localhost:4000) in your browser.
-
-### Docker Option
+### Docker Production
 
 ```bash
-# Build and run with Docker Compose
-docker compose up -d
-
-# Or build manually
 docker build -t streamix .
-docker run -p 4000:4000 streamix
+docker run -p 4000:4000 \
+  -e DATABASE_URL="ecto://user:pass@host/streamix" \
+  -e SECRET_KEY_BASE="$(mix phx.gen.secret)" \
+  streamix
 ```
 
 <br>
 
 ## :electric_plug: Usage
 
-### Provider Management
+### Getting Started
 
-1. Navigate to **Providers** in the main menu.
-2. Click **Add Provider**.
-3. Enter your Xtream Codes credentials (URL, Username, Password).
-4. Watch as Streamix automatically syncs your channels and VOD library.
+1. **Register** an account at `/register`
+2. Navigate to **Providers** and add your Xtream Codes credentials
+3. Streamix automatically syncs channels, movies, and series in the background
+4. Browse, search, and watch content across all your providers
 
-### Watching Content
+### Content Types
 
-- **Live TV**: Browse by category, search for channels, and click to play instantly.
-- **Movies & Series**: Explore your VOD library with rich metadata and one-click playback.
-- **Favorites**: Star your top channels for quick access on the dashboard.
-- **Continue Watching**: Resume movies and series exactly where you left off from your personalized dashboard.
+- **Live TV** - Browse by category, search channels, click to watch
+- **Movies** - VOD library with TMDB metadata and poster art
+- **Series** - Full series with seasons and episodes
+- **GIndex** - Google Drive content (movies, series, anime)
 
-### PWA Installation
+### Watch Party
 
-Streamix works as a Progressive Web App for a native-like experience:
+Create a watch party to sync playback with friends using invite codes.
 
-**Desktop (Chrome/Edge):**
-1. Click the install icon in the address bar
-2. Click "Install" in the prompt
+### Mobile / External Players
 
-**Mobile (Android):**
-1. Open Streamix in Chrome
-2. Tap the three-dot menu
-3. Select "Add to Home screen"
+Use the REST API at `/api/v1/` with bearer token authentication. See API docs for available endpoints.
 
-**Mobile (iOS):**
-1. Open Streamix in Safari
-2. Tap the Share button
-3. Select "Add to Home Screen"
+### PWA
+
+Install Streamix as a native app:
+- **Chrome/Edge**: Click install icon in address bar
+- **Android**: Menu > "Add to Home screen"
+- **iOS Safari**: Share > "Add to Home Screen"
 
 <br>
 
 ## :memo: License
 
 This project is under the **MIT** license. See [LICENSE](./LICENSE) for details.
-
-<br>
-
-## :handshake: Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 <br>
 
@@ -442,9 +351,5 @@ Made with Love by **Maia**
 </p>
 
 <p align="center">
-  <strong>Streamix v1.3.0 - Where Entertainment Meets Technology.</strong>
-</p>
-
-<p align="center">
-  &copy; 2017-2026 <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
+  &copy; 2024-2026 <a href="https://github.com/gabrielmaialva33/" target="_blank">Maia</a>
 </p>
