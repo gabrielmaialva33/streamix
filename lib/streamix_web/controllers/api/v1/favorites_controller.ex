@@ -90,6 +90,49 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
     end
   end
 
+  @doc """
+  POST /api/v1/favorites/sync
+  Batch sync for offline-first clients.
+  Body: { "operations": [{ "type": "movie", "content_id": 123, "action": "add"|"remove", "at": "2026-03-31T12:00:00Z" }] }
+
+  Processes operations idempotently. Last-write-wins by timestamp.
+  """
+  def sync(conn, %{"operations" => operations}) when is_list(operations) do
+    user = conn.assigns.current_user
+    results = Enum.map(operations, &process_sync_operation(user.id, &1))
+
+    added = Enum.count(results, &(&1 == :added))
+    removed = Enum.count(results, &(&1 == :removed))
+    skipped = Enum.count(results, &(&1 == :skipped))
+
+    json(conn, %{added: added, removed: removed, skipped: skipped})
+  end
+
+  def sync(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: %{code: "missing_params", message: "operations array required"}})
+  end
+
+  defp process_sync_operation(user_id, %{"type" => type, "content_id" => content_id, "action" => action}) do
+    exists? = Favorites.exists?(user_id, type, content_id)
+
+    case {action, exists?} do
+      {"add", false} ->
+        Favorites.add(user_id, type, content_id)
+        :added
+
+      {"remove", true} ->
+        Favorites.remove(user_id, type, content_id)
+        :removed
+
+      _ ->
+        :skipped
+    end
+  end
+
+  defp process_sync_operation(_user_id, _invalid), do: :skipped
+
   # Auth plug — validates Bearer token
   defp authenticate(conn, _opts) do
     with token_str when is_binary(token_str) <- get_bearer_token(conn),

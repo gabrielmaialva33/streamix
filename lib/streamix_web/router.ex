@@ -125,12 +125,26 @@ defmodule StreamixWeb.Router do
     get "/favorites", FavoritesController, :index
     post "/favorites", FavoritesController, :create
     post "/favorites/toggle", FavoritesController, :toggle
+    post "/favorites/sync", FavoritesController, :sync
     delete "/favorites/:type/:content_id", FavoritesController, :delete
 
     # Watch History API (Bearer token auth in controller)
     get "/history", HistoryController, :index
     post "/history", HistoryController, :upsert
     delete "/history/:id", HistoryController, :delete
+
+    # EPG API
+    get "/epg/programs", EpgController, :programs
+    get "/epg/now", EpgController, :now
+
+    # Telemetry API (Bearer token auth in controller)
+    post "/telemetry/playback", TelemetryController, :ingest
+
+    # Providers API (Bearer token auth in controller)
+    get "/providers", ProvidersController, :index
+    post "/providers", ProvidersController, :create
+    delete "/providers/:id", ProvidersController, :delete
+    post "/providers/:id/sync", ProvidersController, :sync
   end
 
   # Public routes - landing page only
