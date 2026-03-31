@@ -70,6 +70,16 @@ defmodule StreamixWeb.Router do
     head "/stream/proxy", StreamController, :proxy
   end
 
+  # Mobile auth API (no API key required, rate-limited)
+  scope "/api/v1/auth", StreamixWeb.Api.V1 do
+    pipe_through [:api, :auth_rate_limited]
+
+    post "/register", AuthController, :register
+    post "/login", AuthController, :login
+    post "/logout", AuthController, :logout
+    get "/me", AuthController, :me
+  end
+
   # Protected catalog API for TV app and other clients
   scope "/api/v1", StreamixWeb.Api.V1 do
     pipe_through :api_v1
@@ -110,6 +120,17 @@ defmodule StreamixWeb.Router do
       get "/insights", RecommendationsController, :insights
       post "/refresh", RecommendationsController, :refresh
     end
+
+    # Favorites API (Bearer token auth in controller)
+    get "/favorites", FavoritesController, :index
+    post "/favorites", FavoritesController, :create
+    post "/favorites/toggle", FavoritesController, :toggle
+    delete "/favorites/:type/:content_id", FavoritesController, :delete
+
+    # Watch History API (Bearer token auth in controller)
+    get "/history", HistoryController, :index
+    post "/history", HistoryController, :upsert
+    delete "/history/:id", HistoryController, :delete
   end
 
   # Public routes - landing page only
