@@ -113,6 +113,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   defp parse_int(nil, default), do: default
+  defp parse_int(val, _default) when is_integer(val), do: val
 
   defp parse_int(val, default) when is_binary(val) do
     case Integer.parse(val) do
