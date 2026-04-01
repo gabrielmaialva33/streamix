@@ -114,7 +114,11 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
     |> json(%{error: %{code: "missing_params", message: "operations array required"}})
   end
 
-  defp process_sync_operation(user_id, %{"type" => type, "content_id" => content_id, "action" => action}) do
+  defp process_sync_operation(user_id, %{
+         "type" => type,
+         "content_id" => content_id,
+         "action" => action
+       }) do
     exists? = Favorites.exists?(user_id, type, content_id)
 
     case {action, exists?} do

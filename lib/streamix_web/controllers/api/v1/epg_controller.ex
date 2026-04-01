@@ -38,7 +38,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
         |> where([p], p.provider_id == ^provider.id)
         |> where([p], p.epg_channel_id in ^channel_ids)
         |> where([p], p.end_time > ^now and p.start_time < ^until)
-        |> order_by([p], [asc: p.epg_channel_id, asc: p.start_time])
+        |> order_by([p], asc: p.epg_channel_id, asc: p.start_time)
         |> Repo.all()
         |> Enum.group_by(& &1.epg_channel_id)
         |> Map.new(fn {channel_id, progs} ->

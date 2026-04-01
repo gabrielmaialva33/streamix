@@ -41,9 +41,7 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
     user = conn.assigns.current_user
     metrics = Enum.take(metrics, @max_batch_size)
 
-    Logger.info(
-      "[Telemetry] user=#{user.id} batch=#{batch_id} count=#{length(metrics)}"
-    )
+    Logger.info("[Telemetry] user=#{user.id} batch=#{batch_id} count=#{length(metrics)}")
 
     # Log metrics for now — structured storage can be added later
     Enum.each(metrics, fn metric ->
