@@ -58,7 +58,9 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   def create(conn, _params) do
     conn
     |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "name, url, username, and password required"}})
+    |> json(%{
+      error: %{code: "missing_params", message: "name, url, username, and password required"}
+    })
   end
 
   @doc """
@@ -76,7 +78,9 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
 
       provider ->
         case Providers.delete(provider) do
-          {:ok, _} -> send_resp(conn, 204, "")
+          {:ok, _} ->
+            send_resp(conn, 204, "")
+
           {:error, _} ->
             conn
             |> put_status(:unprocessable_entity)
@@ -157,7 +161,6 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
         opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
-    |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
-    |> Enum.join("; ")
+    |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
   end
 end
