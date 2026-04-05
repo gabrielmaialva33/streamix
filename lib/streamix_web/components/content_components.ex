@@ -144,16 +144,16 @@ defmodule StreamixWeb.ContentComponents do
     <.link
       navigate={@href}
       class={[
-        "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-md text-[11px] sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+        "flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
         @selected && "bg-brand text-white",
         !@selected && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
       ]}
     >
-      <.icon name={@icon} class="size-3 sm:size-4" />
-      <span class="hidden xs:inline sm:inline">{@label}</span>
+      <.icon name={@icon} class="size-3.5 sm:size-4" />
+      <span>{@label}</span>
       <span
         :if={@count && @count > 0}
-        class="px-1 py-0.5 text-[9px] sm:text-xs rounded bg-black/20"
+        class="hidden sm:inline px-1 py-0.5 text-[9px] sm:text-xs rounded bg-black/20"
       >
         {format_count(@count)}
       </span>

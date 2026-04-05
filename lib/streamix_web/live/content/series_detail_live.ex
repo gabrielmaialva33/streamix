@@ -58,7 +58,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp mount_series_found(socket, provider, series, user_id, mode) do
     is_favorite = if user_id, do: Iptv.is_favorite?(user_id, "series", series.id), else: false
-    sorted_seasons = Enum.sort_by(series.seasons || [], & &1.season_number)
+    sorted_seasons =
+      (series.seasons || [])
+      |> Enum.reject(fn s -> (s.episodes || []) == [] end)
+      |> Enum.sort_by(& &1.season_number)
 
     first_season_id =
       case sorted_seasons do

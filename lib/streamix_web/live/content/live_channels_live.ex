@@ -205,22 +205,25 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex flex-wrap items-center gap-4">
+    <div class="space-y-4 sm:space-y-6">
+      <%!-- Navigation tabs - always visible on mobile --%>
+      <div class="space-y-3">
         <%= if @mode == :browse do %>
-          <.source_tabs selected="iptv" path="/browse" gindex_path="/browse/movies" />
-          <div class="hidden sm:block w-px h-8 bg-border" />
-          <.browse_tabs
-            selected={:live}
-            source="iptv"
-            counts={
-              %{
-                live: @provider.live_channels_count,
-                movies: @provider.movies_count,
-                series: @provider.series_count
+          <div class="flex items-center gap-2 sm:gap-4">
+            <.source_tabs selected="iptv" path="/browse" gindex_path="/browse/movies" />
+            <div class="hidden sm:block w-px h-8 bg-border" />
+            <.browse_tabs
+              selected={:live}
+              source="iptv"
+              counts={
+                %{
+                  live: @provider.live_channels_count,
+                  movies: @provider.movies_count,
+                  series: @provider.series_count
+                }
               }
-            }
-          />
+            />
+          </div>
         <% else %>
           <.content_tabs
             selected={:live}
@@ -241,16 +244,16 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           current_scope={@current_scope}
         />
 
-        <.category_filter_v2 categories={@categories} selected={@selected_category} />
-        <.search_input value={@search} placeholder="Buscar canais ao vivo..." />
-
-        <%= if @mode == :provider do %>
-          <div class="ml-auto">
+        <%!-- Filters row --%>
+        <div class="flex items-center gap-2 sm:gap-4">
+          <.category_filter_v2 categories={@categories} selected={@selected_category} />
+          <.search_input value={@search} placeholder="Buscar canais ao vivo..." />
+          <%= if @mode == :provider do %>
             <button
               type="button"
               phx-click="sync_provider"
               disabled={@provider.sync_status in ["pending", "syncing"]}
-              class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-surface hover:bg-surface-hover border border-border text-text-primary font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-surface hover:bg-surface-hover border border-border text-text-primary font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
               title={"Última sinc: #{format_relative_time(@provider.live_synced_at)}"}
             >
               <.icon
@@ -259,8 +262,8 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
               />
               <span class="hidden sm:inline">Sincronizar</span>
             </button>
-          </div>
-        <% end %>
+          <% end %>
+        </div>
       </div>
 
       <div
