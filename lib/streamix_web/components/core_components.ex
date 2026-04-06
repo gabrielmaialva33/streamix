@@ -667,11 +667,11 @@ defmodule StreamixWeb.CoreComponents do
 
   def skeleton_card(assigns) do
     ~H"""
-    <div class={["flex flex-col gap-2", @class]}>
-      <div class="aspect-[2/3] animate-pulse bg-surface-hover rounded-lg"></div>
+    <div class={["flex flex-col gap-2 animate-fade-in", @class]}>
+      <div class="aspect-[2/3] bg-surface-hover rounded-md sm:rounded-lg skeleton-shimmer"></div>
       <div class="space-y-1.5 px-0.5">
-        <div class="h-3.5 animate-pulse bg-surface-hover rounded w-3/4"></div>
-        <div class="h-3 animate-pulse bg-surface-hover rounded w-1/2"></div>
+        <div class="h-3 sm:h-3.5 bg-surface-hover rounded w-3/4 skeleton-shimmer"></div>
+        <div class="h-2.5 sm:h-3 bg-surface-hover rounded w-1/2 skeleton-shimmer"></div>
       </div>
     </div>
     """
@@ -688,11 +688,11 @@ defmodule StreamixWeb.CoreComponents do
 
   def skeleton_channel_card(assigns) do
     ~H"""
-    <div class={["flex flex-col gap-2", @class]}>
-      <div class="aspect-video animate-pulse bg-surface-hover rounded-lg"></div>
+    <div class={["flex flex-col gap-2 animate-fade-in", @class]}>
+      <div class="aspect-video bg-surface-hover rounded-md sm:rounded-lg skeleton-shimmer"></div>
       <div class="space-y-1.5 px-0.5">
-        <div class="h-3.5 animate-pulse bg-surface-hover rounded w-2/3"></div>
-        <div class="h-3 animate-pulse bg-surface-hover rounded w-1/3"></div>
+        <div class="h-3 sm:h-3.5 bg-surface-hover rounded w-2/3 skeleton-shimmer"></div>
+        <div class="h-2.5 sm:h-3 bg-surface-hover rounded w-1/3 skeleton-shimmer"></div>
       </div>
     </div>
     """
@@ -735,18 +735,18 @@ defmodule StreamixWeb.CoreComponents do
   """
   def skeleton_hero(assigns) do
     ~H"""
-    <div class="relative w-full aspect-[21/9] sm:aspect-[2.4/1] animate-pulse bg-surface-hover rounded-xl overflow-hidden">
+    <div class="relative w-full aspect-[21/9] sm:aspect-[2.4/1] bg-surface-hover rounded-xl overflow-hidden skeleton-shimmer">
       <div class="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-transparent">
         <div class="absolute bottom-0 left-0 p-6 sm:p-8 lg:p-12 space-y-4 max-w-2xl">
-          <div class="h-8 sm:h-10 bg-surface rounded w-3/4"></div>
+          <div class="h-8 sm:h-10 bg-surface rounded w-3/4 skeleton-shimmer"></div>
           <div class="space-y-2">
-            <div class="h-4 bg-surface rounded w-full"></div>
-            <div class="h-4 bg-surface rounded w-5/6"></div>
-            <div class="h-4 bg-surface rounded w-2/3"></div>
+            <div class="h-4 bg-surface rounded w-full skeleton-shimmer"></div>
+            <div class="h-4 bg-surface rounded w-5/6 skeleton-shimmer"></div>
+            <div class="h-4 bg-surface rounded w-2/3 skeleton-shimmer"></div>
           </div>
           <div class="flex gap-3 pt-2">
-            <div class="h-10 w-28 bg-surface rounded-lg"></div>
-            <div class="h-10 w-28 bg-surface rounded-lg"></div>
+            <div class="h-10 w-28 bg-surface rounded-lg skeleton-shimmer"></div>
+            <div class="h-10 w-28 bg-surface rounded-lg skeleton-shimmer"></div>
           </div>
         </div>
       </div>

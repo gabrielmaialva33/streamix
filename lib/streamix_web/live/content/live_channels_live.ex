@@ -288,8 +288,11 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
         class="h-4"
       />
 
-      <div :if={@loading} class="flex justify-center py-8">
-        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+      <div
+        :if={@loading}
+        class="grid gap-1.5 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+      >
+        <.skeleton_channel_card :for={_ <- 1..12} />
       </div>
 
       <div :if={@empty_results} class="py-12">
