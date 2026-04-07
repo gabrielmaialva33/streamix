@@ -458,20 +458,156 @@ defmodule StreamixWeb.HomeLive do
   defp hero_background(assigns) do
     {_type, content} = assigns.featured
     backdrop = get_backdrop(content)
-    assigns = assign(assigns, :backdrop, backdrop)
+    trailer_id = Map.get(content, :youtube_trailer)
+
+    assigns =
+      assigns
+      |> assign(:backdrop, backdrop)
+      |> assign(:trailer_id, trailer_id)
 
     ~H"""
+    <%!-- Poster background (always rendered as base) --%>
     <img
       :if={@backdrop}
       src={@backdrop}
       alt=""
       class="absolute inset-0 w-full h-full object-cover object-top hero-backdrop"
       loading="eager"
+      id="hero-poster"
     />
     <div
       :if={!@backdrop}
       class="absolute inset-0 bg-gradient-to-br from-surface via-background to-surface hero-backdrop"
     />
+    <%!-- YouTube trailer overlay (auto-play muted) --%>
+    <div
+      :if={@trailer_id}
+      id="hero-trailer-container"
+      phx-hook=".HeroTrailer"
+      data-trailer-id={@trailer_id}
+      class="absolute inset-0 opacity-0 transition-opacity duration-1000 pointer-events-none"
+    >
+      <div id="hero-trailer-player" class="w-full h-full"></div>
+    </div>
+    <%!-- Mute/unmute toggle --%>
+    <button
+      :if={@trailer_id}
+      id="hero-mute-toggle"
+      type="button"
+      class="absolute bottom-20 sm:bottom-24 right-[4%] z-20 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-surface/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/70 hover:text-white hover:bg-surface/70 transition-all opacity-0"
+      data-muted="true"
+    >
+      <.icon name="hero-speaker-x-mark" class="size-4 sm:size-5 hero-icon-muted" />
+      <.icon name="hero-speaker-wave" class="size-4 sm:size-5 hero-icon-unmuted hidden" />
+    </button>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".HeroTrailer">
+      export default {
+        mounted() {
+          this.trailerId = this.el.dataset.trailerId
+          this.muted = true
+          this.loaded = false
+          this.timeout = null
+
+          // Don't auto-play on mobile (saves bandwidth)
+          if (window.innerWidth < 768) return
+
+          // Load YouTube IFrame API if not already loaded
+          if (!window.YT) {
+            const tag = document.createElement('script')
+            tag.src = 'https://www.youtube.com/iframe_api'
+            document.head.appendChild(tag)
+            window.onYouTubeIframeAPIReady = () => this.createPlayer()
+          } else {
+            this.createPlayer()
+          }
+
+          // Mute toggle
+          const muteBtn = document.getElementById('hero-mute-toggle')
+          if (muteBtn) {
+            muteBtn.addEventListener('click', () => this.toggleMute())
+          }
+        },
+
+        createPlayer() {
+          this.player = new YT.Player('hero-trailer-player', {
+            videoId: this.trailerId,
+            playerVars: {
+              autoplay: 1,
+              mute: 1,
+              controls: 0,
+              showinfo: 0,
+              rel: 0,
+              modestbranding: 1,
+              loop: 0,
+              playsinline: 1,
+              start: 5,
+              enablejsapi: 1,
+              origin: window.location.origin
+            },
+            events: {
+              onReady: (e) => this.onReady(e),
+              onStateChange: (e) => this.onStateChange(e)
+            }
+          })
+        },
+
+        onReady(event) {
+          event.target.mute()
+          // Fade in video after a brief delay
+          setTimeout(() => {
+            this.el.style.opacity = '1'
+            this.loaded = true
+            // Show mute button
+            const muteBtn = document.getElementById('hero-mute-toggle')
+            if (muteBtn) muteBtn.style.opacity = '1'
+          }, 500)
+
+          // Auto-stop after 40 seconds (Netflix-style)
+          this.timeout = setTimeout(() => this.fadeOut(), 40000)
+        },
+
+        onStateChange(event) {
+          // Video ended - fade back to poster
+          if (event.data === YT.PlayerState.ENDED) {
+            this.fadeOut()
+          }
+        },
+
+        fadeOut() {
+          this.el.style.opacity = '0'
+          const muteBtn = document.getElementById('hero-mute-toggle')
+          if (muteBtn) muteBtn.style.opacity = '0'
+          if (this.player) {
+            setTimeout(() => this.player.pauseVideo(), 1000)
+          }
+        },
+
+        toggleMute() {
+          if (!this.player) return
+          const muteBtn = document.getElementById('hero-mute-toggle')
+          const mutedIcon = muteBtn?.querySelector('.hero-icon-muted')
+          const unmutedIcon = muteBtn?.querySelector('.hero-icon-unmuted')
+          if (this.muted) {
+            this.player.unMute()
+            this.player.setVolume(30)
+            this.muted = false
+            if (mutedIcon) mutedIcon.classList.add('hidden')
+            if (unmutedIcon) unmutedIcon.classList.remove('hidden')
+          } else {
+            this.player.mute()
+            this.muted = true
+            if (mutedIcon) mutedIcon.classList.remove('hidden')
+            if (unmutedIcon) unmutedIcon.classList.add('hidden')
+          }
+        },
+
+        destroyed() {
+          if (this.timeout) clearTimeout(this.timeout)
+          if (this.player) this.player.destroy()
+        }
+      }
+    </script>
     """
   end
 
