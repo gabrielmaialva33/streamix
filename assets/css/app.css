@@ -389,6 +389,29 @@ select:focus-visible {
   animation: fadeIn 0.8s ease-out forwards;
 }
 
+/* Hero trailer - scale YouTube iframe to cover hero area */
+#hero-trailer-player {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  min-width: 100%;
+  min-height: 100%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+#hero-trailer-player iframe {
+  width: 100vw;
+  height: 56.25vw; /* 16:9 */
+  min-height: 100%;
+  min-width: 177.78vh; /* 16:9 inverse */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 /* Content slide up animation */
 @keyframes slideUp {
   from {
