@@ -50,7 +50,7 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       # Scripts: nonce-based (no strict-dynamic — conflicts with Cloudflare injected scripts)
       # unsafe-eval needed for LiveView morphdom diffing
       # Hash: Cloudflare Speed Brain inline speculation rules
-      "script-src 'self' 'nonce-#{nonce}' 'unsafe-eval' 'sha256-iIs9B1z3EnV2hTwzvh58h4Re7d6yNBJdIX4csEJo7c0=' https://static.cloudflareinsights.com https://ajax.cloudflare.com https://cdnjs.cloudflare.com",
+      "script-src 'self' 'nonce-#{nonce}' 'unsafe-eval' 'sha256-iIs9B1z3EnV2hTwzvh58h4Re7d6yNBJdIX4csEJo7c0=' https://static.cloudflareinsights.com https://ajax.cloudflare.com https://cdnjs.cloudflare.com https://www.youtube.com https://s.ytimg.com",
 
       # Styles: unsafe-inline still needed for Tailwind dynamic classes and LiveView
       "style-src 'self' 'unsafe-inline'",
