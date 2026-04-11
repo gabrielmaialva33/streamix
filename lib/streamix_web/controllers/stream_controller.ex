@@ -51,7 +51,7 @@ defmodule StreamixWeb.StreamController do
   # Live channels: stream directly to avoid cross-origin redirect CORS failures.
   # VOD: redirect to nginx proxy for Range header support.
   defp stream_by_type(conn, url, "channel", meta),
-    do: stream_live_channel(conn, url, meta[:content_id])
+    do: stream_live_channel(conn, url, meta.content_id)
 
   defp stream_by_type(conn, url, _type, _meta),
     do: resolve_and_redirect_to_proxy(conn, url, 0)
