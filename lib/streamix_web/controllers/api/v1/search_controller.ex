@@ -138,10 +138,8 @@ defmodule StreamixWeb.Api.V1.SearchController do
 
     stats =
       if available do
-        case SemanticSearch.stats() do
-          {:ok, stats} -> stats
-          _ -> %{}
-        end
+        {:ok, stats} = SemanticSearch.stats()
+        stats
       else
         %{}
       end

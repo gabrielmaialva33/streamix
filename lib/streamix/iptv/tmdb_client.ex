@@ -274,20 +274,8 @@ defmodule Streamix.Iptv.TmdbClient do
 
   defp handle_response({:error, reason}, _url, _retries), do: {:error, reason}
 
-  defp get_retry_after(%{headers: headers}) do
-    # Try to get Retry-After header, otherwise use exponential backoff
-    case List.keyfind(headers, "retry-after", 0) do
-      {"retry-after", seconds} ->
-        String.to_integer(seconds) * 1000
-
-      _ ->
-        @initial_backoff
-    end
-  rescue
-    _ -> @initial_backoff
-  end
-
-  defp get_retry_after(_), do: @initial_backoff
+  defp get_retry_after(%Req.Response{} = response),
+    do: Req.Response.get_retry_after(response) || @initial_backoff
 
   defp config do
     Application.get_env(:streamix, :tmdb, [])

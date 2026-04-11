@@ -13,7 +13,6 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   alias Streamix.Iptv.StreamMultiplexerSupervisor
 
   @connect_timeout 10_000
-  @max_redirects 5
   @idle_timeout 30_000
   @default_buffer_size 30
   @max_buffer_bytes 5 * 1_024 * 1_024
@@ -110,7 +109,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   @impl true
   def handle_continue(:connect, state) do
-    case connect_upstream(state.url, 0) do
+    case connect_upstream(state.url) do
       {:ok, mint_conn, request_ref} ->
         {:noreply, %{state | mint_conn: mint_conn, request_ref: request_ref, status: :streaming}}
 
@@ -310,7 +309,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     Logger.info("[StreamMux] Following redirect to #{redirect_url}")
     close_upstream(state)
 
-    case connect_upstream(redirect_url, 0) do
+    case connect_upstream(redirect_url) do
       {:ok, mint_conn, request_ref} ->
         {:ok,
          %{
@@ -369,11 +368,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   # -- Upstream connection --
 
-  defp connect_upstream(_url, redirect_count) when redirect_count > @max_redirects do
-    {:error, :too_many_redirects}
-  end
-
-  defp connect_upstream(url, _redirect_count) do
+  defp connect_upstream(url) do
     uri = URI.parse(url)
     scheme = if uri.scheme == "https", do: :https, else: :http
     port = uri.port || default_port(scheme)
@@ -397,8 +392,8 @@ defmodule Streamix.Iptv.StreamMultiplexer do
          {:ok, mint_conn, request_ref} <- Mint.HTTP.request(mint_conn, "GET", path, headers, nil) do
       {:ok, mint_conn, request_ref}
     else
-      {:error, mint_conn, reason} when is_struct(mint_conn) ->
-        Mint.HTTP.close(mint_conn)
+      {:error, mint_conn, reason} ->
+        close_mint_conn(mint_conn)
         {:error, reason}
 
       {:error, reason} ->
@@ -409,10 +404,8 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   defp close_upstream(%{mint_conn: nil}), do: :ok
 
   defp close_upstream(%{mint_conn: mint_conn}) do
-    Mint.HTTP.close(mint_conn)
+    close_mint_conn(mint_conn)
     :ok
-  rescue
-    _ -> :ok
   end
 
   # -- Helpers --
@@ -436,6 +429,15 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     else
       state
     end
+  end
+
+  defp close_mint_conn(nil), do: :ok
+
+  defp close_mint_conn(mint_conn) do
+    Mint.HTTP.close(mint_conn)
+    :ok
+  rescue
+    _ -> :ok
   end
 
   defp default_port(:https), do: 443

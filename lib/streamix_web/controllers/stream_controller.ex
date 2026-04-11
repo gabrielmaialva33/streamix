@@ -54,7 +54,7 @@ defmodule StreamixWeb.StreamController do
     do: stream_live_channel(conn, url, meta.content_id)
 
   defp stream_by_type(conn, url, _type, _meta),
-    do: resolve_and_redirect_to_proxy(conn, url, 0)
+    do: resolve_and_redirect_to_proxy(conn, url)
 
   @token_errors %{
     token_expired: {:unauthorized, "Stream token expired"},
@@ -137,16 +137,7 @@ defmodule StreamixWeb.StreamController do
 
   # --- VOD: resolve redirects and send to nginx proxy for Range support ---
 
-  defp resolve_and_redirect_to_proxy(conn, _url, redirect_count)
-       when redirect_count > @max_redirects do
-    Logger.error("Stream proxy: too many redirects resolving VOD URL")
-
-    conn
-    |> put_status(:bad_gateway)
-    |> json(%{error: "Too many redirects"})
-  end
-
-  defp resolve_and_redirect_to_proxy(conn, url, _redirect_count) do
+  defp resolve_and_redirect_to_proxy(conn, url) do
     case resolve_final_url(url, 0) do
       {:ok, final_url} ->
         proxy_base =

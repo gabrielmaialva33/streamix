@@ -148,14 +148,9 @@ defmodule Streamix.Iptv.Epg do
 
     if needs_sync? do
       # Sync EPG for channels that have epg_channel_id
-      case sync_channels(provider, channels) do
-        {:ok, _results} ->
-          # Update the sync timestamp
-          EpgSync.update_epg_synced_at(provider)
-          :ok
-
-        error ->
-          error
+      with {:ok, _results} <- sync_channels(provider, channels),
+           {:ok, _provider} <- EpgSync.update_epg_synced_at(provider) do
+        :ok
       end
     else
       :ok

@@ -87,8 +87,6 @@ defmodule Streamix.Accounts.IpTracker do
     |> Enum.join(".")
   end
 
-  defp format_ip(ip), do: to_string(ip)
-
   defp or_else(nil, func), do: func.()
   defp or_else(value, _func), do: value
 

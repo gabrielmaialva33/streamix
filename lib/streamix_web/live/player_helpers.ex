@@ -71,7 +71,7 @@ defmodule StreamixWeb.PlayerHelpers do
   def load_content_preflight("gindex", id, _user_id) do
     movie = Iptv.get_movie_with_provider!(id)
 
-    if movie && movie.gindex_path do
+    if movie.gindex_path do
       {:ok, movie, movie.provider}
     else
       {:error, :not_found}
@@ -83,7 +83,7 @@ defmodule StreamixWeb.PlayerHelpers do
   def load_content_preflight("gindex_episode", id, _user_id) do
     episode = Iptv.get_episode_with_context!(id)
 
-    if episode && episode.gindex_path do
+    if episode.gindex_path do
       {:ok, episode, episode.season.series.provider}
     else
       {:error, :not_found}

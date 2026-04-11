@@ -90,7 +90,7 @@ defmodule Streamix.Iptv.Favorites do
   Lists only the content_ids of favorites for a user, filtered by content_type.
   Returns a MapSet for O(1) lookup in list views.
   """
-  @spec list_ids(integer(), String.t()) :: MapSet.t()
+  @spec list_ids(integer(), String.t()) :: MapSet.t(integer())
   def list_ids(user_id, content_type) do
     case content_field(content_type) do
       {:ok, field} ->
@@ -102,7 +102,7 @@ defmodule Streamix.Iptv.Favorites do
         |> MapSet.new()
 
       {:error, _reason} ->
-        MapSet.new()
+        empty_id_set(user_id)
     end
   end
 
@@ -239,4 +239,8 @@ defmodule Streamix.Iptv.Favorites do
   end
 
   defp maybe_decorate({:error, changeset}), do: {:error, changeset}
+
+  defp empty_id_set(seed_id) when is_integer(seed_id) do
+    MapSet.new([seed_id]) |> MapSet.delete(seed_id)
+  end
 end

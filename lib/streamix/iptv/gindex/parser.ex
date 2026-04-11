@@ -568,7 +568,7 @@ defmodule Streamix.Iptv.Gindex.Parser do
     case Regex.run(~r/^([\d.]+)\s*(GB|MB|KB|B)?$/i, size_str) do
       [_, num, unit] ->
         num = parse_float(num)
-        multiplier = size_multiplier(String.upcase(unit || "B"))
+        multiplier = unit |> normalize_size_unit() |> size_multiplier()
         round(num * multiplier)
 
       nil ->
@@ -600,6 +600,9 @@ defmodule Streamix.Iptv.Gindex.Parser do
         {name_parts, rest_parts, year}
     end
   end
+
+  defp normalize_size_unit(""), do: "B"
+  defp normalize_size_unit(unit), do: String.upcase(unit)
 
   defp extract_pattern(parts, patterns) do
     patterns_upper = Enum.map(patterns, &String.upcase/1)

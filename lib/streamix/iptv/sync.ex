@@ -273,13 +273,13 @@ defmodule Streamix.Iptv.Sync do
         alias Streamix.Workers.SyncSeriesDetailsWorker
         batch_size = Keyword.get(opts, :batch_size, 50)
 
-        case SyncSeriesDetailsWorker.enqueue_all_for_provider(provider.id, batch_size: batch_size) do
-          {:ok, job_count} ->
-            Logger.info("Enqueued #{job_count} jobs for series details sync")
-            {:ok, %{enqueued_jobs: job_count}}
-
-          error ->
-            error
+        with {:ok, job_count} <-
+               SyncSeriesDetailsWorker.enqueue_all_for_provider(
+                 provider.id,
+                 batch_size: batch_size
+               ) do
+          Logger.info("Enqueued #{job_count} jobs for series details sync")
+          {:ok, %{enqueued_jobs: job_count}}
         end
 
       # Backwards compatibility
