@@ -19,7 +19,7 @@ defmodule Streamix.Accounts.AccessLog do
 
     belongs_to :user, Streamix.Accounts.User
 
-    timestamps(updated_at: false)
+    timestamps(type: :utc_datetime, updated_at: false)
   end
 
   @doc false

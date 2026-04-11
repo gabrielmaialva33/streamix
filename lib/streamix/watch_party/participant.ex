@@ -10,7 +10,7 @@ defmodule Streamix.WatchParty.Participant do
     belongs_to :room, Streamix.WatchParty.Room
     belongs_to :user, Streamix.Accounts.User
 
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   @valid_roles ~w(host viewer)

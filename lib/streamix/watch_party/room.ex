@@ -17,7 +17,7 @@ defmodule Streamix.WatchParty.Room do
     has_many :participants, Streamix.WatchParty.Participant
     has_many :messages, Streamix.WatchParty.Message
 
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   @valid_content_types ~w(live_channel movie episode gindex gindex_episode)
