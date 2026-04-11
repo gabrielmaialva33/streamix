@@ -15,6 +15,9 @@ defmodule Streamix.Iptv.LiveChannel do
     field :tv_archive, :boolean, default: false
     field :tv_archive_duration, :integer
     field :direct_source, :string
+    # Set by the stream proxy when upstream 404s on resolve. Null = healthy.
+    # Queries exclude rows where dead_since is set within the recheck window.
+    field :dead_since, :utc_datetime
 
     belongs_to :provider, Provider
     many_to_many :categories, Category, join_through: "live_channel_categories"
@@ -32,7 +35,8 @@ defmodule Streamix.Iptv.LiveChannel do
       :tv_archive,
       :tv_archive_duration,
       :direct_source,
-      :provider_id
+      :provider_id,
+      :dead_since
     ])
     |> validate_required([:stream_id, :name, :provider_id])
     |> unique_constraint([:provider_id, :stream_id])

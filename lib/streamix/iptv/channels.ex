@@ -12,6 +12,11 @@ defmodule Streamix.Iptv.Channels do
   alias Streamix.Iptv.{Access, AdultFilter, EpgProgram, LiveChannel}
   alias Streamix.Repo
 
+  # How long a channel stays hidden after a 404 before we let it back in
+  # for another playback attempt. Auto-healing: if the upstream recovers
+  # the channel reappears without manual intervention.
+  @dead_recheck_hours 24
+
   # =============================================================================
   # Listing
   # =============================================================================
@@ -37,6 +42,7 @@ defmodule Streamix.Iptv.Channels do
     query =
       LiveChannel
       |> where(provider_id: ^provider_id)
+      |> exclude_dead()
       |> order_by(:name)
 
     query =
@@ -112,6 +118,8 @@ defmodule Streamix.Iptv.Channels do
           current_program: epg
         }
 
+    query = exclude_dead(query)
+
     query =
       if search && search != "" do
         escaped = Helpers.escape_like(search)
@@ -156,9 +164,58 @@ defmodule Streamix.Iptv.Channels do
     LiveChannel
     |> Access.public_providers()
     |> where([c, _p], not is_nil(c.stream_icon))
+    |> exclude_dead()
     |> order_by([c], asc: c.name)
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  @doc """
+  Marks a channel as dead because the upstream returned a terminal error
+  (typically 404) during a resolve attempt. Called by the stream proxy.
+
+  Null-safe: if the channel id is unknown or the row is gone, this is a no-op.
+  """
+  @spec mark_dead(integer() | nil) :: :ok
+  def mark_dead(nil), do: :ok
+
+  def mark_dead(channel_id) when is_integer(channel_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {_count, _} =
+      LiveChannel
+      |> where(id: ^channel_id)
+      |> Repo.update_all(set: [dead_since: now, updated_at: now])
+
+    :ok
+  end
+
+  @doc """
+  Clears the dead flag for a channel (called implicitly by sync when the
+  upstream lists the channel again, or after a successful resolve).
+  """
+  @spec mark_alive(integer()) :: :ok
+  def mark_alive(channel_id) when is_integer(channel_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {_count, _} =
+      LiveChannel
+      |> where(id: ^channel_id)
+      |> where([c], not is_nil(c.dead_since))
+      |> Repo.update_all(set: [dead_since: nil, updated_at: now])
+
+    :ok
+  end
+
+  # Filters out channels marked dead within the recheck window. After the
+  # window expires they reappear for another playback attempt (auto-healing).
+  defp exclude_dead(query) do
+    cutoff =
+      DateTime.utc_now()
+      |> DateTime.add(-@dead_recheck_hours * 3600, :second)
+      |> DateTime.truncate(:second)
+
+    where(query, [c], is_nil(c.dead_since) or c.dead_since < ^cutoff)
   end
 
   @doc """

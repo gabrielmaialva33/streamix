@@ -63,6 +63,9 @@ defmodule Streamix.Iptv.Sync.Live do
       tv_archive_duration: stream["tv_archive_duration"],
       direct_source: stream["direct_source"],
       provider_id: provider_id,
+      # If the upstream is listing the channel again, give it a fresh
+      # chance at playback — the lazy 404 marker will re-flag it if still dead.
+      dead_since: nil,
       inserted_at: now,
       updated_at: now
     }

@@ -12,6 +12,7 @@ defmodule StreamixWeb.StreamController do
 
   @max_redirects 5
 
+  alias Streamix.Iptv.Channels
   alias StreamixWeb.StreamToken
 
   @doc """
@@ -32,9 +33,9 @@ defmodule StreamixWeb.StreamController do
   """
   def proxy(conn, %{"token" => token}) do
     case StreamToken.verify_and_get_url(token) do
-      {:ok, url, content_type} ->
+      {:ok, url, content_type, meta} ->
         Logger.debug("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
-        stream_by_type(conn, url, content_type)
+        stream_by_type(conn, url, content_type, meta)
 
       {:error, reason} ->
         token_error(conn, reason)
@@ -49,8 +50,11 @@ defmodule StreamixWeb.StreamController do
 
   # Live channels: stream directly to avoid cross-origin redirect CORS failures.
   # VOD: redirect to nginx proxy for Range header support.
-  defp stream_by_type(conn, url, "channel"), do: stream_live_channel(conn, url)
-  defp stream_by_type(conn, url, _type), do: resolve_and_redirect_to_proxy(conn, url, 0)
+  defp stream_by_type(conn, url, "channel", meta),
+    do: stream_live_channel(conn, url, meta[:content_id])
+
+  defp stream_by_type(conn, url, _type, _meta),
+    do: resolve_and_redirect_to_proxy(conn, url, 0)
 
   @token_errors %{
     token_expired: {:unauthorized, "Stream token expired"},
@@ -68,15 +72,31 @@ defmodule StreamixWeb.StreamController do
 
   # --- Live channels: stream directly through Elixir (no redirect) ---
 
-  defp stream_live_channel(conn, url) do
+  defp stream_live_channel(conn, url, channel_id) do
     case resolve_final_url(url, 0) do
       {:ok, final_url} ->
+        # Resolved cleanly — clear any stale dead flag from prior failures.
+        if channel_id, do: Channels.mark_alive(channel_id)
         do_stream_live(conn, final_url)
 
+      {:error, {:unexpected_status, 404}} = error ->
+        # Upstream explicitly said the channel is gone. Hide it from listings
+        # for the recheck window so users don't keep hitting dead entries.
+        if channel_id do
+          Logger.warning("Stream proxy: marking channel #{channel_id} dead (upstream 404)")
+          Channels.mark_dead(channel_id)
+        end
+
+        live_resolve_failed(conn, error)
+
       {:error, reason} ->
-        Logger.error("Stream proxy: live resolve failed: #{inspect(reason)}")
-        conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+        live_resolve_failed(conn, {:error, reason})
     end
+  end
+
+  defp live_resolve_failed(conn, {:error, reason}) do
+    Logger.error("Stream proxy: live resolve failed: #{inspect(reason)}")
+    conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
   end
 
   defp do_stream_live(conn, final_url) do

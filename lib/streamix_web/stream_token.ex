@@ -77,9 +77,13 @@ defmodule StreamixWeb.StreamToken do
 
   @doc """
   Verifies a token and returns the actual stream URL if valid.
-  Returns {:ok, url, content_type} or {:error, reason}.
+  Returns `{:ok, url, content_type, meta}` or `{:error, reason}`.
 
   `content_type` is "channel", "movie", "episode", or "url".
+  `meta` is a map with type-specific fields; always contains `:content_id`
+  (the DB id of the resolved channel/movie/episode, or `nil` for raw URL
+  tokens) so the stream proxy can act on terminal upstream errors (e.g.
+  mark a live channel dead when the upstream returns 404).
 
   The embedded user_id is checked against provider ownership:
   - If user_id is present, the content's provider must belong to that user
@@ -96,7 +100,9 @@ defmodule StreamixWeb.StreamToken do
          provider_id: provider_id,
          premium_required: premium_required
        }} ->
-        handle_url_token(url, user_id, provider_id, premium_required)
+        with {:ok, url, "url"} <- handle_url_token(url, user_id, provider_id, premium_required) do
+          {:ok, url, "url", %{content_id: nil}}
+        end
 
       {:ok, %{type: "url", url: _url, user_id: _user_id}} ->
         {:error, :invalid_token}
@@ -105,7 +111,9 @@ defmodule StreamixWeb.StreamToken do
         {:error, :invalid_token}
 
       {:ok, %{type: type, id: id, user_id: user_id}} ->
-        handle_content_token(type, id, user_id)
+        with {:ok, url, ^type} <- handle_content_token(type, id, user_id) do
+          {:ok, url, type, %{content_id: id}}
+        end
 
       {:ok, %{type: _type, id: _id}} ->
         {:error, :invalid_token}
