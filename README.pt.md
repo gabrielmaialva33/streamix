@@ -52,11 +52,13 @@
 - **Playlists Cruzadas** - Crie playlists personalizadas misturando conteudo de diferentes fontes
 - **Integracao com Cloud Drive** - Transmita filmes e series diretamente do GIndex/Google Drive
 - **Enriquecimento de Metadados** - Obtencao automatica de logotipos, posteres e dados EPG
-- **EPG (Guia Eletronico de Programacao)** - Informacoes de programas ao vivo com barras de progresso nos cards de canais
+- **EPG (Guia Eletronico de Programacao)** - Informacoes de programas ao vivo com barras de progresso nos cards de
+  canais
 
 ### Motor de Streaming Avancado
 
-- **Proxy de Stream Adaptativo** - Sistema de proxy inteligente para contornar bloqueios geograficos e conteudo inseguro (HLS/MPEG-TS)
+- **Proxy de Stream Adaptativo** - Sistema de proxy inteligente para contornar bloqueios geograficos e conteudo
+  inseguro (HLS/MPEG-TS)
 - **Reproducao de Baixa Latencia** - Configuracoes de buffer otimizadas para "zapping" instantaneo de canais
 - **Inteligencia de Formato** - Deteccao e tratamento automatico de formatos de stream m3u8 e ts
 - **Otimizacao de Largura de Banda** - Transcodificacao inteligente e capacidade de retransmissao
@@ -263,49 +265,49 @@ sequenceDiagram
 
 ### Framework Core
 
-| Tecnologia | Versao | Descricao |
-|------------|--------|-----------|
-| [Elixir](https://elixir-lang.org/) | 1.15+ | A espinha dorsal da nossa arquitetura concorrente |
-| [Phoenix Framework](https://www.phoenixframework.org/) | 1.8.2+ | Interface web de alta performance |
-| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1.0+ | UX em tempo real fluido |
-| [OTP](https://www.erlang.org/doc/design_principles/des_princ.html) | 26+ | Tolerancia a falhas e supervisao |
+| Tecnologia                                                         | Versao | Descricao                                         |
+|--------------------------------------------------------------------|--------|---------------------------------------------------|
+| [Elixir](https://elixir-lang.org/)                                 | 1.15+  | A espinha dorsal da nossa arquitetura concorrente |
+| [Phoenix Framework](https://www.phoenixframework.org/)             | 1.8.2+ | Interface web de alta performance                 |
+| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/)          | 1.1.0+ | UX em tempo real fluido                           |
+| [OTP](https://www.erlang.org/doc/design_principles/des_princ.html) | 26+    | Tolerancia a falhas e supervisao                  |
 
 ### Dados e Conectividade
 
-| Tecnologia | Versao | Descricao |
-|------------|--------|-----------|
-| [PostgreSQL](https://www.postgresql.org/) | 14+ | Armazenamento de dados relacional robusto com pg_trgm |
-| [Redis](https://redis.io/) | 7+ | Cache L2 e armazenamento de sessao |
-| [RabbitMQ](https://www.rabbitmq.com/) | 3.12+ | Message broker para sincronizacao distribuida |
-| [Ecto](https://hexdocs.pm/ecto/) | 3.13+ | Interacao com banco de dados e composicao de queries |
-| [Req](https://hexdocs.pm/req/) | 0.5+ | Cliente HTTP poderoso para comunicacao com provedores |
-| [Finch](https://hexdocs.pm/finch/) | 0.19+ | Cliente HTTP com connection pooling |
-| [Bandit](https://hexdocs.pm/bandit/) | 1.6+ | Servidor HTTP de proxima geracao para Elixir |
+| Tecnologia                                | Versao | Descricao                                             |
+|-------------------------------------------|--------|-------------------------------------------------------|
+| [PostgreSQL](https://www.postgresql.org/) | 14+    | Armazenamento de dados relacional robusto com pg_trgm |
+| [Redis](https://redis.io/)                | 7+     | Cache L2 e armazenamento de sessao                    |
+| [RabbitMQ](https://www.rabbitmq.com/)     | 3.12+  | Message broker para sincronizacao distribuida         |
+| [Ecto](https://hexdocs.pm/ecto/)          | 3.13+  | Interacao com banco de dados e composicao de queries  |
+| [Req](https://hexdocs.pm/req/)            | 0.5+   | Cliente HTTP poderoso para comunicacao com provedores |
+| [Finch](https://hexdocs.pm/finch/)        | 0.19+  | Cliente HTTP com connection pooling                   |
+| [Bandit](https://hexdocs.pm/bandit/)      | 1.6+   | Servidor HTTP de proxima geracao para Elixir          |
 
 ### Processamento em Segundo Plano
 
-| Tecnologia | Descricao |
-|------------|-----------|
-| [Oban](https://getoban.pro/) | Processamento robusto de jobs em segundo plano |
-| [Broadway](https://hexdocs.pm/broadway/) | Pipelines de processamento de dados concorrentes |
-| [ConCache](https://hexdocs.pm/con_cache/) | Cache L1 baseado em ETS com TTL |
+| Tecnologia                                | Descricao                                        |
+|-------------------------------------------|--------------------------------------------------|
+| [Oban](https://getoban.pro/)              | Processamento robusto de jobs em segundo plano   |
+| [Broadway](https://hexdocs.pm/broadway/)  | Pipelines de processamento de dados concorrentes |
+| [ConCache](https://hexdocs.pm/con_cache/) | Cache L1 baseado em ETS com TTL                  |
 
 ### Frontend e Design
 
-| Tecnologia | Versao | Descricao |
-|------------|--------|-----------|
-| [Tailwind CSS](https://tailwindcss.com/) | v4 | Estilizacao utility-first com sintaxe moderna |
-| [Heroicons](https://heroicons.com/) | 2.1+ | Icones SVG belissimos |
-| [JS Hooks](https://hexdocs.pm/phoenix_live_view/js-interop.html) | - | Players de video e interacoes avancadas |
+| Tecnologia                                                       | Versao | Descricao                                     |
+|------------------------------------------------------------------|--------|-----------------------------------------------|
+| [Tailwind CSS](https://tailwindcss.com/)                         | v4     | Estilizacao utility-first com sintaxe moderna |
+| [Heroicons](https://heroicons.com/)                              | 2.1+   | Icones SVG belissimos                         |
+| [JS Hooks](https://hexdocs.pm/phoenix_live_view/js-interop.html) | -      | Players de video e interacoes avancadas       |
 
 ### Seguranca e Qualidade
 
-| Tecnologia | Descricao |
-|------------|-----------|
-| [Hammer](https://hexdocs.pm/hammer/) | Rate limiting e throttling |
+| Tecnologia                             | Descricao                            |
+|----------------------------------------|--------------------------------------|
+| [Hammer](https://hexdocs.pm/hammer/)   | Rate limiting e throttling           |
 | [Sobelow](https://hexdocs.pm/sobelow/) | Analise estatica focada em seguranca |
-| [Credo](https://hexdocs.pm/credo/) | Consistencia e qualidade de codigo |
-| [ExUnit](https://hexdocs.pm/ex_unit/) | Framework de testes abrangente |
+| [Credo](https://hexdocs.pm/credo/)     | Consistencia e qualidade de codigo   |
+| [ExUnit](https://hexdocs.pm/ex_unit/)  | Framework de testes abrangente       |
 
 <br>
 
@@ -391,15 +393,18 @@ docker run -p 4000:4000 streamix
 O Streamix funciona como um Progressive Web App para uma experiencia similar a apps nativos:
 
 **Desktop (Chrome/Edge):**
+
 1. Clique no icone de instalacao na barra de endereco
 2. Clique em "Instalar" no prompt
 
 **Mobile (Android):**
+
 1. Abra o Streamix no Chrome
 2. Toque no menu de tres pontos
 3. Selecione "Adicionar a tela inicial"
 
 **Mobile (iOS):**
+
 1. Abra o Streamix no Safari
 2. Toque no botao Compartilhar
 3. Selecione "Adicionar a Tela de Inicio"

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @source "../js";
 @source "../../lib/streamix_web";
 
@@ -10,293 +11,293 @@
    ============================================ */
 
 :root {
-  /* Catppuccin Latte Palette (Raw Values) */
-  --latte-rosewater: hsl(11deg 59% 67%);
-  --latte-flamingo: hsl(0deg 60% 67%);
-  --latte-pink: hsl(316deg 73% 69%);
-  --latte-mauve: hsl(266deg 85% 58%);
-  --latte-red: hsl(347deg 87% 44%);
-  --latte-maroon: hsl(355deg 76% 59%);
-  --latte-peach: hsl(22deg 99% 52%);
-  --latte-yellow: hsl(35deg 77% 49%);
-  --latte-green: hsl(109deg 58% 40%);
-  --latte-teal: hsl(183deg 74% 35%);
-  --latte-sky: hsl(197deg 97% 46%);
-  --latte-sapphire: hsl(189deg 70% 42%);
-  --latte-blue: hsl(220deg 91% 54%);
-  --latte-lavender: hsl(231deg 97% 72%);
-  --latte-text: hsl(234deg 16% 35%);
-  --latte-subtext1: hsl(233deg 13% 41%);
-  --latte-subtext0: hsl(233deg 10% 47%);
-  --latte-overlay2: hsl(232deg 10% 53%);
-  --latte-overlay1: hsl(231deg 10% 59%);
-  --latte-overlay0: hsl(228deg 11% 65%);
-  --latte-surface2: hsl(227deg 12% 71%);
-  --latte-surface1: hsl(225deg 14% 77%);
-  --latte-surface0: hsl(223deg 16% 83%);
-  --latte-base: hsl(220deg 23% 95%);
-  --latte-mantle: hsl(220deg 22% 92%);
-  --latte-crust: hsl(220deg 21% 89%);
+    /* Catppuccin Latte Palette (Raw Values) */
+    --latte-rosewater: hsl(11deg 59% 67%);
+    --latte-flamingo: hsl(0deg 60% 67%);
+    --latte-pink: hsl(316deg 73% 69%);
+    --latte-mauve: hsl(266deg 85% 58%);
+    --latte-red: hsl(347deg 87% 44%);
+    --latte-maroon: hsl(355deg 76% 59%);
+    --latte-peach: hsl(22deg 99% 52%);
+    --latte-yellow: hsl(35deg 77% 49%);
+    --latte-green: hsl(109deg 58% 40%);
+    --latte-teal: hsl(183deg 74% 35%);
+    --latte-sky: hsl(197deg 97% 46%);
+    --latte-sapphire: hsl(189deg 70% 42%);
+    --latte-blue: hsl(220deg 91% 54%);
+    --latte-lavender: hsl(231deg 97% 72%);
+    --latte-text: hsl(234deg 16% 35%);
+    --latte-subtext1: hsl(233deg 13% 41%);
+    --latte-subtext0: hsl(233deg 10% 47%);
+    --latte-overlay2: hsl(232deg 10% 53%);
+    --latte-overlay1: hsl(231deg 10% 59%);
+    --latte-overlay0: hsl(228deg 11% 65%);
+    --latte-surface2: hsl(227deg 12% 71%);
+    --latte-surface1: hsl(225deg 14% 77%);
+    --latte-surface0: hsl(223deg 16% 83%);
+    --latte-base: hsl(220deg 23% 95%);
+    --latte-mantle: hsl(220deg 22% 92%);
+    --latte-crust: hsl(220deg 21% 89%);
 
-  /* Dark Mode (Default) */
-  --bg-color: #0a0a0a;
-  --surface-color: #141414;
-  --surface-hover-color: #1f1f1f;
-  --border-color: #2a2a2a;
+    /* Dark Mode (Default) */
+    --bg-color: #0a0a0a;
+    --surface-color: #141414;
+    --surface-hover-color: #1f1f1f;
+    --border-color: #2a2a2a;
 
-  /* Text */
-  --text-primary: #ffffff;
-  --text-secondary: #a3a3a3;
-  --text-muted: #6b6b6b;
+    /* Text */
+    --text-primary: #ffffff;
+    --text-secondary: #a3a3a3;
+    --text-muted: #6b6b6b;
 
-  /* Brand */
-  --brand-color: #e50914;
-  --brand-hover-color: #f6121d;
-  --accent-color: #46d369;
+    /* Brand */
+    --brand-color: #e50914;
+    --brand-hover-color: #f6121d;
+    --accent-color: #46d369;
 
-  /* Status */
-  --success-color: #46d369;
-  --warning-color: #f59e0b;
-  --error-color: #ef4444;
-  --info-color: #3b82f6;
+    /* Status */
+    --success-color: #46d369;
+    --warning-color: #f59e0b;
+    --error-color: #ef4444;
+    --info-color: #3b82f6;
 }
 
 :root.light {
-  /* Light Mode - Catppuccin Latte (WCAG AA Accessible) */
-  --bg-color: var(--latte-base);
-  --surface-color: var(--latte-mantle);
-  --surface-hover-color: var(--latte-crust);
-  --border-color: var(--latte-surface2);
+    /* Light Mode - Catppuccin Latte (WCAG AA Accessible) */
+    --bg-color: var(--latte-base);
+    --surface-color: var(--latte-mantle);
+    --surface-hover-color: var(--latte-crust);
+    --border-color: var(--latte-surface2);
 
-  /* Text - WCAG AA compliant (4.5:1 minimum contrast ratio)
-     Calculated against latte-base (95% lightness, ~0.88 luminance):
-     - text-primary: 35% L → ~7.5:1 ✓
-     - text-secondary: 41% L → ~5.2:1 ✓
-     - text-muted: 47% L → ~4.5:1 ✓ (borderline AA, safe for large text)
-  */
-  --text-primary: var(--latte-text);
-  --text-secondary: var(--latte-subtext1);
-  --text-muted: var(--latte-subtext0);
+    /* Text - WCAG AA compliant (4.5:1 minimum contrast ratio)
+       Calculated against latte-base (95% lightness, ~0.88 luminance):
+       - text-primary: 35% L → ~7.5:1 ✓
+       - text-secondary: 41% L → ~5.2:1 ✓
+       - text-muted: 47% L → ~4.5:1 ✓ (borderline AA, safe for large text)
+    */
+    --text-primary: var(--latte-text);
+    --text-secondary: var(--latte-subtext1);
+    --text-muted: var(--latte-subtext0);
 
-  /* Brand */
-  --brand-color: var(--latte-red);
-  --brand-hover-color: var(--latte-maroon);
-  --accent-color: var(--latte-green);
+    /* Brand */
+    --brand-color: var(--latte-red);
+    --brand-hover-color: var(--latte-maroon);
+    --accent-color: var(--latte-green);
 
-  /* Status Overrides for Light Mode (derived from Latte) */
-  --success-color: var(--latte-green);
-  --warning-color: var(--latte-peach);
-  --error-color: var(--latte-red);
-  --info-color: var(--latte-blue);
+    /* Status Overrides for Light Mode (derived from Latte) */
+    --success-color: var(--latte-green);
+    --warning-color: var(--latte-peach);
+    --error-color: var(--latte-red);
+    --info-color: var(--latte-blue);
 }
 
 @theme {
-  /* Colors - mapped to variables */
-  --color-background: var(--bg-color);
-  --color-surface: var(--surface-color);
-  --color-surface-hover: var(--surface-hover-color);
-  --color-border: var(--border-color);
+    /* Colors - mapped to variables */
+    --color-background: var(--bg-color);
+    --color-surface: var(--surface-color);
+    --color-surface-hover: var(--surface-hover-color);
+    --color-border: var(--border-color);
 
-  /* Text */
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
+    /* Text */
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-muted: var(--text-muted);
 
-  /* Brand colors */
-  --color-brand: var(--brand-color);
-  --color-brand-hover: var(--brand-hover-color);
-  --color-accent: var(--accent-color);
+    /* Brand colors */
+    --color-brand: var(--brand-color);
+    --color-brand-hover: var(--brand-hover-color);
+    --color-accent: var(--accent-color);
 
-  /* Status colors */
-  --color-success: var(--success-color);
-  --color-warning: var(--warning-color);
-  --color-error: var(--error-color);
-  --color-info: var(--info-color);
+    /* Status colors */
+    --color-success: var(--success-color);
+    --color-warning: var(--warning-color);
+    --color-error: var(--error-color);
+    --color-info: var(--info-color);
 
-  /* Latte Palette Extensions */
-  --color-latte-rosewater: var(--latte-rosewater);
-  --color-latte-flamingo: var(--latte-flamingo);
-  --color-latte-pink: var(--latte-pink);
-  --color-latte-mauve: var(--latte-mauve);
-  --color-latte-red: var(--latte-red);
-  --color-latte-maroon: var(--latte-maroon);
-  --color-latte-peach: var(--latte-peach);
-  --color-latte-yellow: var(--latte-yellow);
-  --color-latte-green: var(--latte-green);
-  --color-latte-teal: var(--latte-teal);
-  --color-latte-sky: var(--latte-sky);
-  --color-latte-sapphire: var(--latte-sapphire);
-  --color-latte-blue: var(--latte-blue);
-  --color-latte-lavender: var(--latte-lavender);
-  --color-latte-text: var(--latte-text);
-  --color-latte-subtext1: var(--latte-subtext1);
-  --color-latte-subtext0: var(--latte-subtext0);
-  --color-latte-overlay2: var(--latte-overlay2);
-  --color-latte-overlay1: var(--latte-overlay1);
-  --color-latte-overlay0: var(--latte-overlay0);
-  --color-latte-surface2: var(--latte-surface2);
-  --color-latte-surface1: var(--latte-surface1);
-  --color-latte-surface0: var(--latte-surface0);
-  --color-latte-base: var(--latte-base);
-  --color-latte-mantle: var(--latte-mantle);
-  --color-latte-crust: var(--latte-crust);
+    /* Latte Palette Extensions */
+    --color-latte-rosewater: var(--latte-rosewater);
+    --color-latte-flamingo: var(--latte-flamingo);
+    --color-latte-pink: var(--latte-pink);
+    --color-latte-mauve: var(--latte-mauve);
+    --color-latte-red: var(--latte-red);
+    --color-latte-maroon: var(--latte-maroon);
+    --color-latte-peach: var(--latte-peach);
+    --color-latte-yellow: var(--latte-yellow);
+    --color-latte-green: var(--latte-green);
+    --color-latte-teal: var(--latte-teal);
+    --color-latte-sky: var(--latte-sky);
+    --color-latte-sapphire: var(--latte-sapphire);
+    --color-latte-blue: var(--latte-blue);
+    --color-latte-lavender: var(--latte-lavender);
+    --color-latte-text: var(--latte-text);
+    --color-latte-subtext1: var(--latte-subtext1);
+    --color-latte-subtext0: var(--latte-subtext0);
+    --color-latte-overlay2: var(--latte-overlay2);
+    --color-latte-overlay1: var(--latte-overlay1);
+    --color-latte-overlay0: var(--latte-overlay0);
+    --color-latte-surface2: var(--latte-surface2);
+    --color-latte-surface1: var(--latte-surface1);
+    --color-latte-surface0: var(--latte-surface0);
+    --color-latte-base: var(--latte-base);
+    --color-latte-mantle: var(--latte-mantle);
+    --color-latte-crust: var(--latte-crust);
 
-  /* Spacing */
-  --spacing-gutter: 4%;
+    /* Spacing */
+    --spacing-gutter: 4%;
 
-  /* Border radius */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+    /* Border radius */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
 }
 
 /* Alpine.js cloak - hide elements before Alpine initializes */
 [x-cloak] {
-  display: none !important;
+    display: none !important;
 }
 
 /* Base styles */
 html,
 body {
-  background-color: var(--color-background);
-  color: var(--color-text-primary);
-  font-family: system-ui, -apple-system, sans-serif;
-  /* Disable macOS elastic/bounce scroll */
-  overscroll-behavior: none;
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: system-ui, -apple-system, sans-serif;
+    /* Disable macOS elastic/bounce scroll */
+    overscroll-behavior: none;
 }
 
 /* Custom utility classes */
 @utility text-gradient {
-  background: linear-gradient(90deg, var(--color-brand), var(--color-accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+    background: linear-gradient(90deg, var(--color-brand), var(--color-accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 @utility glass {
-  background: rgba(20, 20, 20, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+    background: rgba(20, 20, 20, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
 @utility card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 
-  &:hover {
-    transform: scale(1.05);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-    z-index: 10;
-  }
+    &:hover {
+        transform: scale(1.05);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        z-index: 10;
+    }
 }
 
 @utility shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface) 0%,
-    var(--color-surface-hover) 40%,
-    var(--color-surface) 80%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.8s ease-in-out infinite;
+    background: linear-gradient(
+            90deg,
+            var(--color-surface) 0%,
+            var(--color-surface-hover) 40%,
+            var(--color-surface) 80%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
+    0% {
+        background-position: 200% 0;
+    }
 
-  100% {
-    background-position: -200% 0;
-  }
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 /* Skeleton loading - smoother than Tailwind pulse */
 @utility skeleton-shimmer {
-  position: relative;
-  overflow: hidden;
+    position: relative;
+    overflow: hidden;
 
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.04) 50%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.8s ease-in-out infinite;
-  }
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(255, 255, 255, 0.04) 50%,
+                transparent 100%
+        );
+        background-size: 200% 100%;
+        animation: shimmer 1.8s ease-in-out infinite;
+    }
 }
 
 /* Keyboard shortcut feedback animation (YouTube-style) */
 @keyframes shortcut-feedback {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
 
-  30% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
+    30% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
 
-  100% {
-    opacity: 0;
-    transform: scale(1);
-  }
+    100% {
+        opacity: 0;
+        transform: scale(1);
+    }
 }
 
 .animate-shortcut-feedback {
-  animation: shortcut-feedback 0.5s ease-out forwards;
+    animation: shortcut-feedback 0.5s ease-out forwards;
 }
 
 /* Quality change toast animation */
 @keyframes fade-in-out {
-  0% {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
+    0% {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
 
-  15% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    15% {
+        opacity: 1;
+        transform: translateY(0);
+    }
 
-  85% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    85% {
+        opacity: 1;
+        transform: translateY(0);
+    }
 
-  100% {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
+    100% {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
 }
 
 .animate-fade-in-out {
-  animation: fade-in-out 2s ease-in-out forwards;
+    animation: fade-in-out 2s ease-in-out forwards;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface);
+    background: var(--color-surface);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 4px;
+    background: var(--color-border);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #404040;
+    background: #404040;
 }
 
 /* LiveView loading states */
@@ -307,14 +308,14 @@ body {
 /* LiveView wrapper transparency */
 [data-phx-session],
 [data-phx-teleported-src] {
-  display: contents;
+    display: contents;
 }
 
 /* Focus styles - buttons and links only */
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 2px;
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
 }
 
 /* Remove default focus styles from inputs */
@@ -324,45 +325,45 @@ textarea:focus,
 textarea:focus-visible,
 select:focus,
 select:focus-visible {
-  outline: none;
+    outline: none;
 }
 
 /* Selection */
 ::selection {
-  background: var(--color-brand);
-  color: white;
+    background: var(--color-brand);
+    color: white;
 }
 
 /* Hide horizontal scrollbar for carousels */
 .scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;
+    display: none;
 }
 
 /* Line clamp utilities */
 .line-clamp-1 {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .line-clamp-3 {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 /* ============================================
@@ -371,149 +372,149 @@ select:focus-visible {
 
 /* Fade in animation for images */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
+    from {
+        opacity: 0;
+    }
 
-  to {
-    opacity: 1;
-  }
+    to {
+        opacity: 1;
+    }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
+    animation: fadeIn 0.5s ease-out forwards;
 }
 
 /* Hero backdrop fade */
 .hero-backdrop {
-  animation: fadeIn 0.8s ease-out forwards;
+    animation: fadeIn 0.8s ease-out forwards;
 }
 
 /* Hero trailer - scale YouTube iframe to cover hero area */
 #hero-trailer-player {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  min-width: 100%;
-  min-height: 100%;
-  width: auto;
-  height: auto;
-  transform: translate(-50%, -50%) scale(1.2);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%) scale(1.2);
 }
 
 #hero-trailer-player iframe {
-  width: 100vw;
-  height: 56.25vw; /* 16:9 */
-  min-height: 100%;
-  min-width: 177.78vh; /* 16:9 inverse */
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+    width: 100vw;
+    height: 56.25vw; /* 16:9 */
+    min-height: 100%;
+    min-width: 177.78vh; /* 16:9 inverse */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 /* Content slide up animation */
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .animate-slide-up {
-  animation: slideUp 0.6s ease-out forwards;
+    animation: slideUp 0.6s ease-out forwards;
 }
 
 /* Staggered animation delays for carousels */
 .stagger-1 {
-  animation-delay: 0.1s;
+    animation-delay: 0.1s;
 }
 
 .stagger-2 {
-  animation-delay: 0.15s;
+    animation-delay: 0.15s;
 }
 
 .stagger-3 {
-  animation-delay: 0.2s;
+    animation-delay: 0.2s;
 }
 
 .stagger-4 {
-  animation-delay: 0.25s;
+    animation-delay: 0.25s;
 }
 
 .stagger-5 {
-  animation-delay: 0.3s;
+    animation-delay: 0.3s;
 }
 
 /* Image loading states - smooth fade in when loaded */
 img {
-  transition: opacity 0.3s ease;
-  opacity: 1;
+    transition: opacity 0.3s ease;
+    opacity: 1;
 }
 
 /* Smooth page transitions */
 [data-phx-main] {
-  transition: opacity 0.15s ease-out;
+    transition: opacity 0.15s ease-out;
 }
 
 .phx-page-loading [data-phx-main] {
-  opacity: 0.9;
+    opacity: 0.9;
 }
 
 /* LiveView connected/disconnected - no flash */
 .phx-connected {
-  opacity: 1;
-  transition: opacity 0.2s ease;
+    opacity: 1;
+    transition: opacity 0.2s ease;
 }
 
 .phx-loading {
-  opacity: 0.95;
-  cursor: progress;
+    opacity: 0.95;
+    cursor: progress;
 }
 
 .phx-disconnected {
-  cursor: wait;
+    cursor: wait;
 }
 
 /* Disable loading indicator flash */
 .phx-no-feedback.phx-submit-loading,
 .phx-no-feedback.phx-change-loading {
-  opacity: 1;
+    opacity: 1;
 }
 
 /* Smooth scroll for carousels */
 .scroll-smooth {
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Card hover effect - smoother */
 .content-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, outline 0.2s ease;
-  will-change: transform;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, outline 0.2s ease;
+    will-change: transform;
 }
 
 .content-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
-  outline: 2px solid rgba(255, 255, 255, 0.3);
-  outline-offset: 2px;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+    outline: 2px solid rgba(255, 255, 255, 0.3);
+    outline-offset: 2px;
 }
 
 /* Button press effect */
 button:active,
 a:active {
-  transform: scale(0.98);
+    transform: scale(0.98);
 }
 
 /* Header transparency transition */
 header {
-  transition: background-color 0.3s ease;
+    transition: background-color 0.3s ease;
 }
 
 /* ============================================
@@ -522,74 +523,74 @@ header {
 
 /* Touch manipulation for better responsiveness */
 .touch-manipulation {
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* Minimum touch target size (44px recommended by Apple/Google) */
 @media (max-width: 640px) {
 
-  /* Touch targets for interactive buttons only - not all links */
-  .touch-target {
-    min-height: 44px;
-    min-width: 44px;
-  }
+    /* Touch targets for interactive buttons only - not all links */
+    .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+    }
 
-  /* Player controls - always visible on mobile until user taps */
-  #player-controls {
-    opacity: 1 !important;
-  }
+    /* Player controls - always visible on mobile until user taps */
+    #player-controls {
+        opacity: 1 !important;
+    }
 
-  #player-controls.controls-hidden {
-    opacity: 0 !important;
-  }
+    #player-controls.controls-hidden {
+        opacity: 0 !important;
+    }
 
-  /* Larger progress bar on mobile */
-  #progress-container {
-    height: 6px !important;
-  }
+    /* Larger progress bar on mobile */
+    #progress-container {
+        height: 6px !important;
+    }
 
-  /* Better spacing for mobile player controls */
-  .player-controls-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 16px);
-  }
+    /* Better spacing for mobile player controls */
+    .player-controls-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
 }
 
 /* Safe area padding for notched devices */
 @supports (padding: max(0px)) {
-  .safe-area-bottom {
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-  }
+    .safe-area-bottom {
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
 
-  .safe-area-top {
-    padding-top: max(16px, env(safe-area-inset-top));
-  }
+    .safe-area-top {
+        padding-top: max(16px, env(safe-area-inset-top));
+    }
 }
 
 /* Prevent text selection on interactive elements */
 .no-select {
-  -webkit-user-select: none;
-  user-select: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Video player touch area */
 #video-player-container {
-  -webkit-tap-highlight-color: transparent;
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* Smooth opacity transition for controls */
 #player-controls {
-  transition: opacity 0.3s ease-in-out;
+    transition: opacity 0.3s ease-in-out;
 }
 
 /* Active/pressed states for mobile */
 @media (hover: none) {
 
-  button:active,
-  a:active {
-    opacity: 0.8;
-    transform: scale(0.95);
-  }
+    button:active,
+    a:active {
+        opacity: 0.8;
+        transform: scale(0.95);
+    }
 }
 
 /* ============================================
@@ -599,71 +600,71 @@ header {
 /* Detect PWA standalone mode */
 @media (display-mode: standalone) {
 
-  /* Prevent pull-to-refresh */
-  body {
-    overscroll-behavior-y: contain;
-  }
+    /* Prevent pull-to-refresh */
+    body {
+        overscroll-behavior-y: contain;
+    }
 
-  /* Fixed header safe area for notched devices */
-  header {
-    padding-top: env(safe-area-inset-top, 0);
-  }
+    /* Fixed header safe area for notched devices */
+    header {
+        padding-top: env(safe-area-inset-top, 0);
+    }
 
-  /* Adjust main content for safe areas */
-  main {
-    padding-left: env(safe-area-inset-left, 0);
-    padding-right: env(safe-area-inset-right, 0);
-  }
+    /* Adjust main content for safe areas */
+    main {
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+    }
 }
 
 /* Fullscreen mode adjustments */
 @media (display-mode: fullscreen) {
-  body {
-    overscroll-behavior: none;
-  }
+    body {
+        overscroll-behavior: none;
+    }
 }
 
 /* iOS-specific fixes */
 @supports (-webkit-touch-callout: none) {
 
-  /* Prevent iOS rubber-banding */
-  html,
-  body {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
+    /* Prevent iOS rubber-banding */
+    html,
+    body {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
 
-  #app-root,
-  main {
-    height: 100%;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+    #app-root,
+    main {
+        height: 100%;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
 
-  /* iOS status bar safe area */
-  .ios-safe-top {
-    padding-top: constant(safe-area-inset-top);
-    padding-top: env(safe-area-inset-top);
-  }
+    /* iOS status bar safe area */
+    .ios-safe-top {
+        padding-top: constant(safe-area-inset-top);
+        padding-top: env(safe-area-inset-top);
+    }
 }
 
 /* Prevent long-press context menu on images */
 img {
-  -webkit-touch-callout: none;
+    -webkit-touch-callout: none;
 }
 
 /* Hide scrollbar in PWA for cleaner look */
 @media (display-mode: standalone) {
-  ::-webkit-scrollbar {
-    width: 0;
-    display: none;
-  }
+    ::-webkit-scrollbar {
+        width: 0;
+        display: none;
+    }
 
-  * {
-    scrollbar-width: none;
-  }
+    * {
+        scrollbar-width: none;
+    }
 }
 
 /* ============================================
@@ -672,46 +673,52 @@ img {
 
 @media (prefers-reduced-motion: reduce) {
 
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 
-  .shimmer {
-    animation: none !important;
-    background: transparent !important;
-  }
+    .shimmer {
+        animation: none !important;
+        background: transparent !important;
+    }
 
-  .content-card:hover {
-    transform: none;
-  }
+    .content-card:hover {
+        transform: none;
+    }
 
-  .card-hover:hover {
-    transform: none;
-  }
+    .card-hover:hover {
+        transform: none;
+    }
 
-  .floating-reaction {
-    animation: none !important;
-    display: none;
-  }
+    .floating-reaction {
+        animation: none !important;
+        display: none;
+    }
 }
 
 /* Watch Party — Floating Reactions */
 @keyframes float-reaction {
-  0% { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-200px) scale(1.5); }
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-200px) scale(1.5);
+    }
 }
 
 .floating-reaction {
-  animation: float-reaction 2s ease-out forwards;
-  position: absolute;
-  bottom: 0;
-  font-size: 2rem;
-  pointer-events: none;
+    animation: float-reaction 2s ease-out forwards;
+    position: absolute;
+    bottom: 0;
+    font-size: 2rem;
+    pointer-events: none;
 }
 
 /* ============================================
@@ -719,23 +726,31 @@ img {
    ============================================ */
 
 @view-transition {
-  navigation: auto;
+    navigation: auto;
 }
 
 ::view-transition-old(root) {
-  animation: vt-fade-out 120ms ease-in;
+    animation: vt-fade-out 120ms ease-in;
 }
 
 ::view-transition-new(root) {
-  animation: vt-fade-in 120ms ease-out;
+    animation: vt-fade-in 120ms ease-out;
 }
 
 @keyframes vt-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
 }
 
 @keyframes vt-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }

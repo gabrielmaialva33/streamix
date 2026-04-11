@@ -5,13 +5,14 @@
 Currently, only the latest version of Streamix receives security updates.
 
 | Version | Supported          |
-| ------- | ------------------ |
+|---------|--------------------|
 | 1.3.x   | :white_check_mark: |
 | < 1.3   | :x:                |
 
 ## Reporting a Vulnerability
 
-Security is taken seriously at Streamix. If you discover a security vulnerability, please follow this responsible disclosure process.
+Security is taken seriously at Streamix. If you discover a security vulnerability, please follow this responsible
+disclosure process.
 
 ### How to Report
 
@@ -61,14 +62,14 @@ Use Phoenix.HTML.html_escape/1 on the parameter before rendering.
 
 ### Timeline
 
-| Stage | Timeframe |
-|-------|-----------|
+| Stage                      | Timeframe   |
+|----------------------------|-------------|
 | Acknowledgement of receipt | 24-48 hours |
-| Initial Assessment | 72 hours |
-| Status Update | Weekly |
-| Fix (Critical severity) | 7 days |
-| Fix (High severity) | 14 days |
-| Fix (Medium/Low severity) | 30 days |
+| Initial Assessment         | 72 hours    |
+| Status Update              | Weekly      |
+| Fix (Critical severity)    | 7 days      |
+| Fix (High severity)        | 14 days     |
+| Fix (Medium/Low severity)  | 30 days     |
 
 ### What to expect
 
@@ -80,7 +81,8 @@ Use Phoenix.HTML.html_escape/1 on the parameter before rendering.
 
 ### Acknowledgement
 
-We thank everyone who reports vulnerabilities responsibly. With your permission, we will acknowledge your contribution in:
+We thank everyone who reports vulnerabilities responsibly. With your permission, we will acknowledge your contribution
+in:
 
 - Release notes of the patched version
 - Acknowledgements section in the README (if desired)
@@ -147,6 +149,7 @@ Streamix automatically configures security headers via Plug, including:
 ## Contact
 
 For security questions:
+
 - 📧 Email: gabrielmaialva33@gmail.com
 - 🔐 For sensitive communications, request our PGP key
 

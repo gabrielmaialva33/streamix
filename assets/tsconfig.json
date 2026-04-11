@@ -23,10 +23,14 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "*": ["../deps/*"]
+      "*": [
+        "../deps/*"
+      ]
     },
     "allowJs": true,
     "noEmit": true
   },
-  "include": ["js/**/*"]
+  "include": [
+    "js/**/*"
+  ]
 }

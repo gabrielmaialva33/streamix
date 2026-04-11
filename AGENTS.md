@@ -4,7 +4,9 @@ Instructions for AI coding agents working on this repository.
 
 ## Overview
 
-Streamix is a unified IPTV streaming platform. Elixir 1.18, Phoenix 1.8, LiveView 1.1, TimescaleDB (pg17), Redis 7, Tailwind CSS v4. Aggregates Xtream Codes IPTV providers with Live TV, Movies, Series, GIndex (Google Drive), AI search, and a REST API for mobile clients.
+Streamix is a unified IPTV streaming platform. Elixir 1.18, Phoenix 1.8, LiveView 1.1, TimescaleDB (pg17), Redis 7,
+Tailwind CSS v4. Aggregates Xtream Codes IPTV providers with Live TV, Movies, Series, GIndex (Google Drive), AI search,
+and a REST API for mobile clients.
 
 ## Dev Environment
 
@@ -27,26 +29,27 @@ iex -S mix phx.server
 
 ## Commands
 
-| Command | Purpose | When to use |
-|---------|---------|-------------|
-| `mix test` | Run full test suite | Before committing |
-| `mix test path/to/test.exs` | Run single test file | During development |
-| `mix test path/to/test.exs:42` | Run single test by line | Debugging a test |
-| `mix test --failed` | Rerun failed tests | After fixing failures |
-| `mix precommit` | Compile (warnings=errors) + format + credo + test | Always before committing |
-| `mix format` | Format all Elixir files | After code changes |
-| `mix credo --strict` | Static analysis | Code quality check |
-| `mix ecto.migrate` | Run pending migrations | After adding migrations |
-| `mix ecto.reset` | Drop + create + migrate + seed | Full DB reset |
-| `mix ecto.gen.migration name_in_snake_case` | Generate migration file | Adding DB changes |
-| `mix assets.build` | Compile CSS + JS | Dev asset changes |
-| `mix assets.deploy` | Minify + digest for production | Prod builds |
+| Command                                     | Purpose                                           | When to use              |
+|---------------------------------------------|---------------------------------------------------|--------------------------|
+| `mix test`                                  | Run full test suite                               | Before committing        |
+| `mix test path/to/test.exs`                 | Run single test file                              | During development       |
+| `mix test path/to/test.exs:42`              | Run single test by line                           | Debugging a test         |
+| `mix test --failed`                         | Rerun failed tests                                | After fixing failures    |
+| `mix precommit`                             | Compile (warnings=errors) + format + credo + test | Always before committing |
+| `mix format`                                | Format all Elixir files                           | After code changes       |
+| `mix credo --strict`                        | Static analysis                                   | Code quality check       |
+| `mix ecto.migrate`                          | Run pending migrations                            | After adding migrations  |
+| `mix ecto.reset`                            | Drop + create + migrate + seed                    | Full DB reset            |
+| `mix ecto.gen.migration name_in_snake_case` | Generate migration file                           | Adding DB changes        |
+| `mix assets.build`                          | Compile CSS + JS                                  | Dev asset changes        |
+| `mix assets.deploy`                         | Minify + digest for production                    | Prod builds              |
 
 ## Testing
 
 - Framework: ExUnit with `Phoenix.LiveViewTest` and `LazyHTML`.
 - Test files: `test/` directory, mirroring `lib/` structure.
-- Always run `mix precommit` before committing — it compiles with warnings-as-errors, formats, runs credo strict, and runs all tests.
+- Always run `mix precommit` before committing — it compiles with warnings-as-errors, formats, runs credo strict, and
+  runs all tests.
 - Use `start_supervised!/1` for processes in tests to ensure cleanup.
 - Test element presence by DOM IDs, not raw HTML text content.
 - Never use `Process.sleep/1` in tests — use `Process.monitor/1` + `assert_receive`.
@@ -115,7 +118,8 @@ lib/streamix_web/          # Web layer
 
 - **L1+L2 Cache**: ConCache (in-memory, 30min TTL) → Redis (distributed). Write-through with stampede prevention.
 - **Circuit Breaker**: Per-provider ETS state. 5 errors/60s → open, 3min recovery.
-- **Stream Proxy**: Resolves IPTV redirect chains, proxies HLS/TS through Elixir. Uses `redirect: :manual` to avoid consuming single-use tokens.
+- **Stream Proxy**: Resolves IPTV redirect chains, proxies HLS/TS through Elixir. Uses `redirect: :manual` to avoid
+  consuming single-use tokens.
 - **Rate Limiting**: Auth 5 req/min, Stream proxy 60 req/min, API 120 req/min.
 
 ## PR Instructions

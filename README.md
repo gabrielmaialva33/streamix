@@ -191,56 +191,56 @@ sequenceDiagram
 
 ### Core
 
-| Technology | Version | Description |
-|------------|---------|-------------|
-| [Elixir](https://elixir-lang.org/) | 1.18+ | Concurrent, fault-tolerant runtime |
-| [Phoenix](https://www.phoenixframework.org/) | 1.8+ | Real-time web framework |
-| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1+ | Server-rendered reactive UI |
-| [OTP](https://www.erlang.org/) | 27+ | Supervision trees and fault tolerance |
-| [Bandit](https://hexdocs.pm/bandit/) | 1.0+ | HTTP/2 server |
+| Technology                                                | Version | Description                           |
+|-----------------------------------------------------------|---------|---------------------------------------|
+| [Elixir](https://elixir-lang.org/)                        | 1.18+   | Concurrent, fault-tolerant runtime    |
+| [Phoenix](https://www.phoenixframework.org/)              | 1.8+    | Real-time web framework               |
+| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1+    | Server-rendered reactive UI           |
+| [OTP](https://www.erlang.org/)                            | 27+     | Supervision trees and fault tolerance |
+| [Bandit](https://hexdocs.pm/bandit/)                      | 1.0+    | HTTP/2 server                         |
 
 ### Data
 
-| Technology | Description |
-|------------|-------------|
+| Technology                                       | Description                                      |
+|--------------------------------------------------|--------------------------------------------------|
 | [TimescaleDB](https://www.timescale.com/) (pg17) | PostgreSQL with time-series extensions + pg_trgm |
-| [Redis](https://redis.io/) 7+ | L2 distributed cache |
-| [Qdrant](https://qdrant.tech/) | Vector database for semantic search |
-| [Ecto](https://hexdocs.pm/ecto/) | Database queries and migrations |
+| [Redis](https://redis.io/) 7+                    | L2 distributed cache                             |
+| [Qdrant](https://qdrant.tech/)                   | Vector database for semantic search              |
+| [Ecto](https://hexdocs.pm/ecto/)                 | Database queries and migrations                  |
 
 ### Background Processing
 
-| Technology | Description |
-|------------|-------------|
-| [Oban](https://getoban.pro/) | Background jobs with cron scheduling |
-| [Broadway](https://hexdocs.pm/broadway/) | High-throughput data pipelines (optional, with RabbitMQ) |
-| [ConCache](https://hexdocs.pm/con_cache/) | ETS-based L1 in-memory cache |
+| Technology                                | Description                                              |
+|-------------------------------------------|----------------------------------------------------------|
+| [Oban](https://getoban.pro/)              | Background jobs with cron scheduling                     |
+| [Broadway](https://hexdocs.pm/broadway/)  | High-throughput data pipelines (optional, with RabbitMQ) |
+| [ConCache](https://hexdocs.pm/con_cache/) | ETS-based L1 in-memory cache                             |
 
 ### Frontend
 
-| Technology | Description |
-|------------|-------------|
-| [Tailwind CSS](https://tailwindcss.com/) v4 | Utility-first styling |
-| [Catppuccin](https://catppuccin.com/) | Color palette (Latte for light mode) |
-| [Heroicons](https://heroicons.com/) | SVG icons |
-| [hls.js](https://github.com/video-dev/hls.js/) | HLS video playback |
+| Technology                                     | Description                          |
+|------------------------------------------------|--------------------------------------|
+| [Tailwind CSS](https://tailwindcss.com/) v4    | Utility-first styling                |
+| [Catppuccin](https://catppuccin.com/)          | Color palette (Latte for light mode) |
+| [Heroicons](https://heroicons.com/)            | SVG icons                            |
+| [hls.js](https://github.com/video-dev/hls.js/) | HLS video playback                   |
 
 ### External Services
 
-| Service | Description |
-|---------|-------------|
-| [TMDB](https://www.themoviedb.org/) | Movie/series metadata and posters |
+| Service                                                                    | Description                       |
+|----------------------------------------------------------------------------|-----------------------------------|
+| [TMDB](https://www.themoviedb.org/)                                        | Movie/series metadata and posters |
 | [Gemini](https://ai.google.dev/) / [NVIDIA NIM](https://build.nvidia.com/) | AI embeddings for semantic search |
-| [GIndex](https://github.com/LeeluPrad662/G-Index) | Google Drive content indexing |
+| [GIndex](https://github.com/LeeluPrad662/G-Index)                          | Google Drive content indexing     |
 
 ### Quality & Security
 
-| Tool | Description |
-|------|-------------|
-| [Hammer](https://hexdocs.pm/hammer/) | Rate limiting |
+| Tool                                   | Description              |
+|----------------------------------------|--------------------------|
+| [Hammer](https://hexdocs.pm/hammer/)   | Rate limiting            |
 | [Sobelow](https://hexdocs.pm/sobelow/) | Security static analysis |
-| [Credo](https://hexdocs.pm/credo/) | Code quality |
-| [ExUnit](https://hexdocs.pm/ex_unit/) | Testing |
+| [Credo](https://hexdocs.pm/credo/)     | Code quality             |
+| [ExUnit](https://hexdocs.pm/ex_unit/)  | Testing                  |
 
 <br>
 
@@ -321,6 +321,7 @@ Use the REST API at `/api/v1/` with bearer token authentication. See API docs fo
 ### PWA
 
 Install Streamix as a native app:
+
 - **Chrome/Edge**: Click install icon in address bar
 - **Android**: Menu > "Add to Home screen"
 - **iOS Safari**: Share > "Add to Home Screen"

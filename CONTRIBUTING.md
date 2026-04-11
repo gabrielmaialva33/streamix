@@ -1,12 +1,14 @@
 # Contributing to Streamix
 
-Thank you for your interest in contributing to Streamix! This document provides guidelines and information on how to contribute to this project.
+Thank you for your interest in contributing to Streamix! This document provides guidelines and information on how to
+contribute to this project.
 
 ## Before You Start
 
 ### License
 
-**Important**: Streamix is open-source software licensed under the [MIT License](LICENSE). By contributing, you agree that your contributions will be licensed under the same terms.
+**Important**: Streamix is open-source software licensed under the [MIT License](LICENSE). By contributing, you agree
+that your contributions will be licensed under the same terms.
 
 ### Code of Conduct
 
@@ -23,10 +25,10 @@ If you have found a bug, please open an issue including:
 3. **Expected behavior** vs. **actual behavior**
 4. **Screenshots** (if applicable)
 5. **Environment**:
-   - Elixir/OTP version
-   - Operating System
-   - PostgreSQL version
-   - Browser (for frontend issues)
+    - Elixir/OTP version
+    - Operating System
+    - PostgreSQL version
+    - Browser (for frontend issues)
 
 ### Suggesting Improvements
 
@@ -93,6 +95,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 **Types**:
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation
@@ -103,6 +106,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 - `chore`: Maintenance
 
 **Examples**:
+
 ```
 feat(iptv): add support for M3U8 playlists
 fix(auth): resolve session expiration issue

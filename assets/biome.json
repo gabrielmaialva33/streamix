@@ -7,7 +7,11 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["js/app.js", "js/hooks/**/*.js", "js/lib/**/*.js"]
+    "includes": [
+      "js/app.js",
+      "js/hooks/**/*.js",
+      "js/lib/**/*.js"
+    ]
   },
   "formatter": {
     "enabled": true,

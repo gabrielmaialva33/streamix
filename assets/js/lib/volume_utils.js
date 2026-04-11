@@ -17,12 +17,12 @@
  * @returns {number} Perceived volume 0-1 (for audio backend)
  */
 export function linearToPerceived(linear) {
-  if (linear <= 0) return 0;
-  if (linear >= 1) return 1;
+    if (linear <= 0) return 0;
+    if (linear >= 1) return 1;
 
-  // Use a quadratic curve for smoother transition
-  // This makes the slider feel more natural
-  return linear * linear;
+    // Use a quadratic curve for smoother transition
+    // This makes the slider feel more natural
+    return linear * linear;
 }
 
 /**
@@ -33,11 +33,11 @@ export function linearToPerceived(linear) {
  * @returns {number} Linear volume 0-1 (for UI slider)
  */
 export function perceivedToLinear(perceived) {
-  if (perceived <= 0) return 0;
-  if (perceived >= 1) return 1;
+    if (perceived <= 0) return 0;
+    if (perceived >= 1) return 1;
 
-  // Inverse of the quadratic curve
-  return Math.sqrt(perceived);
+    // Inverse of the quadratic curve
+    return Math.sqrt(perceived);
 }
 
 /**
@@ -48,9 +48,9 @@ export function perceivedToLinear(perceived) {
  * @returns {number} Normalized volume for the backend (0-1)
  */
 export function normalizeVolumeForBackend(uiVolume, _backend) {
-  // Both native HTML5 audio and AVPlayer use linear volume internally
-  // We apply the same curve to both for consistency
-  return linearToPerceived(uiVolume);
+    // Both native HTML5 audio and AVPlayer use linear volume internally
+    // We apply the same curve to both for consistency
+    return linearToPerceived(uiVolume);
 }
 
 /**
@@ -61,13 +61,13 @@ export function normalizeVolumeForBackend(uiVolume, _backend) {
  * @returns {number} Volume for UI slider (0-1)
  */
 export function getUIVolumeFromBackend(backendVolume, _backend) {
-  // Convert back to linear for UI display
-  return perceivedToLinear(backendVolume);
+    // Convert back to linear for UI display
+    return perceivedToLinear(backendVolume);
 }
 
 export default {
-  linearToPerceived,
-  perceivedToLinear,
-  normalizeVolumeForBackend,
-  getUIVolumeFromBackend,
+    linearToPerceived,
+    perceivedToLinear,
+    normalizeVolumeForBackend,
+    getUIVolumeFromBackend,
 };

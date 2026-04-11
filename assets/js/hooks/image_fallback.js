@@ -11,44 +11,44 @@
  *   </div>
  */
 const ImageFallback = {
-  mounted() {
-    this.setupFallback();
-  },
+    mounted() {
+        this.setupFallback();
+    },
 
-  updated() {
-    this.setupFallback();
-  },
+    updated() {
+        this.setupFallback();
+    },
 
-  setupFallback() {
-    const img = this.el.querySelector("img[data-fallback-target]");
-    const fallback = this.el.querySelector("[data-fallback]");
+    setupFallback() {
+        const img = this.el.querySelector("img[data-fallback-target]");
+        const fallback = this.el.querySelector("[data-fallback]");
 
-    if (!img || !fallback) return;
+        if (!img || !fallback) return;
 
-    // Remove any existing listener to avoid duplicates
-    if (this._errorHandler) {
-      img.removeEventListener("error", this._errorHandler);
-    }
+        // Remove any existing listener to avoid duplicates
+        if (this._errorHandler) {
+            img.removeEventListener("error", this._errorHandler);
+        }
 
-    this._errorHandler = () => {
-      img.classList.add("hidden");
-      fallback.classList.remove("hidden");
-    };
+        this._errorHandler = () => {
+            img.classList.add("hidden");
+            fallback.classList.remove("hidden");
+        };
 
-    img.addEventListener("error", this._errorHandler);
+        img.addEventListener("error", this._errorHandler);
 
-    // Check if image already failed (cached error state or empty src)
-    if (img.complete && img.naturalHeight === 0) {
-      this._errorHandler();
-    }
-  },
+        // Check if image already failed (cached error state or empty src)
+        if (img.complete && img.naturalHeight === 0) {
+            this._errorHandler();
+        }
+    },
 
-  destroyed() {
-    const img = this.el.querySelector("img[data-fallback-target]");
-    if (img && this._errorHandler) {
-      img.removeEventListener("error", this._errorHandler);
-    }
-  },
+    destroyed() {
+        const img = this.el.querySelector("img[data-fallback-target]");
+        if (img && this._errorHandler) {
+            img.removeEventListener("error", this._errorHandler);
+        }
+    },
 };
 
 export default ImageFallback;
