@@ -10,6 +10,7 @@ defmodule Streamix.Repo.Migrations.CreateLiveChannels do
       add :tv_archive, :boolean, default: false
       add :tv_archive_duration, :integer
       add :direct_source, :text
+      add :dead_since, :utc_datetime
       add :provider_id, references(:providers, on_delete: :delete_all), null: false
 
       timestamps(type: :utc_datetime)
@@ -18,6 +19,7 @@ defmodule Streamix.Repo.Migrations.CreateLiveChannels do
     create index(:live_channels, [:provider_id])
     create unique_index(:live_channels, [:provider_id, :stream_id])
     create index(:live_channels, [:provider_id, :name])
+    create index(:live_channels, [:dead_since], where: "dead_since IS NOT NULL")
 
     execute(
       "CREATE INDEX live_channels_name_trgm_idx ON live_channels USING gin (name gin_trgm_ops)",
