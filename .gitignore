@@ -54,3 +54,6 @@ test-results
 
 # superpowers
 docs/superpowers
+
+# JetBrains IDEs
+.idea/
