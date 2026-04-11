@@ -6,7 +6,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   use StreamixWeb, :controller
 
   alias Streamix.Accounts
-  alias Streamix.Iptv.Favorites
+  alias Streamix.Library
 
   plug :authenticate
 
@@ -17,7 +17,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def index(conn, params) do
     user = conn.assigns.current_user
     opts = [content_type: params["type"], limit: parse_int(params["limit"], 100)]
-    favorites = Favorites.list(user.id, opts)
+    favorites = Library.list_favorites(user.id, opts)
 
     json(conn, %{
       favorites:
@@ -39,7 +39,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def create(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
 
-    case Favorites.add(user.id, type, content_id) do
+    case Library.add_favorite(user.id, type, content_id) do
       {:ok, fav} ->
         conn
         |> put_status(:created)
@@ -68,7 +68,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   def delete(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
-    Favorites.remove(user.id, type, String.to_integer(content_id))
+    Library.remove_favorite(user.id, type, String.to_integer(content_id))
     send_resp(conn, 204, "")
   end
 
@@ -79,7 +79,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def toggle(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
 
-    case Favorites.toggle(user.id, type, content_id) do
+    case Library.toggle_favorite(user.id, type, content_id) do
       {:ok, action} ->
         json(conn, %{status: Atom.to_string(action)})
 
@@ -119,15 +119,15 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
          "content_id" => content_id,
          "action" => action
        }) do
-    exists? = Favorites.exists?(user_id, type, content_id)
+    exists? = Library.is_favorite?(user_id, type, content_id)
 
     case {action, exists?} do
       {"add", false} ->
-        Favorites.add(user_id, type, content_id)
+        Library.add_favorite(user_id, type, content_id)
         :added
 
       {"remove", true} ->
-        Favorites.remove(user_id, type, content_id)
+        Library.remove_favorite(user_id, type, content_id)
         :removed
 
       _ ->

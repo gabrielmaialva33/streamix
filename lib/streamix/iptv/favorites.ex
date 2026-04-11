@@ -1,15 +1,17 @@
 defmodule Streamix.Iptv.Favorites do
   @moduledoc """
-  Polymorphic favorites management.
-
-  Handles favorites for any content type (live_channel, movie, series, episode).
-  Provides listing, checking, adding, removing, and toggling operations.
+  Favorites management backed by concrete content foreign keys.
   """
 
   import Ecto.Query, warn: false
 
+  alias Ecto.Changeset
   alias Streamix.Iptv.Favorite
+  alias Streamix.Library.ContentRef
   alias Streamix.Repo
+
+  @content_types ContentRef.favorite_types()
+  @preloads [:live_channel, :movie, :series, :episode]
 
   @doc """
   Lists favorites for a user with optional filters.
@@ -29,13 +31,15 @@ defmodule Streamix.Iptv.Favorites do
       Favorite
       |> where(user_id: ^user_id)
       |> order_by(desc: :inserted_at)
+      |> preload(^@preloads)
 
-    query = if content_type, do: where(query, content_type: ^content_type), else: query
+    query = maybe_filter_by_type(query, content_type)
 
     query
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
+    |> Enum.map(&ContentRef.decorate/1)
   end
 
   @doc """
@@ -43,9 +47,16 @@ defmodule Streamix.Iptv.Favorites do
   """
   @spec exists?(integer(), String.t(), integer()) :: boolean()
   def exists?(user_id, content_type, content_id) do
-    Favorite
-    |> where(user_id: ^user_id, content_type: ^content_type, content_id: ^content_id)
-    |> Repo.exists?()
+    case normalized_content_field_and_id(content_type, content_id) do
+      {:ok, field, normalized_id} ->
+        Favorite
+        |> where(user_id: ^user_id)
+        |> where([f], field(f, ^field) == ^normalized_id)
+        |> Repo.exists?()
+
+      {:error, _reason} ->
+        false
+    end
   end
 
   @doc """
@@ -63,12 +74,16 @@ defmodule Streamix.Iptv.Favorites do
   """
   @spec count_by_type(integer()) :: %{String.t() => integer()}
   def count_by_type(user_id) do
-    Favorite
-    |> where(user_id: ^user_id)
-    |> group_by([f], f.content_type)
-    |> select([f], {f.content_type, count(f.id)})
-    |> Repo.all()
-    |> Map.new()
+    @content_types
+    |> Enum.reduce(%{}, fn type, acc ->
+      count =
+        Favorite
+        |> where(user_id: ^user_id)
+        |> maybe_filter_by_type(type)
+        |> Repo.aggregate(:count)
+
+      if count > 0, do: Map.put(acc, type, count), else: acc
+    end)
   end
 
   @doc """
@@ -77,11 +92,18 @@ defmodule Streamix.Iptv.Favorites do
   """
   @spec list_ids(integer(), String.t()) :: MapSet.t()
   def list_ids(user_id, content_type) do
-    Favorite
-    |> where(user_id: ^user_id, content_type: ^content_type)
-    |> select([f], f.content_id)
-    |> Repo.all()
-    |> MapSet.new()
+    case content_field(content_type) do
+      {:ok, field} ->
+        Favorite
+        |> where(user_id: ^user_id)
+        |> where([f], not is_nil(field(f, ^field)))
+        |> select([f], field(f, ^field))
+        |> Repo.all()
+        |> MapSet.new()
+
+      {:error, _reason} ->
+        MapSet.new()
+    end
   end
 
   @doc """
@@ -99,9 +121,15 @@ defmodule Streamix.Iptv.Favorites do
   """
   @spec add(integer(), map()) :: {:ok, Favorite.t()} | {:error, Ecto.Changeset.t()}
   def add(user_id, attrs) when is_map(attrs) do
-    %Favorite{}
-    |> Favorite.changeset(Map.merge(attrs, %{user_id: user_id}))
-    |> Repo.insert()
+    with type when is_binary(type) <- attrs[:content_type] || attrs["content_type"],
+         id when not is_nil(id) <- attrs[:content_id] || attrs["content_id"] do
+      add(user_id, type, id)
+    else
+      _ ->
+        {:error,
+         Changeset.change(%Favorite{})
+         |> Changeset.add_error(:content_type, "is invalid")}
+    end
   end
 
   @doc """
@@ -110,15 +138,23 @@ defmodule Streamix.Iptv.Favorites do
   @spec add(integer(), String.t(), integer(), map()) ::
           {:ok, Favorite.t()} | {:error, Ecto.Changeset.t()}
   def add(user_id, content_type, content_id, attrs \\ %{}) do
-    %Favorite{}
-    |> Favorite.changeset(
-      Map.merge(attrs, %{
-        user_id: user_id,
-        content_type: content_type,
-        content_id: content_id
-      })
-    )
-    |> Repo.insert()
+    case ContentRef.resolve_target_attrs(content_type, content_id, @content_types) do
+      {:ok, target_attrs} ->
+        %Favorite{}
+        |> Favorite.changeset(Map.merge(attrs, Map.put(target_attrs, :user_id, user_id)))
+        |> Repo.insert()
+        |> maybe_decorate()
+
+      {:error, :invalid_content_type} ->
+        {:error,
+         Changeset.change(%Favorite{})
+         |> Changeset.add_error(:content_type, "is invalid")}
+
+      {:error, :invalid_content_id} ->
+        {:error,
+         Changeset.change(%Favorite{})
+         |> Changeset.add_error(:content_id, "is invalid")}
+    end
   end
 
   @doc """
@@ -126,12 +162,19 @@ defmodule Streamix.Iptv.Favorites do
   """
   @spec remove(integer(), String.t(), integer()) :: {:ok, integer()}
   def remove(user_id, content_type, content_id) do
-    {count, _} =
-      Favorite
-      |> where(user_id: ^user_id, content_type: ^content_type, content_id: ^content_id)
-      |> Repo.delete_all()
+    case normalized_content_field_and_id(content_type, content_id) do
+      {:ok, field, normalized_id} ->
+        {count, _} =
+          Favorite
+          |> where(user_id: ^user_id)
+          |> where([f], field(f, ^field) == ^normalized_id)
+          |> Repo.delete_all()
 
-    {:ok, count}
+        {:ok, count}
+
+      {:error, _reason} ->
+        {:ok, 0}
+    end
   end
 
   @doc """
@@ -150,4 +193,50 @@ defmodule Streamix.Iptv.Favorites do
       end
     end
   end
+
+  defp maybe_filter_by_type(query, nil), do: query
+
+  defp maybe_filter_by_type(query, content_type) do
+    case content_field(content_type) do
+      {:ok, field} ->
+        where(query, [f], not is_nil(field(f, ^field)))
+
+      {:error, _reason} ->
+        where(query, [f], false)
+    end
+  end
+
+  defp normalized_content_field_and_id(content_type, content_id) do
+    with {:ok, field} <- content_field(content_type),
+         {:ok, normalized_id} <- normalize_id(content_id) do
+      {:ok, field, normalized_id}
+    end
+  end
+
+  defp content_field(content_type) do
+    case ContentRef.target_field(content_type) do
+      nil -> {:error, :invalid_content_type}
+      field -> {:ok, field}
+    end
+  end
+
+  defp normalize_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  defp normalize_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {normalized_id, ""} when normalized_id > 0 -> {:ok, normalized_id}
+      _ -> {:error, :invalid_content_id}
+    end
+  end
+
+  defp normalize_id(_id), do: {:error, :invalid_content_id}
+
+  defp maybe_decorate({:ok, favorite}) do
+    favorite
+    |> Repo.preload(@preloads)
+    |> ContentRef.decorate()
+    |> then(&{:ok, &1})
+  end
+
+  defp maybe_decorate({:error, changeset}), do: {:error, changeset}
 end

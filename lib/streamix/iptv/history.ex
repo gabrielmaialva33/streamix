@@ -1,15 +1,17 @@
 defmodule Streamix.Iptv.History do
   @moduledoc """
-  Polymorphic watch history management.
-
-  Tracks viewing progress for any content type (live_channel, movie, episode).
-  Provides listing, adding, updating progress, and clearing operations.
+  Watch history management backed by concrete playable content foreign keys.
   """
 
   import Ecto.Query, warn: false
 
+  alias Ecto.Changeset
   alias Streamix.Iptv.WatchHistory
+  alias Streamix.Library.ContentRef
   alias Streamix.Repo
+
+  @content_types ContentRef.history_types()
+  @preloads [:live_channel, :movie, :episode]
 
   @doc """
   Lists watch history for a user with optional filters.
@@ -29,13 +31,15 @@ defmodule Streamix.Iptv.History do
       WatchHistory
       |> where(user_id: ^user_id)
       |> order_by(desc: :watched_at)
+      |> preload(^@preloads)
 
-    query = if content_type, do: where(query, content_type: ^content_type), else: query
+    query = maybe_filter_by_type(query, content_type)
 
     query
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
+    |> Enum.map(&ContentRef.decorate/1)
   end
 
   @doc """
@@ -44,12 +48,16 @@ defmodule Streamix.Iptv.History do
   """
   @spec count_by_type(integer()) :: %{String.t() => integer()}
   def count_by_type(user_id) do
-    WatchHistory
-    |> where(user_id: ^user_id)
-    |> group_by([h], h.content_type)
-    |> select([h], {h.content_type, count(h.id)})
-    |> Repo.all()
-    |> Map.new()
+    @content_types
+    |> Enum.reduce(%{}, fn type, acc ->
+      count =
+        WatchHistory
+        |> where(user_id: ^user_id)
+        |> maybe_filter_by_type(type)
+        |> Repo.aggregate(:count)
+
+      if count > 0, do: Map.put(acc, type, count), else: acc
+    end)
   end
 
   @doc """
@@ -59,29 +67,45 @@ defmodule Streamix.Iptv.History do
   @spec add(integer(), String.t(), integer(), map()) ::
           {:ok, WatchHistory.t()} | {:error, Ecto.Changeset.t()}
   def add(user_id, content_type, content_id, attrs \\ %{}) do
-    %WatchHistory{}
-    |> WatchHistory.changeset(
-      Map.merge(attrs, %{
-        user_id: user_id,
-        content_type: content_type,
-        content_id: content_id,
-        watched_at: DateTime.utc_now()
-      })
-    )
-    |> Repo.insert(
-      on_conflict:
-        {:replace,
-         [
-           :watched_at,
-           :progress_seconds,
-           :duration_seconds,
-           :completed,
-           :updated_at,
-           :ip_address,
-           :device_type
-         ]},
-      conflict_target: [:user_id, :content_type, :content_id]
-    )
+    case ContentRef.resolve_target_attrs(content_type, content_id, @content_types) do
+      {:ok, target_attrs} ->
+        {target_field, normalized_id} = Enum.at(target_attrs, 0)
+
+        query =
+          WatchHistory
+          |> where(user_id: ^user_id)
+          |> where([w], field(w, ^target_field) == ^normalized_id)
+
+        attrs =
+          attrs
+          |> Map.merge(target_attrs)
+          |> Map.put(:user_id, user_id)
+          |> Map.put(:watched_at, DateTime.utc_now() |> DateTime.truncate(:second))
+
+        case Repo.one(query) do
+          nil ->
+            %WatchHistory{}
+            |> WatchHistory.changeset(attrs)
+            |> Repo.insert()
+            |> maybe_decorate()
+
+          %WatchHistory{} = entry ->
+            entry
+            |> WatchHistory.changeset(attrs)
+            |> Repo.update()
+            |> maybe_decorate()
+        end
+
+      {:error, :invalid_content_type} ->
+        {:error,
+         Changeset.change(%WatchHistory{})
+         |> Changeset.add_error(:content_type, "is invalid")}
+
+      {:error, :invalid_content_id} ->
+        {:error,
+         Changeset.change(%WatchHistory{})
+         |> Changeset.add_error(:content_id, "is invalid")}
+    end
   end
 
   @doc """
@@ -180,16 +204,47 @@ defmodule Streamix.Iptv.History do
   def get_progress_map(_user_id, _content_type, []), do: %{}
 
   def get_progress_map(user_id, content_type, content_ids) do
-    WatchHistory
-    |> where(
-      [w],
-      w.user_id == ^user_id and w.content_type == ^content_type and w.content_id in ^content_ids
-    )
-    |> where([w], w.duration_seconds > 0 and w.progress_seconds > 0)
-    |> select([w], {w.content_id, w.progress_seconds, w.duration_seconds})
-    |> Repo.all()
-    |> Map.new(fn {id, progress, duration} ->
-      {id, Float.round(progress / duration, 2)}
-    end)
+    case content_field(content_type) do
+      {:ok, field} ->
+        WatchHistory
+        |> where([w], w.user_id == ^user_id and field(w, ^field) in ^content_ids)
+        |> where([w], w.duration_seconds > 0 and w.progress_seconds > 0)
+        |> select([w], {field(w, ^field), w.progress_seconds, w.duration_seconds})
+        |> Repo.all()
+        |> Map.new(fn {id, progress, duration} ->
+          {id, Float.round(progress / duration, 2)}
+        end)
+
+      {:error, _reason} ->
+        %{}
+    end
   end
+
+  defp maybe_filter_by_type(query, nil), do: query
+
+  defp maybe_filter_by_type(query, content_type) do
+    case content_field(content_type) do
+      {:ok, field} ->
+        where(query, [w], not is_nil(field(w, ^field)))
+
+      {:error, _reason} ->
+        where(query, [w], false)
+    end
+  end
+
+  defp content_field(content_type) do
+    case ContentRef.target_field(content_type) do
+      field when field in [:live_channel_id, :movie_id, :episode_id] -> {:ok, field}
+      _ -> {:error, :invalid_content_type}
+    end
+  end
+
+  defp maybe_decorate({:ok, entry}) do
+    entry
+    |> Repo.preload(@preloads)
+    |> ContentRef.decorate()
+    |> then(&{:ok, &1})
+  end
+
+  defp maybe_decorate({:error, changeset}), do: {:error, changeset}
 end

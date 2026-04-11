@@ -182,10 +182,10 @@ defmodule Streamix.Iptv.Catalog do
     # Get movie IDs with watch counts from history
     trending_ids =
       from(h in Streamix.Iptv.WatchHistory,
-        where: h.content_type == "movie",
+        where: not is_nil(h.movie_id),
         where: h.watched_at >= ^since,
-        group_by: h.content_id,
-        select: {h.content_id, count(h.id)},
+        group_by: h.movie_id,
+        select: {h.movie_id, count(h.id)},
         order_by: [desc: count(h.id)],
         limit: ^(limit * 2)
       )
@@ -218,10 +218,10 @@ defmodule Streamix.Iptv.Catalog do
     # Get series IDs from episode watches
     trending_ids =
       from(h in Streamix.Iptv.WatchHistory,
-        where: h.content_type == "episode",
+        where: not is_nil(h.episode_id),
         where: h.watched_at >= ^since,
-        group_by: h.content_id,
-        select: {h.content_id, count(h.id)},
+        group_by: h.episode_id,
+        select: {h.episode_id, count(h.id)},
         order_by: [desc: count(h.id)],
         limit: ^(limit * 3)
       )

@@ -23,58 +23,54 @@ defmodule Streamix.Iptv do
     Catalog,
     Channels,
     Epg,
-    Favorites,
-    History,
     Movies,
     Providers,
     SeriesOps
   }
 
+  alias Streamix.Library
+
   # =============================================================================
   # Favorites (Polymorphic)
   # =============================================================================
-  defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
-  defdelegate is_favorite?(user_id, content_type, content_id), to: Favorites
-  defdelegate count_favorites_by_type(user_id), to: Favorites, as: :count_by_type
-  defdelegate list_favorite_ids(user_id, content_type), to: Favorites, as: :list_ids
-  defdelegate count_favorites(user_id), to: Favorites, as: :count
-  defdelegate add_favorite(user_id, attrs), to: Favorites, as: :add
+  defdelegate list_favorites(user_id, opts \\ []), to: Library
+  defdelegate is_favorite?(user_id, content_type, content_id), to: Library
+  defdelegate count_favorites_by_type(user_id), to: Library
+  defdelegate list_favorite_ids(user_id, content_type), to: Library
+  defdelegate count_favorites(user_id), to: Library
+  defdelegate add_favorite(user_id, attrs), to: Library
 
   defdelegate add_favorite(user_id, content_type, content_id, attrs \\ %{}),
-    to: Favorites,
-    as: :add
+    to: Library
 
-  defdelegate remove_favorite(user_id, content_type, content_id), to: Favorites, as: :remove
+  defdelegate remove_favorite(user_id, content_type, content_id), to: Library
 
   defdelegate toggle_favorite(user_id, content_type, content_id, attrs \\ %{}),
-    to: Favorites,
-    as: :toggle
+    to: Library
 
   # =============================================================================
   # Watch History (Polymorphic)
   # =============================================================================
-  defdelegate list_watch_history(user_id, opts \\ []), to: History, as: :list
-  defdelegate count_watch_history_by_type(user_id), to: History, as: :count_by_type
+  defdelegate list_watch_history(user_id, opts \\ []), to: Library
+  defdelegate count_watch_history_by_type(user_id), to: Library
 
   defdelegate add_watch_history(user_id, content_type, content_id, attrs \\ %{}),
-    to: History,
-    as: :add
+    to: Library
 
-  defdelegate add_to_watch_history(user_id, attrs), to: History, as: :add
+  defdelegate add_to_watch_history(user_id, attrs), to: Library
 
   defdelegate update_progress(user_id, content_type, content_id, progress, duration \\ nil),
-    to: History
+    to: Library
 
   defdelegate update_watch_progress(user_id, content_type, content_id, current_time, duration),
-    to: History
+    to: Library
 
-  defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds), to: History
-  defdelegate remove_from_watch_history(user_id, entry_id), to: History, as: :remove
-  defdelegate clear_watch_history(user_id), to: History, as: :clear
+  defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds), to: Library
+  defdelegate remove_from_watch_history(user_id, entry_id), to: Library
+  defdelegate clear_watch_history(user_id), to: Library
 
   defdelegate get_watch_progress_map(user_id, content_type, content_ids),
-    to: History,
-    as: :get_progress_map
+    to: Library
 
   # =============================================================================
   # Live Channels

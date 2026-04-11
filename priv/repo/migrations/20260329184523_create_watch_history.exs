@@ -3,28 +3,38 @@ defmodule Streamix.Repo.Migrations.CreateWatchHistory do
 
   def change do
     create table(:watch_history) do
-      add :content_type, :string, null: false
-      add :content_id, :integer, null: false
       add :watched_at, :utc_datetime, null: false
       add :duration_seconds, :integer
       add :progress_seconds, :integer, default: 0
       add :completed, :boolean, default: false
-      add :content_name, :text
-      add :content_icon, :text
-      add :parent_name, :text
-      add :episode_info, :string
       add :ip_address, :string
       add :device_type, :string
       add :user_id, references(:users, on_delete: :delete_all), null: false
+      add :live_channel_id, references(:live_channels, on_delete: :delete_all)
+      add :movie_id, references(:movies, on_delete: :delete_all)
+      add :episode_id, references(:episodes, on_delete: :delete_all)
 
       timestamps(type: :utc_datetime)
     end
 
     create index(:watch_history, [:user_id])
     create index(:watch_history, [:user_id, :watched_at])
-    create index(:watch_history, [:user_id, :content_type])
-    create unique_index(:watch_history, [:user_id, :content_type, :content_id])
     create index(:watch_history, [:ip_address])
+
+    create unique_index(:watch_history, [:user_id, :live_channel_id],
+             where: "live_channel_id IS NOT NULL",
+             name: :watch_history_user_live_channel_unique_idx
+           )
+
+    create unique_index(:watch_history, [:user_id, :movie_id],
+             where: "movie_id IS NOT NULL",
+             name: :watch_history_user_movie_unique_idx
+           )
+
+    create unique_index(:watch_history, [:user_id, :episode_id],
+             where: "episode_id IS NOT NULL",
+             name: :watch_history_user_episode_unique_idx
+           )
 
     # Partial index — "continue watching" feature (incomplete items only)
     create index(:watch_history, [:user_id, :watched_at],
@@ -33,8 +43,16 @@ defmodule Streamix.Repo.Migrations.CreateWatchHistory do
            )
 
     execute(
-      "ALTER TABLE watch_history ADD CONSTRAINT watch_history_content_type_check CHECK (content_type IN ('live_channel', 'movie', 'episode'))",
-      "ALTER TABLE watch_history DROP CONSTRAINT IF EXISTS watch_history_content_type_check"
+      """
+      ALTER TABLE watch_history
+      ADD CONSTRAINT watch_history_exactly_one_target_check
+      CHECK (
+        (CASE WHEN live_channel_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN movie_id IS NOT NULL THEN 1 ELSE 0 END) +
+        (CASE WHEN episode_id IS NOT NULL THEN 1 ELSE 0 END) = 1
+      )
+      """,
+      "ALTER TABLE watch_history DROP CONSTRAINT IF EXISTS watch_history_exactly_one_target_check"
     )
   end
 end
