@@ -9,6 +9,8 @@ defmodule Streamix.Iptv.WatchHistory do
   alias Streamix.Accounts.User
   alias Streamix.Iptv.{Episode, LiveChannel, Movie}
 
+  @type t :: %__MODULE__{}
+
   schema "watch_history" do
     field :content_type, :string, virtual: true
     field :content_id, :integer, virtual: true

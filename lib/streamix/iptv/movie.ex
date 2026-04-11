@@ -7,6 +7,8 @@ defmodule Streamix.Iptv.Movie do
 
   alias Streamix.Iptv.{Category, Provider, XtreamClient}
 
+  @type t :: %__MODULE__{}
+
   schema "movies" do
     field :stream_id, :integer
     field :name, :string

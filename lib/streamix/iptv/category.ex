@@ -8,6 +8,7 @@ defmodule Streamix.Iptv.Category do
   alias Streamix.Iptv.{Category, Provider}
 
   @type_values ~w(live vod series)
+  @type t :: %__MODULE__{}
 
   @derive {Jason.Encoder, only: [:id, :external_id, :name, :type, :is_adult, :provider_id]}
 

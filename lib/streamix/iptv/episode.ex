@@ -7,6 +7,8 @@ defmodule Streamix.Iptv.Episode do
 
   alias Streamix.Iptv.{Season, XtreamClient}
 
+  @type t :: %__MODULE__{}
+
   schema "episodes" do
     field :episode_id, :integer
     field :episode_num, :integer

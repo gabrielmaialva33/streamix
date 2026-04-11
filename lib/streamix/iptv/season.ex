@@ -7,6 +7,8 @@ defmodule Streamix.Iptv.Season do
 
   alias Streamix.Iptv.{Episode, Series}
 
+  @type t :: %__MODULE__{}
+
   schema "seasons" do
     field :season_number, :integer
     field :name, :string

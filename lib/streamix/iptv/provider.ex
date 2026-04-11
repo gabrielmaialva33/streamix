@@ -8,6 +8,8 @@ defmodule Streamix.Iptv.Provider do
   alias Streamix.Accounts.User
   alias Streamix.Iptv.{Category, EpgProgram, LiveChannel, Movie, Series}
 
+  @type t :: %__MODULE__{}
+
   schema "providers" do
     field :name, :string
     field :url, :string

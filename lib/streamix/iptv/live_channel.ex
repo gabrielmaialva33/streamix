@@ -7,6 +7,8 @@ defmodule Streamix.Iptv.LiveChannel do
 
   alias Streamix.Iptv.{Category, Provider, XtreamClient}
 
+  @type t :: %__MODULE__{}
+
   schema "live_channels" do
     field :stream_id, :integer
     field :name, :string
