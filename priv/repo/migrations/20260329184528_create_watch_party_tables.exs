@@ -32,6 +32,15 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
       "ALTER TABLE watch_party_rooms DROP CONSTRAINT IF EXISTS watch_party_rooms_status_check"
     )
 
+    execute(
+      """
+      ALTER TABLE watch_party_rooms
+      ADD CONSTRAINT watch_party_rooms_content_type_check
+      CHECK (content_type IN ('live_channel', 'movie', 'episode', 'gindex', 'gindex_episode'))
+      """,
+      "ALTER TABLE watch_party_rooms DROP CONSTRAINT IF EXISTS watch_party_rooms_content_type_check"
+    )
+
     # JSONB GIN for settings queries
     execute(
       "CREATE INDEX watch_party_rooms_settings_gin ON watch_party_rooms USING gin (settings jsonb_path_ops)",
@@ -64,8 +73,8 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
     # Messages — TimescaleDB hypertable (append-only time-series chat)
     create table(:watch_party_messages, primary_key: false) do
       add :id, :bigserial
-      add :room_id, :bigint, null: false
-      add :user_id, :bigint, null: false
+      add :room_id, references(:watch_party_rooms, on_delete: :delete_all), null: false
+      add :user_id, references(:users, on_delete: :delete_all), null: false
       add :content, :text, null: false
       add :type, :string, null: false, default: "text"
 
@@ -78,6 +87,15 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
     )
 
     create index(:watch_party_messages, [:room_id, :inserted_at])
+
+    execute(
+      """
+      ALTER TABLE watch_party_messages
+      ADD CONSTRAINT watch_party_messages_type_check
+      CHECK (type IN ('text', 'reaction', 'system'))
+      """,
+      "ALTER TABLE watch_party_messages DROP CONSTRAINT IF EXISTS watch_party_messages_type_check"
+    )
 
     # Compress messages older than 7 days
     execute(

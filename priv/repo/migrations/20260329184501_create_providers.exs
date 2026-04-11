@@ -53,7 +53,7 @@ defmodule Streamix.Repo.Migrations.CreateProviders do
     )
 
     execute(
-      "ALTER TABLE providers ADD CONSTRAINT providers_provider_type_check CHECK (provider_type IN ('xtream', 'gindex', 'm3u'))",
+      "ALTER TABLE providers ADD CONSTRAINT providers_provider_type_check CHECK (provider_type IN ('xtream', 'gindex'))",
       "ALTER TABLE providers DROP CONSTRAINT IF EXISTS providers_provider_type_check"
     )
 
