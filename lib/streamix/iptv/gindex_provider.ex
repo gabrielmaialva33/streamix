@@ -33,7 +33,8 @@ defmodule Streamix.Iptv.GIndexProvider do
   """
   def get do
     Provider
-    |> where(is_system: true, provider_type: :gindex)
+    |> where(is_system: true, visibility: :global, provider_type: :gindex)
+    |> order_by(desc: :inserted_at, desc: :id)
     |> Repo.one()
   end
 

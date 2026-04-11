@@ -108,6 +108,7 @@ defmodule Streamix.Iptv.Providers do
     |> where([p], p.visibility == :global)
     |> where([p], p.provider_type == :xtream)
     |> where([p], p.is_active == true)
+    |> order_by([p], desc: p.inserted_at, desc: p.id)
     |> limit(1)
     |> Repo.one()
   end
