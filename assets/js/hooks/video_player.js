@@ -1215,37 +1215,12 @@ const VideoPlayer = {
     }
   },
 
-  initPlayer() {
-    if (!this.streamUrl) {
-      this.playerUI.showError("URL do stream nao fornecida");
-      return;
-    }
+  // Idempotent stream loader factory. `cleanup()` nils out `streamLoader`
+  // during player fallbacks, so `playWith*` methods call this before use
+  // to avoid `TypeError: reading 'loadHls' of null`.
+  ensureStreamLoader() {
+    if (this.streamLoader) return this.streamLoader;
 
-    this.playerUI.showLoading();
-    log.info("Initializing player with URL:", this.streamUrl);
-    log.debug("Streaming mode:", this.streamingMode);
-    log.debug("Content type:", this.contentType);
-    log.debug("Source type:", this.sourceType);
-
-    // Log advanced feature availability
-    if (isWebCodecsSupported()) {
-      log.debug("WebCodecs API available - hardware acceleration possible");
-    }
-    if (isMSEInWorkersSupported()) {
-      log.debug("MSE in Workers available - offloading parsing to worker thread");
-    }
-    if (this.codecABR) {
-      log.debug("Codec-aware ABR active - optimizing quality selection by codec efficiency");
-    }
-
-    // Use explicit stream type hint from backend if available (token-based URLs have no extension)
-    this.currentStreamType = this.el.dataset.streamType || getStreamType(this.streamUrl);
-    log.debug("Detected stream type:", this.currentStreamType);
-
-    this.cleanup();
-    this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
-
-    // Create stream loader
     this.streamLoader = new StreamLoader({
       video: this.video,
       streamingMode: this.streamingMode,
@@ -1302,6 +1277,42 @@ const VideoPlayer = {
       },
       onStatisticsInfo: (bps) => this.networkMonitor?.addSample(bps),
     });
+
+    return this.streamLoader;
+  },
+
+  initPlayer() {
+    if (!this.streamUrl) {
+      this.playerUI.showError("URL do stream nao fornecida");
+      return;
+    }
+
+    this.playerUI.showLoading();
+    log.info("Initializing player with URL:", this.streamUrl);
+    log.debug("Streaming mode:", this.streamingMode);
+    log.debug("Content type:", this.contentType);
+    log.debug("Source type:", this.sourceType);
+
+    // Log advanced feature availability
+    if (isWebCodecsSupported()) {
+      log.debug("WebCodecs API available - hardware acceleration possible");
+    }
+    if (isMSEInWorkersSupported()) {
+      log.debug("MSE in Workers available - offloading parsing to worker thread");
+    }
+    if (this.codecABR) {
+      log.debug("Codec-aware ABR active - optimizing quality selection by codec efficiency");
+    }
+
+    // Use explicit stream type hint from backend if available (token-based URLs have no extension)
+    this.currentStreamType = this.el.dataset.streamType || getStreamType(this.streamUrl);
+    log.debug("Detected stream type:", this.currentStreamType);
+
+    this.cleanup();
+    this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
+
+    // Create stream loader (idempotent — recreated lazily after cleanup during fallbacks)
+    this.ensureStreamLoader();
 
     // Send codec capabilities to backend for optimal stream selection
     const capabilities = getCapabilitySummary();
@@ -1561,7 +1572,7 @@ const VideoPlayer = {
       return;
     }
 
-    this.hls = await this.streamLoader.loadHls(this.currentUrl);
+    this.hls = await this.ensureStreamLoader().loadHls(this.currentUrl);
   },
 
   async playWithMpegts(type = "mpegts") {
@@ -1576,7 +1587,7 @@ const VideoPlayer = {
     this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
 
     try {
-      this.mpegtsPlayer = await this.streamLoader.loadMpegts(this.currentUrl, type);
+      this.mpegtsPlayer = await this.ensureStreamLoader().loadMpegts(this.currentUrl, type);
 
       this.video.play().catch((e) => {
         if (e.name === "AbortError") return; // play() interrupted by pause — harmless
