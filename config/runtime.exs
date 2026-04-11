@@ -184,7 +184,7 @@ config :streamix, :cors, origins: cors_origins
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-if get_env.("PHX_SERVER") do
+if config_env() != :test and get_env.("PHX_SERVER") do
   config :streamix, StreamixWeb.Endpoint, server: true
 end
 
