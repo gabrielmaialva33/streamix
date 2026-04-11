@@ -19,7 +19,7 @@ defmodule StreamixWeb.Admin.UsersLiveTest do
     end
 
     test "filters by email search", %{conn: conn} do
-      target = user_fixture(%{email: "findme@example.com"})
+      _target = user_fixture(%{email: "findme@example.com"})
       _other = user_fixture(%{email: "notme@example.com"})
 
       {:ok, lv, _html} = live(conn, ~p"/admin/users")

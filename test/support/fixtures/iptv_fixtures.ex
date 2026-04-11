@@ -185,6 +185,27 @@ defmodule Streamix.IptvFixtures do
     |> Repo.insert!()
   end
 
+  def valid_series_attrs(provider, attrs \\ %{}) do
+    Enum.into(attrs, %{
+      series_id: System.unique_integer([:positive]),
+      name: "Series #{System.unique_integer([:positive])}",
+      title: "Series Title #{System.unique_integer([:positive])}",
+      year: 2023,
+      provider_id: provider.id,
+      rating: Decimal.new("8.1")
+    })
+  end
+
+  def series_content_fixture(provider, attrs \\ %{}) do
+    alias Streamix.Iptv.Series
+
+    attrs = valid_series_attrs(provider, attrs)
+
+    %Series{}
+    |> Series.changeset(attrs)
+    |> Repo.insert!()
+  end
+
   @doc """
   Creates a favorite for a movie.
   """
@@ -192,9 +213,7 @@ defmodule Streamix.IptvFixtures do
     {:ok, favorite} =
       Iptv.add_favorite(user.id, %{
         content_type: "movie",
-        content_id: movie.id,
-        content_name: movie.name,
-        content_icon: movie.stream_icon
+        content_id: movie.id
       })
 
     favorite
@@ -209,8 +228,6 @@ defmodule Streamix.IptvFixtures do
 
     {:ok, history} =
       Iptv.add_watch_history(user.id, "movie", movie.id, %{
-        content_name: movie.name,
-        content_icon: movie.stream_icon,
         duration_seconds: duration,
         progress_seconds: progress
       })

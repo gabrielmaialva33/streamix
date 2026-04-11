@@ -7,6 +7,11 @@ defmodule StreamixWeb.PlansLiveTest do
   alias Streamix.Billing.{Plan, Subscription}
   alias Streamix.Repo
 
+  setup do
+    Repo.delete_all(Plan)
+    :ok
+  end
+
   defp plan_fixture(attrs \\ %{}) do
     params =
       Enum.into(attrs, %{

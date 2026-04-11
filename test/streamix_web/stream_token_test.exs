@@ -57,7 +57,8 @@ defmodule StreamixWeb.StreamTokenTest do
     movie = movie_fixture(provider, %{stream_id: 123_456})
     token = StreamToken.sign_movie(movie.id, user.id)
 
-    assert {:ok, url, "movie"} = StreamToken.verify_and_get_url(token)
+    assert {:ok, url, "movie", %{content_id: content_id}} = StreamToken.verify_and_get_url(token)
+    assert content_id == movie.id
     assert url =~ "/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.mp4"
   end
 
@@ -74,7 +75,10 @@ defmodule StreamixWeb.StreamTokenTest do
       movie = movie_fixture(provider, %{stream_id: System.unique_integer([:positive])})
       token = StreamToken.sign_movie(movie.id, owner.id)
 
-      assert {:ok, url, "movie"} = StreamToken.verify_and_get_url(token)
+      assert {:ok, url, "movie", %{content_id: content_id}} =
+               StreamToken.verify_and_get_url(token)
+
+      assert content_id == movie.id
       assert url =~ "/movie/#{provider.username}/#{provider.password}/#{movie.stream_id}.mp4"
     end
   end

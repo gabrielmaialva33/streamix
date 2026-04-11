@@ -105,7 +105,12 @@ defmodule StreamixWeb.HistoryLiveTest do
 
     setup %{user: user} do
       provider = provider_fixture(user, %{visibility: "global", is_system: true})
-      movie = movie_fixture(provider, %{name: "Filme com Progresso"})
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Filme com Progresso",
+          title: "Filme com Progresso"
+        })
 
       # 50% progress
       movie_history_fixture(user, movie, %{

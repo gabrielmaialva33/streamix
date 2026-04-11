@@ -357,16 +357,19 @@ defmodule Streamix.IptvTest do
       user = user_fixture()
       provider = provider_fixture(user)
       ch = channel_fixture(provider)
+      movie1 = movie_fixture(provider, %{name: "Movie One"})
+      movie2 = movie_fixture(provider, %{name: "Movie Two"})
+      series = series_content_fixture(provider, %{name: "Series One"})
 
       # Add 1 live channel
       favorite_fixture(user, ch)
 
       # Add 2 movies
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", 100, %{content_name: "Movie"})
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", 101, %{content_name: "Movie 2"})
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie1.id)
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie2.id)
 
       # Add 1 series
-      {:ok, _} = Iptv.add_favorite(user.id, "series", 200, %{content_name: "Series"})
+      {:ok, _} = Iptv.add_favorite(user.id, "series", series.id)
 
       counts = Iptv.count_favorites_by_type(user.id)
 
@@ -379,17 +382,22 @@ defmodule Streamix.IptvTest do
   describe "list_favorite_ids/2" do
     test "returns set of IDs for type" do
       user = user_fixture()
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", 100)
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", 101)
-      {:ok, _} = Iptv.add_favorite(user.id, "series", 200)
+      provider = provider_fixture(user)
+      movie1 = movie_fixture(provider, %{name: "Movie 100"})
+      movie2 = movie_fixture(provider, %{name: "Movie 101"})
+      series = series_content_fixture(provider, %{name: "Series 200"})
+
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie1.id)
+      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie2.id)
+      {:ok, _} = Iptv.add_favorite(user.id, "series", series.id)
 
       movie_ids = Iptv.list_favorite_ids(user.id, "movie")
       series_ids = Iptv.list_favorite_ids(user.id, "series")
 
-      assert MapSet.member?(movie_ids, 100)
-      assert MapSet.member?(movie_ids, 101)
-      refute MapSet.member?(movie_ids, 200)
-      assert MapSet.member?(series_ids, 200)
+      assert MapSet.member?(movie_ids, movie1.id)
+      assert MapSet.member?(movie_ids, movie2.id)
+      refute MapSet.member?(movie_ids, series.id)
+      assert MapSet.member?(series_ids, series.id)
     end
   end
 

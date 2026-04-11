@@ -14,9 +14,15 @@ defmodule Streamix.AccessTest do
         description: "Allows playing global content"
       })
 
-    %Permission{}
-    |> Permission.changeset(params)
-    |> Repo.insert!()
+    case Repo.get_by(Permission, name: params.name) do
+      nil ->
+        %Permission{}
+        |> Permission.changeset(params)
+        |> Repo.insert!()
+
+      %Permission{} = permission ->
+        permission
+    end
   end
 
   defp admin_user_fixture(attrs \\ %{}) do

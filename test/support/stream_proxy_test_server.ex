@@ -21,6 +21,15 @@ defmodule Streamix.TestSupport.StreamProxyTestServer do
     |> send_resp(302, "")
   end
 
+  defp handle_request(conn, "GET", "/redirect-to-xtream.mp4", _body_counter) do
+    conn
+    |> put_resp_header(
+      "location",
+      "http://cdn.example.test/movie/final_user/final_pass/99807.mp4"
+    )
+    |> send_resp(302, "")
+  end
+
   defp handle_request(conn, "HEAD", "/movie/final_user/final_pass/99807.mp4", _body_counter),
     do: send_resp(conn, 200, "")
 
