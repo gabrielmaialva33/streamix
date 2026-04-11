@@ -192,13 +192,13 @@ sequenceDiagram
 
 ### Core
 
-| Tecnologia                                                | Versão | Descrição                             |
-|-----------------------------------------------------------|--------|---------------------------------------|
+| Tecnologia                                                | Versão | Descrição                                |
+|-----------------------------------------------------------|--------|------------------------------------------|
 | [Elixir](https://elixir-lang.org/)                        | 1.18+  | Runtime concorrente e tolerante a falhas |
-| [Phoenix](https://www.phoenixframework.org/)              | 1.8+   | Framework web em tempo real           |
-| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1+   | UI reativa renderizada no servidor    |
-| [OTP](https://www.erlang.org/)                            | 27+    | Árvores de supervisão e fault tolerance |
-| [Bandit](https://hexdocs.pm/bandit/)                      | 1.0+   | Servidor HTTP/2                       |
+| [Phoenix](https://www.phoenixframework.org/)              | 1.8+   | Framework web em tempo real              |
+| [Phoenix LiveView](https://hexdocs.pm/phoenix_live_view/) | 1.1+   | UI reativa renderizada no servidor       |
+| [OTP](https://www.erlang.org/)                            | 27+    | Árvores de supervisão e fault tolerance  |
+| [Bandit](https://hexdocs.pm/bandit/)                      | 1.0+   | Servidor HTTP/2                          |
 
 ### Dados
 
@@ -211,20 +211,20 @@ sequenceDiagram
 
 ### Processamento em Background
 
-| Tecnologia                                | Descrição                                                 |
-|-------------------------------------------|-----------------------------------------------------------|
-| [Oban](https://getoban.pro/)              | Jobs em background com agendamento cron                   |
-| [Broadway](https://hexdocs.pm/broadway/)  | Pipelines de dados de alto throughput (opcional, RabbitMQ)|
-| [ConCache](https://hexdocs.pm/con_cache/) | Cache L1 em memória baseado em ETS                        |
+| Tecnologia                                | Descrição                                                  |
+|-------------------------------------------|------------------------------------------------------------|
+| [Oban](https://getoban.pro/)              | Jobs em background com agendamento cron                    |
+| [Broadway](https://hexdocs.pm/broadway/)  | Pipelines de dados de alto throughput (opcional, RabbitMQ) |
+| [ConCache](https://hexdocs.pm/con_cache/) | Cache L1 em memória baseado em ETS                         |
 
 ### Frontend
 
-| Tecnologia                                     | Descrição                                  |
-|------------------------------------------------|--------------------------------------------|
-| [Tailwind CSS](https://tailwindcss.com/) v4    | Estilização utility-first                  |
-| [Catppuccin](https://catppuccin.com/)          | Paleta de cores (Latte no light mode)      |
-| [Heroicons](https://heroicons.com/)            | Ícones SVG                                 |
-| [hls.js](https://github.com/video-dev/hls.js/) | Reprodução de vídeo HLS                    |
+| Tecnologia                                     | Descrição                             |
+|------------------------------------------------|---------------------------------------|
+| [Tailwind CSS](https://tailwindcss.com/) v4    | Estilização utility-first             |
+| [Catppuccin](https://catppuccin.com/)          | Paleta de cores (Latte no light mode) |
+| [Heroicons](https://heroicons.com/)            | Ícones SVG                            |
+| [hls.js](https://github.com/video-dev/hls.js/) | Reprodução de vídeo HLS               |
 
 ### Serviços Externos
 
@@ -236,14 +236,14 @@ sequenceDiagram
 
 ### Qualidade e Segurança
 
-| Ferramenta                                  | Descrição                               |
-|---------------------------------------------|-----------------------------------------|
-| [Hammer](https://hexdocs.pm/hammer/)        | Rate limiting                           |
-| [Sobelow](https://hexdocs.pm/sobelow/)      | Análise estática de segurança (Phoenix) |
-| [mix_audit](https://hexdocs.pm/mix_audit/)  | Scanner de vulnerabilidades em deps     |
-| [Credo](https://hexdocs.pm/credo/)          | Qualidade e estilo de código            |
-| [Dialyxir](https://hexdocs.pm/dialyxir/)    | Análise estática / success typing       |
-| [ExUnit](https://hexdocs.pm/ex_unit/)       | Framework de testes                     |
+| Ferramenta                                 | Descrição                               |
+|--------------------------------------------|-----------------------------------------|
+| [Hammer](https://hexdocs.pm/hammer/)       | Rate limiting                           |
+| [Sobelow](https://hexdocs.pm/sobelow/)     | Análise estática de segurança (Phoenix) |
+| [mix_audit](https://hexdocs.pm/mix_audit/) | Scanner de vulnerabilidades em deps     |
+| [Credo](https://hexdocs.pm/credo/)         | Qualidade e estilo de código            |
+| [Dialyxir](https://hexdocs.pm/dialyxir/)   | Análise estática / success typing       |
+| [ExUnit](https://hexdocs.pm/ex_unit/)      | Framework de testes                     |
 
 <br>
 

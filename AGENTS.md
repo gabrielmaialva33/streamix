@@ -32,23 +32,23 @@ iex -S mix phx.server       # dev server with IEx shell
 
 ## Commands
 
-| Command                                     | Purpose                                                         | When                     |
-|---------------------------------------------|-----------------------------------------------------------------|--------------------------|
+| Command                                     | Purpose                                                                           | When                     |
+|---------------------------------------------|-----------------------------------------------------------------------------------|--------------------------|
 | `mix precommit`                             | compile (warnings=errors) + deps.unlock --unused + format + credo --strict + test | **Always before commit** |
-| `mix test`                                  | full suite                                                      | Before committing        |
-| `mix test path/to/test.exs`                 | single file                                                     | During development       |
-| `mix test path/to/test.exs:42`              | single test by line                                             | Debugging                |
-| `mix test --failed`                         | rerun failed                                                    | After fixing failures    |
-| `mix quality`                               | compile + credo + test + dialyzer                               | Deep quality pass        |
-| `mix format`                                | format all Elixir files                                         | After code changes       |
-| `mix credo --strict`                        | static analysis                                                 | Code quality             |
-| `mix ecto.gen.migration name_in_snake_case` | generate migration                                              | Adding DB changes        |
-| `mix ecto.migrate`                          | run pending migrations                                          | After adding migrations  |
-| `mix ecto.reset`                            | drop + create + migrate + seed                                  | Full DB reset            |
-| `mix assets.build`                          | compile CSS + JS                                                | Dev asset changes        |
-| `mix assets.deploy`                         | minify + digest for prod                                        | Prod builds              |
-| `mix sobelow`                               | security scan (Phoenix)                                         | Pre-release              |
-| `mix deps.audit`                            | dep vulnerability scan                                          | Pre-release              |
+| `mix test`                                  | full suite                                                                        | Before committing        |
+| `mix test path/to/test.exs`                 | single file                                                                       | During development       |
+| `mix test path/to/test.exs:42`              | single test by line                                                               | Debugging                |
+| `mix test --failed`                         | rerun failed                                                                      | After fixing failures    |
+| `mix quality`                               | compile + credo + test + dialyzer                                                 | Deep quality pass        |
+| `mix format`                                | format all Elixir files                                                           | After code changes       |
+| `mix credo --strict`                        | static analysis                                                                   | Code quality             |
+| `mix ecto.gen.migration name_in_snake_case` | generate migration                                                                | Adding DB changes        |
+| `mix ecto.migrate`                          | run pending migrations                                                            | After adding migrations  |
+| `mix ecto.reset`                            | drop + create + migrate + seed                                                    | Full DB reset            |
+| `mix assets.build`                          | compile CSS + JS                                                                  | Dev asset changes        |
+| `mix assets.deploy`                         | minify + digest for prod                                                          | Prod builds              |
+| `mix sobelow`                               | security scan (Phoenix)                                                           | Pre-release              |
+| `mix deps.audit`                            | dep vulnerability scan                                                            | Pre-release              |
 
 ## Project Structure
 
@@ -98,7 +98,7 @@ For larger contexts (plans, specs, admin panel design), see `docs/superpowers/`.
 
 | Context    | Module                | Responsibility                                                     |
 |------------|-----------------------|--------------------------------------------------------------------|
-| Accounts   | `Streamix.Accounts`   | Auth, users, roles (`admin`/`customer`/`moderator`), scopes       |
+| Accounts   | `Streamix.Accounts`   | Auth, users, roles (`admin`/`customer`/`moderator`), scopes        |
 | Access     | `Streamix.Access`     | Fine-grained permissions (role + user level)                       |
 | IPTV       | `Streamix.Iptv`       | Providers, channels, movies, series, favorites, history, EPG, sync |
 | Billing    | `Streamix.Billing`    | Plans, subscriptions                                               |

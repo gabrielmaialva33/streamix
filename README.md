@@ -235,14 +235,14 @@ sequenceDiagram
 
 ### Quality & Security
 
-| Tool                                      | Description                                |
-|-------------------------------------------|--------------------------------------------|
-| [Hammer](https://hexdocs.pm/hammer/)      | Rate limiting                              |
-| [Sobelow](https://hexdocs.pm/sobelow/)    | Phoenix-focused security static analysis   |
-| [mix_audit](https://hexdocs.pm/mix_audit/)| Dependency vulnerability scanner           |
-| [Credo](https://hexdocs.pm/credo/)        | Code style and refactoring hints           |
-| [Dialyxir](https://hexdocs.pm/dialyxir/)  | Success typing / static analysis           |
-| [ExUnit](https://hexdocs.pm/ex_unit/)     | Testing framework                          |
+| Tool                                       | Description                              |
+|--------------------------------------------|------------------------------------------|
+| [Hammer](https://hexdocs.pm/hammer/)       | Rate limiting                            |
+| [Sobelow](https://hexdocs.pm/sobelow/)     | Phoenix-focused security static analysis |
+| [mix_audit](https://hexdocs.pm/mix_audit/) | Dependency vulnerability scanner         |
+| [Credo](https://hexdocs.pm/credo/)         | Code style and refactoring hints         |
+| [Dialyxir](https://hexdocs.pm/dialyxir/)   | Success typing / static analysis         |
+| [ExUnit](https://hexdocs.pm/ex_unit/)      | Testing framework                        |
 
 <br>
 
