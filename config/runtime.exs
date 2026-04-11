@@ -18,12 +18,47 @@ get_env = fn key ->
   end
 end
 
+infer_test_database_url = fn
+  nil ->
+    nil
+
+  database_url ->
+    uri = URI.parse(database_url)
+
+    case uri.path do
+      "/" <> database_name when database_name != "" ->
+        test_database_name =
+          cond do
+            String.ends_with?(database_name, "_test") ->
+              database_name
+
+            String.ends_with?(database_name, "_dev") ->
+              String.replace_suffix(database_name, "_dev", "_test")
+
+            true ->
+              database_name <> "_test"
+          end
+
+        %{uri | path: "/" <> test_database_name}
+        |> URI.to_string()
+
+      _ ->
+        database_url
+    end
+end
+
 # Database URL (works in all environments, loaded from .env in dev/test)
 # Example: ecto://user:pass@host/database
 database_url =
-  get_env.("DATABASE_URL") ||
+  case config_env() do
+    :test ->
+      get_env.("TEST_DATABASE_URL") || infer_test_database_url.(get_env.("DATABASE_URL"))
+
+    _ ->
+      get_env.("DATABASE_URL")
+  end ||
     raise """
-    environment variable DATABASE_URL is missing.
+    environment variable #{if config_env() == :test, do: "TEST_DATABASE_URL/DATABASE_URL", else: "DATABASE_URL"} is missing.
     For example: ecto://USER:PASS@HOST/DATABASE
     """
 

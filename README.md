@@ -273,6 +273,9 @@ cp .env.example .env
 # Edit .env with your credentials (IPTV provider, TMDB API key, etc.)
 ```
 
+If `TEST_DATABASE_URL` is not set, the test environment automatically derives a
+sibling `*_test` database from `DATABASE_URL`.
+
 4. **Setup and run**
 
 ```bash
@@ -288,6 +291,7 @@ mix phx.server
 docker build -t streamix .
 docker run -p 4000:4000 \
   -e DATABASE_URL="ecto://user:pass@host/streamix" \
+  -e TEST_DATABASE_URL="ecto://user:pass@host/streamix_test" \
   -e SECRET_KEY_BASE="$(mix phx.gen.secret)" \
   streamix
 ```

@@ -337,6 +337,9 @@ cp .env.example .env
 # Edite .env com suas credenciais de banco de dados, Redis e RabbitMQ
 ```
 
+Se `TEST_DATABASE_URL` nao estiver definido, o ambiente de teste deriva
+automaticamente uma base irma `*_test` a partir de `DATABASE_URL`.
+
 3. **Instale as dependencias**
 
 ```bash
@@ -369,6 +372,9 @@ docker compose up -d
 docker build -t streamix .
 docker run -p 4000:4000 streamix
 ```
+
+Para ambientes mais controlados, defina tambem `TEST_DATABASE_URL`
+explicitamente no container/CI.
 
 <br>
 
