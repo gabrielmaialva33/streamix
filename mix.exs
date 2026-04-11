@@ -5,7 +5,7 @@ defmodule Streamix.MixProject do
     [
       app: :streamix,
       version: "1.3.0",
-      elixir: "~> 1.15",
+      elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -71,6 +71,7 @@ defmodule Streamix.MixProject do
       {:bandit, "~> 1.0"},
       {:dotenvy, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:cors_plug, "~> 3.0"},
       {:mint, "~> 1.6"},
       {:castore, "~> 1.0"},
