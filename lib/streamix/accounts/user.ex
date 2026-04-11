@@ -76,11 +76,12 @@ defmodule Streamix.Accounts.User do
     user
     |> cast(attrs, [:email, :password])
     |> put_change(:role, "customer")
-    |> validate_inclusion(:role, ~w(admin customer))
     |> validate_email(opts)
     |> validate_confirmation(:password, message: "as senhas não conferem")
     |> validate_password(opts)
   end
+
+  @allowed_roles ~w(admin customer moderator)
 
   @doc """
   A user changeset for promoting a user to admin in trusted test/setup paths.
@@ -88,10 +89,8 @@ defmodule Streamix.Accounts.User do
   def admin_changeset(user) do
     user
     |> change(role: "admin")
-    |> validate_inclusion(:role, ~w(admin customer))
+    |> validate_inclusion(:role, @allowed_roles)
   end
-
-  @allowed_roles ~w(admin customer moderator)
 
   @doc """
   A user changeset for updating the role.
