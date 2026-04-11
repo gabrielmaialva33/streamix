@@ -6,16 +6,10 @@ config :streamix, env: :test
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
-# Configure your database
-#
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
+# Database connection details are loaded from DATABASE_URL in config/runtime.exs
+# (override via .env.test if needed). The MIX_TEST_PARTITION environment variable
+# can be used for built-in test partitioning in CI.
 config :streamix, Streamix.Repo,
-  username: "streamix",
-  password: "streamix",
-  hostname: "localhost",
-  database: "streamix_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 

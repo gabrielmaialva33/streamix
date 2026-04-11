@@ -18,6 +18,25 @@ get_env = fn key ->
   end
 end
 
+# Database URL (works in all environments, loaded from .env in dev/test)
+# Example: ecto://user:pass@host/database
+database_url =
+  get_env.("DATABASE_URL") ||
+    raise """
+    environment variable DATABASE_URL is missing.
+    For example: ecto://USER:PASS@HOST/DATABASE
+    """
+
+maybe_ipv6 = if get_env.("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
+
+config :streamix, Streamix.Repo,
+  url: database_url,
+  pool_size: String.to_integer(get_env.("POOL_SIZE") || "10"),
+  socket_options: maybe_ipv6
+
+# Redis URL (loaded from .env in dev/test via Dotenvy, System env in prod)
+config :streamix, :redis_url, get_env.("REDIS_URL") || "redis://localhost:6379"
+
 # Provider password encryption key (AES-256-GCM)
 # Generate with: mix phx.gen.secret 32
 config :streamix, :provider_encryption_key, get_env.("PROVIDER_ENCRYPTION_KEY")
@@ -173,22 +192,12 @@ config :streamix, StreamixWeb.Endpoint,
   http: [port: String.to_integer(get_env.("PORT") || "4000")]
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
-
-  maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
-
+  # Production-only tuning for the Repo (pool, queue timings, ssl, etc).
+  # Base `url` and `socket_options` are set above for all environments.
   config :streamix, Streamix.Repo,
-    # ssl: true,
-    url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20"),
+    pool_size: String.to_integer(get_env.("POOL_SIZE") || "20"),
     queue_target: 5_000,
-    queue_interval: 10_000,
-    socket_options: maybe_ipv6
+    queue_interval: 10_000
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

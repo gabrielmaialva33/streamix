@@ -1,14 +1,10 @@
 import Config
 
-# Configure your database
+# Database connection details are loaded from DATABASE_URL in config/runtime.exs
+# (see .env / .env.example). This block only tunes dev-specific debug options.
 config :streamix, Streamix.Repo,
-  username: "streamix",
-  password: "streamix",
-  hostname: "localhost",
-  database: "streamix_dev",
   stacktrace: true,
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  show_sensitive_data_on_connection_error: true
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

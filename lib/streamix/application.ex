@@ -149,7 +149,7 @@ defmodule Streamix.Application do
   end
 
   defp redis_url do
-    System.get_env("REDIS_URL", "redis://localhost:6379")
+    Application.get_env(:streamix, :redis_url, "redis://localhost:6379")
   end
 
   # Configure Erlang's DNS resolver to avoid stale cache in containers
