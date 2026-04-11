@@ -235,12 +235,14 @@ sequenceDiagram
 
 ### Quality & Security
 
-| Tool                                   | Description              |
-|----------------------------------------|--------------------------|
-| [Hammer](https://hexdocs.pm/hammer/)   | Rate limiting            |
-| [Sobelow](https://hexdocs.pm/sobelow/) | Security static analysis |
-| [Credo](https://hexdocs.pm/credo/)     | Code quality             |
-| [ExUnit](https://hexdocs.pm/ex_unit/)  | Testing                  |
+| Tool                                      | Description                                |
+|-------------------------------------------|--------------------------------------------|
+| [Hammer](https://hexdocs.pm/hammer/)      | Rate limiting                              |
+| [Sobelow](https://hexdocs.pm/sobelow/)    | Phoenix-focused security static analysis   |
+| [mix_audit](https://hexdocs.pm/mix_audit/)| Dependency vulnerability scanner           |
+| [Credo](https://hexdocs.pm/credo/)        | Code style and refactoring hints           |
+| [Dialyxir](https://hexdocs.pm/dialyxir/)  | Success typing / static analysis           |
+| [ExUnit](https://hexdocs.pm/ex_unit/)     | Testing framework                          |
 
 <br>
 
@@ -287,13 +289,23 @@ mix phx.server
 
 ### Docker Production
 
+Pre-built image on GHCR:
+
 ```bash
-docker build -t streamix .
+docker pull ghcr.io/gabrielmaialva33/streamix:latest
+
 docker run -p 4000:4000 \
   -e DATABASE_URL="ecto://user:pass@host/streamix" \
   -e TEST_DATABASE_URL="ecto://user:pass@host/streamix_test" \
   -e SECRET_KEY_BASE="$(mix phx.gen.secret)" \
-  streamix
+  ghcr.io/gabrielmaialva33/streamix:latest
+```
+
+Or build locally:
+
+```bash
+docker build -t streamix .
+docker run -p 4000:4000 -e DATABASE_URL="..." -e SECRET_KEY_BASE="..." streamix
 ```
 
 <br>

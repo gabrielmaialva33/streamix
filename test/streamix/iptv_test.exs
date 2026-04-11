@@ -427,7 +427,10 @@ defmodule Streamix.IptvTest do
       channel = channel_fixture(provider)
 
       assert {:ok, %Favorite{}} = Iptv.add_favorite(user.id, "live_channel", channel.id)
+      favorite = hd(Iptv.list_favorites(user.id))
+
       assert Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      refute is_nil(Map.get(favorite, :content_ref_id))
     end
 
     test "returns error for duplicate favorite" do
@@ -542,6 +545,7 @@ defmodule Streamix.IptvTest do
       assert entry.duration_seconds == 300
       assert entry.user_id == user.id
       assert entry.content_id == channel.id
+      refute is_nil(Map.get(entry, :content_ref_id))
     end
   end
 
