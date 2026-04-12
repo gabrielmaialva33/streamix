@@ -60,3 +60,6 @@ docs/superpowers
 
 # JetBrains IDEs
 .idea/
+
+# Git worktrees
+.worktrees/
