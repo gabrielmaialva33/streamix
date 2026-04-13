@@ -34,6 +34,7 @@ defmodule Streamix.Iptv do
   # Favorites (catalog_item_id)
   # =============================================================================
   defdelegate list_favorites(user_id, opts \\ []), to: Library
+  defdelegate list_home_favorites(user_id, opts \\ []), to: Library
   defdelegate is_favorite?(user_id, content_type, content_id), to: Library
   defdelegate count_favorites_by_type(user_id), to: Library
   defdelegate list_favorite_ids(user_id, content_type), to: Library
@@ -52,6 +53,7 @@ defmodule Streamix.Iptv do
   # Watch History (catalog_item_id via WatchProgress)
   # =============================================================================
   defdelegate list_watch_history(user_id, opts \\ []), to: Library
+  defdelegate list_home_history(user_id, opts \\ []), to: Library
   defdelegate count_watch_history_by_type(user_id), to: Library
 
   defdelegate add_watch_history(user_id, content_type, content_id, attrs \\ %{}),
@@ -72,6 +74,9 @@ defmodule Streamix.Iptv do
   defdelegate get_watch_progress_map(user_id, content_type, content_ids),
     to: Library
 
+  defdelegate get_series_progress_map(user_id, series_ids),
+    to: Library
+
   # =============================================================================
   # Live Channels
   # =============================================================================
@@ -80,6 +85,7 @@ defmodule Streamix.Iptv do
   defdelegate count_live_channels(provider_id), to: Channels, as: :count
   defdelegate get_live_channel!(id), to: Channels, as: :get!
   defdelegate get_live_channel(id), to: Channels, as: :get
+  defdelegate get_live_channel_for_stream(id), to: Channels, as: :get_for_stream
   defdelegate get_user_live_channel(user_id, channel_id), to: Channels, as: :get_user_channel
   defdelegate get_playable_channel(user_id, channel_id), to: Channels, as: :get_playable
   defdelegate get_public_channel(channel_id), to: Channels, as: :get_public
@@ -95,6 +101,7 @@ defmodule Streamix.Iptv do
   defdelegate count_movies(provider_id), to: Movies, as: :count
   defdelegate get_movie!(id), to: Movies, as: :get!
   defdelegate get_movie(id), to: Movies, as: :get
+  defdelegate get_movie_for_stream(id), to: Movies, as: :get_for_stream
   defdelegate get_user_movie(user_id, movie_id), to: Movies
   defdelegate get_playable_movie(user_id, movie_id), to: Movies, as: :get_playable
   defdelegate get_public_movie(movie_id), to: Movies, as: :get_public
@@ -152,6 +159,7 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate get_episode!(id), to: SeriesOps
   defdelegate get_episode(id), to: SeriesOps
+  defdelegate get_episode_for_stream(id), to: SeriesOps
   defdelegate get_user_episode(user_id, episode_id), to: SeriesOps
   defdelegate get_playable_episode(user_id, episode_id), to: SeriesOps
   defdelegate get_public_episode(episode_id), to: SeriesOps

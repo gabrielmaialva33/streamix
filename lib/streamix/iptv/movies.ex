@@ -13,6 +13,10 @@ defmodule Streamix.Iptv.Movies do
   alias Streamix.Iptv.{Access, AdultFilter, Movie, TmdbClient, XtreamClient}
   alias Streamix.Repo
 
+  @summary_preloads [:genres]
+  @search_result_preloads [:assets, :genres]
+  @detail_preloads [:assets, :genres, credits: :person]
+
   # =============================================================================
   # Listing
   # =============================================================================
@@ -72,7 +76,7 @@ defmodule Streamix.Iptv.Movies do
     query
     |> limit(^limit)
     |> offset(^offset)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -148,7 +152,7 @@ defmodule Streamix.Iptv.Movies do
     |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year, asc: m.name)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -179,7 +183,18 @@ defmodule Streamix.Iptv.Movies do
   def get(id) do
     Movie
     |> where(id: ^id)
-    |> preload([:assets, :genres, credits: :person])
+    |> preload(^@detail_preloads)
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets a movie for stream resolution with only the provider preloaded.
+  """
+  @spec get_for_stream(integer()) :: Movie.t() | nil
+  def get_for_stream(id) do
+    Movie
+    |> where(id: ^id)
+    |> preload(:provider)
     |> Repo.one()
   end
 
@@ -192,7 +207,7 @@ defmodule Streamix.Iptv.Movies do
 
   def get_by_ids(ids) when is_list(ids) do
     from(m in Movie, where: m.id in ^ids)
-    |> preload([:assets, :genres, credits: :person])
+    |> preload(^@search_result_preloads)
     |> Repo.all()
   end
 
@@ -226,7 +241,7 @@ defmodule Streamix.Iptv.Movies do
   def get_public(movie_id) do
     Movie
     |> Access.public_only(movie_id)
-    |> preload([:provider, :assets, :genres, credits: :person])
+    |> preload(^[:provider | @detail_preloads])
     |> Repo.one()
   end
 
@@ -258,7 +273,7 @@ defmodule Streamix.Iptv.Movies do
     |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -275,7 +290,7 @@ defmodule Streamix.Iptv.Movies do
     |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -294,7 +309,7 @@ defmodule Streamix.Iptv.Movies do
   """
   @spec fetch_info(Movie.t()) :: {:ok, Movie.t()} | {:error, term()}
   def fetch_info(%Movie{} = movie) do
-    movie = Repo.preload(movie, [:provider, :assets, :genres, credits: :person])
+    movie = Repo.preload(movie, [:provider | @detail_preloads])
     provider = movie.provider
 
     # Step 1: Fetch from Xtream API
@@ -339,7 +354,7 @@ defmodule Streamix.Iptv.Movies do
     final_attrs = Map.merge(tmdb_attrs, xtream_attrs)
 
     case update_movie(movie, final_attrs) do
-      {:ok, updated} -> {:ok, Repo.preload(updated, [:genres, credits: :person], force: true)}
+      {:ok, updated} -> {:ok, Repo.preload(updated, @detail_preloads, force: true)}
       error -> error
     end
   end

@@ -248,6 +248,17 @@ defmodule Streamix.Iptv.Channels do
   def get(id), do: Repo.get(LiveChannel, id)
 
   @doc """
+  Gets a live channel for stream resolution with only the provider preloaded.
+  """
+  @spec get_for_stream(integer()) :: LiveChannel.t() | nil
+  def get_for_stream(id) do
+    LiveChannel
+    |> where(id: ^id)
+    |> preload(:provider)
+    |> Repo.one()
+  end
+
+  @doc """
   Gets a live channel owned by a specific user.
   """
   @spec get_user_channel(integer(), integer()) :: LiveChannel.t() | nil

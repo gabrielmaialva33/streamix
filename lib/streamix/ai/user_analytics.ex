@@ -174,7 +174,7 @@ defmodule Streamix.AI.UserAnalytics do
     limit = opts[:limit] || 24
 
     # Get user's channel watch history
-    history = History.list(user_id, content_type: "live_channel", limit: 100)
+    history = History.list_for_analytics(user_id, content_type: "live_channel", limit: 100)
 
     case history do
       [] ->
@@ -328,7 +328,7 @@ defmodule Streamix.AI.UserAnalytics do
   # Get channels filtered by category name with AI ordering
   defp get_channels_by_category(user_id, category_name, limit) do
     # First, get user's channel preferences for ordering
-    history = History.list(user_id, content_type: "live_channel", limit: 50)
+    history = History.list_for_analytics(user_id, content_type: "live_channel", limit: 50)
     watched_ids = Enum.map(history, & &1.content_id)
 
     # Query channels by category name (case-insensitive partial match)
@@ -434,7 +434,7 @@ defmodule Streamix.AI.UserAnalytics do
     cache_key = "user_insights:#{user_id}"
 
     Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      history = History.list(user_id, limit: 500)
+      history = History.list_for_analytics(user_id, limit: 500)
 
       if Enum.empty?(history) do
         %{has_data: false}
@@ -520,7 +520,7 @@ defmodule Streamix.AI.UserAnalytics do
   # ============================================================================
 
   defp get_watched_content_with_embeddings(user_id) do
-    history = History.list(user_id, limit: 100)
+    history = History.list_for_analytics(user_id, limit: 100)
 
     case history do
       [] ->
@@ -576,7 +576,7 @@ defmodule Streamix.AI.UserAnalytics do
   defp get_watched_content_ids(user_id, collection) do
     content_type = collection_to_content_type(collection)
 
-    History.list(user_id, content_type: content_type, limit: 500)
+    History.list_for_analytics(user_id, content_type: content_type, limit: 500)
     |> Enum.map(& &1.content_id)
   end
 
@@ -798,7 +798,7 @@ defmodule Streamix.AI.UserAnalytics do
 
   defp extract_favorite_genres(user_id) do
     # Get movies watched and extract genres via join table
-    history = History.list(user_id, content_type: "movie", limit: 100)
+    history = History.list_for_analytics(user_id, content_type: "movie", limit: 100)
     movie_ids = Enum.map(history, & &1.content_id)
 
     if Enum.empty?(movie_ids) do

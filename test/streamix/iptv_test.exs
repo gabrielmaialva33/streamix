@@ -2,7 +2,7 @@ defmodule Streamix.IptvTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.{Episode, Provider, Season}
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -262,6 +262,164 @@ defmodule Streamix.IptvTest do
     end
   end
 
+  describe "public catalog summary queries" do
+    test "list_public_movies/1 preloads genres but not credits" do
+      user = user_fixture()
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "public",
+          stream_icon: "http://example.com/poster.jpg"
+        })
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Resumo",
+          stream_icon: "http://example.com/poster.jpg",
+          rating: Decimal.new("999.0"),
+          year: 9999
+        })
+
+      result =
+        Iptv.list_public_movies(limit: 50)
+        |> Enum.find(&(&1.id == movie.id))
+
+      assert result
+      assert Ecto.assoc_loaded?(result.genres)
+      refute Ecto.assoc_loaded?(result.credits)
+    end
+
+    test "list_new_releases/1 returns lightweight movie cards" do
+      user = user_fixture()
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "public"
+        })
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Novo Filme",
+          stream_icon: "http://example.com/new-release.jpg",
+          plot: "plot pesado que nao deve vir para card",
+          youtube_trailer: "abc123",
+          year: Date.utc_today().year,
+          rating: Decimal.new("9.1")
+        })
+
+      result =
+        Iptv.list_new_releases(limit: 20)
+        |> Enum.find(&(&1.id == movie.id))
+
+      assert result
+      assert Ecto.assoc_loaded?(result.genres)
+      assert result.plot == nil
+      assert result.youtube_trailer == nil
+    end
+
+    test "list_top_10_series/1 returns lightweight series cards" do
+      user = user_fixture()
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "public"
+        })
+
+      series =
+        series_content_fixture(provider, %{
+          name: "Serie Leve",
+          cover: "http://example.com/series-cover.jpg",
+          plot: "plot pesado da serie",
+          rating: Decimal.new("9.3"),
+          year: 2025
+        })
+
+      result =
+        Iptv.list_top_10_series(limit: 20)
+        |> Enum.find(&(&1.id == series.id))
+
+      assert result
+      assert Ecto.assoc_loaded?(result.genres)
+      assert result.plot == nil
+    end
+
+    test "list_public_series/1 preloads genres but not credits" do
+      user = user_fixture()
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "public"
+        })
+
+      series =
+        series_content_fixture(provider, %{
+          name: "Serie Resumo",
+          cover: "http://example.com/cover.jpg",
+          rating: Decimal.new("999.0"),
+          year: 9999
+        })
+
+      result =
+        Iptv.list_public_series(limit: 50)
+        |> Enum.find(&(&1.id == series.id))
+
+      assert result
+      assert Ecto.assoc_loaded?(result.genres)
+      refute Ecto.assoc_loaded?(result.credits)
+    end
+  end
+
+  describe "stream lookup queries" do
+    test "get_movie_for_stream/1 only preloads provider" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider, %{stream_icon: "http://example.com/poster.jpg"})
+
+      result = Iptv.get_movie_for_stream(movie.id)
+
+      assert result.id == movie.id
+      assert Ecto.assoc_loaded?(result.provider)
+      refute Ecto.assoc_loaded?(result.genres)
+      refute Ecto.assoc_loaded?(result.credits)
+      refute Ecto.assoc_loaded?(result.assets)
+    end
+
+    test "get_episode_for_stream/1 loads provider context without unrelated preloads" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      series = series_content_fixture(provider)
+
+      season =
+        %Season{}
+        |> Season.changeset(%{
+          season_number: 1,
+          name: "Season 1",
+          series_id: series.id
+        })
+        |> Repo.insert!()
+
+      episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: 101,
+          title: "Episode 1",
+          episode_num: 1,
+          season_id: season.id,
+          provider_id: provider.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
+      result = Iptv.get_episode_for_stream(episode.id)
+
+      assert result.id == episode.id
+      assert Ecto.assoc_loaded?(result.season)
+      assert Ecto.assoc_loaded?(result.season.series)
+      assert Ecto.assoc_loaded?(result.season.series.provider)
+      refute Ecto.assoc_loaded?(result.season.series.assets)
+    end
+  end
+
   # =============================================================================
   # Categories
   # =============================================================================
@@ -326,6 +484,37 @@ defmodule Streamix.IptvTest do
       content_ids = Enum.map(favorites, & &1[:content_id]) |> MapSet.new()
       assert MapSet.member?(content_ids, ch1.id)
       assert MapSet.member?(content_ids, ch2.id)
+    end
+  end
+
+  describe "list_home_favorites/2" do
+    test "returns lightweight favorite cards for home" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Home Favorite",
+          stream_icon: "http://example.com/home-favorite.jpg"
+        })
+
+      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", movie.id)
+
+      [favorite] = Iptv.list_home_favorites(user.id, limit: 12)
+
+      assert favorite.content_type == "movie"
+      assert favorite.content_id == movie.id
+      assert favorite.content_name == "Home Favorite"
+      assert favorite.content_icon == "http://example.com/home-favorite.jpg"
+      refute Map.has_key?(favorite, :catalog_item)
+
+      assert Map.keys(favorite) |> Enum.sort() == [
+               :content_icon,
+               :content_id,
+               :content_name,
+               :content_type,
+               :inserted_at
+             ]
     end
   end
 
@@ -508,6 +697,47 @@ defmodule Streamix.IptvTest do
     end
   end
 
+  describe "list_home_history/2" do
+    test "returns lightweight history cards for home" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      movie =
+        movie_fixture(provider, %{
+          name: "History Movie",
+          stream_icon: "http://example.com/history-movie.jpg"
+        })
+
+      {:ok, _entry} =
+        Iptv.add_watch_history(user.id, "movie", movie.id, %{
+          progress_seconds: 42,
+          duration_seconds: 120
+        })
+
+      [entry] = Iptv.list_home_history(user.id, limit: 6)
+
+      assert entry.content_type == "movie"
+      assert entry.content_id == movie.id
+      assert entry.content_name == "History Movie"
+      assert entry.content_icon == "http://example.com/history-movie.jpg"
+      assert entry.progress_seconds == 42
+      assert entry.duration_seconds == 120
+      assert %DateTime{} = entry.watched_at
+      refute Map.has_key?(entry, :catalog_item)
+
+      assert Map.keys(entry) |> Enum.sort() == [
+               :content_icon,
+               :content_id,
+               :content_name,
+               :content_type,
+               :duration_seconds,
+               :id,
+               :progress_seconds,
+               :watched_at
+             ]
+    end
+  end
+
   describe "add_watch_history/3" do
     test "adds watch progress entry" do
       user = user_fixture()
@@ -537,6 +767,59 @@ defmodule Streamix.IptvTest do
 
       assert {:ok, 5} = Iptv.clear_watch_history(user.id)
       assert Iptv.list_watch_history(user.id) == []
+    end
+  end
+
+  describe "get_series_progress_map/2" do
+    test "returns series progress keyed by series id using the latest watched episode" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      series = series_content_fixture(provider, %{name: "Progress Series"})
+
+      season =
+        %Season{}
+        |> Season.changeset(%{
+          season_number: 1,
+          name: "Season 1",
+          series_id: series.id
+        })
+        |> Repo.insert!()
+
+      episode_one =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: 201,
+          title: "Episode 1",
+          episode_num: 1,
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
+      episode_two =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: 202,
+          title: "Episode 2",
+          episode_num: 2,
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
+      {:ok, _} =
+        Iptv.add_watch_history(user.id, "episode", episode_one.id, %{
+          progress_seconds: 30,
+          duration_seconds: 120
+        })
+
+      {:ok, _} =
+        Iptv.add_watch_history(user.id, "episode", episode_two.id, %{
+          progress_seconds: 90,
+          duration_seconds: 180
+        })
+
+      assert Iptv.get_series_progress_map(user.id, [series.id]) == %{series.id => 0.5}
     end
   end
 end

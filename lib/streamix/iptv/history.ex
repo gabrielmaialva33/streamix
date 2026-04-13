@@ -7,7 +7,7 @@ defmodule Streamix.Iptv.History do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias Streamix.Iptv.{CatalogItem, WatchProgress}
+  alias Streamix.Iptv.{CatalogItem, Episode, Season, WatchProgress}
   alias Streamix.Library.ContentRef
   alias Streamix.Repo
 
@@ -45,6 +45,65 @@ defmodule Streamix.Iptv.History do
       |> ContentRef.decorate()
       |> Map.put(:watched_at, entry.last_watched_at)
     end)
+  end
+
+  @doc """
+  Lists lightweight watch history cards for home surfaces without generic content preloads.
+  """
+  @spec list_home(integer(), keyword()) :: [map()]
+  def list_home(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
+    content_type = Keyword.get(opts, :content_type)
+
+    WatchProgress
+    |> where(user_id: ^user_id)
+    |> join(:inner, [wp], ci in CatalogItem, on: wp.catalog_item_id == ci.id)
+    |> maybe_filter_by_type(content_type)
+    |> join_home_content()
+    |> order_by([wp], desc: wp.last_watched_at)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> select_home_card()
+    |> Repo.all()
+    |> Enum.map(&build_home_card/1)
+  end
+
+  @doc """
+  Lists lightweight watch history entries for analytics without catalog preloads.
+  """
+  @spec list_for_analytics(integer(), keyword()) :: [map()]
+  def list_for_analytics(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
+    content_type = Keyword.get(opts, :content_type)
+
+    WatchProgress
+    |> where(user_id: ^user_id)
+    |> join(:inner, [wp], ci in CatalogItem, on: wp.catalog_item_id == ci.id)
+    |> maybe_filter_by_type(content_type)
+    |> order_by([wp], desc: wp.last_watched_at)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> select([wp, ci], %{
+      content_type: ci.content_type,
+      content_id:
+        selected_as(
+          fragment(
+            "COALESCE((SELECT m0.id FROM movies AS m0 WHERE m0.catalog_item_id = ?), (SELECT s0.id FROM series AS s0 WHERE s0.catalog_item_id = ?), (SELECT e0.id FROM episodes AS e0 WHERE e0.catalog_item_id = ?), (SELECT l0.id FROM live_channels AS l0 WHERE l0.catalog_item_id = ?))",
+            wp.catalog_item_id,
+            wp.catalog_item_id,
+            wp.catalog_item_id,
+            wp.catalog_item_id
+          ),
+          :content_id
+        ),
+      progress_seconds: wp.progress_seconds,
+      duration_seconds: wp.duration_seconds,
+      completed: wp.completed,
+      watched_at: wp.last_watched_at
+    })
+    |> Repo.all()
   end
 
   @doc """
@@ -176,6 +235,35 @@ defmodule Streamix.Iptv.History do
   end
 
   @doc """
+  Returns a map of series_id => progress (0.0..1.0) based on the latest watched episode.
+  Used for showing progress bars on series cards.
+  """
+  @spec get_series_progress_map(integer(), [integer()]) :: %{integer() => float()}
+  def get_series_progress_map(_user_id, []), do: %{}
+
+  def get_series_progress_map(user_id, series_ids) do
+    WatchProgress
+    |> join(:inner, [wp], episode in Episode, on: episode.catalog_item_id == wp.catalog_item_id)
+    |> join(:inner, [_wp, episode], season in Season, on: season.id == episode.season_id)
+    |> where([wp, _episode, season], wp.user_id == ^user_id and season.series_id in ^series_ids)
+    |> where([wp], wp.duration_seconds > 0 and wp.progress_seconds > 0)
+    |> order_by([wp, _episode, season],
+      asc: season.series_id,
+      desc: wp.last_watched_at,
+      desc: wp.id
+    )
+    |> distinct([_wp, _episode, season], season.series_id)
+    |> select(
+      [wp, _episode, season],
+      {season.series_id, wp.progress_seconds, wp.duration_seconds}
+    )
+    |> Repo.all()
+    |> Map.new(fn {series_id, progress, duration} ->
+      {series_id, Float.round(progress / duration, 2)}
+    end)
+  end
+
+  @doc """
   Returns a map of content_id => progress (0.0..1.0) for the given content IDs.
   Used for showing progress bars on content cards.
   """
@@ -262,6 +350,88 @@ defmodule Streamix.Iptv.History do
   end
 
   defp maybe_decorate({:error, changeset}), do: {:error, changeset}
+
+  defp join_home_content(query) do
+    query
+    |> join(:left, [_wp, ci], movie in assoc(ci, :movie))
+    |> join(:left, [_wp, ci, _movie], series in assoc(ci, :series))
+    |> join(:left, [_wp, ci, _movie, _series], episode in assoc(ci, :episode))
+    |> join(:left, [_wp, ci, _movie, _series, _episode], channel in assoc(ci, :live_channel))
+  end
+
+  defp select_home_card(query) do
+    select(query, [wp, ci, movie, series, episode, channel], %{
+      id: wp.id,
+      progress_seconds: wp.progress_seconds,
+      duration_seconds: wp.duration_seconds,
+      watched_at: wp.last_watched_at,
+      content_type: ci.content_type,
+      movie_id: movie.id,
+      movie_name: movie.name,
+      movie_icon: movie.stream_icon,
+      series_id: series.id,
+      series_name: series.name,
+      series_icon: series.cover,
+      episode_id: episode.id,
+      episode_name: episode.title,
+      episode_icon: episode.still_path,
+      live_channel_id: channel.id,
+      live_channel_name: channel.name,
+      live_channel_icon: channel.stream_icon
+    })
+  end
+
+  defp build_home_card(%{content_type: "movie"} = row) do
+    %{
+      id: row.id,
+      progress_seconds: row.progress_seconds,
+      duration_seconds: row.duration_seconds,
+      watched_at: row.watched_at,
+      content_type: row.content_type,
+      content_id: row.movie_id,
+      content_name: row.movie_name,
+      content_icon: row.movie_icon
+    }
+  end
+
+  defp build_home_card(%{content_type: "series"} = row) do
+    %{
+      id: row.id,
+      progress_seconds: row.progress_seconds,
+      duration_seconds: row.duration_seconds,
+      watched_at: row.watched_at,
+      content_type: row.content_type,
+      content_id: row.series_id,
+      content_name: row.series_name,
+      content_icon: row.series_icon
+    }
+  end
+
+  defp build_home_card(%{content_type: "episode"} = row) do
+    %{
+      id: row.id,
+      progress_seconds: row.progress_seconds,
+      duration_seconds: row.duration_seconds,
+      watched_at: row.watched_at,
+      content_type: row.content_type,
+      content_id: row.episode_id,
+      content_name: row.episode_name,
+      content_icon: row.episode_icon
+    }
+  end
+
+  defp build_home_card(%{content_type: "live_channel"} = row) do
+    %{
+      id: row.id,
+      progress_seconds: row.progress_seconds,
+      duration_seconds: row.duration_seconds,
+      watched_at: row.watched_at,
+      content_type: row.content_type,
+      content_id: row.live_channel_id,
+      content_name: row.live_channel_name,
+      content_icon: row.live_channel_icon
+    }
+  end
 
   defp content_schema("live_channel"), do: Streamix.Iptv.LiveChannel
   defp content_schema("movie"), do: Streamix.Iptv.Movie

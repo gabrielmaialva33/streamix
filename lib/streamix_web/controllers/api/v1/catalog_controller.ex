@@ -11,7 +11,6 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   alias Streamix.Helpers
   alias Streamix.Iptv
   alias Streamix.Iptv.{Movie, Series}
-  alias Streamix.Repo
   alias StreamixWeb.StreamToken
 
   @doc """
@@ -432,12 +431,11 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   Returns stream URL for a movie.
   """
   def movie_stream(conn, %{"id" => id}) do
-    case Iptv.get_movie(id) do
+    case Iptv.get_movie_for_stream(id) do
       nil ->
         conn |> put_status(:not_found) |> json(%{error: "Movie not found"})
 
       movie ->
-        movie = Repo.preload(movie, :provider)
         json(conn, %{stream_url: build_stream_url(movie)})
     end
   end
@@ -446,12 +444,11 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   Returns stream URL for an episode.
   """
   def episode_stream(conn, %{"id" => id}) do
-    case Iptv.get_episode(id) do
+    case Iptv.get_episode_for_stream(id) do
       nil ->
         conn |> put_status(:not_found) |> json(%{error: "Episode not found"})
 
       episode ->
-        episode = Repo.preload(episode, season: [series: :provider])
         json(conn, %{stream_url: build_episode_stream_url(episode, episode.season.series)})
     end
   end
@@ -460,12 +457,11 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   Returns stream URL for a channel.
   """
   def channel_stream(conn, %{"id" => id}) do
-    case Iptv.get_live_channel(id) do
+    case Iptv.get_live_channel_for_stream(id) do
       nil ->
         conn |> put_status(:not_found) |> json(%{error: "Channel not found"})
 
       channel ->
-        channel = Repo.preload(channel, :provider)
         json(conn, %{stream_url: build_channel_stream_url(channel)})
     end
   end

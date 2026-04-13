@@ -9,6 +9,7 @@ defmodule Streamix.Library do
   alias Streamix.Iptv.{Favorites, History}
 
   defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
+  defdelegate list_home_favorites(user_id, opts \\ []), to: Favorites, as: :list_home
   defdelegate is_favorite?(user_id, content_type, content_id), to: Favorites
   defdelegate count_favorites_by_type(user_id), to: Favorites, as: :count_by_type
   defdelegate list_favorite_ids(user_id, content_type), to: Favorites, as: :list_ids
@@ -26,6 +27,7 @@ defmodule Streamix.Library do
     as: :toggle
 
   defdelegate list_watch_history(user_id, opts \\ []), to: History, as: :list
+  defdelegate list_home_history(user_id, opts \\ []), to: History, as: :list_home
   defdelegate count_watch_history_by_type(user_id), to: History, as: :count_by_type
 
   defdelegate add_watch_history(user_id, content_type, content_id, attrs \\ %{}),
@@ -47,4 +49,7 @@ defmodule Streamix.Library do
   defdelegate get_watch_progress_map(user_id, content_type, content_ids),
     to: History,
     as: :get_progress_map
+
+  defdelegate get_series_progress_map(user_id, series_ids),
+    to: History
 end

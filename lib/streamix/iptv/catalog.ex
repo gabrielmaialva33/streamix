@@ -14,6 +14,11 @@ defmodule Streamix.Iptv.Catalog do
   alias Streamix.Iptv.{Category, LiveChannel, Movie, MovieAsset, Provider, Series, SeriesAsset}
   alias Streamix.Repo
 
+  @summary_preloads [:genres]
+  @featured_preloads [:assets, :genres]
+  @movie_card_fields ~w(id name title year stream_icon rating inserted_at)a
+  @series_card_fields ~w(id name title year cover rating inserted_at)a
+
   # =============================================================================
   # Featured Content
   # =============================================================================
@@ -41,7 +46,7 @@ defmodule Streamix.Iptv.Catalog do
       |> order_by([m], desc: m.rating)
       |> limit(10)
       |> distinct([m], m.id)
-      |> preload([:assets, :genres, credits: :person])
+      |> preload(^@featured_preloads)
       |> Repo.all()
 
     if movies != [] do
@@ -60,7 +65,7 @@ defmodule Streamix.Iptv.Catalog do
         |> order_by([s], desc: s.rating)
         |> limit(10)
         |> distinct([s], s.id)
-        |> preload([:assets, :genres, credits: :person])
+        |> preload(^@featured_preloads)
         |> Repo.all()
 
       if series_list != [] do
@@ -141,7 +146,8 @@ defmodule Streamix.Iptv.Catalog do
     |> order_by([m], desc: m.rating, desc: m.year)
     |> limit(^limit)
     |> distinct([m], m.id)
-    |> preload([:genres, credits: :person])
+    |> select_movie_card_fields()
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -160,7 +166,8 @@ defmodule Streamix.Iptv.Catalog do
       |> where([m, _p], not is_nil(m.stream_icon))
       |> order_by([m], desc: m.inserted_at)
       |> limit(^limit)
-      |> preload([:genres, credits: :person])
+      |> select_movie_card_fields()
+      |> preload(^@summary_preloads)
       |> Repo.all()
       |> Enum.map(&{:movie, &1})
 
@@ -171,7 +178,8 @@ defmodule Streamix.Iptv.Catalog do
       |> where([s, _p], not is_nil(s.cover))
       |> order_by([s], desc: s.inserted_at)
       |> limit(^limit)
-      |> preload([:genres, credits: :person])
+      |> select_series_card_fields()
+      |> preload(^@summary_preloads)
       |> Repo.all()
       |> Enum.map(&{:series, &1})
 
@@ -219,7 +227,8 @@ defmodule Streamix.Iptv.Catalog do
       |> where([m], m.id in ^trending_ids)
       |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
       |> where([m, p], p.visibility in [:global, :public])
-      |> preload([:genres, credits: :person])
+      |> select_movie_card_fields()
+      |> preload(^@summary_preloads)
       |> Repo.all()
       |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
       |> Enum.take(limit)
@@ -259,7 +268,8 @@ defmodule Streamix.Iptv.Catalog do
       |> where([s, _p], not is_nil(s.cover))
       |> order_by([s], desc: s.rating)
       |> limit(^limit)
-      |> preload([:genres, credits: :person])
+      |> select_series_card_fields()
+      |> preload(^@summary_preloads)
       |> Repo.all()
     else
       # Map episode IDs to series IDs
@@ -279,7 +289,8 @@ defmodule Streamix.Iptv.Catalog do
       |> where([s], s.id in ^series_ids)
       |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
       |> where([s, p], p.visibility in [:global, :public])
-      |> preload([:genres, credits: :person])
+      |> select_series_card_fields()
+      |> preload(^@summary_preloads)
       |> Repo.all()
       |> Enum.take(limit)
     end
@@ -300,7 +311,8 @@ defmodule Streamix.Iptv.Catalog do
     |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.year, desc: m.rating)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> select_movie_card_fields()
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -320,7 +332,8 @@ defmodule Streamix.Iptv.Catalog do
     |> where([m, _p], not is_nil(m.plot))
     |> order_by([m], desc: m.rating)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> select_movie_card_fields()
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -338,8 +351,17 @@ defmodule Streamix.Iptv.Catalog do
     |> where([s, _p], not is_nil(s.cover))
     |> order_by([s], desc: s.rating)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> select_series_card_fields()
+    |> preload(^@summary_preloads)
     |> Repo.all()
+  end
+
+  defp select_movie_card_fields(query) do
+    select(query, [m], struct(m, ^@movie_card_fields))
+  end
+
+  defp select_series_card_fields(query) do
+    select(query, [s], struct(s, ^@series_card_fields))
   end
 
   # =============================================================================

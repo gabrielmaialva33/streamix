@@ -221,12 +221,11 @@ defmodule StreamixWeb.StreamToken do
   end
 
   defp get_stream_url("movie", id, user_id) do
-    case Iptv.get_movie(id) do
+    case Iptv.get_movie_for_stream(id) do
       nil ->
         {:error, :not_found}
 
       movie ->
-        movie = Repo.preload(movie, :provider)
         provider = movie.provider
 
         build_content_url(
@@ -241,12 +240,11 @@ defmodule StreamixWeb.StreamToken do
   end
 
   defp get_stream_url("episode", id, user_id) do
-    case Iptv.get_episode(id) do
+    case Iptv.get_episode_for_stream(id) do
       nil ->
         {:error, :not_found}
 
       episode ->
-        episode = Repo.preload(episode, season: [series: :provider])
         provider = episode.season.series.provider
 
         build_content_url(
@@ -261,12 +259,11 @@ defmodule StreamixWeb.StreamToken do
   end
 
   defp get_stream_url("channel", id, user_id) do
-    case Iptv.get_live_channel(id) do
+    case Iptv.get_live_channel_for_stream(id) do
       nil ->
         {:error, :not_found}
 
       channel ->
-        channel = Repo.preload(channel, :provider)
         provider = channel.provider
 
         build_content_url(provider, user_id, channel, "live", channel.stream_id, "ts")

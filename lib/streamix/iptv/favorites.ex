@@ -44,6 +44,28 @@ defmodule Streamix.Iptv.Favorites do
   end
 
   @doc """
+  Lists lightweight favorite cards for home surfaces without generic content preloads.
+  """
+  @spec list_home(integer(), keyword()) :: [map()]
+  def list_home(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    content_type = Keyword.get(opts, :content_type)
+
+    Favorite
+    |> where(user_id: ^user_id)
+    |> join(:inner, [f], ci in CatalogItem, on: f.catalog_item_id == ci.id)
+    |> maybe_filter_by_type(content_type)
+    |> join_home_content()
+    |> order_by([f], desc: f.inserted_at)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> select_home_card()
+    |> Repo.all()
+    |> Enum.map(&build_home_card/1)
+  end
+
+  @doc """
   Checks if content is favorited by a user.
   """
   @spec exists?(integer(), String.t(), integer()) :: boolean()
@@ -228,6 +250,73 @@ defmodule Streamix.Iptv.Favorites do
   end
 
   defp maybe_decorate({:error, changeset}), do: {:error, changeset}
+
+  defp join_home_content(query) do
+    query
+    |> join(:left, [_f, ci], movie in assoc(ci, :movie))
+    |> join(:left, [_f, ci, _movie], series in assoc(ci, :series))
+    |> join(:left, [_f, ci, _movie, _series], episode in assoc(ci, :episode))
+    |> join(:left, [_f, ci, _movie, _series, _episode], channel in assoc(ci, :live_channel))
+  end
+
+  defp select_home_card(query) do
+    select(query, [f, ci, movie, series, episode, channel], %{
+      inserted_at: f.inserted_at,
+      content_type: ci.content_type,
+      movie_id: movie.id,
+      movie_name: movie.name,
+      movie_icon: movie.stream_icon,
+      series_id: series.id,
+      series_name: series.name,
+      series_icon: series.cover,
+      episode_id: episode.id,
+      episode_name: episode.title,
+      episode_icon: episode.still_path,
+      live_channel_id: channel.id,
+      live_channel_name: channel.name,
+      live_channel_icon: channel.stream_icon
+    })
+  end
+
+  defp build_home_card(%{content_type: "movie"} = row) do
+    %{
+      inserted_at: row.inserted_at,
+      content_type: row.content_type,
+      content_id: row.movie_id,
+      content_name: row.movie_name,
+      content_icon: row.movie_icon
+    }
+  end
+
+  defp build_home_card(%{content_type: "series"} = row) do
+    %{
+      inserted_at: row.inserted_at,
+      content_type: row.content_type,
+      content_id: row.series_id,
+      content_name: row.series_name,
+      content_icon: row.series_icon
+    }
+  end
+
+  defp build_home_card(%{content_type: "episode"} = row) do
+    %{
+      inserted_at: row.inserted_at,
+      content_type: row.content_type,
+      content_id: row.episode_id,
+      content_name: row.episode_name,
+      content_icon: row.episode_icon
+    }
+  end
+
+  defp build_home_card(%{content_type: "live_channel"} = row) do
+    %{
+      inserted_at: row.inserted_at,
+      content_type: row.content_type,
+      content_id: row.live_channel_id,
+      content_name: row.live_channel_name,
+      content_icon: row.live_channel_icon
+    }
+  end
 
   defp content_schema("live_channel"), do: Streamix.Iptv.LiveChannel
   defp content_schema("movie"), do: Streamix.Iptv.Movie

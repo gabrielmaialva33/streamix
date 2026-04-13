@@ -91,7 +91,9 @@ defmodule Streamix.Queue.Connection do
   @impl true
   def handle_info(:connect, state) do
     case connect() do
-      {:ok, new_state} -> {:noreply, new_state}
+      {:ok, new_state} ->
+        {:noreply, new_state}
+
       {:error, _} ->
         schedule_reconnect()
         {:noreply, state}

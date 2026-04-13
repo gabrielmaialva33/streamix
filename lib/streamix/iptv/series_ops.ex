@@ -13,6 +13,10 @@ defmodule Streamix.Iptv.SeriesOps do
   alias Streamix.Iptv.{Access, AdultFilter, Episode, Provider, Season, Series, Sync, TmdbClient}
   alias Streamix.Repo
 
+  @summary_preloads [:genres]
+  @search_result_preloads [:assets, :genres]
+  @detail_preloads [:assets, :genres, credits: :person]
+
   # =============================================================================
   # GIndex Anime Functions
   # =============================================================================
@@ -201,7 +205,7 @@ defmodule Streamix.Iptv.SeriesOps do
     query
     |> limit(^limit)
     |> offset(^offset)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -217,7 +221,7 @@ defmodule Streamix.Iptv.SeriesOps do
     |> where([s, _p], not is_nil(s.cover))
     |> order_by([s], desc: s.rating, desc: s.year, asc: s.name)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -256,7 +260,7 @@ defmodule Streamix.Iptv.SeriesOps do
 
   def get_by_ids(ids) when is_list(ids) do
     from(s in Series, where: s.id in ^ids)
-    |> preload([:assets, :genres, credits: :person])
+    |> preload(^@search_result_preloads)
     |> Repo.all()
   end
 
@@ -267,7 +271,7 @@ defmodule Streamix.Iptv.SeriesOps do
   def get_public(series_id) do
     Series
     |> Access.public_only(series_id)
-    |> preload([:provider, :assets, :genres, credits: :person])
+    |> preload(^[:provider | @detail_preloads])
     |> Repo.one()
   end
 
@@ -282,7 +286,7 @@ defmodule Streamix.Iptv.SeriesOps do
     Series
     |> where(id: ^id)
     |> preload(seasons: ^{seasons_query, episodes: episodes_query})
-    |> preload([:provider, :assets, :genres, credits: :person])
+    |> preload(^[:provider | @detail_preloads])
     |> Repo.one()
   end
 
@@ -297,7 +301,7 @@ defmodule Streamix.Iptv.SeriesOps do
     Series
     |> where(id: ^id)
     |> preload(seasons: ^{seasons_query, episodes: episodes_query})
-    |> preload([:provider, :assets, :genres, credits: :person])
+    |> preload(^[:provider | @detail_preloads])
     |> Repo.one!()
   end
 
@@ -340,6 +344,17 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_episode(integer()) :: Episode.t() | nil
   def get_episode(id), do: Repo.get(Episode, id)
+
+  @doc """
+  Gets an episode for stream resolution with only season/series/provider context loaded.
+  """
+  @spec get_episode_for_stream(integer()) :: Episode.t() | nil
+  def get_episode_for_stream(id) do
+    Episode
+    |> where(id: ^id)
+    |> preload(season: [series: :provider])
+    |> Repo.one()
+  end
 
   @doc """
   Gets an episode owned by a specific user.
@@ -479,7 +494,7 @@ defmodule Streamix.Iptv.SeriesOps do
     |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -496,7 +511,7 @@ defmodule Streamix.Iptv.SeriesOps do
     |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
-    |> preload([:genres, credits: :person])
+    |> preload(^@summary_preloads)
     |> Repo.all()
   end
 
@@ -510,7 +525,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec fetch_info(Series.t()) :: {:ok, Series.t()} | {:error, term()}
   def fetch_info(%Series{} = series) do
-    series = Repo.preload(series, [:assets, :genres, credits: :person])
+    series = Repo.preload(series, @detail_preloads)
     tmdb_id = series.tmdb_id
 
     if needs_tmdb_enrichment?(series) and is_binary(tmdb_id) and tmdb_id != "" do
