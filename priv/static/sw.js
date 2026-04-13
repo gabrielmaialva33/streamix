@@ -1,11 +1,11 @@
 /**
- * Streamix Service Worker v3
+ * Streamix Service Worker v4
  * - WASM caching for instant AVPlayer startup
  * - Static assets caching
  * - PWA offline support
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `streamix-${CACHE_VERSION}`;
 
 // Static assets to precache
@@ -22,7 +22,14 @@ const WASM_ASSETS = [
     '/avplayer/decode/ac3-atomic.wasm',
     '/avplayer/decode/aac-atomic.wasm',
     '/avplayer/decode/hevc-atomic.wasm',
-    '/avplayer/decode/mp3-atomic.wasm'
+    '/avplayer/decode/mp3-atomic.wasm',
+    '/avplayer/decode/av1-atomic.wasm',
+    '/avplayer/decode/vp9-atomic.wasm',
+    '/avplayer/decode/opus-atomic.wasm',
+    '/avplayer/decode/eac3-atomic.wasm',
+    '/avplayer/decode/dca-atomic.wasm',
+    '/avplayer/decode/flac-atomic.wasm',
+    '/avplayer/decode/vorbis-atomic.wasm'
 ];
 
 // Player libs to cache
