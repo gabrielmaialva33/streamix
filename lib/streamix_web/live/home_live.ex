@@ -5,6 +5,7 @@ defmodule StreamixWeb.HomeLive do
   alias Streamix.Cache
   alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
+  alias StreamixWeb.HomeCatalogLoader
 
   def mount(_params, _session, socket) do
     socket =
@@ -62,28 +63,33 @@ defmodule StreamixWeb.HomeLive do
   end
 
   defp load_public_catalog(socket) do
-    # Load public content for everyone (guests and logged in users)
-    featured = Iptv.get_featured_content()
-    stats = Iptv.get_public_stats()
-
-    # Get user_id if logged in
     user_id = get_user_id(socket)
-
-    # Get current filter values
     trending_genre = socket.assigns.trending_genre
     trending_period = socket.assigns.trending_period
     series_genre = socket.assigns.series_genre
     channels_category = socket.assigns.channels_category
 
+    sections =
+      HomeCatalogLoader.load(%{
+        featured: fn -> Iptv.get_featured_content() end,
+        stats: fn -> Iptv.get_public_stats() end,
+        trending: fn -> load_trending(user_id, trending_genre, trending_period) end,
+        new_releases: fn -> Iptv.list_new_releases(limit: 12) end,
+        top_10: fn -> load_top_10() end,
+        movies: fn -> Iptv.list_public_movies(limit: 12) end,
+        series: fn -> load_series(user_id, series_genre) end,
+        channels: fn -> load_channels(user_id, channels_category) end
+      })
+
     socket
-    |> assign(featured: featured)
-    |> assign(stats: stats)
-    |> assign(trending: load_trending(user_id, trending_genre, trending_period))
-    |> assign(new_releases: Iptv.list_new_releases(limit: 12))
-    |> assign(top_10: load_top_10())
-    |> assign(movies: Iptv.list_public_movies(limit: 12))
-    |> assign(series: load_series(user_id, series_genre))
-    |> assign(channels: load_channels(user_id, channels_category))
+    |> assign(:featured, sections.featured)
+    |> assign(:stats, sections.stats)
+    |> assign(:trending, sections.trending)
+    |> assign(:new_releases, sections.new_releases)
+    |> assign(:top_10, sections.top_10)
+    |> assign(:movies, sections.movies)
+    |> assign(:series, sections.series)
+    |> assign(:channels, sections.channels)
   end
 
   # Load trending with AI personalization when user is logged in
@@ -157,27 +163,31 @@ defmodule StreamixWeb.HomeLive do
 
       scope ->
         user_id = scope.user.id
-        featured_favorite = check_featured_favorite(socket.assigns.featured, user_id)
-        recommendations = load_recommendations(user_id)
 
-        # Collect all movie/series IDs from loaded catalog for progress lookup
         movie_ids =
           collect_content_ids(socket.assigns, [:movies, :trending, :new_releases, :top_10])
 
         series_ids = collect_content_ids(socket.assigns, [:series])
 
-        movie_progress = Iptv.get_watch_progress_map(user_id, "movie", movie_ids)
-        series_progress = Iptv.get_watch_progress_map(user_id, "episode", series_ids)
+        user_sections =
+          HomeCatalogLoader.load(%{
+            favorites: fn -> Iptv.list_home_favorites(user_id, limit: 12) end,
+            history: fn -> Iptv.list_home_history(user_id, limit: 6) end,
+            recommendations: fn -> load_recommendations(user_id) end,
+            featured_favorite: fn -> check_featured_favorite(socket.assigns.featured, user_id) end,
+            movie_progress: fn -> Iptv.get_watch_progress_map(user_id, "movie", movie_ids) end,
+            series_progress: fn -> Iptv.get_series_progress_map(user_id, series_ids) end,
+            genre_filters: fn -> load_genre_filters(user_id) end
+          })
 
         socket
-        |> assign(favorites: Iptv.list_favorites(user_id, limit: 12))
-        |> assign(history: Iptv.list_watch_history(user_id, limit: 6))
-        |> assign(recommendations: recommendations)
-        |> assign(featured_favorite: featured_favorite)
-        |> assign(movie_progress: movie_progress)
-        |> assign(series_progress: series_progress)
-        # Update genre filters based on user preferences (cached 1h per user)
-        |> assign(genre_filters: load_genre_filters(user_id))
+        |> assign(:favorites, user_sections.favorites)
+        |> assign(:history, user_sections.history)
+        |> assign(:recommendations, user_sections.recommendations)
+        |> assign(:featured_favorite, user_sections.featured_favorite)
+        |> assign(:movie_progress, user_sections.movie_progress)
+        |> assign(:series_progress, user_sections.series_progress)
+        |> assign(:genre_filters, user_sections.genre_filters)
     end
   end
 
