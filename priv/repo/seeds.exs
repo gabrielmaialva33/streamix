@@ -35,7 +35,7 @@ unless admin_password do
 end
 
 admin = Accounts.ensure_admin_user!(admin_email, admin_password)
-IO.puts("✓ Admin user ready: #{admin.email} (role=#{admin.role})")
+IO.puts("✓ Admin user ready: #{admin.email} (role=#{Accounts.role_name(admin)})")
 
 premium_plan =
   Billing.ensure_plan!(%{

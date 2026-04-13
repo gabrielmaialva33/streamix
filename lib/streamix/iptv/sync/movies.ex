@@ -12,8 +12,7 @@ defmodule Streamix.Iptv.Sync.Movies do
   @sync_opts [
     schema: Movie,
     table_name: "movies",
-    join_table: "movie_categories",
-    fk_column: "movie_id"
+    content_type: "movie"
   ]
 
   @doc """
@@ -36,6 +35,11 @@ defmodule Streamix.Iptv.Sync.Movies do
 
         {count, all_stream_ids} =
           Helpers.upsert_content_batched(streams, provider.id, category_lookup, now, upsert_opts)
+
+        # Sync genres and credits from the raw stream data
+        Helpers.sync_genres_and_credits(streams, provider.id, Movie, "movie_genres", "movie_id",
+          credits_table: "movie_credits"
+        )
 
         deleted_count = Helpers.delete_orphaned_content(provider.id, all_stream_ids, @sync_opts)
 
@@ -61,17 +65,11 @@ defmodule Streamix.Iptv.Sync.Movies do
       year: Helpers.parse_year(stream["year"]),
       stream_icon: stream["stream_icon"],
       rating: Helpers.parse_decimal(stream["rating"]),
-      rating_5based: Helpers.parse_decimal(stream["rating_5based"]),
-      genre: stream["genre"],
-      cast: stream["cast"],
-      director: stream["director"],
       plot: stream["plot"],
       container_extension: stream["container_extension"],
       duration_secs: stream["duration_secs"],
-      duration: stream["duration"],
       tmdb_id: Helpers.to_string_or_nil(stream["tmdb_id"]),
       imdb_id: Helpers.to_string_or_nil(stream["imdb_id"]),
-      backdrop_path: Helpers.normalize_backdrop(stream["backdrop_path"]),
       youtube_trailer: stream["youtube_trailer"],
       provider_id: provider_id,
       inserted_at: now,

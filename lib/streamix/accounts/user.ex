@@ -7,12 +7,13 @@ defmodule Streamix.Accounts.User do
 
   schema "users" do
     field :email, :string
-    field :role, :string, default: "customer"
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
     field :show_adult_content, :boolean, default: false
+
+    belongs_to :role, Streamix.Accounts.Role
 
     timestamps(type: :utc_datetime)
   end
@@ -75,32 +76,19 @@ defmodule Streamix.Accounts.User do
   def registration_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:email, :password])
-    |> put_change(:role, "customer")
     |> validate_email(opts)
     |> validate_confirmation(:password, message: "as senhas não conferem")
     |> validate_password(opts)
   end
 
-  @allowed_roles ~w(admin customer moderator)
-
   @doc """
-  A user changeset for promoting a user to admin in trusted test/setup paths.
+  A user changeset for setting the role by role_id.
   """
-  def admin_changeset(user) do
+  def role_changeset(user, role_id) when is_integer(role_id) do
     user
-    |> change(role: "admin")
-    |> validate_inclusion(:role, @allowed_roles)
-  end
-
-  @doc """
-  A user changeset for updating the role.
-  Accepts any role in #{inspect(~w(admin customer moderator))}.
-  """
-  def role_changeset(user, role) do
-    user
-    |> change(role: role)
-    |> validate_required([:role])
-    |> validate_inclusion(:role, @allowed_roles)
+    |> change(role_id: role_id)
+    |> validate_required([:role_id])
+    |> assoc_constraint(:role)
   end
 
   @doc """

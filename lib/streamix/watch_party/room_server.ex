@@ -64,8 +64,7 @@ defmodule Streamix.WatchParty.RoomServer do
   def init(opts) do
     room_id = Keyword.fetch!(opts, :room_id)
     host_user_id = Keyword.fetch!(opts, :host_user_id)
-    content_type = Keyword.fetch!(opts, :content_type)
-    content_id = Keyword.fetch!(opts, :content_id)
+    catalog_item_id = Keyword.fetch!(opts, :catalog_item_id)
 
     schedule_sync_broadcast()
     schedule_idle_check()
@@ -73,8 +72,7 @@ defmodule Streamix.WatchParty.RoomServer do
     state = %{
       room_id: room_id,
       host_user_id: host_user_id,
-      content_type: content_type,
-      content_id: content_id,
+      catalog_item_id: catalog_item_id,
       playback: %{
         state: :paused,
         position: 0.0,

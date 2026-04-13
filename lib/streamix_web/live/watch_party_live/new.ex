@@ -6,36 +6,27 @@ defmodule StreamixWeb.WatchPartyLive.New do
 
   import StreamixWeb.PlayerHelpers
 
+  alias Streamix.Library.ContentRef
   alias Streamix.WatchParty
 
   def mount(%{"type" => type, "id" => id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
     socket = assign(socket, current_path: "/party")
 
-    case load_content(type, id, user_id) do
-      {:ok, content, _provider, _stream_url} ->
-        attrs = %{
-          content_type: type,
-          content_id: String.to_integer(id),
-          content_name: content_title(content, type),
-          content_icon: content_icon(content, type)
-        }
-
-        case WatchParty.create_room(user_id, attrs) do
-          {:ok, room} ->
-            {:ok, push_navigate(socket, to: ~p"/party/#{room.invite_code}/watch")}
-
-          {:error, _changeset} ->
-            {:ok,
-             socket
-             |> put_flash(:error, "Erro ao criar Watch Party")
-             |> push_navigate(to: ~p"/")}
-        end
-
-      {:error, :not_found} ->
+    with {:ok, content, _provider, _stream_url} <- load_content(type, id, user_id),
+         {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(type, String.to_integer(id)),
+         attrs = %{
+           catalog_item_id: catalog_item_id,
+           content_name: content_title(content, type),
+           content_icon: content_icon(content, type)
+         },
+         {:ok, room} <- WatchParty.create_room(user_id, attrs) do
+      {:ok, push_navigate(socket, to: ~p"/party/#{room.invite_code}/watch")}
+    else
+      _ ->
         {:ok,
          socket
-         |> put_flash(:error, "Conteúdo não encontrado")
+         |> put_flash(:error, "Erro ao criar Watch Party")
          |> push_navigate(to: ~p"/")}
     end
   end

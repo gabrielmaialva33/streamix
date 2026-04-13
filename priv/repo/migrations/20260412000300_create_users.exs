@@ -6,18 +6,13 @@ defmodule Streamix.Repo.Migrations.CreateUsers do
       add :email, :citext, null: false
       add :hashed_password, :string, null: false
       add :confirmed_at, :utc_datetime
-      add :role, :string, null: false, default: "customer"
+      add :role_id, references(:roles, on_delete: :restrict), null: false
       add :show_adult_content, :boolean, null: false, default: false
 
       timestamps(type: :utc_datetime)
     end
 
     create unique_index(:users, [:email])
-    create index(:users, [:role])
-
-    execute(
-      "ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'customer', 'moderator'))",
-      "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check"
-    )
+    create index(:users, [:role_id])
   end
 end

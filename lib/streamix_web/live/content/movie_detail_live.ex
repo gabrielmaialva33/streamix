@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   alias Streamix.Access
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
+  alias Streamix.Iptv.Movie
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -116,7 +117,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp needs_detailed_info?(movie) do
     # Refetch if missing basic info OR if missing new extended metadata
-    missing_basic = is_nil(movie.plot) and is_nil(movie.cast) and is_nil(movie.director)
+    missing_basic = is_nil(movie.plot)
     missing_extended = is_nil(movie.content_rating) and is_nil(movie.tagline)
 
     missing_basic or missing_extended
@@ -278,11 +279,11 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   {@movie.year}
                 </span>
                 <span
-                  :if={@movie.duration}
+                  :if={@movie.duration_secs}
                   class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
                 >
                   <.icon name="hero-clock" class="size-3 sm:size-3.5" />{format_duration(
-                    @movie.duration
+                    @movie.duration_secs
                   )}
                 </span>
                 <span
@@ -295,14 +296,14 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               
     <!-- Genres -->
               <div
-                :if={@movie.genre}
+                :if={@movie.genres != []}
                 class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2"
               >
                 <span
-                  :for={genre <- split_genres(@movie.genre)}
+                  :for={genre <- @movie.genres}
                   class="px-2 sm:px-3 py-0.5 sm:py-1 bg-white/5 text-text-secondary rounded-full text-xs sm:text-sm border border-white/10 hover:border-white/20 transition-colors"
                 >
-                  {genre}
+                  {genre.name}
                 </span>
               </div>
               
@@ -383,32 +384,34 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               
     <!-- Details Grid -->
               <div
-                :if={@movie.director || @movie.cast}
+                :if={director_names(@movie) != "" or cast_names(@movie) != ""}
                 class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4"
               >
-                <div :if={@movie.director} class="space-y-1 sm:space-y-2">
+                <div :if={director_names(@movie) != ""} class="space-y-1 sm:space-y-2">
                   <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
                     Direção
                   </h4>
-                  <p class="text-text-primary text-sm sm:text-base">{@movie.director}</p>
+                  <p class="text-text-primary text-sm sm:text-base">{director_names(@movie)}</p>
                 </div>
 
-                <div :if={@movie.cast} class="space-y-1 sm:space-y-2">
+                <div :if={cast_names(@movie) != ""} class="space-y-1 sm:space-y-2">
                   <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
                     Elenco
                   </h4>
-                  <p class="text-text-primary text-sm sm:text-base">{truncate_cast(@movie.cast)}</p>
+                  <p class="text-text-primary text-sm sm:text-base">
+                    {truncate_cast(cast_names(@movie))}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
           
     <!-- Image Gallery -->
-          <div :if={@movie.images && @movie.images != []} class="mt-8 sm:mt-12">
+          <div :if={Movie.has_images?(@movie)} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
               <div
-                :for={image <- @movie.images}
+                :for={image <- Movie.image_urls(@movie)}
                 class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group"
               >
                 <img
@@ -479,9 +482,15 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Private Helpers
   # ============================================
 
-  defp og_image_url(%{backdrop_path: [url | _]}) when is_binary(url), do: url
-  defp og_image_url(%{stream_icon: icon}) when is_binary(icon) and icon != "", do: icon
-  defp og_image_url(_), do: nil
+  defp og_image_url(%Movie{} = movie) do
+    case Movie.backdrop_urls(movie) do
+      [url | _] -> url
+      _ -> og_image_url_fallback(movie)
+    end
+  end
+
+  defp og_image_url_fallback(%{stream_icon: icon}) when is_binary(icon) and icon != "", do: icon
+  defp og_image_url_fallback(_), do: nil
 
   defp back_path(:browse, _provider), do: ~p"/browse/movies"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/movies"
@@ -504,7 +513,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp format_rating(_), do: nil
 
-  defp get_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: ImageProxy.proxy(url)
+  defp get_backdrop(%Movie{} = movie) do
+    case Movie.backdrop_urls(movie) do
+      [url | _] -> ImageProxy.proxy(url)
+      _ -> nil
+    end
+  end
+
   defp get_backdrop(_), do: nil
 
   defp trailer_url(youtube_id) when is_binary(youtube_id) do
@@ -517,49 +532,36 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp trailer_url(_), do: nil
 
-  defp split_genres(nil), do: []
-
-  defp split_genres(genre) when is_binary(genre) do
-    genre
-    |> String.split(~r/[,\/]/)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.take(5)
+  defp cast_names(%{credits: credits}) when is_list(credits) do
+    credits
+    |> Enum.filter(&(&1.role == "cast"))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map_join(", ", & &1.person.name)
   end
 
-  defp truncate_cast(nil), do: nil
+  defp cast_names(_), do: ""
 
-  defp truncate_cast(cast) when is_binary(cast) do
-    cast
+  defp director_names(%{credits: credits}) when is_list(credits) do
+    credits
+    |> Enum.filter(&(&1.role == "director"))
+    |> Enum.map_join(", ", & &1.person.name)
+  end
+
+  defp director_names(_), do: ""
+
+  defp truncate_cast(str) when is_binary(str) do
+    str
     |> String.split(",")
     |> Enum.take(5)
     |> Enum.map_join(", ", &String.trim/1)
   end
 
-  defp format_duration(nil), do: nil
+  defp truncate_cast(_), do: ""
 
-  defp format_duration(duration) when is_binary(duration) do
-    # Try to parse as minutes if it's just a number
-    case Integer.parse(duration) do
-      {minutes, ""} when minutes > 0 ->
-        hours = div(minutes, 60)
-        mins = rem(minutes, 60)
-
-        cond do
-          hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
-          hours > 0 -> "#{hours}h"
-          true -> "#{mins}min"
-        end
-
-      _ ->
-        # Already formatted or unparseable, return as-is
-        duration
-    end
-  end
-
-  defp format_duration(duration) when is_integer(duration) do
-    hours = div(duration, 60)
-    mins = rem(duration, 60)
+  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    total_minutes = div(seconds, 60)
+    hours = div(total_minutes, 60)
+    mins = rem(total_minutes, 60)
 
     cond do
       hours > 0 and mins > 0 -> "#{hours}h #{mins}min"

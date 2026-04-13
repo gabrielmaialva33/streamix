@@ -175,7 +175,7 @@ defmodule StreamixWeb.UserAuth do
 
   def on_mount(:require_admin, _params, _session, socket) do
     if socket.assigns.current_scope &&
-         socket.assigns.current_scope.user.role == "admin" do
+         Accounts.admin?(socket.assigns.current_scope.user) do
       {:cont, socket}
     else
       socket =

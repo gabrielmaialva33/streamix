@@ -9,7 +9,7 @@ defmodule Streamix.Iptv.Channels do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Access, AdultFilter, EpgProgram, LiveChannel}
+  alias Streamix.Iptv.{Access, AdultFilter, EpgChannel, EpgProgram, LiveChannel}
   alias Streamix.Repo
 
   # How long a channel stays hidden after a 404 before we let it back in
@@ -55,8 +55,8 @@ defmodule Streamix.Iptv.Channels do
 
     query =
       if category_id do
-        join(query, :inner, [c], lcc in "live_channel_categories",
-          on: lcc.live_channel_id == c.id and lcc.category_id == ^category_id
+        join(query, :inner, [c], ic in "item_categories",
+          on: ic.catalog_item_id == c.catalog_item_id and ic.category_id == ^category_id
         )
       else
         query
@@ -96,17 +96,20 @@ defmodule Streamix.Iptv.Channels do
 
     now = DateTime.utc_now()
 
-    # Build base query with LEFT JOIN to EPG
+    # Build base query with LEFT JOIN to EPG via epg_channels
     query =
       from c in LiveChannel,
         left_lateral_join:
           epg in subquery(
             from p in EpgProgram,
+              join: ec in EpgChannel,
+              on: p.epg_channel_id == ec.id,
               where:
-                p.provider_id == parent_as(:channel).provider_id and
-                  p.epg_channel_id == parent_as(:channel).epg_channel_id and
+                ec.provider_id == parent_as(:channel).provider_id and
+                  ec.external_id == parent_as(:channel).epg_channel_id and
                   p.start_time <= ^now and
                   p.end_time > ^now,
+              select: p,
               limit: 1
           ),
         as: :channel,
@@ -130,8 +133,8 @@ defmodule Streamix.Iptv.Channels do
 
     query =
       if category_id do
-        join(query, :inner, [c], lcc in "live_channel_categories",
-          on: lcc.live_channel_id == c.id and lcc.category_id == ^category_id
+        join(query, :inner, [c], ic in "item_categories",
+          on: ic.catalog_item_id == c.catalog_item_id and ic.category_id == ^category_id
         )
       else
         query

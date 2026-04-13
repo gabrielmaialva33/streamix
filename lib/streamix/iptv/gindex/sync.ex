@@ -8,8 +8,9 @@ defmodule Streamix.Iptv.Gindex.Sync do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{Episode, Movie, Provider, Season, Series}
+  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Provider, Season, Series}
   alias Streamix.Iptv.Gindex.Scraper
+  alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
 
   require Logger
@@ -139,6 +140,22 @@ defmodule Streamix.Iptv.Gindex.Sync do
   defp upsert_movies(provider, movies) when is_list(movies) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+    # Find existing stream_ids to know which need new catalog_items
+    stream_ids = Enum.map(movies, & &1.stream_id)
+
+    existing_ci_map =
+      Movie
+      |> where(provider_id: ^provider.id)
+      |> where([m], m.stream_id in ^stream_ids)
+      |> select([m], {m.stream_id, m.catalog_item_id})
+      |> Repo.all()
+      |> Map.new()
+
+    new_sids = Enum.reject(stream_ids, &Map.has_key?(existing_ci_map, &1))
+    new_ci_ids = Helpers.pre_create_catalog_items(length(new_sids), "movie", provider.id, now)
+    new_ci_map = Enum.zip(new_sids, new_ci_ids) |> Map.new()
+    ci_map = Map.merge(existing_ci_map, new_ci_map)
+
     entries =
       Enum.map(movies, fn movie ->
         %{
@@ -149,6 +166,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
           year: movie.year,
           container_extension: movie.container_extension,
           gindex_path: movie.gindex_path,
+          catalog_item_id: ci_map[movie.stream_id],
           inserted_at: now,
           updated_at: now
         }
@@ -178,27 +196,38 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp get_movies_path(provider) do
-    case provider.gindex_drives do
-      %{"movies_path" => path} when is_binary(path) -> path
-      %{"movies" => path} when is_binary(path) -> path
+    provider = Repo.preload(provider, :drives)
+
+    case find_drive(provider.drives, "movies") do
+      %{metadata: %{"path" => path}} -> path
       _ -> "/1:/Filmes/"
     end
   end
 
   defp get_series_paths(provider) do
-    case provider.gindex_drives do
-      %{"series_paths" => paths} when is_list(paths) -> paths
-      %{"series_path" => path} when is_binary(path) -> [path]
+    provider = Repo.preload(provider, :drives)
+
+    case find_drive(provider.drives, "series") do
+      %{metadata: %{"paths" => paths}} when is_list(paths) -> paths
+      %{metadata: %{"path" => path}} when is_binary(path) -> [path]
       _ -> ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"]
     end
   end
 
   defp get_animes_path(provider) do
-    case provider.gindex_drives do
-      %{"animes_path" => path} when is_binary(path) -> path
+    provider = Repo.preload(provider, :drives)
+
+    case find_drive(provider.drives, "animes") do
+      %{metadata: %{"path" => path}} -> path
       _ -> "/0:/Animes/"
     end
   end
+
+  defp find_drive(drives, type) when is_list(drives) do
+    Enum.find(drives, &(&1.drive_type == type))
+  end
+
+  defp find_drive(_, _), do: nil
 
   # =============================================================================
   # Anime Sync Functions
@@ -328,12 +357,18 @@ defmodule Streamix.Iptv.Gindex.Sync do
   # Generic Content Upsert (shared by anime and series)
   # =============================================================================
 
-  defp upsert_single_content(provider, data, now, opts) do
-    content_type = Keyword.get(opts, :content_type)
-    type_label = content_type || "series"
+  defp upsert_single_content(provider, data, now, _opts) do
+    type_label = "series"
     content_name = data.name
 
     try do
+      # Find or create series with catalog_item
+      existing =
+        from(s in Series,
+          where: s.provider_id == ^provider.id and s.series_id == ^data.series_id
+        )
+        |> Repo.one()
+
       # Build base attrs
       attrs = %{
         provider_id: provider.id,
@@ -341,28 +376,18 @@ defmodule Streamix.Iptv.Gindex.Sync do
         name: data.name,
         title: data.title,
         year: data.year,
-        gindex_path: data.gindex_path,
-        season_count: data.season_count,
-        episode_count: data.episode_count,
-        inserted_at: now,
-        updated_at: now
+        gindex_path: data.gindex_path
       }
-
-      # Add content_type if specified (for anime)
-      attrs = if content_type, do: Map.put(attrs, :content_type, content_type), else: attrs
-
-      # Find or create series
-      existing =
-        from(s in Series,
-          where: s.provider_id == ^provider.id and s.series_id == ^data.series_id
-        )
-        |> Repo.one()
 
       series =
         case existing do
           nil ->
+            # Create catalog_item for new series
+            {:ok, ci} =
+              Repo.insert(%CatalogItem{content_type: "series", provider_id: provider.id})
+
             %Series{}
-            |> Series.changeset(attrs)
+            |> Series.changeset(Map.put(attrs, :catalog_item_id, ci.id))
             |> Repo.insert!()
 
           series ->
@@ -372,7 +397,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
         end
 
       # Sync seasons and episodes
-      episode_count = sync_seasons(series, data.seasons, now)
+      episode_count = sync_seasons(series, data.seasons, provider.id, now)
 
       Logger.debug(
         "[GIndex Sync] Synced #{type_label} '#{series.name}' with #{episode_count} episodes"
@@ -389,10 +414,10 @@ defmodule Streamix.Iptv.Gindex.Sync do
     end
   end
 
-  defp sync_seasons(series, seasons_data, now) do
+  defp sync_seasons(series, seasons_data, provider_id, now) do
     Enum.reduce(seasons_data, 0, fn season_data, episode_acc ->
       season = upsert_season(series, season_data, now)
-      episodes_count = upsert_episodes(season, season_data.episodes, now)
+      episodes_count = upsert_episodes(season, season_data.episodes, provider_id, now)
       episode_acc + episodes_count
     end)
   end
@@ -424,8 +449,21 @@ defmodule Streamix.Iptv.Gindex.Sync do
     end
   end
 
-  defp upsert_episodes(season, episodes_data, now) do
-    # Build episode entries
+  defp upsert_episodes(season, episodes_data, provider_id, now) do
+    # Find existing episode_ids for this season
+    existing_ci_map =
+      Episode
+      |> where(season_id: ^season.id)
+      |> select([e], {e.episode_id, e.catalog_item_id})
+      |> Repo.all()
+      |> Map.new()
+
+    episode_ids = Enum.map(episodes_data, & &1.episode_id)
+    new_eids = Enum.reject(episode_ids, &Map.has_key?(existing_ci_map, &1))
+    new_ci_ids = Helpers.pre_create_catalog_items(length(new_eids), "episode", provider_id, now)
+    new_ci_map = Enum.zip(new_eids, new_ci_ids) |> Map.new()
+    ci_map = Map.merge(existing_ci_map, new_ci_map)
+
     entries =
       Enum.map(episodes_data, fn ep ->
         %{
@@ -436,6 +474,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
           name: ep.name,
           container_extension: ep.container_extension,
           gindex_path: ep.gindex_path,
+          catalog_item_id: ci_map[ep.episode_id],
           inserted_at: now,
           updated_at: now
         }

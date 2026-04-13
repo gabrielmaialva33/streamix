@@ -31,7 +31,7 @@ defmodule Streamix.Iptv do
   alias Streamix.Library
 
   # =============================================================================
-  # Favorites (Polymorphic)
+  # Favorites (catalog_item_id)
   # =============================================================================
   defdelegate list_favorites(user_id, opts \\ []), to: Library
   defdelegate is_favorite?(user_id, content_type, content_id), to: Library
@@ -49,7 +49,7 @@ defmodule Streamix.Iptv do
     to: Library
 
   # =============================================================================
-  # Watch History (Polymorphic)
+  # Watch History (catalog_item_id via WatchProgress)
   # =============================================================================
   defdelegate list_watch_history(user_id, opts \\ []), to: Library
   defdelegate count_watch_history_by_type(user_id), to: Library

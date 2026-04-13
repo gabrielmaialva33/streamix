@@ -4,13 +4,13 @@ defmodule StreamixWeb.Admin.UserEditLive do
   import StreamixWeb.AdminComponents
 
   alias Streamix.{Accounts, Billing}
-  alias Streamix.Accounts.User
 
   def mount(%{"id" => id}, _session, socket) do
     user = Accounts.get_user!(id)
     active_sub = Billing.active_subscription_for_user(user)
     plans = Billing.list_active_plans()
-    role_changeset = User.role_changeset(user, user.role)
+    user = Streamix.Repo.preload(user, :role)
+    role_changeset = Ecto.Changeset.change(user, %{})
 
     socket =
       socket
@@ -27,16 +27,16 @@ defmodule StreamixWeb.Admin.UserEditLive do
     {:ok, socket}
   end
 
-  def handle_event("save_role", %{"user" => %{"role" => role}}, socket) do
-    case Accounts.update_user_role(socket.assigns.user, role) do
+  def handle_event("save_role", %{"user" => %{"role" => role_name}}, socket) do
+    case Accounts.update_user_role(socket.assigns.user, role_name) do
       {:ok, updated_user} ->
+        updated_user = Streamix.Repo.preload(updated_user, :role, force: true)
+
         {:noreply,
          socket
          |> assign(user: updated_user)
-         |> assign(
-           role_form: to_form(User.role_changeset(updated_user, updated_user.role), as: :user)
-         )
-         |> put_flash(:info, "Role atualizado para #{role}.")}
+         |> assign(role_form: to_form(Ecto.Changeset.change(updated_user, %{}), as: :user))
+         |> put_flash(:info, "Role atualizado para #{role_name}.")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, role_form: to_form(changeset, as: :user))}
@@ -122,7 +122,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
           <.icon name="hero-arrow-left" class="size-5" />
         </.link>
         <h1 class="text-xl font-semibold text-text-primary">{@user.email}</h1>
-        <.status_badge status={@user.role} />
+        <.status_badge status={@user.role.name} />
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -145,9 +145,10 @@ defmodule StreamixWeb.Admin.UserEditLive do
 
           <.form for={@role_form} id="user-role-form" phx-submit="save_role" class="space-y-3">
             <.input
-              field={@role_form[:role]}
+              name="user[role]"
               type="select"
               label="Role"
+              value={@user.role.name}
               options={[{"Admin", "admin"}, {"Customer", "customer"}, {"Moderator", "moderator"}]}
             />
             <.button type="submit" phx-disable-with="Salvando...">Salvar role</.button>

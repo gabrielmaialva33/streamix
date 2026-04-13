@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias Streamix.Access
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
+  alias Streamix.Iptv.Series
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -117,7 +118,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp needs_detailed_info?(series) do
     # Refetch if missing basic info OR if missing new extended metadata
-    missing_basic = is_nil(series.plot) and is_nil(series.cast) and is_nil(series.director)
+    missing_basic = is_nil(series.plot)
     missing_extended = is_nil(series.content_rating) and is_nil(series.tagline)
 
     missing_basic or missing_extended
@@ -329,20 +330,22 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 </span>
                 <span class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm">
                   <.icon name="hero-tv" class="size-3 sm:size-3.5" />
-                  {length(@seasons)} temp · {@series.episode_count || 0} eps
+                  {length(@seasons)} temp · {Enum.sum(
+                    Enum.map(@seasons, fn s -> length(s.episodes || []) end)
+                  )} eps
                 </span>
               </div>
               
     <!-- Genres -->
               <div
-                :if={@series.genre}
+                :if={@series.genres != []}
                 class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2"
               >
                 <span
-                  :for={genre <- split_genres(@series.genre)}
+                  :for={genre <- @series.genres}
                   class="px-2 sm:px-3 py-0.5 sm:py-1 bg-white/5 text-text-secondary rounded-full text-xs sm:text-sm border border-white/10 hover:border-white/20 transition-colors"
                 >
-                  {genre}
+                  {genre.name}
                 </span>
               </div>
               
@@ -424,32 +427,34 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               
     <!-- Details Grid -->
               <div
-                :if={@series.director || @series.cast}
+                :if={director_names(@series) != "" or cast_names(@series) != ""}
                 class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4"
               >
-                <div :if={@series.director} class="space-y-1 sm:space-y-2">
+                <div :if={director_names(@series) != ""} class="space-y-1 sm:space-y-2">
                   <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
                     Criado por
                   </h4>
-                  <p class="text-text-primary text-sm sm:text-base">{@series.director}</p>
+                  <p class="text-text-primary text-sm sm:text-base">{director_names(@series)}</p>
                 </div>
 
-                <div :if={@series.cast} class="space-y-1 sm:space-y-2">
+                <div :if={cast_names(@series) != ""} class="space-y-1 sm:space-y-2">
                   <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
                     Elenco
                   </h4>
-                  <p class="text-text-primary text-sm sm:text-base">{truncate_cast(@series.cast)}</p>
+                  <p class="text-text-primary text-sm sm:text-base">
+                    {truncate_cast(cast_names(@series))}
+                  </p>
                 </div>
               </div>
             </div>
           </div>
           
     <!-- Image Gallery -->
-          <div :if={@series.images && @series.images != []} class="mt-8 sm:mt-12">
+          <div :if={Series.has_images?(@series)} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
               <div
-                :for={image <- @series.images}
+                :for={image <- Series.image_urls(@series)}
                 class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group"
               >
                 <img
@@ -608,10 +613,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           {@episode.plot}
         </p>
         <span
-          :if={@episode.duration}
+          :if={@episode.duration_secs}
           class="text-[10px] sm:text-xs text-text-secondary/60 mt-1 sm:mt-2 block"
         >
-          {@episode.duration}
+          {format_duration(@episode.duration_secs)}
         </span>
       </div>
     </div>
@@ -651,7 +656,13 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp format_rating(_), do: nil
 
-  defp get_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: ImageProxy.proxy(url)
+  defp get_backdrop(%Series{} = series) do
+    case Series.backdrop_urls(series) do
+      [url | _] -> ImageProxy.proxy(url)
+      _ -> nil
+    end
+  end
+
   defp get_backdrop(_), do: nil
 
   defp trailer_url(youtube_id) when is_binary(youtube_id) do
@@ -664,24 +675,31 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp trailer_url(_), do: nil
 
-  defp split_genres(nil), do: []
-
-  defp split_genres(genre) when is_binary(genre) do
-    genre
-    |> String.split(~r/[,\/]/)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.take(5)
+  defp cast_names(%{credits: credits}) when is_list(credits) do
+    credits
+    |> Enum.filter(&(&1.role == "cast"))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map_join(", ", & &1.person.name)
   end
 
-  defp truncate_cast(nil), do: nil
+  defp cast_names(_), do: ""
 
-  defp truncate_cast(cast) when is_binary(cast) do
-    cast
+  defp director_names(%{credits: credits}) when is_list(credits) do
+    credits
+    |> Enum.filter(&(&1.role == "director"))
+    |> Enum.map_join(", ", & &1.person.name)
+  end
+
+  defp director_names(_), do: ""
+
+  defp truncate_cast(str) when is_binary(str) do
+    str
     |> String.split(",")
     |> Enum.take(5)
     |> Enum.map_join(", ", &String.trim/1)
   end
+
+  defp truncate_cast(_), do: ""
 
   # Content rating color classes based on Brazilian/US ratings
   defp content_rating_class(rating) when is_binary(rating) do
@@ -719,4 +737,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp content_rating_class(_), do: "bg-surface text-text-secondary"
+
+  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    total_minutes = div(seconds, 60)
+    hours = div(total_minutes, 60)
+    mins = rem(total_minutes, 60)
+
+    cond do
+      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
+      hours > 0 -> "#{hours}h"
+      true -> "#{mins}min"
+    end
+  end
+
+  defp format_duration(_), do: nil
 end

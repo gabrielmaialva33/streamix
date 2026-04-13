@@ -5,10 +5,7 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
     create table(:watch_party_rooms) do
       add :invite_code, :string, null: false
       add :host_user_id, references(:users, on_delete: :delete_all), null: false
-      add :content_type, :string, null: false
-      add :content_id, :integer, null: false
-      add :content_name, :string
-      add :content_icon, :text
+      add :catalog_item_id, references(:catalog_items, on_delete: :restrict), null: false
       add :status, :string, null: false, default: "active"
       add :max_participants, :integer, null: false, default: 10
       add :settings, :map, default: %{}
@@ -32,14 +29,7 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
       "ALTER TABLE watch_party_rooms DROP CONSTRAINT IF EXISTS watch_party_rooms_status_check"
     )
 
-    execute(
-      """
-      ALTER TABLE watch_party_rooms
-      ADD CONSTRAINT watch_party_rooms_content_type_check
-      CHECK (content_type IN ('live_channel', 'movie', 'episode', 'gindex', 'gindex_episode'))
-      """,
-      "ALTER TABLE watch_party_rooms DROP CONSTRAINT IF EXISTS watch_party_rooms_content_type_check"
-    )
+    create index(:watch_party_rooms, [:catalog_item_id])
 
     # JSONB GIN for settings queries
     execute(

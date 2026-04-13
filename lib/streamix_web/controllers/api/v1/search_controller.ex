@@ -20,7 +20,9 @@ defmodule StreamixWeb.Api.V1.SearchController do
   use StreamixWeb, :controller
 
   alias Streamix.AI.SemanticSearch
+  alias Streamix.Helpers
   alias Streamix.Iptv
+  alias Streamix.Iptv.{Movie, Series}
 
   @doc """
   Handle CORS preflight OPTIONS requests.
@@ -197,9 +199,9 @@ defmodule StreamixWeb.Api.V1.SearchController do
       title: movie.title,
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
-      genre: movie.genre,
+      genre: Helpers.genre_names(movie.genres),
       poster: proxy_image(movie.stream_icon),
-      backdrop: proxy_image(movie.backdrop_path),
+      backdrop: proxy_image(Movie.backdrop_urls(movie)),
       plot: movie.plot,
       score: result.score
     }
@@ -212,9 +214,9 @@ defmodule StreamixWeb.Api.V1.SearchController do
       title: series.title,
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
-      genre: series.genre,
+      genre: Helpers.genre_names(series.genres),
       poster: proxy_image(series.cover),
-      backdrop: proxy_image(series.backdrop_path),
+      backdrop: proxy_image(Series.backdrop_urls(series)),
       plot: series.plot,
       score: result.score
     }
@@ -256,7 +258,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       title: movie.title,
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
-      genre: movie.genre,
+      genre: Helpers.genre_names(movie.genres),
       poster: movie.stream_icon
     }
   end
@@ -268,7 +270,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       title: series.title,
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
-      genre: series.genre,
+      genre: Helpers.genre_names(series.genres),
       poster: series.cover
     }
   end

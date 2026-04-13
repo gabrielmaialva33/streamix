@@ -8,7 +8,9 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   """
   use StreamixWeb, :controller
 
+  alias Streamix.Helpers
   alias Streamix.Iptv
+  alias Streamix.Iptv.{Movie, Series}
   alias Streamix.Repo
   alias StreamixWeb.StreamToken
 
@@ -46,10 +48,10 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           name: movie.name,
           year: movie.year,
           rating: movie.rating && Decimal.to_float(movie.rating),
-          genre: movie.genre,
+          genre: Helpers.genre_names(movie.genres),
           plot: movie.plot,
           poster: proxy_image(movie.stream_icon),
-          backdrop: proxy_image(movie.backdrop_path)
+          backdrop: proxy_image(Movie.backdrop_urls(movie))
         }
 
       {:series, series} ->
@@ -60,10 +62,10 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           name: series.name,
           year: series.year,
           rating: series.rating && Decimal.to_float(series.rating),
-          genre: series.genre,
+          genre: Helpers.genre_names(series.genres),
           plot: series.plot,
           poster: proxy_image(series.cover),
-          backdrop: proxy_image(series.backdrop_path)
+          backdrop: proxy_image(Series.backdrop_urls(series))
         }
 
       nil ->
@@ -303,9 +305,9 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       title: movie.title,
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
-      genre: movie.genre,
+      genre: Helpers.genre_names(movie.genres),
       poster: proxy_image(movie.stream_icon),
-      duration: movie.duration
+      duration: format_duration(movie.duration_secs)
     }
   end
 
@@ -316,15 +318,15 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       title: movie.title,
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
-      genre: movie.genre,
+      genre: Helpers.genre_names(movie.genres),
       plot: movie.plot,
-      cast: movie.cast,
-      director: movie.director,
-      duration: movie.duration,
+      cast: Helpers.cast_names(movie.credits),
+      director: Helpers.director_names(movie.credits),
+      duration: format_duration(movie.duration_secs),
       content_rating: movie.content_rating,
       tagline: movie.tagline,
       poster: proxy_image(movie.stream_icon),
-      backdrop: proxy_image(movie.backdrop_path),
+      backdrop: proxy_image(Movie.backdrop_urls(movie)),
       youtube_trailer: movie.youtube_trailer,
       stream_url: build_stream_url(movie),
       browser_stream_url: build_browser_stream_url(movie)
@@ -338,29 +340,32 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       title: series.title,
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
-      genre: series.genre,
+      genre: Helpers.genre_names(series.genres),
       poster: proxy_image(series.cover),
-      season_count: series.season_count,
-      episode_count: series.episode_count
+      season_count: length(series.seasons || []),
+      episode_count:
+        Enum.sum(Enum.map(series.seasons || [], fn s -> length(s.episodes || []) end))
     }
   end
 
   defp serialize_series_detail(series) do
+    seasons = series.seasons || []
+
     %{
       id: series.id,
       name: series.name,
       title: series.title,
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
-      genre: series.genre,
+      genre: Helpers.genre_names(series.genres),
       plot: series.plot,
-      cast: series.cast,
-      director: series.director,
+      cast: Helpers.cast_names(series.credits),
+      director: Helpers.director_names(series.credits),
       poster: proxy_image(series.cover),
-      backdrop: proxy_image(series.backdrop_path),
-      season_count: series.season_count,
-      episode_count: series.episode_count,
-      seasons: Enum.map(series.seasons || [], &serialize_season/1)
+      backdrop: proxy_image(Series.backdrop_urls(series)),
+      season_count: length(seasons),
+      episode_count: Enum.sum(Enum.map(seasons, fn s -> length(s.episodes || []) end)),
+      seasons: Enum.map(seasons, &serialize_season/1)
     }
   end
 
@@ -381,7 +386,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       episode_num: episode.episode_num,
       plot: episode.plot,
       still: proxy_image(episode.still_path),
-      duration: episode.duration,
+      duration: format_duration(episode.duration_secs),
       air_date: episode.air_date
     }
   end
@@ -396,7 +401,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       season_number: episode.season.season_number,
       plot: episode.plot,
       still: proxy_image(episode.still_path),
-      duration: episode.duration,
+      duration: format_duration(episode.duration_secs),
       air_date: episode.air_date,
       series_id: series.id,
       series_name: series.name,
@@ -557,4 +562,18 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   defp parse_int(value, _default) when is_integer(value), do: value
   defp parse_int(_, default), do: default
+
+  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    total_minutes = div(seconds, 60)
+    hours = div(total_minutes, 60)
+    mins = rem(total_minutes, 60)
+
+    cond do
+      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
+      hours > 0 -> "#{hours}h"
+      true -> "#{mins}min"
+    end
+  end
+
+  defp format_duration(_), do: nil
 end

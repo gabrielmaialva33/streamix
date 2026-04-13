@@ -7,7 +7,7 @@ defmodule Streamix.Repo.Migrations.CreateUsersTokens do
       add :context, :string, null: false
       add :sent_to, :string
       add :authenticated_at, :utc_datetime
-      add :ip_address, :string
+      add :ip_address, :inet
       add :user_agent, :text
       add :country, :string
       add :city, :string

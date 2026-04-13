@@ -68,8 +68,10 @@ defmodule Streamix.AccessTest do
     provider = provider_fixture(user, %{is_system: true, visibility: "global"})
     permission = permission_fixture()
 
+    customer_role = Streamix.Accounts.get_role_by_name!("customer")
+
     %RolePermission{}
-    |> RolePermission.changeset(%{role: "customer", permission_id: permission.id})
+    |> RolePermission.changeset(%{role_id: customer_role.id, permission_id: permission.id})
     |> Repo.insert!()
 
     assert Access.can_play_global_content?(user, provider)
@@ -126,17 +128,20 @@ defmodule Streamix.AccessTest do
     permission_name = "play_global_content_role_#{System.unique_integer([:positive])}"
     Access.ensure_permission!(permission_name)
 
+    admin_role = Streamix.Accounts.get_role_by_name!("admin")
+
     first_role_permissions = Access.ensure_role_permissions!("admin", [permission_name])
     second_role_permissions = Access.ensure_role_permissions!("admin", [permission_name])
 
-    assert [%RolePermission{id: first_id, role: "admin"}] = first_role_permissions
-    assert [%RolePermission{id: second_id, role: "admin"}] = second_role_permissions
+    assert [%RolePermission{id: first_id, role_id: role_id}] = first_role_permissions
+    assert role_id == admin_role.id
+    assert [%RolePermission{id: second_id}] = second_role_permissions
     assert first_id == second_id
 
     assert Repo.aggregate(
              from(rp in RolePermission,
                join: p in assoc(rp, :permission),
-               where: rp.role == "admin" and p.name == ^permission_name
+               where: rp.role_id == ^admin_role.id and p.name == ^permission_name
              ),
              :count,
              :id

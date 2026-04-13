@@ -127,17 +127,18 @@ defmodule Streamix.Queue do
   # Private functions
 
   defp enqueue_gindex_via_rabbitmq(provider) do
-    drives = provider.gindex_drives || %{}
+    provider = Streamix.Repo.preload(provider, :drives)
 
-    paths = %{
-      movies: Map.get(drives, "movies_path"),
-      series: Map.get(drives, "series_paths", []),
-      animes: Map.get(drives, "animes_path")
-    }
-
-    # Filter out nil paths
     paths =
-      paths
+      provider.drives
+      |> Enum.reduce(%{}, fn drive, acc ->
+        case drive.drive_type do
+          "movies" -> Map.put(acc, :movies, drive.metadata["path"])
+          "series" -> Map.put(acc, :series, drive.metadata["paths"] || [drive.metadata["path"]])
+          "animes" -> Map.put(acc, :animes, drive.metadata["path"])
+          _ -> acc
+        end
+      end)
       |> Enum.reject(fn {_k, v} -> is_nil(v) or v == [] end)
       |> Map.new()
 

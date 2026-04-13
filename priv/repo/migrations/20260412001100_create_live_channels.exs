@@ -12,6 +12,7 @@ defmodule Streamix.Repo.Migrations.CreateLiveChannels do
       add :direct_source, :text
       add :dead_since, :utc_datetime
       add :provider_id, references(:providers, on_delete: :delete_all), null: false
+      add :catalog_item_id, :bigint, null: false
 
       timestamps(type: :utc_datetime)
     end
@@ -26,13 +27,17 @@ defmodule Streamix.Repo.Migrations.CreateLiveChannels do
       "DROP INDEX live_channels_name_trgm_idx"
     )
 
-    # Junction table
-    create table(:live_channel_categories, primary_key: false) do
-      add :live_channel_id, references(:live_channels, on_delete: :delete_all), null: false
-      add :category_id, references(:categories, on_delete: :delete_all), null: false
-    end
+    create unique_index(:live_channels, [:catalog_item_id])
 
-    create unique_index(:live_channel_categories, [:live_channel_id, :category_id])
-    create index(:live_channel_categories, [:category_id])
+    execute(
+      """
+      ALTER TABLE live_channels
+        ADD CONSTRAINT live_channels_catalog_item_provider_fk
+        FOREIGN KEY (catalog_item_id, provider_id)
+        REFERENCES catalog_items (id, provider_id)
+        ON DELETE RESTRICT
+      """,
+      "ALTER TABLE live_channels DROP CONSTRAINT IF EXISTS live_channels_catalog_item_provider_fk"
+    )
   end
 end

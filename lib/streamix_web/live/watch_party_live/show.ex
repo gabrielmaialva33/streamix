@@ -8,6 +8,9 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.PlayerHelpers
   import StreamixWeb.WatchPartyComponents
 
+  alias Streamix.Iptv.CatalogItem
+  alias Streamix.Library.ContentRef
+  alias Streamix.Repo
   alias Streamix.WatchParty
   alias StreamixWeb.Presence
 
@@ -20,7 +23,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
       nil ->
         {:ok,
          socket
-         |> put_flash(:error, "Watch Party não encontrada")
+         |> put_flash(:error, "Watch Party nao encontrada")
          |> push_navigate(to: ~p"/")}
 
       room ->
@@ -31,7 +34,28 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp mount_room(socket, room, user_id) do
     is_host = room.host_user_id == user_id
 
-    case load_content(room.content_type, to_string(room.content_id), user_id) do
+    # Resolve content_type and content_id from catalog_item
+    catalog_item =
+      room
+      |> Repo.preload(catalog_item: [:movie, :series, :episode, :live_channel])
+      |> Map.get(:catalog_item)
+
+    content_type = catalog_item.content_type
+    content_entity = CatalogItem.content(catalog_item)
+    content_id = if content_entity, do: content_entity.id, else: nil
+
+    if is_nil(content_id) do
+      {:ok,
+       socket
+       |> put_flash(:error, "Conteudo nao encontrado")
+       |> push_navigate(to: ~p"/")}
+    else
+      do_mount_room(socket, room, user_id, is_host, content_type, content_id, ContentRef)
+    end
+  end
+
+  defp do_mount_room(socket, room, user_id, is_host, content_type, content_id, _content_ref) do
+    case load_content(content_type, to_string(content_id), user_id) do
       {:ok, content, provider, stream_url} ->
         WatchParty.ensure_room_server(room)
 
@@ -69,17 +93,20 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         presence_topic = @presence_topic_prefix <> to_string(room.id)
         presences = Presence.list(presence_topic)
 
-        next_episode = load_next_episode(room.content_type, content, provider, user_id)
+        next_episode = load_next_episode(content_type, content, provider, user_id)
 
         socket =
           socket
-          |> assign(page_title: "Watch Party — #{room.content_name}")
+          |> assign(
+            page_title:
+              "Watch Party — #{Map.get(content, :title) || Map.get(content, :name) || "Conteúdo"}"
+          )
           |> assign(room: room)
           |> assign(content: content)
-          |> assign(content_type: safe_content_type(room.content_type))
+          |> assign(content_type: safe_content_type(content_type))
           |> assign(provider: provider)
           |> assign(stream_url: stream_url)
-          |> assign(streaming_mode: default_streaming_mode(room.content_type))
+          |> assign(streaming_mode: default_streaming_mode(content_type))
           |> assign(is_host: is_host)
           |> assign(user_id: user_id)
           |> assign(playback_state: playback_state)
@@ -94,7 +121,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
       {:error, :not_found} ->
         {:ok,
          socket
-         |> put_flash(:error, "Conteúdo não encontrado")
+         |> put_flash(:error, "Conteudo nao encontrado")
          |> push_navigate(to: ~p"/")}
     end
   end

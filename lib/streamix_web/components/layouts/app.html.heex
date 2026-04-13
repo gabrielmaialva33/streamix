@@ -86,7 +86,7 @@
                 <.icon name="hero-cog-6-tooth" class="size-4" /> Configurações
               </.link>
               <.link
-                :if={@current_scope.user.role == "admin"}
+                :if={Streamix.Accounts.admin?(@current_scope.user)}
                 navigate={~p"/admin"}
                 class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
               >

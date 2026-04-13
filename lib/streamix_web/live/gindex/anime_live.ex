@@ -218,12 +218,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
           GDrive
         </span>
 
-        <div
-          :if={@anime.episode_count && @anime.episode_count > 0}
-          class="absolute bottom-2 left-2 px-2 py-0.5 text-xs rounded bg-purple-600 text-white"
-        >
-          {@anime.episode_count} eps
-        </div>
+        <%!-- episode count computed from preloaded seasons --%>
       </div>
 
       <div class="p-3">
@@ -234,9 +229,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
             </h3>
             <p :if={@anime.year} class="text-xs text-text-secondary">
               {@anime.year}
-              <span :if={@anime.season_count && @anime.season_count > 0}>
-                | {pluralize(@anime.season_count, "release", "releases")}
-              </span>
+              <%!-- season count removed from schema --%>
             </p>
           </div>
           <button
@@ -256,7 +249,4 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     </div>
     """
   end
-
-  defp pluralize(1, singular, _plural), do: "1 #{singular}"
-  defp pluralize(count, _singular, plural), do: "#{count} #{plural}"
 end

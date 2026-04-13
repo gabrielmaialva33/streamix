@@ -635,8 +635,8 @@ defmodule StreamixWeb.HomeLive do
         <span :if={@content.year} class="text-sm text-text-secondary">
           {@content.year}
         </span>
-        <span :if={@content.genre} class="text-sm text-text-secondary">
-          {String.split(@content.genre, ",") |> List.first() |> String.trim()}
+        <span :if={@content.genres != []} class="text-sm text-text-secondary">
+          {List.first(@content.genres).name}
         </span>
       </div>
       
@@ -1194,9 +1194,7 @@ defmodule StreamixWeb.HomeLive do
           {@series.title || @series.name}
         </h3>
         <p class="text-[10px] sm:text-xs text-text-muted">
-          {if @series.season_count && @series.season_count > 0,
-            do: "#{@series.season_count} temp",
-            else: @series.year}
+          {@series.year}
         </p>
       </div>
     </.link>
@@ -1325,7 +1323,11 @@ defmodule StreamixWeb.HomeLive do
       ]}
     >
       <div class="aspect-[2/3] bg-surface-hover relative flex items-center justify-center">
-        <div id={"fav-img-#{@favorite.id}"} phx-hook="ImageFallback" class="w-full h-full">
+        <div
+          id={"fav-img-#{@favorite.content_type}-#{@favorite.content_id}"}
+          phx-hook="ImageFallback"
+          class="w-full h-full"
+        >
           <img
             :if={@favorite.content_icon}
             src={ImageProxy.proxy(@favorite.content_icon)}
@@ -1356,11 +1358,15 @@ defmodule StreamixWeb.HomeLive do
   # Helper functions
   defp get_backdrop(content) do
     # Use hero size (w1280) for large backgrounds - Netflix pattern
-    case content.backdrop_path do
+    case backdrop_urls(content) do
       [first | _] -> ImageProxy.hero(first)
       _ -> nil
     end
   end
+
+  defp backdrop_urls(%Iptv.Movie{} = m), do: Iptv.Movie.backdrop_urls(m)
+  defp backdrop_urls(%Iptv.Series{} = s), do: Iptv.Series.backdrop_urls(s)
+  defp backdrop_urls(_), do: []
 
   defp content_path(:movie, movie), do: ~p"/watch/movie/#{movie.id}"
   defp content_path(:series, series), do: ~p"/browse/series/#{series.id}"

@@ -137,11 +137,13 @@ defmodule StreamixWeb.Api.V1.AuthController do
   end
 
   defp serialize_user(user) do
+    user = Streamix.Repo.preload(user, :role)
+
     %{
       id: user.id,
       email: user.email,
       name: Map.get(user, :name),
-      role: user.role
+      role: user.role.name
     }
   end
 

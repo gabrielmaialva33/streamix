@@ -168,14 +168,7 @@ defmodule Streamix.AI.SemanticSearch do
     query =
       from(m in Streamix.Iptv.Movie,
         where: not is_nil(m.title),
-        select: %{
-          id: m.id,
-          title: m.title,
-          plot: m.plot,
-          year: m.year,
-          genres: m.genre,
-          provider_id: m.provider_id
-        }
+        preload: [:genres]
       )
 
     query =
@@ -183,7 +176,20 @@ defmodule Streamix.AI.SemanticSearch do
         do: where(query, [m], m.provider_id == ^provider_id),
         else: query
 
-    movies = Repo.all(query)
+    movies =
+      query
+      |> Repo.all()
+      |> Enum.map(fn m ->
+        %{
+          id: m.id,
+          title: m.title,
+          plot: m.plot,
+          year: m.year,
+          genres: Streamix.Helpers.genre_names(m.genres),
+          provider_id: m.provider_id
+        }
+      end)
+
     Logger.info("[SemanticSearch] Indexing #{length(movies)} movies")
 
     index_contents(movies, :movies)
@@ -196,14 +202,7 @@ defmodule Streamix.AI.SemanticSearch do
     query =
       from(s in Streamix.Iptv.Series,
         where: not is_nil(s.title),
-        select: %{
-          id: s.id,
-          title: s.title,
-          plot: s.plot,
-          year: s.year,
-          genres: s.genre,
-          provider_id: s.provider_id
-        }
+        preload: [:genres]
       )
 
     query =
@@ -211,7 +210,20 @@ defmodule Streamix.AI.SemanticSearch do
         do: where(query, [s], s.provider_id == ^provider_id),
         else: query
 
-    series = Repo.all(query)
+    series =
+      query
+      |> Repo.all()
+      |> Enum.map(fn s ->
+        %{
+          id: s.id,
+          title: s.title,
+          plot: s.plot,
+          year: s.year,
+          genres: Streamix.Helpers.genre_names(s.genres),
+          provider_id: s.provider_id
+        }
+      end)
+
     Logger.info("[SemanticSearch] Indexing #{length(series)} series")
 
     index_contents(series, :series)

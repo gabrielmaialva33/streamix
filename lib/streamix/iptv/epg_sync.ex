@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.EpgSync do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{EpgParser, EpgProgram, Provider, XtreamClient}
+  alias Streamix.Iptv.{EpgChannel, EpgParser, EpgProgram, Provider, XtreamClient}
   alias Streamix.Repo
 
   require Logger
@@ -17,8 +17,10 @@ defmodule Streamix.Iptv.EpgSync do
   Syncs EPG data for a specific channel.
   Fetches from the Xtream Codes short EPG endpoint and upserts to database.
   """
-  def sync_channel_epg(%Provider{} = provider, stream_id, epg_channel_id) do
-    Logger.debug("Syncing EPG for channel #{epg_channel_id} from provider #{provider.id}")
+  def sync_channel_epg(%Provider{} = provider, stream_id, epg_channel_external_id) do
+    Logger.debug(
+      "Syncing EPG for channel #{epg_channel_external_id} from provider #{provider.id}"
+    )
 
     with {:ok, data} <-
            XtreamClient.get_short_epg(
@@ -29,23 +31,23 @@ defmodule Streamix.Iptv.EpgSync do
              limit: 20
            ),
          {:ok, programs} <- EpgParser.parse_short_epg(data) do
-      # Add provider_id and ensure epg_channel_id is set
+      # Upsert the epg_channel first to get the integer FK
+      epg_channel_id = upsert_epg_channel(provider.id, epg_channel_external_id, stream_id)
+
+      # Add epg_channel_id (integer FK) to each program
       programs =
         Enum.map(programs, fn p ->
-          Map.merge(p, %{
-            provider_id: provider.id,
-            epg_channel_id: epg_channel_id
-          })
+          Map.put(p, :epg_channel_id, epg_channel_id)
         end)
 
-      count = upsert_programs(programs, provider.id)
+      count = upsert_programs(programs)
 
-      Logger.debug("EPG sync completed: #{count} programs for channel #{epg_channel_id}")
+      Logger.debug("EPG sync completed: #{count} programs for channel #{epg_channel_external_id}")
       {:ok, count}
     else
       {:error, reason} ->
         Logger.warning(
-          "EPG sync failed for channel #{epg_channel_id}, provider #{provider.id}: #{inspect(reason)}"
+          "EPG sync failed for channel #{epg_channel_external_id}, provider #{provider.id}: #{inspect(reason)}"
         )
 
         {:error, reason}
@@ -82,7 +84,8 @@ defmodule Streamix.Iptv.EpgSync do
 
     {count, _} =
       EpgProgram
-      |> where([p], p.provider_id == ^provider_id)
+      |> join(:inner, [p], ec in EpgChannel, on: p.epg_channel_id == ec.id)
+      |> where([_p, ec], ec.provider_id == ^provider_id)
       |> where([p], p.end_time < ^cutoff)
       |> Repo.delete_all()
 
@@ -105,9 +108,9 @@ defmodule Streamix.Iptv.EpgSync do
   # Private Functions
   # =============================================================================
 
-  defp upsert_programs([], _provider_id), do: 0
+  defp upsert_programs([]), do: 0
 
-  defp upsert_programs(programs, _provider_id) do
+  defp upsert_programs(programs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     programs
@@ -121,7 +124,7 @@ defmodule Streamix.Iptv.EpgSync do
           batch,
           on_conflict:
             {:replace, [:title, :description, :end_time, :category, :icon, :lang, :updated_at]},
-          conflict_target: [:provider_id, :epg_channel_id, :start_time]
+          conflict_target: [:epg_channel_id, :start_time]
         )
 
       acc + count
@@ -138,7 +141,6 @@ defmodule Streamix.Iptv.EpgSync do
       category: program[:category],
       icon: program[:icon],
       lang: program[:lang],
-      provider_id: program[:provider_id],
       inserted_at: now,
       updated_at: now
     }
@@ -148,6 +150,34 @@ defmodule Streamix.Iptv.EpgSync do
   defp valid_program_attrs?(%{title: nil}), do: false
   defp valid_program_attrs?(%{start_time: nil}), do: false
   defp valid_program_attrs?(%{end_time: nil}), do: false
-  defp valid_program_attrs?(%{provider_id: nil}), do: false
   defp valid_program_attrs?(_), do: true
+
+  # Upserts an epg_channel record and returns its integer ID
+  defp upsert_epg_channel(provider_id, external_id, stream_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    # Find the live_channel by provider_id + stream_id to link
+    live_channel_id =
+      Streamix.Iptv.LiveChannel
+      |> where(provider_id: ^provider_id, stream_id: ^stream_id)
+      |> select([c], c.id)
+      |> Repo.one()
+
+    attrs = %{
+      external_id: to_string(external_id),
+      provider_id: provider_id,
+      live_channel_id: live_channel_id,
+      inserted_at: now,
+      updated_at: now
+    }
+
+    {1, [%{id: id}]} =
+      Repo.insert_all(EpgChannel, [attrs],
+        on_conflict: {:replace, [:live_channel_id, :updated_at]},
+        conflict_target: [:provider_id, :external_id],
+        returning: [:id]
+      )
+
+    id
+  end
 end

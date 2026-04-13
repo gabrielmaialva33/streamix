@@ -4,7 +4,7 @@ defmodule Streamix.Repo.Migrations.CreateEpgPrograms do
   def change do
     create table(:epg_programs, primary_key: false) do
       add :id, :bigserial
-      add :epg_channel_id, :string, null: false
+      add :epg_channel_id, references(:epg_channels, on_delete: :delete_all), null: false
       add :title, :text, null: false
       add :description, :text
       add :start_time, :utc_datetime, null: false
@@ -12,7 +12,6 @@ defmodule Streamix.Repo.Migrations.CreateEpgPrograms do
       add :category, :string
       add :icon, :text
       add :lang, :string, size: 10
-      add :provider_id, :bigint, null: false
 
       timestamps(type: :utc_datetime)
     end
@@ -23,18 +22,18 @@ defmodule Streamix.Repo.Migrations.CreateEpgPrograms do
       "SELECT 1"
     )
 
-    # "What's on now" queries: provider + channel + time range
-    create index(:epg_programs, [:provider_id, :start_time, :end_time])
+    # "What's on now" queries: channel + time range
+    create index(:epg_programs, [:epg_channel_id, :start_time, :end_time])
 
-    # Unique per provider+channel+start (includes partition column)
-    create unique_index(:epg_programs, [:provider_id, :epg_channel_id, :start_time])
+    # Unique per channel+start
+    create unique_index(:epg_programs, [:epg_channel_id, :start_time])
 
-    # Compression — segment by provider+channel for efficient per-channel queries
+    # Compression — segment by channel for efficient per-channel queries
     execute(
       """
       ALTER TABLE epg_programs SET (
         timescaledb.compress,
-        timescaledb.compress_segmentby = 'provider_id, epg_channel_id',
+        timescaledb.compress_segmentby = 'epg_channel_id',
         timescaledb.compress_orderby = 'start_time DESC'
       )
       """,

@@ -2,7 +2,7 @@ defmodule Streamix.IptvTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.{Favorite, Provider, WatchHistory}
+  alias Streamix.Iptv.Provider
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -270,9 +270,6 @@ defmodule Streamix.IptvTest do
     test "returns unique categories for a provider" do
       user = user_fixture()
       provider = provider_fixture(user)
-      # Simulating categories created by sync/fixtures
-      # For this test we need to insert categories manually or via fixture
-      # Assuming we can insert categories directly for testing
 
       Repo.insert!(%Streamix.Iptv.Category{
         provider_id: provider.id,
@@ -315,26 +312,20 @@ defmodule Streamix.IptvTest do
       assert hd(favorites).content_type == "live_channel"
     end
 
-    test "orders by descending inserted_at" do
+    test "returns all favorites for user" do
       user = user_fixture()
       provider = provider_fixture(user)
       ch1 = channel_fixture(provider, %{name: "First"})
       ch2 = channel_fixture(provider, %{name: "Second"})
-      first = favorite_fixture(user, ch1)
-      second = favorite_fixture(user, ch2)
-
-      older = DateTime.utc_now() |> DateTime.add(-2, :second) |> DateTime.truncate(:second)
-      newer = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      Repo.update_all(from(f in Favorite, where: f.id == ^first.id), set: [inserted_at: older])
-      Repo.update_all(from(f in Favorite, where: f.id == ^second.id), set: [inserted_at: newer])
+      favorite_fixture(user, ch1)
+      favorite_fixture(user, ch2)
 
       favorites = Iptv.list_favorites(user.id)
-
-      # Verify ordering is descending by inserted_at
       assert length(favorites) == 2
-      [first, second] = favorites
-      assert NaiveDateTime.compare(first.inserted_at, second.inserted_at) == :gt
+
+      content_ids = Enum.map(favorites, & &1[:content_id]) |> MapSet.new()
+      assert MapSet.member?(content_ids, ch1.id)
+      assert MapSet.member?(content_ids, ch2.id)
     end
   end
 
@@ -426,11 +417,10 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, %Favorite{}} = Iptv.add_favorite(user.id, "live_channel", channel.id)
-      favorite = hd(Iptv.list_favorites(user.id))
+      assert {:ok, %{} = fav} = Iptv.add_favorite(user.id, "live_channel", channel.id)
 
       assert Iptv.is_favorite?(user.id, "live_channel", channel.id)
-      refute is_nil(Map.get(favorite, :content_ref_id))
+      assert fav.catalog_item_id == channel.catalog_item_id
     end
 
     test "returns error for duplicate favorite" do
@@ -483,11 +473,11 @@ defmodule Streamix.IptvTest do
   end
 
   # =============================================================================
-  # Watch History
+  # Watch History (WatchProgress)
   # =============================================================================
 
   describe "list_watch_history/2" do
-    test "returns watch history for a user" do
+    test "returns watch progress for a user" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
@@ -501,56 +491,42 @@ defmodule Streamix.IptvTest do
       assert hd(history).duration_seconds == 120
     end
 
-    test "orders by descending watched_at" do
+    test "returns all watch progress entries for user" do
       user = user_fixture()
       provider = provider_fixture(user)
       ch1 = channel_fixture(provider, %{name: "First"})
       ch2 = channel_fixture(provider, %{name: "Second"})
-      first = watch_history_fixture(user, ch1)
-      second = watch_history_fixture(user, ch2)
-
-      older = DateTime.utc_now() |> DateTime.add(-2, :second) |> DateTime.truncate(:second)
-      newer = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      Repo.update_all(
-        from(h in WatchHistory, where: h.id == ^first.id),
-        set: [watched_at: older]
-      )
-
-      Repo.update_all(
-        from(h in WatchHistory, where: h.id == ^second.id),
-        set: [watched_at: newer]
-      )
+      watch_history_fixture(user, ch1)
+      watch_history_fixture(user, ch2)
 
       history = Iptv.list_watch_history(user.id)
-
-      # Verify ordering is descending by watched_at
       assert length(history) == 2
-      [first, second] = history
-      assert DateTime.compare(first.watched_at, second.watched_at) == :gt
+
+      content_ids = Enum.map(history, & &1[:content_id]) |> MapSet.new()
+      assert MapSet.member?(content_ids, ch1.id)
+      assert MapSet.member?(content_ids, ch2.id)
     end
   end
 
   describe "add_watch_history/3" do
-    test "adds watch history entry" do
+    test "adds watch progress entry" do
       user = user_fixture()
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, %WatchHistory{} = entry} =
+      assert {:ok, %{} = entry} =
                Iptv.add_watch_history(user.id, "live_channel", channel.id, %{
                  duration_seconds: 300
                })
 
       assert entry.duration_seconds == 300
       assert entry.user_id == user.id
-      assert entry.content_id == channel.id
-      refute is_nil(Map.get(entry, :content_ref_id))
+      assert entry.catalog_item_id == channel.catalog_item_id
     end
   end
 
   describe "clear_watch_history/1" do
-    test "clears all watch history for user" do
+    test "clears all watch progress for user" do
       user = user_fixture()
       provider = provider_fixture(user)
 

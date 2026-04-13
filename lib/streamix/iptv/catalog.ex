@@ -11,7 +11,7 @@ defmodule Streamix.Iptv.Catalog do
 
   alias Streamix.Cache
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Category, LiveChannel, Movie, Provider, Series}
+  alias Streamix.Iptv.{Category, LiveChannel, Movie, MovieAsset, Provider, Series, SeriesAsset}
   alias Streamix.Repo
 
   # =============================================================================
@@ -33,11 +33,15 @@ defmodule Streamix.Iptv.Catalog do
     movies =
       Movie
       |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-      |> where([m, p], p.visibility in [:global, :public])
-      |> where([m, _p], not is_nil(m.backdrop_path) and m.backdrop_path != ^[])
-      |> where([m, _p], not is_nil(m.plot))
+      |> join(:inner, [m, _p], a in MovieAsset,
+        on: a.movie_id == m.id and a.asset_type == "backdrop"
+      )
+      |> where([m, p, _a], p.visibility in [:global, :public])
+      |> where([m, _p, _a], not is_nil(m.plot))
       |> order_by([m], desc: m.rating)
       |> limit(10)
+      |> distinct([m], m.id)
+      |> preload([:assets, :genres, credits: :person])
       |> Repo.all()
 
     if movies != [] do
@@ -48,11 +52,15 @@ defmodule Streamix.Iptv.Catalog do
       series_list =
         Series
         |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-        |> where([s, p], p.visibility in [:global, :public])
-        |> where([s, _p], not is_nil(s.backdrop_path) and s.backdrop_path != ^[])
-        |> where([s, _p], not is_nil(s.plot))
+        |> join(:inner, [s, _p], a in SeriesAsset,
+          on: a.series_id == s.id and a.asset_type == "backdrop"
+        )
+        |> where([s, p, _a], p.visibility in [:global, :public])
+        |> where([s, _p, _a], not is_nil(s.plot))
         |> order_by([s], desc: s.rating)
         |> limit(10)
+        |> distinct([s], s.id)
+        |> preload([:assets, :genres, credits: :person])
         |> Repo.all()
 
       if series_list != [] do
@@ -104,9 +112,9 @@ defmodule Streamix.Iptv.Catalog do
         |> Repo.aggregate(:count)
 
       %{
-        "channels_count" => channels_count,
-        "movies_count" => movies_count,
-        "series_count" => series_count
+        channels_count: channels_count,
+        movies_count: movies_count,
+        series_count: series_count
       }
     end)
   end
@@ -121,14 +129,19 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_movies_by_genre(String.t(), keyword()) :: [Movie.t()]
   def list_movies_by_genre(genre, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    escaped_genre = Helpers.escape_like(genre)
 
     Movie
     |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-    |> where([m, p], p.visibility in [:global, :public])
-    |> where([m, _p], ilike(m.genre, ^"%#{Helpers.escape_like(genre)}%"))
-    |> where([m, _p], not is_nil(m.stream_icon))
+    |> join(:inner, [m, _p], mg in "movie_genres", on: mg.movie_id == m.id)
+    |> join(:inner, [m, _p, mg], g in Streamix.Iptv.Genre, on: g.id == mg.genre_id)
+    |> where([m, p, _mg, _g], p.visibility in [:global, :public])
+    |> where([m, _p, _mg, g], ilike(g.name, ^"%#{escaped_genre}%"))
+    |> where([m, _p, _mg, _g], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year)
     |> limit(^limit)
+    |> distinct([m], m.id)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -147,6 +160,7 @@ defmodule Streamix.Iptv.Catalog do
       |> where([m, _p], not is_nil(m.stream_icon))
       |> order_by([m], desc: m.inserted_at)
       |> limit(^limit)
+      |> preload([:genres, credits: :person])
       |> Repo.all()
       |> Enum.map(&{:movie, &1})
 
@@ -157,6 +171,7 @@ defmodule Streamix.Iptv.Catalog do
       |> where([s, _p], not is_nil(s.cover))
       |> order_by([s], desc: s.inserted_at)
       |> limit(^limit)
+      |> preload([:genres, credits: :person])
       |> Repo.all()
       |> Enum.map(&{:series, &1})
 
@@ -179,14 +194,18 @@ defmodule Streamix.Iptv.Catalog do
     days = Keyword.get(opts, :days, 7)
     since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
 
-    # Get movie IDs with watch counts from history
+    # Get movie IDs with watch counts from watch_progress via catalog_items
     trending_ids =
-      from(h in Streamix.Iptv.WatchHistory,
-        where: not is_nil(h.movie_id),
-        where: h.watched_at >= ^since,
-        group_by: h.movie_id,
-        select: {h.movie_id, count(h.id)},
-        order_by: [desc: count(h.id)],
+      from(wp in Streamix.Iptv.WatchProgress,
+        join: ci in Streamix.Iptv.CatalogItem,
+        on: wp.catalog_item_id == ci.id,
+        join: m in Streamix.Iptv.Movie,
+        on: m.catalog_item_id == ci.id,
+        where: ci.content_type == "movie",
+        where: wp.last_watched_at >= ^since,
+        group_by: m.id,
+        select: {m.id, count(wp.id)},
+        order_by: [desc: count(wp.id)],
         limit: ^(limit * 2)
       )
       |> Repo.all()
@@ -200,6 +219,7 @@ defmodule Streamix.Iptv.Catalog do
       |> where([m], m.id in ^trending_ids)
       |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
       |> where([m, p], p.visibility in [:global, :public])
+      |> preload([:genres, credits: :person])
       |> Repo.all()
       |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
       |> Enum.take(limit)
@@ -215,19 +235,23 @@ defmodule Streamix.Iptv.Catalog do
     days = Keyword.get(opts, :days, 7)
     since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
 
-    # Get series IDs from episode watches
-    trending_ids =
-      from(h in Streamix.Iptv.WatchHistory,
-        where: not is_nil(h.episode_id),
-        where: h.watched_at >= ^since,
-        group_by: h.episode_id,
-        select: {h.episode_id, count(h.id)},
-        order_by: [desc: count(h.id)],
+    # Get series IDs from episode watches via catalog_items
+    trending_episode_ids =
+      from(wp in Streamix.Iptv.WatchProgress,
+        join: ci in Streamix.Iptv.CatalogItem,
+        on: wp.catalog_item_id == ci.id,
+        join: e in Streamix.Iptv.Episode,
+        on: e.catalog_item_id == ci.id,
+        where: ci.content_type == "episode",
+        where: wp.last_watched_at >= ^since,
+        group_by: e.id,
+        select: {e.id, count(wp.id)},
+        order_by: [desc: count(wp.id)],
         limit: ^(limit * 3)
       )
       |> Repo.all()
 
-    if trending_ids == [] do
+    if trending_episode_ids == [] do
       # Fallback to high-rated series
       Series
       |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
@@ -235,10 +259,11 @@ defmodule Streamix.Iptv.Catalog do
       |> where([s, _p], not is_nil(s.cover))
       |> order_by([s], desc: s.rating)
       |> limit(^limit)
+      |> preload([:genres, credits: :person])
       |> Repo.all()
     else
       # Map episode IDs to series IDs
-      episode_ids = Enum.map(trending_ids, fn {id, _} -> id end)
+      episode_ids = Enum.map(trending_episode_ids, fn {id, _} -> id end)
 
       series_ids =
         from(e in Streamix.Iptv.Episode,
@@ -254,6 +279,7 @@ defmodule Streamix.Iptv.Catalog do
       |> where([s], s.id in ^series_ids)
       |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
       |> where([s, p], p.visibility in [:global, :public])
+      |> preload([:genres, credits: :person])
       |> Repo.all()
       |> Enum.take(limit)
     end
@@ -274,6 +300,7 @@ defmodule Streamix.Iptv.Catalog do
     |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.year, desc: m.rating)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -293,6 +320,7 @@ defmodule Streamix.Iptv.Catalog do
     |> where([m, _p], not is_nil(m.plot))
     |> order_by([m], desc: m.rating)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -310,6 +338,7 @@ defmodule Streamix.Iptv.Catalog do
     |> where([s, _p], not is_nil(s.cover))
     |> order_by([s], desc: s.rating)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 

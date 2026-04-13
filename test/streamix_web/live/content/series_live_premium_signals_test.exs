@@ -5,10 +5,15 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.Series
+  alias Streamix.Iptv.{CatalogItem, Series}
   alias Streamix.Repo
 
   defp series_fixture(provider, attrs) do
+    catalog_item =
+      %CatalogItem{}
+      |> CatalogItem.changeset(%{content_type: "series", provider_id: provider.id})
+      |> Repo.insert!()
+
     params =
       Enum.into(attrs, %{
         series_id: System.unique_integer([:positive]),
@@ -16,9 +21,8 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
         title: "Series Title #{System.unique_integer([:positive])}",
         year: 2024,
         provider_id: provider.id,
-        episode_count: 1,
-        season_count: 1,
-        tmdb_id: "tt1234567"
+        tmdb_id: "tt1234567",
+        catalog_item_id: catalog_item.id
       })
 
     %Series{}

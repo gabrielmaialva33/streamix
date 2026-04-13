@@ -1,18 +1,22 @@
 defmodule Streamix.Library.ContentRef do
   @moduledoc """
-  Shared helpers for translating between external `(type, id)` library APIs
-  and normalized concrete foreign-key fields.
+  Helpers for resolving catalog_item_id from (content_type, content_id) pairs,
+  and decorating favorites / watch_progress with display fields.
   """
 
-  alias Streamix.Iptv.{Episode, LiveChannel, Movie, Series}
+  import Ecto.Query, warn: false
+
+  alias Streamix.Iptv.{CatalogItem, Episode, LiveChannel, Movie, Series}
+  alias Streamix.Repo
 
   @favorite_types ~w(live_channel movie series episode)
   @history_types ~w(live_channel movie episode)
-  @target_fields %{
-    "live_channel" => :live_channel_id,
-    "movie" => :movie_id,
-    "series" => :series_id,
-    "episode" => :episode_id
+
+  @content_schemas %{
+    "live_channel" => LiveChannel,
+    "movie" => Movie,
+    "series" => Series,
+    "episode" => Episode
   }
 
   @spec favorite_types() :: [String.t()]
@@ -21,74 +25,73 @@ defmodule Streamix.Library.ContentRef do
   @spec history_types() :: [String.t()]
   def history_types, do: @history_types
 
-  @spec target_field(String.t()) :: atom() | nil
-  def target_field(type), do: Map.get(@target_fields, normalize_type(type))
+  @doc """
+  Given a content_type string and the content row's id, returns the catalog_item_id.
+  """
+  @spec resolve_catalog_item_id(String.t(), integer()) ::
+          {:ok, integer()} | {:error, :invalid_content_type | :not_found}
+  def resolve_catalog_item_id(content_type, content_id) do
+    type = normalize_type(content_type)
 
-  @spec resolve_target_attrs(String.t(), integer(), [String.t()]) ::
-          {:ok, map()} | {:error, :invalid_content_type | :invalid_content_id}
-  def resolve_target_attrs(type, id, allowed_types) do
-    normalized_type = normalize_type(type)
+    case Map.get(@content_schemas, type) do
+      nil ->
+        {:error, :invalid_content_type}
 
-    with true <- normalized_type in allowed_types,
-         {:ok, normalized_id} <- normalize_id(id) do
-      {:ok, %{Map.fetch!(@target_fields, normalized_type) => normalized_id}}
-    else
-      false -> {:error, :invalid_content_type}
-      {:error, :invalid_content_id} -> {:error, :invalid_content_id}
+      schema ->
+        case Repo.one(from(c in schema, where: c.id == ^content_id, select: c.catalog_item_id)) do
+          nil -> {:error, :not_found}
+          catalog_item_id -> {:ok, catalog_item_id}
+        end
     end
   end
 
-  @spec content_type(struct()) :: String.t() | nil
-  def content_type(%{live_channel_id: id}) when is_integer(id), do: "live_channel"
-  def content_type(%{movie_id: id}) when is_integer(id), do: "movie"
-  def content_type(%{series_id: id}) when is_integer(id), do: "series"
-  def content_type(%{episode_id: id}) when is_integer(id), do: "episode"
-  def content_type(_entry), do: nil
+  @doc """
+  Decorates a struct that has a preloaded `catalog_item` (with its content association)
+  by extracting content_type, content_name, and content_icon.
 
-  @spec content_id(struct()) :: integer() | nil
-  def content_id(%{live_channel_id: id}) when is_integer(id), do: id
-  def content_id(%{movie_id: id}) when is_integer(id), do: id
-  def content_id(%{series_id: id}) when is_integer(id), do: id
-  def content_id(%{episode_id: id}) when is_integer(id), do: id
-  def content_id(_entry), do: nil
+  Works on Favorite, WatchProgress, or any struct with a `catalog_item` field.
+  """
+  @spec decorate(struct()) :: map()
+  def decorate(%{catalog_item: %CatalogItem{} = item} = entry) do
+    base = if is_struct(entry), do: Map.from_struct(entry), else: entry
 
-  @spec content_name(struct()) :: String.t() | nil
-  def content_name(%{live_channel: %LiveChannel{} = channel}), do: channel.name
-  def content_name(%{movie: %Movie{} = movie}), do: movie.title || movie.name
-  def content_name(%{series: %Series{} = series}), do: series.title || series.name
-  def content_name(%{episode: %Episode{} = episode}), do: episode.title || episode.name
-  def content_name(_entry), do: nil
-
-  @spec content_icon(struct()) :: String.t() | nil
-  def content_icon(%{live_channel: %LiveChannel{} = channel}), do: channel.stream_icon
-  def content_icon(%{movie: %Movie{} = movie}), do: movie.stream_icon
-  def content_icon(%{series: %Series{} = series}), do: series.cover
-  def content_icon(%{episode: %Episode{} = episode}), do: episode.cover || episode.still_path
-  def content_icon(_entry), do: nil
-
-  @spec decorate(struct()) :: struct()
-  def decorate(entry) do
-    %{
-      entry
-      | content_type: content_type(entry),
-        content_id: content_id(entry),
-        content_name: content_name(entry),
-        content_icon: content_icon(entry)
-    }
+    Map.merge(base, %{
+      content_type: item.content_type,
+      content_name: CatalogItem.content_name(item),
+      content_icon: CatalogItem.content_icon(item),
+      content_id: content_id_from_catalog_item(item)
+    })
   end
 
-  defp normalize_type(type) when is_binary(type), do: type
-  defp normalize_type(type) when is_atom(type), do: Atom.to_string(type)
-  defp normalize_type(_type), do: nil
+  def decorate(entry), do: entry
 
-  defp normalize_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+  @doc """
+  Extracts the concrete content row id from a catalog item.
+  """
+  @spec content_id_from_catalog_item(CatalogItem.t()) :: integer() | nil
+  def content_id_from_catalog_item(%CatalogItem{} = item) do
+    case CatalogItem.content(item) do
+      nil -> nil
+      content -> content.id
+    end
+  end
 
-  defp normalize_id(id) when is_binary(id) do
+  @doc """
+  Normalize id input from strings or integers.
+  """
+  @spec normalize_id(any()) :: {:ok, integer()} | {:error, :invalid_content_id}
+  def normalize_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  def normalize_id(id) when is_binary(id) do
     case Integer.parse(id) do
       {normalized_id, ""} when normalized_id > 0 -> {:ok, normalized_id}
       _ -> {:error, :invalid_content_id}
     end
   end
 
-  defp normalize_id(_id), do: {:error, :invalid_content_id}
+  def normalize_id(_id), do: {:error, :invalid_content_id}
+
+  defp normalize_type(type) when is_binary(type), do: type
+  defp normalize_type(type) when is_atom(type), do: Atom.to_string(type)
+  defp normalize_type(_type), do: nil
 end

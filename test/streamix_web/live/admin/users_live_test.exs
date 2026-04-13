@@ -46,7 +46,7 @@ defmodule StreamixWeb.Admin.UsersLiveTest do
       |> form("#user-role-form", user: %{role: "moderator"})
       |> render_submit()
 
-      assert Accounts.get_user!(user.id).role == "moderator"
+      assert Accounts.role_name(Accounts.get_user!(user.id)) == "moderator"
     end
 
     test "creates manual subscription", %{conn: conn} do

@@ -5,7 +5,14 @@ defmodule Streamix.Iptv.Movie do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.{Category, Provider, XtreamClient}
+  alias Streamix.Iptv.{
+    CatalogItem,
+    Genre,
+    MovieAsset,
+    MovieCredit,
+    Provider,
+    XtreamClient
+  }
 
   @type t :: %__MODULE__{}
 
@@ -16,21 +23,14 @@ defmodule Streamix.Iptv.Movie do
     field :year, :integer
     field :stream_icon, :string
     field :rating, :decimal
-    field :rating_5based, :decimal
-    field :genre, :string
-    field :cast, :string
-    field :director, :string
     field :plot, :string
     field :container_extension, :string
     field :duration_secs, :integer
-    field :duration, :string
     field :tmdb_id, :string
     field :imdb_id, :string
-    field :backdrop_path, {:array, :string}
     field :youtube_trailer, :string
     field :tagline, :string
     field :content_rating, :string
-    field :images, {:array, :string}, default: []
 
     # GIndex-specific fields
     field :gindex_path, :string
@@ -38,14 +38,18 @@ defmodule Streamix.Iptv.Movie do
     field :gindex_url_expires_at, :utc_datetime
 
     belongs_to :provider, Provider
-    many_to_many :categories, Category, join_through: "movie_categories"
+    belongs_to :catalog_item, CatalogItem
+    has_many :categories, through: [:catalog_item, :categories]
+    many_to_many :genres, Genre, join_through: "movie_genres"
+    has_many :credits, MovieCredit
+    has_many :assets, MovieAsset
 
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(stream_id name title year stream_icon rating rating_5based genre cast
-             director plot container_extension duration_secs duration tmdb_id imdb_id
-             backdrop_path youtube_trailer tagline content_rating images provider_id
+  @fields ~w(stream_id name title year stream_icon rating
+             plot container_extension duration_secs tmdb_id imdb_id
+             youtube_trailer tagline content_rating provider_id catalog_item_id
              gindex_path gindex_url_cached gindex_url_expires_at)a
 
   def changeset(movie, attrs) do
@@ -55,6 +59,52 @@ defmodule Streamix.Iptv.Movie do
     |> unique_constraint([:provider_id, :stream_id])
     |> foreign_key_constraint(:provider_id)
   end
+
+  @doc """
+  Returns backdrop URLs from assets, sorted by position.
+  """
+  @spec backdrop_urls(t()) :: [String.t()]
+  def backdrop_urls(%__MODULE__{assets: assets}) when is_list(assets) do
+    assets
+    |> Enum.filter(&(&1.asset_type == "backdrop"))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(& &1.url)
+  end
+
+  def backdrop_urls(_), do: []
+
+  @doc """
+  Returns image URLs from assets, sorted by position.
+  """
+  @spec image_urls(t()) :: [String.t()]
+  def image_urls(%__MODULE__{assets: assets}) when is_list(assets) do
+    assets
+    |> Enum.filter(&(&1.asset_type == "image"))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(& &1.url)
+  end
+
+  def image_urls(_), do: []
+
+  @doc """
+  Returns true if the movie has any backdrop assets.
+  """
+  @spec has_backdrops?(t()) :: boolean()
+  def has_backdrops?(%__MODULE__{assets: assets}) when is_list(assets) do
+    Enum.any?(assets, &(&1.asset_type == "backdrop"))
+  end
+
+  def has_backdrops?(_), do: false
+
+  @doc """
+  Returns true if the movie has any image assets.
+  """
+  @spec has_images?(t()) :: boolean()
+  def has_images?(%__MODULE__{assets: assets}) when is_list(assets) do
+    Enum.any?(assets, &(&1.asset_type == "image"))
+  end
+
+  def has_images?(_), do: false
 
   @doc """
   Builds the stream URL for this movie.

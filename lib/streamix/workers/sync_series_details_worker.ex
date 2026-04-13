@@ -31,7 +31,7 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.{Series, Sync}
+  alias Streamix.Iptv.{Episode, Season, Series, Sync}
   alias Streamix.Repo
 
   require Logger
@@ -150,7 +150,16 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
 
     query =
       if only_missing do
-        where(query, [s], s.episode_count == 0)
+        # Only sync series that have zero episodes
+        series_with_episodes =
+          from(e in Episode,
+            join: s in Season,
+            on: e.season_id == s.id,
+            select: s.series_id,
+            distinct: true
+          )
+
+        where(query, [s], s.id not in subquery(series_with_episodes))
       else
         query
       end
@@ -190,11 +199,18 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
   def sync_progress(provider_id) do
     total = Repo.aggregate(from(s in Series, where: s.provider_id == ^provider_id), :count)
 
-    synced =
-      Repo.aggregate(
-        from(s in Series, where: s.provider_id == ^provider_id and s.episode_count > 0),
-        :count
+    series_with_episodes =
+      from(e in Episode,
+        join: s in Season,
+        on: e.season_id == s.id,
+        join: sr in Series,
+        on: s.series_id == sr.id,
+        where: sr.provider_id == ^provider_id,
+        select: sr.id,
+        distinct: true
       )
+
+    synced = Repo.aggregate(series_with_episodes, :count)
 
     pending_jobs =
       Repo.aggregate(

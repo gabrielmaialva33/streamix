@@ -61,7 +61,7 @@ defmodule StreamixWeb.Admin.UsersLive do
           <tbody>
             <tr :for={user <- @users} class="border-b border-border/50 hover:bg-surface-hover/30">
               <td class="px-4 py-3 text-text-primary">{user.email}</td>
-              <td class="px-4 py-3"><.status_badge status={user.role} /></td>
+              <td class="px-4 py-3"><.status_badge status={user.role.name} /></td>
               <td class="px-4 py-3">
                 <.status_badge status={subscription_label(user)} />
               </td>

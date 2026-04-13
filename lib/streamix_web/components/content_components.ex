@@ -611,12 +611,7 @@ defmodule StreamixWeb.ContentComponents do
           GDrive
         </span>
 
-        <div
-          :if={Map.get(@series, :episode_count) && @series.episode_count > 0}
-          class="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 px-1 py-0.5 sm:px-2 text-[9px] sm:text-xs rounded bg-brand text-white"
-        >
-          {@series.episode_count} eps
-        </div>
+        <%!-- episode_count computed from preloaded seasons --%>
 
         <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
           <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
@@ -719,7 +714,9 @@ defmodule StreamixWeb.ContentComponents do
           {@episode.plot}
         </p>
         <div class="flex items-center gap-3 mt-2 text-xs text-text-muted">
-          <span :if={Map.get(@episode, :duration)}>{format_duration(@episode.duration)}</span>
+          <span :if={Map.get(@episode, :duration_secs)}>
+            {format_duration(@episode.duration_secs)}
+          </span>
           <span :if={Map.get(@episode, :rating)} class="flex items-center gap-1">
             <.icon name="hero-star-solid" class="size-3 text-yellow-500" />
             {format_rating(@episode.rating)}
@@ -911,8 +908,10 @@ defmodule StreamixWeb.ContentComponents do
               <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
               {format_rating(@content.rating)}
             </span>
-            <span :if={Map.get(@content, :genre)}>{@content.genre}</span>
-            <span :if={Map.get(@content, :duration)}>{format_duration(@content.duration)}</span>
+            <span :if={Map.get(@content, :genres, []) != []}>{format_genre_names(@content)}</span>
+            <span :if={Map.get(@content, :duration_secs)}>
+              {format_duration(@content.duration_secs)}
+            </span>
           </div>
 
           <p :if={Map.get(@content, :plot)} class="text-text-secondary line-clamp-3">
@@ -1000,8 +999,10 @@ defmodule StreamixWeb.ContentComponents do
               <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
               {format_rating(@content.rating)}
             </span>
-            <span :if={Map.get(@content, :genre)}>{@content.genre}</span>
-            <span :if={Map.get(@content, :duration)}>{format_duration(@content.duration)}</span>
+            <span :if={Map.get(@content, :genres, []) != []}>{format_genre_names(@content)}</span>
+            <span :if={Map.get(@content, :duration_secs)}>
+              {format_duration(@content.duration_secs)}
+            </span>
           </div>
 
           <p :if={Map.get(@content, :plot)} class="text-text-secondary">
@@ -1110,16 +1111,25 @@ defmodule StreamixWeb.ContentComponents do
 
   defp format_rating(_), do: nil
 
-  defp format_duration(duration) when is_binary(duration), do: duration
-
-  defp format_duration(duration) when is_integer(duration) do
-    hours = div(duration, 60)
-    minutes = rem(duration, 60)
+  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    total_minutes = div(seconds, 60)
+    hours = div(total_minutes, 60)
+    minutes = rem(total_minutes, 60)
 
     if hours > 0, do: "#{hours}h #{minutes}min", else: "#{minutes}min"
   end
 
   defp format_duration(_), do: nil
+
+  defp format_genre_names(content) do
+    case Map.get(content, :genres, []) do
+      genres when is_list(genres) and genres != [] ->
+        Enum.map_join(genres, ", ", & &1.name)
+
+      _ ->
+        nil
+    end
+  end
 
   defp episode_title(episode) do
     Map.get(episode, :title) ||

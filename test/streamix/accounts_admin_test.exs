@@ -44,19 +44,21 @@ defmodule Streamix.AccountsAdminTest do
     test "updates role to admin" do
       user = user_fixture()
       assert {:ok, updated} = Accounts.update_user_role(user, "admin")
-      assert updated.role == "admin"
+      assert Accounts.admin?(updated)
     end
 
     test "updates role to moderator" do
       user = user_fixture()
       assert {:ok, updated} = Accounts.update_user_role(user, "moderator")
-      assert updated.role == "moderator"
+      assert Accounts.role_name(updated) == "moderator"
     end
 
     test "rejects invalid role" do
       user = user_fixture()
-      assert {:error, changeset} = Accounts.update_user_role(user, "superadmin")
-      assert {"is invalid", _} = changeset.errors[:role]
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Accounts.update_user_role(user, "superadmin")
+      end
     end
   end
 

@@ -7,7 +7,7 @@ defmodule Streamix.Accounts.AccessLog do
   import Ecto.Changeset
 
   schema "access_logs" do
-    field :ip_address, :string
+    field :ip_address, Streamix.Ecto.Inet
     field :user_agent, :string
     field :path, :string
     field :method, :string

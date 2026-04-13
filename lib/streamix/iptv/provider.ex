@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.Provider do
   import Ecto.Changeset
 
   alias Streamix.Accounts.User
-  alias Streamix.Iptv.{Category, EpgProgram, LiveChannel, Movie, Series}
+  alias Streamix.Iptv.{Category, EpgChannel, LiveChannel, Movie, ProviderDrive, Series}
 
   @type t :: %__MODULE__{}
 
@@ -23,7 +23,6 @@ defmodule Streamix.Iptv.Provider do
     # Provider type: xtream (default) or gindex
     field :provider_type, Ecto.Enum, values: [:xtream, :gindex], default: :xtream
     field :gindex_url, :string
-    field :gindex_drives, :map
 
     # Counters by type
     field :live_channels_count, :integer, default: 0
@@ -45,7 +44,8 @@ defmodule Streamix.Iptv.Provider do
     has_many :live_channels, LiveChannel
     has_many :movies, Movie
     has_many :series, Series
-    has_many :epg_programs, EpgProgram
+    has_many :epg_channels, EpgChannel
+    has_many :drives, ProviderDrive
 
     timestamps(type: :utc_datetime)
   end
@@ -54,7 +54,7 @@ defmodule Streamix.Iptv.Provider do
                       live_channels_count movies_count series_count
                       live_synced_at vod_synced_at series_synced_at
                       epg_synced_at epg_sync_interval_hours server_info
-                      provider_type gindex_url gindex_drives)a
+                      provider_type gindex_url)a
 
   def changeset(provider, attrs) do
     provider

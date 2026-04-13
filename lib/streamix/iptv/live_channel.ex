@@ -5,7 +5,7 @@ defmodule Streamix.Iptv.LiveChannel do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.{Category, Provider, XtreamClient}
+  alias Streamix.Iptv.{CatalogItem, Provider, XtreamClient}
 
   @type t :: %__MODULE__{}
 
@@ -22,7 +22,8 @@ defmodule Streamix.Iptv.LiveChannel do
     field :dead_since, :utc_datetime
 
     belongs_to :provider, Provider
-    many_to_many :categories, Category, join_through: "live_channel_categories"
+    belongs_to :catalog_item, CatalogItem
+    has_many :categories, through: [:catalog_item, :categories]
 
     timestamps(type: :utc_datetime)
   end
@@ -38,6 +39,7 @@ defmodule Streamix.Iptv.LiveChannel do
       :tv_archive_duration,
       :direct_source,
       :provider_id,
+      :catalog_item_id,
       :dead_since
     ])
     |> validate_required([:stream_id, :name, :provider_id])

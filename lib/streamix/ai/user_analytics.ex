@@ -27,9 +27,9 @@ defmodule Streamix.AI.UserAnalytics do
   alias Streamix.AI.Qdrant
   alias Streamix.Cache
   alias Streamix.Iptv.Catalog
+  alias Streamix.Iptv.Genre
   alias Streamix.Iptv.History
   alias Streamix.Iptv.LiveChannel
-  alias Streamix.Iptv.Movie
   alias Streamix.Repo
 
   import Ecto.Query
@@ -220,10 +220,10 @@ defmodule Streamix.AI.UserAnalytics do
     # Get categories for watched channels via proper JOIN
     channel_categories =
       from(c in LiveChannel,
-        join: lcc in "live_channel_categories",
-        on: lcc.live_channel_id == c.id,
+        join: ic in "item_categories",
+        on: ic.catalog_item_id == c.catalog_item_id,
         join: cat in Streamix.Iptv.Category,
-        on: lcc.category_id == cat.id,
+        on: ic.category_id == cat.id,
         where: c.id in ^channel_ids,
         select: {c.id, cat.id, cat.name}
       )
@@ -336,10 +336,10 @@ defmodule Streamix.AI.UserAnalytics do
 
     channels =
       from(c in LiveChannel,
-        join: lcc in "live_channel_categories",
-        on: lcc.live_channel_id == c.id,
+        join: ic in "item_categories",
+        on: ic.catalog_item_id == c.catalog_item_id,
         join: cat in Streamix.Iptv.Category,
-        on: lcc.category_id == cat.id,
+        on: ic.category_id == cat.id,
         join: p in Streamix.Iptv.Provider,
         on: c.provider_id == p.id,
         where: p.visibility in [:global, :public],
@@ -671,12 +671,12 @@ defmodule Streamix.AI.UserAnalytics do
 
   defp recommended_channels(top_category_ids, watched_channel_ids, limit) do
     from(c in LiveChannel,
-      join: lcc in "live_channel_categories",
-      on: lcc.live_channel_id == c.id,
+      join: ic in "item_categories",
+      on: ic.catalog_item_id == c.catalog_item_id,
       join: p in Streamix.Iptv.Provider,
       on: c.provider_id == p.id,
       where: p.visibility in [:global, :public],
-      where: lcc.category_id in ^top_category_ids,
+      where: ic.category_id in ^top_category_ids,
       where: c.id not in ^watched_channel_ids,
       where: not is_nil(c.stream_icon),
       limit: ^(limit * 3),
@@ -706,8 +706,9 @@ defmodule Streamix.AI.UserAnalytics do
     downcased_genre = String.downcase(genre)
 
     Enum.filter(items, fn item ->
-      item.genre
-      |> Kernel.||("")
+      item_genre_str = Streamix.Helpers.genre_names(Map.get(item, :genres, [])) || ""
+
+      item_genre_str
       |> String.downcase()
       |> String.contains?(downcased_genre)
     end)
@@ -726,7 +727,7 @@ defmodule Streamix.AI.UserAnalytics do
   end
 
   defp genre_priority(item, favorite_genres) do
-    item_genre = item.genre || ""
+    item_genre = Streamix.Helpers.genre_names(Map.get(item, :genres, [])) || ""
     if matches_favorite_genre?(item_genre, favorite_genres), do: 0, else: 1
   end
 
@@ -796,19 +797,18 @@ defmodule Streamix.AI.UserAnalytics do
   end
 
   defp extract_favorite_genres(user_id) do
-    # Get movies watched and extract genres
+    # Get movies watched and extract genres via join table
     history = History.list(user_id, content_type: "movie", limit: 100)
     movie_ids = Enum.map(history, & &1.content_id)
 
     if Enum.empty?(movie_ids) do
       []
     else
-      Movie
-      |> where([m], m.id in ^movie_ids)
-      |> select([m], m.genre)
+      Genre
+      |> join(:inner, [g], mg in "movie_genres", on: mg.genre_id == g.id)
+      |> where([g, mg], mg.movie_id in ^movie_ids)
+      |> select([g, _mg], g.name)
       |> Repo.all()
-      |> Enum.reject(&is_nil/1)
-      |> Enum.flat_map(&String.split(&1, ", "))
       |> Enum.frequencies()
       |> Enum.sort_by(fn {_, count} -> count end, :desc)
       |> Enum.take(5)

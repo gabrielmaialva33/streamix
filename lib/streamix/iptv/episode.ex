@@ -5,7 +5,7 @@ defmodule Streamix.Iptv.Episode do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.{Season, XtreamClient}
+  alias Streamix.Iptv.{CatalogItem, Season, XtreamClient}
 
   @type t :: %__MODULE__{}
 
@@ -18,7 +18,6 @@ defmodule Streamix.Iptv.Episode do
     field :cover, :string
     field :still_path, :string
     field :duration_secs, :integer
-    field :duration, :string
     field :container_extension, :string
     field :air_date, :date
     field :rating, :decimal
@@ -31,13 +30,14 @@ defmodule Streamix.Iptv.Episode do
     field :gindex_url_expires_at, :utc_datetime
 
     belongs_to :season, Season
+    belongs_to :catalog_item, CatalogItem
 
     timestamps(type: :utc_datetime)
   end
 
   @fields ~w(episode_id episode_num title name plot cover still_path duration_secs
-             duration container_extension air_date rating tmdb_id tmdb_enriched season_id
-             gindex_path gindex_url_cached gindex_url_expires_at)a
+             container_extension air_date rating tmdb_id tmdb_enriched season_id
+             catalog_item_id gindex_path gindex_url_cached gindex_url_expires_at)a
 
   def changeset(episode, attrs) do
     episode

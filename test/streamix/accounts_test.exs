@@ -62,7 +62,7 @@ defmodule Streamix.AccountsTest do
           password: valid_user_password()
         })
 
-      assert user.role == "customer"
+      assert Accounts.role_name(user) == "customer"
     end
 
     test "register_user_with_password/1 ignores attempts to self-assign admin role" do
@@ -73,7 +73,7 @@ defmodule Streamix.AccountsTest do
           role: "admin"
         })
 
-      assert user.role == "customer"
+      assert Accounts.role_name(user) == "customer"
     end
 
     test "validates email when given" do
@@ -135,8 +135,11 @@ defmodule Streamix.AccountsTest do
 
   describe "admin?/1" do
     test "returns true only for admin users" do
-      assert Accounts.admin?(%User{role: "admin"})
-      refute Accounts.admin?(%User{role: "customer"})
+      admin = admin_user_fixture()
+      customer = user_fixture()
+
+      assert Accounts.admin?(admin)
+      refute Accounts.admin?(customer)
     end
   end
 
@@ -144,7 +147,7 @@ defmodule Streamix.AccountsTest do
     test "returns an admin user" do
       user = admin_user_fixture()
 
-      assert user.role == "admin"
+      assert Accounts.admin?(user)
     end
   end
 
@@ -156,9 +159,9 @@ defmodule Streamix.AccountsTest do
       second_admin = Accounts.ensure_admin_user!(user.email, valid_user_password())
 
       assert first_admin.id == user.id
-      assert first_admin.role == "admin"
+      assert Accounts.admin?(first_admin)
       assert second_admin.id == user.id
-      assert second_admin.role == "admin"
+      assert Accounts.admin?(second_admin)
       assert Repo.aggregate(from(u in User, where: u.email == ^user.email), :count, :id) == 1
     end
   end

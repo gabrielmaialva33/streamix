@@ -28,7 +28,6 @@ defmodule Streamix.Repo.Migrations.CreateProviders do
       # Server info and GIndex
       add :server_info, :map
       add :gindex_url, :string
-      add :gindex_drives, :map
 
       add :user_id, references(:users, on_delete: :delete_all)
 
@@ -61,11 +60,6 @@ defmodule Streamix.Repo.Migrations.CreateProviders do
     execute(
       "CREATE INDEX providers_server_info_gin ON providers USING gin (server_info jsonb_path_ops)",
       "DROP INDEX IF EXISTS providers_server_info_gin"
-    )
-
-    execute(
-      "CREATE INDEX providers_gindex_drives_gin ON providers USING gin (gindex_drives jsonb_path_ops)",
-      "DROP INDEX IF EXISTS providers_gindex_drives_gin"
     )
   end
 end

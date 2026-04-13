@@ -52,8 +52,8 @@ defmodule Streamix.Iptv.Movies do
 
     query =
       if category_id do
-        join(query, :inner, [m], mc in "movie_categories",
-          on: mc.movie_id == m.id and mc.category_id == ^category_id
+        join(query, :inner, [m], ic in "item_categories",
+          on: ic.catalog_item_id == m.catalog_item_id and ic.category_id == ^category_id
         )
       else
         query
@@ -72,6 +72,7 @@ defmodule Streamix.Iptv.Movies do
     query
     |> limit(^limit)
     |> offset(^offset)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -147,6 +148,7 @@ defmodule Streamix.Iptv.Movies do
     |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year, asc: m.name)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -174,7 +176,12 @@ defmodule Streamix.Iptv.Movies do
   Gets a movie by ID. Returns nil if not found.
   """
   @spec get(integer()) :: Movie.t() | nil
-  def get(id), do: Repo.get(Movie, id)
+  def get(id) do
+    Movie
+    |> where(id: ^id)
+    |> preload([:assets, :genres, credits: :person])
+    |> Repo.one()
+  end
 
   @doc """
   Gets multiple movies by their IDs.
@@ -185,6 +192,7 @@ defmodule Streamix.Iptv.Movies do
 
   def get_by_ids(ids) when is_list(ids) do
     from(m in Movie, where: m.id in ^ids)
+    |> preload([:assets, :genres, credits: :person])
     |> Repo.all()
   end
 
@@ -218,7 +226,7 @@ defmodule Streamix.Iptv.Movies do
   def get_public(movie_id) do
     Movie
     |> Access.public_only(movie_id)
-    |> preload(:provider)
+    |> preload([:provider, :assets, :genres, credits: :person])
     |> Repo.one()
   end
 
@@ -250,6 +258,7 @@ defmodule Streamix.Iptv.Movies do
     |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -266,6 +275,7 @@ defmodule Streamix.Iptv.Movies do
     |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
     |> order_by([m], desc: m.rating, asc: m.name)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -284,7 +294,7 @@ defmodule Streamix.Iptv.Movies do
   """
   @spec fetch_info(Movie.t()) :: {:ok, Movie.t()} | {:error, term()}
   def fetch_info(%Movie{} = movie) do
-    movie = Repo.preload(movie, :provider)
+    movie = Repo.preload(movie, [:provider, :assets, :genres, credits: :person])
     provider = movie.provider
 
     # Step 1: Fetch from Xtream API
@@ -328,7 +338,10 @@ defmodule Streamix.Iptv.Movies do
     # Step 3: Merge attrs (TMDB fills in what Xtream didn't provide)
     final_attrs = Map.merge(tmdb_attrs, xtream_attrs)
 
-    update_movie(movie, final_attrs)
+    case update_movie(movie, final_attrs) do
+      {:ok, updated} -> {:ok, Repo.preload(updated, [:genres, credits: :person], force: true)}
+      error -> error
+    end
   end
 
   # =============================================================================
@@ -352,18 +365,15 @@ defmodule Streamix.Iptv.Movies do
 
   defp missing_basic_info?(movie, xtream_attrs) do
     missing_field?(xtream_attrs[:plot], movie.plot) or
-      missing_field?(xtream_attrs[:cast], movie.cast) or
-      missing_field?(xtream_attrs[:director], movie.director)
+      (is_nil(xtream_attrs[:cast]) and Enum.empty?(movie.credits || [])) or
+      (is_nil(xtream_attrs[:director]) and Enum.empty?(movie.credits || []))
   end
 
   defp missing_extended_info?(movie) do
-    is_nil(movie.content_rating) and is_nil(movie.tagline) and empty_images?(movie.images)
+    is_nil(movie.content_rating) and is_nil(movie.tagline) and not Movie.has_images?(movie)
   end
 
   defp missing_field?(xtream_val, movie_val), do: is_nil(xtream_val) and is_nil(movie_val)
-  defp empty_images?(nil), do: true
-  defp empty_images?([]), do: true
-  defp empty_images?(_), do: false
 
   defp fetch_from_tmdb(tmdb_id) do
     case TmdbClient.get_movie(tmdb_id) do
@@ -396,18 +406,12 @@ defmodule Streamix.Iptv.Movies do
     %{}
     |> maybe_put(:title, info["name"])
     |> maybe_put(:plot, info["plot"] || info["description"])
-    |> maybe_put(:cast, info["cast"])
-    |> maybe_put(:director, info["director"])
-    |> maybe_put(:genre, info["genre"])
-    |> maybe_put(:duration, info["duration"] || format_runtime(info["runtime"]))
-    |> maybe_put(:duration_secs, parse_duration_secs(info["duration_secs"]))
+    |> maybe_put(:duration_secs, parse_duration_secs(info["duration_secs"] || info["duration"]))
     |> maybe_put(:rating, parse_decimal(info["rating"]))
-    |> maybe_put(:rating_5based, parse_decimal(info["rating_5based"]))
     |> maybe_put(:year, parse_integer(info["releasedate"] || info["release_date"]))
     |> maybe_put(:tmdb_id, to_string_or_nil(info["tmdb_id"]))
     |> maybe_put(:imdb_id, info["kinopoisk_url"])
     |> maybe_put(:youtube_trailer, info["youtube_trailer"])
-    |> maybe_put(:backdrop_path, parse_backdrop(info["backdrop_path"]))
     |> maybe_put(:stream_icon, info["cover_big"] || info["movie_image"])
     |> maybe_put(:container_extension, movie_data["container_extension"])
   end
@@ -448,29 +452,6 @@ defmodule Streamix.Iptv.Movies do
   defp parse_duration_secs(value) when is_integer(value), do: value
   defp parse_duration_secs(value) when is_binary(value), do: parse_integer(value)
   defp parse_duration_secs(_), do: nil
-
-  defp format_runtime(nil), do: nil
-  defp format_runtime(""), do: nil
-
-  defp format_runtime(runtime) when is_binary(runtime) do
-    case Integer.parse(runtime) do
-      {minutes, _} when minutes > 0 ->
-        hours = div(minutes, 60)
-        mins = rem(minutes, 60)
-        if hours > 0, do: "#{hours}h #{mins}min", else: "#{mins}min"
-
-      _ ->
-        runtime
-    end
-  end
-
-  defp format_runtime(_), do: nil
-
-  defp parse_backdrop(nil), do: nil
-  defp parse_backdrop([]), do: nil
-  defp parse_backdrop(paths) when is_list(paths), do: paths
-  defp parse_backdrop(path) when is_binary(path), do: [path]
-  defp parse_backdrop(_), do: nil
 
   defp to_string_or_nil(nil), do: nil
   defp to_string_or_nil(""), do: nil

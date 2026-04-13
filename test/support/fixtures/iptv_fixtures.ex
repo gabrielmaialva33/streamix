@@ -4,7 +4,7 @@ defmodule Streamix.IptvFixtures do
   """
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.LiveChannel
+  alias Streamix.Iptv.{CatalogItem, LiveChannel}
   alias Streamix.Repo
 
   def unique_provider_name, do: "Provider #{System.unique_integer([:positive])}"
@@ -28,6 +28,15 @@ defmodule Streamix.IptvFixtures do
     provider
   end
 
+  @doc """
+  Creates a CatalogItem for the given content_type.
+  """
+  def catalog_item_fixture(content_type, provider_id) do
+    %CatalogItem{}
+    |> CatalogItem.changeset(%{content_type: content_type, provider_id: provider_id})
+    |> Repo.insert!()
+  end
+
   def valid_channel_attrs(provider, attrs \\ %{}) do
     Enum.into(attrs, %{
       stream_id: System.unique_integer([:positive]),
@@ -42,8 +51,12 @@ defmodule Streamix.IptvFixtures do
   def channel_fixture(provider, attrs \\ %{}) do
     attrs = valid_channel_attrs(provider, attrs)
 
+    # Create a catalog_item for this channel
+    catalog_item = catalog_item_fixture("live_channel", provider.id)
+
     %LiveChannel{}
     |> LiveChannel.changeset(attrs)
+    |> Ecto.Changeset.put_change(:catalog_item_id, catalog_item.id)
     |> Repo.insert!()
   end
 
@@ -57,9 +70,7 @@ defmodule Streamix.IptvFixtures do
     {:ok, favorite} =
       Iptv.add_favorite(user.id, %{
         content_type: "live_channel",
-        content_id: channel.id,
-        content_name: channel.name,
-        content_icon: channel.stream_icon
+        content_id: channel.id
       })
 
     favorite
@@ -68,8 +79,6 @@ defmodule Streamix.IptvFixtures do
   def watch_history_fixture(user, channel, duration \\ 0) do
     {:ok, history} =
       Iptv.add_watch_history(user.id, "live_channel", channel.id, %{
-        content_name: channel.name,
-        content_icon: channel.stream_icon,
         duration_seconds: duration
       })
 
@@ -77,19 +86,39 @@ defmodule Streamix.IptvFixtures do
   end
 
   def valid_epg_program_attrs(provider, attrs \\ %{}) do
+    alias Streamix.Iptv.EpgChannel
+
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     start_time = Map.get(attrs, :start_time, DateTime.add(now, -30, :minute))
     end_time = Map.get(attrs, :end_time, DateTime.add(now, 30, :minute))
+    external_id = Map.get(attrs, :epg_channel_id, "ch#{System.unique_integer([:positive])}")
 
-    Enum.into(attrs, %{
-      epg_channel_id: "ch#{System.unique_integer([:positive])}",
+    # Upsert epg_channel to get integer FK
+    epg_channel =
+      case Repo.get_by(EpgChannel, provider_id: provider.id, external_id: external_id) do
+        nil ->
+          %EpgChannel{}
+          |> EpgChannel.changeset(%{
+            external_id: external_id,
+            provider_id: provider.id,
+            name: external_id
+          })
+          |> Repo.insert!()
+
+        existing ->
+          existing
+      end
+
+    attrs
+    |> Map.drop([:epg_channel_id, :provider_id])
+    |> Enum.into(%{
+      epg_channel_id: epg_channel.id,
       title: "Program #{System.unique_integer([:positive])}",
       description: "Test program description",
       start_time: start_time,
       end_time: end_time,
       category: "Entertainment",
-      lang: "pt",
-      provider_id: provider.id
+      lang: "pt"
     })
   end
 
@@ -179,9 +208,11 @@ defmodule Streamix.IptvFixtures do
     alias Streamix.Iptv.Movie
 
     attrs = valid_movie_attrs(provider, attrs)
+    catalog_item = catalog_item_fixture("movie", provider.id)
 
     %Movie{}
     |> Movie.changeset(attrs)
+    |> Ecto.Changeset.put_change(:catalog_item_id, catalog_item.id)
     |> Repo.insert!()
   end
 
@@ -200,9 +231,11 @@ defmodule Streamix.IptvFixtures do
     alias Streamix.Iptv.Series
 
     attrs = valid_series_attrs(provider, attrs)
+    catalog_item = catalog_item_fixture("series", provider.id)
 
     %Series{}
     |> Series.changeset(attrs)
+    |> Ecto.Changeset.put_change(:catalog_item_id, catalog_item.id)
     |> Repo.insert!()
   end
 

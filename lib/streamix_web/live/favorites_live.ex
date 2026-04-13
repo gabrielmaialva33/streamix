@@ -83,21 +83,20 @@ defmodule StreamixWeb.FavoritesLive do
 
   def handle_event(
         "remove_favorite",
-        %{"id" => id, "type" => type, "content_id" => content_id},
+        %{"type" => type, "content_id" => content_id},
         socket
       ) do
     user_id = socket.assigns.user_id
-    favorite_id = String.to_integer(id)
-    content_id = String.to_integer(content_id)
+    content_id_int = String.to_integer(content_id)
 
-    Iptv.remove_favorite(user_id, type, content_id)
+    Iptv.remove_favorite(user_id, type, content_id_int)
 
     # Update counts
     counts = update_counts(socket.assigns.counts, type, -1)
 
     socket =
       socket
-      |> stream_delete_by_dom_id(:favorites, "favorites-#{favorite_id}")
+      |> stream_delete_by_dom_id(:favorites, "favorites-#{type}-#{content_id}")
       |> assign(counts: counts)
 
     {:noreply, socket}
@@ -251,7 +250,6 @@ defmodule StreamixWeb.FavoritesLive do
           <button
             type="button"
             phx-click="remove_favorite"
-            phx-value-id={@favorite.id}
             phx-value-type={@favorite.content_type}
             phx-value-content_id={@favorite.content_id}
             class="p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 rounded"
@@ -278,7 +276,9 @@ defmodule StreamixWeb.FavoritesLive do
     opts = [limit: @page_size, offset: offset]
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
-    favorites = Iptv.list_favorites(user_id, opts)
+    favorites =
+      Iptv.list_favorites(user_id, opts)
+      |> Enum.map(fn f -> Map.put(f, :id, "#{f.content_type}-#{f.content_id}") end)
 
     socket
     |> assign(loading: false)
@@ -295,7 +295,6 @@ defmodule StreamixWeb.FavoritesLive do
     Iptv.list_favorites(user_id, limit: 100)
     |> Enum.map(fn f ->
       %{
-        id: f.id,
         content_type: f.content_type,
         content_id: f.content_id,
         content_name: f.content_name,

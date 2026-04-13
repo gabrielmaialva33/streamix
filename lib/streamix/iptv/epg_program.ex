@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.EpgProgram do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.EpgChannel
 
   @derive {Jason.Encoder,
            only: [
@@ -18,12 +18,10 @@ defmodule Streamix.Iptv.EpgProgram do
              :end_time,
              :category,
              :icon,
-             :lang,
-             :provider_id
+             :lang
            ]}
 
   schema "epg_programs" do
-    field :epg_channel_id, :string
     field :title, :string
     field :description, :string
     field :start_time, :utc_datetime
@@ -32,20 +30,20 @@ defmodule Streamix.Iptv.EpgProgram do
     field :icon, :string
     field :lang, :string
 
-    belongs_to :provider, Provider
+    belongs_to :epg_channel, EpgChannel
 
     timestamps(type: :utc_datetime)
   end
 
-  @required_fields ~w(epg_channel_id title start_time end_time provider_id)a
+  @required_fields ~w(epg_channel_id title start_time end_time)a
   @optional_fields ~w(description category icon lang)a
 
   def changeset(program, attrs) do
     program
     |> cast(attrs, @required_fields ++ @optional_fields)
     |> validate_required(@required_fields)
-    |> unique_constraint([:provider_id, :epg_channel_id, :start_time])
-    |> foreign_key_constraint(:provider_id)
+    |> unique_constraint([:epg_channel_id, :start_time])
+    |> foreign_key_constraint(:epg_channel_id)
   end
 
   @doc """

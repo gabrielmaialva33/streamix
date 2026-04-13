@@ -6,10 +6,15 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
   alias Streamix.Billing.{Plan, Subscription}
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{Season, Series}
+  alias Streamix.Iptv.{CatalogItem, Episode, Season, Series}
   alias Streamix.Repo
 
   defp series_fixture(provider, attrs) do
+    catalog_item =
+      %CatalogItem{}
+      |> CatalogItem.changeset(%{content_type: "series", provider_id: provider.id})
+      |> Repo.insert!()
+
     params =
       Enum.into(attrs, %{
         series_id: System.unique_integer([:positive]),
@@ -17,9 +22,8 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
         title: "Series Title #{System.unique_integer([:positive])}",
         year: 2024,
         provider_id: provider.id,
-        episode_count: 1,
-        season_count: 1,
-        tmdb_id: "tt1234567"
+        tmdb_id: "tt1234567",
+        catalog_item_id: catalog_item.id
       })
 
     %Series{}
@@ -32,12 +36,28 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       Enum.into(attrs, %{
         season_number: 1,
         name: "Season 1",
-        series_id: series.id,
-        episode_count: 0
+        series_id: series.id
       })
 
     %Season{}
     |> Season.changeset(params)
+    |> Repo.insert!()
+  end
+
+  defp episode_fixture(season, provider) do
+    ci =
+      %CatalogItem{}
+      |> CatalogItem.changeset(%{content_type: "episode", provider_id: provider.id})
+      |> Repo.insert!()
+
+    %Episode{}
+    |> Episode.changeset(%{
+      episode_id: System.unique_integer([:positive]),
+      episode_num: 1,
+      title: "Episode 1",
+      season_id: season.id,
+      catalog_item_id: ci.id
+    })
     |> Repo.insert!()
   end
 
@@ -93,24 +113,22 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
         movie_fixture(provider, %{
           name: "A Premium Movie",
           plot: "Movie plot",
-          cast: "Cast",
-          director: "Director",
           content_rating: "14",
           tagline: "Movie tagline",
-          images: ["https://example.com/movie.jpg"]
+          tmdb_id: "67890"
         })
 
       series =
         series_fixture(provider, %{
           name: "A Premium Series",
           plot: "Series plot",
-          cast: "Cast",
-          director: "Director",
           content_rating: "14",
-          tagline: "Series tagline"
+          tagline: "Series tagline",
+          tmdb_id: "12345"
         })
 
-      _season = season_fixture(series)
+      season = season_fixture(series)
+      episode_fixture(season, provider)
 
       %{user: user, movie: movie, series: series}
     end

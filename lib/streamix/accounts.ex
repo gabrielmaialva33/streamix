@@ -4,7 +4,7 @@ defmodule Streamix.Accounts do
   """
 
   import Ecto.Query, warn: false
-  alias Streamix.Accounts.{User, UserNotifier, UserToken}
+  alias Streamix.Accounts.{Role, User, UserNotifier, UserToken}
   alias Streamix.Repo
 
   ## Database getters
@@ -22,7 +22,10 @@ defmodule Streamix.Accounts do
 
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.get_by(User, email: email)
+    case Repo.get_by(User, email: email) do
+      nil -> nil
+      user -> Repo.preload(user, :role)
+    end
   end
 
   @doc """
@@ -57,7 +60,7 @@ defmodule Streamix.Accounts do
       ** (Ecto.NoResultsError)
 
   """
-  def get_user!(id), do: Repo.get!(User, id)
+  def get_user!(id), do: Repo.get!(User, id) |> Repo.preload(:role)
 
   ## User registration
 
@@ -94,7 +97,16 @@ defmodule Streamix.Accounts do
   def register_user_with_password(attrs) do
     %User{}
     |> User.registration_changeset(attrs)
+    |> ensure_default_role()
     |> Repo.insert()
+  end
+
+  defp ensure_default_role(changeset) do
+    if Ecto.Changeset.get_field(changeset, :role_id) do
+      changeset
+    else
+      Ecto.Changeset.put_change(changeset, :role_id, customer_role_id())
+    end
   end
 
   @doc """
@@ -121,12 +133,49 @@ defmodule Streamix.Accounts do
 
   def make_admin_user(%User{} = user) do
     user
-    |> User.admin_changeset()
+    |> User.role_changeset(admin_role_id())
     |> Repo.update()
   end
 
-  def admin?(%User{role: "admin"}), do: true
+  def admin?(%User{role_id: role_id}), do: role_id == admin_role_id()
   def admin?(_user), do: false
+
+  @doc """
+  Returns the role name for a user. Preloads the role if needed.
+  """
+  def role_name(%User{role: %Role{name: name}}), do: name
+
+  def role_name(%User{} = user) do
+    user = Repo.preload(user, :role)
+    user.role.name
+  end
+
+  @doc """
+  Returns the cached admin role id.
+  """
+  def admin_role_id do
+    case Repo.get_by(Role, name: "admin") do
+      %Role{id: id} -> id
+      nil -> raise "Admin role not found in database"
+    end
+  end
+
+  @doc """
+  Returns the cached customer role id.
+  """
+  def customer_role_id do
+    case Repo.get_by(Role, name: "customer") do
+      %Role{id: id} -> id
+      nil -> raise "Customer role not found in database"
+    end
+  end
+
+  @doc """
+  Gets a role by name.
+  """
+  def get_role_by_name!(name) when is_binary(name) do
+    Repo.get_by!(Role, name: name)
+  end
 
   @doc """
   Returns an `%Ecto.Changeset{}` for tracking user registration changes.
@@ -273,7 +322,13 @@ defmodule Streamix.Accounts do
     per_page = Keyword.get(opts, :per_page, 20)
     offset = (page - 1) * per_page
 
-    query = from(u in User, order_by: [desc: u.inserted_at], limit: ^per_page, offset: ^offset)
+    query =
+      from(u in User,
+        order_by: [desc: u.inserted_at],
+        limit: ^per_page,
+        offset: ^offset,
+        preload: [:role]
+      )
 
     query =
       if search && search != "" do
@@ -294,11 +349,16 @@ defmodule Streamix.Accounts do
   end
 
   @doc """
-  Updates the role of a user.
+  Updates the role of a user. Accepts a role name (string) or role_id (integer).
   """
-  def update_user_role(%User{} = user, role) do
+  def update_user_role(%User{} = user, role_name) when is_binary(role_name) do
+    role = get_role_by_name!(role_name)
+    update_user_role(user, role.id)
+  end
+
+  def update_user_role(%User{} = user, role_id) when is_integer(role_id) do
     user
-    |> User.role_changeset(role)
+    |> User.role_changeset(role_id)
     |> Repo.update()
   end
 
@@ -330,7 +390,11 @@ defmodule Streamix.Accounts do
   """
   def get_user_by_session_token(token) do
     {:ok, query} = UserToken.verify_session_token_query(token)
-    Repo.one(query)
+
+    case Repo.one(query) do
+      {user, inserted_at} -> {Repo.preload(user, :role), inserted_at}
+      nil -> nil
+    end
   end
 
   @doc ~S"""

@@ -54,7 +54,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
             <tbody>
               <tr :for={user <- @recent_users} class="border-b border-border/50">
                 <td class="py-2 text-text-primary">{user.email}</td>
-                <td class="py-2"><.status_badge status={user.role} /></td>
+                <td class="py-2"><.status_badge status={user.role.name} /></td>
                 <td class="py-2 text-text-secondary">
                   {Calendar.strftime(user.inserted_at, "%d/%m/%Y")}
                 </td>

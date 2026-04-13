@@ -37,7 +37,7 @@ defmodule Streamix.Iptv.TmdbClient do
   - videos (trailers)
   - runtime
   - vote_average
-  - backdrop_path, poster_path
+  - poster_path, backdrop images (via assets)
   """
   def get_movie(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
     if enabled?() do
@@ -125,18 +125,14 @@ defmodule Streamix.Iptv.TmdbClient do
     %{}
     |> maybe_put(:plot, data["overview"])
     |> maybe_put(:rating, parse_rating(data["vote_average"]))
-    |> maybe_put(:duration, format_runtime(data["runtime"]))
     |> maybe_put(:duration_secs, parse_runtime_secs(data["runtime"]))
-    |> maybe_put(:genre, parse_genres(data["genres"]))
     |> maybe_put(:year, parse_year(data["release_date"]))
-    |> maybe_put(:director, parse_director(data["credits"]))
-    |> maybe_put(:cast, parse_cast(data["credits"]))
     |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))
-    |> maybe_put(:backdrop_path, parse_backdrop_paths(data["backdrop_path"]))
     |> maybe_put(:stream_icon, image_url(data["poster_path"], "w500"))
     |> maybe_put(:tagline, data["tagline"])
     |> maybe_put(:content_rating, parse_content_rating(data["release_dates"]))
-    |> maybe_put(:images, parse_images(data["images"]))
+    |> maybe_put(:_backdrop_urls, parse_backdrop_paths(data["backdrop_path"]))
+    |> maybe_put(:_image_urls, parse_images(data["images"]))
   end
 
   def parse_movie_response(_), do: %{}
@@ -148,16 +144,13 @@ defmodule Streamix.Iptv.TmdbClient do
     %{}
     |> maybe_put(:plot, data["overview"])
     |> maybe_put(:rating, parse_rating(data["vote_average"]))
-    |> maybe_put(:genre, parse_genres(data["genres"]))
     |> maybe_put(:year, parse_year(data["first_air_date"]))
-    |> maybe_put(:director, parse_creators(data["created_by"]))
-    |> maybe_put(:cast, parse_cast(data["credits"]))
     |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))
-    |> maybe_put(:backdrop_path, parse_backdrop_paths(data["backdrop_path"]))
     |> maybe_put(:cover, image_url(data["poster_path"], "w500"))
     |> maybe_put(:tagline, data["tagline"])
     |> maybe_put(:content_rating, parse_series_content_rating(data["content_ratings"]))
-    |> maybe_put(:images, parse_images(data["images"]))
+    |> maybe_put(:_backdrop_urls, parse_backdrop_paths(data["backdrop_path"]))
+    |> maybe_put(:_image_urls, parse_images(data["images"]))
   end
 
   def parse_series_response(_), do: %{}
@@ -188,7 +181,6 @@ defmodule Streamix.Iptv.TmdbClient do
     |> maybe_put(:still_path, image_url(data["still_path"], "w500"))
     |> maybe_put(:air_date, parse_date(data["air_date"]))
     |> maybe_put(:duration_secs, parse_runtime_secs(data["runtime"]))
-    |> maybe_put(:duration, format_runtime(data["runtime"]))
     |> Map.put(:tmdb_enriched, true)
   end
 
@@ -296,32 +288,10 @@ defmodule Streamix.Iptv.TmdbClient do
 
   defp parse_rating(_), do: nil
 
-  defp format_runtime(nil), do: nil
-  defp format_runtime(0), do: nil
-
-  defp format_runtime(minutes) when is_integer(minutes) do
-    hours = div(minutes, 60)
-    mins = rem(minutes, 60)
-    if hours > 0, do: "#{hours}h #{mins}min", else: "#{mins}min"
-  end
-
-  defp format_runtime(_), do: nil
-
   defp parse_runtime_secs(nil), do: nil
   defp parse_runtime_secs(0), do: nil
   defp parse_runtime_secs(minutes) when is_integer(minutes), do: minutes * 60
   defp parse_runtime_secs(_), do: nil
-
-  defp parse_genres(nil), do: nil
-  defp parse_genres([]), do: nil
-
-  defp parse_genres(genres) when is_list(genres) do
-    genres
-    |> Enum.take(3)
-    |> Enum.map_join(", ", & &1["name"])
-  end
-
-  defp parse_genres(_), do: nil
 
   defp parse_year(nil), do: nil
   defp parse_year(""), do: nil
@@ -348,48 +318,6 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   defp parse_date(_), do: nil
-
-  defp parse_director(nil), do: nil
-
-  defp parse_director(%{"crew" => crew}) when is_list(crew) do
-    result =
-      crew
-      |> Enum.filter(&(&1["job"] == "Director"))
-      |> Enum.take(2)
-      |> Enum.map_join(", ", & &1["name"])
-
-    if result == "", do: nil, else: result
-  end
-
-  defp parse_director(_), do: nil
-
-  # Parse series creators (equivalent to directors for TV shows)
-  defp parse_creators(nil), do: nil
-  defp parse_creators([]), do: nil
-
-  defp parse_creators(creators) when is_list(creators) do
-    result =
-      creators
-      |> Enum.take(2)
-      |> Enum.map_join(", ", & &1["name"])
-
-    if result == "", do: nil, else: result
-  end
-
-  defp parse_creators(_), do: nil
-
-  defp parse_cast(nil), do: nil
-
-  defp parse_cast(%{"cast" => cast}) when is_list(cast) do
-    result =
-      cast
-      |> Enum.take(5)
-      |> Enum.map_join(", ", & &1["name"])
-
-    if result == "", do: nil, else: result
-  end
-
-  defp parse_cast(_), do: nil
 
   defp parse_trailer(nil), do: nil
 

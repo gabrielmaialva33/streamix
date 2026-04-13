@@ -12,45 +12,45 @@ defmodule Streamix.Iptv.AdultFilter do
   Filters a live channel query to exclude channels in adult categories.
   """
   def exclude_adult_channels(query, provider_id) do
-    adult_channel_ids =
-      from(lcc in "live_channel_categories",
+    adult_ci_ids =
+      from(ic in "item_categories",
         join: c in Category,
-        on: c.id == lcc.category_id,
+        on: c.id == ic.category_id,
         where: c.provider_id == ^provider_id and c.is_adult == true,
-        select: lcc.live_channel_id
+        select: ic.catalog_item_id
       )
 
-    from(ch in query, where: ch.id not in subquery(adult_channel_ids))
+    from(ch in query, where: ch.catalog_item_id not in subquery(adult_ci_ids))
   end
 
   @doc """
   Filters a movie query to exclude movies in adult categories.
   """
   def exclude_adult_movies(query, provider_id) do
-    adult_movie_ids =
-      from(mc in "movie_categories",
+    adult_ci_ids =
+      from(ic in "item_categories",
         join: c in Category,
-        on: c.id == mc.category_id,
+        on: c.id == ic.category_id,
         where: c.provider_id == ^provider_id and c.is_adult == true,
-        select: mc.movie_id
+        select: ic.catalog_item_id
       )
 
-    from(m in query, where: m.id not in subquery(adult_movie_ids))
+    from(m in query, where: m.catalog_item_id not in subquery(adult_ci_ids))
   end
 
   @doc """
   Filters a series query to exclude series in adult categories.
   """
   def exclude_adult_series(query, provider_id) do
-    adult_series_ids =
-      from(sc in "series_categories",
+    adult_ci_ids =
+      from(ic in "item_categories",
         join: c in Category,
-        on: c.id == sc.category_id,
+        on: c.id == ic.category_id,
         where: c.provider_id == ^provider_id and c.is_adult == true,
-        select: sc.series_id
+        select: ic.catalog_item_id
       )
 
-    from(s in query, where: s.id not in subquery(adult_series_ids))
+    from(s in query, where: s.catalog_item_id not in subquery(adult_ci_ids))
   end
 
   @doc """

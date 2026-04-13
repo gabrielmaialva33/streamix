@@ -45,10 +45,10 @@ defmodule Streamix.Access do
   def subscribed?(%User{} = user), do: Billing.subscribed?(user)
   def subscribed?(_user), do: false
 
-  def explicitly_permitted?(%User{id: user_id, role: role}, permission_name)
+  def explicitly_permitted?(%User{id: user_id, role_id: role_id}, permission_name)
       when is_binary(permission_name) do
     permission_exists_for_user?(user_id, permission_name) or
-      permission_exists_for_role?(role, permission_name)
+      permission_exists_for_role?(role_id, permission_name)
   end
 
   def explicitly_permitted?(_user, _permission_name), do: false
@@ -78,13 +78,19 @@ defmodule Streamix.Access do
   def ensure_permission!(%{name: name}) when is_binary(name), do: ensure_permission!(name)
 
   @doc """
-  Finds or creates role permissions for the given role and permissions.
+  Finds or creates role permissions. Accepts a role name (string) or role_id (integer).
   """
-  def ensure_role_permissions!(role, permissions)
-      when is_binary(role) and is_list(permissions) do
+  def ensure_role_permissions!(role_name, permissions)
+      when is_binary(role_name) and is_list(permissions) do
+    role = Accounts.get_role_by_name!(role_name)
+    ensure_role_permissions!(role.id, permissions)
+  end
+
+  def ensure_role_permissions!(role_id, permissions)
+      when is_integer(role_id) and is_list(permissions) do
     permissions
     |> Enum.map(&ensure_permission_reference!/1)
-    |> Enum.map(&ensure_role_permission_for_permission!(role, &1))
+    |> Enum.map(&ensure_role_permission_for_permission!(role_id, &1))
   end
 
   defp permission_exists_for_user?(user_id, permission_name) do
@@ -97,17 +103,17 @@ defmodule Streamix.Access do
     |> Repo.exists?()
   end
 
-  defp permission_exists_for_role?(role, permission_name) when is_binary(role) do
+  defp permission_exists_for_role?(role_id, permission_name) when is_integer(role_id) do
     from(rp in RolePermission,
       join: p in assoc(rp, :permission),
-      where: rp.role == ^role and p.name == ^permission_name,
+      where: rp.role_id == ^role_id and p.name == ^permission_name,
       select: true,
       limit: 1
     )
     |> Repo.exists?()
   end
 
-  defp permission_exists_for_role?(_role, _permission_name), do: false
+  defp permission_exists_for_role?(_role_id, _permission_name), do: false
 
   defp provider_global_system?(provider) do
     Map.get(provider, :is_system) == true or Map.get(provider, :visibility) in [:global, "global"]
@@ -119,11 +125,11 @@ defmodule Streamix.Access do
     ensure_permission!(name)
   end
 
-  defp ensure_role_permission_for_permission!(role, %Permission{id: permission_id}) do
-    case Repo.get_by(RolePermission, role: role, permission_id: permission_id) do
+  defp ensure_role_permission_for_permission!(role_id, %Permission{id: permission_id}) do
+    case Repo.get_by(RolePermission, role_id: role_id, permission_id: permission_id) do
       nil ->
         %RolePermission{}
-        |> RolePermission.changeset(%{role: role, permission_id: permission_id})
+        |> RolePermission.changeset(%{role_id: role_id, permission_id: permission_id})
         |> Repo.insert!()
 
       %RolePermission{} = role_permission ->

@@ -33,7 +33,8 @@ defmodule Streamix.Iptv.SeriesOps do
 
     query =
       Series
-      |> where([s], s.content_type == "anime" and not is_nil(s.gindex_path))
+      |> where([s], not is_nil(s.gindex_path))
+      |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
       |> order_by(asc: :name)
 
     query =
@@ -56,7 +57,8 @@ defmodule Streamix.Iptv.SeriesOps do
   @spec count_gindex_animes() :: integer()
   def count_gindex_animes do
     Series
-    |> where([s], s.content_type == "anime" and not is_nil(s.gindex_path))
+    |> where([s], not is_nil(s.gindex_path))
+    |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
     |> Repo.aggregate(:count)
   end
 
@@ -71,7 +73,8 @@ defmodule Streamix.Iptv.SeriesOps do
 
     Series
     |> where(id: ^id)
-    |> where([s], s.content_type == "anime" and not is_nil(s.gindex_path))
+    |> where([s], not is_nil(s.gindex_path))
+    |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
     |> preload(seasons: ^{seasons_query, episodes: episodes_query})
     |> preload(:provider)
     |> Repo.one()
@@ -98,7 +101,7 @@ defmodule Streamix.Iptv.SeriesOps do
     query =
       Series
       |> where([s], not is_nil(s.gindex_path))
-      |> where([s], s.content_type != "anime" or is_nil(s.content_type))
+      |> where([s], not ilike(s.gindex_path, "%anime%") and not ilike(s.gindex_path, "%Anime%"))
       |> order_by(desc: :year, asc: :name)
 
     query =
@@ -122,7 +125,7 @@ defmodule Streamix.Iptv.SeriesOps do
   def count_gindex do
     Series
     |> where([s], not is_nil(s.gindex_path))
-    |> where([s], s.content_type != "anime" or is_nil(s.content_type))
+    |> where([s], not ilike(s.gindex_path, "%anime%") and not ilike(s.gindex_path, "%Anime%"))
     |> Repo.aggregate(:count)
   end
 
@@ -180,8 +183,8 @@ defmodule Streamix.Iptv.SeriesOps do
 
     query =
       if category_id do
-        join(query, :inner, [s], sc in "series_categories",
-          on: sc.series_id == s.id and sc.category_id == ^category_id
+        join(query, :inner, [s], ic in "item_categories",
+          on: ic.catalog_item_id == s.catalog_item_id and ic.category_id == ^category_id
         )
       else
         query
@@ -198,6 +201,7 @@ defmodule Streamix.Iptv.SeriesOps do
     query
     |> limit(^limit)
     |> offset(^offset)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -213,6 +217,7 @@ defmodule Streamix.Iptv.SeriesOps do
     |> where([s, _p], not is_nil(s.cover))
     |> order_by([s], desc: s.rating, desc: s.year, asc: s.name)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -251,6 +256,7 @@ defmodule Streamix.Iptv.SeriesOps do
 
   def get_by_ids(ids) when is_list(ids) do
     from(s in Series, where: s.id in ^ids)
+    |> preload([:assets, :genres, credits: :person])
     |> Repo.all()
   end
 
@@ -261,7 +267,7 @@ defmodule Streamix.Iptv.SeriesOps do
   def get_public(series_id) do
     Series
     |> Access.public_only(series_id)
-    |> preload(:provider)
+    |> preload([:provider, :assets, :genres, credits: :person])
     |> Repo.one()
   end
 
@@ -276,7 +282,7 @@ defmodule Streamix.Iptv.SeriesOps do
     Series
     |> where(id: ^id)
     |> preload(seasons: ^{seasons_query, episodes: episodes_query})
-    |> preload(:provider)
+    |> preload([:provider, :assets, :genres, credits: :person])
     |> Repo.one()
   end
 
@@ -291,7 +297,7 @@ defmodule Streamix.Iptv.SeriesOps do
     Series
     |> where(id: ^id)
     |> preload(seasons: ^{seasons_query, episodes: episodes_query})
-    |> preload(:provider)
+    |> preload([:provider, :assets, :genres, credits: :person])
     |> Repo.one!()
   end
 
@@ -305,7 +311,8 @@ defmodule Streamix.Iptv.SeriesOps do
     series = get!(id)
 
     # Sync if no episodes yet OR missing tmdb_id (for TMDB enrichment)
-    needs_sync = series.episode_count == 0 or is_nil(series.tmdb_id) or series.tmdb_id == ""
+    episode_count = count_episodes_for_series(series.id)
+    needs_sync = episode_count == 0 or is_nil(series.tmdb_id) or series.tmdb_id == ""
 
     if needs_sync do
       case Sync.sync_series_details(series) do
@@ -387,7 +394,7 @@ defmodule Streamix.Iptv.SeriesOps do
   def get_episode_with_context!(id) do
     Episode
     |> where(id: ^id)
-    |> preload(season: [series: :provider])
+    |> preload(season: [series: [:provider, :assets]])
     |> Repo.one!()
   end
 
@@ -472,6 +479,7 @@ defmodule Streamix.Iptv.SeriesOps do
     |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -488,6 +496,7 @@ defmodule Streamix.Iptv.SeriesOps do
     |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
     |> order_by([s], desc: s.rating, asc: s.name)
     |> limit(^limit)
+    |> preload([:genres, credits: :person])
     |> Repo.all()
   end
 
@@ -501,6 +510,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec fetch_info(Series.t()) :: {:ok, Series.t()} | {:error, term()}
   def fetch_info(%Series{} = series) do
+    series = Repo.preload(series, [:assets, :genres, credits: :person])
     tmdb_id = series.tmdb_id
 
     if needs_tmdb_enrichment?(series) and is_binary(tmdb_id) and tmdb_id != "" do
@@ -543,13 +553,14 @@ defmodule Streamix.Iptv.SeriesOps do
 
   defp needs_tmdb_enrichment?(series) do
     missing_plot = is_nil(series.plot)
-    missing_cast = is_nil(series.cast)
-    missing_director = is_nil(series.director)
+    credits = series.credits || []
+    missing_cast = Enum.empty?(Enum.filter(credits, &(&1.role == "cast")))
+    missing_director = Enum.empty?(Enum.filter(credits, &(&1.role == "director")))
 
     # Also check for extended metadata from TMDB
     missing_extended =
       is_nil(series.content_rating) and is_nil(series.tagline) and
-        (is_nil(series.images) or series.images == [])
+        not Series.has_images?(series)
 
     missing_plot or missing_cast or missing_director or missing_extended
   end
@@ -588,5 +599,16 @@ defmodule Streamix.Iptv.SeriesOps do
     episode
     |> Episode.changeset(attrs)
     |> Repo.update()
+  end
+
+  @doc """
+  Counts total episodes for a series by querying through seasons.
+  """
+  @spec count_episodes_for_series(integer()) :: integer()
+  def count_episodes_for_series(series_id) do
+    Episode
+    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
+    |> where([_e, s], s.series_id == ^series_id)
+    |> Repo.aggregate(:count)
   end
 end

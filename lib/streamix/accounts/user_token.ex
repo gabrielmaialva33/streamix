@@ -20,7 +20,7 @@ defmodule Streamix.Accounts.UserToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime
-    field :ip_address, :string
+    field :ip_address, Streamix.Ecto.Inet
     field :user_agent, :string
     field :country, :string
     field :city, :string

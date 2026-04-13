@@ -23,9 +23,10 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
       favorites:
         Enum.map(favorites, fn f ->
           %{
-            id: f.id,
             content_type: f.content_type,
             content_id: f.content_id,
+            content_name: f[:content_name],
+            content_icon: f[:content_icon],
             created_at: f.inserted_at
           }
         end)
@@ -44,7 +45,6 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
         conn
         |> put_status(:created)
         |> json(%{
-          id: fav.id,
           content_type: fav.content_type,
           content_id: fav.content_id
         })

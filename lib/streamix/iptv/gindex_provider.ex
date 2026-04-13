@@ -52,11 +52,6 @@ defmodule Streamix.Iptv.GIndexProvider do
         name: "GIndex",
         url: cfg[:url],
         gindex_url: cfg[:url],
-        gindex_drives: %{
-          "movies_path" => "/1:/Filmes/",
-          "series_paths" => ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"],
-          "animes_path" => "/0:/Animes/"
-        },
         provider_type: :gindex,
         is_system: true,
         visibility: :global,
@@ -119,15 +114,22 @@ defmodule Streamix.Iptv.GIndexProvider do
   """
   def movies_path do
     case get() do
-      nil -> "/1:/Filmes/"
-      provider -> provider.gindex_drives["movies_path"] || "/1:/Filmes/"
+      nil ->
+        "/1:/Filmes/"
+
+      provider ->
+        provider = Repo.preload(provider, :drives)
+
+        case Enum.find(provider.drives, &(&1.drive_type == "movies")) do
+          %{metadata: %{"path" => path}} -> path
+          _ -> "/1:/Filmes/"
+        end
     end
   end
 
   # Check if configuration changed
   defp config_changed?(provider, attrs) do
     provider.gindex_url != attrs[:gindex_url] ||
-      provider.gindex_drives != attrs[:gindex_drives] ||
       provider.name != attrs[:name]
   end
 end

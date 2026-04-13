@@ -26,6 +26,17 @@ defmodule Streamix.Iptv.Sync.Series do
         {count, all_series_ids} =
           upsert_series_batched(series_list, provider.id, category_lookup, now)
 
+        # Sync genres and credits from the raw stream data
+        Helpers.sync_genres_and_credits(
+          series_list,
+          provider.id,
+          Series,
+          "series_genres",
+          "series_id",
+          credits_table: "series_credits",
+          stream_id_key: "series_id"
+        )
+
         # Delete orphaned series
         deleted_count = delete_orphaned_series(provider.id, all_series_ids)
 
@@ -163,47 +174,88 @@ defmodule Streamix.Iptv.Sync.Series do
   # =============================================================================
 
   defp upsert_series_batched(series_list, provider_id, category_lookup, now) do
+    # Build set of existing series_ids for this provider
+    existing_series_ids =
+      Series
+      |> where(provider_id: ^provider_id)
+      |> select([s], s.series_id)
+      |> Repo.all()
+      |> MapSet.new()
+
     series_list
     |> Enum.chunk_every(Helpers.batch_size())
     |> Enum.reduce({0, []}, fn batch, {acc_count, acc_ids} ->
-      series_data = Enum.map(batch, &series_attrs(&1, provider_id, now))
+      # Pre-create catalog_items for NEW series
+      new_sids =
+        batch
+        |> Enum.map(& &1["series_id"])
+        |> Enum.reject(&MapSet.member?(existing_series_ids, &1))
+
+      new_ci_ids = Helpers.pre_create_catalog_items(length(new_sids), "series", provider_id, now)
+      new_ci_map = Enum.zip(new_sids, new_ci_ids) |> Map.new()
+
+      # Get existing catalog_item_ids
+      existing_sids =
+        batch
+        |> Enum.map(& &1["series_id"])
+        |> Enum.filter(&MapSet.member?(existing_series_ids, &1))
+
+      existing_ci_map =
+        if existing_sids != [] do
+          Series
+          |> where(provider_id: ^provider_id)
+          |> where([s], s.series_id in ^existing_sids)
+          |> select([s], {s.series_id, s.catalog_item_id})
+          |> Repo.all()
+          |> Map.new()
+        else
+          %{}
+        end
+
+      ci_map = Map.merge(existing_ci_map, new_ci_map)
+
+      series_data =
+        Enum.map(batch, fn s ->
+          attrs = series_attrs(s, provider_id, now)
+          Map.put(attrs, :catalog_item_id, ci_map[s["series_id"]])
+        end)
 
       {inserted, returned} =
         Repo.insert_all(Series, series_data,
-          on_conflict: {:replace_all_except, [:id, :inserted_at, :season_count, :episode_count]},
+          on_conflict: {:replace_all_except, [:id, :inserted_at, :catalog_item_id]},
           conflict_target: [:provider_id, :series_id],
-          returning: [:id, :series_id]
+          returning: [:id, :series_id, :catalog_item_id]
         )
 
-      # Rebuild category associations for this batch
-      rebuild_series_category_assocs(batch, returned, category_lookup)
+      # Rebuild category associations via item_categories
+      catalog_item_ids = Enum.map(returned, & &1.catalog_item_id) |> Enum.reject(&is_nil/1)
+      category_assocs = build_series_category_assocs(batch, returned, category_lookup)
+      Helpers.rebuild_category_assocs_diff(catalog_item_ids, category_assocs)
 
       batch_series_ids = Enum.map(batch, & &1["series_id"])
       {acc_count + inserted, acc_ids ++ batch_series_ids}
     end)
   end
 
-  defp rebuild_series_category_assocs(series_list, returned_series, category_lookup) do
-    series_ids = Enum.map(returned_series, & &1.id)
-    category_assocs = build_series_category_assocs(series_list, returned_series, category_lookup)
-
-    # Use diff-based rebuild to avoid WAL bloat and visibility gaps
-    Helpers.rebuild_category_assocs_diff(
-      "series_categories",
-      "series_id",
-      "category_id",
-      series_ids,
-      category_assocs
-    )
-  end
-
   defp delete_orphaned_series(provider_id, current_series_ids) do
-    # First delete category associations for orphaned series
+    # Delete item_categories for orphaned series via catalog_item
     Repo.query!(
       """
-      DELETE FROM series_categories
-      WHERE series_id IN (
-        SELECT id FROM series
+      DELETE FROM item_categories
+      WHERE catalog_item_id IN (
+        SELECT catalog_item_id FROM series
+        WHERE provider_id = $1 AND series_id != ALL($2)
+      )
+      """,
+      [provider_id, current_series_ids]
+    )
+
+    # Delete orphaned catalog_items
+    Repo.query!(
+      """
+      DELETE FROM catalog_items
+      WHERE id IN (
+        SELECT catalog_item_id FROM series
         WHERE provider_id = $1 AND series_id != ALL($2)
       )
       """,
@@ -228,16 +280,9 @@ defmodule Streamix.Iptv.Sync.Series do
       year: Helpers.parse_year(series["year"]),
       cover: series["cover"],
       rating: Helpers.parse_decimal(series["rating"]),
-      rating_5based: Helpers.parse_decimal(series["rating_5based"]),
-      genre: series["genre"],
-      cast: series["cast"],
-      director: series["director"],
       plot: series["plot"],
-      backdrop_path: Helpers.normalize_backdrop(series["backdrop_path"]),
       youtube_trailer: series["youtube_trailer"],
       tmdb_id: Helpers.to_string_or_nil(series["tmdb_id"]),
-      season_count: 0,
-      episode_count: 0,
       provider_id: provider_id,
       inserted_at: now,
       updated_at: now
@@ -245,17 +290,17 @@ defmodule Streamix.Iptv.Sync.Series do
   end
 
   defp build_series_category_assocs(series_list, returned_series, category_lookup) do
-    series_to_db_id =
-      Map.new(returned_series, fn %{id: id, series_id: series_id} -> {series_id, id} end)
+    series_to_ci_id =
+      Map.new(returned_series, fn entity -> {entity.series_id, entity.catalog_item_id} end)
 
     series_list
     |> Enum.flat_map(fn series ->
-      db_series_id = series_to_db_id[series["series_id"]]
+      ci_id = series_to_ci_id[series["series_id"]]
       cat_ext_id = to_string(series["category_id"])
       category_id = category_lookup[cat_ext_id]
 
-      if db_series_id && category_id do
-        [%{series_id: db_series_id, category_id: category_id}]
+      if ci_id && category_id do
+        [%{catalog_item_id: ci_id, category_id: category_id}]
       else
         []
       end
@@ -292,14 +337,9 @@ defmodule Streamix.Iptv.Sync.Series do
       |> Enum.reduce(0, fn {season_num_str, episodes}, acc ->
         season_num = String.to_integer(season_num_str)
         season_id = season_num_to_id[season_num]
-        count = upsert_episodes(episodes, season_id, now)
+        count = upsert_episodes(episodes, season_id, series.provider_id, now)
         acc + count
       end)
-
-    # Update series counts
-    series
-    |> Ecto.Changeset.change(%{season_count: season_count, episode_count: ep_count})
-    |> Repo.update()
 
     {:ok, %{seasons: season_count, episodes: ep_count}}
   end
@@ -315,15 +355,7 @@ defmodule Streamix.Iptv.Sync.Series do
       %{}
       |> maybe_update(:tmdb_id, tmdb_id, series.tmdb_id)
       |> maybe_update(:plot, info["plot"], series.plot)
-      |> maybe_update(:cast, info["cast"], series.cast)
-      |> maybe_update(:director, info["director"], series.director)
-      |> maybe_update(:genre, info["genre"], series.genre)
       |> maybe_update(:youtube_trailer, info["youtube_trailer"], series.youtube_trailer)
-      |> maybe_update(
-        :backdrop_path,
-        Helpers.normalize_backdrop(info["backdrop_path"]),
-        series.backdrop_path
-      )
 
     if map_size(attrs) > 0 do
       series
@@ -410,14 +442,51 @@ defmodule Streamix.Iptv.Sync.Series do
     |> Repo.delete_all()
   end
 
-  defp upsert_episodes(_episodes, nil, _now), do: 0
+  defp upsert_episodes(_episodes, nil, _provider_id, _now), do: 0
 
-  defp upsert_episodes(episodes, season_id, now) do
-    episode_attrs_list = build_episode_attrs(episodes, season_id, now)
+  defp upsert_episodes(episodes, season_id, provider_id, now) do
+    # Find existing episode_nums for this season
+    existing_episode_nums =
+      Episode
+      |> where(season_id: ^season_id)
+      |> select([e], e.episode_num)
+      |> Repo.all()
+      |> MapSet.new()
+
+    raw_attrs_list = build_episode_attrs(episodes, season_id, now)
+
+    # Pre-create catalog_items for NEW episodes
+    new_attrs =
+      Enum.filter(raw_attrs_list, fn attrs ->
+        not MapSet.member?(existing_episode_nums, attrs[:episode_num])
+      end)
+
+    new_ci_ids = Helpers.pre_create_catalog_items(length(new_attrs), "episode", provider_id, now)
+    new_ep_nums = Enum.map(new_attrs, & &1[:episode_num])
+    new_ci_map = Enum.zip(new_ep_nums, new_ci_ids) |> Map.new()
+
+    # Get existing catalog_item_ids
+    existing_ci_map =
+      if MapSet.size(existing_episode_nums) > 0 do
+        Episode
+        |> where(season_id: ^season_id)
+        |> select([e], {e.episode_num, e.catalog_item_id})
+        |> Repo.all()
+        |> Map.new()
+      else
+        %{}
+      end
+
+    ci_map = Map.merge(existing_ci_map, new_ci_map)
+
+    episode_attrs_list =
+      Enum.map(raw_attrs_list, fn attrs ->
+        Map.put(attrs, :catalog_item_id, ci_map[attrs[:episode_num]])
+      end)
 
     {count, _} =
       Repo.insert_all(Episode, episode_attrs_list,
-        on_conflict: {:replace_all_except, [:id, :inserted_at]},
+        on_conflict: {:replace_all_except, [:id, :inserted_at, :catalog_item_id]},
         conflict_target: [:season_id, :episode_num]
       )
 
@@ -447,7 +516,6 @@ defmodule Streamix.Iptv.Sync.Series do
         plot: get_in(ep, ["info", "plot"]),
         cover: get_in(ep, ["info", "cover_big"]) || get_in(ep, ["info", "movie_image"]),
         duration_secs: get_in(ep, ["info", "duration_secs"]),
-        duration: get_in(ep, ["info", "duration"]),
         container_extension: ep["container_extension"],
         season_id: season_id,
         inserted_at: now,

@@ -5,7 +5,7 @@ defmodule Streamix.Iptv.Series do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.{Category, Provider, Season}
+  alias Streamix.Iptv.{CatalogItem, Genre, Provider, Season, SeriesAsset, SeriesCredit}
 
   @type t :: %__MODULE__{}
 
@@ -16,34 +16,29 @@ defmodule Streamix.Iptv.Series do
     field :year, :integer
     field :cover, :string
     field :rating, :decimal
-    field :rating_5based, :decimal
-    field :genre, :string
-    field :cast, :string
-    field :director, :string
     field :plot, :string
-    field :backdrop_path, {:array, :string}
     field :youtube_trailer, :string
     field :tmdb_id, :string
     field :tagline, :string
     field :content_rating, :string
-    field :images, {:array, :string}, default: []
-    field :season_count, :integer, default: 0
-    field :episode_count, :integer, default: 0
-    field :content_type, :string, default: "series"
 
     # GIndex fields
     field :gindex_path, :string
 
     belongs_to :provider, Provider
+    belongs_to :catalog_item, CatalogItem
     has_many :seasons, Season
-    many_to_many :categories, Category, join_through: "series_categories"
+    has_many :categories, through: [:catalog_item, :categories]
+    many_to_many :genres, Genre, join_through: "series_genres"
+    has_many :credits, SeriesCredit
+    has_many :assets, SeriesAsset
 
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(series_id name title year cover rating rating_5based genre cast
-             director plot backdrop_path youtube_trailer tmdb_id tagline
-             content_rating images season_count episode_count content_type provider_id gindex_path)a
+  @fields ~w(series_id name title year cover rating
+             plot youtube_trailer tmdb_id tagline
+             content_rating provider_id gindex_path catalog_item_id)a
 
   def changeset(series, attrs) do
     series
@@ -52,4 +47,50 @@ defmodule Streamix.Iptv.Series do
     |> unique_constraint([:provider_id, :series_id])
     |> foreign_key_constraint(:provider_id)
   end
+
+  @doc """
+  Returns backdrop URLs from assets, sorted by position.
+  """
+  @spec backdrop_urls(t()) :: [String.t()]
+  def backdrop_urls(%__MODULE__{assets: assets}) when is_list(assets) do
+    assets
+    |> Enum.filter(&(&1.asset_type == "backdrop"))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(& &1.url)
+  end
+
+  def backdrop_urls(_), do: []
+
+  @doc """
+  Returns image URLs from assets, sorted by position.
+  """
+  @spec image_urls(t()) :: [String.t()]
+  def image_urls(%__MODULE__{assets: assets}) when is_list(assets) do
+    assets
+    |> Enum.filter(&(&1.asset_type == "image"))
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(& &1.url)
+  end
+
+  def image_urls(_), do: []
+
+  @doc """
+  Returns true if the series has any backdrop assets.
+  """
+  @spec has_backdrops?(t()) :: boolean()
+  def has_backdrops?(%__MODULE__{assets: assets}) when is_list(assets) do
+    Enum.any?(assets, &(&1.asset_type == "backdrop"))
+  end
+
+  def has_backdrops?(_), do: false
+
+  @doc """
+  Returns true if the series has any image assets.
+  """
+  @spec has_images?(t()) :: boolean()
+  def has_images?(%__MODULE__{assets: assets}) when is_list(assets) do
+    Enum.any?(assets, &(&1.asset_type == "image"))
+  end
+
+  def has_images?(_), do: false
 end

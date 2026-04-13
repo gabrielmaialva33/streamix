@@ -31,12 +31,12 @@ defmodule StreamixWeb.Api.V1.HistoryController do
         Enum.map(items, fn h ->
           %{
             id: h.id,
-            content_type: h.content_type,
-            content_id: h.content_id,
+            content_type: h[:content_type],
+            content_id: h[:content_id],
             progress_seconds: h.progress_seconds,
             duration_seconds: h.duration_seconds,
             completed: h.completed,
-            watched_at: h.watched_at
+            watched_at: h[:watched_at]
           }
         end)
     })
@@ -67,8 +67,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
         |> put_status(:created)
         |> json(%{
           id: entry.id,
-          content_type: entry.content_type,
-          content_id: entry.content_id,
+          content_type: entry[:content_type],
+          content_id: entry[:content_id],
           progress_seconds: entry.progress_seconds,
           duration_seconds: entry.duration_seconds,
           completed: entry.completed

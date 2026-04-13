@@ -162,7 +162,9 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                 </span>
                 <span class="inline-flex items-center gap-1 h-7 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
                   <.icon name="hero-tv" class="size-3.5" />
-                  {length(@seasons)} temp · {@series.episode_count || 0} eps
+                  {length(@seasons)} temp · {Enum.sum(
+                    Enum.map(@seasons, fn s -> length(s.episodes || []) end)
+                  )} eps
                 </span>
                 <span class="inline-flex items-center h-7 px-2.5 bg-purple-600/20 text-purple-400 rounded-md uppercase text-xs font-bold">
                   GDrive

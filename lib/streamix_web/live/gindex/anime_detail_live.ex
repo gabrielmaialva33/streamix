@@ -163,7 +163,9 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
                 </span>
                 <span class="inline-flex items-center gap-1 h-7 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
                   <.icon name="hero-sparkles" class="size-3.5" />
-                  {length(@releases)} releases | {@anime.episode_count || 0} eps
+                  {length(@releases)} releases | {Enum.sum(
+                    Enum.map(@releases, fn s -> length(s.episodes || []) end)
+                  )} eps
                 </span>
                 <span class="inline-flex items-center h-7 px-2.5 bg-purple-600/20 text-purple-400 rounded-md uppercase text-xs font-bold">
                   Anime

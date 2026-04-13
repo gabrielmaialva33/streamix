@@ -7,7 +7,7 @@ defmodule Streamix.Iptv.Epg do
   import Ecto.Query, warn: false
 
   alias Streamix.{Cache, Repo}
-  alias Streamix.Iptv.{EpgProgram, EpgSync, Provider}
+  alias Streamix.Iptv.{EpgChannel, EpgProgram, EpgSync, Provider}
 
   @epg_now_ttl 60
 
@@ -30,18 +30,20 @@ defmodule Streamix.Iptv.Epg do
   def get_now_and_next(_provider_id, nil), do: %{current: nil, next: nil}
   def get_now_and_next(_provider_id, _), do: %{current: nil, next: nil}
 
-  defp fetch_now_and_next(provider_id, epg_channel_id) do
+  defp fetch_now_and_next(provider_id, epg_channel_external_id) do
     now = DateTime.utc_now()
 
+    # Resolve external_id to epg_channel integer id
     # Single query: get up to 2 programs that haven't ended yet, ordered by start_time
-    # This covers both current (start_time <= now < end_time) and next (start_time > now)
     programs =
       EpgProgram
-      |> where([p], p.provider_id == ^provider_id)
-      |> where([p], p.epg_channel_id == ^epg_channel_id)
+      |> join(:inner, [p], ec in EpgChannel, on: p.epg_channel_id == ec.id)
+      |> where([_p, ec], ec.provider_id == ^provider_id)
+      |> where([_p, ec], ec.external_id == ^epg_channel_external_id)
       |> where([p], p.end_time > ^now)
       |> order_by([p], asc: p.start_time)
       |> limit(2)
+      |> select([p], p)
       |> Repo.all()
 
     # Separate into current and next based on start_time
@@ -74,21 +76,24 @@ defmodule Streamix.Iptv.Epg do
   Efficient batch query for channel listings.
   Returns a map of epg_channel_id => program.
   """
-  def get_current_programs_batch(provider_id, epg_channel_ids) when is_list(epg_channel_ids) do
+  def get_current_programs_batch(provider_id, epg_channel_external_ids)
+      when is_list(epg_channel_external_ids) do
     # Filter out nil values
-    epg_channel_ids = Enum.filter(epg_channel_ids, & &1)
+    external_ids = Enum.filter(epg_channel_external_ids, & &1)
 
-    if Enum.empty?(epg_channel_ids) do
+    if Enum.empty?(external_ids) do
       %{}
     else
       now = DateTime.utc_now()
 
       EpgProgram
-      |> where([p], p.provider_id == ^provider_id)
-      |> where([p], p.epg_channel_id in ^epg_channel_ids)
+      |> join(:inner, [p], ec in EpgChannel, on: p.epg_channel_id == ec.id)
+      |> where([_p, ec], ec.provider_id == ^provider_id)
+      |> where([_p, ec], ec.external_id in ^external_ids)
       |> where([p], p.start_time <= ^now and p.end_time > ^now)
+      |> select([p, ec], {ec.external_id, p})
       |> Repo.all()
-      |> Map.new(fn p -> {p.epg_channel_id, p} end)
+      |> Map.new()
     end
   end
 

@@ -7,6 +7,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.Iptv.Series
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -256,10 +257,12 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   )}
                 </span>
                 <span
-                  :if={@episode.duration}
+                  :if={@episode.duration_secs}
                   class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
                 >
-                  <.icon name="hero-clock" class="size-3 sm:size-3.5" />{@episode.duration}
+                  <.icon name="hero-clock" class="size-3 sm:size-3.5" />{format_duration(
+                    @episode.duration_secs
+                  )}
                 </span>
                 <span
                   :if={@episode.container_extension}
@@ -439,9 +442,17 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     Calendar.strftime(date, "%d/%m/%Y")
   end
 
-  defp get_series_backdrop(%{backdrop_path: [url | _]}) when is_binary(url), do: url
-  defp get_series_backdrop(%{cover: cover}) when is_binary(cover), do: cover
+  defp get_series_backdrop(%Series{} = series) do
+    case Series.backdrop_urls(series) do
+      [url | _] -> url
+      _ -> get_series_backdrop_fallback(series)
+    end
+  end
+
   defp get_series_backdrop(_), do: nil
+
+  defp get_series_backdrop_fallback(%{cover: cover}) when is_binary(cover), do: cover
+  defp get_series_backdrop_fallback(_), do: nil
 
   # Content rating color classes
   defp content_rating_class(rating) when is_binary(rating) do
@@ -472,4 +483,18 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   end
 
   defp content_rating_class(_), do: "bg-surface text-text-secondary"
+
+  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    total_minutes = div(seconds, 60)
+    hours = div(total_minutes, 60)
+    mins = rem(total_minutes, 60)
+
+    cond do
+      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
+      hours > 0 -> "#{hours}h"
+      true -> "#{mins}min"
+    end
+  end
+
+  defp format_duration(_), do: nil
 end

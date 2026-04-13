@@ -19,7 +19,9 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   use StreamixWeb, :controller
 
   alias Streamix.AI.UserAnalytics
+  alias Streamix.Helpers
   alias Streamix.Iptv
+  alias Streamix.Iptv.{Movie, Series}
   alias StreamixWeb.Helpers.ImageProxy
 
   plug :require_authenticated_user
@@ -186,9 +188,9 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       title: movie.title,
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
-      genre: movie.genre,
+      genre: Helpers.genre_names(movie.genres),
       poster: ImageProxy.card(movie.stream_icon),
-      backdrop: ImageProxy.hero(movie.backdrop_path),
+      backdrop: Movie.backdrop_urls(movie) |> List.first() |> ImageProxy.hero(),
       plot: movie.plot,
       score: Map.get(result, :score)
     }
@@ -201,9 +203,9 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       title: series.title,
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
-      genre: series.genre,
+      genre: Helpers.genre_names(series.genres),
       poster: ImageProxy.card(series.cover),
-      backdrop: ImageProxy.hero(series.backdrop_path),
+      backdrop: Series.backdrop_urls(series) |> List.first() |> ImageProxy.hero(),
       plot: series.plot,
       score: Map.get(result, :score)
     }

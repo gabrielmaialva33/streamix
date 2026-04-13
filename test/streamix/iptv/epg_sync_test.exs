@@ -1,5 +1,5 @@
 defmodule Streamix.Iptv.EpgSyncTest do
-  use Streamix.DataCase, async: true
+  use Streamix.DataCase, async: false
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures

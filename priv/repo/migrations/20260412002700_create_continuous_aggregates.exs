@@ -42,16 +42,16 @@ defmodule Streamix.Repo.Migrations.CreateContinuousAggregates do
       schedule_interval => INTERVAL '1 day')
     """
 
-    # Daily EPG coverage — programs per provider per day
+    # Daily EPG coverage — programs per channel per day
     execute """
     CREATE MATERIALIZED VIEW epg_stats_daily
     WITH (timescaledb.continuous) AS
     SELECT
       time_bucket('1 day', start_time) AS bucket,
-      provider_id,
+      epg_channel_id,
       count(*) AS program_count
     FROM epg_programs
-    GROUP BY bucket, provider_id
+    GROUP BY bucket, epg_channel_id
     WITH NO DATA
     """
 

@@ -12,8 +12,7 @@ defmodule Streamix.Iptv.Sync.Live do
   @sync_opts [
     schema: LiveChannel,
     table_name: "live_channels",
-    join_table: "live_channel_categories",
-    fk_column: "live_channel_id"
+    content_type: "live_channel"
   ]
 
   @doc """

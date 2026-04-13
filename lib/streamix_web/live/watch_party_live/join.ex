@@ -6,6 +6,8 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
   import StreamixWeb.WatchPartyComponents
 
+  alias Streamix.Iptv.CatalogItem
+  alias Streamix.Repo
   alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -18,11 +20,17 @@ defmodule StreamixWeb.WatchPartyLive.Join do
          |> push_navigate(to: ~p"/")}
 
       room ->
+        room = Repo.preload(room, catalog_item: [:movie, :series, :episode, :live_channel])
+        content_name = CatalogItem.content_name(room.catalog_item)
+        content_icon = CatalogItem.content_icon(room.catalog_item)
+
         socket =
           socket
-          |> assign(page_title: "Watch Party — #{room.content_name}")
+          |> assign(page_title: "Watch Party — #{content_name || "Conteúdo"}")
           |> assign(current_path: "/party")
           |> assign(room: room)
+          |> assign(room_content_name: content_name)
+          |> assign(room_content_icon: content_icon)
 
         {:ok, socket}
     end
@@ -50,10 +58,10 @@ defmodule StreamixWeb.WatchPartyLive.Join do
       <div class="max-w-md w-full mx-4">
         <div class="bg-surface rounded-2xl border border-border p-6 text-center space-y-6">
           <%!-- Content thumbnail --%>
-          <div :if={@room.content_icon} class="relative mx-auto w-32 h-48 rounded-lg overflow-hidden">
+          <div :if={@room_content_icon} class="relative mx-auto w-32 h-48 rounded-lg overflow-hidden">
             <img
-              src={ImageProxy.proxy(@room.content_icon)}
-              alt={@room.content_name}
+              src={ImageProxy.proxy(@room_content_icon)}
+              alt={@room_content_name}
               class="w-full h-full object-cover"
               crossorigin="anonymous"
             />
@@ -61,7 +69,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
           <div class="space-y-2">
             <h1 class="text-xl font-bold text-text-primary">Watch Party</h1>
-            <p class="text-text-secondary">{@room.content_name || "Conteúdo"}</p>
+            <p class="text-text-secondary">{@room_content_name || "Conteúdo"}</p>
             <.invite_badge invite_code={@room.invite_code} />
           </div>
 

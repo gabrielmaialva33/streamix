@@ -6,7 +6,7 @@ defmodule Streamix.Repo.Migrations.CreateAccessLogs do
     create table(:access_logs, primary_key: false) do
       add :id, :bigserial
       add :user_id, references(:users, on_delete: :nilify_all)
-      add :ip_address, :string, null: false
+      add :ip_address, :inet, null: false
       add :user_agent, :text
       add :path, :string
       add :method, :string

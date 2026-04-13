@@ -162,8 +162,7 @@ defmodule Streamix.WatchParty do
           {RoomServer,
            room_id: room.id,
            host_user_id: room.host_user_id,
-           content_type: room.content_type,
-           content_id: room.content_id}
+           catalog_item_id: room.catalog_item_id}
         )
 
       pid ->

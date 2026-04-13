@@ -100,7 +100,7 @@ defmodule StreamixWeb.AppComponents do
       <div class="p-4 border-t border-border">
         <div :if={@current_scope} class="space-y-1">
           <.nav_item
-            :if={@current_scope.user.role == "admin"}
+            :if={Streamix.Accounts.admin?(@current_scope.user)}
             path={~p"/admin"}
             icon="hero-shield-check"
             label="Gerenciamento"
@@ -237,7 +237,7 @@ defmodule StreamixWeb.AppComponents do
 
   def premium_cta_banner(assigns) do
     # Hide for admin users
-    if assigns.current_scope && assigns.current_scope.user.role == "admin" do
+    if assigns.current_scope && Streamix.Accounts.admin?(assigns.current_scope.user) do
       ~H""
     else
       render_premium_cta_banner(assigns)
