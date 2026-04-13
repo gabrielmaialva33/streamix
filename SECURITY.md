@@ -2,157 +2,106 @@
 
 ## Supported Versions
 
-Currently, only the latest version of Streamix receives security updates.
+Streamix does not currently maintain multiple supported release branches. Security fixes land on the current `master`
+branch and in the latest published container image.
 
-| Version | Supported          |
-|---------|--------------------|
-| 1.3.x   | :white_check_mark: |
-| < 1.3   | :x:                |
+| Version / branch | Supported |
+| --- | --- |
+| `master` / current `HEAD` | Yes |
+| `ghcr.io/gabrielmaialva33/streamix:latest` | Yes |
+| Historical tags (`v1.0.0` through `v1.5.0`) | No backports |
 
 ## Reporting a Vulnerability
 
-Security is taken seriously at Streamix. If you discover a security vulnerability, please follow this responsible
-disclosure process.
+Do **not** open a public GitHub issue for a suspected vulnerability.
 
-### How to Report
+Instead, report it privately to:
 
-**DO NOT** open a public issue for security vulnerabilities.
+- Email: **gabrielmaialva33@gmail.com**
 
-Instead, send an email to:
+If you need encrypted communication, mention that in the first email and a secure channel can be arranged.
 
-📧 **gabrielmaialva33@gmail.com**
+## What to Include
 
-### What to include in the report
+Please include:
 
-Please include as much information as possible:
+1. Vulnerability type
+2. Affected area or file path
+3. Exact reproduction steps
+4. Impact and attacker prerequisites
+5. Suggested mitigation, if you have one
+6. Proof of concept or logs, if safe to share
 
-1. **Vulnerability Type** (e.g., XSS, SQL Injection, CSRF, etc.)
-2. **Location** of the vulnerable code (file, line, function)
-3. **Steps to reproduce** the issue
-4. **Potential Impact** of the vulnerability
-5. **Suggested Fix** (if available)
-6. **Proof of Concept** (if possible)
+Helpful examples of affected surfaces in this repo:
 
-### Example Report
+- browser auth and session handling
+- `/api/v1/*` endpoints
+- `StreamixWeb.StreamToken` and stream proxy flows
+- provider credential storage and encryption
+- RabbitMQ / Redis / Qdrant / GIndex integration boundaries
+- CSP, CORS, and rate-limiting behavior
 
-```
-Subject: [SECURITY] XSS Vulnerability in search module
+## Response Expectations
 
-Type: Reflected Cross-Site Scripting (XSS)
-Severity: High
-Location: lib/streamix_web/live/search_live.ex:45
+Current response targets are best effort:
 
-Description:
-The search parameter is not being properly sanitized,
-allowing for malicious script injection.
+| Stage | Target |
+| --- | --- |
+| Acknowledgement | within 72 hours |
+| Initial triage | within 7 days |
+| Follow-up status updates | weekly while active |
+| Fix timeline | depends on severity and reproducibility |
 
-Steps to reproduce:
-1. Access /search?q=<script>alert('xss')</script>
-2. The script executes in the browser
+We will do our best to:
 
-Impact:
-An attacker can execute arbitrary JavaScript in the user's context,
-potentially stealing sessions.
-
-Suggested Fix:
-Use Phoenix.HTML.html_escape/1 on the parameter before rendering.
-```
-
-## Response Process
-
-### Timeline
-
-| Stage                      | Timeframe   |
-|----------------------------|-------------|
-| Acknowledgement of receipt | 24-48 hours |
-| Initial Assessment         | 72 hours    |
-| Status Update              | Weekly      |
-| Fix (Critical severity)    | 7 days      |
-| Fix (High severity)        | 14 days     |
-| Fix (Medium/Low severity)  | 30 days     |
-
-### What to expect
-
-1. **Acknowledgement**: You will receive a confirmation of receipt within 48 hours
-2. **Assessment**: We will assess the vulnerability and determine its severity
-3. **Communication**: We will keep you informed about the progress
-4. **Fix**: We will develop and test a fix
-5. **Disclosure**: We will coordinate public disclosure after the fix
-
-### Acknowledgement
-
-We thank everyone who reports vulnerabilities responsibly. With your permission, we will acknowledge your contribution
-in:
-
-- Release notes of the patched version
-- Acknowledgements section in the README (if desired)
+- confirm receipt
+- reproduce and triage the issue
+- communicate impact and planned remediation
+- coordinate disclosure after a fix ships
 
 ## Scope
 
-### In Scope
+### In scope
 
-- Streamix Application (source code)
-- Public APIs
-- Authentication and authorization
-- User data protection
-- Security configurations
+- Streamix application code in this repository
+- Web UI, LiveView routes, and API routes
+- Authentication and authorization flows
+- Signed stream-token and proxy behavior
+- Secrets handling, credential storage, and encryption
+- Default Docker / runtime configuration shipped in the repo
 
-### Out of Scope
+### Out of scope
 
-- Vulnerabilities in third-party dependencies (report directly to maintainers)
-- Social engineering attacks
-- Denial of Service (DoS) attacks
-- Vulnerabilities requiring physical access to the server
-- Vulnerabilities in development/staging environments
+- Vulnerabilities in third-party dependencies themselves
+- Misconfiguration in a downstream deployment you do not control
+- Social engineering, phishing, or credential stuffing
+- Denial-of-service reports without a concrete product bug
+- Issues in the extracted TV app repository
 
-## Security Best Practices
+## Security Notes for Deployers
 
-### For Users
+Before deploying Streamix:
 
-- Keep Streamix updated
-- Use strong and unique passwords
-- Configure HTTPS in production
-- Do not expose credentials in logs or code
-- Configure environment variables correctly
+- set `SECRET_KEY_BASE` and `LIVE_VIEW_SIGNING_SALT`
+- set `PROVIDER_ENCRYPTION_KEY`
+- keep `.env` and runtime secrets out of git
+- serve the app behind HTTPS
+- restrict `CORS_ORIGINS`
+- configure `API_KEYS` for external clients
+- rotate provider credentials and API keys if exposure is suspected
+- keep Redis, RabbitMQ, PostgreSQL, and Qdrant off the public internet unless intentionally secured
 
-### For Developers
+Sensitive environment variables commonly involved in reports include:
 
-- Never commit credentials or secrets
-- Use `mix phx.gen.secret` to generate secrets
-- Validate and sanitize all inputs
-- Use prepared statements (Ecto does this by default)
-- Follow the principle of least privilege
-- Keep dependencies updated
+- `SECRET_KEY_BASE`
+- `LIVE_VIEW_SIGNING_SALT`
+- `PROVIDER_ENCRYPTION_KEY`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `GLOBAL_PROVIDER_PASSWORD`
+- `GEMINI_API_KEY`
+- `NVIDIA_API_KEY`
+- `QDRANT_API_KEY`
+- `API_KEYS`
 
-## Security Configurations
-
-### Sensitive Environment Variables
-
-These variables must **NEVER** be committed:
-
-```
-SECRET_KEY_BASE
-DATABASE_URL
-REDIS_URL
-TMDB_API_TOKEN
-```
-
-### Recommended Security Headers
-
-Streamix automatically configures security headers via Plug, including:
-
-- `X-Frame-Options: SAMEORIGIN`
-- `X-Content-Type-Options: nosniff`
-- `X-XSS-Protection: 1; mode=block`
-- `Content-Security-Policy`
-
-## Contact
-
-For security questions:
-
-- 📧 Email: gabrielmaialva33@gmail.com
-- 🔐 For sensitive communications, request our PGP key
-
----
-
-Thank you for helping keep Streamix secure!
+Thanks for helping keep Streamix secure.
