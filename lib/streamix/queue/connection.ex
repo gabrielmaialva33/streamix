@@ -50,8 +50,32 @@ defmodule Streamix.Queue.Connection do
 
   @impl true
   def init(_opts) do
-    send(self(), :connect)
-    {:ok, %{connection: nil, channel: nil}}
+    case connect() do
+      {:ok, state} ->
+        {:ok, state}
+
+      {:error, _reason} ->
+        # Retry async — pipelines will reconnect when queues appear
+        send(self(), :connect)
+        {:ok, %{connection: nil, channel: nil}}
+    end
+  end
+
+  defp connect do
+    config = Application.get_env(:streamix, :rabbitmq, [])
+    conn_opts = Keyword.get(config, :connection, [])
+
+    with {:ok, connection} <- AMQP.Connection.open(conn_opts),
+         {:ok, channel} <- AMQP.Channel.open(connection) do
+      Process.monitor(connection.pid)
+      Logger.info("[RabbitMQ] Connected successfully")
+      setup_queues(channel)
+      {:ok, %{connection: connection, channel: channel}}
+    else
+      {:error, reason} ->
+        Logger.error("[RabbitMQ] Connection failed: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
   @impl true
@@ -66,27 +90,9 @@ defmodule Streamix.Queue.Connection do
 
   @impl true
   def handle_info(:connect, state) do
-    config = Application.get_env(:streamix, :rabbitmq, [])
-    conn_opts = Keyword.get(config, :connection, [])
-
-    case AMQP.Connection.open(conn_opts) do
-      {:ok, connection} ->
-        Process.monitor(connection.pid)
-
-        case AMQP.Channel.open(connection) do
-          {:ok, channel} ->
-            Logger.info("[RabbitMQ] Connected successfully")
-            setup_queues(channel)
-            {:noreply, %{connection: connection, channel: channel}}
-
-          {:error, reason} ->
-            Logger.error("[RabbitMQ] Failed to open channel: #{inspect(reason)}")
-            schedule_reconnect()
-            {:noreply, state}
-        end
-
-      {:error, reason} ->
-        Logger.error("[RabbitMQ] Connection failed: #{inspect(reason)}")
+    case connect() do
+      {:ok, new_state} -> {:noreply, new_state}
+      {:error, _} ->
         schedule_reconnect()
         {:noreply, state}
     end
