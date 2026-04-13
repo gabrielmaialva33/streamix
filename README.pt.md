@@ -1,165 +1,306 @@
-# Streamix
+<h1 align="center">
+  <br>
+  <img src=".github/assets/web-data.png" alt="Streamix" width="200">
+  <br>
+  Streamix
+  <br>
+</h1>
 
-Plataforma de streaming em Phoenix + LiveView que agrega multiplos provedores Xtream Codes em uma unica aplicacao web
-e API REST. O Streamix suporta canais ao vivo, filmes, series, favoritos, historico, progresso de reproducao, acesso
-premium, watch parties e busca / recomendacoes com IA quando configuradas.
+<p align="center">
+  <strong>Uma plataforma cinematografica em Phoenix + LiveView que unifica provedores Xtream Codes, catalogos opcionais via GIndex, acesso premium, watch parties e descoberta assistida por IA em uma unica experiencia polida.</strong>
+</p>
 
-[English](README.md)
+<p align="center">
+  <a href="README.md">English</a>
+</p>
 
-## O Que Existe Neste Repositorio
+<p align="center">
+  <img src="https://img.shields.io/badge/Elixir-1.18+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
+  <img src="https://img.shields.io/badge/Phoenix-1.8.2+-f97316?style=flat&logo=phoenix-framework" alt="Phoenix" />
+  <img src="https://img.shields.io/badge/LiveView-1.1+-0ea5e9?style=flat&logo=phoenix-framework" alt="LiveView" />
+  <img src="https://img.shields.io/badge/TimescaleDB-pg17-1d4ed8?style=flat&logo=postgresql" alt="TimescaleDB" />
+  <img src="https://img.shields.io/badge/Redis-7+-dc2626?style=flat&logo=redis" alt="Redis" />
+  <img src="https://img.shields.io/badge/Qdrant-Opcional-111827?style=flat" alt="Qdrant" />
+  <img src="https://img.shields.io/badge/RabbitMQ-Opcional-f59e0b?style=flat&logo=rabbitmq" alt="RabbitMQ" />
+  <img src="https://img.shields.io/badge/Tailwind-v4-06b6d4?style=flat&logo=tailwindcss" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/PWA-Ativo-7c3aed?style=flat" alt="PWA" />
+  <img src="https://img.shields.io/badge/Licenca-MIT-16a34a?style=flat" alt="Licenca" />
+</p>
 
-Este repositorio contem:
+<p align="center">
+  <a href="#sparkles-destaques">Destaques</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#art-arquitetura">Arquitetura</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#rocket-superficies-em-runtime">Superficies</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#computer-stack">Stack</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#package-inicio-rapido">Inicio Rapido</a>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+  <a href="#memo-notas-do-projeto">Notas</a>
+</p>
 
-- o backend Phoenix
-- o cliente web em LiveView
-- o stream proxy e o fluxo de stream tokens assinados
-- a API REST para clientes mobile / TV
-- as integracoes opcionais com IA, Redis, Qdrant, RabbitMQ e GIndex
+<br>
 
-Ele **nao** contem mais o frontend antigo de TV que ja foi extraido para outro repositorio.
+> [!IMPORTANT]
+> As tags historicas vao ate `v1.5.0`, mas o `mix.exs` atual ainda reporta `1.3.0`. O estado real do repositorio e o
+> historico do Git sao a fonte de verdade para as capacidades atuais.
 
-## Resumo de Funcionalidades
+> [!NOTE]
+> Este repositorio contem o backend Phoenix e a aplicacao web em LiveView. O frontend antigo de TV foi extraido para
+> outro repositorio e nao faz mais parte desta base.
 
-### Produto principal
+## :sparkles: Destaques
 
-- Agregacao de multiplos provedores Xtream Codes
-- Provedor global opcional compartilhado entre usuarios
-- Ingestao opcional via GIndex para catalogos baseados em Google Drive
-- TV ao vivo, filmes, series, temporadas e episodios
-- Favoritos, historico e progresso de reproducao
-- Sincronizacao de EPG com consultas de now/next
-- Planos, assinaturas e bloqueio premium de reproducao
-- Painel administrativo para usuarios e planos
+<table>
+  <tr>
+    <td width="50%" valign="top">
 
-### Playback e entrega
+### Plataforma de Streaming Unificada
 
-- Stream URLs assinadas para canais, filmes e episodios
-- Proxy Phoenix para evitar mixed content e esconder credenciais
-- Multiplexador de canais ao vivo para compartilhar conexoes upstream
-- Suporte a HLS, MPEG-TS e fluxos orientados a AVPlayer
-- Circuit breaker por provedor para reduzir falhas em cascata
+- **Agregacao multi-provedor** para catalogos Xtream Codes
+- **Provedor global opcional** compartilhado pelo sistema
+- **Ingestao opcional via GIndex** para bibliotecas em Google Drive
+- **TV ao vivo, filmes, series, temporadas e episodios**
+- **Favoritos, historico e progresso de reproducao**
+- **Sincronizacao de EPG** com consultas de now/next
 
-### Tempo real e UX
+    </td>
+    <td width="50%" valign="top">
 
-- Watch parties com reproducao sincronizada, presence e chat
-- UI responsiva em LiveView
-- Manifest e service worker de PWA
-- Hooks de sincronizacao offline para favoritos e historico
-- Toggle de tema com dark mode por padrao
+### Superficie de Produto Premium
 
-### Superficies opcionais de IA
+- **Planos premium e assinaturas**
+- **Painel administrativo** para planos e usuarios
+- **Watch parties** com reproducao sincronizada e chat
+- **Stream URLs assinadas** e entrega segura
+- **Suporte a PWA** com hooks de sincronizacao offline
+- **UI dark-first** com toggle de tema no cliente
 
-- Embeddings via Gemini ou NVIDIA
-- Busca semantica com Qdrant
-- Recomendacoes de conteudo similar
-- Perfil de gosto do usuario e secoes personalizadas na home
+    </td>
+  </tr>
 
-Se os servicos de IA nao estiverem configurados, o Streamix faz fallback para busca textual onde isso faz sentido.
+</table>
 
-## Stack
+### IA, entrega e infraestrutura
 
-- Elixir `~> 1.18`
-- OTP 27
-- Phoenix `~> 1.8.2`
-- Phoenix LiveView `~> 1.1.0`
-- Ecto SQL `~> 3.13`
-- TimescaleDB / PostgreSQL 17
-- Redis 7
-- Qdrant (opcional)
-- RabbitMQ 4 + Broadway (opcional)
-- Oban 2.18
-- Req + Finch
-- Tailwind CSS v4
-- esbuild
-- pacotes npm em `assets/`
+- **Busca semantica** via embeddings Gemini ou NVIDIA + Qdrant
+- **Recomendacoes e perfil de gosto** quando os servicos de IA estao configurados
+- **Proxy Phoenix de streams** para mixed content e protecao de credenciais upstream
+- **Multiplexador de canais ao vivo** para compartilhar consumo upstream
+- **Circuit breaker** para provedores instaveis
+- **Cache em duas camadas** com ConCache L1 + Redis L2
+- **Background jobs com Oban**, com **RabbitMQ + Broadway** como caminho opcional
 
-## Estrutura do Repositorio
+## :fire: Por Que o Streamix Tem Cara de Produto
 
-```text
-lib/streamix/
-  access/        permissoes e grants
-  accounts/      usuarios, papeis, tokens, settings, rastreio de IP
-  ai/            embeddings, Qdrant, busca semantica, analiticos do usuario
-  billing/       planos e assinaturas
-  iptv/          provedores, sync, catalogo, EPG, stream proxy, GIndex
-  library/       referencias compartilhadas de conteudo
-  queue/         caminho opcional com RabbitMQ + Broadway
-  watch_party/   rooms, participantes, mensagens, room server
-  workers/       workers do Oban
+O Streamix nao e apenas um wrapper de painel IPTV. O repositorio ja contem as pecas para se comportar como uma
+superficie de produto de verdade: premium gate, stream tokens assinados, rooms sincronizadas, descoberta opcional por
+IA e uma interface cinematografica em LiveView feita para navegar, nao apenas listar dados de provedor.
 
-lib/streamix_web/
-  controllers/   HTML, stream proxy, health e API v1
-  live/          landing, auth, catalogo, admin, watch party, providers
-  components/    layouts e UI reutilizavel
-  plugs/         CORS, CSP nonce, API key auth, rate limiting
+O sistema foi modelado para consolidar fontes upstream fragmentadas por tras de uma UX coerente e de um modelo de
+dominio coerente. Por isso a base e opinativa sobre seguranca, entrega de stream, limites de provider e integracao com
+servicos externos.
 
-assets/
-  css/app.css
-  js/app.js
-  js/hooks/
+## :art: Arquitetura
+
+### Visao Geral
+
+```mermaid
+graph TD
+    U[Usuario / Cliente]
+
+    subgraph Streamix["Plataforma Streamix"]
+        W[Phoenix + LiveView UI]
+        API[REST API v1]
+        ST[StreamToken]
+        SP[Stream Proxy]
+        WP[Watch Party]
+        AI[Servicos de IA]
+        JOBS[Oban Workers]
+    end
+
+    subgraph Core["Contextos Core"]
+        ACC[Accounts + Access]
+        IPTV[IPTV + Library]
+        BILL[Billing]
+        CACHE[ConCache + Redis]
+    end
+
+    subgraph Data["Dados + Infra"]
+        DB[(TimescaleDB / PostgreSQL 17)]
+        REDIS[(Redis)]
+        QDRANT[(Qdrant)]
+        RMQ[(RabbitMQ)]
+    end
+
+    subgraph External["Servicos Externos"]
+        XT[Provedores Xtream]
+        GIDX[GIndex]
+        TMDB[TMDB]
+        EMB[Gemini / NVIDIA]
+    end
+
+    U --> W
+    U --> API
+    W --> ACC
+    W --> IPTV
+    W --> BILL
+    W --> WP
+    API --> ACC
+    API --> IPTV
+    API --> BILL
+    IPTV --> CACHE
+    CACHE --> DB
+    CACHE --> REDIS
+    ST --> SP
+    SP --> XT
+    IPTV --> XT
+    IPTV --> GIDX
+    IPTV --> TMDB
+    AI --> EMB
+    AI --> QDRANT
+    JOBS --> DB
+    JOBS --> RMQ
 ```
 
-## Inicio Rapido
+### Fluxo de Playback Protegido
 
-### Requisitos
+```mermaid
+sequenceDiagram
+    participant Usuario
+    participant UI as LiveView / API
+    participant Token as StreamToken
+    participant Proxy as Stream Proxy
+    participant Upstream as Provedor IPTV
+
+    Usuario->>UI: Solicita reproducao
+    UI->>UI: Verifica auth, acesso ao provider e premium gates
+    UI->>Token: Gera stream token assinado
+    Token-->>Usuario: URL assinada de playback
+    Usuario->>Proxy: Requisita URL assinada
+    Proxy->>Proxy: Valida token e resolve destino com seguranca
+    Proxy->>Upstream: Busca stream / segue redirects
+    Upstream-->>Proxy: Resposta HLS / TS / VOD
+    Proxy-->>Usuario: Stream seguro para reproducao
+```
+
+<details>
+<summary><strong>Modulos centrais que valem conhecer</strong></summary>
+
+| Area              | Modulos principais                                                                     |
+|-------------------|----------------------------------------------------------------------------------------|
+| Auth e papeis     | `Streamix.Accounts`, `Streamix.Access`                                                 |
+| IPTV e catalogo   | `Streamix.Iptv`, `Streamix.Library`                                                    |
+| Billing           | `Streamix.Billing`                                                                     |
+| IA                | `Streamix.AI.SemanticSearch`, `Streamix.AI.UserAnalytics`                              |
+| Rooms realtime    | `Streamix.WatchParty`, `Streamix.WatchParty.RoomServer`                                |
+| Entrega de stream | `StreamixWeb.StreamToken`, `StreamixWeb.StreamController`, `Streamix.Iptv.StreamProxy` |
+| Background jobs   | `Streamix.Workers.*`, `Oban`                                                           |
+| Fila opcional     | `Streamix.Queue.*`                                                                     |
+
+</details>
+
+## :rocket: Superficies em Runtime
+
+### Rotas web
+
+- `/` landing page
+- `/plans`
+- `/login`, `/register`, `/settings`
+- `/browse`, `/browse/movies`, `/browse/series`
+- `/providers`, `/providers/:provider_id/...`
+- `/favorites`, `/history`
+- `/gindex/...`
+- `/party`, `/party/:invite_code`, `/party/:invite_code/watch`
+- `/watch/:type/:id`
+- `/admin`, `/admin/plans`, `/admin/users`
+
+### REST API
+
+Superficies principais em `/api/v1`:
+
+- `auth` - register, login, logout, me
+- `catalog` - featured, movies, series, channels, categories, stream URLs
+- `search` - busca semantica, similar, status, info
+- `recommendations` - personalized, similar, channels, insights, refresh
+- `favorites`
+- `history`
+- `epg`
+- `telemetry/playback`
+- `providers`
+
+Healthcheck:
+
+- `GET /api/health`
+
+## :computer: Stack
+
+### Backend
+
+| Tecnologia  | Versao      | Papel                     |
+|-------------|-------------|---------------------------|
+| Elixir      | `~> 1.18`   | runtime da aplicacao      |
+| OTP         | 27          | supervisao e concorrencia |
+| Phoenix     | `~> 1.8.2`  | framework web             |
+| LiveView    | `~> 1.1.0`  | UI em tempo real          |
+| Ecto SQL    | `~> 3.13`   | camada de banco           |
+| Req + Finch | deps atuais | cliente HTTP e pooling    |
+| Oban        | `~> 2.18`   | background jobs           |
+
+### Dados e infra
+
+| Tecnologia                  | Status      | Papel                           |
+|-----------------------------|-------------|---------------------------------|
+| TimescaleDB / PostgreSQL 17 | obrigatorio | banco relacional principal      |
+| Redis 7                     | recomendado | cache L2 e suporte a hot-path   |
+| Qdrant                      | opcional    | busca semantica e recomendacoes |
+| RabbitMQ 4                  | opcional    | fila distribuida com Broadway   |
+| ConCache                    | embutido    | cache L1 em memoria             |
+
+### Frontend
+
+| Tecnologia                | Papel                                            |
+|---------------------------|--------------------------------------------------|
+| Tailwind CSS v4           | estilo                                           |
+| esbuild                   | bundling JS                                      |
+| pacotes npm em `assets/`  | dependencias do browser                          |
+| manifest + service worker | instalacao como PWA e cache offline de metadados |
+
+## :package: Inicio Rapido
+
+### Pre-requisitos
 
 - Docker
 - Elixir 1.18+
 - OTP 27+
 - Node.js 20+ e npm
 
-### 1. Suba a infraestrutura
+### 1. Suba a infraestrutura local
 
 ```bash
 docker compose up -d
 ```
 
-O compose sobe:
+Servicos incluidos:
 
 - TimescaleDB / PostgreSQL 17
 - Redis
 - RabbitMQ
 - Qdrant
 
-RabbitMQ e Qdrant sao opcionais em runtime, mas o compose os inclui no ambiente local.
-
-### 2. Configure o ambiente
+### 2. Configure o `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Valores minimos que voce precisa definir antes do `mix setup`:
+Valores minimos antes do `mix setup`:
 
 - `ADMIN_PASSWORD`
 - `PROVIDER_ENCRYPTION_KEY`
 
-Variaveis importantes:
-
-- `DATABASE_URL` - por padrao `ecto://streamix:streamix@localhost/streamix_dev`
-- `TEST_DATABASE_URL` - opcional; se faltar, e inferido a partir de `DATABASE_URL`
-- `REDIS_URL`
-- `GLOBAL_PROVIDER_*` - provedor global opcional
-- `GINDEX_ENABLED` / `GINDEX_URL` - integracao opcional com GIndex
-- `TMDB_API_TOKEN` - enriquecimento opcional com TMDB
-- `GEMINI_API_KEY` ou `NVIDIA_API_KEY` - embeddings opcionais
-- `QDRANT_URL` - necessario para busca semantica
-- `RABBITMQ_ENABLED` - caminho opcional com Broadway
-- `API_KEYS` - chaves da API para clientes externos
-
-Em producao, voce tambem precisa de:
-
-- `SECRET_KEY_BASE`
-- `LIVE_VIEW_SIGNING_SALT`
-- `PHX_HOST`
-
-### 3. Instale as dependencias de frontend
+### 3. Instale as dependencias JS
 
 ```bash
 cd assets && npm ci && cd ..
 ```
-
-`assets/node_modules` e ignorado, e o `mix setup` nao roda `npm ci` automaticamente.
 
 ### 4. Prepare a aplicacao
 
@@ -167,14 +308,7 @@ cd assets && npm ci && cd ..
 mix setup
 ```
 
-O `mix setup` executa:
-
-- `mix deps.get`
-- `mix ecto.setup`
-- `mix assets.setup`
-- `mix assets.build`
-
-Como `ecto.setup` roda seeds, um `ADMIN_PASSWORD` ausente faz o setup falhar.
+Isso executa deps, setup de banco, seeds, setup de assets e build de assets.
 
 ### 5. Rode o Streamix
 
@@ -184,7 +318,27 @@ mix phx.server
 
 Abra [http://localhost:4000](http://localhost:4000).
 
-## Comandos Uteis
+<details>
+<summary><strong>Checklist de ambiente</strong></summary>
+
+Variaveis importantes em `.env.example`:
+
+- `DATABASE_URL`
+- `TEST_DATABASE_URL` opcional; inferido de `DATABASE_URL` quando omitido
+- `REDIS_URL`
+- `GLOBAL_PROVIDER_*`
+- `GINDEX_ENABLED` / `GINDEX_URL`
+- `TMDB_API_TOKEN`
+- `GEMINI_API_KEY` ou `NVIDIA_API_KEY`
+- `QDRANT_URL`
+- `RABBITMQ_ENABLED`
+- `API_KEYS`
+- `SECRET_KEY_BASE` em producao
+- `LIVE_VIEW_SIGNING_SALT` em producao
+
+</details>
+
+## :wrench: Comandos de Desenvolvimento
 
 ```bash
 mix test
@@ -202,59 +356,30 @@ mix assets.build
 mix assets.deploy
 ```
 
-## Superficies Principais
+## :memo: Notas do Projeto
 
-### Rotas web
+- O workflow atual do GitHub Actions faz build e push de `ghcr.io/gabrielmaialva33/streamix:latest` em pushes para
+  `master`.
+- `mix setup` depende de seeds, e os seeds exigem `ADMIN_PASSWORD`.
+- `assets/node_modules` e ignorado, entao `npm ci` faz parte do setup real de primeira execucao.
+- As features de IA sao opcionais e fazem degradação elegante quando embeddings ou Qdrant nao estao configurados.
+- O TV app extraido esta intencionalmente fora do escopo deste repo.
 
-- `/` landing page
-- `/plans`
-- `/login`, `/register`, `/settings`
-- `/browse`, `/browse/movies`, `/browse/series`
-- `/providers`, `/providers/:provider_id/...`
-- `/favorites`, `/history`
-- `/gindex/...`
-- `/party`, `/party/:invite_code`, `/party/:invite_code/watch`
-- `/watch/:type/:id`
-- `/admin`, `/admin/plans`, `/admin/users`
+## :handshake: Contribuicao, Seguranca, Licenca
 
-### API REST
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
+- [AGENTS.md](AGENTS.md)
+- [LICENSE](LICENSE)
 
-Os endpoints principais ficam em `/api/v1`:
+<br>
 
-- `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/me`
-- `/catalog/...`
-- `/search/...`
-- `/recommendations/...`
-- `/favorites`
-- `/history`
-- `/epg/...`
-- `/telemetry/playback`
-- `/providers`
+<p align="center">
+  <img src="https://avatars.githubusercontent.com/u/26732067" alt="Gabriel Maia" width="92" style="border-radius:50%;">
+</p>
 
-O endpoint de healthcheck e `GET /api/health`.
-
-## Notas de Arquitetura
-
-- `Streamix.Iptv.XtreamClient` e a porta unica para chamadas HTTP aos provedores Xtream.
-- `Streamix.Iptv.Gindex.Client` + `EndpointManager` fazem selecao de endpoint e controle de pacing do GIndex.
-- `Streamix.Cache` entrega cache L1 em ConCache + L2 em Redis.
-- `Streamix.AI.SemanticSearch` e `Streamix.AI.UserAnalytics` alimentam as features opcionais de IA.
-- `Streamix.WatchParty.RoomServer` coordena o estado ao vivo das watch parties.
-- `StreamixWeb.StreamToken` assina as stream URLs para nao expor credenciais upstream.
-
-## Imagem Docker
-
-O repositorio publica:
-
-```text
-ghcr.io/gabrielmaialva33/streamix:latest
-```
-
-O workflow atual do GitHub Actions faz build e push da imagem Docker em pushes para `master`.
-
-## Contribuicao, Seguranca e Licenca
-
-- Contribuicao: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Seguranca: [SECURITY.md](SECURITY.md)
-- Regras de agente / repositorio: [AGENTS.md](AGENTS.md)
-- Licenca: [MIT](LICENSE)
+<p align="center">
+  Criado por <strong>Gabriel Maia</strong><br>
+  <a href="mailto:gabrielmaialva33@gmail.com">gabrielmaialva33@gmail.com</a> ·
+  <a href="https://github.com/gabrielmaialva33">GitHub</a>
+</p>
