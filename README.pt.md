@@ -38,45 +38,29 @@
 
 <br>
 
-> [!IMPORTANT]
-> As tags historicas vao ate `v1.5.0`, mas o `mix.exs` atual ainda reporta `1.3.0`. O estado real do repositorio e o
-> historico do Git sao a fonte de verdade para as capacidades atuais.
-
 > [!NOTE]
 > Este repositorio contem o backend Phoenix e a aplicacao web em LiveView. O frontend antigo de TV foi extraido para
 > outro repositorio e nao faz mais parte desta base.
 
 ## :sparkles: Destaques
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>Plataforma de Streaming Unificada</h3>
-      <ul>
-        <li><strong>Agregacao multi-provedor</strong> para catalogos Xtream Codes</li>
-        <li><strong>Provedor global opcional</strong> compartilhado pelo sistema</li>
-        <li><strong>Ingestao opcional via GIndex</strong> para bibliotecas em Google Drive</li>
-        <li><strong>TV ao vivo, filmes, series, temporadas e episodios</strong></li>
-        <li><strong>Favoritos, historico e progresso de reproducao</strong></li>
-        <li><strong>Sincronizacao de EPG</strong> com consultas de now/next</li>
-      </ul>
+### Plataforma de Streaming Unificada
 
-    </td>
-    <td width="50%" valign="top">
-      <h3>Superficie de Produto Premium</h3>
-      <ul>
-        <li><strong>Planos premium e assinaturas</strong></li>
-        <li><strong>Painel administrativo</strong> para planos e usuarios</li>
-        <li><strong>Watch parties</strong> com reproducao sincronizada e chat</li>
-        <li><strong>Stream URLs assinadas</strong> e entrega segura</li>
-        <li><strong>Suporte a PWA</strong> com hooks de sincronizacao offline</li>
-        <li><strong>UI dark-first</strong> com toggle de tema no cliente</li>
-      </ul>
+- **Agregacao multi-provedor** para catalogos Xtream Codes
+- **Provedor global opcional** compartilhado pelo sistema
+- **Ingestao opcional via GIndex** para bibliotecas em Google Drive
+- **TV ao vivo, filmes, series, temporadas e episodios**
+- **Favoritos, historico e progresso de reproducao**
+- **Sincronizacao de EPG** com consultas de now/next
 
-    </td>
-  </tr>
+### Superficie de Produto Premium
 
-</table>
+- **Planos premium e assinaturas**
+- **Painel administrativo** para planos e usuarios
+- **Watch parties** com reproducao sincronizada e chat
+- **Stream URLs assinadas** e entrega segura
+- **Suporte a PWA** com hooks de sincronizacao offline
+- **UI dark-first**
 
 ### IA, entrega e infraestrutura
 
