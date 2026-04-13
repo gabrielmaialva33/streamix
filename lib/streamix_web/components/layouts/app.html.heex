@@ -66,20 +66,8 @@
               /
             </kbd>
           </.link>
-          
-<!-- Theme toggle -->
-          <button
-            id={"theme-toggle-#{System.unique_integer()}"}
-            type="button"
-            phx-hook="ThemeToggle"
-            class="p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
-            title="Alternar tema"
-          >
-            <.icon name="hero-sun" class="hidden dark:block size-5" />
-            <.icon name="hero-moon" class="block dark:hidden size-5" />
-          </button>
-          
-<!-- User avatar dropdown -->
+
+          <!-- User avatar dropdown -->
           <div class="relative">
             <button
               type="button"
@@ -159,7 +147,7 @@
   </div>
   
 <!-- Main Content -->
-  <main class="pt-14 sm:pt-16 pb-20 sm:pb-8">
+  <main class="pt-14 sm:pt-16 pb-20 sm:pb-8 px-[4%]">
     {@inner_content}
   </main>
   
