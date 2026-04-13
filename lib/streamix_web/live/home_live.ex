@@ -295,129 +295,299 @@ defmodule StreamixWeb.HomeLive do
     ~H"""
     <div>
       <%= if @loading do %>
-        <!-- Skeleton Loading State (Netflix-style) -->
         <.skeleton_page rows={4} />
       <% else %>
-        <!-- Hero Section with Featured Content -->
-        <.render_hero_section
-          featured={@featured}
-          stats={@stats}
-          current_scope={@current_scope}
-          featured_favorite={@featured_favorite}
-        />
-
-        <div class="space-y-6 sm:space-y-8 pb-12">
-          <.premium_cta_banner
-            id="home-premium-cta"
-            current_scope={@current_scope}
-          />
-          
-    <!-- Continue Watching (logged in only) -->
-          <.render_content_carousel
-            :if={@current_scope && @history != []}
-            title="Continue Assistindo"
-            items={@history}
-            type={:history}
-          />
-          
-    <!-- User's Favorites (logged in only) -->
-          <.render_content_carousel
-            :if={@current_scope && @favorites != []}
-            title="Minha Lista"
-            items={@favorites}
-            type={:favorites}
-          />
-          
-    <!-- AI-powered Recommendations (logged in only) -->
-          <.for_you_section
-            :if={@current_scope && @recommendations != []}
-            recommendations={@recommendations}
-          />
-          
-    <!-- Trending Now (AI-powered) -->
-          <.render_ai_trending_section
-            :if={@trending != []}
-            items={@trending}
-            genre_filters={@genre_filters}
-            period_filters={@period_filters}
-            selected_genre={@trending_genre}
-            selected_period={@trending_period}
-            ai_powered={@current_scope != nil}
-            progress_map={@movie_progress}
-          />
-          
-    <!-- New Releases -->
-          <.render_content_carousel
-            :if={@new_releases != []}
-            title="Lançamentos"
-            items={@new_releases}
-            type={:movies}
-            icon="hero-sparkles"
-            progress_map={@movie_progress}
-          />
-          
-    <!-- Top 10 Movies -->
-          <.render_top_10
-            :if={@top_10 != []}
-            title="Top 10 Filmes"
-            items={@top_10}
-          />
-          
-    <!-- Featured Movies -->
-          <.render_content_carousel
-            :if={@movies != []}
-            title="Filmes em Destaque"
-            items={@movies}
-            type={:movies}
-            progress_map={@movie_progress}
-          />
-          
-    <!-- Featured Series (AI-powered) -->
-          <.render_ai_series_section
-            :if={@series != []}
-            items={@series}
-            genre_filters={@genre_filters}
-            selected_genre={@series_genre}
-            ai_powered={@current_scope != nil}
-            progress_map={@series_progress}
-          />
-          
-    <!-- Live Channels (AI-powered) -->
-          <.render_ai_channels_section
-            :if={@channels != []}
-            items={@channels}
-            category_filters={@channel_filters}
-            selected_category={@channels_category}
-            ai_powered={@current_scope != nil}
-          />
-          
-    <!-- Empty State when no content -->
-          <div
-            :if={!@loading && @movies == [] && @series == [] && @channels == []}
-            class="px-[4%] py-24 text-center"
-          >
-            <.icon name="hero-film" class="size-16 text-text-muted mx-auto mb-4" />
-            <h2 class="text-2xl font-bold text-text-primary mb-2">Nenhum conteúdo disponível</h2>
-            <p class="text-text-secondary max-w-md mx-auto mb-6">
-              Configure um provedor IPTV para começar a explorar filmes, séries e canais ao vivo.
-            </p>
-            <.link
-              :if={@current_scope}
-              navigate={~p"/providers"}
-              class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
-            >
-              <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
-            </.link>
-            <.link
-              :if={!@current_scope}
-              navigate={~p"/register"}
-              class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
-            >
-              Criar Conta
-            </.link>
-          </div>
-        </div>
+        <%= if @current_scope do %>
+          <.render_authenticated_home {assigns} />
+        <% else %>
+          <.render_landing_page {assigns} />
+        <% end %>
       <% end %>
+    </div>
+    """
+  end
+
+  # ============================================
+  # Landing Page (Guest / Not logged in)
+  # ============================================
+
+  defp render_landing_page(assigns) do
+    ~H"""
+    <%!-- Hero: full-screen with poster background --%>
+    <div class="relative min-h-[95vh] flex items-center justify-center overflow-hidden -mt-16 sm:-mt-20">
+      <%!-- Background image + edge fades --%>
+      <div class="absolute inset-0 auth-branded-bg" />
+      <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/40" />
+      <div class="absolute inset-0 bg-gradient-to-b from-black/70 via-transparent to-transparent h-32" />
+      <div class="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background" />
+
+      <%!-- Content --%>
+      <div class="relative z-10 text-center px-6 max-w-3xl mx-auto">
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-white tracking-tight leading-tight mb-4">
+          Filmes, séries e TV ao vivo, tudo em um só lugar
+        </h1>
+        <p class="text-lg sm:text-xl text-white/70 mb-8 max-w-xl mx-auto">
+          Reúna todos os seus provedores IPTV em uma interface cinematográfica.
+        </p>
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+          <.link
+            navigate={~p"/register"}
+            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 bg-brand text-white text-lg font-semibold rounded-md hover:bg-brand-hover transition-colors"
+          >
+            Começar agora <.icon name="hero-chevron-right" class="size-5" />
+          </.link>
+          <.link
+            navigate={~p"/login"}
+            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 bg-white/10 text-white text-lg font-semibold rounded-md hover:bg-white/20 transition-colors backdrop-blur-sm border border-white/10"
+          >
+            Entrar
+          </.link>
+        </div>
+      </div>
+    </div>
+
+    <%!-- Trending preview --%>
+    <div :if={@top_10 != []} class="relative z-10 -mt-16 pb-8">
+      <.render_top_10 title="Em alta no Streamix" items={@top_10} />
+    </div>
+
+    <%!-- Features section --%>
+    <.landing_features />
+
+    <%!-- Content preview carousels --%>
+    <div class="space-y-8 py-8">
+      <.render_content_carousel
+        :if={@movies != []}
+        title="Filmes populares"
+        items={@movies}
+        type={:movies}
+        progress_map={%{}}
+      />
+      <.render_content_carousel
+        :if={@series != []}
+        title="Séries em destaque"
+        items={@series}
+        type={:series}
+        progress_map={%{}}
+      />
+    </div>
+
+    <%!-- FAQ section --%>
+    <.landing_faq />
+
+    <%!-- Bottom CTA --%>
+    <div class="text-center py-16 px-6 border-t border-white/5">
+      <h2 class="text-2xl sm:text-3xl font-bold text-white mb-4">
+        Pronto para começar?
+      </h2>
+      <p class="text-white/60 mb-6">
+        Crie sua conta e conecte seus provedores em minutos.
+      </p>
+      <.link
+        navigate={~p"/register"}
+        class="inline-flex items-center gap-2 px-8 py-4 bg-brand text-white text-lg font-semibold rounded-md hover:bg-brand-hover transition-colors"
+      >
+        Começar agora <.icon name="hero-chevron-right" class="size-5" />
+      </.link>
+    </div>
+    """
+  end
+
+  defp landing_features(assigns) do
+    ~H"""
+    <div class="py-16 sm:py-20 px-[4%] border-t border-white/5">
+      <h2 class="text-2xl sm:text-3xl font-bold text-white text-center mb-12">
+        Mais motivos para usar o Streamix
+      </h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <.feature_card
+          icon="hero-tv"
+          title="Assista em qualquer tela"
+          description="Smart TV, celular, tablet ou computador. Seus conteúdos te acompanham."
+          gradient="from-blue-500/20 to-blue-600/5"
+        />
+        <.feature_card
+          icon="hero-server-stack"
+          title="Múltiplos provedores"
+          description="Conecte quantos provedores IPTV quiser e veja tudo em um catálogo unificado."
+          gradient="from-purple-500/20 to-purple-600/5"
+        />
+        <.feature_card
+          icon="hero-magnifying-glass"
+          title="Busca inteligente"
+          description="Encontre o que quer com busca semântica por IA. Pesquise por tema, clima ou descrição."
+          gradient="from-green-500/20 to-green-600/5"
+        />
+        <.feature_card
+          icon="hero-users"
+          title="Watch Party"
+          description="Assista junto com amigos em tempo real, sincronizado e com chat ao vivo."
+          gradient="from-pink-500/20 to-pink-600/5"
+        />
+      </div>
+    </div>
+    """
+  end
+
+  attr :icon, :string, required: true
+  attr :title, :string, required: true
+  attr :description, :string, required: true
+  attr :gradient, :string, required: true
+
+  defp feature_card(assigns) do
+    ~H"""
+    <div class={"rounded-xl bg-gradient-to-br #{@gradient} border border-white/[0.06] p-6 sm:p-8"}>
+      <div class="w-12 h-12 rounded-lg bg-white/[0.06] flex items-center justify-center mb-4">
+        <.icon name={@icon} class="size-6 text-white/80" />
+      </div>
+      <h3 class="text-lg font-semibold text-white mb-2">{@title}</h3>
+      <p class="text-sm text-white/50 leading-relaxed">{@description}</p>
+    </div>
+    """
+  end
+
+  defp landing_faq(assigns) do
+    ~H"""
+    <div class="py-16 sm:py-20 px-[4%] border-t border-white/5">
+      <h2 class="text-2xl sm:text-3xl font-bold text-white text-center mb-10">
+        Perguntas frequentes
+      </h2>
+      <div class="max-w-2xl mx-auto space-y-2">
+        <.faq_item question="O que é o Streamix?">
+          O Streamix é uma plataforma que reúne múltiplos provedores IPTV em uma única interface cinematográfica. Você conecta seus provedores e assiste filmes, séries e TV ao vivo tudo em um só lugar.
+        </.faq_item>
+        <.faq_item question="Preciso de um provedor IPTV?">
+          Sim. O Streamix é um agregador — ele organiza e exibe o conteúdo dos seus provedores existentes. Você pode conectar provedores Xtream Codes ou GIndex (Google Drive).
+        </.faq_item>
+        <.faq_item question="Posso usar em vários dispositivos?">
+          Sim! O Streamix funciona em qualquer dispositivo com navegador web: Smart TV, celular, tablet, notebook ou desktop. Basta acessar pelo navegador.
+        </.faq_item>
+        <.faq_item question="O que é a busca por IA?">
+          Nossa busca semântica entende o que você quer além das palavras. Pesquise por "filme de ação anos 80" ou "série de suspense psicológico" e encontre resultados relevantes.
+        </.faq_item>
+        <.faq_item question="O que é Watch Party?">
+          Watch Party permite assistir junto com amigos em tempo real. Crie uma sala, compartilhe o link e assistam sincronizados com chat ao vivo.
+        </.faq_item>
+      </div>
+    </div>
+    """
+  end
+
+  attr :question, :string, required: true
+  slot :inner_block, required: true
+
+  defp faq_item(assigns) do
+    ~H"""
+    <details class="group rounded-lg bg-white/[0.04] border border-white/[0.06] overflow-hidden">
+      <summary class="flex items-center justify-between cursor-pointer px-6 py-5 text-white font-medium hover:bg-white/[0.02] transition-colors select-none">
+        <span>{@question}</span>
+        <.icon
+          name="hero-plus"
+          class="size-5 text-white/50 shrink-0 transition-transform group-open:rotate-45"
+        />
+      </summary>
+      <div class="px-6 pb-5 text-sm text-white/60 leading-relaxed border-t border-white/[0.04] pt-4">
+        {render_slot(@inner_block)}
+      </div>
+    </details>
+    """
+  end
+
+  # ============================================
+  # Authenticated Home (Logged in)
+  # ============================================
+
+  defp render_authenticated_home(assigns) do
+    ~H"""
+    <.render_hero_section
+      featured={@featured}
+      stats={@stats}
+      current_scope={@current_scope}
+      featured_favorite={@featured_favorite}
+    />
+
+    <div class="space-y-6 sm:space-y-8 pb-12">
+      <.premium_cta_banner id="home-premium-cta" current_scope={@current_scope} />
+
+      <.render_content_carousel
+        :if={@history != []}
+        title="Continue Assistindo"
+        items={@history}
+        type={:history}
+      />
+
+      <.render_content_carousel
+        :if={@favorites != []}
+        title="Minha Lista"
+        items={@favorites}
+        type={:favorites}
+      />
+
+      <.for_you_section :if={@recommendations != []} recommendations={@recommendations} />
+
+      <.render_ai_trending_section
+        :if={@trending != []}
+        items={@trending}
+        genre_filters={@genre_filters}
+        period_filters={@period_filters}
+        selected_genre={@trending_genre}
+        selected_period={@trending_period}
+        ai_powered={true}
+        progress_map={@movie_progress}
+      />
+
+      <.render_content_carousel
+        :if={@new_releases != []}
+        title="Lançamentos"
+        items={@new_releases}
+        type={:movies}
+        icon="hero-sparkles"
+        progress_map={@movie_progress}
+      />
+
+      <.render_top_10 :if={@top_10 != []} title="Top 10 Filmes" items={@top_10} />
+
+      <.render_content_carousel
+        :if={@movies != []}
+        title="Filmes em Destaque"
+        items={@movies}
+        type={:movies}
+        progress_map={@movie_progress}
+      />
+
+      <.render_ai_series_section
+        :if={@series != []}
+        items={@series}
+        genre_filters={@genre_filters}
+        selected_genre={@series_genre}
+        ai_powered={true}
+        progress_map={@series_progress}
+      />
+
+      <.render_ai_channels_section
+        :if={@channels != []}
+        items={@channels}
+        category_filters={@channel_filters}
+        selected_category={@channels_category}
+        ai_powered={true}
+      />
+
+      <div
+        :if={@movies == [] && @series == [] && @channels == []}
+        class="px-[4%] py-24 text-center"
+      >
+        <.icon name="hero-film" class="size-16 text-text-muted mx-auto mb-4" />
+        <h2 class="text-2xl font-bold text-text-primary mb-2">Nenhum conteúdo disponível</h2>
+        <p class="text-text-secondary max-w-md mx-auto mb-6">
+          Configure um provedor IPTV para começar a explorar filmes, séries e canais ao vivo.
+        </p>
+        <.link
+          navigate={~p"/providers"}
+          class="inline-flex items-center gap-2 px-6 py-3 bg-brand text-white font-semibold rounded-md hover:bg-brand-hover transition-colors"
+        >
+          <.icon name="hero-plus" class="size-5" /> Adicionar Provedor
+        </.link>
+      </div>
     </div>
     """
   end
@@ -440,15 +610,12 @@ defmodule StreamixWeb.HomeLive do
     <!-- Content -->
       <div class="absolute inset-0 flex items-end">
         <div class="w-full px-[4%] pb-16 lg:pb-24">
-          <%= if @featured do %>
-            <.hero_content
-              featured={@featured}
-              current_scope={@current_scope}
-              featured_favorite={@featured_favorite}
-            />
-          <% else %>
-            <.hero_welcome stats={@stats} current_scope={@current_scope} />
-          <% end %>
+          <.hero_content
+            :if={@featured}
+            featured={@featured}
+            current_scope={@current_scope}
+            featured_favorite={@featured_favorite}
+          />
         </div>
       </div>
     </div>
@@ -692,70 +859,78 @@ defmodule StreamixWeb.HomeLive do
     """
   end
 
-  defp hero_welcome(assigns) do
+  # Carousel scroll arrows (Netflix-style)
+  defp carousel_arrows(assigns) do
     ~H"""
-    <div class="max-w-2xl animate-slide-up">
-      <h1 class="text-5xl md:text-7xl font-bold text-text-primary mb-6 tracking-tight">
-        Streamix
-      </h1>
-      <p class="text-xl text-text-secondary mb-8 max-w-xl">
-        Sua plataforma de streaming pessoal. TV ao vivo, filmes e séries de todos os seus provedores em um único lugar.
-      </p>
-      
-    <!-- Stats -->
-      <div
-        :if={@stats.movies_count > 0 || @stats.series_count > 0 || @stats.channels_count > 0}
-        class="flex gap-8 mb-8"
+    <div
+      id={@id}
+      phx-hook=".ScrollArrows"
+      class="hidden sm:block relative group/carousel"
+    >
+      {render_slot(@inner_block)}
+      <%!-- Left arrow --%>
+      <button
+        type="button"
+        data-scroll-dir="left"
+        class="carousel-arrow-left absolute left-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-r from-background/90 to-transparent opacity-0 group-hover/carousel:opacity-100 transition-opacity cursor-pointer disabled:hidden"
       >
-        <div :if={@stats.movies_count > 0} class="text-center">
-          <p class="text-3xl font-bold text-text-primary">{format_number(@stats.movies_count)}</p>
-          <p class="text-sm text-text-secondary">Filmes</p>
-        </div>
-        <div :if={@stats.series_count > 0} class="text-center">
-          <p class="text-3xl font-bold text-text-primary">{format_number(@stats.series_count)}</p>
-          <p class="text-sm text-text-secondary">Séries</p>
-        </div>
-        <div :if={@stats.channels_count > 0} class="text-center">
-          <p class="text-3xl font-bold text-text-primary">{format_number(@stats.channels_count)}</p>
-          <p class="text-sm text-text-secondary">Canais</p>
-        </div>
-      </div>
-      
-    <!-- Actions -->
-      <div class="flex gap-3">
-        <%= if @current_scope do %>
-          <.link
-            navigate={~p"/providers"}
-            class="inline-flex items-center gap-2 px-8 py-3 bg-white text-black font-semibold rounded-md hover:bg-white/90 transition-colors"
-          >
-            <.icon name="hero-play-solid" class="size-6" /> Explorar Conteúdo
-          </.link>
-        <% else %>
-          <.link
-            navigate={~p"/register"}
-            class="inline-flex items-center gap-2 px-8 py-4 bg-brand text-white text-lg font-semibold rounded-md hover:bg-brand-hover transition-colors"
-          >
-            Começar Agora
-          </.link>
-          <.link
-            navigate={~p"/login"}
-            class="inline-flex items-center gap-2 px-8 py-4 bg-surface/60 text-text-primary text-lg font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
-          >
-            Entrar
-          </.link>
-        <% end %>
-      </div>
+        <.icon name="hero-chevron-left" class="size-6 text-white" />
+      </button>
+      <%!-- Right arrow --%>
+      <button
+        type="button"
+        data-scroll-dir="right"
+        class="carousel-arrow-right absolute right-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-l from-background/90 to-transparent opacity-0 group-hover/carousel:opacity-100 transition-opacity cursor-pointer disabled:hidden"
+      >
+        <.icon name="hero-chevron-right" class="size-6 text-white" />
+      </button>
     </div>
+
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".ScrollArrows">
+      export default {
+        mounted() {
+          this.track = this.el.querySelector('[data-carousel-track]')
+          if (!this.track) return
+
+          this.leftBtn = this.el.querySelector('[data-scroll-dir="left"]')
+          this.rightBtn = this.el.querySelector('[data-scroll-dir="right"]')
+
+          this.leftBtn?.addEventListener('click', () => this.scroll(-1))
+          this.rightBtn?.addEventListener('click', () => this.scroll(1))
+          this.track.addEventListener('scroll', () => this.updateArrows(), { passive: true })
+
+          // Initial state
+          requestAnimationFrame(() => this.updateArrows())
+        },
+
+        scroll(dir) {
+          const amount = this.track.clientWidth * 0.8
+          this.track.scrollBy({ left: dir * amount, behavior: 'smooth' })
+        },
+
+        updateArrows() {
+          if (!this.track) return
+          const { scrollLeft, scrollWidth, clientWidth } = this.track
+          const atStart = scrollLeft <= 4
+          const atEnd = scrollLeft + clientWidth >= scrollWidth - 4
+
+          if (this.leftBtn) this.leftBtn.disabled = atStart
+          if (this.rightBtn) this.rightBtn.disabled = atEnd
+        }
+      }
+    </script>
     """
   end
 
   # Content Carousel Component
   defp render_content_carousel(assigns) do
     see_more_path = get_see_more_path(assigns.type, assigns.items)
+    carousel_id = "carousel-#{assigns.type}-#{System.unique_integer([:positive])}"
 
     assigns =
       assigns
       |> assign(:see_more_path, see_more_path)
+      |> assign(:carousel_id, carousel_id)
       |> assign_new(:icon, fn -> nil end)
       |> assign_new(:progress_map, fn -> %{} end)
 
@@ -775,17 +950,25 @@ defmodule StreamixWeb.HomeLive do
         </.link>
       </div>
       <%= if @type == :channels do %>
-        <!-- Grid layout for channels - 3 cols mobile, scrollable on larger -->
-        <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]">
-          <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
-          <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
-          <.see_more_card
-            :if={@see_more_path}
-            path={@see_more_path}
-            type={@type}
-            class="hidden sm:flex"
-          />
-        </div>
+        <.carousel_arrows id={@carousel_id}>
+          <div
+            data-carousel-track
+            class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]"
+          >
+            <.channel_card
+              :for={channel <- Enum.take(@items, 6)}
+              channel={channel}
+              class="sm:hidden"
+            />
+            <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
+            <.see_more_card
+              :if={@see_more_path}
+              path={@see_more_path}
+              type={@type}
+              class="hidden sm:flex"
+            />
+          </div>
+        </.carousel_arrows>
         <.link
           :if={@see_more_path && length(@items) > 6}
           navigate={@see_more_path}
@@ -794,52 +977,64 @@ defmodule StreamixWeb.HomeLive do
           Ver todos os canais <.icon name="hero-arrow-right" class="size-4" />
         </.link>
       <% else %>
-        <!-- Grid on mobile (3 cols), horizontal scroll on desktop -->
-        <div class={[
-          "grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth",
-          @type in [:history] && "grid-cols-1 sm:grid-cols-none"
-        ]}>
-          <%= case @type do %>
-            <% :movies -> %>
-              <.render_movie_card
-                :for={movie <- Enum.take(@items, 6)}
-                movie={movie}
-                progress={Map.get(@progress_map, movie.id)}
-                class="sm:hidden"
-              />
-              <.render_movie_card
-                :for={movie <- @items}
-                movie={movie}
-                progress={Map.get(@progress_map, movie.id)}
-                class="hidden sm:block"
-              />
-            <% :series -> %>
-              <.render_series_card
-                :for={series <- Enum.take(@items, 6)}
-                series={series}
-                progress={Map.get(@progress_map, series.id)}
-                class="sm:hidden"
-              />
-              <.render_series_card
-                :for={series <- @items}
-                series={series}
-                progress={Map.get(@progress_map, series.id)}
-                class="hidden sm:block"
-              />
-            <% :history -> %>
-              <.history_item :for={entry <- Enum.take(@items, 3)} entry={entry} class="sm:hidden" />
-              <.history_item :for={entry <- @items} entry={entry} class="hidden sm:block" />
-            <% :favorites -> %>
-              <.favorite_item :for={fav <- Enum.take(@items, 6)} favorite={fav} class="sm:hidden" />
-              <.favorite_item :for={fav <- @items} favorite={fav} class="hidden sm:block" />
-          <% end %>
-          <.see_more_card
-            :if={@see_more_path}
-            path={@see_more_path}
-            type={@type}
-            class="hidden sm:flex"
-          />
-        </div>
+        <.carousel_arrows id={@carousel_id}>
+          <div
+            data-carousel-track
+            class={[
+              "grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth",
+              @type in [:history] && "grid-cols-1 sm:grid-cols-none"
+            ]}
+          >
+            <%= case @type do %>
+              <% :movies -> %>
+                <.render_movie_card
+                  :for={movie <- Enum.take(@items, 6)}
+                  movie={movie}
+                  progress={Map.get(@progress_map, movie.id)}
+                  class="sm:hidden"
+                />
+                <.render_movie_card
+                  :for={movie <- @items}
+                  movie={movie}
+                  progress={Map.get(@progress_map, movie.id)}
+                  class="hidden sm:block"
+                />
+              <% :series -> %>
+                <.render_series_card
+                  :for={series <- Enum.take(@items, 6)}
+                  series={series}
+                  progress={Map.get(@progress_map, series.id)}
+                  class="sm:hidden"
+                />
+                <.render_series_card
+                  :for={series <- @items}
+                  series={series}
+                  progress={Map.get(@progress_map, series.id)}
+                  class="hidden sm:block"
+                />
+              <% :history -> %>
+                <.history_item
+                  :for={entry <- Enum.take(@items, 3)}
+                  entry={entry}
+                  class="sm:hidden"
+                />
+                <.history_item :for={entry <- @items} entry={entry} class="hidden sm:block" />
+              <% :favorites -> %>
+                <.favorite_item
+                  :for={fav <- Enum.take(@items, 6)}
+                  favorite={fav}
+                  class="sm:hidden"
+                />
+                <.favorite_item :for={fav <- @items} favorite={fav} class="hidden sm:block" />
+            <% end %>
+            <.see_more_card
+              :if={@see_more_path}
+              path={@see_more_path}
+              type={@type}
+              class="hidden sm:flex"
+            />
+          </div>
+        </.carousel_arrows>
         <.link
           :if={@see_more_path && length(@items) > 6 && @type not in [:history]}
           navigate={@see_more_path}
@@ -871,21 +1066,26 @@ defmodule StreamixWeb.HomeLive do
         see_more_path={~p"/browse/movies"}
         ai_powered={@ai_powered}
       />
-      <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
-        <.render_movie_card
-          :for={movie <- Enum.take(@items, 6)}
-          movie={movie}
-          progress={Map.get(@progress_map, movie.id)}
-          class="sm:hidden"
-        />
-        <.render_movie_card
-          :for={movie <- @items}
-          movie={movie}
-          progress={Map.get(@progress_map, movie.id)}
-          class="hidden sm:block"
-        />
-        <.see_more_card path={~p"/browse/movies"} type={:movies} class="hidden sm:flex" />
-      </div>
+      <.carousel_arrows id="carousel-trending">
+        <div
+          data-carousel-track
+          class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
+        >
+          <.render_movie_card
+            :for={movie <- Enum.take(@items, 6)}
+            movie={movie}
+            progress={Map.get(@progress_map, movie.id)}
+            class="sm:hidden"
+          />
+          <.render_movie_card
+            :for={movie <- @items}
+            movie={movie}
+            progress={Map.get(@progress_map, movie.id)}
+            class="hidden sm:block"
+          />
+          <.see_more_card path={~p"/browse/movies"} type={:movies} class="hidden sm:flex" />
+        </div>
+      </.carousel_arrows>
     </div>
     """
   end
@@ -906,21 +1106,26 @@ defmodule StreamixWeb.HomeLive do
         see_more_path={~p"/browse/series"}
         ai_powered={@ai_powered}
       />
-      <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
-        <.render_series_card
-          :for={series <- Enum.take(@items, 6)}
-          series={series}
-          progress={Map.get(@progress_map, series.id)}
-          class="sm:hidden"
-        />
-        <.render_series_card
-          :for={series <- @items}
-          series={series}
-          progress={Map.get(@progress_map, series.id)}
-          class="hidden sm:block"
-        />
-        <.see_more_card path={~p"/browse/series"} type={:series} class="hidden sm:flex" />
-      </div>
+      <.carousel_arrows id="carousel-series">
+        <div
+          data-carousel-track
+          class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
+        >
+          <.render_series_card
+            :for={series <- Enum.take(@items, 6)}
+            series={series}
+            progress={Map.get(@progress_map, series.id)}
+            class="sm:hidden"
+          />
+          <.render_series_card
+            :for={series <- @items}
+            series={series}
+            progress={Map.get(@progress_map, series.id)}
+            class="hidden sm:block"
+          />
+          <.see_more_card path={~p"/browse/series"} type={:series} class="hidden sm:flex" />
+        </div>
+      </.carousel_arrows>
     </div>
     """
   end
@@ -939,11 +1144,20 @@ defmodule StreamixWeb.HomeLive do
         see_more_path={~p"/browse"}
         ai_powered={@ai_powered}
       />
-      <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]">
-        <.channel_card :for={channel <- Enum.take(@items, 6)} channel={channel} class="sm:hidden" />
-        <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
-        <.see_more_card path={~p"/browse"} type={:channels} class="hidden sm:flex" />
-      </div>
+      <.carousel_arrows id="carousel-channels">
+        <div
+          data-carousel-track
+          class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]"
+        >
+          <.channel_card
+            :for={channel <- Enum.take(@items, 6)}
+            channel={channel}
+            class="sm:hidden"
+          />
+          <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
+          <.see_more_card path={~p"/browse"} type={:channels} class="hidden sm:flex" />
+        </div>
+      </.carousel_arrows>
     </div>
     """
   end
@@ -964,9 +1178,18 @@ defmodule StreamixWeb.HomeLive do
           Ver mais <.icon name="hero-chevron-right" class="size-4" />
         </.link>
       </div>
-      <div class="flex gap-3 sm:gap-4 overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
-        <.top_10_card :for={{movie, index} <- Enum.with_index(@items, 1)} movie={movie} rank={index} />
-      </div>
+      <.carousel_arrows id="carousel-top10">
+        <div
+          data-carousel-track
+          class="flex gap-3 sm:gap-4 overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
+        >
+          <.top_10_card
+            :for={{movie, index} <- Enum.with_index(@items, 1)}
+            movie={movie}
+            rank={index}
+          />
+        </div>
+      </.carousel_arrows>
     </div>
     """
   end
@@ -1017,8 +1240,8 @@ defmodule StreamixWeb.HomeLive do
               </div>
             </div>
             <!-- Hover overlay -->
-            <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
-              <.icon name="hero-play-circle-solid" class="size-12 text-white" />
+            <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+              <.icon name="hero-play-circle-solid" class="size-10 text-white/90 drop-shadow-lg" />
             </div>
             <!-- Rating badge -->
             <div
@@ -1112,8 +1335,8 @@ defmodule StreamixWeb.HomeLive do
           </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-16 text-white" />
+        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+          <.icon name="hero-play-circle-solid" class="size-10 text-white/90 drop-shadow-lg" />
         </div>
         <!-- Rating badge -->
         <div
@@ -1173,8 +1396,8 @@ defmodule StreamixWeb.HomeLive do
           </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-16 text-white" />
+        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+          <.icon name="hero-play-circle-solid" class="size-10 text-white/90 drop-shadow-lg" />
         </div>
         <!-- Rating badge -->
         <div
@@ -1240,8 +1463,8 @@ defmodule StreamixWeb.HomeLive do
           <span class="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-white rounded-full animate-pulse" /> AO VIVO
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-12 text-white" />
+        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+          <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
         </div>
       </div>
       <div class="pt-1.5 sm:pt-2 px-0.5">
@@ -1292,8 +1515,8 @@ defmodule StreamixWeb.HomeLive do
           <div class="h-full bg-brand" style={"width: #{progress_percent(@entry)}%"} />
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-12 text-white" />
+        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+          <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
         </div>
       </div>
       <div class="pt-2 px-0.5">
@@ -1318,7 +1541,7 @@ defmodule StreamixWeb.HomeLive do
     <.link
       navigate={watch_path(@favorite.content_type, @favorite.content_id)}
       class={[
-        "group flex-shrink-0 w-full sm:w-[120px] rounded-lg overflow-hidden bg-surface content-card hover:ring-2 hover:ring-white/50",
+        "group flex-shrink-0 w-full sm:w-[120px] rounded-lg overflow-hidden bg-surface content-card transition-transform duration-300 hover:-translate-y-1",
         @class
       ]}
     >
@@ -1347,8 +1570,8 @@ defmodule StreamixWeb.HomeLive do
           </div>
         </div>
         <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-10 text-white" />
+        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
+          <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
         </div>
       </div>
     </.link>
@@ -1413,12 +1636,6 @@ defmodule StreamixWeb.HomeLive do
       true -> Calendar.strftime(datetime, "%d/%m")
     end
   end
-
-  defp format_number(n) when n >= 1000 do
-    "#{Float.round(n / 1000, 1)}k"
-  end
-
-  defp format_number(n), do: to_string(n)
 
   # Get the "See More" path based on content type
   defp get_see_more_path(:movies, _), do: ~p"/browse/movies"
