@@ -108,7 +108,10 @@ defmodule StreamixWeb.Content.CarouselComponents do
             </span>
           </div>
 
-          <p :if={Map.get(@content, :plot)} class="text-sm sm:text-base text-white/60 line-clamp-2 sm:line-clamp-3 max-w-xl">
+          <p
+            :if={Map.get(@content, :plot)}
+            class="text-sm sm:text-base text-white/60 line-clamp-2 sm:line-clamp-3 max-w-xl"
+          >
             {@content.plot}
           </p>
 

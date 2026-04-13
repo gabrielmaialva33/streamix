@@ -2,9 +2,13 @@ defmodule StreamixWeb.Content.HelperComponents do
   @moduledoc "Shared private formatting functions for content components."
   alias StreamixWeb.Helpers.ImageProxy
 
+  def format_count(nil), do: nil
+
   def format_count(count) when count >= 1000 do
     "#{Float.round(count / 1000, 1)}k"
   end
+
+  def format_count(count), do: to_string(count)
 
   def format_rating(%Decimal{} = rating) do
     rating
@@ -13,6 +17,9 @@ defmodule StreamixWeb.Content.HelperComponents do
     |> Decimal.to_string()
   end
 
+  def format_duration(nil), do: nil
+  def format_duration(0), do: nil
+
   def format_duration(seconds) when is_integer(seconds) and seconds > 0 do
     total_minutes = div(seconds, 60)
     hours = div(total_minutes, 60)
@@ -20,6 +27,8 @@ defmodule StreamixWeb.Content.HelperComponents do
 
     if hours > 0, do: "#{hours}h #{minutes}min", else: "#{minutes}min"
   end
+
+  def format_duration(_), do: nil
 
   def format_genre_names(content) do
     case Map.get(content, :genres, []) do

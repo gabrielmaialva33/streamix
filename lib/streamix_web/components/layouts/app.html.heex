@@ -51,8 +51,8 @@
           </nav>
         <% end %>
       </div>
-
-      <!-- Right side: Search + User -->
+      
+<!-- Right side: Search + User -->
       <div class="flex items-center gap-2 sm:gap-3">
         <%= if @current_scope do %>
           <!-- Search button (desktop) -->
@@ -66,8 +66,8 @@
               /
             </kbd>
           </.link>
-
-          <!-- Theme toggle -->
+          
+<!-- Theme toggle -->
           <button
             id={"theme-toggle-#{System.unique_integer()}"}
             type="button"
@@ -78,8 +78,8 @@
             <.icon name="hero-sun" class="hidden dark:block size-5" />
             <.icon name="hero-moon" class="block dark:hidden size-5" />
           </button>
-
-          <!-- User avatar dropdown -->
+          
+<!-- User avatar dropdown -->
           <div class="relative">
             <button
               type="button"
@@ -151,19 +151,19 @@
       </div>
     </div>
   </header>
-
-  <!-- Flash Messages (Toast style - top right) -->
+  
+<!-- Flash Messages (Toast style - top right) -->
   <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>
-
-  <!-- Main Content -->
+  
+<!-- Main Content -->
   <main class="pt-14 sm:pt-16 pb-20 sm:pb-8">
     {@inner_content}
   </main>
-
-  <!-- Bottom Navigation Bar (Mobile Only) -->
+  
+<!-- Bottom Navigation Bar (Mobile Only) -->
   <%= if @current_scope do %>
     <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden glass safe-area-bottom">
       <div class="flex items-center justify-around h-14">

@@ -398,7 +398,10 @@ defmodule StreamixWeb.Content.CardComponents do
         <h4 class="font-medium text-sm sm:text-base text-text-primary truncate group-hover:text-brand transition-colors">
           {episode_title(@episode)}
         </h4>
-        <p :if={Map.get(@episode, :plot)} class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-1">
+        <p
+          :if={Map.get(@episode, :plot)}
+          class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-1"
+        >
           {@episode.plot}
         </p>
         <div class="flex items-center gap-3 mt-2 text-xs text-text-muted">

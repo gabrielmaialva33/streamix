@@ -217,6 +217,8 @@ defmodule StreamixWeb.Content.NavigationComponents do
   end
 
   defp browse_path(path, "iptv"), do: path
+  defp browse_path(path, "gindex"), do: path <> "?source=gindex"
+  defp browse_path(path, _), do: path
 
   @doc """
   Renders a section header with title, icon, filter dropdowns, and "Ver mais" link.

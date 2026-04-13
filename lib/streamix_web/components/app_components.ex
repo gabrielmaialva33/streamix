@@ -186,9 +186,11 @@ defmodule StreamixWeb.AppComponents do
       class={[
         "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
         @active && !@accent && "text-text-primary bg-surface-hover/60",
-        !@active && !@accent && "text-text-secondary hover:text-text-primary hover:bg-surface-hover/40",
+        !@active && !@accent &&
+          "text-text-secondary hover:text-text-primary hover:bg-surface-hover/40",
         @active && @accent == "purple" && "text-purple-300 bg-purple-500/10",
-        !@active && @accent == "purple" && "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+        !@active && @accent == "purple" &&
+          "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
       ]}
     >
       <.icon name={if @active, do: @icon_active, else: @icon} class="size-4" />
