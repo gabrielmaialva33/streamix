@@ -7,27 +7,27 @@ import {playerLogger as log, setErrorReporter} from "../lib/logger";
 import {NetworkMonitor} from "../lib/network_monitor";
 import {diagnoseError, runQuickDiagnostics} from "../lib/player_diagnostics";
 import {
-  getPlaybackPosition,
-  getPreferences,
-  getRecommendedPlayer,
-  recordPlayerSuccess,
-  saveAudioTrack,
-  saveMuted,
-  savePlaybackPosition,
-  savePlaybackRate,
-  savePreferAVPlayer,
-  saveSubtitleTrack,
-  saveVolume,
+    getPlaybackPosition,
+    getPreferences,
+    getRecommendedPlayer,
+    recordPlayerSuccess,
+    saveAudioTrack,
+    saveMuted,
+    savePlaybackPosition,
+    savePlaybackRate,
+    savePreferAVPlayer,
+    saveSubtitleTrack,
+    saveVolume,
 } from "../lib/player_preferences";
 import {PlayerUI} from "../lib/player_ui";
 import {NativeBufferManager} from "../lib/native_buffer";
 import {getFileExtension, getStreamType, StreamLoader} from "../lib/stream_loader";
 import {
-  ContentType,
-  FeatureFlags,
-  getFeatureRecommendations,
-  getStreamingConfig,
-  selectStreamingMode,
+    ContentType,
+    FeatureFlags,
+    getFeatureRecommendations,
+    getStreamingConfig,
+    selectStreamingMode,
 } from "../lib/streaming_config";
 import {linearToPerceived, perceivedToLinear} from "../lib/volume_utils";
 import {getWebCodecsCapabilityReport, isWebCodecsSupported} from "../lib/webcodecs_decoder";
