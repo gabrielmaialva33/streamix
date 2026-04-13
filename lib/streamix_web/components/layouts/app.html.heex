@@ -1,6 +1,11 @@
 <div class="min-h-screen bg-background">
-  <!-- Fixed Header -->
-  <header class="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-white/5">
+  <!-- Scroll-aware Header -->
+  <header
+    id="app-header"
+    phx-hook="ScrollHeader"
+    data-scrolled="false"
+    class="fixed top-0 left-0 right-0 z-50 border-b border-transparent transition-all"
+  >
     <div class="flex items-center justify-between h-14 sm:h-16 px-[4%]">
       <!-- Logo & Navigation -->
       <div class="flex items-center gap-4 sm:gap-8">
@@ -9,97 +14,120 @@
           class="flex items-center gap-1.5 sm:gap-2 text-xl sm:text-2xl font-bold text-brand"
         >
           <.icon name="hero-play-circle-solid" class="size-6 sm:size-8" />
-          <span>Streamix</span>
+          <span class="hidden sm:inline">Streamix</span>
         </a>
 
         <%= if @current_scope do %>
-          <nav class="hidden md:flex items-center gap-6">
-            <.link
-              navigate={~p"/"}
-              class={"text-sm font-medium transition-colors " <> if(@current_path == "/", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
-            >
-              Início
-            </.link>
-            <.link
-              navigate={~p"/browse"}
-              class={"text-sm font-medium transition-colors " <> if(String.starts_with?(@current_path || "", "/browse"), do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
-            >
-              Catálogo
-            </.link>
-            <.link
-              navigate={~p"/favorites"}
-              class={"text-sm font-medium transition-colors " <> if(@current_path == "/favorites", do: "text-text-primary", else: "text-text-secondary hover:text-text-primary")}
-            >
-              Minha Lista
-            </.link>
-            <.link
-              navigate={~p"/party"}
-              class={"text-sm font-medium transition-colors flex items-center gap-1 " <> if(@current_path == "/party", do: "text-purple-300", else: "text-purple-400 hover:text-purple-300")}
-            >
-              <.icon name="hero-users" class="size-4" /> Watch Party
-            </.link>
+          <nav class="hidden md:flex items-center gap-1">
+            <.nav_link
+              path={~p"/"}
+              label="Início"
+              icon="hero-home"
+              icon_active="hero-home-solid"
+              active={@current_path == "/"}
+            />
+            <.nav_link
+              path={~p"/browse"}
+              label="Catálogo"
+              icon="hero-film"
+              icon_active="hero-film-solid"
+              active={String.starts_with?(@current_path || "", "/browse")}
+            />
+            <.nav_link
+              path={~p"/favorites"}
+              label="Minha Lista"
+              icon="hero-heart"
+              icon_active="hero-heart-solid"
+              active={@current_path == "/favorites"}
+            />
+            <.nav_link
+              path={~p"/party"}
+              label="Watch Party"
+              icon="hero-users"
+              icon_active="hero-users-solid"
+              active={@current_path == "/party"}
+              accent="purple"
+            />
           </nav>
         <% end %>
       </div>
-      
-<!-- Right side: User -->
-      <div class="flex items-center gap-4">
+
+      <!-- Right side: Search + User -->
+      <div class="flex items-center gap-2 sm:gap-3">
         <%= if @current_scope do %>
-          <!-- User dropdown -->
-          <div class="relative" x-data="{ open: false }">
+          <!-- Search button (desktop) -->
+          <.link
+            navigate={~p"/search"}
+            class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-hover/50 hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-all text-sm"
+          >
+            <.icon name="hero-magnifying-glass" class="size-4" />
+            <span class="text-text-muted">Buscar...</span>
+            <kbd class="hidden lg:inline text-[10px] text-text-muted bg-surface px-1.5 py-0.5 rounded-md border border-border">
+              /
+            </kbd>
+          </.link>
+
+          <!-- Theme toggle -->
+          <button
+            id={"theme-toggle-#{System.unique_integer()}"}
+            type="button"
+            phx-hook="ThemeToggle"
+            class="p-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
+            title="Alternar tema"
+          >
+            <.icon name="hero-sun" class="hidden dark:block size-5" />
+            <.icon name="hero-moon" class="block dark:hidden size-5" />
+          </button>
+
+          <!-- User avatar dropdown -->
+          <div class="relative">
             <button
               type="button"
-              class="flex items-center gap-2 p-1.5 rounded-md hover:bg-surface-hover transition-colors"
+              class="flex items-center gap-2 p-1 rounded-xl hover:bg-surface-hover/50 transition-colors"
               phx-click={toggle_user_menu()}
             >
-              <div class="w-8 h-8 rounded-md bg-brand flex items-center justify-center text-white font-semibold">
+              <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center text-white text-sm font-semibold shadow-sm">
                 {String.first(@current_scope.user.email) |> String.upcase()}
               </div>
-              <.icon name="hero-chevron-down" class="size-4 text-text-secondary" />
             </button>
 
             <div
               id="user-dropdown"
-              class="hidden absolute right-0 top-full mt-2 w-48 bg-surface border border-border rounded-lg shadow-xl py-1"
+              class="hidden absolute right-0 top-full mt-2 w-52 glass rounded-xl shadow-dropdown py-1.5 overflow-hidden"
             >
-              <div class="px-3 py-2 border-b border-border">
+              <div class="px-4 py-2.5 border-b border-glass-border">
                 <p class="text-sm font-medium text-text-primary truncate">
                   {@current_scope.user.email}
                 </p>
               </div>
-              <.link
-                navigate={~p"/history"}
-                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-              >
-                <.icon name="hero-clock" class="size-4" /> Histórico
-              </.link>
-              <.link
-                navigate={~p"/providers"}
-                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-              >
-                <.icon name="hero-server-stack" class="size-4" /> Meus Provedores
-              </.link>
-              <.link
-                navigate={~p"/settings"}
-                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-              >
-                <.icon name="hero-cog-6-tooth" class="size-4" /> Configurações
-              </.link>
-              <.link
-                :if={Streamix.Accounts.admin?(@current_scope.user)}
-                navigate={~p"/admin"}
-                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-              >
-                <.icon name="hero-shield-check" class="size-4" /> Gerenciamento
-              </.link>
-              <div class="border-t border-border my-1"></div>
-              <.link
-                href={~p"/logout"}
-                method="delete"
-                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-              >
-                <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Sair
-              </.link>
+              <div class="py-1">
+                <.dropdown_item navigate={~p"/history"} icon="hero-clock" label="Histórico" />
+                <.dropdown_item
+                  navigate={~p"/providers"}
+                  icon="hero-server-stack"
+                  label="Meus Provedores"
+                />
+                <.dropdown_item
+                  navigate={~p"/settings"}
+                  icon="hero-cog-6-tooth"
+                  label="Configurações"
+                />
+                <.dropdown_item
+                  :if={Streamix.Accounts.admin?(@current_scope.user)}
+                  navigate={~p"/admin"}
+                  icon="hero-shield-check"
+                  label="Admin"
+                />
+              </div>
+              <div class="border-t border-glass-border pt-1">
+                <.link
+                  href={~p"/logout"}
+                  method="delete"
+                  class="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
+                >
+                  <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Sair
+                </.link>
+              </div>
             </div>
           </div>
         <% else %>
@@ -107,13 +135,13 @@
             <div class="flex items-center gap-2">
               <.link
                 navigate={~p"/login"}
-                class="px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                class="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors rounded-xl"
               >
                 Entrar
               </.link>
               <.link
                 navigate={~p"/register"}
-                class="px-3 py-1.5 text-xs font-semibold bg-brand text-white rounded hover:bg-brand-hover transition-colors"
+                class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-xl hover:bg-brand-hover transition-all shadow-sm hover:shadow-md"
               >
                 Começar
               </.link>
@@ -123,101 +151,58 @@
       </div>
     </div>
   </header>
-  
-<!-- Flash Messages (Toast style - top right) -->
+
+  <!-- Flash Messages (Toast style - top right) -->
   <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>
-  
-<!-- Main Content -->
-  <main class="pt-16 sm:pt-20 pb-20 sm:pb-8 px-[4%]">
+
+  <!-- Main Content -->
+  <main class="pt-14 sm:pt-16 pb-20 sm:pb-8">
     {@inner_content}
   </main>
-  
-<!-- Bottom Navigation Bar (Mobile Only) -->
+
+  <!-- Bottom Navigation Bar (Mobile Only) -->
   <%= if @current_scope do %>
-    <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-surface/95 backdrop-blur-lg border-t border-white/10 safe-area-bottom">
+    <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden glass safe-area-bottom">
       <div class="flex items-center justify-around h-14">
-        <.link
-          navigate={~p"/"}
-          class={[
-            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
-            @current_path == "/" && "text-brand",
-            @current_path != "/" && "text-text-secondary active:text-text-primary"
-          ]}
-        >
-          <.icon
-            name={if @current_path == "/", do: "hero-home-solid", else: "hero-home"}
-            class="size-5"
-          />
-          <span class="text-[10px] mt-0.5 font-medium">Início</span>
-        </.link>
-        <.link
-          navigate={~p"/browse"}
-          class={[
-            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
-            String.starts_with?(@current_path || "", "/browse") && "text-brand",
-            !String.starts_with?(@current_path || "", "/browse") &&
-              "text-text-secondary active:text-text-primary"
-          ]}
-        >
-          <.icon
-            name={
-              if String.starts_with?(@current_path || "", "/browse"),
-                do: "hero-film-solid",
-                else: "hero-film"
-            }
-            class="size-5"
-          />
-          <span class="text-[10px] mt-0.5 font-medium">Catálogo</span>
-        </.link>
-        <.link
-          navigate={~p"/favorites"}
-          class={[
-            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
-            @current_path == "/favorites" && "text-brand",
-            @current_path != "/favorites" && "text-text-secondary active:text-text-primary"
-          ]}
-        >
-          <.icon
-            name={if @current_path == "/favorites", do: "hero-heart-solid", else: "hero-heart"}
-            class="size-5"
-          />
-          <span class="text-[10px] mt-0.5 font-medium">Favoritos</span>
-        </.link>
-        <.link
-          navigate={~p"/party"}
-          class={[
-            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
-            @current_path == "/party" && "text-purple-300",
-            @current_path != "/party" && "text-purple-400 active:text-purple-300"
-          ]}
-        >
-          <.icon
-            name={if @current_path == "/party", do: "hero-users-solid", else: "hero-users"}
-            class="size-5"
-          />
-          <span class="text-[10px] mt-0.5 font-medium">Party</span>
-        </.link>
-        <.link
-          navigate={~p"/settings"}
-          class={[
-            "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-colors touch-manipulation",
-            @current_path == "/settings" && "text-brand",
-            @current_path != "/settings" && "text-text-secondary active:text-text-primary"
-          ]}
-        >
-          <.icon
-            name={
-              if @current_path == "/settings",
-                do: "hero-user-circle-solid",
-                else: "hero-user-circle"
-            }
-            class="size-5"
-          />
-          <span class="text-[10px] mt-0.5 font-medium">Perfil</span>
-        </.link>
+        <.bottom_tab
+          path={~p"/"}
+          icon="hero-home"
+          icon_active="hero-home-solid"
+          label="Início"
+          active={@current_path == "/"}
+        />
+        <.bottom_tab
+          path={~p"/browse"}
+          icon="hero-squares-2x2"
+          icon_active="hero-squares-2x2-solid"
+          label="Catálogo"
+          active={String.starts_with?(@current_path || "", "/browse")}
+        />
+        <.bottom_tab
+          path={~p"/search"}
+          icon="hero-magnifying-glass"
+          icon_active="hero-magnifying-glass-solid"
+          label="Busca"
+          active={@current_path == "/search"}
+          center={true}
+        />
+        <.bottom_tab
+          path={~p"/favorites"}
+          icon="hero-heart"
+          icon_active="hero-heart-solid"
+          label="Lista"
+          active={@current_path == "/favorites"}
+        />
+        <.bottom_tab
+          path={~p"/settings"}
+          icon="hero-user-circle"
+          icon_active="hero-user-circle-solid"
+          label="Perfil"
+          active={@current_path == "/settings"}
+        />
       </div>
     </nav>
   <% end %>

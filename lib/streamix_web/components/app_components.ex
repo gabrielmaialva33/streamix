@@ -170,6 +170,90 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
+  Desktop top nav link with icon and active state.
+  """
+  attr :path, :string, required: true
+  attr :label, :string, required: true
+  attr :icon, :string, required: true
+  attr :icon_active, :string, required: true
+  attr :active, :boolean, default: false
+  attr :accent, :string, default: nil
+
+  def nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@path}
+      class={[
+        "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
+        @active && !@accent && "text-text-primary bg-surface-hover/60",
+        !@active && !@accent && "text-text-secondary hover:text-text-primary hover:bg-surface-hover/40",
+        @active && @accent == "purple" && "text-purple-300 bg-purple-500/10",
+        !@active && @accent == "purple" && "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+      ]}
+    >
+      <.icon name={if @active, do: @icon_active, else: @icon} class="size-4" />
+      <span>{@label}</span>
+    </.link>
+    """
+  end
+
+  @doc """
+  Mobile bottom navigation tab.
+  """
+  attr :path, :string, required: true
+  attr :icon, :string, required: true
+  attr :icon_active, :string, required: true
+  attr :label, :string, required: true
+  attr :active, :boolean, default: false
+  attr :center, :boolean, default: false
+
+  def bottom_tab(assigns) do
+    ~H"""
+    <.link
+      navigate={@path}
+      class={[
+        "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-all touch-manipulation",
+        @active && "text-brand",
+        !@active && "text-text-secondary active:text-text-primary"
+      ]}
+    >
+      <span class={[
+        "flex items-center justify-center rounded-2xl transition-all",
+        @active && "bg-brand/15 px-4 py-1",
+        !@active && "px-2 py-1"
+      ]}>
+        <.icon
+          name={if @active, do: @icon_active, else: @icon}
+          class={["transition-all", @center && "size-6", !@center && "size-5"]}
+        />
+      </span>
+      <span class="text-[10px] mt-0.5 font-medium">{@label}</span>
+    </.link>
+    """
+  end
+
+  @doc """
+  Dropdown menu item.
+  """
+  attr :navigate, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+  attr :rest, :global
+
+  def dropdown_item(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
+      {@rest}
+    >
+      <.icon name={@icon} class="size-4" />
+      <span>{@label}</span>
+    </.link>
+    """
+  end
+
+  @doc """
   Renders a compact premium badge.
   """
   attr :class, :string, default: nil

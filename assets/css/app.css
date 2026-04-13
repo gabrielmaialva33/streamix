@@ -54,7 +54,12 @@
     --bg-color: #0a0a0a;
     --surface-color: #141414;
     --surface-hover-color: #1f1f1f;
+    --surface-elevated-color: #1a1a1a;
     --border-color: #2a2a2a;
+
+    /* Glass */
+    --glass-color: rgba(20, 20, 20, 0.7);
+    --glass-border-color: rgba(255, 255, 255, 0.08);
 
     /* Text */
     --text-primary: #ffffff;
@@ -78,7 +83,12 @@
     --bg-color: var(--latte-base);
     --surface-color: var(--latte-mantle);
     --surface-hover-color: var(--latte-crust);
+    --surface-elevated-color: var(--latte-surface0);
     --border-color: var(--latte-surface2);
+
+    /* Glass (light) */
+    --glass-color: rgba(255, 255, 255, 0.7);
+    --glass-border-color: rgba(0, 0, 0, 0.08);
 
     /* Text - WCAG AA compliant (4.5:1 minimum contrast ratio)
        Calculated against latte-base (95% lightness, ~0.88 luminance):
@@ -107,7 +117,12 @@
     --color-background: var(--bg-color);
     --color-surface: var(--surface-color);
     --color-surface-hover: var(--surface-hover-color);
+    --color-surface-elevated: var(--surface-elevated-color);
     --color-border: var(--border-color);
+
+    /* Glass */
+    --color-glass: var(--glass-color);
+    --color-glass-border: var(--glass-border-color);
 
     /* Text */
     --color-text-primary: var(--text-primary);
@@ -156,11 +171,26 @@
     /* Spacing */
     --spacing-gutter: 4%;
 
-    /* Border radius */
-    --radius-sm: 0.25rem;
+    /* Border radius — Metronic-inspired scale */
+    --radius-sm: 0.375rem;
     --radius-md: 0.5rem;
     --radius-lg: 0.75rem;
     --radius-xl: 1rem;
+    --radius-2xl: 1.25rem;
+
+    /* Shadows — Elevation system (Metronic-inspired) */
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-dropdown: 0 12px 48px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.8), 0 8px 24px rgba(0, 0, 0, 0.4);
+
+    /* Motion tokens — spring physics + smooth */
+    --duration-fast: 150ms;
+    --duration-normal: 200ms;
+    --duration-slow: 300ms;
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
 }
 
 /* Alpine.js cloak - hide elements before Alpine initializes */
@@ -187,19 +217,67 @@ body {
 }
 
 @utility glass {
-    background: rgba(20, 20, 20, 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--color-glass);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid var(--color-glass-border);
+}
+
+@utility glass-subtle {
+    background: var(--color-glass);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 @utility card-hover {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth);
 
     &:hover {
         transform: scale(1.05);
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--shadow-card-hover);
         z-index: 10;
     }
+}
+
+@utility card-lift {
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth);
+
+    &:hover {
+        transform: translateY(-6px) scale(1.02);
+        box-shadow: var(--shadow-card-hover);
+        z-index: 10;
+    }
+}
+
+@utility poster-card {
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth);
+    will-change: transform;
+
+    &:hover {
+        transform: scale(1.08);
+        box-shadow: var(--shadow-card-hover);
+        z-index: 20;
+    }
+}
+
+@utility badge-new {
+    background: linear-gradient(135deg, var(--color-brand), var(--color-accent));
+    color: white;
+    font-size: 0.625rem;
+    font-weight: 700;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 @utility shimmer {
@@ -504,27 +582,92 @@ img {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Card hover effect - smoother */
+/* Card hover effect — spring physics */
 .content-card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease, outline 0.2s ease;
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth),
+        outline var(--duration-fast) var(--ease-smooth);
     will-change: transform;
 }
 
 .content-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
-    outline-offset: 2px;
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: var(--shadow-card-hover);
 }
 
-/* Button press effect */
+/* Button press effect — spring */
 button:active,
 a:active {
-    transform: scale(0.98);
+    transform: scale(0.97);
+    transition: transform 100ms var(--ease-spring);
 }
 
-/* Header transparency transition */
+/* Header scroll-aware transition */
 header {
-    transition: background-color 0.3s ease;
+    transition:
+        background-color var(--duration-slow) var(--ease-smooth),
+        border-color var(--duration-slow) var(--ease-smooth);
+}
+
+/* Scroll-aware header: transparent at top, solid on scroll */
+header[data-scrolled="true"] {
+    background: var(--color-glass) !important;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border-bottom-color: var(--color-glass-border) !important;
+}
+
+header[data-scrolled="false"] {
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+}
+
+/* Poster card overlay — info on hover */
+.poster-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 40%, transparent 100%);
+    opacity: 0;
+    transition: opacity var(--duration-normal) var(--ease-smooth);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0.75rem;
+    border-radius: var(--radius-lg);
+}
+
+.poster-card-wrapper:hover .poster-overlay {
+    opacity: 1;
+}
+
+/* Progress bar on poster cards */
+.poster-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    overflow: hidden;
+}
+
+.poster-progress-bar {
+    height: 100%;
+    background: var(--color-brand);
+    border-radius: inherit;
+    transition: width var(--duration-slow) var(--ease-smooth);
+}
+
+/* Live badge pulse */
+.live-pulse {
+    animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
 
 /* ============================================

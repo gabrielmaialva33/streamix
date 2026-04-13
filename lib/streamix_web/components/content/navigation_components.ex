@@ -25,11 +25,11 @@ defmodule StreamixWeb.Content.NavigationComponents do
 
   def content_tabs(assigns) do
     ~H"""
-    <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
+    <div class="flex glass rounded-xl p-1 gap-1 overflow-x-auto scrollbar-hide">
       <.link
         navigate={~p"/providers/#{@provider_id}"}
         class={[
-          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0",
           @selected == :live && "bg-brand text-white",
           @selected != :live && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
@@ -43,7 +43,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
       <.link
         navigate={~p"/providers/#{@provider_id}/movies"}
         class={[
-          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0",
           @selected == :movies && "bg-brand text-white",
           @selected != :movies && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
@@ -57,7 +57,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
       <.link
         navigate={~p"/providers/#{@provider_id}/series"}
         class={[
-          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+          "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0",
           @selected == :series && "bg-brand text-white",
           @selected != :series && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
         ]}
@@ -92,7 +92,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
 
   def browse_tabs(assigns) do
     ~H"""
-    <div class="flex bg-surface rounded-lg p-1 gap-1 overflow-x-auto scrollbar-hide">
+    <div class="flex glass rounded-xl p-1 gap-1 overflow-x-auto scrollbar-hide">
       <.browse_tab
         :if={@source == "gindex"}
         href={browse_path("/browse/animes", @source)}
@@ -132,7 +132,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
     <.link
       navigate={@href}
       class={[
-        "flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0",
+        "flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0",
         @selected && "bg-brand text-white",
         !@selected && "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
       ]}
@@ -189,7 +189,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
       end)
 
     ~H"""
-    <div class="flex items-center bg-surface rounded-full p-0.5 gap-0.5">
+    <div class="flex items-center glass rounded-full p-0.5 gap-0.5">
       <.link
         navigate={@iptv_target}
         class={[

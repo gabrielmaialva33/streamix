@@ -1,29 +1,14 @@
 defmodule StreamixWeb.Content.CardComponents do
-  @moduledoc "Card components"
+  @moduledoc "Card components — poster 2:3 for movies/series, 16:9 for episodes"
   use Phoenix.Component
   use StreamixWeb, :verified_routes
   import StreamixWeb.CoreComponents
   import StreamixWeb.AppComponents
-  # Shared helpers and internal formats
   import StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
 
   @doc """
-  Renders a movie card with poster and metadata.
-
-  ## Attributes
-
-    * `:movie` - The movie struct/map
-    * `:is_favorite` - Whether the movie is favorited
-    * `:show_favorite` - Whether to show the favorite button
-    * `:source` - Content source ("iptv" or "gindex") for badge display
-    * `:on_play` - Event name for play action
-    * `:on_favorite` - Event name for favorite toggle
-    * `:on_details` - Event name for showing details
-
-  ## Examples
-
-      <.movie_card movie={movie} is_favorite={false} />
+  Renders a movie poster card with hover overlay.
   """
   attr :movie, :map, required: true
   attr :is_favorite, :boolean, default: false
@@ -40,7 +25,6 @@ defmodule StreamixWeb.Content.CardComponents do
       get_image_url(Map.get(assigns.movie, :stream_icon), Map.get(assigns.movie, :cover))
 
     rating = get_display_rating(assigns.movie)
-    # Safe access for AI recommendations that may not have all fields
     movie_name = Map.get(assigns.movie, :title) || Map.get(assigns.movie, :name, "")
     provider_id = Map.get(assigns.movie, :provider_id)
 
@@ -53,7 +37,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"movie-card-#{@movie.id}"}
       phx-hook="ContentCard"
-      class="group cursor-pointer flex flex-col gap-1 sm:gap-2 transition-all duration-300"
+      class="group cursor-pointer poster-card-wrapper"
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
@@ -67,9 +51,10 @@ defmodule StreamixWeb.Content.CardComponents do
       data-duration={format_duration(Map.get(@movie, :duration))}
       data-favorite={to_string(@is_favorite)}
     >
+      <%!-- Poster Image --%>
       <div
         id={"movie-img-fb-#{@movie.id}"}
-        class="relative aspect-[2/3] bg-surface-hover overflow-hidden rounded-md sm:rounded-lg shadow-md group-hover:shadow-2xl group-hover:shadow-brand/30 transition-all duration-300 group-hover:-translate-y-1"
+        class="poster-card relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-hook="ImageFallback"
         phx-click={@on_details}
         phx-value-id={@movie.id}
@@ -79,7 +64,7 @@ defmodule StreamixWeb.Content.CardComponents do
           :if={@image_url}
           src={@image_url}
           alt={@movie_name}
-          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 peer"
+          class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
           loading="lazy"
           data-fallback-target
         />
@@ -96,96 +81,111 @@ defmodule StreamixWeb.Content.CardComponents do
           </span>
         </div>
 
-        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            type="button"
-            phx-click={@on_play}
-            phx-value-id={@movie.id}
-            phx-value-provider_id={@provider_id}
-            class="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-brand/90 backdrop-blur-sm flex items-center justify-center hover:bg-brand hover:scale-110 transition-all shadow-lg"
-          >
-            <.icon name="hero-play-solid" class="size-5 sm:size-7 text-white ml-0.5" />
-          </button>
+        <%!-- Hover overlay with info (desktop only) --%>
+        <div class="poster-overlay hidden sm:flex">
+          <div class="mt-auto space-y-1.5">
+            <h3 class="font-semibold text-sm text-white line-clamp-2 leading-tight">
+              {@movie_name}
+            </h3>
+            <div class="flex items-center gap-2 text-[11px] text-white/70">
+              <span :if={Map.get(@movie, :year)}>{Map.get(@movie, :year)}</span>
+              <span :if={@display_rating} class="flex items-center gap-0.5 text-yellow-400">
+                <.icon name="hero-star-solid" class="size-2.5" /> {@display_rating}
+              </span>
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                phx-click={@on_play}
+                phx-value-id={@movie.id}
+                phx-value-provider_id={@provider_id}
+                class="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-transform"
+              >
+                <.icon name="hero-play-solid" class="size-4 text-black ml-0.5" />
+              </button>
+              <button
+                :if={@show_favorite}
+                type="button"
+                phx-click={@on_favorite}
+                phx-value-id={@movie.id}
+                phx-value-type="movie"
+                class="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center hover:border-white hover:scale-110 transition-all"
+              >
+                <.icon
+                  name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+                  class={["size-4", @is_favorite && "text-red-400", !@is_favorite && "text-white"]}
+                />
+              </button>
+            </div>
+          </div>
         </div>
 
+        <%!-- Rating badge (visible always) --%>
         <div
           :if={@display_rating}
-          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded-md bg-black/50 backdrop-blur-md text-yellow-400 shadow-sm"
+          class="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-md bg-black/60 backdrop-blur-sm text-yellow-400 sm:opacity-0 sm:group-hover:opacity-0"
         >
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
         </div>
 
+        <%!-- Favorite button (mobile, always visible if favorited) --%>
+        <button
+          :if={@show_favorite}
+          type="button"
+          phx-click={@on_favorite}
+          phx-value-id={@movie.id}
+          phx-value-type="movie"
+          class={[
+            "sm:hidden absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 backdrop-blur-sm transition-all",
+            @is_favorite && "text-red-500",
+            !@is_favorite && "text-white/70"
+          ]}
+        >
+          <.icon
+            name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+            class="size-4"
+          />
+        </button>
+
+        <%!-- Premium badge --%>
         <div
           :if={@show_premium_badge}
           data-premium-badge
-          class="absolute top-1 right-1 sm:top-2 sm:right-2"
+          class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2"
         >
           <.premium_badge class="shadow-lg bg-black/60 text-white border-white/10" />
         </div>
 
+        <%!-- Source badge --%>
         <span
           :if={@source == "gindex"}
-          class="absolute bottom-1 left-1 sm:bottom-2 sm:left-2 px-1 py-0.5 text-[8px] sm:text-[10px] font-bold rounded bg-purple-600/90 text-white"
+          class="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 px-1.5 py-0.5 text-[8px] sm:text-[10px] font-bold rounded-md bg-purple-600/90 backdrop-blur-sm text-white"
         >
-          GIndex
+          GDrive
         </span>
 
-        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
-          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
+        <%!-- Progress bar --%>
+        <div :if={@progress && @progress > 0} class="poster-progress">
+          <div class="poster-progress-bar" style={"width: #{round(@progress * 100)}%"} />
         </div>
       </div>
 
-      <div class="px-0.5 sm:px-1">
-        <div class="flex items-start justify-between gap-1">
-          <div class="min-w-0 flex-1 mt-0.5">
-            <h3
-              class="font-medium text-[11px] sm:text-sm text-text-primary line-clamp-2 leading-tight group-hover:text-brand transition-colors"
-              title={@movie_name}
-            >
-              {@movie_name}
-            </h3>
-          </div>
-          <button
-            :if={@show_favorite}
-            type="button"
-            phx-click={@on_favorite}
-            phx-value-id={@movie.id}
-            phx-value-type="movie"
-            class={[
-              "flex-shrink-0 p-1 sm:p-1.5 rounded-full transition-all mt-0.5 focus:opacity-100",
-              @is_favorite && "text-red-500 bg-red-500/10 opacity-100",
-              !@is_favorite &&
-                "text-text-secondary hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
-            ]}
-          >
-            <.icon
-              name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class="size-3.5 sm:size-5"
-            />
-          </button>
-        </div>
+      <%!-- Title below poster (mobile only) --%>
+      <div class="sm:hidden px-0.5 mt-1.5">
+        <h3
+          class="font-medium text-[11px] text-text-primary line-clamp-2 leading-tight"
+          title={@movie_name}
+        >
+          {@movie_name}
+        </h3>
       </div>
     </div>
     """
   end
 
   @doc """
-  Renders a series card with poster and metadata.
-
-  ## Attributes
-
-    * `:series` - The series struct/map
-    * `:is_favorite` - Whether the series is favorited
-    * `:show_favorite` - Whether to show the favorite button
-    * `:on_click` - Event name for click action
-    * `:on_favorite` - Event name for favorite toggle
-
-  ## Examples
-
-      <.series_card series={series} is_favorite={false} />
+  Renders a series poster card with hover overlay.
   """
   attr :series, :map, required: true
   attr :is_favorite, :boolean, default: false
@@ -198,17 +198,18 @@ defmodule StreamixWeb.Content.CardComponents do
 
   def series_card(assigns) do
     rating = get_display_rating(assigns.series)
-    assigns = assign(assigns, display_rating: rating)
+    series_name = Map.get(assigns.series, :title) || Map.get(assigns.series, :name, "")
+    assigns = assign(assigns, display_rating: rating, series_name: series_name)
 
     ~H"""
     <div
       id={"series-card-#{@series.id}"}
       phx-hook="ContentCard"
-      class="group cursor-pointer flex flex-col gap-1 sm:gap-2 transition-all duration-300"
+      class="group cursor-pointer poster-card-wrapper"
       data-content-id={@series.id}
       data-content-type="series"
       data-source-type={@source}
-      data-title={Map.get(@series, :title) || @series.name}
+      data-title={@series_name}
       data-year={Map.get(@series, :year)}
       data-rating={@display_rating}
       data-plot={Map.get(@series, :plot)}
@@ -218,7 +219,7 @@ defmodule StreamixWeb.Content.CardComponents do
     >
       <div
         id={"series-img-fb-#{@series.id}"}
-        class="relative aspect-[2/3] bg-surface-hover overflow-hidden rounded-md sm:rounded-lg shadow-md group-hover:shadow-2xl group-hover:shadow-brand/30 transition-all duration-300 group-hover:-translate-y-1"
+        class="poster-card relative aspect-[2/3] bg-surface-hover overflow-hidden"
         phx-hook="ImageFallback"
         phx-click={@on_click}
         phx-value-id={@series.id}
@@ -226,8 +227,8 @@ defmodule StreamixWeb.Content.CardComponents do
         <img
           :if={Map.get(@series, :cover)}
           src={ImageProxy.card(@series.cover)}
-          alt={@series.name}
-          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          alt={@series_name}
+          class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
           loading="lazy"
           data-fallback-target
         />
@@ -241,81 +242,113 @@ defmodule StreamixWeb.Content.CardComponents do
           <.icon name="hero-video-camera" class="size-8 sm:size-16 text-zinc-600" />
         </div>
 
+        <%!-- Hover overlay (desktop) --%>
+        <div class="poster-overlay hidden sm:flex">
+          <div class="mt-auto space-y-1.5">
+            <h3 class="font-semibold text-sm text-white line-clamp-2 leading-tight">
+              {@series_name}
+            </h3>
+            <div class="flex items-center gap-2 text-[11px] text-white/70">
+              <span :if={Map.get(@series, :year)}>{Map.get(@series, :year)}</span>
+              <span :if={@display_rating} class="flex items-center gap-0.5 text-yellow-400">
+                <.icon name="hero-star-solid" class="size-2.5" /> {@display_rating}
+              </span>
+              <span :if={Map.get(@series, :season_count)}>
+                {Map.get(@series, :season_count)} temp.
+              </span>
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                phx-click={@on_click}
+                phx-value-id={@series.id}
+                class="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-transform"
+              >
+                <.icon name="hero-play-solid" class="size-4 text-black ml-0.5" />
+              </button>
+              <button
+                :if={@show_favorite}
+                type="button"
+                phx-click={@on_favorite}
+                phx-value-id={@series.id}
+                phx-value-type="series"
+                class="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center hover:border-white hover:scale-110 transition-all"
+              >
+                <.icon
+                  name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+                  class={["size-4", @is_favorite && "text-red-400", !@is_favorite && "text-white"]}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <%!-- Rating badge --%>
         <div
           :if={@display_rating}
-          class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 sm:px-2 sm:py-1 text-[9px] sm:text-xs font-semibold rounded-md bg-black/50 backdrop-blur-md text-yellow-400 shadow-sm"
+          class="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-md bg-black/60 backdrop-blur-sm text-yellow-400 sm:opacity-0 sm:group-hover:opacity-0"
         >
           <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
           {@display_rating}
         </div>
 
+        <%!-- Mobile favorite --%>
+        <button
+          :if={@show_favorite}
+          type="button"
+          phx-click={@on_favorite}
+          phx-value-id={@series.id}
+          phx-value-type="series"
+          class={[
+            "sm:hidden absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 backdrop-blur-sm transition-all",
+            @is_favorite && "text-red-500",
+            !@is_favorite && "text-white/70"
+          ]}
+        >
+          <.icon
+            name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+            class="size-4"
+          />
+        </button>
+
+        <%!-- Premium badge --%>
         <div
           :if={@show_premium_badge}
           data-premium-badge
-          class="absolute top-1 right-1 sm:top-2 sm:right-2"
+          class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2"
         >
           <.premium_badge class="shadow-lg bg-black/60 text-white border-white/10" />
         </div>
 
+        <%!-- Source badge --%>
         <span
           :if={@source == "gindex"}
-          class="absolute top-1 right-1 sm:top-2 sm:right-2 px-1 py-0.5 text-[8px] sm:text-[10px] font-bold rounded bg-purple-600/90 text-white"
+          class="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 px-1.5 py-0.5 text-[8px] sm:text-[10px] font-bold rounded-md bg-purple-600/90 backdrop-blur-sm text-white"
         >
           GDrive
         </span>
 
-        <%!-- episode_count computed from preloaded seasons --%>
-
-        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
-          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
+        <%!-- Progress --%>
+        <div :if={@progress && @progress > 0} class="poster-progress">
+          <div class="poster-progress-bar" style={"width: #{round(@progress * 100)}%"} />
         </div>
       </div>
 
-      <div class="px-0.5 sm:px-1">
-        <div class="flex items-start justify-between gap-1">
-          <div class="min-w-0 flex-1 mt-0.5">
-            <h3
-              class="font-medium text-[11px] sm:text-sm text-text-primary truncate leading-tight group-hover:text-brand transition-colors"
-              title={@series.name}
-            >
-              {Map.get(@series, :title) || @series.name}
-            </h3>
-          </div>
-          <button
-            :if={@show_favorite}
-            type="button"
-            phx-click={@on_favorite}
-            phx-value-id={@series.id}
-            phx-value-type="series"
-            class={[
-              "flex-shrink-0 p-1 sm:p-1.5 rounded-full transition-all mt-0.5 focus:opacity-100",
-              @is_favorite && "text-red-500 bg-red-500/10 opacity-100",
-              !@is_favorite &&
-                "text-text-secondary hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
-            ]}
-          >
-            <.icon
-              name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-3.5 sm:size-5", @is_favorite && "text-red-500"]}
-            />
-          </button>
-        </div>
+      <%!-- Title below poster (mobile) --%>
+      <div class="sm:hidden px-0.5 mt-1.5">
+        <h3
+          class="font-medium text-[11px] text-text-primary line-clamp-2 leading-tight"
+          title={@series_name}
+        >
+          {@series_name}
+        </h3>
       </div>
     </div>
     """
   end
 
   @doc """
-  Renders an episode card/row for episode lists.
-
-  ## Attributes
-
-    * `:episode` - The episode struct/map
-    * `:on_play` - Event name for play action
-
-  ## Examples
-
-      <.episode_card episode={episode} />
+  Renders an episode card with thumbnail and metadata.
   """
   attr :episode, :map, required: true
   attr :on_play, :string, default: "play_episode"
@@ -323,20 +356,20 @@ defmodule StreamixWeb.Content.CardComponents do
   def episode_card(assigns) do
     ~H"""
     <div
-      class="flex gap-3 sm:gap-4 p-2 sm:p-3 rounded-xl cursor-pointer transition-all duration-300 group hover:bg-surface-hover/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand/5 border border-transparent hover:border-border/40"
+      class="flex gap-3 sm:gap-4 p-2.5 sm:p-3 rounded-xl cursor-pointer group hover:bg-surface-elevated/80 border border-transparent hover:border-glass-border transition-all"
       phx-click={@on_play}
       phx-value-id={@episode.id}
     >
       <div
         id={"ep-img-fb-#{@episode.id}"}
-        class="relative w-32 sm:w-40 aspect-video flex-shrink-0 bg-surface-hover rounded-lg overflow-hidden shadow-sm group-hover:shadow-md transition-all"
+        class="relative w-32 sm:w-40 aspect-video flex-shrink-0 bg-surface-hover rounded-lg overflow-hidden"
         phx-hook="ImageFallback"
       >
         <img
           :if={Map.get(@episode, :cover)}
           src={ImageProxy.proxy(@episode.cover)}
           alt={episode_title(@episode)}
-          class="w-full h-full object-cover"
+          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
           data-fallback-target
         />
@@ -350,28 +383,30 @@ defmodule StreamixWeb.Content.CardComponents do
           <.icon name="hero-play" class="size-8" />
         </div>
 
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-10 text-white" />
+        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div class="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
+            <.icon name="hero-play-solid" class="size-5 text-black ml-0.5" />
+          </div>
         </div>
 
-        <div class="absolute bottom-1 right-1 px-1.5 py-0.5 text-xs rounded bg-black/60 text-white">
+        <span class="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] font-semibold rounded-md bg-black/70 backdrop-blur-sm text-white">
           E{Map.get(@episode, :episode_num) || Map.get(@episode, :num) || "?"}
-        </div>
+        </span>
       </div>
 
       <div class="flex-1 min-w-0 py-0.5 sm:py-1">
         <h4 class="font-medium text-sm sm:text-base text-text-primary truncate group-hover:text-brand transition-colors">
           {episode_title(@episode)}
         </h4>
-        <p :if={Map.get(@episode, :plot)} class="text-sm text-text-secondary line-clamp-2 mt-1">
+        <p :if={Map.get(@episode, :plot)} class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-1">
           {@episode.plot}
         </p>
         <div class="flex items-center gap-3 mt-2 text-xs text-text-muted">
           <span :if={Map.get(@episode, :duration_secs)}>
             {format_duration(@episode.duration_secs)}
           </span>
-          <span :if={Map.get(@episode, :rating)} class="flex items-center gap-1">
-            <.icon name="hero-star-solid" class="size-3 text-yellow-500" />
+          <span :if={Map.get(@episode, :rating)} class="flex items-center gap-1 text-yellow-500">
+            <.icon name="hero-star-solid" class="size-3" />
             {format_rating(@episode.rating)}
           </span>
         </div>
