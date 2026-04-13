@@ -8,20 +8,6 @@
     />
     <meta name="csrf-token" content={get_csrf_token()} />
     
-<!-- Theme Initialization (nonce-protected) -->
-    <script nonce={assigns[:csp_nonce]}>
-      (function() {
-        const theme = localStorage.getItem('theme');
-        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-        if (theme === 'light' || (!theme && !systemDark)) {
-          document.documentElement.classList.add('light');
-        } else {
-          document.documentElement.classList.remove('light');
-        }
-      })();
-    </script>
-    
 <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#e50914" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -30,13 +16,12 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Streamix" />
     <meta name="msapplication-TileColor" content="#e50914" />
-    <meta name="msapplication-TileImage" content="/images/icon-192.png" />
+    <meta name="msapplication-TileImage" content="/images/icon.svg" />
     
 <!-- PWA Manifest & Icons -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/images/icon-192.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/images/icon-512.png" />
+    <link rel="apple-touch-icon" href="/images/icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/images/icon.svg" />
 
     <.live_title default="Streamix" suffix=" · Streamix">
       {assigns[:page_title]}

@@ -112,9 +112,6 @@ defmodule StreamixWeb.AppComponents do
             label="Configurações"
             current_path={@current_path}
           />
-          <div class="px-3 py-2">
-            <.theme_toggle class="w-full justify-start px-0" />
-          </div>
           <.link
             href={~p"/logout"}
             method="delete"

@@ -6,6 +6,17 @@
 /* Heroicons plugin */
 @plugin "../vendor/heroicons";
 
+/* Remove focus/selection outline on interactive cards */
+.content-card:focus,
+.content-card:focus-visible,
+[data-carousel-track] a:focus,
+[data-carousel-track] a:focus-visible,
+[data-carousel-track] button:focus,
+[data-carousel-track] button:focus-visible {
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent;
+}
+
 /* ============================================
    Streamix Theme - Cinematic Streaming Design
    ============================================ */
@@ -502,7 +513,6 @@ img {
 .content-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
-    outline: 2px solid rgba(255, 255, 255, 0.3);
     outline-offset: 2px;
 }
 
@@ -735,6 +745,19 @@ img {
 
 ::view-transition-new(root) {
     animation: vt-fade-in 120ms ease-out;
+}
+
+/* Auth layout */
+.auth-branded-panel {
+    display: none;
+}
+@media (width >= 1024px) {
+    .auth-branded-panel {
+        display: flex;
+    }
+}
+.auth-branded-bg {
+    background: url('/images/auth-bg.jpg') center / cover no-repeat #0a0a0a;
 }
 
 @keyframes vt-fade-out {
