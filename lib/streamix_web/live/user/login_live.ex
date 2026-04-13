@@ -21,38 +21,42 @@ defmodule StreamixWeb.User.LoginLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-[calc(100vh-80px)] flex items-center justify-center -mx-[4%] px-4 sm:mx-0">
-      <div class="w-full max-w-md bg-surface/90 backdrop-blur-sm rounded-none sm:rounded-lg p-6 sm:p-8 shadow-2xl border-y sm:border border-white/10">
-        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary mb-1 sm:mb-2">Entrar</h1>
-        <p class="text-text-secondary text-sm sm:text-base mb-6 sm:mb-8">
-          Não tem uma conta?
-          <.link navigate={~p"/register"} class="text-brand hover:underline font-medium">
-            Cadastre-se
-          </.link>
-        </p>
-
-        <.simple_form for={@form} action={~p"/login"} phx-change="validate" method="post">
-          <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
-          <.input
-            field={@form[:password]}
-            type="password"
-            label="Senha"
-            required
-            autocomplete="current-password"
-          />
-
-          <div class="flex items-center justify-between">
-            <.input field={@form[:remember_me]} type="checkbox" label="Lembrar de mim" />
-          </div>
-
-          <:actions>
-            <.button type="submit" variant="primary" class="w-full py-3 text-base font-semibold">
-              Entrar
-            </.button>
-          </:actions>
-        </.simple_form>
-      </div>
+    <%!-- Logo (mobile only — desktop has branded panel) --%>
+    <div class="flex items-center justify-center gap-2 mb-8 lg:hidden text-brand">
+      <.icon name="hero-play-circle-solid" class="size-8" />
+      <span class="text-2xl font-bold tracking-tight">Streamix</span>
     </div>
+
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-semibold text-text-primary tracking-tight">Entrar</h1>
+      <p class="text-sm text-text-secondary mt-2">
+        Não tem uma conta?
+        <.link navigate={~p"/register"} class="text-brand hover:underline font-medium">
+          Cadastre-se
+        </.link>
+      </p>
+    </div>
+
+    <.simple_form for={@form} action={~p"/login"} phx-change="validate" method="post">
+      <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
+      <.input
+        field={@form[:password]}
+        type="password"
+        label="Senha"
+        required
+        autocomplete="current-password"
+      />
+
+      <div class="flex items-center justify-between">
+        <.input field={@form[:remember_me]} type="checkbox" label="Lembrar de mim" />
+      </div>
+
+      <:actions>
+        <.button type="submit" variant="primary" class="w-full py-3 text-base font-semibold">
+          Entrar
+        </.button>
+      </:actions>
+    </.simple_form>
     """
   end
 end

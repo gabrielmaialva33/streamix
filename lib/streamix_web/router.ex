@@ -165,7 +165,7 @@ defmodule StreamixWeb.Router do
 
     live_session :guest,
       on_mount: [{StreamixWeb.UserAuth, :redirect_if_authenticated}],
-      layout: {StreamixWeb.Layouts, :app} do
+      layout: {StreamixWeb.Layouts, :auth} do
       live "/login", User.LoginLive, :new
       live "/register", User.RegisterLive, :new
     end

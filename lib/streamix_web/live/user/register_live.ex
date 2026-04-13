@@ -44,56 +44,60 @@ defmodule StreamixWeb.User.RegisterLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-[calc(100vh-80px)] flex items-center justify-center -mx-[4%] px-4 sm:mx-0">
-      <div class="w-full max-w-md bg-surface/90 backdrop-blur-sm rounded-none sm:rounded-lg p-6 sm:p-8 shadow-2xl border-y sm:border border-white/10">
-        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary mb-1 sm:mb-2">Criar conta</h1>
-        <p class="text-text-secondary text-sm sm:text-base mb-5 sm:mb-6">
-          Já tem uma conta?
-          <.link navigate={~p"/login"} class="text-brand hover:underline font-medium">
-            Entrar
-          </.link>
-        </p>
-
-        <.simple_form
-          for={@form}
-          id="registration_form"
-          phx-submit="save"
-          phx-change="validate"
-          phx-trigger-action={@trigger_submit}
-          action={~p"/login"}
-          method="post"
-        >
-          <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
-          <.input
-            field={@form[:password]}
-            type="password"
-            label="Senha"
-            required
-            autocomplete="new-password"
-          />
-          <p class="text-xs text-text-muted -mt-2">Mínimo de 12 caracteres</p>
-          <.input
-            field={@form[:password_confirmation]}
-            type="password"
-            label="Confirmar senha"
-            required
-            autocomplete="new-password"
-          />
-
-          <:actions>
-            <.button type="submit" variant="primary" class="w-full py-3 text-base font-semibold">
-              Criar conta
-            </.button>
-          </:actions>
-        </.simple_form>
-
-        <p class="text-xs text-text-muted text-center mt-5 sm:mt-6">
-          Ao criar uma conta, você concorda com nossos
-          <span class="text-text-secondary">Termos de Uso</span>
-          e <span class="text-text-secondary">Política de Privacidade</span>.
-        </p>
-      </div>
+    <%!-- Logo (mobile only — desktop has branded panel) --%>
+    <div class="flex items-center justify-center gap-2 mb-8 lg:hidden text-brand">
+      <.icon name="hero-play-circle-solid" class="size-8" />
+      <span class="text-2xl font-bold tracking-tight">Streamix</span>
     </div>
+
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-semibold text-text-primary tracking-tight">Criar conta</h1>
+      <p class="text-sm text-text-secondary mt-2">
+        Já tem uma conta?
+        <.link navigate={~p"/login"} class="text-brand hover:underline font-medium">
+          Entrar
+        </.link>
+      </p>
+    </div>
+
+    <.simple_form
+      for={@form}
+      id="registration_form"
+      phx-submit="save"
+      phx-change="validate"
+      phx-trigger-action={@trigger_submit}
+      action={~p"/login"}
+      method="post"
+    >
+      <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
+      <.input
+        field={@form[:password]}
+        type="password"
+        label="Senha"
+        required
+        autocomplete="new-password"
+      />
+      <p class="text-xs text-text-muted -mt-2">Mínimo de 12 caracteres</p>
+      <.input
+        field={@form[:password_confirmation]}
+        type="password"
+        label="Confirmar senha"
+        required
+        autocomplete="new-password"
+      />
+
+      <:actions>
+        <.button type="submit" variant="primary" class="w-full py-3 text-base font-semibold">
+          Criar conta
+        </.button>
+      </:actions>
+    </.simple_form>
+
+    <p class="text-xs text-text-muted text-center mt-6">
+      Ao criar uma conta, você concorda com nossos
+      <span class="text-text-secondary">Termos de Uso</span>
+      e <span class="text-text-secondary">Política de Privacidade</span>.
+    </p>
     """
   end
 end
