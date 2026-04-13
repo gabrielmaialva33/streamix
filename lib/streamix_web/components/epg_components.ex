@@ -15,13 +15,16 @@ defmodule StreamixWeb.EpgComponents do
 
   def epg_now(assigns) do
     ~H"""
-    <div :if={@compact} class="mt-1 h-3">
+    <div :if={@compact} class="min-h-[16px]">
       <p
         :if={@current_program}
-        class="text-[9px] text-text-secondary truncate leading-tight"
+        class="text-[10px] sm:text-[11px] text-text-muted truncate leading-tight"
         title={@current_program.title}
       >
         {@current_program.title}
+      </p>
+      <p :if={!@current_program} class="text-[10px] text-text-muted/50 italic">
+        Sem programação
       </p>
     </div>
 

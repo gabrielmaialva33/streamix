@@ -688,11 +688,11 @@ defmodule StreamixWeb.CoreComponents do
 
   def skeleton_channel_card(assigns) do
     ~H"""
-    <div class={["flex flex-col gap-2 animate-fade-in", @class]}>
-      <div class="aspect-video bg-surface-hover rounded-md sm:rounded-lg skeleton-shimmer"></div>
-      <div class="space-y-1.5 px-0.5">
+    <div class={["animate-fade-in rounded-xl overflow-hidden border border-glass-border", @class]}>
+      <div class="aspect-video bg-surface-hover skeleton-shimmer"></div>
+      <div class="px-3 py-2.5 space-y-1.5">
         <div class="h-3 sm:h-3.5 bg-surface-hover rounded w-2/3 skeleton-shimmer"></div>
-        <div class="h-2.5 sm:h-3 bg-surface-hover rounded w-1/3 skeleton-shimmer"></div>
+        <div class="h-2.5 sm:h-3 bg-surface-hover rounded w-1/2 skeleton-shimmer"></div>
       </div>
     </div>
     """

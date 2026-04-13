@@ -393,75 +393,87 @@ defmodule StreamixWeb.AppComponents do
 
   def live_channel_card(assigns) do
     ~H"""
-    <div class="group relative flex flex-col gap-1 sm:gap-2 transition-all duration-300">
+    <div class="group relative">
       <.link
         navigate={~p"/watch/live_channel/#{@channel.id}"}
-        class="block relative aspect-video bg-surface-hover cursor-pointer rounded-md sm:rounded-lg overflow-hidden shadow-md group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1"
+        class="block rounded-xl overflow-hidden bg-surface-elevated border border-glass-border hover:border-brand/30 transition-all hover:shadow-card-hover hover:-translate-y-1 cursor-pointer"
       >
-        <div
-          id={"channel-img-#{@channel.id}"}
-          phx-hook="ImageFallback"
-          class="w-full h-full"
-        >
-          <img
-            :if={@channel.stream_icon not in [nil, ""]}
-            src={ImageProxy.proxy(@channel.stream_icon)}
-            alt={@channel.name}
-            class="w-full h-full object-contain p-1 sm:p-2"
-            loading="lazy"
-            data-fallback-target
-          />
+        <%!-- Channel logo area --%>
+        <div class="relative aspect-video bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 flex items-center justify-center p-4 sm:p-6">
           <div
-            data-fallback
-            class={[
-              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
-              @channel.stream_icon not in [nil, ""] && "hidden"
-            ]}
+            id={"channel-img-#{@channel.id}"}
+            phx-hook="ImageFallback"
+            class="w-full h-full flex items-center justify-center"
           >
-            <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />
-            <span class="text-[8px] sm:text-xs text-text-muted leading-tight line-clamp-2">
-              {@channel.name}
-            </span>
+            <img
+              :if={@channel.stream_icon not in [nil, ""]}
+              src={ImageProxy.proxy(@channel.stream_icon)}
+              alt={@channel.name}
+              class="max-w-full max-h-full object-contain drop-shadow-lg"
+              loading="lazy"
+              data-fallback-target
+            />
+            <div
+              data-fallback
+              class={[
+                "flex flex-col items-center justify-center text-center",
+                @channel.stream_icon not in [nil, ""] && "hidden"
+              ]}
+            >
+              <.icon name="hero-tv" class="size-6 sm:size-10 text-text-muted/40 mb-1" />
+              <span class="text-[9px] sm:text-xs text-text-muted leading-tight line-clamp-2">
+                {@channel.name}
+              </span>
+            </div>
           </div>
-        </div>
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-8 sm:size-16 text-brand" />
-        </div>
-      </.link>
-      <div class="px-0.5 sm:px-1">
-        <div class="flex items-start justify-between gap-1">
-          <.link
-            navigate={~p"/watch/live_channel/#{@channel.id}"}
-            class="font-medium text-[11px] sm:text-sm text-text-primary truncate flex-1 group-hover:text-brand transition-colors leading-tight mt-0.5"
-            title={@channel.name}
-          >
-            {@channel.name}
-          </.link>
+
+          <%!-- Live badge --%>
+          <span class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-md bg-brand/90 text-white backdrop-blur-sm">
+            <span class="w-1.5 h-1.5 rounded-full bg-white live-pulse" />
+            AO VIVO
+          </span>
+
+          <%!-- Play overlay on hover --%>
+          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div class="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+              <.icon name="hero-play-solid" class="size-6 text-black ml-0.5" />
+            </div>
+          </div>
+
+          <%!-- Favorite button --%>
           <button
             :if={@show_favorite}
             type="button"
             phx-click={@on_favorite}
             phx-value-id={@channel.id}
             class={[
-              "shrink-0 p-1 sm:p-1.5 rounded-full transition-all focus:opacity-100 mt-0.5",
-              @is_favorite && "text-brand bg-brand/10 opacity-100",
-              !@is_favorite &&
-                "text-text-secondary hover:text-brand hover:bg-brand/10 opacity-0 group-hover:opacity-100"
+              "absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-sm transition-all",
+              @is_favorite && "text-brand bg-brand/20",
+              !@is_favorite && "text-white/60 bg-black/30 opacity-0 group-hover:opacity-100 hover:text-brand hover:bg-brand/20"
             ]}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-3.5 sm:size-5", @is_favorite && "text-brand"]}
+              class="size-4"
             />
           </button>
         </div>
 
-        <StreamixWeb.EpgComponents.epg_now
-          :if={@show_epg}
-          current_program={@current_program || Map.get(@channel, :current_program)}
-          compact={true}
-        />
-      </div>
+        <%!-- Channel info --%>
+        <div class="px-3 py-2.5 space-y-1">
+          <h3
+            class="font-medium text-xs sm:text-sm text-text-primary truncate group-hover:text-brand transition-colors"
+            title={@channel.name}
+          >
+            {@channel.name}
+          </h3>
+          <StreamixWeb.EpgComponents.epg_now
+            :if={@show_epg}
+            current_program={@current_program || Map.get(@channel, :current_program)}
+            compact={true}
+          />
+        </div>
+      </.link>
     </div>
     """
   end
