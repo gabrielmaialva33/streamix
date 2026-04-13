@@ -47,6 +47,7 @@ npm-debug.log
 .playwright-mcp
 tmp
 .claude
+.codex
 
 # Tizen App artifacts
 *.wgt
@@ -57,6 +58,7 @@ test-results
 
 # superpowers
 docs/superpowers
+.superpowers
 
 # JetBrains IDEs
 .idea/
