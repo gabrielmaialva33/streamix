@@ -51,27 +51,27 @@
 <table>
   <tr>
     <td width="50%" valign="top">
-
-### Plataforma de Streaming Unificada
-
-- **Agregacao multi-provedor** para catalogos Xtream Codes
-- **Provedor global opcional** compartilhado pelo sistema
-- **Ingestao opcional via GIndex** para bibliotecas em Google Drive
-- **TV ao vivo, filmes, series, temporadas e episodios**
-- **Favoritos, historico e progresso de reproducao**
-- **Sincronizacao de EPG** com consultas de now/next
+      <h3>Plataforma de Streaming Unificada</h3>
+      <ul>
+        <li><strong>Agregacao multi-provedor</strong> para catalogos Xtream Codes</li>
+        <li><strong>Provedor global opcional</strong> compartilhado pelo sistema</li>
+        <li><strong>Ingestao opcional via GIndex</strong> para bibliotecas em Google Drive</li>
+        <li><strong>TV ao vivo, filmes, series, temporadas e episodios</strong></li>
+        <li><strong>Favoritos, historico e progresso de reproducao</strong></li>
+        <li><strong>Sincronizacao de EPG</strong> com consultas de now/next</li>
+      </ul>
 
     </td>
     <td width="50%" valign="top">
-
-### Superficie de Produto Premium
-
-- **Planos premium e assinaturas**
-- **Painel administrativo** para planos e usuarios
-- **Watch parties** com reproducao sincronizada e chat
-- **Stream URLs assinadas** e entrega segura
-- **Suporte a PWA** com hooks de sincronizacao offline
-- **UI dark-first** com toggle de tema no cliente
+      <h3>Superficie de Produto Premium</h3>
+      <ul>
+        <li><strong>Planos premium e assinaturas</strong></li>
+        <li><strong>Painel administrativo</strong> para planos e usuarios</li>
+        <li><strong>Watch parties</strong> com reproducao sincronizada e chat</li>
+        <li><strong>Stream URLs assinadas</strong> e entrega segura</li>
+        <li><strong>Suporte a PWA</strong> com hooks de sincronizacao offline</li>
+        <li><strong>UI dark-first</strong> com toggle de tema no cliente</li>
+      </ul>
 
     </td>
   </tr>
@@ -375,7 +375,7 @@ mix assets.deploy
 <br>
 
 <p align="center">
-  <img src="https://avatars.githubusercontent.com/u/26732067" alt="Gabriel Maia" width="92" style="border-radius:50%;">
+  <img src="https://avatars.githubusercontent.com/u/26732067" alt="Gabriel Maia" width="92">
 </p>
 
 <p align="center">

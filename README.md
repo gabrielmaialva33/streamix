@@ -51,27 +51,27 @@
 <table>
   <tr>
     <td width="50%" valign="top">
-
-### Unified Streaming Platform
-
-- **Multi-provider aggregation** for Xtream Codes catalogs
-- **Optional global provider** shared across the whole system
-- **Optional GIndex ingestion** for Google Drive-backed libraries
-- **Live TV, movies, series, seasons, and episodes**
-- **Favorites, history, and watch progress**
-- **EPG sync** with now/next style queries
+      <h3>Unified Streaming Platform</h3>
+      <ul>
+        <li><strong>Multi-provider aggregation</strong> for Xtream Codes catalogs</li>
+        <li><strong>Optional global provider</strong> shared across the whole system</li>
+        <li><strong>Optional GIndex ingestion</strong> for Google Drive-backed libraries</li>
+        <li><strong>Live TV, movies, series, seasons, and episodes</strong></li>
+        <li><strong>Favorites, history, and watch progress</strong></li>
+        <li><strong>EPG sync</strong> with now/next style queries</li>
+      </ul>
 
     </td>
     <td width="50%" valign="top">
-
-### Premium Product Surface
-
-- **Premium plans and subscriptions**
-- **Admin dashboard** for plans and users
-- **Watch parties** with synchronized playback and room chat
-- **Signed stream URLs** and credential-safe delivery
-- **PWA support** plus offline metadata sync hooks
-- **Dark-first UI** with a client-side theme toggle
+      <h3>Premium Product Surface</h3>
+      <ul>
+        <li><strong>Premium plans and subscriptions</strong></li>
+        <li><strong>Admin dashboard</strong> for plans and users</li>
+        <li><strong>Watch parties</strong> with synchronized playback and room chat</li>
+        <li><strong>Signed stream URLs</strong> and credential-safe delivery</li>
+        <li><strong>PWA support</strong> plus offline metadata sync hooks</li>
+        <li><strong>Dark-first UI</strong> with a client-side theme toggle</li>
+      </ul>
 
     </td>
   </tr>
@@ -376,7 +376,7 @@ mix assets.deploy
 <br>
 
 <p align="center">
-  <img src="https://avatars.githubusercontent.com/u/26732067" alt="Gabriel Maia" width="92" style="border-radius:50%;">
+  <img src="https://avatars.githubusercontent.com/u/26732067" alt="Gabriel Maia" width="92">
 </p>
 
 <p align="center">
