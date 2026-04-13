@@ -1,231 +1,158 @@
 # Contributing to Streamix
 
-Thank you for your interest in contributing to Streamix! This document provides guidelines and information on how to
-contribute to this project.
+Thanks for contributing to Streamix. This repository contains the Phoenix backend and web UI for the platform. The old
+in-repo TV app was extracted, so contributions here should target the current Elixir / Phoenix codebase.
 
 ## Before You Start
 
-### License
+- Read [README.md](README.md) for setup and project scope.
+- Read [AGENTS.md](AGENTS.md) for repo-specific implementation rules and conventions.
+- Read [docs/phoenix-guidelines.md](docs/phoenix-guidelines.md) for Phoenix / LiveView / Ecto patterns.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-**Important**: Streamix is open-source software licensed under the [MIT License](LICENSE). By contributing, you agree
-that your contributions will be licensed under the same terms.
-
-### Code of Conduct
-
-We expect all contributors to follow our [Code of Conduct](CODE_OF_CONDUCT.md). Please read it before contributing.
-
-## How to Contribute
-
-### Reporting Bugs
-
-If you have found a bug, please open an issue including:
-
-1. **Clear and descriptive title**
-2. **Steps to reproduce** the behavior
-3. **Expected behavior** vs. **actual behavior**
-4. **Screenshots** (if applicable)
-5. **Environment**:
-    - Elixir/OTP version
-    - Operating System
-    - PostgreSQL version
-    - Browser (for frontend issues)
-
-### Suggesting Improvements
-
-To suggest an improvement:
-
-1. Check if the suggestion already exists in the issues
-2. Open a new issue with the `enhancement` tag
-3. Clearly describe the proposed improvement
-4. Explain why it would be useful for the project
-
-### Sending Pull Requests
-
-1. **Fork** the repository
-2. **Clone** your fork locally
-3. **Create a branch** from `master`:
-   ```bash
-   git checkout -b feature/my-feature
-   # or
-   git checkout -b fix/my-bugfix
-   ```
-4. **Setup the environment**:
-   ```bash
-   mix setup
-   ```
-5. **Make your changes** following the project conventions
-6. **Run tests**:
-   ```bash
-   mix test
-   ```
-7. **Run precommit**:
-   ```bash
-   mix precommit
-   ```
-8. **Commit your changes**:
-   ```bash
-   git commit -m "feat: clear description of the change"
-   ```
-9. **Push** to your fork:
-   ```bash
-   git push origin feature/my-feature
-   ```
-10. Open a **Pull Request**
-
-## Code Conventions
-
-### Code Style
-
-- Follow Elixir and Phoenix conventions
-- Use `mix format` to format code
-- Use `mix credo --strict` to check quality
-- Keep functions small and focused
-- Document public functions with `@doc`
-
-### Commit Conventions
-
-We use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer]
-```
-
-**Types**:
-
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation
-- `style`: Formatting (does not affect code execution)
-- `refactor`: Refactoring
-- `perf`: Performance improvement
-- `test`: Tests
-- `chore`: Maintenance
-
-**Examples**:
-
-```
-feat(iptv): add support for M3U8 playlists
-fix(auth): resolve session expiration issue
-docs(readme): update installation instructions
-perf(sync): optimize channel batch insert
-```
-
-### Branch Structure
-
-- `master` - Main branch, always stable
-- `feature/*` - New features
-- `fix/*` - Bug fixes
-- `hotfix/*` - Urgent fixes in production
+By contributing, you agree that your contributions are licensed under the [MIT License](LICENSE).
 
 ## Development Environment
 
 ### Requirements
 
-- Elixir 1.15+
-- Erlang/OTP 26+
-- PostgreSQL 14+
-- Node.js 18+ (for assets)
-- Redis (optional, for L2 cache)
+- Elixir 1.18+
+- OTP 27+
+- Docker
+- Node.js 20+ and npm
 
-### Setup
+### First-Time Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/gabrielmaialva33/streamix.git
+git clone git@github.com:gabrielmaialva33/streamix.git
 cd streamix
 
-# Install dependencies and setup the database
+docker compose up -d
+cp .env.example .env
+
+# required before mix setup succeeds
+# set ADMIN_PASSWORD and PROVIDER_ENCRYPTION_KEY in .env
+
+cd assets && npm ci && cd ..
 mix setup
-
-# Start the development server
 mix phx.server
-# or with IEx
-iex -S mix phx.server
 ```
 
-### Useful Commands
+Notes:
+
+- `mix setup` runs migrations, seeds, and builds assets.
+- `priv/repo/seeds.exs` requires `ADMIN_PASSWORD`.
+- test DB setup can be omitted from `.env`; `TEST_DATABASE_URL` is inferred from `DATABASE_URL` when missing.
+- optional features such as Qdrant, RabbitMQ, GIndex, and global provider sync are configured through `.env`.
+
+## Where to Contribute
+
+Typical contribution areas:
+
+- Phoenix / LiveView UI in `lib/streamix_web/live`
+- HTTP / JSON APIs in `lib/streamix_web/controllers/api/v1`
+- Domain logic in `lib/streamix/*`
+- Database schema and migrations in `priv/repo/migrations`
+- Frontend hooks and player logic in `assets/js`
+- Documentation in `README*.md`, `AGENTS.md`, `docs/`, `CONTRIBUTING.md`, `SECURITY.md`
+
+If you are adding or changing behavior, update the relevant docs in the same PR.
+
+## Reporting Bugs and Requesting Changes
+
+### Bugs
+
+Open an issue with:
+
+1. A clear title
+2. Reproduction steps
+3. Expected vs actual behavior
+4. Relevant logs, screenshots, or failing requests
+5. Environment details:
+   - Elixir / OTP version
+   - Browser or client type
+   - Database and Docker setup
+   - Whether optional services such as Redis / Qdrant / RabbitMQ were enabled
+
+### Improvements
+
+Open an issue or PR that explains:
+
+- the problem being solved
+- the proposed approach
+- why the change fits Streamix instead of living in a downstream deployment
+
+## Branches and Commits
+
+- Base your work on `master`.
+- Keep PRs focused on one concern.
+- Use short, descriptive branch names such as `feat/admin-billing-copy` or `fix/watch-party-drift`.
+- Commit messages should explain the why, not just the what.
+
+Conventional commits are welcome, but clarity matters more than ceremony.
+
+## Coding Conventions
+
+Follow the repo rules in [AGENTS.md](AGENTS.md). The most important ones:
+
+- Use `Req` for HTTP requests.
+- Use `@current_scope.user`, never `@current_user`.
+- Use LiveView streams for list rendering.
+- Do not introduce inline scripts or deprecated Phoenix helpers.
+- Keep one module per file.
+- Do not use `String.to_atom/1` on user input.
+- Do not log plaintext provider credentials or raw upstream responses.
+- Keep GIndex flows sequential where the current code expects low concurrency.
+
+## Testing and Verification
+
+Run the smallest relevant command first during development, then the full gate before opening a PR.
 
 ```bash
-# Run tests
 mix test
-mix test --failed          # Only failed tests
-mix test path/to/test.exs  # Specific file
-
-# Quality check
-mix format                 # Format code
-mix credo --strict         # Static analysis
-mix precommit              # Run everything before commit
-
-# Database
-mix ecto.migrate           # Run migrations
-mix ecto.reset             # Full reset
-mix ecto.gen.migration migration_name
-
-# Assets
-mix assets.build           # Development build
-mix assets.deploy          # Production build
+mix test path/to/test.exs
+mix test path/to/test.exs:42
+mix credo --strict
+mix quality
+mix precommit
 ```
 
-## Project Architecture
+Expectations:
 
-```
-lib/
-├── streamix/              # Core business logic
-│   ├── accounts/          # Authentication and users
-│   ├── iptv/              # Main IPTV functionality
-│   │   ├── sync/          # Content synchronization
-│   │   ├── gindex/        # Google Drive integration
-│   │   └── ...
-│   └── workers/           # Background jobs (Oban)
-└── streamix_web/          # Web layer (Phoenix)
-    ├── components/        # LiveView components
-    ├── controllers/       # HTTP controllers
-    └── live/              # LiveView pages
-```
+- add or update tests for behavior changes
+- keep compiler warnings at zero
+- run `mix precommit` before asking for review
+- if you touch JS hooks or player code, run `cd assets && npm ci` first if dependencies are missing
 
-### Important Conventions
+## Database and Migrations
 
-- Use `Req` for HTTP requests (not HTTPoison/Tesla)
-- LiveView templates must use `<Layouts.app>`
-- Use `<.icon name="hero-*">` for icons
-- Use streams for lists in LiveView
-- Context functions receive `user_id` or `scope` as the first argument
+- Use `mix ecto.gen.migration name_in_snake_case` for normal schema changes.
+- Preserve TimescaleDB-specific behavior when editing hypertables, compression, retention, or continuous aggregates.
+- When the user explicitly directs a baseline rewrite for disposable environments, follow that instruction and update
+  docs/tests together.
 
-## Tests
+## Pull Requests
 
-### Writing Tests
+A good PR should include:
 
-- Place tests in `test/` mirroring the `lib/` structure
-- Use fixtures and factories when appropriate
-- Test success and failure cases
-- Keep tests fast and isolated
+- a clear problem statement
+- the implementation summary
+- verification commands that were actually run
+- doc updates if behavior, setup, or public APIs changed
 
-### Running Tests
+Before opening the PR:
 
 ```bash
-# All tests
-mix test
-
-# With coverage
-mix test --cover
-
-# Specific tests
-mix test test/streamix/iptv_test.exs
-mix test test/streamix/iptv_test.exs:42  # Specific line
+mix precommit
 ```
 
-## Questions?
+Never commit:
 
-If you have questions about how to contribute:
+- `.env` files
+- secrets or API tokens
+- plaintext IPTV credentials
+- generated local artifacts that are already ignored
 
-1. Check existing documentation
-2. Search previous issues
-3. Open a new issue with the `question` tag
+## Security Issues
 
----
-
-Thank you for your contribution to making Streamix better!
+Do not open a public issue for a suspected vulnerability. Follow [SECURITY.md](SECURITY.md) instead.
