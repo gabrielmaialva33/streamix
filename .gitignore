@@ -65,3 +65,4 @@ docs/superpowers
 
 # Git worktrees
 .worktrees/
+*.png
