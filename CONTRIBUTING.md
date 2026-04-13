@@ -69,10 +69,10 @@ Open an issue with:
 3. Expected vs actual behavior
 4. Relevant logs, screenshots, or failing requests
 5. Environment details:
-   - Elixir / OTP version
-   - Browser or client type
-   - Database and Docker setup
-   - Whether optional services such as Redis / Qdrant / RabbitMQ were enabled
+    - Elixir / OTP version
+    - Browser or client type
+    - Database and Docker setup
+    - Whether optional services such as Redis / Qdrant / RabbitMQ were enabled
 
 ### Improvements
 

@@ -130,9 +130,15 @@ from the actual git history, release tags, and the current repository state.
 - Base web layer, provider validation, and developer tooling scaffold.
 
 [Unreleased]: https://github.com/gabrielmaialva33/streamix/compare/v1.5.0...HEAD
+
 [v1.5.0]: https://github.com/gabrielmaialva33/streamix/compare/v1.4.0...v1.5.0
+
 [v1.4.0]: https://github.com/gabrielmaialva33/streamix/compare/v1.3.0...v1.4.0
+
 [v1.3.0]: https://github.com/gabrielmaialva33/streamix/compare/v1.2.0...v1.3.0
+
 [v1.2.0]: https://github.com/gabrielmaialva33/streamix/compare/v1.1.0...v1.2.0
+
 [v1.1.0]: https://github.com/gabrielmaialva33/streamix/compare/v1.0.0...v1.1.0
+
 [v1.0.0]: https://github.com/gabrielmaialva33/streamix/releases/tag/v1.0.0

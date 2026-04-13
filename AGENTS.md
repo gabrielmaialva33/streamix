@@ -65,21 +65,21 @@ Important local setup facts:
 
 ## Common Commands
 
-| Command | Purpose |
-| --- | --- |
-| `mix setup` | deps, DB setup, seeds, asset setup/build |
-| `mix phx.server` | run the web app |
-| `iex -S mix phx.server` | run with IEx |
-| `mix test` | full test suite |
-| `mix test path/to/test.exs` | targeted test file |
-| `mix test path/to/test.exs:42` | targeted test by line |
-| `mix precommit` | compile warnings-as-errors, deps.unlock, format, credo, test |
-| `mix quality` | compile, credo, test, dialyzer |
-| `mix ecto.migrate` | run migrations |
-| `mix ecto.reset` | drop, create, migrate, seed |
-| `mix assets.build` | build CSS + JS |
-| `mix assets.deploy` | minify and digest assets |
-| `cd assets && npm ci` | install frontend dependencies |
+| Command                        | Purpose                                                      |
+|--------------------------------|--------------------------------------------------------------|
+| `mix setup`                    | deps, DB setup, seeds, asset setup/build                     |
+| `mix phx.server`               | run the web app                                              |
+| `iex -S mix phx.server`        | run with IEx                                                 |
+| `mix test`                     | full test suite                                              |
+| `mix test path/to/test.exs`    | targeted test file                                           |
+| `mix test path/to/test.exs:42` | targeted test by line                                        |
+| `mix precommit`                | compile warnings-as-errors, deps.unlock, format, credo, test |
+| `mix quality`                  | compile, credo, test, dialyzer                               |
+| `mix ecto.migrate`             | run migrations                                               |
+| `mix ecto.reset`               | drop, create, migrate, seed                                  |
+| `mix assets.build`             | build CSS + JS                                               |
+| `mix assets.deploy`            | minify and digest assets                                     |
+| `cd assets && npm ci`          | install frontend dependencies                                |
 
 ## Project Structure
 
@@ -120,16 +120,16 @@ assets/
 
 ## Core Contexts
 
-| Context | Module | Responsibility |
-| --- | --- | --- |
-| Accounts | `Streamix.Accounts` | Users, password auth, roles, session tokens, settings |
-| Access | `Streamix.Access` | Permissions and role/user grants |
-| IPTV | `Streamix.Iptv` | Providers, sync, catalog access, EPG, favorites, history |
-| AI | `Streamix.AI.*` | Embeddings, semantic search, user analytics, Qdrant integration |
-| Billing | `Streamix.Billing` | Plans, subscriptions, premium access |
-| Library | `Streamix.Library` | Shared content references across content types |
-| Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence |
-| Queue | `Streamix.Queue` | Optional RabbitMQ + Broadway execution path |
+| Context     | Module                | Responsibility                                                  |
+|-------------|-----------------------|-----------------------------------------------------------------|
+| Accounts    | `Streamix.Accounts`   | Users, password auth, roles, session tokens, settings           |
+| Access      | `Streamix.Access`     | Permissions and role/user grants                                |
+| IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG, favorites, history        |
+| AI          | `Streamix.AI.*`       | Embeddings, semantic search, user analytics, Qdrant integration |
+| Billing     | `Streamix.Billing`    | Plans, subscriptions, premium access                            |
+| Library     | `Streamix.Library`    | Shared content references across content types                  |
+| Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence                            |
+| Queue       | `Streamix.Queue`      | Optional RabbitMQ + Broadway execution path                     |
 
 ## Routes and Surfaces
 
@@ -156,16 +156,16 @@ API surfaces under `/api/v1`:
 
 ## Background Jobs
 
-| Worker | Schedule / Trigger | Queue |
-| --- | --- | --- |
-| `CleanupOrphanedDataWorker` | daily at 02:00 | `default` |
-| `SyncAllProvidersWorker` | every 6h | `sync` |
-| `SyncGlobalProviderWorker` | every 4h | `sync` |
-| `SyncGindexProviderWorker` | daily at 03:00 | `sync` |
-| `SyncEpgWorker` | on demand | `sync` |
-| `SyncSeriesDetailsWorker` | on demand | `series_details` |
-| `IndexEmbeddingsWorker` | daily at 05:00 | `ai` |
-| `UpdateUserProfileWorker` | triggered from analytics flows | `ai` / async |
+| Worker                      | Schedule / Trigger             | Queue            |
+|-----------------------------|--------------------------------|------------------|
+| `CleanupOrphanedDataWorker` | daily at 02:00                 | `default`        |
+| `SyncAllProvidersWorker`    | every 6h                       | `sync`           |
+| `SyncGlobalProviderWorker`  | every 4h                       | `sync`           |
+| `SyncGindexProviderWorker`  | daily at 03:00                 | `sync`           |
+| `SyncEpgWorker`             | on demand                      | `sync`           |
+| `SyncSeriesDetailsWorker`   | on demand                      | `series_details` |
+| `IndexEmbeddingsWorker`     | daily at 05:00                 | `ai`             |
+| `UpdateUserProfileWorker`   | triggered from analytics flows | `ai` / async     |
 
 ## Repo-Specific Conventions
 
@@ -223,7 +223,8 @@ API surfaces under `/api/v1`:
 
 - Auth is password-based with bcrypt. Do not document or implement magic links.
 - Provider credentials are stored via `Streamix.Iptv.EncryptedField`; never log or persist plaintext passwords.
-- All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through `Streamix.Iptv.Gindex.Client`.
+- All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through
+  `Streamix.Iptv.Gindex.Client`.
 - Do not consume single-use IPTV tokens while resolving redirect chains. Use the existing manual redirect approach.
 - RabbitMQ is optional. Respect `RABBITMQ_ENABLED`; the default path is Oban.
 - GIndex is rate-limited hard. Keep sequential behavior where the code expects it.

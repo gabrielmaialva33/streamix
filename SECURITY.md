@@ -5,10 +5,10 @@
 Streamix does not currently maintain multiple supported release branches. Security fixes land on the current `master`
 branch and in the latest published container image.
 
-| Version / branch | Supported |
-| --- | --- |
-| `master` / current `HEAD` | Yes |
-| `ghcr.io/gabrielmaialva33/streamix:latest` | Yes |
+| Version / branch                            | Supported    |
+|---------------------------------------------|--------------|
+| `master` / current `HEAD`                   | Yes          |
+| `ghcr.io/gabrielmaialva33/streamix:latest`  | Yes          |
 | Historical tags (`v1.0.0` through `v1.5.0`) | No backports |
 
 ## Reporting a Vulnerability
@@ -45,12 +45,12 @@ Helpful examples of affected surfaces in this repo:
 
 Current response targets are best effort:
 
-| Stage | Target |
-| --- | --- |
-| Acknowledgement | within 72 hours |
-| Initial triage | within 7 days |
-| Follow-up status updates | weekly while active |
-| Fix timeline | depends on severity and reproducibility |
+| Stage                    | Target                                  |
+|--------------------------|-----------------------------------------|
+| Acknowledgement          | within 72 hours                         |
+| Initial triage           | within 7 days                           |
+| Follow-up status updates | weekly while active                     |
+| Fix timeline             | depends on severity and reproducibility |
 
 We will do our best to:
 
