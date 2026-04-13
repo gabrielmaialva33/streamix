@@ -200,13 +200,13 @@ defmodule StreamixWeb.Content.SeriesLive do
 
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <div class="flex flex-col gap-4">
-        <%!-- Source and content tabs row --%>
-        <div class="flex flex-wrap items-center gap-3">
+    <div class="space-y-4 sm:space-y-5">
+      <div class="browse-toolbar">
+        <%!-- Row 1: Source toggle + Content tabs --%>
+        <div class="browse-toolbar__row">
           <%= if @mode == :browse do %>
             <.source_tabs selected={@source} path="/browse/series" />
-            <div class="hidden sm:block w-px h-8 bg-border" />
+            <div class="browse-toolbar__divider" />
             <.browse_tabs
               selected={:series}
               source={@source}
@@ -233,8 +233,8 @@ defmodule StreamixWeb.Content.SeriesLive do
           current_scope={@current_scope}
         />
 
-        <%!-- Filters row --%>
-        <div class="flex flex-wrap items-center gap-3">
+        <%!-- Row 2: Category chips + Search --%>
+        <div class="browse-toolbar__row">
           <.category_filter_v2
             :if={@source == "iptv" && length(@categories) > 0}
             categories={@categories}

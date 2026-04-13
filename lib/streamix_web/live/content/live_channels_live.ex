@@ -205,13 +205,13 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="space-y-4 sm:space-y-6">
-      <%!-- Navigation tabs - always visible on mobile --%>
-      <div class="space-y-3">
-        <%= if @mode == :browse do %>
-          <div class="flex items-center gap-2 sm:gap-4">
+    <div class="space-y-4 sm:space-y-5">
+      <div class="browse-toolbar">
+        <%!-- Row 1: Source toggle + Content tabs --%>
+        <div class="browse-toolbar__row">
+          <%= if @mode == :browse do %>
             <.source_tabs selected="iptv" path="/browse" gindex_path="/browse/movies" />
-            <div class="hidden sm:block w-px h-8 bg-border" />
+            <div class="browse-toolbar__divider" />
             <.browse_tabs
               selected={:live}
               source="iptv"
@@ -223,20 +223,20 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
                 }
               }
             />
-          </div>
-        <% else %>
-          <.content_tabs
-            selected={:live}
-            provider_id={@provider.id}
-            counts={
-              %{
-                live: @provider.live_channels_count,
-                movies: @provider.movies_count,
-                series: @provider.series_count
+          <% else %>
+            <.content_tabs
+              selected={:live}
+              provider_id={@provider.id}
+              counts={
+                %{
+                  live: @provider.live_channels_count,
+                  movies: @provider.movies_count,
+                  series: @provider.series_count
+                }
               }
-            }
-          />
-        <% end %>
+            />
+          <% end %>
+        </div>
 
         <.premium_cta_banner
           :if={@mode == :browse and not @premium_access}
@@ -244,16 +244,16 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           current_scope={@current_scope}
         />
 
-        <%!-- Filters row --%>
-        <div class="flex items-center gap-2 sm:gap-4">
+        <%!-- Row 2: Category chips + Search --%>
+        <div class="browse-toolbar__row">
           <.category_filter_v2 categories={@categories} selected={@selected_category} />
-          <.search_input value={@search} placeholder="Buscar canais ao vivo..." />
+          <.search_input value={@search} placeholder="Buscar canais..." />
           <%= if @mode == :provider do %>
             <button
               type="button"
               phx-click="sync_provider"
               disabled={@provider.sync_status in ["pending", "syncing"]}
-              class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-surface hover:bg-surface-hover border border-border text-text-primary font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              class="segmented-control__item flex-shrink-0"
               title={"Última sinc: #{format_relative_time(@provider.live_synced_at)}"}
             >
               <.icon

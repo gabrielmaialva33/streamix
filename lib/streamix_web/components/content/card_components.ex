@@ -37,7 +37,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"movie-card-#{@movie.id}"}
       phx-hook="ContentCard"
-      class="group cursor-pointer poster-card-wrapper"
+      class="group cursor-pointer poster-card-wrapper card-glow"
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
@@ -205,7 +205,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"series-card-#{@series.id}"}
       phx-hook="ContentCard"
-      class="group cursor-pointer poster-card-wrapper"
+      class="group cursor-pointer poster-card-wrapper card-glow"
       data-content-id={@series.id}
       data-content-type="series"
       data-source-type={@source}

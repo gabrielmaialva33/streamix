@@ -396,7 +396,7 @@ defmodule StreamixWeb.AppComponents do
     <div class="group relative">
       <.link
         navigate={~p"/watch/live_channel/#{@channel.id}"}
-        class="block rounded-xl overflow-hidden bg-surface-elevated border border-glass-border hover:border-brand/30 transition-all hover:shadow-card-hover hover:-translate-y-1 cursor-pointer"
+        class="block rounded-xl overflow-hidden bg-surface-elevated border border-glass-border hover:border-brand/30 transition-all card-glow hover:-translate-y-1 cursor-pointer"
       >
         <%!-- Channel logo area --%>
         <div class="relative aspect-video bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 flex items-center justify-center p-4 sm:p-6">
@@ -429,8 +429,7 @@ defmodule StreamixWeb.AppComponents do
 
           <%!-- Live badge --%>
           <span class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-md bg-brand/90 text-white backdrop-blur-sm">
-            <span class="w-1.5 h-1.5 rounded-full bg-white live-pulse" />
-            AO VIVO
+            <span class="w-1.5 h-1.5 rounded-full bg-white live-pulse" /> AO VIVO
           </span>
 
           <%!-- Play overlay on hover --%>
@@ -449,7 +448,8 @@ defmodule StreamixWeb.AppComponents do
             class={[
               "absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-sm transition-all",
               @is_favorite && "text-brand bg-brand/20",
-              !@is_favorite && "text-white/60 bg-black/30 opacity-0 group-hover:opacity-100 hover:text-brand hover:bg-brand/20"
+              !@is_favorite &&
+                "text-white/60 bg-black/30 opacity-0 group-hover:opacity-100 hover:text-brand hover:bg-brand/20"
             ]}
           >
             <.icon
@@ -664,70 +664,109 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
-  Renders a category filter dropdown.
+  Category filter with quick-access chips + overflow dropdown for many categories.
+  Shows top 6 as chips, rest in a "Mais" dropdown.
   """
   attr :categories, :list, required: true
   attr :selected, :any, default: nil
   attr :on_change, :string, default: "filter_category"
+  attr :visible_count, :integer, default: 6
 
   def category_filter_v2(assigns) do
+    {visible, overflow} = Enum.split(assigns.categories, assigns.visible_count)
+    selected_in_overflow = in_overflow?(overflow, assigns.selected)
     selected_name = find_category_name(assigns.categories, assigns.selected)
-    assigns = assign(assigns, :selected_name, selected_name)
+
+    assigns =
+      assigns
+      |> assign(:visible, visible)
+      |> assign(:overflow, overflow)
+      |> assign(:selected_in_overflow, selected_in_overflow)
+      |> assign(:selected_name, selected_name)
 
     ~H"""
-    <div class="relative" x-data="{ open: false }" @click.outside="open = false">
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary bg-surface border border-border rounded-lg hover:bg-surface-hover transition-colors"
-        @click="open = !open"
-      >
-        <.icon name="hero-funnel" class="size-4" />
-        <span>{@selected_name || "Todas as Categorias"}</span>
-        <span class="transition-transform" x-bind:class="open && 'rotate-180'">
-          <.icon name="hero-chevron-down" class="size-4" />
-        </span>
-      </button>
+    <div class="flex items-center gap-1.5 min-w-0">
+      <%!-- Scrollable chips --%>
+      <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-hide min-w-0">
+        <button
+          type="button"
+          phx-click={@on_change}
+          phx-value-category=""
+          class={["category-chip", !@selected && "category-chip--active"]}
+        >
+          Todos
+        </button>
+        <button
+          :for={category <- @visible}
+          type="button"
+          phx-click={@on_change}
+          phx-value-category={category.id}
+          class={[
+            "category-chip",
+            to_string(@selected) == to_string(category.id) && "category-chip--active"
+          ]}
+        >
+          {category.name}
+        </button>
+      </div>
+      <%!-- "Mais" dropdown — Alpine.js with phx-update="ignore" for LiveView compat --%>
       <div
-        x-show="open"
-        x-transition:enter="transition ease-out duration-100"
-        x-transition:enter-start="opacity-0 scale-95"
-        x-transition:enter-end="opacity-100 scale-100"
-        x-transition:leave="transition ease-in duration-75"
-        x-transition:leave-start="opacity-100 scale-100"
-        x-transition:leave-end="opacity-0 scale-95"
-        style="display: none"
-        class="absolute left-0 z-50 mt-2 w-56 max-h-96 overflow-y-auto bg-surface border border-border rounded-lg shadow-xl origin-top-left"
+        :if={@overflow != []}
+        id="category-more-wrapper"
+        phx-update="ignore"
+        class="relative flex-shrink-0"
+        x-data="{ open: false }"
+        @click.outside="open = false"
       >
-        <div class="py-1">
-          <button
-            type="button"
-            phx-click={@on_change}
-            phx-value-category=""
-            class={[
-              "w-full px-4 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
-              !@selected && "text-brand font-medium bg-brand/5"
-            ]}
-            @click="open = false"
-          >
-            Todas as Categorias
-          </button>
-          <button
-            :for={category <- @categories}
-            type="button"
-            phx-click={@on_change}
-            phx-value-category={category.id}
-            class={[
-              "w-full px-4 py-2 text-left text-sm hover:bg-surface-hover transition-colors",
-              to_string(@selected) == to_string(category.id) && "text-brand font-medium bg-brand/5"
-            ]}
-            @click="open = false"
-          >
-            {category.name}
-          </button>
+        <button
+          type="button"
+          class={[
+            "category-chip inline-flex items-center gap-1",
+            @selected_in_overflow && "category-chip--active"
+          ]}
+          @click="open = !open"
+        >
+          <span>{if @selected_in_overflow, do: @selected_name, else: "Mais"}</span>
+          <.icon name="hero-chevron-down-mini" class="size-3" />
+        </button>
+        <div
+          x-show="open"
+          x-transition:enter="transition ease-out duration-100"
+          x-transition:enter-start="opacity-0 scale-95"
+          x-transition:enter-end="opacity-100 scale-100"
+          x-transition:leave="transition ease-in duration-75"
+          x-transition:leave-start="opacity-100 scale-100"
+          x-transition:leave-end="opacity-0 scale-95"
+          x-cloak
+          class="absolute right-0 z-50 mt-2 w-52 max-h-72 overflow-y-auto glass rounded-xl shadow-dropdown"
+        >
+          <div class="py-1">
+            <button
+              :for={category <- @overflow}
+              type="button"
+              phx-click={@on_change}
+              phx-value-category={category.id}
+              class={[
+                "w-full px-3 py-2 text-left text-xs hover:bg-white/5 transition-colors",
+                to_string(@selected) == to_string(category.id) &&
+                  "text-brand font-medium"
+              ]}
+              @click="open = false"
+            >
+              {category.name}
+            </button>
+          </div>
         </div>
       </div>
     </div>
     """
+  end
+
+  defp in_overflow?(overflow, nil) when is_list(overflow), do: false
+
+  defp in_overflow?(overflow, selected) do
+    selected_str = to_string(selected)
+    Enum.any?(overflow, fn cat -> to_string(cat.id) == selected_str end)
   end
 
   defp find_category_name(_categories, nil), do: nil
@@ -741,7 +780,7 @@ defmodule StreamixWeb.AppComponents do
   end
 
   @doc """
-  Renders a search input.
+  Search input with expandable focus state.
   """
   attr :value, :string, default: ""
   attr :placeholder, :string, default: "Buscar..."
@@ -749,21 +788,23 @@ defmodule StreamixWeb.AppComponents do
 
   def search_input(assigns) do
     ~H"""
-    <form phx-change={@on_change} phx-submit={@on_change} class="flex-1 max-w-md">
-      <div class="relative">
-        <.icon
-          name="hero-magnifying-glass"
-          class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-muted"
-        />
-        <input
-          type="search"
-          name="search"
-          value={@value}
-          placeholder={@placeholder}
-          phx-debounce="300"
-          class="w-full pl-10 pr-4 py-2 text-sm bg-surface border border-border rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
-        />
-      </div>
+    <form
+      phx-change={@on_change}
+      phx-submit={@on_change}
+      class="search-expand flex-1 max-w-xs sm:max-w-sm"
+    >
+      <.icon
+        name="hero-magnifying-glass"
+        class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-text-muted pointer-events-none z-10"
+      />
+      <input
+        type="search"
+        name="search"
+        value={@value}
+        placeholder={@placeholder}
+        phx-debounce="300"
+        class="search-expand__input"
+      />
     </form>
     """
   end
