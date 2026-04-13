@@ -480,6 +480,17 @@ defmodule StreamixWeb.HomeComponents do
   def hero_fallback(assigns) do
     ~H"""
     <div class="absolute inset-0 bg-gradient-to-br from-brand/20 via-background to-accent/10" />
+    <div class="absolute inset-0 flex items-center justify-center">
+      <div class="text-center px-6 max-w-lg">
+        <div class="w-16 h-16 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-4">
+          <.icon name="hero-play-solid" class="size-8 text-brand" />
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold text-white mb-2">Bem-vindo ao Streamix</h2>
+        <p class="text-text-secondary text-sm sm:text-base">
+          Explore filmes, séries e TV ao vivo dos seus provedores.
+        </p>
+      </div>
+    </div>
     """
   end
 
@@ -1281,8 +1292,13 @@ defmodule StreamixWeb.HomeComponents do
   def get_backdrop(content) do
     # Use hero size (w1280) for large backgrounds - Netflix pattern
     case backdrop_urls(content) do
-      [first | _] -> ImageProxy.hero(first)
-      _ -> nil
+      [first | _] ->
+        ImageProxy.hero(first)
+
+      _ ->
+        # Fallback to cover image when no backdrop asset exists
+        cover = Map.get(content, :cover) || Map.get(content, :stream_icon)
+        if cover && cover != "", do: ImageProxy.hero(cover), else: nil
     end
   end
 

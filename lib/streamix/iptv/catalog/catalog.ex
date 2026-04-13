@@ -72,7 +72,25 @@ defmodule Streamix.Iptv.Catalog do
         index = rem(seed, length(series_list))
         {:series, Enum.at(series_list, index)}
       else
-        nil
+        # Final fallback: movies with stream_icon (no backdrop asset required)
+        fallback_movies =
+          Movie
+          |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+          |> where([m, p], p.visibility in [:global, :public])
+          |> where([m, _p], not is_nil(m.stream_icon) and m.stream_icon != "")
+          |> where([m, _p], not is_nil(m.plot) and m.plot != "")
+          |> order_by([m], desc: m.rating)
+          |> limit(10)
+          |> distinct([m], m.id)
+          |> preload(^@featured_preloads)
+          |> Repo.all()
+
+        if fallback_movies != [] do
+          index = rem(seed, length(fallback_movies))
+          {:movie, Enum.at(fallback_movies, index)}
+        else
+          nil
+        end
       end
     end
   rescue
