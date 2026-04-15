@@ -41,6 +41,20 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
     |> Repo.update!()
   end
 
+  # `inserted_at` has 1s precision in Postgres utc_datetime columns. In fast
+  # tests two inserts can land in the same second, making created_desc tests
+  # flaky. This forces a known gap by rewriting the column directly.
+  defp backdate!(record, seconds_ago) do
+    ago =
+      DateTime.utc_now()
+      |> DateTime.add(-seconds_ago, :second)
+      |> DateTime.truncate(:second)
+
+    record
+    |> Ecto.Changeset.change(%{inserted_at: ago})
+    |> Repo.update!()
+  end
+
   describe "GET /api/v1/catalog/series" do
     test "returns 200 with paginated series (regression — used to 500)", %{
       conn: conn,
@@ -97,7 +111,7 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
     end
 
     test "supports sort=created_desc on series", %{conn: conn, provider: provider} do
-      older = public_series!(provider, %{name: "Older Series"})
+      older = provider |> public_series!(%{name: "Older Series"}) |> backdate!(60)
       newer = public_series!(provider, %{name: "Newer Series"})
 
       response =
@@ -113,7 +127,11 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
 
   describe "GET /api/v1/catalog/movies with sort" do
     setup %{provider: provider} do
-      older = public_movie!(provider, %{name: "Older", year: 2010, rating: Decimal.new("9.5")})
+      older =
+        provider
+        |> public_movie!(%{name: "Older", year: 2010, rating: Decimal.new("9.5")})
+        |> backdate!(60)
+
       newer = public_movie!(provider, %{name: "Newer", year: 2025, rating: Decimal.new("6.0")})
       {:ok, older: older, newer: newer}
     end
