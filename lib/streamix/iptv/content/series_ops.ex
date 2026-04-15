@@ -72,14 +72,11 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_gindex_anime_with_seasons(integer()) :: Series.t() | nil
   def get_gindex_anime_with_seasons(id) do
-    seasons_query = from(s in Season, order_by: s.season_number)
-    episodes_query = from(e in Episode, order_by: e.episode_num)
-
     Series
     |> where(id: ^id)
     |> where([s], not is_nil(s.gindex_path))
     |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
-    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
     |> preload(:provider)
     |> Repo.one()
   end
@@ -139,13 +136,10 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_gindex_with_seasons(integer()) :: Series.t() | nil
   def get_gindex_with_seasons(id) do
-    seasons_query = from(s in Season, order_by: s.season_number)
-    episodes_query = from(e in Episode, order_by: e.episode_num)
-
     Series
     |> where(id: ^id)
     |> where([s], not is_nil(s.gindex_path))
-    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
     |> preload(:provider)
     |> Repo.one()
   end
@@ -291,32 +285,39 @@ defmodule Streamix.Iptv.SeriesOps do
     |> Repo.one()
   end
 
+  # Hide season 0 — the Xtream / TMDB feeds use it for "Specials" (trailers,
+  # behind-the-scenes, interviews). It confuses the UI since end users
+  # expect "Temporada 1" first. Rows stay in the DB for future use.
+  defp public_seasons_query do
+    from(s in Season, where: s.season_number > 0, order_by: s.season_number)
+  end
+
+  defp public_episodes_query do
+    from(e in Episode, order_by: e.episode_num)
+  end
+
   @doc """
   Gets a series with its seasons and episodes preloaded.
+  Season 0 ("Specials") is hidden — see `public_seasons_query/0`.
   """
   @spec get_with_seasons(integer()) :: Series.t() | nil
   def get_with_seasons(id) do
-    seasons_query = from(s in Season, order_by: s.season_number)
-    episodes_query = from(e in Episode, order_by: e.episode_num)
-
     Series
     |> where(id: ^id)
-    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
     |> preload(^[:provider | @detail_preloads])
     |> Repo.one()
   end
 
   @doc """
   Gets a series with its seasons and episodes preloaded. Raises if not found.
+  Season 0 ("Specials") is hidden — see `public_seasons_query/0`.
   """
   @spec get_with_seasons!(integer()) :: Series.t()
   def get_with_seasons!(id) do
-    seasons_query = from(s in Season, order_by: s.season_number)
-    episodes_query = from(e in Episode, order_by: e.episode_num)
-
     Series
     |> where(id: ^id)
-    |> preload(seasons: ^{seasons_query, episodes: episodes_query})
+    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
     |> preload(^[:provider | @detail_preloads])
     |> Repo.one!()
   end

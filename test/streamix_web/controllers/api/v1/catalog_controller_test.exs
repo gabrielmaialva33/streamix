@@ -3,6 +3,7 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
 
   import Streamix.IptvFixtures
 
+  alias Streamix.Iptv.{CatalogItem, Episode, Season}
   alias Streamix.Repo
 
   setup do
@@ -199,6 +200,83 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
       response = conn |> get(~p"/api/v1/catalog/featured") |> json_response(200)
       assert response["featured"] == nil
       assert is_map(response["stats"])
+    end
+  end
+
+  describe "GET /api/v1/catalog/series/:id — hides Season 0 (Specials)" do
+    test "detail response skips season 0 but keeps positive seasons", %{
+      conn: conn,
+      provider: provider
+    } do
+      series = public_series!(provider, %{name: "Show With Specials", tmdb_id: "tt9"})
+
+      for number <- [0, 1, 2] do
+        season =
+          %Season{}
+          |> Season.changeset(%{
+            season_number: number,
+            name: "S#{number}",
+            series_id: series.id
+          })
+          |> Repo.insert!()
+
+        ci =
+          %CatalogItem{}
+          |> CatalogItem.changeset(%{content_type: "episode", provider_id: provider.id})
+          |> Repo.insert!()
+
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: System.unique_integer([:positive]),
+          episode_num: 1,
+          title: "S#{number}E1",
+          season_id: season.id,
+          catalog_item_id: ci.id
+        })
+        |> Repo.insert!()
+      end
+
+      response =
+        conn
+        |> get(~p"/api/v1/catalog/series/#{series.id}")
+        |> json_response(200)
+
+      season_numbers = response["seasons"] |> Enum.map(& &1["season_number"])
+      assert 0 not in season_numbers
+      assert Enum.sort(season_numbers) == [1, 2]
+      assert response["season_count"] == 2
+    end
+  end
+
+  describe "GET /api/v1/catalog/channels — has_more honors dead-channel filter" do
+    test "has_more is false on last page when remainder is dead", %{
+      conn: conn,
+      provider: provider
+    } do
+      # 2 healthy channels, 1 dead. list() returns 2, count() must also 2 —
+      # otherwise has_more would stay true forever.
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      _alive_a = channel_fixture(provider, %{name: "Alive A"})
+      _alive_b = channel_fixture(provider, %{name: "Alive B"})
+
+      dead = channel_fixture(provider, %{name: "Dead Gone"})
+
+      dead
+      |> Ecto.Changeset.change(%{dead_since: now})
+      |> Repo.update!()
+
+      response =
+        conn
+        |> get(~p"/api/v1/catalog/channels?limit=50")
+        |> json_response(200)
+
+      assert response["total"] == 2
+      assert length(response["channels"]) == 2
+      assert response["has_more"] == false
+
+      names = response["channels"] |> Enum.map(& &1["name"])
+      refute "Dead Gone" in names
     end
   end
 

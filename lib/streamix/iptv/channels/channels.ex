@@ -222,13 +222,33 @@ defmodule Streamix.Iptv.Channels do
   end
 
   @doc """
-  Counts live channels for a provider.
+  Counts live channels visible to public listings for a provider.
+
+  Mirrors the filters applied by `list/2` / `list_with_epg/2`:
+    * excludes channels marked dead within the recheck window
+    * excludes adult channels unless `:show_adult` is true
+
+  Without this mirroring, `has_more` in paginated API responses would
+  remain `true` on the final page (total counted dead rows that the
+  list never returns).
   """
-  @spec count(integer()) :: integer()
-  def count(provider_id) do
-    LiveChannel
-    |> where(provider_id: ^provider_id)
-    |> Repo.aggregate(:count)
+  @spec count(integer(), keyword()) :: integer()
+  def count(provider_id, opts \\ []) do
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    query =
+      LiveChannel
+      |> where(provider_id: ^provider_id)
+      |> exclude_dead()
+
+    query =
+      if show_adult do
+        query
+      else
+        AdultFilter.exclude_adult_channels(query, provider_id)
+      end
+
+    Repo.aggregate(query, :count)
   end
 
   # =============================================================================
