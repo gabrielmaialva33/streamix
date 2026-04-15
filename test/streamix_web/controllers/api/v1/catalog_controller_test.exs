@@ -77,6 +77,38 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
       response = conn |> get(~p"/api/v1/catalog/series") |> json_response(200)
       assert response == %{"series" => [], "total" => 0, "has_more" => false}
     end
+
+    test "supports sort=rating_desc without crashing", %{conn: conn, provider: provider} do
+      public_series!(provider, %{name: "Low", rating: Decimal.new("5.0")})
+      public_series!(provider, %{name: "High", rating: Decimal.new("9.0")})
+      public_series!(provider, %{name: "Null rating", rating: nil})
+
+      response =
+        conn
+        |> get(~p"/api/v1/catalog/series?sort=rating_desc")
+        |> json_response(200)
+
+      names = response["series"] |> Enum.map(& &1["name"])
+      assert "High" in names
+      assert "Low" in names
+      # rating_desc with NULLS LAST means non-null ratings come first
+      assert Enum.find_index(names, &(&1 == "High")) <
+               Enum.find_index(names, &(&1 == "Null rating"))
+    end
+
+    test "supports sort=created_desc on series", %{conn: conn, provider: provider} do
+      older = public_series!(provider, %{name: "Older Series"})
+      newer = public_series!(provider, %{name: "Newer Series"})
+
+      response =
+        conn
+        |> get(~p"/api/v1/catalog/series?sort=created_desc")
+        |> json_response(200)
+
+      [first, second | _] = response["series"]
+      assert first["id"] == newer.id
+      assert second["id"] == older.id
+    end
   end
 
   describe "GET /api/v1/catalog/movies with sort" do
