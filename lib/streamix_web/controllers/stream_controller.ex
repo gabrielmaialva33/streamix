@@ -13,6 +13,7 @@ defmodule StreamixWeb.StreamController do
   @max_redirects 5
 
   alias Streamix.Iptv.Channels
+  alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamToken
 
   @doc """
@@ -32,7 +33,14 @@ defmodule StreamixWeb.StreamController do
   Credentials are never exposed to the client.
   """
   def proxy(conn, %{"token" => token}) do
-    case StreamToken.verify_and_get_url(token) do
+    # A valid X-API-Key acts as integration-level authorization: the caller
+    # (TV / mobile app) is trusted to have already authenticated its end
+    # user out-of-band, so we skip the subscription / premium check. This
+    # is how the MVP TV app — which has no login yet — streams global
+    # catalog content.
+    opts = [bypass_subscription: ApiKeyAuth.valid_api_key?(conn)]
+
+    case StreamToken.verify_and_get_url(token, opts) do
       {:ok, url, content_type, meta} ->
         Logger.debug("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
         stream_by_type(conn, url, content_type, meta)

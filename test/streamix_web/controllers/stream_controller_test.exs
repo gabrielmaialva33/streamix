@@ -29,6 +29,83 @@ defmodule StreamixWeb.StreamControllerTest do
     assert json_response(conn, 403) == %{"error" => "Subscription required"}
   end
 
+  describe "X-API-Key bypasses subscription check" do
+    setup do
+      original_api_keys = Application.get_env(:streamix, :api_keys, [])
+      Application.put_env(:streamix, :api_keys, ["stream-test-key"])
+      on_exit(fn -> Application.put_env(:streamix, :api_keys, original_api_keys) end)
+      :ok
+    end
+
+    test "public-catalog token (user_id=nil) + valid X-API-Key skips subscription 403", %{
+      conn: conn
+    } do
+      owner = user_fixture()
+
+      provider =
+        provider_fixture(owner, %{
+          visibility: "global",
+          is_system: true,
+          # Non-routable address → upstream resolve will bad_gateway, but we
+          # only care that auth passed.
+          url: "http://127.0.0.1:65535"
+        })
+
+      movie = movie_fixture(provider, %{stream_id: 12_345})
+      token = StreamToken.sign_movie(movie.id, nil)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", "stream-test-key")
+        |> get("/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+      # The request MUST NOT be rejected as subscription_required.
+      # Upstream resolve is expected to fail (bad_gateway) in the test setup,
+      # which is fine — past the auth gate is past the auth gate.
+      refute conn.status == 403
+      refute conn.resp_body =~ "Subscription required"
+    end
+
+    test "same token WITHOUT X-API-Key still returns subscription_required", %{conn: conn} do
+      owner = user_fixture()
+
+      provider =
+        provider_fixture(owner, %{
+          visibility: "global",
+          is_system: true,
+          url: "http://127.0.0.1:65535"
+        })
+
+      movie = movie_fixture(provider, %{stream_id: 12_346})
+      token = StreamToken.sign_movie(movie.id, nil)
+
+      conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+      assert json_response(conn, 403) == %{"error" => "Subscription required"}
+    end
+
+    test "invalid X-API-Key does NOT bypass — still subscription_required", %{conn: conn} do
+      owner = user_fixture()
+
+      provider =
+        provider_fixture(owner, %{
+          visibility: "global",
+          is_system: true,
+          url: "http://127.0.0.1:65535"
+        })
+
+      movie = movie_fixture(provider, %{stream_id: 12_347})
+      token = StreamToken.sign_movie(movie.id, nil)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", "wrong-key")
+        |> get("/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+      assert json_response(conn, 403) == %{"error" => "Subscription required"}
+    end
+  end
+
   test "url token falls back to a safe short GET and does not read the full body", %{conn: conn} do
     owner = user_fixture()
 

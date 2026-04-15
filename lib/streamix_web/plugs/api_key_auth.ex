@@ -47,6 +47,26 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
     end
   end
 
+  @doc """
+  Returns true when the connection carries a valid X-API-Key header.
+
+  Non-halting — safe to call from controllers (e.g. StreamController) that
+  need to know whether the caller is an authorized integration (TV / mobile
+  app) without running this module as a plug.
+
+  Returns `false` when no keys are configured, the header is missing, or
+  the key doesn't match.
+  """
+  def valid_api_key?(conn) do
+    with true <- api_keys_configured?(),
+         {:ok, key} <- get_api_key(conn),
+         :ok <- validate_api_key(key) do
+      true
+    else
+      _ -> false
+    end
+  end
+
   defp api_keys_configured? do
     case Application.get_env(:streamix, :api_keys, []) do
       [] -> false

@@ -89,8 +89,18 @@ defmodule StreamixWeb.StreamToken do
   - If user_id is present, the content's provider must belong to that user
     or be a public/global provider.
   - If user_id is nil (public catalog token), the provider must be public/global.
+
+  ## Options
+
+    * `:bypass_subscription` — when `true`, skips the subscription / premium
+      access check for global-provider content. The caller is responsible
+      for establishing authorization out-of-band (e.g. by validating a
+      privileged `X-API-Key` on the request before calling verify). Token
+      signature + provider visibility are still verified. Default: `false`.
   """
-  def verify_and_get_url(token) do
+  def verify_and_get_url(token, opts \\ []) do
+    bypass_subscription = Keyword.get(opts, :bypass_subscription, false)
+
     case verify_token(token) do
       {:ok,
        %{
@@ -100,7 +110,8 @@ defmodule StreamixWeb.StreamToken do
          provider_id: provider_id,
          premium_required: premium_required
        }} ->
-        with {:ok, url, "url"} <- handle_url_token(url, user_id, provider_id, premium_required) do
+        with {:ok, url, "url"} <-
+               handle_url_token(url, user_id, provider_id, premium_required, bypass_subscription) do
           {:ok, url, "url", %{content_id: nil}}
         end
 
@@ -111,7 +122,7 @@ defmodule StreamixWeb.StreamToken do
         {:error, :invalid_token}
 
       {:ok, %{type: type, id: id, user_id: user_id}} ->
-        with {:ok, url, ^type} <- handle_content_token(type, id, user_id) do
+        with {:ok, url, ^type} <- handle_content_token(type, id, user_id, bypass_subscription) do
           {:ok, url, type, %{content_id: id}}
         end
 
@@ -144,7 +155,7 @@ defmodule StreamixWeb.StreamToken do
     end
   end
 
-  defp handle_url_token(url, user_id, provider_id, premium_required) do
+  defp handle_url_token(url, user_id, provider_id, premium_required, bypass_subscription) do
     case Iptv.get_provider(provider_id) do
       nil ->
         {:error, :invalid_token}
@@ -153,15 +164,15 @@ defmodule StreamixWeb.StreamToken do
         if premium_required and not Access.global_content?(provider) do
           {:error, :invalid_token}
         else
-          authorize_url_token(url, user_id, provider)
+          authorize_url_token(url, user_id, provider, bypass_subscription)
         end
     end
   end
 
-  defp authorize_url_token(url, user_id, provider) do
+  defp authorize_url_token(url, user_id, provider, bypass_subscription) do
     cond do
       Access.global_content?(provider) ->
-        user_has_global_access?(user_id, provider, url)
+        user_has_global_access?(user_id, provider, url, bypass_subscription)
 
       provider.visibility in [:public, "public"] ->
         validate_direct_url(url)
@@ -174,9 +185,14 @@ defmodule StreamixWeb.StreamToken do
     end
   end
 
-  defp user_has_global_access?(nil, _provider, _url), do: {:error, :subscription_required}
+  # Bypass path: X-API-Key-backed integration. Subscription/user checks are
+  # skipped — the caller is trusted to have already authorized the request.
+  defp user_has_global_access?(_user_id, _provider, url, true), do: validate_direct_url(url)
 
-  defp user_has_global_access?(user_id, provider, url) do
+  defp user_has_global_access?(nil, _provider, _url, _bypass),
+    do: {:error, :subscription_required}
+
+  defp user_has_global_access?(user_id, provider, url, _bypass) do
     case Repo.get(User, user_id) do
       nil ->
         {:error, :subscription_required}
@@ -213,14 +229,14 @@ defmodule StreamixWeb.StreamToken do
 
   defp authorized_private_url_token?(_url, _user_id, _provider), do: {:error, :invalid_token}
 
-  defp handle_content_token(type, id, user_id) do
-    case get_stream_url(type, id, user_id) do
+  defp handle_content_token(type, id, user_id, bypass_subscription) do
+    case get_stream_url(type, id, user_id, bypass_subscription) do
       {:ok, url} -> {:ok, url, type}
       error -> error
     end
   end
 
-  defp get_stream_url("movie", id, user_id) do
+  defp get_stream_url("movie", id, user_id, bypass) do
     case Iptv.get_movie_for_stream(id) do
       nil ->
         {:error, :not_found}
@@ -234,12 +250,13 @@ defmodule StreamixWeb.StreamToken do
           movie,
           "movie",
           movie.stream_id,
-          movie.container_extension
+          movie.container_extension,
+          bypass
         )
     end
   end
 
-  defp get_stream_url("episode", id, user_id) do
+  defp get_stream_url("episode", id, user_id, bypass) do
     case Iptv.get_episode_for_stream(id) do
       nil ->
         {:error, :not_found}
@@ -253,12 +270,13 @@ defmodule StreamixWeb.StreamToken do
           episode,
           "series",
           episode.episode_id,
-          episode.container_extension
+          episode.container_extension,
+          bypass
         )
     end
   end
 
-  defp get_stream_url("channel", id, user_id) do
+  defp get_stream_url("channel", id, user_id, bypass) do
     case Iptv.get_live_channel_for_stream(id) do
       nil ->
         {:error, :not_found}
@@ -266,14 +284,22 @@ defmodule StreamixWeb.StreamToken do
       channel ->
         provider = channel.provider
 
-        build_content_url(provider, user_id, channel, "live", channel.stream_id, "ts")
+        build_content_url(provider, user_id, channel, "live", channel.stream_id, "ts", bypass)
     end
   end
 
-  defp build_content_url(provider, user_id, content, content_path, stream_id, extension) do
+  defp build_content_url(provider, user_id, content, content_path, stream_id, extension, bypass) do
     cond do
       Access.global_content?(provider) ->
-        build_global_content_url(provider, user_id, content, content_path, stream_id, extension)
+        build_global_content_url(
+          provider,
+          user_id,
+          content,
+          content_path,
+          stream_id,
+          extension,
+          bypass
+        )
 
       authorized_for_provider?(user_id, provider) ->
         build_provider_content_url(provider, content_path, stream_id, extension)
@@ -283,11 +309,40 @@ defmodule StreamixWeb.StreamToken do
     end
   end
 
-  defp build_global_content_url(_provider, nil, _content, _content_path, _stream_id, _extension) do
+  # Bypass path — integration-authorized (API key) request, skip user lookup.
+  defp build_global_content_url(
+         provider,
+         _user_id,
+         _content,
+         content_path,
+         stream_id,
+         extension,
+         true
+       ) do
+    build_provider_content_url(provider, content_path, stream_id, extension)
+  end
+
+  defp build_global_content_url(
+         _provider,
+         nil,
+         _content,
+         _content_path,
+         _stream_id,
+         _extension,
+         _bypass
+       ) do
     {:error, :subscription_required}
   end
 
-  defp build_global_content_url(provider, user_id, content, content_path, stream_id, extension) do
+  defp build_global_content_url(
+         provider,
+         user_id,
+         content,
+         content_path,
+         stream_id,
+         extension,
+         _bypass
+       ) do
     case Repo.get(User, user_id) do
       nil ->
         {:error, :subscription_required}
