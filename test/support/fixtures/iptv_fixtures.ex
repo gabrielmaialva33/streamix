@@ -29,6 +29,26 @@ defmodule Streamix.IptvFixtures do
   end
 
   @doc """
+  Creates a system / global provider (visibility: :global, is_system: true).
+  Used to back public catalog + EPG endpoint tests.
+  """
+  def global_provider_fixture(attrs \\ %{}) do
+    alias Streamix.Iptv.Provider
+
+    attrs =
+      attrs
+      |> valid_provider_attrs()
+      |> Map.put(:visibility, :global)
+      |> Map.put(:is_system, true)
+      |> Map.put(:is_active, true)
+      |> Map.put_new(:provider_type, :xtream)
+
+    %Provider{}
+    |> Provider.changeset(attrs)
+    |> Repo.insert!()
+  end
+
+  @doc """
   Creates a CatalogItem for the given content_type.
   """
   def catalog_item_fixture(content_type, provider_id) do

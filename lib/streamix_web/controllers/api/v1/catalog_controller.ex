@@ -40,6 +40,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   defp build_featured_content do
     case Iptv.get_featured_content() do
       {:movie, movie} ->
+        poster = proxy_image(movie.stream_icon)
+
         %{
           id: movie.id,
           type: "movie",
@@ -49,11 +51,13 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           rating: movie.rating && Decimal.to_float(movie.rating),
           genre: Helpers.genre_names(movie.genres),
           plot: movie.plot,
-          poster: proxy_image(movie.stream_icon),
-          backdrop: proxy_image(Movie.backdrop_urls(movie))
+          poster: poster,
+          backdrop: featured_backdrop(Movie.backdrop_urls(movie), poster)
         }
 
       {:series, series} ->
+        poster = proxy_image(series.cover)
+
         %{
           id: series.id,
           type: "series",
@@ -63,8 +67,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           rating: series.rating && Decimal.to_float(series.rating),
           genre: Helpers.genre_names(series.genres),
           plot: series.plot,
-          poster: proxy_image(series.cover),
-          backdrop: proxy_image(Series.backdrop_urls(series))
+          poster: poster,
+          backdrop: featured_backdrop(Series.backdrop_urls(series), poster)
         }
 
       nil ->
@@ -72,10 +76,22 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     end
   end
 
+  # Always returns a non-empty list when a poster exists, so hero rendering
+  # never has to deal with null. Callers can prefer index 0 for the hero bg.
+  defp featured_backdrop([], nil), do: []
+  defp featured_backdrop([], poster), do: [poster]
+
+  defp featured_backdrop(urls, _poster) when is_list(urls) do
+    proxied = proxy_image(urls)
+    if is_list(proxied), do: Enum.reject(proxied, &is_nil/1), else: [proxied]
+  end
+
   @doc """
   GET /api/v1/catalog/movies
   Returns paginated list of movies from public/global providers.
-  Query params: limit, offset, category_id, search
+  Query params: limit, offset, category_id, search, sort.
+
+  Sort values: rating_desc | created_desc | year_desc | name_asc.
   """
   def movies(conn, params) do
     provider = Iptv.get_global_provider()
@@ -85,7 +101,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         limit: min(parse_int(params["limit"], 20), 100),
         offset: parse_int(params["offset"], 0),
         category_id: parse_int(params["category_id"], nil),
-        search: params["search"]
+        search: params["search"],
+        sort: normalize_sort(params["sort"])
       ]
 
       movies = Iptv.list_movies(provider.id, opts)
@@ -121,7 +138,9 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   @doc """
   GET /api/v1/catalog/series
   Returns paginated list of series from public/global providers.
-  Query params: limit, offset, category_id, search
+  Query params: limit, offset, category_id, search, sort.
+
+  Sort values: rating_desc | created_desc | year_desc | name_asc.
   """
   def series(conn, params) do
     provider = Iptv.get_global_provider()
@@ -131,7 +150,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         limit: min(parse_int(params["limit"], 20), 100),
         offset: parse_int(params["offset"], 0),
         category_id: parse_int(params["category_id"], nil),
-        search: params["search"]
+        search: params["search"],
+        sort: normalize_sort(params["sort"])
       ]
 
       series_list = Iptv.list_series(provider.id, opts)
@@ -296,6 +316,60 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     json(conn, %{movies: [], series: [], channels: []})
   end
 
+  @doc """
+  GET /api/v1/catalog/trending?type=movie|series&limit=20
+  Returns content trending by recent watch activity.
+  Falls back to new releases / high-rated when there is no watch history.
+  """
+  def trending(conn, params) do
+    limit = min(parse_int(params["limit"], 20), 50)
+    type = normalize_content_type(params["type"])
+    items = Iptv.list_trending(type, limit: limit)
+    json(conn, %{type: type, items: serialize_items(type, items)})
+  end
+
+  @doc """
+  GET /api/v1/catalog/recent?type=movie|series&limit=20
+  Returns most recently added content from public/global providers.
+  """
+  def recent(conn, params) do
+    limit = min(parse_int(params["limit"], 20), 50)
+    type = normalize_content_type(params["type"])
+    items = Iptv.list_recent(type, limit: limit)
+    json(conn, %{type: type, items: serialize_items(type, items)})
+  end
+
+  @doc """
+  GET /api/v1/catalog/top-rated?type=movie|series&limit=20
+  Returns highest-rated content from public/global providers.
+  """
+  def top_rated(conn, params) do
+    limit = min(parse_int(params["limit"], 20), 50)
+    type = normalize_content_type(params["type"])
+    items = Iptv.list_top_rated(type, limit: limit)
+    json(conn, %{type: type, items: serialize_items(type, items)})
+  end
+
+  defp normalize_content_type("series"), do: "series"
+  defp normalize_content_type(_), do: "movie"
+
+  defp normalize_sort(nil), do: nil
+  defp normalize_sort(""), do: nil
+
+  defp normalize_sort(value)
+       when value in [
+              "rating_desc",
+              "created_desc",
+              "year_desc",
+              "name_asc"
+            ],
+       do: value
+
+  defp normalize_sort(_), do: nil
+
+  defp serialize_items("series", items), do: Enum.map(items, &serialize_series/1)
+  defp serialize_items(_, items), do: Enum.map(items, &serialize_movie/1)
+
   # Serializers
   defp serialize_movie(movie) do
     %{
@@ -340,10 +414,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
-      poster: proxy_image(series.cover),
-      season_count: length(series.seasons || []),
-      episode_count:
-        Enum.sum(Enum.map(series.seasons || [], fn s -> length(s.episodes || []) end))
+      poster: proxy_image(series.cover)
     }
   end
 

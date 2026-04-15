@@ -30,69 +30,14 @@ defmodule Streamix.Iptv.Catalog do
   """
   @spec get_featured_content() :: {:movie, Movie.t()} | {:series, Series.t()} | nil
   def get_featured_content do
-    # Daily seed for consistent hero throughout the day
-    today = Date.utc_today()
-    seed = Date.to_gregorian_days(today)
+    seed = Date.utc_today() |> Date.to_gregorian_days()
 
-    # Try movies with backdrop first (from public/global providers)
-    movies =
-      Movie
-      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-      |> join(:inner, [m, _p], a in MovieAsset,
-        on: a.movie_id == m.id and a.asset_type == "backdrop"
-      )
-      |> where([m, p, _a], p.visibility in [:global, :public])
-      |> where([m, _p, _a], not is_nil(m.plot))
-      |> order_by([m], desc: m.rating)
-      |> limit(10)
-      |> distinct([m], m.id)
-      |> preload(^@featured_preloads)
-      |> Repo.all()
-
-    if movies != [] do
-      index = rem(seed, length(movies))
-      {:movie, Enum.at(movies, index)}
-    else
-      # Fallback to series with backdrop (from public/global providers)
-      series_list =
-        Series
-        |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-        |> join(:inner, [s, _p], a in SeriesAsset,
-          on: a.series_id == s.id and a.asset_type == "backdrop"
-        )
-        |> where([s, p, _a], p.visibility in [:global, :public])
-        |> where([s, _p, _a], not is_nil(s.plot))
-        |> order_by([s], desc: s.rating)
-        |> limit(10)
-        |> distinct([s], s.id)
-        |> preload(^@featured_preloads)
-        |> Repo.all()
-
-      if series_list != [] do
-        index = rem(seed, length(series_list))
-        {:series, Enum.at(series_list, index)}
-      else
-        # Final fallback: movies with stream_icon (no backdrop asset required)
-        fallback_movies =
-          Movie
-          |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-          |> where([m, p], p.visibility in [:global, :public])
-          |> where([m, _p], not is_nil(m.stream_icon) and m.stream_icon != "")
-          |> where([m, _p], not is_nil(m.plot) and m.plot != "")
-          |> order_by([m], desc: m.rating)
-          |> limit(10)
-          |> distinct([m], m.id)
-          |> preload(^@featured_preloads)
-          |> Repo.all()
-
-        if fallback_movies != [] do
-          index = rem(seed, length(fallback_movies))
-          {:movie, Enum.at(fallback_movies, index)}
-        else
-          nil
-        end
-      end
-    end
+    pick_featured(seed, [
+      {:movie, &featured_movies_with_backdrop/0},
+      {:series, &featured_series_with_backdrop/0},
+      {:movie, &featured_movies_with_plot/0},
+      {:movie, &featured_movies_any_poster/0}
+    ])
   rescue
     e ->
       require Logger
@@ -102,6 +47,74 @@ defmodule Streamix.Iptv.Catalog do
       )
 
       nil
+  end
+
+  # Walks the candidate list in order and returns the first {tag, item} hit.
+  # Each candidate is {:movie | :series, fn -> list}; the list's element at
+  # rem(seed, length) is returned — guarantees stable choice per day while
+  # rotating across the top N items.
+  defp pick_featured(_seed, []), do: nil
+
+  defp pick_featured(seed, [{tag, fun} | rest]) do
+    case fun.() do
+      [] -> pick_featured(seed, rest)
+      items -> {tag, Enum.at(items, rem(seed, length(items)))}
+    end
+  end
+
+  defp featured_movies_with_backdrop do
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> join(:inner, [m, _p], a in MovieAsset,
+      on: a.movie_id == m.id and a.asset_type == "backdrop"
+    )
+    |> where([m, p, _a], p.visibility in [:global, :public])
+    |> where([m, _p, _a], not is_nil(m.plot))
+    |> order_by([m], fragment("? DESC NULLS LAST", m.rating))
+    |> limit(10)
+    |> distinct([m], m.id)
+    |> preload(^@featured_preloads)
+    |> Repo.all()
+  end
+
+  defp featured_series_with_backdrop do
+    Series
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> join(:inner, [s, _p], a in SeriesAsset,
+      on: a.series_id == s.id and a.asset_type == "backdrop"
+    )
+    |> where([s, p, _a], p.visibility in [:global, :public])
+    |> where([s, _p, _a], not is_nil(s.plot))
+    |> order_by([s], fragment("? DESC NULLS LAST", s.rating))
+    |> limit(10)
+    |> distinct([s], s.id)
+    |> preload(^@featured_preloads)
+    |> Repo.all()
+  end
+
+  defp featured_movies_with_plot do
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], not is_nil(m.stream_icon) and m.stream_icon != "")
+    |> where([m, _p], not is_nil(m.plot) and m.plot != "")
+    |> order_by([m], fragment("? DESC NULLS LAST", m.rating))
+    |> limit(10)
+    |> distinct([m], m.id)
+    |> preload(^@featured_preloads)
+    |> Repo.all()
+  end
+
+  defp featured_movies_any_poster do
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], not is_nil(m.stream_icon) and m.stream_icon != "")
+    |> order_by([m], fragment("? DESC NULLS LAST", m.rating))
+    |> limit(10)
+    |> distinct([m], m.id)
+    |> preload(^@featured_preloads)
+    |> Repo.all()
   end
 
   # =============================================================================
@@ -168,6 +181,55 @@ defmodule Streamix.Iptv.Catalog do
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
+
+  @doc """
+  Gets recently added movies from public/global providers.
+  """
+  @spec list_recent_movies(keyword()) :: [Movie.t()]
+  def list_recent_movies(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    Movie
+    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+    |> where([m, p], p.visibility in [:global, :public])
+    |> where([m, _p], not is_nil(m.stream_icon))
+    |> order_by([m], desc: m.inserted_at)
+    |> limit(^limit)
+    |> preload(^@summary_preloads)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets recently added series from public/global providers.
+  """
+  @spec list_recent_series(keyword()) :: [Series.t()]
+  def list_recent_series(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    Series
+    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+    |> where([s, p], p.visibility in [:global, :public])
+    |> where([s, _p], not is_nil(s.cover))
+    |> order_by([s], desc: s.inserted_at)
+    |> limit(^limit)
+    |> preload(^@summary_preloads)
+    |> Repo.all()
+  end
+
+  @doc """
+  Dispatches by content type: "movie" (default) or "series".
+  """
+  @spec list_trending(String.t(), keyword()) :: [Movie.t() | Series.t()]
+  def list_trending("series", opts), do: list_trending_series(opts)
+  def list_trending(_, opts), do: list_trending_movies(opts)
+
+  @spec list_recent(String.t(), keyword()) :: [Movie.t() | Series.t()]
+  def list_recent("series", opts), do: list_recent_series(opts)
+  def list_recent(_, opts), do: list_recent_movies(opts)
+
+  @spec list_top_rated(String.t(), keyword()) :: [Movie.t() | Series.t()]
+  def list_top_rated("series", opts), do: list_top_10_series(opts)
+  def list_top_rated(_, opts), do: list_top_10_movies(opts)
 
   @doc """
   Gets recently added content from public/global providers.

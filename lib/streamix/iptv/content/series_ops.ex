@@ -171,11 +171,12 @@ defmodule Streamix.Iptv.SeriesOps do
     search = Keyword.get(opts, :search)
     category_id = Keyword.get(opts, :category_id)
     show_adult = Keyword.get(opts, :show_adult, false)
+    sort = Keyword.get(opts, :sort)
 
     query =
       Series
       |> where(provider_id: ^provider_id)
-      |> order_by(desc: :year, asc: :name)
+      |> apply_series_sort(sort)
 
     query =
       if search && search != "" do
@@ -208,6 +209,21 @@ defmodule Streamix.Iptv.SeriesOps do
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
+
+  # Sort order for public series lists.
+  # Supported: rating_desc | created_desc | year_desc | name_asc.
+  # Default (nil/unknown): desc year, asc name.
+  defp apply_series_sort(query, "rating_desc"),
+    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.rating), desc: s.year, asc: s.name])
+
+  defp apply_series_sort(query, "created_desc"),
+    do: order_by(query, [s], desc: s.inserted_at)
+
+  defp apply_series_sort(query, "year_desc"),
+    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.year), asc: s.name])
+
+  defp apply_series_sort(query, "name_asc"), do: order_by(query, [s], asc: s.name)
+  defp apply_series_sort(query, _), do: order_by(query, [s], desc: s.year, asc: s.name)
 
   @doc """
   Lists featured series from public/global providers for public display.

@@ -40,11 +40,12 @@ defmodule Streamix.Iptv.Movies do
     category_id = Keyword.get(opts, :category_id)
     year = Keyword.get(opts, :year)
     show_adult = Keyword.get(opts, :show_adult, false)
+    sort = Keyword.get(opts, :sort)
 
     query =
       Movie
       |> where(provider_id: ^provider_id)
-      |> order_by(desc: :year, asc: :name)
+      |> apply_movie_sort(sort)
 
     query =
       if search && search != "" do
@@ -79,6 +80,21 @@ defmodule Streamix.Iptv.Movies do
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
+
+  # Sort order for public movie lists.
+  # Supported: rating_desc | created_desc | year_desc | name_asc.
+  # Default (nil/unknown): desc year, asc name.
+  defp apply_movie_sort(query, "rating_desc"),
+    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.rating), desc: m.year, asc: m.name])
+
+  defp apply_movie_sort(query, "created_desc"),
+    do: order_by(query, [m], desc: m.inserted_at)
+
+  defp apply_movie_sort(query, "year_desc"),
+    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.year), asc: m.name])
+
+  defp apply_movie_sort(query, "name_asc"), do: order_by(query, [m], asc: m.name)
+  defp apply_movie_sort(query, _), do: order_by(query, [m], desc: m.year, asc: m.name)
 
   @doc """
   Lists GIndex movies (movies with gindex_path set).

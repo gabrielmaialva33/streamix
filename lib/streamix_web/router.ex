@@ -88,6 +88,9 @@ defmodule StreamixWeb.Router do
     options "/catalog/*path", CatalogController, :options
 
     get "/catalog/featured", CatalogController, :featured
+    get "/catalog/trending", CatalogController, :trending
+    get "/catalog/recent", CatalogController, :recent
+    get "/catalog/top-rated", CatalogController, :top_rated
     get "/catalog/movies", CatalogController, :movies
     get "/catalog/movies/:id", CatalogController, :show_movie
     get "/catalog/series", CatalogController, :series
