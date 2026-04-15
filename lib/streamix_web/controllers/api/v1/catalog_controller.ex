@@ -543,20 +543,29 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   # We provide two URL types:
   # - stream_url: Token-based proxy for AVPlay on Tizen (works with any format)
   # - browser_stream_url: Pannxs proxy for browser testing (handles CORS)
+  #
+  # All catalog endpoints are behind the `:api_v1` pipeline which runs
+  # `StreamixWeb.Plugs.ApiKeyAuth` — so by the time we reach any action in
+  # this controller, the caller has proved integration-level authorization.
+  # We embed that authorization inside the signed token so the stream proxy
+  # can bypass the subscription check even when the URL is later fetched
+  # through an intermediate proxy (e.g. source.mahina.cloud) that doesn't
+  # forward the `X-API-Key` header.
+
+  @sign_opts [bypass_subscription: true]
 
   defp build_stream_url(movie) do
-    # Public catalog API — no user context, global provider content only
-    token = StreamToken.sign_movie(movie.id, nil)
+    token = StreamToken.sign_movie(movie.id, nil, @sign_opts)
     build_token_proxy_url(token)
   end
 
   defp build_episode_stream_url(episode, _series) do
-    token = StreamToken.sign_episode(episode.id, nil)
+    token = StreamToken.sign_episode(episode.id, nil, @sign_opts)
     build_token_proxy_url(token)
   end
 
   defp build_channel_stream_url(channel) do
-    token = StreamToken.sign_channel(channel.id, nil)
+    token = StreamToken.sign_channel(channel.id, nil, @sign_opts)
     build_token_proxy_url(token)
   end
 
@@ -566,19 +575,22 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   end
 
   # Browser-compatible proxy URLs using signed tokens
-  # Credentials are never exposed — the token is resolved server-side
+  # Credentials are never exposed — the token is resolved server-side.
+  # Tokens embed the bypass_subscription flag (see @sign_opts above), so the
+  # stream proxy does not require X-API-Key even when the browser goes
+  # through source.mahina.cloud which strips request headers.
   defp build_browser_stream_url(movie) do
-    token = StreamToken.sign_movie(movie.id, nil)
+    token = StreamToken.sign_movie(movie.id, nil, @sign_opts)
     build_browser_token_proxy_url(token)
   end
 
   defp build_browser_episode_url(episode) do
-    token = StreamToken.sign_episode(episode.id, nil)
+    token = StreamToken.sign_episode(episode.id, nil, @sign_opts)
     build_browser_token_proxy_url(token)
   end
 
   defp build_browser_channel_url(channel) do
-    token = StreamToken.sign_channel(channel.id, nil)
+    token = StreamToken.sign_channel(channel.id, nil, @sign_opts)
     build_browser_token_proxy_url(token)
   end
 

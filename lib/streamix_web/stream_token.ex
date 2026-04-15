@@ -24,27 +24,34 @@ defmodule StreamixWeb.StreamToken do
   Generates a signed token for accessing a movie stream.
   The `user_id` is embedded in the token and verified on consumption.
   Pass `nil` for public/global provider content (catalog API).
+
+  ## Options
+
+    * `:bypass_subscription` — embed an integration-authorized flag inside
+      the signed token. Callers that already proved authorization (e.g.
+      requests with a valid `X-API-Key` hitting the catalog API) should
+      set this so the stream proxy skips the subscription check, even
+      when the URL is later fetched by an intermediate proxy that strips
+      auth headers. The token signature prevents forgery.
   """
-  def sign_movie(movie_id, user_id) when is_integer(movie_id) do
-    sign_content("movie", movie_id, user_id)
+  def sign_movie(movie_id, user_id, opts \\ []) when is_integer(movie_id) do
+    sign_content("movie", movie_id, user_id, opts)
   end
 
   @doc """
   Generates a signed token for accessing an episode stream.
-  The `user_id` is embedded in the token and verified on consumption.
-  Pass `nil` for public/global provider content (catalog API).
+  See `sign_movie/3` for options.
   """
-  def sign_episode(episode_id, user_id) when is_integer(episode_id) do
-    sign_content("episode", episode_id, user_id)
+  def sign_episode(episode_id, user_id, opts \\ []) when is_integer(episode_id) do
+    sign_content("episode", episode_id, user_id, opts)
   end
 
   @doc """
   Generates a signed token for accessing a channel stream.
-  The `user_id` is embedded in the token and verified on consumption.
-  Pass `nil` for public/global provider content (catalog API).
+  See `sign_movie/3` for options.
   """
-  def sign_channel(channel_id, user_id) when is_integer(channel_id) do
-    sign_content("channel", channel_id, user_id)
+  def sign_channel(channel_id, user_id, opts \\ []) when is_integer(channel_id) do
+    sign_content("channel", channel_id, user_id, opts)
   end
 
   @doc """
@@ -59,13 +66,15 @@ defmodule StreamixWeb.StreamToken do
       :ok ->
         premium_required = Keyword.get(opts, :premium_required, false)
         provider_id = Keyword.get(opts, :provider_id)
+        bypass = Keyword.get(opts, :bypass_subscription, false)
 
         data = %{
           type: "url",
           url: url,
           user_id: user_id,
           provider_id: provider_id,
-          premium_required: premium_required
+          premium_required: premium_required,
+          bypass: bypass
         }
 
         Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
@@ -99,48 +108,59 @@ defmodule StreamixWeb.StreamToken do
       signature + provider visibility are still verified. Default: `false`.
   """
   def verify_and_get_url(token, opts \\ []) do
-    bypass_subscription = Keyword.get(opts, :bypass_subscription, false)
+    external_bypass = Keyword.get(opts, :bypass_subscription, false)
 
     case verify_token(token) do
-      {:ok,
-       %{
-         type: "url",
-         url: url,
-         user_id: user_id,
-         provider_id: provider_id,
-         premium_required: premium_required
-       }} ->
-        with {:ok, url, "url"} <-
-               handle_url_token(url, user_id, provider_id, premium_required, bypass_subscription) do
-          {:ok, url, "url", %{content_id: nil}}
-        end
-
-      {:ok, %{type: "url", url: _url, user_id: _user_id}} ->
-        {:error, :invalid_token}
-
-      {:ok, %{type: "url", url: _url}} ->
-        {:error, :invalid_token}
-
-      {:ok, %{type: type, id: id, user_id: user_id}} ->
-        with {:ok, url, ^type} <- handle_content_token(type, id, user_id, bypass_subscription) do
-          {:ok, url, type, %{content_id: id}}
-        end
-
-      {:ok, %{type: _type, id: _id}} ->
-        {:error, :invalid_token}
-
-      {:error, :expired} ->
-        {:error, :token_expired}
-
-      {:error, _reason} ->
-        {:error, :invalid_token}
+      {:ok, claims} -> dispatch_claims(claims, external_bypass)
+      {:error, :expired} -> {:error, :token_expired}
+      {:error, _reason} -> {:error, :invalid_token}
     end
+  end
+
+  defp dispatch_claims(
+         %{
+           type: "url",
+           url: url,
+           user_id: user_id,
+           provider_id: provider_id,
+           premium_required: premium_required
+         } = claims,
+         external_bypass
+       ) do
+    bypass = effective_bypass(claims, external_bypass)
+
+    with {:ok, url, "url"} <-
+           handle_url_token(url, user_id, provider_id, premium_required, bypass) do
+      {:ok, url, "url", %{content_id: nil}}
+    end
+  end
+
+  defp dispatch_claims(%{type: "url"}, _external_bypass), do: {:error, :invalid_token}
+
+  defp dispatch_claims(%{type: type, id: id, user_id: user_id} = claims, external_bypass) do
+    bypass = effective_bypass(claims, external_bypass)
+
+    with {:ok, url, ^type} <- handle_content_token(type, id, user_id, bypass) do
+      {:ok, url, type, %{content_id: id}}
+    end
+  end
+
+  defp dispatch_claims(_claims, _external_bypass), do: {:error, :invalid_token}
+
+  defp effective_bypass(claims, external_bypass) do
+    external_bypass or Map.get(claims, :bypass, false)
   end
 
   # Private functions
 
-  defp sign_content(type, id, user_id) do
-    data = %{type: type, id: id, user_id: user_id}
+  defp sign_content(type, id, user_id, opts) do
+    data = %{
+      type: type,
+      id: id,
+      user_id: user_id,
+      bypass: Keyword.get(opts, :bypass_subscription, false)
+    }
+
     Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
   end
 

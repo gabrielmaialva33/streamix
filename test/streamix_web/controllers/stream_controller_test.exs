@@ -104,6 +104,51 @@ defmodule StreamixWeb.StreamControllerTest do
 
       assert json_response(conn, 403) == %{"error" => "Subscription required"}
     end
+
+    test "token signed with bypass_subscription=true skips auth without any header", %{
+      conn: conn
+    } do
+      # This is the path that matters for source.mahina.cloud/proxy — the
+      # intermediate proxy strips headers, but the token itself carries the
+      # authorization claim (signed, so it can't be forged).
+      owner = user_fixture()
+
+      provider =
+        provider_fixture(owner, %{
+          visibility: "global",
+          is_system: true,
+          url: "http://127.0.0.1:65535"
+        })
+
+      movie = movie_fixture(provider, %{stream_id: 12_348})
+      token = StreamToken.sign_movie(movie.id, nil, bypass_subscription: true)
+
+      conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+      # Past the subscription gate — upstream resolve fails (bad_gateway)
+      # but that's expected in the test harness.
+      refute conn.status == 403
+      refute conn.resp_body =~ "Subscription required"
+    end
+
+    test "token WITHOUT bypass flag still requires subscription (no regression)", %{conn: conn} do
+      owner = user_fixture()
+
+      provider =
+        provider_fixture(owner, %{
+          visibility: "global",
+          is_system: true,
+          url: "http://127.0.0.1:65535"
+        })
+
+      movie = movie_fixture(provider, %{stream_id: 12_349})
+      # Old-style token: no bypass flag, user_id=nil.
+      token = StreamToken.sign_movie(movie.id, nil)
+
+      conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+      assert json_response(conn, 403) == %{"error" => "Subscription required"}
+    end
   end
 
   test "url token falls back to a safe short GET and does not read the full body", %{conn: conn} do
