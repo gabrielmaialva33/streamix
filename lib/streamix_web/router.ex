@@ -36,6 +36,12 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.CORS
   end
 
+  # Prometheus metrics scrape pipeline — plain text, no JSON/HTML parsing.
+  pipeline :metrics do
+    plug :accepts, ["text"]
+    plug StreamixWeb.Plugs.MetricsAuth
+  end
+
   # Rate-limited API pipeline for sensitive endpoints
   pipeline :api_rate_limited do
     plug :accepts, ["json"]
@@ -276,6 +282,13 @@ defmodule StreamixWeb.Router do
       live_dashboard "/dashboard", metrics: StreamixWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
+  end
+
+  # Prometheus metrics scrape endpoint — protected by basic auth via
+  # METRICS_USER / METRICS_PASSWORD env (or :metrics_auth config).
+  scope "/", StreamixWeb do
+    pipe_through :metrics
+    get "/metrics", MetricsController, :scrape
   end
 
   defp put_early_hints(conn, _opts) do
