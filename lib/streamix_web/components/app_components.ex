@@ -319,8 +319,12 @@ defmodule StreamixWeb.AppComponents do
   attr :cta_label, :string, default: nil
 
   def premium_cta_banner(assigns) do
-    # Hide for admin users
-    if assigns.current_scope && Streamix.Accounts.admin?(assigns.current_scope.user) do
+    # Hide for users who already have global access (admin, subscribed, or explicitly permitted)
+    if assigns.current_scope &&
+         Streamix.Access.can_play_global_content?(
+           assigns.current_scope.user,
+           Streamix.Iptv.get_global_provider()
+         ) do
       ~H""
     else
       render_premium_cta_banner(assigns)

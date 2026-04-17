@@ -145,7 +145,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       assert has_element?(view, "[data-premium-badge]")
     end
 
-    test "movie detail browse keeps premium badge visible for entitled users", %{
+    test "movie detail browse hides premium badge and cta for entitled users", %{
       conn: conn,
       user: user,
       movie: movie
@@ -156,7 +156,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/browse/movies/#{movie.id}")
 
-      assert has_element?(view, "[data-premium-badge]")
+      refute has_element?(view, "[data-premium-badge]")
       refute has_element?(view, "#movie-detail-premium-cta")
     end
 
@@ -172,7 +172,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       assert has_element?(view, "[data-premium-badge]")
     end
 
-    test "series detail browse keeps premium badge visible for entitled users", %{
+    test "series detail browse hides premium badge and cta for entitled users", %{
       conn: conn,
       user: user,
       series: series
@@ -183,7 +183,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/browse/series/#{series.id}")
 
-      assert has_element?(view, "[data-premium-badge]")
+      refute has_element?(view, "[data-premium-badge]")
       refute has_element?(view, "#series-detail-premium-cta")
     end
   end

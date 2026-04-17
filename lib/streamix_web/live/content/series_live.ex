@@ -254,7 +254,7 @@ defmodule StreamixWeb.Content.SeriesLive do
             series={series}
             is_favorite={MapSet.member?(@favorites_map, series.id)}
             source={@source}
-            show_premium_badge={@mode == :browse and @source == "iptv"}
+            show_premium_badge={@mode == :browse and @source == "iptv" and not @premium_access}
           />
         </div>
       </div>

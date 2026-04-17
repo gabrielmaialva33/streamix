@@ -248,7 +248,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 </p>
               </div>
 
-              <div :if={@mode == :browse} data-premium-badge>
+              <div :if={@mode == :browse and not @premium_access} data-premium-badge>
                 <.premium_badge />
               </div>
               

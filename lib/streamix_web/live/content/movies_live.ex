@@ -262,7 +262,7 @@ defmodule StreamixWeb.Content.MoviesLive do
             movie={movie}
             is_favorite={MapSet.member?(@favorites_map, movie.id)}
             source={@source}
-            show_premium_badge={@mode == :browse and @source == "iptv"}
+            show_premium_badge={@mode == :browse and @source == "iptv" and not @premium_access}
           />
         </div>
       </div>
