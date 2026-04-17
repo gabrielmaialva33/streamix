@@ -46,18 +46,36 @@ defmodule Streamix.Iptv.Content.TmdbAssetsPersistenceTest do
       assert Enum.map(assets, & &1.position) == [0, 1, 2]
     end
 
-    test "re-syncing replaces the existing set", %{provider: provider} do
+    test "re-syncing the same URLs is idempotent (no duplicates)", %{provider: provider} do
       movie = movie_fixture(provider)
 
-      :ok = Movies.persist_movie_assets(movie.id, "backdrop", ["url-old-1", "url-old-2"])
-      :ok = Movies.persist_movie_assets(movie.id, "backdrop", ["url-new"])
+      :ok = Movies.persist_movie_assets(movie.id, "backdrop", ["url-a", "url-b"])
+      :ok = Movies.persist_movie_assets(movie.id, "backdrop", ["url-a", "url-b"])
 
-      assets =
+      urls =
         MovieAsset
         |> Repo.all()
         |> Enum.filter(&(&1.movie_id == movie.id and &1.asset_type == "backdrop"))
+        |> Enum.map(& &1.url)
+        |> Enum.sort()
 
-      assert Enum.map(assets, & &1.url) == ["url-new"]
+      assert urls == ["url-a", "url-b"]
+    end
+
+    test "re-syncing adds new URLs while keeping existing ones", %{provider: provider} do
+      movie = movie_fixture(provider)
+
+      :ok = Movies.persist_movie_assets(movie.id, "backdrop", ["url-1"])
+      :ok = Movies.persist_movie_assets(movie.id, "backdrop", ["url-1", "url-2"])
+
+      urls =
+        MovieAsset
+        |> Repo.all()
+        |> Enum.filter(&(&1.movie_id == movie.id and &1.asset_type == "backdrop"))
+        |> Enum.map(& &1.url)
+        |> Enum.sort()
+
+      assert urls == ["url-1", "url-2"]
     end
 
     test "empty list and nil are no-op", %{provider: provider} do
@@ -92,14 +110,11 @@ defmodule Streamix.Iptv.Content.TmdbAssetsPersistenceTest do
   end
 
   describe "SeriesOps.persist_series_assets/3" do
-    test "stores backdrops and images independently", %{provider: provider} do
+    test "backdrop and image types are stored independently", %{provider: provider} do
       series = series_fixture_for(provider)
 
       :ok = SeriesOps.persist_series_assets(series.id, "backdrop", ["b1", "b2"])
       :ok = SeriesOps.persist_series_assets(series.id, "image", ["i1", "i2", "i3"])
-
-      # Changing one type doesn't wipe the other.
-      :ok = SeriesOps.persist_series_assets(series.id, "image", ["i-only"])
 
       assets =
         SeriesAsset
@@ -108,7 +123,7 @@ defmodule Streamix.Iptv.Content.TmdbAssetsPersistenceTest do
         |> Enum.group_by(& &1.asset_type, & &1.url)
 
       assert Enum.sort(assets["backdrop"]) == ["b1", "b2"]
-      assert assets["image"] == ["i-only"]
+      assert Enum.sort(assets["image"]) == ["i1", "i2", "i3"]
     end
   end
 

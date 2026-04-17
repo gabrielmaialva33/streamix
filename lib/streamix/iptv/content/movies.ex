@@ -448,12 +448,6 @@ defmodule Streamix.Iptv.Movies do
   def persist_movie_assets(movie_id, type, urls) when is_list(urls) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    # Idempotent re-sync: wipe the existing rows of this type for the movie,
-    # then insert the fresh TMDB payload. We don't have a unique index on
-    # (movie_id, asset_type, url) so this is simpler than on_conflict.
-    from(a in MovieAsset, where: a.movie_id == ^movie_id and a.asset_type == ^type)
-    |> Repo.delete_all()
-
     entries =
       urls
       |> Enum.reject(&(&1 in [nil, ""]))
@@ -470,8 +464,17 @@ defmodule Streamix.Iptv.Movies do
       end)
 
     case entries do
-      [] -> :ok
-      _ -> Repo.insert_all(MovieAsset, entries)
+      [] ->
+        :ok
+
+      _ ->
+        # Idempotent insert — unique index on (movie_id, asset_type, url)
+        # (see migration 20260417221822) means re-enriching the same movie
+        # is a no-op instead of a delete+insert cycle.
+        Repo.insert_all(MovieAsset, entries,
+          on_conflict: :nothing,
+          conflict_target: [:movie_id, :asset_type, :url]
+        )
     end
 
     :ok

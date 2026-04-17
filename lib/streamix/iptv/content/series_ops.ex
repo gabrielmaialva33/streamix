@@ -630,9 +630,6 @@ defmodule Streamix.Iptv.SeriesOps do
   def persist_series_assets(series_id, type, urls) when is_list(urls) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    from(a in SeriesAsset, where: a.series_id == ^series_id and a.asset_type == ^type)
-    |> Repo.delete_all()
-
     entries =
       urls
       |> Enum.reject(&(&1 in [nil, ""]))
@@ -649,8 +646,15 @@ defmodule Streamix.Iptv.SeriesOps do
       end)
 
     case entries do
-      [] -> :ok
-      _ -> Repo.insert_all(SeriesAsset, entries)
+      [] ->
+        :ok
+
+      _ ->
+        # See Streamix.Iptv.Movies.persist_movie_assets/3 for the rationale.
+        Repo.insert_all(SeriesAsset, entries,
+          on_conflict: :nothing,
+          conflict_target: [:series_id, :asset_type, :url]
+        )
     end
 
     :ok
