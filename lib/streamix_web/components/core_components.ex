@@ -205,7 +205,7 @@ defmodule StreamixWeb.CoreComponents do
   def input(%{type: "select"} = assigns) do
     ~H"""
     <div class="mb-3">
-      <label :if={@label} class="block text-sm font-medium text-text-secondary mb-1.5">
+      <label :if={@label} for={@id} class="block text-sm font-medium text-text-secondary mb-1.5">
         {@label}
       </label>
       <select
@@ -231,7 +231,7 @@ defmodule StreamixWeb.CoreComponents do
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div class="mb-3">
-      <label :if={@label} class="block text-sm font-medium text-text-secondary mb-1.5">
+      <label :if={@label} for={@id} class="block text-sm font-medium text-text-secondary mb-1.5">
         {@label}
       </label>
       <textarea
@@ -255,7 +255,7 @@ defmodule StreamixWeb.CoreComponents do
   def input(assigns) do
     ~H"""
     <div class="mb-3">
-      <label :if={@label} class="block text-sm font-medium text-text-secondary mb-1.5">
+      <label :if={@label} for={@id} class="block text-sm font-medium text-text-secondary mb-1.5">
         {@label}
       </label>
       <input
