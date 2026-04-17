@@ -3,6 +3,12 @@ defmodule StreamixWeb.Router do
 
   import StreamixWeb.UserAuth
 
+  # E2E tests with Playwright need the sandbox hook to run *before* UserAuth,
+  # which does DB queries. In prod this resolves to `[]`.
+  @sandbox_on_mount if Application.compile_env(:streamix, :sql_sandbox),
+                      do: [StreamixWeb.LiveAcceptance],
+                      else: []
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -155,7 +161,7 @@ defmodule StreamixWeb.Router do
     pipe_through :browser
 
     live_session :public,
-      on_mount: [{StreamixWeb.UserAuth, :mount_current_scope}],
+      on_mount: @sandbox_on_mount ++ [{StreamixWeb.UserAuth, :mount_current_scope}],
       layout: {StreamixWeb.Layouts, :app} do
       live "/", HomeLive, :index
       live "/plans", PlansLive, :index
@@ -167,7 +173,7 @@ defmodule StreamixWeb.Router do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     live_session :guest,
-      on_mount: [{StreamixWeb.UserAuth, :redirect_if_authenticated}],
+      on_mount: @sandbox_on_mount ++ [{StreamixWeb.UserAuth, :redirect_if_authenticated}],
       layout: {StreamixWeb.Layouts, :auth} do
       live "/login", User.LoginLive, :new
       live "/register", User.RegisterLive, :new
@@ -186,7 +192,7 @@ defmodule StreamixWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :authenticated,
-      on_mount: [{StreamixWeb.UserAuth, :require_authenticated}],
+      on_mount: @sandbox_on_mount ++ [{StreamixWeb.UserAuth, :require_authenticated}],
       layout: {StreamixWeb.Layouts, :app} do
       live "/settings", User.SettingsLive, :index
       live "/search", SearchLive, :index
@@ -234,7 +240,7 @@ defmodule StreamixWeb.Router do
 
     # Player with fullscreen layout (requires auth)
     live_session :authenticated_player,
-      on_mount: [{StreamixWeb.UserAuth, :require_authenticated}],
+      on_mount: @sandbox_on_mount ++ [{StreamixWeb.UserAuth, :require_authenticated}],
       layout: {StreamixWeb.Layouts, :player} do
       live "/watch/:type/:id", PlayerLive, :show
       live "/party/:invite_code/watch", WatchPartyLive.Show, :show
@@ -242,10 +248,12 @@ defmodule StreamixWeb.Router do
 
     # Admin panel (requires admin role)
     live_session :admin,
-      on_mount: [
-        {StreamixWeb.UserAuth, :require_authenticated},
-        {StreamixWeb.UserAuth, :require_admin}
-      ],
+      on_mount:
+        @sandbox_on_mount ++
+          [
+            {StreamixWeb.UserAuth, :require_authenticated},
+            {StreamixWeb.UserAuth, :require_admin}
+          ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/admin", Admin.DashboardLive, :index
       live "/admin/plans", Admin.PlansLive, :index

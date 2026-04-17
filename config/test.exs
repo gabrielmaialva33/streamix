@@ -14,12 +14,37 @@ config :streamix, Streamix.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# Endpoint runs in server mode so Playwright E2E tests can hit it.
+# ConnTest/LiveViewTest don't care — they mock the conn.
 config :streamix, StreamixWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "eSiWVZQ3u7juRt6Hhob5sPFAefFczSJ1FOvin5+TeBJZO1Lh/1GWmWD/uYy815D9",
-  server: false
+  server: true
+
+# Enables Phoenix.Ecto.SQL.Sandbox plug in endpoint + LiveAcceptance on_mount,
+# so Playwright sessions share the per-test sandbox via User-Agent metadata.
+config :streamix, :sql_sandbox, true
+
+# Allow session cookie over HTTP (localhost) in test env.
+config :streamix, :session_secure, false
+
+# Disable rate limiting in tests to prevent flaky failures on repeated logins.
+config :streamix, :disable_rate_limit, true
+
+# PhoenixTest + Playwright
+config :phoenix_test,
+  otp_app: :streamix,
+  endpoint: StreamixWeb.Endpoint,
+  playwright: [
+    browser: :chromium,
+    headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
+    js_logger: false,
+    trace: System.get_env("PW_TRACE", "false") in ~w(t true),
+    screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true),
+    # Give LiveView channels time to drain before dropping the sandbox owner,
+    # avoiding DBConnection.ConnectionError flakiness at test teardown.
+    ecto_sandbox_stop_owner_delay: 200
+  ]
 
 # In test we don't send emails
 config :streamix, Streamix.Mailer, adapter: Swoosh.Adapters.Test

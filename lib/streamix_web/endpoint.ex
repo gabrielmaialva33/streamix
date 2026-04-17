@@ -4,18 +4,19 @@ defmodule StreamixWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  # `secure` is false in test so HTTP localhost cookies persist for Playwright.
   @session_options [
     store: :cookie,
     key: "_streamix_key",
     signing_salt: "zYg6wPlT",
     same_site: "Lax",
-    secure: true,
+    secure: Application.compile_env(:streamix, :session_secure, true),
     http_only: true
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:user_agent, session: @session_options]],
+    longpoll: [connect_info: [:user_agent, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -47,6 +48,12 @@ defmodule StreamixWeb.Endpoint do
   plug Phoenix.LiveDashboard.RequestLogger,
     param_key: "request_logger",
     cookie_key: "request_logger"
+
+  # Phoenix.Ecto.SQL.Sandbox: allows E2E browser tests (Playwright) to share the
+  # test process's sandboxed transaction via a User-Agent metadata header.
+  if Application.compile_env(:streamix, :sql_sandbox) do
+    plug Phoenix.Ecto.SQL.Sandbox, repo: Streamix.Repo
+  end
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]

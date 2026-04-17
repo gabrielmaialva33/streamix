@@ -87,7 +87,9 @@ defmodule Streamix.MixProject do
       {:amqp_client, "~> 4.0", override: true},
       # Security Tools
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
-      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      # E2E cross-browser testing (Chromium/Firefox/WebKit)
+      {:phoenix_test_playwright, "~> 0.12", only: :test, runtime: false}
     ]
   end
 

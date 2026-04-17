@@ -1,10 +1,19 @@
 defmodule StreamixWeb.Plugs.RateLimitTest do
-  use ExUnit.Case, async: true
+  # async: false because we override the global :disable_rate_limit config
+  # (set to true for E2E tests) for this specific test.
+  use ExUnit.Case, async: false
 
   import Plug.Conn
   import Plug.Test
 
   alias StreamixWeb.Plugs.RateLimit
+
+  setup do
+    previous = Application.get_env(:streamix, :disable_rate_limit)
+    Application.put_env(:streamix, :disable_rate_limit, false)
+    on_exit(fn -> Application.put_env(:streamix, :disable_rate_limit, previous) end)
+    :ok
+  end
 
   test "rate limits by Cloudflare client ip instead of shared remote_ip" do
     conn_a =

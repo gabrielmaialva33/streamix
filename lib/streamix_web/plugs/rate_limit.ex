@@ -25,6 +25,14 @@ defmodule StreamixWeb.Plugs.RateLimit do
   end
 
   def call(conn, opts) do
+    if Application.get_env(:streamix, :disable_rate_limit, false) do
+      conn
+    else
+      enforce(conn, opts)
+    end
+  end
+
+  defp enforce(conn, opts) do
     key = build_key(conn, opts.by)
     bucket = "rate_limit:#{key}"
 
