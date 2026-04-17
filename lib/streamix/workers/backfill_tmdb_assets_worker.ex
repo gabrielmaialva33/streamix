@@ -99,6 +99,9 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
     }
   end
 
+  # Picks top-rated movies without a backdrop. Unlike the first iteration,
+  # we no longer require a tmdb_id up-front — Movies.fetch_info/1 resolves
+  # it via TMDB search on first run when Xtream doesn't ship one.
   defp pending_movie_ids(limit) do
     movies_with_backdrop =
       from a in MovieAsset,
@@ -107,8 +110,8 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
         distinct: true
 
     from(m in Movie,
-      where: not is_nil(m.tmdb_id) and m.tmdb_id != "",
       where: m.id not in subquery(movies_with_backdrop),
+      where: not is_nil(m.rating),
       order_by: [desc: m.rating, desc: m.year],
       limit: ^limit,
       select: m.id
@@ -124,8 +127,8 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
         distinct: true
 
     from(s in Series,
-      where: not is_nil(s.tmdb_id) and s.tmdb_id != "",
       where: s.id not in subquery(series_with_backdrop),
+      where: not is_nil(s.rating),
       order_by: [desc: s.rating, desc: s.year],
       limit: ^limit,
       select: s.id

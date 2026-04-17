@@ -362,11 +362,26 @@ defmodule Streamix.Iptv.Movies do
           %{}
       end
 
-    # Step 2: Fetch from TMDB if we're still missing key data
-    tmdb_id = xtream_attrs[:tmdb_id] || movie.tmdb_id
-    tmdb_attrs = maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
+    # Step 2: Resolve a tmdb_id. Prefer what Xtream returned, then what we
+    # already have stored, and finally fall back to a name+year search on
+    # TMDB so titles from providers that don't ship tmdb_id still get
+    # enriched on their first enrichment run.
+    resolved_tmdb_id =
+      xtream_attrs[:tmdb_id] || movie.tmdb_id || resolve_movie_tmdb_id(movie)
 
-    # Step 3: Merge attrs (TMDB fills in what Xtream didn't provide)
+    # Persist the resolved id so the next enrichment skips the search.
+    xtream_attrs =
+      if is_binary(resolved_tmdb_id) and resolved_tmdb_id != "" and
+           is_nil(xtream_attrs[:tmdb_id]) do
+        Map.put(xtream_attrs, :tmdb_id, resolved_tmdb_id)
+      else
+        xtream_attrs
+      end
+
+    # Step 3: Fetch from TMDB if we're still missing key data
+    tmdb_attrs = maybe_fetch_from_tmdb(movie, xtream_attrs, resolved_tmdb_id)
+
+    # Step 4: Merge attrs (TMDB fills in what Xtream didn't provide)
     final_attrs = Map.merge(tmdb_attrs, xtream_attrs)
 
     case update_movie(movie, final_attrs) do
@@ -378,6 +393,21 @@ defmodule Streamix.Iptv.Movies do
   # =============================================================================
   # Private Helpers
   # =============================================================================
+
+  # Resolves a tmdb_id by searching TMDB by the movie's title + year.
+  # Returns nil if nothing matches or TMDB isn't configured.
+  defp resolve_movie_tmdb_id(%Movie{} = movie) do
+    title = movie.title || movie.name
+
+    if is_binary(title) and title != "" do
+      case TmdbClient.search_movie(title, year: movie.year) do
+        {:ok, %{"results" => [%{"id" => id} | _]}} -> to_string(id)
+        _ -> nil
+      end
+    else
+      nil
+    end
+  end
 
   defp maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
        when is_binary(tmdb_id) and tmdb_id != "" do

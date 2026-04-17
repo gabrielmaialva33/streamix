@@ -553,12 +553,17 @@ defmodule Streamix.Iptv.SeriesOps do
   @spec fetch_info(Series.t()) :: {:ok, Series.t()} | {:error, term()}
   def fetch_info(%Series{} = series) do
     series = Repo.preload(series, @detail_preloads)
-    tmdb_id = series.tmdb_id
+    tmdb_id = series.tmdb_id || resolve_series_tmdb_id(series)
 
     if needs_tmdb_enrichment?(series) and is_binary(tmdb_id) and tmdb_id != "" do
       case TmdbClient.get_series(tmdb_id) do
         {:ok, data} ->
-          attrs = TmdbClient.parse_series_response(data)
+          attrs =
+            data
+            |> TmdbClient.parse_series_response()
+            # Persist the resolved id so future enrichments skip the search.
+            |> maybe_put_tmdb_id(series.tmdb_id, tmdb_id)
+
           update_series(series, attrs)
 
         {:error, _reason} ->
@@ -568,6 +573,26 @@ defmodule Streamix.Iptv.SeriesOps do
       {:ok, series}
     end
   end
+
+  # Resolves a tmdb_id by searching TMDB by name + year.
+  defp resolve_series_tmdb_id(%Series{} = series) do
+    title = series.title || series.name
+
+    if is_binary(title) and title != "" do
+      case TmdbClient.search_series(title, year: series.year) do
+        {:ok, %{"results" => [%{"id" => id} | _]}} -> to_string(id)
+        _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp maybe_put_tmdb_id(attrs, existing, resolved)
+       when is_nil(existing) or existing == "",
+       do: Map.put(attrs, :tmdb_id, resolved)
+
+  defp maybe_put_tmdb_id(attrs, _existing, _resolved), do: attrs
 
   @doc """
   Fetches detailed episode info from TMDB if not already enriched.
