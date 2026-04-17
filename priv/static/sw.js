@@ -63,11 +63,15 @@ self.addEventListener('install', (event) => {
     );
 });
 
-// Activate - clean old caches
+// Activate - clean old caches and re-warm static assets.
+// Safari iOS wipes caches after 7 days of inactivity, so re-caching on every
+// activation (triggered on each launch after SW update) keeps the PWA usable
+// on first open after long idle periods.
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((keys) => {
-            return Promise.all(
+        (async () => {
+            const keys = await caches.keys();
+            await Promise.all(
                 keys
                     .filter((key) => key.startsWith('streamix-') && key !== CACHE_NAME)
                     .map((key) => {
@@ -75,7 +79,16 @@ self.addEventListener('activate', (event) => {
                         return caches.delete(key);
                     })
             );
-        })
+
+            // Re-warm the static asset set so first page load after Safari's
+            // 7-day wipe does not stall waiting for every asset.
+            try {
+                const cache = await caches.open(CACHE_NAME);
+                await cache.addAll(STATIC_ASSETS);
+            } catch (e) {
+                console.warn('[SW] Re-warm failed:', e);
+            }
+        })()
     );
     self.clients.claim();
 });
@@ -171,16 +184,26 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // HTML pages - Network-first for SPA navigation
+    // HTML pages - Network-first with 3s timeout fallback to cache.
+    // Prevents long spinners on flaky mobile networks (Safari iOS suspend).
     if (request.headers.get('accept')?.includes('text/html')) {
         event.respondWith(
-            fetch(request)
-                .then((response) => {
+            (async () => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 3000);
+
+                try {
+                    const response = await fetch(request, {signal: controller.signal});
+                    clearTimeout(timeout);
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
                     return response;
-                })
-                .catch(() => caches.match(request))
+                } catch (_e) {
+                    clearTimeout(timeout);
+                    const cached = await caches.match(request);
+                    return cached || Response.error();
+                }
+            })()
         );
         return;
     }

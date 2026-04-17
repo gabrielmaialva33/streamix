@@ -55,6 +55,25 @@ window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 // connect if there are any LiveViews on the page
 liveSocket.connect();
 
+// Safari iOS suspends WebSockets when the page is backgrounded (lock, tab
+// switch, app switcher). When the page returns from the bfcache or the tab
+// regains focus, force a reconnect so LiveView sessions resume without the
+// "Something went wrong" flash + full refresh cycle. See
+// https://github.com/phoenixframework/phoenix_live_view/issues/3236
+window.addEventListener("pageshow", (event) => {
+    if (event.persisted) liveSocket.socket.connect();
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !liveSocket.isConnected()) {
+        liveSocket.socket.connect();
+    }
+});
+
+window.addEventListener("online", () => {
+    if (!liveSocket.isConnected()) liveSocket.socket.connect();
+});
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
@@ -73,6 +92,13 @@ if (document.startViewTransition) {
 // Register Service Worker for PWA with update notification
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
+        // Ask the browser to make storage persistent so Safari iOS is less
+        // aggressive about wiping our cache and IndexedDB after 7 days of
+        // inactivity. Silent no-op on Safari; Chromium honors it.
+        if (navigator.storage?.persist) {
+            navigator.storage.persist().catch(() => {});
+        }
+
         navigator.serviceWorker
             .register("/sw.js")
             .then((reg) => {
