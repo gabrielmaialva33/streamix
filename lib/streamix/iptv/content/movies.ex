@@ -10,7 +10,7 @@ defmodule Streamix.Iptv.Movies do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Access, AdultFilter, Movie, TmdbClient, XtreamClient}
+  alias Streamix.Iptv.{Access, AdultFilter, Movie, MovieAsset, TmdbClient, XtreamClient}
   alias Streamix.Repo
 
   @summary_preloads [:genres]
@@ -428,9 +428,53 @@ defmodule Streamix.Iptv.Movies do
   defp update_movie(movie, attrs) when attrs == %{}, do: {:ok, movie}
 
   defp update_movie(movie, attrs) do
-    movie
-    |> Movie.changeset(attrs)
-    |> Repo.update()
+    # _backdrop_urls and _image_urls come from TmdbClient.parse_movie_response/1
+    # but are not Movie schema fields — persist them as MovieAsset rows after
+    # the base update succeeds, otherwise cast/3 would silently drop them.
+    {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
+    {images, attrs} = Map.pop(attrs, :_image_urls, [])
+
+    with {:ok, updated} <- movie |> Movie.changeset(attrs) |> Repo.update() do
+      persist_movie_assets(updated.id, "backdrop", backdrops)
+      persist_movie_assets(updated.id, "image", images)
+      {:ok, updated}
+    end
+  end
+
+  @doc false
+  def persist_movie_assets(_movie_id, _type, nil), do: :ok
+  def persist_movie_assets(_movie_id, _type, []), do: :ok
+
+  def persist_movie_assets(movie_id, type, urls) when is_list(urls) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    # Idempotent re-sync: wipe the existing rows of this type for the movie,
+    # then insert the fresh TMDB payload. We don't have a unique index on
+    # (movie_id, asset_type, url) so this is simpler than on_conflict.
+    from(a in MovieAsset, where: a.movie_id == ^movie_id and a.asset_type == ^type)
+    |> Repo.delete_all()
+
+    entries =
+      urls
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.with_index()
+      |> Enum.map(fn {url, idx} ->
+        %{
+          movie_id: movie_id,
+          asset_type: type,
+          url: url,
+          position: idx,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    case entries do
+      [] -> :ok
+      _ -> Repo.insert_all(MovieAsset, entries)
+    end
+
+    :ok
   end
 
   defp parse_vod_info(info, movie_data) when is_map(info) do

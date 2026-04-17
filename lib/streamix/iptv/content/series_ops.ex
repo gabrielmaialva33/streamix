@@ -10,7 +10,17 @@ defmodule Streamix.Iptv.SeriesOps do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Access, AdultFilter, Episode, Provider, Season, Series, Sync, TmdbClient}
+  alias Streamix.Iptv.{
+    Access,
+    AdultFilter,
+    Episode,
+    Provider,
+    Season,
+    Series,
+    SeriesAsset,
+    Sync,
+    TmdbClient
+  }
   alias Streamix.Repo
 
   @summary_preloads [:genres]
@@ -600,9 +610,50 @@ defmodule Streamix.Iptv.SeriesOps do
   defp update_series(series, attrs) when attrs == %{}, do: {:ok, series}
 
   defp update_series(series, attrs) do
-    series
-    |> Series.changeset(attrs)
-    |> Repo.update()
+    # Same pattern as Movies.update_movie/2: _backdrop_urls / _image_urls
+    # from TmdbClient.parse_series_response/1 aren't Series schema fields,
+    # so persist them as SeriesAsset rows after the base update.
+    {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
+    {images, attrs} = Map.pop(attrs, :_image_urls, [])
+
+    with {:ok, updated} <- series |> Series.changeset(attrs) |> Repo.update() do
+      persist_series_assets(updated.id, "backdrop", backdrops)
+      persist_series_assets(updated.id, "image", images)
+      {:ok, updated}
+    end
+  end
+
+  @doc false
+  def persist_series_assets(_series_id, _type, nil), do: :ok
+  def persist_series_assets(_series_id, _type, []), do: :ok
+
+  def persist_series_assets(series_id, type, urls) when is_list(urls) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(a in SeriesAsset, where: a.series_id == ^series_id and a.asset_type == ^type)
+    |> Repo.delete_all()
+
+    entries =
+      urls
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.with_index()
+      |> Enum.map(fn {url, idx} ->
+        %{
+          series_id: series_id,
+          asset_type: type,
+          url: url,
+          position: idx,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    case entries do
+      [] -> :ok
+      _ -> Repo.insert_all(SeriesAsset, entries)
+    end
+
+    :ok
   end
 
   defp needs_episode_tmdb_enrichment?(episode) do
