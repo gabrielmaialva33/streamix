@@ -94,7 +94,9 @@ config :streamix, Oban,
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
        # Index embeddings for semantic search daily at 5 AM
-       {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker}
+       {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
+       # Backfill TMDB backdrop/image assets weekly (Sunday 4 AM)
+       {"0 4 * * 0", Streamix.Workers.BackfillTmdbAssetsWorker}
      ]}
   ]
 

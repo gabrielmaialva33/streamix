@@ -36,9 +36,15 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
 
   require Logger
 
+  # Rate-limited to stay well under TMDB's ~50 req/s / 20 simultaneous
+  # connection ceiling. Each fetch_info may issue up to ~3 TMDB calls
+  # (search + get_{movie,series} + content_ratings etc.), so at
+  # concurrency=2 we peak at ~6 inflight requests per worker. Multiple
+  # workers in the `sync` queue (size 3) stay under 20 concurrent.
   @default_batch_size 25
-  @default_delay 5
-  @max_concurrency 3
+  @default_delay 10
+  @default_cron_limit 500
+  @max_concurrency 2
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"kind" => "movies", "ids" => ids}}) do
@@ -51,6 +57,13 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
       Repo.all(from s in Series, where: s.id in ^ids, preload: [:assets, credits: :person])
 
     run_batch(series, &SeriesOps.fetch_info/1, "series")
+  end
+
+  # Cron entrypoint — no args means "go find pending items and enqueue".
+  def perform(%Oban.Job{args: args}) when args == %{} do
+    summary = enqueue_featured(limit: @default_cron_limit)
+    Logger.info("[BackfillTmdbAssets] cron enqueued #{inspect(summary)}")
+    :ok
   end
 
   defp run_batch(items, fetch_fn, kind) do

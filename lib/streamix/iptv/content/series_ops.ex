@@ -574,19 +574,38 @@ defmodule Streamix.Iptv.SeriesOps do
     end
   end
 
-  # Resolves a tmdb_id by searching TMDB by name + year.
+  # Resolves a tmdb_id by searching TMDB with the series' title + year.
+  # Requires ±1 year match on first_air_date when we have a year, so
+  # generic titles don't get bound to an unrelated show.
   defp resolve_series_tmdb_id(%Series{} = series) do
     title = series.title || series.name
 
     if is_binary(title) and title != "" do
-      case TmdbClient.search_series(title, year: series.year) do
-        {:ok, %{"results" => [%{"id" => id} | _]}} -> to_string(id)
+      with {:ok, %{"results" => results}} when is_list(results) <-
+             TmdbClient.search_series(title, year: series.year),
+           %{"id" => id} <-
+             Enum.find(results, &year_matches?(&1["first_air_date"], series.year)) do
+        to_string(id)
+      else
         _ -> nil
       end
     else
       nil
     end
   end
+
+  defp year_matches?(_air_date, nil), do: true
+  defp year_matches?(nil, _year), do: false
+  defp year_matches?("", _year), do: false
+
+  defp year_matches?(air_date, year) when is_binary(air_date) and is_integer(year) do
+    case Integer.parse(air_date) do
+      {result_year, _} -> abs(result_year - year) <= 1
+      :error -> false
+    end
+  end
+
+  defp year_matches?(_, _), do: false
 
   defp maybe_put_tmdb_id(attrs, existing, resolved)
        when is_nil(existing) or existing == "",

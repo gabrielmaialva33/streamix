@@ -394,20 +394,40 @@ defmodule Streamix.Iptv.Movies do
   # Private Helpers
   # =============================================================================
 
-  # Resolves a tmdb_id by searching TMDB by the movie's title + year.
-  # Returns nil if nothing matches or TMDB isn't configured.
+  # Resolves a tmdb_id by searching TMDB with the movie's title + year.
+  # When the movie has a year, we only trust matches whose release_date
+  # falls within ±1 year to avoid accidentally binding to an unrelated
+  # title with the same name.
   defp resolve_movie_tmdb_id(%Movie{} = movie) do
     title = movie.title || movie.name
 
     if is_binary(title) and title != "" do
-      case TmdbClient.search_movie(title, year: movie.year) do
-        {:ok, %{"results" => [%{"id" => id} | _]}} -> to_string(id)
+      with {:ok, %{"results" => results}} when is_list(results) <-
+             TmdbClient.search_movie(title, year: movie.year),
+           %{"id" => id} <-
+             Enum.find(results, &year_matches?(&1["release_date"], movie.year)) do
+        to_string(id)
+      else
         _ -> nil
       end
     else
       nil
     end
   end
+
+  # No year on our side → trust the first hit. Otherwise require ±1 year.
+  defp year_matches?(_release_date, nil), do: true
+  defp year_matches?(nil, _year), do: false
+  defp year_matches?("", _year), do: false
+
+  defp year_matches?(release_date, year) when is_binary(release_date) and is_integer(year) do
+    case Integer.parse(release_date) do
+      {result_year, _} -> abs(result_year - year) <= 1
+      :error -> false
+    end
+  end
+
+  defp year_matches?(_, _), do: false
 
   defp maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
        when is_binary(tmdb_id) and tmdb_id != "" do
