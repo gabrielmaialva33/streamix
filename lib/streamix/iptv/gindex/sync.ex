@@ -15,8 +15,12 @@ defmodule Streamix.Iptv.Gindex.Sync do
 
   require Logger
 
-  @batch_size 100
-  @series_batch_size 10
+  # Persist in small chunks so a ScanRoot job that hits a transient 500 on
+  # some deep subfolder still captures the items it discovered before the
+  # failure. Previous 100-item batch meant anything short of a full
+  # batch was lost when the stream raised.
+  @batch_size 25
+  @series_batch_size 5
 
   @doc """
   Syncs all content (movies, series, and animes) from a GIndex provider.

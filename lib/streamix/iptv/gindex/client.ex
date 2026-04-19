@@ -19,11 +19,16 @@ defmodule Streamix.Iptv.Gindex.Client do
   alias Streamix.Iptv.Gindex.Pacer
 
   @default_timeout :timer.seconds(30)
-  @retry_delay :timer.seconds(5)
+  @retry_delay :timer.seconds(2)
   @max_retries 3
-  # Conservative rate limit handling - start with 30s to fully recover
-  @rate_limit_base_delay :timer.seconds(30)
-  @max_rate_limit_retries 5
+  # The upstream Cloudflare Worker for this provider ships transient 500s
+  # a few times a minute — the previous 30s × 5 backoff meant a single
+  # flaky folder could burn 15 minutes of a ScanRoot's 30-minute budget.
+  # 2s base × 3 tries (2s + 4s + 8s = ~14s max) is aggressive enough to
+  # recover on the same burst but lets the scraper skip ahead instead of
+  # starving the rest of the catalog. 429/503 use the same ladder.
+  @rate_limit_base_delay :timer.seconds(2)
+  @max_rate_limit_retries 3
 
   @doc """
   Lists the contents of a folder in the GIndex (single page).
