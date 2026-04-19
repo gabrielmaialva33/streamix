@@ -14,6 +14,7 @@ defmodule StreamixWeb.StreamController do
 
   alias Streamix.Iptv.Channels
   alias StreamixWeb.Plugs.ApiKeyAuth
+  alias StreamixWeb.StreamErrors
   alias StreamixWeb.StreamToken
 
   @doc """
@@ -50,11 +51,7 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  def proxy(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: "Missing token parameter"})
-  end
+  def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
   # Live channels: stream directly to avoid cross-origin redirect CORS failures.
   # VOD: redirect to nginx proxy for Range header support.
@@ -64,18 +61,20 @@ defmodule StreamixWeb.StreamController do
   defp stream_by_type(conn, url, _type, _meta),
     do: resolve_and_redirect_to_proxy(conn, url)
 
+  # Map StreamToken's raw reasons onto the canonical StreamErrors codes
+  # so controllers and TV clients speak the same vocabulary.
   @token_errors %{
-    token_expired: {:unauthorized, "Stream token expired"},
-    invalid_token: {:unauthorized, "Invalid stream token"},
-    subscription_required: {:forbidden, "Subscription required"},
-    not_found: {:not_found, "Content not found"},
-    unauthorized: {:forbidden, "Token not authorized for this content"},
-    unsafe_url: {:forbidden, "URL blocked by security policy"}
+    token_expired: :token_expired,
+    invalid_token: :invalid_token,
+    subscription_required: :subscription_required,
+    not_found: :content_not_found,
+    unauthorized: :token_unauthorized,
+    unsafe_url: :unsafe_url
   }
 
   defp token_error(conn, reason) do
-    {status, message} = Map.get(@token_errors, reason, {:bad_request, "Unknown error"})
-    conn |> put_status(status) |> json(%{error: message})
+    code = Map.get(@token_errors, reason, :unknown)
+    StreamErrors.halt(conn, code)
   end
 
   # --- Live channels: stream directly through Elixir (no redirect) ---
@@ -104,7 +103,7 @@ defmodule StreamixWeb.StreamController do
 
   defp live_resolve_failed(conn, {:error, reason}) do
     Logger.error("Stream proxy: live resolve failed: #{inspect(reason)}")
-    conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+    StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
   end
 
   defp do_stream_live(conn, final_url) do
@@ -164,16 +163,16 @@ defmodule StreamixWeb.StreamController do
               "Stream proxy: BLOCKED — invalid stream proxy base #{inspect(proxy_base)}"
             )
 
-            conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
+            StreamErrors.halt(conn, :stream_resolution_failed)
 
           {:error, :credentials_would_escape} ->
             Logger.error("Stream proxy: BLOCKED — final URL still contains credentials")
-            conn |> put_status(:bad_gateway) |> json(%{error: "Stream resolution failed"})
+            StreamErrors.halt(conn, :stream_resolution_failed)
         end
 
       {:error, reason} ->
         Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
-        conn |> put_status(:bad_gateway) |> json(%{error: "Failed to resolve stream URL"})
+        StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
     end
   end
 

@@ -26,7 +26,9 @@ defmodule StreamixWeb.StreamControllerTest do
 
     conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
 
-    assert json_response(conn, 403) == %{"error" => "Subscription required"}
+    assert %{
+             "error" => %{"code" => "subscription_required", "message" => "Subscription required"}
+           } = json_response(conn, 403)
   end
 
   describe "X-API-Key bypasses subscription check" do
@@ -81,7 +83,12 @@ defmodule StreamixWeb.StreamControllerTest do
 
       conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
 
-      assert json_response(conn, 403) == %{"error" => "Subscription required"}
+      assert %{
+               "error" => %{
+                 "code" => "subscription_required",
+                 "message" => "Subscription required"
+               }
+             } = json_response(conn, 403)
     end
 
     test "invalid X-API-Key does NOT bypass — still subscription_required", %{conn: conn} do
@@ -102,7 +109,12 @@ defmodule StreamixWeb.StreamControllerTest do
         |> put_req_header("x-api-key", "wrong-key")
         |> get("/api/stream/proxy?token=#{URI.encode_www_form(token)}")
 
-      assert json_response(conn, 403) == %{"error" => "Subscription required"}
+      assert %{
+               "error" => %{
+                 "code" => "subscription_required",
+                 "message" => "Subscription required"
+               }
+             } = json_response(conn, 403)
     end
 
     test "token signed with bypass_subscription=true skips auth without any header", %{
@@ -147,7 +159,12 @@ defmodule StreamixWeb.StreamControllerTest do
 
       conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
 
-      assert json_response(conn, 403) == %{"error" => "Subscription required"}
+      assert %{
+               "error" => %{
+                 "code" => "subscription_required",
+                 "message" => "Subscription required"
+               }
+             } = json_response(conn, 403)
     end
   end
 
