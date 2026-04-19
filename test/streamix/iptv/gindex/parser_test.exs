@@ -5,7 +5,9 @@ defmodule Streamix.Iptv.Gindex.ParserTest do
 
   describe "parse_anime_episode/1 — existing release patterns" do
     test "parses [Group] Name - NN [Quality].mkv" do
-      result = Parser.parse_anime_episode("[Erai-raws] Spy x Family - 01 [1080p][Multiple Subtitle].mkv")
+      result =
+        Parser.parse_anime_episode("[Erai-raws] Spy x Family - 01 [1080p][Multiple Subtitle].mkv")
+
       assert result.episode == 1
       assert result.group == "Erai-raws"
       assert result.extension == "mkv"

@@ -156,7 +156,9 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
   end
 
   defp cache_path(url, width, height, quality) do
-    hash = :crypto.hash(:sha256, "#{url}|#{width}|#{height}|#{quality}") |> Base.encode16(case: :lower)
+    hash =
+      :crypto.hash(:sha256, "#{url}|#{width}|#{height}|#{quality}") |> Base.encode16(case: :lower)
+
     # Fan out into two-character prefix folders so the directory listing
     # stays manageable once the cache grows past a few thousand files.
     <<a::binary-2, b::binary-2, _rest::binary>> = hash

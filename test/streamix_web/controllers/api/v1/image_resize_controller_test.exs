@@ -7,7 +7,9 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
   @api_key "test-resize-key"
 
   setup do
-    cache_dir = Path.join(System.tmp_dir!(), "streamix_image_cache_#{System.unique_integer([:positive])}")
+    cache_dir =
+      Path.join(System.tmp_dir!(), "streamix_image_cache_#{System.unique_integer([:positive])}")
+
     File.mkdir_p!(cache_dir)
 
     original_cfg = Application.get_env(:streamix, ImageResizeController)
