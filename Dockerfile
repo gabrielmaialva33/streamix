@@ -8,8 +8,10 @@ ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
-# Install build dependencies including Node.js
+# Install build dependencies including Node.js and libvips headers (vix
+# compiles a NIF against libvips during `mix deps.compile`).
 RUN apt-get update -y && apt-get install -y build-essential git curl \
+    libvips-dev pkg-config \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
@@ -59,6 +61,7 @@ FROM ${RUNNER_IMAGE}
 
 RUN apt-get update -y && \
     apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl \
+    libvips42 \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
 # Set the locale

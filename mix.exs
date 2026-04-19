@@ -75,6 +75,9 @@ defmodule Streamix.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:cors_plug, "~> 3.0"},
+      # Image resize proxy — libvips bindings. Runtime needs `libvips42`
+      # installed on the host/container (see Dockerfile).
+      {:image, "~> 0.65"},
       {:mint, "~> 1.6"},
       {:castore, "~> 1.0"},
       {:hammer, "~> 7.0"},
