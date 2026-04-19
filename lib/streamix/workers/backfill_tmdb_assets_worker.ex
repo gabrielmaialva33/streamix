@@ -1,12 +1,15 @@
 defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   @moduledoc """
   Backfills TMDB backdrop/image assets for movies and series that were
-  enriched before `Streamix.Iptv.Movies.persist_movie_assets/3` existed
-  (or whose enrichment attempt returned no assets at the time).
+  enriched before `Streamix.Iptv.Movies.persist_movie_assets/3` existed,
+  or whose assets are incomplete (e.g. only the single primary backdrop
+  from an older parse that routed gallery backdrops to the "image"
+  bucket).
 
-  Picks items that:
-    * have a non-empty `tmdb_id`, AND
-    * have zero backdrop assets
+  Picks items where the backdrop asset count is below
+  `#{inspect(3)}` — TMDB routinely ships 5-6 gallery backdrops plus the
+  primary, so anything under that threshold is almost certainly a row
+  written by the broken parse pipeline.
 
   Fetches via `Movies.fetch_info/1` / `SeriesOps.fetch_info/1`, which
   reuses the TMDB cache and only hits the API when needed.
@@ -45,6 +48,9 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   @default_delay 10
   @default_cron_limit 500
   @max_concurrency 2
+  # Below this count the gallery was almost certainly truncated — the
+  # canonical response from TMDB has the primary plus 5-6 gallery shots.
+  @min_backdrops 3
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"kind" => "movies", "ids" => ids}}) do
@@ -112,18 +118,21 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
     }
   end
 
-  # Picks top-rated movies without a backdrop. Unlike the first iteration,
-  # we no longer require a tmdb_id up-front — Movies.fetch_info/1 resolves
-  # it via TMDB search on first run when Xtream doesn't ship one.
+  # Picks top-rated movies whose backdrop gallery is incomplete. We count
+  # backdrops per movie and exclude anything already at/above the healthy
+  # threshold; everything else gets re-enriched. Unlike the first
+  # iteration, we no longer require a tmdb_id up-front — Movies.fetch_info/1
+  # resolves it via TMDB search on first run when Xtream doesn't ship one.
   defp pending_movie_ids(limit) do
-    movies_with_backdrop =
+    movies_with_enough_backdrops =
       from a in MovieAsset,
         where: a.asset_type == "backdrop",
-        select: a.movie_id,
-        distinct: true
+        group_by: a.movie_id,
+        having: count(a.id) >= ^@min_backdrops,
+        select: a.movie_id
 
     from(m in Movie,
-      where: m.id not in subquery(movies_with_backdrop),
+      where: m.id not in subquery(movies_with_enough_backdrops),
       where: not is_nil(m.rating),
       order_by: [desc: m.rating, desc: m.year],
       limit: ^limit,
@@ -133,14 +142,15 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   end
 
   defp pending_series_ids(limit) do
-    series_with_backdrop =
+    series_with_enough_backdrops =
       from a in SeriesAsset,
         where: a.asset_type == "backdrop",
-        select: a.series_id,
-        distinct: true
+        group_by: a.series_id,
+        having: count(a.id) >= ^@min_backdrops,
+        select: a.series_id
 
     from(s in Series,
-      where: s.id not in subquery(series_with_backdrop),
+      where: s.id not in subquery(series_with_enough_backdrops),
       where: not is_nil(s.rating),
       order_by: [desc: s.rating, desc: s.year],
       limit: ^limit,

@@ -139,6 +139,8 @@ defmodule Streamix.Iptv.TmdbClient do
   Parses TMDB movie response into attributes suitable for our Movie schema.
   """
   def parse_movie_response(%{"id" => _} = data) do
+    {gallery_backdrops, gallery_posters} = parse_images_gallery(data["images"])
+
     %{}
     |> maybe_put(:plot, data["overview"])
     |> maybe_put(:rating, parse_rating(data["vote_average"]))
@@ -148,8 +150,8 @@ defmodule Streamix.Iptv.TmdbClient do
     |> maybe_put(:stream_icon, image_url(data["poster_path"], "w500"))
     |> maybe_put(:tagline, data["tagline"])
     |> maybe_put(:content_rating, parse_content_rating(data["release_dates"]))
-    |> maybe_put(:_backdrop_urls, parse_backdrop_paths(data["backdrop_path"]))
-    |> maybe_put(:_image_urls, parse_images(data["images"]))
+    |> maybe_put(:_backdrop_urls, merge_backdrops(data["backdrop_path"], gallery_backdrops))
+    |> maybe_put(:_image_urls, nil_if_empty(gallery_posters))
   end
 
   def parse_movie_response(_), do: %{}
@@ -158,6 +160,8 @@ defmodule Streamix.Iptv.TmdbClient do
   Parses TMDB series response into attributes suitable for our Series schema.
   """
   def parse_series_response(%{"id" => _} = data) do
+    {gallery_backdrops, gallery_posters} = parse_images_gallery(data["images"])
+
     %{}
     |> maybe_put(:plot, data["overview"])
     |> maybe_put(:rating, parse_rating(data["vote_average"]))
@@ -166,8 +170,8 @@ defmodule Streamix.Iptv.TmdbClient do
     |> maybe_put(:cover, image_url(data["poster_path"], "w500"))
     |> maybe_put(:tagline, data["tagline"])
     |> maybe_put(:content_rating, parse_series_content_rating(data["content_ratings"]))
-    |> maybe_put(:_backdrop_urls, parse_backdrop_paths(data["backdrop_path"]))
-    |> maybe_put(:_image_urls, parse_images(data["images"]))
+    |> maybe_put(:_backdrop_urls, merge_backdrops(data["backdrop_path"], gallery_backdrops))
+    |> maybe_put(:_image_urls, nil_if_empty(gallery_posters))
   end
 
   def parse_series_response(_), do: %{}
@@ -390,15 +394,6 @@ defmodule Streamix.Iptv.TmdbClient do
   defp get_trailer_key(nil), do: nil
   defp get_trailer_key(%{"key" => key}), do: key
 
-  defp parse_backdrop_paths(nil), do: nil
-  defp parse_backdrop_paths(""), do: nil
-
-  defp parse_backdrop_paths(path) when is_binary(path) do
-    [image_url(path, "w1280")]
-  end
-
-  defp parse_backdrop_paths(_), do: nil
-
   # Parse content rating from release_dates
   # Prioritizes BR, then US, then any other country
   defp parse_content_rating(nil), do: nil
@@ -481,24 +476,58 @@ defmodule Streamix.Iptv.TmdbClient do
     end)
   end
 
-  # Parse images gallery (backdrops and posters)
-  defp parse_images(nil), do: nil
+  # Parse TMDB's gallery images (from `append_to_response=images`) into
+  # backdrops + posters as separate lists. The previous implementation
+  # concatenated everything and persisted it as a single "image" bucket,
+  # which meant the backdrop gallery (where the actual cinematic hero
+  # shots live) never reached the backdrop accessor — API consumers saw
+  # exactly 1 backdrop (the primary one) even though TMDB shipped 6.
+  #
+  # Keeping this as a tuple instead of a flat list forces callers to
+  # route each set to the right asset bucket.
+  @spec parse_images_gallery(map() | nil) :: {[String.t()], [String.t()]}
+  defp parse_images_gallery(nil), do: {[], []}
 
-  defp parse_images(%{"backdrops" => backdrops, "posters" => posters}) do
+  defp parse_images_gallery(%{"backdrops" => backdrops, "posters" => posters}) do
     backdrop_urls =
       (backdrops || [])
       |> Enum.take(6)
       |> Enum.map(&image_url(&1["file_path"], "w780"))
+      |> Enum.reject(&is_nil/1)
 
     poster_urls =
       (posters || [])
       |> Enum.take(4)
       |> Enum.map(&image_url(&1["file_path"], "w500"))
+      |> Enum.reject(&is_nil/1)
 
-    images = backdrop_urls ++ poster_urls
-
-    if Enum.empty?(images), do: nil, else: images
+    {backdrop_urls, poster_urls}
   end
 
-  defp parse_images(_), do: nil
+  defp parse_images_gallery(_), do: {[], []}
+
+  # Merge the primary backdrop with the gallery backdrops, dedup, and
+  # nil-out empty results so `maybe_put/3` drops the key. Keeping the
+  # primary first means the "hero" shot stays at index 0 for clients
+  # that render a single backdrop.
+  #
+  # The primary is normalized to the same size as the gallery (w780), so
+  # if the gallery already includes the primary's path, `Enum.uniq/1`
+  # collapses them instead of emitting near-duplicates that only differ
+  # by size parameter.
+  defp merge_backdrops(nil, gallery), do: nil_if_empty(gallery)
+  defp merge_backdrops("", gallery), do: nil_if_empty(gallery)
+
+  defp merge_backdrops(path, gallery) when is_binary(path) do
+    primary = image_url(path, "w780")
+
+    (List.wrap(primary) ++ gallery)
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.uniq()
+    |> nil_if_empty()
+  end
+
+  defp nil_if_empty([]), do: nil
+  defp nil_if_empty(list) when is_list(list), do: list
+  defp nil_if_empty(_), do: nil
 end
