@@ -50,10 +50,21 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
   end
 
-  # Strict rate limiting for auth endpoints
+  # Strict rate limiting for password-handling auth endpoints. Kept
+  # tight to blunt credential-stuffing: five attempts per minute per IP
+  # is enough for a human who mistyped and far too few for a bot.
   pipeline :auth_rate_limited do
-    # 5 login attempts per minute per IP
     plug StreamixWeb.Plugs.RateLimit, limit: 5, period: 60_000
+  end
+
+  # Looser pipeline for token-lookup endpoints (`/auth/me`, `/auth/logout`).
+  # These don't process credentials — they only inspect the caller's
+  # existing Bearer token — so they were being unfairly penalised by
+  # the login bucket (5/min tripped on hot reloads and screens that
+  # re-mount more than once a minute). 60/min gives clients room to
+  # refresh aggressively without opening a brute-force window.
+  pipeline :auth_session_rate_limited do
+    plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
   end
 
   # Protected API pipeline with rate limiting and API key auth
@@ -82,12 +93,20 @@ defmodule StreamixWeb.Router do
     head "/stream/proxy", StreamController, :proxy
   end
 
-  # Mobile auth API (no API key required, rate-limited)
+  # Credential-handling routes: tight bucket to discourage brute-force.
   scope "/api/v1/auth", StreamixWeb.Api.V1 do
     pipe_through [:api, :auth_rate_limited]
 
     post "/register", AuthController, :register
     post "/login", AuthController, :login
+  end
+
+  # Token-lookup routes: loose bucket so client re-mounts, hot reloads
+  # and multi-screen flows don't get throttled on their own session
+  # checks.
+  scope "/api/v1/auth", StreamixWeb.Api.V1 do
+    pipe_through [:api, :auth_session_rate_limited]
+
     post "/logout", AuthController, :logout
     get "/me", AuthController, :me
   end
@@ -100,6 +119,11 @@ defmodule StreamixWeb.Router do
     options "/catalog/*path", CatalogController, :options
 
     get "/catalog/featured", CatalogController, :featured
+    # One-shot home aggregator: featured + trending + recent + top-rated
+    # for both movies and series, computed concurrently. Collapses the
+    # TV app's cold-start fan-out of five parallel requests into one
+    # round trip.
+    get "/catalog/home", CatalogController, :home
     get "/catalog/trending", CatalogController, :trending
     get "/catalog/recent", CatalogController, :recent
     get "/catalog/top-rated", CatalogController, :top_rated
