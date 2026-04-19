@@ -17,6 +17,11 @@ defmodule Streamix.Iptv.Movie do
   @type t :: %__MODULE__{}
 
   schema "movies" do
+    # Virtual scoring column populated by
+    # `Streamix.Iptv.RankedSearch.apply/3`. `nil` in non-search queries;
+    # otherwise an integer where higher = more relevant.
+    field :rank_score, :integer, virtual: true
+
     field :stream_id, :integer
     field :name, :string
     field :title, :string

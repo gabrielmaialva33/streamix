@@ -329,20 +329,143 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   """
   def search(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
     query = String.slice(query, 0, 200)
-    movies = Iptv.search_public_movies(query, limit: 10)
-    series = Iptv.search_public_series(query, limit: 10)
-    channels = Iptv.search_public_channels(query, limit: 10)
+    limit = min(parse_int(conn.query_params["limit"], 10), 20)
+
+    # Ran concurrently so a single-round-trip search is capped at the
+    # slowest of the three queries instead of their sum.
+    [movies, series, channels] =
+      [
+        fn -> Iptv.search_public_movies(query, limit: limit) end,
+        fn -> Iptv.search_public_series(query, limit: limit) end,
+        fn -> Iptv.search_public_channels(query, limit: limit) end
+      ]
+      |> Task.async_stream(& &1.(),
+        max_concurrency: 3,
+        timeout: :timer.seconds(5),
+        on_timeout: :kill_task
+      )
+      |> Enum.map(fn
+        {:ok, list} -> list
+        {:exit, _} -> []
+      end)
 
     json(conn, %{
-      movies: Enum.map(movies, &serialize_movie/1),
-      series: Enum.map(series, &serialize_series/1),
-      channels: Enum.map(channels, &serialize_channel/1)
+      query: query,
+      movies: Enum.map(movies, &serialize_ranked_movie/1),
+      series: Enum.map(series, &serialize_ranked_series/1),
+      channels: Enum.map(channels, &serialize_ranked_channel/1)
     })
   end
 
   def search(conn, _params) do
-    json(conn, %{movies: [], series: [], channels: []})
+    json(conn, %{query: "", movies: [], series: [], channels: []})
   end
+
+  @doc """
+  GET /api/v1/catalog/suggest?q=<query>&limit=10
+
+  Typeahead endpoint tuned for TV remote UX: returns a flat, ranked
+  list of up to `limit` items across movies + series + channels, each
+  payload minimal (id / name / type / small poster). Designed to be
+  under 50ms so it can fire on every keystroke without feeling laggy.
+
+  `q` minimum length is 1 character (vs 2 for `/search`) because the
+  caller is typing live.
+  """
+  def suggest(conn, params) do
+    query = params["q"] || ""
+
+    if byte_size(query) >= 1 do
+      query = String.slice(query, 0, 100)
+      limit = min(parse_int(params["limit"], 10), 20)
+
+      # Spread the limit across the three buckets so a result set isn't
+      # dominated by a single type. Up to 2× cap on each query, trimmed
+      # and re-sorted by rank afterward.
+      per_bucket = min(limit, 8)
+
+      [movies, series, channels] =
+        [
+          fn -> Iptv.search_public_movies(query, limit: per_bucket) end,
+          fn -> Iptv.search_public_series(query, limit: per_bucket) end,
+          fn -> Iptv.search_public_channels(query, limit: per_bucket) end
+        ]
+        |> Task.async_stream(& &1.(),
+          max_concurrency: 3,
+          timeout: :timer.seconds(2),
+          on_timeout: :kill_task
+        )
+        |> Enum.map(fn
+          {:ok, list} -> list
+          {:exit, _} -> []
+        end)
+
+      items =
+        (Enum.map(movies, &suggest_movie/1) ++
+           Enum.map(series, &suggest_series/1) ++
+           Enum.map(channels, &suggest_channel/1))
+        |> Enum.sort_by(& &1.score, :desc)
+        |> Enum.take(limit)
+
+      json(conn, %{query: query, items: items})
+    else
+      json(conn, %{query: query, items: []})
+    end
+  end
+
+  # --- Ranked serializers (adds :score on top of the regular payload) ---
+
+  defp serialize_ranked_movie(movie) do
+    movie |> serialize_movie() |> Map.put(:score, rank_score(movie))
+  end
+
+  defp serialize_ranked_series(series) do
+    series |> serialize_series() |> Map.put(:score, rank_score(series))
+  end
+
+  defp serialize_ranked_channel(channel) do
+    channel |> serialize_channel() |> Map.put(:score, rank_score(channel))
+  end
+
+  # Compact payload for typeahead — just enough for a suggestion row.
+  defp suggest_movie(m) do
+    %{
+      id: m.id,
+      type: "movie",
+      title: m.title || m.name,
+      year: m.year,
+      poster: proxy_image(m.stream_icon),
+      score: rank_score(m)
+    }
+  end
+
+  defp suggest_series(s) do
+    %{
+      id: s.id,
+      type: "series",
+      title: s.title || s.name,
+      year: s.year,
+      poster: proxy_image(s.cover),
+      score: rank_score(s)
+    }
+  end
+
+  defp suggest_channel(c) do
+    %{
+      id: c.id,
+      type: "channel",
+      title: c.name,
+      poster: proxy_image(c.stream_icon),
+      score: rank_score(c)
+    }
+  end
+
+  # RankedSearch stitches :rank_score onto the struct as a virtual field
+  # via `select_merge`. If for some reason the column isn't populated
+  # (e.g. a direct Repo.all bypassing the helper) we fall back to 0 so
+  # the API response shape stays stable.
+  defp rank_score(%{rank_score: s}) when is_integer(s), do: s
+  defp rank_score(_), do: 0
 
   @doc """
   GET /api/v1/catalog/home?limit=20

@@ -10,7 +10,17 @@ defmodule Streamix.Iptv.Movies do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Access, AdultFilter, Movie, MovieAsset, TmdbClient, XtreamClient}
+
+  alias Streamix.Iptv.{
+    Access,
+    AdultFilter,
+    Movie,
+    MovieAsset,
+    RankedSearch,
+    TmdbClient,
+    XtreamClient
+  }
+
   alias Streamix.Repo
 
   @summary_preloads [:genres]
@@ -295,17 +305,20 @@ defmodule Streamix.Iptv.Movies do
 
   @doc """
   Searches movies in public providers only (for guests).
+
+  Uses `Streamix.Iptv.RankedSearch` so the result set is ordered by
+  relevance (exact > prefix > substring > trigram-similarity) and
+  includes a `:rank_score` virtual field on each struct. Queries like
+  `"pokemon"` match `"Pokémon"` (unaccent) and `"Matris"` still finds
+  `"Matrix"` (trigram).
   """
   @spec search_public(String.t(), keyword()) :: [Movie.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
-    escaped = Helpers.escape_like(query)
 
     Movie
     |> Access.public_providers()
-    |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
-    |> order_by([m], desc: m.rating, asc: m.name)
-    |> limit(^limit)
+    |> RankedSearch.build([:name, :title], query, limit: limit)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end

@@ -16,6 +16,7 @@ defmodule Streamix.Iptv.SeriesOps do
     AdultFilter,
     Episode,
     Provider,
+    RankedSearch,
     Season,
     Series,
     SeriesAsset,
@@ -529,17 +530,19 @@ defmodule Streamix.Iptv.SeriesOps do
 
   @doc """
   Searches series in public providers only (for guests).
+
+  Uses `Streamix.Iptv.RankedSearch` so matches are ordered by
+  relevance and the result includes a `:rank_score` virtual field.
+  Unaccent-folds both sides so `"pokemon"` matches `"Pokémon"`, and
+  trigram-similarity catches typos (`"Breakng Bad"` still finds it).
   """
   @spec search_public(String.t(), keyword()) :: [Series.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
-    escaped = Helpers.escape_like(query)
 
     Series
     |> Access.public_providers()
-    |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
-    |> order_by([s], desc: s.rating, asc: s.name)
-    |> limit(^limit)
+    |> RankedSearch.build([:name, :title], query, limit: limit)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end

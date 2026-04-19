@@ -137,6 +137,9 @@ defmodule StreamixWeb.Router do
     get "/catalog/channels/:id", CatalogController, :show_channel
     get "/catalog/categories", CatalogController, :categories
     get "/catalog/search", CatalogController, :search
+    # Autocomplete/typeahead endpoint. Cheaper payload than /search,
+    # tuned for per-keystroke calls from a TV remote.
+    get "/catalog/suggest", CatalogController, :suggest
 
     # Image proxy+resize for TV/mobile clients — replaces wsrv.nl.
     get "/catalog/images/resize", ImageResizeController, :resize

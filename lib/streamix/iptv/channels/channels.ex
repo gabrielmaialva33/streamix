@@ -9,7 +9,7 @@ defmodule Streamix.Iptv.Channels do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Access, AdultFilter, EpgChannel, EpgProgram, LiveChannel}
+  alias Streamix.Iptv.{Access, AdultFilter, EpgChannel, EpgProgram, LiveChannel, RankedSearch}
   alias Streamix.Repo
 
   # How long a channel stays hidden after a 404 before we let it back in
@@ -341,17 +341,18 @@ defmodule Streamix.Iptv.Channels do
 
   @doc """
   Searches channels in public providers only (for guests).
+
+  Uses `Streamix.Iptv.RankedSearch` for fuzzy + ranked matching.
+  Channels don't carry ratings, so `rating_field: false` disables the
+  secondary sort key.
   """
   @spec search_public(String.t(), keyword()) :: [LiveChannel.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
-    escaped = Helpers.escape_like(query)
 
     LiveChannel
     |> Access.public_providers()
-    |> where([c, _p], ilike(c.name, ^"%#{escaped}%"))
-    |> order_by([c], asc: c.name)
-    |> limit(^limit)
+    |> RankedSearch.build([:name], query, limit: limit, rating_field: false)
     |> Repo.all()
   end
 end
