@@ -11,6 +11,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   alias Streamix.Helpers
   alias Streamix.Iptv
   alias Streamix.Iptv.{Movie, Series}
+  alias StreamixWeb.Helpers.ResizeUrl
   alias StreamixWeb.StreamToken
 
   @doc """
@@ -39,45 +40,48 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   defp build_featured_content do
     case Iptv.get_featured_content() do
-      {:movie, movie} ->
-        poster = proxy_image(movie.stream_icon)
-        hero_backdrop = List.first(Movie.backdrop_urls(movie) || []) || movie.stream_icon
-
-        %{
-          id: movie.id,
-          type: "movie",
-          title: movie.title || movie.name,
-          name: movie.name,
-          year: movie.year,
-          rating: movie.rating && Decimal.to_float(movie.rating),
-          genre: Helpers.genre_names(movie.genres),
-          plot: movie.plot,
-          poster: poster,
-          backdrop: featured_backdrop(Movie.backdrop_urls(movie), poster)
-        }
-        |> with_image_variants(movie.stream_icon, hero_backdrop)
-
-      {:series, series} ->
-        poster = proxy_image(series.cover)
-        hero_backdrop = List.first(Series.backdrop_urls(series) || []) || series.cover
-
-        %{
-          id: series.id,
-          type: "series",
-          title: series.title || series.name,
-          name: series.name,
-          year: series.year,
-          rating: series.rating && Decimal.to_float(series.rating),
-          genre: Helpers.genre_names(series.genres),
-          plot: series.plot,
-          poster: poster,
-          backdrop: featured_backdrop(Series.backdrop_urls(series), poster)
-        }
-        |> with_image_variants(series.cover, hero_backdrop)
-
-      nil ->
-        nil
+      {:movie, movie} -> build_featured_movie(movie)
+      {:series, series} -> build_featured_series(series)
+      nil -> nil
     end
+  end
+
+  defp build_featured_movie(movie) do
+    poster = proxy_image(movie.stream_icon)
+    hero_backdrop = List.first(Movie.backdrop_urls(movie) || []) || movie.stream_icon
+
+    %{
+      id: movie.id,
+      type: "movie",
+      title: movie.title || movie.name,
+      name: movie.name,
+      year: movie.year,
+      rating: movie.rating && Decimal.to_float(movie.rating),
+      genre: Helpers.genre_names(movie.genres),
+      plot: movie.plot,
+      poster: poster,
+      backdrop: featured_backdrop(Movie.backdrop_urls(movie), poster)
+    }
+    |> with_image_variants(movie.stream_icon, hero_backdrop)
+  end
+
+  defp build_featured_series(series) do
+    poster = proxy_image(series.cover)
+    hero_backdrop = List.first(Series.backdrop_urls(series) || []) || series.cover
+
+    %{
+      id: series.id,
+      type: "series",
+      title: series.title || series.name,
+      name: series.name,
+      year: series.year,
+      rating: series.rating && Decimal.to_float(series.rating),
+      genre: Helpers.genre_names(series.genres),
+      plot: series.plot,
+      poster: poster,
+      backdrop: featured_backdrop(Series.backdrop_urls(series), poster)
+    }
+    |> with_image_variants(series.cover, hero_backdrop)
   end
 
   # Netflix-style responsive images: hand clients a stable set of
@@ -89,8 +93,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   defp with_image_variants(payload, poster_url, backdrop_url) do
     payload
-    |> Map.merge(StreamixWeb.Helpers.ResizeUrl.flatten("poster", poster_url, @poster_widths))
-    |> Map.merge(StreamixWeb.Helpers.ResizeUrl.flatten("backdrop", backdrop_url, @backdrop_widths))
+    |> Map.merge(ResizeUrl.flatten("poster", poster_url, @poster_widths))
+    |> Map.merge(ResizeUrl.flatten("backdrop", backdrop_url, @backdrop_widths))
   end
 
   # Always returns a non-empty list when a poster exists, so hero rendering
@@ -338,6 +342,58 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   def search(conn, _params) do
     json(conn, %{movies: [], series: [], channels: []})
+  end
+
+  @doc """
+  GET /api/v1/catalog/home?limit=20
+  Returns every section the TV home screen needs in a single round
+  trip: featured hero + trending/recent/top-rated for movies, trending
+  for series.
+
+  The sub-queries run concurrently in a `Task.async_stream` so the
+  endpoint's wall-clock latency is roughly `max(subquery)` rather than
+  their sum — ~80-120ms on a warm cache vs the 350-500ms a five-request
+  fan-out costs the TV app today.
+
+  Accepts the same `?limit=` each underlying section respects;
+  defaults to 20 (capped at 50).
+  """
+  def home(conn, params) do
+    limit = min(parse_int(params["limit"], 20), 50)
+
+    sections = [
+      featured: fn -> build_featured_content() end,
+      trending_movies: fn -> Iptv.list_trending("movie", limit: limit) end,
+      recent_movies: fn -> Iptv.list_recent("movie", limit: limit) end,
+      top_rated_movies: fn -> Iptv.list_top_rated("movie", limit: limit) end,
+      trending_series: fn -> Iptv.list_trending("series", limit: limit) end
+    ]
+
+    # `ordered: false` lets results come in as they finish — we recombine
+    # by key. `:kill_task` on timeout means a single slow section can't
+    # stall the rest of the payload; a missing key just won't appear in
+    # the response body.
+    results =
+      sections
+      |> Task.async_stream(
+        fn {key, fun} -> {key, fun.()} end,
+        max_concurrency: length(sections),
+        timeout: :timer.seconds(10),
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Enum.reduce(%{}, fn
+        {:ok, {key, value}}, acc -> Map.put(acc, key, value)
+        {:exit, _reason}, acc -> acc
+      end)
+
+    json(conn, %{
+      featured: Map.get(results, :featured),
+      trending_movies: serialize_items("movie", results[:trending_movies] || []),
+      recent_movies: serialize_items("movie", results[:recent_movies] || []),
+      top_rated_movies: serialize_items("movie", results[:top_rated_movies] || []),
+      trending_series: serialize_items("series", results[:trending_series] || [])
+    })
   end
 
   @doc """
