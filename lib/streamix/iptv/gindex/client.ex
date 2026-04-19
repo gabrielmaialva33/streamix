@@ -16,6 +16,7 @@ defmodule Streamix.Iptv.Gindex.Client do
 
   alias Streamix.Iptv.Gindex.EndpointManager
   alias Streamix.Iptv.Gindex.HealthTracker
+  alias Streamix.Iptv.Gindex.Pacer
 
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(5)
@@ -286,6 +287,15 @@ defmodule Streamix.Iptv.Gindex.Client do
   end
 
   defp do_request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt) do
+    # Respect the upstream (Google Drive / Cloudflare Worker) rate budget
+    # before we even open the socket. `Pacer.acquire/1` blocks with jitter
+    # until a global token is available — this is what keeps 4 parallel
+    # workers from stampeding the worker.
+    case Pacer.acquire(:gdrive) do
+      :ok -> :ok
+      {:error, :timeout} -> Logger.warning("[GIndex Client] pacer timeout, proceeding anyway")
+    end
+
     case Req.request(build_request_opts(method, url, body, opts)) do
       {:ok, response} ->
         handle_request_response(

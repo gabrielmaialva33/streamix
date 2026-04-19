@@ -18,6 +18,7 @@ defmodule Streamix.Iptv.TmdbClient do
   """
 
   alias Streamix.Cache
+  alias Streamix.Iptv.Gindex.Pacer
 
   @type profile :: :default | :gindex | atom()
 
@@ -251,6 +252,8 @@ defmodule Streamix.Iptv.TmdbClient do
   defp profile_from(_), do: :default
 
   defp do_request(url, profile, retries \\ 0) do
+    maybe_pace(profile)
+
     headers = [
       {"Authorization", "Bearer #{config(profile)[:api_token]}"},
       {"Accept", "application/json"}
@@ -260,6 +263,12 @@ defmodule Streamix.Iptv.TmdbClient do
     |> Req.get(headers: headers, receive_timeout: @timeout, finch: Streamix.Finch)
     |> handle_response(url, profile, retries)
   end
+
+  # Only pace profiles that have a dedicated pacer bucket. `:default` keeps
+  # its historical behavior (TMDB's own retry-after handling is enough for
+  # Xtream-volume traffic).
+  defp maybe_pace(:gindex), do: Pacer.acquire(:tmdb_gindex)
+  defp maybe_pace(_), do: :ok
 
   defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries)
        when is_map(body) do

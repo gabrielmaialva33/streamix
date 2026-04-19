@@ -108,6 +108,12 @@ if gindex_tmdb_token = get_env.("GINDEX_TMDB_API_TOKEN") do
     api_token: gindex_tmdb_token
 end
 
+# GIndex pacer budgets (requests-per-second). Tunable from the env without
+# a code change — useful when upstream capacity changes.
+config :streamix, Streamix.Iptv.Gindex.Pacer,
+  gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "5"),
+  tmdb_gindex: String.to_integer(get_env.("GINDEX_TMDB_RPS") || "10")
+
 # GIndex provider configuration (Google Drive Index for movies/series/animes)
 # Paths are configured via gindex_drives on the provider record
 if get_env.("GINDEX_ENABLED") == "true" do

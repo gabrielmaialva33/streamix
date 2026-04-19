@@ -717,9 +717,15 @@ defmodule Streamix.Iptv.Gindex.Scraper do
     end
   end
 
-  # Rate limit helper: adds jitter to base delay to avoid detection patterns
-  defp rate_limit_delay do
-    jitter = :rand.uniform(@max_jitter)
-    Process.sleep(@base_delay + jitter)
-  end
+  # Pacing is now handled inside `Streamix.Iptv.Gindex.Client` via
+  # `Streamix.Iptv.Gindex.Pacer`, which enforces a global RPS budget across
+  # all parallel workers. This no-op stays to keep existing call sites
+  # compiling while the scraper migration lands piece by piece.
+  defp rate_limit_delay, do: :ok
+
+  # Silence unused attribute warnings for the legacy sleep configuration.
+  # Kept around so a future change can reinstate per-call backoff without
+  # chasing down magic numbers.
+  _ = @base_delay
+  _ = @max_jitter
 end
