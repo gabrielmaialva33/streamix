@@ -13,7 +13,10 @@ defmodule Streamix.Iptv.Gindex.Parser do
   - "Nome.S01E01.Qualidade.Fonte.Codec-Release.ext" -> Episode file
   """
 
-  @video_extensions ~w(mkv mp4 avi mov wmv flv webm m4v)
+  # `ts` / `m2ts` show up on fansub drops of Blu-ray rips; `mpg`/`mpeg`
+  # on older archival uploads. They all transcode fine — leaving them
+  # out meant releases using these containers got silently dropped.
+  @video_extensions ~w(mkv mp4 avi mov wmv flv webm m4v ts m2ts mpg mpeg ogv 3gp)
   @quality_patterns ~w(2160p 1080p 720p 480p 4K UHD HDR)
   @source_patterns ~w(AMZN NF DSNP HMAX HBO ATVP PMTP WEB-DL WEBRip BluRay BDRip HDRip DVDRip)
 
@@ -181,20 +184,7 @@ defmodule Streamix.Iptv.Gindex.Parser do
     filename = String.trim(filename)
     {name_without_ext, extension} = split_extension(filename)
 
-    # Pattern: [Group] Name - NNN [Quality][Audio]
-    # Extract episode number: - NNN [
-    episode =
-      case Regex.run(~r/-\s*(\d{1,3})\s*\[/, name_without_ext) do
-        [_, ep] ->
-          String.to_integer(ep)
-
-        nil ->
-          # Try alternate patterns: - NNN. or - NNN at end
-          case Regex.run(~r/-\s*(\d{1,3})(?:\.|$)/, name_without_ext) do
-            [_, ep] -> String.to_integer(ep)
-            nil -> nil
-          end
-      end
+    episode = extract_anime_episode_number(name_without_ext)
 
     # Extract group: [Group]
     group =
@@ -221,6 +211,68 @@ defmodule Streamix.Iptv.Gindex.Parser do
       is_dual_audio: is_dual,
       raw_filename: filename
     }
+  end
+
+  # Tries the usual release patterns in order of specificity so common
+  # fansub layouts all parse, not just the `[Group] Name - NNN [Quality]`
+  # subset. Order matters — the first match wins, and the more restrictive
+  # patterns need to run first so `Ep07_Extra.mkv` doesn't collapse to
+  # episode 7 via the bare-number fallback. Patterns below cover, in order:
+  #
+  #   1. `- NNN [`                — e.g. `[G] Name - 01 [1080p].mkv`
+  #   2. `- NNN` (end or dot)     — fallback for releases without brackets
+  #   3. `EpisódioNNN` / `Ep NNN` — PT-BR "Episódio 01", "EP 01", "Ep.01"
+  #   4. `Episode NNN`            — English variant
+  #   5. ` NNN [`                 — `[G] Name 01 [720p].mkv` (no dash)
+  #   6. `_NNN_` or `_NNN.`       — underscore-separated releases
+  #   7. `#NNN`                   — anime movies/specials numbered `#12`
+  #   8. Standalone token `NNN`   — last resort, must be surrounded by
+  #                                 delimiters to avoid matching a year
+  defp extract_anime_episode_number(name) do
+    patterns = [
+      ~r/-\s*(\d{1,3})\s*\[/,
+      ~r/-\s*(\d{1,3})(?:\.|$)/,
+      ~r/(?:Epis[oó]dio)\s*[\.-]?\s*(\d{1,3})\b/iu,
+      ~r/\bEp\.?\s*(\d{1,3})\b/i,
+      ~r/\bEpisode\s*(\d{1,3})\b/i,
+      ~r/(?<!\d)\s(\d{1,3})\s*\[/,
+      ~r/_(\d{1,3})[_.]/,
+      ~r/#(\d{1,3})\b/
+    ]
+
+    patterns
+    |> Enum.find_value(fn re ->
+      case Regex.run(re, name) do
+        [_, ep] -> safe_integer(ep)
+        _ -> nil
+      end
+    end)
+    |> case do
+      nil -> fallback_anime_episode(name)
+      ep -> ep
+    end
+  end
+
+  # Bare-number fallback: look for a 1-3 digit token that isn't part of
+  # a year or a resolution. Rejecting numbers ≥ 1900 avoids collapsing
+  # `Name (2021).mkv` to episode 21; rejecting 720/1080/2160 stops
+  # resolution strings from winning.
+  defp fallback_anime_episode(name) do
+    name
+    |> String.replace(~r/\b(?:19|20)\d{2}\b/, " ")
+    |> String.replace(~r/\b(?:240|360|480|720|1080|1440|2160|4320)p?\b/i, " ")
+    |> (&Regex.run(~r/\b(\d{1,3})\b/, &1)).()
+    |> case do
+      [_, ep] -> safe_integer(ep)
+      _ -> nil
+    end
+  end
+
+  defp safe_integer(str) do
+    case Integer.parse(str) do
+      {n, _} when n >= 0 and n <= 999 -> n
+      _ -> nil
+    end
   end
 
   @doc """

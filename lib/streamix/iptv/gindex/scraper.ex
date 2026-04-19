@@ -646,14 +646,33 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   # Series Helper Functions
   # =============================================================================
 
-  # Checks if a folder looks like a season folder
-  defp season_folder?(folder) do
+  @doc """
+  Returns `true` when `folder.name` looks like a season directory.
+
+  Exposed so callers (and tests) can rely on the full vocabulary the
+  scraper recognises instead of duplicating regexes at every site.
+
+  Covers the English release-scene layouts (`S01`, `Season 1`,
+  `Name.S01.1080p`) plus the PT-BR vocabulary that was previously
+  silently dropped:
+
+    * `Temporada 01`, `Temporada 1`, `TEMPORADA 2`
+    * `1ª Temporada`, `2ª Temporada`, `10ª Temporada`
+    * `T01`, `T1`, `T10`
+    * `Volume 1`, `Vol. 1`, `Vol 1` — batches that label seasons this way
+  """
+  @spec season_folder?(%{name: String.t()}) :: boolean()
+  def season_folder?(folder) do
     name = folder.name
-    # Match patterns like "S01", "Season 1", or "Nome.S01.1080p..."
+
     Regex.match?(~r/^S\d{1,2}$/i, name) or
       Regex.match?(~r/^Season\s*\d{1,2}$/i, name) or
       Regex.match?(~r/\.S\d{1,2}\./i, name) or
-      Regex.match?(~r/S\d{1,2}[^a-zA-Z]/i, name)
+      Regex.match?(~r/S\d{1,2}[^a-zA-Z]/i, name) or
+      Regex.match?(~r/^Temporada\s*\d{1,2}\b/iu, name) or
+      Regex.match?(~r/^\d{1,2}ª?\s*Temporada\b/iu, name) or
+      Regex.match?(~r/^T\d{1,2}\b/i, name) or
+      Regex.match?(~r/^(Vol(?:ume|\.)?)\s*\d{1,2}\b/i, name)
   end
 
   # Check season subfolders for episodes (handles nested release folders)
