@@ -24,14 +24,18 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   alias Streamix.Iptv.{Movie, Series}
   alias StreamixWeb.Helpers.ImageProxy
 
-  plug :require_authenticated_user
+  # Pipeline `:api_v1` never sets `current_scope` (that's a browser-only
+  # concern), so the previous `require_authenticated_user` always
+  # 401'd. BearerAuth resolves the user from the session token the TV
+  # app is already sending and assigns it to `:current_user`.
+  plug StreamixWeb.Plugs.BearerAuth
 
   @doc """
   GET /api/v1/recommendations
   Get personalized "For You" recommendations based on watch history.
   """
   def index(conn, params) do
-    user_id = conn.assigns.current_scope.user.id
+    user_id = conn.assigns.current_user.id
     collection = Map.get(params, "type", "movies")
     limit = parse_int(params["limit"], 20)
 
@@ -97,7 +101,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get recommended live channels based on watch history.
   """
   def channels(conn, params) do
-    user_id = conn.assigns.current_scope.user.id
+    user_id = conn.assigns.current_user.id
     limit = parse_int(params["limit"], 10)
 
     {:ok, channels} = UserAnalytics.get_channel_recommendations(user_id, limit: limit)
@@ -110,7 +114,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get user viewing insights and stats.
   """
   def insights(conn, _params) do
-    user_id = conn.assigns.current_scope.user.id
+    user_id = conn.assigns.current_user.id
 
     insights = UserAnalytics.get_user_insights(user_id)
 
@@ -122,7 +126,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Force refresh user profile (recalculate from watch history).
   """
   def refresh(conn, _params) do
-    user_id = conn.assigns.current_scope.user.id
+    user_id = conn.assigns.current_user.id
 
     case UserAnalytics.compute_user_profile(user_id) do
       {:ok, _vector} ->
@@ -139,17 +143,6 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   # Private functions
-
-  defp require_authenticated_user(conn, _opts) do
-    if conn.assigns[:current_scope] && conn.assigns.current_scope.user do
-      conn
-    else
-      conn
-      |> put_status(:unauthorized)
-      |> json(%{error: "Authentication required"})
-      |> halt()
-    end
-  end
 
   defp enrich_results(results, "movies"), do: enrich_movie_results(results)
   defp enrich_results(results, "series"), do: enrich_series_results(results)
