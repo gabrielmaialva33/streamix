@@ -17,27 +17,31 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   require Logger
 
   @table_name :gindex_endpoints
+  # Single-endpoint default: the legacy fallback hostnames
+  # (`1.animezeydl.workers.dev`, `1.animezey23112022.workers.dev`) were
+  # decommissioned upstream and now return `:nxdomain`, so leaving them
+  # in the pool just guaranteed a 60-second retry penalty on every burst
+  # of 500s from the primary. A ScanRoot worker can absorb that kind of
+  # transient failure with the per-request retry in `Client.do_request`
+  # plus the Pacer backoff — the circuit breaker is enough isolation for
+  # a single host. Add real fallbacks back via the `:gindex` env config
+  # once a second working mirror exists.
   @default_endpoints [
     %{
       name: :primary,
       url: "https://animezey16082023.animezey16082023.workers.dev",
       priority: 1
-    },
-    %{
-      name: :fallback_1,
-      url: "https://1.animezeydl.workers.dev",
-      priority: 2
-    },
-    %{
-      name: :fallback_2,
-      url: "https://1.animezey23112022.workers.dev",
-      priority: 3
     }
   ]
 
   # Circuit breaker settings
-  @error_threshold 3
-  @recovery_timeout :timer.minutes(5)
+  # 5xx bursts from the upstream Cloudflare Worker are routinely
+  # transient (the worker itself logs `TypeError` on some shards), so
+  # `@error_threshold` sits well above the natural burst size and
+  # `@recovery_timeout` is short enough that a healthy primary is back
+  # in rotation before the user-visible sync window closes.
+  @error_threshold 10
+  @recovery_timeout :timer.minutes(1)
   @half_open_max_requests 2
 
   # Circuit states
@@ -280,18 +284,14 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   defp parse_single_url_config(config) do
     case Keyword.get(config, :url) do
       url when is_binary(url) ->
-        [%{name: :primary, url: url, priority: 1}] ++ default_fallback()
+        # Legacy implementation tacked on hardcoded fallback workers here
+        # that no longer resolve; with only a healthy primary we avoid
+        # paying nxdomain retries on every circuit switch.
+        [%{name: :primary, url: url, priority: 1}]
 
       _ ->
         @default_endpoints
     end
-  end
-
-  defp default_fallback do
-    [
-      %{name: :fallback_1, url: "https://1.animezeydl.workers.dev", priority: 2},
-      %{name: :fallback_2, url: "https://1.animezey23112022.workers.dev", priority: 3}
-    ]
   end
 
   defp init_endpoint(endpoint, table_name) do
