@@ -116,6 +116,39 @@ defmodule Streamix.Iptv.Gindex.Sync do
     Scraper.list_categories(base_url, path)
   end
 
+  @doc """
+  Syncs a single root path for a given kind. Used by the Oban per-root
+  orchestration so each scan root is its own bounded job.
+
+  Returns `{:ok, stats}` where `stats` keys depend on `kind`:
+    * `:movies` -> `%{movies_count: n}`
+    * `:series` -> `%{series_count: n, episodes_count: n}`
+    * `:animes` -> `%{animes_count: n, episodes_count: n}`
+  """
+  @spec sync_kind(Provider.t(), String.t(), String.t(), atom()) ::
+          {:ok, map()} | {:error, term()}
+  def sync_kind(%Provider{} = provider, base_url, path, :movies) do
+    case sync_movies(provider, base_url, path) do
+      {:ok, count} -> {:ok, %{movies_count: count}}
+      error -> error
+    end
+  end
+
+  def sync_kind(%Provider{} = provider, base_url, path, :series) do
+    # `sync_series/3` already accepts a list of paths; wrap the single path.
+    case sync_series(provider, base_url, [path]) do
+      {:ok, stats} -> {:ok, stats}
+      error -> error
+    end
+  end
+
+  def sync_kind(%Provider{} = provider, base_url, path, :animes) do
+    case sync_animes(provider, base_url, path) do
+      {:ok, stats} -> {:ok, stats}
+      error -> error
+    end
+  end
+
   # Private functions
 
   defp sync_movies(provider, base_url, movies_path) do

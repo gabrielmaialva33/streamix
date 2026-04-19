@@ -10,6 +10,7 @@ defmodule Streamix.Iptv.SeriesOps do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
+
   alias Streamix.Iptv.{
     Access,
     AdultFilter,
@@ -21,6 +22,7 @@ defmodule Streamix.Iptv.SeriesOps do
     Sync,
     TmdbClient
   }
+
   alias Streamix.Repo
 
   @summary_preloads [:genres]

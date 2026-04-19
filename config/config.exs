@@ -80,7 +80,19 @@ config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 # Oban - Background jobs
 config :streamix, Oban,
   repo: Streamix.Repo,
-  queues: [default: 10, sync: 3, series_details: 2, ai: 1],
+  queues: [
+    default: 10,
+    sync: 3,
+    series_details: 2,
+    ai: 1,
+    # GIndex ingestion: a small dispatcher queue that just enqueues work,
+    # and a larger scan queue that does the heavy lifting. The global RPS
+    # ceiling is enforced inside `Streamix.Iptv.Gindex.Pacer`, not here —
+    # concurrency higher than the RPS budget just means workers wait in
+    # the pacer's queue instead of Oban's.
+    gindex_dispatch: 1,
+    gindex_scan: 4
+  ],
   plugins: [
     Oban.Plugins.Pruner,
     {Oban.Plugins.Cron,

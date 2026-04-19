@@ -1,73 +1,87 @@
 defmodule Streamix.Workers.SyncGindexProviderWorker do
   @moduledoc """
-  Periodic worker that syncs the GIndex provider (configured via env vars).
-  Runs via Oban Cron plugin daily at 3 AM.
+  Dispatcher for GIndex ingestion.
 
-  When RabbitMQ is enabled, enqueues tasks to Broadway for distributed processing.
-  Otherwise, runs sync directly in this process.
+  This worker used to run the whole sync in one process, which routinely
+  exceeded Oban's default timeout when the catalog had 10k+ titles and left
+  the job stuck as `executing` forever. It now resolves the provider's scan
+  roots (one per `{drive, path, kind}`) and enqueues a
+  `Streamix.Workers.Gindex.ScanRootWorker` per root. Each child job carries
+  its own timeout, retries, and rate-limited HTTP budget — so one bad path
+  can't sabotage the rest of the catalog.
+
+  Queue: `:gindex_dispatch`. Triggered nightly by the Oban cron plugin.
   """
 
-  use Oban.Worker, queue: :sync, max_attempts: 3
+  use Oban.Worker, queue: :gindex_dispatch, max_attempts: 3
 
+  alias Streamix.Iptv.Gindex.SyncPlanner
   alias Streamix.Iptv.GIndexProvider
-  alias Streamix.Queue
+  alias Streamix.Iptv.Provider
+  alias Streamix.Repo
+  alias Streamix.Workers.Gindex.ScanRootWorker
 
   require Logger
 
   @impl Oban.Worker
   def perform(_job) do
     if GIndexProvider.enabled?() do
-      Logger.info("[GIndex] Starting sync for GIndex provider")
+      Logger.info("[GIndex Dispatcher] ensuring provider exists")
 
       case GIndexProvider.ensure_exists!() do
-        {:ok, provider} when is_struct(provider) ->
-          Logger.info("[GIndex] GIndex provider exists: #{provider.name}")
-          sync_gindex_provider(provider)
+        {:ok, %Provider{} = provider} ->
+          dispatch(provider)
 
         {:ok, :disabled} ->
-          Logger.info("[GIndex] GIndex provider is disabled, skipping sync")
           :ok
 
-        {:error, reason} ->
-          Logger.error("[GIndex] Failed to ensure GIndex provider exists: #{inspect(reason)}")
-          {:error, reason}
+        {:error, reason} = err ->
+          Logger.error("[GIndex Dispatcher] provider ensure failed: #{inspect(reason)}")
+          err
       end
     else
-      Logger.debug("[GIndex] GIndex provider not configured, skipping sync")
       :ok
     end
   end
 
-  defp sync_gindex_provider(provider) do
-    if Queue.enabled?() do
-      # Use Broadway for distributed processing
-      Logger.info("[GIndex] Enqueueing sync via RabbitMQ/Broadway")
-      Queue.enqueue_gindex_sync(provider)
+  defp dispatch(provider) do
+    roots = SyncPlanner.roots_for(provider)
+
+    Logger.info(
+      "[GIndex Dispatcher] enqueuing #{length(roots)} scan roots for provider #{provider.id}"
+    )
+
+    mark_status(provider, "syncing")
+
+    results =
+      Enum.map(roots, fn %{base_url: base_url, path: path, kind: kind} ->
+        args = %{
+          "provider_id" => provider.id,
+          "base_url" => base_url,
+          "path" => path,
+          "kind" => Atom.to_string(kind)
+        }
+
+        args
+        |> ScanRootWorker.new()
+        |> Oban.insert()
+      end)
+
+    errors = Enum.filter(results, &match?({:error, _}, &1))
+
+    if errors == [] do
+      :ok
     else
-      # Direct execution
-      sync_directly()
+      Logger.warning("[GIndex Dispatcher] some roots failed to enqueue: #{inspect(errors)}")
+      # Still return :ok — individual ScanRoot failures shouldn't nuke the
+      # dispatch job, the children have their own retry policies.
+      :ok
     end
   end
 
-  defp sync_directly do
-    case GIndexProvider.sync!() do
-      {:ok, stats} ->
-        Logger.info(
-          "[GIndex] GIndex provider sync completed - " <>
-            "Movies: #{stats.movies_count}, " <>
-            "Series: #{Map.get(stats, :series_count, 0)}, " <>
-            "Episodes: #{Map.get(stats, :episodes_count, 0)}"
-        )
-
-        :ok
-
-      {:error, :not_found} ->
-        Logger.warning("[GIndex] GIndex provider not found in database")
-        {:error, :not_found}
-
-      {:error, reason} ->
-        Logger.error("[GIndex] GIndex provider sync failed: #{inspect(reason)}")
-        {:error, reason}
-    end
+  defp mark_status(provider, status) do
+    provider
+    |> Provider.sync_changeset(%{sync_status: status})
+    |> Repo.update()
   end
 end

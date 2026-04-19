@@ -1,0 +1,91 @@
+defmodule Streamix.Workers.Gindex.ScanRootWorker do
+  @moduledoc """
+  Scans a single GIndex scan root (`base_url` + `path` + `kind`) into the
+  database. One of these jobs exists per root, which means a stuck or slow
+  path can't starve the others — each root gets its own Oban attempt budget,
+  timeout, and back-off.
+
+  Args (all strings/integers — Oban serializes to JSON):
+    * `"provider_id"` — the `Provider.id` whose drives are being ingested
+    * `"base_url"`    — the GIndex base URL to hit
+    * `"path"`        — the path inside the index (e.g. `"/1:/Filmes/"`)
+    * `"kind"`        — `"movies" | "series" | "animes"`
+
+  Idempotent via the default upsert logic in `Streamix.Iptv.Gindex.Sync`.
+  """
+
+  use Oban.Worker,
+    queue: :gindex_scan,
+    max_attempts: 3,
+    # Don't re-enqueue the same root while one is still running or scheduled —
+    # protects against a cron tick landing on top of a still-running dispatch.
+    unique: [
+      period: :timer.hours(1),
+      fields: [:args],
+      states: [:available, :scheduled, :executing]
+    ]
+
+  alias Streamix.Iptv.Gindex.Sync
+  alias Streamix.Iptv.Provider
+  alias Streamix.Repo
+
+  require Logger
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(30)
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{
+        args: %{
+          "provider_id" => provider_id,
+          "base_url" => base_url,
+          "path" => path,
+          "kind" => kind
+        }
+      }) do
+    with %Provider{} = provider <- Repo.get(Provider, provider_id),
+         {:ok, kind_atom} <- parse_kind(kind) do
+      Logger.info("[GIndex ScanRoot] start provider=#{provider_id} kind=#{kind} path=#{path}")
+      started_at = System.monotonic_time(:millisecond)
+
+      case Sync.sync_kind(provider, base_url, path, kind_atom) do
+        {:ok, stats} ->
+          took_ms = System.monotonic_time(:millisecond) - started_at
+
+          Logger.info(
+            "[GIndex ScanRoot] done provider=#{provider_id} kind=#{kind} path=#{path} " <>
+              "stats=#{inspect(stats)} took=#{took_ms}ms"
+          )
+
+          :telemetry.execute(
+            [:streamix, :gindex, :scan_root, :stop],
+            %{duration_ms: took_ms},
+            %{provider_id: provider_id, kind: kind_atom, path: path, stats: stats}
+          )
+
+          :ok
+
+        {:error, reason} = err ->
+          Logger.warning(
+            "[GIndex ScanRoot] failed provider=#{provider_id} kind=#{kind} path=#{path} " <>
+              "reason=#{inspect(reason)}"
+          )
+
+          err
+      end
+    else
+      nil ->
+        Logger.warning("[GIndex ScanRoot] provider #{provider_id} not found, discarding")
+        {:cancel, :provider_not_found}
+
+      {:error, :invalid_kind} ->
+        Logger.warning("[GIndex ScanRoot] invalid kind #{inspect(kind)}, discarding")
+        {:cancel, :invalid_kind}
+    end
+  end
+
+  defp parse_kind("movies"), do: {:ok, :movies}
+  defp parse_kind("series"), do: {:ok, :series}
+  defp parse_kind("animes"), do: {:ok, :animes}
+  defp parse_kind(_), do: {:error, :invalid_kind}
+end
