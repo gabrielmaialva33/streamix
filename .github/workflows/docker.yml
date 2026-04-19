@@ -87,34 +87,31 @@ jobs:
             set -euo pipefail
             cd /opt/streamix
 
-            echo "▶ deploying sha=${{ needs.build.outputs.image_tag }}"
-
-            echo "▶ pulling latest image..."
+            echo "[deploy] sha=${{ needs.build.outputs.image_tag }}"
+            echo "[deploy] pulling image..."
             docker compose pull streamix
 
-            echo "▶ recreating container..."
+            echo "[deploy] recreating container..."
             docker compose up -d --force-recreate --remove-orphans streamix
 
-            echo "▶ waiting for health..."
-            for i in $(seq 1 45); do
-              status=$(docker inspect -f '{{.State.Health.Status}}' streamix 2>/dev/null || echo "starting")
-              case "$status" in
-                healthy)
-                  echo "✅ streamix healthy (took ~$((i * 2))s)"
-                  docker image prune -f >/dev/null || true
-                  exit 0
-                  ;;
-                unhealthy)
-                  echo "❌ streamix unhealthy, dumping recent logs:"
-                  docker logs --tail 120 streamix
-                  exit 1
-                  ;;
-                *)
-                  sleep 2
-                  ;;
-              esac
+            echo "[deploy] waiting up to 90s for healthy status..."
+            i=0
+            while [ $i -lt 45 ]; do
+              status=$(docker inspect -f '{{.State.Health.Status}}' streamix 2>/dev/null || true)
+              if [ "$status" = "healthy" ]; then
+                echo "[deploy] OK: streamix healthy"
+                docker image prune -f >/dev/null 2>&1 || true
+                exit 0
+              fi
+              if [ "$status" = "unhealthy" ]; then
+                echo "[deploy] FAIL: streamix unhealthy, recent logs:"
+                docker logs --tail 120 streamix
+                exit 1
+              fi
+              i=$((i + 1))
+              sleep 2
             done
 
-            echo "❌ streamix did not become healthy in 90s, dumping logs:"
+            echo "[deploy] FAIL: streamix never became healthy, recent logs:"
             docker logs --tail 200 streamix
             exit 1
