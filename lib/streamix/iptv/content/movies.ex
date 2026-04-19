@@ -326,41 +326,9 @@ defmodule Streamix.Iptv.Movies do
   @spec fetch_info(Movie.t()) :: {:ok, Movie.t()} | {:error, term()}
   def fetch_info(%Movie{} = movie) do
     movie = Repo.preload(movie, [:provider | @detail_preloads])
-    provider = movie.provider
 
     # Step 1: Fetch from Xtream API
-    xtream_attrs =
-      case XtreamClient.get_vod_info(
-             provider.url,
-             provider.username,
-             provider.password,
-             movie.stream_id
-           ) do
-        {:ok, %{"info" => info, "movie_data" => movie_data}} ->
-          parse_vod_info(info, movie_data)
-
-        {:ok, %{"info" => info}} ->
-          parse_vod_info(info, %{})
-
-        {:ok, response} ->
-          require Logger
-
-          Logger.debug("[IPTV] Unexpected Xtream response format for movie #{movie.id}",
-            response_keys: Map.keys(response)
-          )
-
-          %{}
-
-        {:error, reason} ->
-          require Logger
-
-          Logger.warning("[IPTV] Xtream API failed for movie #{movie.id}",
-            movie_name: movie.name,
-            reason: inspect(reason)
-          )
-
-          %{}
-      end
+    xtream_attrs = fetch_xtream_attrs(movie)
 
     # Step 2: Resolve a tmdb_id. Prefer what Xtream returned, then what we
     # already have stored, and finally fall back to a name+year search on
@@ -393,6 +361,40 @@ defmodule Streamix.Iptv.Movies do
   # =============================================================================
   # Private Helpers
   # =============================================================================
+
+  defp fetch_xtream_attrs(%Movie{provider: provider} = movie) do
+    case XtreamClient.get_vod_info(
+           provider.url,
+           provider.username,
+           provider.password,
+           movie.stream_id
+         ) do
+      {:ok, %{"info" => info, "movie_data" => movie_data}} ->
+        parse_vod_info(info, movie_data)
+
+      {:ok, %{"info" => info}} ->
+        parse_vod_info(info, %{})
+
+      {:ok, response} ->
+        require Logger
+
+        Logger.debug("[IPTV] Unexpected Xtream response format for movie #{movie.id}",
+          response_keys: Map.keys(response)
+        )
+
+        %{}
+
+      {:error, reason} ->
+        require Logger
+
+        Logger.warning("[IPTV] Xtream API failed for movie #{movie.id}",
+          movie_name: movie.name,
+          reason: inspect(reason)
+        )
+
+        %{}
+    end
+  end
 
   # Resolves a tmdb_id by searching TMDB with the movie's title + year.
   # When the movie has a year, we only trust matches whose release_date
@@ -471,9 +473,9 @@ defmodule Streamix.Iptv.Movies do
       {:error, reason} ->
         require Logger
 
-        Logger.warning("[IPTV] TMDB API failed for tmdb_id #{tmdb_id}",
-          reason: inspect(reason),
-          profile: profile
+        Logger.warning(
+          "[IPTV] TMDB API failed for tmdb_id #{tmdb_id} (profile=#{profile})",
+          reason: inspect(reason)
         )
 
         %{}

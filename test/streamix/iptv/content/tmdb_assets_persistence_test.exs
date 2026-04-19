@@ -16,7 +16,7 @@ defmodule Streamix.Iptv.Content.TmdbAssetsPersistenceTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{CatalogItem, Movies, MovieAsset, Series, SeriesAsset, SeriesOps}
+  alias Streamix.Iptv.{CatalogItem, MovieAsset, Movies, Series, SeriesAsset, SeriesOps}
   alias Streamix.Repo
 
   setup do
