@@ -2,7 +2,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -14,10 +14,15 @@ env:
 
 jobs:
   build:
+    name: Build & push image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+      image_digest: ${{ steps.build.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +43,8 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
 
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -47,3 +53,68 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: build
+    # Only deploy on direct pushes to master. Being explicit here means a
+    # future workflow edit can't accidentally ship a feature branch to prod.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # Serialize deploys — if a second push lands mid-rollout we queue it
+    # instead of racing two `docker compose up` against the same host.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    # Lets the repo tie protection rules / required reviewers to the env
+    # without touching the workflow.
+    environment:
+      name: production
+      url: https://streamix.mahina.cloud
+
+    steps:
+      - name: Pull new image & recreate container on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          # script_stop makes the remote shell exit on the first failing
+          # command — without it, a failed `pull` still marks the job green.
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/streamix
+
+            echo "▶ deploying sha=${{ needs.build.outputs.image_tag }}"
+
+            echo "▶ pulling latest image..."
+            docker compose pull streamix
+
+            echo "▶ recreating container..."
+            docker compose up -d --force-recreate --remove-orphans streamix
+
+            echo "▶ waiting for health..."
+            for i in $(seq 1 45); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' streamix 2>/dev/null || echo "starting")
+              case "$status" in
+                healthy)
+                  echo "✅ streamix healthy (took ~$((i * 2))s)"
+                  docker image prune -f >/dev/null || true
+                  exit 0
+                  ;;
+                unhealthy)
+                  echo "❌ streamix unhealthy, dumping recent logs:"
+                  docker logs --tail 120 streamix
+                  exit 1
+                  ;;
+                *)
+                  sleep 2
+                  ;;
+              esac
+            done
+
+            echo "❌ streamix did not become healthy in 90s, dumping logs:"
+            docker logs --tail 200 streamix
+            exit 1
