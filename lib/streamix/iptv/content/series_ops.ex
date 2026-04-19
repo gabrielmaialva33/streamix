@@ -344,11 +344,19 @@ defmodule Streamix.Iptv.SeriesOps do
   def get_with_sync!(id) do
     series = get!(id)
 
-    # Sync if no episodes yet OR missing tmdb_id (for TMDB enrichment)
+    # Sync if no episodes yet OR missing tmdb_id (for TMDB enrichment).
+    # CRITICAL: the sync performs blocking HTTP calls to the Xtream
+    # upstream. When the provider is down (as happened April 2026 with
+    # `cb.chokitecnologia.com`), this call would hang the LiveView
+    # mount for ~30s per stuck request, making the whole series detail
+    # page feel frozen. Asking the circuit breaker first lets us serve
+    # whatever is already cached immediately — the page renders, the
+    # user sees the poster/synopsis, and background enrichment can
+    # happen later when upstream recovers.
     episode_count = count_episodes_for_series(series.id)
     needs_sync = episode_count == 0 or is_nil(series.tmdb_id) or series.tmdb_id == ""
 
-    if needs_sync do
+    if needs_sync and upstream_available?(series.provider_id) do
       case Sync.sync_series_details(series) do
         {:ok, _} -> :ok
         {:error, _reason} -> :ok
@@ -358,6 +366,21 @@ defmodule Streamix.Iptv.SeriesOps do
     # Return fresh data with preloads
     {:ok, get_with_seasons!(id)}
   end
+
+  # Circuit breaker gate — when the breaker is open (consecutive upstream
+  # failures), skip the blocking HTTP call entirely. Loses best-effort
+  # freshness but keeps the UX responsive.
+  defp upstream_available?(provider_id) when is_integer(provider_id) do
+    alias Streamix.Iptv.XtreamCircuitBreaker
+    XtreamCircuitBreaker.allow_request?(provider_id)
+  rescue
+    # If the breaker process isn't running (tests, edge cases) don't
+    # inadvertently block sync behind a misconfigured gate — err on the
+    # side of the original behaviour.
+    _ -> true
+  end
+
+  defp upstream_available?(_), do: true
 
   # =============================================================================
   # Episode Retrieval
