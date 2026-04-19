@@ -246,6 +246,39 @@ defmodule Streamix.IptvTest do
     end
   end
 
+  describe "count_live_channels/2" do
+    test "counts all provider channels when no filter is passed" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      channels_fixture(provider, 4)
+
+      assert Iptv.count_live_channels(provider.id) == 4
+    end
+
+    test "mirrors the search filter from list/2" do
+      # Regression: the API's `has_more` would lie on the final page of a
+      # filtered result because count ignored search/category filters.
+      user = user_fixture()
+      provider = provider_fixture(user)
+      channel_fixture(provider, %{name: "BBC News"})
+      channel_fixture(provider, %{name: "CNN News"})
+      channel_fixture(provider, %{name: "ESPN Sports"})
+
+      opts = [search: "News"]
+
+      assert Iptv.count_live_channels(provider.id, opts) ==
+               length(Iptv.list_live_channels(provider.id, opts))
+    end
+
+    test "returns zero when no channels match the filter" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      channel_fixture(provider, %{name: "BBC News"})
+
+      assert Iptv.count_live_channels(provider.id, search: "does-not-exist") == 0
+    end
+  end
+
   describe "get_live_channel!/1" do
     test "returns the channel with given id" do
       user = user_fixture()

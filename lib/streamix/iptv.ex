@@ -82,7 +82,7 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate list_live_channels(provider_id, opts \\ []), to: Channels, as: :list
   defdelegate list_public_channels(opts \\ []), to: Channels, as: :list_public
-  defdelegate count_live_channels(provider_id), to: Channels, as: :count
+  defdelegate count_live_channels(provider_id, opts \\ []), to: Channels, as: :count
   defdelegate get_live_channel!(id), to: Channels, as: :get!
   defdelegate get_live_channel(id), to: Channels, as: :get
   defdelegate get_live_channel_for_stream(id), to: Channels, as: :get_for_stream

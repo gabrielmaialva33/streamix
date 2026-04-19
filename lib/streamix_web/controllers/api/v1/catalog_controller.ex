@@ -207,15 +207,22 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     provider = Iptv.get_global_provider()
 
     if provider do
+      # Accept both :limit and :per_page (REST convention) so older TV clients
+      # that send per_page don't silently fall back to the default 30.
+      requested_limit = params["limit"] || params["per_page"]
+
       opts = [
-        limit: min(parse_int(params["limit"], 30), 100),
+        limit: min(parse_int(requested_limit, 30), 100),
         offset: parse_int(params["offset"], 0),
         category_id: parse_int(params["category_id"], nil),
         search: params["search"]
       ]
 
       channels = Iptv.list_live_channels(provider.id, opts)
-      total = Iptv.count_live_channels(provider.id)
+      # Pass the same filter opts to count — otherwise `total` is the whole
+      # provider's channel count and `has_more` is stuck on `true` for every
+      # category page that has fewer items than the full catalog.
+      total = Iptv.count_live_channels(provider.id, opts)
 
       json(conn, %{
         channels: Enum.map(channels, &serialize_channel/1),

@@ -35,6 +35,22 @@ defmodule Streamix.Iptv.Channels do
   def list(provider_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 100)
     offset = Keyword.get(opts, :offset, 0)
+
+    provider_id
+    |> build_query(opts)
+    |> order_by(:name)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Repo.all()
+  end
+
+  # Shared filter pipeline for list/2 and count/2. Keeping both paths behind
+  # this single builder is the only way to guarantee that `total` and the
+  # items returned in `list` stay in sync — the previous implementation had
+  # the count bypass `category_id` / `search`, so `has_more` reported `true`
+  # on the final page of filtered results. Do not inline these filters at
+  # the call site.
+  defp build_query(provider_id, opts) do
     search = Keyword.get(opts, :search)
     category_id = Keyword.get(opts, :category_id)
     show_adult = Keyword.get(opts, :show_adult, false)
@@ -43,7 +59,6 @@ defmodule Streamix.Iptv.Channels do
       LiveChannel
       |> where(provider_id: ^provider_id)
       |> exclude_dead()
-      |> order_by(:name)
 
     query =
       if search && search != "" do
@@ -62,18 +77,11 @@ defmodule Streamix.Iptv.Channels do
         query
       end
 
-    # Filter adult content unless user opts in
-    query =
-      if show_adult do
-        query
-      else
-        AdultFilter.exclude_adult_channels(query, provider_id)
-      end
-
-    query
-    |> limit(^limit)
-    |> offset(^offset)
-    |> Repo.all()
+    if show_adult do
+      query
+    else
+      AdultFilter.exclude_adult_channels(query, provider_id)
+    end
   end
 
   @doc """
@@ -234,21 +242,9 @@ defmodule Streamix.Iptv.Channels do
   """
   @spec count(integer(), keyword()) :: integer()
   def count(provider_id, opts \\ []) do
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    query =
-      LiveChannel
-      |> where(provider_id: ^provider_id)
-      |> exclude_dead()
-
-    query =
-      if show_adult do
-        query
-      else
-        AdultFilter.exclude_adult_channels(query, provider_id)
-      end
-
-    Repo.aggregate(query, :count)
+    provider_id
+    |> build_query(opts)
+    |> Repo.aggregate(:count)
   end
 
   # =============================================================================
