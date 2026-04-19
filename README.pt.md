@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src=".github/assets/web-data.png" alt="Streamix" width="200">
+  <img src=".github/assets/icon.svg" alt="Streamix" width="200">
   <br>
   Streamix
   <br>
