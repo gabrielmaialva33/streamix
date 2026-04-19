@@ -382,7 +382,8 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
     headers = [
       {"host", uri.host},
-      {"user-agent", "Streamix/1.0"},
+      # See StreamProxy.stream_from_url/2 for why we masquerade.
+      {"user-agent", "xciptv-v6.0.0"},
       {"accept", "*/*"},
       {"connection", "keep-alive"}
     ]

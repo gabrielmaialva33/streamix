@@ -192,8 +192,14 @@ defmodule Streamix.Iptv.StreamProxy do
   end
 
   defp stream_from_url(url, cache_key) do
+    # Masquerade as a common IPTV player. Upstreams increasingly gate
+    # access on User-Agent (we caught a 403 on the raw default UA when
+    # a provider tightened its WAF in April 2026), and the XtreamClient
+    # info endpoint already sends `xciptv-v6.0.0` — keeping the same UA
+    # across every request surface keeps provider analytics /
+    # allowlisting consistent across info-lookup and media playback.
     headers = [
-      {"user-agent", "Streamix/1.0"},
+      {"user-agent", "xciptv-v6.0.0"},
       {"accept", "*/*"},
       {"connection", "keep-alive"}
     ]
