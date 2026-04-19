@@ -2,15 +2,24 @@ defmodule Streamix.Iptv.TmdbClient do
   @moduledoc """
   HTTP client for The Movie Database (TMDB) API.
 
-  Used to fetch enriched movie metadata like synopsis, cast, crew,
-  trailers, and high-quality images.
+  Supports multiple credential profiles so different ingestion sources can use
+  their own TMDB API tokens and quotas. Profiles fall back to the default
+  `:streamix, :tmdb` config when a key isn't overridden.
 
-  All API calls are cached in Redis (L2) with in-memory L1 layer:
-  - Movie/Series metadata: 24h TTL (static content)
-  - Search results: 1h TTL (may change)
+  Profiles:
+    * `:default` — reads `config :streamix, :tmdb`
+    * `:gindex`  — reads `config :streamix, {:tmdb, :gindex}`, merged over default
+
+  All public functions accept an optional `:profile` in their `opts`.
+
+  All API calls are cached in Redis (L2) with in-memory L1 layer. The cache
+  key is the resolved `tmdb_id` / query + params — profiles share cache since
+  a given id returns the same payload regardless of which token fetched it.
   """
 
   alias Streamix.Cache
+
+  @type profile :: :default | :gindex | atom()
 
   @base_url "https://api.themoviedb.org/3"
   defp image_base_url,
@@ -19,10 +28,11 @@ defmodule Streamix.Iptv.TmdbClient do
   @timeout :timer.seconds(10)
 
   @doc """
-  Checks if TMDB integration is enabled and configured.
+  Checks if TMDB integration is enabled and configured for the given profile.
   """
-  def enabled? do
-    config()[:enabled] == true && config()[:api_token] != nil
+  def enabled?(profile \\ :default) do
+    cfg = config(profile)
+    cfg[:enabled] == true && is_binary(cfg[:api_token]) && cfg[:api_token] != ""
   end
 
   @doc """
@@ -39,13 +49,15 @@ defmodule Streamix.Iptv.TmdbClient do
   - vote_average
   - poster_path, backdrop images (via assets)
   """
-  def get_movie(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
-    if enabled?() do
+  def get_movie(tmdb_id, opts \\ []) when is_binary(tmdb_id) or is_integer(tmdb_id) do
+    profile = profile_from(opts)
+
+    if enabled?(profile) do
       Cache.fetch_tmdb_movie(tmdb_id, fn ->
         url =
           "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
 
-        do_request(url)
+        do_request(url, profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -56,13 +68,15 @@ defmodule Streamix.Iptv.TmdbClient do
   Fetches TV series details from TMDB by series ID.
   Results are cached in Redis for 24h.
   """
-  def get_series(tmdb_id) when is_binary(tmdb_id) or is_integer(tmdb_id) do
-    if enabled?() do
+  def get_series(tmdb_id, opts \\ []) when is_binary(tmdb_id) or is_integer(tmdb_id) do
+    profile = profile_from(opts)
+
+    if enabled?(profile) do
       Cache.fetch_tmdb_series(tmdb_id, fn ->
         url =
           "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
 
-        do_request(url)
+        do_request(url, profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -74,12 +88,14 @@ defmodule Streamix.Iptv.TmdbClient do
   Results are cached in Redis for 24h.
   Returns episode details including overview, still_path, air_date, runtime.
   """
-  def get_season(series_tmdb_id, season_number)
+  def get_season(series_tmdb_id, season_number, opts \\ [])
       when (is_binary(series_tmdb_id) or is_integer(series_tmdb_id)) and is_integer(season_number) do
-    if enabled?() do
+    profile = profile_from(opts)
+
+    if enabled?(profile) do
       Cache.fetch_tmdb_season(series_tmdb_id, season_number, fn ->
         url = "#{@base_url}/tv/#{series_tmdb_id}/season/#{season_number}?language=pt-BR"
-        do_request(url)
+        do_request(url, profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -187,11 +203,13 @@ defmodule Streamix.Iptv.TmdbClient do
   def parse_episode_response(_), do: %{}
 
   defp search(type, query, opts) do
-    if enabled?() do
+    profile = profile_from(opts)
+
+    if enabled?(profile) do
       fetch_search(type, query, opts, fn ->
         type
         |> search_url(query, opts[:year])
-        |> do_request()
+        |> do_request(profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -228,49 +246,66 @@ defmodule Streamix.Iptv.TmdbClient do
   @max_retries 3
   @initial_backoff 1000
 
-  defp do_request(url, retries \\ 0) do
+  defp profile_from(opts) when is_list(opts), do: Keyword.get(opts, :profile, :default)
+  defp profile_from(%{} = opts), do: Map.get(opts, :profile, :default)
+  defp profile_from(_), do: :default
+
+  defp do_request(url, profile, retries \\ 0) do
     headers = [
-      {"Authorization", "Bearer #{config()[:api_token]}"},
+      {"Authorization", "Bearer #{config(profile)[:api_token]}"},
       {"Accept", "application/json"}
     ]
 
     url
     |> Req.get(headers: headers, receive_timeout: @timeout, finch: Streamix.Finch)
-    |> handle_response(url, retries)
+    |> handle_response(url, profile, retries)
   end
 
-  defp handle_response({:ok, %{status: 200, body: body}}, _url, _retries) when is_map(body) do
+  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries)
+       when is_map(body) do
     {:ok, body}
   end
 
-  defp handle_response({:ok, %{status: 200, body: body}}, _url, _retries) when is_binary(body) do
+  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries)
+       when is_binary(body) do
     Jason.decode(body)
   end
 
-  defp handle_response({:ok, %{status: 429} = response}, url, retries)
+  defp handle_response({:ok, %{status: 429} = response}, url, profile, retries)
        when retries < @max_retries do
     retry_after = get_retry_after(response)
     Process.sleep(retry_after)
-    do_request(url, retries + 1)
+    do_request(url, profile, retries + 1)
   end
 
-  defp handle_response({:ok, %{status: 429}}, _url, _retries), do: {:error, :rate_limited}
-  defp handle_response({:ok, %{status: 404}}, _url, _retries), do: {:error, :not_found}
-  defp handle_response({:ok, %{status: 401}}, _url, _retries), do: {:error, :unauthorized}
+  defp handle_response({:ok, %{status: 429}}, _url, _profile, _retries),
+    do: {:error, :rate_limited}
 
-  defp handle_response({:ok, %{status: status}}, _url, _retries),
+  defp handle_response({:ok, %{status: 404}}, _url, _profile, _retries), do: {:error, :not_found}
+
+  defp handle_response({:ok, %{status: 401}}, _url, _profile, _retries),
+    do: {:error, :unauthorized}
+
+  defp handle_response({:ok, %{status: status}}, _url, _profile, _retries),
     do: {:error, {:http_error, status}}
 
-  defp handle_response({:error, %Req.TransportError{reason: reason}}, _url, _retries),
+  defp handle_response({:error, %Req.TransportError{reason: reason}}, _url, _profile, _retries),
     do: {:error, {:transport_error, reason}}
 
-  defp handle_response({:error, reason}, _url, _retries), do: {:error, reason}
+  defp handle_response({:error, reason}, _url, _profile, _retries), do: {:error, reason}
 
   defp get_retry_after(%Req.Response{} = response),
     do: Req.Response.get_retry_after(response) || @initial_backoff
 
-  defp config do
-    Application.get_env(:streamix, :tmdb, [])
+  # Resolve profile config: profile overrides default (:streamix, :tmdb).
+  # `:default` is just the base `:streamix, :tmdb` config. Any other profile
+  # reads `:streamix, :tmdb_<profile>` and overlays on top of the default.
+  defp config(:default), do: Application.get_env(:streamix, :tmdb, [])
+
+  defp config(profile) when is_atom(profile) do
+    default = Application.get_env(:streamix, :tmdb, [])
+    override = Application.get_env(:streamix, :"tmdb_#{profile}", [])
+    Keyword.merge(default, override)
   end
 
   defp maybe_put(map, _key, nil), do: map

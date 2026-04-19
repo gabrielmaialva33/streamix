@@ -553,10 +553,11 @@ defmodule Streamix.Iptv.SeriesOps do
   @spec fetch_info(Series.t()) :: {:ok, Series.t()} | {:error, term()}
   def fetch_info(%Series{} = series) do
     series = Repo.preload(series, @detail_preloads)
-    tmdb_id = series.tmdb_id || resolve_series_tmdb_id(series)
+    profile = tmdb_profile(series)
+    tmdb_id = series.tmdb_id || resolve_series_tmdb_id(series, profile)
 
     if needs_tmdb_enrichment?(series) and is_binary(tmdb_id) and tmdb_id != "" do
-      case TmdbClient.get_series(tmdb_id) do
+      case TmdbClient.get_series(tmdb_id, profile: profile) do
         {:ok, data} ->
           attrs =
             data
@@ -574,15 +575,21 @@ defmodule Streamix.Iptv.SeriesOps do
     end
   end
 
+  # GIndex-sourced series use a dedicated TMDB profile to isolate quota.
+  defp tmdb_profile(%Series{gindex_path: path}) when is_binary(path) and path != "",
+    do: :gindex
+
+  defp tmdb_profile(_series), do: :default
+
   # Resolves a tmdb_id by searching TMDB with the series' title + year.
   # Requires ±1 year match on first_air_date when we have a year, so
   # generic titles don't get bound to an unrelated show.
-  defp resolve_series_tmdb_id(%Series{} = series) do
+  defp resolve_series_tmdb_id(%Series{} = series, profile) do
     title = series.title || series.name
 
     if is_binary(title) and title != "" do
       with {:ok, %{"results" => results}} when is_list(results) <-
-             TmdbClient.search_series(title, year: series.year),
+             TmdbClient.search_series(title, year: series.year, profile: profile),
            %{"id" => id} <-
              Enum.find(results, &year_matches?(&1["first_air_date"], series.year)) do
         to_string(id)
@@ -627,7 +634,7 @@ defmodule Streamix.Iptv.SeriesOps do
     season_number = episode.season.season_number
 
     if needs_episode_tmdb_enrichment?(episode) and is_binary(tmdb_id) and tmdb_id != "" do
-      fetch_and_update_episode(episode, tmdb_id, season_number)
+      fetch_and_update_episode(episode, tmdb_id, season_number, tmdb_profile(series))
     else
       {:ok, episode}
     end
@@ -708,8 +715,8 @@ defmodule Streamix.Iptv.SeriesOps do
     not episode.tmdb_enriched
   end
 
-  defp fetch_and_update_episode(episode, tmdb_id, season_number) do
-    case TmdbClient.get_season(tmdb_id, season_number) do
+  defp fetch_and_update_episode(episode, tmdb_id, season_number, profile) do
+    case TmdbClient.get_season(tmdb_id, season_number, profile: profile) do
       {:ok, data} ->
         data
         |> TmdbClient.parse_season_episodes()

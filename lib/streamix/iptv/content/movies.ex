@@ -403,7 +403,7 @@ defmodule Streamix.Iptv.Movies do
 
     if is_binary(title) and title != "" do
       with {:ok, %{"results" => results}} when is_list(results) <-
-             TmdbClient.search_movie(title, year: movie.year),
+             TmdbClient.search_movie(title, year: movie.year, profile: tmdb_profile(movie)),
            %{"id" => id} <-
              Enum.find(results, &year_matches?(&1["release_date"], movie.year)) do
         to_string(id)
@@ -414,6 +414,13 @@ defmodule Streamix.Iptv.Movies do
       nil
     end
   end
+
+  # GIndex-sourced movies hit TMDB under a dedicated profile so their quota
+  # stays isolated from the default (Xtream) ingestion path.
+  defp tmdb_profile(%Movie{gindex_path: path}) when is_binary(path) and path != "",
+    do: :gindex
+
+  defp tmdb_profile(_movie), do: :default
 
   # No year on our side → trust the first hit. Otherwise require ±1 year.
   defp year_matches?(_release_date, nil), do: true
@@ -432,7 +439,7 @@ defmodule Streamix.Iptv.Movies do
   defp maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
        when is_binary(tmdb_id) and tmdb_id != "" do
     if needs_tmdb_enrichment?(movie, xtream_attrs) do
-      fetch_from_tmdb(tmdb_id)
+      fetch_from_tmdb(tmdb_id, tmdb_profile(movie))
     else
       %{}
     end
@@ -456,8 +463,8 @@ defmodule Streamix.Iptv.Movies do
 
   defp missing_field?(xtream_val, movie_val), do: is_nil(xtream_val) and is_nil(movie_val)
 
-  defp fetch_from_tmdb(tmdb_id) do
-    case TmdbClient.get_movie(tmdb_id) do
+  defp fetch_from_tmdb(tmdb_id, profile) do
+    case TmdbClient.get_movie(tmdb_id, profile: profile) do
       {:ok, data} ->
         TmdbClient.parse_movie_response(data)
 
@@ -465,7 +472,8 @@ defmodule Streamix.Iptv.Movies do
         require Logger
 
         Logger.warning("[IPTV] TMDB API failed for tmdb_id #{tmdb_id}",
-          reason: inspect(reason)
+          reason: inspect(reason),
+          profile: profile
         )
 
         %{}

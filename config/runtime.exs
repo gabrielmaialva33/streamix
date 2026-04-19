@@ -89,13 +89,23 @@ else
   config :streamix, :global_provider, enabled: false
 end
 
-# TMDB API configuration (optional, for enriched movie metadata)
+# TMDB API configuration (optional, for enriched movie metadata).
+#
+# The default profile (`:streamix, :tmdb`) is used for Xtream ingestion.
+# Additional profiles may override the api_token to isolate quotas per
+# ingestion source. `GINDEX_TMDB_API_TOKEN` feeds profile `:gindex`.
 if tmdb_token = get_env.("TMDB_API_TOKEN") do
   config :streamix, :tmdb,
     enabled: true,
     api_token: tmdb_token
 else
   config :streamix, :tmdb, enabled: false
+end
+
+if gindex_tmdb_token = get_env.("GINDEX_TMDB_API_TOKEN") do
+  config :streamix, :tmdb_gindex,
+    enabled: true,
+    api_token: gindex_tmdb_token
 end
 
 # GIndex provider configuration (Google Drive Index for movies/series/animes)
