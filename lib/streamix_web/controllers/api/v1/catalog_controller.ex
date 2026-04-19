@@ -41,6 +41,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     case Iptv.get_featured_content() do
       {:movie, movie} ->
         poster = proxy_image(movie.stream_icon)
+        hero_backdrop = List.first(Movie.backdrop_urls(movie) || []) || movie.stream_icon
 
         %{
           id: movie.id,
@@ -54,9 +55,11 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           poster: poster,
           backdrop: featured_backdrop(Movie.backdrop_urls(movie), poster)
         }
+        |> with_image_variants(movie.stream_icon, hero_backdrop)
 
       {:series, series} ->
         poster = proxy_image(series.cover)
+        hero_backdrop = List.first(Series.backdrop_urls(series) || []) || series.cover
 
         %{
           id: series.id,
@@ -70,10 +73,24 @@ defmodule StreamixWeb.Api.V1.CatalogController do
           poster: poster,
           backdrop: featured_backdrop(Series.backdrop_urls(series), poster)
         }
+        |> with_image_variants(series.cover, hero_backdrop)
 
       nil ->
         nil
     end
+  end
+
+  # Netflix-style responsive images: hand clients a stable set of
+  # pre-sized variants so the TV renderer can pick the right one for
+  # the viewport without shipping a CDN wrapper in JS. The raw URLs stay
+  # in `poster` / `backdrop` for legacy clients.
+  @poster_widths [240, 480, 720]
+  @backdrop_widths [720, 1280]
+
+  defp with_image_variants(payload, poster_url, backdrop_url) do
+    payload
+    |> Map.merge(StreamixWeb.Helpers.ResizeUrl.flatten("poster", poster_url, @poster_widths))
+    |> Map.merge(StreamixWeb.Helpers.ResizeUrl.flatten("backdrop", backdrop_url, @backdrop_widths))
   end
 
   # Always returns a non-empty list when a poster exists, so hero rendering
@@ -411,6 +428,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       stream_url: build_stream_url(movie),
       browser_stream_url: build_browser_stream_url(movie)
     }
+    |> with_image_variants(movie.stream_icon, List.first(Movie.backdrop_urls(movie) || []))
   end
 
   defp serialize_series(series) do
@@ -444,6 +462,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       episode_count: Enum.sum(Enum.map(seasons, fn s -> length(s.episodes || []) end)),
       seasons: Enum.map(seasons, &serialize_season/1)
     }
+    |> with_image_variants(series.cover, List.first(Series.backdrop_urls(series) || []))
   end
 
   defp serialize_season(season) do

@@ -114,6 +114,9 @@ defmodule StreamixWeb.Router do
     get "/catalog/categories", CatalogController, :categories
     get "/catalog/search", CatalogController, :search
 
+    # Image proxy+resize for TV/mobile clients — replaces wsrv.nl.
+    get "/catalog/images/resize", ImageResizeController, :resize
+
     # Stream URLs for TV app
     get "/catalog/movies/:id/stream", CatalogController, :movie_stream
     get "/catalog/episodes/:id/stream", CatalogController, :episode_stream

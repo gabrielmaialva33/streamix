@@ -108,6 +108,11 @@ if gindex_tmdb_token = get_env.("GINDEX_TMDB_API_TOKEN") do
     api_token: gindex_tmdb_token
 end
 
+# Image resize proxy — cache dir is a volume on the VPS so restarts
+# don't throw away the already-encoded thumbnails.
+config :streamix, StreamixWeb.Api.V1.ImageResizeController,
+  cache_dir: get_env.("IMAGE_CACHE_DIR") || "/app/data/image_cache"
+
 # GIndex pacer budgets (requests-per-second). Tunable from the env without
 # a code change — useful when upstream capacity changes.
 config :streamix, Streamix.Iptv.Gindex.Pacer,
