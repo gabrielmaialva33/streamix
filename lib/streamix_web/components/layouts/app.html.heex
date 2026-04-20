@@ -1,28 +1,32 @@
-<div class="min-h-screen bg-background">
+<% banner_visible? = assigns[:provider_health] && @provider_health.show_banner? %>
+<div class={["min-h-screen bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
   <%!--
     Provider-health banner. Rendered by the StreamixWeb.OnMount.ProviderHealth
-    hook via the @provider_health assign; the hook only flips `:show_banner?`
-    to true when the upstream IPTV provider is degraded or unhealthy, so
-    the block is a no-op on normal days.
+    hook via the @provider_health assign. Lives *above* the scroll-aware
+    header (the header's `top` is shifted down by the banner's height via
+    the `pt-9` on the wrapper + the header's conditional `top-9`) so the
+    two never overlap — a previous version sat on top of the nav with a
+    higher z-index and made the menu unclickable.
   --%>
-  <%= if assigns[:provider_health] && @provider_health.show_banner? do %>
+  <%= if banner_visible? do %>
     <div
       role="status"
       aria-live="polite"
       class={[
-        "fixed top-0 left-0 right-0 z-[60] border-b px-4 py-2 text-sm text-center",
+        "fixed top-0 left-0 right-0 z-[60] h-9 flex items-center justify-center",
+        "border-b px-4 text-xs sm:text-sm text-center leading-tight",
         if(@provider_health.status == :unhealthy,
-          do: "bg-red-600/95 text-white border-red-700",
-          else: "bg-amber-500/95 text-black border-amber-600"
+          do: "bg-red-600 text-white border-red-700",
+          else: "bg-amber-500 text-black border-amber-600"
         )
       ]}
     >
       <%= if @provider_health.status == :unhealthy do %>
-        <strong>Provedor IPTV indisponível.</strong>
-        Alguns streams podem não tocar — estamos tentando reconectar.
+        <span><strong>Provedor IPTV indisponível.</strong>
+          Alguns streams podem não tocar — estamos tentando reconectar.</span>
       <% else %>
-        <strong>Provedor IPTV instável.</strong>
-        Alguns streams podem demorar mais que o normal para carregar.
+        <span><strong>Provedor IPTV instável.</strong>
+          Alguns streams podem demorar mais que o normal para carregar.</span>
       <% end %>
     </div>
   <% end %>
@@ -32,7 +36,10 @@
     id="app-header"
     phx-hook="ScrollHeader"
     data-scrolled="false"
-    class="fixed top-0 left-0 right-0 z-50 border-b border-transparent transition-all"
+    class={[
+      "fixed left-0 right-0 z-50 border-b border-transparent transition-all",
+      if(banner_visible?, do: "top-9", else: "top-0")
+    ]}
   >
     <div class="flex items-center justify-between h-14 sm:h-16 px-[4%]">
       <!-- Logo & Navigation -->
