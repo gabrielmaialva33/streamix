@@ -135,16 +135,32 @@ defmodule Streamix.Iptv.ProviderHealth do
     }
   end
 
-  # 3s HEAD probe — enough time for a healthy upstream to respond,
-  # short enough that hitting `/api/v1/providers/status` doesn't turn
-  # into a 30-second wait when the provider is down. Result is only
-  # used locally: we don't feed it back into the circuit breaker
-  # because real traffic is a better signal than a synthetic probe.
-  @probe_timeout :timer.seconds(3)
+  # 4s GET probe against the Xtream API endpoint specifically — not
+  # the root URL, because the provider's edge nginx still answers
+  # `HEAD /` with a friendly 200 even when the PHP app behind it is
+  # frozen (we observed exactly this during the chokitecnologia.com
+  # outage). Hitting `/player_api.php` forces the request to touch
+  # the actual Xtream process, so a transport timeout / 5xx here
+  # really does mean "no catalog/auth API for you".
+  #
+  # Result is only consumed locally — we don't feed it back into the
+  # circuit breaker because real traffic is a better signal than a
+  # synthetic probe, and the real path also carries credentials.
+  @probe_timeout :timer.seconds(4)
 
   defp probe_xtream(%Provider{url: url}) when is_binary(url) and url != "" do
-    case Req.head(url, receive_timeout: @probe_timeout, finch: Streamix.Finch) do
-      {:ok, %Req.Response{status: status}} when status in 200..399 -> :healthy
+    api_url = xtream_api_url(url)
+
+    case Req.get(api_url,
+           receive_timeout: @probe_timeout,
+           decode_body: false,
+           finch: Streamix.Finch
+         ) do
+      # A fully-loaded Xtream answers `/player_api.php` with a 200 and
+      # a JSON body (often `{}` when called without credentials). 4xx
+      # means the PHP layer is alive but rejecting us for auth reasons
+      # — still "the service is up" from the user's perspective.
+      {:ok, %Req.Response{status: status}} when status in 200..499 -> :healthy
       {:ok, %Req.Response{status: status}} when status in 500..599 -> :unhealthy
       {:ok, _} -> :degraded
       {:error, _} -> :unhealthy
@@ -154,6 +170,12 @@ defmodule Streamix.Iptv.ProviderHealth do
   end
 
   defp probe_xtream(_), do: :unknown
+
+  defp xtream_api_url(url) do
+    url
+    |> String.trim_trailing("/")
+    |> Kernel.<>("/player_api.php")
+  end
 
   defp classify(%Provider{is_active: false}, _cb), do: :unhealthy
   defp classify(_provider, nil), do: :unknown
