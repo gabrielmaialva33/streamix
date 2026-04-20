@@ -292,14 +292,33 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   defp parse_single_url_config(config) do
     case Keyword.get(config, :url) do
       url when is_binary(url) ->
-        # Legacy implementation tacked on hardcoded fallback workers here
-        # that no longer resolve; with only a healthy primary we avoid
-        # paying nxdomain retries on every circuit switch.
-        [%{name: :primary, url: url, priority: 1}]
+        # Respect the operator's chosen primary, but still benefit from
+        # the live-mirror pool in `@default_endpoints`. Deduplicate on
+        # host+path so we don't register the same Worker twice when the
+        # env URL happens to match one of the defaults.
+        primary = %{name: :primary, url: url, priority: 1}
+
+        fallbacks =
+          @default_endpoints
+          |> Enum.reject(&same_host?(&1.url, url))
+          |> Enum.with_index(2)
+          |> Enum.map(fn {ep, priority} -> %{ep | priority: priority} end)
+
+        [primary | fallbacks]
 
       _ ->
         @default_endpoints
     end
+  end
+
+  defp same_host?(url_a, url_b) do
+    normalize(url_a) == normalize(url_b)
+  end
+
+  defp normalize(url) do
+    url
+    |> String.trim_trailing("/")
+    |> String.downcase()
   end
 
   defp init_endpoint(endpoint, table_name) do
