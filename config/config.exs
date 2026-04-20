@@ -86,12 +86,18 @@ config :streamix, Oban,
     series_details: 2,
     ai: 1,
     # GIndex ingestion: a small dispatcher queue that just enqueues work,
-    # and a larger scan queue that does the heavy lifting. The global RPS
-    # ceiling is enforced inside `Streamix.Iptv.Gindex.Pacer`, not here —
-    # concurrency higher than the RPS budget just means workers wait in
-    # the pacer's queue instead of Oban's.
+    # and a narrower scan queue that does the heavy lifting.
+    #
+    # scan concurrency was originally 4, but a Playwright capture of
+    # the provider's own frontend showed it issues one request at a
+    # time (scroll → paginate → scroll) — and the upstream Cloudflare
+    # Worker started 500'ing ("TypeError: Cannot read ...map") when
+    # we ran four parallel scanners against it, even though a
+    # sequential burst of 30 curl requests all returned 200. Two
+    # parallel scanners lets drives overlap without recreating the
+    # pattern that trips their internal rate limit.
     gindex_dispatch: 1,
-    gindex_scan: 4
+    gindex_scan: 2
   ],
   plugins: [
     Oban.Plugins.Pruner,

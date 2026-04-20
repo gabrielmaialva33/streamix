@@ -113,10 +113,16 @@ end
 config :streamix, StreamixWeb.Api.V1.ImageResizeController,
   cache_dir: get_env.("IMAGE_CACHE_DIR") || "/app/data/image_cache"
 
-# GIndex pacer budgets (requests-per-second). Tunable from the env without
-# a code change — useful when upstream capacity changes.
+# GIndex pacer budgets (requests-per-second). Tunable from the env
+# without a code change — useful when upstream capacity changes.
+#
+# Default dropped from 5 to 3 after observing the AnimeZeY Worker start
+# returning 500s under 4-scanner concurrency; a sequential 30-burst at
+# the same rate all came back 200, so the issue is concentrated load,
+# not total throughput. 3 RPS keeps the pacer well under whatever
+# their internal ceiling is without killing sync throughput.
 config :streamix, Streamix.Iptv.Gindex.Pacer,
-  gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "5"),
+  gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "3"),
   tmdb_gindex: String.to_integer(get_env.("GINDEX_TMDB_RPS") || "10")
 
 # GIndex provider configuration (Google Drive Index for movies/series/animes)
