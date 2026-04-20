@@ -86,18 +86,15 @@ config :streamix, Oban,
     series_details: 2,
     ai: 1,
     # GIndex ingestion: a small dispatcher queue that just enqueues work,
-    # and a narrower scan queue that does the heavy lifting.
-    #
-    # scan concurrency was originally 4, but a Playwright capture of
-    # the provider's own frontend showed it issues one request at a
-    # time (scroll → paginate → scroll) — and the upstream Cloudflare
-    # Worker started 500'ing ("TypeError: Cannot read ...map") when
-    # we ran four parallel scanners against it, even though a
-    # sequential burst of 30 curl requests all returned 200. Two
-    # parallel scanners lets drives overlap without recreating the
-    # pattern that trips their internal rate limit.
+    # and a scan queue sized to match the number of healthy upstream
+    # mirrors. We currently pool three mirrors in EndpointManager
+    # (`@default_endpoints`) and the provider appears to rate-limit
+    # per-hostname, so three parallel scanners — one per mirror —
+    # triples effective throughput without recreating the
+    # "TypeError: Cannot read ...map" 500 storm we hit when four
+    # scanners pounded a single host.
     gindex_dispatch: 1,
-    gindex_scan: 2
+    gindex_scan: 3
   ],
   plugins: [
     Oban.Plugins.Pruner,

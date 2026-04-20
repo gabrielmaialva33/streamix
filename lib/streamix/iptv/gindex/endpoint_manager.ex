@@ -17,20 +17,28 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   require Logger
 
   @table_name :gindex_endpoints
-  # Single-endpoint default: the legacy fallback hostnames
-  # (`1.animezeydl.workers.dev`, `1.animezey23112022.workers.dev`) were
-  # decommissioned upstream and now return `:nxdomain`, so leaving them
-  # in the pool just guaranteed a 60-second retry penalty on every burst
-  # of 500s from the primary. A ScanRoot worker can absorb that kind of
-  # transient failure with the per-request retry in `Client.do_request`
-  # plus the Pacer backoff — the circuit breaker is enough isolation for
-  # a single host. Add real fallbacks back via the `:gindex` env config
-  # once a second working mirror exists.
+  # Three mirrors confirmed live as of 2026-04-20 via enum + 20-burst
+  # each = 60/60 200. All three expose the identical 5-drive catalog
+  # (Animes / Desenhos / Filmes / Novelas / Outros), so EndpointManager
+  # can swap between them transparently. Keeping them as distinct hosts
+  # matters for the rate-limit story: the upstream Cloudflare Worker
+  # seems to throttle per-hostname, so spreading concurrent scanners
+  # across the pool buys roughly triple the effective request budget.
   @default_endpoints [
     %{
       name: :primary,
       url: "https://animezey16082023.animezey16082023.workers.dev",
       priority: 1
+    },
+    %{
+      name: :mirror_23112022,
+      url: "https://1.animezey23112022.workers.dev",
+      priority: 2
+    },
+    %{
+      name: :mirror_animezeydl,
+      url: "https://1.animezeydl.workers.dev",
+      priority: 3
     }
   ]
 
