@@ -90,9 +90,19 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
       "total_roots" => total_roots
     }
 
-    orchestrator_args
-    |> SyncOrchestratorWorker.new(schedule_in: 15)
-    |> Oban.insert()
+    case orchestrator_args
+         |> SyncOrchestratorWorker.new(schedule_in: 15)
+         |> Oban.insert() do
+      {:ok, %Oban.Job{id: id, conflict?: conflict}} ->
+        Logger.info(
+          "[GIndex Dispatcher] workflow=#{workflow_id} orchestrator job=#{id} conflict=#{conflict}"
+        )
+
+      {:error, reason} ->
+        Logger.error(
+          "[GIndex Dispatcher] workflow=#{workflow_id} failed to enqueue orchestrator: #{inspect(reason)}"
+        )
+    end
 
     :ok
   end
