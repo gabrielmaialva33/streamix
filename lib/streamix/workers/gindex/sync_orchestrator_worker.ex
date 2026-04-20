@@ -29,12 +29,17 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     queue: :gindex_dispatch,
     max_attempts: 20,
     priority: 1,
-    # One orchestrator per workflow is plenty; unique prevents a
-    # retrying job from racing a replacement.
+    # One orchestrator per workflow is plenty. `keys: [:workflow_id]`
+    # in open-source Oban doesn't scope the uniqueness check tightly
+    # enough — an earlier attempt produced `conflict=true` against a
+    # ScanRootWorker that happened to share the same workflow_id in
+    # args, because the uniqueness hash collapsed across workers.
+    # Scoping by `worker` keeps the check on orchestrator-vs-
+    # orchestrator, and the args are already tagged with a fresh UUID
+    # workflow_id per dispatch, so collisions never happen in practice.
     unique: [
       period: :timer.hours(1),
-      fields: [:args],
-      keys: [:workflow_id],
+      fields: [:worker, :args],
       states: [:available, :scheduled, :executing, :retryable]
     ]
 
