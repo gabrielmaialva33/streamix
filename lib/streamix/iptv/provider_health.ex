@@ -106,7 +106,19 @@ defmodule Streamix.Iptv.ProviderHealth do
 
   defp build_report(%Provider{} = provider, cb_by_id) do
     cb = Map.get(cb_by_id, provider.id)
-    status = classify(provider, cb)
+    raw_status = classify(provider, cb)
+
+    # The circuit breaker only populates when real traffic hits the
+    # upstream — right after a deploy the ETS is empty and every
+    # xtream provider reports `:unknown`, which defeats the banner.
+    # When that happens we poke the upstream ourselves with a short
+    # HEAD so the status reflects reality on page load instead of
+    # waiting for the first user action to discover the outage.
+    status =
+      case {raw_status, provider.provider_type} do
+        {:unknown, :xtream} -> probe_xtream(provider)
+        _ -> raw_status
+      end
 
     %{
       id: provider.id,
@@ -122,6 +134,26 @@ defmodule Streamix.Iptv.ProviderHealth do
       message: human_message(status, provider, cb)
     }
   end
+
+  # 3s HEAD probe — enough time for a healthy upstream to respond,
+  # short enough that hitting `/api/v1/providers/status` doesn't turn
+  # into a 30-second wait when the provider is down. Result is only
+  # used locally: we don't feed it back into the circuit breaker
+  # because real traffic is a better signal than a synthetic probe.
+  @probe_timeout :timer.seconds(3)
+
+  defp probe_xtream(%Provider{url: url}) when is_binary(url) and url != "" do
+    case Req.head(url, receive_timeout: @probe_timeout, finch: Streamix.Finch) do
+      {:ok, %Req.Response{status: status}} when status in 200..399 -> :healthy
+      {:ok, %Req.Response{status: status}} when status in 500..599 -> :unhealthy
+      {:ok, _} -> :degraded
+      {:error, _} -> :unhealthy
+    end
+  rescue
+    _ -> :unknown
+  end
+
+  defp probe_xtream(_), do: :unknown
 
   defp classify(%Provider{is_active: false}, _cb), do: :unhealthy
   defp classify(_provider, nil), do: :unknown
