@@ -1,4 +1,32 @@
 <div class="min-h-screen bg-background">
+  <%!--
+    Provider-health banner. Rendered by the StreamixWeb.OnMount.ProviderHealth
+    hook via the @provider_health assign; the hook only flips `:show_banner?`
+    to true when the upstream IPTV provider is degraded or unhealthy, so
+    the block is a no-op on normal days.
+  --%>
+  <%= if assigns[:provider_health] && @provider_health.show_banner? do %>
+    <div
+      role="status"
+      aria-live="polite"
+      class={[
+        "fixed top-0 left-0 right-0 z-[60] border-b px-4 py-2 text-sm text-center",
+        if(@provider_health.status == :unhealthy,
+          do: "bg-red-600/95 text-white border-red-700",
+          else: "bg-amber-500/95 text-black border-amber-600"
+        )
+      ]}
+    >
+      <%= if @provider_health.status == :unhealthy do %>
+        <strong>Provedor IPTV indisponível.</strong>
+        Alguns streams podem não tocar — estamos tentando reconectar.
+      <% else %>
+        <strong>Provedor IPTV instável.</strong>
+        Alguns streams podem demorar mais que o normal para carregar.
+      <% end %>
+    </div>
+  <% end %>
+
   <!-- Scroll-aware Header -->
   <header
     id="app-header"

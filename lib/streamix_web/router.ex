@@ -141,6 +141,11 @@ defmodule StreamixWeb.Router do
     # tuned for per-keystroke calls from a TV remote.
     get "/catalog/suggest", CatalogController, :suggest
 
+    # Provider health surface — TV clients use this to render a
+    # "upstream offline" banner without confusing it with session
+    # errors.
+    get "/providers/status", StatusController, :index
+
     # Image proxy+resize for TV/mobile clients — replaces wsrv.nl.
     get "/catalog/images/resize", ImageResizeController, :resize
 
@@ -197,7 +202,12 @@ defmodule StreamixWeb.Router do
     pipe_through :browser
 
     live_session :public,
-      on_mount: @sandbox_on_mount ++ [{StreamixWeb.UserAuth, :mount_current_scope}],
+      on_mount:
+        @sandbox_on_mount ++
+          [
+            {StreamixWeb.UserAuth, :mount_current_scope},
+            StreamixWeb.OnMount.ProviderHealth
+          ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/", HomeLive, :index
       live "/plans", PlansLive, :index
@@ -228,7 +238,12 @@ defmodule StreamixWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :authenticated,
-      on_mount: @sandbox_on_mount ++ [{StreamixWeb.UserAuth, :require_authenticated}],
+      on_mount:
+        @sandbox_on_mount ++
+          [
+            {StreamixWeb.UserAuth, :require_authenticated},
+            StreamixWeb.OnMount.ProviderHealth
+          ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/settings", User.SettingsLive, :index
       live "/search", SearchLive, :index
