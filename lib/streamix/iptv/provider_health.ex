@@ -97,7 +97,11 @@ defmodule Streamix.Iptv.ProviderHealth do
         do: query,
         else: where(query, [p], p.is_active == true)
 
-    where(query, [p], p.visibility in ["global", "public"])
+    # `visibility` is an Ecto.Enum — hardcoding the literal string list
+    # requires ^ interpolation so Ecto can cast the values. Using atom
+    # literals would work too but strings match how the rest of the
+    # codebase filters (see catalog_controller).
+    where(query, [p], p.visibility in ^["global", "public"])
   end
 
   defp build_report(%Provider{} = provider, cb_by_id) do
