@@ -17,6 +17,10 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   use Oban.Worker,
     queue: :gindex_scan,
     max_attempts: 3,
+    # Priority 1 (vs default 3) keeps ScanRoot ahead of lower-urgency
+    # work when the scheduler is picking from a backlog — ensures a
+    # cron-triggered sync isn't starved by other sync-queue traffic.
+    priority: 1,
     # Don't re-enqueue the same root while one is still running or scheduled —
     # protects against a cron tick landing on top of a still-running dispatch.
     unique: [

@@ -98,6 +98,17 @@ config :streamix, Oban,
   ],
   plugins: [
     Oban.Plugins.Pruner,
+    # Auto-rescue jobs whose `attempted_at` is older than the threshold
+    # but are still marked `executing`. Produces the "ghost slot" bug
+    # we hit when a node restarts mid-flight — without Lifeline, those
+    # jobs stay marked executing forever and occupy concurrency slots
+    # in memory even after the running queue process forgets about
+    # them. 30 minutes lines up with the ScanRoot timeout so a legit
+    # long-running sync isn't rescued prematurely.
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
+    # Keeps the partial indexes on oban_jobs healthy — noticeable on a
+    # queue that churns thousands of jobs per week like gindex_scan.
+    {Oban.Plugins.Reindexer, schedule: "@weekly"},
     {Oban.Plugins.Cron,
      crontab: [
        # Cleanup orphaned favorites/history daily at 2 AM

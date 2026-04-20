@@ -20,6 +20,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.ScanRootWorker
+  alias Streamix.Workers.Gindex.SyncOrchestratorWorker
 
   require Logger
 
@@ -46,37 +47,54 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
   defp dispatch(provider) do
     roots = SyncPlanner.roots_for(provider)
+    # UUID tag that links every job in this dispatch together — the
+    # orchestrator uses it to know which ScanRoot siblings belong to
+    # the same sync run when it decides whether finalization is due.
+    workflow_id = Ecto.UUID.generate()
+    total_roots = length(roots)
 
     Logger.info(
-      "[GIndex Dispatcher] enqueuing #{length(roots)} scan roots for provider #{provider.id}"
+      "[GIndex Dispatcher] workflow=#{workflow_id} enqueuing #{total_roots} scan roots " <>
+        "for provider #{provider.id}"
     )
 
     mark_status(provider, "syncing")
 
-    results =
+    scan_results =
       Enum.map(roots, fn %{base_url: base_url, path: path, kind: kind} ->
-        args = %{
+        %{
           "provider_id" => provider.id,
           "base_url" => base_url,
           "path" => path,
-          "kind" => Atom.to_string(kind)
+          "kind" => Atom.to_string(kind),
+          "workflow_id" => workflow_id
         }
-
-        args
         |> ScanRootWorker.new()
         |> Oban.insert()
       end)
 
-    errors = Enum.filter(results, &match?({:error, _}, &1))
+    errors = Enum.filter(scan_results, &match?({:error, _}, &1))
 
-    if errors == [] do
-      :ok
-    else
+    if errors != [] do
       Logger.warning("[GIndex Dispatcher] some roots failed to enqueue: #{inspect(errors)}")
-      # Still return :ok — individual ScanRoot failures shouldn't nuke the
-      # dispatch job, the children have their own retry policies.
-      :ok
     end
+
+    # Fan-in job — open-source equivalent of Workflow.add_cascade(:finalize,
+    # ..., deps: [:scan_root_1, ..., :scan_root_N]). Scheduled a few
+    # seconds out so the ScanRoots have time to be picked up first;
+    # otherwise the orchestrator's first poll would see 0 siblings
+    # in-flight only because they haven't been fetched yet.
+    orchestrator_args = %{
+      "provider_id" => provider.id,
+      "workflow_id" => workflow_id,
+      "total_roots" => total_roots
+    }
+
+    orchestrator_args
+    |> SyncOrchestratorWorker.new(schedule_in: 15)
+    |> Oban.insert()
+
+    :ok
   end
 
   defp mark_status(provider, status) do

@@ -1,0 +1,149 @@
+defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
+  @moduledoc """
+  Fan-in worker that finalizes a GIndex sync run once every
+  `ScanRootWorker` sibling sharing the same `workflow_id` has left an
+  in-flight state.
+
+  This is the open-source equivalent of an Oban Pro
+  `Workflow.add_cascade(:finalize, ..., deps: [...])` — without a
+  Pro license, we simulate the dependency by:
+
+    1. tagging every `ScanRootWorker` in a dispatch with a shared
+       `workflow_id` in `args`,
+    2. enqueueing one of these orchestrator jobs with the same
+       `workflow_id`,
+    3. the orchestrator checks via `Oban.Job` query whether any
+       sibling is still `available | scheduled | executing |
+       retryable`, and
+    4. if so, `{:snooze, 30}` — it's cheap, non-blocking, and
+       participates in Oban's scheduler like any other job.
+
+  Once every sibling has settled (`completed | cancelled |
+  discarded`), the orchestrator consolidates stats (movies / series
+  counts) from the `providers` row, flips `sync_status` to
+  `completed`, and returns `:ok`. The operator sees one summary log
+  line per run instead of a silence that never resolves.
+  """
+
+  use Oban.Worker,
+    queue: :gindex_dispatch,
+    max_attempts: 20,
+    priority: 1,
+    # One orchestrator per workflow is plenty; unique prevents a
+    # retrying job from racing a replacement.
+    unique: [
+      period: :timer.hours(1),
+      fields: [:args],
+      keys: [:workflow_id],
+      states: [:available, :scheduled, :executing, :retryable]
+    ]
+
+  import Ecto.Query
+
+  alias Streamix.Iptv.Provider
+  alias Streamix.Repo
+
+  require Logger
+
+  @scan_worker "Streamix.Workers.Gindex.ScanRootWorker"
+  @in_flight_states ~w(available scheduled executing retryable)
+  # 30 seconds between checks — cheap enough not to pressure the DB
+  # but tight enough that the finalization isn't visibly lagged.
+  @poll_interval 30
+  # Safety valve: if the orchestrator snoozes 120× (= 1h wall time)
+  # something is really stuck, so we finalize anyway and log loudly.
+  @max_attempts 120
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(30)
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{
+        args: %{"workflow_id" => workflow_id, "provider_id" => provider_id} = args,
+        attempt: attempt
+      }) do
+    siblings = count_in_flight_siblings(workflow_id)
+    total = Map.get(args, "total_roots", 0)
+
+    cond do
+      siblings > 0 and attempt < @max_attempts ->
+        Logger.info(
+          "[GIndex Orchestrator] workflow=#{workflow_id} waiting " <>
+            "(#{siblings} of #{total} scan roots still in flight, attempt #{attempt})"
+        )
+
+        {:snooze, @poll_interval}
+
+      true ->
+        stats = collect_stats(workflow_id, provider_id)
+        finalize(provider_id, workflow_id, stats, siblings, attempt)
+    end
+  end
+
+  # --- Private ---
+
+  defp count_in_flight_siblings(workflow_id) do
+    # Fragment match on args->>'workflow_id' — `oban_jobs.args` is
+    # a jsonb column, so `->>` is indexable and the comparison is
+    # cheap even on a fat jobs table.
+    from(j in Oban.Job,
+      where: j.worker == ^@scan_worker,
+      where: j.state in ^@in_flight_states,
+      where: fragment("?->>'workflow_id' = ?", j.args, ^workflow_id),
+      select: count(j.id)
+    )
+    |> Repo.one()
+  end
+
+  defp collect_stats(workflow_id, provider_id) do
+    # Pull the final per-sibling stats from Oban's `meta` to surface a
+    # single-line summary at the end. Siblings don't have to write
+    # meta for us to succeed, but when they do we get a clean roll-up.
+    roots =
+      from(j in Oban.Job,
+        where: j.worker == ^@scan_worker,
+        where: fragment("?->>'workflow_id' = ?", j.args, ^workflow_id),
+        select: {j.state, j.args, j.meta}
+      )
+      |> Repo.all()
+
+    %{
+      provider_id: provider_id,
+      roots_total: length(roots),
+      roots_completed: Enum.count(roots, fn {state, _, _} -> state == "completed" end),
+      roots_failed: Enum.count(roots, fn {state, _, _} -> state in ["cancelled", "discarded"] end)
+    }
+  end
+
+  defp finalize(provider_id, workflow_id, stats, remaining_siblings, attempt) do
+    final_status =
+      cond do
+        stats.roots_failed == 0 and remaining_siblings == 0 -> "completed"
+        attempt >= @max_attempts -> "failed"
+        remaining_siblings > 0 -> "failed"
+        true -> "completed"
+      end
+
+    Logger.info(
+      "[GIndex Orchestrator] workflow=#{workflow_id} finalizing: " <>
+        "status=#{final_status} roots=#{stats.roots_completed}/#{stats.roots_total} " <>
+        "(#{stats.roots_failed} failed, #{remaining_siblings} stuck)"
+    )
+
+    case Repo.get(Provider, provider_id) do
+      nil ->
+        Logger.warning("[GIndex Orchestrator] provider #{provider_id} not found, skipping")
+        :ok
+
+      provider ->
+        provider
+        |> Provider.sync_changeset(%{
+          sync_status: final_status,
+          vod_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        })
+        |> Repo.update()
+
+        :ok
+    end
+  end
+end
