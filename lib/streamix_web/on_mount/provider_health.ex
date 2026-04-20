@@ -17,24 +17,13 @@ defmodule StreamixWeb.OnMount.ProviderHealth do
 
   import Phoenix.Component, only: [assign: 3]
 
-  alias Streamix.Iptv.ProviderHealth
+  alias Streamix.Iptv.ProviderHealthMonitor
 
   def on_mount(:default, _params, _session, socket) do
-    {:cont, assign(socket, :provider_health, compute())}
-  end
-
-  defp compute do
-    %{status: status, counts: counts} = ProviderHealth.overall_status()
-
-    %{
-      status: status,
-      counts: counts,
-      show_banner?: status in [:degraded, :unhealthy]
-    }
-  rescue
-    # Don't let a health-lookup hiccup take down a LiveView mount.
-    # Worst case the banner hides itself — the app still works.
-    _ ->
-      %{status: :unknown, counts: %{}, show_banner?: false}
+    # Read from the monitor's ETS cache — microsecond lookup, never
+    # blocks the mount on an upstream probe. The monitor refreshes
+    # itself every 30s in its own process, so this path is pure I/O
+    # overhead from the LiveView's point of view.
+    {:cont, assign(socket, :provider_health, ProviderHealthMonitor.get())}
   end
 end

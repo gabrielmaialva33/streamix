@@ -51,6 +51,9 @@ defmodule Streamix.Application do
         Streamix.Iptv.Gindex.UrlCache,
         # Xtream circuit breaker (Netflix-style resilience)
         Streamix.Iptv.XtreamCircuitBreaker,
+        # Background provider-health sampler — keeps ETS warm so LV
+        # mounts don't block on the 4s upstream probe.
+        Streamix.Iptv.ProviderHealthMonitor,
         # Stream multiplexer infrastructure (1 upstream → N downstream)
         {Registry, keys: :unique, name: Streamix.StreamRegistry},
         {Streamix.Iptv.StreamMultiplexerSupervisor, []},
