@@ -112,11 +112,16 @@ defmodule Streamix.Iptv.ProviderHealth do
     # upstream — right after a deploy the ETS is empty and every
     # xtream provider reports `:unknown`, which defeats the banner.
     # When that happens we poke the upstream ourselves with a short
-    # HEAD so the status reflects reality on page load instead of
+    # GET so the status reflects reality on page load instead of
     # waiting for the first user action to discover the outage.
+    #
+    # The probe result is cached per-provider (see `cached_probe/1`),
+    # so a broken upstream costs us one 4s hit every 30s instead of
+    # one per LV mount — without the cache, every page nav on the
+    # public/authenticated live_sessions was adding a 4s wait.
     status =
       case {raw_status, provider.provider_type} do
-        {:unknown, :xtream} -> probe_xtream(provider)
+        {:unknown, :xtream} -> cached_probe(provider)
         _ -> raw_status
       end
 
@@ -147,6 +152,26 @@ defmodule Streamix.Iptv.ProviderHealth do
   # circuit breaker because real traffic is a better signal than a
   # synthetic probe, and the real path also carries credentials.
   @probe_timeout :timer.seconds(4)
+  @probe_cache_ttl :timer.seconds(30)
+
+  # Wraps `probe_xtream/1` with a 30-second in-memory cache. ConCache
+  # is the L1 layer that's already configured in the app's supervision
+  # tree, so we get per-process safety, TTL expiry, and a cheap
+  # look-up without adding infra.
+  defp cached_probe(%Provider{id: id} = provider) do
+    key = {:provider_probe, id}
+
+    ConCache.get_or_store(:streamix_l1_cache, key, fn ->
+      %ConCache.Item{
+        value: probe_xtream(provider),
+        ttl: @probe_cache_ttl
+      }
+    end)
+  rescue
+    # If the cache isn't available for some reason (test env), fall
+    # through to the uncached probe rather than returning `:unknown`.
+    _ -> probe_xtream(provider)
+  end
 
   defp probe_xtream(%Provider{url: url}) when is_binary(url) and url != "" do
     api_url = xtream_api_url(url)
