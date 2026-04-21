@@ -12,7 +12,20 @@ defmodule Streamix.Iptv.Gindex.TomatoMatcher do
 
   alias Streamix.Iptv.Gindex.TomatoClient
 
-  @min_score 450
+  # Raised from 450 after the first production pass produced pairings
+  # like "07-Ghost" → "MF GHOST" (priority=0 floor + single word overlap
+  # on "ghost" was enough to win). 700 now requires the result to come
+  # back in Tomato's top-2 slots AND pass both sanity checks below.
+  @min_score 700
+  # Absolute minimum Jaro-Winkler between needle and candidate name.
+  # Translation-aware matches ("Ao no Exorcist" → "Blue Exorcist") land
+  # around 0.55; unrelated shares-one-word pairings ("07-Ghost" → "MF
+  # Ghost") land ~0.4 — 0.5 is the clean cut.
+  @min_jaro 0.5
+  # When both sides carry a year, anything past this gap almost always
+  # means we matched on a similarly-named spin-off/movie instead of the
+  # actual title.
+  @max_year_drift 3
 
   @type result :: %{
           tomato_id: integer(),
@@ -69,26 +82,39 @@ defmodule Streamix.Iptv.Gindex.TomatoMatcher do
 
     # Tomato does its own synonym mapping server-side (e.g. "Ao no
     # Exorcist" → "Blue Exorcist"), which our local fuzzy can't see. If
-    # Tomato places the result in the top 3 *and* the returned name
-    # shares a significant word with the query, we take that as a real
-    # translation match and apply a confidence floor. Without the word
-    # guard we'd paste wildly unrelated covers for queries Tomato
-    # doesn't have (e.g. "Aa! Megami-sama!" → "The Café Terrace and Its
-    # Goddesses", because their DB relates the word "goddess").
+    # Tomato places the result in the top 3 we apply a confidence floor,
+    # but only after passing three guards that keep us from accepting
+    # wildly unrelated covers for queries Tomato doesn't actually have:
+    #
+    #   1. word overlap — at least one 4+ char word in common,
+    #   2. Jaro minimum — 0.5 rules out "07-Ghost" → "MF Ghost",
+    #   3. year drift  — when both sides know a year, keep them close.
     confidence_floor =
-      if has_significant_overlap?(c.name, needle) do
-        case c.priority do
-          0 -> 850
-          1 -> 700
-          2 -> 550
-          _ -> 0
-        end
-      else
-        0
+      cond do
+        not has_significant_overlap?(c.name, needle) -> 0
+        below_min_jaro?(c.name, needle) -> 0
+        year_too_far?(c.year, year) -> 0
+        true -> priority_floor(c.priority)
       end
 
     max(fuzzy, confidence_floor) + year_bonus(c.year, year)
   end
+
+  defp priority_floor(0), do: 850
+  defp priority_floor(1), do: 700
+  defp priority_floor(2), do: 550
+  defp priority_floor(_), do: 0
+
+  defp below_min_jaro?(name, needle) do
+    String.jaro_distance(normalize(name), needle) < @min_jaro
+  end
+
+  defp year_too_far?(cand_year, query_year)
+       when is_integer(cand_year) and is_integer(query_year) do
+    abs(cand_year - query_year) > @max_year_drift
+  end
+
+  defp year_too_far?(_, _), do: false
 
   # Any word of 4+ characters common to both strings (after accent +
   # punctuation normalization) counts as "shared semantics". Guards the
