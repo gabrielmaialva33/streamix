@@ -576,7 +576,7 @@ defmodule StreamixWeb.HomeComponents do
     <div
       id={@id}
       phx-hook=".ScrollArrows"
-      class="hidden sm:block relative group/carousel"
+      class="relative sm:group/carousel"
     >
       {render_slot(@inner_block)}
       <%!-- Left arrow --%>
@@ -770,7 +770,11 @@ defmodule StreamixWeb.HomeComponents do
             progress={Map.get(@progress_map, movie.id)}
             class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
-          <.see_more_card path={~p"/browse/movies?sort=trending"} type={:movies} class="hidden sm:flex" />
+          <.see_more_card
+            path={~p"/browse/movies?sort=trending"}
+            type={:movies}
+            class="hidden sm:flex"
+          />
         </div>
       </.carousel_arrows>
     </div>
@@ -804,7 +808,11 @@ defmodule StreamixWeb.HomeComponents do
             progress={Map.get(@progress_map, series.id)}
             class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
-          <.see_more_card path={~p"/browse/series?sort=popularity"} type={:series} class="hidden sm:flex" />
+          <.see_more_card
+            path={~p"/browse/series?sort=popularity"}
+            type={:series}
+            class="hidden sm:flex"
+          />
         </div>
       </.carousel_arrows>
     </div>
