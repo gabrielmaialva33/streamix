@@ -663,11 +663,10 @@ defmodule StreamixWeb.HomeComponents do
             class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]"
           >
             <.channel_card
-              :for={channel <- Enum.take(@items, 6)}
+              :for={{channel, idx} <- Enum.with_index(@items)}
               channel={channel}
-              class="sm:hidden"
+              class={if idx >= 6, do: "hidden sm:block", else: ""}
             />
-            <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
             <.see_more_card
               :if={@see_more_path}
               path={@see_more_path}
@@ -695,44 +694,30 @@ defmodule StreamixWeb.HomeComponents do
             <%= case @type do %>
               <% :movies -> %>
                 <.render_movie_card
-                  :for={movie <- Enum.take(@items, 6)}
+                  :for={{movie, idx} <- Enum.with_index(@items)}
                   movie={movie}
                   progress={Map.get(@progress_map, movie.id)}
-                  class="sm:hidden"
-                />
-                <.render_movie_card
-                  :for={movie <- @items}
-                  movie={movie}
-                  progress={Map.get(@progress_map, movie.id)}
-                  class="hidden sm:block"
+                  class={if idx >= 6, do: "hidden sm:block", else: ""}
                 />
               <% :series -> %>
                 <.render_series_card
-                  :for={series <- Enum.take(@items, 6)}
+                  :for={{series, idx} <- Enum.with_index(@items)}
                   series={series}
                   progress={Map.get(@progress_map, series.id)}
-                  class="sm:hidden"
-                />
-                <.render_series_card
-                  :for={series <- @items}
-                  series={series}
-                  progress={Map.get(@progress_map, series.id)}
-                  class="hidden sm:block"
+                  class={if idx >= 6, do: "hidden sm:block", else: ""}
                 />
               <% :history -> %>
                 <.history_item
-                  :for={entry <- Enum.take(@items, 3)}
+                  :for={{entry, idx} <- Enum.with_index(@items)}
                   entry={entry}
-                  class="sm:hidden"
+                  class={if idx >= 3, do: "hidden sm:block", else: ""}
                 />
-                <.history_item :for={entry <- @items} entry={entry} class="hidden sm:block" />
               <% :favorites -> %>
                 <.favorite_item
-                  :for={fav <- Enum.take(@items, 6)}
+                  :for={{fav, idx} <- Enum.with_index(@items)}
                   favorite={fav}
-                  class="sm:hidden"
+                  class={if idx >= 6, do: "hidden sm:block", else: ""}
                 />
-                <.favorite_item :for={fav <- @items} favorite={fav} class="hidden sm:block" />
             <% end %>
             <.see_more_card
               :if={@see_more_path}
@@ -779,16 +764,10 @@ defmodule StreamixWeb.HomeComponents do
           class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
         >
           <.render_movie_card
-            :for={movie <- Enum.take(@items, 6)}
+            :for={{movie, idx} <- Enum.with_index(@items)}
             movie={movie}
             progress={Map.get(@progress_map, movie.id)}
-            class="sm:hidden"
-          />
-          <.render_movie_card
-            :for={movie <- @items}
-            movie={movie}
-            progress={Map.get(@progress_map, movie.id)}
-            class="hidden sm:block"
+            class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
           <.see_more_card path={~p"/browse/movies"} type={:movies} class="hidden sm:flex" />
         </div>
@@ -819,16 +798,10 @@ defmodule StreamixWeb.HomeComponents do
           class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
         >
           <.render_series_card
-            :for={series <- Enum.take(@items, 6)}
+            :for={{series, idx} <- Enum.with_index(@items)}
             series={series}
             progress={Map.get(@progress_map, series.id)}
-            class="sm:hidden"
-          />
-          <.render_series_card
-            :for={series <- @items}
-            series={series}
-            progress={Map.get(@progress_map, series.id)}
-            class="hidden sm:block"
+            class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
           <.see_more_card path={~p"/browse/series"} type={:series} class="hidden sm:flex" />
         </div>
@@ -857,11 +830,10 @@ defmodule StreamixWeb.HomeComponents do
           class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]"
         >
           <.channel_card
-            :for={channel <- Enum.take(@items, 6)}
+            :for={{channel, idx} <- Enum.with_index(@items)}
             channel={channel}
-            class="sm:hidden"
+            class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
-          <.channel_card :for={channel <- @items} channel={channel} class="hidden sm:block" />
           <.see_more_card path={~p"/browse"} type={:channels} class="hidden sm:flex" />
         </div>
       </.carousel_arrows>
