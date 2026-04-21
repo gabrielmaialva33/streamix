@@ -160,7 +160,9 @@ defmodule StreamixWeb.Content.CardComponents do
       data-year={Map.get(@series, :year)}
       data-rating={@display_rating}
       data-plot={Map.get(@series, :plot)}
-      data-cover={ImageProxy.poster(Map.get(@series, :backdrop) || Map.get(@series, :cover), :carousel)}
+      data-cover={
+        ImageProxy.poster(Map.get(@series, :backdrop) || Map.get(@series, :cover), :carousel)
+      }
       data-genre={Map.get(@series, :genre)}
       data-favorite={to_string(@is_favorite)}
     >

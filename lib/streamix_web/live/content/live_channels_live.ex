@@ -284,7 +284,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
               />
             </div>
           </div>
-
+          
     <!-- Infinite Scroll Sentinel -->
           <div
             :if={@has_more && !@loading}

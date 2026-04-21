@@ -263,13 +263,11 @@ defmodule StreamixWeb.Content.SeriesLive do
                 series={series}
                 is_favorite={MapSet.member?(@favorites_map, series.id)}
                 source={@source}
-                show_premium_badge={
-                  @mode == :browse and @source == "iptv" and not @premium_access
-                }
+                show_premium_badge={@mode == :browse and @source == "iptv" and not @premium_access}
               />
             </div>
           </div>
-
+          
     <!-- Infinite Scroll Sentinel -->
           <div
             :if={@has_more && !@loading}
