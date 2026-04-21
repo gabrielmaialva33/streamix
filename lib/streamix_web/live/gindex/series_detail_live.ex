@@ -356,5 +356,4 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
     </div>
     """
   end
-
 end

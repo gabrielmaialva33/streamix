@@ -357,5 +357,4 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     </div>
     """
   end
-
 end
