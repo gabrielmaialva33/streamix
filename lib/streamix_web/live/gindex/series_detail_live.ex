@@ -5,6 +5,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.Iptv.Gindex.DisplayName
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -31,6 +32,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
         socket =
           socket
           |> assign(page_title: series.title || series.name)
+          |> assign(display_title: display_title(series))
           |> assign(current_path: "/gindex/series/#{series.id}")
           |> assign(series: series)
           |> assign(seasons: sorted_seasons)
@@ -107,8 +109,20 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
     <div class="min-h-screen bg-background">
       <!-- Hero Section -->
       <div class="relative h-[40vh] sm:h-[50vh] min-h-[280px]">
-        <div class="absolute inset-0">
-          <div class="w-full h-full bg-gradient-to-br from-purple-900 to-gray-900" />
+        <div class="absolute inset-0 overflow-hidden">
+          <img
+            :if={@series.cover}
+            src={@series.cover}
+            alt=""
+            aria-hidden="true"
+            class="w-full h-full object-cover scale-110 blur-2xl opacity-50"
+            loading="lazy"
+            referrerpolicy="no-referrer"
+          />
+          <div
+            :if={is_nil(@series.cover)}
+            class="w-full h-full bg-gradient-to-br from-purple-900 to-gray-900"
+          />
         </div>
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
@@ -131,8 +145,19 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
             <!-- Poster -->
             <div class="flex-shrink-0 w-32 sm:w-48 lg:w-64 mx-auto lg:mx-0">
               <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
-                <div class="w-full h-full flex items-center justify-center">
-                  <.icon name="hero-tv" class="size-12 sm:size-16 text-text-secondary/30" />
+                <img
+                  :if={@series.cover}
+                  src={@series.cover}
+                  alt={@display_title}
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />
+                <div
+                  :if={is_nil(@series.cover)}
+                  class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900"
+                >
+                  <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
                 </div>
               </div>
             </div>
@@ -141,11 +166,14 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
             <div class="flex-1 space-y-4 text-center lg:text-left">
               <!-- Title -->
               <div class="space-y-2">
-                <h1 class="text-xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight">
-                  {@series.name}
+                <h1
+                  class="text-xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
+                  title={@series.name}
+                >
+                  {@display_title}
                 </h1>
                 <p
-                  :if={@series.title && @series.title != @series.name}
+                  :if={@series.title && @series.title != @series.name && @series.title != @display_title}
                   class="text-lg text-text-secondary"
                 >
                   {@series.title}
@@ -166,10 +194,30 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                     Enum.map(@seasons, fn s -> length(s.episodes || []) end)
                   )} eps
                 </span>
+                <span
+                  :if={@series.rating}
+                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-yellow-500/10 text-yellow-400 rounded-md text-sm font-medium"
+                >
+                  <.icon name="hero-star-solid" class="size-3.5" /> {@series.rating}
+                </span>
+                <span
+                  :if={Map.get(@series, :dub_available)}
+                  class="inline-flex items-center h-7 px-2.5 bg-emerald-500/15 text-emerald-300 rounded-md text-xs font-bold uppercase"
+                >
+                  Dublado
+                </span>
                 <span class="inline-flex items-center h-7 px-2.5 bg-purple-600/20 text-purple-400 rounded-md uppercase text-xs font-bold">
                   GDrive
                 </span>
               </div>
+
+              <%!-- Plot (enriched) --%>
+              <p
+                :if={@series.plot && @series.plot != ""}
+                class="text-sm sm:text-base text-text-secondary leading-relaxed max-w-3xl"
+              >
+                {@series.plot}
+              </p>
               
     <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">
@@ -308,6 +356,23 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   end
 
   defp episode_title(episode) do
-    episode.title || episode.name || "Episódio #{episode.episode_num}"
+    raw = episode.title || episode.name || "Episódio #{episode.episode_num}"
+    {_label, cleaned} = DisplayName.clean_episode(raw)
+    if cleaned == "", do: raw, else: cleaned
+  end
+
+  # Release noise leaks into `series.name` when the folder wasn't
+  # curated — prefer an enriched `title` when it exists and differs
+  # from the raw filename; otherwise run the raw value through the
+  # parser so the header stays clean.
+  defp display_title(series) do
+    cond do
+      is_binary(series.title) and String.trim(series.title) != "" and
+          series.title != series.name ->
+        series.title
+
+      true ->
+        DisplayName.clean_title(series.name)
+    end
   end
 end

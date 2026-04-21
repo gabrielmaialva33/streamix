@@ -5,6 +5,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias Streamix.Iptv.Gindex.DisplayName
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -34,6 +35,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(page_title: movie.title || movie.name)
             |> assign(current_path: "/gindex/movies/#{movie.id}")
             |> assign(movie: movie)
+            |> assign(display_title: display_title(movie))
             |> assign(is_favorite: is_favorite)
             |> assign(user_id: user_id)
 
@@ -72,13 +74,39 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
 
   # Render
 
+  # Release noise ("1080p BluRay x264 DUAL") leaks into `movie.name`
+  # when the gindex folder wasn't curated — prefer the enriched `title`
+  # when the enrichment pass populated it, otherwise run the raw name
+  # through the same parser the worker uses so the header stays clean.
+  defp display_title(movie) do
+    cond do
+      is_binary(movie.title) and String.trim(movie.title) != "" ->
+        movie.title
+
+      true ->
+        DisplayName.clean_title(movie.name)
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
       <!-- Hero Section -->
       <div class="relative h-[40vh] sm:h-[50vh] min-h-[280px]">
-        <div class="absolute inset-0">
-          <div class="w-full h-full bg-gradient-to-br from-purple-900 to-gray-900" />
+        <div class="absolute inset-0 overflow-hidden">
+          <img
+            :if={@movie.stream_icon}
+            src={@movie.stream_icon}
+            alt=""
+            aria-hidden="true"
+            class="w-full h-full object-cover scale-110 blur-2xl opacity-50"
+            loading="lazy"
+            referrerpolicy="no-referrer"
+          />
+          <div
+            :if={is_nil(@movie.stream_icon)}
+            class="w-full h-full bg-gradient-to-br from-purple-900 to-gray-900"
+          />
         </div>
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
@@ -101,8 +129,19 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             <!-- Poster -->
             <div class="flex-shrink-0 w-32 sm:w-48 lg:w-64 mx-auto lg:mx-0">
               <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
-                <div class="w-full h-full flex items-center justify-center">
-                  <.icon name="hero-film" class="size-12 sm:size-16 text-text-secondary/30" />
+                <img
+                  :if={@movie.stream_icon}
+                  src={@movie.stream_icon}
+                  alt={@display_title}
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />
+                <div
+                  :if={is_nil(@movie.stream_icon)}
+                  class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900"
+                >
+                  <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
                 </div>
               </div>
             </div>
@@ -111,11 +150,14 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             <div class="flex-1 space-y-4 text-center lg:text-left">
               <!-- Title -->
               <div class="space-y-2">
-                <h1 class="text-xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight">
-                  {@movie.name}
+                <h1
+                  class="text-xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
+                  title={@movie.name}
+                >
+                  {@display_title}
                 </h1>
                 <p
-                  :if={@movie.title && @movie.title != @movie.name}
+                  :if={@movie.title && @movie.title != @movie.name && @movie.title != @display_title}
                   class="text-lg text-text-secondary"
                 >
                   {@movie.title}
@@ -131,12 +173,26 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
                   {@movie.year}
                 </span>
                 <span
+                  :if={@movie.rating}
+                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-yellow-500/10 text-yellow-400 rounded-md text-sm font-medium"
+                >
+                  <.icon name="hero-star-solid" class="size-3.5" /> {@movie.rating}
+                </span>
+                <span
                   :if={@movie.container_extension}
                   class="inline-flex items-center h-7 px-2.5 bg-purple-600/20 text-purple-400 rounded-md uppercase text-xs font-bold"
                 >
                   {@movie.container_extension}
                 </span>
               </div>
+
+              <%!-- Plot (enriched) --%>
+              <p
+                :if={@movie.plot && @movie.plot != ""}
+                class="text-sm sm:text-base text-text-secondary leading-relaxed max-w-3xl"
+              >
+                {@movie.plot}
+              </p>
               
     <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">

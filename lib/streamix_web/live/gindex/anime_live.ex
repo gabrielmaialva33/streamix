@@ -140,8 +140,9 @@ defmodule StreamixWeb.Gindex.AnimeLive do
         class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
         <div :for={{dom_id, anime} <- @streams.animes} id={dom_id}>
-          <.anime_card
-            anime={anime}
+          <.series_card
+            series={anime}
+            source="gindex"
             is_favorite={MapSet.member?(@favorites_map, anime.id)}
           />
         </div>
@@ -201,63 +202,4 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     assign(socket, favorites_map: favorite_ids)
   end
 
-  # Anime card component (custom for animes)
-  defp anime_card(assigns) do
-    ~H"""
-    <div class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all group cursor-pointer">
-      <div
-        class="relative aspect-[2/3] bg-surface-hover overflow-hidden"
-        phx-click="view_series"
-        phx-value-id={@anime.id}
-      >
-        <img
-          :if={@anime.cover}
-          src={@anime.cover}
-          alt={@anime.title || @anime.name}
-          class="w-full h-full object-cover"
-          loading="lazy"
-          referrerpolicy="no-referrer"
-        />
-        <div
-          :if={is_nil(@anime.cover)}
-          class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900"
-        >
-          <.icon name="hero-sparkles" class="size-16 text-purple-400/30" />
-        </div>
-
-        <span class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white">
-          GDrive
-        </span>
-
-        <%!-- episode count computed from preloaded seasons --%>
-      </div>
-
-      <div class="p-3">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0 flex-1">
-            <h3 class="font-medium text-sm text-text-primary truncate" title={@anime.name}>
-              {@anime.title || @anime.name}
-            </h3>
-            <p :if={@anime.year} class="text-xs text-text-secondary">
-              {@anime.year}
-              <%!-- season count removed from schema --%>
-            </p>
-          </div>
-          <button
-            type="button"
-            phx-click="toggle_favorite"
-            phx-value-id={@anime.id}
-            phx-value-type="series"
-            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
-          >
-            <.icon
-              name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-red-500"]}
-            />
-          </button>
-        </div>
-      </div>
-    </div>
-    """
-  end
 end
