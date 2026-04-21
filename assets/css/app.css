@@ -1107,30 +1107,16 @@ header[data-scrolled="false"] {
     }
 }
 
-/* iOS-specific fixes */
-@supports (-webkit-touch-callout: none) {
-
-    /* Prevent iOS rubber-banding */
-    html,
-    body {
-        position: fixed;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    #app-root,
-    main {
-        height: 100%;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    /* iOS status bar safe area */
-    .ios-safe-top {
-        padding-top: constant(safe-area-inset-top);
-        padding-top: env(safe-area-inset-top);
-    }
+/* iOS status bar safe area helper.
+   The old hack of `html, body { position: fixed; overflow: hidden }` +
+   delegated-scroll on `main` was removed — in PWA / standalone mode the
+   delegated scroll container didn't exist as expected and the whole page
+   became unscrollable (user report: iPhone Safari PWA). Modern iOS Safari
+   (16+) handles the rubber-band just fine via `overscroll-behavior` on
+   body, which we already set above. */
+.ios-safe-top {
+    padding-top: constant(safe-area-inset-top);
+    padding-top: env(safe-area-inset-top);
 }
 
 /* Prevent long-press context menu on images.
