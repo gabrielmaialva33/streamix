@@ -53,8 +53,9 @@ defmodule StreamixWeb.Content.HelperComponents do
         true -> nil
       end
 
-    # Use optimized card size for thumbnails (Netflix uses 20-30KB)
-    ImageProxy.card(url)
+    # Grid/carousel posters render at ~180px desktop / ~120px mobile, so
+    # w342 (via :carousel context) is the sweet spot (~60% less data than w500).
+    ImageProxy.poster(url, :carousel)
   end
 
   def get_display_rating(item) do

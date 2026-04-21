@@ -46,7 +46,7 @@ defmodule StreamixWeb.Content.CardComponents do
       data-year={Map.get(@movie, :year)}
       data-rating={@display_rating}
       data-plot={Map.get(@movie, :plot)}
-      data-cover={ImageProxy.card(Map.get(@movie, :backdrop) || Map.get(@movie, :cover))}
+      data-cover={ImageProxy.poster(Map.get(@movie, :backdrop) || Map.get(@movie, :cover), :carousel)}
       data-genre={Map.get(@movie, :genre)}
       data-duration={format_duration(Map.get(@movie, :duration))}
       data-favorite={to_string(@is_favorite)}
@@ -160,7 +160,7 @@ defmodule StreamixWeb.Content.CardComponents do
       data-year={Map.get(@series, :year)}
       data-rating={@display_rating}
       data-plot={Map.get(@series, :plot)}
-      data-cover={ImageProxy.card(Map.get(@series, :backdrop) || Map.get(@series, :cover))}
+      data-cover={ImageProxy.poster(Map.get(@series, :backdrop) || Map.get(@series, :cover), :carousel)}
       data-genre={Map.get(@series, :genre)}
       data-favorite={to_string(@is_favorite)}
     >
@@ -173,7 +173,7 @@ defmodule StreamixWeb.Content.CardComponents do
       >
         <img
           :if={Map.get(@series, :cover)}
-          src={ImageProxy.card(@series.cover)}
+          src={ImageProxy.poster(@series.cover, :carousel)}
           alt={@series_name}
           class="w-full h-full object-cover"
           loading="lazy"
@@ -262,7 +262,7 @@ defmodule StreamixWeb.Content.CardComponents do
       >
         <img
           :if={Map.get(@episode, :cover)}
-          src={ImageProxy.proxy(@episode.cover)}
+          src={ImageProxy.poster(@episode.cover, :thumbnail)}
           alt={episode_title(@episode)}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
