@@ -404,12 +404,16 @@ defmodule Streamix.Iptv.Catalog do
   def list_top_10_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
 
+    # We used to require `plot` as well, but the gindex enrichment only
+    # writes `stream_icon` + `tmdb_id` today (plot would need a second
+    # TMDB call per title). Dropping that gate turns this query from
+    # "returns 1 row" into "returns a proper top 10" — the card
+    # component doesn't render plot anyway, it's rank + poster + title.
     Movie
     |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
     |> where([m, p], p.visibility in [:global, :public])
     |> where([m, _p], not is_nil(m.rating))
     |> where([m, _p], not is_nil(m.stream_icon))
-    |> where([m, _p], not is_nil(m.plot))
     |> order_by([m], desc: m.rating)
     |> limit(^limit)
     |> select_movie_card_fields()
