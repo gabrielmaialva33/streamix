@@ -1,5 +1,12 @@
 <% banner_visible? = assigns[:provider_health] && @provider_health.show_banner? %>
-<div class={["min-h-screen bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
+<%!--
+  iOS Safari: min-h-dvh tracks the *dynamic* viewport so the layout doesn't
+  jump when the URL bar collapses. Tailwind v4 ships it natively. Notch
+  safe-areas are applied directly on the fixed header / banner / bottom-nav
+  below (env(safe-area-inset-*) only works on the elements that actually
+  paint into the unsafe zone).
+--%>
+<div class={["min-h-dvh bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
   <%!--
     Provider-health banner. Rendered by the StreamixWeb.OnMount.ProviderHealth
     hook via the @provider_health assign. Lives *above* the scroll-aware
@@ -9,9 +16,16 @@
     higher z-index and made the menu unclickable.
   --%>
   <%= if banner_visible? do %>
+    <%!--
+      iOS Safari: banner sits above the notch, so we push its content down by
+      env(safe-area-inset-top) using an inline style (Tailwind v4 arbitrary
+      property syntax). Without this, the status bar on iPhone X+ overlaps
+      the text.
+    --%>
     <div
       role="status"
       aria-live="polite"
+      style="padding-top: env(safe-area-inset-top);"
       class={[
         "fixed top-0 left-0 right-0 z-[60] h-9 flex items-center justify-center",
         "border-b px-4 text-xs sm:text-sm text-center leading-tight",
@@ -36,10 +50,17 @@
   <% end %>
   
 <!-- Scroll-aware Header -->
+  <%!--
+    iOS Safari notched devices: when the banner is hidden the header sits at
+    top-0 and needs safe-area-inset-top padding so the logo/nav aren't under
+    the status bar. When the banner is visible the banner already absorbs
+    the safe-area (see style above), so the header just sits flush below it.
+  --%>
   <header
     id="app-header"
     phx-hook="ScrollHeader"
     data-scrolled="false"
+    style={if(banner_visible?, do: "", else: "padding-top: env(safe-area-inset-top);")}
     class={[
       "fixed left-0 right-0 z-50 border-b border-transparent transition-all",
       if(banner_visible?, do: "top-9", else: "top-0")
@@ -180,19 +201,57 @@
   </header>
   
 <!-- Flash Messages (Toast style - top right) -->
-  <div class="fixed top-[72px] right-4 z-50 w-full max-w-sm space-y-2">
+  <%!--
+    iOS Safari: offset from the top needs to include env(safe-area-inset-top)
+    so toasts don't sit under the notch / Dynamic Island.
+  --%>
+  <div
+    style="top: calc(72px + env(safe-area-inset-top)); padding-right: env(safe-area-inset-right);"
+    class="fixed right-4 z-50 w-full max-w-sm space-y-2"
+  >
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>
   
 <!-- Main Content -->
-  <main class="pt-14 sm:pt-16 pb-20 sm:pb-8 px-[4%]">
+  <%!--
+    iOS Safari: the header absorbs env(safe-area-inset-top) via its own
+    padding (see <header> above), so here we only keep the regular header
+    height (pt-14 sm:pt-16) plus the notch offset. The .main-safe-top
+    utility in app.css adds env(safe-area-inset-top) on top of that so
+    content clears the notch on iPhone X+ / Dynamic Island devices.
+  --%>
+  <main class="pt-14 sm:pt-16 pb-20 sm:pb-8 px-[4%] main-safe-top">
     {@inner_content}
   </main>
-  
+
+  <%= if @current_scope do %>
+    <%!--
+      iOS Safari: on mobile `pb-20` reserves space for the bottom-nav; on
+      desktop (md+) the nav is hidden so we don't need the spacer. The
+      inline style adds env(safe-area-inset-bottom) so the footer text
+      clears the iPhone home-indicator when the page is scrolled all the
+      way down.
+    --%>
+    <div
+      style="padding-bottom: env(safe-area-inset-bottom);"
+      class="pb-20 md:pb-0"
+    >
+      <StreamixWeb.FooterComponents.app_footer current_scope={@current_scope} />
+    </div>
+  <% end %>
+
 <!-- Bottom Navigation Bar (Mobile Only) -->
   <%= if @current_scope do %>
-    <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden glass safe-area-bottom">
+    <%!--
+      iOS Safari: safe-area-bottom handles the home-indicator. Inline style
+      also adds env(safe-area-inset-left/right) so the tabs don't sit under
+      the Dynamic Island in landscape on iPhone X+.
+    --%>
+    <nav
+      style="padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      class="fixed bottom-0 left-0 right-0 z-40 md:hidden glass safe-area-bottom"
+    >
       <div class="flex items-center justify-around h-14">
         <.bottom_tab
           path={~p"/"}

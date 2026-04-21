@@ -2,9 +2,15 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
+    <%!--
+      iOS Safari: viewport-fit=cover is required so env(safe-area-inset-*)
+      values are non-zero on notched devices. `maximum-scale=1` removed so
+      accessibility pinch-zoom works; to keep Safari from zooming on input
+      focus we enforce font-size >= 16px on form controls via app.css.
+    --%>
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="csrf-token" content={get_csrf_token()} />
     
