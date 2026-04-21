@@ -37,6 +37,10 @@ defmodule Streamix.Iptv.Series do
     # AniList fallback for anime rows that TMDB couldn't match.
     field :anilist_id, :integer
 
+    # TomatoAnimes: primary enrichment source for rows under `/Animes/`.
+    field :tomato_id, :integer
+    field :dub_available, :boolean, default: false
+
     belongs_to :provider, Provider
     belongs_to :catalog_item, CatalogItem
     has_many :seasons, Season
@@ -51,7 +55,8 @@ defmodule Streamix.Iptv.Series do
   @fields ~w(series_id name title year cover rating
              plot youtube_trailer tmdb_id tagline
              content_rating provider_id gindex_path catalog_item_id
-             tmdb_searched_at tmdb_miss_reason anilist_id)a
+             tmdb_searched_at tmdb_miss_reason anilist_id
+             tomato_id dub_available)a
 
   def changeset(series, attrs) do
     series

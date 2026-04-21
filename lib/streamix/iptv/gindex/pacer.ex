@@ -21,7 +21,7 @@ defmodule Streamix.Iptv.Gindex.Pacer do
 
   require Logger
 
-  @type bucket :: :gdrive | :tmdb_gindex | :anilist
+  @type bucket :: :gdrive | :tmdb_gindex | :anilist | :tomato
 
   # 1s window for all pacing decisions. Small enough that bursts get smoothed
   # in the same second they arrive without feeling laggy.
@@ -87,6 +87,10 @@ defmodule Streamix.Iptv.Gindex.Pacer do
   # gives headroom for our own retries plus anyone else on the same
   # outbound IP, and keeps the backfill well under the daily quota.
   defp default_limit(:anilist), do: 1
+  # TomatoAnimes has no documented limit; 2 rps is well below what the
+  # official mobile app produces during normal use and still lets us
+  # walk through ~1k animes in under 10 minutes.
+  defp default_limit(:tomato), do: 2
   defp default_limit(_), do: 5
 
   defp key(bucket), do: "gindex_pacer:" <> Atom.to_string(bucket)

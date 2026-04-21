@@ -26,7 +26,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.Gindex.{AnimeMatcher, ReleaseParser, TmdbMatcher}
+  alias Streamix.Iptv.Gindex.{AnimeMatcher, ReleaseParser, TmdbMatcher, TomatoMatcher}
   alias Streamix.Iptv.{Movie, Series, TmdbClient}
   alias Streamix.Repo
 
@@ -94,52 +94,99 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     title = fallback_title(parsed_title, row)
     year = parsed_year || row.year
 
+    cond do
+      kind == :series and anime_path?(row.gindex_path) ->
+        # Anime path: Tomato first (romaji + PT plot), AniList second,
+        # TMDB last. The order matches each source's strength on the
+        # brazilian anime release naming conventions.
+        run_anime_pipeline(schema, row, title, year)
+
+      true ->
+        # Everything else: TMDB only. Movies under /Filmes and series
+        # under /Séries have zero reason to ask AniList/Tomato, and
+        # asking would just burn rate budget on guaranteed misses.
+        run_tmdb_only(schema, kind, row, title, year)
+    end
+  end
+
+  # Tomato → AniList → TMDB pipeline, first hit wins. Miss reasons are
+  # joined with `|` so operators can see which source said what.
+  defp run_anime_pipeline(schema, row, title, year) do
+    reasons = []
+
+    with {:tomato_miss, reasons} <- try_tomato(schema, row, title, year, reasons),
+         {:anilist_miss, reasons} <- try_anilist(schema, row, title, year, reasons),
+         {:tmdb_miss, reasons} <- try_tmdb(schema, :series, row, title, year, reasons) do
+      update_row(schema, row.id, %{
+        tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        tmdb_miss_reason: Enum.join(reasons, "|")
+      })
+
+      :miss
+    else
+      :hit -> :hit
+    end
+  end
+
+  defp try_tomato(schema, row, title, year, reasons) do
+    case TomatoMatcher.best_match(title, year) do
+      {:ok, match} ->
+        attrs = %{
+          tomato_id: match.tomato_id,
+          cover: match.cover_url,
+          dub_available: match.dubbed,
+          tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          tmdb_miss_reason: nil
+        }
+
+        attrs = if is_nil(match.cover_url), do: Map.delete(attrs, :cover), else: attrs
+        update_row(schema, row.id, attrs)
+        :hit
+
+      {:miss, reason} ->
+        {:tomato_miss, reasons ++ ["tomato:#{reason}"]}
+    end
+  end
+
+  defp try_anilist(schema, row, title, year, reasons) do
+    case AnimeMatcher.best_match(title, year) do
+      {:ok, match} ->
+        attrs = %{
+          anilist_id: match.anilist_id,
+          cover: match.cover_url,
+          tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          tmdb_miss_reason: nil
+        }
+
+        attrs = if is_nil(match.cover_url), do: Map.delete(attrs, :cover), else: attrs
+        update_row(schema, row.id, attrs)
+        :hit
+
+      {:miss, reason} ->
+        {:anilist_miss, reasons ++ ["anilist:#{reason}"]}
+    end
+  end
+
+  defp try_tmdb(schema, kind, row, title, year, reasons) do
     case TmdbMatcher.best_match(title, year, kind) do
       {:ok, match} ->
         attrs = build_hit_attrs(kind, match)
         update_row(schema, row.id, attrs)
         :hit
 
-      {:miss, _reason} = miss ->
-        maybe_anilist_fallback(schema, kind, row, title, year, miss)
+      {:miss, reason} ->
+        {:tmdb_miss, reasons ++ ["tmdb:#{reason}"]}
     end
   end
 
-  # Anime folders live under the series table (`gindex_path` starts with
-  # something like `/0:/Animes/`). When TMDB can't match one, give
-  # AniList a shot before writing off the row — its catalog covers the
-  # romaji/fansub long-tail that TMDB plain misses.
-  defp maybe_anilist_fallback(schema, :series, row, title, year, {:miss, tmdb_reason}) do
-    if anime_path?(row.gindex_path) do
-      case AnimeMatcher.best_match(title, year) do
-        {:ok, match} ->
-          attrs = %{
-            anilist_id: match.anilist_id,
-            cover: match.cover_url,
-            tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
-            tmdb_miss_reason: nil
-          }
+  defp run_tmdb_only(schema, kind, row, title, year) do
+    case try_tmdb(schema, kind, row, title, year, []) do
+      :hit ->
+        :hit
 
-          attrs = if is_nil(match.cover_url), do: Map.delete(attrs, :cover), else: attrs
-
-          update_row(schema, row.id, attrs)
-          :hit
-
-        {:miss, anilist_reason} ->
-          update_row(schema, row.id, %{
-            tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
-            tmdb_miss_reason: "tmdb:#{tmdb_reason}|anilist:#{anilist_reason}"
-          })
-
-          :miss
-      end
-    else
-      mark_miss(schema, row.id, tmdb_reason)
+      {:tmdb_miss, [reason]} ->
+        mark_miss(schema, row.id, reason)
     end
-  end
-
-  defp maybe_anilist_fallback(schema, _kind, row, _title, _year, {:miss, reason}) do
-    mark_miss(schema, row.id, reason)
   end
 
   defp mark_miss(schema, id, reason) do

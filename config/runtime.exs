@@ -134,7 +134,21 @@ config :streamix, StreamixWeb.Api.V1.ImageResizeController,
 # their internal ceiling is without killing sync throughput.
 config :streamix, Streamix.Iptv.Gindex.Pacer,
   gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "3"),
-  tmdb_gindex: String.to_integer(get_env.("GINDEX_TMDB_RPS") || "10")
+  tmdb_gindex: String.to_integer(get_env.("GINDEX_TMDB_RPS") || "10"),
+  anilist: String.to_integer(get_env.("GINDEX_ANILIST_RPS") || "1"),
+  tomato: String.to_integer(get_env.("GINDEX_TOMATO_RPS") || "2")
+
+# TomatoAnimes API — bearer token provides access to search + metadata
+# endpoints (https://edge.betomato.com/v2). Disabled when the env var
+# is absent; enabled automatically when set.
+if tomato_token = get_env.("TOMATO_BEARER_TOKEN") do
+  config :streamix, :tomato,
+    enabled: true,
+    bearer_token: tomato_token,
+    base_url: get_env.("TOMATO_BASE_URL") || "https://edge.betomato.com"
+else
+  config :streamix, :tomato, enabled: false
+end
 
 # GIndex provider configuration (Google Drive Index for movies/series/animes)
 # Paths are configured via gindex_drives on the provider record
