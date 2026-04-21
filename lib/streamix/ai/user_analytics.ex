@@ -520,7 +520,14 @@ defmodule Streamix.AI.UserAnalytics do
   # ============================================================================
 
   defp get_watched_content_with_embeddings(user_id) do
-    history = History.list_for_analytics(user_id, limit: 100)
+    # Live channels have no embedding in Qdrant (IndexEmbeddingsWorker only
+    # indexes movies and series). Filter them out at the earliest point so
+    # their numeric IDs never collide with movie IDs and poison the profile
+    # vector. See map_embeddings/1 for the safety net.
+    history =
+      user_id
+      |> History.list_for_analytics(limit: 100)
+      |> Enum.reject(&(&1.content_type == "live_channel"))
 
     case history do
       [] ->
@@ -570,8 +577,10 @@ defmodule Streamix.AI.UserAnalytics do
 
   defp content_type_to_collection("movie"), do: "movies"
   defp content_type_to_collection("episode"), do: "series"
-  defp content_type_to_collection("live_channel"), do: "movies"
-  defp content_type_to_collection(_), do: "movies"
+  # Live channels (and any unknown type) have no embeddings indexed; return
+  # :skip so callers never silently fetch from the "movies" collection with a
+  # non-movie numeric id.
+  defp content_type_to_collection(_), do: :skip
 
   defp get_watched_content_ids(user_id, collection) do
     content_type = collection_to_content_type(collection)
@@ -740,13 +749,24 @@ defmodule Streamix.AI.UserAnalytics do
   end
 
   defp map_embeddings(history) do
-    Enum.reduce(history, [], fn entry, acc ->
-      case Qdrant.get_point(content_type_to_collection(entry.content_type), entry.content_id) do
-        {:ok, %{vector: vector}} ->
-          [%{vector: vector, weight: calculate_weight(entry)} | acc]
-
-        _ ->
+    history
+    # Safety net: live channels are not indexed in Qdrant. If one slips through
+    # we'd otherwise fetch a point from the "movies" collection using the
+    # channel's numeric id and contaminate the profile vector.
+    |> Enum.reject(&(&1.content_type == "live_channel"))
+    |> Enum.reduce([], fn entry, acc ->
+      case content_type_to_collection(entry.content_type) do
+        :skip ->
           acc
+
+        collection ->
+          case Qdrant.get_point(collection, entry.content_id) do
+            {:ok, %{vector: vector}} ->
+              [%{vector: vector, weight: calculate_weight(entry)} | acc]
+
+            _ ->
+              acc
+          end
       end
     end)
     |> Enum.reverse()
