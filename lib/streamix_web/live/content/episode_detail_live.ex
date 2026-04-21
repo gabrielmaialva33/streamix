@@ -164,6 +164,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
             src={get_episode_image(@episode) || get_series_backdrop(@series)}
             alt={episode_title(@episode, @series)}
             class="w-full h-full object-cover"
+            fetchpriority="high"
+            decoding="async"
           />
           <div
             :if={!get_episode_image(@episode) && !get_series_backdrop(@series)}
@@ -198,6 +200,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   src={get_episode_image(@episode)}
                   alt={episode_title(@episode, @series)}
                   class="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div
                   :if={!get_episode_image(@episode)}

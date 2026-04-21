@@ -64,6 +64,8 @@ defmodule StreamixWeb.WatchPartyLive.Join do
               alt={@room_content_name}
               class="w-full h-full object-cover"
               crossorigin="anonymous"
+              loading="lazy"
+              decoding="async"
             />
           </div>
 

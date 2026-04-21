@@ -3,6 +3,13 @@
 @source "../js";
 @source "../../lib/streamix_web";
 
+/* ============================================
+   iOS Safari baseline — applies everywhere.
+   Most of these are *defensive*: they stop well-known Safari quirks
+   (tap-flash, 300ms delay, 100vh jumps, input zoom) from ever showing
+   up in the Streamix UI without us having to audit every component.
+   ============================================ */
+
 /* Safari iOS bottom bar cuts off content when using static 100vh.
    Use dynamic viewport units so the layout adapts to the visible area. */
 @supports (height: 100dvh) {
@@ -12,6 +19,39 @@
 
     .h-screen {
         height: 100dvh;
+    }
+}
+
+/* iOS Safari: kill the grey tap-flash on every interactive element.
+   Without this, every <a>/<button>/role=button briefly flashes grey on
+   tap, which looks broken for a streaming UI. */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari: `touch-action: manipulation` removes the historical 300ms
+   click delay on anchors/buttons while still allowing pinch-to-zoom
+   elsewhere on the page. Applied broadly (not just `.touch-manipulation`)
+   so every LiveView-generated button feels native. */
+a,
+button,
+[role="button"],
+[role="tab"],
+[role="link"],
+summary,
+label {
+    touch-action: manipulation;
+}
+
+/* iOS Safari: inputs/selects with font-size < 16px trigger an automatic
+   page zoom on focus (which we then can't zoom back out of because
+   maximum-scale is 1 on Android only). Force >= 16px on form controls
+   *on touch devices*; desktop keeps the designer's typography. */
+@media (hover: none) and (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+    select,
+    textarea {
+        font-size: 16px !important;
     }
 }
 
@@ -826,10 +866,50 @@ img {
     opacity: 1;
 }
 
-/* Smooth scroll for carousels */
+/* Smooth scroll for carousels.
+   iOS Safari: `scroll-behavior: smooth` can cause janky momentum scroll on
+   iOS when combined with snap/overflow; scope it to non-reduced-motion
+   users and keep `-webkit-overflow-scrolling: touch` for inertia. */
+@media (prefers-reduced-motion: no-preference) {
+    .scroll-smooth {
+        scroll-behavior: smooth;
+    }
+}
+
 .scroll-smooth {
-    scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+}
+
+/* iOS Safari: horizontal carousels should not trigger the window's rubber-
+   band when the user swipes past the end. `overscroll-behavior-x: contain`
+   keeps the bounce local to the track instead of propagating to <body>. */
+[data-carousel-track],
+.scrollbar-hide {
+    overscroll-behavior-x: contain;
+}
+
+/* iOS Safari: `position: sticky` only works when the flex/grid parent has
+   `align-items: start` (not the default `stretch`). The category sidebar
+   component uses `sm:sticky sm:top-24`; we auto-fix any ancestor flex
+   container that contains a sticky <aside> via :has() so the sticky
+   behavior holds on Safari without touching every call-site. */
+@media (min-width: 640px) {
+    :has(> aside.sm\:sticky) {
+        align-items: flex-start;
+    }
+}
+
+/* Adds env(safe-area-inset-top) to the main content's top padding so it
+   sits below the notch on iPhone X+. The fixed header absorbs its own
+   notch via inline style, so here we only compensate the main flow. */
+.main-safe-top {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+}
+
+@media (min-width: 640px) {
+    .main-safe-top {
+        padding-top: calc(4rem + env(safe-area-inset-top));
+    }
 }
 
 /* Card hover effect — spring physics */
@@ -1053,9 +1133,19 @@ header[data-scrolled="false"] {
     }
 }
 
-/* Prevent long-press context menu on images */
+/* Prevent long-press context menu on images.
+   iOS Safari: without this, long-pressing any poster/thumbnail opens the
+   native "Save Image / Copy / Share" sheet, which breaks the streaming-app
+   feel. Combined with `user-drag: none` we also stop the drag preview. */
 img {
     -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+}
+
+.poster-card img,
+.content-card img {
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Hide scrollbar in PWA for cleaner look */

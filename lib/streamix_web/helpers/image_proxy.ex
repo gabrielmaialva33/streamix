@@ -199,6 +199,57 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   def resize(url, _size), do: url
 
   @doc """
+  Returns the appropriate TMDB size atom for a given UI context.
+
+  Lets callers pick the smallest acceptable variant without hard-coding
+  `w342`/`w500` at every `<img>`. Values map to the atoms accepted by
+  `resize/2` (so the full chain is `url |> resize(poster_size(ctx)) |> proxy()`,
+  i.e. what `card/1`, `detail/1`, `hero/1`, `backdrop/1` already do).
+
+  | Context          | Size atom   | TMDB width | Approx size |
+  | :--------------- | :---------- | :--------- | :---------- |
+  | `:carousel`      | `:card`     | w342       | 25-40KB     |
+  | `:grid`          | `:card`     | w342       | 25-40KB     |
+  | `:thumbnail`     | `:thumbnail`| w185       | 10-20KB     |
+  | `:history`       | `:thumbnail`| w185       | 10-20KB     |
+  | `:detail`        | `:detail`   | w500       | 50-80KB     |
+  | `:hero_backdrop` | `:backdrop` | w780       | 60-100KB    |
+  | `:hero`          | `:hero`     | w1280      | 100-200KB   |
+
+  ## Examples
+
+      iex> poster_size(:carousel)
+      :card
+
+      iex> poster_size(:hero_backdrop)
+      :backdrop
+  """
+  @spec poster_size(atom()) :: atom()
+  def poster_size(:carousel), do: :card
+  def poster_size(:grid), do: :card
+  def poster_size(:thumbnail), do: :thumbnail
+  def poster_size(:history), do: :thumbnail
+  def poster_size(:detail), do: :detail
+  def poster_size(:hero_backdrop), do: :backdrop
+  def poster_size(:hero), do: :hero
+  def poster_size(_other), do: :card
+
+  @doc """
+  Convenience: resize + proxy in one call using a UI-context atom.
+
+  Equivalent to `url |> resize(poster_size(ctx)) |> proxy()`.
+
+  ## Examples
+
+      iex> poster("https://image.tmdb.org/t/p/original/abc.jpg", :carousel)
+      "https://tmdb.mahina.cloud/t/p/w342/abc.jpg?_v=v2"
+  """
+  @spec poster(String.t() | nil, atom()) :: String.t() | nil
+  def poster(nil, _ctx), do: nil
+  def poster("", _ctx), do: nil
+  def poster(url, ctx), do: url |> resize(poster_size(ctx)) |> proxy()
+
+  @doc """
   Returns srcset for responsive images (Netflix progressive loading).
 
   ## Examples

@@ -62,6 +62,15 @@
       rel="preconnect"
       href={Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}
     />
+    <link rel="preconnect" href="https://s4.anilist.co" crossorigin />
+    <link rel="preconnect" href="https://cdn.tomatoanimes.com" />
+    <link
+      :if={assigns[:lcp_image]}
+      rel="preload"
+      as="image"
+      href={@lcp_image}
+      fetchpriority="high"
+    />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} fetchpriority="high" />
     <script
       defer

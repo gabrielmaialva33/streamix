@@ -169,6 +169,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
             alt={@movie.name}
             class="w-full h-full object-cover"
             data-fallback-target
+            fetchpriority="high"
+            decoding="async"
           />
           <div
             data-fallback
@@ -210,6 +212,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   alt={@movie.name}
                   class="w-full h-full object-cover"
                   data-fallback-target
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div
                   data-fallback
@@ -419,6 +423,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   alt="Imagem do filme"
                   class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
+                  decoding="async"
                 />
               </div>
             </div>
@@ -446,6 +451,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                     alt={similar.title || similar.name}
                     class="w-full h-full object-cover transition-transform duration-300"
                     loading="lazy"
+                    decoding="async"
                     data-fallback-target
                   />
                   <div

@@ -242,6 +242,7 @@ defmodule StreamixWeb.HistoryLive do
           alt={@entry.content_name}
           class="w-full h-full object-contain"
           loading="lazy"
+          decoding="async"
         />
         <.icon
           :if={!@entry.content_icon}

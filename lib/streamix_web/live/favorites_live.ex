@@ -225,6 +225,7 @@ defmodule StreamixWeb.FavoritesLive do
           alt={@favorite.content_name}
           class="w-full h-full object-contain p-2"
           loading="lazy"
+          decoding="async"
         />
         <div
           :if={!@favorite.content_icon}
