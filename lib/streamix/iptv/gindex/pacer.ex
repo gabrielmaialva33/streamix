@@ -21,7 +21,7 @@ defmodule Streamix.Iptv.Gindex.Pacer do
 
   require Logger
 
-  @type bucket :: :gdrive | :tmdb_gindex
+  @type bucket :: :gdrive | :tmdb_gindex | :anilist
 
   # 1s window for all pacing decisions. Small enough that bursts get smoothed
   # in the same second they arrive without feeling laggy.
@@ -83,6 +83,10 @@ defmodule Streamix.Iptv.Gindex.Pacer do
 
   defp default_limit(:gdrive), do: 5
   defp default_limit(:tmdb_gindex), do: 10
+  # AniList's published ceiling is 90 req/min ≈ 1.5 rps. Staying at 1
+  # gives headroom for our own retries plus anyone else on the same
+  # outbound IP, and keeps the backfill well under the daily quota.
+  defp default_limit(:anilist), do: 1
   defp default_limit(_), do: 5
 
   defp key(bucket), do: "gindex_pacer:" <> Atom.to_string(bucket)

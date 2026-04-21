@@ -18,20 +18,34 @@ defmodule Streamix.Iptv.Gindex.ReleaseParser do
   # middle of a larger number). Radarr uses the same shape.
   @year_regex ~r/(?<year>(18|19|20)\d{2})(?![pixPIX\d])/
 
+  # Fansub/release-group prefix like "[Sakurai] ..." or "[Eternal] ..."
+  # stripped before anything else so the year detector doesn't trip on
+  # hashes inside those brackets.
+  @fansub_prefix ~r/^\s*\[[^\]]+\]\s*/
+
   # Strip markers that definitely aren't part of the human-readable title.
   # Order matters: the more specific tokens (multi-word, dotted) first.
   @noise_patterns [
     # Release sources
-    ~r/\b(BluRay|Blu-Ray|BDRip|BRRip|BDMux|WEB-?DL|WEB-?Rip|HDRip|DVDRip|HDTV|HDCAM|CAM|TS|Telesync)\b/i,
+    ~r/\b(BluRay|Blu-Ray|BDRip|BRRip|BDMux|BD|WEB-?DL|WEB-?Rip|HDRip|DVDRip|HDTV|HDCAM|CAM|TS|Telesync)\b/i,
     # Resolution & HDR
-    ~r/\b(2160p|1080p|720p|480p|360p|4K|UHD|HDR10\+?|HDR|Dolby\.?Vision|DV)\b/i,
+    ~r/\b(2160p|1080p|720p|480p|360p|4K|UHD|HDR10\+?|HDR|Dolby\.?Vision|DV|10bit|8bit)\b/i,
     # Video codecs
     ~r/\b(x26[45]|H\.?26[45]|HEVC|AVC|XviD|DivX|AV1)\b/i,
     # Audio codecs (including the "5.1" / "7.1" / "2.0" channel hints)
-    ~r/\b(DDP?\+?\d?[\.\+]\d|DTS(-?HD)?(-?MA)?|TrueHD|Atmos|AAC|AC3|E-AC3|FLAC|MP3|OPUS)\b/i,
+    ~r/\b(DDP?\+?\d?[\.\+]\d|DTS(-?HD)?(-?MA)?|TrueHD|Atmos|AAC|AC3|E-AC3|FLAC|MP3|OPUS|MA)\b/i,
     ~r/\b(5\.1|7\.1|2\.0)\b/,
-    # Language / subtitle tags
-    ~r/\b(DUAL|DUBLADO|DUB|LEGENDADO|LEG|MULTI|SUBS?|BRDUB|NACIONAL|PT-BR|PTBR|iNTERNAL|REPACK|PROPER|REMUX)\b/i,
+    # Language / subtitle tags (PT-BR flavors + common scene tags)
+    ~r/\b(DUAL|DUBLADO|DUB|LEGENDADO|LEG|MULTI|SUBS?|BRDUB|NACIONAL|PT-BR|PTBR|iNTERNAL|REPACK|PROPER|REMUX|OLDTV)\b/i,
+    # Verbose PT-BR dub/sub phrasing common in the gindex catalog.
+    # The `u` flag is required because `[uú]` is not a byte match on the
+    # NFC-encoded `ú` character.
+    ~r/M[uú]ltipl[oa]s?\s+(Legendas?|[AÁ]udios?)/iu,
+    ~r/(Dual|Trial|Triple|M[uú]ltiplo)\s+[AÁ]udio/iu,
+    ~r/[AÁ]udio\s+(Dublado|Original|Dual)/iu,
+    ~r/\b[AÁ]udio\b/iu,
+    # Trailing hash like `[D20DD3A2]`
+    ~r/\[[0-9A-F]{6,}\]/i,
     # Extension tail
     ~r/\.(mp4|mkv|avi|mov|wmv|webm|m4v|ts)\z/i
   ]
@@ -58,7 +72,8 @@ defmodule Streamix.Iptv.Gindex.ReleaseParser do
   def parse(""), do: %{title: "", year: nil}
 
   def parse(raw) when is_binary(raw) do
-    {pre_year, year} = split_on_year(raw)
+    cleaned = Regex.replace(@fansub_prefix, raw, "")
+    {pre_year, year} = split_on_year(cleaned)
 
     title =
       pre_year

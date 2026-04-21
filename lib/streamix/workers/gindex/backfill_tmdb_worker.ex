@@ -26,7 +26,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.Gindex.{ReleaseParser, TmdbMatcher}
+  alias Streamix.Iptv.Gindex.{AnimeMatcher, ReleaseParser, TmdbMatcher}
   alias Streamix.Iptv.{Movie, Series, TmdbClient}
   alias Streamix.Repo
 
@@ -100,15 +100,62 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
         update_row(schema, row.id, attrs)
         :hit
 
-      {:miss, reason} ->
-        update_row(schema, row.id, %{
-          tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
-          tmdb_miss_reason: to_string(reason)
-        })
-
-        :miss
+      {:miss, _reason} = miss ->
+        maybe_anilist_fallback(schema, kind, row, title, year, miss)
     end
   end
+
+  # Anime folders live under the series table (`gindex_path` starts with
+  # something like `/0:/Animes/`). When TMDB can't match one, give
+  # AniList a shot before writing off the row — its catalog covers the
+  # romaji/fansub long-tail that TMDB plain misses.
+  defp maybe_anilist_fallback(schema, :series, row, title, year, {:miss, tmdb_reason}) do
+    if anime_path?(row.gindex_path) do
+      case AnimeMatcher.best_match(title, year) do
+        {:ok, match} ->
+          attrs = %{
+            anilist_id: match.anilist_id,
+            cover: match.cover_url,
+            tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+            tmdb_miss_reason: nil
+          }
+
+          attrs = if is_nil(match.cover_url), do: Map.delete(attrs, :cover), else: attrs
+
+          update_row(schema, row.id, attrs)
+          :hit
+
+        {:miss, anilist_reason} ->
+          update_row(schema, row.id, %{
+            tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+            tmdb_miss_reason: "tmdb:#{tmdb_reason}|anilist:#{anilist_reason}"
+          })
+
+          :miss
+      end
+    else
+      mark_miss(schema, row.id, tmdb_reason)
+    end
+  end
+
+  defp maybe_anilist_fallback(schema, _kind, row, _title, _year, {:miss, reason}) do
+    mark_miss(schema, row.id, reason)
+  end
+
+  defp mark_miss(schema, id, reason) do
+    update_row(schema, id, %{
+      tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      tmdb_miss_reason: to_string(reason)
+    })
+
+    :miss
+  end
+
+  defp anime_path?(path) when is_binary(path) do
+    String.contains?(String.downcase(path), "anime")
+  end
+
+  defp anime_path?(_), do: false
 
   defp release_source(row) do
     cond do
