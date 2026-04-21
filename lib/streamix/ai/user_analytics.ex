@@ -754,22 +754,17 @@ defmodule Streamix.AI.UserAnalytics do
     # we'd otherwise fetch a point from the "movies" collection using the
     # channel's numeric id and contaminate the profile vector.
     |> Enum.reject(&(&1.content_type == "live_channel"))
-    |> Enum.reduce([], fn entry, acc ->
-      case content_type_to_collection(entry.content_type) do
-        :skip ->
-          acc
-
-        collection ->
-          case Qdrant.get_point(collection, entry.content_id) do
-            {:ok, %{vector: vector}} ->
-              [%{vector: vector, weight: calculate_weight(entry)} | acc]
-
-            _ ->
-              acc
-          end
-      end
-    end)
+    |> Enum.reduce([], &prepend_embedding/2)
     |> Enum.reverse()
+  end
+
+  defp prepend_embedding(entry, acc) do
+    with collection when collection != :skip <- content_type_to_collection(entry.content_type),
+         {:ok, %{vector: vector}} <- Qdrant.get_point(collection, entry.content_id) do
+      [%{vector: vector, weight: calculate_weight(entry)} | acc]
+    else
+      _ -> acc
+    end
   end
 
   defp weighted_profile(content_with_vectors, dimensions, total_weight) do
