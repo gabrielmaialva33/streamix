@@ -125,7 +125,10 @@ defmodule StreamixWeb.WatchPartyLive.Index do
 
         <%!-- Card 2: Create --%>
         <div class="relative overflow-hidden rounded-2xl border border-purple-500/20 p-6 sm:p-8 flex flex-col bg-gradient-to-br from-purple-600/15 via-surface to-surface">
-          <div class="absolute -top-10 -right-10 w-40 h-40 bg-purple-600/20 rounded-full blur-3xl" aria-hidden="true" />
+          <div
+            class="absolute -top-10 -right-10 w-40 h-40 bg-purple-600/20 rounded-full blur-3xl"
+            aria-hidden="true"
+          />
           <div class="relative flex items-center gap-3 mb-5">
             <div class="w-10 h-10 rounded-lg bg-purple-600/20 flex items-center justify-center">
               <.icon name="hero-plus-circle" class="size-5 text-purple-300" />
