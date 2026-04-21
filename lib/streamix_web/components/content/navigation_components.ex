@@ -198,55 +198,13 @@ defmodule StreamixWeb.Content.NavigationComponents do
         </span>
       </div>
 
-      <div class="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-        <div :if={@genre_filters != [] and @on_genre_change} class="relative">
-          <select
-            phx-change={@on_genre_change}
-            name="genre"
-            class="appearance-none bg-surface hover:bg-surface-hover text-text-primary text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 pr-6 sm:pr-8 rounded-md border border-border cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand"
-          >
-            <option
-              :for={{value, label} <- @genre_filters}
-              value={value}
-              selected={@selected_genre == value}
-            >
-              {label}
-            </option>
-          </select>
-          <.icon
-            name="hero-chevron-down-mini"
-            class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 size-3 sm:size-4 text-text-muted pointer-events-none"
-          />
-        </div>
-
-        <div :if={@period_filters != [] and @on_period_change} class="relative">
-          <select
-            phx-change={@on_period_change}
-            name="period"
-            class="appearance-none bg-surface hover:bg-surface-hover text-text-primary text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5 pr-6 sm:pr-8 rounded-md border border-border cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand"
-          >
-            <option
-              :for={{days, label} <- @period_filters}
-              value={days || "all"}
-              selected={@selected_period == days}
-            >
-              {label}
-            </option>
-          </select>
-          <.icon
-            name="hero-chevron-down-mini"
-            class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 size-3 sm:size-4 text-text-muted pointer-events-none"
-          />
-        </div>
-
-        <.link
-          :if={@see_more_path}
-          navigate={@see_more_path}
-          class="text-xs sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
-        >
-          Ver mais <span class="hidden sm:inline">→</span>
-        </.link>
-      </div>
+      <.link
+        :if={@see_more_path}
+        navigate={@see_more_path}
+        class="text-xs sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
+      >
+        Ver mais <span class="hidden sm:inline">→</span>
+      </.link>
     </div>
     """
   end
