@@ -51,7 +51,11 @@ defmodule Streamix.Iptv.Gindex.ReleaseParser do
   ]
 
   # Final pass: collapse separators that the noise stripping left behind.
-  @separator_collapse ~r/[\.\_\-]+/
+  # Dots and underscores are scene separators ("Movie.Title.Year") and
+  # collapse cleanly to spaces. Hyphens are kept as-is — they're part
+  # of legitimate titles like "07-Ghost", "Spider-Man", "WEB-DL" (the
+  # last one is stripped as noise earlier in the pipeline).
+  @separator_collapse ~r/[\.\_]+/
 
   @type parsed :: %{title: String.t(), year: integer() | nil}
 
