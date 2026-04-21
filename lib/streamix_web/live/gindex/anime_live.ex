@@ -210,7 +210,18 @@ defmodule StreamixWeb.Gindex.AnimeLive do
         phx-click="view_series"
         phx-value-id={@anime.id}
       >
-        <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900">
+        <img
+          :if={@anime.cover}
+          src={@anime.cover}
+          alt={@anime.title || @anime.name}
+          class="w-full h-full object-cover"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        />
+        <div
+          :if={is_nil(@anime.cover)}
+          class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900"
+        >
           <.icon name="hero-sparkles" class="size-16 text-purple-400/30" />
         </div>
 
