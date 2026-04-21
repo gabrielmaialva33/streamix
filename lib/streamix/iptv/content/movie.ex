@@ -42,6 +42,10 @@ defmodule Streamix.Iptv.Movie do
     field :gindex_url_cached, :string
     field :gindex_url_expires_at, :utc_datetime
 
+    # TMDB enrichment bookkeeping (populated by the gindex backfill worker)
+    field :tmdb_searched_at, :utc_datetime
+    field :tmdb_miss_reason, :string
+
     belongs_to :provider, Provider
     belongs_to :catalog_item, CatalogItem
     has_many :categories, through: [:catalog_item, :categories]
@@ -55,7 +59,8 @@ defmodule Streamix.Iptv.Movie do
   @fields ~w(stream_id name title year stream_icon rating
              plot container_extension duration_secs tmdb_id imdb_id
              youtube_trailer tagline content_rating provider_id catalog_item_id
-             gindex_path gindex_url_cached gindex_url_expires_at)a
+             gindex_path gindex_url_cached gindex_url_expires_at
+             tmdb_searched_at tmdb_miss_reason)a
 
   def changeset(movie, attrs) do
     movie

@@ -94,7 +94,11 @@ config :streamix, Oban,
     # "TypeError: Cannot read ...map" 500 storm we hit when four
     # scanners pounded a single host.
     gindex_dispatch: 1,
-    gindex_scan: 3
+    gindex_scan: 3,
+    # TMDB enrichment for gindex rows. Concurrency of 3 matches the
+    # pool of 3 tokens (round-robin) so each worker runs on its own
+    # bucket and nobody blocks each other on 429s.
+    gindex_enrich: 3
   ],
   plugins: [
     Oban.Plugins.Pruner,
