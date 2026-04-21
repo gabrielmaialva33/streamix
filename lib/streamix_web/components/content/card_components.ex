@@ -70,15 +70,12 @@ defmodule StreamixWeb.Content.CardComponents do
         />
         <div
           class={[
-            "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
+            "w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900",
             @image_url && "hidden"
           ]}
           data-fallback
         >
-          <.icon name="hero-film" class="size-8 sm:size-12 text-brand/60 mb-2" />
-          <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
-            {@movie_name}
-          </span>
+          <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
         </div>
 
         <%!-- Hover overlay with info (desktop only) --%>
@@ -129,25 +126,6 @@ defmodule StreamixWeb.Content.CardComponents do
           {@display_rating}
         </div>
 
-        <%!-- Favorite button (mobile, always visible if favorited) --%>
-        <button
-          :if={@show_favorite}
-          type="button"
-          phx-click={@on_favorite}
-          phx-value-id={@movie.id}
-          phx-value-type="movie"
-          class={[
-            "sm:hidden absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 backdrop-blur-sm transition-all",
-            @is_favorite && "text-red-500",
-            !@is_favorite && "text-white/70"
-          ]}
-        >
-          <.icon
-            name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-            class="size-4"
-          />
-        </button>
-
         <%!-- Premium badge --%>
         <div
           :if={@show_premium_badge}
@@ -171,14 +149,34 @@ defmodule StreamixWeb.Content.CardComponents do
         </div>
       </div>
 
-      <%!-- Title below poster (mobile only) --%>
-      <div class="sm:hidden px-0.5 mt-1.5">
-        <h3
-          class="font-medium text-[11px] text-text-primary line-clamp-2 leading-tight"
-          title={@movie_name}
-        >
-          {@movie_name}
-        </h3>
+      <%!-- Title + year + favorite always visible below poster --%>
+      <div class="px-1 pt-2 pb-1">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <h3
+              class="font-medium text-xs sm:text-sm text-text-primary truncate"
+              title={@movie_name}
+            >
+              {@movie_name}
+            </h3>
+            <p :if={Map.get(@movie, :year)} class="text-[11px] sm:text-xs text-text-secondary">
+              {Map.get(@movie, :year)}
+            </p>
+          </div>
+          <button
+            :if={@show_favorite}
+            type="button"
+            phx-click={@on_favorite}
+            phx-value-id={@movie.id}
+            phx-value-type="movie"
+            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+          >
+            <.icon
+              name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+              class={["size-5", @is_favorite && "text-red-500"]}
+            />
+          </button>
+        </div>
       </div>
     </div>
     """
@@ -234,12 +232,12 @@ defmodule StreamixWeb.Content.CardComponents do
         />
         <div
           class={[
-            "w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900",
+            "w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900",
             Map.get(@series, :cover) && "hidden"
           ]}
           data-fallback
         >
-          <.icon name="hero-video-camera" class="size-8 sm:size-16 text-zinc-600" />
+          <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
         </div>
 
         <%!-- Hover overlay (desktop) --%>
@@ -292,25 +290,6 @@ defmodule StreamixWeb.Content.CardComponents do
           {@display_rating}
         </div>
 
-        <%!-- Mobile favorite --%>
-        <button
-          :if={@show_favorite}
-          type="button"
-          phx-click={@on_favorite}
-          phx-value-id={@series.id}
-          phx-value-type="series"
-          class={[
-            "sm:hidden absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/50 backdrop-blur-sm transition-all",
-            @is_favorite && "text-red-500",
-            !@is_favorite && "text-white/70"
-          ]}
-        >
-          <.icon
-            name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-            class="size-4"
-          />
-        </button>
-
         <%!-- Premium badge --%>
         <div
           :if={@show_premium_badge}
@@ -334,14 +313,34 @@ defmodule StreamixWeb.Content.CardComponents do
         </div>
       </div>
 
-      <%!-- Title below poster (mobile) --%>
-      <div class="sm:hidden px-0.5 mt-1.5">
-        <h3
-          class="font-medium text-[11px] text-text-primary line-clamp-2 leading-tight"
-          title={@series_name}
-        >
-          {@series_name}
-        </h3>
+      <%!-- Title + year + favorite always visible below poster --%>
+      <div class="px-1 pt-2 pb-1">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <h3
+              class="font-medium text-xs sm:text-sm text-text-primary truncate"
+              title={@series_name}
+            >
+              {@series_name}
+            </h3>
+            <p :if={Map.get(@series, :year)} class="text-[11px] sm:text-xs text-text-secondary">
+              {Map.get(@series, :year)}
+            </p>
+          </div>
+          <button
+            :if={@show_favorite}
+            type="button"
+            phx-click={@on_favorite}
+            phx-value-id={@series.id}
+            phx-value-type="series"
+            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+          >
+            <.icon
+              name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+              class={["size-5", @is_favorite && "text-red-500"]}
+            />
+          </button>
+        </div>
       </div>
     </div>
     """
