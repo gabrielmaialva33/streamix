@@ -37,7 +37,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"movie-card-#{@movie.id}"}
       phx-hook="ContentCard"
-      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all group cursor-pointer poster-card-wrapper card-glow"
+      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all cursor-pointer"
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
@@ -64,7 +64,7 @@ defmodule StreamixWeb.Content.CardComponents do
           :if={@image_url}
           src={@image_url}
           alt={@movie_name}
-          class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+          class="w-full h-full object-cover"
           loading="lazy"
           data-fallback-target
         />
@@ -76,54 +76,6 @@ defmodule StreamixWeb.Content.CardComponents do
           data-fallback
         >
           <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
-        </div>
-
-        <%!-- Hover overlay with info (desktop only) --%>
-        <div class="poster-overlay hidden sm:flex">
-          <div class="mt-auto space-y-1.5">
-            <h3 class="font-semibold text-sm text-white line-clamp-2 leading-tight">
-              {@movie_name}
-            </h3>
-            <div class="flex items-center gap-2 text-[11px] text-white/70">
-              <span :if={Map.get(@movie, :year)}>{Map.get(@movie, :year)}</span>
-              <span :if={@display_rating} class="flex items-center gap-0.5 text-yellow-400">
-                <.icon name="hero-star-solid" class="size-2.5" /> {@display_rating}
-              </span>
-            </div>
-            <div class="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                phx-click={@on_play}
-                phx-value-id={@movie.id}
-                phx-value-provider_id={@provider_id}
-                class="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-transform"
-              >
-                <.icon name="hero-play-solid" class="size-4 text-black ml-0.5" />
-              </button>
-              <button
-                :if={@show_favorite}
-                type="button"
-                phx-click={@on_favorite}
-                phx-value-id={@movie.id}
-                phx-value-type="movie"
-                class="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center hover:border-white hover:scale-110 transition-all"
-              >
-                <.icon
-                  name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-                  class={["size-4", @is_favorite && "text-red-400", !@is_favorite && "text-white"]}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Rating badge (visible always) --%>
-        <div
-          :if={@display_rating}
-          class="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-md bg-black/60 backdrop-blur-sm text-yellow-400 sm:opacity-0 sm:group-hover:opacity-0"
-        >
-          <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
-          {@display_rating}
         </div>
 
         <%!-- Premium badge --%>
@@ -200,7 +152,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"series-card-#{@series.id}"}
       phx-hook="ContentCard"
-      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all group cursor-pointer poster-card-wrapper card-glow"
+      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all cursor-pointer"
       data-content-id={@series.id}
       data-content-type="series"
       data-source-type={@source}
@@ -223,7 +175,7 @@ defmodule StreamixWeb.Content.CardComponents do
           :if={Map.get(@series, :cover)}
           src={ImageProxy.card(@series.cover)}
           alt={@series_name}
-          class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+          class="w-full h-full object-cover"
           loading="lazy"
           data-fallback-target
         />
@@ -235,56 +187,6 @@ defmodule StreamixWeb.Content.CardComponents do
           data-fallback
         >
           <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
-        </div>
-
-        <%!-- Hover overlay (desktop) --%>
-        <div class="poster-overlay hidden sm:flex">
-          <div class="mt-auto space-y-1.5">
-            <h3 class="font-semibold text-sm text-white line-clamp-2 leading-tight">
-              {@series_name}
-            </h3>
-            <div class="flex items-center gap-2 text-[11px] text-white/70">
-              <span :if={Map.get(@series, :year)}>{Map.get(@series, :year)}</span>
-              <span :if={@display_rating} class="flex items-center gap-0.5 text-yellow-400">
-                <.icon name="hero-star-solid" class="size-2.5" /> {@display_rating}
-              </span>
-              <span :if={Map.get(@series, :season_count)}>
-                {Map.get(@series, :season_count)} temp.
-              </span>
-            </div>
-            <div class="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                phx-click={@on_click}
-                phx-value-id={@series.id}
-                class="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:scale-110 transition-transform"
-              >
-                <.icon name="hero-play-solid" class="size-4 text-black ml-0.5" />
-              </button>
-              <button
-                :if={@show_favorite}
-                type="button"
-                phx-click={@on_favorite}
-                phx-value-id={@series.id}
-                phx-value-type="series"
-                class="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center hover:border-white hover:scale-110 transition-all"
-              >
-                <.icon
-                  name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-                  class={["size-4", @is_favorite && "text-red-400", !@is_favorite && "text-white"]}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <%!-- Rating badge --%>
-        <div
-          :if={@display_rating}
-          class="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-md bg-black/60 backdrop-blur-sm text-yellow-400 sm:opacity-0 sm:group-hover:opacity-0"
-        >
-          <.icon name="hero-star-solid" class="size-2.5 sm:size-3" />
-          {@display_rating}
         </div>
 
         <%!-- Premium badge --%>
