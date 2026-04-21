@@ -73,10 +73,14 @@ const ProgressBar = {
         document.addEventListener("mousemove", this.handleMouseMove);
         document.addEventListener("mouseup", this.handleMouseUp);
 
-        // Touch support
-        this.progressContainer.addEventListener("touchstart", this.handleTouchStart);
-        document.addEventListener("touchmove", this.handleTouchMove);
-        document.addEventListener("touchend", this.handleTouchEnd);
+        // Touch support.
+        // iOS Safari: mark as passive so the browser doesn't wait to see if
+        // preventDefault() will be called before starting the scroll — none
+        // of these handlers call preventDefault(), so passive is correct and
+        // it also silences the Chrome "non-passive listener" console warning.
+        this.progressContainer.addEventListener("touchstart", this.handleTouchStart, { passive: true });
+        document.addEventListener("touchmove", this.handleTouchMove, { passive: true });
+        document.addEventListener("touchend", this.handleTouchEnd, { passive: true });
 
         // Update progress bar on timeupdate (for native video)
         // AVPlayer updates are handled by VideoPlayer hook's time interval

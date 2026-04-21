@@ -13,7 +13,12 @@ defmodule StreamixWeb.HomeComponents do
   def render_landing_page(assigns) do
     ~H"""
     <%!-- Hero: full-screen with poster background --%>
-    <div class="relative min-h-[95vh] flex items-center justify-center overflow-hidden -mt-16 sm:-mt-20">
+    <%!--
+      iOS Safari: 95dvh tracks the *dynamic* viewport, so the landing hero
+      doesn't jump by ~75px when the URL bar collapses on scroll. 95vh would
+      also cause content to sit below the bottom toolbar on first paint.
+    --%>
+    <div class="relative min-h-[95dvh] flex items-center justify-center overflow-hidden -mt-16 sm:-mt-20">
       <%!-- Background image + edge fades --%>
       <div class="absolute inset-0 auth-branded-bg" />
       <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/40" />
@@ -295,7 +300,12 @@ defmodule StreamixWeb.HomeComponents do
   # Hero Section Component
   def render_hero_section(assigns) do
     ~H"""
-    <div class="relative h-[45vh] sm:h-[60vh] lg:h-[70vh] min-h-[280px] sm:min-h-[400px] max-h-[800px] overflow-hidden -mt-16 sm:-mt-20 pt-14 sm:pt-16">
+    <%!--
+      iOS Safari: use dvh so the home hero doesn't resize awkwardly when the
+      URL bar shows/hides while scrolling. max-h-[800px] keeps it sane on
+      tablets in landscape.
+    --%>
+    <div class="relative h-[45dvh] sm:h-[60dvh] lg:h-[70dvh] min-h-[280px] sm:min-h-[400px] max-h-[800px] overflow-hidden -mt-16 sm:-mt-20 pt-14 sm:pt-16">
       <!-- Background Image -->
       <%= if @featured do %>
         <.hero_background featured={@featured} />

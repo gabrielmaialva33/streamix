@@ -142,12 +142,18 @@ defmodule StreamixWeb.WatchPartyComponents do
       <%!-- Message input --%>
       <form phx-submit="send_message" class="p-3 border-t border-border">
         <div class="flex gap-2">
+          <%!--
+            iOS Safari: enterkeyhint="send" swaps Return for "Send" on the
+            on-screen keyboard, which matches what the button does. Chat
+            messages should keep autocapitalize + autocorrect on (user text).
+          --%>
           <input
             type="text"
             name="message"
             value={@message_input}
             placeholder="Enviar mensagem..."
             autocomplete="off"
+            enterkeyhint="send"
             class="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
           <button

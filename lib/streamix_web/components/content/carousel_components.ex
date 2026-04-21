@@ -79,7 +79,12 @@ defmodule StreamixWeb.Content.CarouselComponents do
 
   def content_hero(assigns) do
     ~H"""
-    <div class="relative h-[55vh] sm:h-[60vh] min-h-[400px] bg-surface-hover overflow-hidden">
+    <%!--
+      iOS Safari: dvh stops the detail hero from recomputing height when the
+      URL bar collapses mid-scroll — the backdrop image would otherwise crop
+      shift and cause a visible layout shake on iPhone.
+    --%>
+    <div class="relative h-[55dvh] sm:h-[60dvh] min-h-[400px] bg-surface-hover overflow-hidden">
       <img
         :if={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
         src={Map.get(@content, :backdrop) || Map.get(@content, :cover)}

@@ -129,12 +129,22 @@ defmodule StreamixWeb.SearchLive do
         <form phx-submit="search" phx-change="search" class="max-w-xl">
           <div class="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg focus-within:border-brand/50 transition-colors">
             <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary flex-shrink-0" />
+            <%!--
+              iOS Safari: disable auto-capitalize/correct/spellcheck so the
+              search box doesn't fight the user typing titles. enterkeyhint
+              swaps Return for Search on the iOS keyboard.
+            --%>
             <input
-              type="text"
+              type="search"
               name="query"
               value={@query}
               placeholder="Buscar canais, filmes, séries..."
               phx-debounce="300"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              enterkeyhint="search"
               class="flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-lg text-text-primary placeholder:text-text-secondary/50"
               autofocus
             />

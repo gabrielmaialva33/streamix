@@ -684,7 +684,11 @@ defmodule StreamixWeb.AppComponents do
     ~H"""
     <%!-- Desktop: vertical sidebar --%>
     <aside class="hidden sm:block w-full sm:w-56 lg:w-64 sm:sticky sm:top-24 self-start flex-shrink-0">
-      <ul class="category-sidebar space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1">
+      <%!--
+        iOS Safari: dvh so the sidebar's max-height matches the visible
+        viewport (no hidden scroll area behind the URL bar / home-indicator).
+      --%>
+      <ul class="category-sidebar space-y-0.5 max-h-[calc(100dvh-7rem)] overflow-y-auto pr-1">
         <li>
           <button
             type="button"
@@ -848,12 +852,24 @@ defmodule StreamixWeb.AppComponents do
         name="hero-magnifying-glass"
         class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-text-muted pointer-events-none z-10"
       />
+      <%!--
+        iOS Safari: autocapitalize/autocorrect/spellcheck all default to "on"
+        for text inputs and actively fight a search experience ("breaking bad"
+        becomes "Breaking Bad" with a capital B, "stranger" gets autocorrected
+        to "Stranger", etc.). `enterkeyhint="search"` swaps the iOS keyboard's
+        Return key for a dedicated "Search" key so phx-debounce feels native.
+      --%>
       <input
         type="search"
         name="search"
         value={@value}
         placeholder={@placeholder}
         phx-debounce="300"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        enterkeyhint="search"
         class="search-expand__input"
       />
     </form>
