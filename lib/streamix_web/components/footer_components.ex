@@ -27,19 +27,7 @@ defmodule StreamixWeb.FooterComponents do
         end
       end)
       |> assign_new(:year, fn -> Date.utc_today().year end)
-      |> assign_new(:admin?, fn ->
-        case assigns[:current_scope] do
-          %{user: user} when not is_nil(user) ->
-            if function_exported?(Streamix.Accounts, :admin?, 1) do
-              Streamix.Accounts.admin?(user)
-            else
-              false
-            end
-
-          _ ->
-            false
-        end
-      end)
+      |> assign_new(:admin?, fn -> admin_scope?(assigns[:current_scope]) end)
 
     ~H"""
     <footer class="mt-12 sm:mt-16 border-t border-border/50 bg-background">
@@ -185,5 +173,16 @@ defmodule StreamixWeb.FooterComponents do
       </div>
     </footer>
     """
+  end
+
+  defp admin_scope?(%{user: user}) when not is_nil(user), do: accounts_admin?(user)
+  defp admin_scope?(_), do: false
+
+  defp accounts_admin?(user) do
+    if function_exported?(Streamix.Accounts, :admin?, 1) do
+      Streamix.Accounts.admin?(user)
+    else
+      false
+    end
   end
 end

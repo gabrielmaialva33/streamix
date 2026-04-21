@@ -58,52 +58,46 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_series_found(socket, provider, series, user_id, mode) do
-    is_favorite = if user_id, do: Iptv.is_favorite?(user_id, "series", series.id), else: false
-
-    sorted_seasons =
-      (series.seasons || [])
-      |> Enum.reject(fn s -> (s.episodes || []) == [] end)
-      |> Enum.sort_by(& &1.season_number)
-
-    first_season_id =
-      case sorted_seasons do
-        [first | _] -> first.id
-        _ -> nil
-      end
-
-    # Fetch TMDB enrichment if needed
     series = maybe_fetch_series_info(series)
-
-    current_path =
-      if mode == :browse,
-        do: "/browse/series/#{series.id}",
-        else: "/providers/#{provider.id}/series/#{series.id}"
-
-    # Load similar series (async-safe, returns [] on error)
-    similar_series = load_similar_series(series.id)
+    sorted_seasons = sorted_seasons_with_episodes(series)
 
     socket =
       socket
       |> assign(page_title: series.title || series.name)
-      |> assign(current_path: current_path)
+      |> assign(current_path: series_path_for(mode, provider, series))
       |> assign(provider: provider)
-      |> assign(
-        premium_access:
-          Access.can_play_global_content?(socket.assigns.current_scope.user, provider)
-      )
+      |> assign(premium_access: can_play_global?(socket, provider))
       |> assign(series: series)
       |> assign(lcp_image: get_backdrop(series) || maybe_proxy(series.cover))
       |> assign(mode: mode)
       |> assign(seasons: sorted_seasons)
-      |> assign(
-        expanded_seasons:
-          if(first_season_id, do: MapSet.new([first_season_id]), else: MapSet.new())
-      )
-      |> assign(is_favorite: is_favorite)
+      |> assign(expanded_seasons: initial_expanded(sorted_seasons))
+      |> assign(is_favorite: favorite?(user_id, series.id))
       |> assign(user_id: user_id)
-      |> assign(similar_series: similar_series)
+      |> assign(similar_series: load_similar_series(series.id))
 
     {:ok, socket}
+  end
+
+  defp favorite?(nil, _series_id), do: false
+  defp favorite?(user_id, series_id), do: Iptv.is_favorite?(user_id, "series", series_id)
+
+  defp sorted_seasons_with_episodes(series) do
+    (series.seasons || [])
+    |> Enum.reject(fn s -> (s.episodes || []) == [] end)
+    |> Enum.sort_by(& &1.season_number)
+  end
+
+  defp initial_expanded([first | _]), do: MapSet.new([first.id])
+  defp initial_expanded(_), do: MapSet.new()
+
+  defp series_path_for(:browse, _provider, series), do: "/browse/series/#{series.id}"
+
+  defp series_path_for(_mode, provider, series),
+    do: "/providers/#{provider.id}/series/#{series.id}"
+
+  defp can_play_global?(socket, provider) do
+    Access.can_play_global_content?(socket.assigns.current_scope.user, provider)
   end
 
   defp maybe_fetch_series_info(series) do
