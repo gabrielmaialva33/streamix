@@ -35,31 +35,63 @@ defmodule StreamixWeb.WatchPartyComponents do
       |> Enum.map(fn {_key, %{metas: [meta | _]}} -> meta end)
       |> Enum.sort_by(& &1.joined_at)
 
-    assigns = assign(assigns, :users, users)
+    visible = Enum.take(users, 4)
+    overflow = length(users) - length(visible)
+
+    assigns =
+      assigns
+      |> assign(:visible, visible)
+      |> assign(:overflow, overflow)
+      |> assign(:total, length(users))
 
     ~H"""
-    <div class="flex items-center -space-x-2">
-      <div
-        :for={user <- @users}
-        class={[
-          "relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 border-black",
-          user.is_host && "bg-purple-600 text-white",
-          !user.is_host && "bg-white/20 text-white"
-        ]}
-        title={user.email}
-      >
-        {String.first(user.email) |> String.upcase()}
+    <div class="flex items-center gap-2">
+      <div :if={@total > 0} class="flex items-center -space-x-2">
         <div
-          :if={user.is_host}
-          class="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full border border-black"
-          title="Host"
-        />
+          :for={user <- @visible}
+          class={[
+            "relative w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-black shadow-md",
+            user.is_host && "bg-gradient-to-br from-purple-500 to-purple-700 text-white",
+            !user.is_host && "bg-gradient-to-br from-white/15 to-white/5 text-white"
+          ]}
+          title={if user.is_host, do: "#{user.email} (host)", else: user.email}
+        >
+          {String.first(user.email) |> String.upcase()}
+          <span
+            :if={user.is_host}
+            class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 rounded-full border-2 border-black flex items-center justify-center"
+            title="Host"
+          >
+            <.icon name="hero-star-solid" class="size-2 text-black" />
+          </span>
+          <span
+            class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black"
+            title="Online"
+          />
+        </div>
+        <div
+          :if={@overflow > 0}
+          class="relative w-9 h-9 rounded-full bg-white/10 ring-2 ring-black flex items-center justify-center text-[11px] font-semibold text-white/80"
+          title="#{@overflow} mais"
+        >
+          +{@overflow}
+        </div>
       </div>
+
       <div
-        :if={length(@users) == 0}
-        class="text-white/50 text-xs"
+        :if={@total > 0}
+        class="hidden sm:inline-flex items-center gap-1 text-[11px] text-white/60 font-medium"
       >
-        Nenhum participante
+        <span class="relative flex w-1.5 h-1.5">
+          <span class="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping">
+          </span>
+          <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-green-500"></span>
+        </span>
+        {@total} {if @total == 1, do: "online", else: "online"}
+      </div>
+
+      <div :if={@total == 0} class="text-white/50 text-xs">
+        Sozinho na sala
       </div>
     </div>
     """
@@ -77,11 +109,17 @@ defmodule StreamixWeb.WatchPartyComponents do
       phx-click={
         Phoenix.LiveView.JS.dispatch("phx:copy", detail: %{text: url(~p"/party/#{@invite_code}")})
       }
-      class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 text-white/70 text-xs hover:bg-white/20 transition-colors cursor-pointer"
-      title="Copiar link"
+      class="group inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-full bg-white/10 text-white/90 text-xs hover:bg-white/20 backdrop-blur-sm transition-colors cursor-pointer border border-white/10 hover:border-white/20"
+      title="Copiar link de convite"
     >
-      <.icon name="hero-link-micro" class="size-3" />
-      <span class="font-mono tracking-wider">{String.upcase(@invite_code)}</span>
+      <span class="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center flex-shrink-0">
+        <.icon name="hero-link" class="size-3 text-purple-200" />
+      </span>
+      <span class="font-mono font-semibold tracking-widest">{String.upcase(@invite_code)}</span>
+      <.icon
+        name="hero-clipboard-document"
+        class="size-3.5 text-white/50 group-hover:text-white transition-colors"
+      />
     </button>
     """
   end
@@ -95,12 +133,24 @@ defmodule StreamixWeb.WatchPartyComponents do
 
   def chat_sidebar(assigns) do
     ~H"""
-    <div class="w-80 bg-surface/95 backdrop-blur-sm border-l border-border flex flex-col h-full">
+    <aside class="w-80 bg-surface/95 backdrop-blur-md border-l border-border flex flex-col h-full shadow-2xl shadow-black/50">
       <%!-- Header --%>
-      <div class="p-3 border-b border-border flex items-center justify-between">
-        <h3 class="text-text-primary font-semibold text-sm">Chat</h3>
-        <button phx-click="toggle_chat" class="text-text-muted hover:text-text-secondary">
-          <.icon name="hero-x-mark-micro" class="size-4" />
+      <div class="px-4 py-3 border-b border-border/60 flex items-center justify-between bg-gradient-to-b from-purple-600/10 to-transparent">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center">
+            <.icon name="hero-chat-bubble-left-right" class="size-4 text-purple-300" />
+          </div>
+          <div>
+            <h3 class="text-text-primary font-semibold text-sm leading-tight">Chat</h3>
+            <p class="text-[11px] text-text-muted leading-tight">em tempo real</p>
+          </div>
+        </div>
+        <button
+          phx-click="toggle_chat"
+          class="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-white/5 transition-colors"
+          title="Fechar chat"
+        >
+          <.icon name="hero-x-mark" class="size-4" />
         </button>
       </div>
 
@@ -108,39 +158,54 @@ defmodule StreamixWeb.WatchPartyComponents do
       <div
         id="wp-chat-messages"
         phx-update="stream"
-        class="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-thin"
+        class="flex-1 overflow-y-auto px-3 py-4 space-y-3 scrollbar-thin"
       >
         <div :for={{dom_id, message} <- @messages} id={dom_id} class="group">
-          <div :if={message.type == "text"} class="text-sm">
-            <span class="font-medium text-purple-400">
-              {message.user.email |> String.split("@") |> hd()}
+          <%!-- Text messages render as a compact bubble with avatar initial --%>
+          <div :if={message.type == "text"} class="flex items-start gap-2">
+            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+              {message.user.email |> String.first() |> String.upcase()}
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-1.5">
+                <span class="font-semibold text-xs text-purple-300 truncate">
+                  {message.user.email |> String.split("@") |> hd()}
+                </span>
+              </div>
+              <p class="text-sm text-text-primary leading-snug break-words">{message.content}</p>
+            </div>
+          </div>
+
+          <%!-- Reactions sit inline, a little bigger, centered --%>
+          <div :if={message.type == "reaction"} class="flex justify-center text-2xl py-0.5">
+            {message.content}
+          </div>
+
+          <%!-- System messages: small muted pill, centered --%>
+          <div :if={message.type == "system"} class="flex justify-center">
+            <span class="text-[11px] text-text-muted italic px-2.5 py-1 rounded-full bg-white/5 border border-border/30">
+              {message.content}
             </span>
-            <span class="text-text-secondary ml-1">{message.content}</span>
-          </div>
-          <div :if={message.type == "reaction"} class="text-2xl">
-            {message.content}
-          </div>
-          <div :if={message.type == "system"} class="text-xs text-text-muted italic text-center">
-            {message.content}
           </div>
         </div>
       </div>
 
       <%!-- Reaction bar --%>
-      <div class="px-3 py-2 border-t border-border flex items-center gap-1 justify-center">
+      <div class="px-3 py-2 border-t border-border/60 flex items-center gap-0.5 justify-between bg-black/20">
         <button
           :for={emoji <- ~w(👍 ❤️ 😂 😮 😢 🔥)}
           type="button"
           phx-click="send_reaction"
           phx-value-emoji={emoji}
-          class="text-xl hover:scale-125 transition-transform cursor-pointer"
+          class="w-10 h-10 rounded-lg text-xl flex items-center justify-center hover:bg-white/10 hover:scale-110 active:scale-95 transition-all"
+          title="Enviar reação"
         >
           {emoji}
         </button>
       </div>
 
       <%!-- Message input --%>
-      <form phx-submit="send_message" class="p-3 border-t border-border">
+      <form phx-submit="send_message" class="p-3 border-t border-border/60">
         <div class="flex gap-2">
           <%!--
             iOS Safari: enterkeyhint="send" swaps Return for "Send" on the
@@ -151,20 +216,21 @@ defmodule StreamixWeb.WatchPartyComponents do
             type="text"
             name="message"
             value={@message_input}
-            placeholder="Enviar mensagem..."
+            placeholder="Digite uma mensagem..."
             autocomplete="off"
             enterkeyhint="send"
-            class="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-1 focus:ring-purple-500"
+            class="flex-1 bg-white/5 border border-border/60 rounded-full px-4 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
           />
           <button
             type="submit"
-            class="p-2 bg-purple-600 rounded-lg text-white hover:bg-purple-700 transition-colors"
+            aria-label="Enviar mensagem"
+            class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/30"
           >
-            <.icon name="hero-paper-airplane-micro" class="size-4" />
+            <.icon name="hero-paper-airplane-solid" class="size-4" />
           </button>
         </div>
       </form>
-    </div>
+    </aside>
     """
   end
 end
