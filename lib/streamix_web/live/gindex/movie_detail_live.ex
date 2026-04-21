@@ -78,14 +78,14 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     ~H"""
     <div class="min-h-screen bg-background">
       <!-- Hero Section -->
-      <div class="relative h-[40vh] sm:h-[50vh] min-h-[280px]">
+      <div class="relative h-[40vh] sm:h-[50vh] min-h-[260px]">
         <div class="absolute inset-0 overflow-hidden">
           <img
             :if={@movie.stream_icon}
             src={@movie.stream_icon}
             alt=""
             aria-hidden="true"
-            class="w-full h-full object-cover scale-110 blur-2xl opacity-50"
+            class="w-full h-full object-cover scale-110 blur-2xl opacity-60"
             loading="lazy"
             referrerpolicy="no-referrer"
           />
@@ -113,7 +113,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
         <div class="max-w-5xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
             <!-- Poster -->
-            <div class="flex-shrink-0 w-32 sm:w-48 lg:w-64 mx-auto lg:mx-0">
+            <div class="flex-shrink-0 w-40 sm:w-48 lg:w-64 mx-auto lg:mx-0">
               <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
                 <img
                   :if={@movie.stream_icon}
@@ -137,7 +137,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
               <!-- Title -->
               <div class="space-y-2">
                 <h1
-                  class="text-xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
+                  class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
                   title={@movie.name}
                 >
                   {@display_title}

@@ -109,14 +109,14 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     ~H"""
     <div class="min-h-screen bg-background">
       <!-- Hero Section -->
-      <div class="relative h-[40vh] sm:h-[50vh] min-h-[280px]">
+      <div class="relative h-[40vh] sm:h-[50vh] min-h-[260px]">
         <div class="absolute inset-0 overflow-hidden">
           <img
             :if={@anime.cover}
             src={@anime.cover}
             alt=""
             aria-hidden="true"
-            class="w-full h-full object-cover scale-110 blur-2xl opacity-50"
+            class="w-full h-full object-cover scale-110 blur-2xl opacity-60"
             loading="lazy"
             referrerpolicy="no-referrer"
           />
@@ -144,7 +144,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
         <div class="max-w-5xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
             <!-- Poster -->
-            <div class="flex-shrink-0 w-32 sm:w-48 lg:w-64 mx-auto lg:mx-0">
+            <div class="flex-shrink-0 w-40 sm:w-48 lg:w-64 mx-auto lg:mx-0">
               <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
                 <img
                   :if={@anime.cover}
@@ -168,7 +168,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
               <!-- Title -->
               <div class="space-y-2">
                 <h1
-                  class="text-xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
+                  class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
                   title={@anime.name}
                 >
                   {@display_title}
@@ -288,7 +288,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
         type="button"
         phx-click="toggle_release"
         phx-value-id={@release.id}
-        class="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 hover:bg-surface-hover transition-colors"
+        class="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 hover:bg-surface-hover transition-colors touch-manipulation"
       >
         <div class="flex items-center gap-2 sm:gap-4">
           <span class="text-base sm:text-lg font-semibold text-text-primary truncate max-w-[200px] sm:max-w-none">
@@ -319,7 +319,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   defp episode_item(assigns) do
     ~H"""
     <div
-      class="flex gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-surface-hover cursor-pointer transition-colors group"
+      class="flex gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-surface-hover cursor-pointer transition-colors group touch-manipulation"
       phx-click="play_episode"
       phx-value-id={@episode.id}
     >

@@ -204,6 +204,8 @@ defmodule StreamixWeb.PlayerComponents do
                 src={ImageProxy.proxy(@next_episode.cover)}
                 alt=""
                 class="w-24 h-14 sm:w-32 sm:h-18 object-cover rounded"
+                loading="lazy"
+                decoding="async"
               />
               <div
                 :if={!@next_episode.cover}
