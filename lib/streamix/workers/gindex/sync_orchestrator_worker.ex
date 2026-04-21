@@ -70,18 +70,16 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     siblings = count_in_flight_siblings(workflow_id)
     total = Map.get(args, "total_roots", 0)
 
-    cond do
-      siblings > 0 and attempt < @max_attempts ->
-        Logger.info(
-          "[GIndex Orchestrator] workflow=#{workflow_id} waiting " <>
-            "(#{siblings} of #{total} scan roots still in flight, attempt #{attempt})"
-        )
+    if siblings > 0 and attempt < @max_attempts do
+      Logger.info(
+        "[GIndex Orchestrator] workflow=#{workflow_id} waiting " <>
+          "(#{siblings} of #{total} scan roots still in flight, attempt #{attempt})"
+      )
 
-        {:snooze, @poll_interval}
-
-      true ->
-        stats = collect_stats(workflow_id, provider_id)
-        finalize(provider_id, workflow_id, stats, siblings, attempt)
+      {:snooze, @poll_interval}
+    else
+      stats = collect_stats(workflow_id, provider_id)
+      finalize(provider_id, workflow_id, stats, siblings, attempt)
     end
   end
 

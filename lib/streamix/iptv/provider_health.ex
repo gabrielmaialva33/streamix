@@ -218,10 +218,9 @@ defmodule Streamix.Iptv.ProviderHealth do
     do: "Provedor intermitente. Algumas mídias podem demorar mais para carregar."
 
   defp human_message(:unhealthy, provider, _) do
-    cond do
-      not provider.is_active -> "Provedor desativado pelo administrador."
-      true -> "Provedor temporariamente indisponível. Tentando reconectar."
-    end
+    if provider.is_active,
+      do: "Provedor temporariamente indisponível. Tentando reconectar.",
+      else: "Provedor desativado pelo administrador."
   end
 
   defp human_message(:unknown, _, _),
