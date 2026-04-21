@@ -97,6 +97,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       |> assign(episode: episode)
       |> assign(season: season)
       |> assign(series: series)
+      |> assign(lcp_image: get_episode_image(episode) || get_series_backdrop(series))
       |> assign(mode: mode)
       |> assign(is_favorite: is_favorite)
       |> assign(user_id: user_id)

@@ -35,6 +35,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
           |> assign(display_title: DH.display_title(series))
           |> assign(current_path: "/gindex/series/#{series.id}")
           |> assign(series: series)
+          |> assign(lcp_image: series.cover)
           |> assign(seasons: sorted_seasons)
           |> assign(
             expanded_seasons:

@@ -76,6 +76,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(provider: provider)
           |> assign(premium_access: Access.can_play_global_content?(user, provider))
           |> assign(movie: movie)
+          |> assign(lcp_image: get_backdrop(movie) || maybe_proxy(movie.stream_icon))
           |> assign(mode: mode)
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
@@ -527,6 +528,9 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp get_backdrop(_), do: nil
+
+  defp maybe_proxy(nil), do: nil
+  defp maybe_proxy(url) when is_binary(url), do: ImageProxy.proxy(url)
 
   defp trailer_url(youtube_id) when is_binary(youtube_id) do
     if String.contains?(youtube_id, "youtube.com") or String.contains?(youtube_id, "youtu.be") do

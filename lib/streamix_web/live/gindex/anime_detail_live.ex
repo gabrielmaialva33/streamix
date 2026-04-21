@@ -35,6 +35,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
           |> assign(page_title: anime.title || anime.name)
           |> assign(current_path: "/gindex/animes/#{anime.id}")
           |> assign(anime: anime)
+          |> assign(lcp_image: anime.cover)
           |> assign(display_title: DH.display_title(anime))
           |> assign(releases: sorted_releases)
           |> assign(

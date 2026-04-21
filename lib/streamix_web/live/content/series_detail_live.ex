@@ -92,6 +92,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           Access.can_play_global_content?(socket.assigns.current_scope.user, provider)
       )
       |> assign(series: series)
+      |> assign(lcp_image: get_backdrop(series) || maybe_proxy(series.cover))
       |> assign(mode: mode)
       |> assign(seasons: sorted_seasons)
       |> assign(
@@ -671,6 +672,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp get_backdrop(_), do: nil
+
+  defp maybe_proxy(nil), do: nil
+  defp maybe_proxy(url) when is_binary(url), do: ImageProxy.proxy(url)
 
   defp trailer_url(youtube_id) when is_binary(youtube_id) do
     if String.contains?(youtube_id, "youtube.com") or String.contains?(youtube_id, "youtu.be") do

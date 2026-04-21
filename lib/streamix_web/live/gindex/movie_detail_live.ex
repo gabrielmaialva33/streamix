@@ -35,6 +35,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(page_title: movie.title || movie.name)
             |> assign(current_path: "/gindex/movies/#{movie.id}")
             |> assign(movie: movie)
+            |> assign(lcp_image: movie.stream_icon)
             |> assign(display_title: DH.display_title_movie(movie))
             |> assign(is_favorite: is_favorite)
             |> assign(user_id: user_id)
