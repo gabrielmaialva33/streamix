@@ -19,6 +19,7 @@ defmodule Streamix.Iptv.TmdbClient do
 
   alias Streamix.Cache
   alias Streamix.Iptv.Gindex.Pacer
+  alias Streamix.Iptv.TmdbTokenPool
 
   @type profile :: :default | :gindex | atom()
 
@@ -255,18 +256,25 @@ defmodule Streamix.Iptv.TmdbClient do
   defp profile_from(%{} = opts), do: Map.get(opts, :profile, :default)
   defp profile_from(_), do: :default
 
-  defp do_request(url, profile, retries \\ 0) do
+  defp do_request(url, profile, retries \\ 0, last_token \\ nil) do
     maybe_pace(profile)
 
+    token = pick_token(profile, last_token)
+
     headers = [
-      {"Authorization", "Bearer #{config(profile)[:api_token]}"},
+      {"Authorization", "Bearer #{token || config(profile)[:api_token]}"},
       {"Accept", "application/json"}
     ]
 
     url
     |> Req.get(headers: headers, receive_timeout: @timeout, finch: Streamix.Finch)
-    |> handle_response(url, profile, retries)
+    |> handle_response(url, profile, retries, token)
   end
+
+  # Prefer the pool token; on retry, rotate past the one that just failed
+  # so a saturated bucket doesn't starve us.
+  defp pick_token(profile, nil), do: TmdbTokenPool.next(profile)
+  defp pick_token(profile, previous), do: TmdbTokenPool.next_after(profile, previous)
 
   # Only pace profiles that have a dedicated pacer bucket. `:default` keeps
   # its historical behavior (TMDB's own retry-after handling is enough for
@@ -274,38 +282,46 @@ defmodule Streamix.Iptv.TmdbClient do
   defp maybe_pace(:gindex), do: Pacer.acquire(:tmdb_gindex)
   defp maybe_pace(_), do: :ok
 
-  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries)
+  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries, _token)
        when is_map(body) do
     {:ok, body}
   end
 
-  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries)
+  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries, _token)
        when is_binary(body) do
     Jason.decode(body)
   end
 
-  defp handle_response({:ok, %{status: 429} = response}, url, profile, retries)
+  defp handle_response({:ok, %{status: 429} = response}, url, profile, retries, token)
        when retries < @max_retries do
     retry_after = get_retry_after(response)
     Process.sleep(retry_after)
-    do_request(url, profile, retries + 1)
+    do_request(url, profile, retries + 1, token)
   end
 
-  defp handle_response({:ok, %{status: 429}}, _url, _profile, _retries),
+  defp handle_response({:ok, %{status: 429}}, _url, _profile, _retries, _token),
     do: {:error, :rate_limited}
 
-  defp handle_response({:ok, %{status: 404}}, _url, _profile, _retries), do: {:error, :not_found}
+  defp handle_response({:ok, %{status: 404}}, _url, _profile, _retries, _token),
+    do: {:error, :not_found}
 
-  defp handle_response({:ok, %{status: 401}}, _url, _profile, _retries),
+  defp handle_response({:ok, %{status: 401}}, _url, _profile, _retries, _token),
     do: {:error, :unauthorized}
 
-  defp handle_response({:ok, %{status: status}}, _url, _profile, _retries),
+  defp handle_response({:ok, %{status: status}}, _url, _profile, _retries, _token),
     do: {:error, {:http_error, status}}
 
-  defp handle_response({:error, %Req.TransportError{reason: reason}}, _url, _profile, _retries),
-    do: {:error, {:transport_error, reason}}
+  defp handle_response(
+         {:error, %Req.TransportError{reason: reason}},
+         _url,
+         _profile,
+         _retries,
+         _token
+       ),
+       do: {:error, {:transport_error, reason}}
 
-  defp handle_response({:error, reason}, _url, _profile, _retries), do: {:error, reason}
+  defp handle_response({:error, reason}, _url, _profile, _retries, _token),
+    do: {:error, reason}
 
   defp get_retry_after(%Req.Response{} = response),
     do: Req.Response.get_retry_after(response) || @initial_backoff

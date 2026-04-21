@@ -102,10 +102,21 @@ else
   config :streamix, :tmdb, enabled: false
 end
 
-if gindex_tmdb_token = get_env.("GINDEX_TMDB_API_TOKEN") do
+# Pool of TMDB tokens for the `:gindex` profile. Round-robin rotation
+# (see `Streamix.Iptv.TmdbTokenPool`) triples effective throughput and
+# gives retries a different bucket to fall back to when one token hits
+# TMDB's per-token rate ceiling. `api_token` is kept as the first element
+# so callers that read the flat field (e.g. `enabled?/1`) still work.
+gindex_tmdb_tokens =
+  ["GINDEX_TMDB_API_TOKEN", "GINDEX_TMDB_API_TOKEN_2", "GINDEX_TMDB_API_TOKEN_3"]
+  |> Enum.map(get_env)
+  |> Enum.filter(&(is_binary(&1) and &1 != ""))
+
+if gindex_tmdb_tokens != [] do
   config :streamix, :tmdb_gindex,
     enabled: true,
-    api_token: gindex_tmdb_token
+    api_token: List.first(gindex_tmdb_tokens),
+    api_tokens: gindex_tmdb_tokens
 end
 
 # Image resize proxy — cache dir is a volume on the VPS so restarts
