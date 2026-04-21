@@ -6,7 +6,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Gindex.DisplayName
+  alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -35,7 +35,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
           |> assign(page_title: anime.title || anime.name)
           |> assign(current_path: "/gindex/animes/#{anime.id}")
           |> assign(anime: anime)
-          |> assign(display_title: display_title(anime))
+          |> assign(display_title: DH.display_title(anime))
           |> assign(releases: sorted_releases)
           |> assign(
             expanded_releases:
@@ -343,7 +343,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
 
       <div class="flex-1 min-w-0">
         <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-purple-400 truncate">
-          {episode_title(@episode)}
+          {DH.episode_title(@episode)}
         </h4>
         <div class="flex items-center gap-2 mt-1">
           <span
@@ -358,21 +358,4 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     """
   end
 
-  defp episode_title(episode) do
-    raw = episode.title || episode.name || "Episódio #{episode.episode_num}"
-    cleaned = DisplayName.clean_episode(raw)
-    if cleaned == "", do: raw, else: cleaned
-  end
-
-  # Release noise leaks into `anime.name` when the folder wasn't
-  # curated — prefer the enriched `title` when populated, otherwise
-  # run the raw value through the parser so the header stays clean.
-  defp display_title(anime) do
-    if is_binary(anime.title) and String.trim(anime.title) != "" and
-         anime.title != anime.name do
-      anime.title
-    else
-      DisplayName.clean_title(anime.name)
-    end
-  end
 end

@@ -5,7 +5,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Gindex.DisplayName
+  alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -35,7 +35,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
             |> assign(page_title: movie.title || movie.name)
             |> assign(current_path: "/gindex/movies/#{movie.id}")
             |> assign(movie: movie)
-            |> assign(display_title: display_title(movie))
+            |> assign(display_title: DH.display_title_movie(movie))
             |> assign(is_favorite: is_favorite)
             |> assign(user_id: user_id)
 
@@ -73,18 +73,6 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   end
 
   # Render
-
-  # Release noise ("1080p BluRay x264 DUAL") leaks into `movie.name`
-  # when the gindex folder wasn't curated — prefer the enriched `title`
-  # when the enrichment pass populated it, otherwise run the raw name
-  # through the same parser the worker uses so the header stays clean.
-  defp display_title(movie) do
-    if is_binary(movie.title) and String.trim(movie.title) != "" do
-      movie.title
-    else
-      DisplayName.clean_title(movie.name)
-    end
-  end
 
   def render(assigns) do
     ~H"""
