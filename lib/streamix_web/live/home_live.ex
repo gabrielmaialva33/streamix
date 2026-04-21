@@ -230,6 +230,23 @@ defmodule StreamixWeb.HomeLive do
   # ThemeToggle hook event (client-side theme management, no server action needed)
   def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
+  # Shared card navigation events (movie_card / series_card from
+  # StreamixWeb.Content.CardComponents). The home carousels delegate rendering
+  # to the shared cards, which emit these LV events instead of rendering a
+  # `<.link navigate>`. We translate them into push_navigate calls so the UX
+  # stays identical to the old inline cards that wrapped everything in a link.
+  def handle_event("play_movie", %{"id" => id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/browse/movies/#{id}")}
+  end
+
+  def handle_event("show_details", %{"id" => id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/browse/movies/#{id}")}
+  end
+
+  def handle_event("view_series", %{"id" => id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/browse/series/#{id}")}
+  end
+
   def handle_event("toggle_featured_favorite", _, socket) do
     case {socket.assigns.current_scope, socket.assigns.featured} do
       {nil, _} ->

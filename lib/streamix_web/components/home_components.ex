@@ -1007,64 +1007,33 @@ defmodule StreamixWeb.HomeComponents do
   end
 
   # Card Components
+  #
+  # Delegate to the shared `movie_card` / `series_card` from
+  # `StreamixWeb.Content.CardComponents` (available via
+  # `import StreamixWeb.ContentComponents`) so home and /browse share a single
+  # card template. HomeComponents only owns the horizontal carousel sizing
+  # (`sm:w-[180px] sm:flex-shrink-0`) plus the `sm:hidden` / `hidden sm:block`
+  # mobile-vs-desktop visibility toggles.
+  #
+  # Event routing:
+  # * `on_details` / `on_play` are wired to `"play_movie"` and `"view_series"`;
+  #   HomeLive handles those by push_navigate'ing to the detail page.
+  # * `show_favorite={false}` — home has a dedicated "Minha Lista" carousel,
+  #   so individual cards don't carry the favorite toggle (keeps the prior
+  #   behavior of this module).
   def render_movie_card(assigns) do
     assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
 
     ~H"""
-    <.link
-      navigate={~p"/browse/movies/#{@movie.id}"}
-      class={[
-        "group flex-shrink-0 w-full sm:w-[180px] block transition-all duration-300 content-card",
-        @class
-      ]}
-    >
-      <div class="aspect-[2/3] bg-surface-hover relative rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1 block">
-        <div id={"movie-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
-          <img
-            :if={@movie.stream_icon}
-            src={ImageProxy.proxy(@movie.stream_icon)}
-            alt={@movie.name}
-            class="w-full h-full object-cover animate-fade-in"
-            loading="lazy"
-            data-fallback-target
-          />
-          <div
-            data-fallback
-            class={[
-              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
-              @movie.stream_icon && "hidden"
-            ]}
-          >
-            <.icon name="hero-film" class="size-8 sm:size-10 text-brand/60 mb-2" />
-            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
-              {@movie.name}
-            </span>
-          </div>
-        </div>
-        <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-10 text-white/90 drop-shadow-lg" />
-        </div>
-        <!-- Rating badge -->
-        <div
-          :if={@movie.rating}
-          class="absolute top-1 right-1 sm:top-2 sm:right-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-black/70 rounded text-[10px] sm:text-xs text-white"
-        >
-          <.icon name="hero-star-solid" class="size-2.5 sm:size-3 text-yellow-500" />
-          {Float.round(Decimal.to_float(@movie.rating), 1)}
-        </div>
-        <!-- Progress bar -->
-        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
-          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
-        </div>
-      </div>
-      <div class="pt-1.5 sm:pt-2 px-0.5">
-        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
-          {@movie.title || @movie.name}
-        </h3>
-        <p class="text-[10px] sm:text-xs text-text-muted">{@movie.year}</p>
-      </div>
-    </.link>
+    <div class={["w-full sm:w-[180px] sm:flex-shrink-0", @class]}>
+      <.movie_card
+        movie={@movie}
+        progress={@progress}
+        show_favorite={false}
+        on_play="play_movie"
+        on_details="play_movie"
+      />
+    </div>
     """
   end
 
@@ -1072,62 +1041,14 @@ defmodule StreamixWeb.HomeComponents do
     assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
 
     ~H"""
-    <.link
-      navigate={~p"/browse/series/#{@series.id}"}
-      class={[
-        "group flex-shrink-0 w-full sm:w-[180px] block transition-all duration-300 content-card",
-        @class
-      ]}
-    >
-      <div class="aspect-[2/3] bg-surface-hover relative rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1 block">
-        <div id={"series-img-#{@series.id}"} phx-hook="ImageFallback" class="w-full h-full">
-          <img
-            :if={@series.cover}
-            src={ImageProxy.proxy(@series.cover)}
-            alt={@series.name}
-            class="w-full h-full object-cover animate-fade-in"
-            loading="lazy"
-            data-fallback-target
-          />
-          <div
-            data-fallback
-            class={[
-              "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center",
-              @series.cover && "hidden"
-            ]}
-          >
-            <.icon name="hero-tv" class="size-8 sm:size-10 text-brand/60 mb-2" />
-            <span class="text-[10px] sm:text-xs text-text-muted leading-tight line-clamp-3">
-              {@series.name}
-            </span>
-          </div>
-        </div>
-        <!-- Hover overlay (hidden on touch devices) -->
-        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-10 text-white/90 drop-shadow-lg" />
-        </div>
-        <!-- Rating badge -->
-        <div
-          :if={@series.rating}
-          class="absolute top-1 right-1 sm:top-2 sm:right-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-black/70 rounded text-[10px] sm:text-xs text-white"
-        >
-          <.icon name="hero-star-solid" class="size-2.5 sm:size-3 text-yellow-500" />
-          {Float.round(Decimal.to_float(@series.rating), 1)}
-        </div>
-        <!-- Progress bar -->
-        <div :if={@progress && @progress > 0} class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-700">
-          <div class="h-full bg-brand rounded-r-full" style={"width: #{round(@progress * 100)}%"} />
-        </div>
-      </div>
-      <div class="pt-1.5 sm:pt-2 px-0.5">
-        <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
-          {@series.title || @series.name}
-        </h3>
-        <p class="text-[10px] sm:text-xs text-text-muted">
-          {@series.year}
-        </p>
-      </div>
-    </.link>
+    <div class={["w-full sm:w-[180px] sm:flex-shrink-0", @class]}>
+      <.series_card
+        series={@series}
+        progress={@progress}
+        show_favorite={false}
+        on_click="view_series"
+      />
+    </div>
     """
   end
 
