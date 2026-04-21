@@ -8,6 +8,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   """
   use StreamixWeb, :controller
 
+  require Logger
+
   alias Streamix.Helpers
   alias Streamix.Iptv
   alias Streamix.Iptv.{Movie, Series}
@@ -151,8 +153,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         |> json(%{error: "Movie not found"})
 
       movie ->
-        {:ok, movie} = Iptv.fetch_movie_info(movie)
-        json(conn, serialize_movie_detail(movie))
+        enriched = safe_fetch(movie, &Iptv.fetch_movie_info/1)
+        json(conn, serialize_movie_detail(enriched))
     end
   end
 
@@ -214,8 +216,8 @@ defmodule StreamixWeb.Api.V1.CatalogController do
         |> json(%{error: "Episode not found"})
 
       episode ->
-        {:ok, episode} = Iptv.fetch_episode_info(episode)
-        json(conn, serialize_episode_detail(episode))
+        enriched = safe_fetch(episode, &Iptv.fetch_episode_info/1)
+        json(conn, serialize_episode_detail(enriched))
     end
   end
 
@@ -860,4 +862,18 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   end
 
   defp format_duration(_), do: nil
+
+  # Wraps an enrichment call so upstream failures (TMDB/AniList rate limits,
+  # network errors, 404s) degrade to the base record instead of crashing the
+  # action and returning HTTP 500 to the client.
+  defp safe_fetch(content, fetcher) do
+    case fetcher.(content) do
+      {:ok, enriched} ->
+        enriched
+
+      {:error, reason} ->
+        Logger.warning("Catalog enrichment failed: " <> inspect(reason))
+        content
+    end
+  end
 end
