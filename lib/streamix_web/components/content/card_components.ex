@@ -37,7 +37,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"movie-card-#{@movie.id}"}
       phx-hook="ContentCard"
-      class="group cursor-pointer poster-card-wrapper card-glow"
+      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all group cursor-pointer poster-card-wrapper card-glow"
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
@@ -138,7 +138,7 @@ defmodule StreamixWeb.Content.CardComponents do
         <%!-- Source badge --%>
         <span
           :if={@source == "gindex"}
-          class="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 px-1.5 py-0.5 text-[8px] sm:text-[10px] font-bold rounded-md bg-purple-600/90 backdrop-blur-sm text-white"
+          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
         >
           GDrive
         </span>
@@ -150,16 +150,13 @@ defmodule StreamixWeb.Content.CardComponents do
       </div>
 
       <%!-- Title + year + favorite always visible below poster --%>
-      <div class="px-1 pt-2 pb-1">
+      <div class="p-3">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
-            <h3
-              class="font-medium text-xs sm:text-sm text-text-primary truncate"
-              title={@movie_name}
-            >
+            <h3 class="font-medium text-sm text-text-primary truncate" title={@movie_name}>
               {@movie_name}
             </h3>
-            <p :if={Map.get(@movie, :year)} class="text-[11px] sm:text-xs text-text-secondary">
+            <p :if={Map.get(@movie, :year)} class="text-xs text-text-secondary">
               {Map.get(@movie, :year)}
             </p>
           </div>
@@ -203,7 +200,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"series-card-#{@series.id}"}
       phx-hook="ContentCard"
-      class="group cursor-pointer poster-card-wrapper card-glow"
+      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all group cursor-pointer poster-card-wrapper card-glow"
       data-content-id={@series.id}
       data-content-type="series"
       data-source-type={@source}
@@ -302,7 +299,7 @@ defmodule StreamixWeb.Content.CardComponents do
         <%!-- Source badge --%>
         <span
           :if={@source == "gindex"}
-          class="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 px-1.5 py-0.5 text-[8px] sm:text-[10px] font-bold rounded-md bg-purple-600/90 backdrop-blur-sm text-white"
+          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
         >
           GDrive
         </span>
@@ -314,16 +311,13 @@ defmodule StreamixWeb.Content.CardComponents do
       </div>
 
       <%!-- Title + year + favorite always visible below poster --%>
-      <div class="px-1 pt-2 pb-1">
+      <div class="p-3">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
-            <h3
-              class="font-medium text-xs sm:text-sm text-text-primary truncate"
-              title={@series_name}
-            >
+            <h3 class="font-medium text-sm text-text-primary truncate" title={@series_name}>
               {@series_name}
             </h3>
-            <p :if={Map.get(@series, :year)} class="text-[11px] sm:text-xs text-text-secondary">
+            <p :if={Map.get(@series, :year)} class="text-xs text-text-secondary">
               {Map.get(@series, :year)}
             </p>
           </div>
