@@ -133,7 +133,24 @@ defmodule StreamixWeb.WatchPartyComponents do
 
   def chat_sidebar(assigns) do
     ~H"""
-    <aside class="w-80 bg-surface/95 backdrop-blur-md border-l border-border flex flex-col h-full shadow-2xl shadow-black/50">
+    <%!-- Mobile: tap outside closes. Desktop: sidebar pinned right, no overlay. --%>
+    <div
+      phx-click="toggle_chat"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] sm:hidden"
+      aria-hidden="true"
+    />
+    <%!--
+      Mobile: slide up from the bottom as a 80dvh bottom sheet so the user
+      still sees the video above the chat.
+      Desktop (sm+): pinned right sidebar, full-height 320px wide.
+    --%>
+    <aside class="fixed z-50 bg-surface/95 backdrop-blur-md flex flex-col shadow-2xl shadow-black/50
+                  inset-x-0 bottom-0 h-[80dvh] rounded-t-2xl border-t border-border
+                  sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 sm:h-full sm:w-80 sm:rounded-none sm:border-t-0 sm:border-l sm:border-border">
+      <%!-- Mobile grip handle — affordance that the sheet can be dismissed. --%>
+      <div class="sm:hidden pt-2 pb-1 flex justify-center flex-shrink-0">
+        <div class="w-10 h-1 rounded-full bg-white/20" aria-hidden="true" />
+      </div>
       <%!-- Header --%>
       <div class="px-4 py-3 border-b border-border/60 flex items-center justify-between bg-gradient-to-b from-purple-600/10 to-transparent">
         <div class="flex items-center gap-2">
@@ -204,8 +221,12 @@ defmodule StreamixWeb.WatchPartyComponents do
         </button>
       </div>
 
-      <%!-- Message input --%>
-      <form phx-submit="send_message" class="p-3 border-t border-border/60">
+      <%!-- Message input — pb respects iOS home-indicator safe area. --%>
+      <form
+        phx-submit="send_message"
+        class="p-3 border-t border-border/60"
+        style="padding-bottom: max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom)))"
+      >
         <div class="flex gap-2">
           <%!--
             iOS Safari: enterkeyhint="send" swaps Return for "Send" on the
