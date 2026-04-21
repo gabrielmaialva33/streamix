@@ -1,4 +1,5 @@
 import {getHls, isHlsJsSupported, isMpegtsSupported} from "../lib/player_libs";
+import {selectEngine} from "../player/engine_selector";
 import {getCapabilitySummary, getCodecCapabilityReport} from "../lib/codec_detector";
 import {CodecAwareABR, getCodecRecommendation} from "../lib/codec_priority";
 import {createErrorReport, detectErrorPatterns, formatErrorForLog} from "../lib/error_telemetry";
@@ -1342,65 +1343,43 @@ const VideoPlayer = {
             recommended_player: recommendedPlayer,
         });
 
-        if (recommendedPlayer === "avplayer" && !this.avPlayerAttempted) {
-            log.debug("Using AVPlayer based on device compatibility history");
-            this.tryAVPlayerFallback();
-            return;
-        }
+        const engine = selectEngine({
+            streamType: this.currentStreamType,
+            sourceType: this.sourceType,
+            recommendedPlayer,
+            preferAVPlayer: this.preferAVPlayer,
+            avPlayerAttempted: this.avPlayerAttempted,
+            shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
+            capabilities: {
+                hlsJs: isHlsJsSupported(),
+                mpegts: isMpegtsSupported(),
+            },
+        });
 
-        // Check for manual AVPlayer preference or GIndex sources
-        if (this.preferAVPlayer && (this.sourceType === "gindex" || this.currentStreamType === "mkv")) {
-            log.debug("Using AVPlayer due to user preference");
-            this.tryAVPlayerFallback();
-            return;
-        }
-
-        // GIndex uses native playback
-        if (this.sourceType === "gindex") {
-            log.debug("Using native playback for GIndex source");
-            this.playNative();
-            return;
-        }
-
-        switch (this.currentStreamType) {
-            case "hls":
-                this.playWithHls();
+        switch (engine) {
+            case "avplayer":
+                log.debug("Using AVPlayer (engine_selector decision)");
+                this.tryAVPlayerFallback();
                 break;
-            case "ts":
-            case "xtream":
-                if (this.shouldPreferAVPlayerForLiveTs()) {
-                    log.debug("Using AVPlayer for live TS on Firefox");
-                    this.tryAVPlayerFallback();
-                    break;
-                }
-
-                if (isMpegtsSupported()) {
-                    this.playWithMpegts();
-                } else if (isHlsJsSupported()) {
-                    this.playWithHls();
-                } else {
-                    this.playNative();
-                }
-                break;
-            case "flv":
-                if (isMpegtsSupported()) {
-                    this.playWithMpegts("flv");
-                } else {
-                    this.playerUI.showError("Reproducao FLV nao suportada neste navegador");
-                }
-                break;
-            case "mp4":
-            case "mkv":
+            case "native":
+                log.debug("Using native playback (engine_selector decision)");
                 this.playNative();
                 break;
+            case "hls-js":
+                this.playWithHls();
+                break;
+            case "mpegts":
+                this.playWithMpegts();
+                break;
+            case "mpegts-flv":
+                this.playWithMpegts("flv");
+                break;
+            case "flv-unsupported":
+                this.playerUI.showError("Reproducao FLV nao suportada neste navegador");
+                break;
             default:
-                if (isHlsJsSupported()) {
-                    this.playWithHls();
-                } else if (isMpegtsSupported()) {
-                    this.playWithMpegts();
-                } else {
-                    this.playNative();
-                }
+                log.warn("[VideoPlayer] Unknown engine decision:", engine);
+                this.playNative();
         }
     },
 
