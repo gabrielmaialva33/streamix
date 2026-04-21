@@ -242,6 +242,7 @@ defmodule StreamixWeb.HomeComponents do
         type={:movies}
         icon="hero-sparkles"
         progress_map={@movie_progress}
+        see_more_path={~p"/browse/movies?sort=new"}
       />
 
       <.render_top_10 :if={@top_10 != []} title="Top 10 Filmes" items={@top_10} />
@@ -637,7 +638,7 @@ defmodule StreamixWeb.HomeComponents do
     assigns =
       assigns
       |> assign_new(:carousel_id, fn -> build_carousel_id(assigns.type, assigns[:title]) end)
-      |> assign(:see_more_path, get_see_more_path(assigns.type, assigns.items))
+      |> assign_new(:see_more_path, fn -> get_see_more_path(assigns.type, assigns.items) end)
       |> assign_new(:icon, fn -> nil end)
       |> assign_new(:progress_map, fn -> %{} end)
 
@@ -755,7 +756,7 @@ defmodule StreamixWeb.HomeComponents do
         selected_period={@selected_period}
         on_genre_change="filter_trending_genre"
         on_period_change="filter_trending_period"
-        see_more_path={~p"/browse/movies"}
+        see_more_path={~p"/browse/movies?sort=trending"}
         ai_powered={@ai_powered}
       />
       <.carousel_arrows id="carousel-trending">
@@ -769,7 +770,7 @@ defmodule StreamixWeb.HomeComponents do
             progress={Map.get(@progress_map, movie.id)}
             class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
-          <.see_more_card path={~p"/browse/movies"} type={:movies} class="hidden sm:flex" />
+          <.see_more_card path={~p"/browse/movies?sort=trending"} type={:movies} class="hidden sm:flex" />
         </div>
       </.carousel_arrows>
     </div>
@@ -789,7 +790,7 @@ defmodule StreamixWeb.HomeComponents do
         genre_filters={@genre_filters}
         selected_genre={@selected_genre}
         on_genre_change="filter_series_genre"
-        see_more_path={~p"/browse/series"}
+        see_more_path={~p"/browse/series?sort=popularity"}
         ai_powered={@ai_powered}
       />
       <.carousel_arrows id="carousel-series">
@@ -803,7 +804,7 @@ defmodule StreamixWeb.HomeComponents do
             progress={Map.get(@progress_map, series.id)}
             class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
-          <.see_more_card path={~p"/browse/series"} type={:series} class="hidden sm:flex" />
+          <.see_more_card path={~p"/browse/series?sort=popularity"} type={:series} class="hidden sm:flex" />
         </div>
       </.carousel_arrows>
     </div>
@@ -851,7 +852,7 @@ defmodule StreamixWeb.HomeComponents do
           {@title}
         </h2>
         <.link
-          navigate={~p"/browse/movies"}
+          navigate={~p"/browse/movies?sort=rating"}
           class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
         >
           Ver mais <.icon name="hero-chevron-right" class="size-4" />

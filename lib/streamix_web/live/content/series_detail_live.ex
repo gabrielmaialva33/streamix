@@ -233,6 +233,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             src={get_backdrop(@series) || ImageProxy.proxy(@series.cover)}
             alt={@series.name}
             class="w-full h-full object-cover"
+            fetchpriority="high"
+            decoding="async"
           />
           <div
             :if={!get_backdrop(@series) && !@series.cover}
@@ -266,6 +268,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   src={ImageProxy.proxy(@series.cover)}
                   alt={@series.name}
                   class="w-full h-full object-cover"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div
                   :if={!@series.cover}
@@ -462,6 +466,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   alt="Imagem da série"
                   class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
+                  decoding="async"
                 />
               </div>
             </div>
@@ -485,6 +490,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                     alt={similar.title || similar.name}
                     class="w-full h-full object-cover transition-transform duration-300"
                     loading="lazy"
+                    decoding="async"
                   />
                   <div
                     :if={!similar.cover}
@@ -587,6 +593,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           alt={episode_title(@episode)}
           class="w-full h-full object-cover"
           loading="lazy"
+          decoding="async"
         />
         <div
           :if={!@episode.cover}

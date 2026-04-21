@@ -670,11 +670,58 @@ defmodule StreamixWeb.AppComponents do
   @doc """
   Category filter with quick-access chips + overflow dropdown for many categories.
   Shows top 6 as chips, rest in a "Mais" dropdown.
+
+  With `layout={:sidebar}`, renders a vertical list on desktop (`hidden sm:block`)
+  and keeps the horizontal chip row on mobile (`sm:hidden`) for responsive behavior.
   """
   attr :categories, :list, required: true
   attr :selected, :any, default: nil
   attr :on_change, :string, default: "filter_category"
   attr :visible_count, :integer, default: 6
+  attr :layout, :atom, values: [:horizontal, :sidebar], default: :horizontal
+
+  def category_filter_v2(%{layout: :sidebar} = assigns) do
+    ~H"""
+    <%!-- Desktop: vertical sidebar --%>
+    <aside class="hidden sm:block w-full sm:w-56 lg:w-64 sm:sticky sm:top-24 self-start flex-shrink-0">
+      <ul class="category-sidebar space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1">
+        <li>
+          <button
+            type="button"
+            phx-click={@on_change}
+            phx-value-category=""
+            class={["category-pill--sidebar", !@selected && "category-pill--sidebar-active"]}
+          >
+            Todos
+          </button>
+        </li>
+        <li :for={category <- @categories}>
+          <button
+            type="button"
+            phx-click={@on_change}
+            phx-value-category={category.id}
+            class={[
+              "category-pill--sidebar",
+              to_string(@selected) == to_string(category.id) && "category-pill--sidebar-active"
+            ]}
+          >
+            {category.name}
+          </button>
+        </li>
+      </ul>
+    </aside>
+    <%!-- Mobile: horizontal chips (delegates to the default horizontal variant) --%>
+    <div class="sm:hidden w-full">
+      <.category_filter_v2
+        categories={@categories}
+        selected={@selected}
+        on_change={@on_change}
+        visible_count={@visible_count}
+        layout={:horizontal}
+      />
+    </div>
+    """
+  end
 
   def category_filter_v2(assigns) do
     {visible, overflow} = Enum.split(assigns.categories, assigns.visible_count)

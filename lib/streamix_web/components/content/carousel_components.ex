@@ -85,6 +85,8 @@ defmodule StreamixWeb.Content.CarouselComponents do
         src={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
         alt={@content.name}
         class="w-full h-full object-cover"
+        fetchpriority="high"
+        decoding="async"
       />
       <%!-- Multi-layer gradient for cinematic feel --%>
       <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />

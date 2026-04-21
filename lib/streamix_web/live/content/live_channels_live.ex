@@ -244,9 +244,8 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           current_scope={@current_scope}
         />
 
-        <%!-- Row 2: Category chips + Search --%>
+        <%!-- Row 2: Search + sync --%>
         <div class="browse-toolbar__row">
-          <.category_filter_v2 categories={@categories} selected={@selected_category} />
           <.search_input value={@search} placeholder="Buscar canais..." />
           <%= if @mode == :provider do %>
             <button
@@ -266,33 +265,42 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
         </div>
       </div>
 
-      <div
-        id="channels"
-        phx-update="stream"
-        class="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-      >
-        <div :for={{dom_id, channel} <- @streams.channels} id={dom_id}>
-          <.live_channel_card
-            channel={channel}
-            is_favorite={MapSet.member?(@favorites_map, channel.id)}
-          />
-        </div>
-      </div>
-      
-    <!-- Infinite Scroll Sentinel -->
-      <div
-        :if={@has_more && !@loading}
-        id="channels-sentinel"
-        phx-hook="InfiniteScroll"
-        data-page={@page}
-        class="h-4"
-      />
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
+        <.category_filter_v2
+          categories={@categories}
+          selected={@selected_category}
+          layout={:sidebar}
+        />
+        <div class="flex-1 min-w-0">
+          <div
+            id="channels"
+            phx-update="stream"
+            class="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+          >
+            <div :for={{dom_id, channel} <- @streams.channels} id={dom_id}>
+              <.live_channel_card
+                channel={channel}
+                is_favorite={MapSet.member?(@favorites_map, channel.id)}
+              />
+            </div>
+          </div>
 
-      <div
-        :if={@loading}
-        class="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-      >
-        <.skeleton_channel_card :for={_ <- 1..12} />
+    <!-- Infinite Scroll Sentinel -->
+          <div
+            :if={@has_more && !@loading}
+            id="channels-sentinel"
+            phx-hook="InfiniteScroll"
+            data-page={@page}
+            class="h-4"
+          />
+
+          <div
+            :if={@loading}
+            class="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+          >
+            <.skeleton_channel_card :for={_ <- 1..12} />
+          </div>
+        </div>
       </div>
 
       <div :if={@empty_results} class="py-12">

@@ -93,6 +93,8 @@ defmodule StreamixWeb.Content.DetailComponents do
             src={Map.get(@content, :backdrop) || Map.get(@content, :cover)}
             alt={@content.name}
             class="w-full h-full object-cover"
+            fetchpriority="high"
+            decoding="async"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent" />
 

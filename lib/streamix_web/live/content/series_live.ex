@@ -39,6 +39,7 @@ defmodule StreamixWeb.Content.SeriesLive do
       |> assign(page_title: "Séries")
       |> assign(current_path: "/browse/series")
       |> assign(gindex_count: 0)
+      |> assign(sort: nil)
       |> stream(:series, [])
 
     {:ok, socket}
@@ -48,6 +49,7 @@ defmodule StreamixWeb.Content.SeriesLive do
     source = params["source"] || "iptv"
     category = parse_integer_param(params["category"])
     search = params["search"] || ""
+    sort = parse_sort_param(params["sort"])
 
     case apply_route_context(socket, params, source) do
       {:ok, socket} ->
@@ -55,6 +57,7 @@ defmodule StreamixWeb.Content.SeriesLive do
           socket
           |> assign(selected_category: category)
           |> assign(search: search)
+          |> assign(sort: sort)
           |> assign(page: 1)
           |> stream(:series, [], reset: true)
           |> load_series()
@@ -66,6 +69,9 @@ defmodule StreamixWeb.Content.SeriesLive do
         {:noreply, socket}
     end
   end
+
+  defp parse_sort_param(sort) when sort in ["popularity", "rating"], do: sort
+  defp parse_sort_param(_), do: nil
 
   defp apply_route_context(socket, %{"provider_id" => provider_id}, _source) do
     provider = Iptv.get_playable_provider(socket.assigns.user_id, provider_id)
@@ -233,54 +239,61 @@ defmodule StreamixWeb.Content.SeriesLive do
           current_scope={@current_scope}
         />
 
-        <%!-- Row 2: Category chips + Search --%>
+        <%!-- Row 2: Search --%>
         <div class="browse-toolbar__row">
-          <.category_filter_v2
-            :if={@source == "iptv" && length(@categories) > 0}
-            categories={@categories}
-            selected={@selected_category}
-          />
           <.search_input value={@search} placeholder="Buscar séries..." />
         </div>
       </div>
 
-      <div
-        id="series"
-        phx-update="stream"
-        class="grid gap-2 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-      >
-        <div :for={{dom_id, series} <- @streams.series} id={dom_id}>
-          <.series_card
-            series={series}
-            is_favorite={MapSet.member?(@favorites_map, series.id)}
-            source={@source}
-            show_premium_badge={@mode == :browse and @source == "iptv" and not @premium_access}
+      <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
+        <.category_filter_v2
+          :if={@source == "iptv" && length(@categories) > 0}
+          categories={@categories}
+          selected={@selected_category}
+          layout={:sidebar}
+        />
+        <div class="flex-1 min-w-0">
+          <div
+            id="series"
+            phx-update="stream"
+            class="grid gap-2 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+          >
+            <div :for={{dom_id, series} <- @streams.series} id={dom_id}>
+              <.series_card
+                series={series}
+                is_favorite={MapSet.member?(@favorites_map, series.id)}
+                source={@source}
+                show_premium_badge={
+                  @mode == :browse and @source == "iptv" and not @premium_access
+                }
+              />
+            </div>
+          </div>
+
+    <!-- Infinite Scroll Sentinel -->
+          <div
+            :if={@has_more && !@loading}
+            id="series-sentinel"
+            phx-hook="InfiniteScroll"
+            data-page={@page}
+            class="h-4"
+          />
+
+          <div
+            :if={@loading}
+            class="grid gap-2 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+          >
+            <.skeleton_card :for={_ <- 1..12} />
+          </div>
+
+          <.empty_state
+            :if={@empty_results && !@loading}
+            icon="hero-video-camera"
+            title="Nenhuma série encontrada"
+            message="Tente ajustar os filtros ou fazer uma busca diferente."
           />
         </div>
       </div>
-      
-    <!-- Infinite Scroll Sentinel -->
-      <div
-        :if={@has_more && !@loading}
-        id="series-sentinel"
-        phx-hook="InfiniteScroll"
-        data-page={@page}
-        class="h-4"
-      />
-
-      <div
-        :if={@loading}
-        class="grid gap-2 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-      >
-        <.skeleton_card :for={_ <- 1..12} />
-      </div>
-
-      <.empty_state
-        :if={@empty_results && !@loading}
-        icon="hero-video-camera"
-        title="Nenhuma série encontrada"
-        message="Tente ajustar os filtros ou fazer uma busca diferente."
-      />
     </div>
     """
   end
@@ -327,6 +340,29 @@ defmodule StreamixWeb.Content.SeriesLive do
 
     has_more = length(series) >= @per_page
     empty_results = page == 1 && Enum.empty?(series)
+
+    socket
+    |> stream(:series, series)
+    |> assign(has_more: has_more)
+    |> assign(loading: false)
+    |> assign(empty_results: empty_results)
+  end
+
+  defp load_series(%{assigns: %{source: "iptv", provider: nil, sort: sort}} = socket)
+       when sort in ["popularity", "rating"] do
+    page = socket.assigns.page
+    total_limit = page * @per_page
+    drop = (page - 1) * @per_page
+
+    series =
+      case sort do
+        "popularity" -> Iptv.list_trending("series", limit: total_limit)
+        "rating" -> Iptv.list_top_10_series(limit: total_limit)
+      end
+      |> Enum.drop(drop)
+
+    has_more = sort != "rating" and length(series) >= @per_page
+    empty_results = page == 1 and Enum.empty?(series)
 
     socket
     |> stream(:series, series)
