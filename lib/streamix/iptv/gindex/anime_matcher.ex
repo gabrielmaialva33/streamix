@@ -90,24 +90,19 @@ defmodule Streamix.Iptv.Gindex.AnimeMatcher do
       |> Enum.map(&normalize/1)
 
     Enum.reduce(candidates, 0, fn variant, acc ->
-      cond do
-        variant == needle ->
-          max(acc, 1000)
-
-        true ->
-          sim = String.jaro_distance(variant, needle)
-
-          scored =
-            cond do
-              sim >= 0.95 -> round(400 + (sim - 0.95) * 8000)
-              sim >= 0.80 -> round(400 + (sim - 0.80) * 2666)
-              true -> 0
-            end
-
-          max(acc, scored)
-      end
+      max(acc, variant_score(variant, needle))
     end)
   end
+
+  defp variant_score(variant, needle) when variant == needle, do: 1000
+
+  defp variant_score(variant, needle) do
+    fuzzy_from_sim(String.jaro_distance(variant, needle))
+  end
+
+  defp fuzzy_from_sim(sim) when sim >= 0.95, do: round(400 + (sim - 0.95) * 8000)
+  defp fuzzy_from_sim(sim) when sim >= 0.80, do: round(400 + (sim - 0.80) * 2666)
+  defp fuzzy_from_sim(_), do: 0
 
   defp year_bonus(nil, _), do: 0
   defp year_bonus(_, nil), do: 0

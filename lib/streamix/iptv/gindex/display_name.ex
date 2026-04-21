@@ -46,11 +46,7 @@ defmodule Streamix.Iptv.Gindex.DisplayName do
 
   def clean_title(raw) when is_binary(raw) do
     %{title: parsed} = ReleaseParser.parse(raw)
-
-    cond do
-      parsed != "" -> parsed
-      true -> raw
-    end
+    if parsed != "", do: parsed, else: raw
   end
 
   @doc """
@@ -105,23 +101,34 @@ defmodule Streamix.Iptv.Gindex.DisplayName do
   # to a loose leading or trailing integer (common in anime releases
   # that omit the season tag).
   defp extract_label(str) do
+    with nil <- sxxexx_label(str),
+         nil <- leading_num_label(str),
+         nil <- trailing_num_label(str) do
+      {nil, str}
+    end
+  end
+
+  defp sxxexx_label(str) do
     case Regex.named_captures(@sxxexx, str) do
       %{"season" => s, "ep" => e} ->
-        label = "S#{pad2(s)}E#{pad2(e)}"
-        remainder = Regex.replace(@sxxexx, str, " ")
-        {label, remainder}
+        {"S#{pad2(s)}E#{pad2(e)}", Regex.replace(@sxxexx, str, " ")}
 
       _ ->
-        case Regex.run(@leading_episode_num, str, capture: :all_but_first) do
-          [num] ->
-            {"Ep #{pad2(num)}", Regex.replace(@leading_episode_num, str, "")}
+        nil
+    end
+  end
 
-          _ ->
-            case Regex.run(@trailing_episode_num, str, capture: :all_but_first) do
-              [num] -> {"Ep #{pad2(num)}", Regex.replace(@trailing_episode_num, str, "")}
-              _ -> {nil, str}
-            end
-        end
+  defp leading_num_label(str) do
+    case Regex.run(@leading_episode_num, str, capture: :all_but_first) do
+      [num] -> {"Ep #{pad2(num)}", Regex.replace(@leading_episode_num, str, "")}
+      _ -> nil
+    end
+  end
+
+  defp trailing_num_label(str) do
+    case Regex.run(@trailing_episode_num, str, capture: :all_but_first) do
+      [num] -> {"Ep #{pad2(num)}", Regex.replace(@trailing_episode_num, str, "")}
+      _ -> nil
     end
   end
 

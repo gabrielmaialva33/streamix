@@ -79,12 +79,10 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   # when the enrichment pass populated it, otherwise run the raw name
   # through the same parser the worker uses so the header stays clean.
   defp display_title(movie) do
-    cond do
-      is_binary(movie.title) and String.trim(movie.title) != "" ->
-        movie.title
-
-      true ->
-        DisplayName.clean_title(movie.name)
+    if is_binary(movie.title) and String.trim(movie.title) != "" do
+      movie.title
+    else
+      DisplayName.clean_title(movie.name)
     end
   end
 

@@ -79,9 +79,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
         end
       end)
 
-    Logger.info(
-      "[GIndex Enrich] kind=#{kind} batch=#{length(rows)} hit=#{ok} miss=#{miss}"
-    )
+    Logger.info("[GIndex Enrich] kind=#{kind} batch=#{length(rows)} hit=#{ok} miss=#{miss}")
 
     :ok
   end
@@ -94,18 +92,15 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     title = fallback_title(parsed_title, row)
     year = parsed_year || row.year
 
-    cond do
-      kind == :series and anime_path?(row.gindex_path) ->
-        # Anime path: Tomato first (romaji + PT plot), AniList second,
-        # TMDB last. The order matches each source's strength on the
-        # brazilian anime release naming conventions.
-        run_anime_pipeline(schema, row, title, year)
-
-      true ->
-        # Everything else: TMDB only. Movies under /Filmes and series
-        # under /Séries have zero reason to ask AniList/Tomato, and
-        # asking would just burn rate budget on guaranteed misses.
-        run_tmdb_only(schema, kind, row, title, year)
+    # Anime path: Tomato first (romaji + PT plot), AniList second, TMDB
+    # last — each source's strength on the brazilian anime naming
+    # conventions. Everything else: TMDB only, since asking AniList or
+    # Tomato for live-action titles burns rate budget on guaranteed
+    # misses.
+    if kind == :series and anime_path?(row.gindex_path) do
+      run_anime_pipeline(schema, row, title, year)
+    else
+      run_tmdb_only(schema, kind, row, title, year)
     end
   end
 

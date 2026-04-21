@@ -29,8 +29,12 @@ defmodule Streamix.Iptv.TmdbTokenPool do
 
   def next_after(profile, skip) do
     case tokens(profile) do
-      [] -> nil
-      [single] -> single
+      [] ->
+        nil
+
+      [single] ->
+        single
+
       list ->
         case Enum.reject(list, &(&1 == skip)) do
           [] -> pick(list)

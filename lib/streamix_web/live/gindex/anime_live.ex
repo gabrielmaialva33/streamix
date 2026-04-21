@@ -201,5 +201,4 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     favorite_ids = Iptv.list_favorite_ids(user_id, "series")
     assign(socket, favorites_map: favorite_ids)
   end
-
 end

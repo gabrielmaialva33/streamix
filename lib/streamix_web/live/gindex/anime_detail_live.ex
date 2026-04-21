@@ -368,13 +368,11 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   # curated — prefer the enriched `title` when populated, otherwise
   # run the raw value through the parser so the header stays clean.
   defp display_title(anime) do
-    cond do
-      is_binary(anime.title) and String.trim(anime.title) != "" and
-          anime.title != anime.name ->
-        anime.title
-
-      true ->
-        DisplayName.clean_title(anime.name)
+    if is_binary(anime.title) and String.trim(anime.title) != "" and
+         anime.title != anime.name do
+      anime.title
+    else
+      DisplayName.clean_title(anime.name)
     end
   end
 end

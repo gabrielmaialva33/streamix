@@ -132,10 +132,7 @@ defmodule Streamix.Iptv.Gindex.TomatoMatcher do
   defp name_score(name, needle) do
     normalized = normalize(name)
 
-    cond do
-      normalized == needle -> 1000
-      true -> fuzzy_score(needle, normalized)
-    end
+    if normalized == needle, do: 1000, else: fuzzy_score(needle, normalized)
   end
 
   defp fuzzy_score(needle, other) do

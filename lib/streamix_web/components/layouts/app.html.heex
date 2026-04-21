@@ -22,16 +22,20 @@
       ]}
     >
       <%= if @provider_health.status == :unhealthy do %>
-        <span><strong>Provedor IPTV indisponível.</strong>
-          Alguns streams podem não tocar — estamos tentando reconectar.</span>
+        <span>
+          <strong>Provedor IPTV indisponível.</strong>
+          Alguns streams podem não tocar — estamos tentando reconectar.
+        </span>
       <% else %>
-        <span><strong>Provedor IPTV instável.</strong>
-          Alguns streams podem demorar mais que o normal para carregar.</span>
+        <span>
+          <strong>Provedor IPTV instável.</strong>
+          Alguns streams podem demorar mais que o normal para carregar.
+        </span>
       <% end %>
     </div>
   <% end %>
-
-  <!-- Scroll-aware Header -->
+  
+<!-- Scroll-aware Header -->
   <header
     id="app-header"
     phx-hook="ScrollHeader"

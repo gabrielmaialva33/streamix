@@ -173,7 +173,9 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                   {@display_title}
                 </h1>
                 <p
-                  :if={@series.title && @series.title != @series.name && @series.title != @display_title}
+                  :if={
+                    @series.title && @series.title != @series.name && @series.title != @display_title
+                  }
                   class="text-lg text-text-secondary"
                 >
                   {@series.title}
@@ -366,13 +368,11 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   # from the raw filename; otherwise run the raw value through the
   # parser so the header stays clean.
   defp display_title(series) do
-    cond do
-      is_binary(series.title) and String.trim(series.title) != "" and
-          series.title != series.name ->
-        series.title
-
-      true ->
-        DisplayName.clean_title(series.name)
+    if is_binary(series.title) and String.trim(series.title) != "" and
+         series.title != series.name do
+      series.title
+    else
+      DisplayName.clean_title(series.name)
     end
   end
 end
