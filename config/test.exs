@@ -32,11 +32,24 @@ config :streamix, :session_secure, false
 config :streamix, :disable_rate_limit, true
 
 # PhoenixTest + Playwright
+#
+# The default browser is chromium, but CI matrices flip this across
+# chromium/firefox/webkit by exporting PLAYWRIGHT_BROWSER. Any unknown value
+# falls back to chromium so a typo doesn't crash the suite.
+playwright_browser =
+  case System.get_env("PLAYWRIGHT_BROWSER") do
+    "firefox" -> :firefox
+    "webkit" -> :webkit
+    "chromium" -> :chromium
+    nil -> :chromium
+    _ -> :chromium
+  end
+
 config :phoenix_test,
   otp_app: :streamix,
   endpoint: StreamixWeb.Endpoint,
   playwright: [
-    browser: :chromium,
+    browser: playwright_browser,
     headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
     js_logger: false,
     trace: System.get_env("PW_TRACE", "false") in ~w(t true),

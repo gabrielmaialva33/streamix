@@ -11,7 +11,16 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
       mix test --include playwright test/streamix_web/e2e/webkit_reconnect_test.exs
   """
 
-  use PhoenixTest.Playwright.Case, async: false, browser: :webkit
+  # Default to webkit (this suite targets Safari iOS behaviour), but let the
+  # CI matrix override it via PLAYWRIGHT_BROWSER=chromium|firefox|webkit.
+  @playwright_browser (case System.get_env("PLAYWRIGHT_BROWSER") do
+                         "chromium" -> :chromium
+                         "firefox" -> :firefox
+                         "webkit" -> :webkit
+                         _ -> :webkit
+                       end)
+
+  use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
