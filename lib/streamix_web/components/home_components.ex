@@ -634,13 +634,10 @@ defmodule StreamixWeb.HomeComponents do
 
   # Content Carousel Component
   def render_content_carousel(assigns) do
-    see_more_path = get_see_more_path(assigns.type, assigns.items)
-    carousel_id = "carousel-#{assigns.type}-#{System.unique_integer([:positive])}"
-
     assigns =
       assigns
-      |> assign(:see_more_path, see_more_path)
-      |> assign(:carousel_id, carousel_id)
+      |> assign_new(:carousel_id, fn -> build_carousel_id(assigns.type, assigns[:title]) end)
+      |> assign(:see_more_path, get_see_more_path(assigns.type, assigns.items))
       |> assign_new(:icon, fn -> nil end)
       |> assign_new(:progress_map, fn -> %{} end)
 
@@ -1350,6 +1347,27 @@ defmodule StreamixWeb.HomeComponents do
       diff < 604_800 -> "há #{div(diff, 86_400)} dias"
       true -> Calendar.strftime(datetime, "%d/%m")
     end
+  end
+
+  # Build a deterministic carousel DOM id from type (+ title when given) so the
+  # JS scroll hook keeps its state across LiveView re-renders.
+  defp build_carousel_id(type, title) do
+    base = "carousel-#{type}"
+
+    case title do
+      nil -> base
+      "" -> base
+      t when is_binary(t) -> base <> "-" <> slugify(t)
+      other -> base <> "-" <> slugify(to_string(other))
+    end
+  end
+
+  defp slugify(str) do
+    str
+    |> String.downcase()
+    |> String.normalize(:nfd)
+    |> String.replace(~r/[^a-z0-9]+/u, "-")
+    |> String.trim("-")
   end
 
   # Get the "See More" path based on content type
