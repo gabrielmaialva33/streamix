@@ -50,48 +50,89 @@ defmodule Streamix.Iptv.Gindex.DisplayName do
   end
 
   @doc """
-  Cleans an episode line. Returns `{label, episode_title}` where
-  `label` is the `SxxEyy` marker (or `"Ep N"` when we only have a
-  loose number) and `episode_title` is the human-readable tail with
-  release noise removed.
+  Cleans an episode line to keep it faithful to the gindex filename
+  while shaving off scene noise that adds no information to the user.
 
-  Examples:
+  Strategy (deliberately conservative — the last round was too
+  aggressive and swallowed episode numbers/release groups):
 
-      iex> clean_episode("1883 - S01E01 - 1883 WEBDL-1080p.mkv")
-      {"S01E01", "1883"}
+    * drop the file extension,
+    * drop the leading fansub/translator `[...]` brackets (scene
+      releases chain up to 3 of them: `[Ambient][MDAN] …`),
+    * drop brackets/parens whose contents are *only* quality/codec
+      tokens (e.g. `[720p]`, `(WEB-DL 1080p)`), keeping brackets that
+      carry meaningful info untouched,
+    * strip isolated quality/resolution/codec tokens
+      (`1080p`, `WEBDL`, `x264`, `DTS`, …) — the canonical list lives
+      in `@episode_noise`,
+    * normalize `.` and `_` into spaces so dotted releases read well,
+    * collapse runs of separators so we never emit `" - - "`.
 
-      iex> clean_episode("[Ambient][MDAN] 07-Ghost - 01 [720p].mkv")
-      {"Ep 01", "07-Ghost"}
+  Anything else — the series name, `SxxEyy`, the episode title, the
+  release group at the tail (`-NTb`, `-GLHF`) — is preserved.
   """
-  @spec clean_episode(String.t() | nil) :: {String.t() | nil, String.t()}
-  def clean_episode(nil), do: {nil, ""}
-  def clean_episode(""), do: {nil, ""}
+  @spec clean_episode(String.t() | nil) :: String.t()
+  def clean_episode(nil), do: ""
+  def clean_episode(""), do: ""
 
   def clean_episode(raw) when is_binary(raw) do
-    # Strip the scaffolding (extension, fansub/quality brackets) first
-    # so `extract_label/1` sees a clean string — otherwise a trailing
-    # `[720p]` would block the "Ep N" match on anime releases.
+    raw
+    |> String.replace(@extension_tail, "")
+    |> String.replace(@fansub_prefixes, "")
+    |> strip_noise_brackets()
+    |> String.replace(@episode_noise, " ")
+    |> String.replace(~r/[\.\_]+/, " ")
+    |> String.replace(~r/(?:\s*-\s*){2,}/, " - ")
+    |> collapse_spaces()
+    |> strip_leading_trailing_separators()
+  end
+
+  @doc """
+  Extracts the `SxxEyy` / `Ep N` label from a raw episode name, or
+  `nil` if nothing matches. Kept separate from `clean_episode/1` so
+  callers that want both pieces (badge + title) can read them
+  independently.
+  """
+  @spec episode_label(String.t() | nil) :: String.t() | nil
+  def episode_label(nil), do: nil
+  def episode_label(""), do: nil
+
+  def episode_label(raw) when is_binary(raw) do
     cleaned =
       raw
       |> String.replace(@extension_tail, "")
       |> String.replace(@fansub_prefixes, "")
-      |> String.replace(@bracket_groups, " ")
-      |> String.replace(@paren_groups, " ")
+      |> strip_noise_brackets()
       |> collapse_spaces()
 
-    {label, remainder} = extract_label(cleaned)
+    case extract_label(cleaned) do
+      {nil, _} -> nil
+      {label, _remainder} -> label
+    end
+  end
 
-    title =
-      remainder
+  # Only drop brackets/parens that hold *exclusively* scene noise —
+  # "[720p]" goes, "[Dir's Cut]" stays, and S01E01 / episode numbers
+  # living outside brackets are untouched.
+  defp strip_noise_brackets(str) do
+    squashed = Regex.replace(@bracket_groups, str, &maybe_drop_bracket/1)
+    Regex.replace(@paren_groups, squashed, &maybe_drop_bracket/1)
+  end
+
+  defp maybe_drop_bracket(match) do
+    inner = String.slice(match, 1..-2//1)
+    if noise_only?(inner), do: " ", else: match
+  end
+
+  defp noise_only?(inner) do
+    without_noise =
+      inner
       |> String.replace(@episode_noise, " ")
-      |> String.replace(~r/[\.\_]+/, " ")
-      |> String.replace(~r/\s*[-–—]\s*/, " - ")
-      # Collapse runs of consecutive separator tokens: "1883 - - 1883" → "1883 - 1883"
-      |> String.replace(~r/(?:\s*-\s*){2,}/, " - ")
-      |> collapse_spaces()
-      |> strip_leading_trailing_separators()
+      |> String.trim()
 
-    {label, title}
+    # If stripping noise collapsed it to nothing (or to pure digits like
+    # "25" which we *want* to keep outside brackets), treat as noise.
+    without_noise == "" or Regex.match?(~r/^\s*\d+\s*$/, without_noise)
   end
 
   # --- private ---

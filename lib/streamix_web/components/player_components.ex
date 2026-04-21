@@ -500,6 +500,9 @@ defmodule StreamixWeb.PlayerComponents do
   defp content_title(content, :episode),
     do: content.title || "Episódio #{Map.get(content, :episode_num, "")}"
 
+  defp content_title(content, :gindex_episode),
+    do: content.title || content.name || "Episódio #{Map.get(content, :episode_num, "")}"
+
   defp episode_subtitle(content) do
     season_num = Map.get(content, :season_number) || get_season_number(content) || "?"
     episode_num = Map.get(content, :episode_num, "?")

@@ -110,7 +110,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
         
     <!-- Back Button -->
-        <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
+        <div class="absolute top-20 left-4 sm:left-6 z-30">
           <.link
             navigate={~p"/gindex/movies"}
             class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium"
