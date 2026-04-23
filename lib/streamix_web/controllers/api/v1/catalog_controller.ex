@@ -71,7 +71,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       ]
 
       movies = Iptv.list_movies(provider.id, opts)
-      total = Iptv.count_movies(provider.id)
+      total = Iptv.count_movies(provider.id, opts)
 
       json(conn, %{
         movies: Enum.map(movies, &Serializer.serialize_movie/1),
@@ -120,7 +120,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       ]
 
       series_list = Iptv.list_series(provider.id, opts)
-      total = Iptv.count_series(provider.id)
+      total = Iptv.count_series(provider.id, opts)
 
       json(conn, %{
         series: Enum.map(series_list, &Serializer.serialize_series/1),

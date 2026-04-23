@@ -175,47 +175,55 @@ defmodule Streamix.Iptv.SeriesOps do
   def list(provider_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 100)
     offset = Keyword.get(opts, :offset, 0)
-    search = Keyword.get(opts, :search)
-    category_id = Keyword.get(opts, :category_id)
-    show_adult = Keyword.get(opts, :show_adult, false)
     sort = Keyword.get(opts, :sort)
 
-    query =
-      Series
-      |> where(provider_id: ^provider_id)
-      |> apply_series_sort(sort)
-
-    query =
-      if search && search != "" do
-        escaped = Helpers.escape_like(search)
-        where(query, [s], ilike(s.name, ^"%#{escaped}%"))
-      else
-        query
-      end
-
-    query =
-      if category_id do
-        join(query, :inner, [s], ic in "item_categories",
-          on: ic.catalog_item_id == s.catalog_item_id and ic.category_id == ^category_id
-        )
-      else
-        query
-      end
-
-    # Filter adult content unless user opts in
-    query =
-      if show_adult do
-        query
-      else
-        AdultFilter.exclude_adult_series(query, provider_id)
-      end
-
-    query
+    provider_id
+    |> build_filtered_query(opts)
+    |> apply_series_sort(sort)
     |> limit(^limit)
     |> offset(^offset)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
+
+  # Shared filter pipeline for `list/2` and `count/2`. Same story as
+  # `Movies.build_filtered_query/2`: without this the paginated API
+  # endpoint reported the entire catalog total on a filtered request
+  # and the category join produced duplicate rows at high offsets.
+  defp build_filtered_query(provider_id, opts) do
+    search = Keyword.get(opts, :search)
+    category_id = Keyword.get(opts, :category_id)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    Series
+    |> where(provider_id: ^provider_id)
+    |> maybe_where_search(search)
+    |> maybe_join_category(category_id)
+    |> maybe_exclude_adult(provider_id, show_adult)
+  end
+
+  defp maybe_where_search(query, nil), do: query
+  defp maybe_where_search(query, ""), do: query
+
+  defp maybe_where_search(query, search) do
+    escaped = Helpers.escape_like(search)
+    where(query, [s], ilike(s.name, ^"%#{escaped}%"))
+  end
+
+  defp maybe_join_category(query, nil), do: query
+
+  defp maybe_join_category(query, category_id) do
+    query
+    |> join(:inner, [s], ic in "item_categories",
+      on: ic.catalog_item_id == s.catalog_item_id and ic.category_id == ^category_id
+    )
+    |> distinct([s], s.id)
+  end
+
+  defp maybe_exclude_adult(query, _provider_id, true), do: query
+
+  defp maybe_exclude_adult(query, provider_id, _show_adult),
+    do: AdultFilter.exclude_adult_series(query, provider_id)
 
   # Sort order for public series lists.
   # Supported: rating_desc | created_desc | year_desc | name_asc.
@@ -249,14 +257,23 @@ defmodule Streamix.Iptv.SeriesOps do
   end
 
   @doc """
-  Counts series for a provider.
+  Counts series for a provider. Accepts the same `opts` as `list/2`
+  (`:category_id`, `:search`, `:show_adult`) so paginated endpoints
+  can report the actual filtered total.
   """
-  @spec count(integer()) :: integer()
-  def count(provider_id) do
-    Series
-    |> where(provider_id: ^provider_id)
-    |> Repo.aggregate(:count)
+  @spec count(integer(), keyword()) :: integer()
+  def count(provider_id, opts \\ []) do
+    has_category = Keyword.get(opts, :category_id) != nil
+
+    provider_id
+    |> build_filtered_query(opts)
+    |> exclude(:distinct)
+    |> count_query(has_category)
+    |> Repo.one()
   end
+
+  defp count_query(query, true), do: select(query, [s], count(s.id, :distinct))
+  defp count_query(query, false), do: select(query, [s], count(s.id))
 
   # =============================================================================
   # Series Retrieval

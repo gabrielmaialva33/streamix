@@ -46,50 +46,67 @@ defmodule Streamix.Iptv.Movies do
   def list(provider_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 100)
     offset = Keyword.get(opts, :offset, 0)
-    search = Keyword.get(opts, :search)
-    category_id = Keyword.get(opts, :category_id)
-    year = Keyword.get(opts, :year)
-    show_adult = Keyword.get(opts, :show_adult, false)
     sort = Keyword.get(opts, :sort)
 
-    query =
-      Movie
-      |> where(provider_id: ^provider_id)
-      |> apply_movie_sort(sort)
-
-    query =
-      if search && search != "" do
-        escaped = Helpers.escape_like(search)
-        where(query, [m], ilike(m.name, ^"%#{escaped}%"))
-      else
-        query
-      end
-
-    query =
-      if category_id do
-        join(query, :inner, [m], ic in "item_categories",
-          on: ic.catalog_item_id == m.catalog_item_id and ic.category_id == ^category_id
-        )
-      else
-        query
-      end
-
-    query = if year, do: where(query, year: ^year), else: query
-
-    # Filter adult content unless user opts in
-    query =
-      if show_adult do
-        query
-      else
-        AdultFilter.exclude_adult_movies(query, provider_id)
-      end
-
-    query
+    provider_id
+    |> build_filtered_query(opts)
+    |> apply_movie_sort(sort)
     |> limit(^limit)
     |> offset(^offset)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
+
+  # Shared filter pipeline used by both `list/2` and `count/2` so the
+  # count honors `category_id` / `search` / `year` / `show_adult` the
+  # same way the list does. Previously `count/1` ignored every filter,
+  # which had the API returning `total: 38862` on a category search that
+  # really held ~80 rows and breaking "has_more" in the TV app.
+  defp build_filtered_query(provider_id, opts) do
+    search = Keyword.get(opts, :search)
+    category_id = Keyword.get(opts, :category_id)
+    year = Keyword.get(opts, :year)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    Movie
+    |> where(provider_id: ^provider_id)
+    |> maybe_where_search(search)
+    |> maybe_join_category(category_id)
+    |> maybe_where_year(year)
+    |> maybe_exclude_adult(provider_id, show_adult)
+  end
+
+  defp maybe_where_search(query, nil), do: query
+  defp maybe_where_search(query, ""), do: query
+
+  defp maybe_where_search(query, search) do
+    escaped = Helpers.escape_like(search)
+    where(query, [m], ilike(m.name, ^"%#{escaped}%"))
+  end
+
+  defp maybe_join_category(query, nil), do: query
+
+  # `item_categories` is many-to-many — joining duplicates the parent
+  # row once per (movie, category) pair. Without `distinct` a movie
+  # that lives in three categories shows up three times in the page,
+  # and at `offset > 200` the paginator starts landing on copies of
+  # rows seen earlier ("vazando categorias em offset > 200" in the TV
+  # app bug report).
+  defp maybe_join_category(query, category_id) do
+    query
+    |> join(:inner, [m], ic in "item_categories",
+      on: ic.catalog_item_id == m.catalog_item_id and ic.category_id == ^category_id
+    )
+    |> distinct([m], m.id)
+  end
+
+  defp maybe_where_year(query, nil), do: query
+  defp maybe_where_year(query, year), do: where(query, year: ^year)
+
+  defp maybe_exclude_adult(query, _provider_id, true), do: query
+
+  defp maybe_exclude_adult(query, provider_id, _show_adult),
+    do: AdultFilter.exclude_adult_movies(query, provider_id)
 
   # Sort order for public movie lists.
   # Supported: rating_desc | created_desc | year_desc | name_asc.
@@ -183,14 +200,25 @@ defmodule Streamix.Iptv.Movies do
   end
 
   @doc """
-  Counts movies for a provider.
+  Counts movies for a provider. Accepts the same `opts` as `list/2`
+  (`:category_id`, `:search`, `:year`, `:show_adult`) so paginated
+  endpoints can report the actual filtered total. When a category
+  filter is present we use `count(m.id, :distinct)` so movies sitting
+  in multiple categories don't inflate the count.
   """
-  @spec count(integer()) :: integer()
-  def count(provider_id) do
-    Movie
-    |> where(provider_id: ^provider_id)
-    |> Repo.aggregate(:count)
+  @spec count(integer(), keyword()) :: integer()
+  def count(provider_id, opts \\ []) do
+    has_category = Keyword.get(opts, :category_id) != nil
+
+    provider_id
+    |> build_filtered_query(opts)
+    |> exclude(:distinct)
+    |> count_query(has_category)
+    |> Repo.one()
   end
+
+  defp count_query(query, true), do: select(query, [m], count(m.id, :distinct))
+  defp count_query(query, false), do: select(query, [m], count(m.id))
 
   # =============================================================================
   # Retrieval
