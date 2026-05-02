@@ -146,13 +146,19 @@ defmodule StreamixWeb.StreamController do
 
   defp resolve_and_redirect_to_proxy(conn, url) do
     # O nginx em source.mahina.cloud já segue cadeia de redirects via Lua,
-    # com cache + UA stealth. Aqui só andamos a chain o suficiente pra
-    # converter user/pass do provedor em token de curta duração — o
-    # restante dos hops lentos (vauth → vauth → vauth) roda no nginx,
-    # sem segurar BEAM e sem expor credenciais ao client.
-    stop_when_safe = fn next_url -> not credentials_in_url?(next_url) end
+    # com cache + UA stealth. Quando a URL inicial vem com creds IPTV
+    # (/movie/USER/PASS/...) só andamos a chain o suficiente pra trocar
+    # essas creds por um token de curta duração — o resto dos hops lentos
+    # (vauth → vauth → vauth) roda no nginx, sem segurar BEAM. Se a URL
+    # já vem limpa, mantém o chase deep antigo (sem regressão).
+    stop_fn =
+      if credentials_in_url?(url) do
+        fn next_url -> not credentials_in_url?(next_url) end
+      else
+        fn _ -> false end
+      end
 
-    case resolve_final_url(url, 0, stop_when_safe) do
+    case resolve_final_url(url, 0, stop_fn) do
       {:ok, final_url} ->
         proxy_base =
           Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
