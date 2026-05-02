@@ -297,12 +297,13 @@ const WatchPartySync = {
 
         // Two profiles. Conservative is for native HLS clients (iOS / macOS
         // Safari) that visibly stutter on `playbackRate` changes and on any
-        // `currentTime` write — the threshold gap goes from 0.1s/0.5s to
-        // 0.3s/1.5s, and the smooth playbackRate band is removed entirely.
-        // Aggressive matches the PubNub-tuned defaults the rest of the web
-        // tolerates fine.
-        const syncedThreshold = this.useConservativeSync ? 0.3 : 0.1;
-        const seekThreshold = this.useConservativeSync ? 1.5 : 0.5;
+        // `currentTime` write. User direction: "no problem if iOS isn't
+        // perfectly in sync, the important thing is that it stays smooth"
+        // — so we accept up to 1s of drift silently and only catch up
+        // beyond 3s. Aggressive matches the PubNub-tuned defaults the rest
+        // of the web tolerates fine.
+        const syncedThreshold = this.useConservativeSync ? 1.0 : 0.1;
+        const seekThreshold = this.useConservativeSync ? 3.0 : 0.5;
 
         if (absDrift < syncedThreshold) {
             // Below "synced" threshold — accept the drift, reset rate, relax beacon
@@ -325,9 +326,11 @@ const WatchPartySync = {
             // Mid-band drift on native HLS: do nothing. Either the drift
             // collapses naturally over the next beacon cycles or it grows
             // past the seek threshold and we catch up in one shot. Tweaking
-            // playbackRate here is what causes the iPhone microstutters
-            // the user reported.
-            this._setAdaptiveBeacon("normal");
+            // `playbackRate` here is what causes the iPhone microstutters
+            // the user reported. Stay on the relaxed beacon — there's no
+            // urgency, the host's explicit play/pause/seek commands
+            // already flow through `wp_sync_command` immediately.
+            this._setAdaptiveBeacon("synced");
             return;
         }
 
