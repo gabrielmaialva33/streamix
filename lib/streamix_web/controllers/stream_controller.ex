@@ -205,12 +205,18 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp req_options(extra) do
+    # IPTV upstreams (chokitecnologia and friends) regularly take 3–8s to
+    # answer the first byte, especially during prime time. The previous
+    # 5s/5s ceiling was producing user-visible 504s on the `/api/stream/
+    # proxy` endpoint even when the upstream was healthy, just slow.
+    # 12s connect / 20s response is well below the LB's 60s ceiling and
+    # gives slow-but-alive providers room to resolve their redirect chain.
     [
       redirect: false,
       headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
       decode_body: false,
-      receive_timeout: 5_000,
-      connect_options: [timeout: 5_000]
+      receive_timeout: 20_000,
+      connect_options: [timeout: 12_000]
     ]
     |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
     |> Keyword.merge(extra)
