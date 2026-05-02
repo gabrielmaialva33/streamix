@@ -205,17 +205,26 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp req_options(extra) do
-    # IPTV upstreams (chokitecnologia and friends) regularly take 3–8s to
-    # answer the first byte, especially during prime time. The previous
-    # 5s/5s ceiling was producing user-visible 504s on the `/api/stream/
-    # proxy` endpoint even when the upstream was healthy, just slow.
-    # 12s connect / 20s response is well below the LB's 60s ceiling and
-    # gives slow-but-alive providers room to resolve their redirect chain.
+    # Probing chokitecnologia from the VPS revealed the actual cost:
+    # `cb` returns a 302 in ~1.5s but the next `vauth` server in the
+    # chain takes another 7-8s per hop and still hands back another
+    # 302. Two hops alone sit at 9-10s, three at ~17s. Worse, Req's
+    # default retry policy (3 attempts with 1s/2s/4s backoff) was
+    # multiplying that on top of every timeout, producing the 27s+
+    # 504s the user was seeing.
+    #
+    # Solution: disable Req's retry layer (one shot is enough — if
+    # the chain is genuinely slow, retrying just adds 7s per attempt
+    # and ends in the same place) and lift the receive_timeout to 30s
+    # so a 3-hop chain has room. Connect timeout stays modest (12s) —
+    # if the SYN doesn't land in 12s the host is filtered, no retry
+    # will save it.
     [
       redirect: false,
+      retry: false,
       headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
       decode_body: false,
-      receive_timeout: 20_000,
+      receive_timeout: 30_000,
       connect_options: [timeout: 12_000]
     ]
     |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
