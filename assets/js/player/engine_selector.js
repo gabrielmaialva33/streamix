@@ -27,6 +27,7 @@
  * @property {Object}  [capabilities]          - runtime capability probes, passed in by caller
  * @property {boolean} [capabilities.hlsJs]    - isHlsJsSupported()
  * @property {boolean} [capabilities.mpegts]   - isMpegtsSupported()
+ * @property {boolean} [capabilities.nativeHls] - <video>.canPlayType("application/vnd.apple.mpegurl") || "application/x-mpegURL"
  */
 
 /**
@@ -48,6 +49,13 @@ export function selectEngine(ctx) {
 
     const hlsJs = !!capabilities.hlsJs;
     const mpegts = !!capabilities.mpegts;
+    // iOS Safari (and macOS Safari) implement HLS in the platform — feeding
+    // the .m3u8 directly into <video> wins us hardware decode + AirPlay +
+    // PiP integration that hls.js can't reach. The official hls.js README
+    // shows the same native-first ordering. iOS returns false for
+    // `Hls.isSupported()` anyway, so this is the only way to play HLS at
+    // all on iPhone.
+    const nativeHls = !!capabilities.nativeHls;
 
     // Device Codec Memory recommendation (Netflix pattern).
     if (recommendedPlayer === "avplayer" && !avPlayerAttempted) {
@@ -66,7 +74,11 @@ export function selectEngine(ctx) {
 
     switch (streamType) {
         case "hls":
-            return "hls-js";
+            // Native HLS first (hls.js README pattern). Falls back to
+            // hls.js on Chrome / Firefox / Edge / Android.
+            if (nativeHls) return "native";
+            if (hlsJs) return "hls-js";
+            return "native";
 
         case "ts":
         case "xtream":
@@ -85,6 +97,9 @@ export function selectEngine(ctx) {
             return "native";
 
         default:
+            // Mixed/unknown: still prefer native HLS when the URL ends up
+            // being treated as HLS by Safari, then hls.js, then mpegts.
+            if (nativeHls) return "native";
             if (hlsJs) return "hls-js";
             if (mpegts) return "mpegts";
             return "native";

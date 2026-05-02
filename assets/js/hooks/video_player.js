@@ -1343,6 +1343,15 @@ const VideoPlayer = {
             recommended_player: recommendedPlayer,
         });
 
+        // canPlayType returns "", "maybe", or "probably" — anything truthy
+        // counts. Check both the modern Apple MIME and the legacy spelling
+        // (older Safari / iOS reported the latter). Probing the actual
+        // <video> element is more honest than UA sniffing.
+        const nativeHlsSupport =
+            !!this.video &&
+            (this.video.canPlayType("application/vnd.apple.mpegurl") ||
+                this.video.canPlayType("application/x-mpegURL"));
+
         const engine = selectEngine({
             streamType: this.currentStreamType,
             sourceType: this.sourceType,
@@ -1353,6 +1362,7 @@ const VideoPlayer = {
             capabilities: {
                 hlsJs: isHlsJsSupported(),
                 mpegts: isMpegtsSupported(),
+                nativeHls: !!nativeHlsSupport,
             },
         });
 
