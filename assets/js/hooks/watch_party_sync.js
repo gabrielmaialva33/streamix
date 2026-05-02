@@ -62,6 +62,20 @@ const WatchPartySync = {
         const videoEl = document.querySelector("video");
         if (videoEl) {
             this.videoEl = videoEl;
+            // Detect native HLS playback (iOS Safari + macOS Safari).
+            // When the platform decodes the stream natively, every
+            // `currentTime = X` causes a hardware-decoder flush + buffer
+            // refill, and every `playbackRate` change produces a 50-100ms
+            // visual stutter (Shaka Player issue #2823, marked infeasible
+            // upstream). Apply a much more conservative drift profile
+            // so we don't seasick the user. hls.js / mpegts paths
+            // (Android, Chrome, Firefox, Edge) keep the aggressive 100ms
+            // / 500ms thresholds because their decoders handle small
+            // adjustments without observable hitches.
+            const nativeHls =
+                videoEl.canPlayType("application/vnd.apple.mpegurl") ||
+                videoEl.canPlayType("application/x-mpegURL");
+            this.useConservativeSync = !!nativeHls;
             this._setupBufferingDetection();
             this._wrapPlayerEvents();
             this._estimateClockOffset();
@@ -281,16 +295,25 @@ const WatchPartySync = {
             return;
         }
 
-        // Drift thresholds (tuned from PubNub/industry best practices)
-        if (absDrift < 0.1) {
-            // <100ms drift — synced, reset playback rate
+        // Two profiles. Conservative is for native HLS clients (iOS / macOS
+        // Safari) that visibly stutter on `playbackRate` changes and on any
+        // `currentTime` write — the threshold gap goes from 0.1s/0.5s to
+        // 0.3s/1.5s, and the smooth playbackRate band is removed entirely.
+        // Aggressive matches the PubNub-tuned defaults the rest of the web
+        // tolerates fine.
+        const syncedThreshold = this.useConservativeSync ? 0.3 : 0.1;
+        const seekThreshold = this.useConservativeSync ? 1.5 : 0.5;
+
+        if (absDrift < syncedThreshold) {
+            // Below "synced" threshold — accept the drift, reset rate, relax beacon
             this._resetPlaybackRate();
             this._setAdaptiveBeacon("synced");
             return;
         }
 
-        if (absDrift > 0.5) {
-            // >500ms drift — force seek (PubNub uses 0.5s)
+        if (absDrift > seekThreshold) {
+            // Hard catchup — single seek + sync lock so the seeked event
+            // doesn't bounce back as a wp_seek to the server.
             this._setSyncLock();
             this.videoEl.currentTime = targetPosition;
             this._resetPlaybackRate();
@@ -298,8 +321,18 @@ const WatchPartySync = {
             return;
         }
 
-        // 100ms-500ms drift — smooth playbackRate adjustment
-        // Exponential curve: more aggressive as drift increases
+        if (this.useConservativeSync) {
+            // Mid-band drift on native HLS: do nothing. Either the drift
+            // collapses naturally over the next beacon cycles or it grows
+            // past the seek threshold and we catch up in one shot. Tweaking
+            // playbackRate here is what causes the iPhone microstutters
+            // the user reported.
+            this._setAdaptiveBeacon("normal");
+            return;
+        }
+
+        // Aggressive (hls.js / mpegts): smooth playbackRate adjustment with
+        // an exponential curve, more aggressive as drift increases.
         const direction = drift < 0 ? 1 : -1; // behind = speed up, ahead = slow down
         const normalized = absDrift / 0.5; // 0..1 range
         const adjustment = normalized * normalized * 0.15; // quadratic, max ±15%
