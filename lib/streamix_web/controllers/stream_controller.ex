@@ -145,7 +145,14 @@ defmodule StreamixWeb.StreamController do
   # --- VOD: resolve redirects and send to nginx proxy for Range support ---
 
   defp resolve_and_redirect_to_proxy(conn, url) do
-    case resolve_final_url(url, 0) do
+    # O nginx em source.mahina.cloud já segue cadeia de redirects via Lua,
+    # com cache + UA stealth. Aqui só andamos a chain o suficiente pra
+    # converter user/pass do provedor em token de curta duração — o
+    # restante dos hops lentos (vauth → vauth → vauth) roda no nginx,
+    # sem segurar BEAM e sem expor credenciais ao client.
+    stop_when_safe = fn next_url -> not credentials_in_url?(next_url) end
+
+    case resolve_final_url(url, 0, stop_when_safe) do
       {:ok, final_url} ->
         proxy_base =
           Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
@@ -180,14 +187,16 @@ defmodule StreamixWeb.StreamController do
   # HEAD is unreliable (many IPTV providers return 200 for HEAD on all URLs).
   # GET with halt_after_first_chunk follows the real redirect chain without
   # downloading the full response body.
-  defp resolve_final_url(_url, count) when count > @max_redirects do
+  defp resolve_final_url(url, count, stop_fn \\ fn _ -> false end)
+
+  defp resolve_final_url(_url, count, _stop_fn) when count > @max_redirects do
     {:error, :too_many_redirects}
   end
 
-  defp resolve_final_url(url, count) do
+  defp resolve_final_url(url, count, stop_fn) do
     case Req.get(url, req_options(into: &halt_after_first_chunk/2)) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
-        follow_resolved_redirect(url, headers, count)
+        follow_resolved_redirect(url, headers, count, stop_fn)
 
       {:ok, %{status: status}} when status in 200..299 ->
         {:ok, url}
@@ -235,7 +244,7 @@ defmodule StreamixWeb.StreamController do
     {:halt, {request, response}}
   end
 
-  defp follow_resolved_redirect(url, headers, count) do
+  defp follow_resolved_redirect(url, headers, count, stop_fn) do
     case List.first(Map.get(headers, "location", [])) do
       nil ->
         {:error, :missing_location}
@@ -243,7 +252,15 @@ defmodule StreamixWeb.StreamController do
       location ->
         next_url = resolve_redirect_location(url, location)
         Logger.debug("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
-        resolve_final_url(next_url, count + 1)
+
+        if stop_fn.(next_url) do
+          # Caller pediu pra parar quando ficar seguro (ex.: credenciais já
+          # foram trocadas por token). O resto da cadeia — normalmente a
+          # parte lenta — será percorrida pelo nginx upstream.
+          {:ok, next_url}
+        else
+          resolve_final_url(next_url, count + 1, stop_fn)
+        end
     end
   end
 
