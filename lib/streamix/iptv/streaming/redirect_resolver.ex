@@ -346,15 +346,59 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     Process.send_after(self(), :cleanup, @cleanup_interval_ms)
   end
 
-  # Walk the redirect chain. Mirrors the original implementation that
-  # used to live in StreamController so we don't lose behaviour.
-  defp walk_chain(url, opts), do: walk_chain(url, 0, opts)
+  # Walk the redirect chain with provider-cluster failover. Some IPTV
+  # providers (looking at you, cb.chokitecnologia) round-robin redirects
+  # across a cluster of vauth/deliver IPs, and 30-50% of those IPs may
+  # be dead at any given moment. If we just take the first redirect and
+  # cache it, the user gets stuck behind a dead IP for the cache TTL.
+  #
+  # Strategy: if any hop times out / refuses connection / returns 5xx,
+  # we restart the chain from the original URL, hoping the provider
+  # routes to a different IP. Up to @retry_attempts retries.
+  @retry_attempts 4
 
-  defp walk_chain(_url, count, _opts) when count > @max_redirects do
+  defp walk_chain(url, opts), do: walk_chain(url, opts, 1)
+
+  defp walk_chain(url, _opts, attempt) when attempt > @retry_attempts do
+    Logger.warning(
+      "RedirectResolver: giving up after #{@retry_attempts} attempts for #{sanitize(url)}"
+    )
+
+    {:error, :provider_unreachable}
+  end
+
+  defp walk_chain(url, opts, attempt) do
+    case do_walk(url, 0, opts) do
+      {:ok, _final} = ok ->
+        ok
+
+      {:error, reason} ->
+        if retryable?(reason) and attempt < @retry_attempts do
+          Logger.info(
+            "RedirectResolver: hop failed (#{inspect(reason)}), retrying chain (attempt #{attempt + 1}/#{@retry_attempts})"
+          )
+
+          walk_chain(url, opts, attempt + 1)
+        else
+          {:error, reason}
+        end
+    end
+  end
+
+  defp retryable?(%Req.TransportError{reason: :timeout}), do: true
+  defp retryable?(%Req.TransportError{reason: :closed}), do: true
+  defp retryable?(%Req.TransportError{reason: :econnrefused}), do: true
+  defp retryable?(%Req.TransportError{reason: :ehostunreach}), do: true
+  defp retryable?(%Req.TransportError{reason: :nxdomain}), do: true
+  defp retryable?(:timeout), do: true
+  defp retryable?({:unexpected_status, status}) when status in [502, 503, 504], do: true
+  defp retryable?(_), do: false
+
+  defp do_walk(_url, count, _opts) when count > @max_redirects do
     {:error, :too_many_redirects}
   end
 
-  defp walk_chain(url, count, opts) do
+  defp do_walk(url, count, opts) do
     case Req.get(url, build_req_opts(opts)) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_redirect(url, headers, count, opts)
@@ -384,7 +428,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
         if stop_fn.(next_url) do
           {:ok, next_url}
         else
-          walk_chain(next_url, count + 1, opts)
+          do_walk(next_url, count + 1, opts)
         end
     end
   end
@@ -397,8 +441,12 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       retry: false,
       headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
       decode_body: false,
-      receive_timeout: 30_000,
-      connect_options: [timeout: 12_000],
+      # Tight timeouts: a healthy provider responds with a 302 in
+      # under 1s. Anything past 8s receive or 5s connect is almost
+      # certainly a dead cluster IP — fail fast so the chain can
+      # restart and roll the dice on a different IP.
+      receive_timeout: 8_000,
+      connect_options: [timeout: 5_000],
       into: &halt_after_first_chunk/2
     ]
     |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
