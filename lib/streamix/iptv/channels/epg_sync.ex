@@ -56,6 +56,13 @@ defmodule Streamix.Iptv.EpgSync do
 
   @doc """
   Syncs EPG data for multiple channels in batch.
+
+  ## Deprecated
+
+  Calls `sync_channel_epg/3` once per channel — N HTTP requests, where
+  N is the number of channels with EPG support. The Choki provider
+  treats this as a scraper burst. Use `sync_all_epg/1` instead, which
+  makes a single `/xmltv.php` request like real IPTV apps do.
   """
   def sync_channels_epg(%Provider{} = provider, channels) when is_list(channels) do
     results =
@@ -74,6 +81,105 @@ defmodule Streamix.Iptv.EpgSync do
       end)
 
     {:ok, results}
+  end
+
+  @doc """
+  Syncs the **full** EPG catalog for a provider in a single HTTP
+  request to `/xmltv.php` (~5-20 MB XML), then parses and upserts
+  programs locally.
+
+  This is the path real IPTV clients (XCIPTV, TiviMate, IPTVSmarters,
+  IBOPlayer) use. One request to the provider, no per-channel burst,
+  no WAF flag.
+
+  Returns `{:ok, %{channels: n, programs: m}}` on success.
+  """
+  def sync_all_epg(%Provider{} = provider) do
+    Logger.info("[EpgSync] Fetching XMLTV for provider #{provider.id}")
+
+    with {:ok, xml} <- XtreamClient.get_xmltv(provider.url, provider.username, provider.password),
+         _ <-
+           Logger.info(
+             "[EpgSync] Got #{Float.round(byte_size(xml) / 1024 / 1024, 2)} MB XMLTV, parsing"
+           ),
+         {:ok, programs_by_channel} <- EpgParser.parse_xmltv(xml) do
+      apply_xmltv_programs(provider, programs_by_channel)
+    else
+      {:error, reason} = err ->
+        Logger.warning(
+          "[EpgSync] XMLTV sync failed for provider #{provider.id}: #{inspect(reason)}"
+        )
+
+        err
+    end
+  end
+
+  defp apply_xmltv_programs(provider, programs_by_channel) do
+    external_ids = Map.keys(programs_by_channel)
+    epg_channel_map = upsert_epg_channels(provider.id, external_ids)
+
+    programs =
+      Enum.flat_map(programs_by_channel, fn {external_id, ch_programs} ->
+        attach_channel_id(ch_programs, Map.get(epg_channel_map, external_id))
+      end)
+
+    count = upsert_programs(programs)
+
+    Logger.info(
+      "[EpgSync] XMLTV sync done for provider #{provider.id}: " <>
+        "#{map_size(epg_channel_map)} channels, #{count} programs"
+    )
+
+    update_epg_synced_at(provider)
+
+    {:ok, %{channels: map_size(epg_channel_map), programs: count}}
+  end
+
+  defp attach_channel_id(_programs, nil), do: []
+
+  defp attach_channel_id(programs, channel_id),
+    do: Enum.map(programs, &Map.put(&1, :epg_channel_id, channel_id))
+
+  # Upserts every external_id at once. Returns %{external_id => epg_channel_id}.
+  # Joins with live_channels by external_id so the FK is filled in when a
+  # matching channel exists; XMLTV occasionally lists channels that aren't in
+  # the provider's live_streams list (e.g. removed but EPG still kept), and
+  # we still want to store the EPG for them.
+  defp upsert_epg_channels(provider_id, external_ids) when is_list(external_ids) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    # Map external_id → live_channel_id when there is one
+    live_channel_lookup =
+      Streamix.Iptv.LiveChannel
+      |> where(provider_id: ^provider_id)
+      |> select([c], {c.epg_channel_id, c.id})
+      |> Repo.all()
+      |> Enum.filter(fn {ext, _} -> is_binary(ext) and ext != "" end)
+      |> Map.new()
+
+    rows =
+      Enum.map(external_ids, fn ext ->
+        %{
+          external_id: ext,
+          provider_id: provider_id,
+          live_channel_id: Map.get(live_channel_lookup, ext),
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    if rows == [] do
+      %{}
+    else
+      {_, inserted} =
+        Repo.insert_all(EpgChannel, rows,
+          on_conflict: {:replace, [:live_channel_id, :updated_at]},
+          conflict_target: [:provider_id, :external_id],
+          returning: [:id, :external_id]
+        )
+
+      Map.new(inserted, fn %{id: id, external_id: ext} -> {ext, id} end)
+    end
   end
 
   @doc """

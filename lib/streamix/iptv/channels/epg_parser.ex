@@ -2,9 +2,15 @@ defmodule Streamix.Iptv.EpgParser do
   @moduledoc """
   Parser for EPG data from Xtream Codes API.
 
-  The Xtream Codes API returns EPG data with base64-encoded fields
-  and Unix timestamps that need to be converted.
+  Two formats are supported:
+
+  * **`get_short_epg`** JSON response — base64-encoded fields, used for
+    on-demand single-channel queries.
+  * **XMLTV** (returned by `/xmltv.php`) — single document covering the
+    full catalog. Used by `SyncEpgWorker`.
   """
+
+  import SweetXml, only: [sigil_x: 2]
 
   require Logger
 
@@ -39,6 +45,127 @@ defmodule Streamix.Iptv.EpgParser do
   end
 
   def parse_short_epg(_), do: {:ok, []}
+
+  @doc """
+  Parses an XMLTV document (the format `/xmltv.php` returns).
+
+  Returns `{:ok, %{channel_external_id => [program_map, ...]}}` keyed by
+  the `channel` attribute on each `<programme>` element. The map shape
+  matches what `EpgSync.upsert_programs/1` expects, except that
+  `:epg_channel_id` is left blank — caller resolves that from
+  `channel_external_id` against the local `epg_channels` table.
+
+  ## XMLTV format reference
+
+      <tv>
+        <channel id="globortv.br">
+          <display-name>Globo RTV</display-name>
+        </channel>
+        <programme channel="globortv.br"
+                   start="20260503040000 -0300"
+                   stop="20260503050000 -0300">
+          <title>Some show</title>
+          <desc>Description</desc>
+          <category>Drama</category>
+        </programme>
+      </tv>
+  """
+  def parse_xmltv(xml) when is_binary(xml) do
+    programmes =
+      xml
+      |> SweetXml.parse(quiet: true)
+      |> SweetXml.xpath(
+        ~x"//programme"l,
+        channel: ~x"./@channel"s,
+        start: ~x"./@start"s,
+        stop: ~x"./@stop"s,
+        title: ~x"./title/text()"s,
+        desc: ~x"./desc/text()"s,
+        category: ~x"./category/text()"s,
+        icon: ~x"./icon/@src"s,
+        lang: ~x"./title/@lang"s
+      )
+
+    grouped =
+      programmes
+      |> Enum.map(&xmltv_to_program/1)
+      |> Enum.filter(&valid_program?/1)
+      |> Enum.group_by(& &1.channel_external_id)
+
+    {:ok, grouped}
+  rescue
+    e -> {:error, {:xmltv_parse_failed, Exception.message(e)}}
+  catch
+    :exit, reason -> {:error, {:xmltv_parse_failed, reason}}
+  end
+
+  def parse_xmltv(_), do: {:error, :invalid_xmltv}
+
+  defp xmltv_to_program(%{channel: ch} = p) when is_binary(ch) and ch != "" do
+    %{
+      channel_external_id: ch,
+      title: blank_to_nil(p[:title]),
+      description: blank_to_nil(p[:desc]),
+      start_time: parse_xmltv_datetime(p[:start]),
+      end_time: parse_xmltv_datetime(p[:stop]),
+      category: blank_to_nil(p[:category]),
+      icon: blank_to_nil(p[:icon]),
+      lang: blank_to_nil(p[:lang])
+    }
+  end
+
+  defp xmltv_to_program(_), do: nil
+
+  # XMLTV datetime: "20260503040000 -0300" or "20260503040000"
+  defp parse_xmltv_datetime(nil), do: nil
+  defp parse_xmltv_datetime(""), do: nil
+
+  defp parse_xmltv_datetime(str) when is_binary(str) do
+    case Regex.run(
+           ~r/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-])(\d{2})(\d{2}))?$/,
+           String.trim(str)
+         ) do
+      [_, y, mo, d, h, mi, s] ->
+        build_dt(%{y: y, mo: mo, d: d, h: h, mi: mi, s: s, sign: "+", oh: "00", om: "00"})
+
+      [_, y, mo, d, h, mi, s, sign, oh, om] ->
+        build_dt(%{y: y, mo: mo, d: d, h: h, mi: mi, s: s, sign: sign, oh: oh, om: om})
+
+      _ ->
+        nil
+    end
+  end
+
+  defp build_dt(%{y: y, mo: mo, d: d, h: h, mi: mi, s: s, sign: sign, oh: oh, om: om}) do
+    case NaiveDateTime.new(
+           String.to_integer(y),
+           String.to_integer(mo),
+           String.to_integer(d),
+           String.to_integer(h),
+           String.to_integer(mi),
+           String.to_integer(s)
+         ) do
+      {:ok, naive} ->
+        offset_seconds =
+          (String.to_integer(oh) * 3600 + String.to_integer(om) * 60) * sign_multiplier(sign)
+
+        # Local time in XMLTV → convert to UTC by subtracting the offset.
+        naive
+        |> DateTime.from_naive!("Etc/UTC")
+        |> DateTime.add(-offset_seconds, :second)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp sign_multiplier("-"), do: -1
+  defp sign_multiplier(_), do: 1
+
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(s) when is_binary(s), do: s |> String.trim() |> blank_to_nil()
+  defp blank_to_nil(_), do: nil
 
   defp parse_listing(item) when is_map(item) do
     %{

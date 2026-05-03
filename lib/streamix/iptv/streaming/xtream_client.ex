@@ -85,7 +85,13 @@ defmodule Streamix.Iptv.XtreamClient do
 
   @doc """
   Fetches short EPG data for a specific stream.
-  Returns program listings for the specified channel.
+
+  ## Deprecated for bulk sync
+
+  Iterating channel-by-channel triggers anti-scraper WAFs. For
+  full-catalog EPG sync use `get_xmltv/3` — a single request that
+  returns all channels at once, which mirrors what XCIPTV, TiviMate,
+  IPTVSmarters and IBOPlayer do.
   """
   def get_short_epg(url, username, password, stream_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
@@ -97,6 +103,47 @@ defmodule Streamix.Iptv.XtreamClient do
   """
   def get_simple_data_table(url, username, password, stream_id) do
     api_call(url, username, password, "get_simple_data_table", %{stream_id: stream_id})
+  end
+
+  @doc """
+  Fetches the **full** EPG as an XMLTV document via `/xmltv.php`. One
+  request returns the EPG for every channel in the catalog (typical
+  size 5-20 MB). Mirrors what real IPTV client apps do.
+
+  Returns `{:ok, raw_xml_body}` on success. Bypasses the JSON
+  `api_call/5` path because the response is XML.
+  """
+  def get_xmltv(url, username, password) do
+    base = String.trim_trailing(url, "/")
+
+    target =
+      "#{base}/xmltv.php?username=#{URI.encode_www_form(username)}&password=#{URI.encode_www_form(password)}"
+
+    provider_id = :erlang.phash2({url, username})
+
+    with_circuit_breaker(provider_id, "get_xmltv", fn ->
+      case Req.get(target,
+             receive_timeout: :timer.seconds(120),
+             finch: Streamix.Finch,
+             headers: [{"user-agent", "xciptv-v6.0.0"}],
+             decode_body: false
+           ) do
+        {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
+          {:ok, body}
+
+        {:ok, %{status: 200}} ->
+          {:error, :empty_xmltv}
+
+        {:ok, %{status: status}} ->
+          {:error, {:http_error, status}}
+
+        {:error, %Req.TransportError{reason: reason}} ->
+          {:error, {:transport_error, reason}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end)
   end
 
   # ============================================================================
