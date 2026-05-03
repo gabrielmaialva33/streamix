@@ -10,9 +10,8 @@ defmodule StreamixWeb.StreamController do
 
   require Logger
 
-  @max_redirects 5
-
   alias Streamix.Iptv.Channels
+  alias Streamix.Iptv.Streaming.RedirectResolver
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
   alias StreamixWeb.StreamToken
@@ -80,7 +79,7 @@ defmodule StreamixWeb.StreamController do
   # --- Live channels: stream directly through Elixir (no redirect) ---
 
   defp stream_live_channel(conn, url, channel_id) do
-    case resolve_final_url(url, 0) do
+    case RedirectResolver.resolve(url) do
       {:ok, final_url} ->
         # Resolved cleanly — clear any stale dead flag from prior failures.
         if channel_id, do: Channels.mark_alive(channel_id)
@@ -103,7 +102,12 @@ defmodule StreamixWeb.StreamController do
 
   defp live_resolve_failed(conn, {:error, reason}) do
     Logger.error("Stream proxy: live resolve failed: #{inspect(reason)}")
-    StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+
+    if transient_error?(reason) do
+      retry_later(conn)
+    else
+      StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+    end
   end
 
   defp do_stream_live(conn, final_url) do
@@ -120,16 +124,7 @@ defmodule StreamixWeb.StreamController do
     result =
       Req.get(
         final_url,
-        req_options(
-          receive_timeout: :infinity,
-          compressed: false,
-          into: fn {:data, data}, {req, resp} ->
-            case Plug.Conn.chunk(conn, data) do
-              {:ok, _conn} -> {:cont, {req, resp}}
-              {:error, :closed} -> {:halt, {req, resp}}
-            end
-          end
-        )
+        live_stream_req_opts(conn)
       )
 
     case result do
@@ -158,7 +153,7 @@ defmodule StreamixWeb.StreamController do
         fn _ -> false end
       end
 
-    case resolve_final_url(url, 0, stop_fn) do
+    case RedirectResolver.resolve(url, stop_fn: stop_fn) do
       {:ok, final_url} ->
         proxy_base =
           Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
@@ -185,100 +180,64 @@ defmodule StreamixWeb.StreamController do
 
       {:error, reason} ->
         Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
-        StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+
+        if transient_error?(reason) do
+          retry_later(conn)
+        else
+          StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+        end
     end
   end
 
-  # Resolve all redirects using GET with immediate halt.
-  # HEAD is unreliable (many IPTV providers return 200 for HEAD on all URLs).
-  # GET with halt_after_first_chunk follows the real redirect chain without
-  # downloading the full response body.
-  defp resolve_final_url(url, count, stop_fn \\ fn _ -> false end)
-
-  defp resolve_final_url(_url, count, _stop_fn) when count > @max_redirects do
-    {:error, :too_many_redirects}
-  end
-
-  defp resolve_final_url(url, count, stop_fn) do
-    case Req.get(url, req_options(into: &halt_after_first_chunk/2)) do
-      {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
-        follow_resolved_redirect(url, headers, count, stop_fn)
-
-      {:ok, %{status: status}} when status in 200..299 ->
-        {:ok, url}
-
-      {:ok, %{status: status}} ->
-        Logger.error(
-          "Stream proxy: GET resolve got unexpected status #{status} for #{sanitize_url(url)}"
-        )
-
-        {:error, {:unexpected_status, status}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp req_options(extra) do
-    # Probing chokitecnologia from the VPS revealed the actual cost:
-    # `cb` returns a 302 in ~1.5s but the next `vauth` server in the
-    # chain takes another 7-8s per hop and still hands back another
-    # 302. Two hops alone sit at 9-10s, three at ~17s. Worse, Req's
-    # default retry policy (3 attempts with 1s/2s/4s backoff) was
-    # multiplying that on top of every timeout, producing the 27s+
-    # 504s the user was seeing.
-    #
-    # Solution: disable Req's retry layer (one shot is enough — if
-    # the chain is genuinely slow, retrying just adds 7s per attempt
-    # and ends in the same place) and lift the receive_timeout to 30s
-    # so a 3-hop chain has room. Connect timeout stays modest (12s) —
-    # if the SYN doesn't land in 12s the host is filtered, no retry
-    # will save it.
+  # Live channel streaming uses the same masquerade UA + retry policy as
+  # the resolver, but with `into:` configured to chunk straight into the
+  # already-open Plug.Conn so we don't buffer the whole live segment in
+  # memory.
+  defp live_stream_req_opts(conn) do
     [
       redirect: false,
       retry: false,
       headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
       decode_body: false,
-      receive_timeout: 30_000,
-      connect_options: [timeout: 12_000]
+      receive_timeout: :infinity,
+      compressed: false,
+      connect_options: [timeout: 12_000],
+      into: fn {:data, data}, {req, resp} ->
+        case Plug.Conn.chunk(conn, data) do
+          {:ok, _conn} -> {:cont, {req, resp}}
+          {:error, :closed} -> {:halt, {req, resp}}
+        end
+      end
     ]
     |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
-    |> Keyword.merge(extra)
   end
 
-  defp halt_after_first_chunk({:data, _chunk}, {request, response}) do
-    {:halt, {request, response}}
+  # Network/timeout style errors get a 503 + Retry-After:1 instead of the
+  # default 504. The hls.js / mpegts loaders treat 503 + Retry-After as a
+  # transparent retry signal, so the user does not see a fatal "manifest
+  # load error" toast on the first cold-cache hit.
+  defp retry_later(conn) do
+    conn
+    |> put_resp_header("retry-after", "1")
+    |> put_resp_header("access-control-allow-origin", "*")
+    |> send_resp(503, "")
+    |> halt()
   end
 
-  defp follow_resolved_redirect(url, headers, count, stop_fn) do
-    case List.first(Map.get(headers, "location", [])) do
-      nil ->
-        {:error, :missing_location}
+  defp transient_error?({:resolver_crashed, _, _}), do: true
+  defp transient_error?(:too_many_redirects), do: false
+  defp transient_error?(:missing_location), do: false
 
-      location ->
-        next_url = resolve_redirect_location(url, location)
-        Logger.debug("Stream proxy: resolve redirect #{count + 1} → #{sanitize_url(next_url)}")
+  defp transient_error?(%Req.TransportError{reason: reason}),
+    do: reason in [:timeout, :closed, :econnrefused, :nxdomain, :ehostunreach]
 
-        if stop_fn.(next_url) do
-          # Caller pediu pra parar quando ficar seguro (ex.: credenciais já
-          # foram trocadas por token). O resto da cadeia — normalmente a
-          # parte lenta — será percorrida pelo nginx upstream.
-          {:ok, next_url}
-        else
-          resolve_final_url(next_url, count + 1, stop_fn)
-        end
-    end
-  end
+  defp transient_error?(:timeout), do: true
+  defp transient_error?({:unexpected_status, status}) when status in [502, 503, 504], do: true
+  defp transient_error?(_), do: false
 
-  defp resolve_redirect_location(url, location) do
-    if String.starts_with?(location, "http") do
-      location
-    else
-      url
-      |> URI.merge(location)
-      |> URI.to_string()
-    end
-  end
+  # Redirect-chain resolution lives in `Streamix.Iptv.Streaming.RedirectResolver`.
+  # The controller calls `RedirectResolver.resolve/2`; the same module is
+  # also used by `PlayerLive.mount/3` to prewarm the cache.
 
   # Check if URL contains IPTV provider credentials
   defp credentials_in_url?(url) do

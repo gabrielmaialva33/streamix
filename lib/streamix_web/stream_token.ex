@@ -256,6 +256,21 @@ defmodule StreamixWeb.StreamToken do
     end
   end
 
+  @doc """
+  Returns the raw upstream URL that the given content would resolve to
+  if its token were verified.
+
+  Used by `PlayerLive.mount/3` to prewarm the redirect-chain resolver
+  without round-tripping through the signed-token exchange. The same
+  authorization checks as `verify_and_get_url/2` are applied — a user
+  who is not allowed to play the content gets `{:error, …}` here too.
+  """
+  def upstream_url(type, id, user_id, opts \\ [])
+      when type in ["movie", "episode", "channel"] and is_integer(id) do
+    bypass = Keyword.get(opts, :bypass_subscription, false)
+    get_stream_url(type, id, user_id, bypass)
+  end
+
   defp get_stream_url("movie", id, user_id, bypass) do
     case Iptv.get_movie_for_stream(id) do
       nil ->
