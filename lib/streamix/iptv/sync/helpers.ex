@@ -316,8 +316,17 @@ defmodule Streamix.Iptv.Sync.Helpers do
   @doc """
   Generic orphan deletion for content types.
 
-  Deletes item_categories associations via catalog_item, then deletes the
-  orphaned content rows (catalog_items are cascade-deleted by FK).
+  Deletion order matters because of foreign key constraints:
+
+    1. `item_categories` (associations only)
+    2. `movies` / `series` (they reference `catalog_items.id`)
+    3. `catalog_items` (now safe — no inbound refs)
+
+  An earlier version tried to delete `catalog_items` before the content
+  rows and produced FK violations on every sync, which silently aborted
+  cleanup — leaving "ghost" titles that the upstream provider had
+  already removed (Choki removes channels/movies frequently). Step
+  ordering matters: don't reorder.
 
   ## Options
     * `:schema` - The Ecto schema module
@@ -327,7 +336,7 @@ defmodule Streamix.Iptv.Sync.Helpers do
     schema = Keyword.fetch!(opts, :schema)
     table_name = Keyword.fetch!(opts, :table_name)
 
-    # Delete item_categories for orphaned content via catalog_item_id
+    # 1. item_categories first — only references catalog_item_id
     Repo.query!(
       """
       DELETE FROM item_categories
@@ -339,24 +348,34 @@ defmodule Streamix.Iptv.Sync.Helpers do
       [provider_id, current_stream_ids]
     )
 
-    # Delete orphaned catalog_items
-    Repo.query!(
-      """
-      DELETE FROM catalog_items
-      WHERE id IN (
+    # 2. Capture orphan catalog_item ids BEFORE deleting the content rows,
+    # so we can clean those catalog_items afterwards (we lose the join
+    # the moment the rows are gone).
+    {:ok, %{rows: rows}} =
+      Repo.query(
+        """
         SELECT catalog_item_id FROM #{table_name}
         WHERE provider_id = $1 AND stream_id != ALL($2)
+        """,
+        [provider_id, current_stream_ids]
       )
-      """,
-      [provider_id, current_stream_ids]
-    )
 
-    # Then delete the orphaned content
+    orphan_catalog_ids = Enum.map(rows, fn [id] -> id end)
+
+    # 3. Delete the orphaned content rows
     {count, _} =
       schema
       |> where([c], c.provider_id == ^provider_id)
       |> where([c], c.stream_id not in ^current_stream_ids)
       |> Repo.delete_all()
+
+    # 4. Now safe to remove the catalog_items they pointed at
+    if orphan_catalog_ids != [] do
+      Repo.query!(
+        "DELETE FROM catalog_items WHERE id = ANY($1)",
+        [orphan_catalog_ids]
+      )
+    end
 
     count
   end

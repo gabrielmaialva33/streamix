@@ -12,36 +12,63 @@ defmodule Streamix.Iptv.Sync.Cleanup do
   require Logger
 
   @doc """
-  Cleans up favorites and watch progress that reference deleted content.
-  Removes entries whose catalog_item no longer has a valid content row.
+  Cleans up after a content sync:
+
+    1. Removes `favorites` and `watch_progress` entries whose
+       `catalog_item_id` no longer points at an existing content row.
+    2. Removes the now-dangling `catalog_items` themselves so the table
+       doesn't grow unbounded.
+
+  All steps run in a single transaction so a failure halfway through
+  rolls back cleanly. The sweep is `O(catalog_items + content rows)`
+  per call and is intended to run after a successful provider sync.
   """
   def cleanup_orphaned_user_data do
-    Logger.info("Cleaning up orphaned favorites and watch progress")
+    Logger.info("Cleaning up orphaned favorites, watch progress, and catalog_items")
 
-    # Find catalog_items that have no content row
-    orphaned_catalog_ids = find_orphaned_catalog_item_ids()
+    Repo.transaction(fn ->
+      orphaned_catalog_ids = find_orphaned_catalog_item_ids()
+      do_cleanup(orphaned_catalog_ids)
+    end)
+  end
 
-    if orphaned_catalog_ids == [] do
-      {:ok, %{favorites: 0, watch_history: 0}}
-    else
-      {fav_count, _} =
-        Favorite
-        |> where([f], f.catalog_item_id in ^orphaned_catalog_ids)
-        |> Repo.delete_all()
+  defp do_cleanup([]), do: %{favorites: 0, watch_history: 0, catalog_items: 0}
 
-      {hist_count, _} =
-        WatchProgress
-        |> where([wp], wp.catalog_item_id in ^orphaned_catalog_ids)
-        |> Repo.delete_all()
+  defp do_cleanup(orphaned_catalog_ids) do
+    {fav_count, _} =
+      Favorite
+      |> where([f], f.catalog_item_id in ^orphaned_catalog_ids)
+      |> Repo.delete_all()
 
-      if fav_count > 0 or hist_count > 0 do
-        Logger.info(
-          "Removed #{fav_count} orphaned favorites, #{hist_count} orphaned watch progress entries"
-        )
-      end
+    {hist_count, _} =
+      WatchProgress
+      |> where([wp], wp.catalog_item_id in ^orphaned_catalog_ids)
+      |> Repo.delete_all()
 
-      {:ok, %{favorites: fav_count, watch_history: hist_count}}
+    ci_count = delete_catalog_items_in_chunks(orphaned_catalog_ids)
+
+    if fav_count + hist_count + ci_count > 0 do
+      Logger.info(
+        "Cleanup: #{fav_count} favorites, #{hist_count} watch_progress, " <>
+          "#{ci_count} catalog_items removed"
+      )
     end
+
+    %{favorites: fav_count, watch_history: hist_count, catalog_items: ci_count}
+  end
+
+  # Chunked to dodge the Postgres parameter limit (32k) on big sweeps.
+  defp delete_catalog_items_in_chunks(ids) do
+    ids
+    |> Enum.chunk_every(5_000)
+    |> Enum.reduce(0, fn chunk, acc ->
+      {n, _} =
+        CatalogItem
+        |> where([c], c.id in ^chunk)
+        |> Repo.delete_all()
+
+      acc + n
+    end)
   end
 
   defp find_orphaned_catalog_item_ids do

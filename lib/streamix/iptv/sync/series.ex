@@ -238,7 +238,12 @@ defmodule Streamix.Iptv.Sync.Series do
   end
 
   defp delete_orphaned_series(provider_id, current_series_ids) do
-    # Delete item_categories for orphaned series via catalog_item
+    # FK ordering: item_categories → series → catalog_items.
+    # The previous version deleted catalog_items before series, which
+    # always failed with a foreign-key violation and aborted the whole
+    # cleanup pass — leaving ghost titles forever.
+
+    # 1. item_categories (only references catalog_item_id)
     Repo.query!(
       """
       DELETE FROM item_categories
@@ -250,24 +255,32 @@ defmodule Streamix.Iptv.Sync.Series do
       [provider_id, current_series_ids]
     )
 
-    # Delete orphaned catalog_items
-    Repo.query!(
-      """
-      DELETE FROM catalog_items
-      WHERE id IN (
+    # 2. Capture the orphan catalog_item IDs before we lose the link
+    {:ok, %{rows: rows}} =
+      Repo.query(
+        """
         SELECT catalog_item_id FROM series
         WHERE provider_id = $1 AND series_id != ALL($2)
+        """,
+        [provider_id, current_series_ids]
       )
-      """,
-      [provider_id, current_series_ids]
-    )
 
-    # Then delete the orphaned series (cascades to seasons/episodes)
+    orphan_catalog_ids = Enum.map(rows, fn [id] -> id end)
+
+    # 3. Delete the orphaned series (cascades to seasons/episodes)
     {count, _} =
       Series
       |> where([s], s.provider_id == ^provider_id)
       |> where([s], s.series_id not in ^current_series_ids)
       |> Repo.delete_all()
+
+    # 4. Now safe to drop the dangling catalog_items
+    if orphan_catalog_ids != [] do
+      Repo.query!(
+        "DELETE FROM catalog_items WHERE id = ANY($1)",
+        [orphan_catalog_ids]
+      )
+    end
 
     count
   end
@@ -498,10 +511,31 @@ defmodule Streamix.Iptv.Sync.Series do
   end
 
   defp delete_orphaned_episodes(season_id, current_episode_nums) do
-    Episode
-    |> where([e], e.season_id == ^season_id)
-    |> where([e], e.episode_num not in ^current_episode_nums)
-    |> Repo.delete_all()
+    # FK ordering: capture catalog_item_ids → delete episodes → delete
+    # the now-dangling catalog_items. Same shape as
+    # `delete_orphaned_series/2` and `Helpers.delete_orphaned_content/3`.
+    {:ok, %{rows: rows}} =
+      Repo.query(
+        """
+        SELECT catalog_item_id FROM episodes
+        WHERE season_id = $1 AND episode_num != ALL($2)
+        """,
+        [season_id, current_episode_nums]
+      )
+
+    orphan_catalog_ids = Enum.map(rows, fn [id] -> id end)
+
+    result =
+      Episode
+      |> where([e], e.season_id == ^season_id)
+      |> where([e], e.episode_num not in ^current_episode_nums)
+      |> Repo.delete_all()
+
+    if orphan_catalog_ids != [] do
+      Repo.query!("DELETE FROM catalog_items WHERE id = ANY($1)", [orphan_catalog_ids])
+    end
+
+    result
   end
 
   defp build_episode_attrs(episodes, season_id, now) do
