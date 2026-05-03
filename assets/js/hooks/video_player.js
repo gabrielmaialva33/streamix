@@ -58,16 +58,19 @@ function isFirefoxBrowser() {
 // Advanced WASM pre-loading with WebAssembly.compile for faster startup
 let wasmPreloaded = false;
 
-async function preloadAVPlayerWasm() {
+async function preloadAVPlayerWasm(opts = {}) {
     if (wasmPreloaded) return;
     wasmPreloaded = true;
 
     try {
-        // Load module and use advanced pre-loading with WebAssembly.compile
+        // Load module and use advanced pre-loading with WebAssembly.compile.
+        // The narrow default (H.264 + AAC, ~1 MB) covers every IPTV
+        // stream we serve. We only opt-in to the heavier set when the
+        // hint says we'll actually need it.
         const {preloadCommonWasm} = await loadAVPlayer();
         if (preloadCommonWasm) {
-            log.debug("Starting advanced WASM pre-compilation...");
-            await preloadCommonWasm();
+            log.debug("Starting advanced WASM pre-compilation...", opts);
+            await preloadCommonWasm(opts);
             log.debug("WASM pre-compilation complete");
         }
     } catch (e) {
@@ -149,7 +152,10 @@ const VideoPlayer = {
 
         if (shouldPreloadAVPlayer) {
             log.debug("[VideoPlayer] Smart preload: AVPlayer WASM");
-            preloadAVPlayerWasm();
+            preloadAVPlayerWasm({
+                stream_type: this.currentStreamType,
+                source_type: this.sourceType,
+            });
         }
     },
 
@@ -2130,8 +2136,11 @@ const VideoPlayer = {
      * Netflix-style progressive enhancement: fast start with native, enhance UI when tracks detected
      */
     async probeMetadataInBackground() {
-        // Skip if we're already using AVPlayer or already probed
-        if (this.usingAVPlayer || this._metadataProbed) return;
+        // Skip if we're already using AVPlayer or already probed.
+        // Bail if the hook was destroyed before the probe completed
+        // (LiveView nav, watch-party leave) — otherwise we'd run UI
+        // updates against a torn-down hook.
+        if (this.usingAVPlayer || this._metadataProbed || this._destroyed) return;
         this._metadataProbed = true;
 
         log.debug("[VideoPlayer] Starting background metadata probe...");
@@ -2231,6 +2240,9 @@ const VideoPlayer = {
             probeContainer.remove();
 
             log.debug("[VideoPlayer] Background metadata probe complete");
+
+            // Hook may have been destroyed while we were probing.
+            if (this._destroyed) return;
 
             // Auto-switch to AVPlayer when multiple audio tracks detected (Dual Audio)
             // Native player can't guarantee which track plays, so we switch to control audio selection
@@ -2476,16 +2488,24 @@ const VideoPlayer = {
         this.stopAVPlayerTimeUpdates();
         this._avPlayerAnimating = true;
         this._lastProgressUpdate = 0;
+        this._lastUiUpdate = 0;
+
+        // The progress bar UI does not need 60Hz updates — the human
+        // eye stops noticing finer-than-100ms granularity on a moving
+        // sub-pixel marker, and on phones running rAF at 60fps for the
+        // whole movie just to redraw a 4-pixel-wide bar burned battery.
+        // Throttle the visible UI tick to ~8Hz (every 125ms).
+        const UI_TICK_MS = 125;
 
         const updateLoop = (timestamp) => {
             if (!this._avPlayerAnimating) return;
 
             if (this.usingAVPlayer && this.avPlayer) {
-                // Update time UI on every frame for smooth progress bar
-                this.updateTimeUI();
+                if (timestamp - this._lastUiUpdate >= UI_TICK_MS) {
+                    this._lastUiUpdate = timestamp;
+                    this.updateTimeUI();
+                }
 
-                // Throttle progress reporting to server (every 10s as per reportProgress)
-                // Only throttle the heavy operation, not the UI update
                 if (this.contentType === "vod" && timestamp - this._lastProgressUpdate >= 10000) {
                     this._lastProgressUpdate = timestamp;
                     this.reportProgress();

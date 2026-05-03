@@ -179,18 +179,29 @@ async function checkLocalWasmAvailability(url) {
  * Pre-load common WASM decoders to reduce startup latency
  * Call this early (on hover, page load, etc.) to have decoders ready
  */
-export async function preloadCommonWasm() {
+export async function preloadCommonWasm({ stream_type, source_type } = {}) {
+  // Default narrow set: every IPTV stream we serve has H.264 + AAC at
+  // minimum, that's the only thing worth pre-fetching unconditionally
+  // (~1 MB of WASM total). Older `preloadCommonWasm()` greedily fetched
+  // AC3/EAC3/DTS/HEVC up front for every viewer — that's 5-10 MB of
+  // unused bandwidth on the typical playback.
   const commonCodecs = [
-    // Audio decoders most likely to be needed
     AVCodecID.AV_CODEC_ID_AAC,
-    AVCodecID.AV_CODEC_ID_AC3,
-    AVCodecID.AV_CODEC_ID_EAC3,
-    AVCodecID.AV_CODEC_ID_DTS,
-    AVCodecID.AV_CODEC_ID_MP3,
-    // Video decoders
     AVCodecID.AV_CODEC_ID_H264,
-    AVCodecID.AV_CODEC_ID_HEVC,
   ];
+
+  // Only opt into the expensive audio decoders when the player is
+  // about to play content known to need them. GIndex (MKV/HEVC) is the
+  // canonical case; for everything else we lazy-load on first need.
+  if (source_type === "gindex" || stream_type === "mkv" || stream_type === "hevc") {
+    commonCodecs.push(
+      AVCodecID.AV_CODEC_ID_HEVC,
+      AVCodecID.AV_CODEC_ID_AC3,
+      AVCodecID.AV_CODEC_ID_EAC3,
+      AVCodecID.AV_CODEC_ID_DTS,
+      AVCodecID.AV_CODEC_ID_MP3,
+    );
+  }
 
   const preloadPromises = commonCodecs.map(async (codecId) => {
     const url = getWasmUrl("decoder", codecId);
@@ -320,8 +331,13 @@ function installRetryingFetch() {
   window.__streamixFetchPatched = true;
 
   const RETRYABLE = new Set([502, 503, 504]);
-  const MAX_ATTEMPTS = 6;
-  const BASE_BACKOFF_MS = 250;
+  // 4 attempts with 200ms base = up to 1.4s total (200 + 400 + 800ms).
+  // Originally 6×250ms (≈16s of spinner). The choki vauth hop usually
+  // recovers within the first or second retry; if it doesn't, the
+  // user is better served by getting an error fast and letting AVPlayer
+  // restart from a fresh URL than staring at a frozen frame for 16s.
+  const MAX_ATTEMPTS = 4;
+  const BASE_BACKOFF_MS = 200;
   const SHOULD_INTERCEPT = (url) => {
     try {
       const u = typeof url === "string" ? url : url.url;
