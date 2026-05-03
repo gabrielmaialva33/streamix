@@ -245,11 +245,32 @@ const WatchPartySync = {
                 this._setSyncLock();
 
                 switch (cmd.type) {
-                    case "play":
-                        this.videoEl.currentTime = cmd.position;
-                        this.videoEl.play().catch(() => {
-                        });
+                    case "play": {
+                        // iOS Safari with native HLS: writing `currentTime`
+                        // immediately before `.play()` aborts the play
+                        // promise (`AbortError: interrupted by new load`),
+                        // and the guest stays stuck paused. Trigger play()
+                        // first so the existing user-gesture chain stays
+                        // intact, then nudge position only if the drift
+                        // is large enough to matter — small drift is
+                        // explicitly fine per product direction.
+                        const playPromise = this.videoEl.play();
+                        const drift = Math.abs(
+                            this.videoEl.currentTime - cmd.position,
+                        );
+                        if (drift > (this.useConservativeSync ? 1.0 : 0.3)) {
+                            this.videoEl.currentTime = cmd.position;
+                        }
+                        if (playPromise && typeof playPromise.catch === "function") {
+                            playPromise.catch((err) => {
+                                console.warn(
+                                    "[WatchPartySync] play() rejected:",
+                                    err && err.message,
+                                );
+                            });
+                        }
                         break;
+                    }
 
                     case "pause":
                         this.videoEl.pause();
@@ -281,9 +302,20 @@ const WatchPartySync = {
         // Handle play/pause state mismatch first
         if (serverState === "playing" && this.videoEl.paused) {
             this._setSyncLock();
-            this.videoEl.currentTime = targetPosition;
-            this.videoEl.play().catch(() => {
-            });
+            // Play first, seek after (iOS native-HLS aborts the play
+            // promise if currentTime is written immediately before).
+            const playPromise = this.videoEl.play();
+            if (absDrift > (this.useConservativeSync ? 1.0 : 0.3)) {
+                this.videoEl.currentTime = targetPosition;
+            }
+            if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch((err) => {
+                    console.warn(
+                        "[WatchPartySync] catchup play() rejected:",
+                        err && err.message,
+                    );
+                });
+            }
             this._setAdaptiveBeacon("catchup");
             return;
         }
