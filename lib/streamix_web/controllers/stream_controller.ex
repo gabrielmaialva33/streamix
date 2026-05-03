@@ -79,15 +79,20 @@ defmodule StreamixWeb.StreamController do
   # --- Live channels: stream directly through Elixir (no redirect) ---
 
   defp stream_live_channel(conn, url, channel_id) do
-    case RedirectResolver.resolve(url) do
+    # Live channels deliberately bypass the RedirectResolver cache. The
+    # resolver halts the upstream connection after the first chunk to
+    # detect 2xx terminal status — fine for VOD redirect chains, but
+    # for live MPEG-TS that means we'd consume the TS sync header /
+    # SDT / PMT bytes before the player ever sees them, and the
+    # subsequent reconnect lands the player mid-stream → mpegts.js
+    # fails with DEMUXER_ERROR_COULD_NOT_OPEN. Resolve inline with a
+    # plain HEAD/GET that doesn't drain the body.
+    case resolve_live_url(url, 0) do
       {:ok, final_url} ->
-        # Resolved cleanly — clear any stale dead flag from prior failures.
         if channel_id, do: Channels.mark_alive(channel_id)
         do_stream_live(conn, final_url)
 
       {:error, {:unexpected_status, 404}} = error ->
-        # Upstream explicitly said the channel is gone. Hide it from listings
-        # for the recheck window so users don't keep hitting dead entries.
         if channel_id do
           Logger.warning("Stream proxy: marking channel #{channel_id} dead (upstream 404)")
           Channels.mark_dead(channel_id)
@@ -97,6 +102,56 @@ defmodule StreamixWeb.StreamController do
 
       {:error, reason} ->
         live_resolve_failed(conn, {:error, reason})
+    end
+  end
+
+  @max_redirects 5
+
+  defp resolve_live_url(_url, count) when count > @max_redirects do
+    {:error, :too_many_redirects}
+  end
+
+  defp resolve_live_url(url, count) do
+    opts = [
+      redirect: false,
+      retry: false,
+      headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
+      decode_body: false,
+      receive_timeout: 30_000,
+      connect_options: [timeout: 12_000]
+    ]
+
+    case Req.head(url, opts) do
+      {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
+        case List.first(Map.get(headers, "location", [])) do
+          nil ->
+            {:error, :missing_location}
+
+          location ->
+            next = absolute_location(url, location)
+            resolve_live_url(next, count + 1)
+        end
+
+      {:ok, %{status: status}} when status in 200..299 ->
+        {:ok, url}
+
+      {:ok, %{status: 405}} ->
+        # Upstream rejects HEAD — fall back to inline GET resolution.
+        {:ok, url}
+
+      {:ok, %{status: status}} ->
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp absolute_location(url, location) do
+    if String.starts_with?(location, "http") do
+      location
+    else
+      url |> URI.merge(location) |> URI.to_string()
     end
   end
 
