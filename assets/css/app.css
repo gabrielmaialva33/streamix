@@ -55,6 +55,17 @@ label {
     }
 }
 
+/* AVPlayer (libmedia) renders into #avplayer-mount. The lib stretches its
+   <canvas>/<video> to fill the container, which on widescreen monitors
+   produces a horizontally stretched image when fullscreening a 16:9
+   movie on a 21:9 panel. Force aspect-preserving fit. */
+#avplayer-mount canvas,
+#avplayer-mount video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+}
+
 /* Heroicons plugin */
 @plugin "../vendor/heroicons";
 
