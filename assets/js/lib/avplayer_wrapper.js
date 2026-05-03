@@ -710,7 +710,6 @@ export class AVPlayerWrapper {
         log.debug("Resuming AudioContext...");
         await window.AVPlayer.audioContext.resume();
         log.debug("AudioContext resumed, new state:", window.AVPlayer?.audioContext?.state);
-        );
       }
       log.debug("Calling player.play()...");
       // `subtitle: true` belongs here, not on the constructor (libmedia
