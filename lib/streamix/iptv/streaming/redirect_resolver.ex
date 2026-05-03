@@ -248,17 +248,46 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     end
   end
 
-  defp cache_result(key, {:ok, _final_url} = result) do
-    expires_at = System.system_time(:second) + @ok_ttl_seconds
-    :ets.insert(@table, {key, {:result, result}, expires_at})
-    redis_set_async(key, result, @ok_ttl_seconds)
+  defp cache_result(key, {:ok, final_url} = result) do
+    # Defensive: never cache a "final" URL that points back at our own
+    # signed-source endpoint. If we did, a subsequent SourceUrl.build/2
+    # would wrap a signed URL inside another signed URL, the browser
+    # would request /proxy?url=<signed>, and nginx would proxy_pass to
+    # itself — endless loop / 504. This shouldn't happen under normal
+    # walk_chain semantics, but the L2 Redis cache survives deploys
+    # so a one-time bug from an older build can keep replaying. Drop
+    # the entry instead of poisoning the cache.
+    if loops_back_to_self?(final_url) do
+      Logger.warning(
+        "RedirectResolver: refusing to cache self-referential final URL #{sanitize(final_url)}"
+      )
+
+      result
+    else
+      expires_at = System.system_time(:second) + @ok_ttl_seconds
+      :ets.insert(@table, {key, {:result, result}, expires_at})
+      redis_set_async(key, result, @ok_ttl_seconds)
+      result
+    end
   end
 
   defp cache_result(key, {:error, _reason} = result) do
     expires_at = System.system_time(:second) + @err_ttl_seconds
     :ets.insert(@table, {key, {:result, result}, expires_at})
     redis_set_async(key, result, @err_ttl_seconds)
+    result
   end
+
+  defp loops_back_to_self?(url) when is_binary(url) do
+    base = Application.get_env(:streamix, :stream_proxy_url)
+
+    case base do
+      base when is_binary(base) and base != "" -> String.starts_with?(url, base)
+      _ -> false
+    end
+  end
+
+  defp loops_back_to_self?(_), do: false
 
   # Redis I/O — best-effort. The local ETS layer is authoritative for
   # this process; Redis is just a "warm start" pool that survives
