@@ -282,6 +282,10 @@ defmodule StreamixWeb.StreamController do
   defp transient_error?({:resolver_crashed, _, _}), do: true
   defp transient_error?(:too_many_redirects), do: false
   defp transient_error?(:missing_location), do: false
+  # Resolver gave up after retrying through dead cluster IPs. Tell the
+  # player to retry — the provider's round-robin will eventually land
+  # on a healthy node.
+  defp transient_error?(:provider_unreachable), do: true
 
   defp transient_error?(%Req.TransportError{reason: reason}),
     do: reason in [:timeout, :closed, :econnrefused, :nxdomain, :ehostunreach]
