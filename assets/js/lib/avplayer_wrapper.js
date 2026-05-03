@@ -449,6 +449,11 @@ export class AVPlayerWrapper {
       // Set up event listeners
       this.setupEventListeners();
 
+      // Track live AVPlayer instances so we don't close the shared
+      // AudioContext while another player still needs it (probe +
+      // main, watch-party rejoin races).
+      window._avplayerInstanceCount = (window._avplayerInstanceCount || 0) + 1;
+
       this.isReady = true;
       this.onReady();
 
@@ -1078,6 +1083,12 @@ export class AVPlayerWrapper {
         console.warn("[AVPlayerWrapper] Error during destroy:", e);
       }
       this.player = null;
+    }
+
+    // Decrement live-instance counter and only close the shared
+    // AudioContext when the last AVPlayer is gone.
+    if (this.isReady && window._avplayerInstanceCount > 0) {
+      window._avplayerInstanceCount -= 1;
     }
 
     // Cleanup AudioContext to free memory

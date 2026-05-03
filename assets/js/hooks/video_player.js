@@ -736,13 +736,13 @@ const VideoPlayer = {
             }
         });
 
-        // Fullscreen events
-        document.addEventListener("fullscreenchange", () =>
-            this.playerUI.updateFullscreenUI(!!document.fullscreenElement),
-        );
-        document.addEventListener("webkitfullscreenchange", () =>
-            this.playerUI.updateFullscreenUI(!!document.fullscreenElement),
-        );
+        // Fullscreen events. Stash the handler so `destroyed()` can
+        // remove it — without that, every LiveView nav stacked one
+        // more listener on `document` for the lifetime of the SPA.
+        this._onFullscreenChange = () =>
+            this.playerUI.updateFullscreenUI(!!document.fullscreenElement);
+        document.addEventListener("fullscreenchange", this._onFullscreenChange);
+        document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);
 
         // LiveView commands
         this.handleEvent("set_quality", ({level}) => this.setQuality(level));
@@ -1208,10 +1208,6 @@ const VideoPlayer = {
             clearTimeout(this.audioCheckTimeout);
             this.audioCheckTimeout = null;
         }
-        if (this.nativePlaybackTimeout) {
-            clearTimeout(this.nativePlaybackTimeout);
-            this.nativePlaybackTimeout = null;
-        }
 
         const avContainer = this.el?.querySelector("#avplayer-mount");
         if (avContainer) {
@@ -1626,11 +1622,6 @@ const VideoPlayer = {
             this.playerUI.hideLoading();
             this.playerUI.hideError();
             this.video.removeEventListener("playing", playHandler);
-
-            if (this.nativePlaybackTimeout) {
-                clearTimeout(this.nativePlaybackTimeout);
-                this.nativePlaybackTimeout = null;
-            }
 
             // Initialize Native Buffer Manager for MP4/MKV streams
             if (!this.nativeBufferManager && this.contentType === "vod") {
@@ -2399,11 +2390,9 @@ const VideoPlayer = {
                     : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
             await this.avPlayer.load(proxyUrl, {ext});
 
-            // Apply volume settings
-            this.avPlayer.setVolume(this.avPlayerVolume);
-            if (this.avPlayerMuted) {
-                this.avPlayer.mute();
-            }
+            // Apply volume settings — wrapper exposes only `setVolume`
+            // (no `mute()`). Use volume 0 for the muted state.
+            this.avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume);
 
             // Mark as using AVPlayer
             this.usingAVPlayer = true;
@@ -2837,6 +2826,7 @@ const VideoPlayer = {
     // ============================================
 
     destroyed() {
+        this._destroyed = true;
         this.cleanup();
         this.networkMonitor?.stop();
         this.nativeBufferManager?.stop();
@@ -2845,6 +2835,12 @@ const VideoPlayer = {
         this.stopAVPlayerTimeUpdates();
         this._aspectObserver?.disconnect();
         this._aspectObserver = null;
+
+        if (this._onFullscreenChange) {
+            document.removeEventListener("fullscreenchange", this._onFullscreenChange);
+            document.removeEventListener("webkitfullscreenchange", this._onFullscreenChange);
+            this._onFullscreenChange = null;
+        }
 
         // Clear audio check timeout
         if (this.audioCheckTimeout) {
