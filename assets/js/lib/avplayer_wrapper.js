@@ -5,6 +5,7 @@
  * including AC3, DTS, EAC3 (Dolby Digital).
  */
 
+import { avplayerLogger as log } from "./logger";
 import { detectWebCodecsSupport } from "./codec_detector";
 import {
   AVPLAYER_CONFIG,
@@ -103,7 +104,7 @@ function getWasmUrl(type, codecId) {
 
   // For decoder type, we need a valid codecId
   if (type !== "decoder") {
-    console.warn(`[AVPlayerWrapper] Unknown WASM type: ${type}`);
+    log.warn(`Unknown WASM type: ${type}`);
     return null;
   }
 
@@ -120,7 +121,7 @@ function getWasmUrl(type, codecId) {
 
   const codecName = DECODER_WASM_MAP[codecId];
   if (!codecName) {
-    console.warn(`[AVPlayerWrapper] Unknown codec ID: ${codecId}`);
+    log.warn(`Unknown codec ID: ${codecId}`);
     return null;
   }
 
@@ -153,7 +154,7 @@ function getWasmUrlWithFallback(type, filename) {
     checkLocalWasmAvailability(localUrl).then((available) => {
       localWasmAvailable.set(localUrl, available);
       if (!available) {
-        console.warn(`[AVPlayerWrapper] Local WASM not available, will use CDN: ${filename}`);
+        log.warn(`Local WASM not available, will use CDN: ${filename}`);
       }
     });
 
@@ -219,11 +220,11 @@ export async function preloadCommonWasm({ stream_type, source_type } = {}) {
         const buffer = await response.arrayBuffer();
         const module = await WebAssembly.compile(buffer);
         preloadedWasm.set(url, module);
-        console.log(`[AVPlayerWrapper] Pre-loaded WASM: ${url.split("/").pop()}`);
+        log.debug(`Pre-loaded WASM: ${url.split("/").pop()}`);
       }
     } catch (e) {
       // Silently fail - pre-loading is optional optimization
-      console.debug(`[AVPlayerWrapper] Pre-load failed for ${url}:`, e.message);
+      log.debug(`Pre-load failed for ${url}:`, e.message);
     }
   });
 
@@ -240,7 +241,7 @@ export async function preloadCommonWasm({ stream_type, source_type } = {}) {
   }
 
   await Promise.allSettled(preloadPromises);
-  console.log(`[AVPlayerWrapper] Pre-loaded ${preloadedWasm.size} WASM modules`);
+  log.debug(`Pre-loaded ${preloadedWasm.size} WASM modules`);
 }
 
 /**
@@ -274,10 +275,7 @@ function configureWebpackPublicPath() {
   // Only set if not already configured (prevents conflicts with other modules)
   if (typeof __webpack_public_path__ === "undefined") {
     window.__webpack_public_path__ = `${AVPLAYER_CONFIG.localBasePath}/`;
-    console.log(
-      "[AVPlayerWrapper] Webpack public path configured:",
-      window.__webpack_public_path__,
-    );
+    log.debug("Webpack public path configured:", window.__webpack_public_path__);
   }
 }
 
@@ -369,12 +367,12 @@ function installRetryingFetch() {
       attempt++;
       if (attempt >= MAX_ATTEMPTS) break;
       const delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-      console.warn(
+      log.warn(
         `[StreamFetch] ${res.status} from upstream, retry ${attempt}/${MAX_ATTEMPTS} in ${delay}ms`,
       );
       await new Promise((r) => setTimeout(r, delay));
     }
-    console.error(
+    log.error(
       `[StreamFetch] gave up after ${MAX_ATTEMPTS} retries, returning last ${lastResponse?.status}`,
     );
     return lastResponse;
@@ -414,7 +412,7 @@ export class AVPlayerWrapper {
     }
 
     try {
-      console.log("[AVPlayerWrapper] Initializing...");
+      log.debug("Initializing...");
 
       // Step 1: Configure webpack public path for dynamic chunk loading
       configureWebpackPublicPath();
@@ -424,7 +422,7 @@ export class AVPlayerWrapper {
 
       // Step 3: Load cheap-polyfill.js FIRST
       await loadScript(scriptUrls.polyfill, "cheap-polyfill");
-      console.log("[AVPlayerWrapper] Loaded cheap-polyfill.js");
+      log.debug("Loaded cheap-polyfill.js");
 
       // Step 4: Configure polyfill URL for BigInt fallback
       if (typeof BigInt === "undefined" || BigInt === Number) {
@@ -433,7 +431,7 @@ export class AVPlayerWrapper {
 
       // Step 5: Load AVPlayer main script
       await loadScript(scriptUrls.player);
-      console.log("[AVPlayerWrapper] Loaded avplayer.js");
+      log.debug("Loaded avplayer.js");
 
       if (!window.AVPlayer) {
         throw new Error("AVPlayer not found after loading script");
@@ -444,11 +442,11 @@ export class AVPlayerWrapper {
         window.AVPlayer.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         // Create a dummy source to unlock audio on mobile
         window.AVPlayer.audioContext.createBufferSource();
-        console.log("[AVPlayerWrapper] AudioContext initialized");
+        log.debug("AudioContext initialized");
       }
 
       const accelerationConfig = getAVPlayerAccelerationConfig();
-      console.log("[AVPlayerWrapper] Acceleration config:", accelerationConfig);
+      log.debug("Acceleration config:", accelerationConfig);
 
       // Step 6: Create the player instance
       // Audio/Video sync strategy:
@@ -477,7 +475,7 @@ export class AVPlayerWrapper {
         container: this.container,
         getWasm: (type, codecId) => {
           const url = getWasmUrl(type, codecId);
-          console.log(`[AVPlayerWrapper] getWasm: type=${type}, codecId=${codecId}, url=${url}`);
+          log.debug(`getWasm: type=${type}, codecId=${codecId}, url=${url}`);
           return url;
         },
         enableHardware: accelerationConfig.enableHardware,
@@ -505,9 +503,9 @@ export class AVPlayerWrapper {
       this.isReady = true;
       this.onReady();
 
-      console.log("[AVPlayerWrapper] Initialized successfully");
+      log.debug("Initialized successfully");
     } catch (error) {
-      console.error("[AVPlayerWrapper] Failed to initialize:", error);
+      log.error("Failed to initialize:", error);
       this.onError(error);
       throw error;
     }
@@ -520,47 +518,47 @@ export class AVPlayerWrapper {
     if (!this.player) return;
 
     this.player.on("playing", () => {
-      console.log("[AVPlayerWrapper] Playing");
+      log.debug("Playing");
       this._playing = true;
       this.onPlay();
     });
 
     this.player.on("pause", () => {
-      console.log("[AVPlayerWrapper] Paused");
+      log.debug("Paused");
       this._playing = false;
       this.onPause();
     });
 
     this.player.on("ended", () => {
-      console.log("[AVPlayerWrapper] Ended");
+      log.debug("Ended");
       this._playing = false;
       this.onEnded();
     });
 
     this.player.on("error", (error) => {
-      console.error("[AVPlayerWrapper] Error event:", error);
+      log.error("Error event:", error);
       this.onError(error);
     });
 
     // Add more event listeners for debugging
     this.player.on("loadstart", () => {
-      console.log("[AVPlayerWrapper] Event: loadstart");
+      log.debug("Event: loadstart");
     });
 
     this.player.on("progress", (progress) => {
-      console.log("[AVPlayerWrapper] Event: progress", progress);
+      log.debug("Event: progress", progress);
     });
 
     this.player.on("canplay", () => {
-      console.log("[AVPlayerWrapper] Event: canplay");
+      log.debug("Event: canplay");
     });
 
     this.player.on("waiting", () => {
-      console.log("[AVPlayerWrapper] Event: waiting");
+      log.debug("Event: waiting");
     });
 
     this.player.on("stalled", () => {
-      console.log("[AVPlayerWrapper] Event: stalled");
+      log.debug("Event: stalled");
     });
 
     this.player.on("time", (time) => {
@@ -570,17 +568,17 @@ export class AVPlayerWrapper {
     });
 
     this.player.on("loaded", () => {
-      console.log("[AVPlayerWrapper] Loaded");
+      log.debug("Loaded");
       // Try to get duration from formatContext streams
       this._cacheDuration();
     });
 
     this.player.on("seeking", () => {
-      console.log("[AVPlayerWrapper] Seeking");
+      log.debug("Seeking");
     });
 
     this.player.on("seeked", () => {
-      console.log("[AVPlayerWrapper] Seeked");
+      log.debug("Seeked");
     });
   }
 
@@ -623,12 +621,12 @@ export class AVPlayerWrapper {
 
         if (detectedMs > 0 && detectedMs < MAX_DURATION_MS) {
           this._durationMs = detectedMs;
-          console.log("[AVPlayerWrapper] Cached duration:", this._durationMs, "ms");
+          log.debug("Cached duration:", this._durationMs, "ms");
           return;
         }
       }
     } catch (e) {
-      console.warn("[AVPlayerWrapper] Could not cache duration:", e);
+      log.warn("Could not cache duration:", e);
     }
   }
 
@@ -648,13 +646,13 @@ export class AVPlayerWrapper {
     }
 
     this.currentUrl = url;
-    console.log("[AVPlayerWrapper] Loading:", url);
-    console.log("[AVPlayerWrapper] Load options:", options);
-    console.log("[AVPlayerWrapper] Container:", this.container);
-    console.log("[AVPlayerWrapper] Player instance:", this.player);
+    log.debug("Loading:", url);
+    log.debug("Load options:", options);
+    log.debug("Container:", this.container);
+    log.debug("Player instance:", this.player);
 
     try {
-      console.log("[AVPlayerWrapper] Calling player.load()...");
+      log.debug("Calling player.load()...");
 
       // Create a timeout promise to detect if load hangs
       const timeoutPromise = new Promise((_, reject) => {
@@ -671,7 +669,7 @@ export class AVPlayerWrapper {
       const loadOptions = {};
       if (options.ext) {
         loadOptions.ext = options.ext;
-        console.log("[AVPlayerWrapper] Forcing format detection with ext:", options.ext);
+        log.debug("Forcing format detection with ext:", options.ext);
       }
       if (options.isLive) {
         loadOptions.isLive = true;
@@ -679,20 +677,17 @@ export class AVPlayerWrapper {
       this._isLive = !!options.isLive;
 
       const loadResult = this.player.load(url, loadOptions);
-      console.log("[AVPlayerWrapper] load() returned:", loadResult);
+      log.debug("load() returned:", loadResult);
 
       if (loadResult && typeof loadResult.then === "function") {
         // Race between load and timeout
         await Promise.race([loadResult, timeoutPromise]);
       }
 
-      console.log(
-        "[AVPlayerWrapper] Load complete, container innerHTML:",
-        this.container?.innerHTML?.substring(0, 200),
-      );
+      log.debug("Load complete");
     } catch (error) {
-      console.error("[AVPlayerWrapper] Load error:", error);
-      console.error("[AVPlayerWrapper] Error stack:", error?.stack);
+      log.error("Load error:", error);
+      log.error("Error stack:", error?.stack);
       this.onError(error);
       throw error;
     }
@@ -706,35 +701,33 @@ export class AVPlayerWrapper {
       throw new Error("Player not initialized");
     }
 
-    console.log("[AVPlayerWrapper] play() called, _playing:", this._playing);
-    console.log("[AVPlayerWrapper] AudioContext state:", window.AVPlayer?.audioContext?.state);
+    log.debug("play() called, _playing:", this._playing);
+    log.debug("AudioContext state:", window.AVPlayer?.audioContext?.state);
 
     try {
       // Resume AudioContext if suspended (required after user interaction)
       if (window.AVPlayer?.audioContext?.state === "suspended") {
-        console.log("[AVPlayerWrapper] Resuming AudioContext...");
+        log.debug("Resuming AudioContext...");
         await window.AVPlayer.audioContext.resume();
-        console.log(
-          "[AVPlayerWrapper] AudioContext resumed, new state:",
-          window.AVPlayer?.audioContext?.state,
+        log.debug("AudioContext resumed, new state:", window.AVPlayer?.audioContext?.state);
         );
       }
-      console.log("[AVPlayerWrapper] Calling player.play()...");
+      log.debug("Calling player.play()...");
       // `subtitle: true` belongs here, not on the constructor (libmedia
       // 1.3 typings put it on AVPlayerPlayOptions). Audio + video are
       // on by default.
       const playResult = this.player.play({ subtitle: true });
-      console.log("[AVPlayerWrapper] player.play() returned:", playResult);
+      log.debug("player.play() returned:", playResult);
       if (playResult && typeof playResult.then === "function") {
         await playResult;
       }
       // Manually set _playing in case event doesn't fire
       this._playing = true;
-      console.log("[AVPlayerWrapper] play() completed successfully, _playing:", this._playing);
+      log.debug("play() completed successfully, _playing:", this._playing);
       // Manually call onPlay since event might not fire on resume
       this.onPlay();
     } catch (error) {
-      console.error("[AVPlayerWrapper] Play error:", error);
+      log.error("Play error:", error);
       this.onError(error);
       throw error;
     }
@@ -745,15 +738,15 @@ export class AVPlayerWrapper {
    */
   async pause() {
     if (this.player) {
-      console.log("[AVPlayerWrapper] pause() called, _playing:", this._playing);
+      log.debug("pause() called, _playing:", this._playing);
       const pauseResult = this.player.pause();
-      console.log("[AVPlayerWrapper] player.pause() returned:", pauseResult);
+      log.debug("player.pause() returned:", pauseResult);
       if (pauseResult && typeof pauseResult.then === "function") {
         await pauseResult;
       }
       // Manually set _playing in case event doesn't fire
       this._playing = false;
-      console.log("[AVPlayerWrapper] pause() completed, _playing:", this._playing);
+      log.debug("pause() completed, _playing:", this._playing);
       // Manually call onPause since event might not fire
       this.onPause();
     }
@@ -775,12 +768,12 @@ export class AVPlayerWrapper {
     if (this.player) {
       // AVPlayer seek uses milliseconds as int64
       const timeMs = Math.floor(time * 1000);
-      console.log("[AVPlayerWrapper] Seeking to", time, "seconds (", timeMs, "ms)");
+      log.debug("Seeking to", time, "seconds (", timeMs, "ms)");
       try {
         await this.player.seek(BigInt(timeMs));
       } catch (e) {
         // Fallback without BigInt if needed
-        console.warn("[AVPlayerWrapper] Seek with BigInt failed, trying without:", e);
+        log.warn("Seek with BigInt failed, trying without:", e);
         await this.player.seek(timeMs);
       }
     }
@@ -937,7 +930,7 @@ export class AVPlayerWrapper {
         return audioTracks;
       }
     } catch (e) {
-      console.warn("[AVPlayerWrapper] Error getting audio tracks:", e);
+      log.warn("Error getting audio tracks:", e);
     }
 
     return [];
@@ -1020,7 +1013,7 @@ export class AVPlayerWrapper {
         return subtitleTracks;
       }
     } catch (e) {
-      console.warn("[AVPlayerWrapper] Error getting subtitle tracks:", e);
+      log.warn("Error getting subtitle tracks:", e);
     }
 
     return [];
@@ -1038,18 +1031,16 @@ export class AVPlayerWrapper {
       const currentTime = this.getCurrentTime();
       const wasPlaying = this._playing;
 
-      console.log(
-        `[AVPlayerWrapper] Selecting audio track: ${trackId}, currentTime: ${currentTime}`,
-      );
+      log.debug(`Selecting audio track: ${trackId}, currentTime: ${currentTime}`);
 
       // Switch the audio track
       await this.player.selectAudio(trackId);
-      console.log(`[AVPlayerWrapper] Audio track ${trackId} selected`);
+      log.debug(`Audio track ${trackId} selected`);
 
       // Force resync by seeking to current position
       // This ensures audio is at the same position as video
       if (currentTime > 0) {
-        console.log(`[AVPlayerWrapper] Resyncing audio to position: ${currentTime}`);
+        log.debug(`Resyncing audio to position: ${currentTime}`);
         await this.seek(currentTime);
 
         // Resume playback if it was playing
@@ -1058,9 +1049,9 @@ export class AVPlayerWrapper {
         }
       }
 
-      console.log(`[AVPlayerWrapper] Audio track switch complete with resync`);
+      log.debug(`Audio track switch complete with resync`);
     } catch (e) {
-      console.error("[AVPlayerWrapper] Error selecting audio track:", e);
+      log.error("Error selecting audio track:", e);
       throw e;
     }
   }
@@ -1073,7 +1064,7 @@ export class AVPlayerWrapper {
     if (!this.player) return;
 
     try {
-      console.log(`[AVPlayerWrapper] Selecting subtitle track: ${trackId}`);
+      log.debug(`Selecting subtitle track: ${trackId}`);
       if (trackId === -1) {
         // Disable subtitles - libmedia may have a specific method for this
         // For now, we'll try selectSubtitle with -1 or a special value
@@ -1085,9 +1076,9 @@ export class AVPlayerWrapper {
       } else {
         await this.player.selectSubtitle(trackId);
       }
-      console.log(`[AVPlayerWrapper] Subtitle track ${trackId} selected`);
+      log.debug(`Subtitle track ${trackId} selected`);
     } catch (e) {
-      console.error("[AVPlayerWrapper] Error selecting subtitle track:", e);
+      log.error("Error selecting subtitle track:", e);
       throw e;
     }
   }
@@ -1122,7 +1113,7 @@ export class AVPlayerWrapper {
       try {
         await this.player.destroy();
       } catch (e) {
-        console.warn("[AVPlayerWrapper] Error during destroy:", e);
+        log.warn("Error during destroy:", e);
       }
       this.player = null;
     }
@@ -1145,10 +1136,10 @@ export class AVPlayerWrapper {
           }
           await audioCtx.close();
           window.AVPlayer.audioContext = null;
-          console.log("[AVPlayerWrapper] AudioContext closed");
+          log.debug("AudioContext closed");
         }
       } catch (e) {
-        console.warn("[AVPlayerWrapper] Error closing AudioContext:", e);
+        log.warn("Error closing AudioContext:", e);
       }
     }
 
@@ -1156,7 +1147,7 @@ export class AVPlayerWrapper {
     this._playing = false;
     this._currentTimeMs = 0;
     this._durationMs = 0;
-    console.log("[AVPlayerWrapper] Destroyed");
+    log.debug("Destroyed");
   }
 }
 
@@ -1168,7 +1159,7 @@ export function detectAudioIssue(videoElement) {
   return new Promise((resolve) => {
     // Quick timeout - don't wait too long
     const timeout = setTimeout(() => {
-      console.log("[detectAudioIssue] Timeout - assuming no issue");
+      log.debug("[detectAudioIssue] Timeout - assuming no issue");
       resolve(false);
     }, 5000);
 
@@ -1179,9 +1170,7 @@ export function detectAudioIssue(videoElement) {
         if (videoElement.currentTime > 0.5) {
           clearTimeout(timeout);
           const hasAudio = videoElement.webkitAudioDecodedByteCount > 0;
-          console.log(
-            `[detectAudioIssue] webkitAudioDecodedByteCount: ${videoElement.webkitAudioDecodedByteCount}, hasAudio: ${hasAudio}`,
-          );
+          log.debug(`[detectAudioIssue] webkitAudioDecodedByteCount: ${videoElement.webkitAudioDecodedByteCount}, hasAudio: ${hasAudio}`);
           resolve(!hasAudio);
         } else if (!videoElement.paused) {
           requestAnimationFrame(checkAudio);
@@ -1205,7 +1194,7 @@ export function detectAudioIssue(videoElement) {
       const checkTracks = () => {
         clearTimeout(timeout);
         const hasAudioTracks = videoElement.audioTracks.length > 0;
-        console.log(`[detectAudioIssue] audioTracks count: ${videoElement.audioTracks.length}`);
+        log.debug(`[detectAudioIssue] audioTracks count: ${videoElement.audioTracks.length}`);
         resolve(!hasAudioTracks);
       };
 
@@ -1222,11 +1211,11 @@ export function detectAudioIssue(videoElement) {
     detectAudioWithWebAudioAPI(videoElement)
       .then((hasAudio) => {
         clearTimeout(timeout);
-        console.log(`[detectAudioIssue] Web Audio API detection: hasAudio=${hasAudio}`);
+        log.debug(`[detectAudioIssue] Web Audio API detection: hasAudio=${hasAudio}`);
         resolve(!hasAudio);
       })
       .catch((error) => {
-        console.warn("[detectAudioIssue] Web Audio API detection failed:", error);
+        log.warn("[detectAudioIssue] Web Audio API detection failed:", error);
         clearTimeout(timeout);
         resolve(false); // Assume no issue on error
       });
@@ -1276,7 +1265,7 @@ function detectAudioWithWebAudioAPI(videoElement) {
     cancel: () => {
       cancelled = true;
       cleanup();
-      console.log("[detectAudioWithWebAudioAPI] Detection cancelled");
+      log.debug("[detectAudioWithWebAudioAPI] Detection cancelled");
     },
   };
 
@@ -1297,7 +1286,7 @@ function detectAudioWithWebAudioAPI(videoElement) {
         source = audioContext.createMediaElementSource(videoElement);
       } catch (e) {
         // MediaElementSource may already exist for this element
-        console.warn("[detectAudioWithWebAudioAPI] Could not create MediaElementSource:", e);
+        log.warn("[detectAudioWithWebAudioAPI] Could not create MediaElementSource:", e);
         cleanup();
         activeAudioDetection = null;
         reject(e);

@@ -297,44 +297,6 @@ async function testNetwork() {
     }
 }
 
-/**
- * Run all diagnostic tests
- */
-export async function runAllDiagnostics(options = {}) {
-    const {onProgress} = options;
-    const tests = Object.values(DiagnosticTest);
-    const results = [];
-
-    for (let i = 0; i < tests.length; i++) {
-        const test = tests[i];
-
-        if (onProgress) {
-            onProgress({
-                current: i + 1,
-                total: tests.length,
-                test,
-            });
-        }
-
-        const result = await runTest(test);
-        results.push(result);
-    }
-
-    const summary = {
-        timestamp: Date.now(),
-        totalTests: tests.length,
-        passed: results.filter((r) => r.passed).length,
-        failed: results.filter((r) => !r.passed).length,
-        results,
-        recommendations: generateRecommendations(results),
-        capabilities: getCapabilitySummary(),
-    };
-
-    // Save results
-    saveDiagnosticResults(summary);
-
-    return summary;
-}
 
 /**
  * Run quick diagnostics (essential tests only)
@@ -546,64 +508,7 @@ function saveDiagnosticResults(summary) {
     }
 }
 
-/**
- * Load previous diagnostic results
- */
-export function loadDiagnosticResults() {
-    try {
-        const stored = localStorage.getItem(DIAGNOSTICS_KEY);
-        return stored ? JSON.parse(stored) : null;
-    } catch {
-        return null;
-    }
-}
 
-/**
- * Clear saved diagnostic results
- */
-export function clearDiagnosticResults() {
-    try {
-        localStorage.removeItem(DIAGNOSTICS_KEY);
-    } catch (e) {
-        console.warn("[PlayerDiagnostics] Failed to clear results:", e);
-    }
-}
 
-/**
- * Format diagnostic results for display
- */
-export function formatDiagnosticsForDisplay(summary) {
-    const lines = [];
 
-    lines.push("=== Player Diagnostics ===");
-    lines.push(`Ran ${summary.totalTests} tests: ${summary.passed} passed, ${summary.failed} failed`);
-    lines.push("");
 
-    for (const result of summary.results) {
-        const status = result.passed ? "✓" : "✗";
-        const name = result.test.replace(/_/g, " ");
-        lines.push(`${status} ${name}${result.error ? ` (${result.error})` : ""}`);
-    }
-
-    if (summary.recommendations.length > 0) {
-        lines.push("");
-        lines.push("Recommendations:");
-        for (const rec of summary.recommendations) {
-            lines.push(`• [${rec.priority.toUpperCase()}] ${rec.action}`);
-        }
-    }
-
-    return lines.join("\n");
-}
-
-export {DiagnosticTest};
-
-export default {
-    runAllDiagnostics,
-    runQuickDiagnostics,
-    diagnoseError,
-    loadDiagnosticResults,
-    clearDiagnosticResults,
-    formatDiagnosticsForDisplay,
-    DiagnosticTest,
-};

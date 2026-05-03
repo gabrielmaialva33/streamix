@@ -46,7 +46,7 @@ const sharedStallPrevention = {
 /**
  * Streaming configuration profiles for HLS.js and mpegts.js
  */
-export const StreamingProfiles = {
+const StreamingProfiles = {
   [StreamingMode.LOW_LATENCY]: {
     name: "Low Latency",
     description: "Optimized for live events with minimal delay",
@@ -263,115 +263,9 @@ export function getStreamingConfig(mode) {
   return StreamingProfiles[mode] || StreamingProfiles[StreamingMode.BALANCED];
 }
 
-/**
- * Merge user overrides with base configuration
- */
-export function mergeConfig(mode, overrides = {}) {
-  const baseConfig = getStreamingConfig(mode);
 
-  return {
-    ...baseConfig,
-    hls: { ...baseConfig.hls, ...overrides.hls },
-    mpegts: { ...baseConfig.mpegts, ...overrides.mpegts },
-  };
-}
 
-/**
- * Quality level presets for manual selection
- */
-export const QualityLevels = {
-  AUTO: -1,
-  LOW: { maxHeight: 480, label: "480p" },
-  MEDIUM: { maxHeight: 720, label: "720p" },
-  HIGH: { maxHeight: 1080, label: "1080p" },
-  ULTRA: { maxHeight: 2160, label: "4K" },
-};
 
-/**
- * Find the best matching quality level index from HLS levels
- */
-export function findQualityLevel(levels, targetHeight) {
-  if (!levels || levels.length === 0 || targetHeight === -1) {
-    return -1;
-  }
-
-  let bestMatch = -1;
-  let closestDiff = Infinity;
-
-  levels.forEach((level, index) => {
-    const diff = Math.abs(level.height - targetHeight);
-    if (diff < closestDiff && level.height <= targetHeight) {
-      closestDiff = diff;
-      bestMatch = index;
-    }
-  });
-
-  if (bestMatch === -1 && levels.length > 0) {
-    bestMatch = 0;
-  }
-
-  return bestMatch;
-}
-
-/**
- * Codec-specific streaming profiles
- */
-export const CodecProfiles = {
-  av1: {
-    name: "AV1",
-    efficiency: 0.5,
-    maxBitrates: {
-      2160: 12000,
-      1080: 4500,
-      720: 2500,
-      480: 1200,
-    },
-    preferHardwareAcceleration: true,
-    hlsOverrides: {
-      maxBufferLength: 120,
-      maxBufferSize: 120 * 1000 * 1000,
-    },
-  },
-  hevc: {
-    name: "HEVC/H.265",
-    efficiency: 0.6,
-    maxBitrates: {
-      2160: 15000,
-      1080: 6000,
-      720: 3500,
-      480: 1500,
-    },
-    preferHardwareAcceleration: true,
-    hlsOverrides: {
-      maxBufferLength: 90,
-      maxBufferSize: 90 * 1000 * 1000,
-    },
-  },
-  vp9: {
-    name: "VP9",
-    efficiency: 0.65,
-    maxBitrates: {
-      2160: 16000,
-      1080: 6500,
-      720: 3800,
-      480: 1700,
-    },
-    preferHardwareAcceleration: true,
-    hlsOverrides: {},
-  },
-  h264: {
-    name: "H.264/AVC",
-    efficiency: 1.0,
-    maxBitrates: {
-      2160: 25000,
-      1080: 8000,
-      720: 5000,
-      480: 2500,
-    },
-    preferHardwareAcceleration: false,
-    hlsOverrides: {},
-  },
-};
 
 /**
  * Advanced feature flags for experimental APIs
@@ -401,30 +295,6 @@ export const FeatureFlags = {
   },
 };
 
-/**
- * Get codec-optimized HLS config
- */
-export function getCodecOptimizedConfig(mode, codec) {
-  const baseConfig = getStreamingConfig(mode);
-  const codecProfile = CodecProfiles[codec];
-
-  if (!codecProfile) {
-    return baseConfig;
-  }
-
-  return {
-    ...baseConfig,
-    hls: {
-      ...baseConfig.hls,
-      ...codecProfile.hlsOverrides,
-    },
-    codec: {
-      name: codec,
-      efficiency: codecProfile.efficiency,
-      maxBitrates: codecProfile.maxBitrates,
-    },
-  };
-}
 
 /**
  * Determine if experimental features should be used

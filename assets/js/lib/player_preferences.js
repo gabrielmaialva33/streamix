@@ -59,26 +59,6 @@ function saveDeviceCompatibility(compat) {
     }
 }
 
-/**
- * Record codec compatibility result
- * @param {string} codec - Codec name (e.g., 'ac3', 'hevc', 'av1')
- * @param {boolean} nativeSupport - Whether native player supports it
- * @param {string} fallbackPlayer - Which player worked (e.g., 'avplayer', 'native')
- */
-export function recordCodecCompatibility(codec, nativeSupport, fallbackPlayer = null) {
-    const compat = getDeviceCompatibility();
-
-    compat.codecs[codec] = {
-        nativeSupport,
-        fallbackPlayer,
-        testedAt: Date.now(),
-    };
-
-    saveDeviceCompatibility(compat);
-    console.log(
-        `[PlayerPreferences] Recorded codec compatibility: ${codec} -> ${fallbackPlayer || "native"}`,
-    );
-}
 
 /**
  * Record which player worked for a specific content type
@@ -125,19 +105,6 @@ export function getRecommendedPlayer(contentType) {
     return null;
 }
 
-/**
- * Check if a specific codec needs AVPlayer fallback
- * @param {string} codec - Codec to check
- * @returns {boolean} True if AVPlayer is recommended
- */
-export function needsAVPlayerForCodec(codec) {
-    const compat = getDeviceCompatibility();
-    const codecData = compat.codecs[codec];
-
-    if (!codecData) return false;
-
-    return codecData.fallbackPlayer === "avplayer" && !codecData.nativeSupport;
-}
 
 /**
  * Get full device compatibility report
@@ -155,16 +122,6 @@ export function getDeviceCompatibilityReport() {
     };
 }
 
-/**
- * Clear device compatibility data (for testing/reset)
- */
-export function clearDeviceCompatibility() {
-    try {
-        localStorage.removeItem(DEVICE_COMPAT_KEY);
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to clear device compatibility:", e);
-    }
-}
 
 /**
  * Get all stored preferences
@@ -399,26 +356,3 @@ export function clearAllPlaybackPositions() {
     }
 }
 
-export default {
-    getPreferences,
-    savePreference,
-    saveVolume,
-    saveMuted,
-    saveAudioTrack,
-    saveSubtitleTrack,
-    savePlaybackRate,
-    savePreferAVPlayer,
-    clearContentPreferences,
-    clearAllPreferences,
-    savePlaybackPosition,
-    getPlaybackPosition,
-    clearPlaybackPosition,
-    clearAllPlaybackPositions,
-    // Device Codec Memory
-    recordCodecCompatibility,
-    recordPlayerSuccess,
-    getRecommendedPlayer,
-    needsAVPlayerForCodec,
-    getDeviceCompatibilityReport,
-    clearDeviceCompatibility,
-};
