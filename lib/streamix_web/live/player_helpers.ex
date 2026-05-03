@@ -229,59 +229,26 @@ defmodule StreamixWeb.PlayerHelpers do
   defp content_id(%{id: id}) when is_integer(id), do: id
   defp content_id(_), do: nil
 
-  # How long we're willing to block the LiveView mount waiting for the
-  # redirect resolver to finish. A hot cache hit returns in <5ms; on a
-  # cold cache (e.g. user lands directly on /watch without going through
-  # the detail page first) we wait up to this long for the chain to
-  # resolve so we can hand the browser the direct signed URL — that's
-  # almost always faster than letting the token + 302 + browser-side
-  # chain dance play out, which the Chrome ORB heuristic also tends to
-  # block on intermediate hops.
-  @resolve_block_timeout 3_000
-
   # VOD fast path: if the redirect-chain resolver already has a hot
   # cache entry for this content (e.g. because the Detail page fired
   # a prewarm a few seconds ago), build a signed URL pointing straight
   # at `source.mahina.cloud`. The browser then skips the Phoenix 302
-  # bounce entirely — that's one full RTT shaved off the first byte
-  # plus avoids Chrome's ORB blocking intermediate redirect bodies.
+  # bounce entirely.
   #
-  # Cache miss + resolver still slow → fall back to the token-redirect
-  # path. The StreamController will eventually resolve the same chain.
+  # Cache miss → fall back to the token-redirect path. We deliberately
+  # do NOT block the LiveView mount waiting for the resolver to warm
+  # up: that path adds noticeable latency for users landing directly
+  # on /watch without coming via the detail page, and doesn't help live
+  # channels at all. The StreamController on the token path will
+  # resolve the chain on its own and the prewarm task fired by mount
+  # keeps the cache warm for retries.
   defp vod_stream_url(type, id, user_id, token) do
     with {:ok, upstream_url} <- StreamToken.upstream_url(type, id, user_id),
-         {:ok, final_url} <- resolve_with_block(upstream_url),
+         {:ok, final_url} <- RedirectResolver.peek(upstream_url),
          {:ok, signed_url} <- SourceUrl.build(final_url) do
       signed_url
     else
       _ -> build_token_proxy_url(token)
-    end
-  end
-
-  defp resolve_with_block(upstream_url) do
-    case RedirectResolver.peek(upstream_url) do
-      {:ok, _} = ok ->
-        ok
-
-      :miss ->
-        task =
-          Task.Supervisor.async_nolink(
-            Streamix.TaskSupervisor,
-            fn ->
-              RedirectResolver.resolve(upstream_url, stop_fn: prewarm_stop_fn(upstream_url))
-            end
-          )
-
-        case Task.yield(task, @resolve_block_timeout) do
-          {:ok, {:ok, _final} = ok} ->
-            ok
-
-          _ ->
-            # Don't shut down the task — let it keep running so the
-            # cache is warm for the next attempt (player retry, peer,
-            # whatever). The :miss return triggers the token fallback.
-            :miss
-        end
     end
   end
 
