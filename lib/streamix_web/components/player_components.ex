@@ -101,17 +101,14 @@ defmodule StreamixWeb.PlayerComponents do
         </div>
       </div>
 
-      <%!-- Video element. preload="auto" tells the browser to start
-           fetching as soon as the element is wired up — combined with
-           the RedirectResolver prewarm, the upstream chain is already
-           hot by the time the network stack issues the first range
-           request. --%>
+      <%!-- Video element. AVPlayer / hls.js / mpegts.js manage source
+           via MediaSource Extensions — leaving preload at the browser
+           default avoids confusing the engine with parallel fetches. --%>
       <video
         id="video-element"
         class="absolute inset-0 w-full h-full object-contain"
         autoplay
         playsinline
-        preload="auto"
       />
 
       <%!-- Controls overlay --%>
