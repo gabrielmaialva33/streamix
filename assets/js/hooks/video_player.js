@@ -1202,9 +1202,10 @@ const VideoPlayer = {
             this.nativePlaybackTimeout = null;
         }
 
-        const avContainer = this.el?.querySelector("#avplayer-container");
+        const avContainer = this.el?.querySelector("#avplayer-mount");
         if (avContainer) {
-            avContainer.remove();
+            avContainer.replaceChildren();
+            avContainer.classList.add("hidden");
         }
 
         this.usingAVPlayer = false;
@@ -1873,10 +1874,11 @@ const VideoPlayer = {
             // Lazy load AVPlayer
             const {AVPlayerWrapper} = await loadAVPlayer();
 
-            const avContainer = document.createElement("div");
-            avContainer.id = "avplayer-container";
-            avContainer.className = "absolute inset-0 z-0";
-            this.el.appendChild(avContainer);
+            // Use server-rendered mount (phx-update="ignore") so the
+            // canvas survives LiveView patches in watch-party rooms.
+            const avContainer = this.el.querySelector("#avplayer-mount");
+            avContainer.replaceChildren();
+            avContainer.classList.remove("hidden");
 
             this.video.classList.add("hidden");
             this.video.src = "";
@@ -2352,14 +2354,10 @@ const VideoPlayer = {
             if (!this.avPlayer) {
                 const {AVPlayerWrapper} = await import("../lib/avplayer_wrapper.js");
 
-                // Create container if it doesn't exist
-                let avContainer = this.el.querySelector("#avplayer-container");
-                if (!avContainer) {
-                    avContainer = document.createElement("div");
-                    avContainer.id = "avplayer-container";
-                    avContainer.className = "absolute inset-0 z-0";
-                    this.el.appendChild(avContainer);
-                }
+                // Use server-rendered mount (phx-update="ignore").
+                const avContainer = this.el.querySelector("#avplayer-mount");
+                avContainer.replaceChildren();
+                avContainer.classList.remove("hidden");
 
                 this.avPlayer = new AVPlayerWrapper({
                     container: avContainer,
@@ -2399,8 +2397,6 @@ const VideoPlayer = {
             // Mark as using AVPlayer
             this.usingAVPlayer = true;
             this.video.classList.add("hidden");
-            const avContainer = this.el.querySelector("#avplayer-container");
-            if (avContainer) avContainer.classList.remove("hidden");
 
             // Seek to saved position
             if (seekTime > 0) {
@@ -2448,9 +2444,10 @@ const VideoPlayer = {
             this.avPlayer = null;
         }
 
-        const avContainer = this.el.querySelector("#avplayer-container");
+        const avContainer = this.el.querySelector("#avplayer-mount");
         if (avContainer) {
-            avContainer.remove();
+            avContainer.replaceChildren();
+            avContainer.classList.add("hidden");
         }
 
         this.video.classList.remove("hidden");

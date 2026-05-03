@@ -101,6 +101,18 @@ defmodule StreamixWeb.PlayerComponents do
         </div>
       </div>
 
+      <%!-- AVPlayer mount point. AVPlayer renders its canvas inside
+           this div. Declared server-side with `phx-update="ignore"`
+           so any LiveView patch (watch-party presence ticks, chat
+           stream updates, sync beacons) keeps the canvas intact —
+           if we let the JS hook `appendChild` a stranger node, the
+           next diff wipes it and you end up with audio-only. --%>
+      <div
+        id="avplayer-mount"
+        phx-update="ignore"
+        class="absolute inset-0 z-0 hidden"
+      />
+
       <%!-- Video element. AVPlayer / hls.js / mpegts.js manage source
            via MediaSource Extensions — leaving preload at the browser
            default avoids confusing the engine with parallel fetches. --%>
