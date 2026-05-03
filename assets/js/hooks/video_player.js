@@ -1920,9 +1920,10 @@ const VideoPlayer = {
             const avPlayerUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
 
             const ext = getFileExtension(this.streamUrl, this.sourceType, this.currentStreamType);
-            log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext);
+            const isLive = this.contentType === "live";
+            log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext, "isLive:", isLive);
 
-            await this.avPlayer.load(avPlayerUrl, {ext});
+            await this.avPlayer.load(avPlayerUrl, {ext, isLive});
 
             if (currentTime > 0) {
                 await this.avPlayer.seek(currentTime);
@@ -2388,7 +2389,8 @@ const VideoPlayer = {
                 this.sourceType === "gindex"
                     ? "mkv"
                     : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
-            await this.avPlayer.load(proxyUrl, {ext});
+            const isLive = this.contentType === "live";
+            await this.avPlayer.load(proxyUrl, {ext, isLive});
 
             // Apply volume settings — wrapper exposes only `setVolume`
             // (no `mute()`). Use volume 0 for the muted state.

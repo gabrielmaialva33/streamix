@@ -273,20 +273,33 @@ function configureWebpackPublicPath() {
 /**
  * Prefer the browser's native decode pipeline when the full WebCodecs
  * decode path is available; otherwise fall back to the existing WASM path.
+ *
+ * libmedia treats `enableHardware` and `enableWebCodecs` as independent
+ * toggles — the previous coupling forced both on/off together, hiding
+ * the case where a UA has WebCodecs but no usable hardware decoder for
+ * the codec at hand (Linux Chrome with HEVC, for instance).
  */
 export function getAVPlayerAccelerationConfig() {
   const webCodecs = detectWebCodecsSupport();
-  const hasDecodePipeline =
+  const hasWebCodecs =
     webCodecs.features.videoDecoder &&
     webCodecs.features.audioDecoder &&
     webCodecs.features.videoFrame &&
     typeof EncodedVideoChunk !== "undefined" &&
     typeof EncodedAudioChunk !== "undefined";
 
+  // Hardware acceleration is gated by both WebCodecs availability AND
+  // whether the host actually offers GPU video decoding. We can't
+  // perfectly probe this synchronously — `MediaCapabilities` would be
+  // the right call but it's async — so use WebCodecs as a strong
+  // proxy: if the platform exposes WebCodecs at all it usually has
+  // hardware decode for h264 + aac, the codecs we care about most.
+  const hasHardware = hasWebCodecs;
+
   return {
-    enableWebCodecs: hasDecodePipeline,
-    enableHardware: hasDecodePipeline,
-    mode: hasDecodePipeline ? "webcodecs-hardware-preferred" : "wasm-fallback",
+    enableWebCodecs: hasWebCodecs,
+    enableHardware: hasHardware,
+    mode: hasWebCodecs ? "webcodecs-hardware-preferred" : "wasm-fallback",
   };
 }
 
@@ -427,6 +440,23 @@ export class AVPlayerWrapper {
       // - Fall back to WASM decoders for browsers/codecs that still need compatibility
       // - Minimize AudioWorklet buffer to reduce audio latency
       // - Enable jitter buffer for smoother sync adjustments
+      // Audio worklet buffer: 10 is the libmedia default. We previously
+      // forced it down to 4 for "low latency", but on low-end Android
+      // Chrome and older iPhones a buffer that small underruns and the
+      // audio crackles or drops out. Detect mobile and back off to a
+      // safer value there.
+      const isLowEndMobile =
+        /Android|iPhone|iPad/i.test(navigator.userAgent) &&
+        (navigator.hardwareConcurrency || 4) <= 4;
+      const audioWorkletBufferLength = isLowEndMobile ? 10 : 6;
+
+      // Jitter buffer: previously hard-pinned to 0.2-1s for "tight sync".
+      // That works on a clean desktop network but starves on flaky
+      // mobile, especially when the proxy chain is slow. Use a relaxed
+      // default and only tighten on capable hardware.
+      const jitterBufferMin = isLowEndMobile ? 0.5 : 0.3;
+      const jitterBufferMax = isLowEndMobile ? 3 : 1.5;
+
       this.player = new window.AVPlayer({
         container: this.container,
         getWasm: (type, codecId) => {
@@ -436,14 +466,16 @@ export class AVPlayerWrapper {
         },
         enableHardware: accelerationConfig.enableHardware,
         enableWebCodecs: accelerationConfig.enableWebCodecs,
-        enableAudioWorklet: true, // Enable AudioWorklet for lower latency audio
-        audioWorkletBufferLength: 4, // Smaller buffer = lower latency (default 10)
-        enableJitterBuffer: true, // Enable jitter buffer for A/V sync
-        jitterBufferMax: 1, // Max 1 second buffer (tighter sync)
-        jitterBufferMin: 0.2, // Min 200ms buffer
-        preLoadTime: 1, // Faster start, less pre-buffering
-        subtitle: true, // Enable subtitle rendering
-        loop: false,
+        enableAudioWorklet: true,
+        audioWorkletBufferLength,
+        enableJitterBuffer: true,
+        jitterBufferMin,
+        jitterBufferMax,
+        preLoadTime: 1,
+        // NOTE: `subtitle: true` does NOT belong here. It's a `play()`
+        // option (`AVPlayerPlayOptions`), not a constructor option, and
+        // libmedia silently ignored it. We pass it via `play()` below.
+        // `loop: false` is also dropped — it's the libmedia default.
       });
 
       // Set up event listeners
@@ -537,64 +569,46 @@ export class AVPlayerWrapper {
   }
 
   /**
-   * Cache the duration from the player's format context
+   * Cache the duration from the player's format context. Each stream
+   * exposes its own `timeBase: { num, den }` (or `{numerator, denominator}`
+   * across libmedia minor bumps). Duration is in stream-time units, so
+   * `duration_ms = duration * (num / den) * 1000`. The previous version
+   * tried to *guess* the timescale by trying 90000, 48000, 44100,
+   * 1000000 in turn — which worked by luck on most files but produced
+   * wrong durations on anything with an unusual timeBase.
    */
   _cacheDuration() {
     try {
-      if (this.player?.formatContext?.streams) {
-        const streams = this.player.formatContext.streams;
-        for (let i = 0; i < streams.length; i++) {
-          const stream = streams[i];
-          if (stream?.duration) {
-            // Duration is in stream's timeBase, convert to milliseconds
-            // For now, assume it's already in a usable format
-            const durationValue =
-              typeof stream.duration === "bigint" ? Number(stream.duration) : stream.duration;
-            if (durationValue > 0) {
-              // Duration might be in various units, try to detect
-              // Common timebase values and max reasonable duration (12 hours)
-              const MAX_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours in ms
+      const streams = this.player?.formatContext?.streams;
+      if (!streams) return;
 
-              let detectedMs;
-              if (durationValue > 1000000000) {
-                // Very large: likely microseconds (divide by 1000 to get ms)
-                detectedMs = durationValue / 1000;
-              } else if (durationValue > 1000000) {
-                // Large: likely already in ms
-                detectedMs = durationValue;
-              } else {
-                // Small: likely seconds
-                detectedMs = durationValue * 1000;
-              }
+      const MAX_DURATION_MS = 12 * 60 * 60 * 1000;
 
-              // Validate: if still too large, try more aggressive conversion
-              if (detectedMs > MAX_DURATION_MS) {
-                // Might be in timescale units (e.g., 90000 Hz for MPEG-TS)
-                // Try dividing by common timescales
-                const timescales = [90000, 48000, 44100, 1000000];
-                for (const ts of timescales) {
-                  const tryMs = (durationValue / ts) * 1000;
-                  if (tryMs > 0 && tryMs < MAX_DURATION_MS) {
-                    detectedMs = tryMs;
-                    console.log(`[AVPlayerWrapper] Duration adjusted with timescale ${ts}`);
-                    break;
-                  }
-                }
-              }
+      for (const stream of streams) {
+        if (!stream?.duration) continue;
 
-              // Final sanity check: cap at max duration
-              if (detectedMs > MAX_DURATION_MS) {
-                console.warn(`[AVPlayerWrapper] Duration ${detectedMs}ms exceeds max, ignoring`);
-                detectedMs = 0; // Will fallback to other methods
-              }
+        const durationValue =
+          typeof stream.duration === "bigint" ? Number(stream.duration) : stream.duration;
+        if (!(durationValue > 0)) continue;
 
-              if (detectedMs > 0) {
-                this._durationMs = detectedMs;
-                console.log("[AVPlayerWrapper] Cached duration:", this._durationMs, "ms");
-                break;
-              }
-            }
-          }
+        const tb = stream.timeBase || stream.time_base;
+        const num = tb?.num ?? tb?.numerator;
+        const den = tb?.den ?? tb?.denominator;
+
+        let detectedMs = 0;
+        if (num > 0 && den > 0) {
+          detectedMs = (durationValue * num * 1000) / den;
+        } else {
+          // Fallback when libmedia hasn't populated timeBase yet:
+          // assume the value is already in microseconds (FFmpeg's
+          // canonical AV_TIME_BASE = 1_000_000).
+          detectedMs = durationValue / 1000;
+        }
+
+        if (detectedMs > 0 && detectedMs < MAX_DURATION_MS) {
+          this._durationMs = detectedMs;
+          console.log("[AVPlayerWrapper] Cached duration:", this._durationMs, "ms");
+          return;
         }
       }
     } catch (e) {
@@ -631,13 +645,22 @@ export class AVPlayerWrapper {
         setTimeout(() => reject(new Error("Load timeout after 30 seconds")), 30000);
       });
 
-      // Build load options for AVPlayer
-      // ext: forces format detection for URLs without extensions (like /api/stream/proxy?token=...)
+      // Build load options for AVPlayer.
+      //   ext     – forces format detection for URLs without extensions
+      //             (`/api/stream/proxy?token=...`).
+      //   isLive  – tells libmedia to use the live A/V clock + dropping
+      //             strategy instead of the VOD jitter buffer. Without
+      //             this, live TS streams treated as VOD will drift and
+      //             stutter on long sessions.
       const loadOptions = {};
       if (options.ext) {
         loadOptions.ext = options.ext;
         console.log("[AVPlayerWrapper] Forcing format detection with ext:", options.ext);
       }
+      if (options.isLive) {
+        loadOptions.isLive = true;
+      }
+      this._isLive = !!options.isLive;
 
       const loadResult = this.player.load(url, loadOptions);
       console.log("[AVPlayerWrapper] load() returned:", loadResult);
@@ -681,7 +704,10 @@ export class AVPlayerWrapper {
         );
       }
       console.log("[AVPlayerWrapper] Calling player.play()...");
-      const playResult = this.player.play();
+      // `subtitle: true` belongs here, not on the constructor (libmedia
+      // 1.3 typings put it on AVPlayerPlayOptions). Audio + video are
+      // on by default.
+      const playResult = this.player.play({ subtitle: true });
       console.log("[AVPlayerWrapper] player.play() returned:", playResult);
       if (playResult && typeof playResult.then === "function") {
         await playResult;
