@@ -71,9 +71,16 @@ defmodule Streamix.Iptv.EpgParser do
       </tv>
   """
   def parse_xmltv(xml) when is_binary(xml) do
+    # `fetch_fun` short-circuits the xmerl DTD resolver. XMLTV documents
+    # carry a `<!DOCTYPE tv SYSTEM "xmltv.dtd">` declaration that would
+    # otherwise make xmerl try to read `xmltv.dtd` from the working
+    # directory and crash with `{:error, :enoent}`. We don't need the
+    # DTD to xpath-extract programme nodes.
+    no_dtd_fetch = fn _, state -> {:ok, ~c"", state} end
+
     programmes =
       xml
-      |> SweetXml.parse(quiet: true)
+      |> SweetXml.parse(quiet: true, fetch_fun: no_dtd_fetch)
       |> SweetXml.xpath(
         ~x"//programme"l,
         channel: ~x"./@channel"s,
