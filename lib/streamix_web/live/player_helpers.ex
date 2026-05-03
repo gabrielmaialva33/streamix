@@ -8,7 +8,6 @@ defmodule StreamixWeb.PlayerHelpers do
   alias Streamix.Iptv
   alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Streaming.RedirectResolver
-  alias Streamix.Iptv.Streaming.SourceUrl
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 
@@ -136,21 +135,18 @@ defmodule StreamixWeb.PlayerHelpers do
   # --- Private ---
 
   def resolve_stream_url("live_channel", channel, _provider, user_id) do
-    # Live channels stream directly through the BEAM (chunked send),
-    # so the direct-source fast path doesn't apply. Always use the
-    # token proxy.
     token = StreamToken.sign_channel(channel.id, user_id)
     {:ok, build_token_proxy_url(token)}
   end
 
   def resolve_stream_url("movie", movie, _provider, user_id) do
     token = StreamToken.sign_movie(movie.id, user_id)
-    {:ok, vod_stream_url("movie", movie.id, user_id, token)}
+    {:ok, build_token_proxy_url(token)}
   end
 
   def resolve_stream_url("episode", episode, _provider, user_id) do
     token = StreamToken.sign_episode(episode.id, user_id)
-    {:ok, vod_stream_url("episode", episode.id, user_id, token)}
+    {:ok, build_token_proxy_url(token)}
   end
 
   def resolve_stream_url("gindex", movie, _provider, user_id) do
@@ -228,29 +224,6 @@ defmodule StreamixWeb.PlayerHelpers do
 
   defp content_id(%{id: id}) when is_integer(id), do: id
   defp content_id(_), do: nil
-
-  # VOD fast path: if the redirect-chain resolver already has a hot
-  # cache entry for this content (e.g. because the Detail page fired
-  # a prewarm a few seconds ago), build a signed URL pointing straight
-  # at `source.mahina.cloud`. The browser then skips the Phoenix 302
-  # bounce entirely.
-  #
-  # Cache miss → fall back to the token-redirect path. We deliberately
-  # do NOT block the LiveView mount waiting for the resolver to warm
-  # up: that path adds noticeable latency for users landing directly
-  # on /watch without coming via the detail page, and doesn't help live
-  # channels at all. The StreamController on the token path will
-  # resolve the chain on its own and the prewarm task fired by mount
-  # keeps the cache warm for retries.
-  defp vod_stream_url(type, id, user_id, token) do
-    with {:ok, upstream_url} <- StreamToken.upstream_url(type, id, user_id),
-         {:ok, final_url} <- RedirectResolver.peek(upstream_url),
-         {:ok, signed_url} <- SourceUrl.build(final_url) do
-      signed_url
-    else
-      _ -> build_token_proxy_url(token)
-    end
-  end
 
   defp get_gindex_episode_url(episode) do
     case Gindex.get_episode_url(episode.id) do
