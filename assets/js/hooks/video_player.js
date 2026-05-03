@@ -113,6 +113,7 @@ const VideoPlayer = {
         this.setupEventListeners();
         this.setupNetworkMonitor();
         this.setupKeyboardShortcuts();
+        this.setupAspectRatio();
         this.trackWatchTime();
 
         // Configure error reporter to send errors to backend
@@ -2515,6 +2516,99 @@ const VideoPlayer = {
     },
 
     // ============================================
+    // Aspect Ratio Toggle (settings menu)
+    // ============================================
+
+    setupAspectRatio() {
+        const STORAGE_KEY = "streamix:player:aspect";
+        const validModes = ["auto", "cover", "16-9", "4-3", "native"];
+        const stored = (() => {
+            try {
+                return localStorage.getItem(STORAGE_KEY);
+            } catch (_) {
+                return null;
+            }
+        })();
+        const initial = validModes.includes(stored) ? stored : "auto";
+
+        const apply = (mode) => {
+            const targets = [];
+            if (this.video) targets.push(this.video);
+            // AVPlayer's canvas + any <video> it nests for hardware decode.
+            const mount = this.el.querySelector("#avplayer-mount");
+            if (mount) {
+                targets.push(...mount.querySelectorAll("canvas, video"));
+            }
+            for (const el of targets) {
+                el.style.objectFit = "";
+                el.style.aspectRatio = "";
+                switch (mode) {
+                    case "cover":
+                        el.style.objectFit = "cover";
+                        break;
+                    case "16-9":
+                        el.style.objectFit = "contain";
+                        el.style.aspectRatio = "16 / 9";
+                        break;
+                    case "4-3":
+                        el.style.objectFit = "contain";
+                        el.style.aspectRatio = "4 / 3";
+                        break;
+                    case "native":
+                        el.style.objectFit = "none";
+                        break;
+                    case "auto":
+                    default:
+                        // Falls back to the Tailwind class `object-contain`
+                        // already on the element.
+                        break;
+                }
+            }
+            // Update check icons in the menu.
+            this.el.querySelectorAll(".aspect-check").forEach((el) => {
+                el.classList.toggle(
+                    "hidden",
+                    el.dataset.aspectCheck !== mode,
+                );
+            });
+        };
+
+        apply(initial);
+
+        this.el.querySelectorAll(".aspect-option").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const mode = btn.dataset.aspectMode;
+                if (!validModes.includes(mode)) return;
+                try {
+                    localStorage.setItem(STORAGE_KEY, mode);
+                } catch (_) {
+                    // localStorage may be disabled — best-effort.
+                }
+                apply(mode);
+            });
+        });
+
+        // Re-apply when AVPlayer mounts/unmounts its canvas (the canvas
+        // node is created lazily, after this initial apply runs).
+        const mount = this.el.querySelector("#avplayer-mount");
+        if (mount && typeof MutationObserver === "function") {
+            this._aspectObserver = new MutationObserver(() => {
+                let current;
+                try {
+                    current = localStorage.getItem(STORAGE_KEY) || "auto";
+                } catch (_) {
+                    current = "auto";
+                }
+                apply(current);
+            });
+            this._aspectObserver.observe(mount, {
+                childList: true,
+                subtree: true,
+            });
+        }
+    },
+
+    // ============================================
     // Mobile Touch Controls
     // ============================================
 
@@ -2749,6 +2843,8 @@ const VideoPlayer = {
         this.playerUI?.clearHideControlsTimeout();
         this.playerUI?.destroy();
         this.stopAVPlayerTimeUpdates();
+        this._aspectObserver?.disconnect();
+        this._aspectObserver = null;
 
         // Clear audio check timeout
         if (this.audioCheckTimeout) {

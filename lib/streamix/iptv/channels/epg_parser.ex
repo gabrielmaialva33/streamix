@@ -131,7 +131,7 @@ defmodule Streamix.Iptv.EpgParser do
 
           {:ok, %{state | current: cur, char_buf: []}}
 
-        n when n in ["desc", "category"] ->
+        n when n in ["desc", "category", "sub-title", "episode-num"] ->
           {:ok, %{state | char_buf: []}}
 
         _ ->
@@ -158,8 +158,10 @@ defmodule Streamix.Iptv.EpgParser do
       key =
         case name do
           "title" -> :title
+          "sub-title" -> :sub_title
           "desc" -> :description
           "category" -> :category
+          "episode-num" -> :episode_num
           _ -> nil
         end
 

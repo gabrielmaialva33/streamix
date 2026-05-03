@@ -463,6 +463,33 @@ defmodule StreamixWeb.PlayerComponents do
             </button>
           </div>
         </div>
+
+        <%!-- Aspect ratio. Pure-client choice; no LiveView round-trip
+             so the change feels instant. The hook persists the pick to
+             localStorage so it sticks across reloads. --%>
+        <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
+          Proporção
+        </div>
+        <div id="aspect-options" class="py-1">
+          <%= for {label, mode} <- [
+                {"Automático", "auto"},
+                {"Preencher tela", "cover"},
+                {"16:9", "16-9"},
+                {"4:3", "4-3"},
+                {"Nativo", "native"}
+              ] do %>
+            <button
+              type="button"
+              data-aspect-mode={mode}
+              class="aspect-option flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <span>{label}</span>
+              <span class="size-4 aspect-check hidden" data-aspect-check={mode}>
+                <.icon name="hero-check" class="size-4" />
+              </span>
+            </button>
+          <% end %>
+        </div>
       </div>
     </div>
     """

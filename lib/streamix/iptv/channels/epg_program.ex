@@ -13,7 +13,9 @@ defmodule Streamix.Iptv.EpgProgram do
              :id,
              :epg_channel_id,
              :title,
+             :sub_title,
              :description,
+             :episode_num,
              :start_time,
              :end_time,
              :category,
@@ -23,7 +25,9 @@ defmodule Streamix.Iptv.EpgProgram do
 
   schema "epg_programs" do
     field :title, :string
+    field :sub_title, :string
     field :description, :string
+    field :episode_num, :string
     field :start_time, :utc_datetime
     field :end_time, :utc_datetime
     field :category, :string
@@ -36,7 +40,7 @@ defmodule Streamix.Iptv.EpgProgram do
   end
 
   @required_fields ~w(epg_channel_id title start_time end_time)a
-  @optional_fields ~w(description category icon lang)a
+  @optional_fields ~w(sub_title description episode_num category icon lang)a
 
   def changeset(program, attrs) do
     program

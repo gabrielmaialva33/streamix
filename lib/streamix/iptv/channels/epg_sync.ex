@@ -229,7 +229,18 @@ defmodule Streamix.Iptv.EpgSync do
           EpgProgram,
           batch,
           on_conflict:
-            {:replace, [:title, :description, :end_time, :category, :icon, :lang, :updated_at]},
+            {:replace,
+             [
+               :title,
+               :sub_title,
+               :description,
+               :episode_num,
+               :end_time,
+               :category,
+               :icon,
+               :lang,
+               :updated_at
+             ]},
           conflict_target: [:epg_channel_id, :start_time]
         )
 
@@ -241,7 +252,9 @@ defmodule Streamix.Iptv.EpgSync do
     %{
       epg_channel_id: program[:epg_channel_id],
       title: program[:title],
+      sub_title: program[:sub_title],
       description: program[:description],
+      episode_num: program[:episode_num],
       start_time: program[:start_time],
       end_time: program[:end_time],
       category: program[:category],
