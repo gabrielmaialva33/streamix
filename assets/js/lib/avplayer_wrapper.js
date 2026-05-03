@@ -293,6 +293,67 @@ export function getAVPlayerAccelerationConfig() {
 /**
  * AVPlayer wrapper class
  */
+// libmedia's FetchIOLoader has a bug: HTTP-level errors like 502/503/504
+// are logged as fatal and never retried. Its `retryCount: 20` default
+// only kicks in for fetch() *exceptions* (network drops), not for
+// non-2xx responses. Choki sometimes returns transient 502/504 on
+// vauth chain hops, and we'd see the player freeze on every burst.
+//
+// Patch `window.fetch` once, *only* for requests that target our IPTV
+// proxy hosts, to retry on 5xx with exponential backoff. Other fetches
+// on the page (LiveView, image proxy, TMDB) are untouched.
+function installRetryingFetch() {
+  if (window.__streamixFetchPatched) return;
+  window.__streamixFetchPatched = true;
+
+  const RETRYABLE = new Set([502, 503, 504]);
+  const MAX_ATTEMPTS = 6;
+  const BASE_BACKOFF_MS = 250;
+  const SHOULD_INTERCEPT = (url) => {
+    try {
+      const u = typeof url === "string" ? url : url.url;
+      return /\/proxy\?url=|source\d?\.mahina\.cloud|streamix\.mahina\.cloud\/api\/stream\//.test(u);
+    } catch {
+      return false;
+    }
+  };
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async function patchedFetch(input, init) {
+    if (!SHOULD_INTERCEPT(input)) {
+      return originalFetch(input, init);
+    }
+
+    let lastResponse = null;
+    let attempt = 0;
+    while (attempt < MAX_ATTEMPTS) {
+      const res = await originalFetch(input, init);
+      if (!RETRYABLE.has(res.status)) {
+        return res;
+      }
+      lastResponse = res;
+      // Drain body so the connection can be reused.
+      try {
+        await res.arrayBuffer();
+      } catch {
+      }
+      attempt++;
+      if (attempt >= MAX_ATTEMPTS) break;
+      const delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+      console.warn(
+        `[StreamFetch] ${res.status} from upstream, retry ${attempt}/${MAX_ATTEMPTS} in ${delay}ms`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+    console.error(
+      `[StreamFetch] gave up after ${MAX_ATTEMPTS} retries, returning last ${lastResponse?.status}`,
+    );
+    return lastResponse;
+  };
+}
+
+installRetryingFetch();
+
 export class AVPlayerWrapper {
   constructor(options = {}) {
     this.container = options.container;
