@@ -40,6 +40,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   @cleanup_interval_ms 60_000
   @max_redirects 5
   @poll_interval_ms 50
+  @redis :streamix_redis
+  @redis_prefix "stream_redirect:"
 
   # Client API
 
@@ -100,6 +102,23 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     end
   end
 
+  @doc """
+  Read-only lookup. Returns `{:ok, final_url}` on a hot cache hit
+  (ETS or Redis L2), `:miss` otherwise. Never starts a resolution.
+
+  Used by `PlayerHelpers.resolve_stream_url/4` to decide between
+  signing a direct URL pointing at the source proxy (cache hit → fast
+  path) and falling back to the Phoenix `/api/stream/proxy` token
+  redirect (cache miss → wait-and-redirect path).
+  """
+  @spec peek(String.t()) :: {:ok, String.t()} | :miss
+  def peek(url) when is_binary(url) do
+    case lookup(url) do
+      {:hit, {:ok, _final} = ok} -> ok
+      _ -> :miss
+    end
+  end
+
   @doc false
   def cache_table, do: @table
 
@@ -154,8 +173,23 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
         :resolving
 
       _ ->
-        :miss
+        # ETS miss — check the Redis L2 cache. This pays off after
+        # container restarts: the in-memory ETS table is fresh, but
+        # Redis still holds resolutions from before the restart.
+        case redis_get(key) do
+          {:ok, {result, ttl_seconds}} ->
+            promote_to_ets(key, result, ttl_seconds)
+            {:hit, result}
+
+          :miss ->
+            :miss
+        end
     end
+  end
+
+  defp promote_to_ets(key, result, ttl_seconds) do
+    expires_at = System.system_time(:second) + max(ttl_seconds, 1)
+    :ets.insert(@table, {key, {:result, result}, expires_at})
   end
 
   defp do_resolve(url, opts) do
@@ -217,11 +251,56 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   defp cache_result(key, {:ok, _final_url} = result) do
     expires_at = System.system_time(:second) + @ok_ttl_seconds
     :ets.insert(@table, {key, {:result, result}, expires_at})
+    redis_set_async(key, result, @ok_ttl_seconds)
   end
 
   defp cache_result(key, {:error, _reason} = result) do
     expires_at = System.system_time(:second) + @err_ttl_seconds
     :ets.insert(@table, {key, {:result, result}, expires_at})
+    redis_set_async(key, result, @err_ttl_seconds)
+  end
+
+  # Redis I/O — best-effort. The local ETS layer is authoritative for
+  # this process; Redis is just a "warm start" pool that survives
+  # container restarts. Any Redis hiccup is logged at debug level and
+  # does not affect resolution latency.
+
+  defp redis_get(key) do
+    full_key = @redis_prefix <> key
+
+    try do
+      case Redix.pipeline(@redis, [["GET", full_key], ["TTL", full_key]]) do
+        {:ok, [nil, _]} ->
+          :miss
+
+        {:ok, [encoded, ttl]} when is_binary(encoded) and is_integer(ttl) and ttl > 0 ->
+          {:ok, {:erlang.binary_to_term(encoded), ttl}}
+
+        _ ->
+          :miss
+      end
+    rescue
+      _ -> :miss
+    catch
+      :exit, _ -> :miss
+    end
+  end
+
+  defp redis_set_async(key, result, ttl_seconds) do
+    full_key = @redis_prefix <> key
+    payload = :erlang.term_to_binary(result)
+
+    Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
+      try do
+        Redix.command(@redis, ["SETEX", full_key, Integer.to_string(ttl_seconds), payload])
+      rescue
+        e -> Logger.debug("RedirectResolver: Redis SETEX failed: #{inspect(e)}")
+      catch
+        :exit, reason -> Logger.debug("RedirectResolver: Redis exit: #{inspect(reason)}")
+      end
+    end)
+
+    :ok
   end
 
   defp cache_key(url) do

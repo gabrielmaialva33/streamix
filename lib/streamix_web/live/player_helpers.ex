@@ -7,6 +7,8 @@ defmodule StreamixWeb.PlayerHelpers do
   alias Streamix.Access
   alias Streamix.Iptv
   alias Streamix.Iptv.Gindex
+  alias Streamix.Iptv.Streaming.RedirectResolver
+  alias Streamix.Iptv.Streaming.SourceUrl
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 
@@ -134,21 +136,21 @@ defmodule StreamixWeb.PlayerHelpers do
   # --- Private ---
 
   def resolve_stream_url("live_channel", channel, _provider, user_id) do
+    # Live channels stream directly through the BEAM (chunked send),
+    # so the direct-source fast path doesn't apply. Always use the
+    # token proxy.
     token = StreamToken.sign_channel(channel.id, user_id)
-    stream_url = build_token_proxy_url(token)
-    {:ok, stream_url}
+    {:ok, build_token_proxy_url(token)}
   end
 
   def resolve_stream_url("movie", movie, _provider, user_id) do
     token = StreamToken.sign_movie(movie.id, user_id)
-    stream_url = build_token_proxy_url(token)
-    {:ok, stream_url}
+    {:ok, vod_stream_url("movie", movie.id, user_id, token)}
   end
 
   def resolve_stream_url("episode", episode, _provider, user_id) do
     token = StreamToken.sign_episode(episode.id, user_id)
-    stream_url = build_token_proxy_url(token)
-    {:ok, stream_url}
+    {:ok, vod_stream_url("episode", episode.id, user_id, token)}
   end
 
   def resolve_stream_url("gindex", movie, _provider, user_id) do
@@ -172,6 +174,79 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   def resolve_stream_url(_, _, _, _), do: {:error, :not_found}
+
+  @doc """
+  Fire-and-forget prewarm of the redirect chain for the given content.
+
+  Used both by `PlayerLive.mount/3` (when the user actually starts
+  playback) and by Detail LiveViews (`/movies/:id`, episodes, etc.) so
+  the chain is already resolved by the time the user clicks "Assistir".
+  Safe to call when not authorized — `StreamToken.upstream_url/4` returns
+  an error and we no-op. Gindex content has direct URLs and skips
+  prewarm.
+  """
+  def prewarm_upstream_redirect(type, content, user_id) when is_map(content) do
+    case content_id(content) do
+      nil -> :ok
+      id -> do_prewarm(type, id, user_id)
+    end
+  end
+
+  def prewarm_upstream_redirect(_type, _content, _user_id), do: :ok
+
+  defp do_prewarm(type, id, user_id) do
+    with {:ok, upstream_type} <- prewarmable_upstream_type(type),
+         {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
+      RedirectResolver.prewarm_async(url, stop_fn: prewarm_stop_fn(url))
+    else
+      _ -> :ok
+    end
+  end
+
+  defp prewarmable_upstream_type("live_channel"), do: {:ok, "channel"}
+  defp prewarmable_upstream_type("movie"), do: {:ok, "movie"}
+  defp prewarmable_upstream_type("episode"), do: {:ok, "episode"}
+  defp prewarmable_upstream_type(_), do: :skip
+
+  defp prewarm_stop_fn(url) do
+    if credentials_in_url?(url) do
+      fn next_url -> not credentials_in_url?(next_url) end
+    else
+      fn _ -> false end
+    end
+  end
+
+  defp credentials_in_url?(url) do
+    case URI.parse(url) do
+      %URI{path: path} when is_binary(path) ->
+        Regex.match?(~r{/(live|movie|series)/[^/]+/[^/]+/}, path)
+
+      _ ->
+        false
+    end
+  end
+
+  defp content_id(%{id: id}) when is_integer(id), do: id
+  defp content_id(_), do: nil
+
+  # VOD fast path: if the redirect-chain resolver already has a hot
+  # cache entry for this content (e.g. because the Detail page fired
+  # a prewarm a few seconds ago), build a signed URL pointing straight
+  # at `source.mahina.cloud`. The browser then skips the Phoenix 302
+  # bounce entirely — that's one full RTT shaved off the first byte.
+  #
+  # Cache miss (or no shared secret configured) falls back to the
+  # token-redirect path, which the StreamController resolves on demand
+  # via the same resolver.
+  defp vod_stream_url(type, id, user_id, token) do
+    with {:ok, upstream_url} <- StreamToken.upstream_url(type, id, user_id),
+         {:ok, final_url} <- RedirectResolver.peek(upstream_url),
+         {:ok, signed_url} <- SourceUrl.build(final_url) do
+      signed_url
+    else
+      _ -> build_token_proxy_url(token)
+    end
+  end
 
   defp get_gindex_episode_url(episode) do
     case Gindex.get_episode_url(episode.id) do

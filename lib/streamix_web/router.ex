@@ -336,8 +336,27 @@ defmodule StreamixWeb.Router do
     get "/metrics", MetricsController, :scrape
   end
 
+  # Emits an HTTP 103 Early Hints informational response with a
+  # `Link: <source.mahina.cloud>; rel=preconnect` header so the browser
+  # opens the TCP+TLS connection to the stream proxy *while* Phoenix is
+  # still busy mounting the LiveView (DB queries, history record,
+  # prewarm task). For navigation requests with adapters that support
+  # 103 (Bandit on HTTP/1.1+, HTTP/2, HTTP/3), this shaves a full RTT
+  # off the player's first byte. The same Link is repeated as a regular
+  # response header for browsers that ignore informational responses.
   defp put_early_hints(conn, _opts) do
     proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
-    Plug.Conn.put_resp_header(conn, "link", "<#{proxy}>; rel=preconnect")
+    link = "<#{proxy}>; rel=preconnect; crossorigin"
+
+    # Best-effort: a noop on adapters that don't implement inform/3.
+    try do
+      Plug.Conn.inform(conn, 103, [{"link", link}])
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
+    end
+
+    Plug.Conn.put_resp_header(conn, "link", link)
   end
 end

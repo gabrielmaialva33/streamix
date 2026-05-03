@@ -23,8 +23,6 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerHelpers
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Streaming.RedirectResolver
-  alias StreamixWeb.StreamToken
 
   @impl true
   def mount(%{"type" => type, "id" => id}, _session, socket) do
@@ -265,41 +263,6 @@ defmodule StreamixWeb.PlayerLive do
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
          |> push_navigate(to: ~p"/")}
-    end
-  end
-
-  # Prewarm only IPTV-backed types — gindex URLs are direct and don't
-  # benefit from redirect-chain caching. The upstream URL contains
-  # provider credentials, so the resolver hashes it for ETS storage.
-  defp prewarm_upstream_redirect(type, content, user_id) do
-    with {:ok, upstream_type} <- prewarmable_upstream_type(type),
-         {:ok, url} <- StreamToken.upstream_url(upstream_type, content.id, user_id) do
-      RedirectResolver.prewarm_async(url, stop_fn: build_stop_fn(url))
-    else
-      _ -> :ok
-    end
-  end
-
-  defp prewarmable_upstream_type("live_channel"), do: {:ok, "channel"}
-  defp prewarmable_upstream_type("movie"), do: {:ok, "movie"}
-  defp prewarmable_upstream_type("episode"), do: {:ok, "episode"}
-  defp prewarmable_upstream_type(_), do: :skip
-
-  defp build_stop_fn(url) do
-    if credentials_in_url?(url) do
-      fn next_url -> not credentials_in_url?(next_url) end
-    else
-      fn _ -> false end
-    end
-  end
-
-  defp credentials_in_url?(url) do
-    case URI.parse(url) do
-      %URI{path: path} when is_binary(path) ->
-        Regex.match?(~r{/(live|movie|series)/[^/]+/[^/]+/}, path)
-
-      _ ->
-        false
     end
   end
 

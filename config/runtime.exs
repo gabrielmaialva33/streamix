@@ -210,7 +210,13 @@ config :streamix,
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
   imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.cloud",
-  image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud"
+  image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud",
+  # Shared HMAC secret used by `Streamix.Iptv.Streaming.SourceUrl` to
+  # build signed URLs the browser can hit on `source.mahina.cloud`
+  # directly — bypasses the Phoenix `/api/stream/proxy` 302 hop. The
+  # nginx Lua verifier on the VPS must use the same value. When unset
+  # (dev / tests) we fall back to the token-redirect path.
+  source_proxy_shared_secret: get_env.("SOURCE_PROXY_SHARED_SECRET")
 
 # API Keys for TV app and external clients
 # Comma-separated list of valid API keys

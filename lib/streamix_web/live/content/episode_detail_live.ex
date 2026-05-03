@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
   alias Streamix.Iptv
   alias Streamix.Iptv.Series
+  alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -73,6 +74,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     # Enrich episode with TMDB data if needed
     episode = maybe_fetch_episode_info(episode)
 
+    maybe_prewarm(socket, episode, user_id)
+
     # Get adjacent episodes for navigation
     season = episode.season
     episodes = Iptv.list_season_episodes(season.id)
@@ -106,6 +109,16 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       |> assign(total_episodes: length(episodes))
 
     {:ok, socket}
+  end
+
+  # Prewarm the upstream redirect chain — by the time the user clicks
+  # "Assistir", the resolver cache is hot.
+  defp maybe_prewarm(socket, episode, user_id) do
+    if connected?(socket) and user_id do
+      PlayerHelpers.prewarm_upstream_redirect("episode", episode, user_id)
+    end
+
+    :ok
   end
 
   defp maybe_fetch_episode_info(episode) do

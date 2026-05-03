@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
   alias Streamix.Iptv.Movie
+  alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
@@ -56,6 +57,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
       movie ->
         is_favorite = Iptv.is_favorite?(user_id, "movie", movie.id)
         movie = maybe_fetch_movie_info(movie)
+
+        # Prewarm the upstream redirect chain in the background. The
+        # user is on the detail page now and will likely click play in
+        # a few seconds — by then the resolution is cached.
+        if connected?(socket) do
+          PlayerHelpers.prewarm_upstream_redirect("movie", movie, user_id)
+        end
 
         current_path =
           if mode == :browse,
