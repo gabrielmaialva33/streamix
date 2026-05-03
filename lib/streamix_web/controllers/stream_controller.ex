@@ -10,7 +10,6 @@ defmodule StreamixWeb.StreamController do
 
   require Logger
 
-  alias Streamix.Iptv.Channels
   alias Streamix.Iptv.Streaming.RedirectResolver
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
@@ -52,11 +51,19 @@ defmodule StreamixWeb.StreamController do
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
-  # Live channels: stream directly to avoid cross-origin redirect CORS failures.
-  # VOD: redirect to nginx proxy for Range header support.
-  defp stream_by_type(conn, url, "channel", meta),
-    do: stream_live_channel(conn, url, meta.content_id)
-
+  # All content types (live channels and VOD) go through the source
+  # nginx via 302 redirect. Reasons:
+  #
+  #   1. The source nginx runs on a different ASN than the Phoenix
+  #      backend (Hostinger AS47583 vs Gamers Club AS268624). Choki
+  #      blacklists AS268624 specifically for streaming endpoints
+  #      (`/movie/*`, `/USER/PASS/X.ts` live), so streaming directly
+  #      from the BEAM was hitting the WAF.
+  #   2. Cloudflare Transform Rule + nginx CORS headers eliminate the
+  #      CORS issue that previously forced live channels to stream
+  #      chunked through the BEAM.
+  #   3. nginx serves bytes much more efficiently than chunked through
+  #      a per-viewer BEAM process.
   defp stream_by_type(conn, url, _type, _meta),
     do: resolve_and_redirect_to_proxy(conn, url)
 
@@ -76,123 +83,7 @@ defmodule StreamixWeb.StreamController do
     StreamErrors.halt(conn, code)
   end
 
-  # --- Live channels: stream directly through Elixir (no redirect) ---
-
-  defp stream_live_channel(conn, url, channel_id) do
-    # Live channels deliberately bypass the RedirectResolver cache. The
-    # resolver halts the upstream connection after the first chunk to
-    # detect 2xx terminal status — fine for VOD redirect chains, but
-    # for live MPEG-TS that means we'd consume the TS sync header /
-    # SDT / PMT bytes before the player ever sees them, and the
-    # subsequent reconnect lands the player mid-stream → mpegts.js
-    # fails with DEMUXER_ERROR_COULD_NOT_OPEN. Resolve inline with a
-    # plain HEAD/GET that doesn't drain the body.
-    case resolve_live_url(url, 0) do
-      {:ok, final_url} ->
-        if channel_id, do: Channels.mark_alive(channel_id)
-        do_stream_live(conn, final_url)
-
-      {:error, {:unexpected_status, 404}} = error ->
-        if channel_id do
-          Logger.warning("Stream proxy: marking channel #{channel_id} dead (upstream 404)")
-          Channels.mark_dead(channel_id)
-        end
-
-        live_resolve_failed(conn, error)
-
-      {:error, reason} ->
-        live_resolve_failed(conn, {:error, reason})
-    end
-  end
-
-  @max_redirects 5
-
-  defp resolve_live_url(_url, count) when count > @max_redirects do
-    {:error, :too_many_redirects}
-  end
-
-  defp resolve_live_url(url, count) do
-    opts = [
-      redirect: false,
-      retry: false,
-      headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
-      decode_body: false,
-      receive_timeout: 30_000,
-      connect_options: [timeout: 12_000]
-    ]
-
-    case Req.head(url, opts) do
-      {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
-        case List.first(Map.get(headers, "location", [])) do
-          nil ->
-            {:error, :missing_location}
-
-          location ->
-            next = absolute_location(url, location)
-            resolve_live_url(next, count + 1)
-        end
-
-      {:ok, %{status: status}} when status in 200..299 ->
-        {:ok, url}
-
-      {:ok, %{status: 405}} ->
-        # Upstream rejects HEAD — fall back to inline GET resolution.
-        {:ok, url}
-
-      {:ok, %{status: status}} ->
-        {:error, {:unexpected_status, status}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp absolute_location(url, location) do
-    if String.starts_with?(location, "http") do
-      location
-    else
-      url |> URI.merge(location) |> URI.to_string()
-    end
-  end
-
-  defp live_resolve_failed(conn, {:error, reason}) do
-    Logger.error("Stream proxy: live resolve failed: #{inspect(reason)}")
-
-    if transient_error?(reason) do
-      retry_later(conn)
-    else
-      StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
-    end
-  end
-
-  defp do_stream_live(conn, final_url) do
-    Logger.debug("Stream proxy: live streaming → #{sanitize_url(final_url)}")
-
-    conn =
-      conn
-      |> put_resp_content_type("video/mp2t")
-      |> put_resp_header("access-control-allow-origin", "*")
-      |> put_resp_header("access-control-expose-headers", "Content-Type")
-      |> put_resp_header("cache-control", "no-cache, no-store")
-      |> send_chunked(200)
-
-    result =
-      Req.get(
-        final_url,
-        live_stream_req_opts(conn)
-      )
-
-    case result do
-      {:ok, _} ->
-        conn
-
-      {:error, reason} ->
-        Logger.debug("Stream proxy: live stream ended: #{inspect(reason)}")
-        conn
-    end
-  end
-
-  # --- VOD: resolve redirects and send to nginx proxy for Range support ---
+  # --- All streaming types: resolve redirects and send to source proxy ---
 
   defp resolve_and_redirect_to_proxy(conn, url) do
     # O nginx em source.mahina.cloud já segue cadeia de redirects via Lua,
@@ -242,29 +133,6 @@ defmodule StreamixWeb.StreamController do
           StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
         end
     end
-  end
-
-  # Live channel streaming uses the same masquerade UA + retry policy as
-  # the resolver, but with `into:` configured to chunk straight into the
-  # already-open Plug.Conn so we don't buffer the whole live segment in
-  # memory.
-  defp live_stream_req_opts(conn) do
-    [
-      redirect: false,
-      retry: false,
-      headers: [{"user-agent", "VLC/3.0.20 LibVLC/3.0.20"}],
-      decode_body: false,
-      receive_timeout: :infinity,
-      compressed: false,
-      connect_options: [timeout: 12_000],
-      into: fn {:data, data}, {req, resp} ->
-        case Plug.Conn.chunk(conn, data) do
-          {:ok, _conn} -> {:cont, {req, resp}}
-          {:error, :closed} -> {:halt, {req, resp}}
-        end
-      end
-    ]
-    |> Keyword.merge(Application.get_env(:streamix, :stream_proxy_req_options, []))
   end
 
   # Network/timeout style errors get a 503 + Retry-After:1 instead of the
