@@ -75,6 +75,9 @@ defmodule Streamix.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:cors_plug, "~> 3.0"},
+      # Pure-Elixir SAX parser. ~4.5x faster than xmerl with ~10x less
+      # memory; used to stream the 14 MB+ XMLTV documents Choki returns.
+      {:saxy, "~> 1.6"},
       # Image resize proxy — libvips bindings. Runtime needs `libvips42`
       # installed on the host/container (see Dockerfile).
       {:image, "~> 0.65"},

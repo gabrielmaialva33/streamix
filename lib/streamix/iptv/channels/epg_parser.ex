@@ -10,8 +10,6 @@ defmodule Streamix.Iptv.EpgParser do
     full catalog. Used by `SyncEpgWorker`.
   """
 
-  import SweetXml, only: [sigil_x: 2]
-
   require Logger
 
   @doc """
@@ -71,57 +69,136 @@ defmodule Streamix.Iptv.EpgParser do
       </tv>
   """
   def parse_xmltv(xml) when is_binary(xml) do
-    # `fetch_fun` short-circuits the xmerl DTD resolver. XMLTV documents
-    # carry a `<!DOCTYPE tv SYSTEM "xmltv.dtd">` declaration that would
-    # otherwise make xmerl try to read `xmltv.dtd` from the working
-    # directory and crash with `{:error, :enoent}`. We don't need the
-    # DTD to xpath-extract programme nodes.
-    no_dtd_fetch = fn _, state -> {:ok, ~c"", state} end
+    # Saxy SAX parser. XMLTV from Choki is ~14 MB. SweetXml (DOM via
+    # xmerl) consumed 1.4 GB and 100% CPU on the parse tree alone.
+    # OTP's `:xmerl_sax_parser` is a SAX option but the API is brittle
+    # and slower than Saxy. Saxy benchmarks ~4.5x faster than xmerl
+    # with ~10x less memory, and is a pure-Elixir streaming parser.
+    initial = %{programmes: [], current: nil, char_buf: nil}
 
-    programmes =
-      xml
-      |> SweetXml.parse(quiet: true, fetch_fun: no_dtd_fetch)
-      |> SweetXml.xpath(
-        ~x"//programme"l,
-        channel: ~x"./@channel"s,
-        start: ~x"./@start"s,
-        stop: ~x"./@stop"s,
-        title: ~x"./title/text()"s,
-        desc: ~x"./desc/text()"s,
-        category: ~x"./category/text()"s,
-        icon: ~x"./icon/@src"s,
-        lang: ~x"./title/@lang"s
-      )
+    case Saxy.parse_string(xml, __MODULE__.XmltvHandler, initial) do
+      {:ok, %{programmes: list}} ->
+        grouped =
+          list
+          |> Enum.reverse()
+          |> Enum.filter(&valid_program?/1)
+          |> Enum.group_by(& &1.channel_external_id)
 
-    grouped =
-      programmes
-      |> Enum.map(&xmltv_to_program/1)
-      |> Enum.filter(&valid_program?/1)
-      |> Enum.group_by(& &1.channel_external_id)
+        {:ok, grouped}
 
-    {:ok, grouped}
+      {:error, reason} ->
+        {:error, {:xmltv_parse_failed, reason}}
+    end
   rescue
     e -> {:error, {:xmltv_parse_failed, Exception.message(e)}}
   catch
     :exit, reason -> {:error, {:xmltv_parse_failed, reason}}
   end
 
-  def parse_xmltv(_), do: {:error, :invalid_xmltv}
+  defmodule XmltvHandler do
+    @moduledoc false
+    @behaviour Saxy.Handler
 
-  defp xmltv_to_program(%{channel: ch} = p) when is_binary(ch) and ch != "" do
-    %{
-      channel_external_id: ch,
-      title: blank_to_nil(p[:title]),
-      description: blank_to_nil(p[:desc]),
-      start_time: parse_xmltv_datetime(p[:start]),
-      end_time: parse_xmltv_datetime(p[:stop]),
-      category: blank_to_nil(p[:category]),
-      icon: blank_to_nil(p[:icon]),
-      lang: blank_to_nil(p[:lang])
-    }
+    alias Streamix.Iptv.EpgParser
+
+    @impl true
+    def handle_event(:start_document, _prolog, state), do: {:ok, state}
+
+    @impl true
+    def handle_event(:end_document, _data, state), do: {:ok, state}
+
+    @impl true
+    def handle_event(:start_element, {"programme", attrs}, state) do
+      programme = %{
+        channel_external_id: attr(attrs, "channel"),
+        start_time: attrs |> attr("start") |> EpgParser.public_parse_xmltv_datetime(),
+        end_time: attrs |> attr("stop") |> EpgParser.public_parse_xmltv_datetime()
+      }
+
+      {:ok, %{state | current: programme, char_buf: nil}}
+    end
+
+    def handle_event(:start_element, {name, attrs}, %{current: cur} = state)
+        when not is_nil(cur) do
+      case name do
+        "icon" ->
+          {:ok, %{state | current: Map.put(cur, :icon, attr(attrs, "src")), char_buf: nil}}
+
+        "title" ->
+          # XMLTV often has <title> and <sub-title>; keep only the first.
+          cur =
+            if Map.has_key?(cur, :lang), do: cur, else: Map.put(cur, :lang, attr(attrs, "lang"))
+
+          {:ok, %{state | current: cur, char_buf: []}}
+
+        n when n in ["desc", "category"] ->
+          {:ok, %{state | char_buf: []}}
+
+        _ ->
+          {:ok, %{state | char_buf: nil}}
+      end
+    end
+
+    def handle_event(:start_element, _, state), do: {:ok, state}
+
+    @impl true
+    def handle_event(:characters, chars, %{char_buf: buf} = state) when is_list(buf) do
+      {:ok, %{state | char_buf: [chars | buf]}}
+    end
+
+    def handle_event(:characters, _chars, state), do: {:ok, state}
+
+    @impl true
+    def handle_event(:end_element, "programme", %{current: cur} = state) when not is_nil(cur) do
+      {:ok, %{state | programmes: [cur | state.programmes], current: nil, char_buf: nil}}
+    end
+
+    def handle_event(:end_element, name, %{current: cur, char_buf: buf} = state)
+        when not is_nil(cur) and is_list(buf) do
+      key =
+        case name do
+          "title" -> :title
+          "desc" -> :description
+          "category" -> :category
+          _ -> nil
+        end
+
+      cur = if key, do: Map.put_new(cur, key, flush_buf(buf)), else: cur
+      {:ok, %{state | current: cur, char_buf: nil}}
+    end
+
+    def handle_event(:end_element, _name, state), do: {:ok, %{state | char_buf: nil}}
+
+    @impl true
+    def handle_event(:cdata, chars, %{char_buf: buf} = state) when is_list(buf) do
+      {:ok, %{state | char_buf: [chars | buf]}}
+    end
+
+    def handle_event(:cdata, _chars, state), do: {:ok, state}
+
+    defp attr(attrs, key) do
+      case Enum.find(attrs, fn {k, _v} -> k == key end) do
+        {_, v} -> v
+        _ -> nil
+      end
+    end
+
+    defp flush_buf(buf) do
+      buf
+      |> Enum.reverse()
+      |> IO.iodata_to_binary()
+      |> String.trim()
+      |> case do
+        "" -> nil
+        s -> s
+      end
+    end
   end
 
-  defp xmltv_to_program(_), do: nil
+  # Public wrapper so the SAX handler module (which can't import private
+  # functions) can hit the datetime parser.
+  @doc false
+  def public_parse_xmltv_datetime(s), do: parse_xmltv_datetime(s)
 
   # XMLTV datetime: "20260503040000 -0300" or "20260503040000"
   defp parse_xmltv_datetime(nil), do: nil
@@ -169,11 +246,6 @@ defmodule Streamix.Iptv.EpgParser do
   defp sign_multiplier("-"), do: -1
   defp sign_multiplier(_), do: 1
 
-  defp blank_to_nil(nil), do: nil
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(s) when is_binary(s), do: s |> String.trim() |> blank_to_nil()
-  defp blank_to_nil(_), do: nil
-
   defp parse_listing(item) when is_map(item) do
     %{
       epg_channel_id: to_string(item["channel_id"] || item["epg_id"]),
@@ -194,6 +266,7 @@ defmodule Streamix.Iptv.EpgParser do
   defp valid_program?(%{title: ""}), do: false
   defp valid_program?(%{start_time: nil}), do: false
   defp valid_program?(%{end_time: nil}), do: false
+  defp valid_program?(%{} = m) when not is_map_key(m, :title), do: false
   defp valid_program?(_), do: true
 
   @doc """
