@@ -414,6 +414,16 @@ const VideoPlayer = {
 
     initUI() {
         this.playerUI = new PlayerUI(this.el);
+        // Auto-hide controls needs the *real* playing state — when
+        // AVPlayer is the active player the native <video> stays
+        // paused, so without this override the control bar never
+        // fades and the timeline sticks on top of the picture.
+        this.playerUI.setIsPlayingFn(() => {
+            if (this.usingAVPlayer && this.avPlayer) {
+                return !!this.avPlayer._playing;
+            }
+            return !!(this.video && !this.video.paused);
+        });
 
         // Setup retry button
         const retryBtn = this.el.querySelector(".retry-btn");

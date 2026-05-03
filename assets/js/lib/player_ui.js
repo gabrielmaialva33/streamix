@@ -15,6 +15,11 @@ export class PlayerUI {
         this.container = container;
         this.video = container.querySelector("video");
         this.focusTraps = new Map();
+        // Hook can override this to report the active player's state
+        // (e.g. AVPlayer keeps the native <video> paused while its
+        // own canvas plays; without this hook, auto-hide treats the
+        // player as paused forever and controls never fade).
+        this._isPlayingFn = () => this.video && !this.video.paused;
 
         // Cache DOM elements
         this.elements = {
@@ -523,12 +528,16 @@ export class PlayerUI {
 
     hideControls() {
         const {controls} = this.elements;
-        if (controls && this.video && !this.video.paused) {
+        if (controls && this._isPlayingFn()) {
             controls.classList.add("controls-hidden");
             controls.style.opacity = "0";
             controls.style.pointerEvents = "none";
             this.controlsVisible = false;
         }
+    }
+
+    setIsPlayingFn(fn) {
+        this._isPlayingFn = fn;
     }
 
     toggleControlsVisibility() {
@@ -543,7 +552,7 @@ export class PlayerUI {
     scheduleHideControls() {
         this.clearHideControlsTimeout();
         this.controlsTimeout = setTimeout(() => {
-            if (this.video && !this.video.paused) {
+            if (this._isPlayingFn()) {
                 this.hideControls();
             }
         }, 3000);
