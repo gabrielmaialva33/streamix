@@ -3,7 +3,9 @@ defmodule Streamix.Iptv.Streaming.SourceUrlTest do
 
   alias Streamix.Iptv.Streaming.SourceUrl
 
-  @secret "a146fa9a14f62e00531dbf70b9bfbc137643443d4c93356ce1bad8faa6b0d08e"
+  # Synthetic test fixture — never reuse a real production secret in tests
+  # checked into a public repo. Rotate any leaked secret immediately.
+  @secret "0000000000000000000000000000000000000000000000000000000000000000"
   @base "https://source.mahina.cloud"
   @upstream "http://example.com/test.mp4"
 
