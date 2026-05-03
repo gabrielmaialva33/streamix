@@ -101,12 +101,20 @@ defmodule StreamixWeb.StreamController do
 
     case RedirectResolver.resolve(url, stop_fn: stop_fn) do
       {:ok, final_url} ->
-        proxy_base =
-          Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+        # Pick a source proxy from the configured pool. Each request
+        # gets a different source (round-robin across the user's session
+        # via the request_id, falling back to deterministic-by-URL
+        # when no request_id is set). This matters because each source
+        # sits behind a different ASN, and the IPTV provider's WAF
+        # bans different vauth IPs depending on the source ASN — using
+        # 2 sources roughly doubles the cluster surface available to us.
+        proxy_base = pick_source_proxy(conn, final_url)
 
         with {:ok, final_proxy} <- build_proxy_redirect_url(proxy_base, final_url),
              :ok <- ensure_final_url_stays_server_side(final_url, proxy_base) do
-          Logger.debug("Stream proxy: VOD resolved → #{sanitize_url(final_url)}")
+          Logger.debug(
+            "Stream proxy: VOD resolved → #{sanitize_url(final_url)} via #{proxy_base}"
+          )
 
           conn
           |> put_resp_header("cache-control", "no-cache, no-store")
@@ -145,6 +153,26 @@ defmodule StreamixWeb.StreamController do
     |> put_resp_header("access-control-allow-origin", "*")
     |> send_resp(503, "")
     |> halt()
+  end
+
+  # Picks a source proxy URL from the configured pool. Configurable
+  # via `:streamix, :stream_proxy_urls` (list) — falls back to the
+  # legacy `:stream_proxy_url` (single) for backwards compatibility,
+  # and ultimately to source.mahina.cloud.
+  #
+  # The choice is randomized per-request (not deterministic per URL)
+  # because cb.chokitecnologia returns a different vauth IP based on
+  # the source ASN — alternating sources roughly doubles the surface
+  # of healthy IPs available to us. Stickiness is not required: the
+  # nginx-side rewrite chain only sees one source per browser hop.
+  defp pick_source_proxy(_conn, _final_url) do
+    case Application.get_env(:streamix, :stream_proxy_urls) do
+      [_ | _] = list ->
+        Enum.random(list)
+
+      _ ->
+        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    end
   end
 
   defp transient_error?({:resolver_crashed, _, _}), do: true

@@ -206,8 +206,29 @@ end
 
 # Proxy URLs for CDN / reverse proxy domains
 # These proxies handle mixed content, image caching, and stream delivery
+# `:stream_proxy_urls` is the *pool* the StreamController.pick_source_proxy/2
+# samples from on every redirect. Each entry is a fully-qualified base URL
+# (no trailing slash) of a source nginx that knows how to proxy_pass to
+# the IPTV upstream. Different sources should sit behind different ASNs so
+# that a vauth IP banned for one source still works through the other.
+#
+# Comma-separated env: `STREAM_PROXY_URLS=https://source.mahina.cloud,https://source2.mahina.cloud`
+# Falls back to the single `STREAM_PROXY_URL` for older deploys.
+stream_proxy_urls =
+  case get_env.("STREAM_PROXY_URLS") do
+    csv when is_binary(csv) and csv != "" ->
+      csv
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    _ ->
+      []
+  end
+
 config :streamix,
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
+  stream_proxy_urls: stream_proxy_urls,
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
   imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.cloud",
   image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud",
