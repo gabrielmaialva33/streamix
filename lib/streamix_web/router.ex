@@ -91,6 +91,13 @@ defmodule StreamixWeb.Router do
     options "/stream/proxy", StreamController, :options
     get "/stream/proxy", StreamController, :proxy
     head "/stream/proxy", StreamController, :proxy
+
+    # GIndex track enumeration. Server-side ffprobe cache replaces the
+    # client-side "spawn a 2nd AVPlayer to enumerate" hack. Anonymous,
+    # rate-limited — payload is purely informational (track index +
+    # language + codec name). Choki content uses hls.js for runtime
+    # enumeration and never hits this.
+    get "/gindex-tracks/:type/:id", Api.V1.GindexTracksController, :show
   end
 
   # Credential-handling routes: tight bucket to discourage brute-force.
