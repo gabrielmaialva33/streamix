@@ -8,6 +8,48 @@ defmodule StreamixWeb.Content.DetailComponents do
   import StreamixWeb.Content.HelperComponents
 
   @doc """
+  Renders a compact gallery image preview.
+  """
+  attr :image, :string, default: nil
+  attr :alt, :string, default: "Imagem da galeria"
+
+  def gallery_preview(assigns) do
+    ~H"""
+    <div
+      :if={@image}
+      class="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
+      phx-window-keydown="close_gallery_preview"
+      phx-key="Escape"
+    >
+      <button
+        type="button"
+        class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        phx-click="close_gallery_preview"
+        aria-label="Fechar imagem"
+      />
+
+      <figure class="relative z-10 w-full max-w-5xl overflow-hidden rounded-lg border border-border bg-surface shadow-modal">
+        <button
+          type="button"
+          phx-click="close_gallery_preview"
+          class="absolute right-3 top-3 z-10 inline-flex size-9 items-center justify-center rounded-lg bg-black/60 text-white transition-colors hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-brand"
+          aria-label="Fechar imagem"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <img
+          src={@image}
+          alt={@alt}
+          class="max-h-[82dvh] w-full object-contain bg-black"
+          loading="eager"
+          decoding="async"
+        />
+      </figure>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a season accordion with episodes.
 
   ## Attributes
