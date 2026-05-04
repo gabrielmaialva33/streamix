@@ -4,7 +4,7 @@ defmodule Streamix.MixProject do
   def project do
     [
       app: :streamix,
-      version: "0.0.1",
+      version: "0.0.100",
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
