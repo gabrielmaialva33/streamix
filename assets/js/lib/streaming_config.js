@@ -263,10 +263,6 @@ export function getStreamingConfig(mode) {
   return StreamingProfiles[mode] || StreamingProfiles[StreamingMode.BALANCED];
 }
 
-
-
-
-
 /**
  * Advanced feature flags for experimental APIs
  */
@@ -294,7 +290,6 @@ export const FeatureFlags = {
     safetyFactor: 0.8,
   },
 };
-
 
 /**
  * Determine if experimental features should be used

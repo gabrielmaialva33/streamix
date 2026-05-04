@@ -20,45 +20,44 @@ const MAX_POSITIONS = 100; // Max number of positions to store
  * This helps remember which player/codec works on this specific device
  */
 function getDeviceFingerprint() {
-    const canvas = document.createElement("canvas");
-    const gl = canvas.getContext("webgl");
-    const renderer = gl ? gl.getParameter(gl.UNMASKED_RENDERER_WEBGL) : "unknown";
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl");
+  const renderer = gl ? gl.getParameter(gl.UNMASKED_RENDERER_WEBGL) : "unknown";
 
-    return {
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        gpu: renderer,
-        screen: `${screen.width}x${screen.height}`,
-        memory: navigator.deviceMemory || "unknown",
-        cores: navigator.hardwareConcurrency || "unknown",
-    };
+  return {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    gpu: renderer,
+    screen: `${screen.width}x${screen.height}`,
+    memory: navigator.deviceMemory || "unknown",
+    cores: navigator.hardwareConcurrency || "unknown",
+  };
 }
 
 /**
  * Get stored device compatibility data
  */
 function getDeviceCompatibility() {
-    try {
-        const stored = localStorage.getItem(DEVICE_COMPAT_KEY);
-        return stored ? JSON.parse(stored) : {codecs: {}, players: {}, lastUpdated: null};
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to read device compatibility:", e);
-        return {codecs: {}, players: {}, lastUpdated: null};
-    }
+  try {
+    const stored = localStorage.getItem(DEVICE_COMPAT_KEY);
+    return stored ? JSON.parse(stored) : { codecs: {}, players: {}, lastUpdated: null };
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to read device compatibility:", e);
+    return { codecs: {}, players: {}, lastUpdated: null };
+  }
 }
 
 /**
  * Save device compatibility data
  */
 function saveDeviceCompatibility(compat) {
-    try {
-        compat.lastUpdated = Date.now();
-        localStorage.setItem(DEVICE_COMPAT_KEY, JSON.stringify(compat));
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to save device compatibility:", e);
-    }
+  try {
+    compat.lastUpdated = Date.now();
+    localStorage.setItem(DEVICE_COMPAT_KEY, JSON.stringify(compat));
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to save device compatibility:", e);
+  }
 }
-
 
 /**
  * Record which player worked for a specific content type
@@ -67,17 +66,17 @@ function saveDeviceCompatibility(compat) {
  * @param {object} context - Additional context (codecs detected, etc.)
  */
 export function recordPlayerSuccess(contentType, player, context = {}) {
-    const compat = getDeviceCompatibility();
+  const compat = getDeviceCompatibility();
 
-    compat.players[contentType] = {
-        recommendedPlayer: player,
-        context,
-        successCount: (compat.players[contentType]?.successCount || 0) + 1,
-        lastSuccess: Date.now(),
-    };
+  compat.players[contentType] = {
+    recommendedPlayer: player,
+    context,
+    successCount: (compat.players[contentType]?.successCount || 0) + 1,
+    lastSuccess: Date.now(),
+  };
 
-    saveDeviceCompatibility(compat);
-    console.log(`[PlayerPreferences] Recorded player success: ${contentType} -> ${player}`);
+  saveDeviceCompatibility(compat);
+  console.log(`[PlayerPreferences] Recorded player success: ${contentType} -> ${player}`);
 }
 
 /**
@@ -86,165 +85,163 @@ export function recordPlayerSuccess(contentType, player, context = {}) {
  * @returns {string|null} Recommended player or null if no data
  */
 export function getRecommendedPlayer(contentType) {
-    const compat = getDeviceCompatibility();
-    const playerData = compat.players[contentType];
+  const compat = getDeviceCompatibility();
+  const playerData = compat.players[contentType];
 
-    if (!playerData) return null;
+  if (!playerData) return null;
 
-    // Only trust recommendations from the last 30 days
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    if (Date.now() - playerData.lastSuccess > thirtyDays) {
-        return null;
-    }
-
-    // Require at least 2 successful plays to trust the recommendation
-    if (playerData.successCount >= 2) {
-        return playerData.recommendedPlayer;
-    }
-
+  // Only trust recommendations from the last 30 days
+  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+  if (Date.now() - playerData.lastSuccess > thirtyDays) {
     return null;
-}
+  }
 
+  // Require at least 2 successful plays to trust the recommendation
+  if (playerData.successCount >= 2) {
+    return playerData.recommendedPlayer;
+  }
+
+  return null;
+}
 
 /**
  * Get full device compatibility report
  * Useful for diagnostics and debugging
  */
 export function getDeviceCompatibilityReport() {
-    const compat = getDeviceCompatibility();
-    const fingerprint = getDeviceFingerprint();
+  const compat = getDeviceCompatibility();
+  const fingerprint = getDeviceFingerprint();
 
-    return {
-        device: fingerprint,
-        codecs: compat.codecs,
-        players: compat.players,
-        lastUpdated: compat.lastUpdated,
-    };
+  return {
+    device: fingerprint,
+    codecs: compat.codecs,
+    players: compat.players,
+    lastUpdated: compat.lastUpdated,
+  };
 }
-
 
 /**
  * Get all stored preferences
  */
 function getAllPrefs() {
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        return stored ? JSON.parse(stored) : {};
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to read preferences:", e);
-        return {};
-    }
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to read preferences:", e);
+    return {};
+  }
 }
 
 /**
  * Save all preferences
  */
 function saveAllPrefs(prefs) {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to save preferences:", e);
-    }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to save preferences:", e);
+  }
 }
 
 /**
  * Get preferences for a specific content or global
  */
 export function getPreferences(contentId = null) {
-    const prefs = getAllPrefs();
-    const _key = contentId || GLOBAL_KEY;
+  const prefs = getAllPrefs();
+  const _key = contentId || GLOBAL_KEY;
 
-    // Merge global with content-specific (content-specific takes precedence)
-    const globalPrefs = prefs[GLOBAL_KEY] || {};
-    const contentPrefs = contentId ? prefs[contentId] || {} : {};
+  // Merge global with content-specific (content-specific takes precedence)
+  const globalPrefs = prefs[GLOBAL_KEY] || {};
+  const contentPrefs = contentId ? prefs[contentId] || {} : {};
 
-    return {
-        volume: contentPrefs.volume ?? globalPrefs.volume ?? 1,
-        muted: contentPrefs.muted ?? globalPrefs.muted ?? false,
-        audioTrack: contentPrefs.audioTrack ?? null,
-        subtitleTrack: contentPrefs.subtitleTrack ?? -1,
-        playbackRate: globalPrefs.playbackRate ?? 1,
-        preferAVPlayer: globalPrefs.preferAVPlayer ?? false, // Manual audio compatibility mode
-    };
+  return {
+    volume: contentPrefs.volume ?? globalPrefs.volume ?? 1,
+    muted: contentPrefs.muted ?? globalPrefs.muted ?? false,
+    audioTrack: contentPrefs.audioTrack ?? null,
+    subtitleTrack: contentPrefs.subtitleTrack ?? -1,
+    playbackRate: globalPrefs.playbackRate ?? 1,
+    preferAVPlayer: globalPrefs.preferAVPlayer ?? false, // Manual audio compatibility mode
+  };
 }
 
 /**
  * Save a specific preference
  */
 export function savePreference(key, value, contentId = null) {
-    const prefs = getAllPrefs();
-    const prefKey = contentId || GLOBAL_KEY;
+  const prefs = getAllPrefs();
+  const prefKey = contentId || GLOBAL_KEY;
 
-    if (!prefs[prefKey]) {
-        prefs[prefKey] = {};
-    }
+  if (!prefs[prefKey]) {
+    prefs[prefKey] = {};
+  }
 
-    prefs[prefKey][key] = value;
-    saveAllPrefs(prefs);
+  prefs[prefKey][key] = value;
+  saveAllPrefs(prefs);
 }
 
 /**
  * Save volume preference (always global)
  */
 export function saveVolume(volume) {
-    savePreference("volume", volume, null);
+  savePreference("volume", volume, null);
 }
 
 /**
  * Save mute preference (always global)
  */
 export function saveMuted(muted) {
-    savePreference("muted", muted, null);
+  savePreference("muted", muted, null);
 }
 
 /**
  * Save audio track preference (content-specific if ID provided)
  */
 export function saveAudioTrack(trackIndex, contentId = null) {
-    savePreference("audioTrack", trackIndex, contentId);
+  savePreference("audioTrack", trackIndex, contentId);
 }
 
 /**
  * Save subtitle track preference (content-specific if ID provided)
  */
 export function saveSubtitleTrack(trackIndex, contentId = null) {
-    savePreference("subtitleTrack", trackIndex, contentId);
+  savePreference("subtitleTrack", trackIndex, contentId);
 }
 
 /**
  * Save playback rate preference (always global)
  */
 export function savePlaybackRate(rate) {
-    savePreference("playbackRate", rate, null);
+  savePreference("playbackRate", rate, null);
 }
 
 /**
  * Save AVPlayer preference (manual audio compatibility mode)
  */
 export function savePreferAVPlayer(prefer) {
-    savePreference("preferAVPlayer", prefer, null);
+  savePreference("preferAVPlayer", prefer, null);
 }
 
 /**
  * Clear preferences for a specific content
  */
 export function clearContentPreferences(contentId) {
-    if (!contentId) return;
+  if (!contentId) return;
 
-    const prefs = getAllPrefs();
-    delete prefs[contentId];
-    saveAllPrefs(prefs);
+  const prefs = getAllPrefs();
+  delete prefs[contentId];
+  saveAllPrefs(prefs);
 }
 
 /**
  * Clear all preferences
  */
 export function clearAllPreferences() {
-    try {
-        localStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to clear preferences:", e);
-    }
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to clear preferences:", e);
+  }
 }
 
 // ============================================
@@ -255,24 +252,24 @@ export function clearAllPreferences() {
  * Get all stored playback positions
  */
 function getAllPositions() {
-    try {
-        const stored = localStorage.getItem(POSITION_KEY);
-        return stored ? JSON.parse(stored) : {};
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to read positions:", e);
-        return {};
-    }
+  try {
+    const stored = localStorage.getItem(POSITION_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to read positions:", e);
+    return {};
+  }
 }
 
 /**
  * Save all playback positions
  */
 function saveAllPositions(positions) {
-    try {
-        localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to save positions:", e);
-    }
+  try {
+    localStorage.setItem(POSITION_KEY, JSON.stringify(positions));
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to save positions:", e);
+  }
 }
 
 /**
@@ -282,37 +279,37 @@ function saveAllPositions(positions) {
  * @param {number} duration - Total duration in seconds
  */
 export function savePlaybackPosition(contentId, currentTime, duration) {
-    if (!contentId || !currentTime || !duration) return;
+  if (!contentId || !currentTime || !duration) return;
 
-    // Don't save if at the beginning or near the end (within 30s or 95%)
-    if (currentTime < 10 || currentTime > duration - 30 || currentTime / duration > 0.95) {
-        // Clear position if near the end (content was finished)
-        if (currentTime / duration > 0.95) {
-            clearPlaybackPosition(contentId);
-        }
-        return;
+  // Don't save if at the beginning or near the end (within 30s or 95%)
+  if (currentTime < 10 || currentTime > duration - 30 || currentTime / duration > 0.95) {
+    // Clear position if near the end (content was finished)
+    if (currentTime / duration > 0.95) {
+      clearPlaybackPosition(contentId);
     }
+    return;
+  }
 
-    const positions = getAllPositions();
+  const positions = getAllPositions();
 
-    // Add timestamp for LRU eviction
-    positions[contentId] = {
-        time: currentTime,
-        duration: duration,
-        timestamp: Date.now(),
-    };
+  // Add timestamp for LRU eviction
+  positions[contentId] = {
+    time: currentTime,
+    duration: duration,
+    timestamp: Date.now(),
+  };
 
-    // Evict oldest positions if over limit
-    const keys = Object.keys(positions);
-    if (keys.length > MAX_POSITIONS) {
-        const sortedKeys = keys.sort((a, b) => positions[a].timestamp - positions[b].timestamp);
-        const toRemove = sortedKeys.slice(0, keys.length - MAX_POSITIONS);
-        for (const key of toRemove) {
-            delete positions[key];
-        }
+  // Evict oldest positions if over limit
+  const keys = Object.keys(positions);
+  if (keys.length > MAX_POSITIONS) {
+    const sortedKeys = keys.sort((a, b) => positions[a].timestamp - positions[b].timestamp);
+    const toRemove = sortedKeys.slice(0, keys.length - MAX_POSITIONS);
+    for (const key of toRemove) {
+      delete positions[key];
     }
+  }
 
-    saveAllPositions(positions);
+  saveAllPositions(positions);
 }
 
 /**
@@ -321,38 +318,37 @@ export function savePlaybackPosition(contentId, currentTime, duration) {
  * @returns {{time: number, duration: number} | null} - Saved position or null
  */
 export function getPlaybackPosition(contentId) {
-    if (!contentId) return null;
+  if (!contentId) return null;
 
-    const positions = getAllPositions();
-    const position = positions[contentId];
+  const positions = getAllPositions();
+  const position = positions[contentId];
 
-    if (!position) return null;
+  if (!position) return null;
 
-    return {
-        time: position.time,
-        duration: position.duration,
-    };
+  return {
+    time: position.time,
+    duration: position.duration,
+  };
 }
 
 /**
  * Clear playback position for specific content
  */
 export function clearPlaybackPosition(contentId) {
-    if (!contentId) return;
+  if (!contentId) return;
 
-    const positions = getAllPositions();
-    delete positions[contentId];
-    saveAllPositions(positions);
+  const positions = getAllPositions();
+  delete positions[contentId];
+  saveAllPositions(positions);
 }
 
 /**
  * Clear all playback positions
  */
 export function clearAllPlaybackPositions() {
-    try {
-        localStorage.removeItem(POSITION_KEY);
-    } catch (e) {
-        console.warn("[PlayerPreferences] Failed to clear positions:", e);
-    }
+  try {
+    localStorage.removeItem(POSITION_KEY);
+  } catch (e) {
+    console.warn("[PlayerPreferences] Failed to clear positions:", e);
+  }
 }
-

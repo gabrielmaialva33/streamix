@@ -5,7 +5,6 @@
  * including AC3, DTS, EAC3 (Dolby Digital).
  */
 
-import { avplayerLogger as log } from "./logger";
 import { detectWebCodecsSupport } from "./codec_detector";
 import {
   AVPLAYER_CONFIG,
@@ -14,12 +13,17 @@ import {
   getWasmUrl as getWasmUrlFromConfig,
   OTHER_WASM_FILES,
 } from "./config";
+import { avplayerLogger as log } from "./logger";
 
 // Cache for tested local WASM availability
 const localWasmAvailable = new Map();
 
 // Cache for pre-loaded WASM modules
 const preloadedWasm = new Map();
+
+// Cache in-flight script loads so concurrent AVPlayer probes/instances do not
+// append duplicate UMD scripts or race against partially initialized globals.
+const scriptLoadPromises = new Map();
 
 // Track active audio detection to prevent AudioContext leaks during rapid zapping
 let activeAudioDetection = null;
@@ -186,10 +190,7 @@ export async function preloadCommonWasm({ stream_type, source_type } = {}) {
   // (~1 MB of WASM total). Older `preloadCommonWasm()` greedily fetched
   // AC3/EAC3/DTS/HEVC up front for every viewer — that's 5-10 MB of
   // unused bandwidth on the typical playback.
-  const commonCodecs = [
-    AVCodecID.AV_CODEC_ID_AAC,
-    AVCodecID.AV_CODEC_ID_H264,
-  ];
+  const commonCodecs = [AVCodecID.AV_CODEC_ID_AAC, AVCodecID.AV_CODEC_ID_H264];
 
   // Only opt into the expensive audio decoders when the player is
   // about to play content known to need them. GIndex (MKV/HEVC) is the
@@ -248,20 +249,32 @@ export async function preloadCommonWasm({ stream_type, source_type } = {}) {
  * Load a script dynamically
  */
 function loadScript(src, id = null) {
-  return new Promise((resolve, reject) => {
-    // Check if already loaded
-    if (id && document.getElementById(id)) {
-      resolve();
-      return;
-    }
+  const key = id || src;
 
+  if (scriptLoadPromises.has(key)) {
+    return scriptLoadPromises.get(key);
+  }
+  if (id && document.getElementById(id)) {
+    return Promise.resolve();
+  }
+
+  const promise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     if (id) script.id = id;
     script.src = src;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+    script.onload = () => {
+      scriptLoadPromises.delete(key);
+      resolve();
+    };
+    script.onerror = () => {
+      scriptLoadPromises.delete(key);
+      reject(new Error(`Failed to load script: ${src}`));
+    };
     document.head.appendChild(script);
   });
+
+  scriptLoadPromises.set(key, promise);
+  return promise;
 }
 
 /**
@@ -339,7 +352,9 @@ function installRetryingFetch() {
   const SHOULD_INTERCEPT = (url) => {
     try {
       const u = typeof url === "string" ? url : url.url;
-      return /\/proxy\?url=|source\d?\.mahina\.cloud|streamix\.mahina\.cloud\/api\/stream\//.test(u);
+      return /\/proxy\?url=|source\d?\.mahina\.cloud|streamix\.mahina\.cloud\/api\/stream\//.test(
+        u,
+      );
     } catch {
       return false;
     }
@@ -362,11 +377,10 @@ function installRetryingFetch() {
       // Drain body so the connection can be reused.
       try {
         await res.arrayBuffer();
-      } catch {
-      }
+      } catch {}
       attempt++;
       if (attempt >= MAX_ATTEMPTS) break;
-      const delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+      const delay = BASE_BACKOFF_MS * 2 ** (attempt - 1);
       log.warn(
         `[StreamFetch] ${res.status} from upstream, retry ${attempt}/${MAX_ATTEMPTS} in ${delay}ms`,
       );
@@ -430,7 +444,7 @@ export class AVPlayerWrapper {
       }
 
       // Step 5: Load AVPlayer main script
-      await loadScript(scriptUrls.player);
+      await loadScript(scriptUrls.player, "avplayer-script");
       log.debug("Loaded avplayer.js");
 
       if (!window.AVPlayer) {
@@ -1169,7 +1183,9 @@ export function detectAudioIssue(videoElement) {
         if (videoElement.currentTime > 0.5) {
           clearTimeout(timeout);
           const hasAudio = videoElement.webkitAudioDecodedByteCount > 0;
-          log.debug(`[detectAudioIssue] webkitAudioDecodedByteCount: ${videoElement.webkitAudioDecodedByteCount}, hasAudio: ${hasAudio}`);
+          log.debug(
+            `[detectAudioIssue] webkitAudioDecodedByteCount: ${videoElement.webkitAudioDecodedByteCount}, hasAudio: ${hasAudio}`,
+          );
           resolve(!hasAudio);
         } else if (!videoElement.paused) {
           requestAnimationFrame(checkAudio);

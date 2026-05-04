@@ -14,11 +14,11 @@ let _mpegts = null;
  * Cached after first load.
  */
 export async function getHls() {
-    if (!_Hls) {
-        const mod = await import("hls.js");
-        _Hls = mod.default;
-    }
-    return _Hls;
+  if (!_Hls) {
+    const mod = await import("hls.js");
+    _Hls = mod.default;
+  }
+  return _Hls;
 }
 
 /**
@@ -26,11 +26,11 @@ export async function getHls() {
  * Cached after first load.
  */
 export async function getMpegts() {
-    if (!_mpegts) {
-        const mod = await import("mpegts.js");
-        _mpegts = mod.default;
-    }
-    return _mpegts;
+  if (!_mpegts) {
+    const mod = await import("mpegts.js");
+    _mpegts = mod.default;
+  }
+  return _mpegts;
 }
 
 /**
@@ -38,13 +38,13 @@ export async function getMpegts() {
  * Replicates the core check from hls.js: MediaSource or ManagedMediaSource support.
  */
 export function isHlsJsSupported() {
-    if (_Hls) return _Hls.isSupported();
+  if (_Hls) return _Hls.isSupported();
 
-    const mediaSource = window.MediaSource || window.ManagedMediaSource;
-    if (!mediaSource) return false;
+  const mediaSource = window.MediaSource || window.ManagedMediaSource;
+  if (!mediaSource) return false;
 
-    // Check for SourceBuffer support (same as hls.js internal check)
-    return typeof mediaSource.isTypeSupported === "function";
+  // Check for SourceBuffer support (same as hls.js internal check)
+  return typeof mediaSource.isTypeSupported === "function";
 }
 
 /**
@@ -52,12 +52,12 @@ export function isHlsJsSupported() {
  * Replicates the core feature check from mpegts.js.
  */
 export function isMpegtsSupported() {
-    if (_mpegts) return _mpegts.getFeatureList().mseLivePlayback;
+  if (_mpegts) return _mpegts.getFeatureList().mseLivePlayback;
 
-    const mediaSource = window.MediaSource || window.ManagedMediaSource;
-    if (!mediaSource) return false;
+  const mediaSource = window.MediaSource || window.ManagedMediaSource;
+  if (!mediaSource) return false;
 
-    return typeof mediaSource.isTypeSupported === "function";
+  return typeof mediaSource.isTypeSupported === "function";
 }
 
 /**
@@ -65,8 +65,6 @@ export function isMpegtsSupported() {
  * Non-blocking, returns immediately.
  */
 export function preloadPlayerLibs() {
-    getHls().catch(() => {
-    });
-    getMpegts().catch(() => {
-    });
+  getHls().catch(() => {});
+  getMpegts().catch(() => {});
 }

@@ -10,7 +10,8 @@
     "includes": [
       "js/app.js",
       "js/hooks/**/*.js",
-      "js/lib/**/*.js"
+      "js/lib/**/*.js",
+      "js/player/**/*.js"
     ]
   },
   "formatter": {

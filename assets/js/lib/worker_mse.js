@@ -14,23 +14,23 @@
  * `MediaSource.canConstructInDedicatedWorker` (Chrome 108+, Firefox 130+).
  */
 export function isMSEInWorkersSupported() {
-    return (
-        typeof MediaSource !== "undefined" &&
-        MediaSource.canConstructInDedicatedWorker === true &&
-        typeof Worker !== "undefined"
-    );
+  return (
+    typeof MediaSource !== "undefined" &&
+    MediaSource.canConstructInDedicatedWorker === true &&
+    typeof Worker !== "undefined"
+  );
 }
 
 /**
  * Check if transferable streams are supported (used in `getMSEWorkerCapabilityReport`).
  */
 export function isTransferableStreamsSupported() {
-    try {
-        const stream = new ReadableStream();
-        return typeof stream.tee === "function" && typeof MessageChannel !== "undefined";
-    } catch {
-        return false;
-    }
+  try {
+    const stream = new ReadableStream();
+    return typeof stream.tee === "function" && typeof MessageChannel !== "undefined";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -38,11 +38,11 @@ export function isTransferableStreamsSupported() {
  * so the backend can profile what each device can do.
  */
 export function getMSEWorkerCapabilityReport() {
-    return {
-        mseInWorkers: isMSEInWorkersSupported(),
-        transferableStreams: isTransferableStreamsSupported(),
-        sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
-        atomics: typeof Atomics !== "undefined",
-        offscreenCanvas: typeof OffscreenCanvas !== "undefined",
-    };
+  return {
+    mseInWorkers: isMSEInWorkersSupported(),
+    transferableStreams: isTransferableStreamsSupported(),
+    sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
+    atomics: typeof Atomics !== "undefined",
+    offscreenCanvas: typeof OffscreenCanvas !== "undefined",
+  };
 }

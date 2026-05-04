@@ -11,15 +11,15 @@ import VideoPlayer from "./video_player";
 import WatchPartySync from "./watch_party_sync";
 
 export default {
-    ThemeToggle,
-    VideoPlayer,
-    ProgressBar,
-    InfiniteScroll,
-    Modal,
-    HeaderSearch,
-    ContentCard,
-    OfflineSync,
-    ImageFallback,
-    ScrollHeader,
-    WatchPartySync,
+  ThemeToggle,
+  VideoPlayer,
+  ProgressBar,
+  InfiniteScroll,
+  Modal,
+  HeaderSearch,
+  ContentCard,
+  OfflineSync,
+  ImageFallback,
+  ScrollHeader,
+  WatchPartySync,
 };
