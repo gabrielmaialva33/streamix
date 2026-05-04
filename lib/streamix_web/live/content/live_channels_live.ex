@@ -272,17 +272,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
               }
             />
           <% end %>
-        </div>
 
-        <.premium_cta_banner
-          :if={@mode == :browse and not @premium_access}
-          id="browse-premium-cta"
-          current_scope={@current_scope}
-        />
-
-        <%!-- Row 2: Search + sync --%>
-        <div class="browse-toolbar__row">
-          <.search_input value={@search} placeholder="Buscar canais..." />
+          <.search_input
+            value={@search}
+            placeholder="Buscar canais..."
+            class="browse-toolbar__search"
+          />
           <%= if @mode == :provider do %>
             <button
               type="button"
@@ -299,6 +294,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             </button>
           <% end %>
         </div>
+
+        <.premium_cta_banner
+          :if={@mode == :browse and not @premium_access}
+          id="browse-premium-cta"
+          current_scope={@current_scope}
+        />
       </div>
 
       <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">

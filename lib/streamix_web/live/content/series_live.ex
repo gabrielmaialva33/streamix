@@ -243,6 +243,12 @@ defmodule StreamixWeb.Content.SeriesLive do
               }
             />
           <% end %>
+
+          <.search_input
+            value={@search}
+            placeholder="Buscar séries..."
+            class="browse-toolbar__search"
+          />
         </div>
 
         <.premium_cta_banner
@@ -250,11 +256,6 @@ defmodule StreamixWeb.Content.SeriesLive do
           id="browse-premium-cta"
           current_scope={@current_scope}
         />
-
-        <%!-- Row 2: Search --%>
-        <div class="browse-toolbar__row">
-          <.search_input value={@search} placeholder="Buscar séries..." />
-        </div>
       </div>
 
       <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">

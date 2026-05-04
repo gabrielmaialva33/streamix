@@ -132,22 +132,22 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div class="flex flex-col gap-4">
+      <div class="browse-toolbar">
         <%!-- Source and content tabs row --%>
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="browse-toolbar__row">
           <.source_tabs
             selected="gindex"
             path="/browse/animes"
             iptv_path="/browse"
             gindex_path="/browse/animes"
           />
-          <div class="hidden sm:block w-px h-8 bg-border" />
+          <div class="browse-toolbar__divider" />
           <.browse_tabs selected={:animes} source="gindex" counts={@gindex_counts} />
-        </div>
-
-        <%!-- Filters row --%>
-        <div class="flex flex-wrap items-center gap-3">
-          <.search_input value={@search} placeholder="Buscar animes..." />
+          <.search_input
+            value={@search}
+            placeholder="Buscar animes..."
+            class="browse-toolbar__search"
+          />
         </div>
       </div>
 
