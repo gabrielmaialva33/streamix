@@ -13,7 +13,7 @@ import {
   getWasmUrl as getWasmUrlFromConfig,
   OTHER_WASM_FILES,
 } from "./config";
-import { avplayerLogger as log } from "./logger";
+import { getEnvInfo, avplayerLogger as log } from "./logger";
 
 // Cache for tested local WASM availability
 const localWasmAvailable = new Map();
@@ -27,6 +27,12 @@ const scriptLoadPromises = new Map();
 
 // Track active audio detection to prevent AudioContext leaks during rapid zapping
 let activeAudioDetection = null;
+
+function configureLibmediaLogging() {
+  // libmedia reads COMMON_LOG_LEVEL from the global object. Keep its noisy
+  // demux/decode info out of production consoles, but preserve it in debug.
+  window.COMMON_LOG_LEVEL = getEnvInfo().isDev || window.__STREAMIX_DEBUG__ ? 2 : 4;
+}
 
 // AVMediaType constants from libmedia
 const _AVMediaType = {
@@ -430,6 +436,7 @@ export class AVPlayerWrapper {
 
       // Step 1: Configure webpack public path for dynamic chunk loading
       configureWebpackPublicPath();
+      configureLibmediaLogging();
 
       // Step 2: Get script URLs from config
       const scriptUrls = getAvPlayerScriptUrls();
@@ -729,7 +736,7 @@ export class AVPlayerWrapper {
       // `subtitle: true` belongs here, not on the constructor (libmedia
       // 1.3 typings put it on AVPlayerPlayOptions). Audio + video are
       // on by default.
-      const playResult = this.player.play({ subtitle: true });
+      const playResult = this.player.play({ video: true, audio: true, subtitle: true });
       log.debug("player.play() returned:", playResult);
       if (playResult && typeof playResult.then === "function") {
         await playResult;
@@ -778,17 +785,38 @@ export class AVPlayerWrapper {
    * Seek to a specific time in seconds
    */
   async seek(time) {
-    if (this.player) {
-      // AVPlayer seek uses milliseconds as int64
-      const timeMs = Math.floor(time * 1000);
-      log.debug("Seeking to", time, "seconds (", timeMs, "ms)");
-      try {
-        await this.player.seek(BigInt(timeMs));
-      } catch (e) {
-        // Fallback without BigInt if needed
-        log.warn("Seek with BigInt failed, trying without:", e);
-        await this.player.seek(timeMs);
+    if (!this.player) return;
+
+    this._pendingSeekTime = Math.max(0, Number(time) || 0);
+
+    if (this._seekPromise) {
+      return this._seekPromise;
+    }
+
+    this._seekPromise = (async () => {
+      while (this._pendingSeekTime != null && !this._destroyed) {
+        const targetTime = this._pendingSeekTime;
+        this._pendingSeekTime = null;
+        await this.performSeek(targetTime);
       }
+    })().finally(() => {
+      this._seekPromise = null;
+      this._pendingSeekTime = null;
+    });
+
+    return this._seekPromise;
+  }
+
+  async performSeek(time) {
+    // AVPlayer seek uses milliseconds as int64
+    const timeMs = Math.floor(time * 1000);
+    log.debug("Seeking to", time, "seconds (", timeMs, "ms)");
+    try {
+      await this.player.seek(BigInt(timeMs));
+    } catch (e) {
+      // Fallback without BigInt if needed
+      log.warn("Seek with BigInt failed, trying without:", e);
+      await this.player.seek(timeMs);
     }
   }
 
@@ -1121,6 +1149,7 @@ export class AVPlayerWrapper {
     if (this._destroyed) return;
 
     this._destroyed = true;
+    this._pendingSeekTime = null;
 
     if (this.player) {
       try {

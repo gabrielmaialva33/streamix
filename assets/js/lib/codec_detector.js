@@ -58,6 +58,7 @@ const HDR_FORMATS = {
 const MAX_MEDIA_CAPABILITIES_CACHE_ENTRIES = 64;
 
 let capabilityReportPromise = null;
+let capabilityReportWithDRMPromise = null;
 let capabilitySummaryCache = null;
 const mediaDecodingInfoCache = new Map();
 
@@ -176,17 +177,25 @@ export async function detectDRMSupport() {
     { name: "clearkey", id: "org.w3.clearkey" },
   ];
 
-  const config = [
-    {
-      initDataTypes: ["cenc"],
-      videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }],
-      audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
-    },
-  ];
-
   for (const system of keySystems) {
     try {
-      await navigator.requestMediaKeySystemAccess(system.id, config);
+      await navigator.requestMediaKeySystemAccess(system.id, [
+        {
+          initDataTypes: ["cenc"],
+          videoCapabilities: [
+            {
+              contentType: 'video/mp4; codecs="avc1.42E01E"',
+              robustness: "",
+            },
+          ],
+          audioCapabilities: [
+            {
+              contentType: 'audio/mp4; codecs="mp4a.40.2"',
+              robustness: "",
+            },
+          ],
+        },
+      ]);
       results.systems[system.name] = true;
     } catch {
       results.systems[system.name] = false;
@@ -194,6 +203,14 @@ export async function detectDRMSupport() {
   }
 
   return results;
+}
+
+function detectDRMAvailability() {
+  return {
+    supported: "requestMediaKeySystemAccess" in navigator,
+    systems: {},
+    skipped: true,
+  };
 }
 
 /**
@@ -342,13 +359,17 @@ export async function getMediaDecodingInfo(mediaConfig) {
  * Get full codec capability report
  * This can be sent to the backend for optimal stream selection
  */
-export async function getCodecCapabilityReport({ force = false } = {}) {
-  if (capabilityReportPromise && !force) {
-    return capabilityReportPromise;
+export async function getCodecCapabilityReport({ force = false, includeDRM = false } = {}) {
+  const cachedPromise = includeDRM ? capabilityReportWithDRMPromise : capabilityReportPromise;
+  if (cachedPromise && !force) {
+    return cachedPromise;
   }
 
-  capabilityReportPromise = (async () => {
-    const [hardware, drm] = await Promise.all([detectHardwareAcceleration(), detectDRMSupport()]);
+  const reportPromise = (async () => {
+    const [hardware, drm] = await Promise.all([
+      detectHardwareAcceleration(),
+      includeDRM ? detectDRMSupport() : detectDRMAvailability(),
+    ]);
 
     return {
       video: detectVideoCodecs(),
@@ -379,7 +400,13 @@ export async function getCodecCapabilityReport({ force = false } = {}) {
     };
   })();
 
-  return capabilityReportPromise;
+  if (includeDRM) {
+    capabilityReportWithDRMPromise = reportPromise;
+  } else {
+    capabilityReportPromise = reportPromise;
+  }
+
+  return reportPromise;
 }
 
 /**

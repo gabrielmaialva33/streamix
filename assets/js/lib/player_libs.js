@@ -6,8 +6,19 @@
  * This keeps the main app.js bundle lean for non-player pages.
  */
 
+import { getEnvInfo } from "./logger";
+
 let _Hls = null;
 let _mpegts = null;
+
+function configureMpegtsLogging(mpegts) {
+  const logging = mpegts?.LoggingControl;
+  if (!logging || getEnvInfo().isDev || window.__STREAMIX_DEBUG__) return;
+
+  logging.enableVerbose = false;
+  logging.enableDebug = false;
+  logging.enableInfo = false;
+}
 
 /**
  * Lazy-load hls.js. Returns the Hls constructor.
@@ -29,6 +40,7 @@ export async function getMpegts() {
   if (!_mpegts) {
     const mod = await import("mpegts.js");
     _mpegts = mod.default;
+    configureMpegtsLogging(_mpegts);
   }
   return _mpegts;
 }

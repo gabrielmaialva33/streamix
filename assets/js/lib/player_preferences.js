@@ -5,6 +5,8 @@
  * Preferences are scoped by content ID when available.
  */
 
+import { prefsLogger as log } from "./logger";
+
 const STORAGE_KEY = "streamix_player_prefs";
 const POSITION_KEY = "streamix_playback_positions";
 const DEVICE_COMPAT_KEY = "streamix_device_compat";
@@ -42,7 +44,7 @@ function getDeviceCompatibility() {
     const stored = localStorage.getItem(DEVICE_COMPAT_KEY);
     return stored ? JSON.parse(stored) : { codecs: {}, players: {}, lastUpdated: null };
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to read device compatibility:", e);
+    log.warn("Failed to read device compatibility:", e);
     return { codecs: {}, players: {}, lastUpdated: null };
   }
 }
@@ -55,7 +57,7 @@ function saveDeviceCompatibility(compat) {
     compat.lastUpdated = Date.now();
     localStorage.setItem(DEVICE_COMPAT_KEY, JSON.stringify(compat));
   } catch (e) {
-    console.warn("[PlayerPreferences] Failed to save device compatibility:", e);
+    log.warn("Failed to save device compatibility:", e);
   }
 }
 
@@ -76,7 +78,7 @@ export function recordPlayerSuccess(contentType, player, context = {}) {
   };
 
   saveDeviceCompatibility(compat);
-  console.log(`[PlayerPreferences] Recorded player success: ${contentType} -> ${player}`);
+  log.debug(`Recorded player success: ${contentType} -> ${player}`);
 }
 
 /**
