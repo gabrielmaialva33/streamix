@@ -40,40 +40,53 @@ defmodule Streamix.WatchParty do
     Repo.get_by(Room, invite_code: invite_code, status: "active")
   end
 
-  def join_room(room_id, user_id) do
+  def join_room(room_id, user_id, role \\ "viewer") do
     room = get_room!(room_id)
 
-    # Check participant limit
-    active_count = active_participant_count(room_id)
+    cond do
+      participant = active_participant(room_id, user_id) ->
+        RoomServer.join(room_id, user_id)
+        {:ok, participant}
 
-    if active_count >= room.max_participants do
-      {:error, :room_full}
-    else
-      result =
+      active_participant_count(room_id) >= room.max_participants ->
+        {:error, :room_full}
+
+      true ->
         %Participant{}
-        |> Participant.join_changeset(%{room_id: room_id, user_id: user_id, role: "viewer"})
+        |> Participant.join_changeset(%{room_id: room_id, user_id: user_id, role: role})
         |> Repo.insert(
           on_conflict: :nothing,
           conflict_target: {:unsafe_fragment, "(room_id, user_id) WHERE left_at IS NULL"}
         )
-
-      case result do
-        {:ok, participant} ->
-          RoomServer.join(room_id, user_id)
-          broadcast(room_id, {:participant_joined, user_id})
-          {:ok, participant}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+        |> handle_join_result(room_id, user_id)
     end
   end
+
+  defp handle_join_result({:ok, %Participant{id: nil}}, room_id, user_id) do
+    case active_participant(room_id, user_id) do
+      nil ->
+        {:error, :room_join_conflict}
+
+      participant ->
+        RoomServer.join(room_id, user_id)
+        {:ok, participant}
+    end
+  end
+
+  defp handle_join_result({:ok, participant}, room_id, user_id) do
+    RoomServer.join(room_id, user_id)
+    broadcast(room_id, {:participant_joined, user_id})
+    {:ok, participant}
+  end
+
+  defp handle_join_result({:error, changeset}, _room_id, _user_id), do: {:error, changeset}
 
   def leave_room(room_id, user_id) do
     participant =
       Repo.one(
-        from p in Participant,
+        from(p in Participant,
           where: p.room_id == ^room_id and p.user_id == ^user_id and is_nil(p.left_at)
+        )
       )
 
     if participant do
@@ -175,6 +188,14 @@ defmodule Streamix.WatchParty do
   defp active_participant_count(room_id) do
     from(p in Participant, where: p.room_id == ^room_id and is_nil(p.left_at))
     |> Repo.aggregate(:count)
+  end
+
+  defp active_participant(room_id, user_id) do
+    Repo.one(
+      from(p in Participant,
+        where: p.room_id == ^room_id and p.user_id == ^user_id and is_nil(p.left_at)
+      )
+    )
   end
 
   defp broadcast(room_id, message) do

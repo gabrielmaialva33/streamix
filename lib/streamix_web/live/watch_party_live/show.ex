@@ -16,6 +16,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   @presence_topic_prefix "watch_party:presence:"
 
+  @impl true
   def mount(%{"invite_code" => invite_code}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
@@ -59,64 +60,33 @@ defmodule StreamixWeb.WatchPartyLive.Show do
       {:ok, content, provider, stream_url} ->
         WatchParty.ensure_room_server(room)
 
-        # Join if not already joined
-        unless is_host do
-          WatchParty.join_room(room.id, user_id)
+        role = if is_host, do: "host", else: "viewer"
+
+        case WatchParty.join_room(room.id, user_id, role) do
+          {:ok, _participant} ->
+            finish_mount_room(
+              socket,
+              room,
+              user_id,
+              is_host,
+              content_type,
+              content,
+              provider,
+              stream_url
+            )
+
+          {:error, :room_full} ->
+            {:ok,
+             socket
+             |> put_flash(:error, "Watch Party cheia")
+             |> push_navigate(to: ~p"/party")}
+
+          {:error, _reason} ->
+            {:ok,
+             socket
+             |> put_flash(:error, "Não foi possível entrar na Watch Party")
+             |> push_navigate(to: ~p"/party")}
         end
-
-        if connected?(socket) do
-          # Subscribe to room events
-          Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room.id))
-
-          # Track presence
-          presence_topic = @presence_topic_prefix <> to_string(room.id)
-          Phoenix.PubSub.subscribe(Streamix.PubSub, presence_topic)
-
-          Presence.track(self(), presence_topic, to_string(user_id), %{
-            user_id: user_id,
-            email: socket.assigns.current_scope.user.email,
-            is_host: is_host,
-            joined_at: System.system_time(:second)
-          })
-        end
-
-        # Get initial playback state
-        playback_state =
-          case WatchParty.get_playback_state(room.id) do
-            {:ok, playback, _host_id} -> playback
-            _ -> %{state: :paused, position: 0.0}
-          end
-
-        # Load messages
-        messages = WatchParty.list_messages(room.id)
-
-        presence_topic = @presence_topic_prefix <> to_string(room.id)
-        presences = Presence.list(presence_topic)
-
-        next_episode = load_next_episode(content_type, content, provider, user_id)
-
-        socket =
-          socket
-          |> assign(
-            page_title:
-              "Watch Party — #{Map.get(content, :title) || Map.get(content, :name) || "Conteúdo"}"
-          )
-          |> assign(room: room)
-          |> assign(content: content)
-          |> assign(content_type: safe_content_type(content_type))
-          |> assign(provider: provider)
-          |> assign(stream_url: stream_url)
-          |> assign(streaming_mode: default_streaming_mode(content_type))
-          |> assign(is_host: is_host)
-          |> assign(user_id: user_id)
-          |> assign(playback_state: playback_state)
-          |> assign(presences: presences)
-          |> assign(chat_open: false)
-          |> assign(message_input: "")
-          |> assign(next_episode: next_episode)
-          |> stream(:messages, messages)
-
-        {:ok, socket}
 
       {:error, :not_found} ->
         {:ok,
@@ -126,8 +96,74 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     end
   end
 
+  defp finish_mount_room(
+         socket,
+         room,
+         user_id,
+         is_host,
+         content_type,
+         content,
+         provider,
+         stream_url
+       ) do
+    if connected?(socket) do
+      # Subscribe to room events
+      Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room.id))
+
+      # Track presence
+      presence_topic = @presence_topic_prefix <> to_string(room.id)
+      Phoenix.PubSub.subscribe(Streamix.PubSub, presence_topic)
+
+      Presence.track(self(), presence_topic, to_string(user_id), %{
+        user_id: user_id,
+        email: socket.assigns.current_scope.user.email,
+        is_host: is_host,
+        joined_at: System.system_time(:second)
+      })
+    end
+
+    # Get initial playback state
+    playback_state =
+      case WatchParty.get_playback_state(room.id) do
+        {:ok, playback, _host_id} -> playback
+        _ -> %{state: :paused, position: 0.0}
+      end
+
+    # Load messages
+    messages = WatchParty.list_messages(room.id)
+
+    presence_topic = @presence_topic_prefix <> to_string(room.id)
+    presences = Presence.list(presence_topic)
+
+    next_episode = load_next_episode(content_type, content, provider, user_id)
+
+    socket =
+      socket
+      |> assign(
+        page_title:
+          "Watch Party — #{Map.get(content, :title) || Map.get(content, :name) || "Conteúdo"}"
+      )
+      |> assign(room: room)
+      |> assign(content: content)
+      |> assign(content_type: safe_content_type(content_type))
+      |> assign(provider: provider)
+      |> assign(stream_url: stream_url)
+      |> assign(streaming_mode: default_streaming_mode(content_type))
+      |> assign(is_host: is_host)
+      |> assign(user_id: user_id)
+      |> assign(playback_state: playback_state)
+      |> assign(presences: presences)
+      |> assign(chat_open: false)
+      |> assign(message_input: "")
+      |> assign(next_episode: next_episode)
+      |> stream(:messages, messages)
+
+    {:ok, socket}
+  end
+
   # --- Event Handlers ---
 
+  @impl true
   def handle_event("wp_play", %{"position" => position}, socket) do
     if socket.assigns.is_host do
       WatchParty.playback_action(socket.assigns.room.id, socket.assigns.user_id, %{
@@ -237,6 +273,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   def handle_event("player_initializing", _params, socket), do: {:noreply, socket}
   def handle_event("device_diagnostics", _params, socket), do: {:noreply, socket}
   def handle_event("player_error", _params, socket), do: {:noreply, socket}
+  def handle_event("player_debug", _params, socket), do: {:noreply, socket}
+  def handle_event("codec_abr_suggestion", _params, socket), do: {:noreply, socket}
   def handle_event("diagnostic_suggestion", _params, socket), do: {:noreply, socket}
   def handle_event("update_watch_time", _params, socket), do: {:noreply, socket}
   def handle_event("close_player", _, socket), do: {:noreply, push_navigate(socket, to: ~p"/")}
@@ -257,6 +295,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   # --- PubSub Handlers ---
 
+  @impl true
   def handle_info({:sync_command, command}, socket) do
     {:noreply, push_event(socket, "wp_sync_command", command)}
   end
@@ -287,6 +326,17 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
     {:noreply, update_presences(socket)}
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    with %{room: room, user_id: user_id} <- socket.assigns do
+      WatchParty.leave_room(room.id, user_id)
+    end
+
+    :ok
+  rescue
+    _ -> :ok
   end
 
   # --- Private ---
