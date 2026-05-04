@@ -660,6 +660,36 @@ body {
     }
 }
 
+@media (min-width: 1536px) {
+    .responsive-poster-grid {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+    }
+
+    .responsive-wide-grid {
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1920px) {
+    .responsive-poster-grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+
+    .responsive-wide-grid {
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 2560px) {
+    .responsive-poster-grid {
+        grid-template-columns: repeat(14, minmax(0, 1fr));
+    }
+
+    .responsive-wide-grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+}
+
 @utility badge-new {
     background: linear-gradient(135deg, var(--color-brand), var(--color-accent));
     color: white;
