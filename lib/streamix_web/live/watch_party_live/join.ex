@@ -56,7 +56,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
     ~H"""
     <div class="flex items-center justify-center min-h-[80vh]">
       <div class="max-w-md w-full mx-4">
-        <div class="bg-surface rounded-2xl border border-border p-6 text-center space-y-6">
+        <div class="bg-surface rounded-lg border border-border p-6 text-center space-y-6 shadow-card">
           <%!-- Content thumbnail --%>
           <div :if={@room_content_icon} class="relative mx-auto w-32 h-48 rounded-lg overflow-hidden">
             <img
@@ -78,14 +78,14 @@ defmodule StreamixWeb.WatchPartyLive.Join do
           <button
             type="button"
             phx-click="join"
-            class="w-full px-6 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/30 text-base"
+            class="w-full px-6 py-3 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
           >
             <.icon name="hero-users" class="size-5 inline mr-2" /> Entrar na Sala
           </button>
 
           <.link
             navigate={~p"/"}
-            class="block text-sm text-text-muted hover:text-text-secondary transition-colors"
+            class="block text-sm text-text-muted hover:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-brand rounded"
           >
             Voltar
           </.link>

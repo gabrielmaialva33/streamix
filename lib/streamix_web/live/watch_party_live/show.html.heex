@@ -39,11 +39,10 @@
         phx-click="toggle_chat"
         aria-label="Abrir chat"
         class={[
-          "relative w-9 h-9 rounded-full flex items-center justify-center transition-colors",
-          @chat_open && "bg-purple-600 text-white shadow-md shadow-purple-600/40",
+          "relative w-9 h-9 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-brand",
+          @chat_open && "bg-brand text-white shadow-md shadow-brand/30",
           !@chat_open && "text-white/80 hover:bg-white/10"
         ]}
-        title="Abrir chat"
       >
         <.icon name="hero-chat-bubble-left-right" class="size-4" />
       </button>
@@ -53,8 +52,7 @@
         phx-click="wp_end_party"
         data-confirm="Encerrar a Watch Party para todos?"
         aria-label="Encerrar party"
-        class="w-9 h-9 rounded-full bg-red-600/90 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-md shadow-red-600/30"
-        title="Encerrar party"
+        class="w-9 h-9 rounded-full bg-error/90 text-white flex items-center justify-center hover:bg-error transition-colors shadow-md shadow-error/30 focus:outline-none focus:ring-2 focus:ring-error"
       >
         <.icon name="hero-x-mark" class="size-4" />
       </button>
@@ -62,7 +60,7 @@
 
     <%!-- Host indicator --%>
     <div :if={!@is_host} class="absolute bottom-4 left-4 z-40">
-      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/80 text-white text-xs font-medium backdrop-blur-sm shadow-lg shadow-purple-600/30">
+      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand/90 text-white text-xs font-medium backdrop-blur-sm shadow-card">
         <span class="relative flex w-1.5 h-1.5">
           <span class="absolute inline-flex w-full h-full rounded-full bg-white opacity-60 animate-ping">
           </span>
