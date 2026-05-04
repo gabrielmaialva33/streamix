@@ -317,6 +317,7 @@ body {
     border-radius: var(--radius-lg);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
+    flex-shrink: 0;
 }
 
 .segmented-control__item {
@@ -353,6 +354,14 @@ body {
     gap: 0;
     position: relative;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.content-nav::-webkit-scrollbar {
+    display: none;
 }
 
 .content-nav__tab {
@@ -534,9 +543,15 @@ body {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+    min-width: 0;
+}
+
+.browse-toolbar__row > .content-nav {
+    flex: 1 1 auto;
 }
 
 .browse-toolbar__search {
+    flex: 0 1 360px;
     margin-left: auto;
     min-width: 240px;
     max-width: 360px;
@@ -584,6 +599,64 @@ body {
     .category-chip {
         padding: 5px 12px;
         font-size: 12px;
+    }
+}
+
+/* Responsive content grids shared across catalog, search, and detail surfaces. */
+.responsive-poster-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.responsive-wide-grid,
+.responsive-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+    .responsive-poster-grid,
+    .responsive-wide-grid,
+    .responsive-gallery-grid {
+        gap: 1rem;
+    }
+
+    .responsive-poster-grid,
+    .responsive-wide-grid,
+    .responsive-gallery-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 768px) {
+    .responsive-poster-grid,
+    .responsive-wide-grid,
+    .responsive-gallery-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .responsive-poster-grid,
+    .responsive-wide-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .responsive-gallery-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1280px) {
+    .responsive-poster-grid,
+    .responsive-wide-grid {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .responsive-gallery-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 }
 

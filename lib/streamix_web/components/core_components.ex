@@ -621,7 +621,7 @@ defmodule StreamixWeb.CoreComponents do
     ~H"""
     <div class="space-y-3">
       <div class="h-6 animate-pulse bg-zinc-800 rounded w-48"></div>
-      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div class="responsive-poster-grid">
         <.skeleton :for={_ <- 1..@count} type="card" />
       </div>
     </div>
@@ -715,7 +715,7 @@ defmodule StreamixWeb.CoreComponents do
     ~H"""
     <div class="space-y-3">
       <div class="h-6 animate-pulse bg-surface-hover rounded w-48"></div>
-      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div class={if @type == "channel", do: "responsive-wide-grid", else: "responsive-poster-grid"}>
         <%= if @type == "channel" do %>
           <.skeleton_channel_card :for={_ <- 1..@count} />
         <% else %>
