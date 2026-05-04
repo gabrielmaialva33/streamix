@@ -11,8 +11,8 @@ defmodule StreamixWeb.StreamToken do
   ownership at consumption time.
   """
 
-  alias Streamix.Accounts
   alias Streamix.Access
+  alias Streamix.Accounts
   alias Streamix.Iptv
   alias StreamixWeb.UrlValidator
 
