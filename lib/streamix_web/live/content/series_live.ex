@@ -12,7 +12,7 @@ defmodule StreamixWeb.Content.SeriesLive do
   alias Streamix.Access
   alias Streamix.Iptv
 
-  @per_page 24
+  @per_page 48
 
   # Mount for /browse/series (global provider or gindex)
   def mount(%{}, _session, socket) when not is_map_key(socket.assigns, :provider) do
@@ -163,13 +163,17 @@ defmodule StreamixWeb.Content.SeriesLive do
   end
 
   def handle_event("load_more", _, socket) do
-    socket =
-      socket
-      |> assign(page: socket.assigns.page + 1)
-      |> assign(loading: true)
-      |> load_series()
+    if socket.assigns.loading or not socket.assigns.has_more do
+      {:noreply, socket}
+    else
+      socket =
+        socket
+        |> assign(page: socket.assigns.page + 1)
+        |> assign(loading: true)
+        |> load_series()
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do

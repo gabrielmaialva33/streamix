@@ -19,7 +19,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
 
       featured_movie = movie_fixture(provider, %{name: "A Premium Movie"})
 
-      # Create 50 movies (2 pages + 2 items)
+      # Create 50 movies (2 pages + a few remaining items)
       for i <- 1..50 do
         movie_fixture(provider, %{name: "Movie #{i}"})
       end
@@ -31,15 +31,16 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/browse/movies")
 
-      # Initial load should have 24 items
-      assert view |> has_element?("#movies > div:nth-child(24)")
-      refute view |> has_element?("#movies > div:nth-child(25)")
+      # Initial load should fill one compact-grid page.
+      assert view |> has_element?("#movies > div:nth-child(48)")
+      refute view |> has_element?("#movies > div:nth-child(49)")
 
       # Trigger load_more
       view |> render_hook("load_more", %{})
 
-      # Should now have 48 items
-      assert view |> has_element?("#movies > div:nth-child(48)")
+      # Should now have the remaining movies.
+      assert view |> has_element?("#movies > div:nth-child(51)")
+      refute view |> has_element?("#movies > div:nth-child(52)")
     end
   end
 

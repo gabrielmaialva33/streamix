@@ -17,25 +17,20 @@ const InfiniteScroll = {
     this.observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        if (entry.isIntersecting && !this.pending) {
-          this.pending = true;
-          this.pushEvent("load_more", {}, () => {
-            // Callback after server acknowledges - small delay before allowing next
-            setTimeout(() => {
-              this.pending = false;
-            }, 100);
-          });
+        if (entry.isIntersecting) {
+          this.loadMore();
         }
       },
       {
         root: null,
-        // Trigger 400px before sentinel is visible for smoother loading
-        rootMargin: "400px",
+        // Trigger before the visible bottom so compact grids keep filling smoothly.
+        rootMargin: "800px 0px",
         threshold: 0,
       },
     );
 
     this.observer.observe(this.el);
+    this.scheduleVisibilityCheck();
   },
 
   updated() {
@@ -45,12 +40,46 @@ const InfiniteScroll = {
       this.page = newPage;
       this.pending = false;
     }
+
+    this.scheduleVisibilityCheck();
   },
 
   destroyed() {
+    this.destroyedHook = true;
     if (this.observer) {
       this.observer.disconnect();
     }
+  },
+
+  loadMore() {
+    if (this.pending || this.destroyedHook) {
+      return;
+    }
+
+    this.pending = true;
+    this.pushEvent("load_more", {}, () => {
+      setTimeout(() => {
+        if (!this.destroyedHook) {
+          this.pending = false;
+          this.scheduleVisibilityCheck();
+        }
+      }, 100);
+    });
+  },
+
+  scheduleVisibilityCheck() {
+    requestAnimationFrame(() => {
+      if (this.destroyedHook || this.pending) {
+        return;
+      }
+
+      const rect = this.el.getBoundingClientRect();
+      const preloadBottom = window.innerHeight + 800;
+
+      if (rect.top <= preloadBottom && rect.bottom >= 0) {
+        this.loadMore();
+      }
+    });
   },
 };
 

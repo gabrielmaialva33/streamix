@@ -92,13 +92,17 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   end
 
   def handle_event("load_more", _, socket) do
-    socket =
-      socket
-      |> assign(page: socket.assigns.page + 1)
-      |> assign(loading: true)
-      |> load_channels()
+    if socket.assigns.loading or not socket.assigns.has_more do
+      {:noreply, socket}
+    else
+      socket =
+        socket
+        |> assign(page: socket.assigns.page + 1)
+        |> assign(loading: true)
+        |> load_channels()
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   def handle_event("play_channel", %{"id" => id}, socket) do

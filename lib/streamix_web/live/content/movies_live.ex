@@ -12,7 +12,7 @@ defmodule StreamixWeb.Content.MoviesLive do
   alias Streamix.Access
   alias Streamix.Iptv
 
-  @per_page 24
+  @per_page 48
 
   # Mount for /browse/movies (global provider or gindex)
   def mount(%{}, _session, socket) when not is_map_key(socket.assigns, :provider) do
@@ -163,7 +163,7 @@ defmodule StreamixWeb.Content.MoviesLive do
   end
 
   def handle_event("load_more", _, socket) do
-    if socket.assigns.loading do
+    if socket.assigns.loading or not socket.assigns.has_more do
       {:noreply, socket}
     else
       socket =
