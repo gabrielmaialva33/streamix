@@ -126,7 +126,12 @@ config :streamix, Oban,
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
        # Backfill TMDB backdrop/image assets daily at 4 AM
-       {"0 4 * * *", Streamix.Workers.BackfillTmdbAssetsWorker}
+       {"0 4 * * *", Streamix.Workers.BackfillTmdbAssetsWorker},
+       # Reconcile providers stuck in `sync_status="syncing"` whose
+       # owning Oban jobs no longer exist (container restarts mid-run,
+       # cancelled jobs, etc). Every 10 minutes is cheap — a single
+       # indexed query per check.
+       {"*/10 * * * *", Streamix.Workers.SyncWatchdogWorker}
      ]}
   ]
 
