@@ -29,7 +29,7 @@
     <%!-- Watch Party floating controls — grouped into a single pill
          with a subtle backdrop so they read as one UI unit, not four
          loose buttons floating on top of the video. --%>
-    <div class="absolute top-3 right-14 z-40 flex items-center gap-2 pl-2 pr-2 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 shadow-lg shadow-black/50">
+    <div class="absolute top-3 right-14 z-40 flex items-center gap-2 pl-2 pr-2 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 shadow-card">
       <.presence_indicators presences={@presences} />
       <div class="w-px h-6 bg-white/10" aria-hidden="true" />
       <.invite_badge invite_code={@room.invite_code} />

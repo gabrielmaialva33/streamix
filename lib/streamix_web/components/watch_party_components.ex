@@ -65,7 +65,7 @@ defmodule StreamixWeb.WatchPartyComponents do
             <.icon name="hero-star-solid" class="size-2 text-black" />
           </span>
           <span
-            class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-black"
+            class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-success rounded-full border-2 border-black"
             title="Online"
           />
         </div>
@@ -83,9 +83,9 @@ defmodule StreamixWeb.WatchPartyComponents do
         class="hidden sm:inline-flex items-center gap-1 text-[11px] text-white/60 font-medium"
       >
         <span class="relative flex w-1.5 h-1.5">
-          <span class="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping">
+          <span class="absolute inline-flex w-full h-full rounded-full bg-success opacity-75 animate-ping">
           </span>
-          <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-green-500"></span>
+          <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-success"></span>
         </span>
         {@total} {if @total == 1, do: "online", else: "online"}
       </div>
