@@ -43,6 +43,7 @@ defmodule Streamix.Queue do
 
   require Logger
 
+  alias Streamix.Iptv
   alias Streamix.Queue.Publisher
   alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
 
@@ -127,7 +128,7 @@ defmodule Streamix.Queue do
   # Private functions
 
   defp enqueue_gindex_via_rabbitmq(provider) do
-    provider = Streamix.Repo.preload(provider, :drives)
+    provider = Iptv.preload_provider_drives(provider)
 
     paths =
       provider.drives

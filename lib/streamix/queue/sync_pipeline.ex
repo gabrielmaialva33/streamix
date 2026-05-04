@@ -25,6 +25,7 @@ defmodule Streamix.Queue.SyncPipeline do
   require Logger
 
   alias Broadway.Message
+  alias Streamix.Iptv
   alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Sync.{Categories, Live, Movies, Series}
   alias Streamix.Queue.Connection
@@ -98,12 +99,12 @@ defmodule Streamix.Queue.SyncPipeline do
   # Task processors
 
   defp process_task(%{"type" => "gindex_full_sync", "provider_id" => provider_id}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     Gindex.Sync.sync_provider(provider)
   end
 
   defp process_task(%{"type" => "gindex_movies", "provider_id" => provider_id, "path" => path}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     base_url = provider.gindex_url
 
     Logger.info("[SyncPipeline] Syncing movies from: #{path}")
@@ -121,7 +122,7 @@ defmodule Streamix.Queue.SyncPipeline do
   end
 
   defp process_task(%{"type" => "gindex_series", "provider_id" => provider_id, "path" => path}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     base_url = provider.gindex_url
 
     Logger.info("[SyncPipeline] Syncing series from: #{path}")
@@ -137,7 +138,7 @@ defmodule Streamix.Queue.SyncPipeline do
   end
 
   defp process_task(%{"type" => "gindex_animes", "provider_id" => provider_id, "path" => path}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     base_url = provider.gindex_url
 
     Logger.info("[SyncPipeline] Syncing animes from: #{path}")
@@ -155,7 +156,7 @@ defmodule Streamix.Queue.SyncPipeline do
   # IPTV (Xtream) task processors
 
   defp process_task(%{"type" => "iptv_categories", "provider_id" => provider_id}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     Logger.info("[SyncPipeline] Syncing IPTV categories for provider #{provider_id}")
 
     case Categories.sync_categories(provider) do
@@ -169,7 +170,7 @@ defmodule Streamix.Queue.SyncPipeline do
   end
 
   defp process_task(%{"type" => "iptv_live", "provider_id" => provider_id}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     Logger.info("[SyncPipeline] Syncing IPTV live channels for provider #{provider_id}")
 
     case Live.sync_live_channels(provider) do
@@ -183,7 +184,7 @@ defmodule Streamix.Queue.SyncPipeline do
   end
 
   defp process_task(%{"type" => "iptv_movies", "provider_id" => provider_id}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     Logger.info("[SyncPipeline] Syncing IPTV movies for provider #{provider_id}")
 
     case Movies.sync_movies(provider) do
@@ -197,7 +198,7 @@ defmodule Streamix.Queue.SyncPipeline do
   end
 
   defp process_task(%{"type" => "iptv_series", "provider_id" => provider_id}) do
-    provider = Streamix.Repo.get!(Streamix.Iptv.Provider, provider_id)
+    provider = Iptv.get_provider!(provider_id)
     Logger.info("[SyncPipeline] Syncing IPTV series for provider #{provider_id}")
 
     case Series.sync_series(provider) do
