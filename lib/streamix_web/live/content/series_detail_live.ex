@@ -477,7 +477,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     <!-- Image Gallery -->
           <div :if={Series.has_images?(@series)} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
+            <div class="responsive-gallery-grid">
               <button
                 :for={image <- Series.image_urls(@series)}
                 type="button"
