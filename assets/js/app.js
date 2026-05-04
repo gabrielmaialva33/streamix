@@ -27,6 +27,7 @@ import { LiveSocket } from "phoenix_live_view";
 import { hooks as colocatedHooks } from "phoenix-colocated/streamix";
 import topbar from "../vendor/topbar";
 import customHooks from "./hooks";
+import { getEnvInfo } from "./lib/logger";
 
 window.Alpine = Alpine;
 Alpine.start();
@@ -102,7 +103,9 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker
       .register("/sw.js")
       .then((reg) => {
-        console.log("SW registered:", reg.scope);
+        if (getEnvInfo().isDev) {
+          console.log("SW registered:", reg.scope);
+        }
 
         // Check for updates periodically (every 30 minutes)
         setInterval(() => reg.update(), 30 * 60 * 1000);
