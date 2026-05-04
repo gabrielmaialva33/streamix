@@ -9,7 +9,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
     user = Accounts.get_user!(id)
     active_sub = Billing.active_subscription_for_user(user)
     plans = Billing.list_active_plans()
-    user = Streamix.Repo.preload(user, :role)
+    user = Accounts.preload_role(user)
     role_changeset = Ecto.Changeset.change(user, %{})
 
     socket =
@@ -30,7 +30,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
   def handle_event("save_role", %{"user" => %{"role" => role_name}}, socket) do
     case Accounts.update_user_role(socket.assigns.user, role_name) do
       {:ok, updated_user} ->
-        updated_user = Streamix.Repo.preload(updated_user, :role, force: true)
+        updated_user = Accounts.preload_role(updated_user, force: true)
 
         {:noreply,
          socket

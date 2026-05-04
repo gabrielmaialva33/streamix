@@ -62,6 +62,27 @@ defmodule Streamix.Accounts do
   """
   def get_user!(id), do: Repo.get!(User, id) |> Repo.preload(:role)
 
+  @doc """
+  Gets a single user or returns `nil`.
+  """
+  def get_user(id, opts \\ []) do
+    case Repo.get(User, id) do
+      nil -> nil
+      %User{} = user -> maybe_preload_user_role(user, opts)
+    end
+  end
+
+  @doc """
+  Ensures a user has its role association loaded.
+  """
+  def preload_role(%User{} = user, opts \\ []) do
+    Repo.preload(user, :role, opts)
+  end
+
+  defp maybe_preload_user_role(%User{} = user, opts) do
+    if Keyword.get(opts, :preload_role, false), do: preload_role(user), else: user
+  end
+
   ## User registration
 
   @doc """
@@ -320,25 +341,33 @@ defmodule Streamix.Accounts do
     search = Keyword.get(opts, :search)
     page = Keyword.get(opts, :page, 1)
     per_page = Keyword.get(opts, :per_page, 20)
+
+    User
+    |> users_query()
+    |> filter_users_by_email(search)
+    |> paginate_users(page, per_page)
+    |> Repo.all()
+  end
+
+  defp users_query(queryable) do
+    from(user in queryable,
+      as: :user,
+      order_by: [desc: user.inserted_at],
+      preload: [:role]
+    )
+  end
+
+  defp filter_users_by_email(query, nil), do: query
+  defp filter_users_by_email(query, ""), do: query
+
+  defp filter_users_by_email(query, search) when is_binary(search) do
+    term = "%#{search}%"
+    from([user: user] in query, where: ilike(user.email, ^term))
+  end
+
+  defp paginate_users(query, page, per_page) do
     offset = (page - 1) * per_page
-
-    query =
-      from(u in User,
-        order_by: [desc: u.inserted_at],
-        limit: ^per_page,
-        offset: ^offset,
-        preload: [:role]
-      )
-
-    query =
-      if search && search != "" do
-        term = "%#{search}%"
-        from(u in query, where: ilike(u.email, ^term))
-      else
-        query
-      end
-
-    Repo.all(query)
+    from(query, limit: ^per_page, offset: ^offset)
   end
 
   @doc """
