@@ -192,7 +192,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
         </h2>
         <span
           :if={@ai_powered}
-          class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-gradient-to-r from-purple-600 to-pink-600 text-white"
+          class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-info/15 text-info border border-info/20"
         >
           AI
         </span>

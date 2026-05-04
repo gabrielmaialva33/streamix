@@ -90,7 +90,7 @@ defmodule StreamixWeb.PlayerComponents do
         class="absolute inset-0 flex items-center justify-center bg-black/80 z-20 hidden"
       >
         <div class="flex flex-col items-center gap-4 text-center p-6">
-          <.icon name="hero-exclamation-triangle" class="size-16 text-red-500" />
+          <.icon name="hero-exclamation-triangle" class="size-16 text-error" />
           <p class="error-message text-white text-lg">Erro ao carregar</p>
           <button
             type="button"
@@ -356,7 +356,7 @@ defmodule StreamixWeb.PlayerComponents do
 
   def live_badge(assigns) do
     ~H"""
-    <div class="flex items-center gap-1.5 px-3 py-1 bg-red-600 rounded text-white text-xs font-bold uppercase tracking-wide">
+    <div class="flex items-center gap-1.5 px-3 py-1 bg-brand rounded text-white text-xs font-bold uppercase tracking-wide">
       <span class="w-2 h-2 bg-white rounded-full animate-pulse" /> Ao Vivo
     </div>
     """

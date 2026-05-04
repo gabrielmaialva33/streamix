@@ -30,7 +30,7 @@ defmodule StreamixWeb.EpgComponents do
 
     <div :if={@current_program && !@compact} class="mt-1.5 space-y-1">
       <div class="flex items-center gap-1.5">
-        <span class="inline-flex items-center px-1 py-0.5 text-[9px] font-semibold rounded bg-red-500/90 text-white uppercase tracking-wide">
+        <span class="inline-flex items-center px-1 py-0.5 text-[9px] font-semibold rounded bg-brand/90 text-white uppercase tracking-wide">
           Ao Vivo
         </span>
         <p class="text-[11px] text-text-secondary truncate flex-1" title={@current_program.title}>
@@ -75,7 +75,7 @@ defmodule StreamixWeb.EpgComponents do
     <div :if={@current_program} class="space-y-2">
       <div class="space-y-1">
         <div class="flex items-center gap-2">
-          <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-red-500 text-white uppercase">
+          <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-brand text-white uppercase">
             Ao Vivo
           </span>
           <p class="text-sm text-text-primary truncate flex-1" title={@current_program.title}>

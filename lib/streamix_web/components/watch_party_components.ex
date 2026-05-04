@@ -17,7 +17,7 @@ defmodule StreamixWeb.WatchPartyComponents do
     ~H"""
     <.link
       navigate={~p"/party/new/#{@content_type}/#{@content_id}"}
-      class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3.5 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/30 text-xs sm:text-base"
+      class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
     >
       <.icon name="hero-users" class="size-4 sm:size-5" /> Watch Party
     </.link>
@@ -51,7 +51,7 @@ defmodule StreamixWeb.WatchPartyComponents do
           :for={user <- @visible}
           class={[
             "relative w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-black shadow-md",
-            user.is_host && "bg-gradient-to-br from-purple-500 to-purple-700 text-white",
+            user.is_host && "bg-brand text-white",
             !user.is_host && "bg-gradient-to-br from-white/15 to-white/5 text-white"
           ]}
           title={if user.is_host, do: "#{user.email} (host)", else: user.email}
@@ -59,7 +59,7 @@ defmodule StreamixWeb.WatchPartyComponents do
           {String.first(user.email) |> String.upcase()}
           <span
             :if={user.is_host}
-            class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 rounded-full border-2 border-black flex items-center justify-center"
+            class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-warning rounded-full border-2 border-black flex items-center justify-center"
             title="Host"
           >
             <.icon name="hero-star-solid" class="size-2 text-black" />
@@ -112,8 +112,8 @@ defmodule StreamixWeb.WatchPartyComponents do
       class="group inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-full bg-white/10 text-white/90 text-xs hover:bg-white/20 backdrop-blur-sm transition-colors cursor-pointer border border-white/10 hover:border-white/20"
       title="Copiar link de convite"
     >
-      <span class="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center flex-shrink-0">
-        <.icon name="hero-link" class="size-3 text-purple-200" />
+      <span class="w-5 h-5 rounded-full bg-brand/20 flex items-center justify-center flex-shrink-0">
+        <.icon name="hero-link" class="size-3 text-brand" />
       </span>
       <span class="font-mono font-semibold tracking-widest">{String.upcase(@invite_code)}</span>
       <.icon
@@ -144,18 +144,18 @@ defmodule StreamixWeb.WatchPartyComponents do
       still sees the video above the chat.
       Desktop (sm+): pinned right sidebar, full-height 320px wide.
     --%>
-    <aside class="fixed z-50 bg-surface/95 backdrop-blur-md flex flex-col shadow-2xl shadow-black/50
-                  inset-x-0 bottom-0 h-[80dvh] rounded-t-2xl border-t border-border
+    <aside class="fixed z-50 bg-surface/95 backdrop-blur-md flex flex-col shadow-modal
+                  inset-x-0 bottom-0 h-[80dvh] rounded-t-lg border-t border-border
                   sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 sm:h-full sm:w-80 sm:rounded-none sm:border-t-0 sm:border-l sm:border-border">
       <%!-- Mobile grip handle — affordance that the sheet can be dismissed. --%>
       <div class="sm:hidden pt-2 pb-1 flex justify-center flex-shrink-0">
         <div class="w-10 h-1 rounded-full bg-white/20" aria-hidden="true" />
       </div>
       <%!-- Header --%>
-      <div class="px-4 py-3 border-b border-border/60 flex items-center justify-between bg-gradient-to-b from-purple-600/10 to-transparent">
+      <div class="px-4 py-3 border-b border-border/60 flex items-center justify-between bg-surface-elevated">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center">
-            <.icon name="hero-chat-bubble-left-right" class="size-4 text-purple-300" />
+          <div class="w-8 h-8 rounded-lg bg-brand/15 flex items-center justify-center">
+            <.icon name="hero-chat-bubble-left-right" class="size-4 text-brand" />
           </div>
           <div>
             <h3 class="text-text-primary font-semibold text-sm leading-tight">Chat</h3>
@@ -164,8 +164,8 @@ defmodule StreamixWeb.WatchPartyComponents do
         </div>
         <button
           phx-click="toggle_chat"
-          class="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-white/5 transition-colors"
-          title="Fechar chat"
+          class="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors focus:outline-none focus:ring-2 focus:ring-brand"
+          aria-label="Fechar chat"
         >
           <.icon name="hero-x-mark" class="size-4" />
         </button>
@@ -180,12 +180,12 @@ defmodule StreamixWeb.WatchPartyComponents do
         <div :for={{dom_id, message} <- @messages} id={dom_id} class="group">
           <%!-- Text messages render as a compact bubble with avatar initial --%>
           <div :if={message.type == "text"} class="flex items-start gap-2">
-            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div class="w-7 h-7 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
               {message.user.email |> String.first() |> String.upcase()}
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-1.5">
-                <span class="font-semibold text-xs text-purple-300 truncate">
+                <span class="font-semibold text-xs text-brand truncate">
                   {message.user.email |> String.split("@") |> hd()}
                 </span>
               </div>
@@ -214,8 +214,8 @@ defmodule StreamixWeb.WatchPartyComponents do
           type="button"
           phx-click="send_reaction"
           phx-value-emoji={emoji}
-          class="w-10 h-10 rounded-lg text-xl flex items-center justify-center hover:bg-white/10 hover:scale-110 active:scale-95 transition-all"
-          title="Enviar reação"
+          class="w-10 h-10 rounded-lg text-xl flex items-center justify-center hover:bg-surface-hover hover:scale-110 active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
+          aria-label="Enviar reação"
         >
           {emoji}
         </button>
@@ -240,12 +240,12 @@ defmodule StreamixWeb.WatchPartyComponents do
             placeholder="Digite uma mensagem..."
             autocomplete="off"
             enterkeyhint="send"
-            class="flex-1 bg-white/5 border border-border/60 rounded-full px-4 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+            class="flex-1 bg-surface border border-border rounded-lg px-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-colors"
           />
           <button
             type="submit"
             aria-label="Enviar mensagem"
-            class="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-600/30"
+            class="w-10 h-10 rounded-lg bg-brand flex items-center justify-center text-white hover:bg-brand-hover active:scale-95 transition-all shadow-card focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <.icon name="hero-paper-airplane-solid" class="size-4" />
           </button>

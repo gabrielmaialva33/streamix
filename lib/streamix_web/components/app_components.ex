@@ -188,9 +188,9 @@ defmodule StreamixWeb.AppComponents do
         @active && !@accent && "text-text-primary bg-surface-hover/60",
         !@active && !@accent &&
           "text-text-secondary hover:text-text-primary hover:bg-surface-hover/40",
-        @active && @accent == "purple" && "text-purple-300 bg-purple-500/10",
+        @active && @accent == "purple" && "text-accent bg-accent/10",
         !@active && @accent == "purple" &&
-          "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+          "text-text-secondary hover:text-accent hover:bg-accent/10"
       ]}
     >
       <.icon name={if @active, do: @icon_active, else: @icon} class="size-4" />
@@ -220,7 +220,7 @@ defmodule StreamixWeb.AppComponents do
       ]}
     >
       <span class={[
-        "flex items-center justify-center rounded-2xl transition-all",
+        "flex items-center justify-center rounded-xl transition-all",
         @active && "bg-brand/15 px-4 py-1",
         !@active && "px-2 py-1"
       ]}>
@@ -264,7 +264,7 @@ defmodule StreamixWeb.AppComponents do
   def premium_badge(assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand",
+      "inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-brand",
       @class
     ]}>
       <.icon name="hero-sparkles" class="size-3.5" />
@@ -293,7 +293,7 @@ defmodule StreamixWeb.AppComponents do
       id={@id}
       data-variant={@variant}
       class={[
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide",
         @grants_global_access &&
           "border-brand/30 bg-brand/10 text-brand",
         !@grants_global_access &&
@@ -361,7 +361,7 @@ defmodule StreamixWeb.AppComponents do
     <section
       id={@id}
       class={[
-        "rounded-2xl border border-brand/20 bg-gradient-to-br from-brand/15 via-surface to-accent/10 p-5 sm:p-6 shadow-lg shadow-brand/10",
+        "rounded-lg border border-brand/20 bg-surface p-5 sm:p-6 shadow-card",
         @class
       ]}
     >
@@ -374,7 +374,7 @@ defmodule StreamixWeb.AppComponents do
 
         <.link
           navigate={@navigate}
-          class="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-brand-hover"
+          class="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
         >
           <.icon name="hero-sparkles" class="size-5" />
           {@cta_label}
@@ -535,7 +535,7 @@ defmodule StreamixWeb.AppComponents do
           phx-click={@on_sync}
           phx-value-id={@provider.id}
           disabled={@provider.sync_status in ["pending", "syncing"]}
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors disabled:opacity-50"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors disabled:opacity-50"
         >
           <.icon
             name="hero-arrow-path"

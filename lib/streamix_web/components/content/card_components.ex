@@ -37,7 +37,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"movie-card-#{@movie.id}"}
       phx-hook="ContentCard"
-      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all cursor-pointer"
+      class="content-card bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all cursor-pointer"
       data-content-id={@movie.id}
       data-content-type="movie"
       data-source-type={@source}
@@ -70,12 +70,12 @@ defmodule StreamixWeb.Content.CardComponents do
         />
         <div
           class={[
-            "w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900",
+            "w-full h-full flex items-center justify-center bg-surface-hover",
             @image_url && "hidden"
           ]}
           data-fallback
         >
-          <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
+          <.icon name="hero-film" class="size-12 sm:size-16 text-text-secondary/30" />
         </div>
 
         <%!-- Premium badge --%>
@@ -90,7 +90,7 @@ defmodule StreamixWeb.Content.CardComponents do
         <%!-- Source badge --%>
         <span
           :if={@source == "gindex"}
-          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
+          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-info/90 text-white"
         >
           GDrive
         </span>
@@ -118,11 +118,12 @@ defmodule StreamixWeb.Content.CardComponents do
             phx-click={@on_favorite}
             phx-value-id={@movie.id}
             phx-value-type="movie"
-            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+            class="flex-shrink-0 p-1 rounded-md text-text-secondary hover:text-brand hover:bg-brand/10 hover:scale-110 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
+            aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-red-500"]}
+              class={["size-5", @is_favorite && "text-brand"]}
             />
           </button>
         </div>
@@ -152,7 +153,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={"series-card-#{@series.id}"}
       phx-hook="ContentCard"
-      class="bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-purple-500/50 transition-all cursor-pointer"
+      class="content-card bg-surface rounded-lg overflow-hidden hover:ring-2 hover:ring-brand/50 transition-all cursor-pointer"
       data-content-id={@series.id}
       data-content-type="series"
       data-source-type={@source}
@@ -183,12 +184,12 @@ defmodule StreamixWeb.Content.CardComponents do
         />
         <div
           class={[
-            "w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900",
+            "w-full h-full flex items-center justify-center bg-surface-hover",
             Map.get(@series, :cover) && "hidden"
           ]}
           data-fallback
         >
-          <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
+          <.icon name="hero-tv" class="size-12 sm:size-16 text-text-secondary/30" />
         </div>
 
         <%!-- Premium badge --%>
@@ -203,7 +204,7 @@ defmodule StreamixWeb.Content.CardComponents do
         <%!-- Source badge --%>
         <span
           :if={@source == "gindex"}
-          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-600/90 text-white"
+          class="absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded bg-info/90 text-white"
         >
           GDrive
         </span>
@@ -231,11 +232,12 @@ defmodule StreamixWeb.Content.CardComponents do
             phx-click={@on_favorite}
             phx-value-id={@series.id}
             phx-value-type="series"
-            class="flex-shrink-0 p-1 hover:scale-110 transition-transform"
+            class="flex-shrink-0 p-1 rounded-md text-text-secondary hover:text-brand hover:bg-brand/10 hover:scale-110 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
+            aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
           >
             <.icon
               name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class={["size-5", @is_favorite && "text-red-500"]}
+              class={["size-5", @is_favorite && "text-brand"]}
             />
           </button>
         </div>
