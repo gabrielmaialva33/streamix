@@ -37,7 +37,7 @@ defmodule Streamix.Iptv do
   defdelegate list_home_favorites(user_id, opts \\ []), to: Library
   defdelegate is_favorite?(user_id, content_type, content_id), to: Library
   defdelegate count_favorites_by_type(user_id), to: Library
-  defdelegate list_favorite_ids(user_id, content_type), to: Library
+  defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil), to: Library
   defdelegate count_favorites(user_id), to: Library
   defdelegate add_favorite(user_id, attrs), to: Library
 
@@ -176,6 +176,7 @@ defmodule Streamix.Iptv do
   defdelegate list_public_providers(), to: Providers, as: :list_public
   defdelegate get_provider!(id), to: Providers, as: :get!
   defdelegate get_provider(id), to: Providers, as: :get
+  defdelegate preload_provider_drives(provider), to: Providers, as: :preload_drives
   defdelegate get_user_provider(user_id, provider_id), to: Providers
   defdelegate get_public_provider(provider_id), to: Providers, as: :get_public
   defdelegate get_global_provider(), to: Providers, as: :get_global

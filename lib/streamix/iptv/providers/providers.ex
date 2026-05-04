@@ -75,6 +75,12 @@ defmodule Streamix.Iptv.Providers do
   def get(id), do: Repo.get(Provider, id)
 
   @doc """
+  Ensures a provider has its GIndex drives loaded.
+  """
+  @spec preload_drives(Provider.t()) :: Provider.t()
+  def preload_drives(%Provider{} = provider), do: Repo.preload(provider, :drives)
+
+  @doc """
   Gets a provider owned by a specific user.
   """
   @spec get_user_provider(integer(), integer()) :: Provider.t() | nil
