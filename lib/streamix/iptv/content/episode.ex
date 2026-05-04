@@ -29,6 +29,9 @@ defmodule Streamix.Iptv.Episode do
     field :gindex_url_cached, :string
     field :gindex_url_expires_at, :utc_datetime
 
+    # Cached ffprobe output (GIndex only). See Movie schema for context.
+    field :track_metadata, :map
+
     belongs_to :season, Season
     belongs_to :catalog_item, CatalogItem
 

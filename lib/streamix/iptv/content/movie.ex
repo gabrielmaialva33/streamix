@@ -46,6 +46,11 @@ defmodule Streamix.Iptv.Movie do
     field :tmdb_searched_at, :utc_datetime
     field :tmdb_miss_reason, :string
 
+    # Cached ffprobe output for GIndex content. Populated lazily by the
+    # tracks endpoint the first time someone opens the audio menu. Choki
+    # content never reads this column (hls.js exposes tracks at runtime).
+    field :track_metadata, :map
+
     belongs_to :provider, Provider
     belongs_to :catalog_item, CatalogItem
     has_many :categories, through: [:catalog_item, :categories]
