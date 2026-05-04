@@ -38,11 +38,16 @@ import { selectEngine } from "../player/engine_selector";
 let AVPlayerWrapper = null;
 let detectAudioIssue = null;
 let preloadCommonWasm = null;
+let avPlayerModulePromise = null;
 
 async function loadAVPlayer() {
   if (!AVPlayerWrapper) {
     log.debug("Lazy loading AVPlayer module...");
-    const module = await import("../lib/avplayer_wrapper");
+    avPlayerModulePromise ||= import("../lib/avplayer_wrapper").catch((error) => {
+      avPlayerModulePromise = null;
+      throw error;
+    });
+    const module = await avPlayerModulePromise;
     AVPlayerWrapper = module.AVPlayerWrapper;
     detectAudioIssue = module.detectAudioIssue;
     preloadCommonWasm = module.preloadCommonWasm;
@@ -53,6 +58,16 @@ async function loadAVPlayer() {
 
 function isFirefoxBrowser() {
   return /firefox/i.test(navigator.userAgent);
+}
+
+function scheduleLowPriority(callback, { timeout = 2500 } = {}) {
+  if (typeof window.requestIdleCallback === "function") {
+    const id = window.requestIdleCallback(callback, { timeout });
+    return () => window.cancelIdleCallback?.(id);
+  }
+
+  const id = window.setTimeout(callback, Math.min(timeout, 1000));
+  return () => window.clearTimeout(id);
 }
 
 // Advanced WASM pre-loading with WebAssembly.compile for faster startup
@@ -128,8 +143,41 @@ const VideoPlayer = {
     // Smart preloading based on Device Codec Memory and content type
     this.smartPreload();
 
-    // Run quick diagnostics in background (non-blocking)
-    this.runStartupDiagnostics();
+    // Run diagnostics as low-priority work so startup playback and user
+    // gestures are not competing with WebCodecs/codec probes on the main thread.
+    this._startupDiagnosticsCancel = scheduleLowPriority(() => {
+      if (!this._destroyed) this.runStartupDiagnostics();
+    });
+  },
+
+  getPlaybackResourcePolicy() {
+    const connection = navigator.connection || {};
+    const saveData = connection.saveData === true;
+    const effectiveType = connection.effectiveType || "unknown";
+    const deviceMemory = navigator.deviceMemory || 4;
+    const cpuCores = navigator.hardwareConcurrency || 4;
+    const lowEndDevice = deviceMemory <= 2 || cpuCores <= 4;
+    const constrainedNetwork = effectiveType === "slow-2g" || effectiveType === "2g";
+    const avoidSpeculativeWork = saveData || constrainedNetwork || lowEndDevice;
+
+    return {
+      saveData,
+      effectiveType,
+      deviceMemory,
+      cpuCores,
+      lowEndDevice,
+      constrainedNetwork,
+      avoidSpeculativeWork,
+      shouldRunAdvancedDiagnostics: !avoidSpeculativeWork,
+      shouldProbeTracks: !saveData && !constrainedNetwork,
+      reason: saveData
+        ? "save-data"
+        : constrainedNetwork
+          ? `network-${effectiveType}`
+          : lowEndDevice
+            ? "low-end-device"
+            : "normal",
+    };
   },
 
   /**
@@ -139,6 +187,7 @@ const VideoPlayer = {
   smartPreload() {
     const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
     const recommendedPlayer = getRecommendedPlayer(contentKey);
+    const policy = this.getPlaybackResourcePolicy();
 
     // Pre-load AVPlayer if:
     // 1. Device Codec Memory recommends it
@@ -149,6 +198,11 @@ const VideoPlayer = {
       this.preferAVPlayer ||
       this.sourceType === "gindex" ||
       this.currentStreamType === "mkv";
+
+    if (policy.avoidSpeculativeWork && !this.preferAVPlayer && recommendedPlayer !== "avplayer") {
+      log.debug("[VideoPlayer] Skipping speculative AVPlayer preload:", policy.reason);
+      return;
+    }
 
     if (shouldPreloadAVPlayer) {
       log.debug("[VideoPlayer] Smart preload: AVPlayer WASM");
@@ -165,6 +219,7 @@ const VideoPlayer = {
    */
   async runStartupDiagnostics() {
     try {
+      const policy = this.getPlaybackResourcePolicy();
       const quickDiag = await runQuickDiagnostics();
 
       if (!quickDiag.allPassed) {
@@ -175,13 +230,26 @@ const VideoPlayer = {
       }
 
       // Detect advanced capabilities
-      const advancedCapabilities = await this.detectAdvancedCapabilities();
+      const advancedCapabilities = policy.shouldRunAdvancedDiagnostics
+        ? await this.detectAdvancedCapabilities()
+        : {
+            skipped: true,
+            reason: policy.reason,
+            webCodecs: { supported: isWebCodecsSupported(), report: null },
+            mseWorkers: {
+              supported: isMSEInWorkersSupported(),
+              report: getMSEWorkerCapabilityReport(),
+            },
+            codecRecommendation: null,
+            featureRecommendations: null,
+          };
 
       // Send capabilities to backend for analytics
       this.pushEvent("device_diagnostics", {
         quick: quickDiag,
         capabilities: getCapabilitySummary(),
         advanced: advancedCapabilities,
+        resource_policy: policy,
       });
 
       // Initialize codec-aware ABR if supported
@@ -1228,6 +1296,9 @@ const VideoPlayer = {
   // ============================================
 
   cleanup() {
+    this._metadataProbeCancel?.();
+    this._metadataProbeCancel = null;
+
     if (this.streamLoader) {
       this.streamLoader.destroy();
       this.streamLoader = null;
@@ -1681,7 +1752,14 @@ const VideoPlayer = {
       // For GIndex content, probe metadata in background to detect audio/subtitle tracks
       // This allows native player to start fast while we detect available tracks
       if (this.sourceType === "gindex") {
-        this.probeMetadataInBackground();
+        this._metadataProbeCancel?.();
+        this._metadataProbeCancel = scheduleLowPriority(
+          () => {
+            this._metadataProbeCancel = null;
+            if (!this._destroyed && !this.usingAVPlayer) this.probeMetadataInBackground();
+          },
+          { timeout: 5000 },
+        );
       }
 
       // Record successful native playback after 5s (confirms no fallback needed)
@@ -2159,6 +2237,11 @@ const VideoPlayer = {
   async probeMetadataInBackground() {
     if (this.usingAVPlayer || this._metadataProbed || this._destroyed) return;
     this._metadataProbed = true;
+    const policy = this.getPlaybackResourcePolicy();
+    if (!policy.shouldProbeTracks) {
+      log.debug("[VideoPlayer] Skipping track probe:", policy.reason);
+      return;
+    }
 
     const contentId = this.el.dataset.contentId;
     const contentType = this.contentType; // "movie" | "episode" | "live"
@@ -2248,6 +2331,14 @@ const VideoPlayer = {
       // the native player can't reliably pick PT-BR — bridge to AVPlayer
       // with the preferred track selected.
       if (this._probedAudioTracks && this._probedAudioTracks.length > 1) {
+        if (policy.avoidSpeculativeWork && !this.preferAVPlayer) {
+          log.debug(
+            "[VideoPlayer] Dual audio detected, waiting for user selection:",
+            policy.reason,
+          );
+          return;
+        }
+
         log.debug(
           "[VideoPlayer] Multiple audio tracks detected, auto-switching to AVPlayer with Portuguese track",
           preferredAudioTrack,
@@ -2845,6 +2936,10 @@ const VideoPlayer = {
 
   destroyed() {
     this._destroyed = true;
+    this._startupDiagnosticsCancel?.();
+    this._startupDiagnosticsCancel = null;
+    this._metadataProbeCancel?.();
+    this._metadataProbeCancel = null;
     this.cleanup();
     this.networkMonitor?.stop();
     this.nativeBufferManager?.stop();
