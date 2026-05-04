@@ -27,16 +27,10 @@ defmodule Streamix.Iptv.History do
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
 
-    query =
-      WatchProgress
-      |> where(user_id: ^user_id)
-      |> join(:inner, [wp], ci in CatalogItem, on: wp.catalog_item_id == ci.id)
-      |> order_by([wp], desc: wp.last_watched_at)
-      |> preload(^@catalog_preloads)
-
-    query = maybe_filter_by_type(query, content_type)
-
-    query
+    user_progress_query(user_id)
+    |> maybe_filter_by_type(content_type)
+    |> order_by([progress: progress], desc: progress.last_watched_at)
+    |> preload(^@catalog_preloads)
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
@@ -56,12 +50,10 @@ defmodule Streamix.Iptv.History do
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
 
-    WatchProgress
-    |> where(user_id: ^user_id)
-    |> join(:inner, [wp], ci in CatalogItem, on: wp.catalog_item_id == ci.id)
+    user_progress_query(user_id)
     |> maybe_filter_by_type(content_type)
     |> join_home_content()
-    |> order_by([wp], desc: wp.last_watched_at)
+    |> order_by([progress: progress], desc: progress.last_watched_at)
     |> limit(^limit)
     |> offset(^offset)
     |> select_home_card()
@@ -78,30 +70,28 @@ defmodule Streamix.Iptv.History do
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
 
-    WatchProgress
-    |> where(user_id: ^user_id)
-    |> join(:inner, [wp], ci in CatalogItem, on: wp.catalog_item_id == ci.id)
+    user_progress_query(user_id)
     |> maybe_filter_by_type(content_type)
-    |> order_by([wp], desc: wp.last_watched_at)
+    |> order_by([progress: progress], desc: progress.last_watched_at)
     |> limit(^limit)
     |> offset(^offset)
-    |> select([wp, ci], %{
-      content_type: ci.content_type,
+    |> select([progress: progress, catalog_item: catalog_item], %{
+      content_type: catalog_item.content_type,
       content_id:
         selected_as(
           fragment(
             "COALESCE((SELECT m0.id FROM movies AS m0 WHERE m0.catalog_item_id = ?), (SELECT s0.id FROM series AS s0 WHERE s0.catalog_item_id = ?), (SELECT e0.id FROM episodes AS e0 WHERE e0.catalog_item_id = ?), (SELECT l0.id FROM live_channels AS l0 WHERE l0.catalog_item_id = ?))",
-            wp.catalog_item_id,
-            wp.catalog_item_id,
-            wp.catalog_item_id,
-            wp.catalog_item_id
+            progress.catalog_item_id,
+            progress.catalog_item_id,
+            progress.catalog_item_id,
+            progress.catalog_item_id
           ),
           :content_id
         ),
-      progress_seconds: wp.progress_seconds,
-      duration_seconds: wp.duration_seconds,
-      completed: wp.completed,
-      watched_at: wp.last_watched_at
+      progress_seconds: progress.progress_seconds,
+      duration_seconds: progress.duration_seconds,
+      completed: progress.completed,
+      watched_at: progress.last_watched_at
     })
     |> Repo.all()
   end
@@ -113,10 +103,9 @@ defmodule Streamix.Iptv.History do
   @spec count_by_type(integer()) :: %{String.t() => integer()}
   def count_by_type(user_id) do
     WatchProgress
-    |> where(user_id: ^user_id)
-    |> join(:inner, [wp], ci in CatalogItem, on: wp.catalog_item_id == ci.id)
-    |> group_by([_wp, ci], ci.content_type)
-    |> select([_wp, ci], {ci.content_type, count()})
+    |> user_progress_query(user_id)
+    |> group_by([catalog_item: catalog_item], catalog_item.content_type)
+    |> select([catalog_item: catalog_item], {catalog_item.content_type, count()})
     |> Repo.all()
     |> Enum.into(%{})
   end
@@ -278,30 +267,19 @@ defmodule Streamix.Iptv.History do
   end
 
   defp do_get_progress_map(user_id, schema, content_ids) do
-    content_catalog_map =
-      schema
-      |> where([c], c.id in ^content_ids)
-      |> select([c], {c.id, c.catalog_item_id})
-      |> Repo.all()
-      |> Map.new()
-
-    catalog_item_ids = Map.values(content_catalog_map)
-
-    if catalog_item_ids == [],
-      do: %{},
-      else: query_progress(user_id, catalog_item_ids, content_catalog_map)
-  end
-
-  defp query_progress(user_id, catalog_item_ids, content_catalog_map) do
-    reverse_map = Map.new(content_catalog_map, fn {cid, caid} -> {caid, cid} end)
-
-    WatchProgress
-    |> where([wp], wp.user_id == ^user_id and wp.catalog_item_id in ^catalog_item_ids)
-    |> where([wp], wp.duration_seconds > 0 and wp.progress_seconds > 0)
-    |> select([wp], {wp.catalog_item_id, wp.progress_seconds, wp.duration_seconds})
+    from(content in schema,
+      as: :content,
+      join: progress in WatchProgress,
+      as: :progress,
+      on: progress.catalog_item_id == content.catalog_item_id,
+      where: content.id in ^content_ids,
+      where: progress.user_id == ^user_id,
+      where: progress.duration_seconds > 0 and progress.progress_seconds > 0,
+      select: {content.id, progress.progress_seconds, progress.duration_seconds}
+    )
     |> Repo.all()
-    |> Map.new(fn {catalog_item_id, progress, duration} ->
-      {Map.get(reverse_map, catalog_item_id), Float.round(progress / duration, 2)}
+    |> Map.new(fn {content_id, progress, duration} ->
+      {content_id, Float.round(progress / duration, 2)}
     end)
   end
 
@@ -335,10 +313,22 @@ defmodule Streamix.Iptv.History do
     end
   end
 
+  defp user_progress_query(user_id), do: user_progress_query(WatchProgress, user_id)
+
+  defp user_progress_query(queryable, user_id) do
+    from(progress in queryable,
+      as: :progress,
+      where: progress.user_id == ^user_id,
+      join: catalog_item in CatalogItem,
+      as: :catalog_item,
+      on: progress.catalog_item_id == catalog_item.id
+    )
+  end
+
   defp maybe_filter_by_type(query, nil), do: query
 
   defp maybe_filter_by_type(query, content_type) do
-    where(query, [_wp, ci], ci.content_type == ^content_type)
+    where(query, [catalog_item: catalog_item], catalog_item.content_type == ^content_type)
   end
 
   defp maybe_decorate({:ok, entry}) do
@@ -353,32 +343,49 @@ defmodule Streamix.Iptv.History do
 
   defp join_home_content(query) do
     query
-    |> join(:left, [_wp, ci], movie in assoc(ci, :movie))
-    |> join(:left, [_wp, ci, _movie], series in assoc(ci, :series))
-    |> join(:left, [_wp, ci, _movie, _series], episode in assoc(ci, :episode))
-    |> join(:left, [_wp, ci, _movie, _series, _episode], channel in assoc(ci, :live_channel))
+    |> join(:left, [catalog_item: catalog_item], movie in assoc(catalog_item, :movie), as: :movie)
+    |> join(:left, [catalog_item: catalog_item], series in assoc(catalog_item, :series),
+      as: :series
+    )
+    |> join(:left, [catalog_item: catalog_item], episode in assoc(catalog_item, :episode),
+      as: :episode
+    )
+    |> join(:left, [catalog_item: catalog_item], channel in assoc(catalog_item, :live_channel),
+      as: :channel
+    )
   end
 
   defp select_home_card(query) do
-    select(query, [wp, ci, movie, series, episode, channel], %{
-      id: wp.id,
-      progress_seconds: wp.progress_seconds,
-      duration_seconds: wp.duration_seconds,
-      watched_at: wp.last_watched_at,
-      content_type: ci.content_type,
-      movie_id: movie.id,
-      movie_name: movie.name,
-      movie_icon: movie.stream_icon,
-      series_id: series.id,
-      series_name: series.name,
-      series_icon: series.cover,
-      episode_id: episode.id,
-      episode_name: episode.title,
-      episode_icon: episode.still_path,
-      live_channel_id: channel.id,
-      live_channel_name: channel.name,
-      live_channel_icon: channel.stream_icon
-    })
+    select(
+      query,
+      [
+        progress: progress,
+        catalog_item: catalog_item,
+        movie: movie,
+        series: series,
+        episode: episode,
+        channel: channel
+      ],
+      %{
+        id: progress.id,
+        progress_seconds: progress.progress_seconds,
+        duration_seconds: progress.duration_seconds,
+        watched_at: progress.last_watched_at,
+        content_type: catalog_item.content_type,
+        movie_id: movie.id,
+        movie_name: movie.name,
+        movie_icon: movie.stream_icon,
+        series_id: series.id,
+        series_name: series.name,
+        series_icon: series.cover,
+        episode_id: episode.id,
+        episode_name: episode.title,
+        episode_icon: episode.still_path,
+        live_channel_id: channel.id,
+        live_channel_name: channel.name,
+        live_channel_icon: channel.stream_icon
+      }
+    )
   end
 
   defp build_home_card(%{content_type: "movie"} = row) do

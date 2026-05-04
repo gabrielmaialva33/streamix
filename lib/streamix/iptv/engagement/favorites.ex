@@ -27,16 +27,10 @@ defmodule Streamix.Iptv.Favorites do
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
 
-    query =
-      Favorite
-      |> where(user_id: ^user_id)
-      |> join(:inner, [f], ci in CatalogItem, on: f.catalog_item_id == ci.id)
-      |> order_by([f], desc: f.inserted_at)
-      |> preload(^@catalog_preloads)
-
-    query = maybe_filter_by_type(query, content_type)
-
-    query
+    user_favorites_query(user_id)
+    |> maybe_filter_by_type(content_type)
+    |> order_by([favorite: favorite], desc: favorite.inserted_at)
+    |> preload(^@catalog_preloads)
     |> limit(^limit)
     |> offset(^offset)
     |> Repo.all()
@@ -52,12 +46,10 @@ defmodule Streamix.Iptv.Favorites do
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
 
-    Favorite
-    |> where(user_id: ^user_id)
-    |> join(:inner, [f], ci in CatalogItem, on: f.catalog_item_id == ci.id)
+    user_favorites_query(user_id)
     |> maybe_filter_by_type(content_type)
     |> join_home_content()
-    |> order_by([f], desc: f.inserted_at)
+    |> order_by([favorite: favorite], desc: favorite.inserted_at)
     |> limit(^limit)
     |> offset(^offset)
     |> select_home_card()
@@ -97,10 +89,9 @@ defmodule Streamix.Iptv.Favorites do
   @spec count_by_type(integer()) :: %{String.t() => integer()}
   def count_by_type(user_id) do
     Favorite
-    |> where(user_id: ^user_id)
-    |> join(:inner, [f], ci in CatalogItem, on: f.catalog_item_id == ci.id)
-    |> group_by([_f, ci], ci.content_type)
-    |> select([_f, ci], {ci.content_type, count()})
+    |> user_favorites_query(user_id)
+    |> group_by([catalog_item: catalog_item], catalog_item.content_type)
+    |> select([catalog_item: catalog_item], {catalog_item.content_type, count()})
     |> Repo.all()
     |> Enum.into(%{})
   end
@@ -109,32 +100,18 @@ defmodule Streamix.Iptv.Favorites do
   Lists only the content_ids of favorites for a user, filtered by content_type.
   Returns a MapSet for O(1) lookup in list views.
   """
-  @spec list_ids(integer(), String.t()) :: MapSet.t(integer())
-  def list_ids(user_id, content_type) do
-    # Get catalog_item_ids for this user's favorites of the given type
-    catalog_item_ids =
-      Favorite
-      |> where(user_id: ^user_id)
-      |> join(:inner, [f], ci in CatalogItem, on: f.catalog_item_id == ci.id)
-      |> where([_f, ci], ci.content_type == ^content_type)
-      |> select([f, _ci], f.catalog_item_id)
-      |> Repo.all()
+  @spec list_ids(integer(), String.t(), [integer()] | nil) :: MapSet.t(integer())
+  def list_ids(user_id, content_type, content_ids \\ nil) do
+    case content_schema(content_type) do
+      nil ->
+        MapSet.new()
 
-    # Resolve those to actual content ids
-    if catalog_item_ids == [] do
-      MapSet.new()
-    else
-      schema = content_schema(content_type)
-
-      if schema do
+      schema ->
         schema
-        |> where([c], c.catalog_item_id in ^catalog_item_ids)
-        |> select([c], c.id)
+        |> favorite_content_ids_query(user_id, content_type)
+        |> maybe_filter_content_ids(content_ids)
         |> Repo.all()
         |> MapSet.new()
-      else
-        MapSet.new()
-      end
     end
   end
 
@@ -236,10 +213,44 @@ defmodule Streamix.Iptv.Favorites do
     end
   end
 
+  defp user_favorites_query(user_id), do: user_favorites_query(Favorite, user_id)
+
+  defp user_favorites_query(queryable, user_id) do
+    from(favorite in queryable,
+      as: :favorite,
+      where: favorite.user_id == ^user_id,
+      join: catalog_item in CatalogItem,
+      as: :catalog_item,
+      on: favorite.catalog_item_id == catalog_item.id
+    )
+  end
+
+  defp favorite_content_ids_query(schema, user_id, content_type) do
+    from(content in schema,
+      as: :content,
+      join: favorite in Favorite,
+      as: :favorite,
+      on: favorite.catalog_item_id == content.catalog_item_id,
+      join: catalog_item in CatalogItem,
+      as: :catalog_item,
+      on: catalog_item.id == favorite.catalog_item_id,
+      where: favorite.user_id == ^user_id,
+      where: catalog_item.content_type == ^content_type,
+      select: content.id
+    )
+  end
+
+  defp maybe_filter_content_ids(query, nil), do: query
+  defp maybe_filter_content_ids(query, []), do: where(query, false)
+
+  defp maybe_filter_content_ids(query, content_ids) when is_list(content_ids) do
+    where(query, [content: content], content.id in ^content_ids)
+  end
+
   defp maybe_filter_by_type(query, nil), do: query
 
   defp maybe_filter_by_type(query, content_type) do
-    where(query, [_f, ci], ci.content_type == ^content_type)
+    where(query, [catalog_item: catalog_item], catalog_item.content_type == ^content_type)
   end
 
   defp maybe_decorate({:ok, favorite}) do
@@ -253,29 +264,46 @@ defmodule Streamix.Iptv.Favorites do
 
   defp join_home_content(query) do
     query
-    |> join(:left, [_f, ci], movie in assoc(ci, :movie))
-    |> join(:left, [_f, ci, _movie], series in assoc(ci, :series))
-    |> join(:left, [_f, ci, _movie, _series], episode in assoc(ci, :episode))
-    |> join(:left, [_f, ci, _movie, _series, _episode], channel in assoc(ci, :live_channel))
+    |> join(:left, [catalog_item: catalog_item], movie in assoc(catalog_item, :movie), as: :movie)
+    |> join(:left, [catalog_item: catalog_item], series in assoc(catalog_item, :series),
+      as: :series
+    )
+    |> join(:left, [catalog_item: catalog_item], episode in assoc(catalog_item, :episode),
+      as: :episode
+    )
+    |> join(:left, [catalog_item: catalog_item], channel in assoc(catalog_item, :live_channel),
+      as: :channel
+    )
   end
 
   defp select_home_card(query) do
-    select(query, [f, ci, movie, series, episode, channel], %{
-      inserted_at: f.inserted_at,
-      content_type: ci.content_type,
-      movie_id: movie.id,
-      movie_name: movie.name,
-      movie_icon: movie.stream_icon,
-      series_id: series.id,
-      series_name: series.name,
-      series_icon: series.cover,
-      episode_id: episode.id,
-      episode_name: episode.title,
-      episode_icon: episode.still_path,
-      live_channel_id: channel.id,
-      live_channel_name: channel.name,
-      live_channel_icon: channel.stream_icon
-    })
+    select(
+      query,
+      [
+        favorite: favorite,
+        catalog_item: catalog_item,
+        movie: movie,
+        series: series,
+        episode: episode,
+        channel: channel
+      ],
+      %{
+        inserted_at: favorite.inserted_at,
+        content_type: catalog_item.content_type,
+        movie_id: movie.id,
+        movie_name: movie.name,
+        movie_icon: movie.stream_icon,
+        series_id: series.id,
+        series_name: series.name,
+        series_icon: series.cover,
+        episode_id: episode.id,
+        episode_name: episode.title,
+        episode_icon: episode.still_path,
+        live_channel_id: channel.id,
+        live_channel_name: channel.name,
+        live_channel_icon: channel.stream_icon
+      }
+    )
   end
 
   defp build_home_card(%{content_type: "movie"} = row) do
