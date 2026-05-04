@@ -262,7 +262,7 @@ defmodule StreamixWeb.SearchLive do
         <span class="text-sm text-text-secondary">{length(@channels)} resultados</span>
       </div>
 
-      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div class="responsive-wide-grid">
         <.live_channel_card
           :for={channel <- @limited_channels}
           channel={channel}
@@ -286,7 +286,7 @@ defmodule StreamixWeb.SearchLive do
         <span class="text-sm text-text-secondary">{length(@movies)} resultados</span>
       </div>
 
-      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div class="responsive-poster-grid">
         <div :for={movie <- @limited_movies}>
           <.movie_card movie={movie} is_favorite={movie.is_favorite} on_play="play_movie" />
         </div>
@@ -307,7 +307,7 @@ defmodule StreamixWeb.SearchLive do
         <span class="text-sm text-text-secondary">{length(@series)} resultados</span>
       </div>
 
-      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div class="responsive-poster-grid">
         <div :for={series <- @limited_series}>
           <.series_card series={series} is_favorite={series.is_favorite} />
         </div>
