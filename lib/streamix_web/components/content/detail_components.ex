@@ -117,7 +117,7 @@ defmodule StreamixWeb.Content.DetailComponents do
           <div class="flex items-center gap-4 text-sm text-text-secondary">
             <span :if={Map.get(@content, :year)}>{@content.year}</span>
             <span :if={Map.get(@content, :rating)} class="flex items-center gap-1">
-              <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
+              <.icon name="hero-star-solid" class="size-4 text-warning" />
               {format_rating(@content.rating)}
             </span>
             <span :if={Map.get(@content, :genres, []) != []}>{format_genre_names(@content)}</span>

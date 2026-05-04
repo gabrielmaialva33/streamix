@@ -108,25 +108,25 @@ defmodule StreamixWeb.HomeComponents do
           icon="hero-tv"
           title="Assista em qualquer tela"
           description="Smart TV, celular, tablet ou computador. Seus conteúdos te acompanham."
-          gradient="from-blue-500/20 to-blue-600/5"
+          gradient="from-info/15 to-surface"
         />
         <.feature_card
           icon="hero-server-stack"
           title="Múltiplos provedores"
           description="Conecte quantos provedores IPTV quiser e veja tudo em um catálogo unificado."
-          gradient="from-purple-500/20 to-purple-600/5"
+          gradient="from-accent/15 to-surface"
         />
         <.feature_card
           icon="hero-magnifying-glass"
           title="Busca inteligente"
           description="Encontre o que quer com busca semântica por IA. Pesquise por tema, clima ou descrição."
-          gradient="from-green-500/20 to-green-600/5"
+          gradient="from-success/15 to-surface"
         />
         <.feature_card
           icon="hero-users"
           title="Watch Party"
           description="Assista junto com amigos em tempo real, sincronizado e com chat ao vivo."
-          gradient="from-pink-500/20 to-pink-600/5"
+          gradient="from-brand/15 to-surface"
         />
       </div>
     </div>
@@ -140,7 +140,7 @@ defmodule StreamixWeb.HomeComponents do
 
   def feature_card(assigns) do
     ~H"""
-    <div class={"rounded-xl bg-gradient-to-br #{@gradient} border border-white/[0.06] p-6 sm:p-8"}>
+    <div class={"rounded-lg bg-gradient-to-br #{@gradient} border border-border p-6 sm:p-8"}>
       <div class="w-12 h-12 rounded-lg bg-white/[0.06] flex items-center justify-center mb-4">
         <.icon name={@icon} class="size-6 text-white/80" />
       </div>
@@ -517,7 +517,7 @@ defmodule StreamixWeb.HomeComponents do
           {if @type == :movie, do: "FILME", else: "SÉRIE"}
         </span>
         <span :if={@content.rating} class="flex items-center gap-1 text-sm text-text-secondary">
-          <.icon name="hero-star-solid" class="size-4 text-yellow-500" />
+          <.icon name="hero-star-solid" class="size-4 text-warning" />
           {Float.round(Decimal.to_float(@content.rating), 1)}
         </span>
         <span :if={@content.year} class="text-sm text-text-secondary">
@@ -759,7 +759,7 @@ defmodule StreamixWeb.HomeComponents do
       <.section_header
         title="Em Alta Agora"
         icon="hero-fire-solid"
-        icon_class="text-orange-500"
+        icon_class="text-brand"
         genre_filters={@genre_filters}
         period_filters={@period_filters}
         selected_genre={@selected_genre}
@@ -800,7 +800,7 @@ defmodule StreamixWeb.HomeComponents do
       <.section_header
         title="Séries Populares"
         icon="hero-tv-solid"
-        icon_class="text-purple-500"
+        icon_class="text-accent"
         genre_filters={@genre_filters}
         selected_genre={@selected_genre}
         on_genre_change="filter_series_genre"
@@ -836,7 +836,7 @@ defmodule StreamixWeb.HomeComponents do
       <.section_header
         title="TV ao Vivo"
         icon="hero-signal-solid"
-        icon_class="text-red-500"
+        icon_class="text-brand"
         genre_filters={@category_filters}
         selected_genre={@selected_category}
         on_genre_change="filter_channels_category"
@@ -866,7 +866,7 @@ defmodule StreamixWeb.HomeComponents do
     <div class="px-[4%]">
       <div class="flex items-center justify-between mb-3 sm:mb-4">
         <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
-          <.icon name="hero-trophy" class="size-5 text-yellow-500" />
+          <.icon name="hero-trophy" class="size-5 text-warning" />
           {@title}
         </h2>
         <.link
@@ -906,14 +906,14 @@ defmodule StreamixWeb.HomeComponents do
             "text-[80px] sm:text-[120px] font-black leading-none",
             "bg-gradient-to-b from-text-primary to-text-muted bg-clip-text text-transparent",
             "drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]",
-            @rank == 1 && "from-yellow-400 to-yellow-600",
+            @rank == 1 && "from-warning to-brand",
             @rank == 2 && "from-gray-300 to-gray-500",
-            @rank == 3 && "from-amber-600 to-amber-800"
+            @rank == 3 && "from-warning/80 to-brand/80"
           ]}>
             {@rank}
           </span>
         </div>
-        <div class="w-[100px] sm:w-[140px] rounded-lg overflow-hidden bg-surface-hover shadow-lg transition-all group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-yellow-500/20">
+        <div class="w-[100px] sm:w-[140px] rounded-lg overflow-hidden bg-surface-hover shadow-card transition-all group-hover:-translate-y-1 group-hover:shadow-card-hover">
           <div class="aspect-[2/3] relative">
             <div id={"top10-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
               <img
@@ -946,7 +946,7 @@ defmodule StreamixWeb.HomeComponents do
               :if={@movie.rating}
               class="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 bg-black/70 rounded text-[10px] text-white"
             >
-              <.icon name="hero-star-solid" class="size-2.5 text-yellow-500" />
+              <.icon name="hero-star-solid" class="size-2.5 text-warning" />
               {Float.round(Decimal.to_float(@movie.rating), 1)}
             </div>
           </div>

@@ -188,8 +188,8 @@ defmodule StreamixWeb.AppComponents do
         @active && !@accent && "text-text-primary bg-surface-hover/60",
         !@active && !@accent &&
           "text-text-secondary hover:text-text-primary hover:bg-surface-hover/40",
-        @active && @accent == "purple" && "text-accent bg-accent/10",
-        !@active && @accent == "purple" &&
+        @active && @accent == "accent" && "text-accent bg-accent/10",
+        !@active && @accent == "accent" &&
           "text-text-secondary hover:text-accent hover:bg-accent/10"
       ]}
     >

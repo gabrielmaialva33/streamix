@@ -172,7 +172,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
   """
   attr :title, :string, required: true
   attr :icon, :string, default: nil
-  attr :icon_class, :string, default: "text-yellow-500"
+  attr :icon_class, :string, default: "text-warning"
   attr :genre_filters, :list, default: []
   attr :period_filters, :list, default: []
   attr :selected_genre, :string, default: "all"

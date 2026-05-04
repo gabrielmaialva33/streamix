@@ -105,7 +105,7 @@ defmodule StreamixWeb.Content.CarouselComponents do
 
           <div class="flex flex-wrap items-center gap-3 text-sm text-white/70">
             <span :if={Map.get(@content, :year)} class="font-medium">{@content.year}</span>
-            <span :if={Map.get(@content, :rating)} class="flex items-center gap-1 text-yellow-400">
+            <span :if={Map.get(@content, :rating)} class="flex items-center gap-1 text-warning">
               <.icon name="hero-star-solid" class="size-4" />
               {format_rating(@content.rating)}
             </span>
@@ -127,7 +127,7 @@ defmodule StreamixWeb.Content.CarouselComponents do
               type="button"
               phx-click={@on_play}
               phx-value-id={@content.id}
-              class="inline-flex items-center gap-2 px-5 sm:px-8 py-2.5 sm:py-3 bg-white text-black font-semibold rounded-xl hover:bg-white/90 transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
+              class="inline-flex items-center gap-2 px-5 sm:px-8 py-2.5 sm:py-3 bg-white text-black font-semibold rounded-lg hover:bg-white/90 transition-all shadow-card hover:shadow-card-hover hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-brand"
             >
               <.icon name="hero-play-solid" class="size-5" /> Assistir
             </button>
@@ -135,7 +135,7 @@ defmodule StreamixWeb.Content.CarouselComponents do
               type="button"
               phx-click={@on_details}
               phx-value-id={@content.id}
-              class="inline-flex items-center gap-2 px-5 sm:px-8 py-2.5 sm:py-3 glass text-white font-semibold rounded-xl hover:bg-white/20 transition-all"
+              class="inline-flex items-center gap-2 px-5 sm:px-8 py-2.5 sm:py-3 glass text-white font-semibold rounded-lg hover:bg-white/20 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
             >
               <.icon name="hero-information-circle" class="size-5" /> Mais Info
             </button>
@@ -158,12 +158,12 @@ defmodule StreamixWeb.Content.CarouselComponents do
     <section class="px-[4%]">
       <div class="flex items-center justify-between mb-3 sm:mb-4">
         <h2 class="flex items-center gap-2 text-base sm:text-xl font-semibold text-text-primary">
-          <.icon name="hero-sparkles-solid" class="size-4 sm:size-5 text-yellow-400" /> Para Você
+          <.icon name="hero-sparkles-solid" class="size-4 sm:size-5 text-warning" /> Para Você
         </h2>
       </div>
 
       <%= if @recommendations == [] do %>
-        <div class="flex flex-col items-center justify-center py-12 sm:py-16 rounded-2xl border border-glass-border bg-surface-elevated/30">
+        <div class="flex flex-col items-center justify-center py-12 sm:py-16 rounded-lg border border-glass-border bg-surface-elevated/30">
           <.icon name="hero-sparkles" class="size-12 sm:size-16 text-text-muted mb-4" />
           <h3 class="text-base sm:text-lg font-medium text-text-secondary mb-2">
             Ainda estamos conhecendo você

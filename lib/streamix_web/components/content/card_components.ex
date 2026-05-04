@@ -307,7 +307,7 @@ defmodule StreamixWeb.Content.CardComponents do
           <span :if={Map.get(@episode, :duration_secs)}>
             {format_duration(@episode.duration_secs)}
           </span>
-          <span :if={Map.get(@episode, :rating)} class="flex items-center gap-1 text-yellow-500">
+          <span :if={Map.get(@episode, :rating)} class="flex items-center gap-1 text-warning">
             <.icon name="hero-star-solid" class="size-3" />
             {format_rating(@episode.rating)}
           </span>
