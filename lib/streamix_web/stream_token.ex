@@ -11,10 +11,9 @@ defmodule StreamixWeb.StreamToken do
   ownership at consumption time.
   """
 
+  alias Streamix.Accounts
   alias Streamix.Access
-  alias Streamix.Accounts.User
   alias Streamix.Iptv
-  alias Streamix.Repo
   alias StreamixWeb.UrlValidator
 
   # Token expires in 2 hours (reduced from 24h for security)
@@ -213,11 +212,11 @@ defmodule StreamixWeb.StreamToken do
     do: {:error, :subscription_required}
 
   defp user_has_global_access?(user_id, provider, url, _bypass) do
-    case Repo.get(User, user_id) do
+    case Accounts.get_user(user_id) do
       nil ->
         {:error, :subscription_required}
 
-      %User{} = user ->
+      user ->
         if Access.can_play_global_content?(user, provider) do
           :ok
         else
@@ -234,11 +233,11 @@ defmodule StreamixWeb.StreamToken do
 
   defp authorized_private_url_token?(url, user_id, %{user_id: provider_user_id})
        when is_integer(provider_user_id) do
-    case Repo.get(User, user_id) do
+    case Accounts.get_user(user_id) do
       nil ->
         {:error, :invalid_token}
 
-      %User{} ->
+      _user ->
         if user_id == provider_user_id do
           validate_direct_url(url)
         else
@@ -378,11 +377,11 @@ defmodule StreamixWeb.StreamToken do
          extension,
          _bypass
        ) do
-    case Repo.get(User, user_id) do
+    case Accounts.get_user(user_id) do
       nil ->
         {:error, :subscription_required}
 
-      %User{} = user ->
+      user ->
         if Access.can_play_global_content?(user, content) do
           build_provider_content_url(provider, content_path, stream_id, extension)
         else
