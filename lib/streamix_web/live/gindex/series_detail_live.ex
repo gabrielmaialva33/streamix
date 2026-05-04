@@ -138,24 +138,22 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
           />
           <div
             :if={is_nil(@series.cover)}
-            class="w-full h-full bg-gradient-to-br from-purple-900 to-gray-900"
+            class="w-full h-full bg-surface-hover"
           />
         </div>
 
         <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        
-    <!-- Back Button -->
+        <!-- Back Button -->
         <div class="absolute top-20 left-4 sm:left-6 z-30">
           <.link
             navigate={~p"/browse/series?source=gindex"}
-            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium"
+            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar
           </.link>
         </div>
       </div>
-      
-    <!-- Content Section -->
+      <!-- Content Section -->
       <div class="relative -mt-24 sm:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
         <div class="max-w-5xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
@@ -172,14 +170,13 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                 />
                 <div
                   :if={is_nil(@series.cover)}
-                  class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-gray-900"
+                  class="w-full h-full flex items-center justify-center bg-surface-hover"
                 >
-                  <.icon name="hero-sparkles" class="size-12 sm:size-16 text-purple-400/30" />
+                  <.icon name="hero-tv" class="size-12 sm:size-16 text-text-secondary/30" />
                 </div>
               </div>
             </div>
-            
-    <!-- Info -->
+            <!-- Info -->
             <div class="flex-1 space-y-4 text-center lg:text-left">
               <!-- Title -->
               <div class="space-y-2">
@@ -198,8 +195,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                   {@series.title}
                 </p>
               </div>
-              
-    <!-- Meta Tags -->
+              <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
                 <span
                   :if={@series.year}
@@ -215,17 +211,17 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                 </span>
                 <span
                   :if={@series.rating}
-                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-yellow-500/10 text-yellow-400 rounded-md text-sm font-medium"
+                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-warning/10 text-warning rounded-md text-sm font-medium"
                 >
                   <.icon name="hero-star-solid" class="size-3.5" /> {@series.rating}
                 </span>
                 <span
                   :if={Map.get(@series, :dub_available)}
-                  class="inline-flex items-center h-7 px-2.5 bg-emerald-500/15 text-emerald-300 rounded-md text-xs font-bold uppercase"
+                  class="inline-flex items-center h-7 px-2.5 bg-success/10 text-success rounded-md text-xs font-bold uppercase"
                 >
                   Dublado
                 </span>
-                <span class="inline-flex items-center h-7 px-2.5 bg-purple-600/20 text-purple-400 rounded-md uppercase text-xs font-bold">
+                <span class="inline-flex items-center h-7 px-2.5 bg-info/10 text-info rounded-md uppercase text-xs font-bold">
                   GDrive
                 </span>
               </div>
@@ -237,13 +233,12 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
               >
                 {@series.plot}
               </p>
-              
-    <!-- Action Buttons -->
+              <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">
                 <button
                   type="button"
                   phx-click="play_first_episode"
-                  class="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/30 text-sm sm:text-base"
+                  class="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
                 >
                   <.icon name="hero-play-solid" class="size-5" /> Assistir
                 </button>
@@ -252,12 +247,12 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                   type="button"
                   phx-click="toggle_favorite"
                   class={[
-                    "inline-flex items-center justify-center w-12 h-12 rounded-lg border-2 transition-all",
-                    @is_favorite && "bg-red-600 border-red-600 text-white",
+                    "inline-flex items-center justify-center w-12 h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
+                    @is_favorite && "bg-brand border-brand text-white",
                     !@is_favorite &&
                       "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
                   ]}
-                  title={
+                  aria-label={
                     if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"
                   }
                 >
@@ -358,13 +353,13 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
       </div>
 
       <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-purple-400 truncate">
+        <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
           {DH.episode_title(@episode)}
         </h4>
         <div class="flex items-center gap-2 mt-1">
           <span
             :if={@episode.container_extension}
-            class="text-[10px] sm:text-xs px-1.5 py-0.5 bg-purple-600/20 text-purple-400 rounded uppercase font-bold"
+            class="text-[10px] sm:text-xs px-1.5 py-0.5 bg-info/10 text-info rounded uppercase font-bold"
           >
             {@episode.container_extension}
           </span>

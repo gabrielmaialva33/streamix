@@ -260,7 +260,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 </span>
                 <span
                   :if={@episode.rating}
-                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-xs sm:text-sm font-medium"
+                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-warning/10 text-warning rounded-md text-xs sm:text-sm font-medium"
                 >
                   <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />{format_rating(
                     @episode.rating
@@ -295,7 +295,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 <button
                   type="button"
                   phx-click="play_episode"
-                  class="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30 text-sm sm:text-base"
+                  class="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
                 >
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir Episódio
                 </button>
@@ -309,12 +309,12 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   type="button"
                   phx-click="toggle_favorite"
                   class={[
-                    "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all",
-                    @is_favorite && "bg-red-600 border-red-600 text-white",
+                    "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
+                    @is_favorite && "bg-brand border-brand text-white",
                     !@is_favorite &&
                       "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
                   ]}
-                  title={
+                  aria-label={
                     if @is_favorite, do: "Série nos favoritos", else: "Adicionar série aos favoritos"
                   }
                 >
@@ -478,22 +478,22 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
     cond do
       rating_upper in ["L", "G", "TV-G", "TV-Y", "TV-Y7"] ->
-        "bg-green-500/20 text-green-400"
+        "bg-success/10 text-success"
 
       rating_upper in ["10", "PG", "TV-PG"] ->
-        "bg-blue-500/20 text-blue-400"
+        "bg-info/10 text-info"
 
       rating_upper in ["12", "PG-13", "TV-14"] ->
-        "bg-yellow-500/20 text-yellow-400"
+        "bg-warning/10 text-warning"
 
       rating_upper in ["14"] ->
-        "bg-orange-500/20 text-orange-400"
+        "bg-warning/15 text-warning"
 
       rating_upper in ["16", "R", "TV-MA"] ->
-        "bg-red-400/20 text-red-400"
+        "bg-error/10 text-error"
 
       rating_upper in ["18", "NC-17"] ->
-        "bg-red-600/20 text-red-500"
+        "bg-error/15 text-error"
 
       true ->
         "bg-surface text-text-secondary"

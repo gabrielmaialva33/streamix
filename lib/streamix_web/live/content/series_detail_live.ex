@@ -332,7 +332,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 </span>
                 <span
                   :if={@series.rating}
-                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-yellow-500/20 text-yellow-400 rounded-md text-xs sm:text-sm font-semibold"
+                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-warning/10 text-warning rounded-md text-xs sm:text-sm font-semibold"
                 >
                   <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />
                   {format_rating(@series.rating)}
@@ -369,7 +369,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 <button
                   type="button"
                   phx-click="play_first_episode"
-                  class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-lg shadow-brand/30 text-xs sm:text-base"
+                  class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
                 >
                   <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir
                 </button>
@@ -384,12 +384,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   type="button"
                   phx-click="toggle_favorite"
                   class={[
-                    "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all",
-                    @is_favorite && "bg-red-600 border-red-600 text-white",
+                    "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
+                    @is_favorite && "bg-brand border-brand text-white",
                     !@is_favorite &&
                       "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
                   ]}
-                  title={
+                  aria-label={
                     if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"
                   }
                 >
@@ -406,7 +406,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   rel="noopener noreferrer"
                   class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-surface border border-border text-text-primary font-semibold rounded-lg hover:bg-surface-hover transition-colors text-sm"
                 >
-                  <.icon name="hero-play-circle" class="size-4 sm:size-5 text-red-500" /> Trailer
+                  <.icon name="hero-play-circle" class="size-4 sm:size-5 text-brand" /> Trailer
                 </a>
 
                 <a
@@ -729,27 +729,27 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     cond do
       # Livre / General (green)
       rating_upper in ["L", "G", "TV-G", "TV-Y", "TV-Y7"] ->
-        "bg-green-500/20 text-green-400"
+        "bg-success/10 text-success"
 
       # 10 anos / PG (blue)
       rating_upper in ["10", "PG", "TV-PG"] ->
-        "bg-blue-500/20 text-blue-400"
+        "bg-info/10 text-info"
 
       # 12 anos / PG-13 (yellow)
       rating_upper in ["12", "PG-13", "TV-14"] ->
-        "bg-yellow-500/20 text-yellow-400"
+        "bg-warning/10 text-warning"
 
       # 14 anos (orange)
       rating_upper in ["14"] ->
-        "bg-orange-500/20 text-orange-400"
+        "bg-warning/15 text-warning"
 
       # 16 anos (red-orange)
       rating_upper in ["16", "R", "TV-MA"] ->
-        "bg-red-400/20 text-red-400"
+        "bg-error/10 text-error"
 
       # 18 anos / NC-17 (dark red)
       rating_upper in ["18", "NC-17"] ->
-        "bg-red-600/20 text-red-500"
+        "bg-error/15 text-error"
 
       # Default
       true ->
