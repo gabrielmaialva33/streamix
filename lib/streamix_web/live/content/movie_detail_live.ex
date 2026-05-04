@@ -12,6 +12,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.Content.DetailComponents, only: [gallery_preview: 1]
 
   # Mount for /browse/movies/:id (global provider)
   def mount(%{"id" => movie_id}, _session, socket)
@@ -89,6 +90,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
           |> assign(similar_movies: similar_movies)
+          |> assign(selected_gallery_image: nil)
 
         {:ok, socket}
     end
@@ -160,6 +162,14 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     end
 
     {:noreply, assign(socket, is_favorite: !is_favorite)}
+  end
+
+  def handle_event("open_gallery_image", %{"src" => image}, socket) do
+    {:noreply, assign(socket, selected_gallery_image: image)}
+  end
+
+  def handle_event("close_gallery_preview", _, socket) do
+    {:noreply, assign(socket, selected_gallery_image: nil)}
   end
 
   # ============================================
@@ -423,9 +433,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           <div :if={Movie.has_images?(@movie)} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
-              <div
+              <button
                 :for={image <- Movie.image_urls(@movie)}
-                class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group"
+                type="button"
+                phx-click="open_gallery_image"
+                phx-value-src={image}
+                class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group focus:outline-none focus:ring-2 focus:ring-brand"
+                aria-label="Abrir imagem da galeria"
               >
                 <img
                   src={image}
@@ -434,7 +448,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                   loading="lazy"
                   decoding="async"
                 />
-              </div>
+              </button>
             </div>
           </div>
           
@@ -489,6 +503,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           </div>
         </div>
       </div>
+      <.gallery_preview image={@selected_gallery_image} alt="Imagem do filme" />
     </div>
     """
   end

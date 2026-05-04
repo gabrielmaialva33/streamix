@@ -11,6 +11,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias Streamix.Iptv.Series
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.Content.DetailComponents, only: [gallery_preview: 1]
 
   # Mount for /browse/series/:id (global provider)
   def mount(%{"id" => series_id}, _session, socket)
@@ -75,6 +76,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> assign(is_favorite: favorite?(user_id, series.id))
       |> assign(user_id: user_id)
       |> assign(similar_series: load_similar_series(series.id))
+      |> assign(selected_gallery_image: nil)
 
     {:ok, socket}
   end
@@ -216,6 +218,14 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
         {:noreply, assign(socket, is_favorite: !is_favorite)}
     end
+  end
+
+  def handle_event("open_gallery_image", %{"src" => image}, socket) do
+    {:noreply, assign(socket, selected_gallery_image: image)}
+  end
+
+  def handle_event("close_gallery_preview", _, socket) do
+    {:noreply, assign(socket, selected_gallery_image: nil)}
   end
 
   defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
@@ -468,9 +478,13 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           <div :if={Series.has_images?(@series)} class="mt-8 sm:mt-12">
             <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
-              <div
+              <button
                 :for={image <- Series.image_urls(@series)}
-                class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group"
+                type="button"
+                phx-click="open_gallery_image"
+                phx-value-src={image}
+                class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group focus:outline-none focus:ring-2 focus:ring-brand"
+                aria-label="Abrir imagem da galeria"
               >
                 <img
                   src={image}
@@ -479,7 +493,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   loading="lazy"
                   decoding="async"
                 />
-              </div>
+              </button>
             </div>
           </div>
           
@@ -544,6 +558,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           </div>
         </div>
       </div>
+      <.gallery_preview image={@selected_gallery_image} alt="Imagem da série" />
     </div>
     """
   end
