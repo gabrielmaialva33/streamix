@@ -171,8 +171,18 @@ export async function detectDRMSupport() {
   if (!results.supported) return results;
 
   const keySystems = [
-    { name: "widevine", id: "com.widevine.alpha" },
-    { name: "playready", id: "com.microsoft.playready" },
+    {
+      name: "widevine",
+      id: "com.widevine.alpha",
+      videoRobustness: "SW_SECURE_CRYPTO",
+      audioRobustness: "SW_SECURE_CRYPTO",
+    },
+    {
+      name: "playready",
+      id: "com.microsoft.playready",
+      videoRobustness: "3000",
+      audioRobustness: "3000",
+    },
     { name: "fairplay", id: "com.apple.fps.1_0" },
     { name: "clearkey", id: "org.w3.clearkey" },
   ];
@@ -185,13 +195,13 @@ export async function detectDRMSupport() {
           videoCapabilities: [
             {
               contentType: 'video/mp4; codecs="avc1.42E01E"',
-              robustness: "",
+              ...(system.videoRobustness ? { robustness: system.videoRobustness } : {}),
             },
           ],
           audioCapabilities: [
             {
               contentType: 'audio/mp4; codecs="mp4a.40.2"',
-              robustness: "",
+              ...(system.audioRobustness ? { robustness: system.audioRobustness } : {}),
             },
           ],
         },

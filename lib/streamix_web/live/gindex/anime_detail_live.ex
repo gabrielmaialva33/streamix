@@ -57,15 +57,20 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_release", %{"id" => release_id}, socket) do
-    release_id = String.to_integer(release_id)
-    expanded = socket.assigns.expanded_releases
+    case parse_positive_integer(release_id) do
+      {:ok, release_id} ->
+        expanded = socket.assigns.expanded_releases
 
-    expanded =
-      if MapSet.member?(expanded, release_id),
-        do: MapSet.delete(expanded, release_id),
-        else: MapSet.put(expanded, release_id)
+        expanded =
+          if MapSet.member?(expanded, release_id),
+            do: MapSet.delete(expanded, release_id),
+            else: MapSet.put(expanded, release_id)
 
-    {:noreply, assign(socket, expanded_releases: expanded)}
+        {:noreply, assign(socket, expanded_releases: expanded)}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("play_episode", %{"id" => episode_id}, socket) do
@@ -101,6 +106,17 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
 
     {:noreply, assign(socket, is_favorite: !is_favorite)}
   end
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

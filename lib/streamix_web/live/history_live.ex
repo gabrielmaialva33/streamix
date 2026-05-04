@@ -86,19 +86,24 @@ defmodule StreamixWeb.HistoryLive do
 
   def handle_event("remove_entry", %{"id" => id, "type" => type}, socket) do
     user_id = socket.assigns.user_id
-    entry_id = String.to_integer(id)
 
-    Iptv.remove_from_watch_history(user_id, entry_id)
+    case parse_positive_integer(id) do
+      {:ok, entry_id} ->
+        Iptv.remove_from_watch_history(user_id, entry_id)
 
-    # Update counts
-    counts = update_counts(socket.assigns.counts, type, -1)
+        # Update counts
+        counts = update_counts(socket.assigns.counts, type, -1)
 
-    socket =
-      socket
-      |> stream_delete_by_dom_id(:history, "history-#{entry_id}")
-      |> assign(counts: counts)
+        socket =
+          socket
+          |> stream_delete_by_dom_id(:history, "history-#{entry_id}")
+          |> assign(counts: counts)
 
-    {:noreply, socket}
+        {:noreply, socket}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("clear_history", _, socket) do
@@ -112,6 +117,17 @@ defmodule StreamixWeb.HistoryLive do
 
     {:noreply, socket}
   end
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

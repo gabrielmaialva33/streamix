@@ -64,7 +64,14 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   defp parse_integer_param(nil), do: nil
   defp parse_integer_param(""), do: nil
-  defp parse_integer_param(value) when is_binary(value), do: String.to_integer(value)
+
+  defp parse_integer_param(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> integer
+      _ -> nil
+    end
+  end
+
   defp parse_integer_param(value), do: value
 
   # ============================================
@@ -95,15 +102,19 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   end
 
   def handle_event("play_channel", %{"id" => id}, socket) do
-    channel = Iptv.get_live_channel_with_provider!(id)
-    user_id = socket.assigns.user_id
+    with channel_id when is_integer(channel_id) <- parse_integer_param(id),
+         channel <- Iptv.get_live_channel_with_provider!(channel_id) do
+      user_id = socket.assigns.user_id
 
-    Iptv.add_watch_history(user_id, "live_channel", channel.id, %{
-      content_name: channel.name,
-      content_icon: channel.stream_icon
-    })
+      Iptv.add_watch_history(user_id, "live_channel", channel.id, %{
+        content_name: channel.name,
+        content_icon: channel.stream_icon
+      })
 
-    {:noreply, assign(socket, playing_channel: channel)}
+      {:noreply, assign(socket, playing_channel: channel)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_event("close_player", _, socket) do
@@ -111,34 +122,59 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   end
 
   # Player hook events - ignore silently as they're handled by the JS player
+  def handle_event("progress_update", _params, socket), do: {:noreply, socket}
   def handle_event("player_initializing", _params, socket), do: {:noreply, socket}
+  def handle_event("device_diagnostics", _params, socket), do: {:noreply, socket}
   def handle_event("update_watch_time", _params, socket), do: {:noreply, socket}
   def handle_event("player_error", _params, socket), do: {:noreply, socket}
+  def handle_event("player_debug", _params, socket), do: {:noreply, socket}
+  def handle_event("diagnostic_suggestion", _params, socket), do: {:noreply, socket}
+  def handle_event("codec_abr_suggestion", _params, socket), do: {:noreply, socket}
   def handle_event("buffering", _params, socket), do: {:noreply, socket}
   def handle_event("streaming_mode_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("qualities_available", _params, socket), do: {:noreply, socket}
+  def handle_event("quality_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("quality_switched", _params, socket), do: {:noreply, socket}
+  def handle_event("audio_tracks_available", _params, socket), do: {:noreply, socket}
+  def handle_event("subtitle_tracks_available", _params, socket), do: {:noreply, socket}
+  def handle_event("audio_track_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("subtitle_track_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("duration_available", _params, socket), do: {:noreply, socket}
+  def handle_event("playback_rate_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("mute_toggled", _params, socket), do: {:noreply, socket}
+  def handle_event("volume_changed", _params, socket), do: {:noreply, socket}
+  def handle_event("pip_toggled", _params, socket), do: {:noreply, socket}
+  def handle_event("pip_error", _params, socket), do: {:noreply, socket}
+  def handle_event("request_token_refresh", _params, socket), do: {:noreply, socket}
+  def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_favorite", %{"id" => id}, socket) do
     user_id = socket.assigns.user_id
-    channel_id = String.to_integer(id)
-    channel = Iptv.get_live_channel!(channel_id)
+    channel_id = parse_integer_param(id)
 
-    Iptv.toggle_favorite(user_id, "live_channel", channel_id, %{
-      content_name: channel.name,
-      content_icon: channel.stream_icon
-    })
+    if is_nil(channel_id) do
+      {:noreply, socket}
+    else
+      channel = Iptv.get_live_channel!(channel_id)
 
-    # Toggle in MapSet
-    favorites_map =
-      if MapSet.member?(socket.assigns.favorites_map, channel_id) do
-        MapSet.delete(socket.assigns.favorites_map, channel_id)
-      else
-        MapSet.put(socket.assigns.favorites_map, channel_id)
-      end
+      Iptv.toggle_favorite(user_id, "live_channel", channel_id, %{
+        content_name: channel.name,
+        content_icon: channel.stream_icon
+      })
 
-    {:noreply,
-     socket
-     |> assign(favorites_map: favorites_map)
-     |> stream_insert(:channels, channel)}
+      # Toggle in MapSet
+      favorites_map =
+        if MapSet.member?(socket.assigns.favorites_map, channel_id) do
+          MapSet.delete(socket.assigns.favorites_map, channel_id)
+        else
+          MapSet.put(socket.assigns.favorites_map, channel_id)
+        end
+
+      {:noreply,
+       socket
+       |> assign(favorites_map: favorites_map)
+       |> stream_insert(:channels, channel)}
+    end
   end
 
   def handle_event("sync_provider", _, socket) do

@@ -87,8 +87,15 @@ defmodule StreamixWeb.SearchLive do
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => type}, socket) do
     user_id = socket.assigns.user_id
-    toggle_favorite(user_id, type, String.to_integer(id))
-    {:noreply, perform_search(socket)}
+
+    case parse_positive_integer(id) do
+      {:ok, content_id} ->
+        toggle_favorite(user_id, type, content_id)
+        {:noreply, perform_search(socket)}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   defp toggle_favorite(user_id, type, content_id) do
@@ -114,6 +121,17 @@ defmodule StreamixWeb.SearchLive do
       content_icon: get_content_icon(content, type)
     })
   end
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

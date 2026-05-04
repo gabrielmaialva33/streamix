@@ -136,7 +136,24 @@ export class PlayerUI {
   // ============================================
 
   showLoading() {
-    this.elements.loadingIndicator?.classList.remove("hidden");
+    if (this._loadingShowTimeout) {
+      clearTimeout(this._loadingShowTimeout);
+      this._loadingShowTimeout = null;
+    }
+
+    const shouldDebounce =
+      this.video &&
+      !this.video.paused &&
+      this.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
+    if (shouldDebounce) {
+      this._loadingShowTimeout = setTimeout(() => {
+        this.elements.loadingIndicator?.classList.remove("hidden");
+        this._loadingShowTimeout = null;
+      }, 250);
+    } else {
+      this.elements.loadingIndicator?.classList.remove("hidden");
+    }
 
     // Safety timeout: auto-hide after 10s if loading gets stuck
     // This prevents the "infinite loading" bug on live streams
@@ -151,6 +168,10 @@ export class PlayerUI {
   }
 
   hideLoading() {
+    if (this._loadingShowTimeout) {
+      clearTimeout(this._loadingShowTimeout);
+      this._loadingShowTimeout = null;
+    }
     this.elements.loadingIndicator?.classList.add("hidden");
     if (this._loadingSafetyTimeout) {
       clearTimeout(this._loadingSafetyTimeout);

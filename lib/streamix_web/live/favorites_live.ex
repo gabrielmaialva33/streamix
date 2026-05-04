@@ -87,23 +87,39 @@ defmodule StreamixWeb.FavoritesLive do
         socket
       ) do
     user_id = socket.assigns.user_id
-    content_id_int = String.to_integer(content_id)
 
-    Iptv.remove_favorite(user_id, type, content_id_int)
+    case parse_positive_integer(content_id) do
+      {:ok, content_id_int} ->
+        Iptv.remove_favorite(user_id, type, content_id_int)
 
-    # Update counts
-    counts = update_counts(socket.assigns.counts, type, -1)
+        # Update counts
+        counts = update_counts(socket.assigns.counts, type, -1)
 
-    socket =
-      socket
-      |> stream_delete_by_dom_id(:favorites, "favorites-#{type}-#{content_id}")
-      |> assign(counts: counts)
+        socket =
+          socket
+          |> stream_delete_by_dom_id(:favorites, "favorites-#{type}-#{content_id}")
+          |> assign(counts: counts)
 
-    {:noreply, socket}
+        {:noreply, socket}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   # OfflineSync hook events (client-side sync, no server action needed)
   def handle_event("refresh_data", _params, socket), do: {:noreply, socket}
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

@@ -115,6 +115,10 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
+  def handle_event("codec_abr_suggestion", _params, socket) do
+    {:noreply, socket}
+  end
+
   def handle_event("diagnostic_suggestion", _params, socket) do
     {:noreply, socket}
   end

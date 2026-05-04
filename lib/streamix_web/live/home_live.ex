@@ -289,7 +289,7 @@ defmodule StreamixWeb.HomeLive do
   def handle_event("filter_trending_period", %{"period" => period}, socket) do
     user_id = get_user_id(socket)
     # Parse period - "all" means nil, otherwise parse as integer
-    period_days = if period == "all", do: nil, else: String.to_integer(period)
+    period_days = parse_period_days(period)
     trending = load_trending(user_id, socket.assigns.trending_genre, period_days)
 
     {:noreply,
@@ -317,6 +317,17 @@ defmodule StreamixWeb.HomeLive do
      |> assign(channels_category: category)
      |> assign(channels: channels)}
   end
+
+  defp parse_period_days("all"), do: nil
+
+  defp parse_period_days(period) when is_binary(period) do
+    case Integer.parse(period) do
+      {days, ""} when days > 0 -> days
+      _ -> nil
+    end
+  end
+
+  defp parse_period_days(_), do: nil
 
   def render(assigns) do
     ~H"""

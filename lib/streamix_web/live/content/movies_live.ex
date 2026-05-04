@@ -135,7 +135,14 @@ defmodule StreamixWeb.Content.MoviesLive do
 
   defp parse_integer_param(nil), do: nil
   defp parse_integer_param(""), do: nil
-  defp parse_integer_param(value) when is_binary(value), do: String.to_integer(value)
+
+  defp parse_integer_param(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> integer
+      _ -> nil
+    end
+  end
+
   defp parse_integer_param(value), do: value
 
   # ============================================
@@ -179,33 +186,38 @@ defmodule StreamixWeb.Content.MoviesLive do
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => "movie"}, socket) do
     user_id = socket.assigns.user_id
-    movie_id = String.to_integer(id)
-    movie = Iptv.get_movie!(movie_id)
-    is_favorite = MapSet.member?(socket.assigns.favorites_map, movie_id)
+    movie_id = parse_integer_param(id)
 
-    if is_favorite do
-      Iptv.remove_favorite(user_id, "movie", movie_id)
+    if is_nil(movie_id) do
+      {:noreply, socket}
     else
-      Iptv.add_favorite(user_id, %{
-        content_type: "movie",
-        content_id: movie_id,
-        content_name: movie.title || movie.name,
-        content_icon: movie.stream_icon
-      })
-    end
+      movie = Iptv.get_movie!(movie_id)
+      is_favorite = MapSet.member?(socket.assigns.favorites_map, movie_id)
 
-    # Toggle in MapSet
-    favorites_map =
       if is_favorite do
-        MapSet.delete(socket.assigns.favorites_map, movie_id)
+        Iptv.remove_favorite(user_id, "movie", movie_id)
       else
-        MapSet.put(socket.assigns.favorites_map, movie_id)
+        Iptv.add_favorite(user_id, %{
+          content_type: "movie",
+          content_id: movie_id,
+          content_name: movie.title || movie.name,
+          content_icon: movie.stream_icon
+        })
       end
 
-    {:noreply,
-     socket
-     |> assign(favorites_map: favorites_map)
-     |> stream_insert(:movies, movie)}
+      # Toggle in MapSet
+      favorites_map =
+        if is_favorite do
+          MapSet.delete(socket.assigns.favorites_map, movie_id)
+        else
+          MapSet.put(socket.assigns.favorites_map, movie_id)
+        end
+
+      {:noreply,
+       socket
+       |> assign(favorites_map: favorites_map)
+       |> stream_insert(:movies, movie)}
+    end
   end
 
   # ============================================
