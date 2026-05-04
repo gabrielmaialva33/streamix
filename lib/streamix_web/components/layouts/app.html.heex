@@ -30,8 +30,8 @@
         "fixed top-0 left-0 right-0 z-[60] h-9 flex items-center justify-center",
         "border-b px-4 text-xs sm:text-sm text-center leading-tight",
         if(@provider_health.status == :unhealthy,
-          do: "bg-red-600 text-white border-red-700",
-          else: "bg-amber-500 text-black border-amber-600"
+          do: "bg-error text-white border-error",
+          else: "bg-warning text-black border-warning"
         )
       ]}
     >
@@ -106,7 +106,7 @@
               icon="hero-users"
               icon_active="hero-users-solid"
               active={@current_path == "/party"}
-              accent="purple"
+              accent="accent"
             />
           </nav>
         <% end %>
