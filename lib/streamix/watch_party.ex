@@ -9,6 +9,7 @@ defmodule Streamix.WatchParty do
   alias Streamix.WatchParty.{Message, Participant, Room, RoomServer}
 
   @topic_prefix "watch_party:room:"
+  @room_content_preloads [catalog_item: [:movie, :series, :episode, :live_channel]]
 
   def topic(room_id), do: @topic_prefix <> to_string(room_id)
 
@@ -39,6 +40,15 @@ defmodule Streamix.WatchParty do
   def get_room_by_invite(invite_code) do
     Repo.get_by(Room, invite_code: invite_code, status: "active")
   end
+
+  def get_room_by_invite_with_content(invite_code) do
+    invite_code
+    |> get_room_by_invite()
+    |> preload_room_content()
+  end
+
+  def preload_room_content(nil), do: nil
+  def preload_room_content(%Room{} = room), do: Repo.preload(room, @room_content_preloads)
 
   def join_room(room_id, user_id, role \\ "viewer") do
     room = get_room!(room_id)

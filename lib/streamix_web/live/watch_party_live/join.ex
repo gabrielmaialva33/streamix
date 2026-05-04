@@ -7,12 +7,11 @@ defmodule StreamixWeb.WatchPartyLive.Join do
   import StreamixWeb.WatchPartyComponents
 
   alias Streamix.Iptv.CatalogItem
-  alias Streamix.Repo
   alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
   def mount(%{"invite_code" => invite_code}, _session, socket) do
-    case WatchParty.get_room_by_invite(invite_code) do
+    case WatchParty.get_room_by_invite_with_content(invite_code) do
       nil ->
         {:ok,
          socket
@@ -20,7 +19,6 @@ defmodule StreamixWeb.WatchPartyLive.Join do
          |> push_navigate(to: ~p"/")}
 
       room ->
-        room = Repo.preload(room, catalog_item: [:movie, :series, :episode, :live_channel])
         content_name = CatalogItem.content_name(room.catalog_item)
         content_icon = CatalogItem.content_icon(room.catalog_item)
 

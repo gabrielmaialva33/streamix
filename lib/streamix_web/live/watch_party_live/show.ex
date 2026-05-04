@@ -10,7 +10,6 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   alias Streamix.Iptv.CatalogItem
   alias Streamix.Library.ContentRef
-  alias Streamix.Repo
   alias Streamix.WatchParty
   alias StreamixWeb.Presence
 
@@ -20,7 +19,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   def mount(%{"invite_code" => invite_code}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
-    case WatchParty.get_room_by_invite(invite_code) do
+    case WatchParty.get_room_by_invite_with_content(invite_code) do
       nil ->
         {:ok,
          socket
@@ -35,11 +34,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp mount_room(socket, room, user_id) do
     is_host = room.host_user_id == user_id
 
-    # Resolve content_type and content_id from catalog_item
-    catalog_item =
-      room
-      |> Repo.preload(catalog_item: [:movie, :series, :episode, :live_channel])
-      |> Map.get(:catalog_item)
+    catalog_item = room.catalog_item
 
     content_type = catalog_item.content_type
     content_entity = CatalogItem.content(catalog_item)
