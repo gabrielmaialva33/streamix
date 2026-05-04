@@ -108,8 +108,8 @@ defmodule StreamixWeb.Content.CardComponents do
             <h3 class="font-medium text-sm text-text-primary truncate" title={@movie_name}>
               {@movie_name}
             </h3>
-            <p :if={Map.get(@movie, :year)} class="text-xs text-text-secondary">
-              {Map.get(@movie, :year)}
+            <p class="min-h-4 text-xs text-text-secondary">
+              {Map.get(@movie, :year) || ""}
             </p>
           </div>
           <button
@@ -222,8 +222,8 @@ defmodule StreamixWeb.Content.CardComponents do
             <h3 class="font-medium text-sm text-text-primary truncate" title={@series_name}>
               {@series_name}
             </h3>
-            <p :if={Map.get(@series, :year)} class="text-xs text-text-secondary">
-              {Map.get(@series, :year)}
+            <p class="min-h-4 text-xs text-text-secondary">
+              {Map.get(@series, :year) || ""}
             </p>
           </div>
           <button
