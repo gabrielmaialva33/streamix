@@ -102,24 +102,8 @@ defmodule StreamixWeb.SearchLive do
     if Iptv.is_favorite?(user_id, type, content_id) do
       Iptv.remove_favorite(user_id, type, content_id)
     else
-      add_favorite_if_exists(user_id, type, content_id)
+      Iptv.add_favorite(user_id, type, content_id)
     end
-  end
-
-  defp add_favorite_if_exists(user_id, type, content_id) do
-    case get_content(type, content_id) do
-      nil -> :ok
-      content -> add_favorite(user_id, type, content_id, content)
-    end
-  end
-
-  defp add_favorite(user_id, type, content_id, content) do
-    Iptv.add_favorite(user_id, %{
-      content_type: type,
-      content_id: content_id,
-      content_name: get_content_name(content, type),
-      content_icon: get_content_icon(content, type)
-    })
   end
 
   defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
@@ -365,13 +349,19 @@ defmodule StreamixWeb.SearchLive do
       |> assign(loading: false)
       |> assign(searched: false)
     else
-      # Search across all content types
       channels = search_channels(user_id, query)
       movies = search_movies(user_id, query)
       series = search_series(user_id, query)
+      favorite_ids = search_favorite_ids(user_id, channels, movies, series)
 
       socket
-      |> assign(results: %{channels: channels, movies: movies, series: series})
+      |> assign(
+        results: %{
+          channels: mark_favorites(channels, favorite_ids.live_channels),
+          movies: mark_favorites(movies, favorite_ids.movies),
+          series: mark_favorites(series, favorite_ids.series)
+        }
+      )
       |> assign(loading: false)
       |> assign(searched: true)
     end
@@ -379,39 +369,27 @@ defmodule StreamixWeb.SearchLive do
 
   defp search_channels(user_id, query) do
     Iptv.search_channels(user_id, query, limit: 24)
-    |> Enum.map(fn channel ->
-      Map.put(channel, :is_favorite, Iptv.is_favorite?(user_id, "live_channel", channel.id))
-    end)
   end
 
   defp search_movies(user_id, query) do
     Iptv.search_movies(user_id, query, limit: 24)
-    |> Enum.map(fn movie ->
-      Map.put(movie, :is_favorite, Iptv.is_favorite?(user_id, "movie", movie.id))
-    end)
   end
 
   defp search_series(user_id, query) do
     Iptv.search_series(user_id, query, limit: 24)
-    |> Enum.map(fn series ->
-      Map.put(series, :is_favorite, Iptv.is_favorite?(user_id, "series", series.id))
-    end)
   end
 
-  defp get_content("live_channel", id), do: Iptv.get_live_channel(id)
-  defp get_content("movie", id), do: Iptv.get_movie(id)
-  defp get_content("series", id), do: Iptv.get_series(id)
-  defp get_content(_, _), do: nil
+  defp search_favorite_ids(user_id, channels, movies, series) do
+    %{
+      live_channels: Iptv.list_favorite_ids(user_id, "live_channel", Enum.map(channels, & &1.id)),
+      movies: Iptv.list_favorite_ids(user_id, "movie", Enum.map(movies, & &1.id)),
+      series: Iptv.list_favorite_ids(user_id, "series", Enum.map(series, & &1.id))
+    }
+  end
 
-  defp get_content_name(content, "live_channel"), do: content.name
-  defp get_content_name(content, "movie"), do: content[:title] || content.name
-  defp get_content_name(content, "series"), do: content[:title] || content.name
-  defp get_content_name(_, _), do: nil
-
-  defp get_content_icon(content, "live_channel"), do: content.stream_icon
-  defp get_content_icon(content, "movie"), do: content.stream_icon || content[:cover]
-  defp get_content_icon(content, "series"), do: content[:cover]
-  defp get_content_icon(_, _), do: nil
+  defp mark_favorites(items, favorite_ids) do
+    Enum.map(items, &Map.put(&1, :is_favorite, MapSet.member?(favorite_ids, &1.id)))
+  end
 
   defp has_results?(results) do
     Enum.any?(results.channels) || Enum.any?(results.movies) || Enum.any?(results.series)
