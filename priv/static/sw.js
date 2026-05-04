@@ -5,7 +5,7 @@
  * - PWA offline support
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `streamix-${CACHE_VERSION}`;
 
 // Static assets to precache
@@ -37,12 +37,27 @@ const PLAYER_LIBS = [
     // These are bundled in app.js, but the chunks might be separate
 ];
 
+async function cacheOptionalAssets(cache, urls) {
+    const results = await Promise.allSettled(
+        urls.map(async (url) => {
+            const response = await fetch(url, {cache: 'no-cache'});
+            if (response.ok) {
+                await cache.put(url, response);
+            }
+        })
+    );
+
+    const failed = results.filter((result) => result.status === 'rejected').length;
+    if (failed > 0) {
+        console.warn(`[SW] Skipped ${failed} optional cache entries`);
+    }
+}
+
 // Install - cache static assets and WASM
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(async (cache) => {
-            // Cache static assets
-            await cache.addAll(STATIC_ASSETS);
+            await cacheOptionalAssets(cache, STATIC_ASSETS);
 
             // Cache WASM files (non-blocking, some may not exist)
             const wasmPromises = WASM_ASSETS.map(async (url) => {
@@ -50,7 +65,6 @@ self.addEventListener('install', (event) => {
                     const response = await fetch(url, {cache: 'no-cache'});
                     if (response.ok) {
                         await cache.put(url, response);
-                        console.log('[SW] Cached WASM:', url);
                     }
                 } catch (e) {
                     // WASM file not found - skip silently
@@ -58,7 +72,6 @@ self.addEventListener('install', (event) => {
             });
 
             await Promise.allSettled(wasmPromises);
-            console.log('[SW] Installation complete');
         })
     );
 });
@@ -74,17 +87,14 @@ self.addEventListener('activate', (event) => {
             await Promise.all(
                 keys
                     .filter((key) => key.startsWith('streamix-') && key !== CACHE_NAME)
-                    .map((key) => {
-                        console.log('[SW] Deleting old cache:', key);
-                        return caches.delete(key);
-                    })
+                    .map((key) => caches.delete(key))
             );
 
             // Re-warm the static asset set so first page load after Safari's
             // 7-day wipe does not stall waiting for every asset.
             try {
                 const cache = await caches.open(CACHE_NAME);
-                await cache.addAll(STATIC_ASSETS);
+                await cacheOptionalAssets(cache, STATIC_ASSETS);
             } catch (e) {
                 console.warn('[SW] Re-warm failed:', e);
             }
@@ -128,7 +138,6 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             caches.match(request).then((cached) => {
                 if (cached) {
-                    console.log('[SW] WASM from cache:', url.pathname);
                     return cached;
                 }
                 return fetch(request).then((response) => {
