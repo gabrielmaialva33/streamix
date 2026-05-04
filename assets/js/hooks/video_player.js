@@ -1,4 +1,8 @@
-import { getCapabilitySummary, getCodecCapabilityReport } from "../lib/codec_detector";
+import {
+  getCapabilitySummary,
+  getCodecCapabilityReport,
+  getMediaDecodingInfo,
+} from "../lib/codec_detector";
 import { CodecAwareABR, getCodecRecommendation } from "../lib/codec_priority";
 import { createErrorReport, detectErrorPatterns, formatErrorForLog } from "../lib/error_telemetry";
 import { KeyboardManager } from "../lib/keyboard_manager";
@@ -611,6 +615,8 @@ const VideoPlayer = {
         this.codecABR.setCodec(currentQuality.codec);
       }
     }
+
+    this.probeQualityDecodeCapabilities(enhancedQualities);
   },
 
   /**
@@ -624,6 +630,74 @@ const VideoPlayer = {
     if (codecs.includes("vp09") || codecs.includes("vp9")) return "vp9";
     if (codecs.includes("avc1") || codecs.includes("h264")) return "h264";
     return "unknown";
+  },
+
+  getQualityVideoCodecString(quality) {
+    const rawCodecs = [quality.videoCodec, quality.codecs].filter(Boolean).join(",");
+    const codec = rawCodecs
+      .split(",")
+      .map((value) => value.trim().replaceAll('"', ""))
+      .find((value) => /^(avc1|hvc1|hev1|av01|vp09|vp9)/i.test(value));
+
+    return codec || null;
+  },
+
+  buildQualityMediaConfig(quality) {
+    const codec = this.getQualityVideoCodecString(quality);
+    if (!codec || !quality.width || !quality.height || !quality.bitrate) {
+      return null;
+    }
+
+    const isWebmCodec = codec.startsWith("vp9") || codec.startsWith("vp09");
+
+    return {
+      type: "media-source",
+      video: {
+        contentType: `${isWebmCodec ? "video/webm" : "video/mp4"}; codecs="${codec}"`,
+        width: quality.width,
+        height: quality.height,
+        bitrate: quality.bitrate,
+        framerate: Number(quality.frameRate) || 30,
+      },
+    };
+  },
+
+  probeQualityDecodeCapabilities(qualities) {
+    const policy = this.getPlaybackResourcePolicy();
+    if (!policy.shouldRunAdvancedDiagnostics || !navigator.mediaCapabilities?.decodingInfo) {
+      return;
+    }
+
+    const candidates = qualities
+      .map((quality) => ({
+        quality,
+        config: this.buildQualityMediaConfig(quality),
+      }))
+      .filter(({ config }) => config)
+      .slice(0, 8);
+
+    if (candidates.length === 0) return;
+
+    this._qualityCapabilitiesCancel?.();
+    this._qualityCapabilitiesCancel = scheduleLowPriority(async () => {
+      this._qualityCapabilitiesCancel = null;
+      if (this._destroyed) return;
+
+      const results = await Promise.all(
+        candidates.map(async ({ quality, config }) => ({
+          index: quality.index,
+          height: quality.height,
+          bitrate: quality.bitrate,
+          codec: this.getQualityVideoCodecString(quality),
+          decodingInfo: await getMediaDecodingInfo(config),
+        })),
+      );
+
+      if (this._destroyed) return;
+
+      this.qualityDecodeCapabilities = results;
+      log.debug("[VideoPlayer] Quality decode capabilities:", results);
+    });
   },
 
   // ============================================
@@ -1298,6 +1372,8 @@ const VideoPlayer = {
   cleanup() {
     this._metadataProbeCancel?.();
     this._metadataProbeCancel = null;
+    this._qualityCapabilitiesCancel?.();
+    this._qualityCapabilitiesCancel = null;
 
     if (this.streamLoader) {
       this.streamLoader.destroy();
@@ -2940,6 +3016,8 @@ const VideoPlayer = {
     this._startupDiagnosticsCancel = null;
     this._metadataProbeCancel?.();
     this._metadataProbeCancel = null;
+    this._qualityCapabilitiesCancel?.();
+    this._qualityCapabilitiesCancel = null;
     this.cleanup();
     this.networkMonitor?.stop();
     this.nativeBufferManager?.stop();
