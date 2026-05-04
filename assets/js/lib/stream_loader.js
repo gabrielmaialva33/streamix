@@ -447,6 +447,10 @@ export class StreamLoader {
       height: level.height,
       width: level.width,
       bitrate: level.bitrate,
+      frameRate: level.frameRate || level.attrs?.["FRAME-RATE"] || null,
+      videoCodec: level.videoCodec || null,
+      audioCodec: level.audioCodec || null,
+      codecs: level.attrs?.CODECS || level.codecs || null,
       label: level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)}k`,
     }));
   }

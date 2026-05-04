@@ -55,6 +55,12 @@ const HDR_FORMATS = {
   hlg: ['video/mp4; codecs="hvc1.2.4.L153.B0"; transfer=hlg'],
 };
 
+const MAX_MEDIA_CAPABILITIES_CACHE_ENTRIES = 64;
+
+let capabilityReportPromise = null;
+let capabilitySummaryCache = null;
+const mediaDecodingInfoCache = new Map();
+
 /**
  * Test if a specific MIME type is supported
  */
@@ -302,46 +308,89 @@ export function detectAdvancedStreamingFeatures() {
 }
 
 /**
+ * Cached MediaCapabilities decodingInfo probe.
+ * Useful for HLS level diagnostics without repeatedly waking the browser's
+ * decode capability stack on multi-player pages.
+ */
+export async function getMediaDecodingInfo(mediaConfig) {
+  if (typeof navigator === "undefined" || !navigator.mediaCapabilities?.decodingInfo) {
+    return null;
+  }
+
+  let cacheKey;
+  try {
+    cacheKey = JSON.stringify(mediaConfig);
+  } catch {
+    return null;
+  }
+
+  if (mediaDecodingInfoCache.has(cacheKey)) {
+    return mediaDecodingInfoCache.get(cacheKey);
+  }
+
+  if (mediaDecodingInfoCache.size >= MAX_MEDIA_CAPABILITIES_CACHE_ENTRIES) {
+    mediaDecodingInfoCache.delete(mediaDecodingInfoCache.keys().next().value);
+  }
+
+  const probe = navigator.mediaCapabilities.decodingInfo(mediaConfig).catch(() => null);
+
+  mediaDecodingInfoCache.set(cacheKey, probe);
+  return probe;
+}
+
+/**
  * Get full codec capability report
  * This can be sent to the backend for optimal stream selection
  */
-export async function getCodecCapabilityReport() {
-  const [hardware, drm] = await Promise.all([detectHardwareAcceleration(), detectDRMSupport()]);
+export async function getCodecCapabilityReport({ force = false } = {}) {
+  if (capabilityReportPromise && !force) {
+    return capabilityReportPromise;
+  }
 
-  return {
-    video: detectVideoCodecs(),
-    audio: detectAudioCodecs(),
-    hdr: detectHDRSupport(),
-    mse: detectMSESupport(),
-    webcodecs: detectWebCodecsSupport(),
-    mseWorkers: detectMSEWorkersSupport(),
-    advancedFeatures: detectAdvancedStreamingFeatures(),
-    drm,
-    hardware,
-    browser: {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      vendor: navigator.vendor,
-      deviceMemory: navigator.deviceMemory || null,
-      hardwareConcurrency: navigator.hardwareConcurrency || null,
-      connection: navigator.connection
-        ? {
-            effectiveType: navigator.connection.effectiveType,
-            downlink: navigator.connection.downlink,
-            rtt: navigator.connection.rtt,
-            saveData: navigator.connection.saveData,
-          }
-        : null,
-    },
-    timestamp: Date.now(),
-  };
+  capabilityReportPromise = (async () => {
+    const [hardware, drm] = await Promise.all([detectHardwareAcceleration(), detectDRMSupport()]);
+
+    return {
+      video: detectVideoCodecs(),
+      audio: detectAudioCodecs(),
+      hdr: detectHDRSupport(),
+      mse: detectMSESupport(),
+      webcodecs: detectWebCodecsSupport(),
+      mseWorkers: detectMSEWorkersSupport(),
+      advancedFeatures: detectAdvancedStreamingFeatures(),
+      drm,
+      hardware,
+      browser: {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        vendor: navigator.vendor,
+        deviceMemory: navigator.deviceMemory || null,
+        hardwareConcurrency: navigator.hardwareConcurrency || null,
+        connection: navigator.connection
+          ? {
+              effectiveType: navigator.connection.effectiveType,
+              downlink: navigator.connection.downlink,
+              rtt: navigator.connection.rtt,
+              saveData: navigator.connection.saveData,
+            }
+          : null,
+      },
+      timestamp: Date.now(),
+    };
+  })();
+
+  return capabilityReportPromise;
 }
 
 /**
  * Get simplified capability summary for quick decisions
  * Returns the best codecs supported by this device
  */
-export function getCapabilitySummary() {
+export function getCapabilitySummary({ force = false } = {}) {
+  if (capabilitySummaryCache && !force) {
+    return capabilitySummaryCache;
+  }
+
   const video = detectVideoCodecs();
   const audio = detectAudioCodecs();
 
@@ -354,7 +403,7 @@ export function getCapabilitySummary() {
   // Check for advanced audio support
   const needsAudioFallback = !audio.ac3.supported || !audio.eac3.supported || !audio.dts.supported;
 
-  return {
+  capabilitySummaryCache = {
     bestVideoCodec,
     supportsAV1: video.av1.supported,
     supportsHEVC: video.hevc.supported,
@@ -363,6 +412,8 @@ export function getCapabilitySummary() {
     supportsOpus: audio.opus.supported,
     supportsAAC: audio.aac.supported,
   };
+
+  return capabilitySummaryCache;
 }
 
 /**
@@ -394,6 +445,7 @@ export default {
   detectAdvancedStreamingFeatures,
   detectDRMSupport,
   detectHardwareAcceleration,
+  getMediaDecodingInfo,
   getCodecCapabilityReport,
   getCapabilitySummary,
   canPlayStream,

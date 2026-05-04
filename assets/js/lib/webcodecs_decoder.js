@@ -10,6 +10,9 @@
 
 import { playerLogger as log } from "./logger";
 
+const hardwareSupportCache = new Map();
+let webCodecsCapabilityReportPromise = null;
+
 /**
  * Check if WebCodecs API is available
  */
@@ -31,19 +34,37 @@ export async function checkHardwareSupport(codec) {
     return { supported: false, hardwareAccelerated: false };
   }
 
+  if (hardwareSupportCache.has(codec)) {
+    return hardwareSupportCache.get(codec);
+  }
+
+  const probe = (async () => {
+    try {
+      const result = await VideoDecoder.isConfigSupported({
+        codec,
+        hardwareAcceleration: "prefer-hardware",
+        width: 1920,
+        height: 1080,
+      });
+      return {
+        supported: result.supported,
+        hardwareAccelerated: result.config?.hardwareAcceleration === "prefer-hardware",
+      };
+    } catch (e) {
+      log.debug("[WebCodecs] Hardware support check failed:", e.message);
+      return { supported: false, hardwareAccelerated: false };
+    }
+  })();
+
+  hardwareSupportCache.set(codec, probe);
+  return probe;
+}
+
+async function probeHardwareSupport(codec) {
   try {
-    const result = await VideoDecoder.isConfigSupported({
-      codec,
-      hardwareAcceleration: "prefer-hardware",
-      width: 1920,
-      height: 1080,
-    });
-    return {
-      supported: result.supported,
-      hardwareAccelerated: result.config?.hardwareAcceleration === "prefer-hardware",
-    };
+    return await checkHardwareSupport(codec);
   } catch (e) {
-    log.debug("[WebCodecs] Hardware support check failed:", e.message);
+    log.debug("[WebCodecs] Hardware support probe failed:", e.message);
     return { supported: false, hardwareAccelerated: false };
   }
 }
@@ -83,22 +104,30 @@ export async function getWebCodecsCapabilityReport() {
     return { supported: false, codecs: {} };
   }
 
-  const codecs = {};
-  for (const [codecName, profiles] of Object.entries(WEBCODECS_CONFIGS)) {
-    codecs[codecName] = {};
-    for (const [profileName, codecString] of Object.entries(profiles)) {
-      codecs[codecName][profileName] = await checkHardwareSupport(codecString);
-    }
+  if (webCodecsCapabilityReportPromise) {
+    return webCodecsCapabilityReportPromise;
   }
 
-  return {
-    supported: true,
-    codecs,
-    features: {
-      videoDecoder: typeof VideoDecoder !== "undefined",
-      videoEncoder: typeof VideoEncoder !== "undefined",
-      videoFrame: typeof VideoFrame !== "undefined",
-      encodedVideoChunk: typeof EncodedVideoChunk !== "undefined",
-    },
-  };
+  webCodecsCapabilityReportPromise = (async () => {
+    const codecs = {};
+    for (const [codecName, profiles] of Object.entries(WEBCODECS_CONFIGS)) {
+      codecs[codecName] = {};
+      for (const [profileName, codecString] of Object.entries(profiles)) {
+        codecs[codecName][profileName] = await probeHardwareSupport(codecString);
+      }
+    }
+
+    return {
+      supported: true,
+      codecs,
+      features: {
+        videoDecoder: typeof VideoDecoder !== "undefined",
+        videoEncoder: typeof VideoEncoder !== "undefined",
+        videoFrame: typeof VideoFrame !== "undefined",
+        encodedVideoChunk: typeof EncodedVideoChunk !== "undefined",
+      },
+    };
+  })();
+
+  return webCodecsCapabilityReportPromise;
 }

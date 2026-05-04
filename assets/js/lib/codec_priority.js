@@ -15,6 +15,8 @@ import { detectVideoCodecs } from "./codec_detector";
 import { playerLogger as log } from "./logger";
 import { checkHardwareSupport, isWebCodecsSupported, WEBCODECS_CONFIGS } from "./webcodecs_decoder";
 
+const codecRecommendationCache = new Map();
+
 /**
  * Codec efficiency factors relative to H.264
  * Lower is better (requires less bitrate for same quality)
@@ -134,41 +136,51 @@ function getWebCodecsCodecString(codec) {
 export async function getCodecRecommendation(options = {}) {
   const { networkQuality = "good", deviceMemory = 8, cpuCores = 4 } = options;
 
-  const prioritized = await getPrioritizedCodecs(null, {
-    preferEfficiency: networkQuality !== "excellent",
-    requireHardwareAcceleration: deviceMemory < 4, // Require HW accel on low-memory devices
-    maxComplexity: cpuCores < 4 ? 1.2 : 2.0, // Limit complexity on weak CPUs
-    networkQuality,
-  });
+  const cacheKey = JSON.stringify({ networkQuality, deviceMemory, cpuCores });
+  if (codecRecommendationCache.has(cacheKey)) {
+    return codecRecommendationCache.get(cacheKey);
+  }
 
-  if (prioritized.length === 0) {
+  const recommendation = (async () => {
+    const prioritized = await getPrioritizedCodecs(null, {
+      preferEfficiency: networkQuality !== "excellent",
+      requireHardwareAcceleration: deviceMemory < 4, // Require HW accel on low-memory devices
+      maxComplexity: cpuCores < 4 ? 1.2 : 2.0, // Limit complexity on weak CPUs
+      networkQuality,
+    });
+
+    if (prioritized.length === 0) {
+      return {
+        codec: "h264",
+        reason: "Fallback to H.264 (universal support)",
+        alternatives: [],
+      };
+    }
+
+    const best = prioritized[0];
+    const alternatives = prioritized.slice(1, 4);
+
+    let reason = `${best.codec.toUpperCase()} selected`;
+    if (best.hardwareAccelerated) {
+      reason += " (hardware accelerated)";
+    }
+    if (best.efficiency < 0.7) {
+      reason += ` - ${Math.round((1 - best.efficiency) * 100)}% more efficient than H.264`;
+    }
+
     return {
-      codec: "h264",
-      reason: "Fallback to H.264 (universal support)",
-      alternatives: [],
+      codec: best.codec,
+      reason,
+      alternatives: alternatives.map((a) => ({
+        codec: a.codec,
+        hardwareAccelerated: a.hardwareAccelerated,
+      })),
+      details: best,
     };
-  }
+  })();
 
-  const best = prioritized[0];
-  const alternatives = prioritized.slice(1, 4);
-
-  let reason = `${best.codec.toUpperCase()} selected`;
-  if (best.hardwareAccelerated) {
-    reason += " (hardware accelerated)";
-  }
-  if (best.efficiency < 0.7) {
-    reason += ` - ${Math.round((1 - best.efficiency) * 100)}% more efficient than H.264`;
-  }
-
-  return {
-    codec: best.codec,
-    reason,
-    alternatives: alternatives.map((a) => ({
-      codec: a.codec,
-      hardwareAccelerated: a.hardwareAccelerated,
-    })),
-    details: best,
-  };
+  codecRecommendationCache.set(cacheKey, recommendation);
+  return recommendation;
 }
 
 /**
