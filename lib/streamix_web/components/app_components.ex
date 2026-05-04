@@ -621,7 +621,7 @@ defmodule StreamixWeb.AppComponents do
         proxy_base =
           Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
 
-        "#{proxy_base}/proxy?url=#{stream_url}"
+        "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
       else
         nil
       end

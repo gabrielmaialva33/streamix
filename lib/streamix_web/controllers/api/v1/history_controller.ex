@@ -93,8 +93,15 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   """
   def delete(conn, %{"id" => id}) do
     user = conn.assigns.current_user
-    Library.remove_from_watch_history(user.id, String.to_integer(id))
-    send_resp(conn, 204, "")
+
+    case parse_positive_integer(id) do
+      {:ok, entry_id} ->
+        Library.remove_from_watch_history(user.id, entry_id)
+        send_resp(conn, 204, "")
+
+      :error ->
+        invalid_id(conn)
+    end
   end
 
   # Auth plug
@@ -130,4 +137,21 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   end
 
   defp parse_int(_, default), do: default
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
+
+  defp invalid_id(conn) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: %{code: "invalid_id", message: "Invalid history id"}})
+  end
 end

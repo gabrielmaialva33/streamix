@@ -70,22 +70,25 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   def delete(conn, %{"id" => id}) do
     user = conn.assigns.current_user
 
-    case Providers.get_user_provider(user.id, String.to_integer(id)) do
+    with {:ok, provider_id} <- parse_id(id),
+         provider when not is_nil(provider) <- Providers.get_user_provider(user.id, provider_id) do
+      case Providers.delete(provider) do
+        {:ok, _} ->
+          send_resp(conn, 204, "")
+
+        {:error, _} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{error: %{code: "delete_failed", message: "Failed to delete provider"}})
+      end
+    else
+      {:error, :invalid_id} ->
+        invalid_id(conn)
+
       nil ->
         conn
         |> put_status(:not_found)
         |> json(%{error: %{code: "not_found", message: "Provider not found"}})
-
-      provider ->
-        case Providers.delete(provider) do
-          {:ok, _} ->
-            send_resp(conn, 204, "")
-
-          {:error, _} ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(%{error: %{code: "delete_failed", message: "Failed to delete provider"}})
-        end
     end
   end
 
@@ -96,25 +99,44 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   def sync(conn, %{"id" => id}) do
     user = conn.assigns.current_user
 
-    case Providers.get_user_provider(user.id, String.to_integer(id)) do
+    with {:ok, provider_id} <- parse_id(id),
+         provider when not is_nil(provider) <- Providers.get_user_provider(user.id, provider_id) do
+      case Providers.async_sync(provider) do
+        {:ok, _job} ->
+          conn
+          |> put_status(:accepted)
+          |> json(%{status: "sync_started", provider_id: provider.id})
+
+        {:error, reason} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{error: %{code: "sync_failed", message: inspect(reason)}})
+      end
+    else
+      {:error, :invalid_id} ->
+        invalid_id(conn)
+
       nil ->
         conn
         |> put_status(:not_found)
         |> json(%{error: %{code: "not_found", message: "Provider not found"}})
-
-      provider ->
-        case Providers.async_sync(provider) do
-          {:ok, _job} ->
-            conn
-            |> put_status(:accepted)
-            |> json(%{status: "sync_started", provider_id: provider.id})
-
-          {:error, reason} ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(%{error: %{code: "sync_failed", message: inspect(reason)}})
-        end
     end
+  end
+
+  defp parse_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> {:error, :invalid_id}
+    end
+  end
+
+  defp parse_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+  defp parse_id(_), do: {:error, :invalid_id}
+
+  defp invalid_id(conn) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: %{code: "invalid_id", message: "Invalid provider id"}})
   end
 
   # Serializer — never exposes credentials

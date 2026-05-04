@@ -303,7 +303,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
           :miss
 
         {:ok, [encoded, ttl]} when is_binary(encoded) and is_integer(ttl) and ttl > 0 ->
-          {:ok, {:erlang.binary_to_term(encoded), ttl}}
+          {:ok, {:erlang.binary_to_term(encoded, [:safe]), ttl}}
 
         _ ->
           :miss

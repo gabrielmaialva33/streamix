@@ -99,36 +99,49 @@ defmodule StreamixWeb.Api.V1.SearchController do
   Find content similar to a given item.
   """
   def similar(conn, %{"collection" => collection, "id" => id}) do
-    collection_atom = String.to_existing_atom(collection)
-    content_id = String.to_integer(id)
-    limit = parse_int(conn.params["limit"], 10)
+    with {:ok, collection_atom} <- parse_collection(collection),
+         {:ok, content_id} <- parse_positive_integer(id) do
+      limit = parse_int(conn.params["limit"], 10)
+      similar_results(conn, collection, collection_atom, content_id, limit)
+    else
+      :invalid_collection ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: "Invalid collection"})
 
+      :invalid_id ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{error: "Invalid id"})
+    end
+  end
+
+  defp similar_results(conn, collection, collection_atom, content_id, limit) do
     if SemanticSearch.available?() do
-      case SemanticSearch.similar(content_id, collection_atom, limit: limit) do
-        {:ok, results} ->
-          items = enrich_results(results, collection_atom)
-          json(conn, %{items: items, source_id: content_id, collection: collection})
-
-        {:error, :not_found} ->
-          conn
-          |> put_status(:not_found)
-          |> json(%{error: "Content not indexed yet"})
-
-        {:error, reason} ->
-          conn
-          |> put_status(:service_unavailable)
-          |> json(%{error: "Search failed", reason: inspect(reason)})
-      end
+      search_similar(conn, collection, collection_atom, content_id, limit)
     else
       conn
       |> put_status(:service_unavailable)
       |> json(%{error: "Semantic search not available"})
     end
-  rescue
-    ArgumentError ->
-      conn
-      |> put_status(:bad_request)
-      |> json(%{error: "Invalid collection"})
+  end
+
+  defp search_similar(conn, collection, collection_atom, content_id, limit) do
+    case SemanticSearch.similar(content_id, collection_atom, limit: limit) do
+      {:ok, results} ->
+        items = enrich_results(results, collection_atom)
+        json(conn, %{items: items, source_id: content_id, collection: collection})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: "Content not indexed yet"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> json(%{error: "Search failed", reason: inspect(reason)})
+    end
   end
 
   @doc """
@@ -191,6 +204,21 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp enrich_results(results, :movies), do: enrich_movie_results(results)
   defp enrich_results(results, :series), do: enrich_series_results(results)
   defp enrich_results(results, _), do: results
+
+  defp parse_collection("movies"), do: {:ok, :movies}
+  defp parse_collection("series"), do: {:ok, :series}
+  defp parse_collection(_), do: :invalid_collection
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :invalid_id
+    end
+  end
+
+  defp parse_positive_integer(_), do: :invalid_id
 
   defp merge_movie(result, movie) do
     %{

@@ -70,29 +70,34 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get "Because you watched X" recommendations.
   """
   def similar(conn, %{"id" => id} = params) do
-    content_id = String.to_integer(id)
-    collection = Map.get(params, "type", "movies")
-    limit = parse_int(params["limit"], 10)
+    case parse_positive_integer(id) do
+      {:ok, content_id} ->
+        collection = Map.get(params, "type", "movies")
+        limit = parse_int(params["limit"], 10)
 
-    case UserAnalytics.get_similar_to(content_id, collection, limit: limit) do
-      {:ok, results} ->
-        enriched = enrich_results(results, collection)
+        case UserAnalytics.get_similar_to(content_id, collection, limit: limit) do
+          {:ok, results} ->
+            enriched = enrich_results(results, collection)
 
-        json(conn, %{
-          similar: enriched,
-          source_id: content_id,
-          type: collection
-        })
+            json(conn, %{
+              similar: enriched,
+              source_id: content_id,
+              type: collection
+            })
 
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: "Content not indexed"})
+          {:error, :not_found} ->
+            conn
+            |> put_status(:not_found)
+            |> json(%{error: "Content not indexed"})
 
-      {:error, reason} ->
-        conn
-        |> put_status(:service_unavailable)
-        |> json(%{error: "Similar search failed", reason: inspect(reason)})
+          {:error, reason} ->
+            conn
+            |> put_status(:service_unavailable)
+            |> json(%{error: "Similar search failed", reason: inspect(reason)})
+        end
+
+      :error ->
+        invalid_id(conn)
     end
   end
 
@@ -226,4 +231,21 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
 
   defp parse_int(value, _default) when is_integer(value), do: value
   defp parse_int(_, default), do: default
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
+
+  defp invalid_id(conn) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "Invalid id"})
+  end
 end

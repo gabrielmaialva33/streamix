@@ -68,8 +68,15 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   def delete(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
-    Library.remove_favorite(user.id, type, String.to_integer(content_id))
-    send_resp(conn, 204, "")
+
+    case parse_positive_integer(content_id) do
+      {:ok, content_id} ->
+        Library.remove_favorite(user.id, type, content_id)
+        send_resp(conn, 204, "")
+
+      :error ->
+        invalid_content_id(conn)
+    end
   end
 
   @doc """
@@ -170,4 +177,21 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   defp parse_int(_, default), do: default
+
+  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp parse_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer > 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_positive_integer(_), do: :error
+
+  defp invalid_content_id(conn) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: %{code: "invalid_content_id", message: "Invalid content id"}})
+  end
 end
