@@ -840,13 +840,14 @@ defmodule StreamixWeb.AppComponents do
   attr :value, :string, default: ""
   attr :placeholder, :string, default: "Buscar..."
   attr :on_change, :string, default: "search"
+  attr :class, :string, default: ""
 
   def search_input(assigns) do
     ~H"""
     <form
       phx-change={@on_change}
       phx-submit={@on_change}
-      class="search-expand flex-1 max-w-xs sm:max-w-sm"
+      class={["search-expand flex-1", @class == "" && "max-w-xs sm:max-w-sm", @class]}
     >
       <.icon
         name="hero-magnifying-glass"
