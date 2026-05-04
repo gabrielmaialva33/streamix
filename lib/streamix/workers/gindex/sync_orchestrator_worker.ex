@@ -45,7 +45,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.{Episode, Movie, Provider, Series}
+  alias Streamix.Iptv.{Episode, Movie, Provider, Season, Series}
   alias Streamix.Repo
 
   require Logger
@@ -205,10 +205,15 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     }
   end
 
+  # Episode belongs to Season, Season belongs to Series. There is no
+  # direct `series_id` on Episode in the normalized schema, so we walk
+  # Episode → Season → Series to scope by provider.
   defp has_episodes?(provider_id) do
     from(e in Episode,
+      join: season in Season,
+      on: e.season_id == season.id,
       join: s in Series,
-      on: e.series_id == s.id,
+      on: season.series_id == s.id,
       where: s.provider_id == ^provider_id,
       limit: 1,
       select: 1
