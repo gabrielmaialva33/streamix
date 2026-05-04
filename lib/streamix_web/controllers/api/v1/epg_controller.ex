@@ -14,10 +14,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   use StreamixWeb, :controller
 
-  import Ecto.Query, warn: false
-
-  alias Streamix.Iptv.{EpgChannel, EpgProgram, LiveChannel, Providers}
-  alias Streamix.Repo
+  alias Streamix.Iptv.{Epg, EpgProgram, Providers}
 
   @max_hours 12
 
@@ -48,11 +45,15 @@ defmodule StreamixWeb.Api.V1.EpgController do
     provider = Providers.get_global()
 
     if is_nil(provider) or channel_ids == [] do
-      json(conn, %{programs: empty_keyed(channel_ids), fetched_until: nil})
+      json(conn, %{programs: empty_list_keyed(channel_ids), fetched_until: nil})
     else
       now = DateTime.utc_now()
       until = DateTime.add(now, hours * 3600, :second)
-      programs = fetch_programs_window(provider.id, channel_ids, now, until)
+
+      programs =
+        provider.id
+        |> Epg.programs_window_for_channels(channel_ids, now, until)
+        |> serialize_programs_window()
 
       json(conn, %{programs: programs, fetched_until: until})
     end
@@ -88,7 +89,12 @@ defmodule StreamixWeb.Api.V1.EpgController do
     if is_nil(provider) or channel_ids == [] do
       json(conn, %{now: empty_keyed(channel_ids)})
     else
-      json(conn, %{now: fetch_current_programs(provider.id, channel_ids)})
+      now =
+        provider.id
+        |> Epg.current_programs_for_channels(channel_ids)
+        |> serialize_current_programs()
+
+      json(conn, %{now: now})
     end
   end
 
@@ -99,61 +105,21 @@ defmodule StreamixWeb.Api.V1.EpgController do
   end
 
   # =============================================================================
-  # Query helpers
-  # =============================================================================
-
-  defp fetch_programs_window(provider_id, channel_ids, now, until) do
-    rows =
-      from(lc in LiveChannel,
-        where: lc.id in ^channel_ids,
-        where: lc.provider_id == ^provider_id,
-        where: not is_nil(lc.epg_channel_id),
-        join: ec in EpgChannel,
-        on: ec.provider_id == lc.provider_id and ec.external_id == lc.epg_channel_id,
-        join: ep in EpgProgram,
-        on: ep.epg_channel_id == ec.id,
-        where: ep.end_time > ^now and ep.start_time < ^until,
-        order_by: [asc: lc.id, asc: ep.start_time],
-        select: {lc.id, ep}
-      )
-      |> Repo.all()
-
-    grouped =
-      rows
-      |> Enum.group_by(fn {lc_id, _} -> to_string(lc_id) end, fn {_, ep} -> ep end)
-      |> Map.new(fn {k, progs} -> {k, Enum.map(progs, &serialize_program/1)} end)
-
-    Enum.reduce(channel_ids, grouped, fn id, acc ->
-      Map.put_new(acc, to_string(id), [])
-    end)
-  end
-
-  defp fetch_current_programs(provider_id, channel_ids) do
-    now = DateTime.utc_now()
-
-    rows =
-      from(lc in LiveChannel,
-        where: lc.id in ^channel_ids,
-        where: lc.provider_id == ^provider_id,
-        where: not is_nil(lc.epg_channel_id),
-        join: ec in EpgChannel,
-        on: ec.provider_id == lc.provider_id and ec.external_id == lc.epg_channel_id,
-        join: ep in EpgProgram,
-        on: ep.epg_channel_id == ec.id,
-        where: ep.start_time <= ^now and ep.end_time > ^now,
-        select: {lc.id, ep}
-      )
-      |> Repo.all()
-      |> Map.new(fn {id, ep} -> {to_string(id), serialize_current_program(ep)} end)
-
-    Enum.reduce(channel_ids, rows, fn id, acc ->
-      Map.put_new(acc, to_string(id), nil)
-    end)
-  end
-
-  # =============================================================================
   # Serializers
   # =============================================================================
+
+  defp serialize_programs_window(programs_by_channel) do
+    Map.new(programs_by_channel, fn {channel_id, programs} ->
+      {channel_id, Enum.map(programs, &serialize_program/1)}
+    end)
+  end
+
+  defp serialize_current_programs(programs_by_channel) do
+    Map.new(programs_by_channel, fn
+      {channel_id, nil} -> {channel_id, nil}
+      {channel_id, program} -> {channel_id, serialize_current_program(program)}
+    end)
+  end
 
   defp serialize_program(%EpgProgram{} = p) do
     %{
@@ -212,6 +178,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   defp parse_channel_ids(_), do: []
 
   defp empty_keyed(ids), do: Map.new(ids, fn id -> {to_string(id), nil} end)
+  defp empty_list_keyed(ids), do: Map.new(ids, fn id -> {to_string(id), []} end)
 
   defp parse_int(nil, default), do: default
   defp parse_int(val, _default) when is_integer(val), do: val

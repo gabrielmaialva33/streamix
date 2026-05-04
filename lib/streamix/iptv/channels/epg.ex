@@ -7,7 +7,7 @@ defmodule Streamix.Iptv.Epg do
   import Ecto.Query, warn: false
 
   alias Streamix.{Cache, Repo}
-  alias Streamix.Iptv.{EpgChannel, EpgProgram, EpgSync, Provider}
+  alias Streamix.Iptv.{EpgChannel, EpgProgram, EpgSync, LiveChannel, Provider}
 
   @epg_now_ttl 60
 
@@ -109,6 +109,79 @@ defmodule Streamix.Iptv.Epg do
       epg = Map.get(current_programs, channel.epg_channel_id)
       Map.put(channel, :current_program, epg)
     end)
+  end
+
+  @doc """
+  Returns programs for LiveChannel IDs within a time window.
+
+  Results are keyed by the requested `LiveChannel.id` values as strings so API
+  callers can safely preserve their channel-card IDs. Missing channels are
+  included with an empty list.
+  """
+  def programs_window_for_channels(provider_id, channel_ids, starts_at, ends_at)
+      when is_list(channel_ids) do
+    provider_id
+    |> channel_programs_query(channel_ids)
+    |> where(
+      [program: program],
+      program.end_time > ^starts_at and program.start_time < ^ends_at
+    )
+    |> order_by([channel: channel, program: program], asc: channel.id, asc: program.start_time)
+    |> select([channel: channel, program: program], {channel.id, program})
+    |> Repo.all()
+    |> group_program_rows(channel_ids, [])
+  end
+
+  @doc """
+  Returns the currently airing program for each requested LiveChannel ID.
+
+  Results are keyed by the requested `LiveChannel.id` values as strings. Missing
+  channels or channels without a current EPG row are included with `nil`.
+  """
+  def current_programs_for_channels(provider_id, channel_ids, now \\ DateTime.utc_now())
+      when is_list(channel_ids) do
+    provider_id
+    |> channel_programs_query(channel_ids)
+    |> where([program: program], program.start_time <= ^now and program.end_time > ^now)
+    |> select([channel: channel, program: program], {channel.id, program})
+    |> Repo.all()
+    |> group_program_rows(channel_ids, nil)
+  end
+
+  defp channel_programs_query(provider_id, channel_ids) do
+    from(channel in LiveChannel,
+      as: :channel,
+      where: channel.id in ^channel_ids,
+      where: channel.provider_id == ^provider_id,
+      where: not is_nil(channel.epg_channel_id),
+      join: epg_channel in EpgChannel,
+      as: :epg_channel,
+      on:
+        epg_channel.provider_id == channel.provider_id and
+          epg_channel.external_id == channel.epg_channel_id,
+      join: program in EpgProgram,
+      as: :program,
+      on: program.epg_channel_id == epg_channel.id
+    )
+  end
+
+  defp group_program_rows(rows, channel_ids, default) do
+    grouped = group_program_rows(rows, default)
+
+    Enum.reduce(channel_ids, grouped, fn channel_id, acc ->
+      Map.put_new(acc, to_string(channel_id), default)
+    end)
+  end
+
+  defp group_program_rows(rows, []) do
+    rows
+    |> Enum.group_by(fn {channel_id, _program} -> to_string(channel_id) end, fn {_id, program} ->
+      program
+    end)
+  end
+
+  defp group_program_rows(rows, nil) do
+    Map.new(rows, fn {channel_id, program} -> {to_string(channel_id), program} end)
   end
 
   # =============================================================================
