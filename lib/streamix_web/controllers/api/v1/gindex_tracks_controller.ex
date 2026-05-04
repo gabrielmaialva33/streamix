@@ -37,6 +37,14 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
         # fall back to the runtime path.
         conn |> put_status(:not_found) |> json(%{error: "tracks not available"})
 
+      {:error, :probing} ->
+        # Cache miss — probe was scheduled in background. Frontend
+        # bails silently; the next visitor (or a reload after the
+        # task finishes) will hit the populated cache.
+        conn
+        |> put_status(:accepted)
+        |> json(%{status: "probing", retry_after: 5})
+
       {:error, reason} ->
         conn
         |> put_status(:bad_gateway)

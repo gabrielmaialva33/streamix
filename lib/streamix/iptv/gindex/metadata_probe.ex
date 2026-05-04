@@ -43,11 +43,16 @@ defmodule Streamix.Iptv.Gindex.MetadataProbe do
   ]
 
   @doc """
-  Returns cached `track_metadata` if present, otherwise probes the
-  file, persists the result and returns it.
+  Returns cached `track_metadata` immediately if present.
 
-  Returns `{:ok, %{audio: [...], subtitle: [...]}}` on success or
-  `{:error, reason}`.
+  On cache miss, kicks off the ffprobe pipeline in a detached `Task`
+  and returns `{:error, :probing}` right away. The endpoint translates
+  that to a 404 — the frontend silently keeps native playback running,
+  and the next visitor (or the same user on a reload) hits a populated
+  cache.
+
+  This avoids stalling the request behind a slow GIndex URL resolve
+  (which can take longer than Cloudflare's 30 s edge timeout).
   """
   @spec fetch(:movie | :episode, integer()) ::
           {:ok, map()} | {:error, term()}
@@ -57,37 +62,44 @@ defmodule Streamix.Iptv.Gindex.MetadataProbe do
 
   defp do_fetch(schema, id, url_fn) do
     with {:ok, row} <- load_row(schema, id) do
-      cached_or_probe(row, url_fn)
+      cached_or_schedule(row, url_fn)
     end
+  end
+
+  defp cached_or_schedule(row, url_fn) do
+    case row.track_metadata do
+      %{} = cached when map_size(cached) > 0 -> {:ok, normalize(cached)}
+      _ -> kick_off_probe(row, url_fn)
+    end
+  end
+
+  defp kick_off_probe(row, url_fn) do
+    if gindex?(row) do
+      schedule_probe(row, url_fn)
+      {:error, :probing}
+    else
+      {:error, :not_gindex}
+    end
+  end
+
+  defp schedule_probe(row, url_fn) do
+    # Fire-and-forget — the request returns immediately, the probe
+    # runs in a detached Task and persists when (if) it finishes.
+    Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
+      with {:ok, url} <- resolve_url(row, url_fn),
+           {:ok, json} <- run_probe(url),
+           {:ok, tracks} <- parse_tracks(json) do
+        persist(row, tracks)
+      else
+        err -> Logger.warning("MetadataProbe background failed: #{inspect(err)}")
+      end
+    end)
   end
 
   defp load_row(schema, id) do
     case Repo.get(schema, id) do
       nil -> {:error, :not_found}
       row -> {:ok, row}
-    end
-  end
-
-  defp cached_or_probe(row, url_fn) do
-    case row.track_metadata do
-      %{} = cached when map_size(cached) > 0 ->
-        {:ok, normalize(cached)}
-
-      _ ->
-        probe_and_cache(row, url_fn)
-    end
-  end
-
-  defp probe_and_cache(row, url_fn) do
-    if gindex?(row) do
-      with {:ok, url} <- resolve_url(row, url_fn),
-           {:ok, json} <- run_probe(url),
-           {:ok, tracks} <- parse_tracks(json) do
-        persist(row, tracks)
-        {:ok, tracks}
-      end
-    else
-      {:error, :not_gindex}
     end
   end
 
