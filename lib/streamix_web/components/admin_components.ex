@@ -64,9 +64,9 @@ defmodule StreamixWeb.AdminComponents do
 
   def stat_card(assigns) do
     ~H"""
-    <div class="rounded-2xl border border-border bg-surface p-5">
+    <div class="rounded-lg border border-border bg-surface p-5 shadow-card">
       <div class="flex items-center gap-3">
-        <div :if={@icon} class="rounded-xl bg-brand/10 p-2.5">
+        <div :if={@icon} class="rounded-lg bg-brand/10 p-2.5">
           <.icon name={@icon} class="size-5 text-brand" />
         </div>
         <div>
@@ -86,13 +86,13 @@ defmodule StreamixWeb.AdminComponents do
         assigns,
         :colors,
         case assigns.status do
-          "active" -> "bg-green-500/10 text-green-400 border-green-500/20"
-          "expired" -> "bg-red-500/10 text-red-400 border-red-500/20"
-          "canceled" -> "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
-          "pending" -> "bg-blue-500/10 text-blue-400 border-blue-500/20"
-          "admin" -> "bg-purple-500/10 text-purple-400 border-purple-500/20"
+          "active" -> "bg-success/10 text-success border-success/20"
+          "expired" -> "bg-error/10 text-error border-error/20"
+          "canceled" -> "bg-warning/10 text-warning border-warning/20"
+          "pending" -> "bg-info/10 text-info border-info/20"
+          "admin" -> "bg-accent/10 text-accent border-accent/20"
           "customer" -> "bg-gray-500/10 text-gray-400 border-gray-500/20"
-          "moderator" -> "bg-blue-500/10 text-blue-400 border-blue-500/20"
+          "moderator" -> "bg-info/10 text-info border-info/20"
           _ -> "bg-gray-500/10 text-gray-400 border-gray-500/20"
         end
       )

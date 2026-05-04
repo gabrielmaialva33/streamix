@@ -83,7 +83,7 @@ defmodule StreamixWeb.CoreComponents do
 
   def button(%{rest: rest} = assigns) do
     base_classes =
-      "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
+      "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
 
     variant_classes =
       case assigns.variant do
@@ -191,7 +191,7 @@ defmodule StreamixWeb.CoreComponents do
           checked={@checked}
           class={
             @class ||
-              "size-4 rounded border-border bg-surface text-brand focus:ring-brand focus:ring-offset-background"
+              "size-4 rounded border-border bg-surface text-brand focus:ring-2 focus:ring-brand focus:ring-offset-background disabled:opacity-50"
           }
           {@rest}
         />
@@ -212,8 +212,9 @@ defmodule StreamixWeb.CoreComponents do
         id={@id}
         name={@name}
         class={[
-          @class || "w-full px-3 py-2 rounded-md border bg-surface text-text-primary",
+          @class || "w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
           "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
+          "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
           @errors == [] && "border-border",
           @errors != [] && "border-error"
         ]}
@@ -238,9 +239,9 @@ defmodule StreamixWeb.CoreComponents do
         id={@id}
         name={@name}
         class={[
-          @class || "w-full px-3 py-2 rounded-md border bg-surface text-text-primary",
+          @class || "w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
           "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
-          "placeholder:text-text-muted",
+          "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
           @errors == [] && "border-border",
           @errors != [] && "border-error"
         ]}
@@ -264,9 +265,9 @@ defmodule StreamixWeb.CoreComponents do
         id={@id}
         value={Form.normalize_value(@type, @value)}
         class={[
-          @class || "w-full px-3 py-2 rounded-md border bg-surface text-text-primary",
+          @class || "w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
           "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
-          "placeholder:text-text-muted",
+          "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
           @errors == [] && "border-border",
           @errors != [] && "border-error"
         ]}
@@ -342,7 +343,7 @@ defmodule StreamixWeb.CoreComponents do
       end
 
     ~H"""
-    <div class="overflow-x-auto rounded-lg border border-border">
+    <div class="overflow-x-auto rounded-lg border border-border bg-surface">
       <table class="w-full text-sm">
         <thead class="bg-surface border-b border-border">
           <tr>
