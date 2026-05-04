@@ -41,7 +41,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section class="rounded-2xl border border-border bg-surface p-5">
+        <section class="rounded-lg border border-border bg-surface p-5 shadow-card">
           <h2 class="text-lg font-semibold text-text-primary mb-4">Últimos Usuários</h2>
           <table class="w-full text-sm">
             <thead>
@@ -63,7 +63,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
           </table>
         </section>
 
-        <section class="rounded-2xl border border-border bg-surface p-5">
+        <section class="rounded-lg border border-border bg-surface p-5 shadow-card">
           <h2 class="text-lg font-semibold text-text-primary mb-4">Últimas Subscriptions</h2>
           <table class="w-full text-sm">
             <thead>

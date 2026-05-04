@@ -47,7 +47,10 @@ defmodule StreamixWeb.Admin.UsersLive do
         </.form>
       </div>
 
-      <div :if={@users != []} class="rounded-2xl border border-border bg-surface overflow-hidden">
+      <div
+        :if={@users != []}
+        class="rounded-lg border border-border bg-surface overflow-hidden shadow-card"
+      >
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-text-muted border-b border-border bg-surface-hover/50">
@@ -83,7 +86,7 @@ defmodule StreamixWeb.Admin.UsersLive do
 
       <div
         :if={@users == []}
-        class="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center"
+        class="rounded-lg border border-dashed border-border bg-surface/50 p-8 text-center"
       >
         <.icon name="hero-users" class="mx-auto mb-3 size-10 text-text-muted" />
         <h3 class="text-lg font-semibold text-text-primary">Nenhum usuário encontrado</h3>

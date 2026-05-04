@@ -25,13 +25,16 @@ defmodule StreamixWeb.Admin.PlansLive do
         <h1 class="text-xl font-semibold text-text-primary">Planos</h1>
         <.link
           navigate={~p"/admin/plans/new"}
-          class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover transition-colors"
+          class="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
         >
           <.icon name="hero-plus" class="size-4" /> Novo plano
         </.link>
       </div>
 
-      <div :if={@plans != []} class="rounded-2xl border border-border bg-surface overflow-hidden">
+      <div
+        :if={@plans != []}
+        class="rounded-lg border border-border bg-surface overflow-hidden shadow-card"
+      >
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-text-muted border-b border-border bg-surface-hover/50">
@@ -57,7 +60,7 @@ defmodule StreamixWeb.Admin.PlansLive do
                   name={if plan.grants_global_access, do: "hero-check-circle", else: "hero-x-circle"}
                   class={[
                     "size-5",
-                    plan.grants_global_access && "text-green-400",
+                    plan.grants_global_access && "text-success",
                     !plan.grants_global_access && "text-text-muted"
                   ]}
                 />
@@ -80,7 +83,7 @@ defmodule StreamixWeb.Admin.PlansLive do
 
       <div
         :if={@plans == []}
-        class="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center"
+        class="rounded-lg border border-dashed border-border bg-surface/50 p-8 text-center"
       >
         <.icon name="hero-credit-card" class="mx-auto mb-3 size-10 text-text-muted" />
         <h3 class="text-lg font-semibold text-text-primary">Nenhum plano cadastrado</h3>

@@ -140,12 +140,12 @@ defmodule StreamixWeb.SearchLive do
   @doc false
   def render(assigns) do
     ~H"""
-    <div class="px-[4%] py-8 space-y-8">
+    <div class="py-6 sm:py-8 space-y-6 sm:space-y-8">
       <div class="flex flex-col gap-4">
         <h1 class="text-3xl font-bold text-text-primary">Buscar</h1>
 
         <form phx-submit="search" phx-change="search" class="max-w-xl">
-          <div class="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg focus-within:border-brand/50 transition-colors">
+          <div class="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-colors">
             <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary flex-shrink-0" />
             <%!--
               iOS Safari: disable auto-capitalize/correct/spellcheck so the
@@ -163,12 +163,14 @@ defmodule StreamixWeb.SearchLive do
               autocorrect="off"
               spellcheck="false"
               enterkeyhint="search"
-              class="flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-lg text-text-primary placeholder:text-text-secondary/50"
+              class="flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-base sm:text-lg text-text-primary placeholder:text-text-muted"
               autofocus
             />
             <div
               :if={@loading}
               class="size-5 border-2 border-brand/30 border-t-brand rounded-full animate-spin flex-shrink-0"
+              role="status"
+              aria-label="Buscando"
             >
             </div>
           </div>
@@ -236,10 +238,10 @@ defmodule StreamixWeb.SearchLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+        "px-4 py-2 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand whitespace-nowrap",
         @current == @type && "bg-brand text-white",
         @current != @type &&
-          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
       ]}
     >
       {@label}

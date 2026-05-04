@@ -175,8 +175,7 @@ defmodule StreamixWeb.FavoritesLive do
           favorite={favorite}
         />
       </div>
-      
-    <!-- Infinite Scroll Sentinel -->
+      <%!-- Infinite Scroll Sentinel --%>
       <div
         :if={!@end_of_list && !@loading}
         id="favorites-sentinel"
@@ -186,7 +185,7 @@ defmodule StreamixWeb.FavoritesLive do
       />
 
       <div :if={@loading} class="flex justify-center py-8">
-        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+        <.loading_spinner size="lg" />
       </div>
 
       <.empty_state
@@ -206,10 +205,10 @@ defmodule StreamixWeb.FavoritesLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
+        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-brand",
         @current == @type && "bg-brand text-white",
         @current != @type &&
-          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
       ]}
     >
       {@label}
@@ -227,7 +226,7 @@ defmodule StreamixWeb.FavoritesLive do
     ~H"""
     <div
       id={@id}
-      class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-colors group"
+      class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-colors group border border-transparent hover:border-border"
     >
       <div
         class="relative aspect-video bg-surface-hover cursor-pointer"
@@ -269,8 +268,8 @@ defmodule StreamixWeb.FavoritesLive do
             phx-click="remove_favorite"
             phx-value-type={@favorite.content_type}
             phx-value-content_id={@favorite.content_id}
-            class="p-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 rounded"
-            title="Remover dos favoritos"
+            class="p-1 text-text-secondary sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:text-error hover:bg-error/10 rounded-md focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-error"
+            aria-label="Remover dos favoritos"
           >
             <.icon name="hero-trash" class="size-4" />
           </button>

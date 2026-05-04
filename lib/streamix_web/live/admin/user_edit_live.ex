@@ -127,7 +127,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <%!-- User details --%>
-        <section class="rounded-2xl border border-border bg-surface p-5 space-y-5">
+        <section class="rounded-lg border border-border bg-surface p-5 space-y-5 shadow-card">
           <h2 class="text-lg font-semibold text-text-primary">Detalhes do Usuário</h2>
 
           <div class="text-sm space-y-2">
@@ -172,11 +172,11 @@ defmodule StreamixWeb.Admin.UserEditLive do
         </section>
 
         <%!-- Subscription management --%>
-        <section class="rounded-2xl border border-border bg-surface p-5 space-y-5">
+        <section class="rounded-lg border border-border bg-surface p-5 space-y-5 shadow-card">
           <h2 class="text-lg font-semibold text-text-primary">Subscription</h2>
 
           <%= if @active_sub do %>
-            <div class="rounded-xl border border-brand/20 bg-brand/5 p-4 space-y-2">
+            <div class="rounded-lg border border-brand/20 bg-brand/5 p-4 space-y-2">
               <div class="flex items-center justify-between">
                 <span class="font-medium text-text-primary">{@active_sub.plan.name}</span>
                 <.status_badge status={@active_sub.status} />
@@ -188,7 +188,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
                 <p :if={@active_sub.expires_at}>
                   Expira: {Calendar.strftime(@active_sub.expires_at, "%d/%m/%Y %H:%M")}
                 </p>
-                <p :if={is_nil(@active_sub.expires_at)} class="text-green-400">
+                <p :if={is_nil(@active_sub.expires_at)} class="text-success">
                   Sem expiração (indefinida)
                 </p>
               </div>
@@ -196,7 +196,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
                 id="cancel-subscription-btn"
                 phx-click="cancel_subscription"
                 data-confirm="Tem certeza que quer cancelar esta subscription?"
-                class="mt-2 text-sm text-red-400 hover:text-red-300 font-medium"
+                class="mt-2 text-sm text-error hover:text-error/80 font-medium focus:outline-none focus:ring-2 focus:ring-error rounded"
               >
                 Cancelar subscription
               </button>

@@ -177,7 +177,7 @@ defmodule StreamixWeb.HistoryLive do
             type="button"
             phx-click="clear_history"
             data-confirm="Tem certeza que deseja limpar todo o historico?"
-            class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-red-500 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
+            class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-error hover:bg-error/10 rounded-lg transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-error"
           >
             <.icon name="hero-trash" class="size-4" />
             <span class="hidden sm:inline ml-1">Limpar</span>
@@ -192,8 +192,7 @@ defmodule StreamixWeb.HistoryLive do
       >
         <.history_entry :for={{dom_id, entry} <- @streams.history} id={dom_id} entry={entry} />
       </div>
-      
-    <!-- Infinite Scroll Sentinel -->
+      <%!-- Infinite Scroll Sentinel --%>
       <div
         :if={!@end_of_list && !@loading}
         id="history-sentinel"
@@ -203,7 +202,7 @@ defmodule StreamixWeb.HistoryLive do
       />
 
       <div :if={@loading} class="flex justify-center py-8">
-        <.icon name="hero-arrow-path" class="size-8 text-brand animate-spin" />
+        <.loading_spinner size="lg" />
       </div>
 
       <.empty_state
@@ -223,10 +222,10 @@ defmodule StreamixWeb.HistoryLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
+        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-brand",
         @current == @type && "bg-brand text-white",
         @current != @type &&
-          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
       ]}
     >
       {@label}
@@ -244,7 +243,7 @@ defmodule StreamixWeb.HistoryLive do
     ~H"""
     <div
       id={@id}
-      class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group"
+      class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group border border-transparent hover:border-border"
     >
       <div
         class="relative w-20 sm:w-24 h-14 sm:h-16 rounded bg-surface-hover flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
@@ -300,8 +299,8 @@ defmodule StreamixWeb.HistoryLive do
         phx-click="remove_entry"
         phx-value-id={@entry.id}
         phx-value-type={@entry.content_type}
-        class="p-1.5 sm:p-2 text-text-secondary hover:text-text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-all"
-        title="Remover do historico"
+        class="p-1.5 sm:p-2 text-text-secondary hover:text-error hover:bg-error/10 rounded-md sm:opacity-0 sm:group-hover:opacity-100 transition-all focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-error"
+        aria-label="Remover do historico"
       >
         <.icon name="hero-x-mark" class="size-4 sm:size-5" />
       </button>
