@@ -312,7 +312,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           <div
             id="channels"
             phx-update="stream"
-            class="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+            class="responsive-wide-grid"
           >
             <div :for={{dom_id, channel} <- @streams.channels} id={dom_id}>
               <.live_channel_card
@@ -333,7 +333,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
           <div
             :if={@loading}
-            class="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+            class="responsive-wide-grid"
           >
             <.skeleton_channel_card :for={_ <- 1..12} />
           </div>

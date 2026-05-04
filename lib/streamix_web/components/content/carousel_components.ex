@@ -19,7 +19,7 @@ defmodule StreamixWeb.Content.CarouselComponents do
     <div
       id={@id}
       phx-update="stream"
-      class="grid gap-3 sm:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+      class="responsive-poster-grid"
     >
       <div :for={{dom_id, item} <- @items} id={dom_id}>
         <.movie_card

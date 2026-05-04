@@ -154,7 +154,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
       <div
         id="animes"
         phx-update="stream"
-        class="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+        class="responsive-poster-grid"
       >
         <div :for={{dom_id, anime} <- @streams.animes} id={dom_id}>
           <.series_card
