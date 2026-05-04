@@ -31,15 +31,14 @@ defmodule Streamix.Iptv.Gindex.MetadataProbe do
   # proxy) yet wide enough to cover both containers.
   @probe_bytes 2 * 1024 * 1024
 
-  @ffprobe_args [
+  @ffprobe_base_args [
     "-v",
     "error",
     "-show_streams",
     "-show_format",
     "-of",
     "json",
-    "-i",
-    "pipe:0"
+    "-i"
   ]
 
   @doc """
@@ -143,44 +142,26 @@ defmodule Streamix.Iptv.Gindex.MetadataProbe do
   end
 
   defp pipe_to_ffprobe(body) do
-    port =
-      Port.open({:spawn_executable, ffprobe_path()}, [
-        :binary,
-        :exit_status,
-        :stderr_to_stdout,
-        {:args, @ffprobe_args}
-      ])
+    # Spool the bytes to a tempfile and let ffprobe read it via path.
+    # Stdin pipes are tricky here: closing stdin ahead of time kills the
+    # port (Erlang's port_close terminates the process), and leaving it
+    # open hangs ffprobe waiting for more bytes. A temp file dodges
+    # both — we delete it as soon as the System.cmd returns.
+    tmp =
+      Path.join(System.tmp_dir!(), "streamix_probe_#{:erlang.unique_integer([:positive])}.bin")
 
-    Port.command(port, body)
+    try do
+      :ok = File.write(tmp, body)
 
-    # Closing stdin tells ffprobe we're done feeding it.
-    case :erlang.port_close(port) do
-      true -> :ok
-      _ -> :ok
-    end
+      case System.cmd(ffprobe_path(), @ffprobe_base_args ++ [tmp], stderr_to_stdout: true) do
+        {output, 0} ->
+          {:ok, output}
 
-    receive do
-      {^port, {:data, data}} ->
-        receive_remaining(port, [data])
-
-      {^port, {:exit_status, 0}} ->
-        {:error, :ffprobe_no_output}
-
-      {^port, {:exit_status, status}} ->
-        {:error, {:ffprobe_exit, status}}
+        {output, status} ->
+          {:error, {:ffprobe_exit, status, output}}
+      end
     after
-      30_000 ->
-        {:error, :ffprobe_timeout}
-    end
-  end
-
-  defp receive_remaining(port, acc) do
-    receive do
-      {^port, {:data, data}} -> receive_remaining(port, [data | acc])
-      {^port, {:exit_status, _}} -> {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
-    after
-      5_000 ->
-        {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
+      File.rm(tmp)
     end
   end
 
