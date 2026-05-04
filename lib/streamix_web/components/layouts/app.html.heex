@@ -118,10 +118,11 @@
           <!-- Search button (desktop) -->
           <.link
             navigate={~p"/search"}
-            class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-hover/50 hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-all text-sm"
+            aria-label="Abrir busca global"
+            class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-all text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <.icon name="hero-magnifying-glass" class="size-4" />
-            <span class="text-text-muted">Buscar...</span>
+            <span class="text-text-muted">Buscar tudo...</span>
             <kbd class="hidden lg:inline text-[10px] text-text-muted bg-surface px-1.5 py-0.5 rounded-md border border-border">
               /
             </kbd>

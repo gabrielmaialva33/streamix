@@ -533,6 +533,13 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
+}
+
+.browse-toolbar__search {
+    margin-left: auto;
+    min-width: 240px;
+    max-width: 360px;
 }
 
 .browse-toolbar__divider {
@@ -565,6 +572,13 @@ body {
 
     .browse-toolbar__divider {
         display: none;
+    }
+
+    .browse-toolbar__search {
+        flex-basis: 100%;
+        margin-left: 0;
+        max-width: none;
+        min-width: 0;
     }
 
     .category-chip {
