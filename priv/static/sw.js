@@ -1,11 +1,11 @@
 /**
- * Streamix Service Worker v4
+ * Streamix Service Worker v6
  * - WASM caching for instant AVPlayer startup
  * - Static assets caching
  * - PWA offline support
  */
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `streamix-${CACHE_VERSION}`;
 
 // Static assets to precache
@@ -72,6 +72,7 @@ self.addEventListener('install', (event) => {
             });
 
             await Promise.allSettled(wasmPromises);
+            await self.skipWaiting();
         })
     );
 });
