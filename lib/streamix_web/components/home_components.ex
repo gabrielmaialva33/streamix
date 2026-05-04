@@ -963,10 +963,10 @@ defmodule StreamixWeb.HomeComponents do
     # Different sizes based on content type
     card_class =
       case assigns.type do
-        :channels -> "aspect-video w-[160px]"
-        :history -> "aspect-video w-[280px]"
-        :favorites -> "aspect-[2/3] w-[120px]"
-        _ -> "aspect-[2/3] w-[180px]"
+        :channels -> "aspect-video w-[150px] lg:w-[176px]"
+        :history -> "aspect-video w-[220px] lg:w-[240px]"
+        :favorites -> "aspect-[2/3] w-[96px] lg:w-[108px]"
+        _ -> "aspect-[2/3] w-[132px] lg:w-[148px]"
       end
 
     assigns = assign(assigns, :card_class, card_class)
@@ -977,7 +977,7 @@ defmodule StreamixWeb.HomeComponents do
       class={[
         "group flex-shrink-0 rounded-lg overflow-hidden bg-surface/50 border border-white/10",
         "hover:bg-surface hover:border-white/20 transition-all duration-200",
-        "items-center justify-center",
+        "flex items-center justify-center",
         @card_class,
         @class
       ]}
@@ -1003,7 +1003,7 @@ defmodule StreamixWeb.HomeComponents do
   # `StreamixWeb.Content.CardComponents` (available via
   # `import StreamixWeb.ContentComponents`) so home and /browse share a single
   # card template. HomeComponents only owns the horizontal carousel sizing
-  # (`sm:w-[180px] sm:flex-shrink-0`) plus the `sm:hidden` / `hidden sm:block`
+  # (`sm:w-[132px] lg:w-[148px] sm:flex-shrink-0`) plus the `sm:hidden` / `hidden sm:block`
   # mobile-vs-desktop visibility toggles.
   #
   # Event routing:
@@ -1016,7 +1016,7 @@ defmodule StreamixWeb.HomeComponents do
     assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
 
     ~H"""
-    <div class={["w-full sm:w-[180px] sm:flex-shrink-0", @class]}>
+    <div class={["w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0", @class]}>
       <.movie_card
         movie={@movie}
         progress={@progress}
@@ -1032,7 +1032,7 @@ defmodule StreamixWeb.HomeComponents do
     assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
 
     ~H"""
-    <div class={["w-full sm:w-[180px] sm:flex-shrink-0", @class]}>
+    <div class={["w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0", @class]}>
       <.series_card
         series={@series}
         progress={@progress}
@@ -1050,7 +1050,7 @@ defmodule StreamixWeb.HomeComponents do
     <.link
       navigate={~p"/watch/live_channel/#{@channel.id}"}
       class={[
-        "group block transition-all duration-300 content-card w-full sm:w-[220px] lg:w-[280px]",
+        "group block transition-all duration-300 content-card w-full sm:w-[150px] lg:w-[176px]",
         @class
       ]}
     >
@@ -1102,7 +1102,7 @@ defmodule StreamixWeb.HomeComponents do
     <.link
       navigate={watch_path(@entry.content_type, @entry.content_id)}
       class={[
-        "group flex-shrink-0 w-full sm:w-[280px] block transition-all duration-300",
+        "group flex-shrink-0 w-full sm:w-[220px] lg:w-[240px] block transition-all duration-300",
         @class
       ]}
     >
@@ -1160,7 +1160,7 @@ defmodule StreamixWeb.HomeComponents do
     <.link
       navigate={watch_path(@favorite.content_type, @favorite.content_id)}
       class={[
-        "group flex-shrink-0 w-full sm:w-[120px] rounded-lg overflow-hidden bg-surface content-card transition-transform duration-300 hover:-translate-y-1",
+        "group flex-shrink-0 w-full sm:w-[96px] lg:w-[108px] rounded-lg overflow-hidden bg-surface content-card transition-transform duration-300 hover:-translate-y-1",
         @class
       ]}
     >
