@@ -934,17 +934,19 @@ const VideoPlayer = {
 
     // Buffer health monitoring with debounce to prevent flickering
     this.video?.addEventListener("waiting", () => {
-      // Debounce showing loading spinner (200ms) to avoid flickering on unstable networks
+      // Debounce live buffering more aggressively; live TS/MSE often emits
+      // sub-second waiting pulses while the next chunk is already arriving.
       if (this._bufferingDebounce) {
         clearTimeout(this._bufferingDebounce);
       }
+      const bufferingDelay = this.contentType === "live" ? 650 : 200;
       this._bufferingDebounce = setTimeout(() => {
         // Only show if still buffering
         if (this.video && !this.video.paused && this.video.readyState < 3) {
           this.playerUI.showLoading();
           this.pushEvent("buffering", { buffering: true });
         }
-      }, 200);
+      }, bufferingDelay);
     });
 
     this.video?.addEventListener("playing", () => {
@@ -2940,7 +2942,9 @@ const VideoPlayer = {
       const duration = this.avPlayer.getDuration();
       if (duration > 0) {
         const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
-        this.avPlayer.seek(newTime);
+        this.avPlayer.seek(newTime).catch((e) => {
+          log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
+        });
       }
     } else if (this.video?.duration) {
       this.video.currentTime = Math.max(
@@ -2952,7 +2956,9 @@ const VideoPlayer = {
 
   seekTo(time) {
     if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayer.seek(time);
+      this.avPlayer.seek(time).catch((e) => {
+        log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
+      });
     } else if (this.video) {
       this.video.currentTime = time;
     }
