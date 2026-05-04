@@ -1,19 +1,22 @@
 /**
- * Streamix Service Worker v6
+ * Streamix Service Worker v7
  * - WASM caching for instant AVPlayer startup
  * - Static assets caching
  * - PWA offline support
  */
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const CACHE_NAME = `streamix-${CACHE_VERSION}`;
 
 // Static assets to precache
 const STATIC_ASSETS = [
     '/',
     '/manifest.json',
+    '/images/icon.svg',
+    '/images/apple-touch-icon.png',
     '/images/icon-192.png',
-    '/images/icon-512.png'
+    '/images/icon-512.png',
+    '/images/icon-maskable-512.png'
 ];
 
 // WASM files for AVPlayer (cache-first strategy)
@@ -211,7 +214,7 @@ self.addEventListener('fetch', (event) => {
                 } catch (_e) {
                     clearTimeout(timeout);
                     const cached = await caches.match(request);
-                    return cached || Response.error();
+                    return cached || await caches.match('/') || Response.error();
                 }
             })()
         );
