@@ -2143,81 +2143,68 @@ const VideoPlayer = {
   },
 
   /**
-   * Probe metadata in background using AVPlayer
-   * This detects audio/subtitle tracks without switching the active player
-   * Netflix-style progressive enhancement: fast start with native, enhance UI when tracks detected
+   * Probe metadata in background.
+   *
+   * Old behavior spawned a 2nd full @libmedia/avplayer instance just to
+   * enumerate tracks — ~1 s wall time, ~5 MB of WASM, full Web Audio
+   * context. We replaced that with a server-side ffprobe cache:
+   * `/api/gindex-tracks/:type/:id` returns `{audio, subtitle}` from a
+   * jsonb column (or runs ffprobe + caches on miss, ~200 ms one-time).
+   *
+   * Cache miss fallback: if the API can't probe (file unreachable,
+   * not GIndex, etc.), we silently bail — native playback keeps
+   * working, the audio menu just shows whatever the native player
+   * exposes.
    */
   async probeMetadataInBackground() {
-    // Skip if we're already using AVPlayer or already probed.
-    // Bail if the hook was destroyed before the probe completed
-    // (LiveView nav, watch-party leave) — otherwise we'd run UI
-    // updates against a torn-down hook.
     if (this.usingAVPlayer || this._metadataProbed || this._destroyed) return;
     this._metadataProbed = true;
 
-    log.debug("[VideoPlayer] Starting background metadata probe...");
+    const contentId = this.el.dataset.contentId;
+    const contentType = this.contentType; // "movie" | "episode" | "live"
+    if (!contentId || (contentType !== "movie" && contentType !== "episode")) return;
 
-    let probePlayer = null;
-    let probeContainer = null;
+    log.debug("[VideoPlayer] Probing GIndex tracks via API...");
 
     try {
-      const { AVPlayerWrapper } = await loadAVPlayer();
-      if (this._destroyed) return;
-
-      // Create a probe-only AVPlayer (won't actually play)
-      probeContainer = document.createElement("div");
-      probeContainer.style.cssText =
-        "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;";
-      this.el.appendChild(probeContainer);
-
-      probePlayer = new AVPlayerWrapper({
-        container: probeContainer,
-        onReady: () => {},
-        onError: (error) => {
-          log.warn("[VideoPlayer] Probe failed:", error);
-        },
+      const res = await fetch(`/api/gindex-tracks/${contentType}/${contentId}`, {
+        headers: { Accept: "application/json" },
       });
-
-      // Initialize the probe player
-      await probePlayer.init();
-
-      // Get the proxy URL for GIndex (use proxyUrl if available, otherwise direct URL)
-      const probeUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
-      // For GIndex content, default to mkv since URL parsing is unreliable
-      const ext =
-        this.sourceType === "gindex"
-          ? "mkv"
-          : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
-
-      log.debug("[VideoPlayer] Probe loading:", probeUrl);
-      await probePlayer.load(probeUrl, { ext });
-
-      // Give it a moment to parse the container
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
+      if (this._destroyed) return;
+      if (!res.ok) {
+        log.debug("[VideoPlayer] Track probe API returned", res.status, "— skipping");
+        return;
+      }
+      const data = await res.json();
       if (this._destroyed) return;
 
-      // Get audio tracks
-      const audioTracks = await probePlayer.getAudioTracks();
-      if (this._destroyed) return;
+      const audio = Array.isArray(data.audio) ? data.audio : [];
+      const subtitle = Array.isArray(data.subtitle) ? data.subtitle : [];
 
       let preferredAudioTrack = 0;
 
-      if (audioTracks && audioTracks.length > 1) {
-        this._probedAudioTracks = audioTracks.map((track, index) => ({
+      if (audio.length > 1) {
+        // ffprobe gives us {index, codec, language, title, channels, ...};
+        // map to the shape the player UI expects (re-numbered index 0..N
+        // so the "select track 1" -> "select audio 1" mapping works
+        // regardless of the underlying ffprobe stream index).
+        this._probedAudioTracks = audio.map((track, index) => ({
           index,
-          id: track.id,
-          label: this.formatTrackLabel(track),
+          id: track.index,
+          label: this.formatTrackLabel({
+            index,
+            label: track.title,
+            language: track.language,
+            codec: track.codec,
+            channels: track.channels,
+          }),
           language: track.language || "",
         }));
 
         log.debug("[VideoPlayer] Probed audio tracks:", this._probedAudioTracks);
 
-        // Find Portuguese audio track (prefer pt-BR over others)
         preferredAudioTrack = this.findPortugueseTrack(this._probedAudioTracks);
 
-        // Update UI with detected tracks
-        // Use special handlers that will switch to AVPlayer when selected
         this.playerUI.updateAudioOptions(
           this._probedAudioTracks,
           preferredAudioTrack,
@@ -2230,21 +2217,21 @@ const VideoPlayer = {
         });
       }
 
-      // Get subtitle tracks
-      const subtitleTracks = await probePlayer.getSubtitleTracks();
-      if (this._destroyed) return;
-
-      if (subtitleTracks && subtitleTracks.length > 0) {
-        this._probedSubtitleTracks = subtitleTracks.map((track, index) => ({
+      if (subtitle.length > 0) {
+        this._probedSubtitleTracks = subtitle.map((track, index) => ({
           index,
-          id: track.id,
-          label: this.formatTrackLabel(track),
+          id: track.index,
+          label: this.formatTrackLabel({
+            index,
+            label: track.title,
+            language: track.language,
+            codec: track.codec,
+          }),
           language: track.language || "",
         }));
 
         log.debug("[VideoPlayer] Probed subtitle tracks:", this._probedSubtitleTracks);
 
-        // Update UI with detected tracks
         this.playerUI.updateSubtitleOptions(this._probedSubtitleTracks, -1, (trackIndex) =>
           this.handleProbedSubtitleTrackSelect(trackIndex),
         );
@@ -2255,33 +2242,21 @@ const VideoPlayer = {
         });
       }
 
-      log.debug("[VideoPlayer] Background metadata probe complete");
-
-      // Hook may have been destroyed while we were probing.
       if (this._destroyed) return;
 
-      // Auto-switch to AVPlayer when multiple audio tracks detected (Dual Audio)
-      // Native player can't guarantee which track plays, so we switch to control audio selection
+      // Dual Audio auto-switch: when there's more than one audio track,
+      // the native player can't reliably pick PT-BR — bridge to AVPlayer
+      // with the preferred track selected.
       if (this._probedAudioTracks && this._probedAudioTracks.length > 1) {
         log.debug(
           "[VideoPlayer] Multiple audio tracks detected, auto-switching to AVPlayer with Portuguese track",
           preferredAudioTrack,
         );
-        // Short delay to let native player stabilize before switch
         await new Promise((resolve) => setTimeout(resolve, 500));
-        this.handleProbedAudioTrackSelect(preferredAudioTrack);
+        if (!this._destroyed) this.handleProbedAudioTrackSelect(preferredAudioTrack);
       }
     } catch (e) {
-      log.warn("[VideoPlayer] Failed to start metadata probe:", e);
-    } finally {
-      if (probePlayer) {
-        try {
-          await probePlayer.destroy();
-        } catch (e) {
-          log.debug("[VideoPlayer] Probe cleanup failed:", e.message);
-        }
-      }
-      probeContainer?.remove();
+      log.debug("[VideoPlayer] Track probe API call failed:", e?.message);
     }
   },
 
