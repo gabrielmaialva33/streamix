@@ -10,6 +10,7 @@ defmodule Streamix.Iptv.Providers do
 
   alias Streamix.Iptv.{Provider, Sync, XtreamClient}
   alias Streamix.Repo
+  alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
 
   # =============================================================================
   # Listing
@@ -213,8 +214,20 @@ defmodule Streamix.Iptv.Providers do
 
   """
   @spec async_sync(Provider.t(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  def async_sync(provider, opts \\ []) do
-    alias Streamix.Workers.SyncProviderWorker
+  def async_sync(provider, opts \\ [])
+
+  def async_sync(%Provider{provider_type: :gindex} = provider, _opts) do
+    # GIndex never goes through SyncProviderWorker — that path runs the
+    # legacy monolithic `Gindex.Sync.sync_provider/1`, which routinely
+    # exceeds Oban's 30 min timeout on catalogs with 10k+ titles. Route
+    # to the dispatcher instead so the work fans out into per-root jobs
+    # with the orchestrator finalizing counts at the end.
+    %{"provider_id" => provider.id}
+    |> SyncGindexProviderWorker.new()
+    |> Oban.insert()
+  end
+
+  def async_sync(%Provider{} = provider, opts) do
     SyncProviderWorker.enqueue(provider, opts)
   end
 end

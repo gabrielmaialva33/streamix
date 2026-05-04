@@ -39,14 +39,16 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   def timeout(_job), do: :timer.minutes(30)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        args: %{
-          "provider_id" => provider_id,
-          "base_url" => base_url,
-          "path" => path,
-          "kind" => kind
-        }
-      }) do
+  def perform(
+        %Oban.Job{
+          args: %{
+            "provider_id" => provider_id,
+            "base_url" => base_url,
+            "path" => path,
+            "kind" => kind
+          }
+        } = job
+      ) do
     with %Provider{} = provider <- Repo.get(Provider, provider_id),
          {:ok, kind_atom} <- parse_kind(kind) do
       Logger.info("[GIndex ScanRoot] start provider=#{provider_id} kind=#{kind} path=#{path}")
@@ -66,6 +68,15 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
             %{duration_ms: took_ms},
             %{provider_id: provider_id, kind: kind_atom, path: path, stats: stats}
           )
+
+          # Persist per-root stats into Oban.Job.meta — the orchestrator
+          # reads it to surface a clean roll-up at the end of the run.
+          write_meta(job, %{
+            "kind" => kind,
+            "path" => path,
+            "stats" => stringify_stats(stats),
+            "took_ms" => took_ms
+          })
 
           :ok
 
@@ -92,4 +103,34 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   defp parse_kind("series"), do: {:ok, :series}
   defp parse_kind("animes"), do: {:ok, :animes}
   defp parse_kind(_), do: {:error, :invalid_kind}
+
+  # Atom-keyed maps don't survive jsonb round-trips cleanly, so flatten
+  # to string keys before handing off to the orchestrator.
+  defp stringify_stats(stats) when is_map(stats) do
+    for {k, v} <- stats, into: %{}, do: {to_string(k), v}
+  end
+
+  defp stringify_stats(_), do: %{}
+
+  defp write_meta(%Oban.Job{id: id, meta: existing}, payload) do
+    new_meta = Map.merge(existing || %{}, payload)
+
+    case Repo.get(Oban.Job, id) do
+      nil ->
+        :ok
+
+      job ->
+        job
+        |> Ecto.Changeset.change(meta: new_meta)
+        |> Repo.update()
+        |> case do
+          {:ok, _} ->
+            :ok
+
+          {:error, changeset} ->
+            Logger.warning("[GIndex ScanRoot] meta write failed: #{inspect(changeset.errors)}")
+            :ok
+        end
+    end
+  end
 end

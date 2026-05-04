@@ -21,6 +21,9 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
   alias Streamix.Iptv
   alias Streamix.Iptv.Provider
+  alias Streamix.Workers.SyncGindexProviderWorker
+
+  require Logger
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
@@ -31,6 +34,22 @@ defmodule Streamix.Workers.SyncProviderWorker do
     case iptv.get_provider(provider_id) do
       nil ->
         {:error, :provider_not_found}
+
+      %{provider_type: :gindex} = provider ->
+        # Defensive re-route: GIndex must always go through the dispatcher
+        # (`SyncGindexProviderWorker`). Stale cron jobs, legacy enqueues
+        # or manual `Oban.insert` calls landing here would otherwise run
+        # `Gindex.Sync.sync_provider/1`, the monolithic single-shot path
+        # that times out on catalogs with 10k+ titles.
+        Logger.info(
+          "[SyncProviderWorker] redispatching gindex provider #{provider.id} to GIndex dispatcher"
+        )
+
+        %{"provider_id" => provider.id}
+        |> SyncGindexProviderWorker.new()
+        |> Oban.insert()
+
+        :ok
 
       provider ->
         # Update status to syncing

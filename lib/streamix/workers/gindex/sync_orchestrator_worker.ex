@@ -45,7 +45,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.{Episode, Movie, Provider, Series}
   alias Streamix.Repo
 
   require Logger
@@ -101,7 +101,8 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
   defp collect_stats(workflow_id, provider_id) do
     # Pull the final per-sibling stats from Oban's `meta` to surface a
     # single-line summary at the end. Siblings don't have to write
-    # meta for us to succeed, but when they do we get a clean roll-up.
+    # meta for us to succeed — we still recompute counts directly from
+    # the DB at finalize time.
     roots =
       from(j in Oban.Job,
         where: j.worker == ^@scan_worker,
@@ -110,11 +111,27 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
       )
       |> Repo.all()
 
+    rolled_up =
+      Enum.reduce(roots, %{movies: 0, series: 0, animes: 0, episodes: 0}, fn
+        {_state, _args, %{"stats" => stats}}, acc when is_map(stats) ->
+          %{
+            movies: acc.movies + Map.get(stats, "movies_count", 0),
+            series: acc.series + Map.get(stats, "series_count", 0),
+            animes: acc.animes + Map.get(stats, "animes_count", 0),
+            episodes: acc.episodes + Map.get(stats, "episodes_count", 0)
+          }
+
+        _, acc ->
+          acc
+      end)
+
     %{
       provider_id: provider_id,
       roots_total: length(roots),
       roots_completed: Enum.count(roots, fn {state, _, _} -> state == "completed" end),
-      roots_failed: Enum.count(roots, fn {state, _, _} -> state in ["cancelled", "discarded"] end)
+      roots_failed:
+        Enum.count(roots, fn {state, _, _} -> state in ["cancelled", "discarded"] end),
+      rolled_up: rolled_up
     }
   end
 
@@ -127,10 +144,13 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
         true -> "completed"
       end
 
+    counts = recount_provider(provider_id)
+
     Logger.info(
       "[GIndex Orchestrator] workflow=#{workflow_id} finalizing: " <>
         "status=#{final_status} roots=#{stats.roots_completed}/#{stats.roots_total} " <>
-        "(#{stats.roots_failed} failed, #{remaining_siblings} stuck)"
+        "(#{stats.roots_failed} failed, #{remaining_siblings} stuck) " <>
+        "rolled_up=#{inspect(stats.rolled_up)} db_counts=#{inspect(counts)}"
     )
 
     case Repo.get(Provider, provider_id) do
@@ -139,14 +159,64 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
         :ok
 
       provider ->
+        attrs =
+          %{
+            sync_status: final_status,
+            vod_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          }
+          |> Map.merge(counts)
+
         provider
-        |> Provider.sync_changeset(%{
-          sync_status: final_status,
-          vod_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)
-        })
+        |> Provider.sync_changeset(attrs)
         |> Repo.update()
 
         :ok
+    end
+  end
+
+  # Counts come from the DB rather than the rolled-up sibling stats so
+  # the provider row matches reality even when meta is missing (e.g.
+  # ScanRoot failed before writing meta, or a Lifeline-rescued attempt
+  # produced partial output). The rolled-up numbers above are still
+  # logged for visibility into per-run throughput.
+  defp recount_provider(provider_id) do
+    movies =
+      Movie
+      |> where(provider_id: ^provider_id)
+      |> select(count())
+      |> Repo.one()
+
+    series =
+      Series
+      |> where(provider_id: ^provider_id)
+      |> select(count())
+      |> Repo.one()
+
+    series_synced_at =
+      case has_episodes?(provider_id) do
+        true -> DateTime.utc_now() |> DateTime.truncate(:second)
+        false -> nil
+      end
+
+    %{
+      movies_count: movies || 0,
+      series_count: series || 0,
+      series_synced_at: series_synced_at
+    }
+  end
+
+  defp has_episodes?(provider_id) do
+    from(e in Episode,
+      join: s in Series,
+      on: e.series_id == s.id,
+      where: s.provider_id == ^provider_id,
+      limit: 1,
+      select: 1
+    )
+    |> Repo.one()
+    |> case do
+      nil -> false
+      _ -> true
     end
   end
 end
