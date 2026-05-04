@@ -8,6 +8,7 @@ defmodule Streamix.Iptv.GIndexProvider do
 
   alias Streamix.Iptv.Gindex.Sync
   alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.Providers
   alias Streamix.Repo
 
   import Ecto.Query
@@ -118,7 +119,7 @@ defmodule Streamix.Iptv.GIndexProvider do
         "/1:/Filmes/"
 
       provider ->
-        provider = Repo.preload(provider, :drives)
+        provider = Providers.preload_drives(provider)
 
         case Enum.find(provider.drives, &(&1.drive_type == "movies")) do
           %{metadata: %{"path" => path}} -> path

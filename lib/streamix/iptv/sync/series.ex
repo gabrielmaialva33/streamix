@@ -5,7 +5,7 @@ defmodule Streamix.Iptv.Sync.Series do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{Episode, Provider, Season, Series, TmdbClient, XtreamClient}
+  alias Streamix.Iptv.{Episode, Provider, Providers, Season, Series, TmdbClient, XtreamClient}
   alias Streamix.Iptv.Sync.{Helpers, Telemetry}
   alias Streamix.Repo
 
@@ -153,7 +153,7 @@ defmodule Streamix.Iptv.Sync.Series do
   Uses UPSERT strategy to preserve episode IDs for watch history references.
   """
   def sync_series_details(%Series{} = series) do
-    provider = Repo.get!(Provider, series.provider_id)
+    provider = Providers.get!(series.provider_id)
 
     case XtreamClient.get_series_info(
            provider.url,

@@ -11,8 +11,7 @@ defmodule Streamix.Iptv.Gindex.SyncPlanner do
   can evolve without dragging the legacy monolithic syncer with it.
   """
 
-  alias Streamix.Iptv.Provider
-  alias Streamix.Repo
+  alias Streamix.Iptv.{Provider, Providers}
 
   @type kind :: :movies | :series | :animes
   @type root :: %{base_url: String.t(), path: String.t(), kind: kind()}
@@ -33,7 +32,7 @@ defmodule Streamix.Iptv.Gindex.SyncPlanner do
   """
   @spec roots_for(Provider.t()) :: [root()]
   def roots_for(%Provider{} = provider) do
-    provider = Repo.preload(provider, :drives)
+    provider = Providers.preload_drives(provider)
     base_url = provider.gindex_url || provider.url
 
     configured =

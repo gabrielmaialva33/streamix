@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Provider, Season, Series}
+  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Provider, Providers, Season, Series}
   alias Streamix.Iptv.Gindex.Scraper
   alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
@@ -233,7 +233,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp get_movies_path(provider) do
-    provider = Repo.preload(provider, :drives)
+    provider = Providers.preload_drives(provider)
 
     case find_drive(provider.drives, "movies") do
       %{metadata: %{"path" => path}} -> path
@@ -242,7 +242,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp get_series_paths(provider) do
-    provider = Repo.preload(provider, :drives)
+    provider = Providers.preload_drives(provider)
 
     case find_drive(provider.drives, "series") do
       %{metadata: %{"paths" => paths}} when is_list(paths) -> paths
@@ -252,7 +252,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   defp get_animes_path(provider) do
-    provider = Repo.preload(provider, :drives)
+    provider = Providers.preload_drives(provider)
 
     case find_drive(provider.drives, "animes") do
       %{metadata: %{"path" => path}} -> path
