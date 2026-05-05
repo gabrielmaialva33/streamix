@@ -99,19 +99,11 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp resolve_chain(url) do
-    # If the URL still carries provider creds (`/movie/USER/PASS/…`) we
-    # only walk far enough to swap them for a vauth token. The rest of
-    # the chain (often 2-3 hops) we drive ourselves below — any cross-
-    # origin hop strips Authorization/Cookie automatically as part of
-    # walking the chain.
-    stop_fn =
-      if credentials_in_url?(url) do
-        fn next -> not credentials_in_url?(next) end
-      else
-        fn _ -> false end
-      end
-
-    RedirectResolver.resolve(url, stop_fn: stop_fn)
+    # Walk the full vauth → … → deliver chain so Finch lands on a URL
+    # that responds with 200/206. Stopping at the first non-creds hop
+    # would still leave us on a 302 redirector and the pre-flight
+    # would bounce.
+    RedirectResolver.resolve(url, stop_fn: fn _ -> false end)
   end
 
   defp do_pipe(conn, _final_url, %{retry_count: n} = state)
@@ -377,12 +369,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       forwarded
     end
   end
-
-  defp credentials_in_url?(url) when is_binary(url) do
-    Regex.match?(~r{/(?:movie|series|live)/[^/]+/[^/]+/}i, url)
-  end
-
-  defp credentials_in_url?(_), do: false
 
   defp sanitize(url) do
     Regex.replace(~r{/(movie|series|live)/[^/]+/[^/]+/}, url, "/\\1/***/***/")
