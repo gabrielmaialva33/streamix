@@ -13,6 +13,8 @@ defmodule Streamix.Billing.Plan do
     field :price_cents, :integer
     field :currency, :string
     field :billing_interval, :string
+    field :stripe_price_id, :string
+    field :trial_days, :integer, default: 0
     field :active, :boolean, default: true
     field :grants_global_access, :boolean, default: true
 
@@ -34,6 +36,8 @@ defmodule Streamix.Billing.Plan do
       :price_cents,
       :currency,
       :billing_interval,
+      :stripe_price_id,
+      :trial_days,
       :active,
       :grants_global_access
     ])
@@ -45,8 +49,10 @@ defmodule Streamix.Billing.Plan do
       :billing_interval
     ])
     |> validate_number(:price_cents, greater_than_or_equal_to: 0)
+    |> validate_number(:trial_days, greater_than_or_equal_to: 0)
     |> validate_inclusion(:currency, @allowed_currencies)
     |> validate_inclusion(:billing_interval, @allowed_billing_intervals)
     |> unique_constraint(:slug)
+    |> unique_constraint(:stripe_price_id)
   end
 end

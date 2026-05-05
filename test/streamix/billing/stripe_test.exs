@@ -8,6 +8,36 @@ defmodule Streamix.Billing.StripeTest do
   import Streamix.AccountsFixtures
 
   defmodule FakeStripeClient do
+    def get(url, opts) do
+      send(self(), {:stripe_get, url, opts})
+
+      price_id = Process.get(:stripe_reconcile_price_id, "price_reconcile_test")
+      now = DateTime.utc_now(:second) |> DateTime.to_unix()
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{
+           "data" => [
+             %{
+               "id" => "sub_reconcile_123",
+               "object" => "subscription",
+               "status" => "active",
+               "customer" => "cus_reconcile_test",
+               "current_period_start" => now,
+               "current_period_end" => now + 2_592_000,
+               "metadata" => %{},
+               "items" => %{
+                 "data" => [
+                   %{"price" => %{"id" => price_id}}
+                 ]
+               }
+             }
+           ]
+         }
+       }}
+    end
+
     def post("https://api.stripe.test/v1/billing_portal/sessions" = url, opts) do
       send(self(), {:stripe_portal_post, url, opts})
 
@@ -43,7 +73,8 @@ defmodule Streamix.Billing.StripeTest do
       webhook_secret: "whsec_test_123",
       http_client: FakeStripeClient,
       checkout_sessions_url: "https://api.stripe.test/v1/checkout/sessions",
-      billing_portal_sessions_url: "https://api.stripe.test/v1/billing_portal/sessions"
+      billing_portal_sessions_url: "https://api.stripe.test/v1/billing_portal/sessions",
+      subscriptions_url: "https://api.stripe.test/v1/subscriptions"
     )
 
     on_exit(fn ->
@@ -98,6 +129,26 @@ defmodule Streamix.Billing.StripeTest do
              to_string(plan.id)
 
     assert URI.decode_query(opts[:body])["metadata[user_id]"] == to_string(user.id)
+  end
+
+  test "create_checkout_session/3 uses Stripe price ID when plan has one", %{
+    user: user,
+    plan: plan
+  } do
+    {:ok, plan} = Billing.update_plan(plan, %{stripe_price_id: "price_test_123", trial_days: 7})
+
+    assert {:ok, %CheckoutSession{}} =
+             Stripe.create_checkout_session(user, plan, %{
+               success_url: "https://streamix.test/plans?checkout=success",
+               cancel_url: "https://streamix.test/plans?checkout=canceled"
+             })
+
+    assert_received {:stripe_post, "https://api.stripe.test/v1/checkout/sessions", opts}
+
+    body = URI.decode_query(opts[:body])
+    assert body["line_items[0][price]"] == "price_test_123"
+    assert body["subscription_data[trial_period_days]"] == "7"
+    refute Map.has_key?(body, "line_items[0][price_data][unit_amount]")
   end
 
   test "handle_webhook/2 activates plan and stores payment history idempotently", %{
@@ -189,6 +240,30 @@ defmodule Streamix.Billing.StripeTest do
     assert subscription.external_reference == "stripe:sub_updated_123"
     assert subscription.status == "active"
     assert Repo.aggregate(Payment, :count) == 0
+  end
+
+  test "reconcile_subscriptions/0 syncs Stripe subscriptions by local customer and price ID", %{
+    user: user,
+    plan: plan
+  } do
+    price_id = "price_reconcile_test_#{plan.id}"
+    Process.put(:stripe_reconcile_price_id, price_id)
+
+    {:ok, _plan} = Billing.update_plan(plan, %{stripe_price_id: price_id})
+    Billing.upsert_billing_customer!(user, :stripe, "cus_reconcile_test")
+
+    assert {:ok, %{customers: 1, results: [%{synced: [{:ok, %{subscription: subscription}}]}]}} =
+             Stripe.reconcile_subscriptions()
+
+    assert_received {:stripe_get, url, opts}
+    assert url =~ "customer=cus_reconcile_test"
+    assert url =~ "status=all"
+    assert {"authorization", "Bearer sk_test_123"} in opts[:headers]
+
+    assert subscription.external_reference == "stripe:sub_reconcile_123"
+
+    assert Billing.active_subscription_for_user(user).external_reference ==
+             subscription.external_reference
   end
 
   test "paid checkout cancels the previous active user plan", %{user: user, plan: new_plan} do

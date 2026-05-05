@@ -4,7 +4,7 @@ defmodule StreamixWeb.PlansLive do
   alias Streamix.Billing
   alias Streamix.Billing.Stripe
 
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     plans = Billing.list_active_plans()
 
     active_subscription =
@@ -22,6 +22,7 @@ defmodule StreamixWeb.PlansLive do
       |> assign(plans: plans)
       |> assign(active_subscription: active_subscription)
       |> assign(current_plan_id: current_plan_id)
+      |> assign(upgrade_reason: params["upgrade"])
       |> assign(subscription_state: subscription_state(active_subscription))
 
     {:ok, socket}
@@ -30,13 +31,21 @@ defmodule StreamixWeb.PlansLive do
   def handle_event("checkout", %{"plan_id" => plan_id}, socket) do
     with %{user: user} <- socket.assigns.current_scope,
          plan <- Billing.get_plan!(plan_id),
-         {:ok, checkout_session} <-
-           Stripe.create_checkout_session(user, plan, %{
-             success_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=success",
-             cancel_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=canceled"
-           }) do
-      {:noreply, Phoenix.LiveView.redirect(socket, external: checkout_session.checkout_url)}
+         {:ok, result} <- checkout_or_trial(user, plan) do
+      case result do
+        %{checkout_url: checkout_url} ->
+          {:noreply, Phoenix.LiveView.redirect(socket, external: checkout_url)}
+
+        %{trial: true} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Trial grátis ativado por #{plan.trial_days} dias.")
+           |> push_navigate(to: ~p"/billing")}
+      end
     else
+      {:error, :trial_already_used} ->
+        {:noreply, put_flash(socket, :error, "Você já usou esse trial grátis.")}
+
       {:error, :stripe_not_configured} ->
         {:noreply,
          put_flash(
@@ -54,6 +63,19 @@ defmodule StreamixWeb.PlansLive do
     end
   end
 
+  defp checkout_or_trial(user, plan) do
+    if plan.price_cents == 0 and plan.trial_days > 0 do
+      with {:ok, _subscription} <- Billing.start_trial_subscription(user, plan) do
+        {:ok, %{trial: true}}
+      end
+    else
+      Stripe.create_checkout_session(user, plan, %{
+        success_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=success",
+        cancel_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=canceled"
+      })
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <div id="plans-page" class="space-y-8 pb-12">
@@ -66,6 +88,20 @@ defmodule StreamixWeb.PlansLive do
           <p class="text-base sm:text-lg text-text-secondary max-w-2xl">
             A página reúne os planos disponíveis, destaca quais liberam acesso global e mostra o estado atual da sua assinatura.
           </p>
+        </div>
+      </section>
+
+      <section
+        :if={@upgrade_reason}
+        id="upgrade-context"
+        class="rounded-lg border border-brand/30 bg-brand/10 p-4 text-sm text-text-primary"
+      >
+        <div class="flex items-start gap-3">
+          <.icon name="hero-sparkles" class="mt-0.5 size-5 text-brand" />
+          <div>
+            <p class="font-semibold">{upgrade_title(@upgrade_reason)}</p>
+            <p class="mt-1 text-text-secondary">{upgrade_message(@upgrade_reason)}</p>
+          </div>
         </div>
       </section>
 
@@ -205,7 +241,7 @@ defmodule StreamixWeb.PlansLive do
                     data-cta-state="checkout"
                     class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
                   >
-                    <.icon name="hero-credit-card" class="size-4" /> Assinar com Stripe
+                    <.icon name={plan_cta_icon(plan)} class="size-4" /> {plan_cta_label(plan)}
                   </button>
                 <% else %>
                   <.link
@@ -266,4 +302,34 @@ defmodule StreamixWeb.PlansLive do
   defp interval_label("month"), do: "mês"
   defp interval_label("year"), do: "ano"
   defp interval_label(other), do: other
+
+  defp plan_cta_label(%{price_cents: 0, trial_days: trial_days}) when trial_days > 0,
+    do: "Começar grátis"
+
+  defp plan_cta_label(_plan), do: "Assinar com Stripe"
+
+  defp plan_cta_icon(%{price_cents: 0, trial_days: trial_days}) when trial_days > 0,
+    do: "hero-sparkles"
+
+  defp plan_cta_icon(_plan), do: "hero-credit-card"
+
+  defp upgrade_title("providers"), do: "Limite de providers atingido"
+  defp upgrade_title("watch_party"), do: "Watch Party premium"
+  defp upgrade_title("ai"), do: "AI premium"
+  defp upgrade_title("screens"), do: "Limite de telas atingido"
+  defp upgrade_title(_reason), do: "Upgrade disponível"
+
+  defp upgrade_message("providers"),
+    do: "Escolha um plano com mais providers para continuar adicionando catálogos."
+
+  defp upgrade_message("watch_party"),
+    do: "Escolha um plano com Watch Party para criar salas sincronizadas."
+
+  defp upgrade_message("ai"),
+    do: "Escolha um plano com AI premium para liberar recomendações inteligentes."
+
+  defp upgrade_message("screens"),
+    do: "Escolha um plano com mais streams simultâneos para assistir em mais telas."
+
+  defp upgrade_message(_reason), do: "Compare os planos e escolha o melhor para sua conta."
 end

@@ -121,6 +121,20 @@ defmodule StreamixWeb.Admin.PlanFormLive do
             <.input field={@form[:active]} type="checkbox" label="Ativo" />
           </div>
 
+          <.input
+            field={@form[:stripe_price_id]}
+            type="text"
+            label="Stripe Price ID"
+            placeholder="price_..."
+          />
+
+          <.input
+            field={@form[:trial_days]}
+            type="number"
+            label="Dias de trial grátis"
+            min="0"
+          />
+
           <fieldset class="rounded-lg border border-border bg-surface p-4 space-y-4">
             <legend class="px-1 text-sm font-semibold text-text-primary">Features do plano</legend>
 

@@ -38,6 +38,26 @@ end
 admin = Accounts.ensure_admin_user!(admin_email, admin_password)
 IO.puts("✓ Admin user ready: #{admin.email} (role=#{Accounts.role_name(admin)})")
 
+free_trial_plan =
+  Billing.ensure_plan!(%{
+    name: "Free Trial",
+    slug: "free-trial",
+    description: "7 dias grátis para testar o catálogo global",
+    price_cents: 0,
+    currency: "USD",
+    billing_interval: "month",
+    trial_days: 7,
+    active: true,
+    grants_global_access: true,
+    features: %{
+      global_catalog: true,
+      max_providers: 1,
+      concurrent_streams: 1,
+      ai_recommendations: false,
+      watch_party: false
+    }
+  })
+
 basic_plan =
   Billing.ensure_plan!(%{
     name: "Basic Mensal",
@@ -46,6 +66,7 @@ basic_plan =
     price_cents: 999,
     currency: "USD",
     billing_interval: "month",
+    stripe_price_id: env["STRIPE_BASIC_PRICE_ID"],
     active: true,
     grants_global_access: false,
     features: %{
@@ -65,6 +86,7 @@ premium_plan =
     price_cents: 1_999,
     currency: "USD",
     billing_interval: "month",
+    stripe_price_id: env["STRIPE_PREMIUM_PRICE_ID"],
     active: true,
     grants_global_access: true,
     features: %{
@@ -84,6 +106,7 @@ ultimate_plan =
     price_cents: 2_999,
     currency: "USD",
     billing_interval: "month",
+    stripe_price_id: env["STRIPE_ULTIMATE_PRICE_ID"],
     active: true,
     grants_global_access: true,
     features: %{
@@ -95,7 +118,7 @@ ultimate_plan =
     }
   })
 
-seeded_plans = [basic_plan, premium_plan, ultimate_plan]
+seeded_plans = [free_trial_plan, basic_plan, premium_plan, ultimate_plan]
 
 IO.puts("✓ Billing plans ready: #{Enum.map_join(seeded_plans, ", ", & &1.slug)}")
 

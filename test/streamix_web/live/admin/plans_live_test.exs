@@ -53,7 +53,9 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
           description: "Plano anual",
           price_cents: 9990,
           currency: "BRL",
-          billing_interval: "year"
+          billing_interval: "year",
+          stripe_price_id: "price_anual",
+          trial_days: 7
         }
       )
       |> render_submit()
@@ -61,7 +63,8 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
       assert_redirected(lv, ~p"/admin/plans")
 
       plans = Billing.list_plans()
-      assert Enum.any?(plans, &(&1.slug == "anual"))
+      assert Enum.any?(plans, &(&1.slug == "anual" and &1.stripe_price_id == "price_anual"))
+      assert Enum.any?(plans, &(&1.slug == "anual" and &1.trial_days == 7))
     end
 
     test "creates plan feature limits", %{conn: conn} do

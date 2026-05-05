@@ -139,6 +139,25 @@ defmodule StreamixWeb.PlansLiveTest do
 
       assert html =~ "Checkout Stripe ainda não está configurado"
     end
+
+    test "starts a free trial without Stripe", %{conn: conn} do
+      _plan =
+        plan_fixture(
+          name: "Trial",
+          slug: "trial",
+          price_cents: 0,
+          trial_days: 7,
+          grants_global_access: true
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/plans")
+
+      view
+      |> element("#plan-cta-trial")
+      |> render_click()
+
+      assert_redirect(view, ~p"/billing")
+    end
   end
 
   describe "billing plans" do

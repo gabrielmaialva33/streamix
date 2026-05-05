@@ -261,7 +261,7 @@ defmodule StreamixWeb.PlayerLive do
         {:ok,
          socket
          |> put_flash(:error, "Limite de telas simultâneas atingido para o seu plano.")
-         |> push_navigate(to: ~p"/billing")}
+         |> push_navigate(to: ~p"/plans?upgrade=screens")}
     end
   end
 

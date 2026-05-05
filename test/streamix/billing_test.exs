@@ -267,6 +267,20 @@ defmodule Streamix.BillingTest do
              })
   end
 
+  test "start_trial_subscription/2 creates a one-time expiring trial" do
+    user = user_fixture()
+    plan = plan_fixture(price_cents: 0, trial_days: 7, grants_global_access: true)
+
+    assert {:ok, subscription} = Billing.start_trial_subscription(user, plan)
+
+    assert subscription.source == "trial"
+    assert subscription.expires_at != nil
+    assert DateTime.diff(subscription.expires_at, subscription.starts_at, :day) == 7
+    assert Billing.subscribed?(user)
+
+    assert {:error, :trial_already_used} = Billing.start_trial_subscription(user, plan)
+  end
+
   test "create_checkout_session/3 stores self-service checkout state" do
     user = user_fixture()
     plan = plan_fixture()

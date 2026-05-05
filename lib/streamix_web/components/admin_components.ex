@@ -25,6 +25,12 @@ defmodule StreamixWeb.AdminComponents do
         current_path={@current_path}
       />
       <.admin_tab
+        path={~p"/admin/billing"}
+        label="Billing"
+        icon="hero-banknotes"
+        current_path={@current_path}
+      />
+      <.admin_tab
         path={~p"/admin/users"}
         label="Usuários"
         icon="hero-users"

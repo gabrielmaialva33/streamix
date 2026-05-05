@@ -42,6 +42,8 @@ defmodule StreamixWeb.Admin.PlansLive do
               <th class="px-4 py-3">Slug</th>
               <th class="px-4 py-3">Preço</th>
               <th class="px-4 py-3">Intervalo</th>
+              <th class="px-4 py-3">Stripe</th>
+              <th class="px-4 py-3">Trial</th>
               <th class="px-4 py-3">Features</th>
               <th class="px-4 py-3">Global</th>
               <th class="px-4 py-3">Status</th>
@@ -56,6 +58,12 @@ defmodule StreamixWeb.Admin.PlansLive do
                 {format_price(plan.price_cents, plan.currency)}
               </td>
               <td class="px-4 py-3 text-text-secondary">{plan.billing_interval}</td>
+              <td class="px-4 py-3 text-text-secondary font-mono text-xs">
+                {plan.stripe_price_id || "-"}
+              </td>
+              <td class="px-4 py-3 text-text-secondary">
+                {if plan.trial_days > 0, do: "#{plan.trial_days} dias", else: "-"}
+              </td>
               <td class="px-4 py-3 text-text-secondary">
                 <div class="flex flex-wrap gap-1.5">
                   <span

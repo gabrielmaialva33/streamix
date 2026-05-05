@@ -24,6 +24,12 @@ defmodule StreamixWeb.WatchPartyLive.New do
          {:ok, room} <- WatchParty.create_room(user_id, attrs) do
       {:ok, push_navigate(socket, to: ~p"/party/#{room.invite_code}/watch")}
     else
+      {:error, :watch_party_not_allowed} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Watch Party exige um plano com esse recurso.")
+         |> push_navigate(to: ~p"/plans?upgrade=watch_party")}
+
       _ ->
         {:ok,
          socket

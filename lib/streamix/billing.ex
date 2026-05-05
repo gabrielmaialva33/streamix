@@ -175,6 +175,15 @@ defmodule Streamix.Billing do
     Repo.get_by(BillingCustomer, user_id: user_id, provider: normalize_provider(provider))
   end
 
+  def list_billing_customers(provider) do
+    from(c in BillingCustomer,
+      where: c.provider == ^normalize_provider(provider),
+      preload: [:user],
+      order_by: [asc: c.id]
+    )
+    |> Repo.all()
+  end
+
   def upsert_billing_customer!(%User{} = user, provider, external_id, metadata \\ %{})
       when is_binary(external_id) and external_id != "" do
     attrs = %{
@@ -325,6 +334,30 @@ defmodule Streamix.Billing do
       {:error, reason} -> raise inspect(reason)
     end
   end
+
+  def start_trial_subscription(%User{} = user, %Plan{trial_days: trial_days} = plan)
+      when is_integer(trial_days) and trial_days > 0 do
+    external_reference = "trial:#{user.id}:#{plan.id}"
+
+    case Repo.get_by(Subscription, external_reference: external_reference) do
+      nil ->
+        now = DateTime.utc_now(:second)
+
+        {:ok,
+         ensure_manual_subscription!(user, plan, %{
+           status: "active",
+           source: "trial",
+           external_reference: external_reference,
+           starts_at: now,
+           expires_at: DateTime.add(now, trial_days, :day)
+         })}
+
+      %Subscription{} ->
+        {:error, :trial_already_used}
+    end
+  end
+
+  def start_trial_subscription(_user, _plan), do: {:error, :trial_not_available}
 
   defp cancel_other_active_subscriptions!(user_id, external_reference, now) do
     from(s in Subscription,
@@ -536,6 +569,24 @@ defmodule Streamix.Billing do
     Repo.all(query)
   end
 
+  def list_recent_payments(limit \\ 20) do
+    from(p in Payment,
+      preload: [:user, :plan, :subscription],
+      order_by: [desc: p.inserted_at, desc: p.id],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  def list_recent_invoices(limit \\ 20) do
+    from(i in Invoice,
+      preload: [:user, :plan, :subscription],
+      order_by: [desc: i.inserted_at, desc: i.id],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
   def admin_stats do
     now = DateTime.utc_now()
 
@@ -554,7 +605,16 @@ defmodule Streamix.Billing do
           where: is_nil(s.expires_at) or s.expires_at > ^now,
           select: coalesce(sum(p.price_cents), 0)
         )
-        |> Repo.one()
+        |> Repo.one(),
+      failed_payments:
+        from(p in Payment, where: p.status == "failed")
+        |> Repo.aggregate(:count),
+      paid_invoices:
+        from(i in Invoice, where: i.status == "paid")
+        |> Repo.aggregate(:count),
+      billing_customers:
+        from(c in BillingCustomer)
+        |> Repo.aggregate(:count)
     }
   end
 
@@ -570,10 +630,18 @@ defmodule Streamix.Billing do
       :price_cents,
       :currency,
       :billing_interval,
+      :stripe_price_id,
+      :trial_days,
       :active,
       :grants_global_access
     ])
   end
+
+  def get_plan_by_stripe_price_id(price_id) when is_binary(price_id) and price_id != "" do
+    Repo.get_by(Plan, stripe_price_id: price_id)
+  end
+
+  def get_plan_by_stripe_price_id(_price_id), do: nil
 
   defp split_features(attrs) when is_map(attrs) do
     features = Map.get(attrs, :features) || Map.get(attrs, "features") || %{}

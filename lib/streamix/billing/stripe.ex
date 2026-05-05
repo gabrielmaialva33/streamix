@@ -10,6 +10,7 @@ defmodule Streamix.Billing.Stripe do
 
   @checkout_sessions_url "https://api.stripe.com/v1/checkout/sessions"
   @billing_portal_sessions_url "https://api.stripe.com/v1/billing_portal/sessions"
+  @subscriptions_url "https://api.stripe.com/v1/subscriptions"
   @webhook_tolerance_seconds 300
 
   def create_checkout_session(%User{} = user, %Plan{} = plan, attrs) when is_map(attrs) do
@@ -33,6 +34,17 @@ defmodule Streamix.Billing.Stripe do
     else
       nil -> {:error, :stripe_customer_not_found}
       error -> error
+    end
+  end
+
+  def reconcile_subscriptions do
+    with {:ok, secret_key} <- fetch_secret_key() do
+      results =
+        :stripe
+        |> Billing.list_billing_customers()
+        |> Enum.map(&reconcile_customer(&1, secret_key))
+
+      {:ok, %{customers: length(results), results: results}}
     end
   end
 
@@ -92,6 +104,17 @@ defmodule Streamix.Billing.Stripe do
 
   def apply_event(_event), do: {:ok, :ignored}
 
+  defp reconcile_customer(customer, secret_key) do
+    with {:ok, subscriptions} <- request_subscriptions(secret_key, customer.external_id) do
+      synced =
+        Enum.map(subscriptions, fn subscription ->
+          sync_subscription_from_object(subscription, customer.user)
+        end)
+
+      %{customer_id: customer.id, synced: synced}
+    end
+  end
+
   defp request_checkout_session(secret_key, %User{} = user, %Plan{} = plan, attrs) do
     http_client = config_value(:http_client, Req)
     url = config_value(:checkout_sessions_url, @checkout_sessions_url)
@@ -143,6 +166,28 @@ defmodule Streamix.Billing.Stripe do
     end
   end
 
+  defp request_subscriptions(secret_key, customer_id) do
+    http_client = config_value(:http_client, Req)
+    url = config_value(:subscriptions_url, @subscriptions_url)
+
+    query = URI.encode_query(%{customer: customer_id, status: "all", limit: "100"})
+
+    case http_client.get("#{url}?#{query}",
+           headers: [{"authorization", "Bearer #{secret_key}"}],
+           finch: Streamix.Finch,
+           receive_timeout: 15_000
+         ) do
+      {:ok, %Req.Response{status: status, body: %{"data" => data}}} when status in 200..299 ->
+        {:ok, data}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:stripe_error, status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp checkout_form(%User{} = user, %Plan{} = plan, attrs) do
     success_url = Map.fetch!(attrs, :success_url)
     cancel_url = Map.fetch!(attrs, :cancel_url)
@@ -162,13 +207,30 @@ defmodule Streamix.Billing.Stripe do
       {"cancel_url", cancel_url},
       {"client_reference_id", to_string(user.id)},
       {"customer_email", user.email},
+      {"line_items[0][quantity]", "1"}
+    ] ++ checkout_line_item(plan) ++ trial_fields(plan) ++ metadata
+  end
+
+  defp checkout_line_item(%Plan{stripe_price_id: price_id})
+       when is_binary(price_id) and price_id != "" do
+    [{"line_items[0][price]", price_id}]
+  end
+
+  defp checkout_line_item(%Plan{} = plan) do
+    [
       {"line_items[0][price_data][currency]", String.downcase(plan.currency)},
       {"line_items[0][price_data][unit_amount]", to_string(plan.price_cents)},
       {"line_items[0][price_data][product_data][name]", plan.name},
-      {"line_items[0][price_data][recurring][interval]", plan.billing_interval},
-      {"line_items[0][quantity]", "1"}
-    ] ++ metadata
+      {"line_items[0][price_data][recurring][interval]", plan.billing_interval}
+    ]
   end
+
+  defp trial_fields(%Plan{trial_days: trial_days})
+       when is_integer(trial_days) and trial_days > 0 do
+    [{"subscription_data[trial_period_days]", to_string(trial_days)}]
+  end
+
+  defp trial_fields(_plan), do: []
 
   defp checkout_session_attrs(stripe_session, success_url, cancel_url) do
     %{
@@ -185,9 +247,8 @@ defmodule Streamix.Billing.Stripe do
 
   defp activate_from_stripe_object(object, event) do
     with {:ok, user_id} <- fetch_metadata_id(object, "user_id"),
-         {:ok, plan_id} <- fetch_metadata_id(object, "plan_id"),
          %User{} = user <- Repo.get(User, user_id),
-         %Plan{} = plan <- Repo.get(Plan, plan_id) do
+         %Plan{} = plan <- plan_from_stripe_object(object) do
       maybe_upsert_customer!(user, object)
 
       result =
@@ -210,11 +271,9 @@ defmodule Streamix.Billing.Stripe do
     end
   end
 
-  defp sync_subscription_from_object(object) do
-    with {:ok, user_id} <- fetch_metadata_id(object, "user_id"),
-         {:ok, plan_id} <- fetch_metadata_id(object, "plan_id"),
-         %User{} = user <- Repo.get(User, user_id),
-         %Plan{} = plan <- Repo.get(Plan, plan_id) do
+  defp sync_subscription_from_object(object, fallback_user \\ nil) do
+    with %User{} = user <- user_from_stripe_object(object, fallback_user),
+         %Plan{} = plan <- plan_from_stripe_object(object) do
       maybe_upsert_customer!(user, object)
 
       subscription =
@@ -235,12 +294,18 @@ defmodule Streamix.Billing.Stripe do
     end
   end
 
+  defp user_from_stripe_object(object, fallback_user) do
+    case fetch_metadata_id(object, "user_id") do
+      {:ok, user_id} -> Repo.get(User, user_id) || fallback_user
+      {:error, :missing_metadata} -> fallback_user
+    end
+  end
+
   defp mark_subscription_from_object(object, status) do
     with reference when is_binary(reference) <- stripe_subscription_reference(object),
          {:ok, user_id} <- fetch_metadata_id(object, "user_id"),
-         {:ok, plan_id} <- fetch_metadata_id(object, "plan_id"),
          %User{} = user <- Repo.get(User, user_id),
-         %Plan{} = plan <- Repo.get(Plan, plan_id) do
+         %Plan{} = plan <- plan_from_stripe_object(object) do
       subscription =
         Billing.sync_provider_subscription!(user, plan, %{
           provider: "stripe",
@@ -269,6 +334,27 @@ defmodule Streamix.Billing.Stripe do
       paid_at: stripe_paid_at(object, event),
       metadata: object["metadata"] || %{}
     }
+  end
+
+  defp plan_from_stripe_object(object) do
+    case fetch_metadata_id(object, "plan_id") do
+      {:ok, plan_id} ->
+        Repo.get(Plan, plan_id)
+
+      {:error, :missing_metadata} ->
+        object
+        |> stripe_price_ids()
+        |> Enum.find_value(&Billing.get_plan_by_stripe_price_id/1)
+    end
+  end
+
+  defp stripe_price_ids(object) do
+    [
+      get_in(object, ["items", "data", Access.at(0), "price", "id"]),
+      get_in(object, ["lines", "data", Access.at(0), "price", "id"]),
+      get_in(object, ["display_items", Access.at(0), "price", "id"])
+    ]
+    |> Enum.filter(&is_binary/1)
   end
 
   defp stripe_payment_external_id(object, event) do

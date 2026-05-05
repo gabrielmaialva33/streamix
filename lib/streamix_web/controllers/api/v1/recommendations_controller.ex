@@ -76,7 +76,8 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       |> json(%{
         error: %{
           code: "ai_recommendations_required",
-          message: "AI recommendations require a plan with AI premium enabled"
+          message: "AI recommendations require a plan with AI premium enabled",
+          upgrade_url: ~p"/plans?upgrade=ai"
         }
       })
       |> halt()
