@@ -356,6 +356,7 @@ defmodule Streamix.Cache do
 
       {:error, reason} ->
         log_error("FLUSHDB", "*", reason)
+        delete_pattern("*")
         :ok
     end
   end

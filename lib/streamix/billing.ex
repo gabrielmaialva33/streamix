@@ -10,11 +10,12 @@ defmodule Streamix.Billing do
   alias Streamix.Billing.{
     BillingCustomer,
     CheckoutSession,
+    Entitlements,
     Invoice,
     Payment,
     Plan,
     PlanFeature,
-    PlaybackSession,
+    PlaybackSessions,
     Subscription
   }
 
@@ -55,42 +56,10 @@ defmodule Streamix.Billing do
     plan
   end
 
-  def entitled?(%User{id: user_id}, feature) do
-    entitled_user_id?(user_id, feature)
-  end
-
-  def entitled?(_user, _feature), do: false
-
-  def entitled_user_id?(user_id, feature) when is_integer(user_id) do
-    feature = normalize_feature(feature)
-
-    has_active_feature?(user_id, feature) or
-      (feature == "global_catalog" and has_legacy_global_access?(user_id))
-  end
-
-  def entitled_user_id?(_user_id, _feature), do: false
-
-  def feature_limit_for(%User{id: user_id}, feature) do
-    feature_limit_for_user_id(user_id, feature)
-  end
-
-  def feature_limit_for(_user, _feature), do: nil
-
-  def feature_limit_for_user_id(user_id, feature) when is_integer(user_id) do
-    feature = normalize_feature(feature)
-
-    from(s in active_subscription_query(user_id),
-      join: p in assoc(s, :plan),
-      join: f in PlanFeature,
-      on: f.plan_id == s.plan_id,
-      where: p.active == true,
-      where: f.feature == ^feature and f.enabled == true and not is_nil(f.limit),
-      select: max(f.limit)
-    )
-    |> Repo.one()
-  end
-
-  def feature_limit_for_user_id(_user_id, _feature), do: nil
+  defdelegate entitled?(user, feature), to: Entitlements
+  defdelegate entitled_user_id?(user_id, feature), to: Entitlements
+  defdelegate feature_limit_for(user, feature), to: Entitlements
+  defdelegate feature_limit_for_user_id(user_id, feature), to: Entitlements
 
   def sync_plan_features!(%Plan{} = plan, features) when is_map(features) do
     Enum.each(features, fn {feature, value} ->
@@ -206,86 +175,13 @@ defmodule Streamix.Billing do
     end
   end
 
-  def start_playback_session(%User{} = user, attrs) when is_map(attrs) do
-    cleanup_stale_playback_sessions!(user.id)
+  defdelegate start_playback_session(user, attrs), to: PlaybackSessions
+  defdelegate touch_playback_session(playback_session), to: PlaybackSessions
+  defdelegate end_playback_session(playback_session), to: PlaybackSessions
+  defdelegate active_playback_count(user), to: PlaybackSessions
 
-    with :ok <- ensure_playback_slot_available(user) do
-      now = DateTime.utc_now(:second)
-
-      attrs =
-        attrs
-        |> Map.put(:user_id, user.id)
-        |> Map.put_new(:session_id, playback_session_id())
-        |> Map.put_new(:status, "active")
-        |> Map.put_new(:started_at, now)
-        |> Map.put(:last_seen_at, now)
-
-      %PlaybackSession{}
-      |> PlaybackSession.changeset(attrs)
-      |> Repo.insert()
-    end
-  end
-
-  def touch_playback_session(nil), do: :ok
-
-  def touch_playback_session(%PlaybackSession{} = playback_session) do
-    playback_session
-    |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now(:second))
-    |> Repo.update()
-    |> case do
-      {:ok, _session} -> :ok
-      {:error, _changeset} -> :ok
-    end
-  end
-
-  def end_playback_session(nil), do: :ok
-
-  def end_playback_session(%PlaybackSession{} = playback_session) do
-    now = DateTime.utc_now(:second)
-
-    playback_session
-    |> Ecto.Changeset.change(status: "ended", ended_at: now, last_seen_at: now)
-    |> Repo.update()
-    |> case do
-      {:ok, _session} -> :ok
-      {:error, _changeset} -> :ok
-    end
-  end
-
-  def active_playback_count(%User{id: user_id}) do
-    cleanup_stale_playback_sessions!(user_id)
-
-    from(ps in PlaybackSession,
-      where: ps.user_id == ^user_id and ps.status == "active"
-    )
-    |> Repo.aggregate(:count)
-  end
-
-  def subscribed?(%User{id: user_id}) do
-    has_legacy_global_access?(user_id) or has_active_feature?(user_id, "global_catalog")
-  end
-
-  def subscribed?(_user), do: false
-
-  def active_subscription_for_user(%User{id: user_id}) do
-    query =
-      from(s in active_subscription_query(user_id),
-        join: p in assoc(s, :plan),
-        left_join: f in assoc(p, :features),
-        where: p.active == true,
-        where:
-          p.grants_global_access == true or (f.feature == "global_catalog" and f.enabled == true),
-        order_by: [desc: s.inserted_at, desc: s.id],
-        limit: 1
-      )
-
-    case Repo.one(query) do
-      nil -> nil
-      %Subscription{} = subscription -> Repo.preload(subscription, plan: :features)
-    end
-  end
-
-  def active_subscription_for_user(_user), do: nil
+  defdelegate subscribed?(user), to: Entitlements
+  defdelegate active_subscription_for_user(user), to: Entitlements
 
   def cancel_subscription_by_external_reference!(external_reference)
       when is_binary(external_reference) do
@@ -367,68 +263,8 @@ defmodule Streamix.Billing do
     |> Repo.update_all(set: [status: "canceled", canceled_at: now, updated_at: now])
   end
 
-  defp ensure_playback_slot_available(%User{} = user) do
-    case feature_limit_for(user, :concurrent_streams) do
-      nil ->
-        :ok
-
-      limit ->
-        if active_playback_count(user) < limit do
-          :ok
-        else
-          {:error, :concurrent_stream_limit_reached}
-        end
-    end
-  end
-
-  defp cleanup_stale_playback_sessions!(user_id) do
-    cutoff = DateTime.add(DateTime.utc_now(:second), -120, :second)
-    now = DateTime.utc_now(:second)
-
-    from(ps in PlaybackSession,
-      where: ps.user_id == ^user_id,
-      where: ps.status == "active",
-      where: ps.last_seen_at < ^cutoff
-    )
-    |> Repo.update_all(set: [status: "ended", ended_at: now, updated_at: now])
-  end
-
-  defp playback_session_id do
-    "playback:" <> Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
-  end
-
   defp normalize_provider(provider) when is_atom(provider), do: Atom.to_string(provider)
   defp normalize_provider(provider) when is_binary(provider), do: provider
-
-  defp has_legacy_global_access?(user_id) do
-    from(s in active_subscription_query(user_id),
-      join: p in assoc(s, :plan),
-      where: p.active == true,
-      where: p.grants_global_access == true
-    )
-    |> Repo.exists?()
-  end
-
-  defp has_active_feature?(user_id, feature) do
-    from(s in active_subscription_query(user_id),
-      join: p in assoc(s, :plan),
-      join: f in PlanFeature,
-      on: f.plan_id == s.plan_id,
-      where: p.active == true,
-      where: f.feature == ^feature and f.enabled == true
-    )
-    |> Repo.exists?()
-  end
-
-  defp active_subscription_query(user_id) do
-    now = DateTime.utc_now()
-
-    from(s in Subscription,
-      where: s.user_id == ^user_id and s.status == "active",
-      where: is_nil(s.starts_at) or s.starts_at <= ^now,
-      where: is_nil(s.expires_at) or s.expires_at > ^now
-    )
-  end
 
   defp normalize_feature(feature) when is_atom(feature), do: Atom.to_string(feature)
   defp normalize_feature(feature) when is_binary(feature), do: feature

@@ -22,7 +22,6 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   forward the `X-API-Key` header.
   """
 
-  alias StreamixWeb.Endpoint
   alias StreamixWeb.StreamToken
 
   @sign_opts [bypass_subscription: true]
@@ -76,7 +75,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   # ---------------------------------------------------------------------
 
   defp token_proxy_url(token) do
-    "#{Endpoint.url()}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+    "#{endpoint_url()}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
 
   defp browser_token_proxy_url(token) do
@@ -84,4 +83,28 @@ defmodule StreamixWeb.Catalog.StreamUrls do
     token_url = token_proxy_url(token)
     "#{proxy_base}/proxy?url=#{URI.encode_www_form(token_url)}"
   end
+
+  defp endpoint_url do
+    :streamix
+    |> Application.get_env(endpoint_module(), [])
+    |> Keyword.get(:url, [])
+    |> url_from_endpoint_config()
+  end
+
+  defp endpoint_module do
+    Module.concat(["StreamixWeb", "Endpoint"])
+  end
+
+  defp url_from_endpoint_config(config) do
+    scheme = Keyword.get(config, :scheme, "http")
+    host = Keyword.get(config, :host, "localhost")
+    port = Keyword.get(config, :port)
+
+    scheme <> "://" <> host <> port_suffix(scheme, port)
+  end
+
+  defp port_suffix(_scheme, nil), do: ""
+  defp port_suffix("http", 80), do: ""
+  defp port_suffix("https", 443), do: ""
+  defp port_suffix(_scheme, port), do: ":#{port}"
 end

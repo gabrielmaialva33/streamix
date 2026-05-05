@@ -117,11 +117,13 @@ defmodule Streamix.Iptv.M3u.Parser do
   defp flush_extinf(_), do: {:cont, nil}
 
   defp decode_entry({meta_line, url_line}) do
-    with {:ok, kind, stream_id, extension} <- classify_url(url_line) do
-      attrs = parse_extinf(meta_line)
-      {kind, Map.merge(attrs, %{stream_id: stream_id, url: url_line, extension: extension})}
-    else
-      _ -> nil
+    case classify_url(url_line) do
+      {:ok, kind, stream_id, extension} ->
+        attrs = parse_extinf(meta_line)
+        {kind, Map.merge(attrs, %{stream_id: stream_id, url: url_line, extension: extension})}
+
+      _ ->
+        nil
     end
   end
 

@@ -1,16 +1,12 @@
-defmodule Streamix.Iptv.Catalog.Serializer do
+defmodule StreamixWeb.Catalog.Serializer do
   @moduledoc """
-  Builds the JSON payload maps that the TV/mobile clients consume.
+  Builds the JSON payload maps consumed by TV/mobile clients.
 
-  Pure transformation from catalog structs (`Movie`, `Series`, `Season`,
-  `Episode`, `LiveChannel`) into plain maps ready for `Phoenix.Controller.json/2`.
-  Side-concerns like stream URL signing and image proxying are delegated
-  to `StreamixWeb.Catalog.StreamUrls` and `StreamixWeb.Catalog.ImageProxy`
-  — this module only wires them in and shapes the final payload.
-
-  Keeping this under the `Streamix.Iptv` namespace (not `StreamixWeb`)
-  reflects that the payload shape is a domain contract with clients, not
-  a controller concern.
+  The input structs come from `Streamix.Iptv`, but the output includes
+  web concerns such as signed stream URLs, browser proxy URLs and image
+  proxy variants. Keeping this module under `StreamixWeb.Catalog`
+  preserves the domain/web boundary: IPTV owns catalog data, the web API
+  owns the transport payload.
   """
 
   alias Streamix.Helpers

@@ -6,12 +6,12 @@ defmodule Streamix.Billing.Stripe do
   alias Streamix.Accounts.User
   alias Streamix.Billing
   alias Streamix.Billing.Plan
+  alias Streamix.Billing.Stripe.Webhook
   alias Streamix.Repo
 
   @checkout_sessions_url "https://api.stripe.com/v1/checkout/sessions"
   @billing_portal_sessions_url "https://api.stripe.com/v1/billing_portal/sessions"
   @subscriptions_url "https://api.stripe.com/v1/subscriptions"
-  @webhook_tolerance_seconds 300
 
   def create_checkout_session(%User{} = user, %Plan{} = plan, attrs) when is_map(attrs) do
     with {:ok, secret_key} <- fetch_secret_key(),
@@ -57,16 +57,9 @@ defmodule Streamix.Billing.Stripe do
 
   def verify_webhook(raw_body, signature_header, webhook_secret)
       when is_binary(raw_body) and is_binary(signature_header) and is_binary(webhook_secret) do
-    with {:ok, timestamp, signatures} <- parse_signature_header(signature_header),
-         :ok <- verify_timestamp(timestamp),
-         true <- valid_signature?(raw_body, timestamp, signatures, webhook_secret),
-         {:ok, event} <- Phoenix.json_library().decode(raw_body) do
-      {:ok, event}
-    else
-      false -> {:error, :invalid_signature}
-      {:error, %Jason.DecodeError{}} -> {:error, :invalid_payload}
-      {:error, reason} -> {:error, reason}
-    end
+    Webhook.verify(raw_body, signature_header, webhook_secret,
+      tolerance_seconds: config_value(:webhook_tolerance_seconds, 300)
+    )
   end
 
   def verify_webhook(_raw_body, _signature_header, _webhook_secret),
@@ -471,52 +464,6 @@ defmodule Streamix.Billing.Stripe do
   end
 
   defp parse_integer(_value), do: nil
-
-  defp parse_signature_header(header) do
-    parts =
-      header
-      |> String.split(",", trim: true)
-      |> Enum.map(fn part -> String.split(part, "=", parts: 2) end)
-
-    timestamp =
-      Enum.find_value(parts, fn
-        ["t", value] -> parse_integer(value)
-        _ -> nil
-      end)
-
-    signatures =
-      Enum.flat_map(parts, fn
-        ["v1", value] -> [value]
-        _ -> []
-      end)
-
-    if timestamp && signatures != [] do
-      {:ok, timestamp, signatures}
-    else
-      {:error, :invalid_signature_header}
-    end
-  end
-
-  defp verify_timestamp(timestamp) do
-    tolerance = config_value(:webhook_tolerance_seconds, @webhook_tolerance_seconds)
-
-    if abs(System.system_time(:second) - timestamp) <= tolerance do
-      :ok
-    else
-      {:error, :stale_signature}
-    end
-  end
-
-  defp valid_signature?(raw_body, timestamp, signatures, webhook_secret) do
-    signed_payload = "#{timestamp}.#{raw_body}"
-
-    expected =
-      :hmac
-      |> :crypto.mac(:sha256, webhook_secret, signed_payload)
-      |> Base.encode16(case: :lower)
-
-    Enum.any?(signatures, &Plug.Crypto.secure_compare(expected, &1))
-  end
 
   defp normalize_checkout_status(status)
        when status in ~w(open complete completed expired canceled),

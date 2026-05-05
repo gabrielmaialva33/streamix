@@ -8,7 +8,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   Heavy lifting is delegated to focused collaborators:
 
-    * `Streamix.Iptv.Catalog.Serializer` — JSON payload shapes.
+    * `StreamixWeb.Catalog.Serializer`   — JSON payload shapes.
     * `StreamixWeb.Catalog.StreamUrls`   — signed stream / browser URLs.
     * `StreamixWeb.Catalog.ImageProxy`   — CDN image rewriting.
 
@@ -20,7 +20,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   require Logger
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Catalog.Serializer
+  alias StreamixWeb.Catalog.Serializer
   alias StreamixWeb.Catalog.StreamUrls
 
   @doc """
