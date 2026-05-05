@@ -40,6 +40,10 @@ defmodule Streamix.Application do
              conn_max_idle_time: :timer.minutes(1)
            ]
          }},
+        # Dedicated pool for long-lived VOD/Live proxy sockets. Keeping
+        # it separate prevents player traffic from exhausting checkout
+        # capacity needed by sync, image, metadata and health requests.
+        {Finch, name: Streamix.StreamFinch, pools: stream_finch_pools()},
         {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Streamix.PubSub},
         # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
@@ -157,6 +161,20 @@ defmodule Streamix.Application do
 
   defp redis_url do
     Application.get_env(:streamix, :redis_url, "redis://localhost:6379")
+  end
+
+  defp stream_finch_pools do
+    Application.get_env(:streamix, :stream_finch_pools, %{
+      :default => [
+        size: 25,
+        count: 4,
+        # Finch currently documents HTTP/2 response streaming as having no
+        # backpressure mechanism, which is a poor fit for large media bodies.
+        protocols: [:http1],
+        conn_max_idle_time: :timer.seconds(10),
+        pool_max_idle_time: :timer.minutes(5)
+      ]
+    })
   end
 
   # Configure Erlang's DNS resolver to avoid stale cache in containers

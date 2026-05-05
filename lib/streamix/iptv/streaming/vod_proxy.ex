@@ -2,11 +2,11 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   @moduledoc """
   BEAM-side reverse proxy for IPTV VOD/Live streams.
 
-  Pumps upstream bytes into a `Plug.Conn` via `Finch.stream/5` +
-  `Plug.Conn.chunk/2`. Provider credentials stay server-side, the
-  Finch keepalive pool reuses TCP between Range requests, and a
-  mid-stream upstream failure is recovered with a Range-aware retry
-  instead of erroring the player out.
+  Pumps upstream bytes into a `Plug.Conn` via the dedicated
+  `Streamix.StreamFinch` pool + `Plug.Conn.chunk/2`. Provider
+  credentials stay server-side, long-lived player sockets are isolated
+  from sync/API calls, and a mid-stream upstream failure is recovered
+  with a Range-aware retry instead of erroring the player out.
 
   ## Invariants
 
@@ -29,7 +29,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         → StreamToken.verify_and_get_url/2 — yields the upstream URL
         → VodProxy.pipe(conn, upstream_url)
         → RedirectResolver.resolve/2 — walks the vauth → deliver chain
-        → Finch.stream/5 — pipes bytes into Plug.Conn.chunk/2
+        → Streamix.StreamFinch — pipes bytes into Plug.Conn.chunk/2
   """
 
   alias Plug.Conn
@@ -283,7 +283,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     }
 
     pump =
-      UpstreamPump.start(req, Streamix.Finch, self(),
+      UpstreamPump.start(req, Streamix.StreamFinch, self(),
         cap_bytes: @burst_buffer_bytes,
         receive_timeout: @upstream_idle_timeout_ms,
         pool_timeout: 5_000

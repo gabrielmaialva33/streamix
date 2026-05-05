@@ -33,7 +33,21 @@ config :streamix,
   # the response is technically 200/302, so VodProxy rotates to the
   # next alternate URL in `Provider.url_chain/1`. Default: tuliprox-style
   # "service abuse" / suspended-account landing pages.
-  failover_redirect_patterns: [~r/service[-_]abuse/i, ~r/account[-_]suspended/i]
+  failover_redirect_patterns: [~r/service[-_]abuse/i, ~r/account[-_]suspended/i],
+  # Dedicated Finch pool for long-lived BEAM-side stream proxy requests.
+  # Keep this separate from Streamix.Finch so VOD/Live sockets cannot
+  # starve catalog sync, image, metadata, and provider-health calls.
+  stream_finch_pools: %{
+    :default => [
+      size: 25,
+      count: 4,
+      # Finch currently documents HTTP/2 response streaming as having no
+      # backpressure mechanism, which is a poor fit for large media bodies.
+      protocols: [:http1],
+      conn_max_idle_time: :timer.seconds(10),
+      pool_max_idle_time: :timer.minutes(5)
+    ]
+  }
 
 # Configure the endpoint
 config :streamix, StreamixWeb.Endpoint,

@@ -51,6 +51,8 @@ defmodule Streamix.Iptv.Streaming.UpstreamPump do
   Starts a pump that drains `req` and forwards events to `target`.
 
   Returns the underlying `Task` so the caller can await/shutdown it.
+  The task is intentionally not linked to the caller: upstream socket
+  failures should be reported as messages, not crash the request process.
   """
   @spec start(Finch.Request.t(), atom(), pid(), opts) :: Task.t()
   def start(req, finch_name, target, opts \\ []) do
@@ -59,7 +61,7 @@ defmodule Streamix.Iptv.Streaming.UpstreamPump do
     pool_timeout = Keyword.get(opts, :pool_timeout, @default_pool_timeout)
     ack_timeout = Keyword.get(opts, :ack_timeout, @default_ack_timeout)
 
-    Task.async(fn ->
+    Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn ->
       do_pump(req, finch_name, target, cap, receive_timeout, pool_timeout, ack_timeout)
     end)
   end
@@ -71,10 +73,13 @@ defmodule Streamix.Iptv.Streaming.UpstreamPump do
       handle_event(event, in_flight, target, pump_pid, cap, ack_to)
     end
 
-    case Finch.stream(req, finch_name, 0, callback,
+    case Finch.stream_while(req, finch_name, 0, callback,
            receive_timeout: recv_to,
            pool_timeout: pool_to
          ) do
+      {:ok, {:halted, _reason}} ->
+        :ok
+
       {:ok, _final_in_flight} ->
         send(target, {pump_pid, :done})
 
@@ -85,23 +90,31 @@ defmodule Streamix.Iptv.Streaming.UpstreamPump do
 
   defp handle_event({:status, status}, in_flight, target, pump_pid, _cap, _ack_to) do
     send(target, {pump_pid, {:status, status}})
-    in_flight
+    {:cont, in_flight}
   end
 
   defp handle_event({:headers, headers}, in_flight, target, pump_pid, _cap, _ack_to) do
     send(target, {pump_pid, {:headers, headers}})
-    in_flight
+    {:cont, in_flight}
   end
 
   defp handle_event({:data, bin}, in_flight, target, pump_pid, cap, ack_to) do
     size = byte_size(bin)
     send(target, {pump_pid, {:data, bin, size}})
-    wait_for_window(in_flight + size, cap, ack_to)
+
+    case wait_for_window(in_flight + size, cap, ack_to) do
+      {:ok, in_flight} ->
+        {:cont, in_flight}
+
+      {:error, reason} ->
+        send(target, {pump_pid, {:error, reason}})
+        {:halt, {:halted, reason}}
+    end
   end
 
   defp handle_event({:trailers, trailers}, in_flight, target, pump_pid, _cap, _ack_to) do
     send(target, {pump_pid, {:trailers, trailers}})
-    in_flight
+    {:cont, in_flight}
   end
 
   # Drain any pending acks (non-blocking) before we even consider waiting.
@@ -110,16 +123,16 @@ defmodule Streamix.Iptv.Streaming.UpstreamPump do
     in_flight = drain_acks(in_flight)
 
     if in_flight <= cap do
-      in_flight
+      {:ok, in_flight}
     else
       receive do
         {:ack, drained} ->
           wait_for_window(in_flight - drained, cap, ack_to)
       after
         ack_to ->
-          # Consumer is gone or wedged. Aborting the Task tears down the
-          # Finch request, releasing the upstream socket back to the pool.
-          exit({:pump_idle, in_flight, cap})
+          # Consumer is gone or wedged. Halting the Finch stream closes the
+          # upstream socket without logging this expected condition as a crash.
+          {:error, {:pump_idle, in_flight, cap}}
       end
     end
   end
