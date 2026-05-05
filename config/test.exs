@@ -31,6 +31,12 @@ config :streamix, :session_secure, false
 # Disable rate limiting in tests to prevent flaky failures on repeated logins.
 config :streamix, :disable_rate_limit, true
 
+# Tests still exercise the legacy 302-to-source-proxy flow. Pin the
+# backend to `:redirect` so `stream_controller_test.exs` keeps asserting
+# on the trusted-proxy redirect chain instead of trying to actually pump
+# bytes through Finch in unit tests.
+config :streamix, :stream_proxy_backend, :redirect
+
 # PhoenixTest + Playwright
 #
 # The default browser is chromium, but CI matrices flip this across

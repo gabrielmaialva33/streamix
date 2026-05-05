@@ -22,7 +22,12 @@ config :streamix, :scopes,
 
 config :streamix,
   ecto_repos: [Streamix.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  # Default stream-proxy backend. `:beam` pumps bytes through this
+  # release via Finch + send_chunked; `:redirect` keeps the legacy
+  # 302-to-source-proxy flow. Override at runtime via the
+  # `STREAM_PROXY_BACKEND` env var.
+  stream_proxy_backend: :beam
 
 # Configure the endpoint
 config :streamix, StreamixWeb.Endpoint,

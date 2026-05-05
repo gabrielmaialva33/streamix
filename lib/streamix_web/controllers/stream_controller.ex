@@ -1,16 +1,28 @@
 defmodule StreamixWeb.StreamController do
   @moduledoc """
-  Controller for proxying IPTV streams with true streaming support using Mint.
+  Controller for proxying IPTV streams.
 
-  Proxies HTTP streams through HTTPS to avoid mixed content blocking.
-  Uses Mint for low-level HTTP streaming without buffering.
-  Follows redirects automatically (up to 5 hops).
+  Bytes are pumped through the BEAM via `Streamix.Iptv.Streaming.VodProxy`
+  using `Finch.stream/5` + `Plug.Conn.chunk/2`. This gives us:
+
+    * connection reuse via Finch's per-host keepalive pool — subsequent
+      Range requests from the same player session avoid the cold TCP
+      handshake + vauth-chain re-walk, fixing the "10s seek" UX,
+    * mid-stream upstream re-resolution with byte-offset Range resume,
+      so a transient 5xx from the provider degrades into a brief stall
+      instead of a hard error toast,
+    * server-side credential containment — `/movie/USER/PASS/...` URLs
+      stay inside the BEAM and never appear in the browser network tab.
+
+  The legacy 302-to-source-proxy code lives next door (`resolve_and_redirect_to_proxy/2`)
+  and is kept as a fallback so non-Tuliprox flows can be exercised
+  during incidents.
   """
   use StreamixWeb, :controller
 
   require Logger
 
-  alias Streamix.Iptv.Streaming.RedirectResolver
+  alias Streamix.Iptv.Streaming.{RedirectResolver, VodProxy}
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
   alias StreamixWeb.StreamToken
@@ -51,45 +63,19 @@ defmodule StreamixWeb.StreamController do
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
-  # All content types (live channels and VOD) go through the source
-  # nginx via 302 redirect. Reasons:
+  # Default path: pipe upstream bytes through the BEAM. See
+  # `VodProxy` for the why/how (connection reuse + Range resume).
   #
-  #   1. The source nginx runs on a different ASN than the Phoenix
-  #      backend (Hostinger AS47583 vs Gamers Club AS268624). Choki
-  #      blacklists AS268624 specifically for streaming endpoints
-  #      (`/movie/*`, `/USER/PASS/X.ts` live), so streaming directly
-  #      from the BEAM was hitting the WAF.
-  #   2. Cloudflare Transform Rule + nginx CORS headers eliminate the
-  #      CORS issue that previously forced live channels to stream
-  #      chunked through the BEAM.
-  #   3. nginx serves bytes much more efficiently than chunked through
-  #      a per-viewer BEAM process.
+  # Operators can flip back to the legacy 302-to-source-proxy flow at
+  # runtime by setting `STREAM_PROXY_BACKEND=redirect` — the env knob
+  # exists so we can yank the BEAM out of the data path during an
+  # incident without redeploying.
   defp stream_by_type(conn, url, _type, _meta) do
-    # Tuliprox terminates the upstream chain on its own (proxy: reverse
-    # mode does retry/buffer/seek-grace internally), so when we already
-    # have a Tuliprox-bound URL, skip the BEAM-side RedirectResolver and
-    # 302 the player straight at it.
-    if tuliprox_url?(url) do
-      Logger.debug("Stream proxy: tuliprox direct → #{sanitize_url(url)}")
-
-      conn
-      |> put_resp_header("cache-control", "no-cache, no-store")
-      |> redirect(external: url)
-    else
-      resolve_and_redirect_to_proxy(conn, url)
+    case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
+      :redirect -> resolve_and_redirect_to_proxy(conn, url)
+      _ -> VodProxy.pipe(conn, url)
     end
   end
-
-  defp tuliprox_url?(url) when is_binary(url) do
-    base = Application.get_env(:streamix, :tuliprox_public_url, "")
-
-    case base do
-      "" -> false
-      base -> String.starts_with?(url, base)
-    end
-  end
-
-  defp tuliprox_url?(_), do: false
 
   # Map StreamToken's raw reasons onto the canonical StreamErrors codes
   # so controllers and TV clients speak the same vocabulary.

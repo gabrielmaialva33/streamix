@@ -391,79 +391,22 @@ defmodule StreamixWeb.StreamToken do
   end
 
   defp build_provider_content_url(provider, "movie", stream_id, extension) do
-    build_signed_or_creds_url(provider, "movie", stream_id, extension || "mp4")
+    ext = extension || "mp4"
+    url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+    {:ok, url}
   end
 
   defp build_provider_content_url(provider, "series", stream_id, extension) do
-    build_signed_or_creds_url(provider, "series", stream_id, extension || "mp4")
+    ext = extension || "mp4"
+    url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+    {:ok, url}
   end
 
   defp build_provider_content_url(provider, "live", stream_id, _extension) do
     # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
     # to avoid mixed content issues with HLS segment URLs.
-    build_signed_or_creds_url(provider, "live", stream_id, "ts")
-  end
-
-  defp build_signed_or_creds_url(provider, type, stream_id, ext) do
-    case tuliprox_signed_url(type, stream_id, ext) do
-      {:ok, url} ->
-        {:ok, url}
-
-      :no_signing ->
-        # Legacy path: dump the upstream credentials in the URL so the
-        # browser → source.mahina.cloud nginx → upstream chain still
-        # works for non-Tuliprox providers (GIndex, etc).
-        url =
-          "#{public_base(provider)}/#{type}/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
-
-        {:ok, url}
-    end
-  end
-
-  # When the operator wires up Tuliprox + the signed-URL nginx vhost, we
-  # build a short-lived HMAC URL that exposes neither provider creds nor
-  # the Tuliprox internal user/pass. The nginx Lua block in front of
-  # Tuliprox validates the signature, rewrites with the server-side
-  # credentials and proxies. If `:tuliprox_sign_secret` isn't set we fall
-  # through to the legacy creds-in-URL path.
-  defp tuliprox_signed_url(type, stream_id, ext) do
-    secret = Application.get_env(:streamix, :tuliprox_sign_secret, "")
-    base = Application.get_env(:streamix, :tuliprox_public_url, "")
-
-    cond do
-      secret == "" or base == "" ->
-        :no_signing
-
-      true ->
-        # 5 minutes is enough for the player to follow the 302 + start
-        # pulling bytes. nginx rejects expired tokens with 410 Gone; the
-        # underlying TCP connection keeps streaming once accepted, so a
-        # 4-hour movie playback isn't capped by the URL TTL.
-        exp = System.system_time(:second) + 300
-        payload = "#{exp}:#{type}:#{stream_id} #{secret}"
-
-        sig =
-          payload
-          |> :erlang.md5()
-          |> Base.url_encode64(padding: false)
-
-        {:ok, "#{base}/s/#{type}/#{stream_id}.#{ext}?exp=#{exp}&sig=#{sig}"}
-    end
-  end
-
-  # When `:tuliprox_public_url` is configured, every Xtream provider's stream
-  # URL is rewritten to point at the public Tuliprox hostname. The DB row
-  # keeps an internal hostname (e.g. `http://tuliprox:8901`) for sync calls
-  # over the docker network — those don't need to round-trip Cloudflare —
-  # but the player needs a publicly reachable origin for its 302 target.
-  defp public_base(provider) do
-    case Application.get_env(:streamix, :tuliprox_public_url, "") do
-      "" ->
-        provider.url
-
-      base when is_binary(base) ->
-        base
-    end
+    url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
+    {:ok, url}
   end
 
   # Verifies that the token's user_id is authorized to access content from this provider.
