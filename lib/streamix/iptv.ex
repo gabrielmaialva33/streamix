@@ -172,6 +172,7 @@ defmodule Streamix.Iptv do
   # Providers
   # =============================================================================
   defdelegate list_providers(user_id), to: Providers, as: :list
+  defdelegate list_providers(user_id, opts), to: Providers, as: :list
   defdelegate list_visible_providers(user_id \\ nil), to: Providers, as: :list_visible
   defdelegate list_public_providers(), to: Providers, as: :list_public
   defdelegate get_provider!(id), to: Providers, as: :get!

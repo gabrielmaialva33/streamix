@@ -20,14 +20,26 @@ defmodule Streamix.Iptv.Providers do
   @doc """
   Lists providers owned by the user (excludes system providers).
   Use this for the provider management UI.
+
+  Pass `scope: :all` to bypass the ownership/system filter — used by
+  admin views that need to surface every provider, including global
+  system rows that regular users shouldn't see.
   """
-  @spec list(integer()) :: [Provider.t()]
-  def list(user_id) do
-    Provider
-    |> where(user_id: ^user_id)
-    |> where([p], p.is_system == false)
-    |> order_by(asc: :name)
-    |> Repo.all()
+  @spec list(integer(), keyword()) :: [Provider.t()]
+  def list(user_id, opts \\ []) do
+    case Keyword.get(opts, :scope, :user) do
+      :all ->
+        Provider
+        |> order_by(asc: :is_system, asc: :name)
+        |> Repo.all()
+
+      :user ->
+        Provider
+        |> where(user_id: ^user_id)
+        |> where([p], p.is_system == false)
+        |> order_by(asc: :name)
+        |> Repo.all()
+    end
   end
 
   @doc """

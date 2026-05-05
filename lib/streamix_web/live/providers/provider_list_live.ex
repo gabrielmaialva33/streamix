@@ -3,16 +3,23 @@ defmodule StreamixWeb.Providers.ProviderListLive do
 
   import StreamixWeb.AppComponents
 
-  alias Streamix.Iptv
+  alias Streamix.{Accounts, Iptv}
 
   def mount(_params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+    user = socket.assigns.current_scope.user
+    user_id = user.id
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:providers")
     end
 
-    providers = Iptv.list_providers(user_id)
+    # Admins see every provider (including the global system rows
+    # owned by the platform); regular users only see what they own.
+    providers =
+      case Accounts.role_name(user) do
+        "admin" -> Iptv.list_providers(user_id, scope: :all)
+        _ -> Iptv.list_providers(user_id)
+      end
 
     socket =
       socket
