@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.GlobalProvider do
   identified by `is_system: true` and `visibility: :global`.
   """
 
+  alias Streamix.Accounts.User
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
 
@@ -41,9 +42,10 @@ defmodule Streamix.Iptv.GlobalProvider do
 
   Returns {:ok, provider} or {:error, changeset}.
   """
-  def ensure_exists! do
+  def ensure_exists!(owner \\ nil) do
     if enabled?() do
       cfg = config()
+      owner_user_id = owner_user_id(owner)
 
       attrs = %{
         name: cfg[:name],
@@ -56,28 +58,35 @@ defmodule Streamix.Iptv.GlobalProvider do
       }
 
       case get() do
-        nil -> create_provider(attrs)
-        provider -> maybe_update_provider(provider, attrs)
+        nil -> create_provider(attrs, owner_user_id)
+        provider -> maybe_update_provider(provider, attrs, owner_user_id)
       end
     else
       {:ok, :disabled}
     end
   end
 
-  defp create_provider(attrs) do
-    %Provider{}
+  defp create_provider(attrs, owner_user_id) do
+    %Provider{user_id: owner_user_id}
     |> Provider.changeset(attrs)
     |> Repo.insert()
   end
 
-  defp maybe_update_provider(provider, attrs) do
-    if credentials_changed?(provider, attrs) do
+  defp maybe_update_provider(provider, attrs, owner_user_id) do
+    if credentials_changed?(provider, attrs) or owner_changed?(provider, owner_user_id) do
       provider
       |> Provider.changeset(attrs)
+      |> maybe_put_owner(owner_user_id)
       |> Repo.update()
     else
       {:ok, provider}
     end
+  end
+
+  defp maybe_put_owner(changeset, nil), do: changeset
+
+  defp maybe_put_owner(changeset, owner_user_id) do
+    Ecto.Changeset.put_change(changeset, :user_id, owner_user_id)
   end
 
   @doc """
@@ -100,4 +109,11 @@ defmodule Streamix.Iptv.GlobalProvider do
       provider.password != attrs[:password] ||
       provider.name != attrs[:name]
   end
+
+  defp owner_changed?(_provider, nil), do: false
+  defp owner_changed?(provider, owner_user_id), do: provider.user_id != owner_user_id
+
+  defp owner_user_id(%User{id: user_id}), do: user_id
+  defp owner_user_id(user_id) when is_integer(user_id), do: user_id
+  defp owner_user_id(_owner), do: nil
 end

@@ -24,7 +24,8 @@ if env["GLOBAL_PROVIDER_ENABLED"] == "true" do
   )
 end
 
-alias Streamix.{Accounts, Access, Billing, Iptv}
+alias Streamix.{Access, Accounts, Billing, Iptv, Repo}
+alias Streamix.Iptv.Provider
 
 # Create admin user from env vars
 admin_email = env["ADMIN_EMAIL"] || "admin@streamix.local"
@@ -117,25 +118,46 @@ provider_password = env["IPTV_PASSWORD"]
 
 if provider_name && provider_url && provider_username && provider_password do
   existing_provider =
-    Iptv.list_providers(admin.id)
-    |> Enum.find(&(&1.name == provider_name))
+    Repo.get_by(Provider,
+      provider_type: :xtream,
+      is_system: false,
+      url: provider_url,
+      username: provider_username
+    ) ||
+      Iptv.list_providers(admin.id)
+      |> Enum.find(&(&1.name == provider_name))
 
-  if existing_provider do
-    IO.puts("→ Provider already exists: #{provider_name}")
-  else
-    {:ok, provider} =
-      Iptv.create_provider(%{
-        name: provider_name,
-        url: provider_url,
-        username: provider_username,
-        password: provider_password,
-        user_id: admin.id
-      })
+  provider_attrs = %{
+    name: provider_name,
+    url: provider_url,
+    username: provider_username,
+    password: provider_password,
+    is_active: true
+  }
 
-    IO.puts("✓ Created provider: #{provider_name}")
+  provider =
+    if existing_provider do
+      existing_provider
+      |> Provider.changeset(provider_attrs)
+      |> Ecto.Changeset.put_change(:user_id, admin.id)
+      |> Repo.update!()
+    else
+      {:ok, provider} =
+        Iptv.create_provider(admin.id, %{
+          name: provider_name,
+          url: provider_url,
+          username: provider_username,
+          password: provider_password
+        })
 
+      provider
+    end
+
+  IO.puts("✓ Provider ready: #{provider.name} (owner=#{admin.email})")
+
+  if is_nil(existing_provider) do
     # Sync channels
-    IO.puts("⏳ Syncing channels from #{provider_name}...")
+    IO.puts("⏳ Syncing channels from #{provider.name}...")
 
     case Iptv.sync_provider(provider) do
       {:ok, count} ->
@@ -153,9 +175,9 @@ end
 alias Streamix.Iptv.GlobalProvider
 
 if GlobalProvider.enabled?() do
-  case GlobalProvider.ensure_exists!() do
+  case GlobalProvider.ensure_exists!(admin) do
     {:ok, provider} when is_struct(provider) ->
-      IO.puts("✓ Global provider ready: #{provider.name}")
+      IO.puts("✓ Global provider ready: #{provider.name} (owner=#{admin.email})")
 
       # Sync global provider content
       IO.puts("⏳ Syncing global provider content...")
