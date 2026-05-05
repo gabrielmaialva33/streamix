@@ -5,6 +5,7 @@ defmodule Streamix.WatchParty do
 
   import Ecto.Query
 
+  alias Streamix.Billing
   alias Streamix.Repo
   alias Streamix.WatchParty.{Message, Participant, Room, RoomServer}
 
@@ -16,6 +17,14 @@ defmodule Streamix.WatchParty do
   # --- Room Management ---
 
   def create_room(user_id, attrs) do
+    if Billing.entitled_user_id?(user_id, :watch_party) do
+      do_create_room(user_id, attrs)
+    else
+      {:error, :watch_party_not_allowed}
+    end
+  end
+
+  defp do_create_room(user_id, attrs) do
     attrs = Map.put(attrs, :host_user_id, user_id)
 
     case %Room{} |> Room.create_changeset(attrs) |> Repo.insert() do

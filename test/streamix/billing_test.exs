@@ -3,7 +3,7 @@ defmodule Streamix.BillingTest do
 
   alias Streamix.AccountsFixtures
   alias Streamix.Billing
-  alias Streamix.Billing.{Plan, Subscription}
+  alias Streamix.Billing.{CheckoutSession, Invoice, Payment, Plan, PlanFeature, Subscription}
 
   defp user_fixture(attrs \\ %{}) do
     AccountsFixtures.user_fixture(attrs)
@@ -201,6 +201,94 @@ defmodule Streamix.BillingTest do
     assert Billing.active_subscription_for_user(user) == nil
   end
 
+  test "plan features can grant global catalog without the legacy plan flag" do
+    user = user_fixture()
+    plan = plan_fixture(grants_global_access: false)
+    Billing.sync_plan_features!(plan, %{global_catalog: true})
+
+    create_subscription!(user, plan,
+      status: "active",
+      starts_at: DateTime.add(DateTime.utc_now(), -1, :day),
+      expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+    )
+
+    assert Billing.entitled?(user, :global_catalog)
+    assert Billing.subscribed?(user)
+
+    assert %Subscription{plan: %Plan{features: [%PlanFeature{feature: "global_catalog"}]}} =
+             Billing.active_subscription_for_user(user)
+  end
+
+  test "feature_limit_for/2 returns the active plan limit" do
+    user = user_fixture()
+    plan = plan_fixture()
+    Billing.sync_plan_features!(plan, %{max_providers: 3, concurrent_streams: 2})
+
+    create_subscription!(user, plan,
+      status: "active",
+      starts_at: DateTime.add(DateTime.utc_now(), -1, :day),
+      expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+    )
+
+    assert Billing.feature_limit_for(user, :max_providers) == 3
+    assert Billing.feature_limit_for(user, "concurrent_streams") == 2
+    assert Billing.feature_limit_for(user, :watch_party) == nil
+  end
+
+  test "create_checkout_session/3 stores self-service checkout state" do
+    user = user_fixture()
+    plan = plan_fixture()
+
+    assert {:ok, %CheckoutSession{} = session} =
+             Billing.create_checkout_session(user, plan, %{
+               provider: "stripe",
+               status: "open",
+               external_id: "cs_test_123",
+               checkout_url: "https://checkout.stripe.com/c/pay/cs_test_123",
+               success_url: "https://streamix.test/plans/success",
+               cancel_url: "https://streamix.test/plans"
+             })
+
+    assert session.user_id == user.id
+    assert session.plan_id == plan.id
+    assert session.amount_cents == plan.price_cents
+    assert session.currency == plan.currency
+  end
+
+  test "activate_subscription_from_payment!/3 records payment, invoice, and entitlement" do
+    user = user_fixture()
+    plan = plan_fixture(grants_global_access: false)
+    Billing.sync_plan_features!(plan, %{global_catalog: true})
+
+    result =
+      Billing.activate_subscription_from_payment!(user, plan, %{
+        provider: "stripe",
+        external_id: "pi_test_123",
+        invoice_external_id: "in_test_123",
+        invoice_number: "S-0001",
+        amount_cents: plan.price_cents,
+        currency: plan.currency,
+        raw_event: %{"type" => "checkout.session.completed"}
+      })
+
+    assert %Subscription{status: "active"} = result.subscription
+    assert %Payment{status: "paid", external_id: "pi_test_123"} = result.payment
+    assert %Invoice{status: "paid", external_id: "in_test_123"} = result.invoice
+    assert Billing.entitled?(user, :global_catalog)
+
+    again =
+      Billing.activate_subscription_from_payment!(user, plan, %{
+        provider: "stripe",
+        external_id: "pi_test_123",
+        invoice_external_id: "in_test_123",
+        amount_cents: plan.price_cents,
+        currency: plan.currency
+      })
+
+    assert again.payment.id == result.payment.id
+    assert again.invoice.id == result.invoice.id
+  end
+
   test "ensure_plan!/1 updates an existing plan without duplicating it" do
     attrs = %{
       name: "Premium Mensal",
@@ -210,7 +298,12 @@ defmodule Streamix.BillingTest do
       currency: "USD",
       billing_interval: "month",
       active: true,
-      grants_global_access: true
+      grants_global_access: true,
+      features: %{
+        global_catalog: true,
+        max_providers: 3,
+        watch_party: true
+      }
     }
 
     first_plan = Billing.ensure_plan!(attrs)
@@ -221,6 +314,9 @@ defmodule Streamix.BillingTest do
     assert first_plan.id == updated_plan.id
     assert updated_plan.description == "Updated global access plan"
     assert Repo.aggregate(from(p in Plan, where: p.slug == ^attrs.slug), :count, :id) == 1
+
+    assert Repo.aggregate(from(f in PlanFeature, where: f.plan_id == ^first_plan.id), :count, :id) ==
+             3
   end
 
   test "ensure_manual_subscription!/3 preserves the existing starts_at on rerun" do

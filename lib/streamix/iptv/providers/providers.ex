@@ -8,6 +8,7 @@ defmodule Streamix.Iptv.Providers do
 
   import Ecto.Query, warn: false
 
+  alias Streamix.Billing
   alias Streamix.Iptv.{Provider, Sync, XtreamClient}
   alias Streamix.Repo
   alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
@@ -153,9 +154,43 @@ defmodule Streamix.Iptv.Providers do
   """
   @spec create_for_user(integer(), map()) :: {:ok, Provider.t()} | {:error, Ecto.Changeset.t()}
   def create_for_user(user_id, attrs \\ %{}) do
+    case provider_limit_state(user_id) do
+      :ok ->
+        %Provider{user_id: user_id}
+        |> Provider.changeset(attrs)
+        |> Repo.insert()
+
+      {:error, :provider_limit_reached} ->
+        {:error, provider_limit_changeset(user_id)}
+    end
+  end
+
+  defp provider_limit_state(user_id) do
+    case Billing.feature_limit_for_user_id(user_id, :max_providers) do
+      nil ->
+        :ok
+
+      limit ->
+        if user_provider_count(user_id) < limit do
+          :ok
+        else
+          {:error, :provider_limit_reached}
+        end
+    end
+  end
+
+  defp user_provider_count(user_id) do
+    from(p in Provider,
+      where: p.user_id == ^user_id,
+      where: p.is_system == false
+    )
+    |> Repo.aggregate(:count)
+  end
+
+  defp provider_limit_changeset(user_id) do
     %Provider{user_id: user_id}
-    |> Provider.changeset(attrs)
-    |> Repo.insert()
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:base, "provider limit reached for current plan")
   end
 
   @doc """

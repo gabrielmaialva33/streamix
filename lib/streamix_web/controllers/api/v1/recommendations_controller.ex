@@ -19,6 +19,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   use StreamixWeb, :controller
 
   alias Streamix.AI.UserAnalytics
+  alias Streamix.Billing
   alias Streamix.Helpers
   alias Streamix.Iptv
   alias Streamix.Iptv.{Movie, Series}
@@ -29,6 +30,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   # 401'd. BearerAuth resolves the user from the session token the TV
   # app is already sending and assigns it to `:current_user`.
   plug StreamixWeb.Plugs.BearerAuth
+  plug :require_ai_recommendations
 
   @doc """
   GET /api/v1/recommendations
@@ -62,6 +64,22 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
         conn
         |> put_status(:service_unavailable)
         |> json(%{error: "Recommendations unavailable", reason: inspect(reason)})
+    end
+  end
+
+  defp require_ai_recommendations(conn, _opts) do
+    if Billing.entitled?(conn.assigns.current_user, :ai_recommendations) do
+      conn
+    else
+      conn
+      |> put_status(:payment_required)
+      |> json(%{
+        error: %{
+          code: "ai_recommendations_required",
+          message: "AI recommendations require a plan with AI premium enabled"
+        }
+      })
+      |> halt()
     end
   end
 

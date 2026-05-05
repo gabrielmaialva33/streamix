@@ -81,6 +81,7 @@ defmodule StreamixWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    post "/billing/webhooks/stripe", BillingWebhookController, :stripe
   end
 
   # Stream proxy - public access for video streaming (rate limited)

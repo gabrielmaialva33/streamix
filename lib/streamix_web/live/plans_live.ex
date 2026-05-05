@@ -2,6 +2,7 @@ defmodule StreamixWeb.PlansLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Billing
+  alias Streamix.Billing.Stripe
 
   def mount(_params, _session, socket) do
     plans = Billing.list_active_plans()
@@ -24,6 +25,33 @@ defmodule StreamixWeb.PlansLive do
       |> assign(subscription_state: subscription_state(active_subscription))
 
     {:ok, socket}
+  end
+
+  def handle_event("checkout", %{"plan_id" => plan_id}, socket) do
+    with %{user: user} <- socket.assigns.current_scope,
+         plan <- Billing.get_plan!(plan_id),
+         {:ok, checkout_session} <-
+           Stripe.create_checkout_session(user, plan, %{
+             success_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=success",
+             cancel_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=canceled"
+           }) do
+      {:noreply, Phoenix.LiveView.redirect(socket, external: checkout_session.checkout_url)}
+    else
+      {:error, :stripe_not_configured} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Checkout Stripe ainda não está configurado. Defina STRIPE_SECRET_KEY."
+         )}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Não foi possível iniciar o checkout: #{inspect(reason)}")}
+
+      _ ->
+        {:noreply, push_navigate(socket, to: ~p"/login")}
+    end
   end
 
   def render(assigns) do
@@ -169,13 +197,16 @@ defmodule StreamixWeb.PlansLive do
                 </span>
               <% else %>
                 <%= if @current_scope do %>
-                  <span
+                  <button
+                    type="button"
                     id={"plan-cta-#{plan.slug}"}
-                    data-cta-state="manual"
-                    class="inline-flex items-center gap-2 rounded-xl bg-surface-hover px-4 py-2.5 text-sm font-semibold text-text-primary"
+                    phx-click="checkout"
+                    phx-value-plan_id={plan.id}
+                    data-cta-state="checkout"
+                    class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
                   >
-                    <.icon name="hero-clock" class="size-4" /> Disponível sob ativação
-                  </span>
+                    <.icon name="hero-credit-card" class="size-4" /> Assinar com Stripe
+                  </button>
                 <% else %>
                   <.link
                     id={"plan-cta-#{plan.slug}"}

@@ -24,7 +24,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    plan = Billing.get_plan!(id)
+    plan = Billing.get_plan!(id) |> Streamix.Repo.preload(:features)
     changeset = Plan.changeset(plan, %{})
 
     socket
@@ -121,6 +121,85 @@ defmodule StreamixWeb.Admin.PlanFormLive do
             <.input field={@form[:active]} type="checkbox" label="Ativo" />
           </div>
 
+          <fieldset class="rounded-lg border border-border bg-surface p-4 space-y-4">
+            <legend class="px-1 text-sm font-semibold text-text-primary">Features do plano</legend>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label class="flex items-center gap-2 text-sm text-text-secondary">
+                <input
+                  type="hidden"
+                  name="plan[features][global_catalog]"
+                  value="false"
+                />
+                <input
+                  type="checkbox"
+                  name="plan[features][global_catalog]"
+                  value="true"
+                  checked={feature_enabled?(@plan, "global_catalog", true)}
+                  class="rounded border-border bg-surface text-brand focus:ring-brand"
+                /> Catálogo global
+              </label>
+
+              <label class="flex items-center gap-2 text-sm text-text-secondary">
+                <input
+                  type="hidden"
+                  name="plan[features][ai_recommendations]"
+                  value="false"
+                />
+                <input
+                  type="checkbox"
+                  name="plan[features][ai_recommendations]"
+                  value="true"
+                  checked={feature_enabled?(@plan, "ai_recommendations", false)}
+                  class="rounded border-border bg-surface text-brand focus:ring-brand"
+                /> AI premium
+              </label>
+
+              <label class="flex items-center gap-2 text-sm text-text-secondary">
+                <input
+                  type="hidden"
+                  name="plan[features][watch_party]"
+                  value="false"
+                />
+                <input
+                  type="checkbox"
+                  name="plan[features][watch_party]"
+                  value="true"
+                  checked={feature_enabled?(@plan, "watch_party", false)}
+                  class="rounded border-border bg-surface text-brand focus:ring-brand"
+                /> Watch party
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-text-primary mb-1">
+                  Limite de providers
+                </label>
+                <input
+                  type="number"
+                  name="plan[features][max_providers]"
+                  value={feature_limit(@plan, "max_providers")}
+                  min="0"
+                  class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-text-primary mb-1">
+                  Streams simultâneos
+                </label>
+                <input
+                  type="number"
+                  name="plan[features][concurrent_streams]"
+                  value={feature_limit(@plan, "concurrent_streams")}
+                  min="0"
+                  class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+            </div>
+          </fieldset>
+
           <div class="flex items-center gap-3 pt-4">
             <.button type="submit" phx-disable-with="Salvando...">
               {if @live_action == :new, do: "Criar plano", else: "Salvar alteracoes"}
@@ -137,4 +216,22 @@ defmodule StreamixWeb.Admin.PlanFormLive do
     </div>
     """
   end
+
+  defp feature_enabled?(%Plan{features: features}, feature, default) when is_list(features) do
+    case Enum.find(features, &(&1.feature == feature)) do
+      nil -> default
+      plan_feature -> plan_feature.enabled
+    end
+  end
+
+  defp feature_enabled?(_plan, _feature, default), do: default
+
+  defp feature_limit(%Plan{features: features}, feature) when is_list(features) do
+    case Enum.find(features, &(&1.feature == feature)) do
+      nil -> nil
+      plan_feature -> plan_feature.limit
+    end
+  end
+
+  defp feature_limit(_plan, _feature), do: nil
 end

@@ -16,6 +16,7 @@ defmodule Streamix.Billing.Plan do
     field :active, :boolean, default: true
     field :grants_global_access, :boolean, default: true
 
+    has_many :features, Streamix.Billing.PlanFeature
     has_many :subscriptions, Streamix.Billing.Subscription
 
     timestamps(type: :utc_datetime)

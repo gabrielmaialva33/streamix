@@ -47,7 +47,14 @@ premium_plan =
     currency: "USD",
     billing_interval: "month",
     active: true,
-    grants_global_access: true
+    grants_global_access: true,
+    features: %{
+      global_catalog: true,
+      max_providers: 3,
+      concurrent_streams: 2,
+      ai_recommendations: true,
+      watch_party: true
+    }
   })
 
 IO.puts("✓ Billing plan ready: #{premium_plan.slug}")

@@ -76,6 +76,14 @@ config :streamix, :redis_url, get_env.("REDIS_URL") || "redis://localhost:6379"
 # Generate with: mix phx.gen.secret 32
 config :streamix, :provider_encryption_key, get_env.("PROVIDER_ENCRYPTION_KEY")
 
+# Stripe billing configuration.
+#
+# Self-service checkout is enabled when STRIPE_SECRET_KEY is present. Webhooks
+# require STRIPE_WEBHOOK_SECRET and should point to /api/billing/webhooks/stripe.
+config :streamix, :stripe,
+  secret_key: get_env.("STRIPE_SECRET_KEY"),
+  webhook_secret: get_env.("STRIPE_WEBHOOK_SECRET")
+
 # Global provider configuration (optional)
 # Set GLOBAL_PROVIDER_ENABLED=true to enable
 if get_env.("GLOBAL_PROVIDER_ENABLED") == "true" do

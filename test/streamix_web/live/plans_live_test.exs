@@ -86,7 +86,7 @@ defmodule StreamixWeb.PlansLiveTest do
       refute has_element?(view, "#plan-card-atual a[href='/register']")
     end
 
-    test "logged in users see a neutral activation CTA for non-current plans", %{
+    test "logged in users can start Stripe checkout for non-current plans", %{
       conn: conn,
       user: user
     } do
@@ -97,7 +97,7 @@ defmodule StreamixWeb.PlansLiveTest do
       {:ok, view, _html} = live(conn, ~p"/plans")
 
       assert has_element?(view, "#plan-badge-essencial[data-variant='neutral']")
-      assert has_element?(view, "#plan-cta-essencial[data-cta-state='manual']")
+      assert has_element?(view, "#plan-cta-essencial[data-cta-state='checkout']")
       refute has_element?(view, "#plan-card-essencial a[href='/register']")
     end
 
@@ -121,6 +121,24 @@ defmodule StreamixWeb.PlansLiveTest do
       assert has_element?(view, "#plan-badge-essencial[data-variant='neutral']")
       assert render(view) =~ plan.name
     end
+
+    test "shows a configuration error when Stripe is not configured", %{conn: conn, user: user} do
+      original = Application.get_env(:streamix, :stripe)
+      Application.put_env(:streamix, :stripe, secret_key: nil)
+      on_exit(fn -> restore_stripe_config(original) end)
+
+      _plan = plan_fixture(name: "Premium Stripe", slug: "premium-stripe")
+      _subscription = subscription_fixture(user, plan_fixture(name: "Atual", slug: "atual"))
+
+      {:ok, view, _html} = live(conn, ~p"/plans")
+
+      html =
+        view
+        |> element("#plan-cta-premium-stripe")
+        |> render_click()
+
+      assert html =~ "Checkout Stripe ainda não está configurado"
+    end
   end
 
   describe "billing plans" do
@@ -138,4 +156,7 @@ defmodule StreamixWeb.PlansLiveTest do
       assert Billing.list_active_plans() |> Enum.map(& &1.slug) == ["ativo"]
     end
   end
+
+  defp restore_stripe_config(nil), do: Application.delete_env(:streamix, :stripe)
+  defp restore_stripe_config(config), do: Application.put_env(:streamix, :stripe, config)
 end
