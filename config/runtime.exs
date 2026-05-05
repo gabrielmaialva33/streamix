@@ -232,15 +232,6 @@ case get_env.("STREAM_PROXY_BACKEND") do
   _ -> :ok
 end
 
-# Optional egress proxy in front of the provider. When set,
-# `Streamix.Iptv.Streaming.VodProxy` rewrites every upstream URL to
-# `<egress>/proxy?url=<encoded>` before opening a Finch connection.
-# The egress nginx (source.mahina.cloud) sits on a separate ASN and
-# follows the vauth chain itself — keeps the BEAM box's IP off the
-# provider's WAF radar. Empty string disables.
-config :streamix,
-  stream_proxy_egress_url: get_env.("STREAM_PROXY_EGRESS_URL") || ""
-
 config :streamix,
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
   stream_proxy_urls: stream_proxy_urls,

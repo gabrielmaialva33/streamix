@@ -69,15 +69,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   require Logger
 
-  # When set, every upstream HTTP request is routed through this URL's
-  # `/proxy?url=<encoded>` endpoint instead of going to the provider
-  # directly. The egress sits on a separate ASN — that's our shield
-  # against per-IP rate limits / bans on the BEAM box. The source nginx
-  # already follows the vauth → vauth → deliver redirect chain, honors
-  # `Range`, and forwards `206`s back, so we can skip the BEAM-side
-  # `RedirectResolver` entirely when this is on.
-  defp egress_base, do: Application.get_env(:streamix, :stream_proxy_egress_url, "")
-
   # XCIPTV/VLC user-agents are whitelisted by most IPTV providers; the
   # BEAM's default `Req/...` UA gets bounced by the WAF.
   @upstream_user_agent "VLC/3.0.20 LibVLC/3.0.20"
@@ -128,7 +119,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       started_at: System.monotonic_time(:millisecond)
     }
 
-    case resolve_initial_url(url) do
+    case resolve_chain(url) do
       {:ok, final_url} ->
         do_pipe(conn, final_url, state)
 
@@ -136,22 +127,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         Logger.warning("[VodProxy] resolve failed for #{sanitize(url)}: #{inspect(reason)}")
         StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
     end
-  end
-
-  # When an egress proxy is configured, the BEAM never talks to the
-  # provider directly — it just hands the original URL to the egress
-  # nginx, which follows the vauth chain itself. Skipping the BEAM-side
-  # resolver avoids a redundant chain walk and (more importantly) keeps
-  # the BEAM box's IP off the provider's WAF radar.
-  defp resolve_initial_url(url) do
-    case egress_base() do
-      "" -> resolve_chain(url)
-      base -> {:ok, build_egress_url(base, url)}
-    end
-  end
-
-  defp build_egress_url(base, original_url) do
-    "#{String.trim_trailing(base, "/")}/proxy?url=#{URI.encode_www_form(original_url)}"
   end
 
   defp resolve_chain(url) do
@@ -248,7 +223,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp retry_with_fresh_chain(conn, state) do
     Process.sleep(@retry_backoff_ms)
 
-    case resolve_initial_url(state.original_url) do
+    case resolve_chain(state.original_url) do
       {:ok, fresh_url} ->
         do_pipe(conn, fresh_url, state)
 
