@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.Movies do
   alias Streamix.Iptv.{
     Access,
     AdultFilter,
+    Content,
     Movie,
     MovieAsset,
     RankedSearch,
@@ -135,41 +136,7 @@ defmodule Streamix.Iptv.Movies do
   """
   @spec list_gindex(keyword()) :: [Movie.t()]
   def list_gindex(opts \\ []) do
-    limit = Keyword.get(opts, :limit, 100)
-    offset = Keyword.get(opts, :offset, 0)
-    search = Keyword.get(opts, :search)
-    year = Keyword.get(opts, :year)
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    query =
-      Movie
-      |> where([m], not is_nil(m.gindex_path))
-      |> order_by(desc: :year, asc: :name)
-
-    query =
-      if search && search != "" do
-        escaped = Helpers.escape_like(search)
-        search_term = "%#{escaped}%"
-        where(query, [m], ilike(m.name, ^search_term) or ilike(m.title, ^search_term))
-      else
-        query
-      end
-
-    query = if year, do: where(query, year: ^year), else: query
-
-    # Filter adult content (basic check on name)
-    query =
-      if show_adult do
-        query
-      else
-        where(query, [m], not ilike(m.name, "%xxx%") and not ilike(m.name, "%adult%"))
-      end
-
-    query
-    |> limit(^limit)
-    |> offset(^offset)
-    |> preload(:provider)
-    |> Repo.all()
+    Content.GindexMovies.list(opts)
   end
 
   @doc """
@@ -177,9 +144,7 @@ defmodule Streamix.Iptv.Movies do
   """
   @spec count_gindex() :: integer()
   def count_gindex do
-    Movie
-    |> where([m], not is_nil(m.gindex_path))
-    |> Repo.aggregate(:count)
+    Content.GindexMovies.count()
   end
 
   @doc """

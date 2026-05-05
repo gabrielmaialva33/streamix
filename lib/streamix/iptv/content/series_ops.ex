@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.SeriesOps do
   alias Streamix.Iptv.{
     Access,
     AdultFilter,
+    Content,
     Episode,
     Provider,
     RankedSearch,
@@ -44,28 +45,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec list_gindex_animes(keyword()) :: [Series.t()]
   def list_gindex_animes(opts \\ []) do
-    limit = Keyword.get(opts, :limit, 100)
-    offset = Keyword.get(opts, :offset, 0)
-    search = Keyword.get(opts, :search)
-
-    query =
-      Series
-      |> where([s], not is_nil(s.gindex_path))
-      |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
-      |> order_by(asc: :name)
-
-    query =
-      if search && search != "" do
-        escaped = Helpers.escape_like(search)
-        where(query, [s], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
-      else
-        query
-      end
-
-    query
-    |> limit(^limit)
-    |> offset(^offset)
-    |> Repo.all()
+    Content.GindexSeries.list_animes(opts)
   end
 
   @doc """
@@ -73,10 +53,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec count_gindex_animes() :: integer()
   def count_gindex_animes do
-    Series
-    |> where([s], not is_nil(s.gindex_path))
-    |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
-    |> Repo.aggregate(:count)
+    Content.GindexSeries.count_animes()
   end
 
   @doc """
@@ -85,13 +62,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_gindex_anime_with_seasons(integer()) :: Series.t() | nil
   def get_gindex_anime_with_seasons(id) do
-    Series
-    |> where(id: ^id)
-    |> where([s], not is_nil(s.gindex_path))
-    |> where([s], ilike(s.gindex_path, "%anime%") or ilike(s.gindex_path, "%Anime%"))
-    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
-    |> preload(:provider)
-    |> Repo.one()
+    Content.GindexSeries.get_anime_with_seasons(id)
   end
 
   # =============================================================================
@@ -108,28 +79,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec list_gindex(keyword()) :: [Series.t()]
   def list_gindex(opts \\ []) do
-    limit = Keyword.get(opts, :limit, 100)
-    offset = Keyword.get(opts, :offset, 0)
-    search = Keyword.get(opts, :search)
-
-    query =
-      Series
-      |> where([s], not is_nil(s.gindex_path))
-      |> where([s], not ilike(s.gindex_path, "%anime%") and not ilike(s.gindex_path, "%Anime%"))
-      |> order_by(desc: :year, asc: :name)
-
-    query =
-      if search && search != "" do
-        escaped = Helpers.escape_like(search)
-        where(query, [s], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
-      else
-        query
-      end
-
-    query
-    |> limit(^limit)
-    |> offset(^offset)
-    |> Repo.all()
+    Content.GindexSeries.list(opts)
   end
 
   @doc """
@@ -137,10 +87,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec count_gindex() :: integer()
   def count_gindex do
-    Series
-    |> where([s], not is_nil(s.gindex_path))
-    |> where([s], not ilike(s.gindex_path, "%anime%") and not ilike(s.gindex_path, "%Anime%"))
-    |> Repo.aggregate(:count)
+    Content.GindexSeries.count()
   end
 
   @doc """
@@ -149,12 +96,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_gindex_with_seasons(integer()) :: Series.t() | nil
   def get_gindex_with_seasons(id) do
-    Series
-    |> where(id: ^id)
-    |> where([s], not is_nil(s.gindex_path))
-    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
-    |> preload(:provider)
-    |> Repo.one()
+    Content.GindexSeries.get_with_seasons(id)
   end
 
   # =============================================================================
