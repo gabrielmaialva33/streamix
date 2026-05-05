@@ -61,9 +61,7 @@ defmodule Streamix.Application do
         Streamix.Iptv.Gindex.UrlCache,
         # Xtream circuit breaker (Netflix-style resilience)
         Streamix.Iptv.XtreamCircuitBreaker,
-        # Background provider-health sampler — keeps ETS warm so LV
-        # mounts don't block on the 4s upstream probe.
-        Streamix.Iptv.ProviderHealthMonitor,
+        maybe_provider_health_monitor_child(),
         # Stream multiplexer infrastructure (1 upstream → N downstream)
         {Registry, keys: :unique, name: Streamix.StreamRegistry},
         {Streamix.Iptv.StreamMultiplexerSupervisor, []},
@@ -73,7 +71,9 @@ defmodule Streamix.Application do
         StreamixWeb.Presence,
         # Start to serve requests, typically the last entry
         StreamixWeb.Endpoint
-      ] ++ Streamix.Queue.Supervisor.child_spec_if_enabled()
+      ]
+      |> List.flatten()
+      |> Kernel.++(Streamix.Queue.Supervisor.child_spec_if_enabled())
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -88,6 +88,18 @@ defmodule Streamix.Application do
     SingleFlight.setup()
 
     result
+  end
+
+  defp maybe_provider_health_monitor_child do
+    if Application.get_env(:streamix, :provider_health_monitor_enabled, true) do
+      [
+        # Background provider-health sampler keeps ETS warm so LV mounts
+        # don't block on the 4s upstream probe.
+        Streamix.Iptv.ProviderHealthMonitor
+      ]
+    else
+      []
+    end
   end
 
   defp init_providers do

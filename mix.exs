@@ -89,7 +89,7 @@ defmodule Streamix.MixProject do
       {:broadway, "~> 1.2"},
       {:broadway_rabbitmq, "~> 0.8"},
       # Override amqp_client to use latest version compatible with OTP 28
-      {:amqp, "~> 3.3", override: true},
+      {:amqp, "~> 4.1", override: true},
       {:rabbit_common, "~> 4.0", override: true},
       {:amqp_client, "~> 4.0", override: true},
       # Security Tools

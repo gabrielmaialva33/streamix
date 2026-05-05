@@ -1,6 +1,8 @@
 defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Streamix.Iptv.Streaming.RedirectResolver
 
   setup do
@@ -53,7 +55,9 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
     end
 
     test "non-2xx terminal status returns {:error, {:unexpected_status, code}}", %{base: base} do
-      assert {:error, {:unexpected_status, 500}} = RedirectResolver.resolve("#{base}/boom")
+      capture_log(fn ->
+        assert {:error, {:unexpected_status, 500}} = RedirectResolver.resolve("#{base}/boom")
+      end)
     end
 
     test "missing Location header on redirect returns :missing_location", %{base: base} do

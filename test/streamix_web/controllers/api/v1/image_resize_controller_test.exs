@@ -1,6 +1,8 @@
 defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
   use StreamixWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Plug.Conn
   alias StreamixWeb.Api.V1.ImageResizeController
 
@@ -47,13 +49,17 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
     test "returns 400 when the url scheme is unsafe (SSRF guard)" do
       # UrlValidator rejects `file://` — catches an obvious local file
       # read attempt before we ever open a socket.
-      conn = get(authed_conn(), "/api/v1/catalog/images/resize?url=file:///etc/passwd")
-      assert response(conn, 400) =~ "invalid url"
+      capture_log(fn ->
+        conn = get(authed_conn(), "/api/v1/catalog/images/resize?url=file:///etc/passwd")
+        assert response(conn, 400) =~ "invalid url"
+      end)
     end
 
     test "returns 400 when the url points to a private IP literal" do
-      conn = get(authed_conn(), "/api/v1/catalog/images/resize?url=http://127.0.0.1/x.jpg")
-      assert response(conn, 400) =~ "invalid url"
+      capture_log(fn ->
+        conn = get(authed_conn(), "/api/v1/catalog/images/resize?url=http://127.0.0.1/x.jpg")
+        assert response(conn, 400) =~ "invalid url"
+      end)
     end
 
     # A note on the happy path: hitting real origins from the test

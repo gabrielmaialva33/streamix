@@ -1,6 +1,8 @@
 defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Streamix.Iptv.XtreamCircuitBreaker
 
   setup do
@@ -18,9 +20,11 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
       provider_id = 456
 
       # Report 5 errors (threshold)
-      for _ <- 1..5 do
-        XtreamCircuitBreaker.report_error(provider_id, :server_error)
-      end
+      capture_log(fn ->
+        for _ <- 1..5 do
+          XtreamCircuitBreaker.report_error(provider_id, :server_error)
+        end
+      end)
 
       _ = :sys.get_state(XtreamCircuitBreaker)
 
@@ -32,9 +36,11 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
     test "returns remaining seconds when circuit is open" do
       provider_id = 789
 
-      for _ <- 1..5 do
-        XtreamCircuitBreaker.report_error(provider_id, :timeout)
-      end
+      capture_log(fn ->
+        for _ <- 1..5 do
+          XtreamCircuitBreaker.report_error(provider_id, :timeout)
+        end
+      end)
 
       _ = :sys.get_state(XtreamCircuitBreaker)
 
@@ -73,9 +79,11 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
     test "returns :open after threshold errors" do
       provider_id = 222
 
-      for _ <- 1..5 do
-        XtreamCircuitBreaker.report_error(provider_id, :server_error)
-      end
+      capture_log(fn ->
+        for _ <- 1..5 do
+          XtreamCircuitBreaker.report_error(provider_id, :server_error)
+        end
+      end)
 
       _ = :sys.get_state(XtreamCircuitBreaker)
 
@@ -106,9 +114,11 @@ defmodule Streamix.Iptv.XtreamCircuitBreakerTest do
       provider_id = 444
 
       # Open the circuit
-      for _ <- 1..5 do
-        XtreamCircuitBreaker.report_error(provider_id, :server_error)
-      end
+      capture_log(fn ->
+        for _ <- 1..5 do
+          XtreamCircuitBreaker.report_error(provider_id, :server_error)
+        end
+      end)
 
       _ = :sys.get_state(XtreamCircuitBreaker)
       assert :open = XtreamCircuitBreaker.get_state(provider_id)

@@ -3,6 +3,7 @@ defmodule StreamixWeb.Plugs.RateLimitTest do
   # (set to true for E2E tests) for this specific test.
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Plug.Conn
   import Plug.Test
 
@@ -32,9 +33,11 @@ defmodule StreamixWeb.Plugs.RateLimitTest do
     assert allowed_conn.halted == false
     assert get_resp_header(allowed_conn, "x-ratelimit-remaining") == ["0"]
 
-    denied_conn = RateLimit.call(conn_a, opts)
-    assert denied_conn.halted
-    assert denied_conn.status == 429
+    capture_log(fn ->
+      denied_conn = RateLimit.call(conn_a, opts)
+      assert denied_conn.halted
+      assert denied_conn.status == 429
+    end)
 
     other_ip_conn = RateLimit.call(conn_b, opts)
     assert other_ip_conn.halted == false

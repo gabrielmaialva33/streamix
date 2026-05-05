@@ -31,6 +31,10 @@ config :streamix, :session_secure, false
 # Disable rate limiting in tests to prevent flaky failures on repeated logins.
 config :streamix, :disable_rate_limit, true
 
+# The provider health sampler runs in its own process and periodically touches
+# the database. Disable it in tests so SQL sandbox ownership stays per-test.
+config :streamix, :provider_health_monitor_enabled, false
+
 # Tests still exercise the legacy 302-to-source-proxy flow. Pin the
 # backend to `:redirect` so `stream_controller_test.exs` keeps asserting
 # on the trusted-proxy redirect chain instead of trying to actually pump

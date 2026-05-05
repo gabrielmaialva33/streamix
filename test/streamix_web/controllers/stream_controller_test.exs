@@ -1,6 +1,7 @@
 defmodule StreamixWeb.StreamControllerTest do
   use StreamixWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog
   import Phoenix.ConnTest
 
   import Streamix.AccountsFixtures
@@ -56,16 +57,18 @@ defmodule StreamixWeb.StreamControllerTest do
       movie = movie_fixture(provider, %{stream_id: 12_345})
       token = StreamToken.sign_movie(movie.id, nil)
 
-      conn =
-        conn
-        |> put_req_header("x-api-key", "stream-test-key")
-        |> get("/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+      capture_log(fn ->
+        conn =
+          conn
+          |> put_req_header("x-api-key", "stream-test-key")
+          |> get("/api/stream/proxy?token=#{URI.encode_www_form(token)}")
 
-      # The request MUST NOT be rejected as subscription_required.
-      # Upstream resolve is expected to fail (bad_gateway) in the test setup,
-      # which is fine — past the auth gate is past the auth gate.
-      refute conn.status == 403
-      refute conn.resp_body =~ "Subscription required"
+        # The request MUST NOT be rejected as subscription_required.
+        # Upstream resolve is expected to fail (bad_gateway) in the test setup,
+        # which is fine — past the auth gate is past the auth gate.
+        refute conn.status == 403
+        refute conn.resp_body =~ "Subscription required"
+      end)
     end
 
     test "same token WITHOUT X-API-Key still returns subscription_required", %{conn: conn} do
@@ -135,12 +138,14 @@ defmodule StreamixWeb.StreamControllerTest do
       movie = movie_fixture(provider, %{stream_id: 12_348})
       token = StreamToken.sign_movie(movie.id, nil, bypass_subscription: true)
 
-      conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+      capture_log(fn ->
+        conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
 
-      # Past the subscription gate — upstream resolve fails (bad_gateway)
-      # but that's expected in the test harness.
-      refute conn.status == 403
-      refute conn.resp_body =~ "Subscription required"
+        # Past the subscription gate — upstream resolve fails (bad_gateway)
+        # but that's expected in the test harness.
+        refute conn.status == 403
+        refute conn.resp_body =~ "Subscription required"
+      end)
     end
 
     test "token WITHOUT bypass flag still requires subscription (no regression)", %{conn: conn} do

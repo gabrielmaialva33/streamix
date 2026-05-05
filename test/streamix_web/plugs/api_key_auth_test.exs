@@ -3,6 +3,8 @@ defmodule StreamixWeb.Plugs.ApiKeyAuthTest do
   # each other when swapping the configured key list.
   use StreamixWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias StreamixWeb.Plugs.ApiKeyAuth
 
   @key "test-api-key-xyz"
@@ -31,13 +33,15 @@ defmodule StreamixWeb.Plugs.ApiKeyAuthTest do
     end
 
     test "rejects a bogus header" do
-      conn =
-        build_conn(:get, "/any")
-        |> Plug.Conn.put_req_header("x-api-key", "wrong")
-        |> ApiKeyAuth.call([])
+      capture_log(fn ->
+        conn =
+          build_conn(:get, "/any")
+          |> Plug.Conn.put_req_header("x-api-key", "wrong")
+          |> ApiKeyAuth.call([])
 
-      assert conn.halted
-      assert conn.status == 401
+        assert conn.halted
+        assert conn.status == 401
+      end)
     end
   end
 
@@ -54,12 +58,14 @@ defmodule StreamixWeb.Plugs.ApiKeyAuthTest do
     end
 
     test "rejects a bogus ?api_key= parameter" do
-      conn =
-        build_conn(:get, "/any?api_key=wrong")
-        |> ApiKeyAuth.call([])
+      capture_log(fn ->
+        conn =
+          build_conn(:get, "/any?api_key=wrong")
+          |> ApiKeyAuth.call([])
 
-      assert conn.halted
-      assert conn.status == 401
+        assert conn.halted
+        assert conn.status == 401
+      end)
     end
 
     test "treats an empty ?api_key= as missing, not invalid" do

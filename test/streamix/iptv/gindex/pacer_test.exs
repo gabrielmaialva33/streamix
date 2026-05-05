@@ -3,6 +3,8 @@ defmodule Streamix.Iptv.Gindex.PacerTest do
   # concurrently or one test's acquisitions leak into the next.
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Streamix.Iptv.Gindex.Pacer
 
   setup do
@@ -45,7 +47,9 @@ defmodule Streamix.Iptv.Gindex.PacerTest do
 
       # Second call in the same second must wait; we give it 0ms so it
       # bails out with :timeout instead of blocking the test.
-      assert Pacer.acquire(:gdrive, 0) == {:error, :timeout}
+      capture_log(fn ->
+        assert Pacer.acquire(:gdrive, 0) == {:error, :timeout}
+      end)
     end
   end
 end
