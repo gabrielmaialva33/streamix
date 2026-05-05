@@ -125,7 +125,7 @@ defmodule Streamix.Iptv.XtreamClient do
       case Req.get(target,
              receive_timeout: :timer.seconds(120),
              finch: Streamix.Finch,
-             headers: [{"user-agent", "xciptv-v6.0.0"}],
+             headers: [{"user-agent", "XCIPTV-v6.0.0"}],
              decode_body: false
            ) do
         {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
@@ -185,7 +185,7 @@ defmodule Streamix.Iptv.XtreamClient do
     case Req.get(url,
            receive_timeout: @timeout,
            finch: Streamix.Finch,
-           headers: [{"user-agent", "xciptv-v6.0.0"}]
+           headers: [{"user-agent", "XCIPTV-v6.0.0"}]
          ) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
         {:ok, body}
