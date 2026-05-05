@@ -33,7 +33,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   """
 
   alias Plug.Conn
-  alias Streamix.Iptv.Streaming.{RedirectResolver, UpstreamPump}
+  alias Streamix.Iptv.Streaming.{FallbackVideo, RedirectResolver, UpstreamPump}
   alias StreamixWeb.StreamErrors
 
   require Logger
@@ -99,7 +99,19 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
       {:error, reason} ->
         Logger.warning("[VodProxy] resolve failed for #{sanitize(url)}: #{inspect(reason)}")
-        StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+        serve_fallback_or_halt(conn, reason)
+    end
+  end
+
+  defp serve_fallback_or_halt(conn, reason) do
+    code = StreamErrors.code_from_reason(reason)
+    category = FallbackVideo.category_from_reason(reason)
+
+    case FallbackVideo.serve(conn, category) do
+      %Conn{state: :file} = served -> served
+      %Conn{state: :sent} = served -> served
+      %Conn{state: :chunked} = served -> served
+      _ -> StreamErrors.halt(conn, code)
     end
   end
 
@@ -151,7 +163,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   defp handle_attempt_result({:error, :status_terminal, status}, conn, _state) do
     Logger.warning("[VodProxy] terminal upstream status #{status}")
-    StreamErrors.halt(conn, StreamErrors.code_from_reason({:unexpected_status, status}))
+    serve_fallback_or_halt(conn, {:unexpected_status, status})
   end
 
   defp handle_attempt_result({:error, :status_no_partial, status}, conn, _state) do
@@ -169,7 +181,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       retry_with_fresh_chain(conn, %{state | retry_count: state.retry_count + 1})
     else
       Logger.warning("[VodProxy] upstream pre-flight failed: #{inspect(reason)}")
-      StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+      serve_fallback_or_halt(conn, reason)
     end
   end
 
