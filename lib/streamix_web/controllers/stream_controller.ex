@@ -2,21 +2,11 @@ defmodule StreamixWeb.StreamController do
   @moduledoc """
   Controller for proxying IPTV streams.
 
-  Bytes are pumped through the BEAM via `Streamix.Iptv.Streaming.VodProxy`
-  using `Finch.stream/5` + `Plug.Conn.chunk/2`. This gives us:
-
-    * connection reuse via Finch's per-host keepalive pool — subsequent
-      Range requests from the same player session avoid the cold TCP
-      handshake + vauth-chain re-walk, fixing the "10s seek" UX,
-    * mid-stream upstream re-resolution with byte-offset Range resume,
-      so a transient 5xx from the provider degrades into a brief stall
-      instead of a hard error toast,
-    * server-side credential containment — `/movie/USER/PASS/...` URLs
-      stay inside the BEAM and never appear in the browser network tab.
-
-  The legacy 302-to-source-proxy code lives next door (`resolve_and_redirect_to_proxy/2`)
-  and is kept as a fallback so non-Tuliprox flows can be exercised
-  during incidents.
+  Default backend is `Streamix.Iptv.Streaming.VodProxy` which pumps
+  upstream bytes through the BEAM via `Finch.stream/5` +
+  `Plug.Conn.chunk/2`. Set `STREAM_PROXY_BACKEND=redirect` to fall
+  back to the 302-to-source-proxy flow handled by
+  `resolve_and_redirect_to_proxy/2` below.
   """
   use StreamixWeb, :controller
 
@@ -63,13 +53,6 @@ defmodule StreamixWeb.StreamController do
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
-  # Default path: pipe upstream bytes through the BEAM. See
-  # `VodProxy` for the why/how (connection reuse + Range resume).
-  #
-  # Operators can flip back to the legacy 302-to-source-proxy flow at
-  # runtime by setting `STREAM_PROXY_BACKEND=redirect` — the env knob
-  # exists so we can yank the BEAM out of the data path during an
-  # incident without redeploying.
   defp stream_by_type(conn, url, _type, _meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)

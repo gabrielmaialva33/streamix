@@ -2,55 +2,25 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   @moduledoc """
   BEAM-side reverse proxy for IPTV VOD/Live streams.
 
-  ## Why BEAM-side proxy?
+  Pumps upstream bytes into a `Plug.Conn` via `Finch.stream/5` +
+  `Plug.Conn.chunk/2`. Provider credentials stay server-side, the
+  Finch keepalive pool reuses TCP between Range requests, and a
+  mid-stream upstream failure is recovered with a Range-aware retry
+  instead of erroring the player out.
 
-  The previous architecture redirected the player to a separate nginx
-  reverse proxy (`source.mahina.cloud` or `tuliprox.mahina.cloud`)
-  with a 302. nginx then opened a fresh TCP connection upstream for
-  every Range request the player issued. This was particularly cruel
-  on **seek**: each seek triggered a full vauth chain re-walk, a cold
-  TCP handshake, and (in the Tuliprox + ring-buffer case) a multi-second
-  buffer fill before the first byte made it back to the client.
-
-  Streaming through the BEAM gives us:
-
-    * **Connection reuse** — `Finch` maintains a per-`{scheme,host,port}`
-      keepalive pool. A second Range request from the same player session
-      reuses the existing TCP socket, skipping the handshake + vauth
-      chain on subsequent seeks.
-    * **Mid-stream upstream re-resolution with byte offset** — when the
-      upstream connection drops or returns 5xx after we've already
-      streamed bytes, the proxy re-walks the vauth chain and resumes
-      from the byte offset already sent (`Range: bytes=N-`). Player sees
-      a small stall instead of a hard error toast. If the new upstream
-      ignores the Range and returns 200 instead of 206, we abort — sending
-      restarted bytes from offset 0 would corrupt the video.
-    * **Header sanitization** — provider credentials never leave the BEAM.
-      The 302 model exposed `/movie/USER/PASS/X.mp4` URLs straight to the
-      browser; here the upstream URL stays server-side.
-
-  Trade-off: every byte streamed to a player flows through a BEAM
-  process. At 5 Mbps × 100 concurrent viewers that's 500 Mbps. Make sure
-  the host has the bandwidth before scaling viewers — Finch pool is
-  configured for high concurrency in `Streamix.Application`.
-
-  ## Patterns borrowed from Tuliprox (Rust IPTV proxy)
-
-  Studying the upstream Tuliprox implementation surfaced a handful of
-  invariants this module needs to honor:
+  ## Invariants
 
     * `Connection: close` is sent to the provider so it releases its
-      slot when the stream ends — pooled idle connections often get
-      counted against a `max_connections=1` quota and trigger 509s.
-    * Status codes are bucketed before deciding to retry: 4xx is treated
-      as terminal (creds bad, channel gone), 5xx + I/O errors are
-      transient and retried within a 5 s budget at most 5 attempts.
-    * On a mid-stream reconnect we *must* re-issue the request with
-      `Range: bytes=N-`. If the upstream answers 200 instead of 206, it
-      restarted from byte 0 — abort to avoid feeding corrupt data to the
+      slot when the stream ends — pooled idle connections trip
+      `max_connections=1` quotas and trigger 509s.
+    * 4xx is terminal (creds bad, channel gone). 5xx + I/O errors
+      are transient and retried within a 5 s budget, at most 5
+      attempts, 250 ms backoff.
+    * A mid-stream retry re-issues the request with
+      `Range: bytes=N-`. If the upstream answers 200 instead of 206
+      we abort — restarted bytes from offset 0 would corrupt the
       decoder.
-    * Retry happens only for media streams, never for short request
-      bodies (headers small enough to be re-sent without state).
+    * Retry only fires for media streams, never for short responses.
 
   ## Flow
 
@@ -58,9 +28,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         → StreamController.proxy/2
         → StreamToken.verify_and_get_url/2 — yields the upstream URL
         → VodProxy.pipe(conn, upstream_url)
-        → RedirectResolver.resolve/2 — walks the vauth → vauth → deliver
-        → Finch.stream/5 — pipes bytes directly into Plug.Conn.chunk/2
-        → on upstream error mid-stream: re-resolve, Range-resume
+        → RedirectResolver.resolve/2 — walks the vauth → deliver chain
+        → Finch.stream/5 — pipes bytes into Plug.Conn.chunk/2
   """
 
   alias Plug.Conn
@@ -381,10 +350,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     base = [
       {"user-agent", @upstream_user_agent},
       {"accept", "*/*"},
-      # Force `Connection: close` so the provider releases its slot when
-      # the stream finishes. Borrowed from Tuliprox — pooled idle
-      # connections sometimes get counted against `max_connections=1`
-      # quotas and trigger 509 storms.
+      # `Connection: close` — pooled idle connections trip
+      # `max_connections=1` quotas and trigger 509 storms.
       {"connection", "close"}
     ]
 

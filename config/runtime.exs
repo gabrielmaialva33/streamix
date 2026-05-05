@@ -235,13 +235,6 @@ end
 config :streamix,
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
   stream_proxy_urls: stream_proxy_urls,
-  # Tuliprox is the new source-of-truth for IPTV catalog + reverse-proxy
-  # streaming. When set, `StreamixWeb.StreamController` issues 302
-  # redirects directly to this base URL and skips the legacy
-  # `RedirectResolver` chain (Tuliprox handles the upstream chain
-  # internally with retry+buffer, so there's nothing for the BEAM to
-  # walk). Leave unset to keep the legacy source.mahina.cloud flow.
-
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
   imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.cloud",
   image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud",
