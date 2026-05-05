@@ -81,6 +81,10 @@ defmodule Streamix.Application do
     # Initialize providers after supervisor starts
     init_providers()
 
+    # Bootstrap the GIndex single-flight ETS table. Public, named, no
+    # GenServer needed — the table lives for the life of the BEAM node.
+    Streamix.Iptv.Gindex.SingleFlight.setup()
+
     result
   end
 

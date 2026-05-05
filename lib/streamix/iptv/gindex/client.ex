@@ -27,8 +27,16 @@ defmodule Streamix.Iptv.Gindex.Client do
   # 2s base × 3 tries (2s + 4s + 8s = ~14s max) is aggressive enough to
   # recover on the same burst but lets the scraper skip ahead instead of
   # starving the rest of the catalog. 429/503 use the same ladder.
-  @rate_limit_base_delay :timer.seconds(2)
-  @max_rate_limit_retries 3
+  # Cooldown observed on the upstream Cloudflare Worker: a paginated
+  # token issued by page N requires ~30s before page N+1 succeeds.
+  # The previous 2s/4s/8s ladder retried while the token was still in
+  # cooldown, so every attempt burned the token without giving the
+  # worker time to recover. 30s base + exponential keeps the first
+  # retry at the cooldown boundary; later retries fan out to 60s, 120s,
+  # 240s — total worst-case ~8 min per page, which is fine for a
+  # background sync.
+  @rate_limit_base_delay :timer.seconds(30)
+  @max_rate_limit_retries 4
 
   @doc """
   Lists the contents of a folder in the GIndex (single page).
@@ -106,9 +114,20 @@ defmodule Streamix.Iptv.Gindex.Client do
   @doc """
   Lists ALL contents of a folder using a specific base URL.
   GIndex pagination requires BOTH page_token AND page_index to be incremented.
+
+  Single-flight on `{base_url, path}`: concurrent callers requesting the
+  same listing block on the leader's result instead of opening parallel
+  paginated walks against the same upstream. Without this, two scan
+  roots (or a re-trigger before the first finished) hammer the same
+  Cloudflare Worker token bucket and cause the cascading 500s we saw in
+  production.
   """
   def list_folder_all(base_url, path) when is_binary(base_url) do
-    list_folder_paginated(base_url, path, nil, 0, [])
+    key = {:list_folder_all, base_url, path}
+
+    Streamix.Iptv.Gindex.SingleFlight.execute(key, fn ->
+      list_folder_paginated(base_url, path, nil, 0, [])
+    end)
   end
 
   defp list_folder_paginated(base_url, path, page_token, page_index, acc) do

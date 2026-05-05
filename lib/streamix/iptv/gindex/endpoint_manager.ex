@@ -24,15 +24,22 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   # matters for the rate-limit story: the upstream Cloudflare Worker
   # seems to throttle per-hostname, so spreading concurrent scanners
   # across the pool buys roughly triple the effective request budget.
+  # Priority 1 is the only mirror serving paginated listings reliably.
+  # The other two return HTTP 500 on every page beyond index 0
+  # (`TypeError: Cannot read properties of undefined (reading 'map')`),
+  # which is a bug in their deployed worker.js — the `data.files`
+  # array is null when the upstream Drive folder is too big to fit
+  # in a single response. Promote the healthy mirror; HealthTracker
+  # will recycle the others if/when their owners ship a fix.
   @default_endpoints [
     %{
       name: :primary,
-      url: "https://animezey16082023.animezey16082023.workers.dev",
+      url: "https://1.animezey23112022.workers.dev",
       priority: 1
     },
     %{
-      name: :mirror_23112022,
-      url: "https://1.animezey23112022.workers.dev",
+      name: :mirror_animezey16082023,
+      url: "https://animezey16082023.animezey16082023.workers.dev",
       priority: 2
     },
     %{

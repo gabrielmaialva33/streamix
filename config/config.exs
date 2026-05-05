@@ -108,6 +108,7 @@ config :streamix, Oban,
   queues: [
     default: 10,
     sync: 3,
+    billing: 1,
     series_details: 2,
     ai: 1,
     # GIndex ingestion: a small dispatcher queue that just enqueues work,
@@ -119,7 +120,11 @@ config :streamix, Oban,
     # "TypeError: Cannot read ...map" 500 storm we hit when four
     # scanners pounded a single host.
     gindex_dispatch: 1,
-    gindex_scan: 3,
+    # Concurrency 2 (down from 3): the upstream Cloudflare Worker token
+    # cooldown is ~30s per paginated walk; running more in parallel
+    # only saturates the worker faster. SingleFlight already coalesces
+    # same-path retries, so this caps parallel *distinct* root scans.
+    gindex_scan: 2,
     # TMDB enrichment for gindex rows. Concurrency of 3 matches the
     # pool of 3 tokens (round-robin) so each worker runs on its own
     # bucket and nobody blocks each other on 429s.
@@ -156,7 +161,10 @@ config :streamix, Oban,
        # owning Oban jobs no longer exist (container restarts mid-run,
        # cancelled jobs, etc). Every 10 minutes is cheap — a single
        # indexed query per check.
-       {"*/10 * * * *", Streamix.Workers.SyncWatchdogWorker}
+       {"*/10 * * * *", Streamix.Workers.SyncWatchdogWorker},
+       # Reconcile Stripe subscriptions daily so missed/out-of-order
+       # webhooks do not leave local access stale.
+       {"30 1 * * *", Streamix.Workers.ReconcileStripeSubscriptionsWorker}
      ]}
   ]
 
