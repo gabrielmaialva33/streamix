@@ -20,6 +20,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
   require Logger
 
   alias Streamix.Iptv.Gindex.{Client, Parser}
+  alias Streamix.Iptv.Gindex.Scraper.{Categories, Seasons}
 
   # Base delay between requests to respect Cloudflare Workers rate limits
   # Free plan: 1,000 req/min but GIndex makes internal subrequests to Google Drive
@@ -83,15 +84,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
         categories =
           items
           |> Enum.filter(&(&1.type == :folder))
-          |> Enum.map(fn item ->
-            count = extract_category_count(item.name)
-
-            %{
-              name: clean_category_name(item.name),
-              path: item.path,
-              count: count
-            }
-          end)
+          |> Enum.map(&Categories.from_folder/1)
 
         {:ok, categories}
 
@@ -629,19 +622,6 @@ defmodule Streamix.Iptv.Gindex.Scraper do
     }
   end
 
-  defp extract_category_count(name) do
-    case Regex.run(~r/\((\d+)\)$/, name) do
-      [_, count] -> String.to_integer(count)
-      nil -> nil
-    end
-  end
-
-  defp clean_category_name(name) do
-    name
-    |> String.replace(~r/\s*\(\d+\)$/, "")
-    |> String.trim()
-  end
-
   # =============================================================================
   # Series Helper Functions
   # =============================================================================
@@ -662,18 +642,7 @@ defmodule Streamix.Iptv.Gindex.Scraper do
     * `Volume 1`, `Vol. 1`, `Vol 1` — batches that label seasons this way
   """
   @spec season_folder?(%{name: String.t()}) :: boolean()
-  def season_folder?(folder) do
-    name = folder.name
-
-    Regex.match?(~r/^S\d{1,2}$/i, name) or
-      Regex.match?(~r/^Season\s*\d{1,2}$/i, name) or
-      Regex.match?(~r/\.S\d{1,2}\./i, name) or
-      Regex.match?(~r/S\d{1,2}[^a-zA-Z]/i, name) or
-      Regex.match?(~r/^Temporada\s*\d{1,2}\b/iu, name) or
-      Regex.match?(~r/^\d{1,2}ª?\s*Temporada\b/iu, name) or
-      Regex.match?(~r/^T\d{1,2}\b/i, name) or
-      Regex.match?(~r/^(Vol(?:ume|\.)?)\s*\d{1,2}\b/i, name)
-  end
+  def season_folder?(folder), do: Seasons.season_folder?(folder)
 
   # Check season subfolders for episodes (handles nested release folders)
   defp check_season_subfolders(base_url, items, season_number) do
