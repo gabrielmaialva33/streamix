@@ -146,6 +146,57 @@ defmodule Streamix.Iptv.XtreamClient do
     end)
   end
 
+  @doc """
+  Fetches the **full** catalog as an M3U Plus playlist via `/get.php`.
+
+  This is the same endpoint real Xtream client apps (XCIPTV, TiviMate,
+  IPTV Smarters) hit on first launch. One request returns every live
+  channel + every movie + every episode of every series, all flattened
+  into `#EXTINF` rows. Typical size 5-50 MB.
+
+  Why this matters: the legacy `get_live_streams` / `get_vod_streams` /
+  `get_series` / `get_series_info × N` ladder hammers the upstream with
+  thousands of requests, which is what caused production to be IP-banned
+  by `cb.chokitecnologia.com` after a single sync. One M3U pull at boot
+  keeps us under the provider's `max_connections` budget.
+
+  Returns `{:ok, raw_m3u_body}` on success. Body parsing is the parser's
+  job — we hand back raw bytes so the caller can stream it.
+  """
+  def get_m3u_plus(url, username, password) do
+    base = String.trim_trailing(url, "/")
+
+    target =
+      "#{base}/get.php?username=#{URI.encode_www_form(username)}" <>
+        "&password=#{URI.encode_www_form(password)}&type=m3u_plus&output=ts"
+
+    provider_id = :erlang.phash2({url, username})
+
+    with_circuit_breaker(provider_id, "get_m3u_plus", fn ->
+      case Req.get(target,
+             receive_timeout: :timer.seconds(180),
+             finch: Streamix.Finch,
+             headers: [{"user-agent", "XCIPTV-v6.0.0"}],
+             decode_body: false
+           ) do
+        {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
+          {:ok, body}
+
+        {:ok, %{status: 200}} ->
+          {:error, :empty_m3u}
+
+        {:ok, %{status: status}} ->
+          {:error, {:http_error, status}}
+
+        {:error, %Req.TransportError{reason: reason}} ->
+          {:error, {:transport_error, reason}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end)
+  end
+
   # ============================================================================
   # Stream URLs
   # ============================================================================
