@@ -196,6 +196,11 @@ defmodule Streamix.Cache do
   def epg_now_key(provider_id, epg_channel_id),
     do: "epg:now:#{provider_id}:#{epg_channel_id}"
 
+  @doc "Cache key for the currently airing EPG program for a channel (batch lookups)"
+  @spec epg_current_key(integer(), String.t()) :: String.t()
+  def epg_current_key(provider_id, epg_channel_id),
+    do: "epg:current:#{provider_id}:#{epg_channel_id}"
+
   @doc "Cache key for TMDB movie metadata"
   @spec tmdb_movie_key(integer() | String.t()) :: String.t()
   def tmdb_movie_key(tmdb_id), do: "tmdb:movie:#{tmdb_id}"

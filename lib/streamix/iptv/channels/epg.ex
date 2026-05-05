@@ -73,28 +73,59 @@ defmodule Streamix.Iptv.Epg do
 
   @doc """
   Gets the current program for multiple channels at once.
-  Efficient batch query for channel listings.
-  Returns a map of epg_channel_id => program.
+
+  Granular per-id cache (`Cache.epg_current_key/2`, TTL = #{@epg_now_ttl}s) — DB
+  is hit only for cache misses, so reused channels across screens/scrolls
+  resolve in O(1). Returns a map of `external_id => program | nil`.
   """
   def get_current_programs_batch(provider_id, epg_channel_external_ids)
       when is_list(epg_channel_external_ids) do
-    # Filter out nil values
-    external_ids = Enum.filter(epg_channel_external_ids, & &1)
+    external_ids = Enum.uniq(Enum.filter(epg_channel_external_ids, & &1))
 
     if Enum.empty?(external_ids) do
       %{}
     else
-      now = DateTime.utc_now()
+      {hits, misses} = lookup_cached_programs(provider_id, external_ids)
 
-      EpgProgram
-      |> join(:inner, [p], ec in EpgChannel, on: p.epg_channel_id == ec.id)
-      |> where([_p, ec], ec.provider_id == ^provider_id)
-      |> where([_p, ec], ec.external_id in ^external_ids)
-      |> where([p], p.start_time <= ^now and p.end_time > ^now)
-      |> select([p, ec], {ec.external_id, p})
-      |> Repo.all()
-      |> Map.new()
+      fresh =
+        if Enum.empty?(misses), do: %{}, else: fetch_current_programs(provider_id, misses)
+
+      cache_current_programs(provider_id, misses, fresh)
+
+      Map.merge(hits, fresh)
     end
+  end
+
+  defp lookup_cached_programs(provider_id, external_ids) do
+    Enum.reduce(external_ids, {%{}, []}, fn id, {hits, misses} ->
+      case Cache.get(Cache.epg_current_key(provider_id, id)) do
+        nil -> {hits, [id | misses]}
+        :__epg_current_miss__ -> {Map.put(hits, id, nil), misses}
+        program -> {Map.put(hits, id, program), misses}
+      end
+    end)
+  end
+
+  defp fetch_current_programs(provider_id, external_ids) do
+    now = DateTime.utc_now()
+
+    EpgProgram
+    |> join(:inner, [p], ec in EpgChannel, on: p.epg_channel_id == ec.id)
+    |> where([_p, ec], ec.provider_id == ^provider_id)
+    |> where([_p, ec], ec.external_id in ^external_ids)
+    |> where([p], p.start_time <= ^now and p.end_time > ^now)
+    |> select([p, ec], {ec.external_id, p})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp cache_current_programs(provider_id, external_ids, fresh) do
+    Enum.each(external_ids, fn id ->
+      key = Cache.epg_current_key(provider_id, id)
+      # Negative caching keeps cold channels off the DB while still returning nil.
+      value = Map.get(fresh, id) || :__epg_current_miss__
+      Cache.set(key, value, @epg_now_ttl)
+    end)
   end
 
   @doc """
