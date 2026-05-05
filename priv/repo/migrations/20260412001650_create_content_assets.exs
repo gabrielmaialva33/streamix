@@ -13,6 +13,10 @@ defmodule Streamix.Repo.Migrations.CreateContentAssets do
 
     create index(:movie_assets, [:movie_id])
 
+    create unique_index(:movie_assets, [:movie_id, :asset_type, :url],
+             name: :movie_assets_movie_id_type_url_index
+           )
+
     execute(
       "ALTER TABLE movie_assets ADD CONSTRAINT movie_assets_type_check CHECK (asset_type IN ('poster', 'backdrop', 'image', 'icon'))",
       "ALTER TABLE movie_assets DROP CONSTRAINT IF EXISTS movie_assets_type_check"
@@ -29,6 +33,10 @@ defmodule Streamix.Repo.Migrations.CreateContentAssets do
 
     create index(:series_assets, [:series_id])
 
+    create unique_index(:series_assets, [:series_id, :asset_type, :url],
+             name: :series_assets_series_id_type_url_index
+           )
+
     execute(
       "ALTER TABLE series_assets ADD CONSTRAINT series_assets_type_check CHECK (asset_type IN ('poster', 'backdrop', 'image', 'cover'))",
       "ALTER TABLE series_assets DROP CONSTRAINT IF EXISTS series_assets_type_check"
@@ -44,6 +52,10 @@ defmodule Streamix.Repo.Migrations.CreateContentAssets do
     end
 
     create index(:episode_assets, [:episode_id])
+
+    create unique_index(:episode_assets, [:episode_id, :asset_type, :url],
+             name: :episode_assets_episode_id_type_url_index
+           )
 
     execute(
       "ALTER TABLE episode_assets ADD CONSTRAINT episode_assets_type_check CHECK (asset_type IN ('cover', 'still'))",

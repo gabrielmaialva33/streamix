@@ -12,6 +12,8 @@ defmodule Streamix.Repo.Migrations.CreateEpgPrograms do
       add :category, :string
       add :icon, :text
       add :lang, :string, size: 10
+      add :sub_title, :string
+      add :episode_num, :string
 
       timestamps(type: :utc_datetime)
     end

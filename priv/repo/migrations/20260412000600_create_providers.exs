@@ -7,6 +7,7 @@ defmodule Streamix.Repo.Migrations.CreateProviders do
       add :url, :string, null: false
       add :username, :string
       add :password, :string
+      add :urls, {:array, :string}, default: [], null: false
       add :is_active, :boolean, default: true, null: false
       add :sync_status, :string, default: "idle"
       add :visibility, :string, default: "private", null: false

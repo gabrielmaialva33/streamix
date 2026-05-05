@@ -1,4 +1,4 @@
-defmodule Streamix.AccountsAdminTest do
+defmodule Streamix.Accounts.AdminTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Accounts

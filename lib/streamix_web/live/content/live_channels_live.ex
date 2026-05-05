@@ -188,39 +188,9 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   def handle_event("refresh_epg", %{"channel_ids" => channel_ids}, socket)
       when is_list(channel_ids) do
     provider = socket.assigns.provider
+    socket = refresh_epg_channels(socket, provider, channel_ids)
 
-    if is_nil(provider) or channel_ids == [] do
-      {:noreply, socket}
-    else
-      ids =
-        channel_ids
-        |> Enum.map(&parse_integer_param/1)
-        |> Enum.filter(&is_integer/1)
-        |> Enum.take(@per_page)
-
-      socket =
-        case ids do
-          [] ->
-            socket
-
-          ids ->
-            programs = Epg.current_programs_for_channels(provider.id, ids)
-
-            ids
-            |> Enum.reduce(socket, fn channel_id, acc ->
-              case Iptv.get_live_channel(channel_id) do
-                nil ->
-                  acc
-
-                channel ->
-                  current = Map.get(programs, to_string(channel_id))
-                  stream_insert(acc, :channels, Map.put(channel, :current_program, current))
-              end
-            end)
-        end
-
-      {:noreply, socket}
-    end
+    {:noreply, socket}
   end
 
   def handle_event("refresh_epg", _, socket), do: {:noreply, socket}
@@ -233,6 +203,37 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
      socket
      |> assign(provider: %{provider | sync_status: "pending"})
      |> put_flash(:info, "Sincronização iniciada")}
+  end
+
+  defp refresh_epg_channels(socket, nil, _channel_ids), do: socket
+  defp refresh_epg_channels(socket, _provider, []), do: socket
+
+  defp refresh_epg_channels(socket, provider, channel_ids) do
+    ids =
+      channel_ids
+      |> Enum.map(&parse_integer_param/1)
+      |> Enum.filter(&is_integer/1)
+      |> Enum.take(@per_page)
+
+    refresh_epg_channels_by_id(socket, provider, ids)
+  end
+
+  defp refresh_epg_channels_by_id(socket, _provider, []), do: socket
+
+  defp refresh_epg_channels_by_id(socket, provider, ids) do
+    programs = Epg.current_programs_for_channels(provider.id, ids)
+    Enum.reduce(ids, socket, &refresh_epg_channel(&1, &2, programs))
+  end
+
+  defp refresh_epg_channel(channel_id, socket, programs) do
+    case Iptv.get_live_channel(channel_id) do
+      nil ->
+        socket
+
+      channel ->
+        current = Map.get(programs, to_string(channel_id))
+        stream_insert(socket, :channels, Map.put(channel, :current_program, current))
+    end
   end
 
   def handle_info({:sync_status, %{status: status} = payload}, socket) do

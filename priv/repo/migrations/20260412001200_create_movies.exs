@@ -20,6 +20,9 @@ defmodule Streamix.Repo.Migrations.CreateMovies do
       add :gindex_path, :text
       add :gindex_url_cached, :text
       add :gindex_url_expires_at, :utc_datetime
+      add :tmdb_searched_at, :utc_datetime
+      add :tmdb_miss_reason, :string
+      add :track_metadata, :jsonb
       add :provider_id, references(:providers, on_delete: :delete_all), null: false
       add :catalog_item_id, :bigint, null: false
 
@@ -32,6 +35,11 @@ defmodule Streamix.Repo.Migrations.CreateMovies do
     create index(:movies, [:rating])
     create index(:movies, [:gindex_path])
     create index(:movies, [:provider_id, :name])
+
+    create index(:movies, [:tmdb_searched_at],
+             where: "tmdb_searched_at IS NULL AND gindex_path IS NOT NULL",
+             name: :movies_gindex_pending_enrichment_idx
+           )
 
     execute(
       "CREATE INDEX movies_name_trgm_idx ON movies USING gin (name gin_trgm_ops)",

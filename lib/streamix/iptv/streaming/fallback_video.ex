@@ -71,6 +71,7 @@ defmodule Streamix.Iptv.Streaming.FallbackVideo do
     do: :account_expired
 
   def category_from_reason({:unexpected_status, 451}), do: :stream_blocked
+
   def category_from_reason({:unexpected_status, status}) when status in [429, 509],
     do: :rate_limited
 

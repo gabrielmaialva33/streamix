@@ -12,7 +12,9 @@ defmodule StreamixWeb.StreamController do
 
   require Logger
 
-  alias Streamix.Iptv.Streaming.{RedirectResolver, VodProxy}
+  alias Streamix.Iptv
+  alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.Streaming.{FailoverPolicy, RedirectResolver, VodProxy}
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
   alias StreamixWeb.StreamToken
@@ -65,15 +67,12 @@ defmodule StreamixWeb.StreamController do
   # locks the credentials. No-op (chain = [url]) when there's no provider
   # context — keeps raw-URL tokens working unchanged.
   defp derive_url_chain(url, %{provider_id: provider_id}) when is_integer(provider_id) do
-    case Streamix.Iptv.get_provider(provider_id) do
+    case Iptv.get_provider(provider_id) do
       nil ->
         [url]
 
       provider ->
-        Streamix.Iptv.Streaming.FailoverPolicy.build_url_chain(
-          url,
-          Streamix.Iptv.Provider.url_chain(provider)
-        )
+        FailoverPolicy.build_url_chain(url, Provider.url_chain(provider))
     end
   end
 

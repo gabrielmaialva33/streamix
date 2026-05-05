@@ -29,7 +29,10 @@ defmodule Streamix.Iptv.Streaming.FallbackVideoTest do
                :provider_unavailable
 
       assert FallbackVideo.category_from_reason(:upstream_timeout) == :provider_unavailable
-      assert FallbackVideo.category_from_reason(:stream_resolution_failed) == :provider_unavailable
+
+      assert FallbackVideo.category_from_reason(:stream_resolution_failed) ==
+               :provider_unavailable
+
       assert FallbackVideo.category_from_reason(%Mint.TransportError{reason: :econnrefused}) ==
                :provider_unavailable
     end

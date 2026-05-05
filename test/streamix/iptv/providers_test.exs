@@ -1,4 +1,4 @@
-defmodule Streamix.IptvProvidersTest do
+defmodule Streamix.Iptv.ProvidersTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Iptv
