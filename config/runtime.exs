@@ -236,6 +236,13 @@ config :streamix,
   # internally with retry+buffer, so there's nothing for the BEAM to
   # walk). Leave unset to keep the legacy source.mahina.cloud flow.
   tuliprox_public_url: get_env.("TULIPROX_PUBLIC_URL") || "",
+  # Shared HMAC secret used by the signed-URL nginx vhost in front of
+  # Tuliprox. When set, `StreamToken.build_provider_content_url/4`
+  # emits `/s/<type>/<id>.<ext>?exp=<ts>&sig=<hmac>` instead of the
+  # legacy `/<type>/<user>/<pass>/<id>.<ext>` shape — provider creds
+  # never reach the browser. The Lua block in
+  # `infra/nginx/tuliprox-proxy.conf` must use the same value.
+  tuliprox_sign_secret: get_env.("TULIPROX_SIGN_SECRET") || "",
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
   imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.cloud",
   image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud",
