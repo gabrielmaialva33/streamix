@@ -38,9 +38,11 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   require Logger
 
-  # XCIPTV/VLC user-agents are whitelisted by most IPTV providers; the
-  # BEAM's default `Req/...` UA gets bounced by the WAF.
-  @upstream_user_agent "VLC/3.0.20 LibVLC/3.0.20"
+  # XCIPTV is whitelisted by most IPTV providers' WAFs; the BEAM's default
+  # `Req/...` UA gets bounced. Standardized across every Streamix surface
+  # (catalog, EPG, multiplexer, redirect resolver) so the upstream sees a
+  # single coherent client identity.
+  @upstream_user_agent "xciptv-v6.0.0"
 
   # Headers we forward verbatim from the player to the upstream so seek,
   # cache validation and conditional GETs all work end-to-end.
@@ -362,6 +364,9 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         %{acc | conn: conn, total_sent: acc.total_sent + size, bytes_sent: acc.bytes_sent + size}
 
       {:error, :closed} ->
+        throw({:client_closed, acc})
+
+      {:error, _reason} ->
         throw({:client_closed, acc})
     end
   end
