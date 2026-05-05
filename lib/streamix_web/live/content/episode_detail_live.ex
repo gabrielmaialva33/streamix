@@ -6,8 +6,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Iptv
   alias Streamix.Iptv.Series
+  alias StreamixWeb.Content.Detail
   alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
@@ -16,7 +16,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   def mount(%{"series_id" => series_id, "id" => episode_id}, _session, socket)
       when not is_map_key(socket.assigns, :provider) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_global_provider()
+    provider = Detail.global_provider()
 
     if provider do
       mount_with_provider(socket, provider, series_id, episode_id, user_id, :browse)
@@ -35,7 +35,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
         socket
       ) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_playable_provider(user_id, provider_id)
+    provider = Detail.playable_provider(user_id, provider_id)
 
     if provider do
       mount_with_provider(socket, provider, series_id, episode_id, user_id, :provider)
@@ -48,7 +48,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   end
 
   defp mount_with_provider(socket, provider, series_id, episode_id, user_id, mode) do
-    episode = Iptv.get_episode_with_context!(episode_id)
+    episode = Detail.get_episode_with_context!(episode_id)
     series = episode.season.series
 
     # Verify episode belongs to the series
@@ -69,23 +69,14 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   end
 
   defp mount_episode_found(socket, provider, episode, series, user_id, mode) do
-    is_favorite = if user_id, do: Iptv.is_favorite?(user_id, "series", series.id), else: false
+    is_favorite = Detail.favorite?(user_id, "series", series.id)
 
     # Enrich episode with TMDB data if needed
-    episode = maybe_fetch_episode_info(episode)
+    episode = Detail.maybe_fetch_episode_info(episode)
 
     maybe_prewarm(socket, episode, user_id)
 
-    # Get adjacent episodes for navigation
-    season = episode.season
-    episodes = Iptv.list_season_episodes(season.id)
-    current_index = Enum.find_index(episodes, &(&1.id == episode.id))
-
-    prev_episode = if current_index && current_index > 0, do: Enum.at(episodes, current_index - 1)
-
-    next_episode =
-      if current_index && current_index < length(episodes) - 1,
-        do: Enum.at(episodes, current_index + 1)
+    navigation = Detail.episode_navigation(episode)
 
     current_path =
       if mode == :browse,
@@ -98,15 +89,15 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       |> assign(current_path: current_path)
       |> assign(provider: provider)
       |> assign(episode: episode)
-      |> assign(season: season)
+      |> assign(season: navigation.season)
       |> assign(series: series)
       |> assign(lcp_image: get_episode_image(episode) || get_series_backdrop(series))
       |> assign(mode: mode)
       |> assign(is_favorite: is_favorite)
       |> assign(user_id: user_id)
-      |> assign(prev_episode: prev_episode)
-      |> assign(next_episode: next_episode)
-      |> assign(total_episodes: length(episodes))
+      |> assign(prev_episode: navigation.prev_episode)
+      |> assign(next_episode: navigation.next_episode)
+      |> assign(total_episodes: navigation.total_episodes)
 
     {:ok, socket}
   end
@@ -119,13 +110,6 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     end
 
     :ok
-  end
-
-  defp maybe_fetch_episode_info(episode) do
-    case Iptv.fetch_episode_info(episode) do
-      {:ok, updated_episode} -> updated_episode
-      {:error, _reason} -> episode
-    end
   end
 
   # ============================================
@@ -148,18 +132,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
         series = socket.assigns.series
         is_favorite = socket.assigns.is_favorite
 
-        if is_favorite do
-          Iptv.remove_favorite(user_id, "series", series.id)
-        else
-          Iptv.add_favorite(user_id, %{
-            content_type: "series",
-            content_id: series.id,
-            content_name: series.title || series.name,
-            content_icon: series.cover
-          })
-        end
-
-        {:noreply, assign(socket, is_favorite: !is_favorite)}
+        {:noreply,
+         assign(socket, is_favorite: Detail.toggle_series_favorite(user_id, series, is_favorite))}
     end
   end
 

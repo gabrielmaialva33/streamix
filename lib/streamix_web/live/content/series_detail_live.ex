@@ -5,10 +5,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Access
-  alias Streamix.AI.SemanticSearch
-  alias Streamix.Iptv
   alias Streamix.Iptv.Series
+  alias StreamixWeb.Content.Detail
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Content.DetailComponents, only: [gallery_preview: 1]
@@ -17,7 +15,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   def mount(%{"id" => series_id}, _session, socket)
       when not is_map_key(socket.assigns, :provider) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_global_provider()
+    provider = Detail.global_provider()
 
     if provider do
       mount_with_provider(socket, provider, series_id, user_id, :browse)
@@ -32,7 +30,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Mount for /providers/:provider_id/series/:id (user provider)
   def mount(%{"provider_id" => provider_id, "id" => series_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_playable_provider(user_id, provider_id)
+    provider = Detail.playable_provider(user_id, provider_id)
 
     if provider do
       mount_with_provider(socket, provider, series_id, user_id, :provider)
@@ -45,7 +43,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_with_provider(socket, provider, series_id, user_id, mode) do
-    {:ok, series} = Iptv.get_series_with_sync!(series_id)
+    {:ok, series} = Detail.get_series_with_sync!(series_id)
     mount_series_found(socket, provider, series, user_id, mode)
   rescue
     Ecto.NoResultsError -> mount_series_not_found(socket, mode, provider)
@@ -59,86 +57,34 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_series_found(socket, provider, series, user_id, mode) do
-    series = maybe_fetch_series_info(series)
-    sorted_seasons = sorted_seasons_with_episodes(series)
+    series = Detail.maybe_fetch_series_info(series)
+    sorted_seasons = Detail.seasons_with_episodes(series)
 
     socket =
       socket
       |> assign(page_title: series.title || series.name)
       |> assign(current_path: series_path_for(mode, provider, series))
       |> assign(provider: provider)
-      |> assign(premium_access: can_play_global?(socket, provider))
+      |> assign(
+        premium_access: Detail.premium_access?(socket.assigns.current_scope.user, provider)
+      )
       |> assign(series: series)
       |> assign(lcp_image: get_backdrop(series) || maybe_proxy(series.cover))
       |> assign(mode: mode)
       |> assign(seasons: sorted_seasons)
-      |> assign(expanded_seasons: initial_expanded(sorted_seasons))
-      |> assign(is_favorite: favorite?(user_id, series.id))
+      |> assign(expanded_seasons: Detail.initial_expanded(sorted_seasons))
+      |> assign(is_favorite: Detail.favorite?(user_id, "series", series.id))
       |> assign(user_id: user_id)
-      |> assign(similar_series: load_similar_series(series.id))
+      |> assign(similar_series: Detail.similar_series(series.id))
       |> assign(selected_gallery_image: nil)
 
     {:ok, socket}
   end
 
-  defp favorite?(nil, _series_id), do: false
-  defp favorite?(user_id, series_id), do: Iptv.is_favorite?(user_id, "series", series_id)
-
-  defp sorted_seasons_with_episodes(series) do
-    (series.seasons || [])
-    |> Enum.reject(fn s -> (s.episodes || []) == [] end)
-    |> Enum.sort_by(& &1.season_number)
-  end
-
-  defp initial_expanded([first | _]), do: MapSet.new([first.id])
-  defp initial_expanded(_), do: MapSet.new()
-
   defp series_path_for(:browse, _provider, series), do: "/browse/series/#{series.id}"
 
   defp series_path_for(_mode, provider, series),
     do: "/providers/#{provider.id}/series/#{series.id}"
-
-  defp can_play_global?(socket, provider) do
-    Access.can_play_global_content?(socket.assigns.current_scope.user, provider)
-  end
-
-  defp maybe_fetch_series_info(series) do
-    if needs_detailed_info?(series) do
-      case Iptv.fetch_series_info(series) do
-        {:ok, updated_series} -> updated_series
-        {:error, _reason} -> series
-      end
-    else
-      series
-    end
-  end
-
-  defp needs_detailed_info?(series) do
-    # Refetch if missing basic info OR if missing new extended metadata
-    missing_basic = is_nil(series.plot)
-    missing_extended = is_nil(series.content_rating) and is_nil(series.tagline)
-
-    missing_basic or missing_extended
-  end
-
-  defp load_similar_series(series_id) do
-    case SemanticSearch.similar(series_id, :series, limit: 6) do
-      {:ok, results} ->
-        # Fetch full series data for results
-        series_ids = Enum.map(results, & &1.id)
-        Iptv.get_series_by_ids(series_ids)
-
-      {:error, reason} ->
-        require Logger
-        Logger.debug("[SeriesDetail] SemanticSearch unavailable: #{inspect(reason)}")
-        []
-    end
-  rescue
-    e ->
-      require Logger
-      Logger.warning("[SeriesDetail] Unexpected error in load_similar_series: #{inspect(e)}")
-      []
-  end
 
   # ============================================
   # Event Handlers
@@ -205,18 +151,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         series = socket.assigns.series
         is_favorite = socket.assigns.is_favorite
 
-        if is_favorite do
-          Iptv.remove_favorite(user_id, "series", series.id)
-        else
-          Iptv.add_favorite(user_id, %{
-            content_type: "series",
-            content_id: series.id,
-            content_name: series.title || series.name,
-            content_icon: series.cover
-          })
-        end
-
-        {:noreply, assign(socket, is_favorite: !is_favorite)}
+        {:noreply,
+         assign(socket, is_favorite: Detail.toggle_series_favorite(user_id, series, is_favorite))}
     end
   end
 

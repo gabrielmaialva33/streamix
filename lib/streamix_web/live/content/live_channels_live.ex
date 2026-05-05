@@ -8,72 +8,21 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   import StreamixWeb.AppComponents
   import StreamixWeb.ContentComponents
 
-  alias Streamix.Access
-  alias Streamix.Iptv
-  alias Streamix.Iptv.Epg
-
-  @per_page 50
+  alias StreamixWeb.Content.LiveChannels
 
   def mount(_params, _session, socket) do
-    user = socket.assigns.current_scope.user
-    user_id = user.id
-
-    socket =
-      socket
-      |> assign(page_title: "Ao Vivo")
-      |> assign(current_path: "/browse")
-      |> assign(provider: nil)
-      |> assign(mode: :browse)
-      |> assign(premium_access: premium_access?(user))
-      |> assign(categories: [])
-      |> assign(selected_category: nil)
-      |> assign(search: "")
-      |> assign(page: 1)
-      |> assign(has_more: true)
-      |> assign(loading: false)
-      |> assign(playing_channel: nil)
-      |> assign(favorites_map: %{})
-      |> assign(empty_results: false)
-      |> assign(user_id: user_id)
-      |> assign(epg_syncing: false)
-      |> stream(:channels, [])
-      |> load_favorites_map()
-
-    {:ok, socket}
+    {:ok, LiveChannels.init_socket(socket)}
   end
 
   def handle_params(params, _url, socket) do
-    category = parse_integer_param(params["category"])
-    search = params["search"] || ""
-
-    case apply_route_context(socket, params) do
+    case LiveChannels.assign_params(socket, params) do
       {:ok, socket} ->
-        socket =
-          socket
-          |> assign(selected_category: category)
-          |> assign(search: search)
-          |> assign(page: 1)
-          |> stream(:channels, [], reset: true)
-          |> load_channels()
-
         {:noreply, socket}
 
       {:redirect, socket} ->
         {:noreply, socket}
     end
   end
-
-  defp parse_integer_param(nil), do: nil
-  defp parse_integer_param(""), do: nil
-
-  defp parse_integer_param(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} -> integer
-      _ -> nil
-    end
-  end
-
-  defp parse_integer_param(value), do: value
 
   # ============================================
   # Event Handlers
@@ -84,42 +33,24 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category
-    {:noreply, push_patch(socket, to: build_path(socket, category, socket.assigns.search))}
+
+    {:noreply,
+     push_patch(socket, to: LiveChannels.build_path(socket, category, socket.assigns.search))}
   end
 
   def handle_event("search", %{"search" => search}, socket) do
     {:noreply,
-     push_patch(socket, to: build_path(socket, socket.assigns.selected_category, search))}
+     push_patch(socket,
+       to: LiveChannels.build_path(socket, socket.assigns.selected_category, search)
+     )}
   end
 
   def handle_event("load_more", _, socket) do
-    if socket.assigns.loading or not socket.assigns.has_more do
-      {:noreply, socket}
-    else
-      socket =
-        socket
-        |> assign(page: socket.assigns.page + 1)
-        |> assign(loading: true)
-        |> load_channels()
-
-      {:noreply, socket}
-    end
+    {:noreply, LiveChannels.load_more(socket)}
   end
 
   def handle_event("play_channel", %{"id" => id}, socket) do
-    with channel_id when is_integer(channel_id) <- parse_integer_param(id),
-         channel <- Iptv.get_live_channel_with_provider!(channel_id) do
-      user_id = socket.assigns.user_id
-
-      Iptv.add_watch_history(user_id, "live_channel", channel.id, %{
-        content_name: channel.name,
-        content_icon: channel.stream_icon
-      })
-
-      {:noreply, assign(socket, playing_channel: channel)}
-    else
-      _ -> {:noreply, socket}
-    end
+    {:noreply, LiveChannels.play_channel(socket, id)}
   end
 
   def handle_event("close_player", _, socket) do
@@ -154,32 +85,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_favorite", %{"id" => id}, socket) do
-    user_id = socket.assigns.user_id
-    channel_id = parse_integer_param(id)
-
-    if is_nil(channel_id) do
-      {:noreply, socket}
-    else
-      channel = Iptv.get_live_channel!(channel_id)
-
-      Iptv.toggle_favorite(user_id, "live_channel", channel_id, %{
-        content_name: channel.name,
-        content_icon: channel.stream_icon
-      })
-
-      # Toggle in MapSet
-      favorites_map =
-        if MapSet.member?(socket.assigns.favorites_map, channel_id) do
-          MapSet.delete(socket.assigns.favorites_map, channel_id)
-        else
-          MapSet.put(socket.assigns.favorites_map, channel_id)
-        end
-
-      {:noreply,
-       socket
-       |> assign(favorites_map: favorites_map)
-       |> stream_insert(:channels, channel)}
-    end
+    {:noreply, LiveChannels.toggle_favorite(socket, id)}
   end
 
   # Periodic refresh of "now playing" EPG for visible cards (EpgRefresh hook).
@@ -188,7 +94,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   def handle_event("refresh_epg", %{"channel_ids" => channel_ids}, socket)
       when is_list(channel_ids) do
     provider = socket.assigns.provider
-    socket = refresh_epg_channels(socket, provider, channel_ids)
+    socket = LiveChannels.refresh_epg(socket, provider, channel_ids)
 
     {:noreply, socket}
   end
@@ -196,71 +102,14 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   def handle_event("refresh_epg", _, socket), do: {:noreply, socket}
 
   def handle_event("sync_provider", _, socket) do
-    provider = socket.assigns.provider
-    Iptv.async_sync_provider(provider)
-
-    {:noreply,
-     socket
-     |> assign(provider: %{provider | sync_status: "pending"})
-     |> put_flash(:info, "Sincronização iniciada")}
-  end
-
-  defp refresh_epg_channels(socket, nil, _channel_ids), do: socket
-  defp refresh_epg_channels(socket, _provider, []), do: socket
-
-  defp refresh_epg_channels(socket, provider, channel_ids) do
-    ids =
-      channel_ids
-      |> Enum.map(&parse_integer_param/1)
-      |> Enum.filter(&is_integer/1)
-      |> Enum.take(@per_page)
-
-    refresh_epg_channels_by_id(socket, provider, ids)
-  end
-
-  defp refresh_epg_channels_by_id(socket, _provider, []), do: socket
-
-  defp refresh_epg_channels_by_id(socket, provider, ids) do
-    programs = Epg.current_programs_for_channels(provider.id, ids)
-    Enum.reduce(ids, socket, &refresh_epg_channel(&1, &2, programs))
-  end
-
-  defp refresh_epg_channel(channel_id, socket, programs) do
-    case Iptv.get_live_channel(channel_id) do
-      nil ->
-        socket
-
-      channel ->
-        current = Map.get(programs, to_string(channel_id))
-        stream_insert(socket, :channels, Map.put(channel, :current_program, current))
-    end
+    {:noreply, LiveChannels.start_provider_sync(socket)}
   end
 
   def handle_info({:sync_status, %{status: status} = payload}, socket) do
-    provider = socket.assigns.provider
-
-    updated_provider = %{
-      provider
-      | sync_status: status,
-        live_channels_count: Map.get(payload, :live_channels_count, provider.live_channels_count),
-        movies_count: Map.get(payload, :movies_count, provider.movies_count),
-        series_count: Map.get(payload, :series_count, provider.series_count),
-        live_synced_at:
-          if(status == "completed", do: DateTime.utc_now(), else: provider.live_synced_at)
-    }
-
-    socket = assign(socket, provider: updated_provider)
+    socket = LiveChannels.update_provider_after_sync(socket, payload)
 
     if status == "completed" do
-      categories = Iptv.list_categories(provider.id, "live")
-
-      {:noreply,
-       socket
-       |> assign(categories: categories)
-       |> assign(page: 1)
-       |> stream(:channels, [], reset: true)
-       |> load_channels()
-       |> put_flash(:info, "Sincronização concluída!")}
+      {:noreply, LiveChannels.complete_provider_sync(socket)}
     else
       {:noreply, socket}
     end
@@ -271,10 +120,8 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     # Reload channels to pick up EPG data
     socket =
       socket
-      |> assign(page: 1)
       |> assign(epg_syncing: false)
-      |> stream(:channels, [], reset: true)
-      |> load_channels()
+      |> LiveChannels.reload_after_sync()
 
     {:noreply, socket}
   end
@@ -422,165 +269,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # Private Helpers
   # ============================================
 
-  defp load_channels(socket) do
-    user = socket.assigns.current_scope.user
-
-    opts =
-      [
-        limit: @per_page,
-        offset: (socket.assigns.page - 1) * @per_page,
-        show_adult: user.show_adult_content
-      ]
-      |> maybe_add_filter(:category_id, socket.assigns.selected_category)
-      |> maybe_add_filter(:search, socket.assigns.search)
-
-    provider = socket.assigns.provider
-    channels = Iptv.list_live_channels(provider.id, opts)
-
-    # Enrich channels with EPG data
-    channels = Iptv.enrich_channels_with_epg(channels, provider.id)
-
-    has_more = length(channels) == @per_page
-    empty_results = socket.assigns.page == 1 && Enum.empty?(channels)
-
-    socket
-    |> stream(:channels, channels)
-    |> assign(has_more: has_more)
-    |> assign(loading: false)
-    |> assign(empty_results: empty_results)
-  end
-
-  defp premium_access?(user) do
-    Access.can_play_global_content?(user, Iptv.get_global_provider())
-  end
-
-  defp load_favorites_map(socket) do
-    user_id = socket.assigns.user_id
-    # Optimized: only fetches content_ids instead of full records
-    favorite_ids = Iptv.list_favorite_ids(user_id, "live_channel")
-    assign(socket, favorites_map: favorite_ids)
-  end
-
-  defp maybe_add_filter(opts, _key, nil), do: opts
-  defp maybe_add_filter(opts, _key, ""), do: opts
-  defp maybe_add_filter(opts, key, value), do: Keyword.put(opts, key, value)
-
-  defp filter_adult_categories(categories, true), do: categories
-  defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
-
-  defp apply_route_context(socket, %{"provider_id" => provider_id}) do
-    user = socket.assigns.current_scope.user
-    provider = Iptv.get_playable_provider(user.id, provider_id)
-
-    if provider do
-      {:ok, assign_provider_context(socket, provider, :provider)}
-    else
-      {:redirect,
-       socket
-       |> put_flash(:error, "Provedor não encontrado")
-       |> push_navigate(to: ~p"/providers")}
-    end
-  end
-
-  defp apply_route_context(socket, _params) do
-    provider = Iptv.get_global_provider()
-
-    if provider do
-      {:ok, assign_provider_context(socket, provider, :browse)}
-    else
-      {:redirect,
-       socket
-       |> put_flash(:error, "Catálogo não disponível. Configure um provedor.")
-       |> push_navigate(to: ~p"/providers")}
-    end
-  end
-
-  defp assign_provider_context(socket, provider, mode) do
-    user = socket.assigns.current_scope.user
-    categories = Iptv.list_categories(provider.id, "live")
-    categories = filter_adult_categories(categories, user.show_adult_content)
-
-    socket
-    |> assign(page_title: provider_page_title(provider, mode))
-    |> assign(current_path: provider_current_path(provider, mode))
-    |> assign(provider: provider)
-    |> assign(mode: mode)
-    |> assign(categories: categories)
-    |> assign(epg_syncing: maybe_prepare_provider_updates(socket, provider))
-  end
-
-  defp provider_page_title(_provider, :browse), do: "Ao Vivo"
-  defp provider_page_title(provider, :provider), do: "#{provider.name} - Ao Vivo"
-
-  defp provider_current_path(_provider, :browse), do: "/browse"
-  defp provider_current_path(provider, :provider), do: "/providers/#{provider.id}"
-
-  defp maybe_prepare_provider_updates(socket, provider) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Streamix.PubSub, "provider:#{provider.id}")
-      maybe_sync_epg(provider)
-    else
-      false
-    end
-  end
-
-  # Path builders based on mode
-  defp build_path(%{assigns: %{mode: :browse}}, nil, ""), do: ~p"/browse"
-  defp build_path(%{assigns: %{mode: :browse}}, nil, search), do: ~p"/browse?search=#{search}"
-
-  defp build_path(%{assigns: %{mode: :browse}}, category, ""),
-    do: ~p"/browse?category=#{category}"
-
-  defp build_path(%{assigns: %{mode: :browse}}, category, search),
-    do: ~p"/browse?category=#{category}&search=#{search}"
-
-  defp build_path(%{assigns: %{mode: :provider, provider: provider}}, nil, ""),
-    do: ~p"/providers/#{provider.id}"
-
-  defp build_path(%{assigns: %{mode: :provider, provider: provider}}, nil, search),
-    do: ~p"/providers/#{provider.id}?search=#{search}"
-
-  defp build_path(%{assigns: %{mode: :provider, provider: provider}}, category, ""),
-    do: ~p"/providers/#{provider.id}?category=#{category}"
-
-  defp build_path(%{assigns: %{mode: :provider, provider: provider}}, category, search),
-    do: ~p"/providers/#{provider.id}?category=#{category}&search=#{search}"
-
-  defp empty_message(:provider, "idle"), do: "Sincronize o provedor para carregar os canais"
-  defp empty_message(_, _), do: "Tente ajustar seus filtros"
-
-  defp format_relative_time(nil), do: "Nunca"
-
-  defp format_relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 60 -> "agora mesmo"
-      diff < 3600 -> "#{div(diff, 60)}min atrás"
-      diff < 86_400 -> "#{div(diff, 3600)}h atrás"
-      true -> "#{div(diff, 86_400)}d atrás"
-    end
-  end
-
-  # EPG sync helper - triggers async sync if EPG data is stale
-  # Uses Oban worker for persistent, reliable background processing
-  # Returns true if sync was enqueued, false if not needed
-  defp maybe_sync_epg(provider) do
-    # Check if EPG needs sync (stale or never synced)
-    if epg_needs_sync?(provider) do
-      # Enqueue Oban job to sync EPG for all channels
-      Iptv.async_sync_epg(provider)
-      true
-    else
-      false
-    end
-  end
-
-  defp epg_needs_sync?(%{epg_synced_at: nil}), do: true
-
-  defp epg_needs_sync?(provider) do
-    interval = provider.epg_sync_interval_hours || 6
-    hours_since_sync = DateTime.diff(DateTime.utc_now(), provider.epg_synced_at, :hour)
-    hours_since_sync >= interval
-  end
+  defdelegate empty_message(mode, sync_status), to: LiveChannels
+  defdelegate format_relative_time(datetime), to: LiveChannels
 end

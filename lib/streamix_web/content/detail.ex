@@ -1,0 +1,148 @@
+defmodule StreamixWeb.Content.Detail do
+  @moduledoc """
+  Shared content-detail operations used by movie, series, and episode LiveViews.
+  """
+
+  require Logger
+
+  alias Streamix.Access
+  alias Streamix.AI.SemanticSearch
+  alias Streamix.Iptv
+
+  def global_provider, do: Iptv.get_global_provider()
+
+  def playable_provider(user_id, provider_id),
+    do: Iptv.get_playable_provider(user_id, provider_id)
+
+  def premium_access?(user, provider), do: Access.can_play_global_content?(user, provider)
+
+  def favorite?(nil, _content_type, _content_id), do: false
+
+  def favorite?(user_id, content_type, content_id),
+    do: Iptv.is_favorite?(user_id, content_type, content_id)
+
+  def toggle_movie_favorite(user_id, movie, true) do
+    Iptv.remove_favorite(user_id, "movie", movie.id)
+    false
+  end
+
+  def toggle_movie_favorite(user_id, movie, false) do
+    Iptv.add_favorite(user_id, %{
+      content_type: "movie",
+      content_id: movie.id,
+      content_name: movie.title || movie.name,
+      content_icon: movie.stream_icon
+    })
+
+    true
+  end
+
+  def toggle_series_favorite(user_id, series, true) do
+    Iptv.remove_favorite(user_id, "series", series.id)
+    false
+  end
+
+  def toggle_series_favorite(user_id, series, false) do
+    Iptv.add_favorite(user_id, %{
+      content_type: "series",
+      content_id: series.id,
+      content_name: series.title || series.name,
+      content_icon: series.cover
+    })
+
+    true
+  end
+
+  def get_movie(movie_id), do: Iptv.get_movie(movie_id)
+  def get_series_with_sync!(series_id), do: Iptv.get_series_with_sync!(series_id)
+  def get_episode_with_context!(episode_id), do: Iptv.get_episode_with_context!(episode_id)
+
+  def maybe_fetch_movie_info(movie) do
+    if needs_detailed_info?(movie) do
+      case Iptv.fetch_movie_info(movie) do
+        {:ok, updated_movie} -> updated_movie
+        {:error, _reason} -> movie
+      end
+    else
+      movie
+    end
+  end
+
+  def maybe_fetch_series_info(series) do
+    if needs_detailed_info?(series) do
+      case Iptv.fetch_series_info(series) do
+        {:ok, updated_series} -> updated_series
+        {:error, _reason} -> series
+      end
+    else
+      series
+    end
+  end
+
+  def maybe_fetch_episode_info(episode) do
+    case Iptv.fetch_episode_info(episode) do
+      {:ok, updated_episode} -> updated_episode
+      {:error, _reason} -> episode
+    end
+  end
+
+  def similar_movies(movie_id),
+    do: similar(movie_id, :movies, &Iptv.get_movies_by_ids/1, "MovieDetail")
+
+  def similar_series(series_id),
+    do: similar(series_id, :series, &Iptv.get_series_by_ids/1, "SeriesDetail")
+
+  def seasons_with_episodes(series) do
+    (series.seasons || [])
+    |> Enum.reject(fn season -> (season.episodes || []) == [] end)
+    |> Enum.sort_by(& &1.season_number)
+  end
+
+  def initial_expanded([first | _]), do: MapSet.new([first.id])
+  def initial_expanded(_), do: MapSet.new()
+
+  def episode_navigation(episode) do
+    season = episode.season
+    episodes = Iptv.list_season_episodes(season.id)
+    current_index = Enum.find_index(episodes, &(&1.id == episode.id))
+
+    prev_episode = if current_index && current_index > 0, do: Enum.at(episodes, current_index - 1)
+
+    next_episode =
+      if current_index && current_index < length(episodes) - 1 do
+        Enum.at(episodes, current_index + 1)
+      end
+
+    %{
+      season: season,
+      episodes: episodes,
+      prev_episode: prev_episode,
+      next_episode: next_episode,
+      total_episodes: length(episodes)
+    }
+  end
+
+  defp needs_detailed_info?(content) do
+    missing_basic = is_nil(content.plot)
+    missing_extended = is_nil(content.content_rating) and is_nil(content.tagline)
+
+    missing_basic or missing_extended
+  end
+
+  defp similar(content_id, type, fetch_full, log_context) do
+    case SemanticSearch.similar(content_id, type, limit: 6) do
+      {:ok, results} ->
+        results
+        |> Enum.map(& &1.id)
+        |> fetch_full.()
+
+      {:error, reason} ->
+        Logger.debug("[#{log_context}] SemanticSearch unavailable: #{inspect(reason)}")
+        []
+    end
+  rescue
+    error ->
+      Logger.warning("[#{log_context}] Unexpected error in similar lookup: #{inspect(error)}")
+      []
+  end
+end

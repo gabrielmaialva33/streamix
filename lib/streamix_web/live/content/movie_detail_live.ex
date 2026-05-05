@@ -5,10 +5,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Access
-  alias Streamix.AI.SemanticSearch
-  alias Streamix.Iptv
   alias Streamix.Iptv.Movie
+  alias StreamixWeb.Content.Detail
   alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
@@ -18,7 +16,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   def mount(%{"id" => movie_id}, _session, socket)
       when not is_map_key(socket.assigns, :provider) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_global_provider()
+    provider = Detail.global_provider()
 
     if provider do
       mount_with_provider(socket, provider, movie_id, user_id, :browse)
@@ -33,7 +31,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Mount for /providers/:provider_id/movies/:id (user provider)
   def mount(%{"provider_id" => provider_id, "id" => movie_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Iptv.get_playable_provider(user_id, provider_id)
+    provider = Detail.playable_provider(user_id, provider_id)
 
     if provider do
       mount_with_provider(socket, provider, movie_id, user_id, :provider)
@@ -48,7 +46,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp mount_with_provider(socket, provider, movie_id, user_id, mode) do
     user = socket.assigns.current_scope.user
 
-    case Iptv.get_movie(movie_id) do
+    case Detail.get_movie(movie_id) do
       nil ->
         {:ok,
          socket
@@ -56,8 +54,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
          |> push_navigate(to: back_path(mode, provider))}
 
       movie ->
-        is_favorite = Iptv.is_favorite?(user_id, "movie", movie.id)
-        movie = maybe_fetch_movie_info(movie)
+        is_favorite = Detail.favorite?(user_id, "movie", movie.id)
+        movie = Detail.maybe_fetch_movie_info(movie)
 
         # Prewarm the upstream redirect chain in the background. The
         # user is on the detail page now and will likely click play in
@@ -71,9 +69,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
             do: "/browse/movies/#{movie.id}",
             else: "/providers/#{provider.id}/movies/#{movie.id}"
 
-        # Load similar movies (async-safe, returns [] on error)
-        similar_movies = load_similar_movies(movie.id)
-
         socket =
           socket
           |> assign(page_title: movie.title || movie.name)
@@ -83,55 +78,17 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(og_image: og_image_url(movie))
           |> assign(current_path: current_path)
           |> assign(provider: provider)
-          |> assign(premium_access: Access.can_play_global_content?(user, provider))
+          |> assign(premium_access: Detail.premium_access?(user, provider))
           |> assign(movie: movie)
           |> assign(lcp_image: get_backdrop(movie) || maybe_proxy(movie.stream_icon))
           |> assign(mode: mode)
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
-          |> assign(similar_movies: similar_movies)
+          |> assign(similar_movies: Detail.similar_movies(movie.id))
           |> assign(selected_gallery_image: nil)
 
         {:ok, socket}
     end
-  end
-
-  defp load_similar_movies(movie_id) do
-    case SemanticSearch.similar(movie_id, :movies, limit: 6) do
-      {:ok, results} ->
-        # Fetch full movie data for results
-        movie_ids = Enum.map(results, & &1.id)
-        Iptv.get_movies_by_ids(movie_ids)
-
-      {:error, reason} ->
-        require Logger
-        Logger.debug("[MovieDetail] SemanticSearch unavailable: #{inspect(reason)}")
-        []
-    end
-  rescue
-    e ->
-      require Logger
-      Logger.warning("[MovieDetail] Unexpected error in load_similar_movies: #{inspect(e)}")
-      []
-  end
-
-  defp maybe_fetch_movie_info(movie) do
-    if needs_detailed_info?(movie) do
-      case Iptv.fetch_movie_info(movie) do
-        {:ok, updated_movie} -> updated_movie
-        {:error, _reason} -> movie
-      end
-    else
-      movie
-    end
-  end
-
-  defp needs_detailed_info?(movie) do
-    # Refetch if missing basic info OR if missing new extended metadata
-    missing_basic = is_nil(movie.plot)
-    missing_extended = is_nil(movie.content_rating) and is_nil(movie.tagline)
-
-    missing_basic or missing_extended
   end
 
   # ============================================
@@ -150,18 +107,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     movie = socket.assigns.movie
     is_favorite = socket.assigns.is_favorite
 
-    if is_favorite do
-      Iptv.remove_favorite(user_id, "movie", movie.id)
-    else
-      Iptv.add_favorite(user_id, %{
-        content_type: "movie",
-        content_id: movie.id,
-        content_name: movie.title || movie.name,
-        content_icon: movie.stream_icon
-      })
-    end
-
-    {:noreply, assign(socket, is_favorite: !is_favorite)}
+    {:noreply,
+     assign(socket, is_favorite: Detail.toggle_movie_favorite(user_id, movie, is_favorite))}
   end
 
   def handle_event("open_gallery_image", %{"src" => image}, socket) do
