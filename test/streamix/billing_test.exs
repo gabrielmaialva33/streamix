@@ -235,6 +235,38 @@ defmodule Streamix.BillingTest do
     assert Billing.feature_limit_for(user, :watch_party) == nil
   end
 
+  test "start_playback_session/2 enforces concurrent stream limits" do
+    user = user_fixture()
+    plan = plan_fixture(grants_global_access: false)
+    Billing.sync_plan_features!(plan, %{concurrent_streams: 1})
+
+    Billing.ensure_manual_subscription!(user, plan, %{
+      status: "active",
+      external_reference: "test:screen-limit",
+      starts_at: DateTime.utc_now(:second)
+    })
+
+    assert {:ok, session} =
+             Billing.start_playback_session(user, %{
+               content_type: "movie",
+               content_id: 1
+             })
+
+    assert {:error, :concurrent_stream_limit_reached} =
+             Billing.start_playback_session(user, %{
+               content_type: "movie",
+               content_id: 2
+             })
+
+    assert :ok = Billing.end_playback_session(session)
+
+    assert {:ok, _session} =
+             Billing.start_playback_session(user, %{
+               content_type: "movie",
+               content_id: 2
+             })
+  end
+
   test "create_checkout_session/3 stores self-service checkout state" do
     user = user_fixture()
     plan = plan_fixture()

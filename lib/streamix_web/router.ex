@@ -254,6 +254,7 @@ defmodule StreamixWeb.Router do
           ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/settings", User.SettingsLive, :index
+      live "/billing", BillingLive, :index
       live "/search", SearchLive, :index
 
       # Global catalog (uses system global provider)

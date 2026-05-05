@@ -38,11 +38,30 @@ end
 admin = Accounts.ensure_admin_user!(admin_email, admin_password)
 IO.puts("✓ Admin user ready: #{admin.email} (role=#{Accounts.role_name(admin)})")
 
+basic_plan =
+  Billing.ensure_plan!(%{
+    name: "Basic Mensal",
+    slug: "basic-monthly",
+    description: "Plano de entrada para catálogo próprio",
+    price_cents: 999,
+    currency: "USD",
+    billing_interval: "month",
+    active: true,
+    grants_global_access: false,
+    features: %{
+      global_catalog: false,
+      max_providers: 1,
+      concurrent_streams: 1,
+      ai_recommendations: false,
+      watch_party: false
+    }
+  })
+
 premium_plan =
   Billing.ensure_plan!(%{
     name: "Premium Mensal",
     slug: "premium-monthly",
-    description: "Plano premium com acesso global",
+    description: "Catálogo global, AI premium e mais providers",
     price_cents: 1_999,
     currency: "USD",
     billing_interval: "month",
@@ -57,7 +76,28 @@ premium_plan =
     }
   })
 
-IO.puts("✓ Billing plan ready: #{premium_plan.slug}")
+ultimate_plan =
+  Billing.ensure_plan!(%{
+    name: "Ultimate Mensal",
+    slug: "ultimate-monthly",
+    description: "Mais telas simultâneas e mais providers",
+    price_cents: 2_999,
+    currency: "USD",
+    billing_interval: "month",
+    active: true,
+    grants_global_access: true,
+    features: %{
+      global_catalog: true,
+      max_providers: 10,
+      concurrent_streams: 4,
+      ai_recommendations: true,
+      watch_party: true
+    }
+  })
+
+seeded_plans = [basic_plan, premium_plan, ultimate_plan]
+
+IO.puts("✓ Billing plans ready: #{Enum.map_join(seeded_plans, ", ", & &1.slug)}")
 
 global_permission = Access.ensure_permission!("play_global_content")
 
@@ -87,11 +127,9 @@ subscription_email = env["SEED_SUBSCRIPTION_EMAIL"]
 if subscription_email do
   plan_slug = env["SEED_SUBSCRIPTION_PLAN_SLUG"] || premium_plan.slug
 
-  unless plan_slug == premium_plan.slug do
-    raise("SEED_SUBSCRIPTION_PLAN_SLUG must match the seeded plan: #{premium_plan.slug}")
-  end
-
-  subscription_plan = premium_plan
+  subscription_plan =
+    Enum.find(seeded_plans, &(&1.slug == plan_slug)) ||
+      raise("SEED_SUBSCRIPTION_PLAN_SLUG must match a seeded plan: #{plan_slug}")
 
   subscription_user =
     case Accounts.get_user_by_email(subscription_email) do

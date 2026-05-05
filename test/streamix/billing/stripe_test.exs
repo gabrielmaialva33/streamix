@@ -8,6 +8,16 @@ defmodule Streamix.Billing.StripeTest do
   import Streamix.AccountsFixtures
 
   defmodule FakeStripeClient do
+    def post("https://api.stripe.test/v1/billing_portal/sessions" = url, opts) do
+      send(self(), {:stripe_portal_post, url, opts})
+
+      {:ok,
+       %Req.Response{
+         status: 200,
+         body: %{"id" => "bps_test_123", "url" => "https://billing.stripe.com/p/session"}
+       }}
+    end
+
     def post(url, opts) do
       send(self(), {:stripe_post, url, opts})
 
@@ -32,7 +42,8 @@ defmodule Streamix.Billing.StripeTest do
       secret_key: "sk_test_123",
       webhook_secret: "whsec_test_123",
       http_client: FakeStripeClient,
-      checkout_sessions_url: "https://api.stripe.test/v1/checkout/sessions"
+      checkout_sessions_url: "https://api.stripe.test/v1/checkout/sessions",
+      billing_portal_sessions_url: "https://api.stripe.test/v1/billing_portal/sessions"
     )
 
     on_exit(fn ->
@@ -104,6 +115,7 @@ defmodule Streamix.Billing.StripeTest do
           "payment_status" => "paid",
           "amount_total" => 1_999,
           "currency" => "brl",
+          "customer" => "cus_test_123",
           "subscription" => "sub_test_123",
           "invoice" => "in_test_123",
           "metadata" => %{
@@ -121,6 +133,7 @@ defmodule Streamix.Billing.StripeTest do
              Stripe.handle_webhook(raw_body, signature)
 
     assert subscription.external_reference == "stripe:sub_test_123"
+    assert Billing.get_billing_customer(user, :stripe).external_id == "cus_test_123"
     assert Billing.entitled?(user, :global_catalog)
     assert Repo.get_by!(Payment, provider: "stripe", external_id: "cs_test_completed")
 
@@ -130,6 +143,52 @@ defmodule Streamix.Billing.StripeTest do
     assert replayed_subscription.id == subscription.id
 
     assert Repo.aggregate(Payment, :count) == 1
+  end
+
+  test "create_portal_session/2 opens Stripe customer portal", %{user: user} do
+    Billing.upsert_billing_customer!(user, :stripe, "cus_portal_test")
+
+    assert {:ok, "https://billing.stripe.com/p/session"} =
+             Stripe.create_portal_session(user, "https://streamix.test/billing")
+
+    assert_received {:stripe_portal_post, "https://api.stripe.test/v1/billing_portal/sessions",
+                     opts}
+
+    assert URI.decode_query(opts[:body])["customer"] == "cus_portal_test"
+    assert URI.decode_query(opts[:body])["return_url"] == "https://streamix.test/billing"
+  end
+
+  test "subscription update webhook synchronizes plan status without creating payment", %{
+    user: user,
+    plan: plan
+  } do
+    event = %{
+      "id" => "evt_sub_updated",
+      "type" => "customer.subscription.updated",
+      "data" => %{
+        "object" => %{
+          "id" => "sub_updated_123",
+          "object" => "subscription",
+          "status" => "active",
+          "customer" => "cus_updated_123",
+          "current_period_start" => 1_800_000_000,
+          "current_period_end" => 1_802_592_000,
+          "metadata" => %{
+            "user_id" => to_string(user.id),
+            "plan_id" => to_string(plan.id)
+          }
+        }
+      }
+    }
+
+    raw_body = Phoenix.json_library().encode!(event)
+
+    assert {:ok, %{subscription: subscription}} =
+             Stripe.handle_webhook(raw_body, stripe_signature(raw_body))
+
+    assert subscription.external_reference == "stripe:sub_updated_123"
+    assert subscription.status == "active"
+    assert Repo.aggregate(Payment, :count) == 0
   end
 
   test "paid checkout cancels the previous active user plan", %{user: user, plan: new_plan} do

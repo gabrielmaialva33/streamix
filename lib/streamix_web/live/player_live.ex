@@ -234,58 +234,79 @@ defmodule StreamixWeb.PlayerLive do
   defp load_authorized_content(socket, type, user_id, content, provider) do
     case resolve_stream_url(type, content, provider, user_id) do
       {:ok, stream_url} ->
-        case reserve_playback_session(socket, type, content, user_id) do
-          {:ok, playback_session} ->
-            record_watch_history(user_id, type, content)
-
-            if connected?(socket) do
-              Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
-              # Fire-and-forget: prewarm the redirect-chain cache so the
-              # browser's first /api/stream/proxy request lands on a hot
-              # cache entry (or piggy-backs on the in-flight resolution
-              # via single-flight) instead of paying the cold 8-15s vauth
-              # chain cost.
-              prewarm_upstream_redirect(type, content, user_id)
-            end
-
-            # Fetch next episode for prefetch (episodes only)
-            next_episode = load_next_episode(type, content, provider, user_id)
-
-            socket =
-              socket
-              |> assign(page_title: content_title(content, type))
-              |> assign(content_type: safe_content_type(type))
-              |> assign(content: content)
-              |> assign(provider: provider)
-              |> assign(stream_url: stream_url)
-              |> assign(streaming_mode: default_streaming_mode(type))
-              |> assign(player_state: :loading)
-              |> assign(current_time: 0)
-              |> assign(duration: 0)
-              |> assign(buffering: false)
-              |> assign(pip_active: false)
-              |> assign(available_qualities: [])
-              |> assign(current_quality: "Automático")
-              |> assign(audio_tracks: [])
-              |> assign(subtitle_tracks: [])
-              |> assign(user_id: user_id)
-              |> assign(next_episode: next_episode)
-              |> assign(playback_session: playback_session)
-
-            {:ok, socket}
-
-          {:error, :concurrent_stream_limit_reached} ->
-            {:ok,
-             socket
-             |> put_flash(:error, "Limite de telas simultâneas atingido para o seu plano.")
-             |> push_navigate(to: ~p"/billing")}
-        end
+        start_authorized_player(socket, type, user_id, content, provider, stream_url)
 
       {:error, :not_found} ->
         {:ok,
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
          |> push_navigate(to: ~p"/")}
+    end
+  end
+
+  defp start_authorized_player(socket, type, user_id, content, provider, stream_url) do
+    case reserve_playback_session(socket, type, content, user_id) do
+      {:ok, playback_session} ->
+        prepare_player_socket(
+          socket,
+          type,
+          user_id,
+          content,
+          provider,
+          stream_url,
+          playback_session
+        )
+
+      {:error, :concurrent_stream_limit_reached} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Limite de telas simultâneas atingido para o seu plano.")
+         |> push_navigate(to: ~p"/billing")}
+    end
+  end
+
+  defp prepare_player_socket(
+         socket,
+         type,
+         user_id,
+         content,
+         provider,
+         stream_url,
+         playback_session
+       ) do
+    record_watch_history(user_id, type, content)
+    prepare_connected_player(socket, type, content, user_id)
+
+    next_episode = load_next_episode(type, content, provider, user_id)
+
+    socket =
+      socket
+      |> assign(page_title: content_title(content, type))
+      |> assign(content_type: safe_content_type(type))
+      |> assign(content: content)
+      |> assign(provider: provider)
+      |> assign(stream_url: stream_url)
+      |> assign(streaming_mode: default_streaming_mode(type))
+      |> assign(player_state: :loading)
+      |> assign(current_time: 0)
+      |> assign(duration: 0)
+      |> assign(buffering: false)
+      |> assign(pip_active: false)
+      |> assign(available_qualities: [])
+      |> assign(current_quality: "Automático")
+      |> assign(audio_tracks: [])
+      |> assign(subtitle_tracks: [])
+      |> assign(user_id: user_id)
+      |> assign(next_episode: next_episode)
+      |> assign(playback_session: playback_session)
+
+    {:ok, socket}
+  end
+
+  defp prepare_connected_player(socket, type, content, user_id) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
+      prewarm_upstream_redirect(type, content, user_id)
     end
   end
 

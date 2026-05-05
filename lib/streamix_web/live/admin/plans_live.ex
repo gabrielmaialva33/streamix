@@ -42,6 +42,7 @@ defmodule StreamixWeb.Admin.PlansLive do
               <th class="px-4 py-3">Slug</th>
               <th class="px-4 py-3">Preço</th>
               <th class="px-4 py-3">Intervalo</th>
+              <th class="px-4 py-3">Features</th>
               <th class="px-4 py-3">Global</th>
               <th class="px-4 py-3">Status</th>
               <th class="px-4 py-3"></th>
@@ -55,6 +56,16 @@ defmodule StreamixWeb.Admin.PlansLive do
                 {format_price(plan.price_cents, plan.currency)}
               </td>
               <td class="px-4 py-3 text-text-secondary">{plan.billing_interval}</td>
+              <td class="px-4 py-3 text-text-secondary">
+                <div class="flex flex-wrap gap-1.5">
+                  <span
+                    :for={feature <- visible_features(plan)}
+                    class="rounded-md border border-border bg-surface-hover px-2 py-1 text-xs"
+                  >
+                    {feature}
+                  </span>
+                </div>
+              </td>
               <td class="px-4 py-3">
                 <.icon
                   name={if plan.grants_global_access, do: "hero-check-circle", else: "hero-x-circle"}
@@ -107,4 +118,13 @@ defmodule StreamixWeb.Admin.PlansLive do
   end
 
   defp format_price(_, _), do: "-"
+
+  defp visible_features(plan) do
+    plan.features
+    |> Enum.filter(& &1.enabled)
+    |> Enum.map(fn
+      %{feature: feature, limit: limit} when is_integer(limit) -> "#{feature}: #{limit}"
+      %{feature: feature} -> feature
+    end)
+  end
 end

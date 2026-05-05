@@ -6,7 +6,18 @@ defmodule Streamix.Billing do
   import Ecto.Query, warn: false
 
   alias Streamix.Accounts.User
-  alias Streamix.Billing.{CheckoutSession, Invoice, Payment, Plan, PlanFeature, Subscription}
+
+  alias Streamix.Billing.{
+    BillingCustomer,
+    CheckoutSession,
+    Invoice,
+    Payment,
+    Plan,
+    PlanFeature,
+    PlaybackSession,
+    Subscription
+  }
+
   alias Streamix.Repo
 
   def list_active_plans do
@@ -160,6 +171,87 @@ defmodule Streamix.Billing do
     |> Repo.all()
   end
 
+  def get_billing_customer(%User{id: user_id}, provider) do
+    Repo.get_by(BillingCustomer, user_id: user_id, provider: normalize_provider(provider))
+  end
+
+  def upsert_billing_customer!(%User{} = user, provider, external_id, metadata \\ %{})
+      when is_binary(external_id) and external_id != "" do
+    attrs = %{
+      user_id: user.id,
+      provider: normalize_provider(provider),
+      external_id: external_id,
+      metadata: metadata || %{}
+    }
+
+    case Repo.get_by(BillingCustomer, user_id: user.id, provider: attrs.provider) do
+      nil ->
+        %BillingCustomer{}
+        |> BillingCustomer.changeset(attrs)
+        |> Repo.insert!()
+
+      %BillingCustomer{} = customer ->
+        customer
+        |> BillingCustomer.changeset(attrs)
+        |> Repo.update!()
+    end
+  end
+
+  def start_playback_session(%User{} = user, attrs) when is_map(attrs) do
+    cleanup_stale_playback_sessions!(user.id)
+
+    with :ok <- ensure_playback_slot_available(user) do
+      now = DateTime.utc_now(:second)
+
+      attrs =
+        attrs
+        |> Map.put(:user_id, user.id)
+        |> Map.put_new(:session_id, playback_session_id())
+        |> Map.put_new(:status, "active")
+        |> Map.put_new(:started_at, now)
+        |> Map.put(:last_seen_at, now)
+
+      %PlaybackSession{}
+      |> PlaybackSession.changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  def touch_playback_session(nil), do: :ok
+
+  def touch_playback_session(%PlaybackSession{} = playback_session) do
+    playback_session
+    |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now(:second))
+    |> Repo.update()
+    |> case do
+      {:ok, _session} -> :ok
+      {:error, _changeset} -> :ok
+    end
+  end
+
+  def end_playback_session(nil), do: :ok
+
+  def end_playback_session(%PlaybackSession{} = playback_session) do
+    now = DateTime.utc_now(:second)
+
+    playback_session
+    |> Ecto.Changeset.change(status: "ended", ended_at: now, last_seen_at: now)
+    |> Repo.update()
+    |> case do
+      {:ok, _session} -> :ok
+      {:error, _changeset} -> :ok
+    end
+  end
+
+  def active_playback_count(%User{id: user_id}) do
+    cleanup_stale_playback_sessions!(user_id)
+
+    from(ps in PlaybackSession,
+      where: ps.user_id == ^user_id and ps.status == "active"
+    )
+    |> Repo.aggregate(:count)
+  end
+
   def subscribed?(%User{id: user_id}) do
     has_legacy_global_access?(user_id) or has_active_feature?(user_id, "global_catalog")
   end
@@ -197,6 +289,43 @@ defmodule Streamix.Billing do
     end
   end
 
+  def sync_provider_subscription!(%User{} = user, %Plan{} = plan, attrs) when is_map(attrs) do
+    Repo.transaction(fn ->
+      now = DateTime.utc_now(:second)
+      external_reference = Map.fetch!(attrs, :external_reference)
+      status = Map.fetch!(attrs, :status)
+
+      if status == "active" do
+        cancel_other_active_subscriptions!(user.id, external_reference, now)
+      end
+
+      subscription_attrs = %{
+        status: status,
+        source: Map.fetch!(attrs, :provider),
+        external_reference: external_reference,
+        starts_at: Map.get(attrs, :starts_at, now),
+        expires_at: Map.get(attrs, :expires_at),
+        canceled_at: Map.get(attrs, :canceled_at)
+      }
+
+      case Repo.get_by(Subscription, external_reference: external_reference) do
+        nil ->
+          %Subscription{}
+          |> Subscription.create_changeset(user, plan, subscription_attrs)
+          |> Repo.insert!()
+
+        %Subscription{} = subscription ->
+          subscription
+          |> Subscription.create_changeset(user, plan, subscription_attrs)
+          |> Repo.update!()
+      end
+    end)
+    |> case do
+      {:ok, subscription} -> subscription
+      {:error, reason} -> raise inspect(reason)
+    end
+  end
+
   defp cancel_other_active_subscriptions!(user_id, external_reference, now) do
     from(s in Subscription,
       where: s.user_id == ^user_id and s.status == "active",
@@ -204,6 +333,39 @@ defmodule Streamix.Billing do
     )
     |> Repo.update_all(set: [status: "canceled", canceled_at: now, updated_at: now])
   end
+
+  defp ensure_playback_slot_available(%User{} = user) do
+    case feature_limit_for(user, :concurrent_streams) do
+      nil ->
+        :ok
+
+      limit ->
+        if active_playback_count(user) < limit do
+          :ok
+        else
+          {:error, :concurrent_stream_limit_reached}
+        end
+    end
+  end
+
+  defp cleanup_stale_playback_sessions!(user_id) do
+    cutoff = DateTime.add(DateTime.utc_now(:second), -120, :second)
+    now = DateTime.utc_now(:second)
+
+    from(ps in PlaybackSession,
+      where: ps.user_id == ^user_id,
+      where: ps.status == "active",
+      where: ps.last_seen_at < ^cutoff
+    )
+    |> Repo.update_all(set: [status: "ended", ended_at: now, updated_at: now])
+  end
+
+  defp playback_session_id do
+    "playback:" <> Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
+  end
+
+  defp normalize_provider(provider) when is_atom(provider), do: Atom.to_string(provider)
+  defp normalize_provider(provider) when is_binary(provider), do: provider
 
   defp has_legacy_global_access?(user_id) do
     from(s in active_subscription_query(user_id),
@@ -311,7 +473,7 @@ defmodule Streamix.Billing do
   # ---------------------------------------------------------------------------
 
   def list_plans do
-    from(p in Plan, order_by: [asc: p.inserted_at])
+    from(p in Plan, order_by: [asc: p.inserted_at], preload: [:features])
     |> Repo.all()
   end
 
