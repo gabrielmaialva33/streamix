@@ -27,7 +27,13 @@ config :streamix,
   # release via Finch + send_chunked; `:redirect` keeps the legacy
   # 302-to-source-proxy flow. Override at runtime via the
   # `STREAM_PROXY_BACKEND` env var.
-  stream_proxy_backend: :beam
+  stream_proxy_backend: :beam,
+  # Regex patterns matched against the *final* URL after the redirect
+  # chain resolves. A hit is treated as an upstream failure even when
+  # the response is technically 200/302, so VodProxy rotates to the
+  # next alternate URL in `Provider.url_chain/1`. Default: tuliprox-style
+  # "service abuse" / suspended-account landing pages.
+  failover_redirect_patterns: [~r/service[-_]abuse/i, ~r/account[-_]suspended/i]
 
 # Configure the endpoint
 config :streamix, StreamixWeb.Endpoint,

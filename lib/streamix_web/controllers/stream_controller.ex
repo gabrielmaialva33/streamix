@@ -53,12 +53,31 @@ defmodule StreamixWeb.StreamController do
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
-  defp stream_by_type(conn, url, _type, _meta) do
+  defp stream_by_type(conn, url, _type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
-      _ -> VodProxy.pipe(conn, url)
+      _ -> VodProxy.pipe(conn, url, url_chain: derive_url_chain(url, meta))
     end
   end
+
+  # Pulls the failover-aware host list off the originating provider so
+  # VodProxy can rotate when one host serves a "service-abuse" page or
+  # locks the credentials. No-op (chain = [url]) when there's no provider
+  # context — keeps raw-URL tokens working unchanged.
+  defp derive_url_chain(url, %{provider_id: provider_id}) when is_integer(provider_id) do
+    case Streamix.Iptv.get_provider(provider_id) do
+      nil ->
+        [url]
+
+      provider ->
+        Streamix.Iptv.Streaming.FailoverPolicy.build_url_chain(
+          url,
+          Streamix.Iptv.Provider.url_chain(provider)
+        )
+    end
+  end
+
+  defp derive_url_chain(url, _meta), do: [url]
 
   # Map StreamToken's raw reasons onto the canonical StreamErrors codes
   # so controllers and TV clients speak the same vocabulary.

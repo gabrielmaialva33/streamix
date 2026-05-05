@@ -33,7 +33,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   """
 
   alias Plug.Conn
-  alias Streamix.Iptv.Streaming.{FallbackVideo, RedirectResolver, UpstreamPump}
+  alias Streamix.Iptv.Streaming.{FailoverPolicy, FallbackVideo, RedirectResolver, UpstreamPump}
   alias StreamixWeb.StreamErrors
 
   require Logger
@@ -84,8 +84,23 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   failures degrade gracefully — the conn finishes with whatever was
   already delivered.
   """
-  @spec pipe(Conn.t(), String.t()) :: Conn.t()
-  def pipe(conn, url) do
+  @spec pipe(Conn.t(), String.t(), keyword()) :: Conn.t()
+  def pipe(conn, url, opts \\ []) do
+    url_chain = Keyword.get(opts, :url_chain, [url])
+    pipe_chain(conn, url_chain)
+  end
+
+  # Tries each URL in the failover chain. The first one that boots up
+  # and starts streaming wins; once we've sent bytes we stick with it
+  # (mid-stream errors fall back to Range-aware retry against the same
+  # host, never to a different one — splicing across hosts would break
+  # the player's decoder state).
+  defp pipe_chain(conn, []) do
+    Logger.warning("[VodProxy] empty URL chain")
+    StreamErrors.halt(conn, :stream_resolution_failed)
+  end
+
+  defp pipe_chain(conn, [url | rest]) do
     state = %{
       original_url: url,
       bytes_sent: 0,
@@ -95,13 +110,39 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
     case resolve_chain(url) do
       {:ok, final_url} ->
-        do_pipe(conn, final_url, state)
+        if FailoverPolicy.failover_url?(final_url) do
+          Logger.warning(
+            "[VodProxy] failover pattern hit on #{sanitize(final_url)}; rotating to next URL"
+          )
+
+          rotate_or_fallback(conn, rest, :failover_pattern_match)
+        else
+          conn = do_pipe(conn, final_url, state)
+          maybe_rotate_after_pipe(conn, rest)
+        end
 
       {:error, reason} ->
         Logger.warning("[VodProxy] resolve failed for #{sanitize(url)}: #{inspect(reason)}")
-        serve_fallback_or_halt(conn, reason)
+        rotate_or_fallback(conn, rest, reason)
     end
   end
+
+  # We only rotate when nothing was sent yet. Once `send_chunked/2` ran,
+  # the conn is committed to the player — switching hosts mid-stream
+  # would corrupt the bytes already in flight.
+  defp maybe_rotate_after_pipe(%Conn{state: state} = conn, _rest)
+       when state in [:chunked, :sent, :file],
+       do: conn
+
+  defp maybe_rotate_after_pipe(conn, []), do: conn
+
+  defp maybe_rotate_after_pipe(conn, rest) do
+    Logger.info("[VodProxy] primary URL exhausted before headers; trying #{length(rest)} alt(s)")
+    pipe_chain(conn, rest)
+  end
+
+  defp rotate_or_fallback(conn, [], reason), do: serve_fallback_or_halt(conn, reason)
+  defp rotate_or_fallback(conn, rest, _reason), do: pipe_chain(conn, rest)
 
   defp serve_fallback_or_halt(conn, reason) do
     code = StreamErrors.code_from_reason(reason)

@@ -13,6 +13,7 @@ defmodule Streamix.Iptv.Provider do
   schema "providers" do
     field :name, :string
     field :url, :string
+    field :urls, {:array, :string}, default: []
     field :username, :string
     field :password, Streamix.Iptv.EncryptedField, redact: true
     field :is_active, :boolean, default: true
@@ -50,11 +51,21 @@ defmodule Streamix.Iptv.Provider do
     timestamps(type: :utc_datetime)
   end
 
-  @all_fields ~w(name url username password is_active sync_status visibility is_system
+  @all_fields ~w(name url urls username password is_active sync_status visibility is_system
                       live_channels_count movies_count series_count
                       live_synced_at vod_synced_at series_synced_at
                       epg_synced_at epg_sync_interval_hours server_info
                       provider_type gindex_url)a
+
+  @doc """
+  Returns the failover-aware URL chain for a provider: the primary `url`
+  followed by any registered alternates in `urls`. Duplicates are removed
+  while preserving order.
+  """
+  @spec url_chain(t()) :: [String.t()]
+  def url_chain(%__MODULE__{url: url, urls: urls}) do
+    Enum.uniq([url | List.wrap(urls)] |> Enum.reject(&(is_nil(&1) or &1 == "")))
+  end
 
   def changeset(provider, attrs) do
     provider

@@ -130,7 +130,7 @@ defmodule StreamixWeb.StreamToken do
 
     with {:ok, url, "url"} <-
            handle_url_token(url, user_id, provider_id, premium_required, bypass) do
-      {:ok, url, "url", %{content_id: nil}}
+      {:ok, url, "url", %{content_id: nil, provider_id: provider_id}}
     end
   end
 
@@ -139,8 +139,8 @@ defmodule StreamixWeb.StreamToken do
   defp dispatch_claims(%{type: type, id: id, user_id: user_id} = claims, external_bypass) do
     bypass = effective_bypass(claims, external_bypass)
 
-    with {:ok, url, ^type} <- handle_content_token(type, id, user_id, bypass) do
-      {:ok, url, type, %{content_id: id}}
+    with {:ok, url, ^type, provider_id} <- handle_content_token(type, id, user_id, bypass) do
+      {:ok, url, type, %{content_id: id, provider_id: provider_id}}
     end
   end
 
@@ -250,7 +250,7 @@ defmodule StreamixWeb.StreamToken do
 
   defp handle_content_token(type, id, user_id, bypass_subscription) do
     case get_stream_url(type, id, user_id, bypass_subscription) do
-      {:ok, url} -> {:ok, url, type}
+      {:ok, url, provider_id} -> {:ok, url, type, provider_id}
       error -> error
     end
   end
@@ -267,7 +267,11 @@ defmodule StreamixWeb.StreamToken do
   def upstream_url(type, id, user_id, opts \\ [])
       when type in ["movie", "episode", "channel"] and is_integer(id) do
     bypass = Keyword.get(opts, :bypass_subscription, false)
-    get_stream_url(type, id, user_id, bypass)
+
+    case get_stream_url(type, id, user_id, bypass) do
+      {:ok, url, _provider_id} -> {:ok, url}
+      other -> other
+    end
   end
 
   defp get_stream_url("movie", id, user_id, bypass) do
@@ -393,20 +397,20 @@ defmodule StreamixWeb.StreamToken do
   defp build_provider_content_url(provider, "movie", stream_id, extension) do
     ext = extension || "mp4"
     url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
-    {:ok, url}
+    {:ok, url, provider.id}
   end
 
   defp build_provider_content_url(provider, "series", stream_id, extension) do
     ext = extension || "mp4"
     url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
-    {:ok, url}
+    {:ok, url, provider.id}
   end
 
   defp build_provider_content_url(provider, "live", stream_id, _extension) do
     # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
     # to avoid mixed content issues with HLS segment URLs.
     url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
-    {:ok, url}
+    {:ok, url, provider.id}
   end
 
   # Verifies that the token's user_id is authorized to access content from this provider.
