@@ -18,7 +18,7 @@ defmodule StreamixWeb.PlayerLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Access
+  alias Streamix.{Access, Billing}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
@@ -58,6 +58,8 @@ defmodule StreamixWeb.PlayerLive do
     if user_id && socket.assigns.content_type != :live do
       Iptv.update_watch_progress(user_id, type, content.id, current_time, duration)
     end
+
+    Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, assign(socket, current_time: current_time, duration: duration)}
   end
@@ -99,6 +101,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("player_initializing", params, socket) do
+    Billing.touch_playback_session(socket.assigns[:playback_session])
     {:noreply, assign(socket, player_state: :initializing, stream_type: params["stream_type"])}
   end
 
@@ -132,6 +135,8 @@ defmodule StreamixWeb.PlayerLive do
       type = Atom.to_string(socket.assigns.content_type)
       Iptv.update_watch_time(user_id, type, content.id, duration)
     end
+
+    Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, socket}
   end
@@ -175,6 +180,10 @@ defmodule StreamixWeb.PlayerLive do
   def terminate(_reason, socket) do
     if Map.has_key?(socket.assigns, :user_id) && socket.assigns.user_id do
       Phoenix.PubSub.unsubscribe(Streamix.PubSub, "user:#{socket.assigns.user_id}:progress")
+    end
+
+    if Map.has_key?(socket.assigns, :playback_session) do
+      Billing.end_playback_session(socket.assigns.playback_session)
     end
 
     :ok
@@ -225,48 +234,70 @@ defmodule StreamixWeb.PlayerLive do
   defp load_authorized_content(socket, type, user_id, content, provider) do
     case resolve_stream_url(type, content, provider, user_id) do
       {:ok, stream_url} ->
-        record_watch_history(user_id, type, content)
+        case reserve_playback_session(socket, type, content, user_id) do
+          {:ok, playback_session} ->
+            record_watch_history(user_id, type, content)
 
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
-          # Fire-and-forget: prewarm the redirect-chain cache so the
-          # browser's first /api/stream/proxy request lands on a hot
-          # cache entry (or piggy-backs on the in-flight resolution
-          # via single-flight) instead of paying the cold 8-15s vauth
-          # chain cost.
-          prewarm_upstream_redirect(type, content, user_id)
+            if connected?(socket) do
+              Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
+              # Fire-and-forget: prewarm the redirect-chain cache so the
+              # browser's first /api/stream/proxy request lands on a hot
+              # cache entry (or piggy-backs on the in-flight resolution
+              # via single-flight) instead of paying the cold 8-15s vauth
+              # chain cost.
+              prewarm_upstream_redirect(type, content, user_id)
+            end
+
+            # Fetch next episode for prefetch (episodes only)
+            next_episode = load_next_episode(type, content, provider, user_id)
+
+            socket =
+              socket
+              |> assign(page_title: content_title(content, type))
+              |> assign(content_type: safe_content_type(type))
+              |> assign(content: content)
+              |> assign(provider: provider)
+              |> assign(stream_url: stream_url)
+              |> assign(streaming_mode: default_streaming_mode(type))
+              |> assign(player_state: :loading)
+              |> assign(current_time: 0)
+              |> assign(duration: 0)
+              |> assign(buffering: false)
+              |> assign(pip_active: false)
+              |> assign(available_qualities: [])
+              |> assign(current_quality: "Automático")
+              |> assign(audio_tracks: [])
+              |> assign(subtitle_tracks: [])
+              |> assign(user_id: user_id)
+              |> assign(next_episode: next_episode)
+              |> assign(playback_session: playback_session)
+
+            {:ok, socket}
+
+          {:error, :concurrent_stream_limit_reached} ->
+            {:ok,
+             socket
+             |> put_flash(:error, "Limite de telas simultâneas atingido para o seu plano.")
+             |> push_navigate(to: ~p"/billing")}
         end
-
-        # Fetch next episode for prefetch (episodes only)
-        next_episode = load_next_episode(type, content, provider, user_id)
-
-        socket =
-          socket
-          |> assign(page_title: content_title(content, type))
-          |> assign(content_type: safe_content_type(type))
-          |> assign(content: content)
-          |> assign(provider: provider)
-          |> assign(stream_url: stream_url)
-          |> assign(streaming_mode: default_streaming_mode(type))
-          |> assign(player_state: :loading)
-          |> assign(current_time: 0)
-          |> assign(duration: 0)
-          |> assign(buffering: false)
-          |> assign(pip_active: false)
-          |> assign(available_qualities: [])
-          |> assign(current_quality: "Automático")
-          |> assign(audio_tracks: [])
-          |> assign(subtitle_tracks: [])
-          |> assign(user_id: user_id)
-          |> assign(next_episode: next_episode)
-
-        {:ok, socket}
 
       {:error, :not_found} ->
         {:ok,
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
          |> push_navigate(to: ~p"/")}
+    end
+  end
+
+  defp reserve_playback_session(socket, type, content, _user_id) do
+    if connected?(socket) do
+      Billing.start_playback_session(socket.assigns.current_scope.user, %{
+        content_type: type,
+        content_id: content.id,
+        metadata: %{live_view: "player"}
+      })
+    else
+      {:ok, nil}
     end
   end
 

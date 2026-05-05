@@ -98,8 +98,14 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
           {:error, reason} -> {:error, series, reason}
         end
       end,
-      max_concurrency: 5,
-      timeout: 30_000,
+      # Concurrency 2 keeps us under the upstream's per-host rate limit
+      # (cb.choki returns 429s above ~3 parallel get_series_info calls).
+      # Timeout sits 15s above XtreamClient.@timeout (30s) so the inner
+      # request gets to surface its own error/retry instead of being
+      # killed by the outer Task — the previous 30s/30s tie killed every
+      # in-flight request on its own deadline.
+      max_concurrency: 2,
+      timeout: 45_000,
       on_timeout: :kill_task
     )
     |> Enum.reduce({[], []}, fn
