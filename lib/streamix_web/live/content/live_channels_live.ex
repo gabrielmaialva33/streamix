@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   alias Streamix.Access
   alias Streamix.Iptv
+  alias Streamix.Iptv.Epg
 
   @per_page 50
 
@@ -181,6 +182,49 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     end
   end
 
+  # Periodic refresh of "now playing" EPG for visible cards (EpgRefresh hook).
+  # We re-stream only channels whose current program changed so the diff stays
+  # tiny — server-side cache already coalesces concurrent requests.
+  def handle_event("refresh_epg", %{"channel_ids" => channel_ids}, socket)
+      when is_list(channel_ids) do
+    provider = socket.assigns.provider
+
+    if is_nil(provider) or channel_ids == [] do
+      {:noreply, socket}
+    else
+      ids =
+        channel_ids
+        |> Enum.map(&parse_integer_param/1)
+        |> Enum.filter(&is_integer/1)
+        |> Enum.take(@per_page)
+
+      socket =
+        case ids do
+          [] ->
+            socket
+
+          ids ->
+            programs = Epg.current_programs_for_channels(provider.id, ids)
+
+            ids
+            |> Enum.reduce(socket, fn channel_id, acc ->
+              case Iptv.get_live_channel(channel_id) do
+                nil ->
+                  acc
+
+                channel ->
+                  current = Map.get(programs, to_string(channel_id))
+                  stream_insert(acc, :channels, Map.put(channel, :current_program, current))
+              end
+            end)
+        end
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("refresh_epg", _, socket), do: {:noreply, socket}
+
   def handle_event("sync_provider", _, socket) do
     provider = socket.assigns.provider
     Iptv.async_sync_provider(provider)
@@ -316,9 +360,14 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           <div
             id="channels"
             phx-update="stream"
+            phx-hook="EpgRefresh"
             class="responsive-wide-grid"
           >
-            <div :for={{dom_id, channel} <- @streams.channels} id={dom_id}>
+            <div
+              :for={{dom_id, channel} <- @streams.channels}
+              id={dom_id}
+              data-epg-channel-id={channel.id}
+            >
               <.live_channel_card
                 channel={channel}
                 is_favorite={MapSet.member?(@favorites_map, channel.id)}

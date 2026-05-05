@@ -1,4 +1,5 @@
 import ContentCard from "./content_card";
+import EpgRefresh from "./epg_refresh";
 import HeaderSearch from "./header_search";
 import ImageFallback from "./image_fallback";
 import InfiniteScroll from "./infinite_scroll";
@@ -22,4 +23,5 @@ export default {
   ImageFallback,
   ScrollHeader,
   WatchPartySync,
+  EpgRefresh,
 };
