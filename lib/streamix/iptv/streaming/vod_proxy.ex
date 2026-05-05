@@ -33,8 +33,14 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   """
 
   alias Plug.Conn
-  alias Streamix.Iptv.Streaming.{FailoverPolicy, FallbackVideo, RedirectResolver, UpstreamPump}
-  alias StreamixWeb.StreamErrors
+
+  alias Streamix.Iptv.Streaming.{
+    FailoverPolicy,
+    FallbackVideo,
+    RedirectResolver,
+    StreamErrors,
+    UpstreamPump
+  }
 
   require Logger
 

@@ -11,6 +11,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   require Logger
 
   alias Streamix.Iptv.StreamMultiplexerSupervisor
+  alias Streamix.Security.UrlValidator
 
   @connect_timeout 10_000
   @idle_timeout 30_000
@@ -294,7 +295,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp follow_redirect(redirect_url, state) do
-    case StreamixWeb.UrlValidator.validate_url(redirect_url) do
+    case UrlValidator.validate_url(redirect_url) do
       :ok ->
         reconnect_redirect(redirect_url, state)
 
