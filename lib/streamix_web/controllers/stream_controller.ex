@@ -64,8 +64,32 @@ defmodule StreamixWeb.StreamController do
   #      chunked through the BEAM.
   #   3. nginx serves bytes much more efficiently than chunked through
   #      a per-viewer BEAM process.
-  defp stream_by_type(conn, url, _type, _meta),
-    do: resolve_and_redirect_to_proxy(conn, url)
+  defp stream_by_type(conn, url, _type, _meta) do
+    # Tuliprox terminates the upstream chain on its own (proxy: reverse
+    # mode does retry/buffer/seek-grace internally), so when we already
+    # have a Tuliprox-bound URL, skip the BEAM-side RedirectResolver and
+    # 302 the player straight at it.
+    if tuliprox_url?(url) do
+      Logger.debug("Stream proxy: tuliprox direct → #{sanitize_url(url)}")
+
+      conn
+      |> put_resp_header("cache-control", "no-cache, no-store")
+      |> redirect(external: url)
+    else
+      resolve_and_redirect_to_proxy(conn, url)
+    end
+  end
+
+  defp tuliprox_url?(url) when is_binary(url) do
+    base = Application.get_env(:streamix, :tuliprox_public_url, "")
+
+    case base do
+      "" -> false
+      base -> String.starts_with?(url, base)
+    end
+  end
+
+  defp tuliprox_url?(_), do: false
 
   # Map StreamToken's raw reasons onto the canonical StreamErrors codes
   # so controllers and TV clients speak the same vocabulary.

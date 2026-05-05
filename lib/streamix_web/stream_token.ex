@@ -392,21 +392,44 @@ defmodule StreamixWeb.StreamToken do
 
   defp build_provider_content_url(provider, "movie", stream_id, extension) do
     ext = extension || "mp4"
-    url = "#{provider.url}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+
+    url =
+      "#{public_base(provider)}/movie/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+
     {:ok, url}
   end
 
   defp build_provider_content_url(provider, "series", stream_id, extension) do
     ext = extension || "mp4"
-    url = "#{provider.url}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+
+    url =
+      "#{public_base(provider)}/series/#{provider.username}/#{provider.password}/#{stream_id}.#{ext}"
+
     {:ok, url}
   end
 
   defp build_provider_content_url(provider, "live", stream_id, _extension) do
     # Use .ts for direct MPEG-TS streaming (not .m3u8 which is a playlist)
     # This avoids mixed content issues with HLS segment URLs
-    url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
+    url =
+      "#{public_base(provider)}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
+
     {:ok, url}
+  end
+
+  # When `:tuliprox_public_url` is configured, every Xtream provider's stream
+  # URL is rewritten to point at the public Tuliprox hostname. The DB row
+  # keeps an internal hostname (e.g. `http://tuliprox:8901`) for sync calls
+  # over the docker network — those don't need to round-trip Cloudflare —
+  # but the player needs a publicly reachable origin for its 302 target.
+  defp public_base(provider) do
+    case Application.get_env(:streamix, :tuliprox_public_url, "") do
+      "" ->
+        provider.url
+
+      base when is_binary(base) ->
+        base
+    end
   end
 
   # Verifies that the token's user_id is authorized to access content from this provider.
