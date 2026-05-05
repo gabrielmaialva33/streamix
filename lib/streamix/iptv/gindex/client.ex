@@ -17,6 +17,7 @@ defmodule Streamix.Iptv.Gindex.Client do
   alias Streamix.Iptv.Gindex.EndpointManager
   alias Streamix.Iptv.Gindex.HealthTracker
   alias Streamix.Iptv.Gindex.Pacer
+  alias Streamix.Iptv.Gindex.SingleFlight
 
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(2)
@@ -125,7 +126,7 @@ defmodule Streamix.Iptv.Gindex.Client do
   def list_folder_all(base_url, path) when is_binary(base_url) do
     key = {:list_folder_all, base_url, path}
 
-    Streamix.Iptv.Gindex.SingleFlight.execute(key, fn ->
+    SingleFlight.execute(key, fn ->
       list_folder_paginated(base_url, path, nil, 0, [])
     end)
   end

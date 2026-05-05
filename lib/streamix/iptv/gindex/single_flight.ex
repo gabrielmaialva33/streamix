@@ -74,22 +74,26 @@ defmodule Streamix.Iptv.Gindex.SingleFlight do
   defp topic_for(key), do: "gindex:single_flight:#{:erlang.phash2(key)}"
 
   defp claim(key) do
-    if :ets.insert_new(@table, {key, self()}) do
-      :leader
-    else
-      case :ets.lookup(@table, key) do
-        [{^key, leader_pid}] when is_pid(leader_pid) ->
-          if Process.alive?(leader_pid) do
-            {:follower, leader_pid}
-          else
-            # Stale row from a crashed leader — wipe and re-claim.
-            :ets.delete(@table, key)
-            claim(key)
-          end
+    case :ets.insert_new(@table, {key, self()}) do
+      true -> :leader
+      false -> claim_existing(key)
+    end
+  end
 
-        _ ->
-          claim(key)
-      end
+  defp claim_existing(key) do
+    case :ets.lookup(@table, key) do
+      [{^key, leader_pid}] when is_pid(leader_pid) -> follow_or_reclaim(key, leader_pid)
+      _ -> claim(key)
+    end
+  end
+
+  defp follow_or_reclaim(key, leader_pid) when is_pid(leader_pid) do
+    if Process.alive?(leader_pid) do
+      {:follower, leader_pid}
+    else
+      # Stale row from a crashed leader — wipe and re-claim.
+      :ets.delete(@table, key)
+      claim(key)
     end
   end
 

@@ -5,6 +5,8 @@ defmodule Streamix.Application do
 
   use Application
 
+  alias Streamix.Iptv.Gindex.SingleFlight
+
   @impl true
   def start(_type, _args) do
     # Configure DNS resolution to avoid stale cache issues in containers
@@ -83,7 +85,7 @@ defmodule Streamix.Application do
 
     # Bootstrap the GIndex single-flight ETS table. Public, named, no
     # GenServer needed — the table lives for the life of the BEAM node.
-    Streamix.Iptv.Gindex.SingleFlight.setup()
+    SingleFlight.setup()
 
     result
   end
