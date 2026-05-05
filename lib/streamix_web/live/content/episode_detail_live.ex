@@ -12,6 +12,19 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
+  import StreamixWeb.Content.DetailComponents,
+    only: [
+      content_rating_badge: 1,
+      date_badge: 1,
+      detail_hero: 1,
+      duration_badge: 1,
+      episode_navigation: 1,
+      extension_badge: 1,
+      favorite_button: 1,
+      rating_badge: 1,
+      synopsis_section: 1
+    ]
+
   # Mount for /browse/series/:series_id/episode/:id (global provider)
   def mount(%{"series_id" => series_id, "id" => episode_id}, _session, socket)
       when not is_map_key(socket.assigns, :provider) do
@@ -144,37 +157,14 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
-      <!-- Hero Section with Episode Thumbnail -->
-      <div class="relative h-[35vh] sm:h-[45vh] lg:h-[50vh] min-h-[240px] sm:min-h-[300px]">
-        <div class="absolute inset-0">
-          <img
-            :if={get_episode_image(@episode) || get_series_backdrop(@series)}
-            src={get_episode_image(@episode) || get_series_backdrop(@series)}
-            alt={episode_title(@episode, @series)}
-            class="w-full h-full object-cover"
-            fetchpriority="high"
-            decoding="async"
-          />
-          <div
-            :if={!get_episode_image(@episode) && !get_series_backdrop(@series)}
-            class="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900"
-          />
-        </div>
-
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-        
-    <!-- Back Button -->
-        <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
-          <.link
-            navigate={back_path(@mode, @provider, @series.id)}
-            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium max-w-[200px] sm:max-w-none"
-          >
-            <.icon name="hero-arrow-left" class="size-3.5 sm:size-4 flex-shrink-0" />
-            <span class="truncate">Voltar</span>
-          </.link>
-        </div>
-      </div>
+      <.detail_hero
+        image={get_episode_image(@episode) || get_series_backdrop(@series)}
+        alt={episode_title(@episode, @series)}
+        back_path={back_path(@mode, @provider, @series.id)}
+        height_class="h-[35vh] sm:h-[45vh] lg:h-[50vh]"
+        min_height_class="min-h-[240px] sm:min-h-[300px]"
+        compact_back?
+      />
       
     <!-- Content Section -->
       <div class="relative -mt-20 sm:-mt-28 lg:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
@@ -222,46 +212,15 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
               
     <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
-                <span
-                  :if={@series.content_rating}
-                  class={[
-                    "inline-flex items-center justify-center min-w-[36px] sm:min-w-[42px] h-6 sm:h-8 px-2 sm:px-2.5 rounded-md text-[10px] sm:text-xs font-bold",
-                    content_rating_class(@series.content_rating)
-                  ]}
-                  title="Classificação Indicativa"
-                >
-                  {@series.content_rating}
-                </span>
-                <span
-                  :if={@episode.rating}
-                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-warning/10 text-warning rounded-md text-xs sm:text-sm font-medium"
-                >
-                  <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />{format_rating(
-                    @episode.rating
-                  )}
-                </span>
-                <span
-                  :if={@episode.air_date}
-                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
-                >
-                  <.icon name="hero-calendar" class="size-3 sm:size-3.5" />{format_date(
-                    @episode.air_date
-                  )}
-                </span>
-                <span
-                  :if={@episode.duration_secs}
-                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
-                >
-                  <.icon name="hero-clock" class="size-3 sm:size-3.5" />{format_duration(
-                    @episode.duration_secs
-                  )}
-                </span>
-                <span
-                  :if={@episode.container_extension}
-                  class="inline-flex items-center h-6 sm:h-8 px-2 sm:px-2.5 bg-brand/20 text-brand rounded-md uppercase text-[10px] sm:text-xs font-bold"
-                >
-                  {@episode.container_extension}
-                </span>
+                <.content_rating_badge rating={@series.content_rating} />
+                <.rating_badge
+                  rating={@episode.rating}
+                  divide_by_two?={false}
+                  class="font-medium"
+                />
+                <.date_badge date={@episode.air_date} />
+                <.duration_badge seconds={@episode.duration_secs} />
+                <.extension_badge extension={@episode.container_extension} />
               </div>
               
     <!-- Action Buttons -->
@@ -279,104 +238,34 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   content_id={@episode.id}
                 />
 
-                <button
-                  type="button"
-                  phx-click="toggle_favorite"
-                  class={[
-                    "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
-                    @is_favorite && "bg-brand border-brand text-white",
-                    !@is_favorite &&
-                      "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
-                  ]}
-                  aria-label={
-                    if @is_favorite, do: "Série nos favoritos", else: "Adicionar série aos favoritos"
-                  }
-                >
-                  <.icon
-                    name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-                    class="size-4 sm:size-5"
-                  />
-                </button>
+                <.favorite_button
+                  favorite?={@is_favorite}
+                  label_on="Série nos favoritos"
+                  label_off="Adicionar série aos favoritos"
+                />
               </div>
               
     <!-- Synopsis -->
-              <div :if={@episode.plot && @episode.plot != ""} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
-                  Sinopse
-                </h3>
-                <p class="text-text-secondary text-sm sm:text-base leading-relaxed">
-                  {@episode.plot}
-                </p>
-              </div>
+              <.synopsis_section text={@episode.plot} />
               
     <!-- Series Synopsis (if no episode synopsis) -->
-              <div :if={(!@episode.plot || @episode.plot == "") && @series.plot} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
-                  Sobre a Série
-                </h3>
-                <p class="text-text-secondary text-sm sm:text-base leading-relaxed line-clamp-4">
-                  {@series.plot}
-                </p>
-              </div>
+              <.synopsis_section
+                :if={!present?(@episode.plot)}
+                title="Sobre a Série"
+                text={@series.plot}
+                class="line-clamp-4"
+              />
             </div>
           </div>
           
     <!-- Episode Navigation -->
-          <div class="mt-6 sm:mt-10 pt-6 sm:pt-8 border-t border-border">
-            <div class="flex items-center justify-between gap-2 sm:gap-4">
-              <!-- Previous Episode -->
-              <div class="flex-1 min-w-0">
-                <.link
-                  :if={@prev_episode}
-                  navigate={episode_path(@mode, @provider, @series.id, @prev_episode.id)}
-                  class="inline-flex items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg sm:rounded-xl bg-surface hover:bg-surface-hover transition-colors group"
-                >
-                  <.icon
-                    name="hero-chevron-left"
-                    class="size-4 sm:size-5 text-text-secondary group-hover:text-text-primary flex-shrink-0"
-                  />
-                  <div class="text-left min-w-0">
-                    <p class="text-[10px] sm:text-xs text-text-secondary uppercase tracking-wide">
-                      Anterior
-                    </p>
-                    <p class="text-xs sm:text-sm font-medium text-text-primary truncate">
-                      Ep. {@prev_episode.episode_num}
-                    </p>
-                  </div>
-                </.link>
-              </div>
-              
-    <!-- Back to Series -->
-              <.link
-                navigate={series_path(@mode, @provider, @series.id)}
-                class="hidden sm:inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-xs sm:text-sm"
-              >
-                <.icon name="hero-list-bullet" class="size-4" /> Todos os Episódios
-              </.link>
-              
-    <!-- Next Episode -->
-              <div class="flex-1 flex justify-end min-w-0">
-                <.link
-                  :if={@next_episode}
-                  navigate={episode_path(@mode, @provider, @series.id, @next_episode.id)}
-                  class="inline-flex items-center gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-lg sm:rounded-xl bg-surface hover:bg-surface-hover transition-colors group"
-                >
-                  <div class="text-right min-w-0">
-                    <p class="text-[10px] sm:text-xs text-text-secondary uppercase tracking-wide">
-                      Próximo
-                    </p>
-                    <p class="text-xs sm:text-sm font-medium text-text-primary truncate">
-                      Ep. {@next_episode.episode_num}
-                    </p>
-                  </div>
-                  <.icon
-                    name="hero-chevron-right"
-                    class="size-4 sm:size-5 text-text-secondary group-hover:text-text-primary flex-shrink-0"
-                  />
-                </.link>
-              </div>
-            </div>
-          </div>
+          <.episode_navigation
+            mode={@mode}
+            provider={@provider}
+            series={@series}
+            prev_episode={@prev_episode}
+            next_episode={@next_episode}
+          />
         </div>
       </div>
     </div>
@@ -397,12 +286,6 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp series_path(:provider, provider, series_id),
     do: ~p"/providers/#{provider.id}/series/#{series_id}"
 
-  defp episode_path(:browse, _provider, series_id, episode_id),
-    do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"
-
-  defp episode_path(:provider, provider, series_id, episode_id),
-    do: ~p"/providers/#{provider.id}/series/#{series_id}/episode/#{episode_id}"
-
   defp episode_title(episode, series) do
     base = series.title || series.name
     "S#{episode.season.season_number}E#{episode.episode_num} - #{base}"
@@ -420,19 +303,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
     episode.still_path || episode.cover
   end
 
-  defp format_rating(nil), do: nil
-
-  defp format_rating(rating) do
-    # Convert from TMDB 0-10 scale to display format (1 decimal)
-    value = Decimal.to_float(rating)
-    :erlang.float_to_binary(value, decimals: 1)
-  end
-
-  defp format_date(nil), do: nil
-
-  defp format_date(date) do
-    Calendar.strftime(date, "%d/%m/%Y")
-  end
+  defp present?(value), do: is_binary(value) and value != ""
 
   defp get_series_backdrop(%Series{} = series) do
     case Series.backdrop_urls(series) do
@@ -445,48 +316,4 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
   defp get_series_backdrop_fallback(%{cover: cover}) when is_binary(cover), do: cover
   defp get_series_backdrop_fallback(_), do: nil
-
-  # Content rating color classes
-  defp content_rating_class(rating) when is_binary(rating) do
-    rating_upper = String.upcase(rating)
-
-    cond do
-      rating_upper in ["L", "G", "TV-G", "TV-Y", "TV-Y7"] ->
-        "bg-success/10 text-success"
-
-      rating_upper in ["10", "PG", "TV-PG"] ->
-        "bg-info/10 text-info"
-
-      rating_upper in ["12", "PG-13", "TV-14"] ->
-        "bg-warning/10 text-warning"
-
-      rating_upper in ["14"] ->
-        "bg-warning/15 text-warning"
-
-      rating_upper in ["16", "R", "TV-MA"] ->
-        "bg-error/10 text-error"
-
-      rating_upper in ["18", "NC-17"] ->
-        "bg-error/15 text-error"
-
-      true ->
-        "bg-surface text-text-secondary"
-    end
-  end
-
-  defp content_rating_class(_), do: "bg-surface text-text-secondary"
-
-  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
-    total_minutes = div(seconds, 60)
-    hours = div(total_minutes, 60)
-    mins = rem(total_minutes, 60)
-
-    cond do
-      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
-      hours > 0 -> "#{hours}h"
-      true -> "#{mins}min"
-    end
-  end
-
-  defp format_duration(_), do: nil
 end

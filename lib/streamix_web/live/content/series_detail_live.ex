@@ -9,7 +9,27 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias StreamixWeb.Content.Detail
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
-  import StreamixWeb.Content.DetailComponents, only: [gallery_preview: 1]
+
+  import StreamixWeb.Content.DetailComponents,
+    only: [
+      content_rating_badge: 1,
+      credits_grid: 1,
+      detail_hero: 1,
+      detail_season_accordion: 1,
+      detail_title: 1,
+      favorite_button: 1,
+      gallery_preview: 1,
+      genre_chips: 1,
+      image_gallery: 1,
+      play_button: 1,
+      rating_badge: 1,
+      series_count_badge: 1,
+      similar_grid: 1,
+      synopsis_section: 1,
+      tmdb_link: 1,
+      trailer_link: 1,
+      year_badge: 1
+    ]
 
   # Mount for /browse/series/:id (global provider)
   def mount(%{"id" => series_id}, _session, socket)
@@ -182,36 +202,11 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
-      <!-- Hero Section -->
-      <div class="relative h-[30vh] sm:h-[50vh] lg:h-[60vh] min-h-[200px] sm:min-h-[400px]">
-        <div class="absolute inset-0">
-          <img
-            :if={get_backdrop(@series) || @series.cover}
-            src={get_backdrop(@series) || ImageProxy.proxy(@series.cover)}
-            alt={@series.name}
-            class="w-full h-full object-cover"
-            fetchpriority="high"
-            decoding="async"
-          />
-          <div
-            :if={!get_backdrop(@series) && !@series.cover}
-            class="w-full h-full bg-gradient-to-br from-neutral-800 to-neutral-900"
-          />
-        </div>
-
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        <div class="absolute inset-0 bg-gradient-to-r from-background via-background/30 to-transparent" />
-        
-    <!-- Back Button -->
-        <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
-          <.link
-            navigate={back_path(@mode, @provider)}
-            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium"
-          >
-            <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar
-          </.link>
-        </div>
-      </div>
+      <.detail_hero
+        image={get_backdrop(@series) || maybe_proxy(@series.cover)}
+        alt={@series.name}
+        back_path={back_path(@mode, @provider)}
+      />
       
     <!-- Content Section -->
       <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
@@ -239,25 +234,11 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             
     <!-- Info -->
             <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
-              <!-- Title -->
-              <div class="space-y-1 sm:space-y-2">
-                <h1 class="text-lg sm:text-3xl lg:text-5xl font-bold text-text-primary leading-tight">
-                  {@series.title || @series.name}
-                </h1>
-                <p
-                  :if={@series.title && @series.name && @series.title != @series.name}
-                  class="text-sm sm:text-lg text-text-secondary"
-                >
-                  {@series.name}
-                </p>
-                <!-- Tagline -->
-                <p
-                  :if={@series.tagline && @series.tagline != ""}
-                  class="text-sm sm:text-lg italic text-text-secondary/80"
-                >
-                  "{@series.tagline}"
-                </p>
-              </div>
+              <.detail_title
+                title={@series.title || @series.name}
+                subtitle={alternate_title(@series)}
+                tagline={@series.tagline}
+              />
 
               <div :if={@mode == :browse and not @premium_access} data-premium-badge>
                 <.premium_badge />
@@ -265,60 +246,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               
     <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
-                <!-- Content Rating -->
-                <span
-                  :if={@series.content_rating}
-                  class={[
-                    "inline-flex items-center justify-center min-w-[36px] sm:min-w-[42px] h-6 sm:h-8 px-2 sm:px-2.5 rounded-md text-[10px] sm:text-xs font-bold",
-                    content_rating_class(@series.content_rating)
-                  ]}
-                  title="Classificação Indicativa"
-                >
-                  {@series.content_rating}
-                </span>
-                <span
-                  :if={@series.rating}
-                  class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-warning/10 text-warning rounded-md text-xs sm:text-sm font-semibold"
-                >
-                  <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />
-                  {format_rating(@series.rating)}
-                </span>
-                <span
-                  :if={@series.year}
-                  class="inline-flex items-center h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-primary rounded-md text-xs sm:text-sm font-medium"
-                >
-                  {@series.year}
-                </span>
-                <span class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm">
-                  <.icon name="hero-tv" class="size-3 sm:size-3.5" />
-                  {length(@seasons)} temp · {Enum.sum(
-                    Enum.map(@seasons, fn s -> length(s.episodes || []) end)
-                  )} eps
-                </span>
+                <.content_rating_badge rating={@series.content_rating} />
+                <.rating_badge rating={@series.rating} />
+                <.year_badge year={@series.year} />
+                <.series_count_badge seasons={@seasons} />
               </div>
               
     <!-- Genres -->
-              <div
-                :if={@series.genres != []}
-                class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2"
-              >
-                <span
-                  :for={genre <- @series.genres}
-                  class="px-2 sm:px-3 py-0.5 sm:py-1 bg-white/5 text-text-secondary rounded-full text-xs sm:text-sm border border-white/10 hover:border-white/20 transition-colors"
-                >
-                  {genre.name}
-                </span>
-              </div>
+              <.genre_chips genres={@series.genres} />
               
     <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
-                <button
-                  type="button"
-                  phx-click="play_first_episode"
-                  class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
-                >
-                  <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir
-                </button>
+                <.play_button event="play_first_episode" label="Assistir" />
 
                 <StreamixWeb.WatchPartyComponents.create_party_button
                   :if={Enum.any?(@seasons, fn s -> s.episodes != [] end)}
@@ -326,48 +265,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   content_id={Enum.find_value(@seasons, fn s -> List.first(s.episodes) end).id}
                 />
 
-                <button
-                  type="button"
-                  phx-click="toggle_favorite"
-                  class={[
-                    "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
-                    @is_favorite && "bg-brand border-brand text-white",
-                    !@is_favorite &&
-                      "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
-                  ]}
-                  aria-label={
-                    if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"
-                  }
-                >
-                  <.icon
-                    name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-                    class="size-4 sm:size-5"
-                  />
-                </button>
-
-                <a
-                  :if={@series.youtube_trailer}
-                  href={trailer_url(@series.youtube_trailer)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-surface border border-border text-text-primary font-semibold rounded-lg hover:bg-surface-hover transition-colors text-sm"
-                >
-                  <.icon name="hero-play-circle" class="size-4 sm:size-5 text-brand" /> Trailer
-                </a>
-
-                <a
-                  :if={@series.tmdb_id}
-                  href={"https://www.themoviedb.org/tv/#{@series.tmdb_id}"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-xs sm:text-sm"
-                  title="Ver no The Movie Database"
-                >
-                  <svg class="size-3.5 sm:size-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-                  </svg>
-                  TMDB
-                </a>
+                <.favorite_button favorite?={@is_favorite} />
+                <.trailer_link youtube_id={@series.youtube_trailer} />
+                <.tmdb_link type="tv" tmdb_id={@series.tmdb_id} />
               </div>
 
               <.premium_cta_banner
@@ -377,100 +277,27 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               />
               
     <!-- Synopsis -->
-              <div :if={@series.plot} class="pt-2 sm:pt-4">
-                <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-2 sm:mb-3">
-                  Sinopse
-                </h3>
-                <p class="text-text-secondary text-sm sm:text-base leading-relaxed">
-                  {@series.plot}
-                </p>
-              </div>
+              <.synopsis_section text={@series.plot} />
               
     <!-- Details Grid -->
-              <div
-                :if={director_names(@series) != "" or cast_names(@series) != ""}
-                class="grid sm:grid-cols-2 gap-4 sm:gap-6 pt-2 sm:pt-4"
-              >
-                <div :if={director_names(@series) != ""} class="space-y-1 sm:space-y-2">
-                  <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
-                    Criado por
-                  </h4>
-                  <p class="text-text-primary text-sm sm:text-base">{director_names(@series)}</p>
-                </div>
-
-                <div :if={cast_names(@series) != ""} class="space-y-1 sm:space-y-2">
-                  <h4 class="text-xs sm:text-sm font-semibold text-text-secondary uppercase tracking-wide">
-                    Elenco
-                  </h4>
-                  <p class="text-text-primary text-sm sm:text-base">
-                    {truncate_cast(cast_names(@series))}
-                  </p>
-                </div>
-              </div>
+              <.credits_grid content={@series} director_label="Criado por" />
             </div>
           </div>
           
     <!-- Image Gallery -->
-          <div :if={Series.has_images?(@series)} class="mt-8 sm:mt-12">
-            <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">Galeria</h3>
-            <div class="responsive-gallery-grid">
-              <button
-                :for={image <- Series.image_urls(@series)}
-                type="button"
-                phx-click="open_gallery_image"
-                phx-value-src={image}
-                class="aspect-video rounded-lg overflow-hidden bg-surface-hover cursor-pointer hover:ring-2 hover:ring-brand transition-all group focus:outline-none focus:ring-2 focus:ring-brand"
-                aria-label="Abrir imagem da galeria"
-              >
-                <img
-                  src={image}
-                  alt="Imagem da série"
-                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </button>
-            </div>
-          </div>
+          <.image_gallery
+            images={if Series.has_images?(@series), do: Series.image_urls(@series), else: []}
+            alt="Imagem da série"
+          />
           
     <!-- Similar Series -->
-          <div :if={@similar_series != []} class="mt-8 sm:mt-12">
-            <h3 class="text-lg sm:text-xl font-semibold text-text-primary mb-3 sm:mb-4">
-              Séries Similares
-            </h3>
-            <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 sm:gap-4">
-              <.link
-                :for={similar <- @similar_series}
-                navigate={similar_series_path(@mode, @provider, similar)}
-                class="group block transition-all duration-300"
-              >
-                <div class="aspect-[2/3] bg-surface-hover relative rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1 block">
-                  <img
-                    :if={similar.cover}
-                    src={ImageProxy.proxy(similar.cover)}
-                    alt={similar.title || similar.name}
-                    class="w-full h-full object-cover transition-transform duration-300"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <div
-                    :if={!similar.cover}
-                    class="w-full h-full flex items-center justify-center"
-                  >
-                    <.icon name="hero-tv" class="size-8 text-text-secondary/30" />
-                  </div>
-                </div>
-                <div class="px-0.5 pt-1.5 sm:pt-2">
-                  <p class="text-[11px] sm:text-sm text-text-primary font-medium truncate group-hover:text-brand transition-colors mt-0.5">
-                    {similar.title || similar.name}
-                  </p>
-                  <p :if={similar.year} class="text-[10px] sm:text-xs text-text-secondary">
-                    {similar.year}
-                  </p>
-                </div>
-              </.link>
-            </div>
-          </div>
+          <.similar_grid
+            items={@similar_series}
+            kind={:series}
+            mode={@mode}
+            provider={@provider}
+            title="Séries Similares"
+          />
           
     <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
@@ -485,7 +312,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             </div>
 
             <div class="space-y-3 sm:space-y-4">
-              <.render_season_accordion
+              <.detail_season_accordion
                 :for={season <- @seasons}
                 season={season}
                 expanded={MapSet.member?(@expanded_seasons, season.id)}
@@ -499,99 +326,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     """
   end
 
-  defp render_season_accordion(assigns) do
-    episodes = Enum.sort_by(assigns.season.episodes || [], & &1.episode_num)
-    assigns = assign(assigns, :episodes, episodes)
-
-    ~H"""
-    <div class="bg-surface rounded-lg sm:rounded-xl overflow-hidden border border-border">
-      <button
-        type="button"
-        phx-click="toggle_season"
-        phx-value-id={@season.id}
-        class="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 hover:bg-surface-hover transition-colors"
-      >
-        <div class="flex items-center gap-2 sm:gap-4">
-          <span class="text-base sm:text-lg font-semibold text-text-primary">
-            Temporada {@season.season_number}
-          </span>
-          <span class="text-xs sm:text-sm text-text-secondary">{length(@episodes)} eps</span>
-        </div>
-        <.icon
-          name="hero-chevron-down"
-          class={[
-            "size-4 sm:size-5 text-text-secondary transition-transform duration-200",
-            @expanded && "rotate-180"
-          ]}
-        />
-      </button>
-
-      <div :if={@expanded} class="border-t border-border">
-        <div class="divide-y divide-border">
-          <.episode_item :for={episode <- @episodes} episode={episode} />
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp episode_item(assigns) do
-    ~H"""
-    <div
-      class="flex gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-surface-hover cursor-pointer transition-colors group"
-      phx-click="view_episode"
-      phx-value-id={@episode.id}
-    >
-      <div class="flex-shrink-0 w-6 sm:w-8 text-center">
-        <span class="text-lg sm:text-2xl font-bold text-text-secondary/30">
-          {@episode.episode_num}
-        </span>
-      </div>
-
-      <div class="relative flex-shrink-0 w-24 sm:w-36 aspect-video bg-surface-hover rounded-lg overflow-hidden">
-        <img
-          :if={@episode.cover}
-          src={ImageProxy.proxy(@episode.cover)}
-          alt={episode_title(@episode)}
-          class="w-full h-full object-cover"
-          loading="lazy"
-          decoding="async"
-        />
-        <div
-          :if={!@episode.cover}
-          class="w-full h-full flex items-center justify-center bg-surface"
-        >
-          <.icon name="hero-play-circle" class="size-6 sm:size-10 text-text-secondary/30" />
-        </div>
-
-        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white flex items-center justify-center">
-            <.icon name="hero-play-solid" class="size-4 sm:size-5 text-black ml-0.5" />
-          </div>
-        </div>
-      </div>
-
-      <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
-          {episode_title(@episode)}
-        </h4>
-        <p
-          :if={@episode.plot}
-          class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-0.5 sm:mt-1 hidden sm:block"
-        >
-          {@episode.plot}
-        </p>
-        <span
-          :if={@episode.duration_secs}
-          class="text-[10px] sm:text-xs text-text-secondary/60 mt-1 sm:mt-2 block"
-        >
-          {format_duration(@episode.duration_secs)}
-        </span>
-      </div>
-    </div>
-    """
-  end
-
   # ============================================
   # Private Helpers
   # ============================================
@@ -599,31 +333,17 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp back_path(:browse, _provider), do: ~p"/browse/series"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/series"
 
-  defp similar_series_path(:browse, _provider, series), do: ~p"/browse/series/#{series.id}"
-
-  defp similar_series_path(:provider, provider, series),
-    do: ~p"/providers/#{provider.id}/series/#{series.id}"
-
   defp episode_path(:browse, _provider, series_id, episode_id),
     do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"
 
   defp episode_path(:provider, provider, series_id, episode_id),
     do: ~p"/providers/#{provider.id}/series/#{series_id}/episode/#{episode_id}"
 
-  defp episode_title(episode), do: "Episódio #{episode.episode_num}"
-
-  defp format_rating(%Decimal{} = rating) do
-    rating
-    |> Decimal.div(2)
-    |> Decimal.round(1)
-    |> Decimal.to_string()
+  defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do
+    if title != name, do: name
   end
 
-  defp format_rating(rating) when is_number(rating) do
-    Float.round(rating / 2, 1) |> to_string()
-  end
-
-  defp format_rating(_), do: nil
+  defp alternate_title(_), do: nil
 
   defp get_backdrop(%Series{} = series) do
     case Series.backdrop_urls(series) do
@@ -636,91 +356,4 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp maybe_proxy(nil), do: nil
   defp maybe_proxy(url) when is_binary(url), do: ImageProxy.proxy(url)
-
-  defp trailer_url(youtube_id) when is_binary(youtube_id) do
-    if String.contains?(youtube_id, "youtube.com") or String.contains?(youtube_id, "youtu.be") do
-      youtube_id
-    else
-      "https://www.youtube.com/watch?v=#{youtube_id}"
-    end
-  end
-
-  defp trailer_url(_), do: nil
-
-  defp cast_names(%{credits: credits}) when is_list(credits) do
-    credits
-    |> Enum.filter(&(&1.role == "cast"))
-    |> Enum.sort_by(& &1.position)
-    |> Enum.map_join(", ", & &1.person.name)
-  end
-
-  defp cast_names(_), do: ""
-
-  defp director_names(%{credits: credits}) when is_list(credits) do
-    credits
-    |> Enum.filter(&(&1.role == "director"))
-    |> Enum.map_join(", ", & &1.person.name)
-  end
-
-  defp director_names(_), do: ""
-
-  defp truncate_cast(str) when is_binary(str) do
-    str
-    |> String.split(",")
-    |> Enum.take(5)
-    |> Enum.map_join(", ", &String.trim/1)
-  end
-
-  defp truncate_cast(_), do: ""
-
-  # Content rating color classes based on Brazilian/US ratings
-  defp content_rating_class(rating) when is_binary(rating) do
-    rating_upper = String.upcase(rating)
-
-    cond do
-      # Livre / General (green)
-      rating_upper in ["L", "G", "TV-G", "TV-Y", "TV-Y7"] ->
-        "bg-success/10 text-success"
-
-      # 10 anos / PG (blue)
-      rating_upper in ["10", "PG", "TV-PG"] ->
-        "bg-info/10 text-info"
-
-      # 12 anos / PG-13 (yellow)
-      rating_upper in ["12", "PG-13", "TV-14"] ->
-        "bg-warning/10 text-warning"
-
-      # 14 anos (orange)
-      rating_upper in ["14"] ->
-        "bg-warning/15 text-warning"
-
-      # 16 anos (red-orange)
-      rating_upper in ["16", "R", "TV-MA"] ->
-        "bg-error/10 text-error"
-
-      # 18 anos / NC-17 (dark red)
-      rating_upper in ["18", "NC-17"] ->
-        "bg-error/15 text-error"
-
-      # Default
-      true ->
-        "bg-surface text-text-secondary"
-    end
-  end
-
-  defp content_rating_class(_), do: "bg-surface text-text-secondary"
-
-  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
-    total_minutes = div(seconds, 60)
-    hours = div(total_minutes, 60)
-    mins = rem(total_minutes, 60)
-
-    cond do
-      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
-      hours > 0 -> "#{hours}h"
-      true -> "#{mins}min"
-    end
-  end
-
-  defp format_duration(_), do: nil
 end
