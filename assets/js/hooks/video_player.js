@@ -12,6 +12,7 @@ import { NetworkMonitor } from "../lib/network_monitor";
 import { diagnoseError, runQuickDiagnostics } from "../lib/player_diagnostics";
 import { getHls, isHlsJsSupported, isMpegtsSupported } from "../lib/player_libs";
 import {
+  forgetRecommendedPlayer,
   getPlaybackPosition,
   getPreferences,
   getRecommendedPlayer,
@@ -2117,6 +2118,13 @@ const VideoPlayer = {
       this.detectAVPlayerTracks();
     } catch (error) {
       log.error("[VideoPlayer] AVPlayer fallback failed:", error);
+
+      // Forget the cached "avplayer" recommendation for this content
+      // type so the next attempt re-evaluates engine_selector instead
+      // of repeating the same broken AVPlayer load.
+      const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+      if (contentKey) forgetRecommendedPlayer(contentKey);
+
       this.revertToNativePlayer();
     } finally {
       this._switchingToAVPlayer = false;

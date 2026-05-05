@@ -13,6 +13,14 @@ const DEVICE_COMPAT_KEY = "streamix_device_compat";
 const GLOBAL_KEY = "global";
 const MAX_POSITIONS = 100; // Max number of positions to store
 
+// Schema version for `streamix_device_compat`. Bump when an engine
+// decision learned by an older version of the app becomes invalid (e.g.
+// the proxy backend changes and the previously-recommended player no
+// longer applies). Reads with a stale schema are wiped on the next
+// access — much cheaper than asking every user to clear localStorage by
+// hand.
+const DEVICE_COMPAT_SCHEMA = 2;
+
 // ============================================
 // Device Fingerprint & Codec Compatibility
 // ============================================
@@ -40,12 +48,32 @@ function getDeviceFingerprint() {
  * Get stored device compatibility data
  */
 function getDeviceCompatibility() {
+  const empty = { schema: DEVICE_COMPAT_SCHEMA, codecs: {}, players: {}, lastUpdated: null };
+
   try {
     const stored = localStorage.getItem(DEVICE_COMPAT_KEY);
-    return stored ? JSON.parse(stored) : { codecs: {}, players: {}, lastUpdated: null };
+    if (!stored) return empty;
+
+    const parsed = JSON.parse(stored);
+
+    // Wipe on stale schema — a player previously learned by the user
+    // may no longer be the right call (e.g. backend changed from
+    // Tuliprox-style 302 to BEAM-side proxy and AVPlayer no longer
+    // loads via Range requests). Returning `empty` causes
+    // `getRecommendedPlayer/1` to fall back to engine_selector's
+    // pure rules.
+    if (parsed.schema !== DEVICE_COMPAT_SCHEMA) {
+      log.debug(
+        `device-compat schema bumped (${parsed.schema} → ${DEVICE_COMPAT_SCHEMA}); wiping`
+      );
+      localStorage.removeItem(DEVICE_COMPAT_KEY);
+      return empty;
+    }
+
+    return parsed;
   } catch (e) {
     log.warn("Failed to read device compatibility:", e);
-    return { codecs: {}, players: {}, lastUpdated: null };
+    return empty;
   }
 }
 
@@ -54,10 +82,25 @@ function getDeviceCompatibility() {
  */
 function saveDeviceCompatibility(compat) {
   try {
+    compat.schema = DEVICE_COMPAT_SCHEMA;
     compat.lastUpdated = Date.now();
     localStorage.setItem(DEVICE_COMPAT_KEY, JSON.stringify(compat));
   } catch (e) {
     log.warn("Failed to save device compatibility:", e);
+  }
+}
+
+/**
+ * Forget the recommended player for a content type. Called when the
+ * cached recommendation has just failed (timeout, decode error) so the
+ * next playback attempt falls back to engine_selector defaults.
+ */
+export function forgetRecommendedPlayer(contentType) {
+  const compat = getDeviceCompatibility();
+  if (compat.players[contentType]) {
+    delete compat.players[contentType];
+    saveDeviceCompatibility(compat);
+    log.debug(`Forgot recommended player for ${contentType}`);
   }
 }
 
