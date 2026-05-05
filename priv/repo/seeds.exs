@@ -239,6 +239,28 @@ else
   IO.puts("→ Skipping IPTV provider (env vars not configured)")
 end
 
+# GIndex provider is created by Application.init_system_providers/0 at
+# boot — before any user exists — so it lands with user_id = NULL.
+# Reattach it to the admin now that we know who owns the box. Pure
+# UPDATE, no resync: the GIndex orchestrator does its own scheduling.
+alias Streamix.Iptv.GIndexProvider
+
+case GIndexProvider.get() do
+  nil ->
+    IO.puts("→ GIndex provider not configured (set GINDEX_URL)")
+
+  %Provider{user_id: nil} = provider ->
+    {:ok, updated} =
+      provider
+      |> Ecto.Changeset.change(user_id: admin.id)
+      |> Repo.update()
+
+    IO.puts("✓ GIndex provider linked to admin: #{updated.name} (owner=#{admin.email})")
+
+  %Provider{} = provider ->
+    IO.puts("✓ GIndex provider already owned: #{provider.name} (user_id=#{provider.user_id})")
+end
+
 # Create global provider (if configured)
 alias Streamix.Iptv.GlobalProvider
 
