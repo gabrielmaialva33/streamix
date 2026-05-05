@@ -33,7 +33,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   """
 
   alias Plug.Conn
-  alias Streamix.Iptv.Streaming.RedirectResolver
+  alias Streamix.Iptv.Streaming.{RedirectResolver, UpstreamPump}
   alias StreamixWeb.StreamErrors
 
   require Logger
@@ -65,6 +65,11 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   # already started streaming. Past this we close the upstream socket
   # and ask the retry loop for a fresh chain.
   @upstream_idle_timeout_ms 30_000
+
+  # Burst buffer cap (bytes-in-flight) between Finch and Plug.Conn.chunk.
+  # Decouples upstream pace from client pace so a microburst (GC pause,
+  # transient congestion) doesn't stall the upstream socket.
+  @burst_buffer_bytes 5 * 1024 * 1024
 
   # Status codes we treat as terminal — retrying won't help.
   @terminal_statuses [400, 401, 403, 404, 405, 410, 416, 451]
@@ -208,11 +213,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       state.retry_count > 0
   end
 
-  # Streams the upstream into the conn. Returns `{:ok, conn, state}` on
-  # a clean upstream EOF (or client-initiated halt) and `{:error, …}`
-  # for the failure modes the caller knows how to recover from.
+  # Drains upstream into the conn through `UpstreamPump`. The pump runs in
+  # its own Task so a slow client can't stall Finch packet-by-packet —
+  # bytes-in-flight is bounded by `@burst_buffer_bytes` and the pump
+  # waits for `{:ack, size}` from us once that window fills.
   defp stream_via_finch(conn, req, state) do
-    initial = %{
+    acc = %{
       conn: conn,
       status: nil,
       sent_headers?: false,
@@ -221,41 +227,57 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       attempting_resume?: state.bytes_sent > 0
     }
 
-    Finch.stream(req, Streamix.Finch, initial, &handle_chunk/2,
-      receive_timeout: @upstream_idle_timeout_ms,
-      pool_timeout: 5_000
-    )
-    |> case do
-      {:ok, %{conn: conn, sent_headers?: true} = acc} ->
-        {:ok, conn, acc}
+    pump =
+      UpstreamPump.start(req, Streamix.Finch, self(),
+        cap_bytes: @burst_buffer_bytes,
+        receive_timeout: @upstream_idle_timeout_ms,
+        pool_timeout: 5_000
+      )
 
-      {:ok, %{sent_headers?: false}} ->
-        {:error, :before_first_byte, :empty_upstream}
+    try do
+      consume_pump(pump, acc)
+    after
+      Task.shutdown(pump, :brutal_kill)
+    end
+  end
 
-      {:error, reason} ->
-        if initial.sent_headers? do
-          {:error, {:after_chunk, initial.conn, initial.total_sent}, reason}
-        else
-          {:error, :before_first_byte, reason}
-        end
+  defp consume_pump(pump, acc) do
+    pump_pid = pump.pid
+    pump_ref = pump.ref
+
+    receive do
+      {^pump_pid, {:status, status}} ->
+        consume_pump(pump, on_status(status, acc))
+
+      {^pump_pid, {:headers, headers}} ->
+        consume_pump(pump, on_headers(headers, acc))
+
+      {^pump_pid, {:data, chunk, size}} ->
+        consume_pump(pump, on_data(chunk, size, acc, pump_pid))
+
+      {^pump_pid, {:trailers, _trailers}} ->
+        consume_pump(pump, acc)
+
+      {^pump_pid, :done} ->
+        on_pump_done(acc)
+
+      {^pump_pid, {:error, reason}} ->
+        on_pump_error(reason, acc)
+
+      {:DOWN, ^pump_ref, :process, ^pump_pid, reason} ->
+        # Task crashed (e.g. pump idle exit). Surface it as a transient
+        # upstream error so the retry loop can attempt a fresh chain.
+        on_pump_error({:pump_down, reason}, acc)
     end
   catch
-    {:client_closed, _} ->
+    {:client_closed, _acc} ->
       {:error, :client_closed}
 
     {:upstream_error, status, %{sent_headers?: false}} ->
-      cond do
-        status in @terminal_statuses ->
-          {:error, :status_terminal, status}
-
-        status in 400..499 ->
-          {:error, :before_first_byte, {:unexpected_status, status}}
-
-        status in 500..599 ->
-          {:error, :before_first_byte, {:unexpected_status, status}}
-
-        true ->
-          {:error, :before_first_byte, {:unexpected_status, status}}
+      if status in @terminal_statuses do
+        {:error, :status_terminal, status}
+      else
+        {:error, :before_first_byte, {:unexpected_status, status}}
       end
 
     {:upstream_error, status, %{conn: conn, total_sent: total_sent}} ->
@@ -265,43 +287,40 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       {:error, :status_no_partial, status}
   end
 
-  # Finch.stream/5 callback — receives status / headers / data tuples
-  # one at a time and threads our streaming accumulator through.
-  defp handle_chunk({:status, status}, %{attempting_resume?: true} = acc)
-       when status not in [206, 416] do
+  defp on_status(status, %{attempting_resume?: true} = acc) when status not in [206, 416] do
     # We requested a Range resume but the provider answered 200 (or some
     # other non-206 success). Bail out — restarting bytes from offset 0
     # would corrupt the player's decoder state.
     throw({:no_partial_on_resume, status, acc})
   end
 
-  defp handle_chunk({:status, status}, acc) when status in 200..299 do
-    %{acc | status: status}
-  end
+  defp on_status(status, acc) when status in 200..299, do: %{acc | status: status}
+  defp on_status(status, acc), do: throw({:upstream_error, status, acc})
 
-  defp handle_chunk({:status, status}, acc) do
-    throw({:upstream_error, status, acc})
-  end
-
-  defp handle_chunk({:headers, headers}, acc) do
+  defp on_headers(headers, acc) do
     conn = send_response_headers(acc.conn, acc.status || 200, headers, acc.attempting_resume?)
     %{acc | conn: conn, sent_headers?: true}
   end
 
-  defp handle_chunk({:data, chunk}, acc) do
+  defp on_data(chunk, size, acc, pump_pid) do
     case Conn.chunk(acc.conn, chunk) do
       {:ok, conn} ->
-        size = byte_size(chunk)
+        send(pump_pid, {:ack, size})
         %{acc | conn: conn, total_sent: acc.total_sent + size, bytes_sent: acc.bytes_sent + size}
 
       {:error, :closed} ->
-        # Player disconnected. Bail out so the upstream connection is
-        # released back to the pool.
         throw({:client_closed, acc})
     end
   end
 
-  defp handle_chunk({:trailers, _trailers}, acc), do: acc
+  defp on_pump_done(%{sent_headers?: true} = acc), do: {:ok, acc.conn, acc}
+  defp on_pump_done(_acc), do: {:error, :before_first_byte, :empty_upstream}
+
+  defp on_pump_error(reason, %{sent_headers?: true, conn: conn, total_sent: total_sent}) do
+    {:error, {:after_chunk, conn, total_sent}, reason}
+  end
+
+  defp on_pump_error(reason, _acc), do: {:error, :before_first_byte, reason}
 
   defp send_response_headers(conn, status, upstream_headers, attempting_resume?) do
     # When we resumed mid-stream the upstream only knows the remaining
