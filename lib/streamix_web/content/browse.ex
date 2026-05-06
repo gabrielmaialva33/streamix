@@ -128,17 +128,11 @@ defmodule StreamixWeb.Content.Browse do
     end
   end
 
-  def counts(%{source: "gindex", gindex_counts: counts}) do
+  def counts(%{source: "gindex", gindex_counts: counts}, _kind) do
     %{live: 0, movies: counts.movies, series: counts.series, animes: counts.animes}
   end
 
-  def counts(%{source: "gindex", gindex_count: count}, :movies),
-    do: %{live: 0, movies: count, series: 0, animes: 0}
-
-  def counts(%{source: "gindex", gindex_count: count}, :series),
-    do: %{live: 0, movies: 0, series: count, animes: 0}
-
-  def counts(%{provider: nil}, _kind), do: %{live: 0, movies: 0, series: 0}
+  def counts(%{provider: nil}, _kind), do: %{live: 0, movies: 0, series: 0, animes: 0}
 
   def counts(%{provider: provider}, _kind) do
     %{
