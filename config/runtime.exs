@@ -175,6 +175,11 @@ if get_env.("TORRENT_ENABLED") == "true" do
   config :streamix, :torrent_provider,
     enabled: true,
     rqbit_url: get_env.("RQBIT_URL") || "http://rqbit:3030"
+
+  config :streamix, :torrent_source_endpoints,
+    eztv: get_env.("EZTV_SOURCE_URL"),
+    gratistorrent: get_env.("GRATISTORRENT_SOURCE_URL"),
+    comandotorrent: get_env.("COMANDOTORRENT_SOURCE_URL")
 else
   config :streamix, :torrent_provider, enabled: false
 end

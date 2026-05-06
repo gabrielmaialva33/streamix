@@ -64,8 +64,25 @@ services:
       timeout: 5s
       retries: 5
 
+  rqbit:
+    image: ikatson/rqbit:latest
+    container_name: streamix-rqbit
+    command: ["server", "start", "/home/rqbit/downloads"]
+    ports:
+      - "3030:3030" # HTTP API / Web UI
+      - "4240:4240" # BitTorrent TCP/uTP
+    environment:
+      RQBIT_HTTP_API_LISTEN_ADDR: 0.0.0.0:3030
+    volumes:
+      - streamix_rqbit_db:/home/rqbit/db
+      - streamix_rqbit_cache:/home/rqbit/cache
+      - streamix_rqbit_downloads:/home/rqbit/downloads
+
 volumes:
   streamix_postgres_data:
   streamix_redis_data:
   streamix_rabbitmq_data:
   streamix_qdrant_data:
+  streamix_rqbit_db:
+  streamix_rqbit_cache:
+  streamix_rqbit_downloads:
