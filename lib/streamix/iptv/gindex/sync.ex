@@ -8,8 +8,9 @@ defmodule Streamix.Iptv.Gindex.Sync do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Provider, Providers, Season, Series}
+  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Provider, Season, Series}
   alias Streamix.Iptv.Gindex.Scraper
+  alias Streamix.Iptv.Gindex.Sync.Paths
   alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
 
@@ -34,9 +35,9 @@ defmodule Streamix.Iptv.Gindex.Sync do
     update_status(provider, "syncing")
 
     base_url = provider.gindex_url || provider.url
-    movies_path = get_movies_path(provider)
-    series_paths = get_series_paths(provider)
-    animes_path = get_animes_path(provider)
+    movies_path = Paths.movies_path(provider)
+    series_paths = Paths.series_paths(provider)
+    animes_path = Paths.animes_path(provider)
 
     # Sync movies
     movies_result = sync_movies(provider, base_url, movies_path)
@@ -115,7 +116,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   """
   def list_categories(%Provider{} = provider, movies_path \\ nil) do
     base_url = provider.gindex_url || provider.url
-    path = movies_path || get_movies_path(provider)
+    path = movies_path || Paths.movies_path(provider)
 
     Scraper.list_categories(base_url, path)
   end
@@ -231,40 +232,6 @@ defmodule Streamix.Iptv.Gindex.Sync do
     |> Provider.sync_changeset(%{sync_status: status})
     |> Repo.update()
   end
-
-  defp get_movies_path(provider) do
-    provider = Providers.preload_drives(provider)
-
-    case find_drive(provider.drives, "movies") do
-      %{metadata: %{"path" => path}} -> path
-      _ -> "/1:/Filmes/"
-    end
-  end
-
-  defp get_series_paths(provider) do
-    provider = Providers.preload_drives(provider)
-
-    case find_drive(provider.drives, "series") do
-      %{metadata: %{"paths" => paths}} when is_list(paths) -> paths
-      %{metadata: %{"path" => path}} when is_binary(path) -> [path]
-      _ -> ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"]
-    end
-  end
-
-  defp get_animes_path(provider) do
-    provider = Providers.preload_drives(provider)
-
-    case find_drive(provider.drives, "animes") do
-      %{metadata: %{"path" => path}} -> path
-      _ -> "/0:/Animes/"
-    end
-  end
-
-  defp find_drive(drives, type) when is_list(drives) do
-    Enum.find(drives, &(&1.drive_type == type))
-  end
-
-  defp find_drive(_, _), do: nil
 
   # =============================================================================
   # Anime Sync Functions
