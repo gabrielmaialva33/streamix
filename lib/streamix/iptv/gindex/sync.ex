@@ -1,33 +1,22 @@
 defmodule Streamix.Iptv.Gindex.Sync do
   @moduledoc """
-  Synchronization module for GIndex content.
+  Public facade for GIndex provider synchronization.
 
-  Fetches data from GIndex servers and syncs to database using UPSERT strategy.
-  Preserves record IDs for favorites/history references.
+  Fetches data from GIndex servers and syncs to the database using an UPSERT
+  strategy that preserves record IDs for favorites/history references.
   """
 
-  import Ecto.Query, warn: false
-
-  alias Streamix.Iptv.{CatalogItem, Episode, Movie, Provider, Season, Series}
   alias Streamix.Iptv.Gindex.Scraper
-  alias Streamix.Iptv.Gindex.Sync.Paths
-  alias Streamix.Iptv.Sync.Helpers
+  alias Streamix.Iptv.Gindex.Sync.{Animes, Movies, Paths, Series}
+  alias Streamix.Iptv.{Provider, Providers}
   alias Streamix.Repo
 
   require Logger
 
-  # Persist in small chunks so a ScanRoot job that hits a transient 500 on
-  # some deep subfolder still captures the items it discovered before the
-  # failure. Previous 100-item batch meant anything short of a full
-  # batch was lost when the stream raised.
-  @batch_size 25
-  @series_batch_size 5
-
   @doc """
   Syncs all content (movies, series, and animes) from a GIndex provider.
 
-  Returns {:ok, stats} on success or {:error, reason} on failure.
-  stats is a map with :movies_count, :series_count, :animes_count, :episodes_count
+  Returns `{:ok, stats}` on success or `{:error, reason}` on failure.
   """
   def sync_provider(%Provider{provider_type: :gindex} = provider) do
     Logger.info("[GIndex Sync] Starting sync for provider #{provider.id} (#{provider.name})")
@@ -35,60 +24,11 @@ defmodule Streamix.Iptv.Gindex.Sync do
     update_status(provider, "syncing")
 
     base_url = provider.gindex_url || provider.url
-    movies_path = Paths.movies_path(provider)
-    series_paths = Paths.series_paths(provider)
-    animes_path = Paths.animes_path(provider)
+    movies_result = Movies.sync(provider, base_url, Paths.movies_path(provider))
+    series_result = Series.sync(provider, base_url, Paths.series_paths(provider))
+    animes_result = Animes.sync(provider, base_url, Paths.animes_path(provider))
 
-    # Sync movies
-    movies_result = sync_movies(provider, base_url, movies_path)
-
-    # Sync series
-    series_result = sync_series(provider, base_url, series_paths)
-
-    # Sync animes
-    animes_result = sync_animes(provider, base_url, animes_path)
-
-    case {movies_result, series_result, animes_result} do
-      {{:ok, movies_count}, {:ok, series_stats}, {:ok, animes_stats}} ->
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-        total_series = series_stats.series_count + animes_stats.animes_count
-        total_episodes = series_stats.episodes_count + animes_stats.episodes_count
-
-        stats = %{
-          movies_count: movies_count,
-          series_count: series_stats.series_count,
-          animes_count: animes_stats.animes_count,
-          episodes_count: total_episodes
-        }
-
-        provider
-        |> Provider.sync_changeset(%{
-          sync_status: "completed",
-          movies_count: movies_count,
-          series_count: total_series,
-          vod_synced_at: now
-        })
-        |> Repo.update()
-
-        Logger.info(
-          "[GIndex Sync] Completed: #{movies_count} movies, #{series_stats.series_count} series, " <>
-            "#{animes_stats.animes_count} animes, #{total_episodes} episodes synced"
-        )
-
-        {:ok, stats}
-
-      {{:error, reason}, _, _} ->
-        update_status(provider, "failed")
-        {:error, reason}
-
-      {_, {:error, reason}, _} ->
-        update_status(provider, "failed")
-        {:error, reason}
-
-        # Note: sync_animes always returns {:ok, ...} due to rescue block
-        # Anime sync failures are non-blocking by design
-    end
+    finalize_provider_sync(provider, movies_result, series_result, animes_result)
   end
 
   def sync_provider(%Provider{} = provider) do
@@ -100,15 +40,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   Syncs movies from a specific category path.
   """
   def sync_category(%Provider{} = provider, category_path) do
-    base_url = provider.gindex_url || provider.url
-
-    case Scraper.scrape_category(base_url, category_path) do
-      {:ok, movies} ->
-        upsert_movies(provider, movies)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    Movies.sync_category(provider, provider.gindex_url || provider.url, category_path)
   end
 
   @doc """
@@ -122,381 +54,24 @@ defmodule Streamix.Iptv.Gindex.Sync do
   end
 
   @doc """
-  Syncs a single root path for a given kind. Used by the Oban per-root
-  orchestration so each scan root is its own bounded job.
-
-  Returns `{:ok, stats}` where `stats` keys depend on `kind`:
-    * `:movies` -> `%{movies_count: n}`
-    * `:series` -> `%{series_count: n, episodes_count: n}`
-    * `:animes` -> `%{animes_count: n, episodes_count: n}`
+  Syncs a single root path for a given kind.
   """
   @spec sync_kind(Provider.t(), String.t(), String.t(), atom()) ::
           {:ok, map()} | {:error, term()}
   def sync_kind(%Provider{} = provider, base_url, path, :movies) do
-    case sync_movies(provider, base_url, path) do
+    case Movies.sync(provider, base_url, path) do
       {:ok, count} -> {:ok, %{movies_count: count}}
       error -> error
     end
   end
 
   def sync_kind(%Provider{} = provider, base_url, path, :series) do
-    # `sync_series/3` already accepts a list of paths; wrap the single path.
-    case sync_series(provider, base_url, [path]) do
-      {:ok, stats} -> {:ok, stats}
-      error -> error
-    end
+    Series.sync(provider, base_url, [path])
   end
 
   def sync_kind(%Provider{} = provider, base_url, path, :animes) do
-    case sync_animes(provider, base_url, path) do
-      {:ok, stats} -> {:ok, stats}
-      error -> error
-    end
+    Animes.sync(provider, base_url, path)
   end
-
-  # Private functions
-
-  defp sync_movies(provider, base_url, movies_path) do
-    movies =
-      Scraper.scrape_movies(base_url, movies_path)
-      |> Stream.chunk_every(@batch_size)
-      |> Stream.map(fn batch ->
-        case upsert_movies(provider, batch) do
-          {:ok, count} -> count
-          {:error, _} -> 0
-        end
-      end)
-      |> Enum.sum()
-
-    {:ok, movies}
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Error during sync: #{inspect(e)}")
-      {:error, e}
-  end
-
-  defp upsert_movies(provider, movies) when is_list(movies) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    # Find existing stream_ids to know which need new catalog_items
-    stream_ids = Enum.map(movies, & &1.stream_id)
-
-    existing_ci_map =
-      Movie
-      |> where(provider_id: ^provider.id)
-      |> where([m], m.stream_id in ^stream_ids)
-      |> select([m], {m.stream_id, m.catalog_item_id})
-      |> Repo.all()
-      |> Map.new()
-
-    new_sids = Enum.reject(stream_ids, &Map.has_key?(existing_ci_map, &1))
-    new_ci_ids = Helpers.pre_create_catalog_items(length(new_sids), "movie", provider.id, now)
-    new_ci_map = Enum.zip(new_sids, new_ci_ids) |> Map.new()
-    ci_map = Map.merge(existing_ci_map, new_ci_map)
-
-    entries =
-      Enum.map(movies, fn movie ->
-        %{
-          provider_id: provider.id,
-          stream_id: movie.stream_id,
-          name: movie.name,
-          title: movie.title,
-          year: movie.year,
-          container_extension: movie.container_extension,
-          gindex_path: movie.gindex_path,
-          catalog_item_id: ci_map[movie.stream_id],
-          inserted_at: now,
-          updated_at: now
-        }
-      end)
-
-    conflict_opts = [
-      on_conflict:
-        {:replace, [:name, :title, :year, :container_extension, :gindex_path, :updated_at]},
-      conflict_target: [:provider_id, :stream_id]
-    ]
-
-    case Repo.insert_all(Movie, entries, conflict_opts) do
-      {count, _} ->
-        Logger.debug("[GIndex Sync] Upserted #{count} movies")
-        {:ok, count}
-    end
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(e)}")
-      {:error, e}
-  end
-
-  defp update_status(provider, status) do
-    provider
-    |> Provider.sync_changeset(%{sync_status: status})
-    |> Repo.update()
-  end
-
-  # =============================================================================
-  # Anime Sync Functions
-  # =============================================================================
-
-  @doc """
-  Syncs animes from GIndex provider.
-
-  Returns {:ok, stats} with animes_count and episodes_count.
-  """
-  def sync_animes(provider, base_url, animes_path) do
-    Logger.info("[GIndex Sync] Starting anime sync from: #{animes_path}")
-
-    case Scraper.scrape_animes(base_url, animes_path) do
-      {:ok, animes_list} ->
-        Logger.info("[GIndex Sync] Found #{length(animes_list)} animes to sync")
-        process_anime_batches(provider, animes_list)
-
-      {:error, reason} ->
-        Logger.warning("[GIndex Sync] Failed to scrape animes: #{inspect(reason)}")
-        {:ok, %{animes_count: 0, episodes_count: 0}}
-    end
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Error during anime sync: #{inspect(e)}")
-      {:ok, %{animes_count: 0, episodes_count: 0}}
-  end
-
-  defp process_anime_batches(provider, animes_list) do
-    {total_animes, total_episodes} =
-      animes_list
-      |> Enum.chunk_every(@series_batch_size)
-      |> Enum.reduce({0, 0}, &process_anime_batch(provider, &1, &2))
-
-    {:ok, %{animes_count: total_animes, episodes_count: total_episodes}}
-  end
-
-  defp process_anime_batch(provider, batch, {animes_acc, episodes_acc}) do
-    case upsert_animes_batch(provider, batch) do
-      {:ok, %{animes_count: a, episodes_count: e}} -> {animes_acc + a, episodes_acc + e}
-      {:error, _} -> {animes_acc, episodes_acc}
-    end
-  end
-
-  defp upsert_animes_batch(provider, animes_list) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    total_episodes =
-      Enum.reduce(animes_list, 0, fn anime_data, acc ->
-        case upsert_single_anime(provider, anime_data, now) do
-          {:ok, episode_count} -> acc + episode_count
-          {:error, _} -> acc
-        end
-      end)
-
-    {:ok, %{animes_count: length(animes_list), episodes_count: total_episodes}}
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert anime batch: #{inspect(e)}")
-      {:error, e}
-  end
-
-  defp upsert_single_anime(provider, anime_data, now) do
-    upsert_single_content(provider, anime_data, now, content_type: "anime")
-  end
-
-  # =============================================================================
-  # Series Sync Functions
-  # =============================================================================
-
-  @doc """
-  Syncs series from GIndex provider.
-
-  Returns {:ok, stats} with series_count and episodes_count.
-  """
-  def sync_series(provider, base_url, series_paths) do
-    Logger.info("[GIndex Sync] Starting series sync from #{length(series_paths)} paths")
-
-    series_list = Scraper.scrape_series(base_url, series_paths)
-
-    Logger.info("[GIndex Sync] Found #{length(series_list)} series to sync")
-
-    # Process series in batches
-    {total_series, total_episodes} =
-      series_list
-      |> Enum.chunk_every(@series_batch_size)
-      |> Enum.reduce({0, 0}, fn batch, {series_acc, episodes_acc} ->
-        case upsert_series_batch(provider, batch) do
-          {:ok, %{series_count: s, episodes_count: e}} ->
-            {series_acc + s, episodes_acc + e}
-
-          {:error, _} ->
-            {series_acc, episodes_acc}
-        end
-      end)
-
-    {:ok, %{series_count: total_series, episodes_count: total_episodes}}
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Error during series sync: #{inspect(e)}")
-      {:error, e}
-  end
-
-  defp upsert_series_batch(provider, series_list) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    total_episodes =
-      Enum.reduce(series_list, 0, fn series_data, acc ->
-        case upsert_single_series(provider, series_data, now) do
-          {:ok, episode_count} -> acc + episode_count
-          {:error, _} -> acc
-        end
-      end)
-
-    {:ok, %{series_count: length(series_list), episodes_count: total_episodes}}
-  rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert series batch: #{inspect(e)}")
-      {:error, e}
-  end
-
-  defp upsert_single_series(provider, series_data, now) do
-    upsert_single_content(provider, series_data, now, [])
-  end
-
-  # =============================================================================
-  # Generic Content Upsert (shared by anime and series)
-  # =============================================================================
-
-  defp upsert_single_content(provider, data, now, _opts) do
-    type_label = "series"
-    content_name = data.name
-
-    try do
-      # Find or create series with catalog_item
-      existing =
-        from(s in Series,
-          where: s.provider_id == ^provider.id and s.series_id == ^data.series_id
-        )
-        |> Repo.one()
-
-      # Build base attrs
-      attrs = %{
-        provider_id: provider.id,
-        series_id: data.series_id,
-        name: data.name,
-        title: data.title,
-        year: data.year,
-        gindex_path: data.gindex_path
-      }
-
-      series =
-        case existing do
-          nil ->
-            # Create catalog_item for new series
-            {:ok, ci} =
-              Repo.insert(%CatalogItem{content_type: "series", provider_id: provider.id})
-
-            %Series{}
-            |> Series.changeset(Map.put(attrs, :catalog_item_id, ci.id))
-            |> Repo.insert!()
-
-          series ->
-            series
-            |> Series.changeset(attrs)
-            |> Repo.update!()
-        end
-
-      # Sync seasons and episodes
-      episode_count = sync_seasons(series, data.seasons, provider.id, now)
-
-      Logger.debug(
-        "[GIndex Sync] Synced #{type_label} '#{series.name}' with #{episode_count} episodes"
-      )
-
-      {:ok, episode_count}
-    rescue
-      e ->
-        Logger.error(
-          "[GIndex Sync] Failed to upsert #{type_label} #{content_name}: #{inspect(e)}"
-        )
-
-        {:error, e}
-    end
-  end
-
-  defp sync_seasons(series, seasons_data, provider_id, now) do
-    Enum.reduce(seasons_data, 0, fn season_data, episode_acc ->
-      season = upsert_season(series, season_data, now)
-      episodes_count = upsert_episodes(season, season_data.episodes, provider_id, now)
-      episode_acc + episodes_count
-    end)
-  end
-
-  defp upsert_season(series, season_data, now) do
-    existing =
-      from(s in Season,
-        where: s.series_id == ^series.id and s.season_number == ^season_data.season_number
-      )
-      |> Repo.one()
-
-    attrs = %{
-      series_id: series.id,
-      season_number: season_data.season_number,
-      name: season_data.name || "Season #{season_data.season_number}",
-      episode_count: season_data.episode_count
-    }
-
-    case existing do
-      nil ->
-        %Season{}
-        |> Season.changeset(Map.merge(attrs, %{inserted_at: now, updated_at: now}))
-        |> Repo.insert!()
-
-      season ->
-        season
-        |> Season.changeset(Map.put(attrs, :updated_at, now))
-        |> Repo.update!()
-    end
-  end
-
-  defp upsert_episodes(season, episodes_data, provider_id, now) do
-    # Find existing episode_ids for this season
-    existing_ci_map =
-      Episode
-      |> where(season_id: ^season.id)
-      |> select([e], {e.episode_id, e.catalog_item_id})
-      |> Repo.all()
-      |> Map.new()
-
-    episode_ids = Enum.map(episodes_data, & &1.episode_id)
-    new_eids = Enum.reject(episode_ids, &Map.has_key?(existing_ci_map, &1))
-    new_ci_ids = Helpers.pre_create_catalog_items(length(new_eids), "episode", provider_id, now)
-    new_ci_map = Enum.zip(new_eids, new_ci_ids) |> Map.new()
-    ci_map = Map.merge(existing_ci_map, new_ci_map)
-
-    entries =
-      Enum.map(episodes_data, fn ep ->
-        %{
-          season_id: season.id,
-          episode_id: ep.episode_id,
-          episode_num: ep.episode_num,
-          title: ep.title,
-          name: ep.name,
-          container_extension: ep.container_extension,
-          gindex_path: ep.gindex_path,
-          catalog_item_id: ci_map[ep.episode_id],
-          inserted_at: now,
-          updated_at: now
-        }
-      end)
-
-    # Upsert all episodes
-    conflict_opts = [
-      on_conflict: {:replace, [:title, :name, :container_extension, :gindex_path, :updated_at]},
-      conflict_target: [:season_id, :episode_id]
-    ]
-
-    {count, _} = Repo.insert_all(Episode, entries, conflict_opts)
-    count
-  end
-
-  # ============================================================================
-  # Public batch sync functions (for Broadway/Queue integration)
-  # ============================================================================
 
   @doc """
   Syncs a batch of movies to the database.
@@ -504,7 +79,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   """
   def sync_movies_batch(%Provider{} = provider, movies) when is_list(movies) do
     Logger.info("[GIndex Sync] Syncing batch of #{length(movies)} movies")
-    upsert_movies(provider, movies)
+    Movies.upsert_batch(provider, movies)
   end
 
   @doc """
@@ -513,7 +88,7 @@ defmodule Streamix.Iptv.Gindex.Sync do
   """
   def sync_series_batch(%Provider{} = provider, series_list) when is_list(series_list) do
     Logger.info("[GIndex Sync] Syncing batch of #{length(series_list)} series")
-    upsert_series_batch(provider, series_list)
+    Series.upsert_batch(provider, series_list)
     {:ok, length(series_list)}
   end
 
@@ -523,7 +98,64 @@ defmodule Streamix.Iptv.Gindex.Sync do
   """
   def sync_animes_batch(%Provider{} = provider, animes_list) when is_list(animes_list) do
     Logger.info("[GIndex Sync] Syncing batch of #{length(animes_list)} animes")
-    upsert_animes_batch(provider, animes_list)
+    Animes.upsert_batch(provider, animes_list)
     {:ok, length(animes_list)}
   end
+
+  defp finalize_provider_sync(
+         provider,
+         {:ok, movies_count},
+         {:ok, series_stats},
+         {:ok, animes_stats}
+       ) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    total_series = series_stats.series_count + animes_stats.animes_count
+    total_episodes = series_stats.episodes_count + animes_stats.episodes_count
+
+    stats = %{
+      movies_count: movies_count,
+      series_count: series_stats.series_count,
+      animes_count: animes_stats.animes_count,
+      episodes_count: total_episodes
+    }
+
+    provider
+    |> Provider.sync_changeset(%{
+      sync_status: "completed",
+      movies_count: movies_count,
+      series_count: total_series,
+      vod_synced_at: now
+    })
+    |> Repo.update()
+
+    Logger.info(
+      "[GIndex Sync] Completed: #{movies_count} movies, #{series_stats.series_count} series, " <>
+        "#{animes_stats.animes_count} animes, #{total_episodes} episodes synced"
+    )
+
+    {:ok, stats}
+  end
+
+  defp finalize_provider_sync(provider, {:error, reason}, _series_result, _animes_result) do
+    update_status(provider, "failed")
+    {:error, reason}
+  end
+
+  defp finalize_provider_sync(provider, _movies_result, {:error, reason}, _animes_result) do
+    update_status(provider, "failed")
+    {:error, reason}
+  end
+
+  defp update_status(provider, status) do
+    provider
+    |> Provider.sync_changeset(%{sync_status: status})
+    |> Repo.update()
+  end
+
+  defdelegate sync_animes(provider, base_url, animes_path), to: Animes, as: :sync
+  defdelegate sync_series(provider, base_url, series_paths), to: Series, as: :sync
+  defdelegate get_movies_path(provider), to: Paths, as: :movies_path
+  defdelegate get_series_paths(provider), to: Paths, as: :series_paths
+  defdelegate get_animes_path(provider), to: Paths, as: :animes_path
+  defdelegate preload_drives(provider), to: Providers
 end
