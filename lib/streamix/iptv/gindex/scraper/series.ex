@@ -11,11 +11,16 @@ defmodule Streamix.Iptv.Gindex.Scraper.Series do
   @default_series_paths ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"]
 
   def scrape_series(base_url, series_paths \\ @default_series_paths) do
-    series_paths
-    |> Enum.flat_map(fn path ->
+    # Use reduce_while so the first folder failure halts the run with a
+    # tagged error — Enum.flat_map was silently turning {:error, _} into
+    # [], which masked Cloudflare Worker 500s as a successful sync of
+    # zero series. Caller relies on this to surface the failure all the
+    # way up to ScanRootWorker so Oban retries instead of pinning the
+    # provider to sync_status=completed with empty counts.
+    Enum.reduce_while(series_paths, {:ok, []}, fn path, {:ok, acc} ->
       case scrape_series_folder(base_url, path) do
-        {:ok, series_list} -> series_list
-        {:error, _reason} -> []
+        {:ok, list} -> {:cont, {:ok, acc ++ list}}
+        {:error, _} = err -> {:halt, err}
       end
     end)
   end

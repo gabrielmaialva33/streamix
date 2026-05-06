@@ -16,7 +16,13 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
   use Oban.Worker,
     queue: :gindex_scan,
-    max_attempts: 3,
+    # Bumped 3 → 5. The scrapers now surface upstream 500s instead of
+    # swallowing them as empty success, so a flaky Cloudflare Worker
+    # shard burns one attempt instead of pinning the provider to
+    # sync_status=completed with zero series. Oban's exponential
+    # backoff pairs with the 30s GIndex token cooldown nicely; 5 tries
+    # spans roughly the worst-case CF outage window we observed.
+    max_attempts: 5,
     # Priority 1 (vs default 3) keeps ScanRoot ahead of lower-urgency
     # work when the scheduler is picking from a backlog — ensures a
     # cron-triggered sync isn't starved by other sync-queue traffic.

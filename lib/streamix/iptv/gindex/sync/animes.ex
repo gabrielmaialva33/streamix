@@ -20,8 +20,12 @@ defmodule Streamix.Iptv.Gindex.Sync.Animes do
         process_batches(provider, animes_list)
 
       {:error, reason} ->
+        # Propagate. Old path returned {:ok, count: 0} which made the
+        # ScanRootWorker think the run succeeded with an empty catalog,
+        # so Oban marked the job completed and never retried even when
+        # the upstream Cloudflare Worker was straight-up returning 500.
         Logger.warning("[GIndex Sync] Failed to scrape animes: #{inspect(reason)}")
-        {:ok, %{animes_count: 0, episodes_count: 0}}
+        {:error, reason}
     end
   rescue
     e ->

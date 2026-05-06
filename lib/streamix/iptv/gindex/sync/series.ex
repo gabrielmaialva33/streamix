@@ -14,16 +14,24 @@ defmodule Streamix.Iptv.Gindex.Sync.Series do
   def sync(%Provider{} = provider, base_url, series_paths) do
     Logger.info("[GIndex Sync] Starting series sync from #{length(series_paths)} paths")
 
-    series_list = Scraper.scrape_series(base_url, series_paths)
+    case Scraper.scrape_series(base_url, series_paths) do
+      {:ok, series_list} ->
+        Logger.info("[GIndex Sync] Found #{length(series_list)} series to sync")
 
-    Logger.info("[GIndex Sync] Found #{length(series_list)} series to sync")
+        {total_series, total_episodes} =
+          series_list
+          |> Enum.chunk_every(@series_batch_size)
+          |> Enum.reduce({0, 0}, &process_batch(provider, &1, &2))
 
-    {total_series, total_episodes} =
-      series_list
-      |> Enum.chunk_every(@series_batch_size)
-      |> Enum.reduce({0, 0}, &process_batch(provider, &1, &2))
+        {:ok, %{series_count: total_series, episodes_count: total_episodes}}
 
-    {:ok, %{series_count: total_series, episodes_count: total_episodes}}
+      {:error, reason} ->
+        # Propagate so ScanRootWorker can fail and Oban retries. The old
+        # path mapped scrape errors to {:ok, %{series_count: 0}}, which
+        # convinced the orchestrator everything was fine.
+        Logger.warning("[GIndex Sync] Failed to scrape series: #{inspect(reason)}")
+        {:error, reason}
+    end
   rescue
     e ->
       Logger.error("[GIndex Sync] Error during series sync: #{inspect(e)}")

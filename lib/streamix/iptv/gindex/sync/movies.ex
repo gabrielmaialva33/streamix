@@ -16,19 +16,37 @@ defmodule Streamix.Iptv.Gindex.Sync.Movies do
   @batch_size 25
 
   def sync(%Provider{} = provider, base_url, movies_path) do
-    movies =
+    {count, batches, failures} =
       base_url
       |> Scraper.scrape_movies(movies_path)
       |> Stream.chunk_every(@batch_size)
-      |> Stream.map(fn batch ->
+      |> Enum.reduce({0, 0, 0}, fn batch, {count, batches, failures} ->
         case upsert_batch(provider, batch) do
-          {:ok, count} -> count
-          {:error, _} -> 0
+          {:ok, n} -> {count + n, batches + 1, failures}
+          {:error, _} -> {count, batches + 1, failures + 1}
         end
       end)
-      |> Enum.sum()
 
-    {:ok, movies}
+    # If more than half the batches failed to upsert, treat the whole
+    # run as a failure so ScanRootWorker retries instead of pinning the
+    # provider to sync_status=completed with a partial catalog. The old
+    # path swallowed every batch error as `0` and returned {:ok, 0},
+    # which is the same false-success that bit us in series/animes.
+    cond do
+      batches == 0 ->
+        Logger.warning("[GIndex Sync] No movie batches produced for #{movies_path}")
+        {:error, :empty_scrape}
+
+      failures * 2 > batches ->
+        Logger.error(
+          "[GIndex Sync] #{failures}/#{batches} movie batches failed for #{movies_path}"
+        )
+
+        {:error, {:batch_failures, failures, batches}}
+
+      true ->
+        {:ok, count}
+    end
   rescue
     e ->
       Logger.error("[GIndex Sync] Error during sync: #{inspect(e)}")
