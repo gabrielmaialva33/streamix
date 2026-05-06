@@ -41,8 +41,10 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
   require Logger
 
+  @timeout :timer.hours(2)
+
   @impl Oban.Worker
-  def timeout(_job), do: :timer.minutes(30)
+  def timeout(_job), do: @timeout
 
   @impl Oban.Worker
   def perform(
