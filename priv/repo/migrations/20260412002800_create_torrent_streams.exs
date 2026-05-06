@@ -45,7 +45,7 @@ defmodule Streamix.Repo.Migrations.CreateTorrentStreams do
     create constraint(:torrent_streams, :info_hash_format, check: "info_hash ~ '^[0-9a-f]{40}$'")
 
     create constraint(:torrent_streams, :movie_or_episode,
-             check: "(movie_id IS NOT NULL) OR (episode_id IS NOT NULL)"
+             check: "((movie_id IS NOT NULL)::int + (episode_id IS NOT NULL)::int) = 1"
            )
   end
 end
