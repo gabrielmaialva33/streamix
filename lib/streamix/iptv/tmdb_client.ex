@@ -1,65 +1,45 @@
 defmodule Streamix.Iptv.TmdbClient do
   @moduledoc """
-  HTTP client for The Movie Database (TMDB) API.
+  HTTP client facade for The Movie Database (TMDB) API.
 
   Supports multiple credential profiles so different ingestion sources can use
   their own TMDB API tokens and quotas. Profiles fall back to the default
   `:streamix, :tmdb` config when a key isn't overridden.
 
   Profiles:
-    * `:default` — reads `config :streamix, :tmdb`
-    * `:gindex`  — reads `config :streamix, {:tmdb, :gindex}`, merged over default
+    * `:default` - reads `config :streamix, :tmdb`
+    * `:gindex` - reads `config :streamix, :tmdb_gindex`, merged over default
 
-  All public functions accept an optional `:profile` in their `opts`.
+  All public fetch/search functions accept an optional `:profile` in their
+  `opts`.
 
   All API calls are cached in Redis (L2) with in-memory L1 layer. The cache
-  key is the resolved `tmdb_id` / query + params — profiles share cache since
+  key is the resolved `tmdb_id` / query + params - profiles share cache since
   a given id returns the same payload regardless of which token fetched it.
   """
 
   alias Streamix.Cache
-  alias Streamix.Iptv.Gindex.Pacer
-  alias Streamix.Iptv.TmdbTokenPool
+  alias Streamix.Iptv.TmdbClient.{Config, Parser, Search, Transport}
 
   @type profile :: :default | :gindex | atom()
-
-  @base_url "https://api.themoviedb.org/3"
-  defp image_base_url,
-    do: "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}/t/p"
-
-  @timeout :timer.seconds(10)
 
   @doc """
   Checks if TMDB integration is enabled and configured for the given profile.
   """
-  def enabled?(profile \\ :default) do
-    cfg = config(profile)
-    cfg[:enabled] == true && is_binary(cfg[:api_token]) && cfg[:api_token] != ""
-  end
+  defdelegate enabled?(profile \\ :default), to: Config
 
   @doc """
   Fetches movie details from TMDB by movie ID.
-  Returns {:ok, movie_data} or {:error, reason}.
+  Returns `{:ok, movie_data}` or `{:error, reason}`.
 
   Results are cached in Redis for 24h.
-
-  The movie_data includes:
-  - overview (synopsis)
-  - credits (cast, crew)
-  - videos (trailers)
-  - runtime
-  - vote_average
-  - poster_path, backdrop images (via assets)
   """
   def get_movie(tmdb_id, opts \\ []) when is_binary(tmdb_id) or is_integer(tmdb_id) do
-    profile = profile_from(opts)
+    profile = Config.profile_from(opts)
 
-    if enabled?(profile) do
+    if Config.enabled?(profile) do
       Cache.fetch_tmdb_movie(tmdb_id, fn ->
-        url =
-          "#{@base_url}/movie/#{tmdb_id}?append_to_response=credits,videos,release_dates,images&language=pt-BR&include_image_language=null"
-
-        do_request(url, profile)
+        Transport.get_movie(tmdb_id, profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -71,14 +51,11 @@ defmodule Streamix.Iptv.TmdbClient do
   Results are cached in Redis for 24h.
   """
   def get_series(tmdb_id, opts \\ []) when is_binary(tmdb_id) or is_integer(tmdb_id) do
-    profile = profile_from(opts)
+    profile = Config.profile_from(opts)
 
-    if enabled?(profile) do
+    if Config.enabled?(profile) do
       Cache.fetch_tmdb_series(tmdb_id, fn ->
-        url =
-          "#{@base_url}/tv/#{tmdb_id}?append_to_response=credits,videos,content_ratings,images&language=pt-BR&include_image_language=null"
-
-        do_request(url, profile)
+        Transport.get_series(tmdb_id, profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -92,12 +69,11 @@ defmodule Streamix.Iptv.TmdbClient do
   """
   def get_season(series_tmdb_id, season_number, opts \\ [])
       when (is_binary(series_tmdb_id) or is_integer(series_tmdb_id)) and is_integer(season_number) do
-    profile = profile_from(opts)
+    profile = Config.profile_from(opts)
 
-    if enabled?(profile) do
+    if Config.enabled?(profile) do
       Cache.fetch_tmdb_season(series_tmdb_id, season_number, fn ->
-        url = "#{@base_url}/tv/#{series_tmdb_id}/season/#{season_number}?language=pt-BR"
-        do_request(url, profile)
+        Transport.get_season(series_tmdb_id, season_number, profile)
       end)
     else
       {:error, :tmdb_not_configured}
@@ -108,18 +84,14 @@ defmodule Streamix.Iptv.TmdbClient do
   Searches for a movie by title and optionally year.
   Results are cached in Redis for 1h.
   """
-  def search_movie(query, opts \\ []) do
-    search(:movie, query, opts)
-  end
+  defdelegate search_movie(query, opts \\ []), to: Search
 
   @doc """
   Searches for a TV series by title and optionally year.
   Results are cached in Redis for 1h.
-  Returns {:ok, results} or {:error, reason}.
+  Returns `{:ok, results}` or `{:error, reason}`.
   """
-  def search_series(query, opts \\ []) do
-    search(:series, query, opts)
-  end
+  defdelegate search_series(query, opts \\ []), to: Search
 
   @doc """
   Builds a full image URL from a TMDB image path.
@@ -128,422 +100,26 @@ defmodule Streamix.Iptv.TmdbClient do
   - poster: w92, w154, w185, w342, w500, w780, original
   - backdrop: w300, w780, w1280, original
   """
-  def image_url(path, size \\ "w500")
-  def image_url(nil, _size), do: nil
-  def image_url("", _size), do: nil
-
-  def image_url(path, size) do
-    "#{image_base_url()}/#{size}#{path}"
-  end
+  defdelegate image_url(path, size \\ "w500"), to: Transport
 
   @doc """
   Parses TMDB movie response into attributes suitable for our Movie schema.
   """
-  def parse_movie_response(%{"id" => _} = data) do
-    {gallery_backdrops, gallery_posters} = parse_images_gallery(data["images"])
-
-    %{}
-    |> maybe_put(:plot, data["overview"])
-    |> maybe_put(:rating, parse_rating(data["vote_average"]))
-    |> maybe_put(:duration_secs, parse_runtime_secs(data["runtime"]))
-    |> maybe_put(:year, parse_year(data["release_date"]))
-    |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))
-    |> maybe_put(:stream_icon, image_url(data["poster_path"], "w500"))
-    |> maybe_put(:tagline, data["tagline"])
-    |> maybe_put(:content_rating, parse_content_rating(data["release_dates"]))
-    |> maybe_put(:_backdrop_urls, merge_backdrops(data["backdrop_path"], gallery_backdrops))
-    |> maybe_put(:_image_urls, nil_if_empty(gallery_posters))
-  end
-
-  def parse_movie_response(_), do: %{}
+  defdelegate parse_movie_response(data), to: Parser
 
   @doc """
   Parses TMDB series response into attributes suitable for our Series schema.
   """
-  def parse_series_response(%{"id" => _} = data) do
-    {gallery_backdrops, gallery_posters} = parse_images_gallery(data["images"])
-
-    %{}
-    |> maybe_put(:plot, data["overview"])
-    |> maybe_put(:rating, parse_rating(data["vote_average"]))
-    |> maybe_put(:year, parse_year(data["first_air_date"]))
-    |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))
-    |> maybe_put(:cover, image_url(data["poster_path"], "w500"))
-    |> maybe_put(:tagline, data["tagline"])
-    |> maybe_put(:content_rating, parse_series_content_rating(data["content_ratings"]))
-    |> maybe_put(:_backdrop_urls, merge_backdrops(data["backdrop_path"], gallery_backdrops))
-    |> maybe_put(:_image_urls, nil_if_empty(gallery_posters))
-  end
-
-  def parse_series_response(_), do: %{}
+  defdelegate parse_series_response(data), to: Parser
 
   @doc """
   Parses TMDB season response and returns a map of episode_num => episode_attrs.
   This allows matching with our episodes by episode number.
   """
-  def parse_season_episodes(%{"episodes" => episodes}) when is_list(episodes) do
-    episodes
-    |> Enum.map(fn ep ->
-      {ep["episode_number"], parse_episode_response(ep)}
-    end)
-    |> Enum.into(%{})
-  end
-
-  def parse_season_episodes(_), do: %{}
+  defdelegate parse_season_episodes(data), to: Parser
 
   @doc """
   Parses a single TMDB episode into attributes suitable for our Episode schema.
   """
-  def parse_episode_response(%{"id" => tmdb_id} = data) do
-    %{}
-    |> maybe_put(:tmdb_id, tmdb_id)
-    |> maybe_put(:name, data["name"])
-    |> maybe_put(:plot, data["overview"])
-    |> maybe_put(:rating, parse_rating(data["vote_average"]))
-    |> maybe_put(:still_path, image_url(data["still_path"], "w500"))
-    |> maybe_put(:air_date, parse_date(data["air_date"]))
-    |> maybe_put(:duration_secs, parse_runtime_secs(data["runtime"]))
-    |> Map.put(:tmdb_enriched, true)
-  end
-
-  def parse_episode_response(_), do: %{}
-
-  defp search(type, query, opts) do
-    profile = profile_from(opts)
-
-    if enabled?(profile) do
-      fetch_search(type, query, opts, fn ->
-        type
-        |> search_url(query, opts[:year])
-        |> do_request(profile)
-      end)
-    else
-      {:error, :tmdb_not_configured}
-    end
-  end
-
-  defp fetch_search(:movie, query, opts, fun), do: Cache.fetch_tmdb_search_movie(query, opts, fun)
-
-  defp fetch_search(:series, query, opts, fun),
-    do: Cache.fetch_tmdb_search_series(query, opts, fun)
-
-  defp search_url(type, query, year) do
-    query_encoded = URI.encode_www_form(query)
-
-    case {type, year} do
-      {:movie, nil} ->
-        "#{@base_url}/search/movie?query=#{query_encoded}&language=pt-BR"
-
-      {:movie, year} ->
-        "#{@base_url}/search/movie?query=#{query_encoded}&year=#{year}&language=pt-BR"
-
-      {:series, nil} ->
-        "#{@base_url}/search/tv?query=#{query_encoded}&language=pt-BR"
-
-      {:series, year} ->
-        "#{@base_url}/search/tv?query=#{query_encoded}&first_air_date_year=#{year}&language=pt-BR"
-    end
-  end
-
-  # ============================================================================
-  # Private
-  # ============================================================================
-
-  @max_retries 3
-  @initial_backoff 1000
-
-  defp profile_from(opts) when is_list(opts), do: Keyword.get(opts, :profile, :default)
-  defp profile_from(%{} = opts), do: Map.get(opts, :profile, :default)
-  defp profile_from(_), do: :default
-
-  defp do_request(url, profile, retries \\ 0, last_token \\ nil) do
-    maybe_pace(profile)
-
-    token = pick_token(profile, last_token)
-
-    headers = [
-      {"Authorization", "Bearer #{token || config(profile)[:api_token]}"},
-      {"Accept", "application/json"}
-    ]
-
-    url
-    |> Req.get(headers: headers, receive_timeout: @timeout, finch: Streamix.Finch)
-    |> handle_response(url, profile, retries, token)
-  end
-
-  # Prefer the pool token; on retry, rotate past the one that just failed
-  # so a saturated bucket doesn't starve us.
-  defp pick_token(profile, nil), do: TmdbTokenPool.next(profile)
-  defp pick_token(profile, previous), do: TmdbTokenPool.next_after(profile, previous)
-
-  # Only pace profiles that have a dedicated pacer bucket. `:default` keeps
-  # its historical behavior (TMDB's own retry-after handling is enough for
-  # Xtream-volume traffic).
-  defp maybe_pace(:gindex), do: Pacer.acquire(:tmdb_gindex)
-  defp maybe_pace(_), do: :ok
-
-  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries, _token)
-       when is_map(body) do
-    {:ok, body}
-  end
-
-  defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries, _token)
-       when is_binary(body) do
-    Jason.decode(body)
-  end
-
-  defp handle_response({:ok, %{status: 429} = response}, url, profile, retries, token)
-       when retries < @max_retries do
-    retry_after = get_retry_after(response)
-    Process.sleep(retry_after)
-    do_request(url, profile, retries + 1, token)
-  end
-
-  defp handle_response({:ok, %{status: 429}}, _url, _profile, _retries, _token),
-    do: {:error, :rate_limited}
-
-  defp handle_response({:ok, %{status: 404}}, _url, _profile, _retries, _token),
-    do: {:error, :not_found}
-
-  defp handle_response({:ok, %{status: 401}}, _url, _profile, _retries, _token),
-    do: {:error, :unauthorized}
-
-  defp handle_response({:ok, %{status: status}}, _url, _profile, _retries, _token),
-    do: {:error, {:http_error, status}}
-
-  defp handle_response(
-         {:error, %Req.TransportError{reason: reason}},
-         _url,
-         _profile,
-         _retries,
-         _token
-       ),
-       do: {:error, {:transport_error, reason}}
-
-  defp handle_response({:error, reason}, _url, _profile, _retries, _token),
-    do: {:error, reason}
-
-  defp get_retry_after(%Req.Response{} = response),
-    do: Req.Response.get_retry_after(response) || @initial_backoff
-
-  # Resolve profile config: profile overrides default (:streamix, :tmdb).
-  # `:default` is just the base `:streamix, :tmdb` config. Any other profile
-  # reads `:streamix, :tmdb_<profile>` and overlays on top of the default.
-  defp config(:default), do: Application.get_env(:streamix, :tmdb, [])
-
-  defp config(profile) when is_atom(profile) do
-    default = Application.get_env(:streamix, :tmdb, [])
-    override = Application.get_env(:streamix, :"tmdb_#{profile}", [])
-    Keyword.merge(default, override)
-  end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, _key, ""), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  defp parse_rating(nil), do: nil
-  defp parse_rating(0), do: nil
-  defp parse_rating(vote_average) when vote_average == 0.0, do: nil
-
-  defp parse_rating(vote_average) when is_number(vote_average) do
-    # TMDB uses 0-10 scale, we store as-is (will be converted to 5-scale in display)
-    Decimal.from_float(vote_average * 1.0)
-  end
-
-  defp parse_rating(_), do: nil
-
-  defp parse_runtime_secs(nil), do: nil
-  defp parse_runtime_secs(0), do: nil
-  defp parse_runtime_secs(minutes) when is_integer(minutes), do: minutes * 60
-  defp parse_runtime_secs(_), do: nil
-
-  defp parse_year(nil), do: nil
-  defp parse_year(""), do: nil
-
-  defp parse_year(release_date) when is_binary(release_date) do
-    case String.split(release_date, "-") do
-      [year | _] -> String.to_integer(year)
-      _ -> nil
-    end
-  rescue
-    _ -> nil
-  end
-
-  defp parse_year(_), do: nil
-
-  defp parse_date(nil), do: nil
-  defp parse_date(""), do: nil
-
-  defp parse_date(date_string) when is_binary(date_string) do
-    case Date.from_iso8601(date_string) do
-      {:ok, date} -> date
-      _ -> nil
-    end
-  end
-
-  defp parse_date(_), do: nil
-
-  defp parse_trailer(nil), do: nil
-
-  defp parse_trailer(%{"results" => results}) when is_list(results) do
-    results
-    |> Enum.filter(fn video ->
-      video["site"] == "YouTube" &&
-        video["type"] in ["Trailer", "Teaser"] &&
-        video["official"] == true
-    end)
-    |> List.first()
-    |> case do
-      nil ->
-        # Fallback: any YouTube video
-        results
-        |> Enum.find(&(&1["site"] == "YouTube"))
-        |> get_trailer_key()
-
-      video ->
-        video["key"]
-    end
-  end
-
-  defp parse_trailer(_), do: nil
-
-  defp get_trailer_key(nil), do: nil
-  defp get_trailer_key(%{"key" => key}), do: key
-
-  # Parse content rating from release_dates
-  # Prioritizes BR, then US, then any other country
-  defp parse_content_rating(nil), do: nil
-
-  defp parse_content_rating(%{"results" => results}) when is_list(results) do
-    # Try to find Brazilian rating first
-    br_rating = find_certification(results, "BR")
-    us_rating = find_certification(results, "US")
-
-    cond do
-      br_rating -> br_rating
-      us_rating -> us_rating
-      true -> find_first_certification(results)
-    end
-  end
-
-  defp parse_content_rating(_), do: nil
-
-  # Parse content rating for TV series from content_ratings endpoint
-  # Structure: {"results": [{"iso_3166_1": "BR", "rating": "16"}, ...]}
-  defp parse_series_content_rating(nil), do: nil
-
-  defp parse_series_content_rating(%{"results" => results}) when is_list(results) do
-    # Try to find Brazilian rating first
-    br_rating = find_series_certification(results, "BR")
-    us_rating = find_series_certification(results, "US")
-
-    cond do
-      br_rating -> br_rating
-      us_rating -> us_rating
-      true -> find_first_series_certification(results)
-    end
-  end
-
-  defp parse_series_content_rating(_), do: nil
-
-  defp find_series_certification(results, country_code) do
-    results
-    |> Enum.find(&(&1["iso_3166_1"] == country_code))
-    |> case do
-      %{"rating" => rating} when rating != "" and not is_nil(rating) -> rating
-      _ -> nil
-    end
-  end
-
-  defp find_first_series_certification(results) do
-    results
-    |> Enum.find_value(fn
-      %{"rating" => rating} when rating != "" and not is_nil(rating) -> rating
-      _ -> nil
-    end)
-  end
-
-  defp find_certification(results, country_code) do
-    results
-    |> Enum.find(&(&1["iso_3166_1"] == country_code))
-    |> case do
-      %{"release_dates" => dates} when is_list(dates) ->
-        dates
-        |> Enum.find(&(&1["certification"] != "" and &1["certification"] != nil))
-        |> case do
-          %{"certification" => cert} -> cert
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  defp find_first_certification(results) do
-    results
-    |> Enum.find_value(fn %{"release_dates" => dates} ->
-      dates
-      |> Enum.find(&(&1["certification"] != "" and &1["certification"] != nil))
-      |> case do
-        %{"certification" => cert} -> cert
-        _ -> nil
-      end
-    end)
-  end
-
-  # Parse TMDB's gallery images (from `append_to_response=images`) into
-  # backdrops + posters as separate lists. The previous implementation
-  # concatenated everything and persisted it as a single "image" bucket,
-  # which meant the backdrop gallery (where the actual cinematic hero
-  # shots live) never reached the backdrop accessor — API consumers saw
-  # exactly 1 backdrop (the primary one) even though TMDB shipped 6.
-  #
-  # Keeping this as a tuple instead of a flat list forces callers to
-  # route each set to the right asset bucket.
-  @spec parse_images_gallery(map() | nil) :: {[String.t()], [String.t()]}
-  defp parse_images_gallery(nil), do: {[], []}
-
-  defp parse_images_gallery(%{"backdrops" => backdrops, "posters" => posters}) do
-    backdrop_urls =
-      (backdrops || [])
-      |> Enum.take(6)
-      |> Enum.map(&image_url(&1["file_path"], "w780"))
-      |> Enum.reject(&is_nil/1)
-
-    poster_urls =
-      (posters || [])
-      |> Enum.take(4)
-      |> Enum.map(&image_url(&1["file_path"], "w500"))
-      |> Enum.reject(&is_nil/1)
-
-    {backdrop_urls, poster_urls}
-  end
-
-  defp parse_images_gallery(_), do: {[], []}
-
-  # Merge the primary backdrop with the gallery backdrops, dedup, and
-  # nil-out empty results so `maybe_put/3` drops the key. Keeping the
-  # primary first means the "hero" shot stays at index 0 for clients
-  # that render a single backdrop.
-  #
-  # The primary is normalized to the same size as the gallery (w780), so
-  # if the gallery already includes the primary's path, `Enum.uniq/1`
-  # collapses them instead of emitting near-duplicates that only differ
-  # by size parameter.
-  defp merge_backdrops(nil, gallery), do: nil_if_empty(gallery)
-  defp merge_backdrops("", gallery), do: nil_if_empty(gallery)
-
-  defp merge_backdrops(path, gallery) when is_binary(path) do
-    primary = image_url(path, "w780")
-
-    (List.wrap(primary) ++ gallery)
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.uniq()
-    |> nil_if_empty()
-  end
-
-  defp nil_if_empty([]), do: nil
-  defp nil_if_empty(list) when is_list(list), do: list
-  defp nil_if_empty(_), do: nil
+  defdelegate parse_episode_response(data), to: Parser
 end
