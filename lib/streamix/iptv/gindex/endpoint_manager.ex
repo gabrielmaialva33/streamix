@@ -309,7 +309,9 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
           @default_endpoints
           |> Enum.reject(&same_host?(&1.url, url))
           |> Enum.with_index(2)
-          |> Enum.map(fn {ep, priority} -> %{ep | priority: priority} end)
+          |> Enum.map(fn {ep, priority} ->
+            %{ep | name: fallback_name(ep.name, priority), priority: priority}
+          end)
 
         [primary | fallbacks]
 
@@ -317,6 +319,9 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
         @default_endpoints
     end
   end
+
+  defp fallback_name(:primary, priority), do: "fallback_#{priority}"
+  defp fallback_name(name, _priority), do: name
 
   defp same_host?(url_a, url_b) do
     normalize(url_a) == normalize(url_b)

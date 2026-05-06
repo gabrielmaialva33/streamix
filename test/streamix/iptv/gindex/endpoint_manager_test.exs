@@ -3,6 +3,18 @@ defmodule Streamix.Iptv.Gindex.EndpointManagerTest do
 
   alias Streamix.Iptv.Gindex.EndpointManager
 
+  setup do
+    original_config = Application.get_env(:streamix, :gindex_provider)
+
+    on_exit(fn ->
+      if original_config,
+        do: Application.put_env(:streamix, :gindex_provider, original_config),
+        else: Application.delete_env(:streamix, :gindex_provider)
+    end)
+
+    :ok
+  end
+
   test "builds configured endpoint lists without creating dynamic atoms" do
     endpoints = [
       "https://one.example.com",
@@ -27,5 +39,27 @@ defmodule Streamix.Iptv.Gindex.EndpointManagerTest do
     assert_raise ArgumentError, fn ->
       :erlang.binary_to_existing_atom("endpoint_1")
     end
+  end
+
+  test "keeps configured single URL as primary when adding default fallbacks" do
+    Application.put_env(:streamix, :gindex_provider,
+      enabled: true,
+      url: "https://configured.example.com"
+    )
+
+    pid =
+      start_supervised!(
+        {EndpointManager,
+         name: :gindex_endpoint_manager_single_url_test,
+         table_name: :gindex_endpoints_single_url_test}
+      )
+
+    assert {:ok, configured_endpoints} = GenServer.call(pid, :get_all_endpoints)
+
+    assert %{name: :primary, url: "https://configured.example.com", priority: 1} =
+             hd(configured_endpoints)
+
+    names = Enum.map(configured_endpoints, & &1.name)
+    assert Enum.uniq(names) == names
   end
 end
