@@ -21,7 +21,7 @@ defmodule Streamix.Iptv.Provider do
     field :visibility, Ecto.Enum, values: [:private, :public, :global], default: :private
     field :is_system, :boolean, default: false
 
-    # Provider type: xtream (default) or gindex
+    # Provider type: xtream (default), gindex, or torrent
     field :provider_type, Ecto.Enum, values: [:xtream, :gindex, :torrent], default: :xtream
     field :gindex_url, :string
 
@@ -89,9 +89,9 @@ defmodule Streamix.Iptv.Provider do
     end
   end
 
-  # GIndex providers don't need username/password
+  # Virtual/system providers don't need username/password.
   defp maybe_require_credentials(changeset) do
-    if get_field(changeset, :provider_type) == :gindex do
+    if get_field(changeset, :provider_type) in [:gindex, :torrent] do
       changeset
     else
       validate_required(changeset, [:username, :password])
@@ -115,8 +115,11 @@ defmodule Streamix.Iptv.Provider do
 
   defp validate_url(changeset, field) do
     validate_change(changeset, field, fn _, value ->
+      provider_type = get_field(changeset, :provider_type)
+
       case URI.parse(value) do
         %URI{scheme: scheme} when scheme in ["http", "https"] -> []
+        %URI{scheme: "torrent"} when provider_type == :torrent -> []
         _ -> [{field, "must be a valid HTTP/HTTPS URL"}]
       end
     end)

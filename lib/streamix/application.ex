@@ -6,6 +6,8 @@ defmodule Streamix.Application do
   use Application
 
   alias Streamix.Iptv.Gindex.SingleFlight
+  alias Streamix.Iptv.Torrent.{Reaper, StreamRegistry, StreamSessionSupervisor}
+  alias Streamix.Iptv.TorrentProvider
 
   @impl true
   def start(_type, _args) do
@@ -109,12 +111,11 @@ defmodule Streamix.Application do
   end
 
   defp maybe_torrent_children do
-    if Streamix.Iptv.TorrentProvider.enabled?() do
+    if TorrentProvider.enabled?() do
       [
-        {Registry, keys: :unique, name: Streamix.Iptv.Torrent.StreamRegistry},
-        {DynamicSupervisor,
-         name: Streamix.Iptv.Torrent.StreamSessionSupervisor, strategy: :one_for_one},
-        Streamix.Iptv.Torrent.Reaper
+        {Registry, keys: :unique, name: StreamRegistry},
+        {DynamicSupervisor, name: StreamSessionSupervisor, strategy: :one_for_one},
+        Reaper
       ]
     else
       []
