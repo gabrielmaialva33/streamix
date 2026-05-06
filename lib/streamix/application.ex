@@ -68,6 +68,12 @@ defmodule Streamix.Application do
         # Watch Party infrastructure
         {Registry, keys: :unique, name: Streamix.WatchParty.Registry},
         {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one},
+        # Torrent infrastructure (gated by config — only starts when the
+        # torrent provider is enabled). Per-info_hash StreamSession
+        # processes register in the Registry, are spawned via the
+        # DynamicSupervisor, and the Reaper sweeps stragglers off rqbit
+        # every 5 min.
+        maybe_torrent_children(),
         StreamixWeb.Presence,
         # Start to serve requests, typically the last entry
         StreamixWeb.Endpoint
@@ -96,6 +102,19 @@ defmodule Streamix.Application do
         # Background provider-health sampler keeps ETS warm so LV mounts
         # don't block on the 4s upstream probe.
         Streamix.Iptv.ProviderHealthMonitor
+      ]
+    else
+      []
+    end
+  end
+
+  defp maybe_torrent_children do
+    if Streamix.Iptv.TorrentProvider.enabled?() do
+      [
+        {Registry, keys: :unique, name: Streamix.Iptv.Torrent.StreamRegistry},
+        {DynamicSupervisor,
+         name: Streamix.Iptv.Torrent.StreamSessionSupervisor, strategy: :one_for_one},
+        Streamix.Iptv.Torrent.Reaper
       ]
     else
       []

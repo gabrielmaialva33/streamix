@@ -84,6 +84,17 @@ defmodule StreamixWeb.Router do
     post "/billing/webhooks/stripe", BillingWebhookController, :stripe
   end
 
+  # Authenticated stream proxy for torrent-backed content. The
+  # rqbit sidecar URL is internal — this controller is the only way a
+  # browser is allowed to reach it, and `:require_authenticated_user`
+  # gates that surface.
+  scope "/api", StreamixWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    get "/stream/torrent/:info_hash/status", TorrentStreamController, :status
+    get "/stream/torrent/:info_hash/:file_idx", TorrentStreamController, :stream
+  end
+
   # Stream proxy - public access for video streaming (rate limited)
   scope "/api", StreamixWeb do
     pipe_through :api_rate_limited
