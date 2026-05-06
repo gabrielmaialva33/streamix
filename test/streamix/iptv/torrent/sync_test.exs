@@ -19,6 +19,7 @@ defmodule Streamix.Iptv.Torrent.SyncTest do
       end
 
       Application.delete_env(:streamix, :torrent_test_source)
+      Application.delete_env(:streamix, :torrent_second_source_items)
     end)
 
     {:ok, provider: torrent_provider_fixture()}
@@ -71,6 +72,38 @@ defmodule Streamix.Iptv.Torrent.SyncTest do
 
       streams = Repo.all(TorrentStream)
       assert length(streams) == 1
+    end
+
+    test "keeps the first source owner when a later source repeats the info_hash", %{
+      provider: provider
+    } do
+      hash_seed = "shared-release"
+
+      seed_pages([
+        {1, [sample_item("first-movie", "First Movie", [magnet(hash_seed)])], %{next_page: nil}}
+      ])
+
+      assert {:ok, _} = Sync.sync_source(provider, TorrentTestSource)
+
+      first_stream = Repo.one!(TorrentStream)
+      first_movie_id = first_stream.movie_id
+      assert first_stream.source_slug == "test"
+
+      second_magnet =
+        hash_seed
+        |> magnet()
+        |> Map.merge(%{source_slug: "second", seeders: 99})
+
+      Application.put_env(:streamix, :torrent_second_source_items, [
+        sample_item("second-movie", "Second Movie", [second_magnet])
+      ])
+
+      assert {:ok, _} = Sync.sync_source(provider, __MODULE__.SecondSource)
+
+      stream = Repo.one!(TorrentStream)
+      assert stream.source_slug == "test"
+      assert stream.movie_id == first_movie_id
+      assert stream.seeders == 99
     end
 
     test "follows pagination until next_page is nil", %{provider: provider} do
@@ -182,22 +215,36 @@ defmodule Streamix.Iptv.Torrent.SyncTest do
   end
 
   defp torrent_provider_fixture do
-    # `Provider.changeset/2` requires HTTPS-shaped URLs and credentials
-    # for non-gindex types, so we skip the changeset and insert directly
-    # — torrent providers are bootstrapped by `TorrentProvider.ensure_exists!/0`
-    # in production.
     {:ok, provider} =
-      Repo.insert(%Provider{
+      %Provider{}
+      |> Provider.changeset(%{
         name: "Torrent Aggregator (test)",
-        url: "https://torrent-aggregator-test-#{System.unique_integer([:positive])}.example.com",
-        username: "system",
-        password: "system",
+        url: "torrent://aggregator-test-#{System.unique_integer([:positive])}",
         provider_type: :torrent,
         is_system: true,
         visibility: :global,
         is_active: true
       })
+      |> Repo.insert()
 
     provider
+  end
+
+  defmodule SecondSource do
+    @behaviour Streamix.Iptv.Torrent.Source
+
+    @impl true
+    def slug, do: "second"
+
+    @impl true
+    def name, do: "Second"
+
+    @impl true
+    def rate_limit_ms, do: 1
+
+    @impl true
+    def fetch_listing(_opts) do
+      {:ok, Application.get_env(:streamix, :torrent_second_source_items, []), %{next_page: nil}}
+    end
   end
 end

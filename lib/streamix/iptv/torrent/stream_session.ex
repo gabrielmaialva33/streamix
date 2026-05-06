@@ -190,15 +190,13 @@ defmodule Streamix.Iptv.Torrent.StreamSession do
   def handle_call({:join_and_wait, viewer_pid}, from, state) do
     state = register_viewer(state, viewer_pid)
 
-    cond do
-      state.ready? and is_integer(state.file_idx) ->
-        {:reply, {:ok, %{info_hash: state.info_hash, file_idx: state.file_idx}}, state}
-
-      true ->
-        # Defer the reply until ready_check confirms `state == "live"`
-        # and progress >= @ready_bytes.
-        deadline = System.monotonic_time(:millisecond) + @ready_timeout_ms
-        {:noreply, %{state | pending_joins: [{from, deadline} | state.pending_joins]}}
+    if state.ready? and is_integer(state.file_idx) do
+      {:reply, {:ok, %{info_hash: state.info_hash, file_idx: state.file_idx}}, state}
+    else
+      # Defer the reply until ready_check confirms `state == "live"`
+      # and progress >= @ready_bytes.
+      deadline = System.monotonic_time(:millisecond) + @ready_timeout_ms
+      {:noreply, %{state | pending_joins: [{from, deadline} | state.pending_joins]}}
     end
   end
 

@@ -81,27 +81,25 @@ defmodule Streamix.Iptv.Torrent.Reaper do
   defp maybe_reap(%{info_hash: hash} = torrent) when is_binary(hash) do
     info_hash = String.downcase(hash)
 
-    cond do
-      registered?(info_hash) ->
-        :ok
+    if registered?(info_hash) do
+      :ok
+    else
+      Logger.info("[Torrent.Reaper] reaping orphaned torrent #{info_hash}")
 
-      true ->
-        Logger.info("[Torrent.Reaper] reaping orphaned torrent #{info_hash}")
+      case Client.remove(info_hash) do
+        :ok ->
+          :ok
 
-        case Client.remove(info_hash) do
-          :ok ->
-            :ok
+        {:error, reason} ->
+          Logger.warning("[Torrent.Reaper] failed to remove #{info_hash}: #{inspect(reason)}")
+      end
 
-          {:error, reason} ->
-            Logger.warning("[Torrent.Reaper] failed to remove #{info_hash}: #{inspect(reason)}")
-        end
-
-        # If for some reason the id was preferred and removal still
-        # left the torrent in place, try the numeric id too.
-        case torrent do
-          %{id: id} when is_integer(id) -> Client.remove(id)
-          _ -> :ok
-        end
+      # If for some reason the id was preferred and removal still
+      # left the torrent in place, try the numeric id too.
+      case torrent do
+        %{id: id} when is_integer(id) -> Client.remove(id)
+        _ -> :ok
+      end
     end
   end
 

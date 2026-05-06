@@ -6,8 +6,10 @@ defmodule Streamix.Iptv.Torrent.Sources do
   and is iterated by `Streamix.Iptv.Torrent.Sync.sync_provider/1` to
   populate the `movies` and `torrent_streams` tables.
 
-  The default list ships with YTS only; production deployments override
-  it via:
+  The default list includes the built-in adapters. Sources that need a
+  deployment-specific scraper/feed return an empty page until their
+  endpoint is configured. Production deployments can still override it
+  via:
 
       config :streamix, :torrent_sources, [
         Streamix.Iptv.Torrent.Sources.Yts,
@@ -15,9 +17,9 @@ defmodule Streamix.Iptv.Torrent.Sources do
       ]
   """
 
-  alias Streamix.Iptv.Torrent.Sources.Yts
+  alias Streamix.Iptv.Torrent.Sources.{ComandoTorrent, Eztv, GratisTorrent, Yts}
 
-  @default_sources [Yts]
+  @default_sources [Yts, Eztv, GratisTorrent, ComandoTorrent]
 
   @doc """
   Returns the list of enabled torrent source modules.

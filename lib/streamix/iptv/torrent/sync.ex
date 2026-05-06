@@ -216,7 +216,20 @@ defmodule Streamix.Iptv.Torrent.Sync do
     else
       {count, _} =
         Repo.insert_all(TorrentStream, entries,
-          on_conflict: {:replace_all_except, [:id, :inserted_at]},
+          on_conflict:
+            {:replace,
+             [
+               :magnet_uri,
+               :quality,
+               :codec,
+               :audio_track,
+               :container,
+               :size_bytes,
+               :seeders,
+               :leechers,
+               :seeders_updated_at,
+               :updated_at
+             ]},
           conflict_target: :info_hash
         )
 
