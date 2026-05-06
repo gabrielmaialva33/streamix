@@ -22,14 +22,14 @@ the egress on a dedicated host:
 The template uses double-underscore tokens that get substituted at
 deploy time. Pick one of the strategies below.
 
-| Token                     | Meaning                                                        |
-| ------------------------- | -------------------------------------------------------------- |
-| `__STREAM_PROXY_HOST__`   | Public hostname for the IPTV stream proxy                      |
-| `__TMDB_PROXY_HOST__`     | Public hostname for the TMDB image proxy                       |
-| `__LEGACY_IMG_HOST__`     | Public hostname for the legacy image proxy                     |
-| `__IMG_PROXY_HOST__`      | Public hostname for the generic image proxy                    |
-| `__LEGACY_IMG_UPSTREAM__` | Raw upstream hostname for the legacy image cache (no scheme)   |
-| `__SHARED_HMAC_SECRET__`  | 64-char hex shared with `StreamToken.sign_url/2` on the BEAM   |
+| Token                     | Meaning                                                      |
+|---------------------------|--------------------------------------------------------------|
+| `__STREAM_PROXY_HOST__`   | Public hostname for the IPTV stream proxy                    |
+| `__TMDB_PROXY_HOST__`     | Public hostname for the TMDB image proxy                     |
+| `__LEGACY_IMG_HOST__`     | Public hostname for the legacy image proxy                   |
+| `__IMG_PROXY_HOST__`      | Public hostname for the generic image proxy                  |
+| `__LEGACY_IMG_UPSTREAM__` | Raw upstream hostname for the legacy image cache (no scheme) |
+| `__SHARED_HMAC_SECRET__`  | 64-char hex shared with `StreamToken.sign_url/2` on the BEAM |
 
 ### Strategy A — `sed` on deploy
 
