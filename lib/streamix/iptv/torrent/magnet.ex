@@ -43,7 +43,10 @@ defmodule Streamix.Iptv.Torrent.Magnet do
     trackers = Enum.uniq(@default_trackers ++ extra_trackers)
 
     parts = ["xt=urn:btih:#{normalize_hash(info_hash)}"]
-    parts = if display_name != "", do: parts ++ ["dn=#{URI.encode_www_form(display_name)}"], else: parts
+
+    parts =
+      if display_name != "", do: parts ++ ["dn=#{URI.encode_www_form(display_name)}"], else: parts
+
     parts = parts ++ Enum.map(trackers, fn t -> "tr=#{URI.encode_www_form(t)}" end)
 
     "magnet:?" <> Enum.join(parts, "&")

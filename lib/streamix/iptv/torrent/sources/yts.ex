@@ -88,7 +88,8 @@ defmodule Streamix.Iptv.Torrent.Sources.Yts do
 
   defp build_meta(_), do: %{total: nil, page: nil, limit: nil, next_page: nil}
 
-  defp maybe_next_page(total, page, limit) when is_integer(total) and is_integer(page) and is_integer(limit) do
+  defp maybe_next_page(total, page, limit)
+       when is_integer(total) and is_integer(page) and is_integer(limit) do
     if page * limit < total, do: page + 1, else: nil
   end
 
@@ -106,7 +107,8 @@ defmodule Streamix.Iptv.Torrent.Sources.Yts do
       year: movie["year"],
       imdb_id: movie["imdb_code"],
       tmdb_id: nil,
-      poster_url: pick_first(movie, ["large_cover_image", "medium_cover_image", "small_cover_image"]),
+      poster_url:
+        pick_first(movie, ["large_cover_image", "medium_cover_image", "small_cover_image"]),
       backdrop_url: pick_first(movie, ["background_image_original", "background_image"]),
       plot: pick_first(movie, ["description_full", "summary", "synopsis"]),
       rating: parse_rating(movie["rating"]),
