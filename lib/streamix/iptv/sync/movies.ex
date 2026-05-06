@@ -5,6 +5,7 @@ defmodule Streamix.Iptv.Sync.Movies do
 
   alias Streamix.Iptv.{Movie, Provider, XtreamClient}
   alias Streamix.Iptv.Sync.Helpers
+  alias Streamix.Iptv.Sync.Normalizers.Movie, as: MovieNormalizer
   alias Streamix.Repo
 
   require Logger
@@ -28,7 +29,7 @@ defmodule Streamix.Iptv.Sync.Movies do
 
         upsert_opts =
           @sync_opts
-          |> Keyword.put(:attrs_fn, &movie_attrs/3)
+          |> Keyword.put(:attrs_fn, &MovieNormalizer.attrs/3)
           |> Keyword.put(:category_fn, &build_category_assocs/3)
           |> Keyword.put(:type, :movies)
           |> Keyword.put(:provider, provider)
@@ -55,26 +56,6 @@ defmodule Streamix.Iptv.Sync.Movies do
       {:error, reason} ->
         {:error, {:vod_sync_failed, reason}}
     end
-  end
-
-  defp movie_attrs(stream, provider_id, now) do
-    %{
-      stream_id: stream["stream_id"],
-      name: stream["name"] || "Unknown",
-      title: stream["title"],
-      year: Helpers.parse_year(stream["year"]),
-      stream_icon: stream["stream_icon"],
-      rating: Helpers.parse_decimal(stream["rating"]),
-      plot: stream["plot"],
-      container_extension: stream["container_extension"],
-      duration_secs: stream["duration_secs"],
-      tmdb_id: Helpers.to_string_or_nil(stream["tmdb_id"]),
-      imdb_id: Helpers.to_string_or_nil(stream["imdb_id"]),
-      youtube_trailer: stream["youtube_trailer"],
-      provider_id: provider_id,
-      inserted_at: now,
-      updated_at: now
-    }
   end
 
   defp build_category_assocs(streams, returned, category_lookup) do
