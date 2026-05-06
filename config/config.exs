@@ -128,7 +128,11 @@ config :streamix, Oban,
     # TMDB enrichment for gindex rows. Concurrency of 3 matches the
     # pool of 3 tokens (round-robin) so each worker runs on its own
     # bucket and nobody blocks each other on 429s.
-    gindex_enrich: 3
+    gindex_enrich: 3,
+    # Torrent ingestion. Concurrency 2 keeps two sources walking in
+    # parallel without overwhelming any single upstream — each source
+    # paces itself per `Streamix.Iptv.Torrent.Source.rate_limit_ms/0`.
+    torrent_sync: 2
   ],
   plugins: [
     Oban.Plugins.Pruner,
@@ -153,6 +157,8 @@ config :streamix, Oban,
        {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
+       # Sync torrent provider sources daily at 4 AM
+       {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
        # Backfill TMDB backdrop/image assets daily at 4 AM
