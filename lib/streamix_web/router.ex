@@ -92,6 +92,7 @@ defmodule StreamixWeb.Router do
     pipe_through [:browser, :require_authenticated_user]
 
     get "/stream/torrent/:info_hash/status", TorrentStreamController, :status
+    get "/stream/torrent/:info_hash", TorrentStreamController, :stream
     get "/stream/torrent/:info_hash/:file_idx", TorrentStreamController, :stream
   end
 

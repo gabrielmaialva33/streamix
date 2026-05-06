@@ -42,9 +42,11 @@ defmodule StreamixWeb.TorrentStreamController do
   @upstream_receive_timeout_ms 60_000
 
   @doc """
-  GET /api/stream/torrent/:info_hash/:file_idx
+  GET /api/stream/torrent/:info_hash[/file_idx]
   """
-  def stream(conn, %{"info_hash" => info_hash, "file_idx" => file_idx_raw}) do
+  def stream(conn, %{"info_hash" => info_hash} = params) do
+    file_idx_raw = Map.get(params, "file_idx")
+
     with {:ok, file_idx} <- parse_file_idx(file_idx_raw),
          %TorrentStream{} = ts <- find_torrent_stream(info_hash),
          user = current_user(conn),
@@ -234,17 +236,23 @@ defmodule StreamixWeb.TorrentStreamController do
 
   defp find_torrent_stream(_), do: :not_found
 
+  defp authorize(nil, _ts), do: :unauthorized
+
   defp authorize(user, _ts) do
     # Torrent content is delivered through the system-wide
     # TorrentProvider. The Access gate handles admin / subscribed /
     # explicit-permission paths — we just supply the provider so it
     # can recognize this as global content.
-    provider = TorrentProvider.get()
+    case TorrentProvider.get() do
+      nil ->
+        :unauthorized
 
-    if Access.can_play_global_content?(user, provider) do
-      :ok
-    else
-      :unauthorized
+      provider ->
+        if Access.can_play_global_content?(user, provider) do
+          :ok
+        else
+          :unauthorized
+        end
     end
   end
 

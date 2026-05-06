@@ -2,6 +2,7 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
   use StreamixWeb.ConnCase, async: false
 
   alias Streamix.Iptv.Torrent.TorrentStream
+  alias Streamix.Iptv.TorrentProvider
   alias Streamix.Repo
 
   @magnet "magnet:?xt=urn:btih:#{String.duplicate("a", 40)}"
@@ -43,11 +44,20 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
       assert conn.status == 404
     end
 
+    test "returns 403 when the torrent provider row is missing", %{conn: conn} do
+      conn = log_in_test_user(conn)
+      ts = insert_torrent_stream!()
+
+      conn = get(conn, "/api/stream/torrent/#{ts.info_hash}/status")
+      assert conn.status == 403
+    end
+
     @tag :integration
     test "returns 504 when rqbit never reaches `live`", %{conn: conn} do
       # Live integration test — relies on a real (or stubbed) rqbit on
       # the configured URL. Not run by default.
       :ok = setup_torrent_session_supervisors()
+      {:ok, _provider} = TorrentProvider.ensure_exists!()
       conn = log_in_test_user(conn)
 
       ts = insert_torrent_stream!()
