@@ -9,19 +9,13 @@ defmodule Streamix.Iptv.Movies do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Helpers
-
   alias Streamix.Iptv.{
     Access,
-    AdultFilter,
     Content,
-    Movie,
-    MovieAsset,
-    RankedSearch,
-    TmdbClient,
-    XtreamClient
+    Movie
   }
 
+  alias Streamix.Iptv.Content.Movies.{Enrichment, Queries}
   alias Streamix.Repo
 
   @summary_preloads [:genres]
@@ -50,79 +44,13 @@ defmodule Streamix.Iptv.Movies do
     sort = Keyword.get(opts, :sort)
 
     provider_id
-    |> build_filtered_query(opts)
-    |> apply_movie_sort(sort)
+    |> Queries.filtered_provider(opts)
+    |> Queries.sorted(sort)
     |> limit(^limit)
     |> offset(^offset)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
-
-  # Shared filter pipeline used by both `list/2` and `count/2` so the
-  # count honors `category_id` / `search` / `year` / `show_adult` the
-  # same way the list does. Previously `count/1` ignored every filter,
-  # which had the API returning `total: 38862` on a category search that
-  # really held ~80 rows and breaking "has_more" in the TV app.
-  defp build_filtered_query(provider_id, opts) do
-    search = Keyword.get(opts, :search)
-    category_id = Keyword.get(opts, :category_id)
-    year = Keyword.get(opts, :year)
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    Movie
-    |> where(provider_id: ^provider_id)
-    |> maybe_where_search(search)
-    |> maybe_join_category(category_id)
-    |> maybe_where_year(year)
-    |> maybe_exclude_adult(provider_id, show_adult)
-  end
-
-  defp maybe_where_search(query, nil), do: query
-  defp maybe_where_search(query, ""), do: query
-
-  defp maybe_where_search(query, search) do
-    escaped = Helpers.escape_like(search)
-    where(query, [m], ilike(m.name, ^"%#{escaped}%"))
-  end
-
-  defp maybe_join_category(query, nil), do: query
-
-  # `item_categories` is many-to-many — joining duplicates the parent
-  # row once per (movie, category) pair. Without `distinct` a movie
-  # that lives in three categories shows up three times in the page,
-  # and at `offset > 200` the paginator starts landing on copies of
-  # rows seen earlier ("vazando categorias em offset > 200" in the TV
-  # app bug report).
-  defp maybe_join_category(query, category_id) do
-    query
-    |> join(:inner, [m], ic in "item_categories",
-      on: ic.catalog_item_id == m.catalog_item_id and ic.category_id == ^category_id
-    )
-    |> distinct([m], m.id)
-  end
-
-  defp maybe_where_year(query, nil), do: query
-  defp maybe_where_year(query, year), do: where(query, year: ^year)
-
-  defp maybe_exclude_adult(query, _provider_id, true), do: query
-
-  defp maybe_exclude_adult(query, provider_id, _show_adult),
-    do: AdultFilter.exclude_adult_movies(query, provider_id)
-
-  # Sort order for public movie lists.
-  # Supported: rating_desc | created_desc | year_desc | name_asc.
-  # Default (nil/unknown): desc year, asc name.
-  defp apply_movie_sort(query, "rating_desc"),
-    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.rating), desc: m.year, asc: m.name])
-
-  defp apply_movie_sort(query, "created_desc"),
-    do: order_by(query, [m], desc: m.inserted_at)
-
-  defp apply_movie_sort(query, "year_desc"),
-    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.year), asc: m.name])
-
-  defp apply_movie_sort(query, "name_asc"), do: order_by(query, [m], asc: m.name)
-  defp apply_movie_sort(query, _), do: order_by(query, [m], desc: m.year, asc: m.name)
 
   @doc """
   Lists GIndex movies (movies with gindex_path set).
@@ -155,11 +83,8 @@ defmodule Streamix.Iptv.Movies do
   def list_public(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
-    Movie
-    |> Access.public_providers()
-    |> where([m, _p], not is_nil(m.stream_icon))
-    |> order_by([m], desc: m.rating, desc: m.year, asc: m.name)
-    |> limit(^limit)
+    limit
+    |> Queries.public_list()
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
@@ -173,17 +98,10 @@ defmodule Streamix.Iptv.Movies do
   """
   @spec count(integer(), keyword()) :: integer()
   def count(provider_id, opts \\ []) do
-    has_category = Keyword.get(opts, :category_id) != nil
-
     provider_id
-    |> build_filtered_query(opts)
-    |> exclude(:distinct)
-    |> count_query(has_category)
+    |> Queries.count_provider(opts)
     |> Repo.one()
   end
-
-  defp count_query(query, true), do: select(query, [m], count(m.id, :distinct))
-  defp count_query(query, false), do: select(query, [m], count(m.id))
 
   # =============================================================================
   # Retrieval
@@ -285,13 +203,9 @@ defmodule Streamix.Iptv.Movies do
   @spec search(integer(), String.t(), keyword()) :: [Movie.t()]
   def search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
-    escaped = Helpers.escape_like(query)
 
-    Movie
-    |> Access.visible_to_user(user_id)
-    |> where([m, _p], ilike(m.name, ^"%#{escaped}%") or ilike(m.title, ^"%#{escaped}%"))
-    |> order_by([m], desc: m.rating, asc: m.name)
-    |> limit(^limit)
+    user_id
+    |> Queries.visible_search(query, limit)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
@@ -309,9 +223,8 @@ defmodule Streamix.Iptv.Movies do
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
 
-    Movie
-    |> Access.public_providers()
-    |> RankedSearch.build([:name, :title], query, limit: limit)
+    query
+    |> Queries.public_search(limit)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
@@ -334,14 +247,14 @@ defmodule Streamix.Iptv.Movies do
     movie = Repo.preload(movie, [:provider | @detail_preloads])
 
     # Step 1: Fetch from Xtream API
-    xtream_attrs = fetch_xtream_attrs(movie)
+    xtream_attrs = Enrichment.fetch_xtream_attrs(movie)
 
     # Step 2: Resolve a tmdb_id. Prefer what Xtream returned, then what we
     # already have stored, and finally fall back to a name+year search on
     # TMDB so titles from providers that don't ship tmdb_id still get
     # enriched on their first enrichment run.
     resolved_tmdb_id =
-      xtream_attrs[:tmdb_id] || movie.tmdb_id || resolve_movie_tmdb_id(movie)
+      xtream_attrs[:tmdb_id] || movie.tmdb_id || Enrichment.resolve_movie_tmdb_id(movie)
 
     # Persist the resolved id so the next enrichment skips the search.
     xtream_attrs =
@@ -353,253 +266,17 @@ defmodule Streamix.Iptv.Movies do
       end
 
     # Step 3: Fetch from TMDB if we're still missing key data
-    tmdb_attrs = maybe_fetch_from_tmdb(movie, xtream_attrs, resolved_tmdb_id)
+    tmdb_attrs = Enrichment.maybe_fetch_from_tmdb(movie, xtream_attrs, resolved_tmdb_id)
 
     # Step 4: Merge attrs (TMDB fills in what Xtream didn't provide)
     final_attrs = Map.merge(tmdb_attrs, xtream_attrs)
 
-    case update_movie(movie, final_attrs) do
+    case Enrichment.update_movie(movie, final_attrs) do
       {:ok, updated} -> {:ok, Repo.preload(updated, @detail_preloads, force: true)}
       error -> error
     end
   end
 
-  # =============================================================================
-  # Private Helpers
-  # =============================================================================
-
-  defp fetch_xtream_attrs(%Movie{provider: provider} = movie) do
-    case XtreamClient.get_vod_info(
-           provider.url,
-           provider.username,
-           provider.password,
-           movie.stream_id
-         ) do
-      {:ok, %{"info" => info, "movie_data" => movie_data}} ->
-        parse_vod_info(info, movie_data)
-
-      {:ok, %{"info" => info}} ->
-        parse_vod_info(info, %{})
-
-      {:ok, response} ->
-        require Logger
-
-        Logger.debug("[IPTV] Unexpected Xtream response format for movie #{movie.id}",
-          response_keys: Map.keys(response)
-        )
-
-        %{}
-
-      {:error, reason} ->
-        require Logger
-
-        Logger.warning("[IPTV] Xtream API failed for movie #{movie.id}",
-          movie_name: movie.name,
-          reason: inspect(reason)
-        )
-
-        %{}
-    end
-  end
-
-  # Resolves a tmdb_id by searching TMDB with the movie's title + year.
-  # When the movie has a year, we only trust matches whose release_date
-  # falls within ±1 year to avoid accidentally binding to an unrelated
-  # title with the same name.
-  defp resolve_movie_tmdb_id(%Movie{} = movie) do
-    title = movie.title || movie.name
-
-    if is_binary(title) and title != "" do
-      with {:ok, %{"results" => results}} when is_list(results) <-
-             TmdbClient.search_movie(title, year: movie.year, profile: tmdb_profile(movie)),
-           %{"id" => id} <-
-             Enum.find(results, &year_matches?(&1["release_date"], movie.year)) do
-        to_string(id)
-      else
-        _ -> nil
-      end
-    else
-      nil
-    end
-  end
-
-  # GIndex-sourced movies hit TMDB under a dedicated profile so their quota
-  # stays isolated from the default (Xtream) ingestion path.
-  defp tmdb_profile(%Movie{gindex_path: path}) when is_binary(path) and path != "",
-    do: :gindex
-
-  defp tmdb_profile(_movie), do: :default
-
-  # No year on our side → trust the first hit. Otherwise require ±1 year.
-  defp year_matches?(_release_date, nil), do: true
-  defp year_matches?(nil, _year), do: false
-  defp year_matches?("", _year), do: false
-
-  defp year_matches?(release_date, year) when is_binary(release_date) and is_integer(year) do
-    case Integer.parse(release_date) do
-      {result_year, _} -> abs(result_year - year) <= 1
-      :error -> false
-    end
-  end
-
-  defp year_matches?(_, _), do: false
-
-  defp maybe_fetch_from_tmdb(movie, xtream_attrs, tmdb_id)
-       when is_binary(tmdb_id) and tmdb_id != "" do
-    if needs_tmdb_enrichment?(movie, xtream_attrs) do
-      fetch_from_tmdb(tmdb_id, tmdb_profile(movie))
-    else
-      %{}
-    end
-  end
-
-  defp maybe_fetch_from_tmdb(_movie, _xtream_attrs, _tmdb_id), do: %{}
-
-  defp needs_tmdb_enrichment?(movie, xtream_attrs) do
-    missing_basic_info?(movie, xtream_attrs) or missing_extended_info?(movie)
-  end
-
-  defp missing_basic_info?(movie, xtream_attrs) do
-    missing_field?(xtream_attrs[:plot], movie.plot) or
-      (is_nil(xtream_attrs[:cast]) and Enum.empty?(movie.credits || [])) or
-      (is_nil(xtream_attrs[:director]) and Enum.empty?(movie.credits || []))
-  end
-
-  defp missing_extended_info?(movie) do
-    is_nil(movie.content_rating) and is_nil(movie.tagline) and not Movie.has_images?(movie)
-  end
-
-  defp missing_field?(xtream_val, movie_val), do: is_nil(xtream_val) and is_nil(movie_val)
-
-  defp fetch_from_tmdb(tmdb_id, profile) do
-    case TmdbClient.get_movie(tmdb_id, profile: profile) do
-      {:ok, data} ->
-        TmdbClient.parse_movie_response(data)
-
-      {:error, reason} ->
-        require Logger
-
-        Logger.warning(
-          "[IPTV] TMDB API failed for tmdb_id #{tmdb_id} (profile=#{profile})",
-          reason: inspect(reason)
-        )
-
-        %{}
-
-      _ ->
-        %{}
-    end
-  end
-
-  defp update_movie(movie, attrs) when attrs == %{}, do: {:ok, movie}
-
-  defp update_movie(movie, attrs) do
-    # _backdrop_urls and _image_urls come from TmdbClient.parse_movie_response/1
-    # but are not Movie schema fields — persist them as MovieAsset rows after
-    # the base update succeeds, otherwise cast/3 would silently drop them.
-    {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
-    {images, attrs} = Map.pop(attrs, :_image_urls, [])
-
-    with {:ok, updated} <- movie |> Movie.changeset(attrs) |> Repo.update() do
-      persist_movie_assets(updated.id, "backdrop", backdrops)
-      persist_movie_assets(updated.id, "image", images)
-      {:ok, updated}
-    end
-  end
-
   @doc false
-  def persist_movie_assets(_movie_id, _type, nil), do: :ok
-  def persist_movie_assets(_movie_id, _type, []), do: :ok
-
-  def persist_movie_assets(movie_id, type, urls) when is_list(urls) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    entries =
-      urls
-      |> Enum.reject(&(&1 in [nil, ""]))
-      |> Enum.with_index()
-      |> Enum.map(fn {url, idx} ->
-        %{
-          movie_id: movie_id,
-          asset_type: type,
-          url: url,
-          position: idx,
-          inserted_at: now,
-          updated_at: now
-        }
-      end)
-
-    case entries do
-      [] ->
-        :ok
-
-      _ ->
-        # Idempotent insert — unique index on (movie_id, asset_type, url)
-        # (see migration 20260417221822) means re-enriching the same movie
-        # is a no-op instead of a delete+insert cycle.
-        Repo.insert_all(MovieAsset, entries,
-          on_conflict: :nothing,
-          conflict_target: [:movie_id, :asset_type, :url]
-        )
-    end
-
-    :ok
-  end
-
-  defp parse_vod_info(info, movie_data) when is_map(info) do
-    %{}
-    |> maybe_put(:title, info["name"])
-    |> maybe_put(:plot, info["plot"] || info["description"])
-    |> maybe_put(:duration_secs, parse_duration_secs(info["duration_secs"] || info["duration"]))
-    |> maybe_put(:rating, parse_decimal(info["rating"]))
-    |> maybe_put(:year, parse_integer(info["releasedate"] || info["release_date"]))
-    |> maybe_put(:tmdb_id, to_string_or_nil(info["tmdb_id"]))
-    |> maybe_put(:imdb_id, info["kinopoisk_url"])
-    |> maybe_put(:youtube_trailer, info["youtube_trailer"])
-    |> maybe_put(:stream_icon, info["cover_big"] || info["movie_image"])
-    |> maybe_put(:container_extension, movie_data["container_extension"])
-  end
-
-  defp parse_vod_info(_, _), do: %{}
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, _key, ""), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
-  defp parse_decimal(nil), do: nil
-  defp parse_decimal(""), do: nil
-
-  defp parse_decimal(value) when is_binary(value) do
-    case Decimal.parse(value) do
-      {decimal, _} -> decimal
-      :error -> nil
-    end
-  end
-
-  defp parse_decimal(value) when is_number(value), do: Decimal.from_float(value / 1)
-  defp parse_decimal(_), do: nil
-
-  defp parse_integer(nil), do: nil
-  defp parse_integer(""), do: nil
-
-  defp parse_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, _} -> int
-      :error -> nil
-    end
-  end
-
-  defp parse_integer(value) when is_integer(value), do: value
-  defp parse_integer(_), do: nil
-
-  defp parse_duration_secs(nil), do: nil
-  defp parse_duration_secs(value) when is_integer(value), do: value
-  defp parse_duration_secs(value) when is_binary(value), do: parse_integer(value)
-  defp parse_duration_secs(_), do: nil
-
-  defp to_string_or_nil(nil), do: nil
-  defp to_string_or_nil(""), do: nil
-  defp to_string_or_nil(value) when is_binary(value), do: value
-  defp to_string_or_nil(value) when is_integer(value), do: Integer.to_string(value)
-  defp to_string_or_nil(_), do: nil
+  defdelegate persist_movie_assets(movie_id, type, urls), to: Enrichment
 end

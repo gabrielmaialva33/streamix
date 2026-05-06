@@ -7,29 +7,16 @@ defmodule Streamix.Iptv.SeriesOps do
   Also handles fetching detailed info from TMDB.
   """
 
-  import Ecto.Query, warn: false
-
-  alias Streamix.Helpers
+  alias Streamix.Iptv.Content.SeriesOps.{Enrichment, Queries}
 
   alias Streamix.Iptv.{
-    Access,
-    AdultFilter,
     Content,
     Episode,
-    Provider,
-    RankedSearch,
-    Season,
     Series,
-    SeriesAsset,
-    Sync,
-    TmdbClient
+    Sync
   }
 
   alias Streamix.Repo
-
-  @summary_preloads [:genres]
-  @search_result_preloads [:assets, :genres]
-  @detail_preloads [:assets, :genres, credits: :person]
 
   # =============================================================================
   # GIndex Anime Functions
@@ -115,87 +102,15 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec list(integer(), keyword()) :: [Series.t()]
   def list(provider_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 100)
-    offset = Keyword.get(opts, :offset, 0)
-    sort = Keyword.get(opts, :sort)
-
-    provider_id
-    |> build_filtered_query(opts)
-    |> apply_series_sort(sort)
-    |> limit(^limit)
-    |> offset(^offset)
-    |> preload(^@summary_preloads)
-    |> Repo.all()
+    Queries.list(provider_id, opts)
   end
-
-  # Shared filter pipeline for `list/2` and `count/2`. Same story as
-  # `Movies.build_filtered_query/2`: without this the paginated API
-  # endpoint reported the entire catalog total on a filtered request
-  # and the category join produced duplicate rows at high offsets.
-  defp build_filtered_query(provider_id, opts) do
-    search = Keyword.get(opts, :search)
-    category_id = Keyword.get(opts, :category_id)
-    show_adult = Keyword.get(opts, :show_adult, false)
-
-    Series
-    |> where(provider_id: ^provider_id)
-    |> maybe_where_search(search)
-    |> maybe_join_category(category_id)
-    |> maybe_exclude_adult(provider_id, show_adult)
-  end
-
-  defp maybe_where_search(query, nil), do: query
-  defp maybe_where_search(query, ""), do: query
-
-  defp maybe_where_search(query, search) do
-    escaped = Helpers.escape_like(search)
-    where(query, [s], ilike(s.name, ^"%#{escaped}%"))
-  end
-
-  defp maybe_join_category(query, nil), do: query
-
-  defp maybe_join_category(query, category_id) do
-    query
-    |> join(:inner, [s], ic in "item_categories",
-      on: ic.catalog_item_id == s.catalog_item_id and ic.category_id == ^category_id
-    )
-    |> distinct([s], s.id)
-  end
-
-  defp maybe_exclude_adult(query, _provider_id, true), do: query
-
-  defp maybe_exclude_adult(query, provider_id, _show_adult),
-    do: AdultFilter.exclude_adult_series(query, provider_id)
-
-  # Sort order for public series lists.
-  # Supported: rating_desc | created_desc | year_desc | name_asc.
-  # Default (nil/unknown): desc year, asc name.
-  defp apply_series_sort(query, "rating_desc"),
-    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.rating), desc: s.year, asc: s.name])
-
-  defp apply_series_sort(query, "created_desc"),
-    do: order_by(query, [s], desc: s.inserted_at)
-
-  defp apply_series_sort(query, "year_desc"),
-    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.year), asc: s.name])
-
-  defp apply_series_sort(query, "name_asc"), do: order_by(query, [s], asc: s.name)
-  defp apply_series_sort(query, _), do: order_by(query, [s], desc: s.year, asc: s.name)
 
   @doc """
   Lists featured series from public/global providers for public display.
   """
   @spec list_public(keyword()) :: [Series.t()]
   def list_public(opts \\ []) do
-    limit = Keyword.get(opts, :limit, 20)
-
-    Series
-    |> Access.public_providers()
-    |> where([s, _p], not is_nil(s.cover))
-    |> order_by([s], desc: s.rating, desc: s.year, asc: s.name)
-    |> limit(^limit)
-    |> preload(^@summary_preloads)
-    |> Repo.all()
+    Queries.list_public(opts)
   end
 
   @doc """
@@ -205,17 +120,8 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec count(integer(), keyword()) :: integer()
   def count(provider_id, opts \\ []) do
-    has_category = Keyword.get(opts, :category_id) != nil
-
-    provider_id
-    |> build_filtered_query(opts)
-    |> exclude(:distinct)
-    |> count_query(has_category)
-    |> Repo.one()
+    Queries.count(provider_id, opts)
   end
-
-  defp count_query(query, true), do: select(query, [s], count(s.id, :distinct))
-  defp count_query(query, false), do: select(query, [s], count(s.id))
 
   # =============================================================================
   # Series Retrieval
@@ -241,9 +147,7 @@ defmodule Streamix.Iptv.SeriesOps do
   def get_by_ids([]), do: []
 
   def get_by_ids(ids) when is_list(ids) do
-    from(s in Series, where: s.id in ^ids)
-    |> preload(^@search_result_preloads)
-    |> Repo.all()
+    Queries.get_by_ids(ids)
   end
 
   @doc """
@@ -251,47 +155,25 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_public(integer()) :: Series.t() | nil
   def get_public(series_id) do
-    Series
-    |> Access.public_only(series_id)
-    |> preload(^[:provider | @detail_preloads])
-    |> Repo.one()
-  end
-
-  # Hide season 0 — the Xtream / TMDB feeds use it for "Specials" (trailers,
-  # behind-the-scenes, interviews). It confuses the UI since end users
-  # expect "Temporada 1" first. Rows stay in the DB for future use.
-  defp public_seasons_query do
-    from(s in Season, where: s.season_number > 0, order_by: s.season_number)
-  end
-
-  defp public_episodes_query do
-    from(e in Episode, order_by: e.episode_num)
+    Queries.get_public(series_id)
   end
 
   @doc """
   Gets a series with its seasons and episodes preloaded.
-  Season 0 ("Specials") is hidden — see `public_seasons_query/0`.
+  Season 0 ("Specials") is hidden by the query helper.
   """
   @spec get_with_seasons(integer()) :: Series.t() | nil
   def get_with_seasons(id) do
-    Series
-    |> where(id: ^id)
-    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
-    |> preload(^[:provider | @detail_preloads])
-    |> Repo.one()
+    Queries.get_with_seasons(id)
   end
 
   @doc """
   Gets a series with its seasons and episodes preloaded. Raises if not found.
-  Season 0 ("Specials") is hidden — see `public_seasons_query/0`.
+  Season 0 ("Specials") is hidden by the query helper.
   """
   @spec get_with_seasons!(integer()) :: Series.t()
   def get_with_seasons!(id) do
-    Series
-    |> where(id: ^id)
-    |> preload(seasons: ^{public_seasons_query(), episodes: public_episodes_query()})
-    |> preload(^[:provider | @detail_preloads])
-    |> Repo.one!()
+    Queries.get_with_seasons!(id)
   end
 
   @doc """
@@ -303,15 +185,6 @@ defmodule Streamix.Iptv.SeriesOps do
   def get_with_sync!(id) do
     series = get!(id)
 
-    # Sync if no episodes yet OR missing tmdb_id (for TMDB enrichment).
-    # CRITICAL: the sync performs blocking HTTP calls to the Xtream
-    # upstream. When the provider is down (as happened April 2026 with
-    # `cb.chokitecnologia.com`), this call would hang the LiveView
-    # mount for ~30s per stuck request, making the whole series detail
-    # page feel frozen. Asking the circuit breaker first lets us serve
-    # whatever is already cached immediately — the page renders, the
-    # user sees the poster/synopsis, and background enrichment can
-    # happen later when upstream recovers.
     episode_count = count_episodes_for_series(series.id)
     needs_sync = episode_count == 0 or is_nil(series.tmdb_id) or series.tmdb_id == ""
 
@@ -322,20 +195,13 @@ defmodule Streamix.Iptv.SeriesOps do
       end
     end
 
-    # Return fresh data with preloads
     {:ok, get_with_seasons!(id)}
   end
 
-  # Circuit breaker gate — when the breaker is open (consecutive upstream
-  # failures), skip the blocking HTTP call entirely. Loses best-effort
-  # freshness but keeps the UX responsive.
   defp upstream_available?(provider_id) when is_integer(provider_id) do
     alias Streamix.Iptv.XtreamCircuitBreaker
     XtreamCircuitBreaker.allow_request?(provider_id)
   rescue
-    # If the breaker process isn't running (tests, edge cases) don't
-    # inadvertently block sync behind a misconfigured gate — err on the
-    # side of the original behaviour.
     _ -> true
   end
 
@@ -362,10 +228,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_episode_for_stream(integer()) :: Episode.t() | nil
   def get_episode_for_stream(id) do
-    Episode
-    |> where(id: ^id)
-    |> preload(season: [series: :provider])
-    |> Repo.one()
+    Queries.get_episode_for_stream(id)
   end
 
   @doc """
@@ -373,13 +236,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_user_episode(integer(), integer()) :: Episode.t() | nil
   def get_user_episode(user_id, episode_id) do
-    Episode
-    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
-    |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
-    |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
-    |> where([e, s, sr, p], e.id == ^episode_id and p.user_id == ^user_id)
-    |> preload(season: [series: :provider])
-    |> Repo.one()
+    Queries.get_user_episode(user_id, episode_id)
   end
 
   @doc """
@@ -388,14 +245,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_playable_episode(integer(), integer()) :: Episode.t() | nil
   def get_playable_episode(user_id, episode_id) do
-    Episode
-    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
-    |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
-    |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
-    |> where([e, _s, _sr, _p], e.id == ^episode_id)
-    |> where([e, s, sr, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
-    |> preload(season: [series: :provider])
-    |> Repo.one()
+    Queries.get_playable_episode(user_id, episode_id)
   end
 
   @doc """
@@ -403,14 +253,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_public_episode(integer()) :: Episode.t() | nil
   def get_public_episode(episode_id) do
-    Episode
-    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
-    |> join(:inner, [e, s], sr in Series, on: s.series_id == sr.id)
-    |> join(:inner, [e, s, sr], p in Provider, on: sr.provider_id == p.id)
-    |> where([e, _s, _sr, _p], e.id == ^episode_id)
-    |> where([e, s, sr, p], p.visibility in [:global, :public])
-    |> preload(season: [series: :provider])
-    |> Repo.one()
+    Queries.get_public_episode(episode_id)
   end
 
   @doc """
@@ -419,10 +262,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_episode_with_context!(integer()) :: Episode.t()
   def get_episode_with_context!(id) do
-    Episode
-    |> where(id: ^id)
-    |> preload(season: [series: [:provider, :assets]])
-    |> Repo.one!()
+    Queries.get_episode_with_context!(id)
   end
 
   @doc """
@@ -430,10 +270,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec list_season_episodes(integer()) :: [Episode.t()]
   def list_season_episodes(season_id) do
-    Episode
-    |> where(season_id: ^season_id)
-    |> order_by(:episode_num)
-    |> Repo.all()
+    Queries.list_season_episodes(season_id)
   end
 
   @doc """
@@ -445,48 +282,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec get_next_episode(integer()) :: Episode.t() | nil
   def get_next_episode(episode_id) do
-    episode = get_episode(episode_id)
-    if episode, do: find_next_episode(episode), else: nil
-  end
-
-  defp find_next_episode(episode) do
-    # Load season context if not loaded
-    episode = Repo.preload(episode, season: :series)
-    season = episode.season
-
-    # Try next episode in same season
-    next_in_season =
-      Episode
-      |> where([e], e.season_id == ^season.id)
-      |> where([e], e.episode_num > ^episode.episode_num)
-      |> order_by([e], asc: e.episode_num)
-      |> limit(1)
-      |> preload(season: [series: :provider])
-      |> Repo.one()
-
-    if next_in_season do
-      next_in_season
-    else
-      # Try first episode of next season
-      next_season =
-        Season
-        |> where([s], s.series_id == ^season.series_id)
-        |> where([s], s.season_number > ^season.season_number)
-        |> order_by([s], asc: s.season_number)
-        |> limit(1)
-        |> Repo.one()
-
-      if next_season do
-        Episode
-        |> where([e], e.season_id == ^next_season.id)
-        |> order_by([e], asc: e.episode_num)
-        |> limit(1)
-        |> preload(season: [series: :provider])
-        |> Repo.one()
-      else
-        nil
-      end
-    end
+    Queries.get_next_episode(episode_id)
   end
 
   # =============================================================================
@@ -498,16 +294,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec search(integer(), String.t(), keyword()) :: [Series.t()]
   def search(user_id, query, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 24)
-    escaped = Helpers.escape_like(query)
-
-    Series
-    |> Access.visible_to_user(user_id)
-    |> where([s, _p], ilike(s.name, ^"%#{escaped}%") or ilike(s.title, ^"%#{escaped}%"))
-    |> order_by([s], desc: s.rating, asc: s.name)
-    |> limit(^limit)
-    |> preload(^@summary_preloads)
-    |> Repo.all()
+    Queries.search(user_id, query, opts)
   end
 
   @doc """
@@ -520,13 +307,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec search_public(String.t(), keyword()) :: [Series.t()]
   def search_public(query, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 24)
-
-    Series
-    |> Access.public_providers()
-    |> RankedSearch.build([:name, :title], query, limit: limit)
-    |> preload(^@summary_preloads)
-    |> Repo.all()
+    Queries.search_public(query, opts)
   end
 
   # =============================================================================
@@ -539,73 +320,8 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec fetch_info(Series.t()) :: {:ok, Series.t()} | {:error, term()}
   def fetch_info(%Series{} = series) do
-    series = Repo.preload(series, @detail_preloads)
-    profile = tmdb_profile(series)
-    tmdb_id = series.tmdb_id || resolve_series_tmdb_id(series, profile)
-
-    if needs_tmdb_enrichment?(series) and is_binary(tmdb_id) and tmdb_id != "" do
-      case TmdbClient.get_series(tmdb_id, profile: profile) do
-        {:ok, data} ->
-          attrs =
-            data
-            |> TmdbClient.parse_series_response()
-            # Persist the resolved id so future enrichments skip the search.
-            |> maybe_put_tmdb_id(series.tmdb_id, tmdb_id)
-
-          update_series(series, attrs)
-
-        {:error, _reason} ->
-          {:ok, series}
-      end
-    else
-      {:ok, series}
-    end
+    Enrichment.fetch_info(series)
   end
-
-  # GIndex-sourced series use a dedicated TMDB profile to isolate quota.
-  defp tmdb_profile(%Series{gindex_path: path}) when is_binary(path) and path != "",
-    do: :gindex
-
-  defp tmdb_profile(_series), do: :default
-
-  # Resolves a tmdb_id by searching TMDB with the series' title + year.
-  # Requires ±1 year match on first_air_date when we have a year, so
-  # generic titles don't get bound to an unrelated show.
-  defp resolve_series_tmdb_id(%Series{} = series, profile) do
-    title = series.title || series.name
-
-    if is_binary(title) and title != "" do
-      with {:ok, %{"results" => results}} when is_list(results) <-
-             TmdbClient.search_series(title, year: series.year, profile: profile),
-           %{"id" => id} <-
-             Enum.find(results, &year_matches?(&1["first_air_date"], series.year)) do
-        to_string(id)
-      else
-        _ -> nil
-      end
-    else
-      nil
-    end
-  end
-
-  defp year_matches?(_air_date, nil), do: true
-  defp year_matches?(nil, _year), do: false
-  defp year_matches?("", _year), do: false
-
-  defp year_matches?(air_date, year) when is_binary(air_date) and is_integer(year) do
-    case Integer.parse(air_date) do
-      {result_year, _} -> abs(result_year - year) <= 1
-      :error -> false
-    end
-  end
-
-  defp year_matches?(_, _), do: false
-
-  defp maybe_put_tmdb_id(attrs, existing, resolved)
-       when is_nil(existing) or existing == "",
-       do: Map.put(attrs, :tmdb_id, resolved)
-
-  defp maybe_put_tmdb_id(attrs, _existing, _resolved), do: attrs
 
   @doc """
   Fetches detailed episode info from TMDB if not already enriched.
@@ -615,50 +331,7 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec fetch_episode_info(Episode.t()) :: {:ok, Episode.t()} | {:error, term()}
   def fetch_episode_info(%Episode{} = episode) do
-    episode = Repo.preload(episode, season: :series)
-    series = episode.season.series
-    tmdb_id = series.tmdb_id
-    season_number = episode.season.season_number
-
-    if needs_episode_tmdb_enrichment?(episode) and is_binary(tmdb_id) and tmdb_id != "" do
-      fetch_and_update_episode(episode, tmdb_id, season_number, tmdb_profile(series))
-    else
-      {:ok, episode}
-    end
-  end
-
-  # =============================================================================
-  # Private Helpers
-  # =============================================================================
-
-  defp needs_tmdb_enrichment?(series) do
-    missing_plot = is_nil(series.plot)
-    credits = series.credits || []
-    missing_cast = Enum.empty?(Enum.filter(credits, &(&1.role == "cast")))
-    missing_director = Enum.empty?(Enum.filter(credits, &(&1.role == "director")))
-
-    # Also check for extended metadata from TMDB
-    missing_extended =
-      is_nil(series.content_rating) and is_nil(series.tagline) and
-        not Series.has_images?(series)
-
-    missing_plot or missing_cast or missing_director or missing_extended
-  end
-
-  defp update_series(series, attrs) when attrs == %{}, do: {:ok, series}
-
-  defp update_series(series, attrs) do
-    # Same pattern as Movies.update_movie/2: _backdrop_urls / _image_urls
-    # from TmdbClient.parse_series_response/1 aren't Series schema fields,
-    # so persist them as SeriesAsset rows after the base update.
-    {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
-    {images, attrs} = Map.pop(attrs, :_image_urls, [])
-
-    with {:ok, updated} <- series |> Series.changeset(attrs) |> Repo.update() do
-      persist_series_assets(updated.id, "backdrop", backdrops)
-      persist_series_assets(updated.id, "image", images)
-      {:ok, updated}
-    end
+    Enrichment.fetch_episode_info(episode)
   end
 
   @doc false
@@ -666,64 +339,7 @@ defmodule Streamix.Iptv.SeriesOps do
   def persist_series_assets(_series_id, _type, []), do: :ok
 
   def persist_series_assets(series_id, type, urls) when is_list(urls) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    entries =
-      urls
-      |> Enum.reject(&(&1 in [nil, ""]))
-      |> Enum.with_index()
-      |> Enum.map(fn {url, idx} ->
-        %{
-          series_id: series_id,
-          asset_type: type,
-          url: url,
-          position: idx,
-          inserted_at: now,
-          updated_at: now
-        }
-      end)
-
-    case entries do
-      [] ->
-        :ok
-
-      _ ->
-        # See Streamix.Iptv.Movies.persist_movie_assets/3 for the rationale.
-        Repo.insert_all(SeriesAsset, entries,
-          on_conflict: :nothing,
-          conflict_target: [:series_id, :asset_type, :url]
-        )
-    end
-
-    :ok
-  end
-
-  defp needs_episode_tmdb_enrichment?(episode) do
-    not episode.tmdb_enriched
-  end
-
-  defp fetch_and_update_episode(episode, tmdb_id, season_number, profile) do
-    case TmdbClient.get_season(tmdb_id, season_number, profile: profile) do
-      {:ok, data} ->
-        data
-        |> TmdbClient.parse_season_episodes()
-        |> Map.get(episode.episode_num)
-        |> case do
-          nil -> {:ok, episode}
-          attrs -> update_episode(episode, attrs)
-        end
-
-      {:error, _reason} ->
-        {:ok, episode}
-    end
-  end
-
-  defp update_episode(episode, attrs) when attrs == %{}, do: {:ok, episode}
-
-  defp update_episode(episode, attrs) do
-    episode
-    |> Episode.changeset(attrs)
-    |> Repo.update()
+    Enrichment.persist_series_assets(series_id, type, urls)
   end
 
   @doc """
@@ -731,9 +347,6 @@ defmodule Streamix.Iptv.SeriesOps do
   """
   @spec count_episodes_for_series(integer()) :: integer()
   def count_episodes_for_series(series_id) do
-    Episode
-    |> join(:inner, [e], s in Season, on: e.season_id == s.id)
-    |> where([_e, s], s.series_id == ^series_id)
-    |> Repo.aggregate(:count)
+    Queries.count_episodes_for_series(series_id)
   end
 end
