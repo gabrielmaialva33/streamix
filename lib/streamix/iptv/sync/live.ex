@@ -5,6 +5,7 @@ defmodule Streamix.Iptv.Sync.Live do
 
   alias Streamix.Iptv.{LiveChannel, Provider, XtreamClient}
   alias Streamix.Iptv.Sync.Helpers
+  alias Streamix.Iptv.Sync.Normalizers.LiveChannel, as: LiveChannelNormalizer
   alias Streamix.Repo
 
   require Logger
@@ -28,7 +29,7 @@ defmodule Streamix.Iptv.Sync.Live do
 
         upsert_opts =
           @sync_opts
-          |> Keyword.put(:attrs_fn, &live_channel_attrs/3)
+          |> Keyword.put(:attrs_fn, &LiveChannelNormalizer.attrs/3)
           |> Keyword.put(:category_fn, &build_category_assocs/3)
           |> Keyword.put(:type, :live)
           |> Keyword.put(:provider, provider)
@@ -50,24 +51,6 @@ defmodule Streamix.Iptv.Sync.Live do
       {:error, reason} ->
         {:error, {:live_sync_failed, reason}}
     end
-  end
-
-  defp live_channel_attrs(stream, provider_id, now) do
-    %{
-      stream_id: stream["stream_id"],
-      name: stream["name"] || "Unknown",
-      stream_icon: stream["stream_icon"],
-      epg_channel_id: stream["epg_channel_id"],
-      tv_archive: stream["tv_archive"] == 1,
-      tv_archive_duration: stream["tv_archive_duration"],
-      direct_source: stream["direct_source"],
-      provider_id: provider_id,
-      # If the upstream is listing the channel again, give it a fresh
-      # chance at playback — the lazy 404 marker will re-flag it if still dead.
-      dead_since: nil,
-      inserted_at: now,
-      updated_at: now
-    }
   end
 
   defp build_category_assocs(streams, returned, category_lookup) do
