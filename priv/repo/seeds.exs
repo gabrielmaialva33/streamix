@@ -261,6 +261,26 @@ case GIndexProvider.get() do
     IO.puts("✓ GIndex provider already owned: #{provider.name} (user_id=#{provider.user_id})")
 end
 
+# Same idempotent reattach for the Torrent aggregator provider — it's
+# also created at boot with user_id = NULL.
+alias Streamix.Iptv.TorrentProvider
+
+case TorrentProvider.get() do
+  nil ->
+    IO.puts("→ Torrent provider not configured (set TORRENT_ENABLED=true)")
+
+  %Provider{user_id: nil} = provider ->
+    {:ok, updated} =
+      provider
+      |> Ecto.Changeset.change(user_id: admin.id)
+      |> Repo.update()
+
+    IO.puts("✓ Torrent provider linked to admin: #{updated.name} (owner=#{admin.email})")
+
+  %Provider{} = provider ->
+    IO.puts("✓ Torrent provider already owned: #{provider.name} (user_id=#{provider.user_id})")
+end
+
 # Create global provider (if configured)
 alias Streamix.Iptv.GlobalProvider
 

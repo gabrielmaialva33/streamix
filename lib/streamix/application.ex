@@ -147,7 +147,7 @@ defmodule Streamix.Application do
   end
 
   defp init_system_providers do
-    alias Streamix.Iptv.{GIndexProvider, GlobalProvider}
+    alias Streamix.Iptv.{GIndexProvider, GlobalProvider, TorrentProvider}
     require Logger
 
     # Ensure GIndex provider exists if configured
@@ -166,6 +166,15 @@ defmodule Streamix.Application do
 
       {:error, reason} ->
         Logger.warning("[Application] Global provider init failed: #{inspect(reason)}")
+    end
+
+    # Ensure Torrent aggregator provider exists if enabled
+    case TorrentProvider.ensure_exists!() do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[Application] Torrent provider init failed: #{inspect(reason)}")
     end
   end
 

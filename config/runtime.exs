@@ -168,6 +168,17 @@ else
   config :streamix, :gindex_provider, enabled: false
 end
 
+# Torrent aggregator provider. Off by default — it requires an rqbit
+# sidecar to be reachable and brings its own resource/legal footprint,
+# so opt-in. RQBIT_URL points at the sidecar's HTTP API.
+if get_env.("TORRENT_ENABLED") == "true" do
+  config :streamix, :torrent_provider,
+    enabled: true,
+    rqbit_url: get_env.("RQBIT_URL") || "http://rqbit:3030"
+else
+  config :streamix, :torrent_provider, enabled: false
+end
+
 # AI Embeddings configuration for semantic search
 # Set EMBEDDING_PROVIDER to choose: "gemini" (default) or "nvidia"
 # Both can be configured for automatic fallback

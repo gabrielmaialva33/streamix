@@ -22,7 +22,7 @@ defmodule Streamix.Iptv.Provider do
     field :is_system, :boolean, default: false
 
     # Provider type: xtream (default) or gindex
-    field :provider_type, Ecto.Enum, values: [:xtream, :gindex], default: :xtream
+    field :provider_type, Ecto.Enum, values: [:xtream, :gindex, :torrent], default: :xtream
     field :gindex_url, :string
 
     # Counters by type
