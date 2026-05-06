@@ -135,7 +135,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
       >
         <.icon name="hero-tv" class="size-4" />
         <span>Ao Vivo</span>
-        <span :if={@counts[:live]} class="content-nav__count hidden sm:inline">
+        <span :if={@counts[:live] && @counts[:live] > 0} class="content-nav__count hidden sm:inline">
           {format_count(@counts.live)}
         </span>
       </.link>
@@ -145,7 +145,10 @@ defmodule StreamixWeb.Content.NavigationComponents do
       >
         <.icon name="hero-film" class="size-4" />
         <span>Filmes</span>
-        <span :if={@counts[:movies]} class="content-nav__count hidden sm:inline">
+        <span
+          :if={@counts[:movies] && @counts[:movies] > 0}
+          class="content-nav__count hidden sm:inline"
+        >
           {format_count(@counts.movies)}
         </span>
       </.link>
@@ -155,7 +158,10 @@ defmodule StreamixWeb.Content.NavigationComponents do
       >
         <.icon name="hero-video-camera" class="size-4" />
         <span>Séries</span>
-        <span :if={@counts[:series]} class="content-nav__count hidden sm:inline">
+        <span
+          :if={@counts[:series] && @counts[:series] > 0}
+          class="content-nav__count hidden sm:inline"
+        >
           {format_count(@counts.series)}
         </span>
       </.link>
