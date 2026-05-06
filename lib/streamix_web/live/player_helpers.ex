@@ -8,6 +8,8 @@ defmodule StreamixWeb.PlayerHelpers do
   alias Streamix.Iptv
   alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Streaming.RedirectResolver
+  alias Streamix.Iptv.Torrent.TorrentStream
+  alias Streamix.Repo
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 
@@ -43,6 +45,13 @@ defmodule StreamixWeb.PlayerHelpers do
     with {:ok, episode, provider} <- load_content_preflight("gindex_episode", id, user_id),
          {:ok, stream_url} <- resolve_stream_url("gindex_episode", episode, provider, user_id) do
       {:ok, episode, provider, stream_url}
+    end
+  end
+
+  def load_content("torrent", id, user_id) do
+    with {:ok, content, provider} <- load_content_preflight("torrent", id, user_id),
+         {:ok, stream_url} <- resolve_stream_url("torrent", content, provider, user_id) do
+      {:ok, content, provider, stream_url}
     end
   end
 
@@ -93,6 +102,13 @@ defmodule StreamixWeb.PlayerHelpers do
     Ecto.NoResultsError -> {:error, :not_found}
   end
 
+  def load_content_preflight("torrent", id, _user_id) do
+    case parse_id(id) do
+      {:ok, id} -> load_torrent_stream(id)
+      :error -> {:error, :not_found}
+    end
+  end
+
   def load_content_preflight(_, _, _), do: {:error, :not_found}
 
   def load_next_episode(type, content, provider, user_id \\ nil)
@@ -113,6 +129,7 @@ defmodule StreamixWeb.PlayerHelpers do
   def content_title(content, "live_channel"), do: content.name
   def content_title(content, "movie"), do: content.title || content.name
   def content_title(content, "gindex"), do: content.title || content.name
+  def content_title(content, "torrent"), do: content.title || content.name
 
   def content_title(content, "episode"),
     do: content.title || "Episódio #{content.episode_num || ""}"
@@ -125,6 +142,7 @@ defmodule StreamixWeb.PlayerHelpers do
   def content_icon(content, "live_channel"), do: content.stream_icon
   def content_icon(content, "movie"), do: content.stream_icon || Map.get(content, :cover)
   def content_icon(content, "gindex"), do: content.stream_icon
+  def content_icon(content, "torrent"), do: content.stream_icon || Map.get(content, :cover)
   def content_icon(content, "episode"), do: Map.get(content, :cover)
   def content_icon(content, "gindex_episode"), do: Map.get(content, :cover)
   def content_icon(_, _), do: nil
@@ -167,6 +185,15 @@ defmodule StreamixWeb.PlayerHelpers do
       {:error, _reason} ->
         {:error, :not_found}
     end
+  end
+
+  def resolve_stream_url(
+        "torrent",
+        %{torrent_stream: %{info_hash: info_hash}},
+        _provider,
+        _user_id
+      ) do
+    {:ok, "#{StreamixWeb.Endpoint.url()}/api/stream/torrent/#{info_hash}"}
   end
 
   def resolve_stream_url(_, _, _, _), do: {:error, :not_found}
@@ -255,5 +282,39 @@ defmodule StreamixWeb.PlayerHelpers do
       {:error, _} -> nil
       token -> build_token_proxy_url(token)
     end
+  end
+
+  defp parse_id(id) when is_integer(id), do: {:ok, id}
+
+  defp parse_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {id, ""} when id > 0 -> {:ok, id}
+      _ -> :error
+    end
+  end
+
+  defp parse_id(_), do: :error
+
+  defp load_torrent_stream(id) do
+    case Repo.get(TorrentStream, id) |> Repo.preload(movie: :provider) do
+      %TorrentStream{movie: %{provider: provider} = movie} = stream ->
+        {:ok, torrent_movie_content(movie, stream), provider}
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp torrent_movie_content(movie, stream) do
+    %{
+      id: stream.id,
+      movie_id: movie.id,
+      name: movie.name,
+      title: movie.title || movie.name,
+      stream_icon: movie.stream_icon,
+      cover: movie.stream_icon,
+      duration_secs: movie.duration_secs,
+      torrent_stream: stream
+    }
   end
 end

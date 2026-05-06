@@ -16,7 +16,11 @@ defmodule StreamixWeb.PlayerComponents do
   Renders the main video player with all controls.
   """
   attr :content, :map, required: true
-  attr :content_type, :atom, required: true, values: [:live, :movie, :episode]
+
+  attr :content_type, :atom,
+    required: true,
+    values: [:live, :live_channel, :movie, :episode, :gindex, :gindex_episode, :torrent]
+
   attr :stream_url, :string, required: true
   attr :streaming_mode, :atom, default: :balanced
   attr :fullscreen, :boolean, default: false
@@ -39,6 +43,7 @@ defmodule StreamixWeb.PlayerComponents do
         ct when ct in [:live, :live_channel] -> "ts"
         :movie -> "mp4"
         :episode -> "mp4"
+        :torrent -> "mp4"
         _ -> nil
       end
 
@@ -260,6 +265,49 @@ defmodule StreamixWeb.PlayerComponents do
               style="width: 100%"
             />
           </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :content, :map, required: true
+  attr :status_url, :string, required: true
+  attr :peer_target, :integer, default: 30
+
+  def torrent_swarm_gate(assigns) do
+    ~H"""
+    <div
+      id="torrent-swarm-gate"
+      phx-hook="TorrentSwarmGate"
+      data-status-url={@status_url}
+      data-peer-target={@peer_target}
+      class="absolute inset-0 flex items-center justify-center bg-black"
+    >
+      <div class="flex w-full max-w-md flex-col items-center gap-5 px-6 text-center">
+        <div class="relative">
+          <div class="size-16 rounded-full border-4 border-white/10 border-t-brand animate-spin" />
+          <.icon name="hero-signal" class="absolute inset-0 m-auto size-7 text-white/80" />
+        </div>
+
+        <div class="min-w-0">
+          <p class="truncate text-lg font-semibold text-white">
+            {content_title(@content, :torrent)}
+          </p>
+          <p
+            id="torrent-swarm-status"
+            class="mt-2 text-sm text-white/70"
+          >
+            Buffering swarm 0/{@peer_target} peers
+          </p>
+        </div>
+
+        <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div
+            id="torrent-swarm-progress"
+            class="h-full rounded-full bg-brand transition-all duration-300"
+            style="width: 0%"
+          />
         </div>
       </div>
     </div>
@@ -522,7 +570,8 @@ defmodule StreamixWeb.PlayerComponents do
   # Token-based URLs (already proxied through /api/stream/proxy?token=) — pass through as-is
   # These never contain credentials and are already ready for the player
   defp build_proxy_url(stream_url, _content_type) when is_binary(stream_url) do
-    if String.contains?(stream_url, "/api/stream/proxy?token=") do
+    if String.contains?(stream_url, "/api/stream/proxy?token=") or
+         String.contains?(stream_url, "/api/stream/torrent/") do
       stream_url
     else
       # Fallback for any non-token URLs (e.g., direct external URLs)
@@ -539,6 +588,7 @@ defmodule StreamixWeb.PlayerComponents do
   defp content_title(content, :live_channel), do: content.name
   defp content_title(content, :movie), do: content.title || content.name
   defp content_title(content, :gindex), do: content.title || content.name
+  defp content_title(content, :torrent), do: content.title || content.name
 
   defp content_title(content, :episode),
     do: content.title || "Episódio #{Map.get(content, :episode_num, "")}"
