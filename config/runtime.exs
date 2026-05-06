@@ -146,6 +146,10 @@ config :streamix, Streamix.Iptv.Gindex.Pacer,
   anilist: String.to_integer(get_env.("GINDEX_ANILIST_RPS") || "1"),
   tomato: String.to_integer(get_env.("GINDEX_TOMATO_RPS") || "2")
 
+config :streamix, Streamix.Iptv.Gindex.Pagination,
+  delay_ms: String.to_integer(get_env.("GINDEX_PAGE_DELAY_MS") || "5000"),
+  jitter_ms: String.to_integer(get_env.("GINDEX_PAGE_JITTER_MS") || "1000")
+
 # TomatoAnimes API — bearer token provides access to search + metadata
 # endpoints (https://edge.betomato.com/v2). Disabled when the env var
 # is absent; enabled automatically when set.

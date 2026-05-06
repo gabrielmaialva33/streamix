@@ -44,11 +44,25 @@ defmodule Streamix.Iptv.Gindex.Pagination do
 
       {:ok, items, next_token} ->
         Logger.debug("[GIndex] Fetching page #{page_index + 1}...")
-        Process.sleep(60_000 + :rand.uniform(5_000))
+        Process.sleep(page_delay())
         list_folder_paginated(base_url, path, next_token, page_index + 1, acc ++ items)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  defp page_delay do
+    config = Application.get_env(:streamix, __MODULE__, [])
+    delay_ms = Keyword.get(config, :delay_ms, 5_000)
+    jitter_ms = Keyword.get(config, :jitter_ms, 1_000)
+
+    delay_ms + random_jitter(jitter_ms)
+  end
+
+  defp random_jitter(jitter_ms) when is_integer(jitter_ms) and jitter_ms > 0 do
+    :rand.uniform(jitter_ms)
+  end
+
+  defp random_jitter(_), do: 0
 end
