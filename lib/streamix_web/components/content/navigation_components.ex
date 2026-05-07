@@ -17,6 +17,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
   attr :path, :string, default: "/browse/movies"
   attr :iptv_path, :string, default: nil
   attr :gindex_path, :string, default: nil
+  attr :torrent_path, :string, default: nil
 
   def source_tabs(assigns) do
     assigns =
@@ -28,6 +29,10 @@ defmodule StreamixWeb.Content.NavigationComponents do
       |> assign_new(:gindex_target, fn ->
         path = assigns[:gindex_path] || assigns.path
         browse_path(path, "gindex")
+      end)
+      |> assign_new(:torrent_target, fn ->
+        path = assigns[:torrent_path] || assigns.path
+        browse_path(path, "torrent")
       end)
 
     ~H"""
@@ -45,6 +50,16 @@ defmodule StreamixWeb.Content.NavigationComponents do
       >
         <.icon name="hero-cloud" class="size-3.5" />
         <span>GDrive</span>
+      </.link>
+      <.link
+        navigate={@torrent_target}
+        class={[
+          "segmented-control__item",
+          @selected == "torrent" && "segmented-control__item--active"
+        ]}
+      >
+        <.icon name="hero-bolt" class="size-3.5" />
+        <span>Torrent</span>
       </.link>
     </nav>
     """
@@ -221,5 +236,6 @@ defmodule StreamixWeb.Content.NavigationComponents do
 
   defp browse_path(path, "iptv"), do: path
   defp browse_path(path, "gindex"), do: path <> "?source=gindex"
+  defp browse_path(path, "torrent"), do: path <> "?source=torrent"
   defp browse_path(path, _), do: path
 end
