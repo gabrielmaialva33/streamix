@@ -105,6 +105,13 @@ config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 # Oban - Background jobs
 config :streamix, Oban,
   repo: Streamix.Repo,
+  # In-memory leader election. The Database peer in Oban 2.22 has a
+  # quiet failure mode in single-node prod: if the bootstrap upsert
+  # races with a stale row, the peer registers but never wins the
+  # leader bit, and Cron stays silent forever. Global is dead-simple
+  # for a single node — the only erlang node always elects itself —
+  # and works equally well across a libcluster mesh when we get there.
+  peer: Oban.Peers.Global,
   queues: [
     default: 10,
     sync: 3,
