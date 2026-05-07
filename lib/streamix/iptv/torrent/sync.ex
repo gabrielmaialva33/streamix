@@ -126,12 +126,28 @@ defmodule Streamix.Iptv.Torrent.Sync do
     source_slug = source_module.slug()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    Enum.reduce(items, {0, 0}, fn item, {movies, torrents} ->
+    items
+    |> Enum.reject(&blank_title?/1)
+    |> Enum.reduce({0, 0}, fn item, {movies, torrents} ->
       case upsert_item(provider, source_slug, item, now) do
         {:ok, torrent_count} -> {movies + 1, torrents + torrent_count}
         {:error, _} -> {movies, torrents}
       end
     end)
+  end
+
+  # Some YTS rows leak through with an empty title (movies in late
+  # scrub state on the upstream). Movie.changeset enforces
+  # validate_required([:name, …]) so the changeset blows up inside
+  # upsert_movie/3, gets caught by the rescue, and the item is
+  # silently dropped. Catching it at the boundary is cheaper than
+  # raising/rescuing per row and keeps the error log clean.
+  defp blank_title?(item) do
+    case Map.get(item, :title) || Map.get(item, "title") do
+      nil -> true
+      title when is_binary(title) -> String.trim(title) == ""
+      _ -> true
+    end
   end
 
   defp upsert_item(provider, source_slug, item, now) do
