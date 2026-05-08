@@ -40,10 +40,10 @@ defmodule Streamix.Iptv.Gindex.Pagination do
         handle_page_response(response_body, base_url, path, log_page, acc)
 
       {:ok, %{status: status}} ->
-        {:error, {:http_error, status}}
+        partial_or_error(acc, path, log_page, {:http_error, status})
 
       {:error, reason} ->
-        {:error, reason}
+        partial_or_error(acc, path, log_page, reason)
     end
   end
 
@@ -58,8 +58,27 @@ defmodule Streamix.Iptv.Gindex.Pagination do
         list_folder_paginated(base_url, path, next_token, log_page + 1, acc ++ items)
 
       {:error, reason} ->
-        {:error, reason}
+        partial_or_error(acc, path, log_page, reason)
     end
+  end
+
+  # If we already collected items from earlier pages, returning
+  # `{:error, ...}` here would force the caller to throw the entire
+  # walk away. We hit this constantly because the upstream worker
+  # 500s deterministically on certain (path, page_token) combos. Keep
+  # the partial accumulator and let the scraper persist what we have;
+  # the next sync run picks up the rest. The empty-acc case still
+  # bubbles up so the caller can distinguish "saw nothing" from
+  # "stopped midway".
+  defp partial_or_error([], _path, _log_page, reason), do: {:error, reason}
+
+  defp partial_or_error(acc, path, log_page, reason) do
+    Logger.warning(
+      "[GIndex Pagination] partial result for #{path}: " <>
+        "stopped after page #{log_page} with #{length(acc)} items, reason=#{inspect(reason)}"
+    )
+
+    {:ok, acc}
   end
 
   defp page_delay do

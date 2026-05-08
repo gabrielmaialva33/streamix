@@ -202,28 +202,9 @@ defmodule Streamix.Iptv.Gindex.Transport do
       _ ->
         delay = backoff_delay(rate_limit_attempt)
 
-        body_summary =
-          case body do
-            nil ->
-              "nil"
-
-            b when is_binary(b) ->
-              case Jason.decode(b) do
-                {:ok, %{"page_token" => pt, "page_index" => pi, "type" => t}} ->
-                  pt_marker = if pt in [nil, ""], do: "nil", else: "TOKEN(#{byte_size(pt)}B)"
-                  "type=#{t} page_token=#{pt_marker} page_index=#{pi}"
-
-                _ ->
-                  "raw=#{String.slice(b, 0, 100)}"
-              end
-
-            _ ->
-              inspect(body)
-          end
-
         Logger.warning(
           "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
-            "req=#{body_summary} " <>
+            "req=#{summarize_retry_body(body)} " <>
             "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
         )
 
@@ -231,6 +212,23 @@ defmodule Streamix.Iptv.Gindex.Transport do
         request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
     end
   end
+
+  defp summarize_retry_body(nil), do: "nil"
+
+  defp summarize_retry_body(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, %{"page_token" => page_token, "page_index" => page_index, "type" => type}} ->
+        "type=#{type} page_token=#{page_token_marker(page_token)} page_index=#{page_index}"
+
+      _ ->
+        "raw=#{String.slice(body, 0, 100)}"
+    end
+  end
+
+  defp summarize_retry_body(body), do: inspect(body)
+
+  defp page_token_marker(page_token) when page_token in [nil, ""], do: "nil"
+  defp page_token_marker(page_token), do: "TOKEN(#{byte_size(page_token)}B)"
 
   defp backoff_delay(rate_limit_attempt) do
     base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
