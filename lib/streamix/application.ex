@@ -38,10 +38,14 @@ defmodule Streamix.Application do
          pools: %{
            # Default pool for API calls during sync
            # conn_max_idle_time forces connection refresh for DNS changes
+           # Force IPv4 — Docker default network has no IPv6 connectivity,
+           # and Mint/BEAM otherwise picks AAAA first for dual-stack hosts
+           # (Cloudflare Workers, Stripe, etc.) and bombs with :nxdomain.
            :default => [
              size: 50,
              count: 4,
-             conn_max_idle_time: :timer.minutes(1)
+             conn_max_idle_time: :timer.minutes(1),
+             conn_opts: [transport_opts: [:inet]]
            ]
          }},
         # Dedicated pool for long-lived VOD/Live proxy sockets. Keeping
