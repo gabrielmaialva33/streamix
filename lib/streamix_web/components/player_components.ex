@@ -126,6 +126,7 @@ defmodule StreamixWeb.PlayerComponents do
         class="absolute inset-0 w-full h-full object-contain"
         autoplay
         playsinline
+        webkit-playsinline
       />
 
       <%!-- Controls overlay --%>
@@ -135,7 +136,10 @@ defmodule StreamixWeb.PlayerComponents do
         class="absolute inset-0 flex flex-col justify-between opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto transition-opacity duration-300 z-10"
       >
         <%!-- Top bar --%>
-        <div class="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-3 sm:p-6">
+        <div
+          id="player-top-controls"
+          class="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-3 sm:p-6"
+        >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2 sm:gap-3">
               <button
@@ -171,7 +175,10 @@ defmodule StreamixWeb.PlayerComponents do
         </div>
 
         <%!-- Bottom bar --%>
-        <div class="bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6">
+        <div
+          id="player-bottom-controls"
+          class="bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6"
+        >
           <%!-- Progress bar --%>
           <.progress_bar :if={@content_type not in [:live, :live_channel]} />
 
