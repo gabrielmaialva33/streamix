@@ -141,7 +141,12 @@ config :streamix, StreamixWeb.Api.V1.ImageResizeController,
 # not total throughput. 3 RPS keeps the pacer well under whatever
 # their internal ceiling is without killing sync throughput.
 config :streamix, Streamix.Iptv.Gindex.Pacer,
-  gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "3"),
+  # 1 q/s. The free Cloudflare Workers tier the upstream
+  # `*.workers.dev` instances run on has a daily ceiling of ~10K req
+  # account-wide; at 3 q/s we ate the budget in under an hour and got
+  # rate-limited (503) for the remainder. Override with GINDEX_GDRIVE_RPS
+  # if you control the upstream and want to push it.
+  gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "1"),
   tmdb_gindex: String.to_integer(get_env.("GINDEX_TMDB_RPS") || "10"),
   anilist: String.to_integer(get_env.("GINDEX_ANILIST_RPS") || "1"),
   tomato: String.to_integer(get_env.("GINDEX_TOMATO_RPS") || "2")
