@@ -127,11 +127,14 @@ config :streamix, Oban,
     # "TypeError: Cannot read ...map" 500 storm we hit when four
     # scanners pounded a single host.
     gindex_dispatch: 1,
-    # Concurrency 2 (down from 3): the upstream Cloudflare Worker token
-    # cooldown is ~30s per paginated walk; running more in parallel
-    # only saturates the worker faster. SingleFlight already coalesces
-    # same-path retries, so this caps parallel *distinct* root scans.
-    gindex_scan: 2,
+    # Concurrency 1 (down from 2): the upstream Cloudflare Worker is on
+    # the free `*.workers.dev` plan and rate-limits at ~10K req/day
+    # account-wide. Two parallel scan roots burnt that budget within
+    # 30 minutes and tipped the worker into a 503 storm that took out
+    # the whole sync. Serializing the scan roots costs us nothing on
+    # wall-clock — the Pacer cap of 1 q/s is the actual bottleneck —
+    # while keeping the daily ceiling intact.
+    gindex_scan: 1,
     # TMDB enrichment for gindex rows. Concurrency of 3 matches the
     # pool of 3 tokens (round-robin) so each worker runs on its own
     # bucket and nobody blocks each other on 429s.

@@ -28,7 +28,7 @@ defmodule Streamix.Iptv.Gindex.PacerTest do
 
     test "falls back to sensible defaults for known buckets" do
       Application.delete_env(:streamix, Pacer)
-      assert Pacer.limit_for(:gdrive) == 5
+      assert Pacer.limit_for(:gdrive) == 1
       assert Pacer.limit_for(:tmdb_gindex) == 10
     end
   end

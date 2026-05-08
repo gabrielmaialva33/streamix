@@ -81,7 +81,15 @@ defmodule Streamix.Iptv.Gindex.Pacer do
     |> Keyword.get(bucket, default_limit(bucket))
   end
 
-  defp default_limit(:gdrive), do: 5
+  # Cloudflare Workers free-tier daily ceiling for the upstream
+  # `*.workers.dev` instances we depend on is ~10 000 req/day per
+  # account, shared across every client of that worker. At 5 q/s we
+  # were burning that bucket in roughly half an hour and then spending
+  # the rest of the run absorbing 503 storms. 1 q/s caps us at 60 req/min
+  # (~3 600/h, ~14h before hitting the daily ceiling), which gives the
+  # token bucket time to refill and matches what we observed as the
+  # break-even rate during last night's sync attempts.
+  defp default_limit(:gdrive), do: 1
   defp default_limit(:tmdb_gindex), do: 10
   # AniList's published ceiling is 90 req/min ≈ 1.5 rps. Staying at 1
   # gives headroom for our own retries plus anyone else on the same
