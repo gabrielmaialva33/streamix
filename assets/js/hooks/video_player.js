@@ -2058,7 +2058,13 @@ const VideoPlayer = {
       avContainer.classList.remove("hidden");
 
       this.video.classList.add("hidden");
-      this.video.src = "";
+      // pause()+src="" não mata o MediaElement: o áudio já decodificado
+      // continua saindo enquanto o engine transita pra erro. Sem
+      // muted+removeAttribute+load(), AVPlayer entra com áudio próprio
+      // e ficam dois áudios sobrepostos.
+      this.video.muted = true;
+      this.video.removeAttribute("src");
+      this.video.load();
 
       this.avPlayer = new AVPlayerWrapper({
         container: avContainer,
@@ -2538,9 +2544,13 @@ const VideoPlayer = {
     this.playerUI.showLoading();
 
     try {
-      // Stop native player
+      // Stop native player. pause()+src="" deixa o áudio buffered
+      // sangrando até o engine errar — precisa muted+removeAttribute
+      // +load() pra resetar o MediaElement de verdade.
       this.video.pause();
-      this.video.src = "";
+      this.video.muted = true;
+      this.video.removeAttribute("src");
+      this.video.load();
 
       // Initialize AVPlayer if not already
       if (!this.avPlayer) {
