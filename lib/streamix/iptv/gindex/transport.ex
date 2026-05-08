@@ -203,7 +203,8 @@ defmodule Streamix.Iptv.Gindex.Transport do
         delay = backoff_delay(rate_limit_attempt)
 
         Logger.warning(
-          "[GIndex] Server error (500), body: #{String.slice(body_str, 0, 200)}... " <>
+          "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)}... " <>
+            "req_body=#{String.slice(to_string(body || ""), 0, 200)} " <>
             "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
         )
 
