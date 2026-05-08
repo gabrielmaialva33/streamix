@@ -63,9 +63,7 @@ function getDeviceCompatibility() {
     // `getRecommendedPlayer/1` to fall back to engine_selector's
     // pure rules.
     if (parsed.schema !== DEVICE_COMPAT_SCHEMA) {
-      log.debug(
-        `device-compat schema bumped (${parsed.schema} → ${DEVICE_COMPAT_SCHEMA}); wiping`
-      );
+      log.debug(`device-compat schema bumped (${parsed.schema} → ${DEVICE_COMPAT_SCHEMA}); wiping`);
       localStorage.removeItem(DEVICE_COMPAT_KEY);
       return empty;
     }

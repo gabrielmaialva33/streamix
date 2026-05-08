@@ -5,12 +5,16 @@ function percent(stats) {
   const total = Number(stats?.total_bytes || 0);
   const progress = Number(stats?.progress_bytes || 0);
 
-  if (total <= 0) return progress >= READY_BYTES ? 100 : Math.min(90, (progress / READY_BYTES) * 100);
+  if (total <= 0)
+    return progress >= READY_BYTES ? 100 : Math.min(90, (progress / READY_BYTES) * 100);
   return Math.max(0, Math.min(100, (progress / total) * 100));
 }
 
 function ready(stats) {
-  return stats?.finished === true || (stats?.state === "live" && Number(stats?.progress_bytes || 0) >= READY_BYTES);
+  return (
+    stats?.finished === true ||
+    (stats?.state === "live" && Number(stats?.progress_bytes || 0) >= READY_BYTES)
+  );
 }
 
 const TorrentSwarmGate = {
@@ -49,7 +53,12 @@ const TorrentSwarmGate = {
       });
 
       if (!response.ok) {
-        this.renderStatus({ state: "unavailable", live_peers: 0, progress_bytes: 0, total_bytes: 0 });
+        this.renderStatus({
+          state: "unavailable",
+          live_peers: 0,
+          progress_bytes: 0,
+          total_bytes: 0,
+        });
         return;
       }
 
