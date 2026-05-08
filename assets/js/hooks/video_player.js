@@ -1425,8 +1425,24 @@ const VideoPlayer = {
     this.setNativeTouchControls(false);
 
     if (this.video) {
-      this.video.src = "";
-      this.video.load();
+      this.resetNativeMediaElement({ restoreAudioState: true });
+    }
+  },
+
+  resetNativeMediaElement({ restoreAudioState = false } = {}) {
+    if (!this.video) return;
+
+    const muted = this.video.muted;
+    const volume = this.video.volume;
+
+    this.video.pause();
+    this.video.muted = true;
+    this.video.removeAttribute("src");
+    this.video.load();
+
+    if (restoreAudioState) {
+      this.video.muted = muted;
+      this.video.volume = volume;
     }
   },
 
@@ -2079,13 +2095,7 @@ const VideoPlayer = {
       avContainer.classList.remove("hidden");
 
       this.video.classList.add("hidden");
-      // pause()+src="" não mata o MediaElement: o áudio já decodificado
-      // continua saindo enquanto o engine transita pra erro. Sem
-      // muted+removeAttribute+load(), AVPlayer entra com áudio próprio
-      // e ficam dois áudios sobrepostos.
-      this.video.muted = true;
-      this.video.removeAttribute("src");
-      this.video.load();
+      this.resetNativeMediaElement();
 
       this.avPlayer = new AVPlayerWrapper({
         container: avContainer,
@@ -2568,10 +2578,7 @@ const VideoPlayer = {
       // Stop native player. pause()+src="" deixa o áudio buffered
       // sangrando até o engine errar — precisa muted+removeAttribute
       // +load() pra resetar o MediaElement de verdade.
-      this.video.pause();
-      this.video.muted = true;
-      this.video.removeAttribute("src");
-      this.video.load();
+      this.resetNativeMediaElement();
 
       // Initialize AVPlayer if not already
       if (!this.avPlayer) {

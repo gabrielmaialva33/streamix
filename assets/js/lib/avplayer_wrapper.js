@@ -1150,14 +1150,29 @@ export class AVPlayerWrapper {
 
     this._destroyed = true;
     this._pendingSeekTime = null;
+    this._playing = false;
 
     if (this.player) {
+      const player = this.player;
+      this.player = null;
+
       try {
-        await this.player.destroy();
+        await player.pause?.();
+      } catch (e) {
+        log.warn("Error during pause before destroy:", e);
+      }
+
+      try {
+        await player.stop?.();
+      } catch (e) {
+        log.warn("Error during stop before destroy:", e);
+      }
+
+      try {
+        await player.destroy();
       } catch (e) {
         log.warn("Error during destroy:", e);
       }
-      this.player = null;
     }
 
     // Decrement live-instance counter and only close the shared
