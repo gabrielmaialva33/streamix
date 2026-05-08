@@ -95,7 +95,12 @@ defmodule Streamix.Iptv.Gindex.Client do
 
   @doc """
   Lists ALL contents of a folder using a specific base URL.
-  GIndex pagination requires BOTH page_token AND page_index to be incremented.
+
+  The upstream Cloudflare Worker only accepts ONE pagination cursor at a
+  time: either `page_token` (with `page_index: 0`) or a bare
+  `page_index` (with `page_token: nil`). Sending both increments the
+  worker crashes with a 500 TypeError, so `Pagination` keeps
+  `page_index` pinned at 0 and walks via `nextPageToken`.
 
   Single-flight on `{base_url, path}`: concurrent callers requesting the
   same listing block on the leader's result instead of opening parallel
