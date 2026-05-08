@@ -12,8 +12,21 @@ defmodule Streamix.Iptv.Gindex.Transport do
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(2)
   @max_retries 3
+
+  # 503/429 means the upstream is rate-limiting us, so a long
+  # exponential backoff gives the token bucket time to refill.
   @rate_limit_base_delay :timer.seconds(30)
   @max_rate_limit_retries 4
+
+  # 500 from the goindex worker is the deterministic
+  # "Cannot read properties of undefined (reading 'map')" bug
+  # (see worker.js:2400 in @googledrive/index@2.3.6 — fixed in 2.5.6+).
+  # Backing off for minutes does nothing because the bug fires on the
+  # same (path, page_token) shape every time. Burn 2 fast retries —
+  # which still gives us a fallback-endpoint shot at retry_server_error
+  # — and then bubble the partial result up to the scraper.
+  @server_error_base_delay :timer.seconds(5)
+  @max_server_error_retries 2
 
   def request(method, url, body, base_url, opts \\ []) do
     request_with_retry(method, url, body, base_url, opts, 0, 0)
@@ -157,7 +170,7 @@ defmodule Streamix.Iptv.Gindex.Transport do
          attempt,
          rate_limit_attempt
        )
-       when rate_limit_attempt < @max_rate_limit_retries do
+       when rate_limit_attempt < @max_server_error_retries do
     body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
 
     if auth_error?(body_str) do
@@ -200,17 +213,22 @@ defmodule Streamix.Iptv.Gindex.Transport do
         request_with_retry(method, new_base_url <> path, body, new_base_url, opts, attempt, 0)
 
       _ ->
-        delay = backoff_delay(rate_limit_attempt)
+        delay = server_error_delay(rate_limit_attempt)
 
         Logger.warning(
           "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
             "req=#{summarize_retry_body(body)} " <>
-            "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
+            "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_server_error_retries})"
         )
 
         Process.sleep(delay)
         request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
     end
+  end
+
+  defp server_error_delay(rate_limit_attempt) do
+    base = (@server_error_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+    base + :rand.uniform(1000)
   end
 
   defp summarize_retry_body(nil), do: "nil"
