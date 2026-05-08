@@ -202,9 +202,28 @@ defmodule Streamix.Iptv.Gindex.Transport do
       _ ->
         delay = backoff_delay(rate_limit_attempt)
 
+        body_summary =
+          case body do
+            nil ->
+              "nil"
+
+            b when is_binary(b) ->
+              case Jason.decode(b) do
+                {:ok, %{"page_token" => pt, "page_index" => pi, "type" => t}} ->
+                  pt_marker = if pt in [nil, ""], do: "nil", else: "TOKEN(#{byte_size(pt)}B)"
+                  "type=#{t} page_token=#{pt_marker} page_index=#{pi}"
+
+                _ ->
+                  "raw=#{String.slice(b, 0, 100)}"
+              end
+
+            _ ->
+              inspect(body)
+          end
+
         Logger.warning(
-          "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)}... " <>
-            "req_body=#{String.slice(to_string(body || ""), 0, 200)} " <>
+          "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
+            "req=#{body_summary} " <>
             "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
         )
 
