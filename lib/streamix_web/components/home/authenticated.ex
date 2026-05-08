@@ -49,6 +49,7 @@ defmodule StreamixWeb.Home.Authenticated do
         selected_period={@trending_period}
         ai_powered={true}
         progress_map={@movie_progress}
+        favorites_map={@movie_favorites_map}
       />
 
       <.render_content_carousel
@@ -58,6 +59,7 @@ defmodule StreamixWeb.Home.Authenticated do
         type={:movies}
         icon="hero-sparkles"
         progress_map={@movie_progress}
+        favorites_map={@movie_favorites_map}
         see_more_path={~p"/browse/movies?sort=new"}
       />
 
@@ -69,6 +71,7 @@ defmodule StreamixWeb.Home.Authenticated do
         items={@movies}
         type={:movies}
         progress_map={@movie_progress}
+        favorites_map={@movie_favorites_map}
       />
 
       <.render_ai_series_section
@@ -78,6 +81,7 @@ defmodule StreamixWeb.Home.Authenticated do
         selected_genre={@series_genre}
         ai_powered={true}
         progress_map={@series_progress}
+        favorites_map={@series_favorites_map}
       />
 
       <.render_ai_channels_section

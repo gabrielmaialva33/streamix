@@ -79,6 +79,7 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:see_more_path, fn -> get_see_more_path(assigns.type, assigns.items) end)
       |> assign_new(:icon, fn -> nil end)
       |> assign_new(:progress_map, fn -> %{} end)
+      |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
     <div class="px-[4%]">
@@ -135,6 +136,7 @@ defmodule StreamixWeb.Home.Carousel do
                 <.render_movie_card
                   :for={{movie, idx} <- Enum.with_index(@items)}
                   movie={movie}
+                  is_favorite={MapSet.member?(@favorites_map, movie.id)}
                   progress={Map.get(@progress_map, movie.id)}
                   class={if idx >= 6, do: "hidden sm:block", else: ""}
                 />
@@ -142,6 +144,7 @@ defmodule StreamixWeb.Home.Carousel do
                 <.render_series_card
                   :for={{series, idx} <- Enum.with_index(@items)}
                   series={series}
+                  is_favorite={MapSet.member?(@favorites_map, series.id)}
                   progress={Map.get(@progress_map, series.id)}
                   class={if idx >= 6, do: "hidden sm:block", else: ""}
                 />
@@ -179,7 +182,10 @@ defmodule StreamixWeb.Home.Carousel do
   end
 
   def render_ai_trending_section(assigns) do
-    assigns = assign_new(assigns, :progress_map, fn -> %{} end)
+    assigns =
+      assigns
+      |> assign_new(:progress_map, fn -> %{} end)
+      |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
     <div class="px-[4%]">
@@ -204,6 +210,7 @@ defmodule StreamixWeb.Home.Carousel do
           <.render_movie_card
             :for={{movie, idx} <- Enum.with_index(@items)}
             movie={movie}
+            is_favorite={MapSet.member?(@favorites_map, movie.id)}
             progress={Map.get(@progress_map, movie.id)}
             class={if idx >= 6, do: "hidden sm:block", else: ""}
           />
@@ -219,7 +226,10 @@ defmodule StreamixWeb.Home.Carousel do
   end
 
   def render_ai_series_section(assigns) do
-    assigns = assign_new(assigns, :progress_map, fn -> %{} end)
+    assigns =
+      assigns
+      |> assign_new(:progress_map, fn -> %{} end)
+      |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
     <div class="px-[4%]">
@@ -241,6 +251,7 @@ defmodule StreamixWeb.Home.Carousel do
           <.render_series_card
             :for={{series, idx} <- Enum.with_index(@items)}
             series={series}
+            is_favorite={MapSet.member?(@favorites_map, series.id)}
             progress={Map.get(@progress_map, series.id)}
             class={if idx >= 6, do: "hidden sm:block", else: ""}
           />

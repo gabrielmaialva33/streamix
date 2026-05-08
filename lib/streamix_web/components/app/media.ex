@@ -62,24 +62,6 @@ defmodule StreamixWeb.App.Media do
               <.icon name="hero-play-solid" class="size-6 text-black ml-0.5" />
             </div>
           </div>
-
-          <button
-            :if={@show_favorite}
-            type="button"
-            phx-click={@on_favorite}
-            phx-value-id={@channel.id}
-            class={[
-              "absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-sm transition-all",
-              @is_favorite && "text-brand bg-brand/20",
-              !@is_favorite &&
-                "text-white/60 bg-black/30 opacity-0 group-hover:opacity-100 hover:text-brand hover:bg-brand/20"
-            ]}
-          >
-            <.icon
-              name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-              class="size-4"
-            />
-          </button>
         </div>
 
         <div class="px-3 py-2.5 space-y-1">
@@ -96,6 +78,26 @@ defmodule StreamixWeb.App.Media do
           />
         </div>
       </.link>
+
+      <button
+        :if={@show_favorite}
+        type="button"
+        phx-click={@on_favorite}
+        phx-value-id={@channel.id}
+        phx-value-type="live_channel"
+        aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
+        class={[
+          "absolute top-2 right-2 z-10 p-1.5 rounded-full backdrop-blur-sm transition-all",
+          @is_favorite && "text-brand bg-brand/20",
+          !@is_favorite &&
+            "text-white/60 bg-black/30 opacity-0 group-hover:opacity-100 hover:text-brand hover:bg-brand/20"
+        ]}
+      >
+        <.icon
+          name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
+          class="size-4"
+        />
+      </button>
     </div>
     """
   end

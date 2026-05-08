@@ -13,12 +13,17 @@ defmodule StreamixWeb.Home.Cards do
   alias StreamixWeb.Helpers.ImageProxy
 
   def render_movie_card(assigns) do
-    assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:class, fn -> nil end)
+      |> assign_new(:progress, fn -> nil end)
+      |> assign_new(:is_favorite, fn -> false end)
 
     ~H"""
     <div class={["w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0", @class]}>
       <.movie_card
         movie={@movie}
+        is_favorite={@is_favorite}
         progress={@progress}
         show_favorite={false}
         on_play="play_movie"
@@ -29,12 +34,17 @@ defmodule StreamixWeb.Home.Cards do
   end
 
   def render_series_card(assigns) do
-    assigns = assigns |> assign_new(:class, fn -> nil end) |> assign_new(:progress, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:class, fn -> nil end)
+      |> assign_new(:progress, fn -> nil end)
+      |> assign_new(:is_favorite, fn -> false end)
 
     ~H"""
     <div class={["w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0", @class]}>
       <.series_card
         series={@series}
+        is_favorite={@is_favorite}
         progress={@progress}
         show_favorite={false}
         on_click="view_series"

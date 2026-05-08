@@ -53,6 +53,10 @@ defmodule StreamixWeb.HomeLive do
     {:noreply, Data.toggle_featured_favorite(socket)}
   end
 
+  def handle_event("toggle_favorite", %{"id" => id, "type" => type}, socket) do
+    {:noreply, Data.toggle_content_favorite(socket, type, id)}
+  end
+
   # AI Section Filter Events
   def handle_event("filter_trending_genre", %{"genre" => genre}, socket) do
     {:noreply, Data.filter_trending_genre(socket, genre)}

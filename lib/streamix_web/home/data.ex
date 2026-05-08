@@ -28,6 +28,8 @@ defmodule StreamixWeb.Home.Data do
     |> assign(new_releases: [])
     |> assign(top_10: [])
     |> assign(featured_favorite: false)
+    |> assign(movie_favorites_map: MapSet.new())
+    |> assign(series_favorites_map: MapSet.new())
     |> assign(movie_progress: %{})
     |> assign(series_progress: %{})
     |> assign(trending_genre: "all")
@@ -98,6 +100,22 @@ defmodule StreamixWeb.Home.Data do
     assign(socket, featured_favorite: !is_favorite)
   end
 
+  def toggle_content_favorite(%{assigns: %{current_scope: nil}} = socket, _type, _id), do: socket
+
+  def toggle_content_favorite(socket, type, id) do
+    with {:ok, content_type} <- normalize_favorite_type(type),
+         {:ok, content_id} <- parse_content_id(id),
+         {:ok, status} <-
+           Iptv.toggle_favorite(socket.assigns.current_scope.user.id, content_type, content_id) do
+      socket
+      |> assign_favorite_map(content_type, content_id, status)
+      |> refresh_home_favorites()
+      |> refresh_featured_favorite()
+    else
+      _ -> socket
+    end
+  end
+
   def user_id(socket) do
     case socket.assigns.current_scope do
       nil -> nil
@@ -141,6 +159,8 @@ defmodule StreamixWeb.Home.Data do
     |> assign(history: [])
     |> assign(recommendations: [])
     |> assign(featured_favorite: false)
+    |> assign(movie_favorites_map: MapSet.new())
+    |> assign(series_favorites_map: MapSet.new())
   end
 
   defp load_user_data(socket) do
@@ -154,6 +174,8 @@ defmodule StreamixWeb.Home.Data do
         history: fn -> Iptv.list_home_history(user_id, limit: 6) end,
         recommendations: fn -> load_recommendations(user_id) end,
         featured_favorite: fn -> check_featured_favorite(socket.assigns.featured, user_id) end,
+        movie_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "movie", movie_ids) end,
+        series_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "series", series_ids) end,
         movie_progress: fn -> Iptv.get_watch_progress_map(user_id, "movie", movie_ids) end,
         series_progress: fn -> Iptv.get_series_progress_map(user_id, series_ids) end,
         genre_filters: fn -> load_genre_filters(user_id) end
@@ -164,6 +186,8 @@ defmodule StreamixWeb.Home.Data do
     |> assign(:history, user_sections.history)
     |> assign(:recommendations, user_sections.recommendations)
     |> assign(:featured_favorite, user_sections.featured_favorite)
+    |> assign(:movie_favorites_map, user_sections.movie_favorites_map)
+    |> assign(:series_favorites_map, user_sections.series_favorites_map)
     |> assign(:movie_progress, user_sections.movie_progress)
     |> assign(:series_progress, user_sections.series_progress)
     |> assign(:genre_filters, user_sections.genre_filters)
@@ -232,6 +256,56 @@ defmodule StreamixWeb.Home.Data do
 
   defp content_type(:movie), do: "movie"
   defp content_type(_), do: "series"
+
+  defp normalize_favorite_type(type) when type in ["movie", :movie], do: {:ok, "movie"}
+  defp normalize_favorite_type(type) when type in ["series", :series], do: {:ok, "series"}
+  defp normalize_favorite_type(_), do: :error
+
+  defp parse_content_id(id) when is_integer(id) and id > 0, do: {:ok, id}
+
+  defp parse_content_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {value, ""} when value > 0 -> {:ok, value}
+      _ -> :error
+    end
+  end
+
+  defp parse_content_id(_), do: :error
+
+  defp assign_favorite_map(socket, "movie", content_id, status) do
+    assign(
+      socket,
+      :movie_favorites_map,
+      update_favorite_map(socket.assigns.movie_favorites_map, content_id, status)
+    )
+  end
+
+  defp assign_favorite_map(socket, "series", content_id, status) do
+    assign(
+      socket,
+      :series_favorites_map,
+      update_favorite_map(socket.assigns.series_favorites_map, content_id, status)
+    )
+  end
+
+  defp update_favorite_map(map, content_id, :added), do: MapSet.put(map, content_id)
+  defp update_favorite_map(map, content_id, :removed), do: MapSet.delete(map, content_id)
+
+  defp refresh_home_favorites(socket) do
+    assign(
+      socket,
+      :favorites,
+      Iptv.list_home_favorites(socket.assigns.current_scope.user.id, limit: 12)
+    )
+  end
+
+  defp refresh_featured_favorite(socket) do
+    assign(
+      socket,
+      :featured_favorite,
+      check_featured_favorite(socket.assigns.featured, socket.assigns.current_scope.user.id)
+    )
+  end
 
   defp parse_period_days("all"), do: nil
 
