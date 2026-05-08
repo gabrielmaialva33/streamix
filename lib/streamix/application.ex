@@ -38,14 +38,10 @@ defmodule Streamix.Application do
          pools: %{
            # Default pool for API calls during sync
            # conn_max_idle_time forces connection refresh for DNS changes
-           # Force IPv4 — Docker default network has no IPv6 connectivity,
-           # and Mint/BEAM otherwise picks AAAA first for dual-stack hosts
-           # (Cloudflare Workers, Stripe, etc.) and bombs with :nxdomain.
            :default => [
              size: 50,
              count: 4,
-             conn_max_idle_time: :timer.minutes(1),
-             conn_opts: [transport_opts: [:inet]]
+             conn_max_idle_time: :timer.minutes(1)
            ]
          }},
         # Dedicated pool for long-lived VOD/Live proxy sockets. Keeping
@@ -234,6 +230,12 @@ defmodule Streamix.Application do
     # Use inet_res (native Erlang resolver) with short cache TTL
     # instead of the default inet resolver which can cache indefinitely
     :inet_db.set_lookup([:dns, :file, :native])
+
+    # Force IPv4-only resolution. The Docker default bridge network has
+    # no IPv6 connectivity, but the BEAM resolver otherwise prefers AAAA
+    # for dual-stack hosts (Cloudflare Workers, Stripe, TMDB) and Mint
+    # surfaces the failed connect as :nxdomain, killing GIndex sync.
+    :inet_db.set_inet6(false)
 
     # Set DNS cache timeout to 60 seconds (default is infinity in some cases)
     # This forces re-resolution for hostnames after TTL expires
