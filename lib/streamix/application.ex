@@ -227,9 +227,21 @@ defmodule Streamix.Application do
   # Configure Erlang's DNS resolver to avoid stale cache in containers
   # This is critical for Cloudflare Workers endpoints that use anycast IPs
   defp configure_dns_resolver do
-    # Use inet_res (native Erlang resolver) with short cache TTL
-    # instead of the default inet resolver which can cache indefinitely
-    :inet_db.set_lookup([:dns, :file, :native])
+    # Use the Erlang DNS client (inet_res) directly against public
+    # resolvers and bypass Docker's embedded 127.0.0.11, which we have
+    # seen flap with transient :nxdomain bursts under load. `:file`
+    # only matches /etc/hosts entries; `:native` is dropped on purpose
+    # so a momentary glibc hiccup never contaminates the result.
+    :inet_db.set_lookup([:dns, :file])
+
+    # Pin Cloudflare 1.1.1.1 / Google 8.8.8.8 as the nameservers used
+    # by the inet_res lookup above. They are anycast, sub-ms from the
+    # VPS, and unaffected by the Docker resolver's hiccups. Order
+    # matters: Erlang queries the head of the list first and falls
+    # through on timeout/SERVFAIL.
+    :inet_db.add_ns({1, 1, 1, 1})
+    :inet_db.add_ns({1, 0, 0, 1})
+    :inet_db.add_ns({8, 8, 8, 8})
 
     # Force IPv4-only resolution. The Docker default bridge network has
     # no IPv6 connectivity, but the BEAM resolver otherwise prefers AAAA
