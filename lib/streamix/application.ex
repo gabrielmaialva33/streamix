@@ -237,8 +237,15 @@ defmodule Streamix.Application do
     # surfaces the failed connect as :nxdomain, killing GIndex sync.
     :inet_db.set_inet6(false)
 
-    # Set DNS cache timeout to 60 seconds (default is infinity in some cases)
-    # This forces re-resolution for hostnames after TTL expires
+    # Disable BEAM DNS cache entirely. We hit a class of failures where a
+    # transient :nxdomain (e.g. the Docker embedded resolver hiccupping
+    # for one heartbeat) gets cached with the negative SOA TTL of the
+    # zone — for *.workers.dev that ttl can be tens of minutes — and
+    # locks every Finch checkout into :nxdomain even though the upstream
+    # is healthy again. Cache size 0 forces a fresh lookup per connect,
+    # which is fine: GIndex pacing already throttles the request rate
+    # and Cloudflare's anycast resolver is sub-ms.
+    :inet_db.set_cache_size(0)
     :inet_db.set_cache_refresh(60_000)
 
     # Clear any existing DNS cache on startup
