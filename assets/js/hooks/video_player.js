@@ -65,6 +65,12 @@ function isFirefoxBrowser() {
   return /firefox/i.test(navigator.userAgent);
 }
 
+function isAppleTouchDevice() {
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  return /iPad|iPhone|iPod/.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function scheduleLowPriority(callback, { timeout = 2500 } = {}) {
   if (typeof window.requestIdleCallback === "function") {
     const id = window.requestIdleCallback(callback, { timeout });
@@ -444,6 +450,7 @@ const VideoPlayer = {
 
     // Native buffer manager (for MP4/MKV streams)
     this.nativeBufferManager = null;
+    this.nativeTouchControls = false;
   },
 
   /**
@@ -1323,6 +1330,18 @@ const VideoPlayer = {
     );
   },
 
+  setNativeTouchControls(enabled) {
+    this.nativeTouchControls = enabled;
+    this.playerUI?.setNativeControlsMode(enabled);
+
+    if (!this.video) return;
+
+    this.video.controls = enabled;
+    this.video.toggleAttribute("controls", enabled);
+    this.video.setAttribute("playsinline", "");
+    this.video.setAttribute("webkit-playsinline", "");
+  },
+
   buildEngineContext(recommendedPlayer) {
     return {
       streamType: this.currentStreamType,
@@ -1403,6 +1422,7 @@ const VideoPlayer = {
 
     this.usingAVPlayer = false;
     this.avPlayerAttempted = false;
+    this.setNativeTouchControls(false);
 
     if (this.video) {
       this.video.src = "";
@@ -1781,6 +1801,7 @@ const VideoPlayer = {
 
   playNative() {
     log.info("Playing with native video element, url:", this.currentUrl);
+    this.setNativeTouchControls(isAppleTouchDevice());
     this.video.src = this.currentUrl;
 
     const playHandler = () => {
@@ -2815,6 +2836,8 @@ const VideoPlayer = {
 
     if (isTouchDevice) {
       this.video.addEventListener("click", (e) => {
+        if (this.nativeTouchControls) return;
+
         e.preventDefault();
         const now = Date.now();
         const timeSinceLastTap = now - this.lastTapTime;

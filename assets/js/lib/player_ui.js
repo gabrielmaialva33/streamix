@@ -57,6 +57,8 @@ export class PlayerUI {
 
       // Controls container
       controls: container.querySelector("#player-controls"),
+      topControls: container.querySelector("#player-top-controls"),
+      bottomControls: container.querySelector("#player-bottom-controls"),
 
       // Quality/Audio/Subtitle containers
       qualityOptions: container.querySelector("#quality-options"),
@@ -70,6 +72,7 @@ export class PlayerUI {
     this.controlsVisible = true;
     this.controlsTimeout = null;
     this.isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    this.nativeControlsMode = false;
 
     // Setup menu focus traps
     this.setupMenuFocusTraps();
@@ -538,17 +541,32 @@ export class PlayerUI {
   // ============================================
 
   showControls() {
-    const { controls } = this.elements;
+    const { controls, topControls } = this.elements;
     if (controls) {
       controls.classList.remove("controls-hidden");
       controls.style.opacity = "1";
-      controls.style.pointerEvents = "auto";
+      controls.style.pointerEvents = this.nativeControlsMode ? "none" : "auto";
+      if (topControls) {
+        topControls.style.pointerEvents = "auto";
+      }
       this.controlsVisible = true;
     }
   }
 
   hideControls() {
-    const { controls } = this.elements;
+    const { controls, topControls } = this.elements;
+    if (this.nativeControlsMode) {
+      if (controls) {
+        controls.style.opacity = "1";
+        controls.style.pointerEvents = "none";
+      }
+      if (topControls) {
+        topControls.style.pointerEvents = "auto";
+      }
+      this.controlsVisible = true;
+      return;
+    }
+
     if (controls && this._isPlayingFn()) {
       controls.classList.add("controls-hidden");
       controls.style.opacity = "0";
@@ -561,7 +579,27 @@ export class PlayerUI {
     this._isPlayingFn = fn;
   }
 
+  setNativeControlsMode(enabled) {
+    const { bottomControls, centerPlay } = this.elements;
+    this.nativeControlsMode = enabled;
+
+    if (bottomControls) {
+      bottomControls.classList.toggle("hidden", enabled);
+    }
+
+    if (centerPlay) {
+      centerPlay.classList.toggle("hidden", enabled);
+    }
+
+    this.showControls();
+  }
+
   toggleControlsVisibility() {
+    if (this.nativeControlsMode) {
+      this.showControls();
+      return;
+    }
+
     if (this.controlsVisible) {
       this.hideControls();
     } else {
