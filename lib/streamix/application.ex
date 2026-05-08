@@ -48,6 +48,10 @@ defmodule Streamix.Application do
         # it separate prevents player traffic from exhausting checkout
         # capacity needed by sync, image, metadata and health requests.
         {Finch, name: Streamix.StreamFinch, pools: stream_finch_pools()},
+        # Re-pins public DNS resolvers (1.1.1.1, 8.8.8.8) on top of
+        # /etc/resolv.conf — see DnsKeeper module doc for why this is
+        # needed on the Docker bridge network.
+        Streamix.DnsKeeper,
         {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Streamix.PubSub},
         # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
@@ -234,14 +238,9 @@ defmodule Streamix.Application do
     # so a momentary glibc hiccup never contaminates the result.
     :inet_db.set_lookup([:dns, :file])
 
-    # Pin Cloudflare 1.1.1.1 / Google 8.8.8.8 as the nameservers used
-    # by the inet_res lookup above. They are anycast, sub-ms from the
-    # VPS, and unaffected by the Docker resolver's hiccups. Order
-    # matters: Erlang queries the head of the list first and falls
-    # through on timeout/SERVFAIL.
-    :inet_db.add_ns({1, 1, 1, 1})
-    :inet_db.add_ns({1, 0, 0, 1})
-    :inet_db.add_ns({8, 8, 8, 8})
+    # Public nameservers (1.1.1.1, 1.0.0.1, 8.8.8.8) are added by
+    # `Streamix.DnsKeeper` and re-applied on a short interval so the
+    # `inet_db` resolv.conf re-read does not strip them.
 
     # Force IPv4-only resolution. The Docker default bridge network has
     # no IPv6 connectivity, but the BEAM resolver otherwise prefers AAAA
