@@ -31,147 +31,117 @@ defmodule StreamixWeb.FooterComponents do
 
     ~H"""
     <footer class="mt-12 sm:mt-16 border-t border-border/50 bg-background">
-      <div class="px-[4%] py-8 sm:py-10 max-w-7xl mx-auto">
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8">
-          <div>
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">
-              Navegar
-            </h3>
-            <ul class="space-y-2">
-              <li>
-                <.link
-                  navigate={~p"/"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Início
-                </.link>
-              </li>
-              <li>
-                <.link
-                  navigate={~p"/browse"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Catálogo
-                </.link>
-              </li>
-              <li>
-                <.link
-                  navigate={~p"/favorites"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Minha Lista
-                </.link>
-              </li>
-              <li>
-                <.link
-                  navigate={~p"/history"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Histórico
-                </.link>
-              </li>
-            </ul>
-          </div>
+      <div class="mx-auto max-w-7xl px-[4%] py-8 sm:py-10">
+        <div class="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,2fr)] lg:gap-12">
+          <section aria-label="Sobre o Streamix" class="max-w-sm">
+            <.link navigate={~p"/"} class="inline-flex items-center gap-2 text-text-primary">
+              <span class="inline-flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white">
+                S
+              </span>
+              <span class="text-base font-semibold">Streamix</span>
+            </.link>
+            <p class="mt-3 text-sm leading-6 text-text-muted">
+              Catálogo, histórico, favoritos e salas sincronizadas em uma experiência única.
+            </p>
+          </section>
 
-          <div>
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">
-              Watch Party
-            </h3>
-            <ul class="space-y-2">
-              <li>
-                <.link
-                  navigate={~p"/party"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Minhas Salas
-                </.link>
-              </li>
-              <li>
-                <.link
-                  navigate={~p"/party"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Criar Sala
-                </.link>
-              </li>
-            </ul>
-          </div>
+          <nav
+            aria-label="Links do rodapé"
+            class="grid grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-8"
+          >
+            <div>
+              <h3 class="mb-3 text-xs font-semibold uppercase text-text-secondary">
+                Assistir
+              </h3>
+              <ul class="space-y-2">
+                <li><.footer_link navigate={~p"/"}>Início</.footer_link></li>
+                <li><.footer_link navigate={~p"/browse"}>Catálogo</.footer_link></li>
+                <li><.footer_link navigate={~p"/favorites"}>Minha Lista</.footer_link></li>
+                <li><.footer_link navigate={~p"/history"}>Histórico</.footer_link></li>
+              </ul>
+            </div>
 
-          <div>
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">
-              Recursos
-            </h3>
-            <ul class="space-y-2">
-              <li>
-                <a
-                  href="#"
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Documentação
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  GitHub
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Status
-                </a>
-              </li>
-            </ul>
-          </div>
+            <div>
+              <h3 class="mb-3 text-xs font-semibold uppercase text-text-secondary">
+                Social
+              </h3>
+              <ul class="space-y-2">
+                <li><.footer_link navigate={~p"/party"}>Watch Party</.footer_link></li>
+                <li><.footer_link navigate={~p"/party"}>Minhas Salas</.footer_link></li>
+                <li><.footer_link navigate={~p"/party"}>Entrar em Sala</.footer_link></li>
+              </ul>
+            </div>
 
-          <div>
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">
-              Conta
-            </h3>
-            <ul class="space-y-2">
-              <li>
-                <.link
-                  navigate={~p"/settings"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Configurações
-                </.link>
-              </li>
-              <li>
-                <.link
-                  navigate={~p"/providers"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Provedores
-                </.link>
-              </li>
-              <li :if={@admin?}>
-                <.link
-                  navigate={~p"/admin"}
-                  class="text-sm text-text-muted hover:text-text-primary transition-colors"
-                >
-                  Admin
-                </.link>
-              </li>
-            </ul>
-          </div>
+            <div>
+              <h3 class="mb-3 text-xs font-semibold uppercase text-text-secondary">
+                Conta
+              </h3>
+              <ul class="space-y-2">
+                <li><.footer_link navigate={~p"/settings"}>Configurações</.footer_link></li>
+                <li><.footer_link navigate={~p"/providers"}>Provedores</.footer_link></li>
+                <li :if={@admin?}><.footer_link navigate={~p"/admin"}>Admin</.footer_link></li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 class="mb-3 text-xs font-semibold uppercase text-text-secondary">
+                Projeto
+              </h3>
+              <ul class="space-y-2">
+                <li>
+                  <.external_footer_link href="https://github.com/gabrielmaialva33/streamix#readme">
+                    Documentação
+                  </.external_footer_link>
+                </li>
+                <li>
+                  <.external_footer_link href="https://github.com/gabrielmaialva33/streamix">
+                    GitHub
+                  </.external_footer_link>
+                </li>
+              </ul>
+            </div>
+          </nav>
         </div>
 
-        <div class="mt-8 pt-6 border-t border-border/30 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-text-muted">
-          <p>
-            © {@year} Streamix<span :if={@version != ""}>· v{@version}</span>
+        <div class="mt-8 flex flex-col gap-3 border-t border-border/30 pt-6 text-xs text-text-muted sm:flex-row sm:items-center sm:justify-between">
+          <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>© {@year} Streamix</span>
+            <span :if={@version != ""} class="text-text-muted/70">v{@version}</span>
           </p>
-          <p class="flex items-center gap-3">
-            <span>Powered by Maia</span>
-          </p>
+          <p>Powered by Maia</p>
         </div>
       </div>
     </footer>
+    """
+  end
+
+  attr :navigate, :any, required: true
+  slot :inner_block, required: true
+
+  defp footer_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  attr :href, :string, required: true
+  slot :inner_block, required: true
+
+  defp external_footer_link(assigns) do
+    ~H"""
+    <a
+      href={@href}
+      target="_blank"
+      rel="noopener noreferrer"
+      class="text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
+      {render_slot(@inner_block)}
+    </a>
     """
   end
 
