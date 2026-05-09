@@ -19,8 +19,12 @@ defmodule StreamixWeb.Admin.PwaDebugLiveTest do
 
     assert {:ok, _lv, html} = live(conn, ~p"/debug/pwa")
     assert html =~ "PWA / iOS Safari"
+    assert html =~ "Atualizar app"
+    assert html =~ "Limpar cache"
+    assert html =~ "Compartilhar"
     assert html =~ "Baixar TXT"
     assert html =~ "phx-hook=\"PwaDebug\""
     assert html =~ "data-server-debug="
+    assert html =~ "sw_cache_version"
   end
 end

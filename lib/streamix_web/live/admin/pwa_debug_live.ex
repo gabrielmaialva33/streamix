@@ -37,6 +37,34 @@ defmodule StreamixWeb.Admin.PwaDebugLive do
               <.icon name="hero-arrow-path" class="size-4" /> Atualizar
             </button>
             <button
+              id="pwa-debug-update-app"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
+            >
+              <.icon name="hero-cloud-arrow-down" class="size-4" /> Atualizar app
+            </button>
+            <button
+              id="pwa-debug-clear-cache"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
+            >
+              <.icon name="hero-trash" class="size-4" /> Limpar cache
+            </button>
+            <button
+              id="pwa-debug-copy"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
+            >
+              <.icon name="hero-clipboard-document" class="size-4" /> Copiar
+            </button>
+            <button
+              id="pwa-debug-share"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
+            >
+              <.icon name="hero-share" class="size-4" /> Compartilhar
+            </button>
+            <button
               id="pwa-debug-download"
               type="button"
               class="inline-flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand/90"
@@ -58,6 +86,8 @@ defmodule StreamixWeb.Admin.PwaDebugLive do
           <p id="pwa-debug-status" class="text-sm text-text-secondary">Coletando...</p>
         </div>
 
+        <div id="pwa-debug-summary" class="mb-4 space-y-4"></div>
+
         <pre
           id="pwa-debug-output"
           class="max-h-[70vh] overflow-auto rounded-md border border-border bg-background p-4 text-xs leading-relaxed text-text-primary whitespace-pre-wrap"
@@ -74,7 +104,32 @@ defmodule StreamixWeb.Admin.PwaDebugLive do
       endpoint_url: StreamixWeb.Endpoint.url(),
       elixir: System.version(),
       otp: :erlang.system_info(:otp_release) |> List.to_string(),
+      sw_cache_version: sw_cache_version(),
+      sw_cache_name: sw_cache_name(),
       static_paths: StreamixWeb.static_paths()
     }
+  end
+
+  defp sw_cache_name do
+    case sw_cache_version() do
+      nil -> nil
+      version -> "streamix-#{version}"
+    end
+  end
+
+  defp sw_cache_version do
+    with {:ok, contents} <- File.read(sw_path()),
+         [_, version] <- Regex.run(~r/const CACHE_VERSION = ['"]([^'"]+)['"]/, contents) do
+      version
+    else
+      _ -> nil
+    end
+  end
+
+  defp sw_path do
+    :streamix
+    |> :code.priv_dir()
+    |> to_string()
+    |> Path.join("static/sw.js")
   end
 end
