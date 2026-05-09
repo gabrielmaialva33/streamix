@@ -48,6 +48,7 @@ export class NativeBufferManager {
       recoveryPauseTime: options.recoveryPauseTime || 2000, // 2s pause to recover
       bandwidthSamples: options.bandwidthSamples || 10, // Samples for avg
       startupGraceMs: options.startupGraceMs || 5000, // Ignore startup/resume jitter
+      seekGraceMs: options.seekGraceMs || 3000, // Ignore expected buffering after timeline jumps
       stallLogCooldownMs: options.stallLogCooldownMs || 10000,
       criticalLogCooldownMs: options.criticalLogCooldownMs || 15000,
     };
@@ -63,6 +64,7 @@ export class NativeBufferManager {
     this.isRecovering = false;
     this.totalStalls = 0;
     this.playbackStartTime = null;
+    this.lastSeekTime = 0;
     this.lastStallWarningTime = 0;
     this.lastCriticalWarningTime = 0;
 
@@ -77,6 +79,7 @@ export class NativeBufferManager {
     this._onPlaying = this._onPlaying.bind(this);
     this._onProgress = this._onProgress.bind(this);
     this._onCanPlay = this._onCanPlay.bind(this);
+    this._onSeeking = this._onSeeking.bind(this);
 
     log.debug("[NativeBuffer] Initialized with config:", this.config);
   }
@@ -94,6 +97,7 @@ export class NativeBufferManager {
     this.video.addEventListener("playing", this._onPlaying);
     this.video.addEventListener("progress", this._onProgress);
     this.video.addEventListener("canplay", this._onCanPlay);
+    this.video.addEventListener("seeking", this._onSeeking);
 
     // Start periodic health check
     this.checkTimer = setInterval(() => this._checkHealth(), this.config.checkInterval);
@@ -113,6 +117,7 @@ export class NativeBufferManager {
     this.video.removeEventListener("playing", this._onPlaying);
     this.video.removeEventListener("progress", this._onProgress);
     this.video.removeEventListener("canplay", this._onCanPlay);
+    this.video.removeEventListener("seeking", this._onSeeking);
 
     // Clear timer
     if (this.checkTimer) {
@@ -132,8 +137,9 @@ export class NativeBufferManager {
     // Ignore stalls within 1s of each other (same event)
     if (now - this.lastStallTime < 1000) return;
 
-    // Ignore "waiting" events during seek operations
-    if (this.video?.seeking) {
+    // Ignore "waiting" events during timeline jumps. Some browsers flip
+    // video.seeking back to false before the new range has enough bytes.
+    if (this.video?.seeking || this._isInSeekGrace(now)) {
       log.debug("Ignoring waiting event during seek");
       return;
     }
@@ -228,6 +234,11 @@ export class NativeBufferManager {
     log.debug(`[NativeBuffer] Can play, buffer: ${bufferAhead.toFixed(1)}s`);
   }
 
+  _onSeeking() {
+    this.lastSeekTime = Date.now();
+    this.stallCount = 0;
+  }
+
   /**
    * Periodic health check
    */
@@ -262,6 +273,7 @@ export class NativeBufferManager {
       !this.isRecovering &&
       !this.video.paused &&
       !this._isInStartupGrace() &&
+      !this._isInSeekGrace() &&
       readyState < 3
     ) {
       const now = Date.now();
@@ -275,6 +287,11 @@ export class NativeBufferManager {
   _isInStartupGrace(now = Date.now()) {
     if (!this.playbackStartTime) return false;
     return now - this.playbackStartTime < this.config.startupGraceMs;
+  }
+
+  _isInSeekGrace(now = Date.now()) {
+    if (!this.lastSeekTime) return false;
+    return now - this.lastSeekTime < this.config.seekGraceMs;
   }
 
   /**
