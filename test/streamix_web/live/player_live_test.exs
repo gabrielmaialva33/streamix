@@ -6,6 +6,7 @@ defmodule StreamixWeb.PlayerLiveTest do
 
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Subscription
+  alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Repo
 
   defp plan_fixture(attrs \\ %{}) do
@@ -160,6 +161,46 @@ defmodule StreamixWeb.PlayerLiveTest do
 
         assert html =~ "#{String.capitalize(visibility)} Canal"
       end
+    end
+
+    test "owned episode opens with series subtitle metadata", %{conn: conn, user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          is_system: false,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      series = series_content_fixture(provider, %{name: "Bleach [L]"})
+
+      season =
+        %Season{}
+        |> Season.changeset(%{
+          season_number: 1,
+          name: "Temporada 1",
+          series_id: series.id
+        })
+        |> Repo.insert!()
+
+      catalog_item = catalog_item_fixture("episode", provider.id)
+
+      episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: System.unique_integer([:positive]),
+          episode_num: 1,
+          title: "S01E01",
+          container_extension: "mp4",
+          season_id: season.id
+        })
+        |> Ecto.Changeset.put_change(:catalog_item_id, catalog_item.id)
+        |> Repo.insert!()
+
+      {:ok, _view, html} = live(conn, ~p"/watch/episode/#{episode.id}")
+
+      assert html =~ "S01E01"
+      assert html =~ "Bleach [L] - T1:E1"
     end
   end
 end

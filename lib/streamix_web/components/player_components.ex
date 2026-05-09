@@ -675,8 +675,8 @@ defmodule StreamixWeb.PlayerComponents do
   defp media_subtitle(content, type) when type in [:episode, :gindex_episode] do
     series_name =
       Map.get(content, :series_name) ||
-        get_in(content, [:series, :name]) ||
-        get_in(content, [:season, :series, :name])
+        direct_series_name(content) ||
+        season_series_name(content)
 
     [series_name, episode_subtitle(content)]
     |> Enum.reject(&is_nil/1)
@@ -685,6 +685,12 @@ defmodule StreamixWeb.PlayerComponents do
 
   defp media_subtitle(_content, type) when type in [:live, :live_channel], do: "Ao vivo"
   defp media_subtitle(_content, _type), do: "Streamix"
+
+  defp direct_series_name(%{series: %{name: name}}) when is_binary(name), do: name
+  defp direct_series_name(_), do: nil
+
+  defp season_series_name(%{season: %{series: %{name: name}}}) when is_binary(name), do: name
+  defp season_series_name(_), do: nil
 
   defp get_season_number(%{season: %{season_number: num}}), do: num
   defp get_season_number(_), do: nil
