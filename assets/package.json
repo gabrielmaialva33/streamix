@@ -5,7 +5,8 @@
   "scripts": {
     "lint": "biome check js/",
     "lint:fix": "biome check --fix js/",
-    "format": "biome format --write js/"
+    "format": "biome format --write js/",
+    "smoke:player": "node js/smoke/player_lifecycle_smoke.js"
   },
   "dependencies": {
     "@libmedia/avplayer": "1.3.0",
