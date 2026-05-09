@@ -1038,6 +1038,7 @@ const VideoPlayer = {
       this.setPlaybackRate(speed);
     });
     this.el.addEventListener("player:toggle-avplayer", () => this.toggleAVPlayerPreference());
+    this.playerUI.elements.retryBtn?.addEventListener("click", () => this.retryPlaybackFromError());
 
     // Mobile Touch Support
     this.setupMobileControls();
@@ -1745,6 +1746,24 @@ const VideoPlayer = {
     } catch (error) {
       log.debug(`[VideoPlayer] Ignoring ${event} after LiveView disconnect:`, error);
     }
+  },
+
+  retryPlaybackFromError() {
+    log.info("[VideoPlayer] Retrying playback from error screen");
+    this.reportPlayerLifecycle("player_retry_from_error", {
+      retry_count: this.retryCount,
+      fallback_attempts: this.fallbackAttempts,
+    });
+
+    this.playerUI.hideError();
+    this.playerUI.showLoading();
+    this.retryCount = 0;
+    this._hlsRecoveryAttempts = 0;
+    this.fallbackAttempts = 0;
+    this._switchingToAVPlayer = false;
+    this.avPlayerAttempted = false;
+    this.cleanup();
+    this.initPlayer();
   },
 
   toAbsoluteUrl(url) {

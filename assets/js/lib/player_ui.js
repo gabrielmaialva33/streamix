@@ -27,6 +27,7 @@ export class PlayerUI {
       loadingIndicator: container.querySelector("#loading-indicator"),
       errorContainer: container.querySelector("#error-container"),
       errorMessage: container.querySelector(".error-message"),
+      errorHint: container.querySelector(".error-hint"),
       retryBtn: container.querySelector(".retry-btn"),
 
       // Play/Pause
@@ -182,10 +183,15 @@ export class PlayerUI {
     }
   }
 
-  showError(message) {
+  showError(message, hint = null) {
     this.hideLoading();
     if (this.elements.errorMessage) {
       this.elements.errorMessage.textContent = message;
+    }
+    if (this.elements.errorHint) {
+      const errorHint = hint || this.getErrorHint(message);
+      this.elements.errorHint.textContent = errorHint;
+      this.elements.errorHint.classList.toggle("hidden", !errorHint);
     }
     this.elements.errorContainer?.classList.remove("hidden");
     this.video?.classList.add("hidden");
@@ -193,7 +199,29 @@ export class PlayerUI {
 
   hideError() {
     this.elements.errorContainer?.classList.add("hidden");
+    if (this.elements.errorHint) {
+      this.elements.errorHint.textContent = "";
+      this.elements.errorHint.classList.add("hidden");
+    }
     this.video?.classList.remove("hidden");
+  }
+
+  getErrorHint(message) {
+    const text = String(message || "").toLowerCase();
+
+    if (text.includes("rede") || text.includes("servidor") || text.includes("stream")) {
+      return "Pode ser instabilidade do link. Tente novamente ou volte em alguns segundos.";
+    }
+
+    if (text.includes("formato") || text.includes("codec") || text.includes("audio")) {
+      return "Este arquivo pode exigir outro motor de reproducao. Tente novamente para refazer a selecao.";
+    }
+
+    if (text.includes("url") || text.includes("token")) {
+      return "A sessao do link pode ter expirado. Tente novamente para renovar o acesso.";
+    }
+
+    return "Tente novamente. Se continuar, abra /debug/pwa no mesmo aparelho e baixe o diagnostico.";
   }
 
   // ============================================

@@ -116,6 +116,7 @@ defmodule StreamixWeb.PlayerComponents do
         <div class="flex flex-col items-center gap-4 text-center p-6">
           <.icon name="hero-exclamation-triangle" class="size-16 text-error" />
           <p class="error-message text-white text-lg">Erro ao carregar</p>
+          <p class="error-hint hidden max-w-sm text-sm text-white/65"></p>
           <button
             type="button"
             class="retry-btn px-6 py-2 bg-brand hover:bg-brand/80 text-white rounded-lg font-medium transition-colors"
