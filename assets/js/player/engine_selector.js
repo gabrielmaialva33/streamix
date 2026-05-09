@@ -26,7 +26,7 @@
  * @property {boolean} [preferAVPlayer]        - user preference flag
  * @property {boolean} [avPlayerAttempted]     - true if AVPlayer fallback was already tried
  * @property {boolean} [shouldPreferAVPlayerForLiveTs] - precomputed by caller (depends on UA + contentType + streamType)
- * @property {boolean} [is4kHevc]             - server-side hint: this is a 2160p/HEVC release
+ * @property {boolean} [isUhdHevc]             - server-side hint: this is a 2160p/HEVC release
  * @property {boolean} [avbridgeAttempted]   - true if avbridge was already tried for this content
  * @property {boolean} [h265webAttempted]    - true if h265web was already tried for this content
  * @property {Object}  [capabilities]          - runtime capability probes, passed in by caller
@@ -52,7 +52,7 @@ export function selectEngine(ctx) {
     avPlayerAttempted,
     avbridgeAttempted,
     h265webAttempted,
-    is4kHevc,
+    isUhdHevc,
     shouldPreferAVPlayerForLiveTs,
     capabilities = {},
   } = ctx;
@@ -79,7 +79,7 @@ export function selectEngine(ctx) {
   // the server-side `is_4k_hevc` hint. That keeps the heavy bundle
   // (mediabunny, libavjs-webcodecs-bridge) off the critical path for
   // the 1080p/720p catalog.
-  if (canTryAvbridge && sourceType === "gindex" && streamType === "mkv" && is4kHevc) {
+  if (canTryAvbridge && sourceType === "gindex" && streamType === "mkv" && isUhdHevc) {
     return "avbridge";
   }
 
@@ -87,8 +87,8 @@ export function selectEngine(ctx) {
   // environments that already pay the COOP+COEP cost (so they get
   // SharedArrayBuffer + multi-threaded HEVC decode). Off by default;
   // flip the `feature_h265web` Application config when you wire the
-  // headers. Same `is4kHevc` gate so non-4K stays on AVPlayer.
-  if (canTryH265web && sourceType === "gindex" && streamType === "mkv" && is4kHevc) {
+  // headers. Same `isUhdHevc` gate so non-4K stays on AVPlayer.
+  if (canTryH265web && sourceType === "gindex" && streamType === "mkv" && isUhdHevc) {
     return "h265web";
   }
 

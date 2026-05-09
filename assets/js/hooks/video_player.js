@@ -1479,7 +1479,11 @@ const VideoPlayer = {
       avPlayerAttempted: this.avPlayerAttempted,
       avbridgeAttempted: this.avbridgeAttempted,
       h265webAttempted: this.h265webAttempted,
-      is4kHevc: this.el?.dataset?.is4kHevc === "true",
+      // `data-uhd-hevc` instead of `data-is-4k-hevc` because the JS
+      // dataset DOM mapping doesn't uppercase the segment after a
+      // digit, so `data-is-4k-hevc` reads back as `is-4kHevc` (with
+      // a literal hyphen in the key) and trips on the obvious access.
+      isUhdHevc: this.el?.dataset?.uhdHevc === "true",
       shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
       capabilities: {
         hlsJs: isHlsJsSupported(),

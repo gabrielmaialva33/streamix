@@ -71,7 +71,7 @@ defmodule StreamixWeb.PlayerComponents do
       # the heavy 4K HEVC content through the GPU path. Anything else
       # plays just fine on AVPlayer (libmedia) and we keep the bundle
       # off the critical path.
-      |> assign(:is_4k_hevc, detect_4k_hevc?(assigns.content) |> to_string())
+      |> assign(:uhd_hevc, detect_4k_hevc?(assigns.content) |> to_string())
 
     ~H"""
     <div
@@ -90,7 +90,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-player-lifecycle-logs={@player_lifecycle_logs}
       data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}
-      data-is-4k-hevc={@is_4k_hevc}
+      data-uhd-hevc={@uhd_hevc}
     >
       <%!-- Loading indicator --%>
       <div
