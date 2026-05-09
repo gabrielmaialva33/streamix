@@ -14,6 +14,7 @@ defmodule StreamixWeb.StreamToken do
   alias Streamix.Access
   alias Streamix.Accounts
   alias Streamix.Iptv
+  alias Streamix.Iptv.Gindex
   alias StreamixWeb.UrlValidator
 
   # Token expires in 2 hours (reduced from 24h for security)
@@ -282,15 +283,7 @@ defmodule StreamixWeb.StreamToken do
       movie ->
         provider = movie.provider
 
-        build_content_url(
-          provider,
-          user_id,
-          movie,
-          "movie",
-          movie.stream_id,
-          movie.container_extension,
-          bypass
-        )
+        build_movie_url(provider, user_id, movie, bypass)
     end
   end
 
@@ -302,15 +295,7 @@ defmodule StreamixWeb.StreamToken do
       episode ->
         provider = episode.season.series.provider
 
-        build_content_url(
-          provider,
-          user_id,
-          episode,
-          "series",
-          episode.episode_id,
-          episode.container_extension,
-          bypass
-        )
+        build_episode_url(provider, user_id, episode, bypass)
     end
   end
 
@@ -323,6 +308,110 @@ defmodule StreamixWeb.StreamToken do
         provider = channel.provider
 
         build_content_url(provider, user_id, channel, "live", channel.stream_id, "ts", bypass)
+    end
+  end
+
+  defp build_movie_url(provider, user_id, %{gindex_path: path} = movie, bypass)
+       when is_binary(path) and path != "" do
+    if gindex_provider?(provider) do
+      build_gindex_content_url(provider, user_id, movie, bypass, fn ->
+        Gindex.get_movie_url(movie.id)
+      end)
+    else
+      build_content_url(
+        provider,
+        user_id,
+        movie,
+        "movie",
+        movie.stream_id,
+        movie.container_extension,
+        bypass
+      )
+    end
+  end
+
+  defp build_movie_url(provider, user_id, movie, bypass) do
+    build_content_url(
+      provider,
+      user_id,
+      movie,
+      "movie",
+      movie.stream_id,
+      movie.container_extension,
+      bypass
+    )
+  end
+
+  defp build_episode_url(provider, user_id, %{gindex_path: path} = episode, bypass)
+       when is_binary(path) and path != "" do
+    if gindex_provider?(provider) do
+      build_gindex_content_url(provider, user_id, episode, bypass, fn ->
+        Gindex.get_episode_url(episode.id)
+      end)
+    else
+      build_content_url(
+        provider,
+        user_id,
+        episode,
+        "series",
+        episode.episode_id,
+        episode.container_extension,
+        bypass
+      )
+    end
+  end
+
+  defp build_episode_url(provider, user_id, episode, bypass) do
+    build_content_url(
+      provider,
+      user_id,
+      episode,
+      "series",
+      episode.episode_id,
+      episode.container_extension,
+      bypass
+    )
+  end
+
+  defp build_gindex_content_url(provider, user_id, content, bypass, fetch_url) do
+    cond do
+      Access.global_content?(provider) ->
+        build_global_gindex_content_url(provider, user_id, content, bypass, fetch_url)
+
+      authorized_for_provider?(user_id, provider) ->
+        fetch_gindex_content_url(provider, fetch_url)
+
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  defp build_global_gindex_content_url(provider, _user_id, _content, true, fetch_url) do
+    fetch_gindex_content_url(provider, fetch_url)
+  end
+
+  defp build_global_gindex_content_url(_provider, nil, _content, _bypass, _fetch_url) do
+    {:error, :subscription_required}
+  end
+
+  defp build_global_gindex_content_url(provider, user_id, content, _bypass, fetch_url) do
+    case Accounts.get_user(user_id) do
+      nil ->
+        {:error, :subscription_required}
+
+      user ->
+        if Access.can_play_global_content?(user, content) do
+          fetch_gindex_content_url(provider, fetch_url)
+        else
+          {:error, :subscription_required}
+        end
+    end
+  end
+
+  defp fetch_gindex_content_url(provider, fetch_url) do
+    case fetch_url.() do
+      {:ok, url} -> {:ok, url, provider.id}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -412,6 +501,9 @@ defmodule StreamixWeb.StreamToken do
     url = "#{provider.url}/live/#{provider.username}/#{provider.password}/#{stream_id}.ts"
     {:ok, url, provider.id}
   end
+
+  defp gindex_provider?(%{provider_type: provider_type}), do: provider_type in [:gindex, "gindex"]
+  defp gindex_provider?(_provider), do: false
 
   # Verifies that the token's user_id is authorized to access content from this provider.
   # A user can access a provider if:
