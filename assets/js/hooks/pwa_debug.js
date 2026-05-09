@@ -514,8 +514,8 @@ const PwaDebug = {
 
     try {
       const deleted = await deleteStreamixCaches();
-      this.setStatus(`Cache limpo: ${deleted.length} entrada(s)`);
       await this.refresh();
+      this.setStatus(`Cache limpo: ${deleted.length} entrada(s)`);
     } catch (error) {
       this.setStatus(`Falha ao limpar cache: ${error.message}`);
     }
