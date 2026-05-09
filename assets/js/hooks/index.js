@@ -7,6 +7,7 @@ import Modal from "./modal";
 import OfflineSync from "./offline_sync";
 import ProgressBar from "./progress_bar";
 import PwaDebug from "./pwa_debug";
+import PwaRepair from "./pwa_repair";
 import ScrollHeader from "./scroll_header";
 import ThemeToggle from "./theme_toggle";
 import TorrentSwarmGate from "./torrent_swarm_gate";
@@ -24,6 +25,7 @@ export default {
   ContentCard,
   OfflineSync,
   PwaDebug,
+  PwaRepair,
   ImageFallback,
   ScrollHeader,
   WatchPartySync,

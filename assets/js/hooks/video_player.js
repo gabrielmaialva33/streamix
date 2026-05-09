@@ -591,6 +591,7 @@ const VideoPlayer = {
     this.iosPwaMode = isIosPwaMode();
     this._suspendingForIos = false;
     this._wasPlayingBeforeHidden = false;
+    this._lastIosPwaTapAt = 0;
   },
 
   /**
@@ -1023,6 +1024,67 @@ const VideoPlayer = {
     }
   },
 
+  setupIosPwaTapControls() {
+    if (!this.iosPwaMode) return;
+
+    this.el.classList.add("ios-pwa-tap-playback");
+    this._onIosPwaTap = (event) => {
+      if (!this.shouldHandleIosPwaTap(event)) return;
+
+      const now = Date.now();
+      if (now - this._lastIosPwaTapAt < 350) return;
+      this._lastIosPwaTapAt = now;
+
+      const pausedBefore = this.isPaused();
+      this.reportIosPwaTelemetry("center_tap_play_pause", {
+        paused_before: pausedBefore,
+        target: event.target?.tagName || "unknown",
+      });
+      this.togglePlayPause();
+    };
+    this.el.addEventListener("click", this._onIosPwaTap);
+  },
+
+  shouldHandleIosPwaTap(event) {
+    if (event.defaultPrevented || event.button !== 0) return false;
+
+    const target = event.target;
+    if (!(target instanceof Element)) return false;
+
+    return !target.closest(
+      [
+        "button",
+        "a",
+        "input",
+        "select",
+        "textarea",
+        "label",
+        "[role='button']",
+        "#player-controls",
+        "#progress-container",
+        "#settings-menu",
+        ".no-ios-pwa-tap",
+      ].join(","),
+    );
+  },
+
+  reportIosPwaTelemetry(event, extra = {}) {
+    if (!this.iosPwaMode) return;
+
+    this.pushEventSafe("ios_pwa_player_event", {
+      event,
+      content_id: this.contentId,
+      content_type: this.contentType,
+      source_type: this.sourceType,
+      stream_type: this.currentStreamType,
+      engine: this.usingAVPlayer ? "avplayer" : "native",
+      paused: this.isPaused(),
+      current_time: Math.round(this.getCurrentTime()),
+      display_mode: "standalone",
+      ...extra,
+    });
+  },
+
   // ============================================
   // Event Listeners
   // ============================================
@@ -1039,6 +1101,7 @@ const VideoPlayer = {
     });
     this.el.addEventListener("player:toggle-avplayer", () => this.toggleAVPlayerPreference());
     this.playerUI.elements.retryBtn?.addEventListener("click", () => this.retryPlaybackFromError());
+    this.setupIosPwaTapControls();
 
     // Mobile Touch Support
     this.setupMobileControls();
@@ -3998,6 +4061,11 @@ const VideoPlayer = {
     if (this._onPageShow) {
       window.removeEventListener("pageshow", this._onPageShow);
       this._onPageShow = null;
+    }
+
+    if (this._onIosPwaTap) {
+      this.el?.removeEventListener("click", this._onIosPwaTap);
+      this._onIosPwaTap = null;
     }
 
     // Clear audio check timeout

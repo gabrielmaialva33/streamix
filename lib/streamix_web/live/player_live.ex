@@ -124,6 +124,23 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
+  def handle_event("ios_pwa_player_event", params, socket) do
+    if Application.get_env(:streamix, :player_lifecycle_logs, false) do
+      Logger.debug("ios_pwa_player_event #{params["event"]}",
+        player_event: params["event"],
+        content_id: params["content_id"],
+        content_type: params["content_type"],
+        source_type: params["source_type"],
+        stream_type: params["stream_type"],
+        engine: params["engine"],
+        paused: params["paused"],
+        current_time: params["current_time"]
+      )
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_event("player_lifecycle", params, socket) do
     if Application.get_env(:streamix, :player_lifecycle_logs, false) do
       Logger.debug("player_lifecycle #{params["stage"]}",
