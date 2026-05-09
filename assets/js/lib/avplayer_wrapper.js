@@ -675,9 +675,14 @@ export class AVPlayerWrapper {
     try {
       log.debug("Calling player.load()...");
 
+      const loadTimeoutMs = options.loadTimeoutMs || 30000;
+
       // Create a timeout promise to detect if load hangs
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Load timeout after 30 seconds")), 30000);
+        setTimeout(
+          () => reject(new Error(`Load timeout after ${Math.round(loadTimeoutMs / 1000)} seconds`)),
+          loadTimeoutMs,
+        );
       });
 
       // Build load options for AVPlayer.
@@ -694,6 +699,12 @@ export class AVPlayerWrapper {
       }
       if (options.isLive) {
         loadOptions.isLive = true;
+      }
+      if (options.maxProbeDuration) {
+        loadOptions.maxProbeDuration = options.maxProbeDuration;
+      }
+      if (options.ioLoaderOptions) {
+        loadOptions.ioLoaderOptions = options.ioLoaderOptions;
       }
       this._isLive = !!options.isLive;
 

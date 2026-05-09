@@ -2973,7 +2973,20 @@ const VideoPlayer = {
           ? "mkv"
           : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
       const isLive = this.contentType === "live";
-      await avPlayer.load(proxyUrl, { ext, isLive });
+      const isHeavyGIndexMkv = this.sourceType === "gindex" && ext === "mkv";
+      await avPlayer.load(proxyUrl, {
+        ext,
+        isLive,
+        loadTimeoutMs: isHeavyGIndexMkv ? 120000 : undefined,
+        maxProbeDuration: isHeavyGIndexMkv ? 10 : undefined,
+        ioLoaderOptions: isHeavyGIndexMkv
+          ? {
+              preload: 8 * 1024 * 1024,
+              retryCount: 8,
+              retryInterval: 1,
+            }
+          : undefined,
+      });
       if (!this.isCurrentPlaybackSession(sessionId)) {
         await avPlayer.destroy();
         return;
