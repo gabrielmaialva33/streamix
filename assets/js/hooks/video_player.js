@@ -2110,6 +2110,11 @@ const VideoPlayer = {
             );
           },
           onStall: (info) => {
+            if (!info.isRealStall) {
+              log.debug(`[NativeBuffer] Brief buffer wait #${info.totalStalls}`);
+              return;
+            }
+
             log.warn(`[NativeBuffer] Stall detected #${info.totalStalls}`);
             this.playerUI.showLoading();
           },
