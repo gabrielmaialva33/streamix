@@ -60,6 +60,10 @@ defmodule StreamixWeb.PlayerComponents do
         Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
       )
       |> assign(
+        :feature_avbridge,
+        Application.get_env(:streamix, :feature_avbridge, false) |> to_string()
+      )
+      |> assign(
         :feature_h265web,
         Application.get_env(:streamix, :feature_h265web, false) |> to_string()
       )
@@ -79,6 +83,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
       data-player-lifecycle-logs={@player_lifecycle_logs}
+      data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}
     >
       <%!-- Loading indicator --%>
