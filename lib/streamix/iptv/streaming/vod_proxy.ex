@@ -98,6 +98,59 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     pipe_chain(conn, url_chain)
   end
 
+  @spec head(Conn.t(), String.t(), keyword()) :: Conn.t()
+  def head(conn, url, opts \\ []) do
+    opts
+    |> Keyword.get(:url_chain, [url])
+    |> head_chain(conn)
+  end
+
+  defp head_chain([], conn) do
+    StreamErrors.halt(conn, :stream_resolution_failed)
+  end
+
+  defp head_chain([url | rest], conn) do
+    case resolve_chain(url) do
+      {:ok, final_url} ->
+        case do_head(conn, final_url) do
+          {:ok, conn} -> conn
+          {:error, reason} -> rotate_head_or_halt(rest, conn, reason)
+        end
+
+      {:error, reason} ->
+        rotate_head_or_halt(rest, conn, reason)
+    end
+  end
+
+  defp rotate_head_or_halt([], conn, reason) do
+    StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
+  end
+
+  defp rotate_head_or_halt(rest, conn, _reason), do: head_chain(rest, conn)
+
+  defp do_head(conn, final_url) do
+    headers = build_request_headers(conn, 0)
+    req = Finch.build(:head, final_url, headers)
+
+    case Finch.request(req, Streamix.StreamFinch, receive_timeout: 10_000, pool_timeout: 5_000) do
+      {:ok, %{status: status, headers: headers}} when status in 200..299 ->
+        conn =
+          conn
+          |> copy_response_headers(headers, [])
+          |> Conn.put_resp_header("cache-control", "no-cache, no-store")
+          |> put_cors_headers()
+          |> Conn.send_resp(status, "")
+
+        {:ok, conn}
+
+      {:ok, %{status: status}} ->
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   # Tries each URL in the failover chain. The first one that boots up
   # and starts streaming wins; once we've sent bytes we stick with it
   # (mid-stream errors fall back to Range-aware retry against the same

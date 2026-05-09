@@ -30,7 +30,7 @@ defmodule Streamix.Iptv.Gindex.Response do
   def extract_download_link(body, base_url) when is_map(body) do
     case body do
       %{"link" => link} when is_binary(link) and link != "" ->
-        {:ok, Url.join(base_url, link)}
+        {:ok, base_url |> Url.join(link) |> ensure_inline_download()}
 
       _ ->
         {:error, :download_url_not_found}
@@ -147,6 +147,22 @@ defmodule Streamix.Iptv.Gindex.Response do
   defp parse_int(nil), do: nil
   defp parse_int(str) when is_binary(str), do: String.to_integer(str)
   defp parse_int(num) when is_integer(num), do: num
+
+  defp ensure_inline_download(url) do
+    uri = URI.parse(url)
+
+    if uri.path == "/download.aspx" do
+      query =
+        uri.query
+        |> URI.decode_query()
+        |> Map.put("inline", "true")
+
+      %{uri | query: URI.encode_query(query)}
+      |> URI.to_string()
+    else
+      url
+    end
+  end
 
   defp get_header(headers, name) do
     name_lower = String.downcase(name)
