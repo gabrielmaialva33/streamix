@@ -46,7 +46,7 @@ defmodule StreamixWeb.AdminComponents do
   attr :current_path, :string, required: true
 
   defp admin_tab(assigns) do
-    assigns = assign(assigns, :active, String.starts_with?(assigns.current_path, assigns.path))
+    assigns = assign(assigns, :active, admin_tab_active?(assigns.current_path, assigns.path))
 
     ~H"""
     <.link
@@ -63,6 +63,9 @@ defmodule StreamixWeb.AdminComponents do
     </.link>
     """
   end
+
+  defp admin_tab_active?(current_path, "/admin"), do: current_path == "/admin"
+  defp admin_tab_active?(current_path, path), do: String.starts_with?(current_path, path)
 
   attr :label, :string, required: true
   attr :value, :string, required: true
