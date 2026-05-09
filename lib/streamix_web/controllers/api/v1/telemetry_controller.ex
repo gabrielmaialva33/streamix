@@ -36,28 +36,35 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
     ]
   }
   """
-  def ingest(conn, %{"batch_id" => batch_id, "metrics" => metrics})
-      when is_binary(batch_id) and is_list(metrics) do
+  def ingest(conn, params) when is_map(params) do
     user = conn.assigns.current_user
-    metrics = Enum.take(metrics, @max_batch_size)
+    {batch_id, metrics} = normalize_payload(params)
 
-    Logger.info("[Telemetry] user=#{user.id} batch=#{batch_id} count=#{length(metrics)}")
+    if metrics == [] do
+      conn
+      |> put_status(:bad_request)
+      |> json(%{error: %{code: "invalid_body", message: "Expected telemetry metric payload"}})
+    else
+      metrics = Enum.take(metrics, @max_batch_size)
 
-    # Log metrics for now — structured storage can be added later
-    Enum.each(metrics, fn metric ->
-      Logger.info(
-        "[Telemetry] user=#{user.id} " <>
-          "engine=#{metric["engine"]} " <>
-          "type=#{metric["stream_type"]} " <>
-          "ttff=#{metric["time_to_first_frame_ms"]}ms " <>
-          "buffers=#{metric["buffer_count"]} " <>
-          "errors=#{metric["error_count"]}"
-      )
-    end)
+      Logger.info("[Telemetry] user=#{user.id} batch=#{batch_id} count=#{length(metrics)}")
 
-    conn
-    |> put_status(:accepted)
-    |> json(%{accepted: length(metrics), batch_id: batch_id})
+      Enum.each(metrics, fn metric ->
+        Logger.info(
+          "[Telemetry] user=#{user.id} " <>
+            "engine=#{metric["engine"] || metric["player"]} " <>
+            "type=#{metric["stream_type"] || metric["content_type"]} " <>
+            "event=#{metric["event"] || metric["type"]} " <>
+            "ttff=#{metric["time_to_first_frame_ms"]}ms " <>
+            "buffers=#{metric["buffer_count"]} " <>
+            "errors=#{metric["error_count"]}"
+        )
+      end)
+
+      conn
+      |> put_status(:accepted)
+      |> json(%{accepted: length(metrics), batch_id: batch_id})
+    end
   end
 
   def ingest(conn, _params) do
@@ -87,4 +94,30 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
       _ -> nil
     end
   end
+
+  defp normalize_payload(%{"batch_id" => batch_id, "metrics" => metrics})
+       when is_binary(batch_id) and is_list(metrics) do
+    {batch_id, Enum.filter(metrics, &is_map/1)}
+  end
+
+  defp normalize_payload(%{"metrics" => metrics}) when is_list(metrics) do
+    {new_batch_id(), Enum.filter(metrics, &is_map/1)}
+  end
+
+  defp normalize_payload(%{"events" => events}) when is_list(events) do
+    {new_batch_id(), Enum.filter(events, &is_map/1)}
+  end
+
+  defp normalize_payload(%{"metric" => metric}) when is_map(metric) do
+    {new_batch_id(), [metric]}
+  end
+
+  defp normalize_payload(%{"event" => _event} = metric), do: {new_batch_id(), [metric]}
+  defp normalize_payload(%{"stream_type" => _type} = metric), do: {new_batch_id(), [metric]}
+  defp normalize_payload(%{"engine" => _engine} = metric), do: {new_batch_id(), [metric]}
+  defp normalize_payload(%{"type" => _type} = metric), do: {new_batch_id(), [metric]}
+
+  defp normalize_payload(_params), do: {new_batch_id(), []}
+
+  defp new_batch_id, do: Ecto.UUID.generate()
 end
