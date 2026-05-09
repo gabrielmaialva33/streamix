@@ -68,7 +68,14 @@ export function selectEngine(ctx) {
     return "avplayer";
   }
 
-  // GIndex uses native playback.
+  // GIndex often serves Matroska/HEVC releases through signed download.aspx URLs.
+  // Native <video> handles some MP4 variants well, but MKV needs AVPlayer's
+  // demuxer/decoder path or the browser mistakes valid media for unsupported MP4.
+  if (canTryAVPlayer && sourceType === "gindex" && streamType === "mkv") {
+    return "avplayer";
+  }
+
+  // GIndex MP4 can use native playback.
   if (sourceType === "gindex") {
     return "native";
   }
