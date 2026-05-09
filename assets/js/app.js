@@ -34,6 +34,9 @@ Alpine.start();
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
+const INSTALL_HINT_DISMISSED_KEY = "streamix:pwa-install-hint-dismissed";
+const LAST_ROUTE_KEY = "streamix:pwa-last-route";
+const LAST_ROUTE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 const isIosWebKit = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -41,6 +44,26 @@ const isIosWebKit = () =>
 
 const isStandalonePwa = () =>
   displayModeQuery?.matches === true || window.navigator.standalone === true;
+
+const isSafariBrowser = () => {
+  const ua = navigator.userAgent || "";
+  return /Safari/i.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|Chrome|Android)/i.test(ua);
+};
+
+const safeStorage = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  },
+};
 
 const applyPwaModeClasses = () => {
   const standalone = isStandalonePwa();
@@ -57,6 +80,144 @@ if (displayModeQuery?.addEventListener) {
 } else if (displayModeQuery?.addListener) {
   displayModeQuery.addListener(applyPwaModeClasses);
 }
+
+const currentRoute = () =>
+  `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+const isRestorableRoute = (route) => {
+  if (!route || route === "/" || route.startsWith("//")) return false;
+  const path = route.split(/[?#]/)[0];
+  if (
+    path.startsWith("/admin") ||
+    path.startsWith("/api") ||
+    path.startsWith("/assets") ||
+    path.startsWith("/live") ||
+    path.startsWith("/login") ||
+    path.startsWith("/logout") ||
+    path.startsWith("/register") ||
+    path.startsWith("/offline")
+  ) {
+    return false;
+  }
+
+  return [
+    /^\/watch\//,
+    /^\/browse/,
+    /^\/providers\//,
+    /^\/favorites$/,
+    /^\/history$/,
+    /^\/settings$/,
+    /^\/search/,
+    /^\/gindex/,
+    /^\/party/,
+  ].some((pattern) => pattern.test(path));
+};
+
+const rememberCurrentRoute = () => {
+  const route = currentRoute();
+  if (!isRestorableRoute(route)) return;
+  safeStorage.set(LAST_ROUTE_KEY, JSON.stringify({ route, savedAt: Date.now() }));
+};
+
+const restoreLastPwaRoute = () => {
+  if (!isStandalonePwa() || currentRoute() !== "/") return;
+
+  try {
+    const saved = JSON.parse(safeStorage.get(LAST_ROUTE_KEY) || "null");
+    if (!saved?.route || Date.now() - saved.savedAt > LAST_ROUTE_MAX_AGE) return;
+    if (!isRestorableRoute(saved.route)) return;
+    window.location.replace(saved.route);
+  } catch {}
+};
+
+const createIconButton = (label, text) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className =
+    "shrink-0 rounded-md px-2 py-1 text-sm text-text-secondary hover:text-text-primary";
+  button.setAttribute("aria-label", label);
+  button.textContent = text;
+  return button;
+};
+
+const showIosInstallHint = () => {
+  if (!isIosWebKit() || !isSafariBrowser() || isStandalonePwa()) return;
+  if (safeStorage.get(INSTALL_HINT_DISMISSED_KEY) === "true") return;
+  if (document.getElementById("ios-install-hint")) return;
+
+  const hint = document.createElement("aside");
+  hint.id = "ios-install-hint";
+  hint.className =
+    "fixed inset-x-4 bottom-4 z-[9998] rounded-lg border border-border bg-surface/95 p-4 shadow-2xl backdrop-blur safe-area-bottom";
+
+  const row = document.createElement("div");
+  row.className = "flex items-start gap-3";
+
+  const icon = document.createElement("div");
+  icon.className =
+    "grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand text-lg font-semibold text-white";
+  icon.textContent = "S";
+
+  const content = document.createElement("div");
+  content.className = "min-w-0 flex-1";
+
+  const title = document.createElement("p");
+  title.className = "text-sm font-semibold text-text-primary";
+  title.textContent = "Instale o Streamix";
+
+  const copy = document.createElement("p");
+  copy.className = "mt-1 text-xs leading-5 text-text-secondary";
+  copy.textContent = "No Safari, toque em Compartilhar e depois em Adicionar à Tela de Início.";
+
+  content.appendChild(title);
+  content.appendChild(copy);
+
+  const close = createIconButton("Fechar dica de instalação", "×");
+  close.addEventListener("click", () => {
+    safeStorage.set(INSTALL_HINT_DISMISSED_KEY, "true");
+    hint.remove();
+  });
+
+  row.appendChild(icon);
+  row.appendChild(content);
+  row.appendChild(close);
+  hint.appendChild(row);
+  document.body.appendChild(hint);
+};
+
+let connectionToastTimer = null;
+
+const showConnectionToast = (state) => {
+  const existing = document.getElementById("connection-toast");
+  existing?.remove();
+  window.clearTimeout(connectionToastTimer);
+
+  const toast = document.createElement("div");
+  toast.id = "connection-toast";
+  toast.className =
+    "fixed inset-x-4 bottom-4 z-[9999] rounded-lg border border-border bg-surface/95 px-4 py-3 text-sm text-text-primary shadow-2xl backdrop-blur safe-area-bottom";
+  toast.textContent =
+    state === "offline"
+      ? "Sem conexão. Algumas ações podem esperar a rede voltar."
+      : "Conexão restaurada.";
+
+  document.body.appendChild(toast);
+
+  if (state !== "offline") {
+    connectionToastTimer = window.setTimeout(() => toast.remove(), 2500);
+  }
+};
+
+restoreLastPwaRoute();
+window.addEventListener("pageshow", rememberCurrentRoute);
+window.addEventListener("popstate", rememberCurrentRoute);
+window.addEventListener("phx:page-loading-stop", () => window.setTimeout(rememberCurrentRoute, 0));
+window.addEventListener("load", () => window.setTimeout(showIosInstallHint, 1200));
+window.addEventListener("offline", () => showConnectionToast("offline"));
+window.addEventListener("online", () => {
+  showConnectionToast("online");
+  if (!liveSocket.isConnected()) liveSocket.socket.connect();
+});
 
 // Merge colocated hooks with custom hooks
 const Hooks = {
@@ -105,10 +266,6 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && !liveSocket.isConnected()) {
     liveSocket.socket.connect();
   }
-});
-
-window.addEventListener("online", () => {
-  if (!liveSocket.isConnected()) liveSocket.socket.connect();
 });
 
 // expose liveSocket on window for web console debug logs and latency simulation:

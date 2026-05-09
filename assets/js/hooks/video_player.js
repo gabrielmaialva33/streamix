@@ -88,6 +88,8 @@ async function loadAvbridge() {
 // it. Keep that off the critical path.
 let H265webWrapper = null;
 let h265webModulePromise = null;
+const IOS_PLAYER_STATE_KEY = "streamix:ios-player-state";
+const IOS_PLAYER_STATE_MAX_AGE = 12 * 60 * 60 * 1000;
 
 async function loadH265web() {
   if (!H265webWrapper) {
@@ -144,6 +146,36 @@ function isAppleTouchDevice() {
   const ua = navigator.userAgent || "";
   const platform = navigator.platform || "";
   return /iPad|iPhone|iPod/.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isStandalonePwa() {
+  return (
+    window.navigator.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)")?.matches === true
+  );
+}
+
+function isIosPwaMode() {
+  return isAppleTouchDevice() && isStandalonePwa();
+}
+
+function readIosPlayerState(contentId) {
+  if (!contentId) return null;
+
+  try {
+    const state = JSON.parse(localStorage.getItem(IOS_PLAYER_STATE_KEY) || "null");
+    if (!state || state.contentId !== contentId) return null;
+    if (Date.now() - state.savedAt > IOS_PLAYER_STATE_MAX_AGE) return null;
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function writeIosPlayerState(state) {
+  try {
+    localStorage.setItem(IOS_PLAYER_STATE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
+  } catch {}
 }
 
 function scheduleLowPriority(callback, { timeout = 2500 } = {}) {
@@ -556,6 +588,9 @@ const VideoPlayer = {
     this.nativeTouchControls = false;
     this.lastTimelineSeekAt = 0;
     this._emergencyStopDone = false;
+    this.iosPwaMode = isIosPwaMode();
+    this._suspendingForIos = false;
+    this._wasPlayingBeforeHidden = false;
   },
 
   /**
@@ -1017,10 +1052,18 @@ const VideoPlayer = {
     }
 
     // Video Element Events
-    this.video?.addEventListener("play", () => this.playerUI.updatePlayPauseUI(false));
+    this.video?.addEventListener("play", () => {
+      this.playerUI.updatePlayPauseUI(false);
+      this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
+    });
     this.video?.addEventListener("pause", () => {
       this.playerUI.updatePlayPauseUI(true);
       this.clearNativeBufferingState();
+      this.persistIosPlaybackState({
+        userPaused: !this._suspendingForIos && document.visibilityState !== "hidden",
+        wasPlaying: false,
+        reason: "pause",
+      });
     });
     this.video?.addEventListener("play", () => this.updateMediaSessionPlaybackState());
     this.video?.addEventListener("pause", () => this.updateMediaSessionPlaybackState());
@@ -1059,7 +1102,17 @@ const VideoPlayer = {
     document.addEventListener("fullscreenchange", this._onFullscreenChange);
     document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);
 
-    this._onPageTeardown = () => this.emergencyStopPlayback();
+    this._onIosVisibilityChange = () => this.handleIosVisibilityChange();
+    document.addEventListener("visibilitychange", this._onIosVisibilityChange);
+
+    this._onPageShow = () => this.resumeIosPlaybackState();
+    window.addEventListener("pageshow", this._onPageShow);
+
+    this._onPageTeardown = (event) => {
+      this.handleIosPageHide(event);
+      if (this.iosPwaMode && event?.persisted) return;
+      this.emergencyStopPlayback();
+    };
     window.addEventListener("pagehide", this._onPageTeardown, { capture: true });
     window.addEventListener("beforeunload", this._onPageTeardown, { capture: true });
 
@@ -1270,12 +1323,100 @@ const VideoPlayer = {
       // Save position to localStorage for resume later
       if (this.contentId && this.contentType === "vod") {
         savePlaybackPosition(this.contentId, currentTime, duration);
+        this.persistIosPlaybackState({ reason: "progress" });
       }
 
       this.pushEventSafe("progress_update", {
         current_time: currentTime,
         duration: duration,
         percent: Math.round((currentTime / duration) * 100),
+      });
+    }
+  },
+
+  persistIosPlaybackState(extra = {}) {
+    if (!this.iosPwaMode || this.contentType !== "vod" || !this.contentId) return;
+
+    const currentTime = Math.floor(this.getCurrentTime());
+    const duration = Math.floor(this.getDuration());
+    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0) return;
+
+    if (currentTime > 0) {
+      savePlaybackPosition(this.contentId, currentTime, duration);
+    }
+
+    writeIosPlayerState({
+      contentId: this.contentId,
+      path: `${window.location.pathname}${window.location.search}`,
+      time: currentTime,
+      duration,
+      paused: this.isPaused(),
+      userPaused: extra.userPaused ?? this.isPaused(),
+      wasPlaying: extra.wasPlaying ?? !this.isPaused(),
+      muted: this.usingAVPlayer ? this.avPlayerMuted : (this.video?.muted ?? false),
+      volume: this.usingAVPlayer ? this.avPlayerVolume : (this.video?.volume ?? 1),
+      playbackRate: this.video?.playbackRate ?? 1,
+      reason: extra.reason || "snapshot",
+    });
+  },
+
+  handleIosVisibilityChange() {
+    if (!this.iosPwaMode || this.contentType !== "vod") return;
+
+    if (document.visibilityState === "hidden") {
+      const wasPlaying = !this.isPaused();
+      this._suspendingForIos = true;
+      this._wasPlayingBeforeHidden = wasPlaying;
+      this.persistIosPlaybackState({ userPaused: false, wasPlaying, reason: "hidden" });
+      return;
+    }
+
+    this._suspendingForIos = false;
+    this.resumeIosPlaybackState();
+  },
+
+  handleIosPageHide(event) {
+    if (!this.iosPwaMode || this.contentType !== "vod") return;
+    const wasPlaying = !this.isPaused();
+    this._suspendingForIos = true;
+    this._wasPlayingBeforeHidden = wasPlaying;
+    this.persistIosPlaybackState({
+      userPaused: false,
+      wasPlaying,
+      reason: event?.persisted ? "pagehide-persisted" : "pagehide",
+    });
+  },
+
+  resumeIosPlaybackState() {
+    if (!this.iosPwaMode || this.contentType !== "vod" || !this.video) return;
+
+    const state = readIosPlayerState(this.contentId);
+    if (!state) return;
+
+    if (Number.isFinite(state.volume)) this.video.volume = state.volume;
+    if (typeof state.muted === "boolean") this.video.muted = state.muted;
+    if (Number.isFinite(state.playbackRate) && state.playbackRate > 0) {
+      this.video.playbackRate = state.playbackRate;
+    }
+
+    if (state.time > 5 && Math.abs((this.video.currentTime || 0) - state.time) > 2) {
+      try {
+        this.video.currentTime = state.time;
+      } catch (error) {
+        log.debug("[VideoPlayer] iOS PWA restore seek failed:", error.message);
+      }
+    }
+
+    if (state.userPaused) {
+      this.video.pause();
+      return;
+    }
+
+    if (state.wasPlaying || this._wasPlayingBeforeHidden) {
+      this.video.play().catch((error) => {
+        if (error.name !== "AbortError" && error.name !== "NotAllowedError") {
+          log.debug("[VideoPlayer] iOS PWA resume play failed:", error.message);
+        }
       });
     }
   },
@@ -3828,6 +3969,16 @@ const VideoPlayer = {
       window.removeEventListener("pagehide", this._onPageTeardown, { capture: true });
       window.removeEventListener("beforeunload", this._onPageTeardown, { capture: true });
       this._onPageTeardown = null;
+    }
+
+    if (this._onIosVisibilityChange) {
+      document.removeEventListener("visibilitychange", this._onIosVisibilityChange);
+      this._onIosVisibilityChange = null;
+    }
+
+    if (this._onPageShow) {
+      window.removeEventListener("pageshow", this._onPageShow);
+      this._onPageShow = null;
     }
 
     // Clear audio check timeout
