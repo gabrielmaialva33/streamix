@@ -18,7 +18,8 @@ defmodule StreamixWeb do
   """
 
   def static_paths,
-    do: ~w(assets fonts images favicon.ico robots.txt avplayer vendor sw.js manifest.json)
+    do:
+      ~w(assets fonts images favicon.ico robots.txt avplayer vendor sw.js manifest.json offline.html)
 
   def router do
     quote do
