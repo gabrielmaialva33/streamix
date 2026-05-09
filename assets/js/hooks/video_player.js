@@ -945,6 +945,49 @@ const VideoPlayer = {
     return document.pictureInPictureEnabled && !this.video?.disablePictureInPicture;
   },
 
+  setupMediaSession() {
+    if (!("mediaSession" in navigator)) return;
+
+    try {
+      if ("MediaMetadata" in window) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: this.mediaTitle,
+          artist: this.mediaSubtitle,
+          album: "Streamix",
+        });
+      }
+
+      navigator.mediaSession.setActionHandler("play", () => {
+        if (this.isPaused()) this.togglePlayPause();
+      });
+      navigator.mediaSession.setActionHandler("pause", () => {
+        if (!this.isPaused()) this.togglePlayPause();
+      });
+      navigator.mediaSession.setActionHandler("seekbackward", (event) => {
+        this.seek(-(event.seekOffset || 10));
+      });
+      navigator.mediaSession.setActionHandler("seekforward", (event) => {
+        this.seek(event.seekOffset || 10);
+      });
+      navigator.mediaSession.setActionHandler("seekto", (event) => {
+        if (typeof event.seekTime === "number") this.seekTo(event.seekTime);
+      });
+      this.updateMediaSessionPlaybackState();
+    } catch (error) {
+      log.debug("[VideoPlayer] Media Session setup skipped:", error.message);
+    }
+  },
+
+  updateMediaSessionPlaybackState() {
+    if (!("mediaSession" in navigator)) return;
+
+    try {
+      navigator.mediaSession.playbackState = this.isPaused() ? "paused" : "playing";
+    } catch (error) {
+      log.debug("[VideoPlayer] Media Session state update skipped:", error.message);
+    }
+  },
+
   // ============================================
   // Event Listeners
   // ============================================
@@ -3601,9 +3644,20 @@ const VideoPlayer = {
   toggleFullscreen() {
     if (document.fullscreenElement) {
       document.exitFullscreen();
-    } else {
-      this.el.requestFullscreen?.() || this.video.requestFullscreen?.();
+      return;
     }
+
+    if (this.video?.webkitDisplayingFullscreen) {
+      this.video.webkitExitFullscreen?.();
+      return;
+    }
+
+    if (isAppleTouchDevice() && this.video?.webkitEnterFullscreen) {
+      this.video.webkitEnterFullscreen();
+      return;
+    }
+
+    this.el.requestFullscreen?.() || this.video?.requestFullscreen?.();
   },
 
   async togglePlayPause() {
@@ -3801,6 +3855,17 @@ const VideoPlayer = {
     if (this.keyboardManager) {
       this.keyboardManager.destroy();
       this.keyboardManager = null;
+    }
+
+    if ("mediaSession" in navigator) {
+      try {
+        ["play", "pause", "seekbackward", "seekforward", "seekto"].forEach((action) => {
+          navigator.mediaSession.setActionHandler(action, null);
+        });
+        navigator.mediaSession.playbackState = "none";
+      } catch (error) {
+        log.debug("[VideoPlayer] Media Session cleanup skipped:", error.message);
+      }
     }
 
     if (this.watchInterval) {
