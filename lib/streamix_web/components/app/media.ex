@@ -109,8 +109,8 @@ defmodule StreamixWeb.App.Media do
 
   def provider_card(assigns) do
     ~H"""
-    <div class="rounded-xl bg-surface border border-border p-4 hover:border-brand/30 transition-colors">
-      <div class="flex items-start justify-between gap-4 mb-3">
+    <div class="flex h-full min-w-0 flex-col rounded-xl bg-surface border border-border p-4 hover:border-brand/30 transition-colors">
+      <div class="flex items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <h3 class="font-semibold text-text-primary truncate">{@provider.name}</h3>
           <p class="text-sm text-text-secondary truncate">{@provider.url}</p>
@@ -118,35 +118,37 @@ defmodule StreamixWeb.App.Media do
         <.sync_status_badge status={@provider.sync_status} />
       </div>
 
-      <div class="flex flex-wrap items-center gap-4 text-sm text-text-secondary mb-4">
-        <div
-          :if={@provider.live_channels_count && @provider.live_channels_count > 0}
-          class="flex items-center gap-1.5"
-        >
-          <.icon name="hero-tv" class="size-4" />
-          <span>{@provider.live_channels_count} ao vivo</span>
-        </div>
-        <div
-          :if={@provider.movies_count && @provider.movies_count > 0}
-          class="flex items-center gap-1.5"
-        >
-          <.icon name="hero-film" class="size-4" />
-          <span>{@provider.movies_count} filmes</span>
-        </div>
-        <div
-          :if={@provider.series_count && @provider.series_count > 0}
-          class="flex items-center gap-1.5"
-        >
-          <.icon name="hero-video-camera" class="size-4" />
-          <span>{@provider.series_count} séries</span>
-        </div>
-        <div :if={@provider.live_synced_at} class="flex items-center gap-1.5">
-          <.icon name="hero-clock" class="size-4" />
-          <span>{format_relative_time(@provider.live_synced_at)}</span>
+      <div class="mt-4 min-h-12 text-sm text-text-secondary">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div
+            :if={@provider.live_channels_count && @provider.live_channels_count > 0}
+            class="flex items-center gap-1.5"
+          >
+            <.icon name="hero-tv" class="size-4 shrink-0" />
+            <span>{@provider.live_channels_count} ao vivo</span>
+          </div>
+          <div
+            :if={@provider.movies_count && @provider.movies_count > 0}
+            class="flex items-center gap-1.5"
+          >
+            <.icon name="hero-film" class="size-4 shrink-0" />
+            <span>{@provider.movies_count} filmes</span>
+          </div>
+          <div
+            :if={@provider.series_count && @provider.series_count > 0}
+            class="flex items-center gap-1.5"
+          >
+            <.icon name="hero-video-camera" class="size-4 shrink-0" />
+            <span>{@provider.series_count} séries</span>
+          </div>
+          <div :if={@provider.live_synced_at} class="flex items-center gap-1.5">
+            <.icon name="hero-clock" class="size-4 shrink-0" />
+            <span>{format_relative_time(@provider.live_synced_at)}</span>
+          </div>
         </div>
       </div>
 
-      <div class="flex items-center justify-end gap-2 pt-3 border-t border-border">
+      <div class="mt-auto flex items-center justify-end gap-2 pt-3 border-t border-border">
         <button
           type="button"
           phx-click={@on_sync}
