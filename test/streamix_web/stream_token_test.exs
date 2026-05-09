@@ -1,5 +1,5 @@
 defmodule StreamixWeb.StreamTokenTest do
-  use Streamix.DataCase, async: true
+  use Streamix.DataCase, async: false
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -117,5 +117,38 @@ defmodule StreamixWeb.StreamTokenTest do
       )
 
     assert {:error, :unauthorized} = StreamToken.verify_and_get_url(token)
+  end
+
+  test "gindex movie token resolves the cached download url instead of xtream path" do
+    owner = user_fixture()
+
+    provider =
+      provider_fixture(owner, %{
+        provider_type: :gindex,
+        url: "http://127.0.0.1:65535",
+        gindex_url: "http://127.0.0.1:65535",
+        username: nil,
+        password: nil
+      })
+
+    cached_url = "http://cdn.example.test/download/movie.mp4"
+
+    movie =
+      movie_fixture(provider, %{
+        gindex_path: "/1:/Filmes/movie.mp4"
+      })
+
+    :ets.insert(
+      :gindex_url_cache,
+      {{:movie, movie.id}, cached_url, System.monotonic_time(:millisecond) + :timer.minutes(30)}
+    )
+
+    token = StreamToken.sign_movie(movie.id, owner.id)
+
+    assert {:ok, ^cached_url, "movie", %{content_id: content_id, provider_id: provider_id}} =
+             StreamToken.verify_and_get_url(token)
+
+    assert content_id == movie.id
+    assert provider_id == provider.id
   end
 end
