@@ -6,7 +6,8 @@
 // unit-test and keeps `video_player.js` focused on lifecycle + wiring.
 //
 // Return values mirror the verbs the caller already uses:
-//   "h265web"     -> call this.playWithH265web()        (GPU HEVC, GIndex MKV/HEVC)
+//   "avbridge"    -> call this.playWithAvbridge()       (preferred GPU HEVC, GIndex MKV/HEVC)
+//   "h265web"     -> call this.playWithH265web()        (alt GPU HEVC; needs SAB + COOP+COEP)
 //   "avplayer"     -> call this.tryAVPlayerFallback()
 //   "native"       -> call this.playNative()
 //   "hls-js"       -> call this.playWithHls()
@@ -25,19 +26,21 @@
  * @property {boolean} [preferAVPlayer]        - user preference flag
  * @property {boolean} [avPlayerAttempted]     - true if AVPlayer fallback was already tried
  * @property {boolean} [shouldPreferAVPlayerForLiveTs] - precomputed by caller (depends on UA + contentType + streamType)
+ * @property {boolean} [avbridgeAttempted]   - true if avbridge was already tried for this content
  * @property {boolean} [h265webAttempted]    - true if h265web was already tried for this content
  * @property {Object}  [capabilities]          - runtime capability probes, passed in by caller
  * @property {boolean} [capabilities.hlsJs]    - isHlsJsSupported()
  * @property {boolean} [capabilities.mpegts]   - isMpegtsSupported()
  * @property {boolean} [capabilities.nativeHls] - <video>.canPlayType("application/vnd.apple.mpegurl") || "application/x-mpegURL"
- * @property {boolean} [capabilities.h265web]  - true when h265web is available + the runtime can use WebCodecs for HEVC
+ * @property {boolean} [capabilities.avbridge] - true when avbridge engine is enabled + WebCodecs HEVC available
+ * @property {boolean} [capabilities.h265web]  - true when h265web engine is enabled + WebCodecs HEVC available
  */
 
 /**
  * Decide which engine the video player should use for the given context.
  *
  * @param {EngineSelectorCtx} ctx
- * @returns {"h265web"|"avplayer"|"native"|"hls-js"|"mpegts"|"mpegts-flv"|"flv-unsupported"}
+ * @returns {"avbridge"|"h265web"|"avplayer"|"native"|"hls-js"|"mpegts"|"mpegts-flv"|"flv-unsupported"}
  */
 export function selectEngine(ctx) {
   const {
@@ -46,6 +49,7 @@ export function selectEngine(ctx) {
     recommendedPlayer,
     preferAVPlayer,
     avPlayerAttempted,
+    avbridgeAttempted,
     h265webAttempted,
     shouldPreferAVPlayerForLiveTs,
     capabilities = {},
@@ -53,6 +57,8 @@ export function selectEngine(ctx) {
 
   const hlsJs = !!capabilities.hlsJs;
   const mpegts = !!capabilities.mpegts;
+  const avbridge = !!capabilities.avbridge;
+  const canTryAvbridge = avbridge && !avbridgeAttempted;
   const h265web = !!capabilities.h265web;
   const canTryH265web = h265web && !h265webAttempted;
   // iOS Safari (and macOS Safari) implement HLS in the platform — feeding
@@ -64,13 +70,22 @@ export function selectEngine(ctx) {
   const nativeHls = !!capabilities.nativeHls;
   const canTryAVPlayer = !avPlayerAttempted;
 
-  // GIndex MKV / HEVC content via h265web — preferred when the runtime
-  // exposes WebCodecs HEVC hardware decode. h265web demuxes MKV in JS
-  // and feeds samples to WebCodecs, so the GPU does the heavy lifting
-  // instead of the libmedia WASM software decoder. We only walk this
-  // path when the caller has confirmed both that h265web can boot
-  // *and* that the browser advertises a HEVC decoder. Anything else
-  // falls through to AVPlayer (libmedia) on the next branch.
+  // GIndex MKV / HEVC content via avbridge (preferred GPU path).
+  // avbridge demuxes MKV in JS (mediabunny) and routes samples to
+  // WebCodecs for hardware decode — same idea as h265web, lighter
+  // bundle, MIT-licensed, and does not require SharedArrayBuffer
+  // (no COOP+COEP gymnastics). When the engine cannot boot the
+  // wrapper logs a fallback event and the next branch picks
+  // AVPlayer.
+  if (canTryAvbridge && sourceType === "gindex" && streamType === "mkv") {
+    return "avbridge";
+  }
+
+  // Same target content but for the h265web engine — kept around
+  // for environments that already pay the COOP+COEP cost (so they
+  // get SharedArrayBuffer + multi-threaded HEVC decode). Off by
+  // default; flip the `feature_h265web` Application config when
+  // you wire the headers.
   if (canTryH265web && sourceType === "gindex" && streamType === "mkv") {
     return "h265web";
   }

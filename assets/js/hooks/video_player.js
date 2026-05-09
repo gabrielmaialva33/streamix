@@ -61,8 +61,29 @@ async function loadAVPlayer() {
   return { AVPlayerWrapper, detectAudioIssue, preloadCommonWasm };
 }
 
-// Lazy load h265web only when an HEVC GIndex stream is selected. h265web
-// pulls a 415 KB SDK wrapper which then fetches ~7 MB of WASM from
+// Lazy load avbridge only when GIndex MKV/HEVC is selected. The
+// avbridge bundle pulls in libavjs-webcodecs-bridge + mediabunny and
+// crosses the 1 MB threshold once gzipped, so we keep it off the
+// critical path.
+let AvbridgeWrapper = null;
+let avbridgeModulePromise = null;
+
+async function loadAvbridge() {
+  if (!AvbridgeWrapper) {
+    log.debug("Lazy loading avbridge module...");
+    avbridgeModulePromise ||= import("../lib/avbridge_wrapper").catch((error) => {
+      avbridgeModulePromise = null;
+      throw error;
+    });
+    const module = await avbridgeModulePromise;
+    AvbridgeWrapper = module.AvbridgeWrapper;
+    log.debug("avbridge module loaded");
+  }
+  return { AvbridgeWrapper };
+}
+
+// Lazy load h265web only when explicitly opted in. h265web ships a
+// 415 KB SDK wrapper that then fetches ~7 MB of WASM from
 // `priv/static/vendor/h265web/` only after the engine_selector picks
 // it. Keep that off the critical path.
 let H265webWrapper = null;
@@ -93,16 +114,17 @@ function hasWebCodecsHevcSupport() {
 }
 
 // Feature-flag readout. Two ways to opt in (so we can flip remotely
-// without a redeploy): a `data-feature-h265web="true"` on the player
+// without a redeploy): a `data-feature-*="true"` on the player
 // container (server-rendered, controlled from a single Application
-// config) or a `localStorage["streamix:h265web"]` value of `"true"`
-// for ad-hoc browser testing. Defaults to false until field telemetry
+// config) or a `localStorage["streamix:<engine>"]` value of `"true"`
+// for ad-hoc browser testing. Default false until field telemetry
 // looks good.
-function readH265webFlag(containerEl) {
-  if (containerEl?.dataset?.featureH265web === "true") return true;
+function readEngineFlag(containerEl, engine) {
+  const dataKey = `feature${engine.charAt(0).toUpperCase()}${engine.slice(1)}`;
+  if (containerEl?.dataset?.[dataKey] === "true") return true;
   try {
     if (typeof localStorage !== "undefined") {
-      return localStorage.getItem("streamix:h265web") === "true";
+      return localStorage.getItem(`streamix:${engine}`) === "true";
     }
   } catch {
     // Locked-down browser (3rd-party-cookie embed, Safari ITP) —
@@ -110,6 +132,9 @@ function readH265webFlag(containerEl) {
   }
   return false;
 }
+
+const readAvbridgeFlag = (el) => readEngineFlag(el, "avbridge");
+const readH265webFlag = (el) => readEngineFlag(el, "h265web");
 
 function isFirefoxBrowser() {
   return /firefox/i.test(navigator.userAgent);
@@ -490,17 +515,26 @@ const VideoPlayer = {
     this.avPlayerTimeInterval = null;
     this.preferAVPlayer = false; // Manual audio compatibility mode
 
-    // H265web (GPU HEVC) state — the engine_selector hands work here
-    // when GIndex serves an MKV and the runtime exposes WebCodecs
-    // hardware decode. We track `attempted` so a fallback to AVPlayer
-    // does not immediately bounce back to h265web in a re-init.
+    // Avbridge (preferred GPU HEVC) state — engine_selector hands
+    // work here for GIndex MKV when the runtime exposes WebCodecs
+    // and the feature flag is on. We track `attempted` so a
+    // fallback to AVPlayer does not immediately bounce back here on
+    // re-init.
+    this.avbridge = null;
+    this.usingAvbridge = false;
+    this.avbridgeAttempted = false;
+    // Toggle via `data-feature-avbridge` on the container or
+    // `localStorage["streamix:avbridge"]` for ad-hoc opt-in.
+    this.featureFlagAvbridge = readAvbridgeFlag(this.el);
+
+    // H265web (alt GPU HEVC; needs SAB + COOP+COEP) state — kept as
+    // a separate engine so the operator can flip between strategies
+    // without redeploying. Off by default; turn on via
+    // `data-feature-h265web` once the headers are wired.
     this.h265web = null;
     this.usingH265web = false;
     this.h265webAttempted = false;
     this.h265webTimeInterval = null;
-    // Feature flag is opt-in for now — flip via `data-feature-h265web`
-    // on the player container or `localStorage["streamix:h265web"]`.
-    // Defaults to false until we are happy with field telemetry.
     this.featureFlagH265web = readH265webFlag(this.el);
 
     // Next episode state (for pre-fetch)
@@ -1436,23 +1470,24 @@ const VideoPlayer = {
   },
 
   buildEngineContext(recommendedPlayer) {
+    const hasWebCodecs = hasWebCodecsHevcSupport();
     return {
       streamType: this.currentStreamType,
       sourceType: this.sourceType,
       recommendedPlayer,
       preferAVPlayer: this.preferAVPlayer,
       avPlayerAttempted: this.avPlayerAttempted,
+      avbridgeAttempted: this.avbridgeAttempted,
       h265webAttempted: this.h265webAttempted,
       shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
       capabilities: {
         hlsJs: isHlsJsSupported(),
         mpegts: isMpegtsSupported(),
         nativeHls: this.getNativeHlsSupport(),
-        // h265web is reserved for HEVC paths today; only flag it as
-        // available when WebCodecs advertises a HEVC decoder. Falsy
-        // here makes engine_selector skip the h265web branch and
-        // hand the work back to AVPlayer (libmedia) like before.
-        h265web: this.featureFlagH265web && hasWebCodecsHevcSupport(),
+        // Both alt engines target HEVC paths only; gate them on
+        // WebCodecs availability so legacy browsers stay on AVPlayer.
+        avbridge: this.featureFlagAvbridge && hasWebCodecs,
+        h265web: this.featureFlagH265web && hasWebCodecs,
       },
     };
   },
@@ -1534,6 +1569,14 @@ const VideoPlayer = {
       this.avPlayer.destroy();
       this.avPlayer = null;
     }
+    if (this.avbridge) {
+      this.avbridge.destroy().catch((err) => {
+        log.debug("[VideoPlayer] avbridge cleanup threw:", err);
+      });
+      this.avbridge = null;
+    }
+    this.usingAvbridge = false;
+
     if (this.h265web) {
       this.h265web.destroy().catch((err) => {
         log.debug("[VideoPlayer] h265web cleanup threw:", err);
@@ -1599,6 +1642,13 @@ const VideoPlayer = {
       this.avPlayer?.destroy?.();
     } catch (error) {
       log.debug("[VideoPlayer] Emergency AVPlayer teardown failed:", error);
+    }
+
+    try {
+      this.avbridge?.pause?.();
+      this.avbridge?.destroy?.();
+    } catch (error) {
+      log.debug("[VideoPlayer] Emergency avbridge teardown failed:", error);
     }
 
     try {
@@ -1953,6 +2003,10 @@ const VideoPlayer = {
     });
 
     switch (engine) {
+      case "avbridge":
+        log.debug("Using avbridge (engine_selector decision)");
+        this.playWithAvbridge();
+        break;
       case "h265web":
         log.debug("Using h265web (engine_selector decision)");
         this.playWithH265web();
@@ -2150,6 +2204,57 @@ const VideoPlayer = {
     }
 
     this.hls = await this.ensureStreamLoader().loadHls(this.currentUrl);
+  },
+
+  async playWithAvbridge() {
+    log.info("Playing with avbridge, url:", this.currentUrl);
+    this.avbridgeAttempted = true;
+    this.reportPlayerLifecycle("player_engine_selected", { engine: "avbridge" });
+
+    const sessionId = this.playbackSessionId;
+    const resumeTime = this.takeResumeTime();
+
+    try {
+      const { AvbridgeWrapper } = await loadAvbridge();
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
+
+      this.avbridge = new AvbridgeWrapper({ video: this.video });
+      await this.avbridge.load(this.currentUrl, { startTime: resumeTime });
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        await this.avbridge.destroy().catch(() => {});
+        this.avbridge = null;
+        return;
+      }
+
+      this.usingAvbridge = true;
+      this.playerUI.hideLoading();
+
+      if (resumeTime > 0) {
+        try {
+          await this.avbridge.seek(resumeTime);
+        } catch (seekErr) {
+          log.warn("[Avbridge] seek-on-load failed, will try after play()", seekErr);
+        }
+      }
+      await this.avbridge.play();
+    } catch (err) {
+      log.warn("[Avbridge] init failed, falling back to AVPlayer:", err);
+      this.reportPlayerLifecycle("player_engine_fallback", {
+        from: "avbridge",
+        to: "avplayer",
+        reason: err?.message || String(err),
+      });
+      try {
+        await this.avbridge?.destroy?.();
+      } catch {
+        // best effort
+      }
+      this.avbridge = null;
+      this.usingAvbridge = false;
+      if (this.isCurrentPlaybackSession(sessionId)) {
+        this.tryAVPlayerFallback();
+      }
+    }
   },
 
   async playWithH265web() {
