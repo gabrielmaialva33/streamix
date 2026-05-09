@@ -151,6 +151,7 @@ defmodule StreamixWeb.PlayerComponents do
         preload="metadata"
         playsinline
         webkit-playsinline
+        x-webkit-airplay="allow"
       />
 
       <%!-- Controls overlay --%>
