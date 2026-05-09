@@ -105,6 +105,15 @@ defmodule StreamixWeb.Router do
     get "/stream/proxy", StreamController, :proxy
     head "/stream/proxy", StreamController, :proxy
 
+    # Resolve-only endpoint — used by the gindex.mahina.cloud nginx
+    # reverse proxy to translate a signed token into the upstream
+    # `download.aspx` URL without ever streaming bytes through the
+    # BEAM. Authenticated by the X-Internal-Auth header
+    # (:gindex_resolve_secret), so the public rate-limited pipeline
+    # is fine — unauthenticated callers get a 401 and never see a
+    # resolution.
+    get "/stream/resolve", StreamController, :resolve
+
     # GIndex track enumeration. Server-side ffprobe cache replaces the
     # client-side "spawn a 2nd AVPlayer to enumerate" hack. Anonymous,
     # rate-limited — payload is purely informational (track index +

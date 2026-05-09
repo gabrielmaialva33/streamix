@@ -276,7 +276,18 @@ config :streamix,
   # directly — bypasses the Phoenix `/api/stream/proxy` 302 hop. The
   # nginx Lua verifier on the VPS must use the same value. When unset
   # (dev / tests) we fall back to the token-redirect path.
-  source_proxy_shared_secret: get_env.("SOURCE_PROXY_SHARED_SECRET")
+  source_proxy_shared_secret: get_env.("SOURCE_PROXY_SHARED_SECRET"),
+  # Public hostname of the GIndex direct-stream nginx proxy. Catalog
+  # URLs for GIndex content point straight at it instead of
+  # `/api/stream/proxy`, so 4K MKV bytes never traverse the BEAM and
+  # we sidestep Cloudflare's 524 origin timeout. Falsy disables the
+  # direct route and keeps the legacy proxy flow.
+  gindex_direct_proxy_url: get_env.("GINDEX_DIRECT_PROXY_URL"),
+  # Shared secret presented by the gindex nginx to the resolve-only
+  # endpoint via `X-Internal-Auth`. Required for the direct route to
+  # function — when unset the controller responds with 401 and the
+  # nginx Lua falls back through its error handler.
+  gindex_resolve_secret: get_env.("GINDEX_RESOLVE_SECRET")
 
 config :streamix,
   player_lifecycle_logs: get_env.("PLAYER_LIFECYCLE_LOGS") in ~w(true 1 yes)

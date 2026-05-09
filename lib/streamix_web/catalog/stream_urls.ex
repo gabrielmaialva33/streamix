@@ -31,18 +31,18 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   # ---------------------------------------------------------------------
 
   def signed_movie_url(movie) do
-    movie.id
-    |> StreamToken.sign_movie(nil, @sign_opts)
-    |> token_proxy_url()
+    token = StreamToken.sign_movie(movie.id, nil, @sign_opts)
+    if gindex_content?(movie), do: gindex_direct_url(token), else: token_proxy_url(token)
   end
 
   def signed_episode_url(episode) do
-    episode.id
-    |> StreamToken.sign_episode(nil, @sign_opts)
-    |> token_proxy_url()
+    token = StreamToken.sign_episode(episode.id, nil, @sign_opts)
+    if gindex_content?(episode), do: gindex_direct_url(token), else: token_proxy_url(token)
   end
 
   def signed_channel_url(channel) do
+    # Channels are always live IPTV — never GIndex — so they always go
+    # through the legacy token proxy flow.
     channel.id
     |> StreamToken.sign_channel(nil, @sign_opts)
     |> token_proxy_url()
@@ -77,6 +77,26 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   defp token_proxy_url(token) do
     "#{endpoint_url()}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
+
+  # GIndex VOD content (movies + episodes with a non-empty `gindex_path`)
+  # streams from a dedicated nginx hop at `gindex.mahina.cloud`. The
+  # nginx side hits our resolve-only endpoint over the tunnel, gets the
+  # `download.aspx` URL, and pumps bytes back to the player without
+  # ever touching the BEAM. Falsy `:gindex_direct_proxy_url` disables
+  # the direct route — useful in dev where we don't run nginx.
+  defp gindex_direct_url(token) do
+    case Application.get_env(:streamix, :gindex_direct_proxy_url) do
+      base when is_binary(base) and base != "" ->
+        normalized = String.trim_trailing(base, "/")
+        "#{normalized}/stream?token=#{URI.encode_www_form(token)}"
+
+      _ ->
+        token_proxy_url(token)
+    end
+  end
+
+  defp gindex_content?(%{gindex_path: path}) when is_binary(path) and path != "", do: true
+  defp gindex_content?(_), do: false
 
   defp browser_token_proxy_url(token) do
     proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")

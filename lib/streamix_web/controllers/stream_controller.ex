@@ -55,6 +55,71 @@ defmodule StreamixWeb.StreamController do
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
+  @doc """
+  Resolves a signed token into the upstream URL **without** proxying
+  bytes. Designed for an external nginx (`gindex.mahina.cloud`) to do
+  the byte streaming itself — the BEAM never sees the 4K MKV traffic,
+  so we stay clear of the Cloudflare 524 origin-timeout and the
+  Phoenix/Finch chunk pump.
+
+  Authentication: the request must carry an `X-Internal-Auth` header
+  whose value matches `:gindex_resolve_secret`. The token's own
+  `bypass_subscription` flag is honored, so catalog-minted tokens
+  (which set it) keep working when the resolve hop is reached from a
+  hostname that doesn't forward the original `X-API-Key`.
+
+  Success response (HTTP 200):
+
+      {
+        "url": "https://animezey16082023.../download.aspx?...",
+        "content_type": "movie" | "episode" | "channel" | "url",
+        "provider_id": <integer | null>,
+        "content_id":  <integer | null>
+      }
+  """
+  def resolve(conn, %{"token" => token}) do
+    case check_internal_auth(conn) do
+      :ok ->
+        opts = [bypass_subscription: ApiKeyAuth.valid_api_key?(conn)]
+
+        case StreamToken.verify_and_get_url(token, opts) do
+          {:ok, url, content_type, meta} ->
+            conn
+            |> put_resp_header("cache-control", "private, max-age=60")
+            |> json(%{
+              url: url,
+              content_type: content_type,
+              provider_id: Map.get(meta, :provider_id),
+              content_id: Map.get(meta, :content_id)
+            })
+
+          {:error, reason} ->
+            token_error(conn, reason)
+        end
+
+      {:halt, halted} ->
+        halted
+    end
+  end
+
+  def resolve(conn, _), do: StreamErrors.halt(conn, :missing_token)
+
+  defp check_internal_auth(conn) do
+    expected = Application.get_env(:streamix, :gindex_resolve_secret)
+
+    cond do
+      is_nil(expected) or expected == "" ->
+        Logger.error("Stream resolve: :gindex_resolve_secret not configured")
+        {:halt, StreamErrors.halt(conn, :unauthorized)}
+
+      Plug.Conn.get_req_header(conn, "x-internal-auth") == [expected] ->
+        :ok
+
+      true ->
+        {:halt, StreamErrors.halt(conn, :unauthorized)}
+    end
+  end
+
   defp stream_by_type(%{method: "HEAD"} = conn, url, _type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
