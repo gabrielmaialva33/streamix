@@ -343,6 +343,7 @@ defmodule StreamixWeb.Router do
       live "/admin/billing", Admin.BillingLive, :index
       live "/admin/users", Admin.UsersLive, :index
       live "/admin/users/:id", Admin.UserEditLive, :edit
+      live "/debug/pwa", Admin.PwaDebugLive, :index
     end
 
     delete "/logout", UserSessionController, :delete

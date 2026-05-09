@@ -36,6 +36,12 @@ defmodule StreamixWeb.AdminComponents do
         icon="hero-users"
         current_path={@current_path}
       />
+      <.admin_tab
+        path={~p"/debug/pwa"}
+        label="PWA Debug"
+        icon="hero-device-phone-mobile"
+        current_path={@current_path}
+      />
     </nav>
     """
   end
