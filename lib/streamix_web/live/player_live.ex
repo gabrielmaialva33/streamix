@@ -125,31 +125,33 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("player_lifecycle", params, socket) do
-    Logger.debug("player_lifecycle #{params["stage"]}",
-      player_stage: params["stage"],
-      player_session_id: params["session_id"],
-      player_engine: params["engine"],
-      stream_type: params["current_stream_type"],
-      content_type: params["content_type"],
-      source_type: params["source_type"],
-      using_avplayer: params["using_avplayer"],
-      native_touch_controls: params["native_touch_controls"],
-      native_current_time: params["current_time"],
-      native_duration: params["duration"],
-      native_ready_state: params["ready_state"],
-      native_network_state: params["network_state"],
-      native_paused: params["paused"],
-      native_seeking: params["seeking"],
-      native_autoplay: params["autoplay"],
-      native_preload: params["preload"],
-      native_buffered_range_count: params["buffered_range_count"],
-      native_buffered_ranges: params["buffered_ranges"],
-      native_has_current_src: params["has_current_src"],
-      native_resume_time: params["resume_time"],
-      native_has_audio_issue: params["has_audio_issue"],
-      native_error_name: params["error_name"],
-      native_error_message: params["error_message"]
-    )
+    if Application.get_env(:streamix, :player_lifecycle_logs, false) do
+      Logger.debug("player_lifecycle #{params["stage"]}",
+        player_stage: params["stage"],
+        player_session_id: params["session_id"],
+        player_engine: params["engine"],
+        stream_type: params["current_stream_type"],
+        content_type: params["content_type"],
+        source_type: params["source_type"],
+        using_avplayer: params["using_avplayer"],
+        native_touch_controls: params["native_touch_controls"],
+        native_current_time: params["current_time"],
+        native_duration: params["duration"],
+        native_ready_state: params["ready_state"],
+        native_network_state: params["network_state"],
+        native_paused: params["paused"],
+        native_seeking: params["seeking"],
+        native_autoplay: params["autoplay"],
+        native_preload: params["preload"],
+        native_buffered_range_count: params["buffered_range_count"],
+        native_buffered_ranges: params["buffered_ranges"],
+        native_has_current_src: params["has_current_src"],
+        native_resume_time: params["resume_time"],
+        native_has_audio_issue: params["has_audio_issue"],
+        native_error_name: params["error_name"],
+        native_error_message: params["error_message"]
+      )
+    end
 
     {:noreply, socket}
   end

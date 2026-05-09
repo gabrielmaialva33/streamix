@@ -278,6 +278,9 @@ config :streamix,
   # (dev / tests) we fall back to the token-redirect path.
   source_proxy_shared_secret: get_env.("SOURCE_PROXY_SHARED_SECRET")
 
+config :streamix,
+  player_lifecycle_logs: get_env.("PLAYER_LIFECYCLE_LOGS") in ~w(true 1 yes)
+
 # API Keys for TV app and external clients
 # Comma-separated list of valid API keys
 api_keys =

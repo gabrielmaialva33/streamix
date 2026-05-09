@@ -28,6 +28,7 @@ config :streamix,
   # 302-to-source-proxy flow. Override at runtime via the
   # `STREAM_PROXY_BACKEND` env var.
   stream_proxy_backend: :beam,
+  player_lifecycle_logs: false,
   # Regex patterns matched against the *final* URL after the redirect
   # chain resolves. A hit is treated as an upstream failure even when
   # the response is technically 200/302, so VodProxy rotates to the
@@ -93,7 +94,38 @@ config :tailwind,
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id, :context, :reason, :error, :exception, :movie_name, :response_keys]
+  metadata: [
+    :request_id,
+    :context,
+    :reason,
+    :error,
+    :exception,
+    :movie_name,
+    :response_keys,
+    :player_stage,
+    :player_session_id,
+    :player_engine,
+    :stream_type,
+    :content_type,
+    :source_type,
+    :using_avplayer,
+    :native_touch_controls,
+    :native_current_time,
+    :native_duration,
+    :native_ready_state,
+    :native_network_state,
+    :native_paused,
+    :native_seeking,
+    :native_autoplay,
+    :native_preload,
+    :native_buffered_range_count,
+    :native_buffered_ranges,
+    :native_has_current_src,
+    :native_resume_time,
+    :native_has_audio_issue,
+    :native_error_name,
+    :native_error_message
+  ]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

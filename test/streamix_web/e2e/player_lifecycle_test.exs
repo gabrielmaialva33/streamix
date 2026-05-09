@@ -173,6 +173,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             autoplay: video ? video.autoplay : true,
             preload: video ? video.getAttribute("preload") : null,
             nativeControls: video ? video.controls : false,
+            lifecycleLogs: container ? container.dataset.playerLifecycleLogs : null,
             bottomControlsHidden: bottomControls ? bottomControls.classList.contains("hidden") : false,
             videoCount: document.querySelectorAll("video").length,
             avChildren: avMount ? avMount.childElementCount : -1,
@@ -197,6 +198,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             !state.autoplay &&
             state.preload === "metadata" &&
             state.nativeControls &&
+            state.lifecycleLogs === "false" &&
             state.nativeTouchControls &&
             state.bottomControlsHidden &&
             state.videoCount === 1 &&

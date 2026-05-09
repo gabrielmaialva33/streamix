@@ -62,6 +62,10 @@ defmodule StreamixWeb.PlayerComponents do
       |> assign(:source_type, source_type)
       |> assign(:stream_type, stream_type)
       |> assign(:next_episode_json, next_episode_json)
+      |> assign(
+        :player_lifecycle_logs,
+        Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
+      )
 
     ~H"""
     <div
@@ -77,6 +81,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-next-episode={@next_episode_json}
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
+      data-player-lifecycle-logs={@player_lifecycle_logs}
     >
       <%!-- Loading indicator --%>
       <div

@@ -383,6 +383,7 @@ const VideoPlayer = {
     this.contentId = this.el.dataset.contentId;
     this.initialMode = this.el.dataset.streamingMode || null;
     this.expectedDuration = parseInt(this.el.dataset.expectedDuration, 10) || 0;
+    this.playerLifecycleLogs = this.el.dataset.playerLifecycleLogs === "true";
 
     // Player instances
     this.streamLoader = null;
@@ -1558,6 +1559,8 @@ const VideoPlayer = {
   },
 
   traceNativeLifecycle(stage, sessionId, extra = {}) {
+    if (!this.playerLifecycleLogs) return;
+
     const payload = {
       session_id: sessionId,
       ...this.getNativePlaybackSnapshot(),
