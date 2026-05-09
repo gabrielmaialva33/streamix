@@ -1380,6 +1380,20 @@ const VideoPlayer = {
     });
   },
 
+  reportPlayerLifecycle(stage, extra = {}) {
+    this.pushEvent("player_lifecycle", {
+      stage,
+      session_id: this.playbackSessionId,
+      engine: this.usingAVPlayer ? "avplayer" : "native",
+      current_stream_type: this.currentStreamType,
+      content_type: this.contentType,
+      source_type: this.sourceType,
+      using_avplayer: this.usingAVPlayer,
+      native_touch_controls: this.nativeTouchControls,
+      ...extra,
+    });
+  },
+
   toAbsoluteUrl(url) {
     if (!url) return url;
     if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -1393,6 +1407,7 @@ const VideoPlayer = {
   // ============================================
 
   cleanup() {
+    this.reportPlayerLifecycle("player_cleanup");
     this.playbackSessionId += 1;
     this._metadataProbeCancel?.();
     this._metadataProbeCancel = null;
@@ -1535,6 +1550,10 @@ const VideoPlayer = {
 
     if (resumeTime > 0) {
       log.debug("Resuming from saved position before play:", resumeTime);
+      this.reportPlayerLifecycle("player_resume_seek", {
+        session_id: sessionId,
+        resume_time: resumeTime,
+      });
       await this.waitForNativeReady(sessionId);
       await this.waitForNativeSeek(sessionId, resumeTime);
     }
@@ -1676,8 +1695,12 @@ const VideoPlayer = {
     log.debug("Detected stream type:", this.currentStreamType);
 
     this.cleanup();
-    this.beginPlaybackSession();
+    const sessionId = this.beginPlaybackSession();
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
+    this.reportPlayerLifecycle("player_session_started", {
+      session_id: sessionId,
+      engine: this.currentStreamType,
+    });
 
     // Create stream loader (idempotent — recreated lazily after cleanup during fallbacks)
     this.ensureStreamLoader();
@@ -1898,6 +1921,7 @@ const VideoPlayer = {
 
   async playWithHls() {
     log.info("Playing with HLS.js, url:", this.currentUrl);
+    this.reportPlayerLifecycle("player_engine_selected", { engine: "hls-js" });
 
     if (!isHlsJsSupported()) {
       if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -1922,6 +1946,7 @@ const VideoPlayer = {
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
     this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
     const sessionId = this.playbackSessionId;
+    this.reportPlayerLifecycle("player_engine_selected", { engine: type, session_id: sessionId });
 
     try {
       this.mpegtsPlayer = await this.ensureStreamLoader().loadMpegts(this.currentUrl, type);
@@ -1951,6 +1976,10 @@ const VideoPlayer = {
     const sessionId = this.playbackSessionId;
     log.info("Playing with native video element, url:", this.currentUrl);
     this.setNativeTouchControls(isAppleTouchDevice());
+    this.reportPlayerLifecycle("player_engine_selected", {
+      engine: "native",
+      session_id: sessionId,
+    });
     this.video.src = this.currentUrl;
 
     const playHandler = () => {
@@ -2190,6 +2219,11 @@ const VideoPlayer = {
     const sessionId = this.beginPlaybackSession();
     const resumeTime = this.takeResumeTime(this.video.currentTime || 0);
     const wasPlaying = !this.video.paused || resumeTime > 0;
+    this.reportPlayerLifecycle("player_engine_selected", {
+      engine: "avplayer",
+      session_id: sessionId,
+      fallback: true,
+    });
 
     this.video.pause();
 
@@ -2849,6 +2883,7 @@ const VideoPlayer = {
 
   revertToNativePlayer() {
     log.debug("[VideoPlayer] Reverting to native player");
+    this.reportPlayerLifecycle("player_engine_destroyed", { engine: "avplayer" });
     this.beginPlaybackSession();
 
     this.stopAVPlayerTimeUpdates();

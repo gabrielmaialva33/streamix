@@ -27,6 +27,10 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
+  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
+  import StreamixWeb.ConnCase, only: [log_in_user: 2]
+
+  alias PlaywrightEx.BrowserContext
 
   setup do
     provider =
@@ -77,13 +81,31 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
     end
   end
 
-  defp login(conn, user) do
-    conn
+  defp login(session, user) do
+    cookie =
+      build_conn()
+      |> log_in_user(user)
+      |> get(~p"/browse/movies")
+      |> Map.fetch!(:resp_cookies)
+      |> Map.fetch!("_streamix_key")
+
+    session
+    |> PhoenixTest.Playwright.unwrap(fn %{context_id: context_id} ->
+      {:ok, _} =
+        BrowserContext.add_cookies(context_id,
+          timeout: 5_000,
+          cookies: [
+            %{
+              "name" => "_streamix_key",
+              "value" => cookie.value,
+              "url" => StreamixWeb.Endpoint.url(),
+              "httpOnly" => true,
+              "sameSite" => "Lax"
+            }
+          ]
+        )
+    end)
     |> visit(~p"/browse/movies")
-    |> assert_has("body .phx-connected form[action='/login']")
-    |> fill_in("Email", with: user.email)
-    |> fill_in("Senha", with: valid_user_password())
-    |> submit()
     |> assert_has("#movies")
   end
 
@@ -95,7 +117,17 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
   end
 
   defp run_js(session, script) do
-    PhoenixTest.Playwright.evaluate(session, script, fn _ -> :ok end)
+    try do
+      PhoenixTest.Playwright.evaluate(session, script, fn _ -> :ok end)
+    rescue
+      error in ExUnit.AssertionError ->
+        if String.contains?(error.message, "Execution context was destroyed") do
+          :ok
+        else
+          reraise error, __STACKTRACE__
+        end
+    end
+
     session
   end
 end

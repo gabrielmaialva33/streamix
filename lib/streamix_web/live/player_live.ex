@@ -18,6 +18,8 @@ defmodule StreamixWeb.PlayerLive do
   """
   use StreamixWeb, :live_view
 
+  require Logger
+
   alias Streamix.{Access, Billing}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
@@ -119,6 +121,21 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("player_debug", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("player_lifecycle", params, socket) do
+    Logger.debug("player_lifecycle #{params["stage"]}",
+      player_stage: params["stage"],
+      player_session_id: params["session_id"],
+      player_engine: params["engine"],
+      stream_type: params["current_stream_type"],
+      content_type: params["content_type"],
+      source_type: params["source_type"],
+      using_avplayer: params["using_avplayer"],
+      native_touch_controls: params["native_touch_controls"]
+    )
+
     {:noreply, socket}
   end
 
