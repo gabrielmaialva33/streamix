@@ -60,8 +60,8 @@ defmodule StreamixWeb.PlayerComponents do
         Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
       )
       |> assign(
-        :feature_avbridge,
-        Application.get_env(:streamix, :feature_avbridge, false) |> to_string()
+        :feature_h265web,
+        Application.get_env(:streamix, :feature_h265web, false) |> to_string()
       )
 
     ~H"""
@@ -79,7 +79,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
       data-player-lifecycle-logs={@player_lifecycle_logs}
-      data-feature-avbridge={@feature_avbridge}
+      data-feature-h265web={@feature_h265web}
     >
       <%!-- Loading indicator --%>
       <div
@@ -117,6 +117,17 @@ defmodule StreamixWeb.PlayerComponents do
            next diff wipes it and you end up with audio-only. --%>
       <div
         id="avplayer-mount"
+        phx-update="ignore"
+        class="absolute inset-0 z-0 hidden"
+      />
+
+      <%!-- h265web.js mount point. Same trick as avplayer-mount above:
+           h265web injects its own <canvas> inside this div, so we keep
+           it under `phx-update="ignore"` to survive LiveView patches.
+           Hidden by default; `playWithH265web` flips it visible and
+           hides the native <video> below. --%>
+      <div
+        id="h265web-mount"
         phx-update="ignore"
         class="absolute inset-0 z-0 hidden"
       />
