@@ -288,12 +288,16 @@ config :streamix,
   # function — when unset the controller responds with 401 and the
   # nginx Lua falls back through its error handler.
   gindex_resolve_secret: get_env.("GINDEX_RESOLVE_SECRET"),
+  # Opt the browser into the avbridge engine for GIndex MKV/HEVC.
+  # Preferred path: lighter bundle, MIT, does not need
+  # SharedArrayBuffer. The hook falls back to AVPlayer if init
+  # fails (e.g. the runtime cannot decode HEVC via WebCodecs).
+  feature_avbridge: (get_env.("FEATURE_AVBRIDGE") || "false") == "true",
   # Opt the browser into the h265web.js engine for GIndex MKV/HEVC
-  # content. When `"true"`, the player container renders with
-  # `data-feature-h265web="true"` and the JS hook routes that path
-  # through `playWithH265web` (WebCodecs HEVC GPU decode via the
-  # `webcodec_hevc` core). Falsy keeps the legacy AVPlayer
-  # (libmedia WASM) path.
+  # content. Alternate GPU path; needs SAB + COOP+COEP headers to
+  # actually run multi-threaded decode (without them the SDK boots
+  # but the AudioContext/decoder pipeline never starts). Off by
+  # default; flip when the headers are wired.
   feature_h265web: (get_env.("FEATURE_H265WEB") || "false") == "true"
 
 config :streamix,
