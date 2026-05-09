@@ -116,6 +116,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       started_at: System.monotonic_time(:millisecond)
     }
 
+    emit_telemetry(:start, state)
+
     case resolve_chain(url) do
       {:ok, final_url} ->
         if FailoverPolicy.failover_url?(final_url) do
@@ -175,6 +177,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp do_pipe(conn, _final_url, %{retry_count: n} = state)
        when n > @max_mid_stream_retries do
     Logger.warning("[VodProxy] giving up after #{n} retries for #{sanitize(state.original_url)}")
+    emit_telemetry(:complete, state, outcome: :retry_limit_exceeded)
 
     conn
   end
@@ -182,6 +185,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp do_pipe(conn, final_url, state) do
     if exceeded_retry_budget?(state) do
       Logger.warning("[VodProxy] retry budget exhausted for #{sanitize(state.original_url)}")
+      emit_telemetry(:complete, state, outcome: :retry_budget_exhausted)
       conn
     else
       do_pipe_attempt(conn, final_url, state)
@@ -195,11 +199,19 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     handle_attempt_result(stream_via_finch(conn, req, state), conn, state)
   end
 
-  defp handle_attempt_result({:ok, conn, _final_state}, _conn, _state), do: conn
-  defp handle_attempt_result({:error, :client_closed, chunked_conn}, _conn, _state),
-    do: chunked_conn
+  defp handle_attempt_result({:ok, conn, final_state}, _conn, state) do
+    emit_telemetry(:complete, state, outcome: :ok, bytes_sent: final_state.total_sent)
+    conn
+  end
+
+  defp handle_attempt_result({:error, :client_closed, chunked_conn, final_state}, _conn, state) do
+    emit_telemetry(:client_closed, state, bytes_sent: final_state.total_sent)
+    emit_telemetry(:complete, state, outcome: :client_closed, bytes_sent: final_state.total_sent)
+    chunked_conn
+  end
 
   defp handle_attempt_result({:error, :before_first_byte, reason}, conn, state) do
+    emit_telemetry(:upstream_error, state, reason: reason)
     handle_pre_flight_error(conn, reason, state)
   end
 
@@ -208,16 +220,20 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
          _conn,
          state
        ) do
+    emit_telemetry(:upstream_error, state, reason: reason, bytes_sent: total_sent)
     handle_mid_stream_error(chunked_conn, total_sent, reason, state)
   end
 
-  defp handle_attempt_result({:error, :status_terminal, status}, conn, _state) do
+  defp handle_attempt_result({:error, :status_terminal, status}, conn, state) do
     Logger.warning("[VodProxy] terminal upstream status #{status}")
+    emit_telemetry(:terminal_status, state, status: status)
+    emit_telemetry(:complete, state, outcome: :terminal_status, status: status)
     serve_fallback_or_halt(conn, {:unexpected_status, status})
   end
 
-  defp handle_attempt_result({:error, :status_no_partial, status}, conn, _state) do
+  defp handle_attempt_result({:error, :status_no_partial, status}, conn, state) do
     Logger.warning("[VodProxy] reconnect aborted: upstream ignored Range and returned #{status}")
+    emit_telemetry(:complete, state, outcome: :status_no_partial, status: status)
 
     conn
   end
@@ -228,9 +244,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         "[VodProxy] pre-flight failure (#{inspect(reason)}); retry #{state.retry_count + 1}"
       )
 
-      retry_with_fresh_chain(conn, %{state | retry_count: state.retry_count + 1})
+      next_state = %{state | retry_count: state.retry_count + 1}
+      emit_telemetry(:upstream_retry, next_state, reason: reason)
+      retry_with_fresh_chain(conn, next_state)
     else
       Logger.warning("[VodProxy] upstream pre-flight failed: #{inspect(reason)}")
+      emit_telemetry(:complete, state, outcome: :pre_flight_failed, reason: reason)
       serve_fallback_or_halt(conn, reason)
     end
   end
@@ -242,8 +261,14 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       )
 
       state = %{state | bytes_sent: total_sent, retry_count: state.retry_count + 1}
+      emit_telemetry(:upstream_retry, state, reason: reason, bytes_sent: total_sent)
       retry_with_fresh_chain(chunked_conn, state)
     else
+      emit_telemetry(:complete, state,
+        outcome: :mid_stream_retry_limit_exceeded,
+        bytes_sent: total_sent
+      )
+
       chunked_conn
     end
   end
@@ -332,8 +357,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         on_pump_error({:pump_down, reason}, acc)
     end
   catch
-    {:client_closed, %{conn: conn}} ->
-      {:error, :client_closed, conn}
+    {:client_closed, %{conn: conn} = acc} ->
+      {:error, :client_closed, conn, acc}
 
     {:upstream_error, status, %{sent_headers?: false}} ->
       if status in @terminal_statuses do
@@ -456,5 +481,26 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   defp sanitize(url) do
     Regex.replace(~r{/(movie|series|live)/[^/]+/[^/]+/}, url, "/\\1/***/***/")
+  end
+
+  defp emit_telemetry(event, state, metadata \\ []) do
+    metadata =
+      metadata
+      |> Keyword.put(:retry_count, state.retry_count)
+      |> Keyword.put(:duration_ms, System.monotonic_time(:millisecond) - state.started_at)
+
+    measurements = %{
+      bytes_sent: Keyword.get(metadata, :bytes_sent, state.bytes_sent),
+      retry_count: state.retry_count,
+      duration_ms: Keyword.fetch!(metadata, :duration_ms)
+    }
+
+    metadata =
+      metadata
+      |> Keyword.delete(:bytes_sent)
+      |> Keyword.delete(:duration_ms)
+      |> Map.new()
+
+    :telemetry.execute([:streamix, :stream_proxy, event], measurements, metadata)
   end
 end
