@@ -33,6 +33,30 @@ window.Alpine = Alpine;
 Alpine.start();
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
+
+const isIosWebKit = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+const isStandalonePwa = () =>
+  displayModeQuery?.matches === true || window.navigator.standalone === true;
+
+const applyPwaModeClasses = () => {
+  const standalone = isStandalonePwa();
+  const ios = isIosWebKit();
+  document.documentElement.classList.toggle("pwa-standalone", standalone);
+  document.documentElement.classList.toggle("ios-webkit", ios);
+  document.documentElement.classList.toggle("ios-pwa", ios && standalone);
+  document.documentElement.dataset.displayMode = standalone ? "standalone" : "browser";
+};
+
+applyPwaModeClasses();
+if (displayModeQuery?.addEventListener) {
+  displayModeQuery.addEventListener("change", applyPwaModeClasses);
+} else if (displayModeQuery?.addListener) {
+  displayModeQuery.addListener(applyPwaModeClasses);
+}
 
 // Merge colocated hooks with custom hooks
 const Hooks = {
@@ -160,7 +184,7 @@ function showUpdateToast(waitingWorker) {
   const toast = document.createElement("div");
   toast.id = "sw-update-toast";
   toast.className =
-    "fixed bottom-4 right-4 z-[9999] flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-300";
+    "fixed bottom-4 right-4 z-[9999] flex max-w-[calc(100vw-2rem)] items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-300";
 
   // Content wrapper
   const content = document.createElement("div");
