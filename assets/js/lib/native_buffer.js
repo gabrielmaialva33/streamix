@@ -47,6 +47,9 @@ export class NativeBufferManager {
       stallThreshold: options.stallThreshold || 3, // Stalls before action
       recoveryPauseTime: options.recoveryPauseTime || 2000, // 2s pause to recover
       bandwidthSamples: options.bandwidthSamples || 10, // Samples for avg
+      startupGraceMs: options.startupGraceMs || 5000, // Ignore startup/resume jitter
+      stallLogCooldownMs: options.stallLogCooldownMs || 10000,
+      criticalLogCooldownMs: options.criticalLogCooldownMs || 15000,
     };
 
     // State
@@ -60,6 +63,8 @@ export class NativeBufferManager {
     this.isRecovering = false;
     this.totalStalls = 0;
     this.playbackStartTime = null;
+    this.lastStallWarningTime = 0;
+    this.lastCriticalWarningTime = 0;
 
     // Callbacks
     this.onBufferHealthChange = options.onBufferHealthChange || (() => {});
@@ -139,9 +144,11 @@ export class NativeBufferManager {
 
     const bufferAhead = this.getBufferedAhead();
     const readyState = this.video?.readyState || 0;
+    const isStartupGrace = this._isInStartupGrace(now);
+    const isRealStall = readyState < 3 && !this.video.paused && !isStartupGrace;
 
-    // Only warn if this seems like a real stall (low readyState)
-    if (readyState < 3) {
+    if (isRealStall && now - this.lastStallWarningTime >= this.config.stallLogCooldownMs) {
+      this.lastStallWarningTime = now;
       log.warn(
         `Stall #${this.totalStalls} (buffer: ${bufferAhead.toFixed(1)}s, ready: ${readyState})`,
       );
@@ -156,10 +163,12 @@ export class NativeBufferManager {
       totalStalls: this.totalStalls,
       bufferAhead,
       readyState,
+      isRealStall,
+      isStartupGrace,
     });
 
     // Only attempt recovery for real stalls (low readyState + multiple occurrences)
-    if (this.stallCount >= this.config.stallThreshold && !this.isRecovering && readyState < 3) {
+    if (this.stallCount >= this.config.stallThreshold && !this.isRecovering && isRealStall) {
       this._attemptRecovery();
     }
   }
@@ -245,10 +254,24 @@ export class NativeBufferManager {
     });
 
     // Proactive recovery if buffer is critically low and video is trying to play
-    if (health === BufferHealth.CRITICAL && !this.isRecovering && !this.video.paused) {
+    if (
+      health === BufferHealth.CRITICAL &&
+      !this.isRecovering &&
+      !this.video.paused &&
+      !this._isInStartupGrace() &&
+      readyState < 3
+    ) {
+      const now = Date.now();
+      if (now - this.lastCriticalWarningTime < this.config.criticalLogCooldownMs) return;
+      this.lastCriticalWarningTime = now;
       log.warn("Critical buffer level detected");
       // Don't auto-pause, just log - browser handles this natively
     }
+  }
+
+  _isInStartupGrace(now = Date.now()) {
+    if (!this.playbackStartTime) return false;
+    return now - this.playbackStartTime < this.config.startupGraceMs;
   }
 
   /**
