@@ -8,6 +8,7 @@ defmodule StreamixWeb.Home.Data do
   alias Streamix.AI.UserAnalytics
   alias Streamix.Cache
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.HomeCatalogLoader
 
   @trending_ttl 3 * 3600
@@ -86,18 +87,13 @@ defmodule StreamixWeb.Home.Data do
 
     content_type = content_type(type)
 
-    if is_favorite do
-      Iptv.remove_favorite(scope.user.id, content_type, content.id)
-    else
-      Iptv.add_favorite(scope.user.id, %{
-        content_type: content_type,
-        content_id: content.id,
+    result =
+      FavoriteState.toggle(scope.user.id, content_type, content.id, %{
         content_name: content.title || content.name,
         content_icon: content.stream_icon || content.cover
       })
-    end
 
-    assign(socket, featured_favorite: !is_favorite)
+    assign(socket, featured_favorite: FavoriteState.preserve_boolean(is_favorite, result))
   end
 
   def toggle_content_favorite(%{assigns: %{current_scope: nil}} = socket, _type, _id), do: socket
@@ -106,7 +102,7 @@ defmodule StreamixWeb.Home.Data do
     with {:ok, content_type} <- normalize_favorite_type(type),
          {:ok, content_id} <- parse_content_id(id),
          {:ok, status} <-
-           Iptv.toggle_favorite(socket.assigns.current_scope.user.id, content_type, content_id) do
+           FavoriteState.toggle(socket.assigns.current_scope.user.id, content_type, content_id) do
       socket
       |> assign_favorite_map(content_type, content_id, status)
       |> refresh_home_favorites()

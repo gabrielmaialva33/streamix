@@ -14,6 +14,7 @@ defmodule StreamixWeb.SearchLive do
   import StreamixWeb.ContentComponents
 
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
 
   @doc false
   def mount(_params, _session, socket) do
@@ -99,11 +100,7 @@ defmodule StreamixWeb.SearchLive do
   end
 
   defp toggle_favorite(user_id, type, content_id) do
-    if Iptv.is_favorite?(user_id, type, content_id) do
-      Iptv.remove_favorite(user_id, type, content_id)
-    else
-      Iptv.add_favorite(user_id, type, content_id)
-    end
+    FavoriteState.toggle(user_id, type, content_id)
   end
 
   defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}

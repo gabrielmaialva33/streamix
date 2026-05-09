@@ -6,6 +6,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
@@ -93,18 +94,13 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     anime = socket.assigns.anime
     is_favorite = socket.assigns.is_favorite
 
-    if is_favorite do
-      Iptv.remove_favorite(user_id, "series", anime.id)
-    else
-      Iptv.add_favorite(user_id, %{
-        content_type: "series",
-        content_id: anime.id,
+    result =
+      FavoriteState.toggle(user_id, "series", anime.id, %{
         content_name: anime.title || anime.name,
         content_icon: anime.cover
       })
-    end
 
-    {:noreply, assign(socket, is_favorite: !is_favorite)}
+    {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
   defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}

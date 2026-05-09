@@ -11,6 +11,7 @@ defmodule StreamixWeb.Content.Browse do
   alias Phoenix.LiveView
   alias Streamix.Access
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
 
   use StreamixWeb, :verified_routes
 
@@ -107,24 +108,21 @@ defmodule StreamixWeb.Content.Browse do
     else
       config = config!(kind)
       item = get_item!(kind, item_id)
-      is_favorite = MapSet.member?(socket.assigns.favorites_map, item_id)
 
-      if is_favorite do
-        Iptv.remove_favorite(socket.assigns.user_id, config.content_type, item_id)
-      else
-        Iptv.add_favorite(socket.assigns.user_id, favorite_attrs(kind, item))
+      case FavoriteState.toggle(
+             socket.assigns.user_id,
+             config.content_type,
+             item_id,
+             favorite_attrs(kind, item)
+           ) do
+        {:ok, status} ->
+          socket
+          |> FavoriteState.apply_map(:favorites_map, item_id, status)
+          |> LiveView.stream_insert(config.stream, item)
+
+        {:error, _reason} ->
+          socket
       end
-
-      favorites_map =
-        if is_favorite do
-          MapSet.delete(socket.assigns.favorites_map, item_id)
-        else
-          MapSet.put(socket.assigns.favorites_map, item_id)
-        end
-
-      socket
-      |> assign(favorites_map: favorites_map)
-      |> LiveView.stream_insert(config.stream, item)
     end
   end
 

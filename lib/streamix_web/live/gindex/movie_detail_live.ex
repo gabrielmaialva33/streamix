@@ -5,6 +5,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
@@ -59,18 +60,13 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     movie = socket.assigns.movie
     is_favorite = socket.assigns.is_favorite
 
-    if is_favorite do
-      Iptv.remove_favorite(user_id, "movie", movie.id)
-    else
-      Iptv.add_favorite(user_id, %{
-        content_type: "movie",
-        content_id: movie.id,
+    result =
+      FavoriteState.toggle(user_id, "movie", movie.id, %{
         content_name: movie.title || movie.name,
         content_icon: movie.stream_icon
       })
-    end
 
-    {:noreply, assign(socket, is_favorite: !is_favorite)}
+    {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
   # Render

@@ -10,6 +10,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
 
   @per_page 48
 
@@ -88,30 +89,20 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     case parse_positive_integer(id) do
       {:ok, anime_id} ->
         anime = Iptv.get_series!(anime_id)
-        is_favorite = MapSet.member?(socket.assigns.favorites_map, anime_id)
 
-        if is_favorite do
-          Iptv.remove_favorite(user_id, "series", anime_id)
-        else
-          Iptv.add_favorite(user_id, %{
-            content_type: "series",
-            content_id: anime_id,
-            content_name: anime.title || anime.name,
-            content_icon: anime.cover
-          })
+        case FavoriteState.toggle(user_id, "series", anime_id, %{
+               content_name: anime.title || anime.name,
+               content_icon: anime.cover
+             }) do
+          {:ok, status} ->
+            {:noreply,
+             socket
+             |> FavoriteState.apply_map(:favorites_map, anime_id, status)
+             |> stream_insert(:animes, anime)}
+
+          {:error, _reason} ->
+            {:noreply, socket}
         end
-
-        favorites_map =
-          if is_favorite do
-            MapSet.delete(socket.assigns.favorites_map, anime_id)
-          else
-            MapSet.put(socket.assigns.favorites_map, anime_id)
-          end
-
-        {:noreply,
-         socket
-         |> assign(favorites_map: favorites_map)
-         |> stream_insert(:animes, anime)}
 
       :error ->
         {:noreply, socket}

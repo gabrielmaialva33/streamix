@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.LiveChannels do
   alias Streamix.Access
   alias Streamix.Iptv
   alias Streamix.Iptv.Epg
+  alias StreamixWeb.Content.FavoriteState
 
   use StreamixWeb, :verified_routes
 
@@ -92,21 +93,18 @@ defmodule StreamixWeb.Content.LiveChannels do
     else
       channel = Iptv.get_live_channel!(channel_id)
 
-      Iptv.toggle_favorite(socket.assigns.user_id, "live_channel", channel_id, %{
-        content_name: channel.name,
-        content_icon: channel.stream_icon
-      })
+      case FavoriteState.toggle(socket.assigns.user_id, "live_channel", channel_id, %{
+             content_name: channel.name,
+             content_icon: channel.stream_icon
+           }) do
+        {:ok, status} ->
+          socket
+          |> FavoriteState.apply_map(:favorites_map, channel_id, status)
+          |> LiveView.stream_insert(:channels, channel)
 
-      favorites_map =
-        if MapSet.member?(socket.assigns.favorites_map, channel_id) do
-          MapSet.delete(socket.assigns.favorites_map, channel_id)
-        else
-          MapSet.put(socket.assigns.favorites_map, channel_id)
-        end
-
-      socket
-      |> assign(favorites_map: favorites_map)
-      |> LiveView.stream_insert(:channels, channel)
+        {:error, _reason} ->
+          socket
+      end
     end
   end
 

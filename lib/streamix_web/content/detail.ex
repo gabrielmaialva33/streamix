@@ -8,6 +8,7 @@ defmodule StreamixWeb.Content.Detail do
   alias Streamix.Access
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
+  alias StreamixWeb.Content.FavoriteState
 
   def global_provider, do: Iptv.get_global_provider()
 
@@ -21,36 +22,24 @@ defmodule StreamixWeb.Content.Detail do
   def favorite?(user_id, content_type, content_id),
     do: Iptv.is_favorite?(user_id, content_type, content_id)
 
-  def toggle_movie_favorite(user_id, movie, true) do
-    Iptv.remove_favorite(user_id, "movie", movie.id)
-    false
+  def toggle_movie_favorite(user_id, movie, current) do
+    result =
+      FavoriteState.toggle(user_id, "movie", movie.id, %{
+        content_name: movie.title || movie.name,
+        content_icon: movie.stream_icon
+      })
+
+    FavoriteState.preserve_boolean(current, result)
   end
 
-  def toggle_movie_favorite(user_id, movie, false) do
-    Iptv.add_favorite(user_id, %{
-      content_type: "movie",
-      content_id: movie.id,
-      content_name: movie.title || movie.name,
-      content_icon: movie.stream_icon
-    })
+  def toggle_series_favorite(user_id, series, current) do
+    result =
+      FavoriteState.toggle(user_id, "series", series.id, %{
+        content_name: series.title || series.name,
+        content_icon: series.cover
+      })
 
-    true
-  end
-
-  def toggle_series_favorite(user_id, series, true) do
-    Iptv.remove_favorite(user_id, "series", series.id)
-    false
-  end
-
-  def toggle_series_favorite(user_id, series, false) do
-    Iptv.add_favorite(user_id, %{
-      content_type: "series",
-      content_id: series.id,
-      content_name: series.title || series.name,
-      content_icon: series.cover
-    })
-
-    true
+    FavoriteState.preserve_boolean(current, result)
   end
 
   def get_movie(movie_id), do: Iptv.get_movie(movie_id)
