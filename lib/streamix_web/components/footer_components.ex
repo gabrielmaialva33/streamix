@@ -167,7 +167,7 @@ defmodule StreamixWeb.FooterComponents do
             © {@year} Streamix<span :if={@version != ""}>· v{@version}</span>
           </p>
           <p class="flex items-center gap-3">
-            <span>Powered by TMDB · AniList · TomatoAnimes</span>
+            <span>Powered by Maia</span>
           </p>
         </div>
       </div>
