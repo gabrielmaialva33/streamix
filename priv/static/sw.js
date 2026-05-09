@@ -1,11 +1,11 @@
 /**
- * Streamix Service Worker v8
+ * Streamix Service Worker v9
  * - WASM caching for instant AVPlayer startup
  * - Static assets caching
  * - PWA offline support
  */
 
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const CACHE_NAME = `streamix-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -158,22 +158,36 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // JS/CSS bundles - Cache-first with network fallback
+    // JS/CSS bundles - Network-first with cache fallback.
+    // PWA shells must not get stuck on old app.js: if HTML ships new
+    // controls but SW serves an older bundle, buttons like /debug/pwa
+    // update/clear-cache cannot attach their handlers.
     if (url.pathname.startsWith('/assets/') &&
         (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'))) {
         event.respondWith(
-            caches.match(request).then((cached) => {
-                // Return cached immediately, but also fetch fresh in background
-                const fetchPromise = fetch(request).then((response) => {
+            (async () => {
+                const cached = await caches.match(request);
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 2500);
+
+                try {
+                    const response = await fetch(request, {
+                        cache: 'no-cache',
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeout);
+
                     if (response.ok) {
                         const clone = response.clone();
                         caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
                     }
-                    return response;
-                }).catch(() => cached);
 
-                return cached || fetchPromise;
-            })
+                    return response;
+                } catch (_e) {
+                    clearTimeout(timeout);
+                    return cached || fetch(request);
+                }
+            })()
         );
         return;
     }
