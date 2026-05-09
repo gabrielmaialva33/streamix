@@ -718,6 +718,11 @@ const VideoPlayer = {
   // ============================================
 
   setAudioTrack(trackIndex) {
+    if (this.usingAVPlayer && this.avPlayer) {
+      this.setAVPlayerAudioTrack(trackIndex);
+      return;
+    }
+
     if (this.streamLoader) {
       this.streamLoader.setAudioTrack(trackIndex);
     }
