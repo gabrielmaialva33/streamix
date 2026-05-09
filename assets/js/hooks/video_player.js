@@ -2115,6 +2115,11 @@ const VideoPlayer = {
               return;
             }
 
+            if (!info.shouldRecover) {
+              log.debug(`[NativeBuffer] Stall observed #${info.totalStalls}`);
+              return;
+            }
+
             log.warn(`[NativeBuffer] Stall detected #${info.totalStalls}`);
             this.playerUI.showLoading();
           },

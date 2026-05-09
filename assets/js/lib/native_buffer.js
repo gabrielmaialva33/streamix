@@ -146,8 +146,10 @@ export class NativeBufferManager {
     const readyState = this.video?.readyState || 0;
     const isStartupGrace = this._isInStartupGrace(now);
     const isRealStall = readyState < 3 && !this.video.paused && !isStartupGrace;
+    const shouldRecover =
+      this.stallCount >= this.config.stallThreshold && !this.isRecovering && isRealStall;
 
-    if (isRealStall && now - this.lastStallWarningTime >= this.config.stallLogCooldownMs) {
+    if (shouldRecover && now - this.lastStallWarningTime >= this.config.stallLogCooldownMs) {
       this.lastStallWarningTime = now;
       log.warn(
         `Stall #${this.totalStalls} (buffer: ${bufferAhead.toFixed(1)}s, ready: ${readyState})`,
@@ -165,10 +167,11 @@ export class NativeBufferManager {
       readyState,
       isRealStall,
       isStartupGrace,
+      shouldRecover,
     });
 
     // Only attempt recovery for real stalls (low readyState + multiple occurrences)
-    if (this.stallCount >= this.config.stallThreshold && !this.isRecovering && isRealStall) {
+    if (shouldRecover) {
       this._attemptRecovery();
     }
   }
@@ -264,7 +267,7 @@ export class NativeBufferManager {
       const now = Date.now();
       if (now - this.lastCriticalWarningTime < this.config.criticalLogCooldownMs) return;
       this.lastCriticalWarningTime = now;
-      log.warn("Critical buffer level detected");
+      log.debug("Critical buffer level detected");
       // Don't auto-pause, just log - browser handles this natively
     }
   }
