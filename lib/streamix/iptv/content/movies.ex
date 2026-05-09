@@ -48,6 +48,7 @@ defmodule Streamix.Iptv.Movies do
     |> Queries.sorted(sort)
     |> limit(^limit)
     |> offset(^offset)
+    |> Queries.select_card_fields()
     |> preload(^@summary_preloads)
     |> Repo.all()
   end

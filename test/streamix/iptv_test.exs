@@ -296,6 +296,66 @@ defmodule Streamix.IptvTest do
   end
 
   describe "public catalog summary queries" do
+    test "list_movies/2 returns lightweight provider browse cards" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Provider Card",
+          stream_icon: "http://example.com/provider-card.jpg",
+          plot: "card plot",
+          youtube_trailer: "heavy-trailer",
+          rating: Decimal.new("8.4"),
+          year: 2026
+        })
+
+      result =
+        provider.id
+        |> Iptv.list_movies(limit: 10)
+        |> Enum.find(&(&1.id == movie.id))
+
+      assert result
+      assert result.name == "Provider Card"
+      assert result.stream_icon == "http://example.com/provider-card.jpg"
+      assert result.plot == "card plot"
+      assert result.youtube_trailer == nil
+      assert Ecto.assoc_loaded?(result.genres)
+      refute Ecto.assoc_loaded?(result.provider)
+      refute Ecto.assoc_loaded?(result.assets)
+      refute Ecto.assoc_loaded?(result.credits)
+    end
+
+    test "list_series/2 returns lightweight provider browse cards" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      series =
+        series_content_fixture(provider, %{
+          name: "Provider Series Card",
+          cover: "http://example.com/provider-series.jpg",
+          plot: "series card plot",
+          youtube_trailer: "heavy-series-trailer",
+          rating: Decimal.new("8.7"),
+          year: 2026
+        })
+
+      result =
+        provider.id
+        |> Iptv.list_series(limit: 10)
+        |> Enum.find(&(&1.id == series.id))
+
+      assert result
+      assert result.name == "Provider Series Card"
+      assert result.cover == "http://example.com/provider-series.jpg"
+      assert result.plot == "series card plot"
+      assert result.youtube_trailer == nil
+      assert Ecto.assoc_loaded?(result.genres)
+      refute Ecto.assoc_loaded?(result.provider)
+      refute Ecto.assoc_loaded?(result.assets)
+      refute Ecto.assoc_loaded?(result.credits)
+    end
+
     test "list_public_movies/1 preloads genres but not credits" do
       user = user_fixture()
 

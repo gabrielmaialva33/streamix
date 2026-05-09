@@ -20,6 +20,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @summary_preloads [:genres]
   @search_result_preloads [:assets, :genres]
   @detail_preloads [:assets, :genres, credits: :person]
+  @card_fields ~w(id series_id provider_id catalog_item_id name title year cover rating plot gindex_path dub_available inserted_at updated_at)a
 
   @spec list(integer(), keyword()) :: [Series.t()]
   def list(provider_id, opts \\ []) do
@@ -32,8 +33,13 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> apply_series_sort(sort)
     |> limit(^limit)
     |> offset(^offset)
+    |> select_card_fields()
     |> preload(^@summary_preloads)
     |> Repo.all()
+  end
+
+  def select_card_fields(query) do
+    select(query, [s], struct(s, ^@card_fields))
   end
 
   @spec list_public(keyword()) :: [Series.t()]
