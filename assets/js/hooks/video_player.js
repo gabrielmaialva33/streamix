@@ -417,6 +417,7 @@ const VideoPlayer = {
     // Timing
     this.startTime = Date.now();
     this.lastProgressReport = 0;
+    this.playbackSessionId = 0;
 
     // PiP state
     this.pipActive = false;
@@ -1392,6 +1393,7 @@ const VideoPlayer = {
   // ============================================
 
   cleanup() {
+    this.playbackSessionId += 1;
     this._metadataProbeCancel?.();
     this._metadataProbeCancel = null;
     this._qualityCapabilitiesCancel?.();
@@ -1446,17 +1448,148 @@ const VideoPlayer = {
     }
   },
 
+  beginPlaybackSession() {
+    this.playbackSessionId += 1;
+    return this.playbackSessionId;
+  },
+
+  isCurrentPlaybackSession(sessionId) {
+    return !this._destroyed && sessionId === this.playbackSessionId;
+  },
+
+  takeResumeTime(fallback = 0) {
+    const savedTime =
+      this.contentType === "vod" && this._savedPosition?.time > 0 ? this._savedPosition.time : null;
+
+    if (savedTime != null) {
+      this._savedPosition = null;
+      return savedTime;
+    }
+
+    return fallback;
+  },
+
+  waitForNativeReady(sessionId) {
+    if (!this.video || this.video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const done = () => {
+        cleanup();
+        resolve();
+      };
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        this.video?.removeEventListener("loadedmetadata", done);
+        this.video?.removeEventListener("canplay", done);
+        this.video?.removeEventListener("error", done);
+      };
+      const timeout = window.setTimeout(done, 2500);
+
+      this.video.addEventListener("loadedmetadata", done, { once: true });
+      this.video.addEventListener("canplay", done, { once: true });
+      this.video.addEventListener("error", done, { once: true });
+
+      if (!this.isCurrentPlaybackSession(sessionId)) done();
+    });
+  },
+
+  waitForNativeSeek(sessionId, targetTime) {
+    if (!this.video || targetTime <= 0 || !this.isCurrentPlaybackSession(sessionId)) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      const done = () => {
+        cleanup();
+        resolve();
+      };
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        this.video?.removeEventListener("seeked", done);
+        this.video?.removeEventListener("timeupdate", done);
+        this.video?.removeEventListener("canplay", done);
+        this.video?.removeEventListener("error", done);
+      };
+      const timeout = window.setTimeout(done, 2500);
+
+      this.video.addEventListener("seeked", done, { once: true });
+      this.video.addEventListener("timeupdate", done, { once: true });
+      this.video.addEventListener("canplay", done, { once: true });
+      this.video.addEventListener("error", done, { once: true });
+
+      try {
+        this.video.currentTime = targetTime;
+      } catch (error) {
+        log.debug("[VideoPlayer] Native seek before play failed:", error.message);
+        done();
+      }
+    });
+  },
+
+  async playNativeAfterResume(sessionId) {
+    if (!this.video || !this.isCurrentPlaybackSession(sessionId)) return;
+
+    const resumeTime = this.takeResumeTime();
+
+    if (resumeTime > 0) {
+      log.debug("Resuming from saved position before play:", resumeTime);
+      await this.waitForNativeReady(sessionId);
+      await this.waitForNativeSeek(sessionId, resumeTime);
+    }
+
+    if (!this.isCurrentPlaybackSession(sessionId)) return;
+
+    try {
+      await this.video.play();
+    } catch (e) {
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
+      if (e.name === "AbortError") return;
+      log.debug("Native play prevented:", e);
+      this.playerUI.hideLoading();
+
+      if (e.name === "NotSupportedError" && this.canTryAVPlayerForCurrentVod()) {
+        log.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
+        return;
+      }
+
+      if (e.name === "NotAllowedError") {
+        this.playerUI.showPlayButton(() => this.playNativeAfterResume(this.playbackSessionId));
+      } else {
+        this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
+      }
+    }
+  },
+
+  canTryAVPlayerForCurrentVod() {
+    return (
+      this.contentType === "vod" &&
+      !this.avPlayerAttempted &&
+      (this.currentStreamType === "mp4" ||
+        this.currentStreamType === "mkv" ||
+        this.sourceType === "gindex" ||
+        this.currentStreamType === "unknown")
+    );
+  },
+
   // Idempotent stream loader factory. `cleanup()` nils out `streamLoader`
   // during player fallbacks, so `playWith*` methods call this before use
   // to avoid `TypeError: reading 'loadHls' of null`.
   ensureStreamLoader() {
-    if (this.streamLoader) return this.streamLoader;
+    if (this.streamLoader) {
+      this.streamLoader.updateSessionId(this.playbackSessionId);
+      return this.streamLoader;
+    }
 
     this.streamLoader = new StreamLoader({
       video: this.video,
       streamingMode: this.streamingMode,
       contentType: this.contentType,
-      onManifestParsed: (data) => {
+      sessionId: this.playbackSessionId,
+      onManifestParsed: (data, sessionId) => {
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+
         log.info("Manifest parsed, levels:", data.levels.length);
         this.playerUI.hideLoading();
         this.playerUI.hideError();
@@ -1464,21 +1597,14 @@ const VideoPlayer = {
         this.updateAudioTracks();
         this.updateSubtitleTracks();
 
-        // Resume from saved position if available
-        if (this._savedPosition && this.contentType === "vod") {
-          log.debug("Resuming from saved position:", this._savedPosition.time);
-          this.seekTo(this._savedPosition.time);
-          this._savedPosition = null; // Clear after use
-        }
-
-        this.video.play().catch((e) => {
-          if (e.name === "AbortError") return; // play() interrupted by pause — harmless
-          log.debug("Autoplay prevented:", e);
-          this.playerUI.showPlayButton(() => this.video.play());
-        });
+        this.playNativeAfterResume(sessionId);
       },
-      onError: (type, data) => this.handleStreamError(type, data),
-      onLevelSwitched: (level, levelData) => {
+      onError: (type, data, sessionId) => {
+        if (this.isCurrentPlaybackSession(sessionId)) this.handleStreamError(type, data);
+      },
+      onLevelSwitched: (level, levelData, sessionId) => {
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+
         const isAuto = this.manualQuality === null;
         this.pushEvent("quality_switched", {
           level,
@@ -1493,20 +1619,30 @@ const VideoPlayer = {
           this.playerUI.showQualityChange(qualityLabel);
         }
       },
-      onAudioTracksUpdated: () => this.updateAudioTracks(),
-      onSubtitleTracksUpdated: () => this.updateSubtitleTracks(),
-      onFragLoaded: (bandwidth) => {
+      onAudioTracksUpdated: (_tracks, sessionId) => {
+        if (this.isCurrentPlaybackSession(sessionId)) this.updateAudioTracks();
+      },
+      onSubtitleTracksUpdated: (_tracks, sessionId) => {
+        if (this.isCurrentPlaybackSession(sessionId)) this.updateSubtitleTracks();
+      },
+      onFragLoaded: (bandwidth, sessionId) => {
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+
         this.networkMonitor?.addSample(bandwidth);
         // Feed bandwidth to codec-aware ABR
         if (this.codecABR) {
           this.codecABR.recordBandwidth(bandwidth / 1000); // Convert to kbps
         }
       },
-      onMediaInfo: () => {
+      onMediaInfo: (_info, sessionId) => {
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+
         this.playerUI.hideLoading();
         this.playerUI.hideError();
       },
-      onStatisticsInfo: (bps) => this.networkMonitor?.addSample(bps),
+      onStatisticsInfo: (bps, sessionId) => {
+        if (this.isCurrentPlaybackSession(sessionId)) this.networkMonitor?.addSample(bps);
+      },
     });
 
     return this.streamLoader;
@@ -1540,6 +1676,7 @@ const VideoPlayer = {
     log.debug("Detected stream type:", this.currentStreamType);
 
     this.cleanup();
+    this.beginPlaybackSession();
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
 
     // Create stream loader (idempotent — recreated lazily after cleanup during fallbacks)
@@ -1784,22 +1921,17 @@ const VideoPlayer = {
 
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
     this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
+    const sessionId = this.playbackSessionId;
 
     try {
       this.mpegtsPlayer = await this.ensureStreamLoader().loadMpegts(this.currentUrl, type);
 
-      this.video.play().catch((e) => {
-        if (e.name === "AbortError") return; // play() interrupted by pause — harmless
-        log.debug("Autoplay prevented:", e);
-        if (e.name === "NotAllowedError") {
-          this.playerUI.hideLoading();
-          this.playerUI.showPlayButton(() => this.video.play());
-        }
-      });
+      this.playNativeAfterResume(sessionId);
 
       this.video.addEventListener(
         "playing",
         () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
           this.playerUI.hideLoading();
           this.playerUI.hideError();
         },
@@ -1816,11 +1948,14 @@ const VideoPlayer = {
   },
 
   playNative() {
+    const sessionId = this.playbackSessionId;
     log.info("Playing with native video element, url:", this.currentUrl);
     this.setNativeTouchControls(isAppleTouchDevice());
     this.video.src = this.currentUrl;
 
     const playHandler = () => {
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
+
       log.debug("Native playback started");
       this.playerUI.hideLoading();
       this.playerUI.hideError();
@@ -1844,13 +1979,6 @@ const VideoPlayer = {
         });
         this.nativeBufferManager.start();
         log.info("[VideoPlayer] Native buffer monitoring enabled");
-      }
-
-      // Resume from saved position if available (VOD only)
-      if (this._savedPosition && this.contentType === "vod") {
-        log.debug("Resuming from saved position:", this._savedPosition.time);
-        this.seekTo(this._savedPosition.time);
-        this._savedPosition = null;
       }
 
       // Check for audio issues (MP4/MKV files may have AC3/DTS audio not supported by browsers)
@@ -1882,7 +2010,11 @@ const VideoPlayer = {
       // This helps Device Codec Memory learn that native works for this content type
       if (!needsAudioCheck) {
         setTimeout(() => {
-          if (!this.usingAVPlayer && !this.video.paused) {
+          if (
+            this.isCurrentPlaybackSession(sessionId) &&
+            !this.usingAVPlayer &&
+            !this.video.paused
+          ) {
             const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
             recordPlayerSuccess(contentKey, "native", {
               sourceType: this.sourceType,
@@ -1894,6 +2026,8 @@ const VideoPlayer = {
     };
 
     const errorHandler = () => {
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
+
       if (this.usingAVPlayer || this.avPlayerAttempted) {
         log.debug("[VideoPlayer] Ignoring native video error - AVPlayer is active");
         return;
@@ -1943,31 +2077,9 @@ const VideoPlayer = {
       once: true,
     });
 
-    this.video.play().catch((e) => {
-      if (e.name === "AbortError") return; // play() interrupted by pause — harmless
-      log.debug("Native autoplay prevented:", e);
-      this.playerUI.hideLoading();
-      if (e.name === "NotAllowedError") {
-        this.playerUI.showPlayButton(() => this.video.play());
-      } else if (e.name === "NotSupportedError") {
-        // Check if AVPlayer fallback is available before showing error
-        const canTryAVPlayer =
-          this.contentType === "vod" &&
-          !this.avPlayerAttempted &&
-          (this.currentStreamType === "mp4" ||
-            this.currentStreamType === "mkv" ||
-            this.sourceType === "gindex" ||
-            this.currentStreamType === "unknown");
-
-        if (canTryAVPlayer) {
-          log.debug("[VideoPlayer] Native play failed, AVPlayer fallback will be attempted");
-          // Don't show error - errorHandler will try AVPlayer
-        } else {
-          this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
-        }
-      } else {
-        this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
-      }
+    this.playNativeAfterResume(sessionId).catch((e) => {
+      if (e.name === "AbortError") return;
+      log.debug("Native playback start failed:", e);
     });
   },
 
@@ -2075,8 +2187,9 @@ const VideoPlayer = {
     });
     this.playerUI.hideError();
 
-    const currentTime = this.video.currentTime || 0;
-    const wasPlaying = !this.video.paused;
+    const sessionId = this.beginPlaybackSession();
+    const resumeTime = this.takeResumeTime(this.video.currentTime || 0);
+    const wasPlaying = !this.video.paused || resumeTime > 0;
 
     this.video.pause();
 
@@ -2087,6 +2200,7 @@ const VideoPlayer = {
     try {
       // Lazy load AVPlayer
       const { AVPlayerWrapper } = await loadAVPlayer();
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
 
       // Use server-rendered mount (phx-update="ignore") so the
       // canvas survives LiveView patches in watch-party rooms.
@@ -2097,10 +2211,21 @@ const VideoPlayer = {
       this.video.classList.add("hidden");
       this.resetNativeMediaElement();
 
-      this.avPlayer = new AVPlayerWrapper({
+      if (this.avPlayer) {
+        const oldAvPlayer = this.avPlayer;
+        this.avPlayer = null;
+        await oldAvPlayer.destroy();
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+      }
+
+      const avPlayer = new AVPlayerWrapper({
         container: avContainer,
-        onReady: () => log.debug("[VideoPlayer] AVPlayer ready"),
+        onReady: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          log.debug("[VideoPlayer] AVPlayer ready");
+        },
         onPlay: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.debug("[VideoPlayer] AVPlayer playing with audio support");
           this.playerUI.hideLoading();
           this.playerUI.updatePlayPauseUI(false);
@@ -2114,20 +2239,27 @@ const VideoPlayer = {
           });
         },
         onPause: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.debug("[VideoPlayer] AVPlayer paused");
           this.playerUI.updatePlayPauseUI(true);
         },
         onError: (error) => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.error("[VideoPlayer] AVPlayer error:", error);
           this.revertToNativePlayer();
         },
-        onTimeUpdate: () => this.updateTimeUI(),
+        onTimeUpdate: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          this.updateTimeUI();
+        },
         onEnded: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.debug("[VideoPlayer] AVPlayer ended");
           this.playerUI.updatePlayPauseUI(true);
           this.stopAVPlayerTimeUpdates();
         },
       });
+      this.avPlayer = avPlayer;
 
       const avPlayerUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
 
@@ -2135,25 +2267,38 @@ const VideoPlayer = {
       const isLive = this.contentType === "live";
       log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext, "isLive:", isLive);
 
-      await this.avPlayer.load(avPlayerUrl, { ext, isLive });
+      await avPlayer.load(avPlayerUrl, { ext, isLive });
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        await avPlayer.destroy();
+        return;
+      }
 
-      if (currentTime > 0) {
-        await this.avPlayer.seek(currentTime);
+      if (resumeTime > 0) {
+        await avPlayer.seek(resumeTime);
+        if (!this.isCurrentPlaybackSession(sessionId)) {
+          await avPlayer.destroy();
+          return;
+        }
       }
 
       // Apply saved volume (convert UI value to perceived)
-      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : linearToPerceived(this.avPlayerVolume));
+      avPlayer.setVolume(this.avPlayerMuted ? 0 : linearToPerceived(this.avPlayerVolume));
 
       log.debug("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
-      await this.avPlayer.play();
+      await avPlayer.play();
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        await avPlayer.destroy();
+        return;
+      }
       log.debug("[VideoPlayer] AVPlayer play() completed");
 
       this.usingAVPlayer = true;
       log.debug("[VideoPlayer] Seamless AVPlayer switch complete");
 
       // Detect available audio/subtitle tracks from AVPlayer
-      this.detectAVPlayerTracks();
+      this.detectAVPlayerTracks(sessionId);
     } catch (error) {
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
       log.error("[VideoPlayer] AVPlayer fallback failed:", error);
 
       // Forget the cached "avplayer" recommendation for this content
@@ -2171,15 +2316,17 @@ const VideoPlayer = {
   /**
    * Detect and expose audio/subtitle tracks from AVPlayer
    */
-  async detectAVPlayerTracks() {
+  async detectAVPlayerTracks(sessionId = this.playbackSessionId) {
     if (!this.avPlayer) return;
 
     try {
       // Small delay to let AVPlayer fully initialize streams
       await new Promise((resolve) => setTimeout(resolve, 500));
+      if (!this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
 
       // Get audio tracks
       const audioTracks = await this.avPlayer.getAudioTracks();
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
       if (audioTracks && audioTracks.length > 0) {
         this.audioTracks = audioTracks.map((track, index) => ({
           index,
@@ -2213,6 +2360,7 @@ const VideoPlayer = {
 
       // Get subtitle tracks
       const subtitleTracks = await this.avPlayer.getSubtitleTracks();
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
       if (subtitleTracks && subtitleTracks.length > 0) {
         this.subtitleTracks = subtitleTracks.map((track, index) => ({
           index,
@@ -2572,41 +2720,64 @@ const VideoPlayer = {
     }
     this._switchingToAVPlayer = true;
 
+    const sessionId = this.beginPlaybackSession();
     this.playerUI.showLoading();
 
     try {
-      // Stop native player. pause()+src="" deixa o áudio buffered
-      // sangrando até o engine errar — precisa muted+removeAttribute
-      // +load() pra resetar o MediaElement de verdade.
+      // Stop native player fully; pause()+src="" can leave decoded audio alive.
       this.resetNativeMediaElement();
 
-      // Initialize AVPlayer if not already
-      if (!this.avPlayer) {
-        const { AVPlayerWrapper } = await loadAVPlayer();
+      if (this.avPlayer) {
+        const oldAvPlayer = this.avPlayer;
+        this.avPlayer = null;
+        await oldAvPlayer.destroy();
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+      }
 
-        // Use server-rendered mount (phx-update="ignore").
-        const avContainer = this.el.querySelector("#avplayer-mount");
-        avContainer.replaceChildren();
-        avContainer.classList.remove("hidden");
+      const { AVPlayerWrapper } = await loadAVPlayer();
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
 
-        this.avPlayer = new AVPlayerWrapper({
-          container: avContainer,
-          onReady: () => log.debug("[VideoPlayer] AVPlayer ready for track switch"),
-          onError: (e) => log.error("[VideoPlayer] AVPlayer error:", e),
-          onPlay: () => {
-            this.playerUI.updatePlayPauseUI(false); // false = not paused
-            this.playerUI.hideLoading();
-            this.startAVPlayerTimeUpdates();
-          },
-          onPause: () => this.playerUI.updatePlayPauseUI(true), // true = paused
-          onTimeUpdate: () => this.updateTimeUI(),
-          onEnded: () => {
-            this.playerUI.updatePlayPauseUI(true);
-            this.stopAVPlayerTimeUpdates();
-          },
-        });
+      // Use server-rendered mount (phx-update="ignore").
+      const avContainer = this.el.querySelector("#avplayer-mount");
+      avContainer.replaceChildren();
+      avContainer.classList.remove("hidden");
 
-        await this.avPlayer.init();
+      const avPlayer = new AVPlayerWrapper({
+        container: avContainer,
+        onReady: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          log.debug("[VideoPlayer] AVPlayer ready for track switch");
+        },
+        onError: (e) => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          log.error("[VideoPlayer] AVPlayer error:", e);
+        },
+        onPlay: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          this.playerUI.updatePlayPauseUI(false); // false = not paused
+          this.playerUI.hideLoading();
+          this.startAVPlayerTimeUpdates();
+        },
+        onPause: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          this.playerUI.updatePlayPauseUI(true); // true = paused
+        },
+        onTimeUpdate: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          this.updateTimeUI();
+        },
+        onEnded: () => {
+          if (!this.isCurrentPlaybackSession(sessionId)) return;
+          this.playerUI.updatePlayPauseUI(true);
+          this.stopAVPlayerTimeUpdates();
+        },
+      });
+      this.avPlayer = avPlayer;
+
+      await avPlayer.init();
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        await avPlayer.destroy();
+        return;
       }
 
       // Load the stream (use proxyUrl if available, otherwise direct URL)
@@ -2617,11 +2788,15 @@ const VideoPlayer = {
           ? "mkv"
           : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
       const isLive = this.contentType === "live";
-      await this.avPlayer.load(proxyUrl, { ext, isLive });
+      await avPlayer.load(proxyUrl, { ext, isLive });
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        await avPlayer.destroy();
+        return;
+      }
 
       // Apply volume settings — wrapper exposes only `setVolume`
       // (no `mute()`). Use volume 0 for the muted state.
-      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume);
+      avPlayer.setVolume(this.avPlayerMuted ? 0 : this.avPlayerVolume);
 
       // Mark as using AVPlayer
       this.usingAVPlayer = true;
@@ -2629,7 +2804,11 @@ const VideoPlayer = {
 
       // Seek to saved position
       if (seekTime > 0) {
-        await this.avPlayer.seek(seekTime);
+        await avPlayer.seek(seekTime);
+        if (!this.isCurrentPlaybackSession(sessionId)) {
+          await avPlayer.destroy();
+          return;
+        }
       }
 
       // Apply the selected track
@@ -2643,18 +2822,23 @@ const VideoPlayer = {
 
       // Start playback
       if (shouldPlay) {
-        await this.avPlayer.play();
+        await avPlayer.play();
+        if (!this.isCurrentPlaybackSession(sessionId)) {
+          await avPlayer.destroy();
+          return;
+        }
       }
 
       // Start time updates
       this.startAVPlayerTimeUpdates();
 
       // Detect tracks from now-active AVPlayer
-      this.detectAVPlayerTracks();
+      this.detectAVPlayerTracks(sessionId);
 
       this.playerUI.hideLoading();
       log.debug("[VideoPlayer] Switched to AVPlayer with", trackType, "track", trackIndex);
     } catch (error) {
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
       log.error("[VideoPlayer] Failed to switch to AVPlayer:", error);
       this.playerUI.hideLoading();
       this.playerUI.showError("Falha ao carregar faixas de áudio/legenda");
@@ -2665,6 +2849,7 @@ const VideoPlayer = {
 
   revertToNativePlayer() {
     log.debug("[VideoPlayer] Reverting to native player");
+    this.beginPlaybackSession();
 
     this.stopAVPlayerTimeUpdates();
 

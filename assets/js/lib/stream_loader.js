@@ -139,6 +139,7 @@ export class StreamLoader {
     this.video = options.video;
     this.streamingMode = options.streamingMode || "balanced";
     this.contentType = options.contentType || "live";
+    this.sessionId = options.sessionId || 0;
 
     // Player instances
     this.hls = null;
@@ -160,6 +161,10 @@ export class StreamLoader {
     this.onFragLoaded = options.onFragLoaded || (() => {});
     this.onMediaInfo = options.onMediaInfo || (() => {});
     this.onStatisticsInfo = options.onStatisticsInfo || (() => {});
+  }
+
+  updateSessionId(sessionId) {
+    this.sessionId = sessionId;
   }
 
   /**
@@ -213,7 +218,7 @@ export class StreamLoader {
       if (data.frag.stats.loaded && data.frag.stats.loading.end) {
         const loadTime = data.frag.stats.loading.end - data.frag.stats.loading.start;
         const bandwidth = (data.frag.stats.loaded * 8000) / loadTime;
-        this.onFragLoaded(bandwidth);
+        this.onFragLoaded(bandwidth, this.sessionId);
       }
     });
 
@@ -223,25 +228,25 @@ export class StreamLoader {
         log.debug(`[StreamLoader] HLS target latency set to ${lowLatencyTarget}s`);
       }
       log.debug("HLS manifest parsed, levels:", data.levels.length);
-      this.onManifestParsed(data);
+      this.onManifestParsed(data, this.sessionId);
     });
 
     this.hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
       const level = this.hls.levels[data.level];
-      this.onLevelSwitched(data.level, level);
+      this.onLevelSwitched(data.level, level, this.sessionId);
     });
 
     this.hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
-      this.onAudioTracksUpdated(this.hls.audioTracks);
+      this.onAudioTracksUpdated(this.hls.audioTracks, this.sessionId);
     });
 
     this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
-      this.onSubtitleTracksUpdated(this.hls.subtitleTracks);
+      this.onSubtitleTracksUpdated(this.hls.subtitleTracks, this.sessionId);
     });
 
     this.hls.on(Hls.Events.ERROR, (_event, data) => {
       log.error("HLS error:", data);
-      this.onError("hls", data);
+      this.onError("hls", data, this.sessionId);
     });
 
     return this.hls;
@@ -272,18 +277,18 @@ export class StreamLoader {
 
     this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, (info) => {
       if (info.speed) {
-        this.onStatisticsInfo(info.speed * 1000);
+        this.onStatisticsInfo(info.speed * 1000, this.sessionId);
       }
     });
 
     this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
       log.debug("MPEG-TS media info:", info);
-      this.onMediaInfo(info);
+      this.onMediaInfo(info, this.sessionId);
     });
 
     this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
       log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
-      this.onError("mpegts", { errorType, errorDetail, errorInfo });
+      this.onError("mpegts", { errorType, errorDetail, errorInfo }, this.sessionId);
     });
 
     return this.mpegtsPlayer;
@@ -353,18 +358,18 @@ export class StreamLoader {
     // Re-attach event listeners
     this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, (info) => {
       if (info.speed) {
-        this.onStatisticsInfo(info.speed * 1000);
+        this.onStatisticsInfo(info.speed * 1000, this.sessionId);
       }
     });
 
     this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
       log.debug("MPEG-TS media info:", info);
-      this.onMediaInfo(info);
+      this.onMediaInfo(info, this.sessionId);
     });
 
     this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
       log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
-      this.onError("mpegts", { errorType, errorDetail, errorInfo });
+      this.onError("mpegts", { errorType, errorDetail, errorInfo }, this.sessionId);
     });
 
     return this.mpegtsPlayer;
