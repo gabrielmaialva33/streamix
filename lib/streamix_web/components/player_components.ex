@@ -118,13 +118,11 @@ defmodule StreamixWeb.PlayerComponents do
         class="absolute inset-0 z-0 hidden"
       />
 
-      <%!-- Video element. AVPlayer / hls.js / mpegts.js manage source
-           via MediaSource Extensions — leaving preload at the browser
-           default avoids confusing the engine with parallel fetches. --%>
+      <%!-- Video element. JS starts playback only after resume seek is applied. --%>
       <video
         id="video-element"
         class="absolute inset-0 w-full h-full object-contain"
-        autoplay
+        preload="metadata"
         playsinline
         webkit-playsinline
       />

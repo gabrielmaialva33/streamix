@@ -170,6 +170,8 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
           return {
             currentTime: video ? video.currentTime : 0,
+            autoplay: video ? video.autoplay : true,
+            preload: video ? video.getAttribute("preload") : null,
             nativeControls: video ? video.controls : false,
             bottomControlsHidden: bottomControls ? bottomControls.classList.contains("hidden") : false,
             videoCount: document.querySelectorAll("video").length,
@@ -192,6 +194,8 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             seekIndex !== -1 &&
             playIndex !== -1 &&
             seekIndex < playIndex &&
+            !state.autoplay &&
+            state.preload === "metadata" &&
             state.nativeControls &&
             state.nativeTouchControls &&
             state.bottomControlsHidden &&

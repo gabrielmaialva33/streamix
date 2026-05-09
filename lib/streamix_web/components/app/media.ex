@@ -268,7 +268,7 @@ defmodule StreamixWeb.App.Media do
           id="video-element"
           class="w-full h-full bg-black rounded-lg"
           controls
-          autoplay
+          preload="metadata"
           playsinline
         >
         </video>

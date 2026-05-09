@@ -373,6 +373,7 @@ const VideoPlayer = {
   initializeState() {
     // DOM elements
     this.video = this.el.querySelector("video");
+    this.configureNativePlaybackElement();
 
     // Stream configuration
     this.streamUrl = this.el.dataset.streamUrl;
@@ -1511,6 +1512,24 @@ const VideoPlayer = {
     return !this._destroyed && sessionId === this.playbackSessionId;
   },
 
+  configureNativePlaybackElement() {
+    if (!this.video) return;
+
+    this.video.autoplay = false;
+    this.video.removeAttribute("autoplay");
+    this.video.preload = "metadata";
+  },
+
+  shouldCheckNativeAudio() {
+    return (
+      this.contentType === "vod" &&
+      (this.sourceType === "gindex" ||
+        this.currentStreamType === "mp4" ||
+        this.currentStreamType === "mkv" ||
+        this.currentStreamType === "unknown")
+    );
+  },
+
   takeResumeTime(fallback = 0) {
     const savedTime =
       this.contentType === "vod" && this._savedPosition?.time > 0 ? this._savedPosition.time : null;
@@ -2015,6 +2034,7 @@ const VideoPlayer = {
     const sessionId = this.playbackSessionId;
     log.info("Playing with native video element, url:", this.currentUrl);
     this.setNativeTouchControls(isAppleTouchDevice());
+    this.configureNativePlaybackElement();
     this.reportPlayerLifecycle("player_engine_selected", {
       engine: "native",
       session_id: sessionId,
@@ -2049,16 +2069,8 @@ const VideoPlayer = {
         log.info("[VideoPlayer] Native buffer monitoring enabled");
       }
 
-      // Check for audio issues (MP4/MKV files may have AC3/DTS audio not supported by browsers)
-      // Run audio detection for all VOD content, including GIndex (which often has unknown stream type)
-      const needsAudioCheck =
-        this.contentType === "vod" &&
-        (this.currentStreamType === "mp4" ||
-          this.currentStreamType === "mkv" ||
-          this.sourceType === "gindex" || // GIndex URLs don't have extensions
-          this.currentStreamType === "unknown"); // Unknown types might have unsupported audio
-      if (needsAudioCheck) {
-        this.checkAudioAndFallback();
+      if (this.shouldCheckNativeAudio()) {
+        this.checkAudioAndFallback(sessionId);
       }
 
       // For GIndex content, probe metadata in background to detect audio/subtitle tracks
@@ -2076,7 +2088,7 @@ const VideoPlayer = {
 
       // Record successful native playback after 5s (confirms no fallback needed)
       // This helps Device Codec Memory learn that native works for this content type
-      if (!needsAudioCheck) {
+      if (!this.shouldCheckNativeAudio()) {
         setTimeout(() => {
           if (
             this.isCurrentPlaybackSession(sessionId) &&
@@ -2155,15 +2167,20 @@ const VideoPlayer = {
   // Audio Detection and AVPlayer Fallback
   // ============================================
 
-  async checkAudioAndFallback() {
+  async checkAudioAndFallback(sessionId) {
     if (this.audioCheckTimeout) {
       clearTimeout(this.audioCheckTimeout);
     }
 
     this.audioCheckTimeout = setTimeout(async () => {
       try {
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+
         const { detectAudioIssue } = await loadAVPlayer();
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+
         const hasAudioIssue = await detectAudioIssue(this.video);
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
 
         if (hasAudioIssue) {
           log.debug("[VideoPlayer] Audio issue detected, auto-switching to AVPlayer");
