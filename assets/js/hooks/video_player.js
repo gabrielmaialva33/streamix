@@ -1479,6 +1479,7 @@ const VideoPlayer = {
       avPlayerAttempted: this.avPlayerAttempted,
       avbridgeAttempted: this.avbridgeAttempted,
       h265webAttempted: this.h265webAttempted,
+      is4kHevc: this.el?.dataset?.is4kHevc === "true",
       shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
       capabilities: {
         hlsJs: isHlsJsSupported(),

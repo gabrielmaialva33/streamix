@@ -26,6 +26,7 @@
  * @property {boolean} [preferAVPlayer]        - user preference flag
  * @property {boolean} [avPlayerAttempted]     - true if AVPlayer fallback was already tried
  * @property {boolean} [shouldPreferAVPlayerForLiveTs] - precomputed by caller (depends on UA + contentType + streamType)
+ * @property {boolean} [is4kHevc]             - server-side hint: this is a 2160p/HEVC release
  * @property {boolean} [avbridgeAttempted]   - true if avbridge was already tried for this content
  * @property {boolean} [h265webAttempted]    - true if h265web was already tried for this content
  * @property {Object}  [capabilities]          - runtime capability probes, passed in by caller
@@ -51,6 +52,7 @@ export function selectEngine(ctx) {
     avPlayerAttempted,
     avbridgeAttempted,
     h265webAttempted,
+    is4kHevc,
     shouldPreferAVPlayerForLiveTs,
     capabilities = {},
   } = ctx;
@@ -70,23 +72,23 @@ export function selectEngine(ctx) {
   const nativeHls = !!capabilities.nativeHls;
   const canTryAVPlayer = !avPlayerAttempted;
 
-  // GIndex MKV / HEVC content via avbridge (preferred GPU path).
-  // avbridge demuxes MKV in JS (mediabunny) and routes samples to
-  // WebCodecs for hardware decode — same idea as h265web, lighter
-  // bundle, MIT-licensed, and does not require SharedArrayBuffer
-  // (no COOP+COEP gymnastics). When the engine cannot boot the
-  // wrapper logs a fallback event and the next branch picks
-  // AVPlayer.
-  if (canTryAvbridge && sourceType === "gindex" && streamType === "mkv") {
+  // 4K HEVC content (2160p, HEVC/x265, "UHD") is the only place the
+  // libmedia WASM software path actually struggles in field telemetry —
+  // CPU pegs at 60-90% during decode and seeks stutter. Anything below
+  // 4K plays just fine on AVPlayer, so we keep the GPU paths gated on
+  // the server-side `is_4k_hevc` hint. That keeps the heavy bundle
+  // (mediabunny, libavjs-webcodecs-bridge) off the critical path for
+  // the 1080p/720p catalog.
+  if (canTryAvbridge && sourceType === "gindex" && streamType === "mkv" && is4kHevc) {
     return "avbridge";
   }
 
-  // Same target content but for the h265web engine — kept around
-  // for environments that already pay the COOP+COEP cost (so they
-  // get SharedArrayBuffer + multi-threaded HEVC decode). Off by
-  // default; flip the `feature_h265web` Application config when
-  // you wire the headers.
-  if (canTryH265web && sourceType === "gindex" && streamType === "mkv") {
+  // Same target content but for the h265web engine — kept around for
+  // environments that already pay the COOP+COEP cost (so they get
+  // SharedArrayBuffer + multi-threaded HEVC decode). Off by default;
+  // flip the `feature_h265web` Application config when you wire the
+  // headers. Same `is4kHevc` gate so non-4K stays on AVPlayer.
+  if (canTryH265web && sourceType === "gindex" && streamType === "mkv" && is4kHevc) {
     return "h265web";
   }
 

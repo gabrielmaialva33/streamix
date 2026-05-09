@@ -67,6 +67,11 @@ defmodule StreamixWeb.PlayerComponents do
         :feature_h265web,
         Application.get_env(:streamix, :feature_h265web, false) |> to_string()
       )
+      # Tier hint that the JS engine_selector keys off so we route only
+      # the heavy 4K HEVC content through the GPU path. Anything else
+      # plays just fine on AVPlayer (libmedia) and we keep the bundle
+      # off the critical path.
+      |> assign(:is_4k_hevc, detect_4k_hevc?(assigns.content) |> to_string())
 
     ~H"""
     <div
@@ -85,6 +90,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-player-lifecycle-logs={@player_lifecycle_logs}
       data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}
+      data-is-4k-hevc={@is_4k_hevc}
     >
       <%!-- Loading indicator --%>
       <div
@@ -662,4 +668,26 @@ defmodule StreamixWeb.PlayerComponents do
 
   defp get_season_number(%{season: %{season_number: num}}), do: num
   defp get_season_number(_), do: nil
+
+  # Heuristic 4K-HEVC detector — operates on the strings the upstream
+  # release/file naming actually carries (`Matrix.1999.2160p.HMAX...HEVC.Dual-C76.mkv`,
+  # `/1:/Filmes/Filmes 4k (227)/...`). The hook uses this to flip on
+  # the avbridge engine only for heavy content; everything else stays
+  # on the cheap AVPlayer path.
+  @fourk_hevc_pattern ~r/(2160p|\b4k\b|uhd|hevc|x265|h265|hvc1|hev1)/i
+
+  defp detect_4k_hevc?(content) when is_map(content) do
+    haystack =
+      [
+        Map.get(content, :gindex_path),
+        Map.get(content, :title),
+        Map.get(content, :name)
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join(" ")
+
+    haystack != "" and Regex.match?(@fourk_hevc_pattern, haystack)
+  end
+
+  defp detect_4k_hevc?(_), do: false
 end
