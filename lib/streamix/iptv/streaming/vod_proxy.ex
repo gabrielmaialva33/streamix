@@ -137,6 +137,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         conn =
           conn
           |> copy_response_headers(headers, [])
+          |> ensure_accept_ranges()
           |> Conn.put_resp_header("cache-control", "no-cache, no-store")
           |> put_cors_headers()
           |> Conn.send_resp(status, "")
@@ -475,6 +476,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
     conn
     |> copy_response_headers(upstream_headers, skip)
+    |> ensure_accept_ranges()
     |> Conn.put_resp_header("cache-control", "no-cache, no-store")
     |> put_cors_headers()
     |> Conn.send_chunked(status)
@@ -487,6 +489,14 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         _ -> acc
       end
     end)
+  end
+
+  defp ensure_accept_ranges(conn) do
+    if Conn.get_resp_header(conn, "accept-ranges") == [] do
+      Conn.put_resp_header(conn, "accept-ranges", "bytes")
+    else
+      conn
+    end
   end
 
   defp put_cors_headers(conn) do
