@@ -55,6 +55,8 @@ defmodule StreamixWeb.PlayerComponents do
       |> assign(:source_type, source_type)
       |> assign(:stream_type, stream_type)
       |> assign(:next_episode_json, next_episode_json)
+      |> assign(:media_title, content_title(assigns.content, assigns.content_type))
+      |> assign(:media_subtitle, media_subtitle(assigns.content, assigns.content_type))
       |> assign(
         :player_lifecycle_logs,
         Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
@@ -91,6 +93,8 @@ defmodule StreamixWeb.PlayerComponents do
       data-feature-avbridge={@feature_avbridge}
       data-feature-h265web={@feature_h265web}
       data-uhd-hevc={@uhd_hevc}
+      data-media-title={@media_title}
+      data-media-subtitle={@media_subtitle}
     >
       <%!-- Loading indicator --%>
       <div
@@ -667,6 +671,20 @@ defmodule StreamixWeb.PlayerComponents do
     episode_num = Map.get(content, :episode_num, "?")
     "T#{season_num}:E#{episode_num}"
   end
+
+  defp media_subtitle(content, type) when type in [:episode, :gindex_episode] do
+    series_name =
+      Map.get(content, :series_name) ||
+        get_in(content, [:series, :name]) ||
+        get_in(content, [:season, :series, :name])
+
+    [series_name, episode_subtitle(content)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" - ")
+  end
+
+  defp media_subtitle(_content, type) when type in [:live, :live_channel], do: "Ao vivo"
+  defp media_subtitle(_content, _type), do: "Streamix"
 
   defp get_season_number(%{season: %{season_number: num}}), do: num
   defp get_season_number(_), do: nil
