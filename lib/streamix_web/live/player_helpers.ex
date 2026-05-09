@@ -167,12 +167,12 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def resolve_stream_url("gindex", movie, _provider, user_id) do
     token = StreamToken.sign_movie(movie.id, user_id)
-    {:ok, build_token_proxy_url(token)}
+    {:ok, build_gindex_stream_url(token)}
   end
 
   def resolve_stream_url("gindex_episode", episode, _provider, user_id) do
     token = StreamToken.sign_episode(episode.id, user_id)
-    {:ok, build_token_proxy_url(token)}
+    {:ok, build_gindex_stream_url(token)}
   end
 
   def resolve_stream_url(
@@ -238,7 +238,7 @@ defmodule StreamixWeb.PlayerHelpers do
   defp next_episode_stream_url("gindex_episode", next, user_id) do
     next.id
     |> StreamToken.sign_episode(user_id)
-    |> build_token_proxy_url()
+    |> build_gindex_stream_url()
   end
 
   defp build_next_episode_payload(next, type, user_id) do
@@ -257,6 +257,16 @@ defmodule StreamixWeb.PlayerHelpers do
   defp build_token_proxy_url(token) do
     base_url = StreamixWeb.Endpoint.url()
     "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
+  end
+
+  defp build_gindex_stream_url(token) do
+    case Application.get_env(:streamix, :gindex_direct_proxy_url) do
+      base when is_binary(base) and base != "" ->
+        "#{String.trim_trailing(base, "/")}/stream?token=#{URI.encode_www_form(token)}"
+
+      _ ->
+        build_token_proxy_url(token)
+    end
   end
 
   defp parse_id(id) when is_integer(id), do: {:ok, id}
