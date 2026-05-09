@@ -49,7 +49,19 @@ const liveSocket = new LiveSocket("/live", Socket, {
 });
 
 // Show progress bar on live navigation and form submits
-topbar.config({ barColors: { 0: "#64cc95" }, shadowColor: "rgba(0, 0, 0, .3)" });
+const themeColor = (name, fallback) => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+};
+
+topbar.config({
+  barColors: {
+    0: themeColor("--brand-color", "#e50914"),
+    0.65: themeColor("--brand-hover-color", "#f6121d"),
+    1: themeColor("--accent-color", "#46d369"),
+  },
+  shadowColor: "rgba(229, 9, 20, .35)",
+});
 window.addEventListener("phx:page-loading-start", (_info) => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", (_info) => topbar.hide());
 
