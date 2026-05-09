@@ -146,7 +146,7 @@ const VideoPlayer = {
     this.trackWatchTime();
 
     // Configure error reporter to send errors to backend
-    setErrorReporter((event, data) => this.pushEvent(event, data));
+    setErrorReporter((event, data) => this.pushEventSafe(event, data));
 
     // Expose hook instance on element for child hooks (like ProgressBar) to access
     this.el.__videoPlayerHook = this;
@@ -256,7 +256,7 @@ const VideoPlayer = {
           };
 
       // Send capabilities to backend for analytics
-      this.pushEvent("device_diagnostics", {
+      this.pushEventSafe("device_diagnostics", {
         quick: quickDiag,
         capabilities: getCapabilitySummary(),
         advanced: advancedCapabilities,
@@ -452,6 +452,7 @@ const VideoPlayer = {
     // Native buffer manager (for MP4/MKV streams)
     this.nativeBufferManager = null;
     this.nativeTouchControls = false;
+    this._emergencyStopDone = false;
   },
 
   /**
@@ -560,7 +561,7 @@ const VideoPlayer = {
       this.streamLoader.updateStreamingMode(newMode);
     }
 
-    this.pushEvent("streaming_mode_changed", {
+    this.pushEventSafe("streaming_mode_changed", {
       mode: newMode,
       config: getStreamingConfig(newMode).name,
     });
@@ -577,7 +578,7 @@ const VideoPlayer = {
         const suggestion = this.codecABR.suggestQuality(this.availableQualities);
         log.debug("[VideoPlayer] Codec ABR suggests:", suggestion.reason);
         // Let HLS.js handle auto, but log the suggestion
-        this.pushEvent("codec_abr_suggestion", {
+        this.pushEventSafe("codec_abr_suggestion", {
           suggestedLevel: suggestion.levelIndex,
           reason: suggestion.reason,
         });
@@ -591,7 +592,7 @@ const VideoPlayer = {
         ? "auto"
         : this.availableQualities[levelIndex]?.label || `Level ${levelIndex}`;
 
-    this.pushEvent("quality_changed", { quality, level: levelIndex });
+    this.pushEventSafe("quality_changed", { quality, level: levelIndex });
   },
 
   updateQualityList() {
@@ -611,7 +612,7 @@ const VideoPlayer = {
     );
 
     // Include codec info in event
-    this.pushEvent("qualities_available", {
+    this.pushEventSafe("qualities_available", {
       qualities: [{ index: -1, label: "Automatico" }, ...enhancedQualities],
       current: currentLevel,
       codecABREnabled: !!this.codecABR,
@@ -723,7 +724,7 @@ const VideoPlayer = {
     saveAudioTrack(trackIndex, this.contentId);
 
     const track = this.audioTracks[trackIndex];
-    this.pushEvent("audio_track_changed", {
+    this.pushEventSafe("audio_track_changed", {
       track: trackIndex,
       label: track?.name || track?.lang || `Track ${trackIndex}`,
     });
@@ -752,7 +753,7 @@ const VideoPlayer = {
       this.setAudioTrack(this._preferredAudioTrack);
     }
 
-    this.pushEvent("audio_tracks_available", {
+    this.pushEventSafe("audio_tracks_available", {
       tracks: this.audioTracks,
       current: currentTrack,
     });
@@ -772,7 +773,7 @@ const VideoPlayer = {
     saveSubtitleTrack(trackIndex, this.contentId);
 
     const track = trackIndex >= 0 ? this.subtitleTracks[trackIndex] : null;
-    this.pushEvent("subtitle_track_changed", {
+    this.pushEventSafe("subtitle_track_changed", {
       track: trackIndex,
       label:
         track?.name || track?.lang || (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
@@ -805,7 +806,7 @@ const VideoPlayer = {
       this.setSubtitleTrack(this._preferredSubtitleTrack);
     }
 
-    this.pushEvent("subtitle_tracks_available", {
+    this.pushEventSafe("subtitle_tracks_available", {
       tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
       current: currentTrack,
     });
@@ -825,10 +826,10 @@ const VideoPlayer = {
         this.pipActive = true;
       }
 
-      this.pushEvent("pip_toggled", { active: this.pipActive });
+      this.pushEventSafe("pip_toggled", { active: this.pipActive });
     } catch (error) {
       console.error("PiP error:", error);
-      this.pushEvent("pip_error", { message: error.message });
+      this.pushEventSafe("pip_error", { message: error.message });
     }
   },
 
@@ -901,6 +902,10 @@ const VideoPlayer = {
     document.addEventListener("fullscreenchange", this._onFullscreenChange);
     document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);
 
+    this._onPageTeardown = () => this.emergencyStopPlayback();
+    window.addEventListener("pagehide", this._onPageTeardown, { capture: true });
+    window.addEventListener("beforeunload", this._onPageTeardown, { capture: true });
+
     // LiveView commands
     this.handleEvent("set_quality", ({ level }) => this.setQuality(level));
     this.handleEvent("set_audio_track", ({ track }) => this.setAudioTrack(track));
@@ -921,12 +926,12 @@ const VideoPlayer = {
     // PiP events
     this.video?.addEventListener("enterpictureinpicture", () => {
       this.pipActive = true;
-      this.pushEvent("pip_toggled", { active: true });
+      this.pushEventSafe("pip_toggled", { active: true });
     });
 
     this.video?.addEventListener("leavepictureinpicture", () => {
       this.pipActive = false;
-      this.pushEvent("pip_toggled", { active: false });
+      this.pushEventSafe("pip_toggled", { active: false });
     });
 
     // Progress tracking for VOD
@@ -934,7 +939,7 @@ const VideoPlayer = {
       this.video?.addEventListener("timeupdate", () => this.reportProgress());
       this.video?.addEventListener("durationchange", () => {
         if (this.video.duration && Number.isFinite(this.video.duration)) {
-          this.pushEvent("duration_available", {
+          this.pushEventSafe("duration_available", {
             duration: Math.floor(this.video.duration),
           });
         }
@@ -953,7 +958,7 @@ const VideoPlayer = {
         // Only show if still buffering
         if (this.video && !this.video.paused && this.video.readyState < 3) {
           this.playerUI.showLoading();
-          this.pushEvent("buffering", { buffering: true });
+          this.pushEventSafe("buffering", { buffering: true });
         }
       }, bufferingDelay);
     });
@@ -964,7 +969,7 @@ const VideoPlayer = {
         clearTimeout(this._bufferingDebounce);
         this._bufferingDebounce = null;
       }
-      this.pushEvent("buffering", { buffering: false });
+      this.pushEventSafe("buffering", { buffering: false });
       this.playerUI.hideLoading();
       this.playerUI.hideError();
     });
@@ -976,7 +981,7 @@ const VideoPlayer = {
         clearTimeout(this._bufferingDebounce);
         this._bufferingDebounce = null;
       }
-      this.pushEvent("buffering", { buffering: false });
+      this.pushEventSafe("buffering", { buffering: false });
       this.playerUI.hideLoading();
     });
   },
@@ -1037,7 +1042,7 @@ const VideoPlayer = {
 
         // If we have a suggested player, offer to try it
         if (diagnosis.suggestedPlayer?.player && diagnosis.suggestedPlayer.player !== "native") {
-          this.pushEvent("diagnostic_suggestion", {
+          this.pushEventSafe("diagnostic_suggestion", {
             player: diagnosis.suggestedPlayer.player,
             reason: diagnosis.suggestedPlayer.reason,
             recommendations: diagnosis.recommendations,
@@ -1073,7 +1078,7 @@ const VideoPlayer = {
     if (this.video) {
       this.video.playbackRate = rate;
       savePlaybackRate(rate);
-      this.pushEvent("playback_rate_changed", { rate });
+      this.pushEventSafe("playback_rate_changed", { rate });
     }
   },
 
@@ -1094,7 +1099,7 @@ const VideoPlayer = {
         savePlaybackPosition(this.contentId, currentTime, duration);
       }
 
-      this.pushEvent("progress_update", {
+      this.pushEventSafe("progress_update", {
         current_time: currentTime,
         duration: duration,
         percent: Math.round((currentTime / duration) * 100),
@@ -1360,7 +1365,7 @@ const VideoPlayer = {
   },
 
   reportPlayerDebug(stage, extra = {}) {
-    this.pushEvent("player_debug", {
+    this.pushEventSafe("player_debug", {
       stage,
       current_stream_type: this.currentStreamType,
       content_type: this.contentType,
@@ -1381,7 +1386,7 @@ const VideoPlayer = {
   },
 
   reportPlayerLifecycle(stage, extra = {}) {
-    this.pushEvent("player_lifecycle", {
+    this.pushEventSafe("player_lifecycle", {
       stage,
       session_id: this.playbackSessionId,
       engine: this.usingAVPlayer ? "avplayer" : "native",
@@ -1392,6 +1397,16 @@ const VideoPlayer = {
       native_touch_controls: this.nativeTouchControls,
       ...extra,
     });
+  },
+
+  pushEventSafe(event, payload) {
+    if (this._destroyed || !this.el?.isConnected) return;
+
+    try {
+      this.pushEvent(event, payload);
+    } catch (error) {
+      log.debug(`[VideoPlayer] Ignoring ${event} after LiveView disconnect:`, error);
+    }
   },
 
   toAbsoluteUrl(url) {
@@ -1460,6 +1475,30 @@ const VideoPlayer = {
     if (restoreAudioState) {
       this.video.muted = muted;
       this.video.volume = volume;
+    }
+  },
+
+  emergencyStopPlayback() {
+    if (this._emergencyStopDone) return;
+    this._emergencyStopDone = true;
+
+    try {
+      this.video?.pause();
+      if (this.video) {
+        this.video.muted = true;
+        this.video.removeAttribute("src");
+        this.video.load();
+      }
+    } catch (error) {
+      log.debug("[VideoPlayer] Emergency native teardown failed:", error);
+    }
+
+    try {
+      this.avPlayer?.pause?.();
+      this.avPlayer?.stop?.();
+      this.avPlayer?.destroy?.();
+    } catch (error) {
+      log.debug("[VideoPlayer] Emergency AVPlayer teardown failed:", error);
     }
   },
 
@@ -1625,7 +1664,7 @@ const VideoPlayer = {
         if (!this.isCurrentPlaybackSession(sessionId)) return;
 
         const isAuto = this.manualQuality === null;
-        this.pushEvent("quality_switched", {
+        this.pushEventSafe("quality_switched", {
           level,
           height: levelData?.height,
           bitrate: levelData?.bitrate,
@@ -1707,7 +1746,7 @@ const VideoPlayer = {
 
     // Send codec capabilities to backend for optimal stream selection
     const capabilities = getCapabilitySummary();
-    this.pushEvent("player_initializing", {
+    this.pushEventSafe("player_initializing", {
       stream_type: this.currentStreamType,
       streaming_mode: this.streamingMode,
       pip_supported: this.isPiPSupported(),
@@ -1792,7 +1831,7 @@ const VideoPlayer = {
     log.debug(formatErrorForLog(errorReport));
 
     // Send enriched error to backend
-    this.pushEvent("player_error", {
+    this.pushEventSafe("player_error", {
       ...errorReport,
       patterns: detectErrorPatterns(),
     });
@@ -1810,7 +1849,7 @@ const VideoPlayer = {
       // Check for auth errors (403/401)
       if (data.response?.code === 403 || data.response?.code === 401) {
         log.warn("Auth error detected, requesting token refresh");
-        this.pushEvent("request_token_refresh", {});
+        this.pushEventSafe("request_token_refresh", {});
         return;
       }
 
@@ -2384,7 +2423,7 @@ const VideoPlayer = {
           this.setAVPlayerAudioTrack(this._preferredAudioTrack);
         }
 
-        this.pushEvent("audio_tracks_available", {
+        this.pushEventSafe("audio_tracks_available", {
           tracks: this.audioTracks,
           current: currentTrack,
         });
@@ -2417,7 +2456,7 @@ const VideoPlayer = {
           this.setAVPlayerSubtitleTrack(this._preferredSubtitleTrack);
         }
 
-        this.pushEvent("subtitle_tracks_available", {
+        this.pushEventSafe("subtitle_tracks_available", {
           tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
           current: currentTrack,
         });
@@ -2487,7 +2526,7 @@ const VideoPlayer = {
       this.selectedAudioTrack = trackIndex;
       saveAudioTrack(trackIndex, this.contentId);
 
-      this.pushEvent("audio_track_changed", {
+      this.pushEventSafe("audio_track_changed", {
         track: trackIndex,
         label: track.label,
       });
@@ -2508,13 +2547,13 @@ const VideoPlayer = {
         await this.avPlayer.selectSubtitleTrack(-1);
         this.selectedSubtitleTrack = -1;
         saveSubtitleTrack(-1, this.contentId);
-        this.pushEvent("subtitle_track_changed", { track: -1, label: "Desativado" });
+        this.pushEventSafe("subtitle_track_changed", { track: -1, label: "Desativado" });
       } else if (this.subtitleTracks[trackIndex]) {
         const track = this.subtitleTracks[trackIndex];
         await this.avPlayer.selectSubtitleTrack(track.id);
         this.selectedSubtitleTrack = trackIndex;
         saveSubtitleTrack(trackIndex, this.contentId);
-        this.pushEvent("subtitle_track_changed", {
+        this.pushEventSafe("subtitle_track_changed", {
           track: trackIndex,
           label: track.label,
         });
@@ -2599,7 +2638,7 @@ const VideoPlayer = {
           (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex),
         );
 
-        this.pushEvent("audio_tracks_available", {
+        this.pushEventSafe("audio_tracks_available", {
           tracks: this._probedAudioTracks,
           current: preferredAudioTrack,
         });
@@ -2624,7 +2663,7 @@ const VideoPlayer = {
           this.handleProbedSubtitleTrackSelect(trackIndex),
         );
 
-        this.pushEvent("subtitle_tracks_available", {
+        this.pushEventSafe("subtitle_tracks_available", {
           tracks: [{ index: -1, label: "Desativado" }, ...this._probedSubtitleTracks],
           current: -1,
         });
@@ -2916,7 +2955,7 @@ const VideoPlayer = {
       this.initPlayer();
     }
 
-    this.pushEvent("avplayer_preference_changed", { enabled: this.preferAVPlayer });
+    this.pushEventSafe("avplayer_preference_changed", { enabled: this.preferAVPlayer });
   },
 
   startAVPlayerTimeUpdates() {
@@ -3178,7 +3217,7 @@ const VideoPlayer = {
       saveMuted(this.video.muted);
     }
     this.updateVolumeUI();
-    this.pushEvent("mute_toggled", {
+    this.pushEventSafe("mute_toggled", {
       muted: this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted,
     });
   },
@@ -3201,7 +3240,7 @@ const VideoPlayer = {
 
     saveVolume(newVolume);
     this.updateVolumeUI();
-    this.pushEvent("volume_changed", { volume: Math.round((newVolume || 1) * 100) });
+    this.pushEventSafe("volume_changed", { volume: Math.round((newVolume || 1) * 100) });
   },
 
   seek(seconds) {
@@ -3276,7 +3315,7 @@ const VideoPlayer = {
     // Run directly every 30s instead of checking every 1s
     this.watchInterval = setInterval(() => {
       const duration = Math.floor((Date.now() - this.startTime) / 1000);
-      this.pushEvent("update_watch_time", { duration });
+      this.pushEventSafe("update_watch_time", { duration });
     }, 30000);
   },
 
@@ -3305,6 +3344,12 @@ const VideoPlayer = {
       document.removeEventListener("fullscreenchange", this._onFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", this._onFullscreenChange);
       this._onFullscreenChange = null;
+    }
+
+    if (this._onPageTeardown) {
+      window.removeEventListener("pagehide", this._onPageTeardown, { capture: true });
+      window.removeEventListener("beforeunload", this._onPageTeardown, { capture: true });
+      this._onPageTeardown = null;
     }
 
     // Clear audio check timeout
@@ -3338,7 +3383,7 @@ const VideoPlayer = {
       clearInterval(this.watchInterval);
       const duration = Math.floor((Date.now() - this.startTime) / 1000);
       if (duration > 0) {
-        this.pushEvent("update_watch_time", { duration });
+        this.pushEventSafe("update_watch_time", { duration });
       }
     }
 

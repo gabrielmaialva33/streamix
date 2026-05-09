@@ -196,7 +196,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp handle_attempt_result({:ok, conn, _final_state}, _conn, _state), do: conn
-  defp handle_attempt_result({:error, :client_closed}, conn, _state), do: conn
+  defp handle_attempt_result({:error, :client_closed, chunked_conn}, _conn, _state),
+    do: chunked_conn
 
   defp handle_attempt_result({:error, :before_first_byte, reason}, conn, state) do
     handle_pre_flight_error(conn, reason, state)
@@ -331,8 +332,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         on_pump_error({:pump_down, reason}, acc)
     end
   catch
-    {:client_closed, _acc} ->
-      {:error, :client_closed}
+    {:client_closed, %{conn: conn}} ->
+      {:error, :client_closed, conn}
 
     {:upstream_error, status, %{sent_headers?: false}} ->
       if status in @terminal_statuses do
