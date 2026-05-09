@@ -11,7 +11,7 @@ defmodule StreamixWeb.AdminComponents do
 
   def admin_tabs(assigns) do
     ~H"""
-    <nav class="flex gap-1 border-b border-border mb-6">
+    <nav class="flex max-w-full gap-1 overflow-x-auto border-b border-border mb-6">
       <.admin_tab
         path={~p"/admin"}
         label="Dashboard"
@@ -58,7 +58,7 @@ defmodule StreamixWeb.AdminComponents do
     <.link
       navigate={@path}
       class={[
-        "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",
+        "flex shrink-0 items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",
         @active && "border-brand text-brand",
         !@active &&
           "border-transparent text-text-secondary hover:text-text-primary hover:border-border"
