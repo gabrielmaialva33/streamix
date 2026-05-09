@@ -454,6 +454,7 @@ const VideoPlayer = {
     // Native buffer manager (for MP4/MKV streams)
     this.nativeBufferManager = null;
     this.nativeTouchControls = false;
+    this.lastTimelineSeekAt = 0;
     this._emergencyStopDone = false;
   },
 
@@ -948,6 +949,14 @@ const VideoPlayer = {
       });
     }
 
+    this.video?.addEventListener("seeking", () => {
+      this.lastTimelineSeekAt = Date.now();
+      if (this._bufferingDebounce) {
+        clearTimeout(this._bufferingDebounce);
+        this._bufferingDebounce = null;
+      }
+    });
+
     // Buffer health monitoring with debounce to prevent flickering
     this.video?.addEventListener("waiting", () => {
       // Debounce live buffering more aggressively; live TS/MSE often emits
@@ -955,10 +964,18 @@ const VideoPlayer = {
       if (this._bufferingDebounce) {
         clearTimeout(this._bufferingDebounce);
       }
-      const bufferingDelay = this.contentType === "live" ? 650 : 200;
+      const seekGraceMs = this.contentType === "vod" ? 1600 : 0;
+      const isRecentTimelineSeek = Date.now() - this.lastTimelineSeekAt < seekGraceMs;
+      const bufferingDelay =
+        this.contentType === "live" ? 650 : isRecentTimelineSeek ? seekGraceMs : 200;
       this._bufferingDebounce = setTimeout(() => {
         // Only show if still buffering
-        if (this.video && !this.video.paused && this.video.readyState < 3) {
+        if (
+          this.video &&
+          !this.video.paused &&
+          this.video.readyState < 3 &&
+          Date.now() - this.lastTimelineSeekAt >= seekGraceMs
+        ) {
           this.playerUI.showLoading();
           this.pushEventSafe("buffering", { buffering: true });
         }
