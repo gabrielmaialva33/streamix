@@ -95,7 +95,8 @@ defmodule StreamixWeb.PlayerComponents do
       <%!-- Loading indicator --%>
       <div
         id="loading-indicator"
-        class="absolute inset-0 flex items-center justify-center bg-black/50 z-20"
+        class="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none"
+        aria-hidden="true"
       >
         <div class="flex flex-col items-center gap-4">
           <div class="w-12 h-12 border-4 border-white/20 border-t-brand rounded-full animate-spin" />
