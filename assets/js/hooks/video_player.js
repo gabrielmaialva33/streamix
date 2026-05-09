@@ -2452,7 +2452,7 @@ const VideoPlayer = {
       const isLive = this.contentType === "live";
       log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext, "isLive:", isLive);
 
-      await avPlayer.load(avPlayerUrl, { ext, isLive });
+      await avPlayer.load(avPlayerUrl, this.buildAVPlayerLoadOptions(ext, isLive));
       if (!this.isCurrentPlaybackSession(sessionId)) {
         await avPlayer.destroy();
         return;
@@ -2624,6 +2624,26 @@ const VideoPlayer = {
       und: "Indefinido",
     };
     return languages[code] || code;
+  },
+
+  buildAVPlayerLoadOptions(ext, isLive) {
+    const isHeavyGIndexMkv = this.sourceType === "gindex" && ext === "mkv";
+
+    if (!isHeavyGIndexMkv) {
+      return { ext, isLive };
+    }
+
+    return {
+      ext,
+      isLive,
+      loadTimeoutMs: 120000,
+      maxProbeDuration: 10,
+      ioLoaderOptions: {
+        preload: 8 * 1024 * 1024,
+        retryCount: 8,
+        retryInterval: 1,
+      },
+    };
   },
 
   /**
@@ -2973,20 +2993,7 @@ const VideoPlayer = {
           ? "mkv"
           : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
       const isLive = this.contentType === "live";
-      const isHeavyGIndexMkv = this.sourceType === "gindex" && ext === "mkv";
-      await avPlayer.load(proxyUrl, {
-        ext,
-        isLive,
-        loadTimeoutMs: isHeavyGIndexMkv ? 120000 : undefined,
-        maxProbeDuration: isHeavyGIndexMkv ? 10 : undefined,
-        ioLoaderOptions: isHeavyGIndexMkv
-          ? {
-              preload: 8 * 1024 * 1024,
-              retryCount: 8,
-              retryInterval: 1,
-            }
-          : undefined,
-      });
+      await avPlayer.load(proxyUrl, this.buildAVPlayerLoadOptions(ext, isLive));
       if (!this.isCurrentPlaybackSession(sessionId)) {
         await avPlayer.destroy();
         return;
