@@ -4,9 +4,7 @@ defmodule StreamixWeb.PlayerHelpers do
   Used by PlayerLive and WatchPartyLive.Show.
   """
 
-  alias Streamix.Access
   alias Streamix.Iptv
-  alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Streaming.RedirectResolver
   alias Streamix.Iptv.Torrent.TorrentStream
   alias Streamix.Repo
@@ -168,23 +166,13 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   def resolve_stream_url("gindex", movie, _provider, user_id) do
-    case Gindex.get_movie_url(movie.id) do
-      {:ok, raw_url} ->
-        {:ok, sign_and_build_url_proxy(raw_url, user_id, movie.provider)}
-
-      {:error, _reason} ->
-        {:error, :not_found}
-    end
+    token = StreamToken.sign_movie(movie.id, user_id)
+    {:ok, build_token_proxy_url(token)}
   end
 
   def resolve_stream_url("gindex_episode", episode, _provider, user_id) do
-    case Gindex.get_episode_url(episode.id) do
-      {:ok, raw_url} ->
-        {:ok, sign_and_build_url_proxy(raw_url, user_id, episode.season.series.provider)}
-
-      {:error, _reason} ->
-        {:error, :not_found}
-    end
+    token = StreamToken.sign_episode(episode.id, user_id)
+    {:ok, build_token_proxy_url(token)}
   end
 
   def resolve_stream_url(
@@ -209,9 +197,13 @@ defmodule StreamixWeb.PlayerHelpers do
   prewarm.
   """
   def prewarm_upstream_redirect(type, content, user_id) when is_map(content) do
-    case content_id(content) do
-      nil -> :ok
-      id -> do_prewarm(type, id, user_id)
+    if gindex_content?(content) do
+      :ok
+    else
+      case content_id(content) do
+        nil -> :ok
+        id -> do_prewarm(type, id, user_id)
+      end
     end
   end
 
@@ -234,12 +226,8 @@ defmodule StreamixWeb.PlayerHelpers do
   defp content_id(%{id: id}) when is_integer(id), do: id
   defp content_id(_), do: nil
 
-  defp get_gindex_episode_url(episode) do
-    case Gindex.get_episode_url(episode.id) do
-      {:ok, url} -> url
-      _ -> nil
-    end
-  end
+  defp gindex_content?(%{gindex_path: path}) when is_binary(path) and path != "", do: true
+  defp gindex_content?(_content), do: false
 
   defp next_episode_stream_url("episode", next, user_id) do
     next.id
@@ -248,10 +236,9 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp next_episode_stream_url("gindex_episode", next, user_id) do
-    case get_gindex_episode_url(next) do
-      nil -> nil
-      url -> sign_and_build_url_proxy(url, user_id, next.season.series.provider)
-    end
+    next.id
+    |> StreamToken.sign_episode(user_id)
+    |> build_token_proxy_url()
   end
 
   defp build_next_episode_payload(next, type, user_id) do
@@ -270,18 +257,6 @@ defmodule StreamixWeb.PlayerHelpers do
   defp build_token_proxy_url(token) do
     base_url = StreamixWeb.Endpoint.url()
     "#{base_url}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
-  end
-
-  defp sign_and_build_url_proxy(url, user_id, provider) do
-    premium_required = Access.global_content?(provider)
-
-    case StreamToken.sign_url(url, user_id,
-           premium_required: premium_required,
-           provider_id: provider.id
-         ) do
-      {:error, _} -> nil
-      token -> build_token_proxy_url(token)
-    end
   end
 
   defp parse_id(id) when is_integer(id), do: {:ok, id}
