@@ -70,17 +70,40 @@ defmodule Streamix.Iptv.Sync.Series.Details do
   def sync_series_details(%Series{} = series) do
     provider = Providers.get!(series.provider_id)
 
-    case XtreamClient.get_series_info(
-           provider.url,
-           provider.username,
-           provider.password,
-           series.series_id
-         ) do
-      {:ok, info} ->
-        SeasonsEpisodes.sync(series, info)
+    cond do
+      # GIndex providers do not expose an Xtream `get_series_info`
+      # endpoint — seasons / episodes are populated by the folder
+      # walk that runs during sync (`Streamix.Iptv.Gindex.Sync`).
+      # The lazy-sync hook in `SeriesOps.get_with_sync!/1` was
+      # blowing up here with `URI.encode_www_form(nil)` because the
+      # provider has no Xtream credentials. Treat the call as a
+      # no-op so the detail page renders the data we already have.
+      provider.provider_type == :gindex ->
+        {:ok, :gindex_no_xtream_sync}
 
-      {:error, reason} ->
-        {:error, {:series_info_failed, reason}}
+      is_nil(provider.username) or is_nil(provider.password) or is_nil(provider.url) ->
+        # Defensive: any other provider type that arrives without
+        # credentials would crash the same way. Skip rather than
+        # spit out a 500 — the upstream UI is read-only.
+        Logger.warning(
+          "Series details sync skipped for provider #{provider.id}: missing Xtream credentials"
+        )
+
+        {:ok, :missing_credentials}
+
+      true ->
+        case XtreamClient.get_series_info(
+               provider.url,
+               provider.username,
+               provider.password,
+               series.series_id
+             ) do
+          {:ok, info} ->
+            SeasonsEpisodes.sync(series, info)
+
+          {:error, reason} ->
+            {:error, {:series_info_failed, reason}}
+        end
     end
   end
 
