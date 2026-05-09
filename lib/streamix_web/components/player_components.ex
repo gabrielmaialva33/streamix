@@ -59,6 +59,10 @@ defmodule StreamixWeb.PlayerComponents do
         :player_lifecycle_logs,
         Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
       )
+      |> assign(
+        :feature_avbridge,
+        Application.get_env(:streamix, :feature_avbridge, false) |> to_string()
+      )
 
     ~H"""
     <div
@@ -75,6 +79,7 @@ defmodule StreamixWeb.PlayerComponents do
       data-expected-duration={@expected_duration}
       data-stream-type={@stream_type}
       data-player-lifecycle-logs={@player_lifecycle_logs}
+      data-feature-avbridge={@feature_avbridge}
     >
       <%!-- Loading indicator --%>
       <div

@@ -61,6 +61,55 @@ async function loadAVPlayer() {
   return { AVPlayerWrapper, detectAudioIssue, preloadCommonWasm };
 }
 
+// Lazy load avbridge only when an HEVC GIndex stream is selected. avbridge
+// pulls in libavjs-webcodecs-bridge + mediabunny which together push the
+// player chunk past 1 MB, so we keep them off the critical path.
+let AvbridgeWrapper = null;
+let avbridgeModulePromise = null;
+
+async function loadAvbridge() {
+  if (!AvbridgeWrapper) {
+    log.debug("Lazy loading avbridge module...");
+    avbridgeModulePromise ||= import("../lib/avbridge_wrapper").catch((error) => {
+      avbridgeModulePromise = null;
+      throw error;
+    });
+    const module = await avbridgeModulePromise;
+    AvbridgeWrapper = module.AvbridgeWrapper;
+    log.debug("avbridge module loaded");
+  }
+  return { AvbridgeWrapper };
+}
+
+// Synchronous capability check used by `selectEngine`. A stricter
+// `VideoDecoder.isConfigSupported({ codec: "hvc1...." })` probe runs
+// inside avbridge itself when it boots, and the hook treats any
+// init failure as a fallback signal — so this surface check is
+// intentionally cheap. Browsers that lack WebCodecs (e.g. older
+// Firefox) will never opt into avbridge and stay on AVPlayer.
+function hasWebCodecsHevcSupport() {
+  return typeof window !== "undefined" && typeof window.VideoDecoder === "function";
+}
+
+// Feature-flag readout. Two ways to opt in (so we can flip remotely
+// without a redeploy): a `data-feature-avbridge="true"` on the player
+// container (server-rendered, controlled from a single Application
+// config) or a `localStorage["streamix:avbridge"]` value of `"true"`
+// for ad-hoc browser testing. Defaults to false until field telemetry
+// looks good.
+function readAvbridgeFlag(containerEl) {
+  if (containerEl?.dataset?.featureAvbridge === "true") return true;
+  try {
+    if (typeof localStorage !== "undefined") {
+      return localStorage.getItem("streamix:avbridge") === "true";
+    }
+  } catch {
+    // Locked-down browser (3rd-party-cookie embed, Safari ITP) —
+    // localStorage throws on read; treat as not-opted-in.
+  }
+  return false;
+}
+
 function isFirefoxBrowser() {
   return /firefox/i.test(navigator.userAgent);
 }
@@ -439,6 +488,19 @@ const VideoPlayer = {
     this.avPlayerMuted = false;
     this.avPlayerTimeInterval = null;
     this.preferAVPlayer = false; // Manual audio compatibility mode
+
+    // Avbridge (GPU HEVC) state — the engine_selector hands work here
+    // when GIndex serves an MKV and the runtime exposes WebCodecs
+    // hardware decode. We track `attempted` so a fallback to AVPlayer
+    // does not immediately bounce back to avbridge in a re-init.
+    this.avbridge = null;
+    this.usingAvbridge = false;
+    this.avbridgeAttempted = false;
+    this.avbridgeTimeInterval = null;
+    // Feature flag is opt-in for now — flip via `data-feature-avbridge`
+    // on the player container or `localStorage["streamix:avbridge"]`.
+    // Defaults to false until we are happy with field telemetry.
+    this.featureFlagAvbridge = readAvbridgeFlag(this.el);
 
     // Next episode state (for pre-fetch)
     this.nextEpisode = this.parseNextEpisode();
@@ -1379,11 +1441,17 @@ const VideoPlayer = {
       recommendedPlayer,
       preferAVPlayer: this.preferAVPlayer,
       avPlayerAttempted: this.avPlayerAttempted,
+      avbridgeAttempted: this.avbridgeAttempted,
       shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
       capabilities: {
         hlsJs: isHlsJsSupported(),
         mpegts: isMpegtsSupported(),
         nativeHls: this.getNativeHlsSupport(),
+        // avbridge is reserved for HEVC paths today; only flag it as
+        // available when WebCodecs advertises a HEVC decoder. Falsy
+        // here makes engine_selector skip the avbridge branch and
+        // hand the work back to AVPlayer (libmedia) like before.
+        avbridge: this.featureFlagAvbridge && hasWebCodecsHevcSupport(),
       },
     };
   },
@@ -1465,6 +1533,13 @@ const VideoPlayer = {
       this.avPlayer.destroy();
       this.avPlayer = null;
     }
+    if (this.avbridge) {
+      this.avbridge.destroy().catch((err) => {
+        log.debug("[VideoPlayer] avbridge cleanup threw:", err);
+      });
+      this.avbridge = null;
+    }
+    this.usingAvbridge = false;
     if (this.audioCheckTimeout) {
       clearTimeout(this.audioCheckTimeout);
       this.audioCheckTimeout = null;
@@ -1523,6 +1598,13 @@ const VideoPlayer = {
       this.avPlayer?.destroy?.();
     } catch (error) {
       log.debug("[VideoPlayer] Emergency AVPlayer teardown failed:", error);
+    }
+
+    try {
+      this.avbridge?.pause?.();
+      this.avbridge?.destroy?.();
+    } catch (error) {
+      log.debug("[VideoPlayer] Emergency avbridge teardown failed:", error);
     }
   },
 
@@ -1870,6 +1952,10 @@ const VideoPlayer = {
     });
 
     switch (engine) {
+      case "avbridge":
+        log.debug("Using avbridge (engine_selector decision)");
+        this.playWithAvbridge();
+        break;
       case "avplayer":
         log.debug("Using AVPlayer (engine_selector decision)");
         this.tryAVPlayerFallback();
@@ -2063,6 +2149,62 @@ const VideoPlayer = {
     }
 
     this.hls = await this.ensureStreamLoader().loadHls(this.currentUrl);
+  },
+
+  async playWithAvbridge() {
+    log.info("Playing with avbridge, url:", this.currentUrl);
+    this.avbridgeAttempted = true;
+    this.reportPlayerLifecycle("player_engine_selected", { engine: "avbridge" });
+
+    const sessionId = this.playbackSessionId;
+    const resumeTime = this.takeResumeTime();
+
+    try {
+      const { AvbridgeWrapper } = await loadAvbridge();
+      if (!this.isCurrentPlaybackSession(sessionId)) return;
+
+      this.avbridge = new AvbridgeWrapper({ video: this.video });
+      await this.avbridge.load(this.currentUrl, {
+        startTime: resumeTime,
+      });
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        await this.avbridge.destroy().catch(() => {});
+        this.avbridge = null;
+        return;
+      }
+
+      this.usingAvbridge = true;
+      this.playerUI.hideLoading();
+
+      // Resume + play. avbridge.load already attaches the source, so we
+      // just align `currentTime` and kick playback the way the native
+      // path does. Any error throws → catch falls through to AVPlayer.
+      if (resumeTime > 0) {
+        try {
+          await this.avbridge.seek(resumeTime);
+        } catch (seekErr) {
+          log.warn("[Avbridge] seek-on-load failed, will try after play()", seekErr);
+        }
+      }
+      await this.avbridge.play();
+    } catch (err) {
+      log.warn("[Avbridge] init failed, falling back to AVPlayer:", err);
+      this.reportPlayerLifecycle("player_engine_fallback", {
+        from: "avbridge",
+        to: "avplayer",
+        reason: err?.message || String(err),
+      });
+      try {
+        await this.avbridge?.destroy?.();
+      } catch {
+        // best effort
+      }
+      this.avbridge = null;
+      this.usingAvbridge = false;
+      if (this.isCurrentPlaybackSession(sessionId)) {
+        this.tryAVPlayerFallback();
+      }
+    }
   },
 
   async playWithMpegts(type = "mpegts") {

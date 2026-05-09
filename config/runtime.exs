@@ -287,7 +287,13 @@ config :streamix,
   # endpoint via `X-Internal-Auth`. Required for the direct route to
   # function — when unset the controller responds with 401 and the
   # nginx Lua falls back through its error handler.
-  gindex_resolve_secret: get_env.("GINDEX_RESOLVE_SECRET")
+  gindex_resolve_secret: get_env.("GINDEX_RESOLVE_SECRET"),
+  # Opt the browser into the avbridge engine for GIndex MKV/HEVC
+  # content. When `"true"`, the player container renders with
+  # `data-feature-avbridge="true"` and the JS hook routes that path
+  # through `playWithAvbridge` (WebCodecs HEVC hardware decode).
+  # Falsy keeps the legacy AVPlayer (libmedia WASM) path.
+  feature_avbridge: (get_env.("FEATURE_AVBRIDGE") || "false") == "true"
 
 config :streamix,
   player_lifecycle_logs: get_env.("PLAYER_LIFECYCLE_LOGS") in ~w(true 1 yes)
