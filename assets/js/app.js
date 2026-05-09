@@ -32,6 +32,31 @@ import { getEnvInfo } from "./lib/logger";
 window.Alpine = Alpine;
 Alpine.start();
 
+// Global poster / cover fallback. Some catalog images live on aging
+// CDN77 mirrors (e.g. `gstaticontent.com/images/<md5>.jpg`) and
+// occasionally 404 because the upstream pulled the asset. Without
+// any listener the browser leaves a broken-image icon and the
+// console fills with passthrough 404s from `img.mahina.cloud/proxy`.
+// Swap to a lightweight inline SVG placeholder on the first error
+// per element, and tag the element so a 404 on the placeholder
+// itself never causes an infinite swap loop.
+//
+// `error` does not bubble, so the listener has to register in the
+// capture phase to see it from `document`.
+const POSTER_FALLBACK_SRC = "/images/poster-fallback.svg";
+document.addEventListener(
+  "error",
+  (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (target.dataset.fallbackApplied === "1") return;
+    target.dataset.fallbackApplied = "1";
+    target.removeAttribute("srcset");
+    target.src = POSTER_FALLBACK_SRC;
+  },
+  true,
+);
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
 const INSTALL_HINT_DISMISSED_KEY = "streamix:pwa-install-hint-dismissed";
