@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Central instructions for coding agents working on **Streamix**. `CLAUDE.md` and `GEMINI.md` are symlinks to this
-file, so update this document only.
+Central instructions for coding agents working on **Streamix**. `CLAUDE.md` and `GEMINI.md` import this file with
+`@AGENTS.md`, so update this document only.
 
 > Principle: this file only captures repo-specific rules. When a rule is not listed here, follow standard
 > Elixir / Phoenix 1.8 / LiveView 1.1 conventions and the detailed guidance in
