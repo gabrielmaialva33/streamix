@@ -79,19 +79,22 @@ defmodule StreamixWeb.User.SettingsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="-mx-[4%] sm:mx-0">
-      <div class="max-w-2xl mx-auto space-y-4 sm:space-y-6">
-        <div class="px-[4%] sm:px-0">
-          <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Configurações</h1>
-          <p class="text-sm sm:text-base text-text-secondary mt-1">
-            Gerencie as configurações da sua conta
-          </p>
-        </div>
+    <div class="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
+      <div>
+        <h1 class="text-2xl font-bold text-text-primary sm:text-3xl">Configurações</h1>
+        <p class="mt-1 text-sm text-text-secondary sm:text-base">
+          Gerencie as configurações da sua conta
+        </p>
+      </div>
 
-        <div class="bg-surface sm:rounded-xl p-4 sm:p-6 border-y sm:border border-border">
-          <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
-            Alterar Email
-          </h3>
+      <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <section class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-1">
+          <div class="mb-4">
+            <h2 class="text-base font-semibold text-text-primary">Email</h2>
+            <p class="mt-1 text-sm text-text-secondary">
+              Atualize o endereço usado para entrar na sua conta.
+            </p>
+          </div>
 
           <.simple_form
             for={@email_form}
@@ -109,7 +112,7 @@ defmodule StreamixWeb.User.SettingsLive do
             <.input
               field={@email_form[:current_password]}
               type="password"
-              label="Senha Atual"
+              label="Senha atual"
               required
               name="current_password"
               id="email_current_password"
@@ -122,12 +125,15 @@ defmodule StreamixWeb.User.SettingsLive do
               </.button>
             </:actions>
           </.simple_form>
-        </div>
+        </section>
 
-        <div class="bg-surface sm:rounded-xl p-4 sm:p-6 border-y sm:border border-border">
-          <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
-            Alterar Senha
-          </h3>
+        <section class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <div class="mb-4">
+            <h2 class="text-base font-semibold text-text-primary">Senha</h2>
+            <p class="mt-1 text-sm text-text-secondary">
+              Use uma senha forte para proteger seu acesso.
+            </p>
+          </div>
 
           <.simple_form
             for={@password_form}
@@ -143,22 +149,22 @@ defmodule StreamixWeb.User.SettingsLive do
             <.input
               field={@password_form[:password]}
               type="password"
-              label="Nova Senha"
+              label="Nova senha"
               required
               autocomplete="new-password"
             />
-            <p class="text-xs text-text-secondary -mt-2">Mínimo de 12 caracteres</p>
+            <p class="-mt-2 text-xs text-text-secondary">Mínimo de 12 caracteres</p>
             <.input
               field={@password_form[:password_confirmation]}
               type="password"
-              label="Confirmar Nova Senha"
+              label="Confirmar nova senha"
               required
               autocomplete="new-password"
             />
             <.input
               field={@password_form[:current_password]}
               type="password"
-              label="Senha Atual"
+              label="Senha atual"
               required
               name="current_password"
               id="password_current_password"
@@ -171,17 +177,12 @@ defmodule StreamixWeb.User.SettingsLive do
               </.button>
             </:actions>
           </.simple_form>
-        </div>
-
-        <div class="bg-surface sm:rounded-xl p-4 sm:p-6 border-y sm:border border-border">
-          <h3 class="text-base sm:text-lg font-semibold text-text-primary mb-3 sm:mb-4">
-            Preferências de Conteúdo
-          </h3>
-
-          <div class="flex items-center justify-between">
+        </section>
+        <section class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-2">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p class="text-text-primary font-medium">Conteúdo Adulto</p>
-              <p class="text-sm text-text-secondary">
+              <h2 class="text-base font-semibold text-text-primary">Preferências de conteúdo</h2>
+              <p class="mt-1 text-sm text-text-secondary">
                 Mostrar categorias e conteúdo marcados como adulto (+18)
               </p>
             </div>
@@ -192,6 +193,7 @@ defmodule StreamixWeb.User.SettingsLive do
                 "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface",
                 if(@current_scope.user.show_adult_content, do: "bg-brand", else: "bg-gray-600")
               ]}
+              aria-label="Alternar conteúdo adulto"
             >
               <span class={[
                 "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
@@ -199,7 +201,7 @@ defmodule StreamixWeb.User.SettingsLive do
               ]} />
             </button>
           </div>
-        </div>
+        </section>
       </div>
     </div>
     """
