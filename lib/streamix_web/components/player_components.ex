@@ -280,12 +280,11 @@ defmodule StreamixWeb.PlayerComponents do
 
   defp stream_type_hint(:torrent, _content, _source_type), do: "mp4"
 
-  defp stream_type_hint(_content_type, content, source_type) when source_type in [:gindex, "gindex"] do
-    content
-    |> Map.get(:gindex_path)
-    |> extension_from_path()
-    |> Kernel.||(extension_from_path(Map.get(content, :container_extension)))
-    |> Kernel.||("mkv")
+  defp stream_type_hint(_content_type, content, source_type)
+       when source_type in [:gindex, "gindex"] do
+    extension_from_path(Map.get(content, :gindex_path)) ||
+      extension_from_path(Map.get(content, :container_extension)) ||
+      "mkv"
   end
 
   defp stream_type_hint(content_type, content, _source_type)
@@ -297,13 +296,14 @@ defmodule StreamixWeb.PlayerComponents do
 
   defp extension_from_path(value) when is_binary(value) and value != "" do
     value
+    |> URI.decode()
     |> Path.extname()
     |> String.trim_leading(".")
+    |> String.downcase()
     |> case do
-      "" -> String.trim_leading(value, ".")
+      "" -> nil
       ext -> ext
     end
-    |> String.downcase()
   end
 
   defp extension_from_path(_value), do: nil
