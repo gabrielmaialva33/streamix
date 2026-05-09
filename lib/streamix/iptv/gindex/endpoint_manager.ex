@@ -31,21 +31,26 @@ defmodule Streamix.Iptv.Gindex.EndpointManager do
   # array is null when the upstream Drive folder is too big to fit
   # in a single response. Promote the healthy mirror; HealthTracker
   # will recycle the others if/when their owners ship a fix.
+  #
+  # 2026-05-09: collapsed the 3 direct mirrors into a single edge
+  # entry — `https://gindex.mahina.cloud`. That hostname is an nginx
+  # reverse proxy on srv953258 (behind a Cloudflare Tunnel) that
+  # fans out to `1.animezey23112022.workers.dev` (primary) and
+  # `animezey16082023.animezey16082023.workers.dev` (fallback) at
+  # the upstream layer with `error_page 5xx → @gindex_fallback`.
+  # Centralizing there gives us:
+  #   * a single TLS keepalive pool to ride 4K MKV Range fetches,
+  #     so the BEAM no longer pays the SSL handshake on every chunk;
+  #   * Range/POST/HEAD passthrough plus permissive CORS, so the
+  #     browser-side AVPlayer talks to one origin instead of three;
+  #   * 5xx fallback handled at nginx, which removes the circuit
+  #     ping-pong we used to see when one Cloudflare Worker shard
+  #     started returning the deterministic TypeError.
   @default_endpoints [
     %{
-      name: :primary,
-      url: "https://1.animezey23112022.workers.dev",
+      name: :proxy,
+      url: "https://gindex.mahina.cloud",
       priority: 1
-    },
-    %{
-      name: :mirror_animezey16082023,
-      url: "https://animezey16082023.animezey16082023.workers.dev",
-      priority: 2
-    },
-    %{
-      name: :mirror_animezeydl,
-      url: "https://1.animezeydl.workers.dev",
-      priority: 3
     }
   ]
 
