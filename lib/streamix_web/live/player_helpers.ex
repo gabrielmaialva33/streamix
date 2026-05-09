@@ -157,12 +157,26 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def resolve_stream_url("movie", movie, _provider, user_id) do
     token = StreamToken.sign_movie(movie.id, user_id)
-    {:ok, build_token_proxy_url(token)}
+
+    if gindex_content?(movie) do
+      # 4K HEVC GIndex content streams direct from the nginx hop
+      # (`gindex.mahina.cloud/stream`) — keeps the BEAM out of the
+      # bytes path and lets the browser-side h265web.js engine open
+      # the stream URL it can pump straight into the canvas.
+      {:ok, build_gindex_stream_url(token)}
+    else
+      {:ok, build_token_proxy_url(token)}
+    end
   end
 
   def resolve_stream_url("episode", episode, _provider, user_id) do
     token = StreamToken.sign_episode(episode.id, user_id)
-    {:ok, build_token_proxy_url(token)}
+
+    if gindex_content?(episode) do
+      {:ok, build_gindex_stream_url(token)}
+    else
+      {:ok, build_token_proxy_url(token)}
+    end
   end
 
   def resolve_stream_url("gindex", movie, _provider, user_id) do
