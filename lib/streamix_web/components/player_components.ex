@@ -38,14 +38,7 @@ defmodule StreamixWeb.PlayerComponents do
     source_type = assigns.provider_type || Atom.to_string(assigns.content_type)
 
     # Explicit stream type hint for token-based URLs where extension is not in the URL
-    stream_type =
-      case assigns.content_type do
-        ct when ct in [:live, :live_channel] -> "ts"
-        :movie -> "mp4"
-        :episode -> "mp4"
-        :torrent -> "mp4"
-        _ -> nil
-      end
+    stream_type = stream_type_hint(assigns.content_type, assigns.content, source_type)
 
     # Encode next episode data as JSON for JS
     next_episode_json =
@@ -280,6 +273,40 @@ defmodule StreamixWeb.PlayerComponents do
     </div>
     """
   end
+
+  defp stream_type_hint(content_type, _content, _source_type)
+       when content_type in [:live, :live_channel],
+       do: "ts"
+
+  defp stream_type_hint(:torrent, _content, _source_type), do: "mp4"
+
+  defp stream_type_hint(_content_type, content, source_type) when source_type in [:gindex, "gindex"] do
+    content
+    |> Map.get(:gindex_path)
+    |> extension_from_path()
+    |> Kernel.||(extension_from_path(Map.get(content, :container_extension)))
+    |> Kernel.||("mkv")
+  end
+
+  defp stream_type_hint(content_type, content, _source_type)
+       when content_type in [:movie, :episode] do
+    extension_from_path(Map.get(content, :container_extension)) || "mp4"
+  end
+
+  defp stream_type_hint(_content_type, _content, _source_type), do: nil
+
+  defp extension_from_path(value) when is_binary(value) and value != "" do
+    value
+    |> Path.extname()
+    |> String.trim_leading(".")
+    |> case do
+      "" -> String.trim_leading(value, ".")
+      ext -> ext
+    end
+    |> String.downcase()
+  end
+
+  defp extension_from_path(_value), do: nil
 
   attr :content, :map, required: true
   attr :status_url, :string, required: true

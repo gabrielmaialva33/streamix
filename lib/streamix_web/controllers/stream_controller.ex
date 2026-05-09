@@ -55,6 +55,13 @@ defmodule StreamixWeb.StreamController do
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
 
+  defp stream_by_type(%{method: "HEAD"} = conn, url, _type, meta) do
+    case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
+      :redirect -> resolve_and_redirect_to_proxy(conn, url)
+      _ -> VodProxy.head(conn, url, url_chain: derive_url_chain(url, meta))
+    end
+  end
+
   defp stream_by_type(conn, url, _type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
