@@ -580,7 +580,7 @@ export class PlayerUI {
   }
 
   setNativeControlsMode(enabled) {
-    const { bottomControls, centerPlay } = this.elements;
+    const { bottomControls, centerPlay, loadingIndicator } = this.elements;
     this.nativeControlsMode = enabled;
 
     if (bottomControls) {
@@ -589,6 +589,11 @@ export class PlayerUI {
 
     if (centerPlay) {
       centerPlay.classList.toggle("hidden", enabled);
+    }
+
+    if (loadingIndicator) {
+      loadingIndicator.classList.add("pointer-events-none");
+      loadingIndicator.setAttribute("aria-hidden", "true");
     }
 
     this.showControls();

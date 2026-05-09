@@ -972,7 +972,10 @@ const VideoPlayer = {
 
     // Video Element Events
     this.video?.addEventListener("play", () => this.playerUI.updatePlayPauseUI(false));
-    this.video?.addEventListener("pause", () => this.playerUI.updatePlayPauseUI(true));
+    this.video?.addEventListener("pause", () => {
+      this.playerUI.updatePlayPauseUI(true);
+      this.clearNativeBufferingState();
+    });
     this.video?.addEventListener("volumechange", () => this.updateVolumeUI());
     this.video?.addEventListener("timeupdate", () => {
       this.updateTimeUI();
@@ -1465,8 +1468,20 @@ const VideoPlayer = {
 
     this.video.controls = enabled;
     this.video.toggleAttribute("controls", enabled);
+    this.video.playsInline = true;
+    this.video.webkitPlaysInline = true;
     this.video.setAttribute("playsinline", "");
     this.video.setAttribute("webkit-playsinline", "");
+    this.video.setAttribute("x-webkit-airplay", "allow");
+  },
+
+  clearNativeBufferingState() {
+    if (this._bufferingDebounce) {
+      clearTimeout(this._bufferingDebounce);
+      this._bufferingDebounce = null;
+    }
+    this.playerUI?.hideLoading();
+    this.pushEventSafe("buffering", { buffering: false });
   },
 
   buildEngineContext(recommendedPlayer) {
