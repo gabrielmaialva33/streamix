@@ -217,6 +217,7 @@ const VideoPlayer = {
     this.setupEventListeners();
     this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
+    this.setupMediaSession();
     this.setupAspectRatio();
     this.trackWatchTime();
 
@@ -456,6 +457,8 @@ const VideoPlayer = {
     this.contentType = this.el.dataset.contentType || "live";
     this.sourceType = this.el.dataset.sourceType || null;
     this.contentId = this.el.dataset.contentId;
+    this.mediaTitle = this.el.dataset.mediaTitle || document.title || "Streamix";
+    this.mediaSubtitle = this.el.dataset.mediaSubtitle || "Streamix";
     this.initialMode = this.el.dataset.streamingMode || null;
     this.expectedDuration = parseInt(this.el.dataset.expectedDuration, 10) || 0;
     this.playerLifecycleLogs = this.el.dataset.playerLifecycleLogs === "true";
@@ -976,6 +979,9 @@ const VideoPlayer = {
       this.playerUI.updatePlayPauseUI(true);
       this.clearNativeBufferingState();
     });
+    this.video?.addEventListener("play", () => this.updateMediaSessionPlaybackState());
+    this.video?.addEventListener("pause", () => this.updateMediaSessionPlaybackState());
+    this.video?.addEventListener("ended", () => this.updateMediaSessionPlaybackState());
     this.video?.addEventListener("volumechange", () => this.updateVolumeUI());
     this.video?.addEventListener("timeupdate", () => {
       this.updateTimeUI();
