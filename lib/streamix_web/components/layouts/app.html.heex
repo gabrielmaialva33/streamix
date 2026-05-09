@@ -6,7 +6,7 @@
   below (env(safe-area-inset-*) only works on the elements that actually
   paint into the unsafe zone).
 --%>
-<div class={["min-h-dvh bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
+<div class={["flex min-h-dvh flex-col bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
   <%!--
     Provider-health banner. Rendered by the StreamixWeb.OnMount.ProviderHealth
     hook via the @provider_health assign. Lives *above* the scroll-aware
@@ -222,7 +222,7 @@
     utility in app.css adds env(safe-area-inset-top) on top of that so
     content clears the notch on iPhone X+ / Dynamic Island devices.
   --%>
-  <main class="pb-20 sm:pb-8 px-[4%] main-safe-top">
+  <main class="flex-1 pb-20 sm:pb-8 px-[4%] main-safe-top">
     {@inner_content}
   </main>
 
