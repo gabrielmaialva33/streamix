@@ -17,9 +17,13 @@ defmodule StreamixWeb do
   those modules here.
   """
 
+  # `sw.js` deliberately omitted — served dynamically by
+  # `StreamixWeb.ServiceWorkerController` so each release ships a
+  # fresh `CACHE_VERSION`. Static plug would otherwise hand back the
+  # byte-identical file on every deploy, the browser would skip the
+  # SW update step, and the old cache would stay pinned forever.
   def static_paths,
-    do:
-      ~w(assets fonts images favicon.ico robots.txt avplayer vendor sw.js manifest.json offline.html)
+    do: ~w(assets fonts images favicon.ico robots.txt avplayer vendor manifest.json offline.html)
 
   def router do
     quote do
