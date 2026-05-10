@@ -5,7 +5,11 @@
  * - PWA offline support
  */
 
-const CACHE_VERSION = 'v9';
+// Replaced at request time by StreamixWeb.ServiceWorkerController
+// with a token derived from priv/static/cache_manifest.json (so each
+// `mix assets.deploy` ships a brand new SW byte-image and the
+// browser triggers an update). See controller doc for the rationale.
+const CACHE_VERSION = '__SW_CACHE_VERSION__';
 const CACHE_NAME = `streamix-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -192,7 +196,12 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Images - Cache-first
+    // Images - Stale-while-revalidate.
+    // Cache-first was too aggressive: a poster that 404'd once stayed
+    // 404 forever, and a 200 that later moved to a different CDN
+    // would never get re-validated. Now we serve the cached copy
+    // immediately for snappy UX and re-fetch in the background;
+    // the next visit gets the fresh asset.
     if (url.pathname.startsWith('/images') ||
         url.pathname.startsWith('/avplayer/') ||
         url.pathname.endsWith('.png') ||
@@ -201,13 +210,15 @@ self.addEventListener('fetch', (event) => {
         url.pathname.endsWith('.ico')) {
         event.respondWith(
             caches.match(request).then((cached) => {
-                return cached || fetch(request).then((response) => {
+                const networkPromise = fetch(request).then((response) => {
                     if (response.ok) {
                         const clone = response.clone();
                         caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
                     }
                     return response;
-                });
+                }).catch(() => cached);
+                // Serve cached copy if present, otherwise wait for network.
+                return cached || networkPromise;
             })
         );
         return;
