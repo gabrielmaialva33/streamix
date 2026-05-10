@@ -226,6 +226,15 @@ defmodule StreamixWeb.Router do
     post "/providers/:id/sync", ProvidersController, :sync
   end
 
+  # Service worker — served from a controller (instead of Plug.Static)
+  # so the response carries a per-release `CACHE_VERSION` token. The
+  # browser's SW update protocol only fires when the registered
+  # script differs byte-by-byte from the on-disk one, so this is what
+  # un-pins users from a stale cache after a deploy.
+  scope "/", StreamixWeb do
+    get "/sw.js", ServiceWorkerController, :show
+  end
+
   # Public routes - landing page only
   scope "/", StreamixWeb do
     pipe_through :browser
