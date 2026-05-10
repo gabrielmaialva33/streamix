@@ -10,6 +10,8 @@
 const ProgressBar = {
   mounted() {
     this.isDragging = false;
+    this.pendingSeekTime = null;
+    this.suppressClickUntil = 0;
     this.progressContainer = this.el;
     this.progressPlayed = this.el.querySelector("#progress-played");
     this.progressBuffered = this.el.querySelector("#progress-buffered");
@@ -36,30 +38,33 @@ const ProgressBar = {
 
   setupEventListeners() {
     // Bind handlers so we can remove them later
-    this.handleClick = (e) => this.seekToPosition(e);
+    this.handleClick = (e) => {
+      if (Date.now() < this.suppressClickUntil) return;
+      this.seekToPosition(e, { commit: true });
+    };
     this.handleMouseDown = (e) => {
       this.isDragging = true;
-      this.seekToPosition(e);
+      this.seekToPosition(e, { commit: false });
     };
     this.handleMouseMove = (e) => {
       if (this.isDragging) {
-        this.seekToPosition(e);
+        this.seekToPosition(e, { commit: false });
       }
     };
     this.handleMouseUp = () => {
-      this.isDragging = false;
+      this.finishDrag();
     };
     this.handleTouchStart = (e) => {
       this.isDragging = true;
-      this.seekToPosition(e.touches[0]);
+      this.seekToPosition(e.touches[0], { commit: false });
     };
     this.handleTouchMove = (e) => {
       if (this.isDragging) {
-        this.seekToPosition(e.touches[0]);
+        this.seekToPosition(e.touches[0], { commit: false });
       }
     };
     this.handleTouchEnd = () => {
-      this.isDragging = false;
+      this.finishDrag();
     };
     this.handleTimeUpdate = () => this.updateProgress();
     this.handleProgress = () => this.updateBuffer();
@@ -91,7 +96,19 @@ const ProgressBar = {
     }
   },
 
-  seekToPosition(e) {
+  finishDrag() {
+    if (!this.isDragging) return;
+
+    this.isDragging = false;
+    this.suppressClickUntil = Date.now() + 350;
+
+    if (this.pendingSeekTime !== null) {
+      this.commitSeek(this.pendingSeekTime);
+      this.pendingSeekTime = null;
+    }
+  },
+
+  seekToPosition(e, { commit = false } = {}) {
     const hook = this.getVideoPlayerHook();
     const duration = hook?.getDuration?.() || this.video?.duration;
 
@@ -102,17 +119,27 @@ const ProgressBar = {
     const clampedPos = Math.max(0, Math.min(1, pos));
     const seekTime = clampedPos * duration;
 
+    if (commit) {
+      this.commitSeek(seekTime);
+    } else {
+      this.pendingSeekTime = seekTime;
+    }
+
+    // Update progress bar immediately for responsive feel
+    if (this.progressPlayed) {
+      this.progressPlayed.style.width = `${clampedPos * 100}%`;
+    }
+  },
+
+  commitSeek(seekTime) {
+    const hook = this.getVideoPlayerHook();
+
     // Use VideoPlayer hook's seekTo method (works with both native and AVPlayer)
     if (hook?.seekTo) {
       hook.seekTo(seekTime);
     } else if (this.video) {
       // Fallback to direct video element
       this.video.currentTime = seekTime;
-    }
-
-    // Update progress bar immediately for responsive feel
-    if (this.progressPlayed) {
-      this.progressPlayed.style.width = `${clampedPos * 100}%`;
     }
   },
 

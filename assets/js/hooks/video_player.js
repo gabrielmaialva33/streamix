@@ -592,6 +592,7 @@ const VideoPlayer = {
     this._suspendingForIos = false;
     this._wasPlayingBeforeHidden = false;
     this._lastIosPwaTapAt = 0;
+    this._resumeAfterNativeSeek = false;
   },
 
   /**
@@ -1226,6 +1227,16 @@ const VideoPlayer = {
         clearTimeout(this._bufferingDebounce);
         this._bufferingDebounce = null;
       }
+    });
+
+    this.video?.addEventListener("seeked", () => {
+      if (!this._resumeAfterNativeSeek) return;
+
+      this._resumeAfterNativeSeek = false;
+      this.video.play().catch((error) => {
+        if (error.name === "AbortError") return;
+        log.debug("[VideoPlayer] native post-seek play() skipped:", error.message);
+      });
     });
 
     // Buffer health monitoring with debounce to prevent flickering
@@ -3955,10 +3966,7 @@ const VideoPlayer = {
         });
       }
     } else if (this.video?.duration) {
-      this.video.currentTime = Math.max(
-        0,
-        Math.min(this.video.duration, this.video.currentTime + seconds),
-      );
+      this.seekNativeTo(this.video.currentTime + seconds);
     }
   },
 
@@ -3968,8 +3976,22 @@ const VideoPlayer = {
         log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
       });
     } else if (this.video) {
-      this.video.currentTime = time;
+      this.seekNativeTo(time);
     }
+  },
+
+  seekNativeTo(time) {
+    if (!this.video || !Number.isFinite(time)) return;
+
+    const duration = this.video.duration;
+    const target =
+      Number.isFinite(duration) && duration > 0
+        ? Math.max(0, Math.min(duration, time))
+        : Math.max(0, time);
+
+    this.lastTimelineSeekAt = Date.now();
+    this._resumeAfterNativeSeek = !this.video.paused;
+    this.video.currentTime = target;
   },
 
   getCurrentTime() {
