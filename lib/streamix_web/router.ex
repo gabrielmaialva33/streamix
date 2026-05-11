@@ -249,6 +249,7 @@ defmodule StreamixWeb.Router do
       layout: {StreamixWeb.Layouts, :app} do
       live "/", HomeLive, :index
       live "/plans", PlansLive, :index
+      live "/tv", TvLive, :index
     end
   end
 
