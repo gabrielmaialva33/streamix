@@ -74,12 +74,17 @@ export function selectEngine(ctx) {
 
   // 4K HEVC content (2160p, HEVC/x265, "UHD") is the only place the
   // libmedia WASM software path actually struggles in field telemetry —
-  // CPU pegs at 60-90% during decode and seeks stutter. Anything below
-  // 4K plays just fine on AVPlayer, so we keep the GPU paths gated on
-  // the server-side `is_4k_hevc` hint. That keeps the heavy bundle
-  // (mediabunny, libavjs-webcodecs-bridge) off the critical path for
-  // the 1080p/720p catalog.
-  if (canTryAvbridge && sourceType === "gindex" && streamType === "mkv" && isUhdHevc) {
+  // CPU pegs at 60-90% during decode and seeks stutter, and at 10-bit
+  // Main 10 HDR10 it refuses to demux with `open stream failed ret:-2`.
+  // The GPU paths are gated on the server-side `is_4k_hevc` hint plus
+  // an MP4/MKV container guard (HLS / TS / FLV / live still belongs on
+  // AVPlayer or mpegts.js). Previously we also required
+  // `sourceType === "gindex"` but caught a 4K HDR10 MP4 served by the
+  // Xtream provider falling through to AVPlayer → fatal, so we now
+  // accept any VOD-style container with the UHD hint.
+  const isVodContainer = streamType === "mkv" || streamType === "mp4";
+
+  if (canTryAvbridge && isUhdHevc && isVodContainer) {
     return "avbridge";
   }
 
@@ -87,8 +92,9 @@ export function selectEngine(ctx) {
   // environments that already pay the COOP+COEP cost (so they get
   // SharedArrayBuffer + multi-threaded HEVC decode). Off by default;
   // flip the `feature_h265web` Application config when you wire the
-  // headers. Same `isUhdHevc` gate so non-4K stays on AVPlayer.
-  if (canTryH265web && sourceType === "gindex" && streamType === "mkv" && isUhdHevc) {
+  // headers. Same `isUhdHevc` + container guard so non-4K stays on
+  // AVPlayer.
+  if (canTryH265web && isUhdHevc && isVodContainer) {
     return "h265web";
   }
 
