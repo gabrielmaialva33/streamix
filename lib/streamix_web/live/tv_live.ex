@@ -11,10 +11,10 @@ defmodule StreamixWeb.TvLive do
 
   @release_tag "v1.0.000"
   @release_url "https://github.com/gabrielmaialva33/streamix-tv/releases/tag/v1.0.000"
-  @apk_url "https://github.com/gabrielmaialva33/streamix-tv/releases/download/v1.0.000/Streamix-v1.0.000.apk"
+  @apk_short_url "https://streamix.mahina.cloud/tv/apk"
   @apk_size_mb "7.3"
   @apk_sha256 "5b3f503c8c7ffc4eb99905defa2093d3f412482aaaf25026216143270a75f1cd"
-  @wgt_url "https://github.com/gabrielmaialva33/streamix-tv/releases/download/v1.0.000/Streamix-v1.0.000.wgt"
+  @wgt_short_url "https://streamix.mahina.cloud/tv/wgt"
   @wgt_size_mb "3.1"
   @wgt_sha256 "bbdc5e9592b5b1a17c6783fa80e3176c61ef22f977c8ba7860f032afe11dd83d"
 
@@ -26,10 +26,10 @@ defmodule StreamixWeb.TvLive do
       |> assign(current_path: "/tv")
       |> assign(release_tag: @release_tag)
       |> assign(release_url: @release_url)
-      |> assign(apk_url: @apk_url)
+      |> assign(apk_short_url: @apk_short_url)
       |> assign(apk_size_mb: @apk_size_mb)
       |> assign(apk_sha256: @apk_sha256)
-      |> assign(wgt_url: @wgt_url)
+      |> assign(wgt_short_url: @wgt_short_url)
       |> assign(wgt_size_mb: @wgt_size_mb)
       |> assign(wgt_sha256: @wgt_sha256)
       |> assign(active_tab: "android")
@@ -85,7 +85,8 @@ defmodule StreamixWeb.TvLive do
           format="APK"
           size={@apk_size_mb}
           sha256={@apk_sha256}
-          url={@apk_url}
+          url={@apk_short_url}
+          short_url={@apk_short_url}
           filename={"Streamix-#{@release_tag}.apk"}
           accent="from-emerald-500/20 to-emerald-500/0"
         />
@@ -95,7 +96,8 @@ defmodule StreamixWeb.TvLive do
           format="WGT"
           size={@wgt_size_mb}
           sha256={@wgt_sha256}
-          url={@wgt_url}
+          url={@wgt_short_url}
+          short_url={@wgt_short_url}
           filename={"Streamix-#{@release_tag}.wgt"}
           accent="from-sky-500/20 to-sky-500/0"
         />
@@ -146,9 +148,9 @@ defmodule StreamixWeb.TvLive do
         </div>
 
         <%= if @active_tab == "android" do %>
-          <.android_tutorial apk_url={@apk_url} />
+          <.android_tutorial apk_short_url={@apk_short_url} />
         <% else %>
-          <.tizen_tutorial wgt_url={@wgt_url} />
+          <.tizen_tutorial wgt_short_url={@wgt_short_url} />
         <% end %>
       </section>
 
@@ -189,6 +191,7 @@ defmodule StreamixWeb.TvLive do
   attr :size, :string, required: true
   attr :sha256, :string, required: true
   attr :url, :string, required: true
+  attr :short_url, :string, required: true
   attr :filename, :string, required: true
   attr :accent, :string, required: true
 
@@ -219,6 +222,10 @@ defmodule StreamixWeb.TvLive do
         >
           <.icon name="hero-arrow-down-tray" class="size-4" /> Baixar {@format}
         </.link>
+        <div class="rounded-lg border border-border/60 bg-surface-hover/35 px-3 py-2">
+          <p class="text-[11px] uppercase tracking-wide text-text-muted">URL curta</p>
+          <code class="mt-1 block text-xs text-text-secondary break-all">{@short_url}</code>
+        </div>
         <details class="group">
           <summary class="text-xs text-text-muted hover:text-text-secondary cursor-pointer list-none flex items-center gap-1">
             <.icon name="hero-chevron-right" class="size-3 group-open:rotate-90 transition-transform" />
@@ -233,7 +240,7 @@ defmodule StreamixWeb.TvLive do
     """
   end
 
-  attr :apk_url, :string, required: true
+  attr :apk_short_url, :string, required: true
 
   defp android_tutorial(assigns) do
     ~H"""
@@ -257,11 +264,10 @@ defmodule StreamixWeb.TvLive do
         </.step>
         <.step number="4" title="Colar a URL do APK">
           Abre o Downloader, na aba <strong>Home</strong>
-          cola exatamente:
-          <code class="block bg-surface px-3 py-2 rounded mt-2 text-xs break-all">{@apk_url}</code>
-          Ou usa o URL encurtado se preferir digitar pelo controle:
-          <code class="text-brand">go.aftv/streamix</code>
-          (em breve).
+          cola a URL curta:
+          <code class="block bg-surface px-3 py-2 rounded mt-2 text-xs break-all">
+            {@apk_short_url}
+          </code>
         </.step>
         <.step number="5" title="Instalar">
           O Downloader baixa o APK, abre a tela de instalação automaticamente. Clica
@@ -318,7 +324,7 @@ defmodule StreamixWeb.TvLive do
     """
   end
 
-  attr :wgt_url, :string, required: true
+  attr :wgt_short_url, :string, required: true
 
   defp tizen_tutorial(assigns) do
     ~H"""
@@ -404,7 +410,7 @@ defmodule StreamixWeb.TvLive do
       >
         <.step number="4.1" title="Baixar o WGT">
           <.link
-            href={@wgt_url}
+            href={@wgt_short_url}
             class="text-brand hover:underline"
           >
             Streamix-v1.0.000.wgt

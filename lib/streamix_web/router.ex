@@ -239,6 +239,9 @@ defmodule StreamixWeb.Router do
   scope "/", StreamixWeb do
     pipe_through :browser
 
+    get "/tv/apk", TvDownloadController, :apk
+    get "/tv/wgt", TvDownloadController, :wgt
+
     live_session :public,
       on_mount:
         @sandbox_on_mount ++
