@@ -22,6 +22,7 @@ defmodule Streamix.Workers.SyncProviderWorker do
   alias Streamix.Iptv
   alias Streamix.Iptv.Provider
   alias Streamix.Workers.SyncGindexProviderWorker
+  alias Streamix.Workers.SyncTorrentProviderWorker
 
   require Logger
 
@@ -47,6 +48,24 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
         %{"provider_id" => provider.id}
         |> SyncGindexProviderWorker.new()
+        |> Oban.insert()
+
+        :ok
+
+      %{provider_type: :torrent} = provider ->
+        # Same defensive shape as the GIndex branch: torrent providers
+        # are credential-less aggregators and `XtreamClient.build_url/5`
+        # FunctionClauseErrors on their nil username/password. Route
+        # them to the dedicated torrent worker. Production today still
+        # ships a legacy "all non-gindex" enqueue in
+        # `SyncAllProvidersWorker`, so this guard prevents the crash
+        # even when an old cron job slips through.
+        Logger.info(
+          "[SyncProviderWorker] redispatching torrent provider #{provider.id} to Torrent worker"
+        )
+
+        %{"provider_id" => provider.id}
+        |> SyncTorrentProviderWorker.new()
         |> Oban.insert()
 
         :ok
