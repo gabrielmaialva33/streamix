@@ -67,9 +67,12 @@ streamix.iml
 # Git worktrees
 .worktrees/
 *.png
+
 !priv/static/images/apple-touch-icon.png
 !priv/static/images/icon-192.png
 !priv/static/images/icon-512.png
 !priv/static/images/icon-maskable-512.png
 !priv/static/images/pwa/
 !priv/static/images/pwa/splash-*.png
+
+architecture.md
