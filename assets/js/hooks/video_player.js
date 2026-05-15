@@ -3224,20 +3224,28 @@ const VideoPlayer = {
     }
 
     if (isVodContainer) {
-      // Xtream VOD MP4 (e.g. movie 33781 "+Velozes +Furiosos") were
-      // hitting the 30 s wrapper default because the libmedia init
-      // pipeline does: WASM init (~1-3 s cold) → fetch `moov` head
-      // (4-5 MB on long releases) → demuxer probe → decoder WASM
-      // load. On a residential link that easily passes 30 s. 60 s +
-      // 4 MB preload + 4 retries keeps the engine within reason
-      // without blocking the user for 2 minutes on a dead link.
+      // Xtream VOD MP4 (e.g. movies 33781, 141) hit two failure modes
+      // before this branch existed:
+      //
+      //   1. 30 s wrapper default expired while libmedia cold-loaded
+      //      WASM and pulled the moov atom on a residential link.
+      //   2. With preload pinned at 4 MB, releases whose moov is
+      //      ~4.1 MB (Os Estranhos: Capítulo Final) come back
+      //      truncated to libmedia, which then fails the open with
+      //      `ret: -2` immediately — no timeout, no retry. The moov
+      //      atom must arrive whole before demux probing can succeed.
+      //
+      // 8 MB is large enough for any feature-length VOD moov we ship
+      // (the largest sampled so far is 4.7 MB on Streamix Global) and
+      // still under the 4G mobile budget for a single fetch. 90 s
+      // ceiling absorbs slower DSL handshakes plus the extra 4 MB.
       return {
         ext,
         isLive,
-        loadTimeoutMs: 60000,
+        loadTimeoutMs: 90000,
         maxProbeDuration: 5,
         ioLoaderOptions: {
-          preload: 4 * 1024 * 1024,
+          preload: 8 * 1024 * 1024,
           retryCount: 4,
           retryInterval: 1,
         },
