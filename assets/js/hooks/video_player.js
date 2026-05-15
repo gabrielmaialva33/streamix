@@ -3196,20 +3196,22 @@ const VideoPlayer = {
   },
 
   buildAVPlayerLoadOptions(ext, isLive) {
-    // Live TS keeps the wrapper defaults — libmedia switches to the
-    // live A/V clock and any long preload would just add latency.
-    if (isLive) {
-      return { ext, isLive };
-    }
-
-    const isHeavyGIndexMkv = this.sourceType === "gindex" && ext === "mkv";
-    const isVodContainer = ext === "mp4" || ext === "mkv";
+    // GIndex 4K MKV is the only path that genuinely needs the heavier
+    // load profile: large `moov`, MKV cluster probe, and the BEAM-side
+    // proxy adds latency on top of upstream redirects. 2-min ceiling +
+    // 8 MB preload + aggressive retry keeps the player alive on flaky
+    // links. Everything else — including Xtream VOD MP4 — keeps the
+    // libmedia defaults; the brief detour we took into a Xtream-side
+    // preload tweak (89db59e, ce3b54f) actually regressed startup,
+    // because a single 4-8 MB blocking fetch sits in TCP slow-start
+    // while the upstream throttles us, so playback waited for the
+    // whole prefetch before the first frame. libmedia's natural small
+    // range walk is faster end-to-end and is the shape that always
+    // worked in the field.
+    const isHeavyGIndexMkv =
+      !isLive && this.sourceType === "gindex" && ext === "mkv";
 
     if (isHeavyGIndexMkv) {
-      // GIndex 4K MKV is the worst case: large `moov`, MKV cluster
-      // probe, and the BEAM-side proxy adds latency on top of upstream
-      // redirects. 2-min ceiling + 8 MB preload + aggressive retry
-      // keeps the player alive on flaky links.
       return {
         ext,
         isLive,
@@ -3218,35 +3220,6 @@ const VideoPlayer = {
         ioLoaderOptions: {
           preload: 8 * 1024 * 1024,
           retryCount: 8,
-          retryInterval: 1,
-        },
-      };
-    }
-
-    if (isVodContainer) {
-      // Xtream VOD MP4 (e.g. movies 33781, 141) hit two failure modes
-      // before this branch existed:
-      //
-      //   1. 30 s wrapper default expired while libmedia cold-loaded
-      //      WASM and pulled the moov atom on a residential link.
-      //   2. With preload pinned at 4 MB, releases whose moov is
-      //      ~4.1 MB (Os Estranhos: Capítulo Final) come back
-      //      truncated to libmedia, which then fails the open with
-      //      `ret: -2` immediately — no timeout, no retry. The moov
-      //      atom must arrive whole before demux probing can succeed.
-      //
-      // 8 MB is large enough for any feature-length VOD moov we ship
-      // (the largest sampled so far is 4.7 MB on Streamix Global) and
-      // still under the 4G mobile budget for a single fetch. 90 s
-      // ceiling absorbs slower DSL handshakes plus the extra 4 MB.
-      return {
-        ext,
-        isLive,
-        loadTimeoutMs: 90000,
-        maxProbeDuration: 5,
-        ioLoaderOptions: {
-          preload: 8 * 1024 * 1024,
-          retryCount: 4,
           retryInterval: 1,
         },
       };
