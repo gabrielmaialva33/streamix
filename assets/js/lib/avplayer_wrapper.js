@@ -247,6 +247,24 @@ export async function preloadCommonWasm({ stream_type, source_type } = {}) {
     );
   }
 
+  // Pre-load the stretchpitcher too. libmedia pulls it during audio
+  // pipeline init right before the first GET — when it isn't cached the
+  // worker stalls inside an Atomics.wait waiting for the fetch, and our
+  // 60 s wrapper timeout fires before any byte of the moov is requested.
+  // Field repro on movie 141 was: HEAD → 60 s silence → timeout → reset
+  // → second attempt fetches stretchpitch and only then issues GETs.
+  // Caching it up front skips that whole loop.
+  const stretchpitchUrl = getWasmUrl("stretchpitcher");
+  if (stretchpitchUrl && !preloadedWasm.has(stretchpitchUrl)) {
+    preloadPromises.push(
+      fetch(stretchpitchUrl, { method: "GET", cache: "force-cache", priority: "low" })
+        .then((r) => (r.ok ? r.arrayBuffer() : null))
+        .then((buf) => (buf ? WebAssembly.compile(buf) : null))
+        .then((mod) => mod && preloadedWasm.set(stretchpitchUrl, mod))
+        .catch(() => {}),
+    );
+  }
+
   await Promise.allSettled(preloadPromises);
   log.debug(`Pre-loaded ${preloadedWasm.size} WASM modules`);
 }
