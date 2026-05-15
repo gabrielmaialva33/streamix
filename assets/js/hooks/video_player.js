@@ -3196,23 +3196,55 @@ const VideoPlayer = {
   },
 
   buildAVPlayerLoadOptions(ext, isLive) {
-    const isHeavyGIndexMkv = this.sourceType === "gindex" && ext === "mkv";
-
-    if (!isHeavyGIndexMkv) {
+    // Live TS keeps the wrapper defaults — libmedia switches to the
+    // live A/V clock and any long preload would just add latency.
+    if (isLive) {
       return { ext, isLive };
     }
 
-    return {
-      ext,
-      isLive,
-      loadTimeoutMs: 120000,
-      maxProbeDuration: 10,
-      ioLoaderOptions: {
-        preload: 8 * 1024 * 1024,
-        retryCount: 8,
-        retryInterval: 1,
-      },
-    };
+    const isHeavyGIndexMkv = this.sourceType === "gindex" && ext === "mkv";
+    const isVodContainer = ext === "mp4" || ext === "mkv";
+
+    if (isHeavyGIndexMkv) {
+      // GIndex 4K MKV is the worst case: large `moov`, MKV cluster
+      // probe, and the BEAM-side proxy adds latency on top of upstream
+      // redirects. 2-min ceiling + 8 MB preload + aggressive retry
+      // keeps the player alive on flaky links.
+      return {
+        ext,
+        isLive,
+        loadTimeoutMs: 120000,
+        maxProbeDuration: 10,
+        ioLoaderOptions: {
+          preload: 8 * 1024 * 1024,
+          retryCount: 8,
+          retryInterval: 1,
+        },
+      };
+    }
+
+    if (isVodContainer) {
+      // Xtream VOD MP4 (e.g. movie 33781 "+Velozes +Furiosos") were
+      // hitting the 30 s wrapper default because the libmedia init
+      // pipeline does: WASM init (~1-3 s cold) → fetch `moov` head
+      // (4-5 MB on long releases) → demuxer probe → decoder WASM
+      // load. On a residential link that easily passes 30 s. 60 s +
+      // 4 MB preload + 4 retries keeps the engine within reason
+      // without blocking the user for 2 minutes on a dead link.
+      return {
+        ext,
+        isLive,
+        loadTimeoutMs: 60000,
+        maxProbeDuration: 5,
+        ioLoaderOptions: {
+          preload: 4 * 1024 * 1024,
+          retryCount: 4,
+          retryInterval: 1,
+        },
+      };
+    }
+
+    return { ext, isLive };
   },
 
   /**
