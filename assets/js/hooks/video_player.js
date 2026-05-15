@@ -1980,12 +1980,24 @@ const VideoPlayer = {
   },
 
   shouldCheckNativeAudio() {
+    if (this.contentType !== "vod") return false;
+
+    // Xtream VOD ships H.264 + AAC by default through XUI, both of
+    // which `<video>` decodes natively across every supported browser.
+    // The audio-issue probe is meant to catch GIndex / unknown rips
+    // that carry AC3/EAC3/DTS — running it on Xtream MP4 only adds
+    // false positives (e.g. brief silent first frames) that then
+    // wrongly demote the player to AVPlayer's libmedia WASM path,
+    // which is the 30-55 s startup we are trying to avoid.
+    if (this.sourceType === "xtream" && this.currentStreamType === "mp4") {
+      return false;
+    }
+
     return (
-      this.contentType === "vod" &&
-      (this.sourceType === "gindex" ||
-        this.currentStreamType === "mp4" ||
-        this.currentStreamType === "mkv" ||
-        this.currentStreamType === "unknown")
+      this.sourceType === "gindex" ||
+      this.currentStreamType === "mp4" ||
+      this.currentStreamType === "mkv" ||
+      this.currentStreamType === "unknown"
     );
   },
 

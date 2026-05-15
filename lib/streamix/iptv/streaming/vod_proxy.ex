@@ -65,8 +65,15 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   # Mid-stream retry budget. After this many attempts (or this many ms
   # since the original request, whichever fires first) we give up and
   # let the player surface the error itself.
+  #
+  # 30 s matches the longest stall we have seen on the X99 edge
+  # (`209.14.85.202`) before its WAF/throttle releases the socket.
+  # The original 5 s budget made us give up well before the upstream
+  # would have recovered, which surfaced as "cai no meio do filme"
+  # client-side even when a one-second wait was all the upstream
+  # needed.
   @max_mid_stream_retries 5
-  @retry_budget_ms 5_000
+  @retry_budget_ms 30_000
   @retry_backoff_ms 250
 
   # Hard ceiling on how long the upstream is allowed to stall after we
