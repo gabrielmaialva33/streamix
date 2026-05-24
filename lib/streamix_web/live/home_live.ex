@@ -10,20 +10,15 @@ defmodule StreamixWeb.HomeLive do
       socket
       |> assign(page_title: "Início")
       |> assign(current_path: "/")
+      |> assign(loading: true)
       |> Data.assign_empty()
 
+    # Load data asynchronously for skeleton screen effect
     if connected?(socket) do
-      # WS attached: skeleton + async load for snappy LV update.
       send(self(), :load_data)
-      {:ok, assign(socket, loading: true)}
-    else
-      # HTTP first render: load synchronously. Safari iOS sometimes never
-      # settles the WS handshake on "/", which used to leave the skeleton
-      # stuck forever. Paying a bit of TTFB here keeps the page usable
-      # even if the upgrade fails; each section has its own timeout +
-      # fallback inside HomeCatalogLoader.
-      {:ok, socket |> assign(loading: false) |> Data.load()}
     end
+
+    {:ok, socket}
   end
 
   def handle_info(:load_data, socket) do
