@@ -68,6 +68,7 @@ streamix.iml
 .worktrees/
 *.png
 
+# Assets that are tracked in git, but we want to ignore changes to them
 !priv/static/images/apple-touch-icon.png
 !priv/static/images/icon-192.png
 !priv/static/images/icon-512.png
@@ -75,4 +76,8 @@ streamix.iml
 !priv/static/images/pwa/
 !priv/static/images/pwa/splash-*.png
 
+# Ignore generated documentation, but not the source files
 architecture.md
+
+# Local configuration files
+.antigravitycli
