@@ -264,6 +264,21 @@ body {
     -webkit-backdrop-filter: blur(8px);
 }
 
+/*
+ * Safari iOS escape hatch — heavy backdrop-filter on fixed elements
+ * stalls the WebSocket handshake, which lined up with users seeing
+ * the home LiveView stuck on its skeleton. The fixed bottom nav uses
+ * `glass`. We drop the blur on iOS WebKit and bump opacity so the
+ * surface still reads as glass-like. Other browsers keep the effect.
+ * Ref: https://mrpopov.com/posts/elixir-phoenix-optimisations-iphone-safari/
+ */
+html.ios-webkit .glass,
+html.ios-webkit .glass-subtle {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(20, 20, 20, 0.92);
+}
+
 @utility card-hover {
     transition:
         transform var(--duration-normal) var(--ease-spring),

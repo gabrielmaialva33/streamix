@@ -82,6 +82,12 @@ defmodule StreamixWeb.Router do
 
     get "/health", HealthController, :index
     post "/billing/webhooks/stripe", BillingWebhookController, :stripe
+
+    # Client-side diagnostic beacon. Fired by app.js when the home
+    # skeleton stays visible >8s — gives us UA + transport + display
+    # mode to triage the Safari iOS stuck-skeleton bug. No auth: the
+    # beacon comes from sendBeacon() which can't set custom headers.
+    post "/internal/home-stuck", InternalDiagController, :home_stuck
   end
 
   # Authenticated stream proxy for torrent-backed content. The

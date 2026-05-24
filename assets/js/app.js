@@ -365,9 +365,12 @@ const Hooks = {
 };
 
 const liveSocket = new LiveSocket("/live", Socket, {
-  // Increase timeout to allow WebSocket through Cloudflare Tunnel
-  // Default 2500ms is too short for tunneled connections
-  longPollFallbackMs: 10000,
+  // Disable longpoll fallback: once a client falls back to longpoll the
+  // choice is pinned in sessionStorage and the page stays on longpoll
+  // until a new tab is opened. Safari iOS occasionally takes 10s+ to
+  // settle the initial WS handshake, which used to trip the fallback
+  // and leave that user permanently on the slower transport.
+  longPollFallbackMs: null,
   params: { _csrf_token: csrfToken },
   hooks: Hooks,
 });
@@ -412,6 +415,49 @@ document.addEventListener("visibilitychange", () => {
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket;
+
+// Diagnostics: report when the home skeleton has been visible for >8s. We
+// see this almost exclusively from Safari iOS; aggregating UA + transport +
+// display-mode lets us tell whether it's the WS upgrade, the SW serving a
+// stale HTML, or something else. Beacon is fire-and-forget so it doesn't
+// affect the user's experience.
+window.setTimeout(() => {
+  const skeleton = document.querySelector('[data-loading-home="true"]');
+  if (!skeleton) return;
+  try {
+    navigator.sendBeacon(
+      "/api/internal/home-stuck",
+      new Blob(
+        [
+          JSON.stringify({
+            ua: navigator.userAgent,
+            transport: window.liveSocket?.transport?.name || null,
+            connected: !!window.liveSocket?.isConnected?.(),
+            standalone: isStandalonePwa(),
+            iosWebkit: isIosWebKit(),
+            at: new Date().toISOString(),
+          }),
+        ],
+        { type: "application/json" },
+      ),
+    );
+  } catch {}
+}, 8000);
+
+// Opt-in Eruda overlay for on-device debugging on iOS (no Mac required).
+// Trigger by appending `#debug` to the URL; persists across navigations
+// via sessionStorage. Loaded from CDN only when activated so prod bundle
+// stays lean.
+(() => {
+  const ENABLE_KEY = "streamix:eruda";
+  const wantsDebug = location.hash === "#debug" || sessionStorage.getItem(ENABLE_KEY) === "1";
+  if (!wantsDebug) return;
+  sessionStorage.setItem(ENABLE_KEY, "1");
+  const s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/eruda";
+  s.onload = () => window.eruda?.init();
+  document.body.appendChild(s);
+})();
 
 // View Transitions API for smooth LiveView navigation
 if (document.startViewTransition) {
