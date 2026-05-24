@@ -145,8 +145,17 @@ const rememberCurrentRoute = () => {
   safeStorage.set(LAST_ROUTE_KEY, JSON.stringify({ route, savedAt: Date.now() }));
 };
 
+const PWA_BOOTED_KEY = "streamix:pwa-booted";
+
 const restoreLastPwaRoute = () => {
   if (!isStandalonePwa() || currentRoute() !== "/") return;
+  // Gate by sessionStorage so we only restore on PWA cold-start. Clicking
+  // "Início" full-reloads the page (Home and Browse live in different
+  // live_sessions), which otherwise re-runs restore and bounces back to /browse.
+  try {
+    if (sessionStorage.getItem(PWA_BOOTED_KEY) === "1") return;
+    sessionStorage.setItem(PWA_BOOTED_KEY, "1");
+  } catch {}
 
   try {
     const saved = JSON.parse(safeStorage.get(LAST_ROUTE_KEY) || "null");
