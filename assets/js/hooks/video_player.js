@@ -3229,8 +3229,7 @@ const VideoPlayer = {
     // whole prefetch before the first frame. libmedia's natural small
     // range walk is faster end-to-end and is the shape that always
     // worked in the field.
-    const isHeavyGIndexMkv =
-      !isLive && this.sourceType === "gindex" && ext === "mkv";
+    const isHeavyGIndexMkv = !isLive && this.sourceType === "gindex" && ext === "mkv";
 
     if (isHeavyGIndexMkv) {
       return {
