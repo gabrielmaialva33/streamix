@@ -27,13 +27,13 @@ defmodule StreamixWeb.ServiceWorkerController do
       Application.app_dir(:streamix, "priv/static")
 
     sw_file = Path.join(static_dir, @sw_path)
-    manifest_file = Path.join(static_dir, @manifest_path)
+    version = cache_version()
 
     body =
       sw_file
       |> File.read!()
-      |> String.replace("'__SW_CACHE_VERSION_PLACEHOLDER__'", "'#{cache_version(manifest_file)}'")
-      |> String.replace(@version_marker, cache_version(manifest_file))
+      |> String.replace("'__SW_CACHE_VERSION_PLACEHOLDER__'", "'#{version}'")
+      |> String.replace(@version_marker, version)
 
     conn
     |> put_resp_content_type("application/javascript")
@@ -45,7 +45,17 @@ defmodule StreamixWeb.ServiceWorkerController do
   end
 
   # Hash of the manifest's mtime+size pairs. Cheap to compute and
-  # changes whenever any digested asset changes.
+  # changes whenever any digested asset changes. Public so the PWA
+  # debug LiveView can report the same value the controller injects.
+  def cache_version do
+    manifest_file =
+      :streamix
+      |> Application.app_dir("priv/static")
+      |> Path.join(@manifest_path)
+
+    cache_version(manifest_file)
+  end
+
   defp cache_version(manifest_file) do
     case File.stat(manifest_file) do
       {:ok, %File.Stat{mtime: mtime, size: size}} ->

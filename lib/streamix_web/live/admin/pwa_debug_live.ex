@@ -110,26 +110,10 @@ defmodule StreamixWeb.Admin.PwaDebugLive do
     }
   end
 
-  defp sw_cache_name do
-    case sw_cache_version() do
-      nil -> nil
-      version -> "streamix-#{version}"
-    end
-  end
+  defp sw_cache_name, do: "streamix-#{sw_cache_version()}"
 
-  defp sw_cache_version do
-    with {:ok, contents} <- File.read(sw_path()),
-         [_, version] <- Regex.run(~r/const CACHE_VERSION = ['"]([^'"]+)['"]/, contents) do
-      version
-    else
-      _ -> nil
-    end
-  end
-
-  defp sw_path do
-    :streamix
-    |> :code.priv_dir()
-    |> to_string()
-    |> Path.join("static/sw.js")
-  end
+  # The on-disk sw.js still has the literal `__SW_CACHE_VERSION__` marker —
+  # ServiceWorkerController substitutes it on the HTTP response. Reuse the
+  # same hash so this panel matches what browsers actually receive.
+  defp sw_cache_version, do: StreamixWeb.ServiceWorkerController.cache_version()
 end
