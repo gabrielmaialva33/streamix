@@ -1,11 +1,17 @@
 defmodule StreamixWeb.HomeLive do
   use StreamixWeb, :live_view
 
+  require Logger
+
   alias StreamixWeb.Home.Data
 
   import StreamixWeb.HomeComponents
 
   def mount(_params, _session, socket) do
+    Logger.info(
+      "[HomeLive] mount connected=#{connected?(socket)} user_id=#{user_id_from_socket(socket)}"
+    )
+
     socket =
       socket
       |> assign(page_title: "Início")
@@ -22,8 +28,12 @@ defmodule StreamixWeb.HomeLive do
   end
 
   def handle_info(:load_data, socket) do
+    Logger.info("[HomeLive] :load_data fired user_id=#{user_id_from_socket(socket)}")
     {:noreply, Data.load(socket)}
   end
+
+  defp user_id_from_socket(%{assigns: %{current_scope: %{user: %{id: id}}}}), do: id
+  defp user_id_from_socket(_), do: nil
 
   # ============================================
   # Event Handlers
@@ -76,7 +86,7 @@ defmodule StreamixWeb.HomeLive do
 
   def render(assigns) do
     ~H"""
-    <div>
+    <div data-loading-home={@loading && "true"}>
       <%= if @loading do %>
         <.skeleton_page rows={4} />
       <% else %>

@@ -41,7 +41,13 @@ defmodule StreamixWeb.HomeCatalogLoader do
   @spec load(%{required(term()) => (-> term())} | keyword((-> term())), keyword()) :: map()
   def load(fetchers, opts \\ []) do
     fetchers = Enum.to_list(fetchers)
-    max_concurrency = Keyword.get(opts, :max_concurrency, length(fetchers))
+    # Cap concurrency at scheduler count. With 8 sections fanned out on a
+    # 4-core node we were thrashing the BEAM scheduler — and the ones
+    # racing for the same ConCache lock (`user_profile:USER_ID`) made it
+    # worse, not better, because they piled up on the lock and timed out.
+    # Honor an explicit opt when a caller has a different need.
+    default_concurrency = min(length(fetchers), System.schedulers_online())
+    max_concurrency = Keyword.get(opts, :max_concurrency, default_concurrency)
     timeout = Keyword.get(opts, :timeout, @default_timeout)
 
     # `zip_with` on `async_stream` gives us back the original key even

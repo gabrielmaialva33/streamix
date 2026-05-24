@@ -29,7 +29,15 @@ defmodule Streamix.Application do
            name: :streamix_l1_cache,
            ttl_check_interval: Streamix.Cache.l1_ttl_check_interval(),
            global_ttl: Streamix.Cache.l1_ttl(),
-           touch_on_read: true
+           touch_on_read: true,
+           # Default 5 s was killing HomeLive: multiple sections (trending,
+           # series, recommendations) hit `Profile.get_user_profile/1` at
+           # the same time. The loser of the race waited on the lock, hit
+           # 5 s, crashed and fell back to []. Fifteen seconds is well
+           # above tail-latency of `fetch_or_compute_profile` even on a
+           # cold node, and prefetch in HomeLive.Data covers the steady
+           # state.
+           acquire_lock_timeout: :timer.seconds(15)
          ]},
         # HTTP connection pool for sync operations (high concurrency)
         # conn_opts includes DNS cache timeout to avoid stale connections

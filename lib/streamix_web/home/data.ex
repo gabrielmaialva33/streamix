@@ -6,6 +6,8 @@ defmodule StreamixWeb.Home.Data do
   import Phoenix.Component, only: [assign: 2, assign: 3]
 
   alias Streamix.AI.UserAnalytics
+  alias Streamix.AI.UserAnalytics.Insights
+  alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Cache
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
@@ -44,9 +46,33 @@ defmodule StreamixWeb.Home.Data do
 
   def load(socket) do
     socket
+    |> prefetch_personalization()
     |> load_public_catalog()
     |> load_user_data()
     |> assign(loading: false)
+  end
+
+  # Warm the ConCache entries the personalization sections all read so
+  # the parallel fetchers hit a cache hit instead of racing for the same
+  # lock. Without this, `:trending` + `:series` + `:recommendations` all
+  # call `Profile.get_user_profile/1` (and `Insights.get_user_insights/1`)
+  # at the same time; whoever loses the lock waits the full
+  # `acquire_lock_timeout` and falls back to []. Concretely this was the
+  # root cause of the home staying on its skeleton — reproduced in
+  # `test/streamix_web/e2e/home_skeleton_test.exs`.
+  defp prefetch_personalization(%{assigns: %{current_scope: nil}} = socket), do: socket
+
+  defp prefetch_personalization(socket) do
+    case user_id(socket) do
+      nil ->
+        socket
+
+      uid ->
+        # Result is discarded; the side effect is the populated cache.
+        _ = Profile.get_user_profile(uid)
+        _ = Insights.get_user_insights(uid)
+        socket
+    end
   end
 
   def filter_trending_genre(socket, genre) do
