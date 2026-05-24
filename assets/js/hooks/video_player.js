@@ -3073,7 +3073,16 @@ const VideoPlayer = {
       const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
       if (contentKey) forgetRecommendedPlayer(contentKey);
 
+      // revertToNativePlayer only swaps DOM visibility — it does NOT
+      // assign `<video>.src` or kick off a load. When initPlayer picked
+      // "avplayer" first (Device Codec Memory), we never set a native
+      // src to fall back to, so the user was left staring at an empty
+      // <video> tag. Re-run initPlayer so engine_selector recomputes
+      // without the stale "avplayer" hint and picks native this time.
+      // The this.avPlayerAttempted guard inside tryAVPlayerFallback
+      // prevents looping back into AVPlayer.
       this.revertToNativePlayer();
+      this.initPlayer();
     } finally {
       this._switchingToAVPlayer = false;
     }

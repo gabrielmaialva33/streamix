@@ -19,7 +19,12 @@ const MAX_POSITIONS = 100; // Max number of positions to store
 // longer applies). Reads with a stale schema are wiped on the next
 // access — much cheaper than asking every user to clear localStorage by
 // hand.
-const DEVICE_COMPAT_SCHEMA = 2;
+// Bumped to 3 (2026-05-24): a deploy broke AVPlayer for MP4/xtream and
+// users who'd previously recorded 30+ AVPlayer successes were stuck on
+// `open stream failed, ret: -2` because the cached recommendation kept
+// short-circuiting the native engine. Schema bump wipes every client's
+// memory on next load so engine_selector re-evaluates from scratch.
+const DEVICE_COMPAT_SCHEMA = 3;
 
 // ============================================
 // Device Fingerprint & Codec Compatibility
