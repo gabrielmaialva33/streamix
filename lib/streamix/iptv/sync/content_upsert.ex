@@ -24,6 +24,14 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
     telemetry_type = Keyword.get(opts, :type)
     provider = Keyword.get(opts, :provider)
     stream_id_field = if schema == Series, do: :series_id, else: :stream_id
+    stream_id_key = if stream_id_field == :series_id, do: "series_id", else: "stream_id"
+
+    # Dedupe by the conflict target. Some panels (e.g. grupobrtv) return the
+    # same stream_id more than once; if two land in the same insert_all batch,
+    # Postgres aborts with `cardinality_violation: ON CONFLICT DO UPDATE
+    # command cannot affect row a second time`, which killed the whole movie
+    # sync and left the catalog on stale upstream ids.
+    streams = Enum.uniq_by(streams, & &1[stream_id_key])
     total_batches = ceil(length(streams) / @batch_size)
 
     existing_stream_ids =
@@ -38,7 +46,6 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
     |> Enum.with_index(1)
     |> Enum.reduce({0, []}, fn {batch, batch_num}, {acc_count, acc_ids} ->
       batch_start = System.monotonic_time()
-      stream_id_key = if stream_id_field == :series_id, do: "series_id", else: "stream_id"
       batch_stream_ids = Enum.map(batch, & &1[stream_id_key])
 
       ci_map =
