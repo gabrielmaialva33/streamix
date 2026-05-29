@@ -59,6 +59,10 @@ defmodule Streamix.Iptv.History do
     |> select_home_card()
     |> Repo.all()
     |> Enum.map(&build_home_card/1)
+    # Drop entries whose content row was deleted (e.g. after a provider
+    # migration): build_home_card leaves content_id nil and the home card
+    # would otherwise call watch_path(_, nil) and crash the whole LiveView.
+    |> Enum.reject(&is_nil(&1.content_id))
   end
 
   @doc """

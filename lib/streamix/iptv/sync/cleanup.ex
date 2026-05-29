@@ -8,6 +8,12 @@ defmodule Streamix.Iptv.Sync.Cleanup do
 
   alias Streamix.Iptv.{CatalogItem, Favorite, WatchProgress}
   alias Streamix.Repo
+  alias Streamix.WatchParty.Room
+
+  # Postgres caps a single statement at 32_767 bound parameters. An
+  # `id in ^ids` delete with the full orphan set (tens of thousands after
+  # a provider migration) blows past that, so every delete is chunked.
+  @delete_chunk 5_000
 
   require Logger
 
@@ -32,43 +38,45 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     end)
   end
 
-  defp do_cleanup([]), do: %{favorites: 0, watch_history: 0, catalog_items: 0}
+  defp do_cleanup([]),
+    do: %{favorites: 0, watch_history: 0, watch_party_rooms: 0, catalog_items: 0}
 
   defp do_cleanup(orphaned_catalog_ids) do
-    {fav_count, _} =
-      Favorite
-      |> where([f], f.catalog_item_id in ^orphaned_catalog_ids)
-      |> Repo.delete_all()
+    counts =
+      orphaned_catalog_ids
+      |> Enum.chunk_every(@delete_chunk)
+      |> Enum.reduce(
+        %{favorites: 0, watch_history: 0, watch_party_rooms: 0, catalog_items: 0},
+        &delete_chunk/2
+      )
 
-    {hist_count, _} =
-      WatchProgress
-      |> where([wp], wp.catalog_item_id in ^orphaned_catalog_ids)
-      |> Repo.delete_all()
-
-    ci_count = delete_catalog_items_in_chunks(orphaned_catalog_ids)
-
-    if fav_count + hist_count + ci_count > 0 do
+    if Enum.any?(counts, fn {_k, v} -> v > 0 end) do
       Logger.info(
-        "Cleanup: #{fav_count} favorites, #{hist_count} watch_progress, " <>
-          "#{ci_count} catalog_items removed"
+        "Cleanup: #{counts.favorites} favorites, #{counts.watch_history} watch_progress, " <>
+          "#{counts.watch_party_rooms} watch_party_rooms, #{counts.catalog_items} catalog_items removed"
       )
     end
 
-    %{favorites: fav_count, watch_history: hist_count, catalog_items: ci_count}
+    counts
   end
 
-  # Chunked to dodge the Postgres parameter limit (32k) on big sweeps.
-  defp delete_catalog_items_in_chunks(ids) do
-    ids
-    |> Enum.chunk_every(5_000)
-    |> Enum.reduce(0, fn chunk, acc ->
-      {n, _} =
-        CatalogItem
-        |> where([c], c.id in ^chunk)
-        |> Repo.delete_all()
+  # Order matters: watch_party_rooms reference catalog_items with a
+  # RESTRICT FK on a NOT NULL column, so the rooms must go before the
+  # catalog_items or the delete aborts. Favorites/watch_progress cascade,
+  # but we delete them explicitly to count them. A room pointing at deleted
+  # content is itself dead — dropping it cascades its participants/messages.
+  defp delete_chunk(chunk, acc) do
+    {fav, _} = Favorite |> where([f], f.catalog_item_id in ^chunk) |> Repo.delete_all()
+    {hist, _} = WatchProgress |> where([wp], wp.catalog_item_id in ^chunk) |> Repo.delete_all()
+    {rooms, _} = Room |> where([r], r.catalog_item_id in ^chunk) |> Repo.delete_all()
+    {ci, _} = CatalogItem |> where([c], c.id in ^chunk) |> Repo.delete_all()
 
-      acc + n
-    end)
+    %{
+      favorites: acc.favorites + fav,
+      watch_history: acc.watch_history + hist,
+      watch_party_rooms: acc.watch_party_rooms + rooms,
+      catalog_items: acc.catalog_items + ci
+    }
   end
 
   defp find_orphaned_catalog_item_ids do

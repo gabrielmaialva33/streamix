@@ -253,6 +253,12 @@ defmodule Streamix.Iptv.Sync do
           "Full sync completed: #{live_count} live, #{vod_count} movies, #{series_count} series"
         )
 
+        # Sweep catalog_items whose content row was removed by this sync's
+        # orphan pass, plus the favorites/watch_progress/rooms that point at
+        # them. Otherwise stranded catalog_items linger until the nightly
+        # worker and can crash surfaces that join through them (see HomeLive).
+        Cleanup.cleanup_orphaned_user_data()
+
         {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}
 
       {:error, reason} ->
