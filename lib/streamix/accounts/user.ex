@@ -83,6 +83,10 @@ defmodule Streamix.Accounts.User do
 
   @doc """
   A user changeset for setting the role by role_id.
+
+  Privileged operation: callers MUST verify the actor is an admin before
+  invoking this. Never feed `role_id` from request params through here —
+  go via `Streamix.Accounts.update_user_role/2` from an admin context.
   """
   def role_changeset(user, role_id) when is_integer(role_id) do
     user

@@ -19,7 +19,13 @@ config :streamix, StreamixWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "CVkPBq8QrTlJYf7IkAnw88TaTBKPHYYhX6ZQqx1ITlAgpsmn58dBqN+6Nvjc6eYI",
+  # Pull dev secret from env (set DEV_SECRET_KEY_BASE in .env). When absent,
+  # we fall back to a per-boot random key, which logs every developer out on
+  # restart but keeps no secret in the repo. Set the env var to persist
+  # sessions across reloads.
+  secret_key_base:
+    System.get_env("DEV_SECRET_KEY_BASE") ||
+      (:crypto.strong_rand_bytes(48) |> Base.encode64()),
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:streamix, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:streamix, ~w(--watch)]}

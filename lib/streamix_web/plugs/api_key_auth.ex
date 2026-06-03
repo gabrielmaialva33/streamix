@@ -75,20 +75,13 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
   end
 
   defp get_api_key(conn) do
-    # Header wins — it's the canonical transport for server-to-server
-    # calls. The `?api_key=` fallback covers the case where the caller
-    # literally can't set a header, e.g. a TV app embedding a resize
-    # endpoint in an `<img src>` (DOM image loading on Lightning / the
-    # browser ignores custom headers).
+    # Header-only. Query string is rejected: keys end up in reverse-proxy
+    # access logs, browser history, referer headers and shared dashboards.
+    # Integrations that genuinely can't set a header (rare) should use a
+    # short-lived signed token (`StreamixWeb.StreamToken`) instead.
     case get_req_header(conn, "x-api-key") do
-      [key | _] when is_binary(key) and byte_size(key) > 0 ->
-        {:ok, key}
-
-      _ ->
-        case Map.get(fetch_query_params(conn).query_params, "api_key") do
-          key when is_binary(key) and byte_size(key) > 0 -> {:ok, key}
-          _ -> {:error, :missing_key}
-        end
+      [key | _] when is_binary(key) and byte_size(key) > 0 -> {:ok, key}
+      _ -> {:error, :missing_key}
     end
   end
 

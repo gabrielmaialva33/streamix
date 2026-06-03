@@ -41,9 +41,13 @@ defmodule Streamix.WatchParty.Room do
     |> change(status: "ended", ended_at: DateTime.truncate(DateTime.utc_now(), :second))
   end
 
+  # 8 random bytes → 13 base32 chars, truncated to 12 → ~60 bits of entropy.
+  # 32-bit codes (the previous 6-char form) brute-force in minutes against an
+  # unauthenticated lookup; 60 bits push that into geological timescales.
+  # Lookup remains rate-limited downstream (see WatchPartyLive.Index/Join).
   def generate_invite_code do
-    :crypto.strong_rand_bytes(4)
+    :crypto.strong_rand_bytes(8)
     |> Base.encode32(case: :lower, padding: false)
-    |> binary_part(0, 6)
+    |> binary_part(0, 12)
   end
 end

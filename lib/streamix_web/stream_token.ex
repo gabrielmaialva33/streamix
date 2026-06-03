@@ -11,6 +11,8 @@ defmodule StreamixWeb.StreamToken do
   ownership at consumption time.
   """
 
+  require Logger
+
   alias Streamix.Access
   alias Streamix.Accounts
   alias Streamix.Iptv
@@ -148,7 +150,34 @@ defmodule StreamixWeb.StreamToken do
   defp dispatch_claims(_claims, _external_bypass), do: {:error, :invalid_token}
 
   defp effective_bypass(claims, external_bypass) do
-    external_bypass or Map.get(claims, :bypass, false)
+    bypass = external_bypass or Map.get(claims, :bypass, false)
+
+    if bypass, do: audit_bypass(claims, external_bypass)
+
+    bypass
+  end
+
+  # Subscription/premium checks were skipped for this resolve. Emitted to
+  # both Logger (so it's grep-able alongside ops events) and Telemetry (so
+  # dashboards can surface bypass rates). Never log the full URL — only
+  # the metadata needed to trace the resolve back to its origin.
+  defp audit_bypass(claims, external_bypass) do
+    metadata = %{
+      type: Map.get(claims, :type),
+      content_id: Map.get(claims, :id),
+      user_id: Map.get(claims, :user_id),
+      provider_id: Map.get(claims, :provider_id),
+      claim_bypass: Map.get(claims, :bypass, false),
+      external_bypass: external_bypass
+    }
+
+    Logger.info("StreamToken bypass used: #{inspect(metadata)}")
+
+    :telemetry.execute(
+      [:streamix, :stream_token, :bypass_used],
+      %{count: 1},
+      metadata
+    )
   end
 
   # Private functions

@@ -9,6 +9,8 @@ defmodule Streamix.Crypto do
   When no key is configured, acts as passthrough (no encryption) for dev convenience.
   """
 
+  require Logger
+
   @iv_bytes 12
   @tag_bytes 16
   @aad "streamix"
@@ -62,8 +64,17 @@ defmodule Streamix.Crypto do
            :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, @aad, tag, false) do
       plaintext
     else
-      # Not valid base64 or wrong format or decryption failed → plaintext value
-      _ -> value
+      # Backwards compat: legacy plaintext values predate AES-GCM rollout and
+      # must still decrypt. We log so an unexpected miss (e.g. corrupted
+      # ciphertext or wrong key) is visible instead of silently returning
+      # garbage. The value itself is never logged.
+      _ ->
+        Logger.warning(
+          "Streamix.Crypto.decrypt fell back to raw value (#{byte_size(value)} bytes). " <>
+            "Likely legacy plaintext, but check PROVIDER_ENCRYPTION_KEY if unexpected."
+        )
+
+        value
     end
   end
 

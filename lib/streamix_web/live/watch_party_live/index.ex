@@ -18,6 +18,29 @@ defmodule StreamixWeb.WatchPartyLive.Index do
   end
 
   def handle_event("join", %{"invite" => invite}, socket) when byte_size(invite) > 0 do
+    user_id = socket.assigns.current_scope.user.id
+
+    case Streamix.RateLimit.hit("party_join_attempt:#{user_id}", 60_000, 10) do
+      {:allow, _} ->
+        do_join(socket, invite)
+
+      {:deny, retry_after} ->
+        {:noreply,
+         assign(socket,
+           error: "Muitas tentativas. Aguarde #{div(retry_after, 1000)}s e tente de novo."
+         )}
+    end
+  end
+
+  def handle_event("join", _, socket) do
+    {:noreply, assign(socket, error: "Digite um código ou cole um link")}
+  end
+
+  def handle_event("validate", %{"invite" => _invite}, socket) do
+    {:noreply, assign(socket, error: nil)}
+  end
+
+  defp do_join(socket, invite) do
     code = extract_code(String.trim(invite))
 
     if code do
@@ -33,14 +56,6 @@ defmodule StreamixWeb.WatchPartyLive.Index do
     end
   end
 
-  def handle_event("join", _, socket) do
-    {:noreply, assign(socket, error: "Digite um código ou cole um link")}
-  end
-
-  def handle_event("validate", %{"invite" => _invite}, socket) do
-    {:noreply, assign(socket, error: nil)}
-  end
-
   defp extract_code(value) do
     cond do
       # Full URL: /party/abc123 or /party/abc123/watch
@@ -50,8 +65,8 @@ defmodule StreamixWeb.WatchPartyLive.Index do
           _ -> nil
         end
 
-      # Raw code (4-8 alphanumeric chars)
-      Regex.match?(~r/^[a-z0-9]{4,8}$/i, value) ->
+      # Raw code (4-16 alphanumeric chars; legacy 6-char codes still resolve)
+      Regex.match?(~r/^[a-z0-9]{4,16}$/i, value) ->
         String.downcase(value)
 
       true ->

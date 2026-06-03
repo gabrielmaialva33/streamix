@@ -11,6 +11,27 @@ defmodule StreamixWeb.WatchPartyLive.Join do
   alias StreamixWeb.Helpers.ImageProxy
 
   def mount(%{"invite_code" => invite_code}, _session, socket) do
+    user_id = socket.assigns.current_scope.user.id
+
+    # Cap brute-force attempts at the resolver. The code itself is 60-bit so
+    # space-scanning is unrealistic, but enumeration probes still cost
+    # nothing to issue — bucket per user kills automated sweeps cheaply.
+    case Streamix.RateLimit.hit("party_resolve:#{user_id}", 60_000, 30) do
+      {:deny, retry_after} ->
+        {:ok,
+         socket
+         |> put_flash(
+           :error,
+           "Muitas tentativas. Aguarde #{div(retry_after, 1000)}s e tente de novo."
+         )
+         |> push_navigate(to: ~p"/party")}
+
+      {:allow, _} ->
+        resolve_invite(socket, invite_code)
+    end
+  end
+
+  defp resolve_invite(socket, invite_code) do
     case WatchParty.get_room_by_invite_with_content(invite_code) do
       nil ->
         {:ok,
