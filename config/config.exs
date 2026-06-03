@@ -20,6 +20,20 @@ config :streamix, :scopes,
     test_setup_helper: :register_and_log_in_user
   ]
 
+# Public TV app release metadata shown on /tv. Bumps every TV-app release
+# and would otherwise live as 8 module attributes in tv_live.ex — pulling
+# them up here means the app-shell module doesn't change when only the
+# download URL/checksum changes.
+config :streamix, :tv_app,
+  release_tag: "v1.0.000",
+  release_url: "https://github.com/gabrielmaialva33/streamix-tv/releases/tag/v1.0.000",
+  apk_short_url: "https://streamix.mahina.cloud/tv/apk",
+  apk_size_mb: "7.3",
+  apk_sha256: "5b3f503c8c7ffc4eb99905defa2093d3f412482aaaf25026216143270a75f1cd",
+  wgt_short_url: "https://streamix.mahina.cloud/tv/wgt",
+  wgt_size_mb: "3.1",
+  wgt_sha256: "bbdc5e9592b5b1a17c6783fa80e3176c61ef22f977c8ba7860f032afe11dd83d"
+
 config :streamix,
   ecto_repos: [Streamix.Repo],
   generators: [timestamp_type: :utc_datetime],
