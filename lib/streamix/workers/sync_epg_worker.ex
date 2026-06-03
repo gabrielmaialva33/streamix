@@ -8,7 +8,7 @@ defmodule Streamix.Workers.SyncEpgWorker do
   provider's anti-scraper WAF can't tell us apart from a normal client.
 
   Until 2026-05-03 this worker iterated 776 channels and called
-  `get_short_epg` once per channel. That triggered the Choki provider's
+  `get_short_epg` once per channel. That triggered the iptv provider's
   WAF and got the IPTV account suspended. Switched to XMLTV bulk fetch
   to mirror real-client behaviour.
 
