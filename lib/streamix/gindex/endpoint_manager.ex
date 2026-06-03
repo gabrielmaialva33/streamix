@@ -46,11 +46,24 @@ defmodule Streamix.Gindex.EndpointManager do
   #   * 5xx fallback handled at nginx, which removes the circuit
   #     ping-pong we used to see when one Cloudflare Worker shard
   #     started returning the deterministic TypeError.
+  #
+  # 2026-06-03: added the direct CF Worker as a priority-2 fallback.
+  # nginx mahina.cloud is a SPOF — when the Cloudflare Tunnel flaps or
+  # srv953258 reboots, every GIndex call dies until the tunnel comes
+  # back up. The direct worker URL bypasses our edge entirely. We only
+  # keep the *paginated-listing-safe* mirror (priority 1 in the legacy
+  # config); the other two returned 500 TypeError on any page > 0 and
+  # are intentionally absent.
   @default_endpoints [
     %{
       name: :proxy,
       url: "https://gindex.mahina.cloud",
       priority: 1
+    },
+    %{
+      name: :cf_worker_direct,
+      url: "https://1.animezey23112022.workers.dev",
+      priority: 2
     }
   ]
 
