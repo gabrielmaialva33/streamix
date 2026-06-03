@@ -110,6 +110,7 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [
     :request_id,
+    :user_id,
     :context,
     :reason,
     :error,
