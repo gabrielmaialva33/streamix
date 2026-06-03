@@ -434,6 +434,12 @@ const ContentCard = {
 
   setupIntersectionObserver() {
     if (hasPreloadedWasm) return;
+    // Idempotent — if mounted() re-runs (LV update / scroll re-render),
+    // disconnect the previous observer so we don't accumulate one per
+    // re-mount.
+    if (this.observer) {
+      this.observer.disconnect();
+    }
 
     const options = {
       root: null,
@@ -452,6 +458,16 @@ const ContentCard = {
     }, options);
 
     this.observer.observe(this.el);
+  },
+
+  destroyed() {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    if (this.handleTouchStart) {
+      this.el.removeEventListener("touchstart", this.handleTouchStart);
+    }
   },
 };
 

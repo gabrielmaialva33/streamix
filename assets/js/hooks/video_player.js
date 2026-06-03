@@ -3854,13 +3854,20 @@ const VideoPlayer = {
       this.playerUI.showControls();
       this.playerUI.scheduleHideControls();
 
-      controls.addEventListener("touchstart", () => {
-        this.playerUI.clearHideControlsTimeout();
-      });
+      // passive: true so Safari/iOS doesn't fire the "non-passive
+      // touchstart blocked main thread" warning, and so the touch
+      // gesture doesn't get cancelled by the listener.
+      controls.addEventListener(
+        "touchstart",
+        () => this.playerUI.clearHideControlsTimeout(),
+        { passive: true },
+      );
 
-      controls.addEventListener("touchend", () => {
-        this.playerUI.scheduleHideControls();
-      });
+      controls.addEventListener(
+        "touchend",
+        () => this.playerUI.scheduleHideControls(),
+        { passive: true },
+      );
     }
 
     this.el.addEventListener("mousemove", () => {

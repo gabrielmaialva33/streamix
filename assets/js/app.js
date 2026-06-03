@@ -485,8 +485,13 @@ if ("serviceWorker" in navigator) {
           console.log("SW registered:", reg.scope);
         }
 
-        // Check for updates periodically (every 30 minutes)
-        setInterval(() => reg.update(), 30 * 60 * 1000);
+        // Check for updates periodically (every 30 minutes).
+        // Guard against double-registration so re-entering this block
+        // (Vite/LiveReload, tab re-pin in PWA, etc.) doesn't stack
+        // intervals that pile up over a long-lived PWA session.
+        if (!window.__swUpdateInterval) {
+          window.__swUpdateInterval = setInterval(() => reg.update(), 30 * 60 * 1000);
+        }
 
         // Listen for new SW waiting
         reg.addEventListener("updatefound", () => {
@@ -510,13 +515,18 @@ if ("serviceWorker" in navigator) {
       })
       .catch((err) => console.warn("SW registration failed:", err));
 
-    // Reload when controller changes (new SW took over)
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
-    });
+    // Reload when controller changes (new SW took over). Guarded so
+    // repeated module evaluations (LiveReload, tab restore) don't
+    // accumulate listeners on the same SW container.
+    if (!window.__swControllerChangeBound) {
+      window.__swControllerChangeBound = true;
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    }
   });
 }
 
