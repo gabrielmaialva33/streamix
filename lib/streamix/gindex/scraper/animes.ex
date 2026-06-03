@@ -5,15 +5,20 @@ defmodule Streamix.Gindex.Scraper.Animes do
 
   require Logger
 
+  alias Streamix.Cache
   alias Streamix.Gindex.{Client, Parser}
 
+  # Top-level anime listing changes when new anime folders are added.
+  # 1h TTL trades a small re-discovery cost for not missing new content
+  # for too long. The cached list of folders is reused across consecutive
+  # scan runs, saving one paginated walk against the CF Worker budget.
+  @top_level_cache_ttl 60 * 60
+
   def scrape_animes(base_url, anime_path \\ "/0:/Animes/") do
-    rate_limit_delay()
     Logger.info("[GIndex Scraper] Scraping animes from: #{anime_path}")
 
-    case Client.list_folder_all(base_url, anime_path) do
-      {:ok, items} ->
-        folders = Enum.filter(items, &(&1.type == :folder))
+    case list_anime_folders(base_url, anime_path) do
+      {:ok, folders} ->
         Logger.info("[GIndex Scraper] Found #{length(folders)} anime folders")
 
         animes =
@@ -32,8 +37,27 @@ defmodule Streamix.Gindex.Scraper.Animes do
     end
   end
 
+  defp list_anime_folders(base_url, anime_path) do
+    key = "gindex:disc:animes:" <> base_url <> ":" <> anime_path
+
+    case Cache.get(key) do
+      nil ->
+        with {:ok, items} <- Client.list_folder_all(base_url, anime_path),
+             folders = Enum.filter(items, &(&1.type == :folder)),
+             true <- folders != [] do
+          Cache.set(key, folders, @top_level_cache_ttl)
+          {:ok, folders}
+        else
+          false -> {:ok, []}
+          {:error, _} = err -> err
+        end
+
+      cached ->
+        {:ok, cached}
+    end
+  end
+
   def scrape_single_anime(base_url, folder) do
-    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping anime: #{folder.name}")
 
     folder_meta = Parser.parse_anime_folder(folder.name)
@@ -81,7 +105,6 @@ defmodule Streamix.Gindex.Scraper.Animes do
   end
 
   def scrape_single_anime_release(base_url, folder, release_index) do
-    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping anime release: #{folder.name}")
 
     release_meta = Parser.parse_release_folder(folder.name)
@@ -139,6 +162,4 @@ defmodule Streamix.Gindex.Scraper.Animes do
     |> Enum.reject(&is_nil/1)
     |> Enum.sort_by(& &1.episode_num)
   end
-
-  defp rate_limit_delay, do: :ok
 end

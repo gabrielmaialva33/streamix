@@ -5,8 +5,14 @@ defmodule Streamix.Gindex.Scraper.Series do
 
   require Logger
 
+  alias Streamix.Cache
   alias Streamix.Gindex.{Client, Parser}
   alias Streamix.Gindex.Scraper.Seasons
+
+  # Top-level series listing changes when new series folders are added.
+  # 1h TTL: short enough not to lose new content for long, but enough to
+  # avoid paying the discovery walk twice in back-to-back retries.
+  @top_level_cache_ttl 60 * 60
 
   @default_series_paths ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"]
 
@@ -26,12 +32,10 @@ defmodule Streamix.Gindex.Scraper.Series do
   end
 
   def scrape_series_folder(base_url, series_path) do
-    rate_limit_delay()
     Logger.info("[GIndex Scraper] Scraping series folder: #{series_path}")
 
-    case Client.list_folder_all(base_url, series_path) do
-      {:ok, items} ->
-        folders = Enum.filter(items, &(&1.type == :folder))
+    case list_series_folders(base_url, series_path) do
+      {:ok, folders} ->
         Logger.info("[GIndex Scraper] Found #{length(folders)} series folders in #{series_path}")
 
         series_list =
@@ -50,8 +54,27 @@ defmodule Streamix.Gindex.Scraper.Series do
     end
   end
 
+  defp list_series_folders(base_url, series_path) do
+    key = "gindex:disc:series:" <> base_url <> ":" <> series_path
+
+    case Cache.get(key) do
+      nil ->
+        with {:ok, items} <- Client.list_folder_all(base_url, series_path),
+             folders = Enum.filter(items, &(&1.type == :folder)),
+             true <- folders != [] do
+          Cache.set(key, folders, @top_level_cache_ttl)
+          {:ok, folders}
+        else
+          false -> {:ok, []}
+          {:error, _} = err -> err
+        end
+
+      cached ->
+        {:ok, cached}
+    end
+  end
+
   def scrape_single_series(base_url, folder) do
-    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping series: #{folder.name}")
 
     folder_meta = Parser.parse_series_folder(folder.name)
@@ -100,7 +123,6 @@ defmodule Streamix.Gindex.Scraper.Series do
   end
 
   def scrape_single_season(base_url, folder, _series_path) do
-    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping season: #{folder.name}")
 
     season_number = Parser.parse_season_folder(folder.name).season_number
@@ -190,8 +212,6 @@ defmodule Streamix.Gindex.Scraper.Series do
   end
 
   defp scrape_subfolder_episodes(base_url, subfolder, season_number) do
-    rate_limit_delay()
-
     case Client.list_folder(base_url, subfolder.path) do
       {:ok, sub_items} ->
         sub_items
@@ -218,6 +238,4 @@ defmodule Streamix.Gindex.Scraper.Series do
         nil
     end
   end
-
-  defp rate_limit_delay, do: :ok
 end

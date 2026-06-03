@@ -5,8 +5,16 @@ defmodule Streamix.Gindex.Scraper.Movies do
 
   require Logger
 
+  alias Streamix.Cache
   alias Streamix.Gindex.{Client, Parser}
   alias Streamix.Gindex.Scraper.Categories
+
+  # Top-level category listing (`/X:/Filmes/`) changes slowly — at most
+  # when the operator adds a new year folder. Cache hits skip a roundtrip
+  # against the 10K/day CF Worker budget, which is the binding constraint
+  # for the whole sync. 12h TTL means at most two extra refreshes per
+  # daily cron run if cache is cold.
+  @categories_cache_ttl 12 * 60 * 60
 
   def scrape_movies(base_url, movies_path \\ "/1:/Filmes/") do
     Stream.resource(
@@ -17,7 +25,6 @@ defmodule Streamix.Gindex.Scraper.Movies do
   end
 
   def scrape_category(base_url, category_path) do
-    rate_limit_delay()
     Logger.info("[GIndex Scraper] Scraping category: #{category_path}")
 
     with {:ok, movie_folders} <- Client.list_folder_all(base_url, category_path) do
@@ -34,8 +41,25 @@ defmodule Streamix.Gindex.Scraper.Movies do
   end
 
   def list_categories(base_url, movies_path \\ "/1:/Filmes/") do
-    rate_limit_delay()
+    key = categories_cache_key(base_url, movies_path)
 
+    case Cache.get(key) do
+      nil ->
+        with {:ok, categories} <- do_list_categories(base_url, movies_path),
+             true <- categories != [] do
+          Cache.set(key, categories, @categories_cache_ttl)
+          {:ok, categories}
+        else
+          false -> {:ok, []}
+          {:error, _} = err -> err
+        end
+
+      cached ->
+        {:ok, cached}
+    end
+  end
+
+  defp do_list_categories(base_url, movies_path) do
     case Client.list_folder_all(base_url, movies_path) do
       {:ok, items} ->
         categories =
@@ -50,8 +74,11 @@ defmodule Streamix.Gindex.Scraper.Movies do
     end
   end
 
+  defp categories_cache_key(base_url, path) do
+    "gindex:disc:movies:" <> base_url <> ":" <> path
+  end
+
   def scrape_movie_folder(base_url, folder) do
-    rate_limit_delay()
     Logger.debug("[GIndex Scraper] Scraping movie folder: #{folder.name}")
 
     folder_meta = Parser.parse_movie_folder(folder.name)
@@ -94,7 +121,6 @@ defmodule Streamix.Gindex.Scraper.Movies do
 
   defp scrape_next_movie(%{current_folders: [folder | rest]} = state) do
     movie = scrape_movie_folder(state.base_url, folder)
-    rate_limit_delay()
 
     if movie do
       {[movie], %{state | current_folders: rest}}
@@ -105,7 +131,6 @@ defmodule Streamix.Gindex.Scraper.Movies do
 
   defp scrape_next_movie(%{categories: [category | rest_categories]} = state) do
     Logger.info("[GIndex Scraper] Processing category: #{category.name}")
-    rate_limit_delay()
 
     case Client.list_folder_all(state.base_url, category.path) do
       {:ok, items} ->
@@ -129,10 +154,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
   defp find_video_in_subfolders(base_url, parent_path, items) do
     items
     |> Enum.filter(&(&1.type == :folder))
-    |> Enum.find_value(fn subfolder ->
-      rate_limit_delay()
-      check_subfolder_for_video(base_url, subfolder, parent_path)
-    end)
+    |> Enum.find_value(&check_subfolder_for_video(base_url, &1, parent_path))
   end
 
   defp check_subfolder_for_video(base_url, subfolder, parent_path) do
@@ -170,6 +192,4 @@ defmodule Streamix.Gindex.Scraper.Movies do
       raw_filename: video_file.name
     }
   end
-
-  defp rate_limit_delay, do: :ok
 end
