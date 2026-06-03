@@ -169,6 +169,7 @@ defmodule StreamixWeb.App.Navigation do
     ~H"""
     <.link
       navigate={@path}
+      aria-current={@active && "page"}
       class={[
         "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
         @active && !@accent && "text-text-primary bg-surface-hover/60",
@@ -196,6 +197,7 @@ defmodule StreamixWeb.App.Navigation do
     ~H"""
     <.link
       navigate={@path}
+      aria-current={@active && "page"}
       class={[
         "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-all touch-manipulation",
         @active && "text-brand",

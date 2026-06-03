@@ -8,6 +8,19 @@
 --%>
 <div class={["flex min-h-dvh flex-col bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
   <%!--
+    Skip-to-content link — first focusable element on the page. Hidden
+    until it receives keyboard focus (sr-only + focus:not-sr-only), at
+    which point it jumps to the <main id="main-content"> region. Required
+    by WCAG 2.4.1 so keyboard / screen-reader users don't have to tab
+    through every header link to reach the actual content.
+  --%>
+  <a
+    href="#main-content"
+    class="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-text-primary focus:shadow-lg focus:ring-2 focus:ring-brand"
+  >
+    Pular para o conteúdo
+  </a>
+  <%!--
     Provider-health banner. Rendered by the StreamixWeb.OnMount.ProviderHealth
     hook via the @provider_health assign. Lives *above* the scroll-aware
     header (the header's `top` is shifted down by the banner's height via
@@ -222,7 +235,7 @@
     utility in app.css adds env(safe-area-inset-top) on top of that so
     content clears the notch on iPhone X+ / Dynamic Island devices.
   --%>
-  <main class="flex-1 pb-20 sm:pb-8 px-[4%] main-safe-top">
+  <main id="main-content" class="flex-1 pb-20 sm:pb-8 px-[4%] main-safe-top" tabindex="-1">
     {@inner_content}
   </main>
 

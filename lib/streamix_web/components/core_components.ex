@@ -40,6 +40,8 @@ defmodule StreamixWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
+      aria-live={(@kind == :error && "assertive") || "polite"}
+      aria-atomic="true"
       class="fixed top-4 right-4 z-50"
       {@rest}
     >
@@ -219,12 +221,14 @@ defmodule StreamixWeb.CoreComponents do
           @errors != [] && "border-error"
         ]}
         multiple={@multiple}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={error_describedby(@id, @errors)}
         {@rest}
       >
         <option :if={@prompt} value="">{@prompt}</option>
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
-      <.error :for={msg <- @errors}>{msg}</.error>
+      <.error id={"input-error-#{@id}"} messages={@errors} />
     </div>
     """
   end
@@ -245,9 +249,11 @@ defmodule StreamixWeb.CoreComponents do
           @errors == [] && "border-border",
           @errors != [] && "border-error"
         ]}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={error_describedby(@id, @errors)}
         {@rest}
       >{Form.normalize_value("textarea", @value)}</textarea>
-      <.error :for={msg <- @errors}>{msg}</.error>
+      <.error id={"input-error-#{@id}"} messages={@errors} />
     </div>
     """
   end
@@ -271,14 +277,37 @@ defmodule StreamixWeb.CoreComponents do
           @errors == [] && "border-border",
           @errors != [] && "border-error"
         ]}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={error_describedby(@id, @errors)}
         {@rest}
       />
-      <.error :for={msg <- @errors}>{msg}</.error>
+      <.error id={"input-error-#{@id}"} messages={@errors} />
     </div>
     """
   end
 
-  # Helper used by inputs to generate form errors
+  # Helper used by inputs to render form errors as a single
+  # screen-reader-accessible `<p>` linked to the input via
+  # `aria-describedby`. Two arities so legacy callers that pass a
+  # single message via inner_block keep working.
+  attr :id, :string, default: nil
+  attr :messages, :list, default: nil
+  slot :inner_block
+
+  defp error(%{messages: messages} = assigns) when is_list(messages) do
+    ~H"""
+    <p
+      :if={@messages != []}
+      id={@id}
+      class="mt-1.5 flex gap-2 items-center text-sm text-error"
+      aria-live="polite"
+    >
+      <.icon name="hero-exclamation-circle" class="size-4" />
+      {Enum.join(@messages, ". ")}
+    </p>
+    """
+  end
+
   defp error(assigns) do
     ~H"""
     <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
@@ -287,6 +316,12 @@ defmodule StreamixWeb.CoreComponents do
     </p>
     """
   end
+
+  # Renders aria-describedby pointing at the error <p> only when there
+  # actually are errors — empty value would leave a dangling reference
+  # in the DOM.
+  defp error_describedby(_id, []), do: false
+  defp error_describedby(id, _errors), do: "input-error-#{id}"
 
   @doc """
   Renders a header with title.
@@ -445,6 +480,11 @@ defmodule StreamixWeb.CoreComponents do
   attr :id, :string, required: true
   attr :show, :boolean, default: false
   attr :on_cancel, JS, default: %JS{}
+
+  attr :label, :string,
+    default: nil,
+    doc: "aria-label / aria-labelledby fallback for screen readers"
+
   slot :inner_block, required: true
   slot :actions
 
@@ -455,14 +495,27 @@ defmodule StreamixWeb.CoreComponents do
       class="fixed inset-0 z-50 m-0 h-full w-full max-h-full max-w-full bg-transparent p-0"
       phx-hook="Modal"
       data-show={to_string(@show)}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={@label && "#{@id}-label"}
+      aria-label={!@label && "Diálogo"}
     >
       <div class="fixed inset-0 flex items-center justify-center">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" phx-click={@on_cancel}></div>
+        <button
+          type="button"
+          class="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-default"
+          phx-click={@on_cancel}
+          aria-label="Fechar diálogo"
+          tabindex="-1"
+        >
+        </button>
         <div class="relative bg-surface rounded-xl shadow-2xl border border-border max-w-md w-full mx-4 p-6">
+          <p :if={@label} id={"#{@id}-label"} class="sr-only">{@label}</p>
           <button
             type="button"
             class="absolute right-4 top-4 p-1 rounded-full text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
             phx-click={@on_cancel}
+            aria-label="Fechar"
           >
             <.icon name="hero-x-mark" class="size-5" />
           </button>
