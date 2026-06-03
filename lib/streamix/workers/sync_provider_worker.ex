@@ -82,21 +82,42 @@ defmodule Streamix.Workers.SyncProviderWorker do
             # Reload provider to get updated counts
             updated_provider = iptv.get_provider!(provider.id)
 
-            # Update status to completed
-            iptv.update_provider(provider, %{sync_status: "completed"})
+            # Confirm the status update BEFORE broadcasting. Broadcasting a
+            # "completed" event when the DB still says "syncing" leaves the
+            # UI permanently out of sync with the provider row.
+            case iptv.update_provider(provider, %{sync_status: "completed"}) do
+              {:ok, _} ->
+                broadcast_sync_status(provider, "completed", %{
+                  live_channels_count: updated_provider.live_channels_count,
+                  movies_count: updated_provider.movies_count,
+                  series_count: updated_provider.series_count
+                })
 
-            broadcast_sync_status(provider, "completed", %{
-              live_channels_count: updated_provider.live_channels_count,
-              movies_count: updated_provider.movies_count,
-              series_count: updated_provider.series_count
-            })
+                :ok
 
-            :ok
+              {:error, changeset} ->
+                Logger.error(
+                  "[SyncProviderWorker] provider #{provider.id} sync succeeded " <>
+                    "but status update failed: #{inspect(changeset.errors)}"
+                )
+
+                {:error, {:status_update_failed, changeset}}
+            end
 
           {:error, reason} ->
-            # Update status to failed
-            iptv.update_provider(provider, %{sync_status: "failed"})
-            broadcast_sync_status(provider, "failed", %{error: inspect(reason)})
+            # Same pattern on the failure path: only broadcast after the
+            # status row reflects the outcome.
+            case iptv.update_provider(provider, %{sync_status: "failed"}) do
+              {:ok, _} ->
+                broadcast_sync_status(provider, "failed", %{error: inspect(reason)})
+
+              {:error, changeset} ->
+                Logger.error(
+                  "[SyncProviderWorker] provider #{provider.id} failed AND status " <>
+                    "update failed: #{inspect(changeset.errors)}"
+                )
+            end
+
             {:error, reason}
         end
     end
@@ -120,18 +141,27 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
   def enqueue(%Provider{} = provider, opts) do
     series_details = Keyword.get(opts, :series_details, :skip)
+    job_opts = job_opts(opts)
 
     %{provider_id: provider.id, series_details: to_string(series_details)}
-    |> new()
+    |> new(job_opts)
     |> Oban.insert()
   end
 
   def enqueue(provider_id, opts) when is_integer(provider_id) or is_binary(provider_id) do
     series_details = Keyword.get(opts, :series_details, :skip)
+    job_opts = job_opts(opts)
 
     %{provider_id: provider_id, series_details: to_string(series_details)}
-    |> new()
+    |> new(job_opts)
     |> Oban.insert()
+  end
+
+  # Pass-through only what Oban's `new/2` understands. Anything else stays
+  # behind in `opts` and is consumed by `perform/1` via args.
+  defp job_opts(opts) do
+    opts
+    |> Keyword.take([:schedule_in, :scheduled_at, :priority, :tags, :replace])
   end
 
   defp iptv_module do

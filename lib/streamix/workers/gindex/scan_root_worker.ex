@@ -125,7 +125,13 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
     case Repo.get(Oban.Job, id) do
       nil ->
-        :ok
+        :telemetry.execute(
+          [:streamix, :gindex, :scan_root, :meta_write_failed],
+          %{count: 1},
+          %{reason: :job_not_found, job_id: id}
+        )
+
+        {:error, :job_not_found}
 
       job ->
         job
@@ -136,8 +142,22 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
             :ok
 
           {:error, changeset} ->
-            Logger.warning("[GIndex ScanRoot] meta write failed: #{inspect(changeset.errors)}")
-            :ok
+            # Sync itself succeeded — bubble the failure as a telemetry
+            # event + Logger.error so dashboards see it instead of silently
+            # dropping the per-root stats the orchestrator depends on for
+            # its end-of-run roll-up.
+            Logger.error(
+              "[GIndex ScanRoot] meta write failed for job #{id}: " <>
+                "#{inspect(changeset.errors)}"
+            )
+
+            :telemetry.execute(
+              [:streamix, :gindex, :scan_root, :meta_write_failed],
+              %{count: 1},
+              %{reason: :update_failed, job_id: id, errors: changeset.errors}
+            )
+
+            {:error, :meta_write_failed}
         end
     end
   end

@@ -245,8 +245,13 @@ defmodule Streamix.Iptv.XtreamClient do
         Jason.decode(body)
 
       {:ok, %{status: 429}} when attempt < @max_retries ->
-        # Rate limited - exponential backoff with jitter
-        delay = @base_retry_delay * round(:math.pow(2, attempt)) + :rand.uniform(2000)
+        # Rate limited — full-jitter exponential backoff. Picking a delay
+        # uniformly in [base, 2 * base * 2^attempt) spreads parallel
+        # retries across a wide window so N workers receiving a 429 at
+        # the same tick don't all wake up together and re-hammer the
+        # upstream (which the AWS Architecture Blog calls the
+        # "thundering herd" failure mode).
+        delay = full_jitter_delay(attempt)
 
         Logger.warning(
           "[XtreamClient] Rate limited (429), retry #{attempt + 1}/#{@max_retries} in #{div(delay, 1000)}s"
@@ -259,8 +264,8 @@ defmodule Streamix.Iptv.XtreamClient do
         {:error, {:http_error, status}}
 
       {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
-        # Transport error - retry with backoff
-        delay = @base_retry_delay * round(:math.pow(2, attempt)) + :rand.uniform(1000)
+        # Same full-jitter backoff as the 429 branch — see comment above.
+        delay = full_jitter_delay(attempt)
 
         Logger.warning(
           "[XtreamClient] Transport error #{inspect(reason)}, retry #{attempt + 1}/#{@max_retries}"
@@ -275,6 +280,15 @@ defmodule Streamix.Iptv.XtreamClient do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Full-jitter exponential backoff (AWS-style). Picks a delay uniformly in
+  # [base, 2 * base * 2^attempt). At attempt 0 that's [10s, 30s); at
+  # attempt 2, [10s, 90s). Wider spread than a `base + small_jitter` recipe
+  # so concurrent retries don't all wake up in the same 1–2s window.
+  defp full_jitter_delay(attempt) do
+    upper = @base_retry_delay * round(:math.pow(2, attempt + 1))
+    @base_retry_delay + :rand.uniform(upper - @base_retry_delay)
   end
 
   # Categorize errors for circuit breaker metrics

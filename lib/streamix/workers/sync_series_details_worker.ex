@@ -130,6 +130,22 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
     %{series_ids: failed_ids, retry_attempt: attempt + 1}
     |> __MODULE__.new(schedule_in: delay_seconds)
     |> Oban.insert()
+    |> case do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        # Surfacing this matters: a dropped retry insert leaves the failed
+        # series stuck with partial details forever. Return a snooze so the
+        # current job retries the whole batch via Oban's normal attempt
+        # budget instead of silently completing.
+        Logger.error(
+          "[SyncSeriesDetails] failed to enqueue retry for #{length(failed_ids)} series: " <>
+            "#{inspect(reason)}"
+        )
+
+        {:error, {:retry_enqueue_failed, reason}}
+    end
   end
 
   @doc """

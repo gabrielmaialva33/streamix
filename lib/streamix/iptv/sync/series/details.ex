@@ -25,43 +25,46 @@ defmodule Streamix.Iptv.Sync.Series.Details do
     Logger.info("Syncing details for #{total} series (this may take a while)...")
     Telemetry.progress(provider, :details, current: 0, total: total, type: :series)
 
-    query = from(s in Series, where: s.provider_id == ^provider.id, order_by: s.id)
+    # Pre-load all series IDs in one query. `Repo.stream` would force a long
+    # `Repo.transaction(timeout: :infinity)` to hold the connection — with
+    # a 20-conn pool and a sync that can run for tens of minutes per
+    # provider, that turns into a hard outage on the web layer. ~10k IDs
+    # × 8 bytes ≈ 80 KB of RAM is a fair trade for connection availability.
+    series_ids =
+      Series
+      |> where([s], s.provider_id == ^provider.id)
+      |> order_by([s], asc: s.id)
+      |> select([s], s.id)
+      |> Repo.all()
 
-    results =
-      Repo.transaction(
-        fn ->
-          query
-          |> Repo.stream(max_rows: @chunk_size)
-          |> Stream.chunk_every(@chunk_size)
-          |> Enum.reduce(empty_results(), fn chunk, acc ->
-            chunk_results = process_series_chunk(chunk)
-            merged = merge_results(acc, chunk_results)
+    final_results =
+      series_ids
+      |> Stream.chunk_every(@chunk_size)
+      |> Enum.reduce(empty_results(), fn id_chunk, acc ->
+        chunk_results = process_series_chunk(load_chunk(id_chunk))
+        merged = merge_results(acc, chunk_results)
 
-            Telemetry.progress(provider, :details,
-              current: merged.success + merged.failed,
-              total: total,
-              type: :series
-            )
-
-            merged
-          end)
-        end,
-        timeout: :infinity
-      )
-
-    case results do
-      {:ok, final_results} ->
-        Logger.info(
-          "Series details sync completed: #{final_results.success}/#{total} series, " <>
-            "#{final_results.seasons} seasons, #{final_results.episodes} episodes"
+        Telemetry.progress(provider, :details,
+          current: merged.success + merged.failed,
+          total: total,
+          type: :series
         )
 
-        {:ok, final_results}
+        merged
+      end)
 
-      {:error, reason} ->
-        Logger.error("Series details sync failed: #{inspect(reason)}")
-        {:error, reason}
-    end
+    Logger.info(
+      "Series details sync completed: #{final_results.success}/#{total} series, " <>
+        "#{final_results.seasons} seasons, #{final_results.episodes} episodes"
+    )
+
+    {:ok, final_results}
+  end
+
+  defp load_chunk(ids) do
+    Series
+    |> where([s], s.id in ^ids)
+    |> Repo.all()
   end
 
   @doc """

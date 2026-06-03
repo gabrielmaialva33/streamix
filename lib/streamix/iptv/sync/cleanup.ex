@@ -79,31 +79,28 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     }
   end
 
+  # Single NOT EXISTS query. The previous implementation materialised every
+  # catalog_items id + every content-table catalog_item_id (5 separate
+  # Repo.all calls) just to compute set-difference in Elixir. With 1M+
+  # rows that was a multi-hundred-MB spike during cleanup; Postgres can
+  # answer the same question with one semi-join per content table.
   defp find_orphaned_catalog_item_ids do
-    # Catalog items where the content row no longer exists
-    all_catalog_ids =
-      CatalogItem
-      |> select([ci], ci.id)
-      |> Repo.all()
-
-    # For each content type, find catalog_items that still have content
-    valid_ids =
-      ~w(live_channel movie series episode)
-      |> Enum.flat_map(fn type ->
-        schema = content_schema(type)
-
-        schema
-        |> where([c], not is_nil(c.catalog_item_id))
-        |> select([c], c.catalog_item_id)
-        |> Repo.all()
-      end)
-      |> MapSet.new()
-
-    Enum.reject(all_catalog_ids, &MapSet.member?(valid_ids, &1))
+    from(ci in CatalogItem,
+      where:
+        fragment(
+          """
+          NOT EXISTS (SELECT 1 FROM live_channels lc WHERE lc.catalog_item_id = ?)
+            AND NOT EXISTS (SELECT 1 FROM movies m WHERE m.catalog_item_id = ?)
+            AND NOT EXISTS (SELECT 1 FROM series s WHERE s.catalog_item_id = ?)
+            AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.catalog_item_id = ?)
+          """,
+          ci.id,
+          ci.id,
+          ci.id,
+          ci.id
+        ),
+      select: ci.id
+    )
+    |> Repo.all()
   end
-
-  defp content_schema("live_channel"), do: Streamix.Iptv.LiveChannel
-  defp content_schema("movie"), do: Streamix.Iptv.Movie
-  defp content_schema("series"), do: Streamix.Iptv.Series
-  defp content_schema("episode"), do: Streamix.Iptv.Episode
 end

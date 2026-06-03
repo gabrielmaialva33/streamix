@@ -131,30 +131,43 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
   end
 
   defp delete_orphaned_episodes(season_id, current_episode_nums) do
-    {:ok, %{rows: rows}} =
-      Repo.query(
-        """
-        SELECT catalog_item_id FROM episodes
-        WHERE season_id = $1 AND episode_num != ALL($2)
-        """,
-        [season_id, current_episode_nums]
-      )
+    # All three steps run in one transaction: a crash between the SELECT
+    # and the DELETE used to leak orphaned `catalog_items` rows that the
+    # nightly cleanup then had to chase. With the FK now CASCADE-on-delete
+    # (see migration 20260603134943), removing the catalog_item row is
+    # also what kills the episode row, so we collect IDs first and then
+    # let the CASCADE do the rest.
+    Repo.transaction(fn ->
+      {:ok, %{rows: rows}} =
+        Repo.query(
+          """
+          SELECT catalog_item_id FROM episodes
+          WHERE season_id = $1 AND episode_num != ALL($2)
+          """,
+          [season_id, current_episode_nums]
+        )
 
-    orphan_catalog_ids = Enum.map(rows, fn [id] -> id end)
+      orphan_catalog_ids = Enum.map(rows, fn [id] -> id end)
 
-    result =
-      Episode
-      |> where([e], e.season_id == ^season_id)
-      |> where([e], e.episode_num not in ^current_episode_nums)
-      |> Repo.delete_all()
+      result =
+        Episode
+        |> where([e], e.season_id == ^season_id)
+        |> where([e], e.episode_num not in ^current_episode_nums)
+        |> Repo.delete_all()
 
-    if orphan_catalog_ids != [] do
-      Repo.query!("DELETE FROM catalog_items WHERE id = ANY($1)", [orphan_catalog_ids])
-    end
+      if orphan_catalog_ids != [] do
+        Repo.query!("DELETE FROM catalog_items WHERE id = ANY($1)", [orphan_catalog_ids])
+      end
 
-    result
+      result
+    end)
   end
 
+  # Dedupe by episode_num before mapping. The on_conflict clause downstream
+  # uses (season_id, episode_num) as the conflict target, and Postgres
+  # rejects an insert_all batch that hits the same target twice with a
+  # `cardinality_violation` — some panels return the same episode object
+  # more than once inside the same season payload.
   defp build_episode_attrs(episodes, season_id, now) do
     episodes
     |> Enum.uniq_by(fn episode -> Helpers.parse_int(episode["episode_num"]) end)

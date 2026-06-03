@@ -39,12 +39,20 @@ defmodule Streamix.Workers.SyncAllProvidersWorker do
 
     Logger.info("Found #{count} xtream providers to sync")
 
-    # Skip series details - they are synced on-demand when user accesses a series
-    Enum.each(providers, fn provider ->
-      SyncProviderWorker.enqueue(provider, series_details: :skip)
+    # Skip series details — they're synced on-demand when a user opens a
+    # series. Stagger enqueues by 30s so the sync queue isn't burst-loaded
+    # with N jobs the moment the cron fires; with concurrency 3 a burst
+    # leaves the rest sitting in queue while the upstream gets hammered.
+    providers
+    |> Enum.with_index()
+    |> Enum.each(fn {provider, idx} ->
+      SyncProviderWorker.enqueue(provider,
+        series_details: :skip,
+        schedule_in: idx * 30
+      )
     end)
 
-    Logger.info("Enqueued sync jobs for #{count} providers")
+    Logger.info("Enqueued sync jobs for #{count} providers (staggered every 30s)")
 
     :ok
   end
