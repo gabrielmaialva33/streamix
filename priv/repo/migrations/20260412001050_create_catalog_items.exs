@@ -9,8 +9,12 @@ defmodule Streamix.Repo.Migrations.CreateCatalogItems do
       timestamps(type: :utc_datetime)
     end
 
-    create index(:catalog_items, [:content_type])
-    create index(:catalog_items, [:provider_id])
+    # `(id, content_type)` lets trending / favorites joins answer the
+    # `content_type = 'movie'` predicate without an extra Filter step
+    # after the `(id, provider_id)` index scan. The standalone
+    # `[:content_type]` and `[:provider_id]` indexes were never picked
+    # by the planner in prod (idx_scan = 0) — both removed.
+    create index(:catalog_items, [:id, :content_type])
     create unique_index(:catalog_items, [:id, :provider_id])
 
     execute(

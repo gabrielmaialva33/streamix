@@ -54,6 +54,16 @@ defmodule Streamix.Repo.Migrations.CreateMovies do
     create unique_index(:movies, [:catalog_item_id])
     create index(:movies, [:catalog_item_id, :provider_id])
 
+    # Partial composite covering `list_public_movies` and any
+    # `WHERE provider_id = X AND stream_icon IS NOT NULL ORDER BY rating`.
+    # Without this, the planner falls back to a Parallel Seq Scan on the
+    # whole movies table because none of the existing indexes encode the
+    # `stream_icon IS NOT NULL` predicate together with the sort key.
+    create index(:movies, [:provider_id, :rating],
+             where: "stream_icon IS NOT NULL AND stream_icon <> ''",
+             name: :movies_provider_id_rating_partial_idx
+           )
+
     execute(
       """
       ALTER TABLE movies
