@@ -87,7 +87,18 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
         Formatter.recommendations(results)
 
       {:error, reason} ->
+        # Emit telemetry so the dashboard can distinguish "no results
+        # for this user" (legit) from "Qdrant is sad" (incident). The
+        # outer caller still gets a list so the UI degrades to "no
+        # recommendations" instead of crashing.
         Logger.warning("[UserAnalytics] Recommendation search failed: #{inspect(reason)}")
+
+        :telemetry.execute(
+          [:streamix, :recommendations, :search_failed],
+          %{count: 1},
+          %{user_id: user_id, collection: collection, reason: reason}
+        )
+
         []
     end
   end

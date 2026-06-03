@@ -27,8 +27,12 @@ defmodule Streamix.AI.SemanticSearch do
   import Ecto.Query
 
   @batch_size 10
-  # 40 rpm = 1.5s between requests
-  @rate_limit_delay 1500
+  # NVIDIA / Gemini both cap free-tier embedding endpoints around
+  # 40 requests/minute. Express the delay as derivation-from-rate so the
+  # relationship survives someone bumping the cap without bumping the
+  # other constant.
+  @requests_per_minute 40
+  @rate_limit_delay div(60_000, @requests_per_minute)
 
   # Public API
 

@@ -123,6 +123,18 @@ defmodule Streamix.AI.Embeddings do
       "nvidia"
   end
 
+  # Sanity check: if primary and fallback report different vector
+  # dimensions, falling back will produce vectors the Qdrant collection
+  # (created with primary's size) cannot accept. Better to refuse the
+  # fallback than silently corrupt the index.
+  defp dimensions_compatible?(primary, fallback) do
+    dim_for(primary) == dim_for(fallback)
+  end
+
+  defp dim_for(:gemini), do: Gemini.embedding_dimensions()
+  defp dim_for(:nvidia), do: Nvidia.embedding_dimensions()
+  defp dim_for(_), do: nil
+
   defp embed_with_fallback(text, primary, fallback, opts) do
     case do_embed(text, primary, opts) do
       {:ok, _} = result ->
@@ -131,7 +143,7 @@ defmodule Streamix.AI.Embeddings do
       {:error, reason} ->
         Logger.warning("[Embeddings] #{primary} failed: #{inspect(reason)}, trying #{fallback}")
 
-        if provider_enabled?(fallback) do
+        if provider_enabled?(fallback) and dimensions_compatible?(primary, fallback) do
           do_embed(text, fallback, opts)
         else
           {:error, reason}
@@ -149,7 +161,7 @@ defmodule Streamix.AI.Embeddings do
           "[Embeddings] #{primary} batch failed: #{inspect(reason)}, trying #{fallback}"
         )
 
-        if provider_enabled?(fallback) do
+        if provider_enabled?(fallback) and dimensions_compatible?(primary, fallback) do
           do_embed_batch(texts, fallback)
         else
           {:error, reason}

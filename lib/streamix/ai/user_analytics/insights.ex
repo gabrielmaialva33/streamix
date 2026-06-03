@@ -28,12 +28,16 @@ defmodule Streamix.AI.UserAnalytics.Insights do
       if Enum.empty?(history) do
         %{has_data: false}
       else
+        # Reuse the already-loaded history for favorite_genres instead of
+        # firing a second list_for_analytics(content_type: "movie") query.
+        movie_history = Enum.filter(history, &(&1.content_type == "movie"))
+
         %{
           has_data: true,
           total_items: length(history),
           content_breakdown: History.count_by_type(user_id),
           completion_rate: calculate_completion_rate(history),
-          favorite_genres: extract_favorite_genres(user_id),
+          favorite_genres: extract_favorite_genres(movie_history),
           watch_patterns: analyze_watch_patterns(history),
           most_watched_day: get_most_watched_day(history),
           avg_session_length: calculate_avg_session(history)
@@ -51,8 +55,11 @@ defmodule Streamix.AI.UserAnalytics.Insights do
     end
   end
 
-  defp extract_favorite_genres(user_id) do
-    history = History.list_for_analytics(user_id, content_type: "movie", limit: 100)
+  defp extract_favorite_genres(movie_history) when is_list(movie_history) do
+    # `movie_history` is pre-filtered movie entries from the parent
+    # query — the previous implementation re-queried list_for_analytics
+    # which doubled DB work on every home-page insights refresh.
+    history = Enum.take(movie_history, 100)
     movie_ids = Enum.map(history, & &1.content_id)
 
     if Enum.empty?(movie_ids) do
