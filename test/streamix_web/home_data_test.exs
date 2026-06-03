@@ -1,11 +1,11 @@
-defmodule StreamixWeb.Home.DataTest do
+defmodule StreamixWeb.HomeDataTest do
   use Streamix.DataCase, async: true
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv
-  alias StreamixWeb.Home.Data
+  alias StreamixWeb.HomeData
 
   describe "toggle_content_favorite/3" do
     test "persists movie favorites from home card previews and refreshes home state" do

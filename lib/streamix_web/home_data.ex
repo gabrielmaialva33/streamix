@@ -1,4 +1,4 @@
-defmodule StreamixWeb.Home.Data do
+defmodule StreamixWeb.HomeData do
   @moduledoc """
   Data loading and state transitions for `StreamixWeb.HomeLive`.
   """
