@@ -2,12 +2,18 @@ defmodule StreamixWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
+  alias StreamixWeb.Telemetry.Handlers
+
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
 
   @impl true
   def init(_arg) do
+    # Attach Logger-side handlers (Prometheus reporter still aggregates
+    # for /metrics; this is the per-incident grep-able trail).
+    Handlers.attach()
+
     children = [
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
