@@ -16,6 +16,11 @@ defmodule Streamix.WatchParty.RoomServer do
   @idle_check_interval :timer.seconds(60)
   @idle_timeout :timer.minutes(5)
   @max_drift_log 2.0
+  # Above this drift we don't just log — we actively push a corrective
+  # resync targeted at that viewer. Tuned so brief network jitter
+  # (250–500 ms one-way) doesn't trigger seek-storms but a real out-of-
+  # sync state (3 s+) gets recovered without waiting for the next round.
+  @drift_resync_threshold 3.0
 
   # --- Public API ---
 
@@ -66,8 +71,8 @@ defmodule Streamix.WatchParty.RoomServer do
     host_user_id = Keyword.fetch!(opts, :host_user_id)
     catalog_item_id = Keyword.fetch!(opts, :catalog_item_id)
 
-    schedule_sync_broadcast()
-    schedule_idle_check()
+    sync_timer = schedule_sync_broadcast()
+    idle_timer = schedule_idle_check()
 
     state = %{
       room_id: room_id,
@@ -81,12 +86,25 @@ defmodule Streamix.WatchParty.RoomServer do
       participants: MapSet.new([host_user_id]),
       # Per-participant tracking: %{user_id => %{position, state, buffering, last_seen}}
       participant_states: %{},
-      last_activity: System.monotonic_time(:millisecond)
+      last_activity: System.monotonic_time(:millisecond),
+      sync_timer: sync_timer,
+      idle_timer: idle_timer
     }
 
     Logger.info("[WatchParty] Room #{room_id} started (host: #{host_user_id})")
 
     {:ok, state}
+  end
+
+  # Cancel scheduled timers on shutdown so a restart doesn't inherit a
+  # mailbox full of stale :sync_broadcast / :idle_check messages from
+  # the previous incarnation. Both Process.cancel_timer calls are no-op
+  # if the timer already fired.
+  @impl true
+  def terminate(_reason, state) do
+    if state[:sync_timer], do: Process.cancel_timer(state.sync_timer)
+    if state[:idle_timer], do: Process.cancel_timer(state.idle_timer)
+    :ok
   end
 
   @impl true
@@ -146,15 +164,39 @@ defmodule Streamix.WatchParty.RoomServer do
         last_seen: now()
       })
 
-    # Log significant drift for host awareness
+    # Log significant drift + push targeted resync if it crosses the
+    # action threshold. The host position is the source of truth; non-host
+    # viewers that drift > @drift_resync_threshold get a per-user nudge
+    # back into alignment instead of waiting for the next 5s broadcast.
     if user_id != state.host_user_id do
       playback = compute_current_playback(state.playback)
       drift = abs(position - playback.position)
 
-      if drift > @max_drift_log do
-        Logger.warning(
-          "[WatchParty] Room #{state.room_id}: user #{user_id} drift #{Float.round(drift, 2)}s"
-        )
+      cond do
+        drift > @drift_resync_threshold ->
+          Logger.warning(
+            "[WatchParty] Room #{state.room_id}: user #{user_id} drift #{Float.round(drift, 2)}s — pushing resync"
+          )
+
+          Phoenix.PubSub.broadcast(
+            Streamix.PubSub,
+            topic(state.room_id),
+            {:resync_user,
+             %{
+               user_id: user_id,
+               state: Atom.to_string(state.playback.state),
+               position: playback.position,
+               server_time: System.system_time(:millisecond)
+             }}
+          )
+
+        drift > @max_drift_log ->
+          Logger.warning(
+            "[WatchParty] Room #{state.room_id}: user #{user_id} drift #{Float.round(drift, 2)}s"
+          )
+
+        true ->
+          :ok
       end
     end
 
@@ -163,9 +205,9 @@ defmodule Streamix.WatchParty.RoomServer do
 
   @impl true
   def handle_info(:sync_broadcast, state) do
-    schedule_sync_broadcast()
+    state = %{state | sync_timer: schedule_sync_broadcast()}
 
-    if MapSet.size(state.participants) > 1 do
+    if MapSet.size(state.participants) > 1 and broadcast_needed?(state) do
       playback = compute_current_playback(state.playback)
 
       Phoenix.PubSub.broadcast(
@@ -186,7 +228,7 @@ defmodule Streamix.WatchParty.RoomServer do
 
   @impl true
   def handle_info(:idle_check, state) do
-    schedule_idle_check()
+    state = %{state | idle_timer: schedule_idle_check()}
 
     idle_ms = now() - state.last_activity
 
@@ -199,6 +241,21 @@ defmodule Streamix.WatchParty.RoomServer do
   end
 
   # --- Private ---
+
+  # Skip the periodic broadcast when nothing material has changed since
+  # the last one. Paused-and-idle rooms used to push a sync_command every
+  # 5 s into every viewer's mailbox forever; now they stay quiet until a
+  # host action or beacon-driven resync wakes things up.
+  defp broadcast_needed?(state) do
+    case state.playback.state do
+      :playing -> true
+      _ -> recently_active?(state)
+    end
+  end
+
+  defp recently_active?(state) do
+    now() - state.last_activity < :timer.seconds(15)
+  end
 
   defp apply_action(state, %{"action" => "play"} = params) do
     position = Map.get(params, "position", state.playback.position)
@@ -231,7 +288,10 @@ defmodule Streamix.WatchParty.RoomServer do
   defp apply_action(state, _), do: state
 
   defp compute_current_playback(%{state: :playing, position: pos, updated_at: updated_at}) do
-    elapsed = (now() - updated_at) / 1000.0
+    # Floor at 0 to defend against monotonic-clock anomalies (suspended
+    # BEAM after laptop sleep, container time jumps). A negative elapsed
+    # would rewind the host's playback position for every viewer.
+    elapsed = max(0, now() - updated_at) / 1000.0
     %{state: :playing, position: pos + elapsed, updated_at: updated_at}
   end
 

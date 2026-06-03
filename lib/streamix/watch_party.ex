@@ -60,6 +60,22 @@ defmodule Streamix.WatchParty do
   def preload_room_content(%Room{} = room), do: Repo.preload(room, @room_content_preloads)
 
   def join_room(room_id, user_id, role \\ "viewer") do
+    # Advisory-lock the room before counting + inserting. Without this,
+    # N users joining the same room simultaneously all pass the
+    # `count < max_participants` check and the room overshoots its cap.
+    # The lock is held only across the count + insert (microseconds).
+    Repo.transaction(fn ->
+      Repo.query!("SELECT pg_advisory_xact_lock($1)", [advisory_lock_key(room_id)])
+
+      do_join_room(room_id, user_id, role)
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_join_room(room_id, user_id, role) do
     room = get_room!(room_id)
 
     cond do
@@ -79,6 +95,11 @@ defmodule Streamix.WatchParty do
         )
         |> handle_join_result(room_id, user_id)
     end
+  end
+
+  # Namespace bits + room_id. See playback_sessions.ex for the same pattern.
+  defp advisory_lock_key(room_id) do
+    Bitwise.bor(Bitwise.bsl(0xC0FFEE, 32), room_id)
   end
 
   defp handle_join_result({:ok, %Participant{id: nil}}, room_id, user_id) do

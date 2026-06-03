@@ -160,36 +160,15 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   @impl true
   def handle_event("wp_play", %{"position" => position}, socket) do
-    if socket.assigns.is_host do
-      WatchParty.playback_action(socket.assigns.room.id, socket.assigns.user_id, %{
-        "action" => "play",
-        "position" => position
-      })
-    end
-
-    {:noreply, socket}
+    dispatch_playback(socket, "play", position)
   end
 
   def handle_event("wp_pause", %{"position" => position}, socket) do
-    if socket.assigns.is_host do
-      WatchParty.playback_action(socket.assigns.room.id, socket.assigns.user_id, %{
-        "action" => "pause",
-        "position" => position
-      })
-    end
-
-    {:noreply, socket}
+    dispatch_playback(socket, "pause", position)
   end
 
   def handle_event("wp_seek", %{"position" => position}, socket) do
-    if socket.assigns.is_host do
-      WatchParty.playback_action(socket.assigns.room.id, socket.assigns.user_id, %{
-        "action" => "seek",
-        "position" => position
-      })
-    end
-
-    {:noreply, socket}
+    dispatch_playback(socket, "seek", position)
   end
 
   def handle_event("wp_sync_beacon", params, socket) do
@@ -335,6 +314,23 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   # --- Private ---
+
+  # Host-only gate moved here from the GenServer so non-host viewers get
+  # feedback (flash) instead of a silent noop. The RoomServer also still
+  # checks — defence in depth — but the LiveView is where we have UI to
+  # tell the user what happened.
+  defp dispatch_playback(socket, action, position) do
+    if socket.assigns.is_host do
+      WatchParty.playback_action(socket.assigns.room.id, socket.assigns.user_id, %{
+        "action" => action,
+        "position" => position
+      })
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Apenas o anfitrião pode controlar o player.")}
+    end
+  end
 
   defp update_presences(socket) do
     presence_topic = @presence_topic_prefix <> to_string(socket.assigns.room.id)
