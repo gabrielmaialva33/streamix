@@ -108,6 +108,11 @@ defmodule Streamix.Application do
     # GenServer needed — the table lives for the life of the BEAM node.
     SingleFlight.setup()
 
+    # Attach telemetry counters for the GIndex pipeline (request budget,
+    # scan-root completions). Heartbeat log lines fire every N requests
+    # so an operator tailing the container sees quota burn live.
+    Streamix.Gindex.Telemetry.setup()
+
     result
   end
 
