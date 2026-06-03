@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Gindex do
+defmodule Streamix.Gindex do
   @moduledoc """
   Public API for GIndex integration.
 
@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.Gindex do
   and retrieve streaming URLs.
   """
 
-  alias Streamix.Iptv.Gindex.{Client, Parser, Sync, UrlCache}
+  alias Streamix.Gindex.{Client, Parser, Sync, UrlCache}
 
   # Delegate sync functions
   defdelegate sync_provider(provider), to: Sync

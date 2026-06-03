@@ -14,7 +14,7 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
 
   use StreamixWeb, :controller
 
-  alias Streamix.Iptv.Gindex.MetadataProbe
+  alias Streamix.Gindex.MetadataProbe
 
   def show(conn, %{"type" => type, "id" => id}) do
     with {:ok, type_atom} <- parse_type(type),

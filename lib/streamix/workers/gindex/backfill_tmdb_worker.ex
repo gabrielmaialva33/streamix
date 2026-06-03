@@ -26,7 +26,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.Gindex.{AnimeMatcher, ReleaseParser, TmdbMatcher, TomatoMatcher}
+  alias Streamix.Gindex.{AnimeMatcher, ReleaseParser, TmdbMatcher, TomatoMatcher}
   alias Streamix.Iptv.{Movie, Series, TmdbClient}
   alias Streamix.Repo
 

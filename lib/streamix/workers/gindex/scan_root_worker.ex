@@ -11,7 +11,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     * `"path"`        — the path inside the index (e.g. `"/1:/Filmes/"`)
     * `"kind"`        — `"movies" | "series" | "animes"`
 
-  Idempotent via the default upsert logic in `Streamix.Iptv.Gindex.Sync`.
+  Idempotent via the default upsert logic in `Streamix.Gindex.Sync`.
   """
 
   use Oban.Worker,
@@ -35,7 +35,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
       states: [:available, :scheduled, :executing]
     ]
 
-  alias Streamix.Iptv.Gindex.Sync
+  alias Streamix.Gindex.Sync
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
 

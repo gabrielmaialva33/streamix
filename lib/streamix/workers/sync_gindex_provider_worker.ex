@@ -15,7 +15,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
   use Oban.Worker, queue: :gindex_dispatch, max_attempts: 3
 
-  alias Streamix.Iptv.Gindex.SyncPlanner
+  alias Streamix.Gindex.SyncPlanner
   alias Streamix.Iptv.GIndexProvider
   alias Streamix.Iptv.Provider
   alias Streamix.Repo

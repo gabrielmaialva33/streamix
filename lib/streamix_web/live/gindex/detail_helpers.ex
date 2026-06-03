@@ -14,7 +14,7 @@ defmodule StreamixWeb.Gindex.DetailHelpers do
   `Map.get/2`.
   """
 
-  alias Streamix.Iptv.Gindex.DisplayName
+  alias Streamix.Gindex.DisplayName
 
   @doc """
   Display title for series and animes.
