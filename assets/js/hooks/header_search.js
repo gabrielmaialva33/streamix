@@ -10,30 +10,44 @@ const HeaderSearch = {
     this.closeBtn = this.el.querySelector("#search-close");
     this.isOpen = false;
 
-    // Toggle search on click
-    this.toggle.addEventListener("click", () => this.open());
-    this.closeBtn.addEventListener("click", () => this.close());
+    // Bind handlers so `removeEventListener` in `destroyed()` can find
+    // the same function reference. Previously the inline `() => …`
+    // arrow functions had no anchor and leaked on every re-mount.
+    this.onToggleClick = () => this.open();
+    this.onCloseClick = () => this.close();
 
-    // Close on escape key
-    document.addEventListener("keydown", (e) => {
+    this.onDocKeydown = (e) => {
       if (e.key === "Escape" && this.isOpen) {
         this.close();
       }
-    });
+    };
 
-    // Close when clicking outside
-    document.addEventListener("click", (e) => {
+    this.onDocClick = (e) => {
       if (this.isOpen && !this.el.contains(e.target)) {
         this.close();
       }
-    });
+    };
 
-    // Submit on enter
-    this.input.addEventListener("keydown", (e) => {
+    this.onInputKeydown = (e) => {
       if (e.key === "Enter" && this.input.value.trim()) {
         this.input.closest("form").submit();
       }
-    });
+    };
+
+    this.toggle.addEventListener("click", this.onToggleClick);
+    this.closeBtn.addEventListener("click", this.onCloseClick);
+    document.addEventListener("keydown", this.onDocKeydown);
+    document.addEventListener("click", this.onDocClick);
+    this.input.addEventListener("keydown", this.onInputKeydown);
+  },
+
+  destroyed() {
+    // document-level listeners would otherwise stack across LV updates.
+    this.toggle?.removeEventListener("click", this.onToggleClick);
+    this.closeBtn?.removeEventListener("click", this.onCloseClick);
+    document.removeEventListener("keydown", this.onDocKeydown);
+    document.removeEventListener("click", this.onDocClick);
+    this.input?.removeEventListener("keydown", this.onInputKeydown);
   },
 
   open() {

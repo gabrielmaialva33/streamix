@@ -1,30 +1,39 @@
 export default {
   mounted() {
     this.initTheme();
-    this.handleToggle();
-  },
-
-  initTheme() {
-    // Theme is managed entirely on client (localStorage + classList)
-    // No need to notify server
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme === "light") {
-      document.documentElement.classList.add("light");
-    } else {
-      document.documentElement.classList.remove("light");
-    }
-  },
-
-  handleToggle() {
-    this.el.addEventListener("click", () => {
+    // Bind so destroyed() can clean up — even though this.el goes away
+    // with the LV update, the bound handler keeps the cleanup symmetric.
+    this.onToggle = () => {
       const isLight = document.documentElement.classList.toggle("light");
       const theme = isLight ? "light" : "dark";
 
-      // Persist to localStorage
-      localStorage.setItem("theme", theme);
+      try {
+        localStorage.setItem("theme", theme);
+      } catch (_e) {
+        // Safari Private mode — silent fallback, theme just won't persist.
+      }
 
-      // Dispatch event for other components (if needed)
       window.dispatchEvent(new CustomEvent("theme-change", { detail: { theme } }));
-    });
+    };
+
+    this.el.addEventListener("click", this.onToggle);
+  },
+
+  destroyed() {
+    this.el?.removeEventListener("click", this.onToggle);
+  },
+
+  initTheme() {
+    // Theme is managed entirely on client (localStorage + classList).
+    try {
+      const savedTheme = localStorage.getItem("theme");
+      if (savedTheme === "light") {
+        document.documentElement.classList.add("light");
+      } else {
+        document.documentElement.classList.remove("light");
+      }
+    } catch (_e) {
+      // Safari Private mode — default (dark) stays.
+    }
   },
 };

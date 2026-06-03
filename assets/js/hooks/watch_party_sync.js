@@ -235,19 +235,32 @@ const WatchPartySync = {
             // immediately before `.play()` aborts the play
             // promise (`AbortError: interrupted by new load`),
             // and the guest stays stuck paused. Trigger play()
-            // first so the existing user-gesture chain stays
-            // intact, then nudge position only if the drift
-            // is large enough to matter — small drift is
-            // explicitly fine per product direction.
+            // first so the user-gesture chain stays intact,
+            // then nudge position INSIDE the playPromise.then
+            // callback — applying the seek synchronously after
+            // play() previously raced the AbortError and left
+            // the guest paused mid-catchup.
+            const targetPosition = cmd.position;
+            const driftThreshold = this.useConservativeSync ? 1.0 : 0.3;
             const playPromise = this.videoEl.play();
-            const drift = Math.abs(this.videoEl.currentTime - cmd.position);
-            if (drift > (this.useConservativeSync ? 1.0 : 0.3)) {
-              this.videoEl.currentTime = cmd.position;
-            }
-            if (playPromise && typeof playPromise.catch === "function") {
-              playPromise.catch((err) => {
-                console.warn("[WatchPartySync] play() rejected:", err?.message);
-              });
+
+            if (playPromise && typeof playPromise.then === "function") {
+              playPromise
+                .then(() => {
+                  const drift = Math.abs(this.videoEl.currentTime - targetPosition);
+                  if (drift > driftThreshold) {
+                    this.videoEl.currentTime = targetPosition;
+                  }
+                })
+                .catch((err) => {
+                  console.warn("[WatchPartySync] play() rejected:", err?.message);
+                });
+            } else {
+              // Older browsers without play() returning a Promise.
+              const drift = Math.abs(this.videoEl.currentTime - targetPosition);
+              if (drift > driftThreshold) {
+                this.videoEl.currentTime = targetPosition;
+              }
             }
             break;
           }

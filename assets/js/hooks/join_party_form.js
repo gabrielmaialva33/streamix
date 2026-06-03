@@ -4,18 +4,26 @@
  */
 const JoinPartyForm = {
   mounted() {
-    this.el.addEventListener("submit", (e) => {
+    // Bind so `destroyed()` can detach the same reference (this.el
+    // listener cleans up with the element, but explicit removal keeps
+    // the pattern consistent with the other hooks).
+    this.onSubmit = (e) => {
       e.preventDefault();
       const input = this.el.querySelector("input[name=invite]");
       const value = (input?.value || "").trim();
       if (!value) return;
 
-      // Extract invite code from link or raw input
       const code = this._extractCode(value);
       if (code) {
         window.location.href = `/party/${code}`;
       }
-    });
+    };
+
+    this.el.addEventListener("submit", this.onSubmit);
+  },
+
+  destroyed() {
+    this.el?.removeEventListener("submit", this.onSubmit);
   },
 
   _extractCode(value) {

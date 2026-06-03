@@ -1376,11 +1376,30 @@ const VideoPlayer = {
   },
 
   setPlaybackRate(rate) {
-    if (this.video) {
-      this.video.playbackRate = rate;
-      savePlaybackRate(rate);
-      this.pushEventSafe("playback_rate_changed", { rate });
+    if (!this.video) return;
+
+    // iOS Safari with native HLS flushes the decoder on any playbackRate
+    // change ≠ 1.0, producing a 50-100ms stall. When we're already in
+    // "conservative sync" mode (i.e. the watch_party_sync hook detected
+    // native HLS and is throttling its corrections), cap the user's
+    // chosen speed at 1.0 — otherwise the stall stacks on top of every
+    // drift correction and the video looks broken.
+    const native = !!this.video.canPlayType?.("application/vnd.apple.mpegurl");
+    const inWatchParty = !!window.streamixWatchPartyActive;
+
+    if (native && inWatchParty && rate > 1.0) {
+      this.video.playbackRate = 1.0;
+      savePlaybackRate(1.0);
+      this.pushEventSafe("playback_rate_changed", { rate: 1.0 });
+      this.playerUI?.showNotice?.(
+        "Velocidade variável não é suportada com HLS nativo do iOS durante watch party.",
+      );
+      return;
     }
+
+    this.video.playbackRate = rate;
+    savePlaybackRate(rate);
+    this.pushEventSafe("playback_rate_changed", { rate });
   },
 
   reportProgress() {
@@ -2201,6 +2220,15 @@ const VideoPlayer = {
       },
       onLevelSwitched: (level, levelData, sessionId) => {
         if (!this.isCurrentPlaybackSession(sessionId)) return;
+
+        // Keep codec-aware ABR pointed at the codec the player is
+        // actually decoding right now. Without this update,
+        // `codecABR.suggestQuality()` keeps using the codec captured at
+        // first level setup (always "h264" by default) and recommends
+        // the wrong bandwidth/quality for HEVC/AV1 streams.
+        if (this.codecABR && levelData?.codec) {
+          this.codecABR.setCodec(levelData.codec);
+        }
 
         const isAuto = this.manualQuality === null;
         this.pushEventSafe("quality_switched", {
@@ -3857,17 +3885,13 @@ const VideoPlayer = {
       // passive: true so Safari/iOS doesn't fire the "non-passive
       // touchstart blocked main thread" warning, and so the touch
       // gesture doesn't get cancelled by the listener.
-      controls.addEventListener(
-        "touchstart",
-        () => this.playerUI.clearHideControlsTimeout(),
-        { passive: true },
-      );
+      controls.addEventListener("touchstart", () => this.playerUI.clearHideControlsTimeout(), {
+        passive: true,
+      });
 
-      controls.addEventListener(
-        "touchend",
-        () => this.playerUI.scheduleHideControls(),
-        { passive: true },
-      );
+      controls.addEventListener("touchend", () => this.playerUI.scheduleHideControls(), {
+        passive: true,
+      });
     }
 
     this.el.addEventListener("mousemove", () => {

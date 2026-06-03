@@ -37,21 +37,27 @@ function closeActivePreview() {
   }
 }
 
-// Close preview on escape key
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    closeActivePreview();
-  }
-});
+// Module-level singletons — guard against re-registration when the
+// bundle is re-evaluated (LiveReload in dev, tab restore in iOS PWA).
+// Without this, every reload pushes another keydown/scroll listener
+// onto `document` and they accumulate over a long-lived session.
+if (!window.__contentCardGlobalListenersBound) {
+  window.__contentCardGlobalListenersBound = true;
 
-// Close preview on scroll
-document.addEventListener(
-  "scroll",
-  () => {
-    closeActivePreview();
-  },
-  { passive: true },
-);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeActivePreview();
+    }
+  });
+
+  document.addEventListener(
+    "scroll",
+    () => {
+      closeActivePreview();
+    },
+    { passive: true },
+  );
+}
 
 const ContentCard = {
   mounted() {
@@ -458,16 +464,6 @@ const ContentCard = {
     }, options);
 
     this.observer.observe(this.el);
-  },
-
-  destroyed() {
-    if (this.observer) {
-      this.observer.disconnect();
-      this.observer = null;
-    }
-    if (this.handleTouchStart) {
-      this.el.removeEventListener("touchstart", this.handleTouchStart);
-    }
   },
 };
 
