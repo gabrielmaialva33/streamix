@@ -7,6 +7,8 @@ defmodule StreamixWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
+  require Logger
+
   alias Streamix.Accounts
   alias Streamix.Accounts.IpTracker
   alias Streamix.Accounts.Scope
@@ -83,12 +85,23 @@ defmodule StreamixWeb.UserAuth do
   and remember me token.
   """
   def fetch_current_scope_for_user(conn, _opts) do
+    # Plug.RequestId (mounted earlier in the endpoint pipeline) already
+    # set the `request_id` resp header — copy it into Logger metadata so
+    # every Logger call later in the request/LV mount chain inherits it.
+    # Without this, the per-request `request_id` ends up on the wire but
+    # never in our log lines.
+    case Plug.Conn.get_resp_header(conn, "x-request-id") do
+      [request_id | _] -> Logger.metadata(request_id: request_id)
+      _ -> :ok
+    end
+
     {user_token, conn} = ensure_user_token(conn)
     user_and_ts = user_token && Accounts.get_user_by_session_token(user_token)
 
     case user_and_ts do
       {user, token_inserted_at} ->
         scope = Scope.for_user(%{user | authenticated_at: token_inserted_at})
+        Logger.metadata(user_id: user.id)
 
         conn
         |> assign(:current_scope, scope)
@@ -152,7 +165,17 @@ defmodule StreamixWeb.UserAuth do
       end
   """
   def on_mount(:mount_current_scope, _params, session, socket) do
-    {:cont, mount_current_scope(socket, session)}
+    socket = mount_current_scope(socket, session)
+
+    # Pin user_id into Logger.metadata for this LiveView process so
+    # every Logger.* call from handle_event / handle_info / render is
+    # tagged. mount runs twice (static + WS) — Logger.metadata is
+    # per-process so each pass attaches its own copy.
+    if socket.assigns[:current_scope] do
+      Logger.metadata(user_id: socket.assigns.current_scope.user.id)
+    end
+
+    {:cont, socket}
   end
 
   def on_mount(:require_authenticated, _params, session, socket) do
