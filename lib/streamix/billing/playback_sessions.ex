@@ -12,21 +12,47 @@ defmodule Streamix.Billing.PlaybackSessions do
   def start_playback_session(%User{} = user, attrs) when is_map(attrs) do
     cleanup_stale_playback_sessions!(user.id)
 
-    with :ok <- ensure_playback_slot_available(user) do
-      now = DateTime.utc_now(:second)
+    # Serialize with a Postgres advisory lock keyed on user_id so two
+    # concurrent player tabs can't both pass the count check before
+    # either insert lands. The transaction is short (count + insert) so
+    # the lock is held for milliseconds. Without this, the previous
+    # "count -> compare -> insert" was a textbook TOCTOU and let users
+    # punch past their plan's :concurrent_streams limit.
+    Repo.transaction(fn -> do_start_playback(user, attrs) end)
+  end
 
-      attrs =
-        attrs
-        |> Map.put(:user_id, user.id)
-        |> Map.put_new(:session_id, playback_session_id())
-        |> Map.put_new(:status, "active")
-        |> Map.put_new(:started_at, now)
-        |> Map.put(:last_seen_at, now)
+  defp do_start_playback(user, attrs) do
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [advisory_lock_key(user.id)])
 
-      %PlaybackSession{}
-      |> PlaybackSession.changeset(attrs)
-      |> Repo.insert()
+    case ensure_playback_slot_available(user) do
+      :ok -> do_insert_playback(user, attrs)
+      {:error, reason} -> Repo.rollback(reason)
     end
+  end
+
+  defp do_insert_playback(user, attrs) do
+    now = DateTime.utc_now(:second)
+
+    attrs =
+      attrs
+      |> Map.put(:user_id, user.id)
+      |> Map.put_new(:session_id, playback_session_id())
+      |> Map.put_new(:status, "active")
+      |> Map.put_new(:started_at, now)
+      |> Map.put(:last_seen_at, now)
+
+    case %PlaybackSession{} |> PlaybackSession.changeset(attrs) |> Repo.insert() do
+      {:ok, session} -> session
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  # Namespace the lock to the playback-sessions context (arbitrary high
+  # bits) so it doesn't collide with other advisory locks the app might
+  # take elsewhere in the future. Postgres advisory locks live in a
+  # single shared namespace.
+  defp advisory_lock_key(user_id) do
+    Bitwise.bor(Bitwise.bsl(0xB11_BACE, 32), user_id)
   end
 
   def touch_playback_session(nil), do: :ok
@@ -36,8 +62,18 @@ defmodule Streamix.Billing.PlaybackSessions do
     |> Ecto.Changeset.change(last_seen_at: DateTime.utc_now(:second))
     |> Repo.update()
     |> case do
-      {:ok, _session} -> :ok
-      {:error, _changeset} -> :ok
+      {:ok, _session} ->
+        :ok
+
+      {:error, changeset} ->
+        # Used to silently return :ok and leave the session looking
+        # "active" forever. Logging surfaces the issue without breaking
+        # callers that expect :ok.
+        require Logger
+
+        Logger.warning("[Billing] touch_playback_session failed: #{inspect(changeset.errors)}")
+
+        {:error, changeset}
     end
   end
 
@@ -50,8 +86,15 @@ defmodule Streamix.Billing.PlaybackSessions do
     |> Ecto.Changeset.change(status: "ended", ended_at: now, last_seen_at: now)
     |> Repo.update()
     |> case do
-      {:ok, _session} -> :ok
-      {:error, _changeset} -> :ok
+      {:ok, _session} ->
+        :ok
+
+      {:error, changeset} ->
+        require Logger
+
+        Logger.warning("[Billing] end_playback_session failed: #{inspect(changeset.errors)}")
+
+        {:error, changeset}
     end
   end
 

@@ -113,6 +113,13 @@ defmodule Streamix.Billing.Payments do
     "billing:#{provider}:#{external_id}"
   end
 
+  # The previous `get_by + insert/update` shape lost to Stripe retries —
+  # two concurrent webhook deliveries with the same external_id both
+  # observed `nil` from get_by and both tried to insert, with the second
+  # blowing up on the partial unique index (which then made Stripe retry
+  # the whole event yet again). The partial unique index on
+  # (provider, external_id) where external_id IS NOT NULL is the right
+  # idempotency key — let Postgres enforce it via ON CONFLICT.
   defp upsert_payment!(%User{} = user, %Plan{} = plan, %Subscription{} = subscription, attrs) do
     payment_attrs =
       attrs
@@ -120,18 +127,32 @@ defmodule Streamix.Billing.Payments do
       |> Map.put(:plan_id, plan.id)
       |> Map.put(:subscription_id, subscription.id)
 
-    case existing_by_provider_external(Payment, payment_attrs) do
-      nil ->
-        %Payment{}
-        |> Payment.changeset(payment_attrs)
-        |> Repo.insert!()
-
-      %Payment{} = payment ->
-        payment
-        |> Payment.changeset(payment_attrs)
-        |> Repo.update!()
+    if blank_external_id?(payment_attrs) do
+      # No external id → can't dedupe via the unique index. Keep the
+      # legacy fallback path (first webhook delivery without IDs is
+      # unusual but possible in dev / manual entries).
+      %Payment{}
+      |> Payment.changeset(payment_attrs)
+      |> Repo.insert!()
+    else
+      # Partial unique index is `(provider, external_id) WHERE external_id
+      # IS NOT NULL` — Postgres needs the predicate spelled out in the
+      # conflict target to match it (the column-only form fails with
+      # 42P10 because plain `(provider, external_id)` doesn't equal the
+      # partial index). The unsafe_fragment is the documented Ecto
+      # escape hatch for this exact case.
+      %Payment{}
+      |> Payment.changeset(payment_attrs)
+      |> Repo.insert!(
+        on_conflict: {:replace_all_except, [:id, :inserted_at]},
+        conflict_target:
+          {:unsafe_fragment, "(provider, external_id) WHERE external_id IS NOT NULL"}
+      )
     end
   end
+
+  defp blank_external_id?(%{external_id: id}) when is_binary(id) and byte_size(id) > 0, do: false
+  defp blank_external_id?(_), do: true
 
   defp maybe_upsert_invoice!(
          %User{} = user,
@@ -171,23 +192,21 @@ defmodule Streamix.Billing.Payments do
         metadata: Map.get(invoice_attrs, :metadata, %{})
       }
 
-    case existing_by_provider_external(Invoice, invoice_attrs) do
-      nil ->
-        %Invoice{}
-        |> Invoice.changeset(invoice_attrs)
-        |> Repo.insert!()
-
-      %Invoice{} = invoice ->
-        invoice
-        |> Invoice.changeset(invoice_attrs)
-        |> Repo.update!()
+    # Same idempotency story as payments — partial unique index on
+    # (provider, external_id) where external_id IS NOT NULL needs its
+    # predicate echoed in the conflict_target via unsafe_fragment.
+    if blank_external_id?(invoice_attrs) do
+      %Invoice{}
+      |> Invoice.changeset(invoice_attrs)
+      |> Repo.insert!()
+    else
+      %Invoice{}
+      |> Invoice.changeset(invoice_attrs)
+      |> Repo.insert!(
+        on_conflict: {:replace_all_except, [:id, :inserted_at]},
+        conflict_target:
+          {:unsafe_fragment, "(provider, external_id) WHERE external_id IS NOT NULL"}
+      )
     end
   end
-
-  defp existing_by_provider_external(schema, %{provider: provider, external_id: external_id})
-       when is_binary(external_id) and external_id != "" do
-    Repo.get_by(schema, provider: provider, external_id: external_id)
-  end
-
-  defp existing_by_provider_external(_schema, _attrs), do: nil
 end

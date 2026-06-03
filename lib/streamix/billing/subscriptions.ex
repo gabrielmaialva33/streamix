@@ -20,6 +20,29 @@ defmodule Streamix.Billing.Subscriptions do
     end
   end
 
+  # Mid-cycle plan changes can shrink expires_at (downgrade with no
+  # proration, or a Stripe webhook arriving out of order). The old code
+  # silently overwrote the DB value, so a user could lose access early
+  # without any signal. We log a warning so an oncall can correlate the
+  # webhook with the user complaint instead of guessing.
+  defp maybe_warn_on_expires_shrink(
+         %Subscription{expires_at: %DateTime{} = old},
+         %DateTime{} = new
+       ) do
+    if DateTime.compare(new, old) == :lt do
+      require Logger
+
+      Logger.warning(
+        "[Billing] subscription #{inspect(old)} expires_at shrank to #{inspect(new)}; " <>
+          "verify Stripe payload ordering / proration policy"
+      )
+    end
+
+    :ok
+  end
+
+  defp maybe_warn_on_expires_shrink(_subscription, _new), do: :ok
+
   def sync_provider_subscription!(%User{} = user, %Plan{} = plan, attrs) when is_map(attrs) do
     Repo.transaction(fn ->
       now = DateTime.utc_now(:second)
@@ -46,6 +69,8 @@ defmodule Streamix.Billing.Subscriptions do
           |> Repo.insert!()
 
         %Subscription{} = subscription ->
+          maybe_warn_on_expires_shrink(subscription, subscription_attrs.expires_at)
+
           subscription
           |> Subscription.create_changeset(user, plan, subscription_attrs)
           |> Repo.update!()
