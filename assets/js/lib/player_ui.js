@@ -221,7 +221,7 @@ export class PlayerUI {
       return "A sessao do link pode ter expirado. Tente novamente para renovar o acesso.";
     }
 
-    return "Tente novamente. Se continuar, abra /debug/pwa no mesmo aparelho e baixe o diagnostico.";
+    return "Tente novamente. Se o erro continuar, recarregue a página.";
   }
 
   // ============================================
