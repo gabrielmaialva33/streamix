@@ -374,8 +374,13 @@ if config_env() == :prod do
   # Base `url` and `socket_options` are set above for all environments.
   config :streamix, Streamix.Repo,
     pool_size: String.to_integer(get_env.("POOL_SIZE") || "20"),
-    queue_target: 5_000,
-    queue_interval: 10_000
+    # Tighter queue_target — used to be 5 s which let a single saturated
+    # sync worker swallow web request connections for the full 5 s
+    # before DBConnection started returning errors. 2 s is closer to a
+    # human-perceptible threshold; queue_interval stays generous (5 s)
+    # so the moving-average smooths over sync bursts.
+    queue_target: 2_000,
+    queue_interval: 5_000
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

@@ -30,14 +30,15 @@ defmodule Streamix.Application do
            ttl_check_interval: Streamix.Cache.l1_ttl_check_interval(),
            global_ttl: Streamix.Cache.l1_ttl(),
            touch_on_read: true,
-           # Default 5 s was killing HomeLive: multiple sections (trending,
-           # series, recommendations) hit `Profile.get_user_profile/1` at
-           # the same time. The loser of the race waited on the lock, hit
-           # 5 s, crashed and fell back to []. Fifteen seconds is well
-           # above tail-latency of `fetch_or_compute_profile` even on a
-           # cold node, and prefetch in HomeLive.Data covers the steady
-           # state.
-           acquire_lock_timeout: :timer.seconds(15)
+           # Default 5 s was too tight when multiple HomeLive sections all
+           # hit `Profile.get_user_profile/1` at the same time and the
+           # loser of the race waited on the lock, hit 5 s, crashed and
+           # fell back to []. The real fix landed elsewhere (prefetch in
+           # HomeLive.Data warms the entry and Qdrant batch fetch
+           # collapsed the profile compute itself); 3 s is enough head-
+           # room over the warmed steady state without hiding genuine
+           # tail-latency outliers behind 15 s of held requests.
+           acquire_lock_timeout: :timer.seconds(3)
          ]},
         # HTTP connection pool for sync operations (high concurrency)
         # conn_opts includes DNS cache timeout to avoid stale connections
