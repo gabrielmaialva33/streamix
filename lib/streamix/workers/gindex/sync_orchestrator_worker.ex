@@ -67,13 +67,15 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
         args: %{"workflow_id" => workflow_id, "provider_id" => provider_id} = args,
         attempt: attempt
       }) do
-    siblings = count_in_flight_siblings(workflow_id)
+    in_flight = in_flight_siblings(workflow_id)
+    siblings = length(in_flight)
     total = Map.get(args, "total_roots", 0)
 
     if siblings > 0 and attempt < @max_attempts do
       Logger.info(
         "[GIndex Orchestrator] workflow=#{workflow_id} waiting " <>
-          "(#{siblings} of #{total} scan roots still in flight, attempt #{attempt})"
+          "(#{siblings}/#{total} in flight: #{format_in_flight(in_flight)}, " <>
+          "attempt #{attempt})"
       )
 
       {:snooze, @poll_interval}
@@ -85,7 +87,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
 
   # --- Private ---
 
-  defp count_in_flight_siblings(workflow_id) do
+  defp in_flight_siblings(workflow_id) do
     # Fragment match on args->>'workflow_id' — `oban_jobs.args` is
     # a jsonb column, so `->>` is indexable and the comparison is
     # cheap even on a fat jobs table.
@@ -93,9 +95,19 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
       where: j.worker == ^@scan_worker,
       where: j.state in ^@in_flight_states,
       where: fragment("?->>'workflow_id' = ?", j.args, ^workflow_id),
-      select: count(j.id)
+      select: %{
+        state: j.state,
+        kind: fragment("?->>'kind'", j.args),
+        path: fragment("?->>'path'", j.args)
+      }
     )
-    |> Repo.one()
+    |> Repo.all()
+  end
+
+  defp format_in_flight(in_flight) do
+    Enum.map_join(in_flight, " ", fn %{state: state, kind: kind, path: path} ->
+      "#{kind}:#{path}[#{state}]"
+    end)
   end
 
   defp collect_stats(workflow_id, provider_id) do
