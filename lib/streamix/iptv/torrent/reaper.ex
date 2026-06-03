@@ -81,7 +81,23 @@ defmodule Streamix.Iptv.Torrent.Reaper do
   defp maybe_reap(%{info_hash: hash} = torrent) when is_binary(hash) do
     info_hash = String.downcase(hash)
 
+    # Two-phase check: a viewer can register a brand-new session in the
+    # narrow window between `Client.list/0` and the actual Client.remove
+    # call. We `registered?/1` again right before removing so a session
+    # that just woke up isn't yanked out from under its first viewer.
     if registered?(info_hash) do
+      :ok
+    else
+      reap_if_still_unregistered(info_hash, torrent)
+    end
+  end
+
+  defp maybe_reap(_), do: :ok
+
+  defp reap_if_still_unregistered(info_hash, torrent) do
+    if registered?(info_hash) do
+      Logger.debug("[Torrent.Reaper] skipping #{info_hash} — session registered mid-sweep")
+
       :ok
     else
       Logger.info("[Torrent.Reaper] reaping orphaned torrent #{info_hash}")
@@ -102,8 +118,6 @@ defmodule Streamix.Iptv.Torrent.Reaper do
       end
     end
   end
-
-  defp maybe_reap(_), do: :ok
 
   defp registered?(info_hash) do
     Registry.lookup(@registry, info_hash) != [] or

@@ -106,6 +106,11 @@ defmodule Streamix.Iptv.Torrent.Sync do
             {:ok, new_acc}
 
           next when is_integer(next) ->
+            # Intentional Process.sleep: this is an Oban worker process
+            # dedicated to this sync — there's no LiveView or GenServer
+            # mailbox being starved. Switching to send_after/handle_info
+            # would require restructuring sync_pages as a GenServer for
+            # no real win.
             Process.sleep(source_module.rate_limit_ms())
             sync_pages(provider, source_module, next, new_acc)
         end

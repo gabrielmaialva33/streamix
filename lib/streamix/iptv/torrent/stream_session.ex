@@ -329,8 +329,14 @@ defmodule Streamix.Iptv.Torrent.StreamSession do
     end
   end
 
-  defp maybe_schedule_idle(%{viewers: viewers} = state) when map_size(viewers) == 0 do
-    cancel_idle(state)
+  # No-op when there's already an idle timer scheduled — preserves the
+  # original grace window even if leave + DOWN both arrive in the same
+  # handler tick. The previous shape cancelled and rescheduled, which is
+  # benign inside one handle_* call but made the intent unclear and let
+  # the grace window slide forward repeatedly if events arrived in a
+  # short burst.
+  defp maybe_schedule_idle(%{viewers: viewers, idle_timer: nil} = state)
+       when map_size(viewers) == 0 do
     timer = Process.send_after(self(), :check_idle, @idle_grace_ms)
     %{state | idle_timer: timer}
   end

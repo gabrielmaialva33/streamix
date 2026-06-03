@@ -29,11 +29,27 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
     season_num_to_id =
       Map.new(inserted_seasons, fn %{id: id, season_number: num} -> {num, id} end)
 
+    # Some panels return non-numeric keys here ("special", "bonus",
+    # localised text). String.to_integer/1 used to crash the whole
+    # series sync. Skip what we can't parse and log it so a real
+    # convention shift surfaces in logs instead of dataloss.
     episode_count =
       Enum.reduce(episodes_map, 0, fn {season_num_str, episodes}, acc ->
-        season_num = String.to_integer(season_num_str)
-        season_id = season_num_to_id[season_num]
-        acc + upsert_episodes(episodes, season_id, series.provider_id, now)
+        case Integer.parse(to_string(season_num_str)) do
+          {season_num, ""} ->
+            season_id = season_num_to_id[season_num]
+            acc + upsert_episodes(episodes, season_id, series.provider_id, now)
+
+          _ ->
+            require Logger
+
+            Logger.warning(
+              "[Sync.SeasonsEpisodes] skipping non-numeric season key " <>
+                inspect(season_num_str) <> " for series #{series.id}"
+            )
+
+            acc
+        end
       end)
 
     {:ok, %{seasons: season_count, episodes: episode_count}}

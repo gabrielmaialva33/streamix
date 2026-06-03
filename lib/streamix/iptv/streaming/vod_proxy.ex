@@ -335,7 +335,9 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp retry_with_fresh_chain(conn, state) do
-    Process.sleep(@retry_backoff_ms)
+    # Backoff with full jitter so N concurrent viewers retrying the same
+    # 5xx upstream don't all wake up in lockstep and re-hammer it.
+    Process.sleep(@retry_backoff_ms + :rand.uniform(@retry_backoff_ms))
 
     case resolve_chain(state.original_url) do
       {:ok, fresh_url} ->
