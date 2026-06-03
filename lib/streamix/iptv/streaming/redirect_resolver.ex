@@ -2,7 +2,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   @moduledoc """
   Cache for IPTV redirect-chain resolution.
 
-  IPTV upstreams (`cb.choki…`, `vauth*`) often answer with a 302 chain that
+  IPTV upstreams (`iptv`, `vauth*`) often answer with a 302 chain that
   takes 10-20s to walk on the first hit (cold DNS, fresh TLS, token
   validation). The result, however, stays valid for ~1 minute, so the
   *second* request for the same content is essentially free.
@@ -347,7 +347,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   # Walk the redirect chain with provider-cluster failover. Some IPTV
-  # providers (looking at you, cb.chokitecnologia) round-robin redirects
+  # providers (looking at you) round-robin redirects
   # across a cluster of vauth/deliver IPs, and 30-50% of those IPs may
   # be dead at any given moment. If we just take the first redirect and
   # cache it, the user gets stuck behind a dead IP for the cache TTL.
