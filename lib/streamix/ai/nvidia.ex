@@ -1,4 +1,6 @@
 defmodule Streamix.AI.Nvidia do
+  @behaviour Streamix.AI.EmbeddingProvider
+
   @moduledoc """
   Client for NVIDIA NIM Embeddings API.
 

@@ -1,4 +1,6 @@
 defmodule Streamix.AI.Gemini do
+  @behaviour Streamix.AI.EmbeddingProvider
+
   @moduledoc """
   Client for Google Gemini Embeddings API.
 
