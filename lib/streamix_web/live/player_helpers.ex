@@ -6,8 +6,8 @@ defmodule StreamixWeb.PlayerHelpers do
 
   alias Streamix.Iptv
   alias Streamix.Iptv.Streaming.RedirectResolver
-  alias Streamix.Iptv.Torrent.TorrentStream
   alias Streamix.Repo
+  alias Streamix.Torrent.TorrentStream
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 

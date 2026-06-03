@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.History do
 
   alias Ecto.Changeset
   alias Streamix.Iptv.{CatalogItem, Episode, Season, WatchProgress}
-  alias Streamix.Library.ContentRef
+  alias Streamix.Iptv.ContentRef
   alias Streamix.Repo
 
   @catalog_preloads [catalog_item: [:movie, :series, :episode, :live_channel]]

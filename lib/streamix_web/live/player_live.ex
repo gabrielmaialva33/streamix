@@ -25,7 +25,7 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerHelpers
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Torrent.StreamSession
+  alias Streamix.Torrent.StreamSession
 
   @torrent_peer_target 30
 

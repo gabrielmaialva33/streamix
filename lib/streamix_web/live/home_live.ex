@@ -3,7 +3,7 @@ defmodule StreamixWeb.HomeLive do
 
   require Logger
 
-  alias StreamixWeb.Home.Data
+  alias StreamixWeb.HomeData, as: Data
 
   import StreamixWeb.HomeComponents
 

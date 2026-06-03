@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.TorrentProvider do
   Identified by `is_system: true`, `visibility: :global`,
   `provider_type: :torrent`. There is at most one torrent provider per
   installation — individual sources live behind it via the
-  `Streamix.Iptv.Torrent.Source` behaviour rather than as separate
+  `Streamix.Torrent.Source` behaviour rather than as separate
   Provider rows. This keeps the catalog UI uncluttered (a movie is
   "from torrents", not "from YTS-but-also-GratisTorrent") and lets
   TorrentStream rows stay deduped on info_hash regardless of which

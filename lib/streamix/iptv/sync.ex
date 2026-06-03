@@ -14,7 +14,7 @@ defmodule Streamix.Iptv.Sync do
   - `Sync.Cleanup` - Orphaned user data cleanup
   """
 
-  alias Streamix.Iptv.Gindex
+  alias Streamix.Gindex
   alias Streamix.Iptv.Provider
   alias Streamix.Iptv.Sync.{Categories, Cleanup, Live, Movies, Series, Telemetry}
   alias Streamix.Repo

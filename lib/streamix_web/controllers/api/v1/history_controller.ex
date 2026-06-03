@@ -7,7 +7,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   use StreamixWeb, :controller
 
   alias Streamix.Accounts
-  alias Streamix.Library
+  alias Streamix.Iptv
 
   plug :authenticate
 
@@ -24,7 +24,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
       offset: parse_int(params["offset"], 0)
     ]
 
-    items = Library.list_watch_history(user.id, opts)
+    items = Iptv.list_watch_history(user.id, opts)
 
     json(conn, %{
       items:
@@ -61,7 +61,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
     attrs = if duration, do: Map.put(attrs, :duration_seconds, duration), else: attrs
 
-    case Library.add_watch_history(user.id, type, content_id, attrs) do
+    case Iptv.add_watch_history(user.id, type, content_id, attrs) do
       {:ok, entry} ->
         conn
         |> put_status(:created)
@@ -96,7 +96,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
     case parse_positive_integer(id) do
       {:ok, entry_id} ->
-        Library.remove_from_watch_history(user.id, entry_id)
+        Iptv.remove_from_watch_history(user.id, entry_id)
         send_resp(conn, 204, "")
 
       :error ->

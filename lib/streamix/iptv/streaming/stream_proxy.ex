@@ -13,7 +13,7 @@ defmodule Streamix.Iptv.StreamProxy do
   use GenServer
   require Logger
 
-  alias Streamix.Iptv.Gindex.UrlCache
+  alias Streamix.Gindex.UrlCache
 
   @cache_table :stream_proxy_cache
   # 5 minutes cache

@@ -1,22 +1,36 @@
 defmodule Streamix.Iptv do
   @moduledoc """
-  The IPTV context - unified API for managing streaming content.
+  IPTV context — facade for the catalog, sync, streaming, engagement
+  and provider subsystems.
 
-  This module serves as a facade that delegates to specialized sub-modules:
+  ## Public API map
 
-  - `Streamix.Iptv.Providers` - Provider CRUD and sync operations
-  - `Streamix.Iptv.Channels` - Live TV channel operations
-  - `Streamix.Iptv.Movies` - VOD movie operations
-  - `Streamix.Iptv.SeriesOps` - Series, seasons, and episodes
-  - `Streamix.Iptv.Favorites` - User favorites (polymorphic)
-  - `Streamix.Iptv.History` - Watch history tracking
-  - `Streamix.Iptv.Catalog` - Public catalog and featured content
-  - `Streamix.Iptv.Epg` - Electronic Program Guide
+  Roughly grouped so newcomers can find where to call into:
 
-  ## Design Pattern
+  * **Browse / catalog** — `list_movies/2`, `list_series/2`, `list_live_channels/2`,
+    `list_public_*`, `list_new_releases/1`, `list_trending_movies/1`, `search/2`,
+    `get_movie/1`, `get_series/1`, `get_episode/1`, `get_live_channel/1`,
+    `get_featured_content/0`, `get_public_stats/0`. Backed by `Streamix.Iptv.Catalog`
+    plus the specialised `Movies`/`SeriesOps`/`Channels` modules.
 
-  This facade pattern provides a single entry point for all IPTV operations,
-  keeping the public API stable while allowing internal refactoring.
+  * **User data (favorites & history)** — `list_favorites/2`, `add_favorite/3`,
+    `remove_favorite/3`, `toggle_favorite/4`, `favorite?/3`,
+    `list_watch_history/2`, `add_watch_history/4`, `update_watch_progress/5`,
+    `clear_watch_history/1`. Backed by `Streamix.Iptv.Favorites` and
+    `Streamix.Iptv.History`.
+
+  * **Providers** — `create_provider/2`, `update_provider/2`, `get_provider/1`,
+    `sync_provider/2`, `async_sync_epg/1`, `list_providers/1`. Backed by
+    `Streamix.Iptv.Providers`.
+
+  * **EPG** — `list_epg_programs/2`, `sync_channel_epg/1`. Backed by
+    `Streamix.Iptv.Epg`.
+
+  * **GIndex** — `gindex_counts/0`. Internals live under `Streamix.Gindex.*`.
+
+  Sub-modules under `Streamix.Iptv.Streaming.*`, `Streamix.Iptv.Sync.*` and
+  `Streamix.Torrent.*` are internal — controllers and LiveViews should
+  call back into this facade rather than reach into the sub-modules directly.
   """
 
   alias Streamix.Iptv.{
@@ -28,54 +42,61 @@ defmodule Streamix.Iptv do
     SeriesOps
   }
 
-  alias Streamix.Library
+  alias Streamix.Iptv.{Favorites, History}
 
   # =============================================================================
   # Favorites (catalog_item_id)
   # =============================================================================
-  defdelegate list_favorites(user_id, opts \\ []), to: Library
-  defdelegate list_home_favorites(user_id, opts \\ []), to: Library
-  defdelegate favorite?(user_id, content_type, content_id), to: Library
-  defdelegate count_favorites_by_type(user_id), to: Library
-  defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil), to: Library
-  defdelegate count_favorites(user_id), to: Library
-  defdelegate add_favorite(user_id, attrs), to: Library
+  defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
+  defdelegate list_home_favorites(user_id, opts \\ []), to: Favorites, as: :list_home
+  defdelegate favorite?(user_id, content_type, content_id), to: Favorites
+  defdelegate count_favorites_by_type(user_id), to: Favorites, as: :count_by_type
+
+  defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil),
+    to: Favorites,
+    as: :list_ids
+
+  defdelegate count_favorites(user_id), to: Favorites, as: :count
+  defdelegate add_favorite(user_id, attrs), to: Favorites, as: :add
 
   defdelegate add_favorite(user_id, content_type, content_id, attrs \\ %{}),
-    to: Library
+    to: Favorites,
+    as: :add
 
-  defdelegate remove_favorite(user_id, content_type, content_id), to: Library
+  defdelegate remove_favorite(user_id, content_type, content_id), to: Favorites, as: :remove
 
   defdelegate toggle_favorite(user_id, content_type, content_id, attrs \\ %{}),
-    to: Library
+    to: Favorites,
+    as: :toggle
 
   # =============================================================================
   # Watch History (catalog_item_id via WatchProgress)
   # =============================================================================
-  defdelegate list_watch_history(user_id, opts \\ []), to: Library
-  defdelegate list_home_history(user_id, opts \\ []), to: Library
-  defdelegate count_watch_history_by_type(user_id), to: Library
+  defdelegate list_watch_history(user_id, opts \\ []), to: History, as: :list
+  defdelegate list_home_history(user_id, opts \\ []), to: History, as: :list_home
+  defdelegate count_watch_history_by_type(user_id), to: History, as: :count_by_type
 
   defdelegate add_watch_history(user_id, content_type, content_id, attrs \\ %{}),
-    to: Library
+    to: History,
+    as: :add
 
-  defdelegate add_to_watch_history(user_id, attrs), to: Library
+  defdelegate add_to_watch_history(user_id, attrs), to: History, as: :add
 
   defdelegate update_progress(user_id, content_type, content_id, progress, duration \\ nil),
-    to: Library
+    to: History
 
   defdelegate update_watch_progress(user_id, content_type, content_id, current_time, duration),
-    to: Library
+    to: History
 
-  defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds), to: Library
-  defdelegate remove_from_watch_history(user_id, entry_id), to: Library
-  defdelegate clear_watch_history(user_id), to: Library
+  defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds), to: History
+  defdelegate remove_from_watch_history(user_id, entry_id), to: History, as: :remove
+  defdelegate clear_watch_history(user_id), to: History, as: :clear
 
   defdelegate get_watch_progress_map(user_id, content_type, content_ids),
-    to: Library
+    to: History,
+    as: :get_progress_map
 
-  defdelegate get_series_progress_map(user_id, series_ids),
-    to: Library
+  defdelegate get_series_progress_map(user_id, series_ids), to: History
 
   # =============================================================================
   # Live Channels

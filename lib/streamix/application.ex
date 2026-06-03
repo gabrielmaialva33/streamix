@@ -5,9 +5,9 @@ defmodule Streamix.Application do
 
   use Application
 
-  alias Streamix.Iptv.Gindex.SingleFlight
-  alias Streamix.Iptv.Torrent.{Reaper, StreamRegistry, StreamSessionSupervisor}
+  alias Streamix.Gindex.SingleFlight
   alias Streamix.Iptv.TorrentProvider
+  alias Streamix.Torrent.{Reaper, StreamRegistry, StreamSessionSupervisor}
 
   @impl true
   def start(_type, _args) do
@@ -71,9 +71,9 @@ defmodule Streamix.Application do
         # task fired from PlayerLive.mount/3.
         Streamix.Iptv.Streaming.RedirectResolver,
         # GIndex endpoint manager (multi-endpoint failover)
-        Streamix.Iptv.Gindex.EndpointManager,
+        Streamix.Gindex.EndpointManager,
         # GIndex URL cache
-        Streamix.Iptv.Gindex.UrlCache,
+        Streamix.Gindex.UrlCache,
         # Xtream circuit breaker (Netflix-style resilience)
         Streamix.Iptv.XtreamCircuitBreaker,
         maybe_provider_health_monitor_child(),

@@ -25,8 +25,8 @@ defmodule Streamix.Queue.SyncPipeline do
   require Logger
 
   alias Broadway.Message
+  alias Streamix.Gindex
   alias Streamix.Iptv
-  alias Streamix.Iptv.Gindex
   alias Streamix.Iptv.Sync.{Categories, Live, Movies, Series}
   alias Streamix.Queue.Connection
 

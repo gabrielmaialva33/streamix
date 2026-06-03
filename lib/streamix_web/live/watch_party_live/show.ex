@@ -9,7 +9,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.WatchPartyComponents
 
   alias Streamix.Iptv.CatalogItem
-  alias Streamix.Library.ContentRef
+  alias Streamix.Iptv.ContentRef
   alias Streamix.WatchParty
   alias StreamixWeb.Presence
 

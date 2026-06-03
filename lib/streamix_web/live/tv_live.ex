@@ -9,14 +9,10 @@ defmodule StreamixWeb.TvLive do
   """
   use StreamixWeb, :live_view
 
-  @release_tag "v1.0.000"
-  @release_url "https://github.com/gabrielmaialva33/streamix-tv/releases/tag/v1.0.000"
-  @apk_short_url "https://streamix.mahina.cloud/tv/apk"
-  @apk_size_mb "7.3"
-  @apk_sha256 "5b3f503c8c7ffc4eb99905defa2093d3f412482aaaf25026216143270a75f1cd"
-  @wgt_short_url "https://streamix.mahina.cloud/tv/wgt"
-  @wgt_size_mb "3.1"
-  @wgt_sha256 "bbdc5e9592b5b1a17c6783fa80e3176c61ef22f977c8ba7860f032afe11dd83d"
+  # Release metadata is loaded at compile-time from :streamix, :tv_app.
+  # Bumping the TV app release tag/checksum doesn't require editing this
+  # module any more — just update config/config.exs and rebuild.
+  @tv_app Application.compile_env(:streamix, :tv_app, [])
 
   @impl true
   def mount(_params, _session, socket) do
@@ -24,14 +20,14 @@ defmodule StreamixWeb.TvLive do
       socket
       |> assign(page_title: "Baixar Streamix TV")
       |> assign(current_path: "/tv")
-      |> assign(release_tag: @release_tag)
-      |> assign(release_url: @release_url)
-      |> assign(apk_short_url: @apk_short_url)
-      |> assign(apk_size_mb: @apk_size_mb)
-      |> assign(apk_sha256: @apk_sha256)
-      |> assign(wgt_short_url: @wgt_short_url)
-      |> assign(wgt_size_mb: @wgt_size_mb)
-      |> assign(wgt_sha256: @wgt_sha256)
+      |> assign(release_tag: Keyword.fetch!(@tv_app, :release_tag))
+      |> assign(release_url: Keyword.fetch!(@tv_app, :release_url))
+      |> assign(apk_short_url: Keyword.fetch!(@tv_app, :apk_short_url))
+      |> assign(apk_size_mb: Keyword.fetch!(@tv_app, :apk_size_mb))
+      |> assign(apk_sha256: Keyword.fetch!(@tv_app, :apk_sha256))
+      |> assign(wgt_short_url: Keyword.fetch!(@tv_app, :wgt_short_url))
+      |> assign(wgt_size_mb: Keyword.fetch!(@tv_app, :wgt_size_mb))
+      |> assign(wgt_sha256: Keyword.fetch!(@tv_app, :wgt_sha256))
       |> assign(active_tab: "android")
 
     {:ok, socket}

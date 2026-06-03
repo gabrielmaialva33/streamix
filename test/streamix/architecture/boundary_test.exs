@@ -18,7 +18,7 @@ defmodule Streamix.Architecture.BoundaryTest do
     {"Streamix.Iptv.Sync.Series.*", ~r/\bStreamix\.Iptv\.Sync\.Series\.(?:[A-Z]|\{)/},
     {"Streamix.Iptv.Sync.Normalizers.*", ~r/\bStreamix\.Iptv\.Sync\.Normalizers\.(?:[A-Z]|\{)/},
     {"Streamix.Iptv.TmdbClient.*", ~r/\bStreamix\.Iptv\.TmdbClient\.(?:[A-Z]|\{)/},
-    {"Streamix.Iptv.Gindex.Sync.*", ~r/\bStreamix\.Iptv\.Gindex\.Sync\.(?:[A-Z]|\{)/},
+    {"Streamix.Gindex.Sync.*", ~r/\bStreamix\.Iptv\.Gindex\.Sync\.(?:[A-Z]|\{)/},
     {"Streamix.AI.UserAnalytics.*", ~r/\bStreamix\.AI\.UserAnalytics\.(?:[A-Z]|\{)/}
   ]
 
@@ -58,7 +58,7 @@ defmodule Streamix.Architecture.BoundaryTest do
            Allowed facades include:
            - Streamix.Iptv.Sync.Series
            - Streamix.Iptv.TmdbClient
-           - Streamix.Iptv.Gindex.Sync
+           - Streamix.Gindex.Sync
            - Streamix.AI.UserAnalytics
 
            Violations:

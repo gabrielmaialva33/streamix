@@ -1,7 +1,7 @@
 defmodule Streamix.Iptv.TmdbClient.Transport do
   @moduledoc false
 
-  alias Streamix.Iptv.Gindex.Pacer
+  alias Streamix.Gindex.Pacer
   alias Streamix.Iptv.TmdbClient.Config
   alias Streamix.Iptv.TmdbTokenPool
 

@@ -1,5 +1,29 @@
 defmodule StreamixWeb.Content.DetailComponents do
-  @moduledoc "Detail and modal components"
+  @moduledoc """
+  Detail and modal components shared across movie / series / episode pages.
+
+  > **TODO (planned split):** this module is ~900 lines and 26 public
+  > components. The shape we want to land on, when the refactor budget
+  > allows, is:
+  >
+  >   * `detail_components/badges.ex` — `rating_badge`, `content_rating_badge`,
+  >     `year_badge`, `duration_badge`, `date_badge`, `extension_badge`,
+  >     `series_count_badge`
+  >   * `detail_components/actions.ex` — `play_button`, `favorite_button`,
+  >     `trailer_link`, `tmdb_link`
+  >   * `detail_components/modals.ex` — `gallery_preview`, `image_gallery`,
+  >     `content_detail_modal`, `season_accordion`, `detail_season_accordion`
+  >   * `detail_components.ex` (top) — keeps the layout primitives
+  >     (`detail_hero`, `detail_title`, `genre_chips`, `synopsis_section`,
+  >     `credits_grid`, `similar_grid`, `detail_episode_item`,
+  >     `episode_navigation`) plus the `detail_format_duration/1` helper.
+  >
+  > The split changes the import surface (LiveViews currently do
+  > `import StreamixWeb.Content.DetailComponents`), so it's deliberately
+  > batched into its own PR — not done in this round because the call
+  > sites are spread across all detail LiveViews + tests and the win is
+  > stylistic, not load-bearing.
+  """
   use Phoenix.Component
   use StreamixWeb, :verified_routes
   import StreamixWeb.CoreComponents

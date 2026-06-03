@@ -7,7 +7,7 @@ defmodule Streamix.Iptv.Favorites do
 
   alias Ecto.Changeset
   alias Streamix.Iptv.{CatalogItem, Favorite}
-  alias Streamix.Library.ContentRef
+  alias Streamix.Iptv.ContentRef
   alias Streamix.Repo
 
   @content_types ContentRef.favorite_types()

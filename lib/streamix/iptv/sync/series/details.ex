@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.Sync.Series.Details do
 
   require Logger
 
-  @chunk_size 100
+  @batch_size 100
 
   @doc """
   Syncs seasons and episodes for all series of a provider.
@@ -39,7 +39,7 @@ defmodule Streamix.Iptv.Sync.Series.Details do
 
     final_results =
       series_ids
-      |> Stream.chunk_every(@chunk_size)
+      |> Stream.chunk_every(@batch_size)
       |> Enum.reduce(empty_results(), fn id_chunk, acc ->
         chunk_results = process_series_chunk(load_chunk(id_chunk))
         merged = merge_results(acc, chunk_results)
@@ -76,7 +76,7 @@ defmodule Streamix.Iptv.Sync.Series.Details do
     cond do
       # GIndex providers do not expose an Xtream `get_series_info`
       # endpoint — seasons / episodes are populated by the folder
-      # walk that runs during sync (`Streamix.Iptv.Gindex.Sync`).
+      # walk that runs during sync (`Streamix.Gindex.Sync`).
       # The lazy-sync hook in `SeriesOps.get_with_sync!/1` was
       # blowing up here with `URI.encode_www_form(nil)` because the
       # provider has no Xtream credentials. Treat the call as a

@@ -6,7 +6,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   use StreamixWeb, :controller
 
   alias Streamix.Accounts
-  alias Streamix.Library
+  alias Streamix.Iptv
 
   plug :authenticate
 
@@ -17,7 +17,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def index(conn, params) do
     user = conn.assigns.current_user
     opts = [content_type: params["type"], limit: parse_int(params["limit"], 100)]
-    favorites = Library.list_favorites(user.id, opts)
+    favorites = Iptv.list_favorites(user.id, opts)
 
     json(conn, %{
       favorites:
@@ -40,7 +40,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def create(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
 
-    case Library.add_favorite(user.id, type, content_id) do
+    case Iptv.add_favorite(user.id, type, content_id) do
       {:ok, fav} ->
         conn
         |> put_status(:created)
@@ -71,7 +71,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     case parse_positive_integer(content_id) do
       {:ok, content_id} ->
-        Library.remove_favorite(user.id, type, content_id)
+        Iptv.remove_favorite(user.id, type, content_id)
         send_resp(conn, 204, "")
 
       :error ->
@@ -86,7 +86,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def toggle(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
 
-    case Library.toggle_favorite(user.id, type, content_id) do
+    case Iptv.toggle_favorite(user.id, type, content_id) do
       {:ok, action} ->
         json(conn, %{status: Atom.to_string(action)})
 
@@ -126,15 +126,15 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
          "content_id" => content_id,
          "action" => action
        }) do
-    exists? = Library.favorite?(user_id, type, content_id)
+    exists? = Iptv.favorite?(user_id, type, content_id)
 
     case {action, exists?} do
       {"add", false} ->
-        Library.add_favorite(user_id, type, content_id)
+        Iptv.add_favorite(user_id, type, content_id)
         :added
 
       {"remove", true} ->
-        Library.remove_favorite(user_id, type, content_id)
+        Iptv.remove_favorite(user_id, type, content_id)
         :removed
 
       _ ->

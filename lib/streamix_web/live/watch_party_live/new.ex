@@ -6,7 +6,7 @@ defmodule StreamixWeb.WatchPartyLive.New do
 
   import StreamixWeb.PlayerHelpers
 
-  alias Streamix.Library.ContentRef
+  alias Streamix.Iptv.ContentRef
   alias Streamix.WatchParty
 
   def mount(%{"type" => type, "id" => id}, _session, socket) do
