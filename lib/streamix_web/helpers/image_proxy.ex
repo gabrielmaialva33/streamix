@@ -59,6 +59,12 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   def proxy(url) when is_binary(url) do
     url
+    # Legacy DB rows can carry `http://image.tmdb.org//t/p/...` (HTTP +
+    # double slash from old TMDB parser concat bug). Force HTTPS and
+    # collapse adjacent slashes BEFORE the proxy replace so the URL
+    # actually rewrites to our CDN instead of triggering Mixed Content
+    # auto-upgrade warnings in the browser.
+    |> normalize_legacy_tmdb()
     # Normalize TMDB mirror domains to our proxy (only /t/p/ paths are TMDB)
     |> normalize_gstatic()
     |> String.replace("https://image.tmdb.org", tmdb_proxy_url())
@@ -77,11 +83,37 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   def proxy_raw(url) when is_binary(url) do
     url
+    |> normalize_legacy_tmdb()
     |> normalize_gstatic()
     |> String.replace("https://image.tmdb.org", tmdb_proxy_url())
     |> String.replace("https://imgmxa.net", imgmxa_proxy_url())
     |> String.replace("http://imgmxa.net", imgmxa_proxy_url())
     |> proxy_provider_logos()
+  end
+
+  # Upgrades any TMDB image URL to HTTPS and collapses accidental
+  # double slashes between the host and the path. Only touches TMDB
+  # URLs so we don't accidentally mangle provider logo paths.
+  defp normalize_legacy_tmdb(url) do
+    cond do
+      String.starts_with?(url, "http://image.tmdb.org") ->
+        url
+        |> String.replace_prefix("http://", "https://")
+        |> collapse_path_slashes("image.tmdb.org")
+
+      String.starts_with?(url, "https://image.tmdb.org") ->
+        collapse_path_slashes(url, "image.tmdb.org")
+
+      true ->
+        url
+    end
+  end
+
+  defp collapse_path_slashes(url, host) do
+    case String.split(url, host, parts: 2) do
+      [prefix, rest] -> prefix <> host <> Regex.replace(~r"/{2,}", rest, "/")
+      _ -> url
+    end
   end
 
   # gstaticontent URLs with /t/p/ are TMDB mirrors, others go through stream proxy
