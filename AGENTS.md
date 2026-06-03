@@ -224,7 +224,15 @@ API surfaces under `/api/v1`:
 - Auth is password-based with bcrypt. Do not document or implement magic links.
 - Provider credentials are stored via `Streamix.Iptv.EncryptedField`; never log or persist plaintext passwords.
 - All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through
-  `Streamix.Iptv.Gindex.Client`.
+  `Streamix.Gindex.Client`.
+- **Context boundaries**: `Streamix.Iptv`, `Streamix.Gindex`, `Streamix.Torrent`, `Streamix.AI`,
+  `Streamix.Billing`, `Streamix.WatchParty`, `Streamix.Accounts`, `Streamix.Access` are the
+  public entry points. **Never** `alias` a schema or sub-module of another context from web /
+  LiveView / controller code (e.g. `alias Streamix.Iptv.Movie` is wrong — call
+  `Streamix.Iptv.get_movie!/1` instead). Same rule applies between contexts: `Access` does
+  not `alias Streamix.Iptv.Provider` — it goes through `Streamix.Iptv.get_provider/1`.
+  Internals under `Streamix.Iptv.Streaming.*`, `Streamix.Iptv.Sync.*`, `Streamix.Gindex.*`,
+  `Streamix.Torrent.*` may be reorganised at will; only the facade is stable.
 - Do not consume single-use IPTV tokens while resolving redirect chains. Use the existing manual redirect approach.
 - RabbitMQ is optional. Respect `RABBITMQ_ENABLED`; the default path is Oban.
 - GIndex is rate-limited hard. Keep sequential behavior where the code expects it.
