@@ -1,4 +1,4 @@
-defmodule Streamix.Library.ContentRef do
+defmodule Streamix.Iptv.ContentRef do
   @moduledoc """
   Helpers for resolving catalog_item_id from (content_type, content_id) pairs,
   and decorating favorites / watch_progress with display fields.
