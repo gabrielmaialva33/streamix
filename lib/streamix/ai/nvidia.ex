@@ -21,8 +21,14 @@ defmodule Streamix.AI.Nvidia do
 
   require Logger
 
-  @base_url "https://ai.api.nvidia.com/v1/retrieval/nvidia"
-  @default_model "nv-embedqa-e5-v5"
+  # 2026-06: NVIDIA migrated their embedding endpoints from the legacy
+  # `ai.api.nvidia.com/v1/retrieval/nvidia/*` path (which returned a 404
+  # "function not found for account" after the cutover) to the new
+  # OpenAI-compatible `integrate.api.nvidia.com/v1` surface. Same response
+  # shape (`data: [{index, embedding}]`) — only the URL + model id
+  # namespacing changed. Embedding dimensions remain 1024.
+  @base_url "https://integrate.api.nvidia.com/v1"
+  @default_model "nvidia/nv-embedqa-e5-v5"
   @embedding_dimensions 1024
 
   @doc """
