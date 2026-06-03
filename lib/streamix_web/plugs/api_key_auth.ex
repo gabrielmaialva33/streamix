@@ -36,7 +36,13 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
           |> unauthorized("Missing API key. Include X-API-Key header.")
 
         {:error, :invalid_key} ->
-          Logger.warning("Invalid API key attempt from #{format_ip(conn.remote_ip)}")
+          ip = format_ip(conn.remote_ip)
+
+          :telemetry.execute(
+            [:streamix, :auth, :api_key, :rejected],
+            %{count: 1},
+            %{ip: ip, reason: :invalid_key}
+          )
 
           conn
           |> unauthorized("Invalid API key.")

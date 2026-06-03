@@ -9,9 +9,7 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
 
   require Logger
 
-  alias Streamix.Accounts
-
-  plug :authenticate
+  plug StreamixWeb.Plugs.BearerAuth
 
   @max_batch_size 50
 
@@ -74,26 +72,6 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   end
 
   # Auth plug
-  defp authenticate(conn, _opts) do
-    with token_str when is_binary(token_str) <- get_bearer_token(conn),
-         {:ok, token} <- Base.url_decode64(token_str),
-         {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
-      assign(conn, :current_user, user)
-    else
-      _ ->
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: %{code: "unauthorized", message: "Bearer token required"}})
-        |> halt()
-    end
-  end
-
-  defp get_bearer_token(conn) do
-    case Plug.Conn.get_req_header(conn, "authorization") do
-      ["Bearer " <> token] -> token
-      _ -> nil
-    end
-  end
 
   defp normalize_payload(%{"batch_id" => batch_id, "metrics" => metrics})
        when is_binary(batch_id) and is_list(metrics) do

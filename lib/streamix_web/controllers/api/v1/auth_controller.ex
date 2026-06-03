@@ -49,6 +49,12 @@ defmodule StreamixWeb.Api.V1.AuthController do
   def login(conn, %{"email" => email, "password" => password}) do
     case Accounts.get_user_by_email_and_password(email, password) do
       nil ->
+        :telemetry.execute(
+          [:streamix, :auth, :login, :failed],
+          %{count: 1},
+          %{email: email, ip: format_remote_ip(conn), reason: :invalid_credentials}
+        )
+
         conn
         |> put_status(:unauthorized)
         |> json(%{error: %{code: "invalid_credentials", message: "Invalid email or password"}})
@@ -131,9 +137,13 @@ defmodule StreamixWeb.Api.V1.AuthController do
 
   defp ip_info(conn) do
     %{
-      ip_address: conn.remote_ip |> :inet.ntoa() |> to_string(),
+      ip_address: format_remote_ip(conn),
       user_agent: Plug.Conn.get_req_header(conn, "user-agent") |> List.first()
     }
+  end
+
+  defp format_remote_ip(conn) do
+    conn.remote_ip |> :inet.ntoa() |> to_string()
   end
 
   defp serialize_user(user) do

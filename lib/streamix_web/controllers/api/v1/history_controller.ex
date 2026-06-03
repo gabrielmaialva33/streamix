@@ -6,10 +6,9 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   """
   use StreamixWeb, :controller
 
-  alias Streamix.Accounts
   alias Streamix.Iptv
 
-  plug :authenticate
+  plug StreamixWeb.Plugs.BearerAuth
 
   @doc """
   GET /api/v1/history
@@ -105,26 +104,6 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   end
 
   # Auth plug
-  defp authenticate(conn, _opts) do
-    with token_str when is_binary(token_str) <- get_bearer_token(conn),
-         {:ok, token} <- Base.url_decode64(token_str),
-         {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
-      assign(conn, :current_user, user)
-    else
-      _ ->
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: %{code: "unauthorized", message: "Invalid or missing token"}})
-        |> halt()
-    end
-  end
-
-  defp get_bearer_token(conn) do
-    case Plug.Conn.get_req_header(conn, "authorization") do
-      ["Bearer " <> token] -> token
-      _ -> nil
-    end
-  end
 
   defp parse_int(nil, default), do: default
   defp parse_int(val, _default) when is_integer(val), do: val

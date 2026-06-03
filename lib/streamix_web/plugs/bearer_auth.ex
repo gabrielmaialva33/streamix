@@ -90,6 +90,12 @@ defmodule StreamixWeb.Plugs.BearerAuth do
   end
 
   defp reject(conn) do
+    :telemetry.execute(
+      [:streamix, :auth, :bearer, :rejected],
+      %{count: 1},
+      %{ip: conn.remote_ip |> :inet.ntoa() |> to_string(), reason: :invalid_or_missing}
+    )
+
     conn
     |> put_status(:unauthorized)
     |> Phoenix.Controller.json(%{

@@ -5,10 +5,10 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   use StreamixWeb, :controller
 
-  alias Streamix.Accounts
   alias Streamix.Iptv
+  alias StreamixWeb.Api.Envelope
 
-  plug :authenticate
+  plug StreamixWeb.Plugs.BearerAuth
 
   @doc """
   GET /api/v1/favorites
@@ -42,17 +42,18 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     case Iptv.add_favorite(user.id, type, content_id) do
       {:ok, fav} ->
+        # New endpoints use Envelope for the canonical `%{data, meta}`
+        # shape. Older endpoints in this controller (`index/2`,
+        # `delete/2`) keep their legacy flat-map shape until a major
+        # API bump — TV apps currently parse those.
         conn
         |> put_status(:created)
-        |> json(%{
-          content_type: fav.content_type,
-          content_id: fav.content_id
-        })
+        |> json(Envelope.data(%{content_type: fav.content_type, content_id: fav.content_id}))
 
       {:error, _changeset} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "already_exists", message: "Already in favorites"}})
+        |> json(Envelope.error(:already_exists, "Already in favorites"))
     end
   end
 
@@ -145,26 +146,6 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   defp process_sync_operation(_user_id, _invalid), do: :skipped
 
   # Auth plug — validates Bearer token
-  defp authenticate(conn, _opts) do
-    with token_str when is_binary(token_str) <- get_bearer_token(conn),
-         {:ok, token} <- Base.url_decode64(token_str),
-         {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
-      assign(conn, :current_user, user)
-    else
-      _ ->
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: %{code: "unauthorized", message: "Invalid or missing token"}})
-        |> halt()
-    end
-  end
-
-  defp get_bearer_token(conn) do
-    case Plug.Conn.get_req_header(conn, "authorization") do
-      ["Bearer " <> token] -> token
-      _ -> nil
-    end
-  end
 
   defp parse_int(nil, default), do: default
   defp parse_int(val, _default) when is_integer(val), do: val
