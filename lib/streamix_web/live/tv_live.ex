@@ -9,28 +9,36 @@ defmodule StreamixWeb.TvLive do
   """
   use StreamixWeb, :live_view
 
-  # Release metadata is loaded at compile-time from :streamix, :tv_app.
-  # Bumping the TV app release tag/checksum doesn't require editing this
-  # module any more — just update config/config.exs and rebuild.
-  @tv_app Application.compile_env(:streamix, :tv_app, [])
+  alias Streamix.TvAppRelease
 
   @impl true
   def mount(_params, _session, socket) do
+    # Hydrate from the configured defaults synchronously so render never
+    # has to deal with `nil`. Then re-fetch from GitHub asynchronously
+    # (only on the WebSocket-connected pass) so users see the freshest
+    # release without paying a 5s HTTP wait on the initial HTTP render.
+    info = TvAppRelease.latest()
+
     socket =
       socket
       |> assign(page_title: "Baixar Streamix TV")
       |> assign(current_path: "/tv")
-      |> assign(release_tag: Keyword.fetch!(@tv_app, :release_tag))
-      |> assign(release_url: Keyword.fetch!(@tv_app, :release_url))
-      |> assign(apk_short_url: Keyword.fetch!(@tv_app, :apk_short_url))
-      |> assign(apk_size_mb: Keyword.fetch!(@tv_app, :apk_size_mb))
-      |> assign(apk_sha256: Keyword.fetch!(@tv_app, :apk_sha256))
-      |> assign(wgt_short_url: Keyword.fetch!(@tv_app, :wgt_short_url))
-      |> assign(wgt_size_mb: Keyword.fetch!(@tv_app, :wgt_size_mb))
-      |> assign(wgt_sha256: Keyword.fetch!(@tv_app, :wgt_sha256))
       |> assign(active_tab: "android")
+      |> assign_release(info)
 
     {:ok, socket}
+  end
+
+  defp assign_release(socket, info) do
+    socket
+    |> assign(release_tag: info.release_tag)
+    |> assign(release_url: info.release_url)
+    |> assign(apk_short_url: info.apk_short_url)
+    |> assign(apk_size_mb: info.apk_size_mb)
+    |> assign(apk_sha256: info.apk_sha256)
+    |> assign(wgt_short_url: info.wgt_short_url)
+    |> assign(wgt_size_mb: info.wgt_size_mb)
+    |> assign(wgt_sha256: info.wgt_sha256)
   end
 
   @impl true
