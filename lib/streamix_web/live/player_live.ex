@@ -302,7 +302,7 @@ defmodule StreamixWeb.PlayerLive do
   # ============================================
 
   defp handle_loaded_content(socket, type, user_id, content, provider) do
-    if Access.can_play_global_content?(socket.assigns.current_scope.user, provider) do
+    if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
       load_authorized_content(socket, type, user_id, content, provider)
     else
       {:ok,

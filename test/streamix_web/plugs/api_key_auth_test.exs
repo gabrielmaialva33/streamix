@@ -45,46 +45,22 @@ defmodule StreamixWeb.Plugs.ApiKeyAuthTest do
     end
   end
 
-  describe "call/2 — query-string fallback (for <img src> use cases)" do
-    # Regression: browsers/Lightning can't set custom headers on image
-    # requests, so the TV app needs `?api_key=` to authenticate resize
-    # URLs embedded directly in DOM <img> tags.
-    test "accepts a valid ?api_key= parameter when no header is present" do
+  describe "call/2 — query string rejected" do
+    # Hardened in 2026-06: API keys are header-only. The previous
+    # `?api_key=` fallback for image-embedded resize URLs leaked keys
+    # into access logs, browser history and referer headers. Callers
+    # without header support must use a signed StreamToken.
+    test "ignores a valid ?api_key= parameter and 401s as if missing" do
       conn =
         build_conn(:get, "/any?api_key=#{URI.encode_www_form(@key)}")
         |> ApiKeyAuth.call([])
 
-      refute conn.halted
-    end
-
-    test "rejects a bogus ?api_key= parameter" do
-      capture_log(fn ->
-        conn =
-          build_conn(:get, "/any?api_key=wrong")
-          |> ApiKeyAuth.call([])
-
-        assert conn.halted
-        assert conn.status == 401
-      end)
-    end
-
-    test "treats an empty ?api_key= as missing, not invalid" do
-      conn =
-        build_conn(:get, "/any?api_key=")
-        |> ApiKeyAuth.call([])
-
       assert conn.halted
-      # Missing surfaces as a 401 with "Missing API key" copy.
       body = Phoenix.ConnTest.json_response(conn, 401)
       assert body["message"] =~ "Missing"
     end
-  end
 
-  describe "call/2 — precedence" do
-    test "header beats query string when both are present" do
-      # A valid header + an invalid query param should be accepted.
-      # (Defence in depth: if a middlebox ever rewrites query params,
-      # the header still authenticates the caller.)
+    test "header still beats querystring noise" do
       conn =
         build_conn(:get, "/any?api_key=wrong")
         |> Plug.Conn.put_req_header("x-api-key", @key)

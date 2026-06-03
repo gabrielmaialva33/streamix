@@ -385,7 +385,7 @@ defmodule StreamixWeb.Content.Browse do
   end
 
   defp premium_access?(user) do
-    Access.can_play_global_content?(user, Iptv.get_global_provider())
+    Access.plays_global_content?(user, Iptv.get_global_provider())
   end
 
   defp filter_adult_categories(categories, true), do: categories

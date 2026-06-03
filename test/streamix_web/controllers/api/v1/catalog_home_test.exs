@@ -51,9 +51,9 @@ defmodule StreamixWeb.Api.V1.CatalogHomeTest do
       assert conn.status == 401
     end
 
-    test "accepts api_key via query string (for <img>-style clients)" do
+    test "rejects api_key passed via query string (header-only after 2026-06 hardening)" do
       conn = get(build_conn(), "/api/v1/catalog/home?api_key=#{@api_key}&limit=2")
-      assert json_response(conn, 200)["trending_movies"] |> is_list()
+      assert conn.status == 401
     end
   end
 end

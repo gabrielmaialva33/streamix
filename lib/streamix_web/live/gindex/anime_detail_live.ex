@@ -22,7 +22,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
          |> push_navigate(to: ~p"/browse/animes?source=gindex")}
 
       anime ->
-        is_favorite = Iptv.is_favorite?(user_id, "series", anime.id)
+        is_favorite = Iptv.favorite?(user_id, "series", anime.id)
         sorted_releases = Enum.sort_by(anime.seasons || [], & &1.season_number)
 
         first_release_id =

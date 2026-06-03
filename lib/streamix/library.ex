@@ -10,7 +10,7 @@ defmodule Streamix.Library do
 
   defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
   defdelegate list_home_favorites(user_id, opts \\ []), to: Favorites, as: :list_home
-  defdelegate is_favorite?(user_id, content_type, content_id), to: Favorites
+  defdelegate favorite?(user_id, content_type, content_id), to: Favorites
   defdelegate count_favorites_by_type(user_id), to: Favorites, as: :count_by_type
 
   defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil),

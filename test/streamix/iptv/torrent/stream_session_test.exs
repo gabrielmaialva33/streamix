@@ -90,12 +90,15 @@ defmodule Streamix.Iptv.Torrent.StreamSessionTest do
     pid = StreamSession.whereis(@info_hash)
     assert is_pid(pid)
 
+    viewer_ref = Process.monitor(viewer)
     Process.exit(viewer, :kill)
 
-    # The session should observe the DOWN and drop the viewer. We can't
-    # introspect viewer count without a state probe, but the session
-    # must remain alive after the crash (idle grace > 0).
-    Process.sleep(50)
+    # Wait for the OS to actually tear the viewer down, then a sync probe
+    # on the session forces its mailbox to drain — by the time
+    # :sys.get_state returns, the session has processed the DOWN message
+    # and any subsequent state transitions.
+    assert_receive {:DOWN, ^viewer_ref, :process, ^viewer, _}, 1_000
+    :sys.get_state(pid)
     assert Process.alive?(pid)
   end
 

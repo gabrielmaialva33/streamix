@@ -41,14 +41,14 @@ defmodule Streamix.AccessTest do
     admin = admin_user_fixture()
     provider = provider_fixture(admin, %{is_system: true, visibility: "global"})
 
-    assert Access.can_play_global_content?(admin, provider)
+    assert Access.plays_global_content?(admin, provider)
   end
 
   test "customer cannot play global content without subscription" do
     user = user_fixture()
     provider = provider_fixture(user, %{is_system: true, visibility: "global"})
 
-    refute Access.can_play_global_content?(user, provider)
+    refute Access.plays_global_content?(user, provider)
   end
 
   test "explicit user permission grants play_global_content" do
@@ -60,7 +60,7 @@ defmodule Streamix.AccessTest do
     |> UserPermission.changeset(%{user_id: user.id, permission_id: permission.id})
     |> Repo.insert!()
 
-    assert Access.can_play_global_content?(user, provider)
+    assert Access.plays_global_content?(user, provider)
   end
 
   test "explicit role permission grants play_global_content" do
@@ -74,7 +74,7 @@ defmodule Streamix.AccessTest do
     |> RolePermission.changeset(%{role_id: customer_role.id, permission_id: permission.id})
     |> Repo.insert!()
 
-    assert Access.can_play_global_content?(user, provider)
+    assert Access.plays_global_content?(user, provider)
   end
 
   test "global content with provider_id but without preloaded provider is still blocked for customer without subscription or permission" do
@@ -82,7 +82,7 @@ defmodule Streamix.AccessTest do
     provider = provider_fixture(user, %{is_system: true, visibility: "global"})
     content = %LiveChannel{provider_id: provider.id}
 
-    refute Access.can_play_global_content?(user, content)
+    refute Access.plays_global_content?(user, content)
   end
 
   test "private or public content with provider_id but without preloaded provider is still allowed for customer without subscription or permission" do
@@ -93,7 +93,7 @@ defmodule Streamix.AccessTest do
       provider = provider_fixture(owner, %{visibility: visibility})
       content = %LiveChannel{provider_id: provider.id}
 
-      assert Access.can_play_global_content?(user, content)
+      assert Access.plays_global_content?(user, content)
     end
   end
 

@@ -37,10 +37,11 @@ defmodule Streamix.Iptv.Torrent.ReaperTest do
     end)
 
     {:ok, _pid} = start_supervised({Reaper, [interval: :timer.minutes(60)]})
+    # sweep_now is a synchronous GenServer.call — once it returns, the
+    # reaper has already issued the DELETE and the stub agent's :deleted
+    # list is populated. No sleep needed.
     Reaper.sweep_now()
 
-    # The stub records DELETEs in the agent under :deleted.
-    Process.sleep(50)
     deleted = Agent.get(agent, &Map.get(&1, :deleted, []))
     assert String.duplicate("a", 40) in deleted
   end
@@ -58,9 +59,9 @@ defmodule Streamix.Iptv.Torrent.ReaperTest do
     {:ok, _} = Registry.register(Streamix.Iptv.Torrent.StreamRegistry, info_hash, :session)
 
     {:ok, _pid} = start_supervised({Reaper, [interval: :timer.minutes(60)]})
+    # See sibling test: sweep_now is synchronous.
     Reaper.sweep_now()
 
-    Process.sleep(50)
     deleted = Agent.get(agent, &Map.get(&1, :deleted, []))
     refute info_hash in deleted
   end

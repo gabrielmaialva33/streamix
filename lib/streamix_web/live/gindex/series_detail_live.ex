@@ -21,7 +21,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
          |> push_navigate(to: ~p"/browse/series?source=gindex")}
 
       series ->
-        is_favorite = Iptv.is_favorite?(user_id, "series", series.id)
+        is_favorite = Iptv.favorite?(user_id, "series", series.id)
         sorted_seasons = Enum.sort_by(series.seasons || [], & &1.season_number)
 
         first_season_id =

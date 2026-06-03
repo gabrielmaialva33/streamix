@@ -16,6 +16,10 @@ defmodule StreamixWeb.HomeCatalogLoaderTest do
            }
   end
 
+  # Process.sleep is the natural way to simulate slow fetchers in the
+  # three closures below — the assertion is exactly that the loader runs
+  # them in parallel (elapsed << 3 * 150ms). No monitored process exists
+  # to assert_receive on; the sleep IS the unit under observation.
   test "runs independent section loaders concurrently" do
     started_at = System.monotonic_time(:millisecond)
 

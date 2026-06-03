@@ -15,12 +15,12 @@ defmodule StreamixWeb.Content.Detail do
   def playable_provider(user_id, provider_id),
     do: Iptv.get_playable_provider(user_id, provider_id)
 
-  def premium_access?(user, provider), do: Access.can_play_global_content?(user, provider)
+  def premium_access?(user, provider), do: Access.plays_global_content?(user, provider)
 
   def favorite?(nil, _content_type, _content_id), do: false
 
   def favorite?(user_id, content_type, content_id),
-    do: Iptv.is_favorite?(user_id, content_type, content_id)
+    do: Iptv.favorite?(user_id, content_type, content_id)
 
   def toggle_movie_favorite(user_id, movie, current) do
     result =

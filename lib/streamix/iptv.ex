@@ -35,7 +35,7 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate list_favorites(user_id, opts \\ []), to: Library
   defdelegate list_home_favorites(user_id, opts \\ []), to: Library
-  defdelegate is_favorite?(user_id, content_type, content_id), to: Library
+  defdelegate favorite?(user_id, content_type, content_id), to: Library
   defdelegate count_favorites_by_type(user_id), to: Library
   defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil), to: Library
   defdelegate count_favorites(user_id), to: Library

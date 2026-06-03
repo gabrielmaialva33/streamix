@@ -302,7 +302,7 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp premium_access?(user) do
-    Access.can_play_global_content?(user, Iptv.get_global_provider())
+    Access.plays_global_content?(user, Iptv.get_global_provider())
   end
 
   defp maybe_add_filter(opts, _key, nil), do: opts

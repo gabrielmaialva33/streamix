@@ -126,7 +126,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
          "content_id" => content_id,
          "action" => action
        }) do
-    exists? = Library.is_favorite?(user_id, type, content_id)
+    exists? = Library.favorite?(user_id, type, content_id)
 
     case {action, exists?} do
       {"add", false} ->

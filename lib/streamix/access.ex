@@ -13,7 +13,7 @@ defmodule Streamix.Access do
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
 
-  def can_play_global_content?(user, provider_or_content) do
+  def plays_global_content?(user, provider_or_content) do
     admin?(user) or
       subscribed?(user) or
       explicitly_permitted?(user, "play_global_content") or

@@ -247,7 +247,7 @@ defmodule StreamixWeb.StreamToken do
         {:error, :subscription_required}
 
       user ->
-        if Access.can_play_global_content?(user, provider) do
+        if Access.plays_global_content?(user, provider) do
           :ok
         else
           {:error, :subscription_required}
@@ -429,7 +429,7 @@ defmodule StreamixWeb.StreamToken do
         {:error, :subscription_required}
 
       user ->
-        if Access.can_play_global_content?(user, content) do
+        if Access.plays_global_content?(user, content) do
           fetch_gindex_content_url(provider, fetch_url)
         else
           {:error, :subscription_required}
@@ -504,7 +504,7 @@ defmodule StreamixWeb.StreamToken do
         {:error, :subscription_required}
 
       user ->
-        if Access.can_play_global_content?(user, content) do
+        if Access.plays_global_content?(user, content) do
           build_provider_content_url(provider, content_path, stream_id, extension)
         else
           {:error, :subscription_required}

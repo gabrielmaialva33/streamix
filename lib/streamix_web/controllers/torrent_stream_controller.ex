@@ -4,13 +4,13 @@ defmodule StreamixWeb.TorrentStreamController do
   endpoint.
 
   rqbit URLs are internal — never exposed to browsers — because they
-  bypass our `Access.can_play_global_content?/2` premium gate and
+  bypass our `Access.plays_global_content?/2` premium gate and
   carry no auth at all. The flow is:
 
       browser  →  GET /api/stream/torrent/:info_hash/:file_idx
                   (require_authenticated_user)
         →  TorrentStream lookup by info_hash (404 if absent)
-        →  Access.can_play_global_content? gate
+        →  Access.plays_global_content? gate
         →  StreamSession.start_or_join(...) — blocks <= 30s
         →  Req → rqbit, Range copied through
         →  Plug.Conn.chunk back to client (200 / 206)
@@ -248,7 +248,7 @@ defmodule StreamixWeb.TorrentStreamController do
         :unauthorized
 
       provider ->
-        if Access.can_play_global_content?(user, provider) do
+        if Access.plays_global_content?(user, provider) do
           :ok
         else
           :unauthorized

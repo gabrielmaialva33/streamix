@@ -681,7 +681,7 @@ defmodule Streamix.IptvTest do
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "returns false if channel is not favorited" do
@@ -689,7 +689,7 @@ defmodule Streamix.IptvTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      refute Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      refute Iptv.favorite?(user.id, "live_channel", channel.id)
     end
   end
 
@@ -701,7 +701,7 @@ defmodule Streamix.IptvTest do
 
       assert {:ok, %{} = fav} = Iptv.add_favorite(user.id, "live_channel", channel.id)
 
-      assert Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(user.id, "live_channel", channel.id)
       assert fav.catalog_item_id == channel.catalog_item_id
     end
 
@@ -724,7 +724,7 @@ defmodule Streamix.IptvTest do
       favorite_fixture(user, channel)
 
       assert {:ok, 1} = Iptv.remove_favorite(user.id, "live_channel", channel.id)
-      refute Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      refute Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "returns 0 if favorite doesn't exist" do
@@ -740,7 +740,7 @@ defmodule Streamix.IptvTest do
       channel = channel_fixture(provider)
 
       assert {:ok, :added} = Iptv.toggle_favorite(user.id, "live_channel", channel.id)
-      assert Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(user.id, "live_channel", channel.id)
     end
 
     test "removes favorite if exists" do
@@ -750,7 +750,7 @@ defmodule Streamix.IptvTest do
       favorite_fixture(user, channel)
 
       assert {:ok, :removed} = Iptv.toggle_favorite(user.id, "live_channel", channel.id)
-      refute Iptv.is_favorite?(user.id, "live_channel", channel.id)
+      refute Iptv.favorite?(user.id, "live_channel", channel.id)
     end
   end
 

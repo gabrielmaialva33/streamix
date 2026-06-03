@@ -134,16 +134,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
 
     case Qdrant.get_points(collection, ids) do
       {:ok, points} ->
-        vectors_by_id = Map.new(points, &{&1.id, &1.vector})
-
-        entries
-        |> Enum.map(fn entry ->
-          case Map.get(vectors_by_id, entry.content_id) do
-            nil -> nil
-            vector -> %{vector: vector, weight: calculate_weight(entry)}
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
+        zip_entries_with_vectors(entries, points)
 
       {:error, reason} ->
         Logger.warning(
@@ -151,6 +142,21 @@ defmodule Streamix.AI.UserAnalytics.Profile do
         )
 
         []
+    end
+  end
+
+  defp zip_entries_with_vectors(entries, points) do
+    vectors_by_id = Map.new(points, &{&1.id, &1.vector})
+
+    entries
+    |> Enum.map(&entry_to_weighted_vector(&1, vectors_by_id))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp entry_to_weighted_vector(entry, vectors_by_id) do
+    case Map.get(vectors_by_id, entry.content_id) do
+      nil -> nil
+      vector -> %{vector: vector, weight: calculate_weight(entry)}
     end
   end
 

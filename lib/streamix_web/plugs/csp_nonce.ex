@@ -62,7 +62,7 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       # add CDNs without touching this file (and the env-driven path means
       # runtime.exs picks up CSP_EXTRA_SCRIPT_HOSTS without a redeploy).
       "script-src 'self' 'nonce-#{nonce}' 'unsafe-eval' blob: 'sha256-iIs9B1z3EnV2hTwzvh58h4Re7d6yNBJdIX4csEJo7c0=' https://static.cloudflareinsights.com https://ajax.cloudflare.com https://cdnjs.cloudflare.com https://www.youtube.com https://s.ytimg.com #{extra_script_hosts}"
-        |> String.trim_trailing(),
+      |> String.trim_trailing(),
 
       # Styles: unsafe-inline still needed for Tailwind dynamic classes and LiveView
       "style-src 'self' 'unsafe-inline'",

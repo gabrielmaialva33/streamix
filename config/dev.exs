@@ -25,7 +25,7 @@ config :streamix, StreamixWeb.Endpoint,
   # sessions across reloads.
   secret_key_base:
     System.get_env("DEV_SECRET_KEY_BASE") ||
-      (:crypto.strong_rand_bytes(48) |> Base.encode64()),
+      :crypto.strong_rand_bytes(48) |> Base.encode64(),
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:streamix, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:streamix, ~w(--watch)]}

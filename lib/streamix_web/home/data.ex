@@ -17,6 +17,16 @@ defmodule StreamixWeb.Home.Data do
   @top_10_ttl 24 * 3600
   @genre_filters_ttl 3600
 
+  # Per-section row counts. Centralised so every entrypoint into the home
+  # page (mount, refresh, filter-change) lands on the same shape — used to
+  # drift quietly across `load_public_catalog` / `load_user_data` /
+  # `filter_trending_genre`, leading to the trending shelf showing 12
+  # cards and the genre-filtered version showing 6.
+  @home_default_limit 12
+  @home_history_limit 6
+  @home_channels_limit 24
+  @home_top_10_limit 10
+
   def assign_empty(socket) do
     socket
     |> assign(featured: nil)
@@ -157,9 +167,9 @@ defmodule StreamixWeb.Home.Data do
             socket.assigns.trending_period
           )
         end,
-        new_releases: fn -> Iptv.list_new_releases(limit: 12) end,
+        new_releases: fn -> Iptv.list_new_releases(limit: @home_default_limit) end,
         top_10: fn -> load_top_10() end,
-        movies: fn -> Iptv.list_public_movies(limit: 12) end,
+        movies: fn -> Iptv.list_public_movies(limit: @home_default_limit) end,
         series: fn -> load_series(user_id(socket), socket.assigns.series_genre) end,
         channels: fn -> load_channels(user_id(socket), socket.assigns.channels_category) end
       })
@@ -192,8 +202,8 @@ defmodule StreamixWeb.Home.Data do
 
     user_sections =
       HomeCatalogLoader.load(%{
-        favorites: fn -> Iptv.list_home_favorites(user_id, limit: 12) end,
-        history: fn -> Iptv.list_home_history(user_id, limit: 6) end,
+        favorites: fn -> Iptv.list_home_favorites(user_id, limit: @home_default_limit) end,
+        history: fn -> Iptv.list_home_history(user_id, limit: @home_history_limit) end,
         recommendations: fn -> load_recommendations(user_id) end,
         featured_favorite: fn -> check_featured_favorite(socket.assigns.featured, user_id) end,
         movie_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "movie", movie_ids) end,
@@ -217,14 +227,14 @@ defmodule StreamixWeb.Home.Data do
 
   defp load_trending(nil, _genre, period) do
     Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
-      Iptv.list_trending_movies(limit: 12, days: period)
+      Iptv.list_trending_movies(limit: @home_default_limit, days: period)
     end)
   end
 
   defp load_trending(user_id, genre, period) do
     Cache.fetch("home:trending:user:#{user_id}:#{genre}:#{period}", @trending_ttl, fn ->
       UserAnalytics.get_personalized_trending(user_id,
-        limit: 12,
+        limit: @home_default_limit,
         genre: genre,
         days: period
       )
@@ -233,24 +243,27 @@ defmodule StreamixWeb.Home.Data do
 
   defp load_top_10 do
     Cache.fetch("home:top_10", @top_10_ttl, fn ->
-      Iptv.list_top_10_movies(limit: 10)
+      Iptv.list_top_10_movies(limit: @home_top_10_limit)
     end)
   end
 
-  defp load_series(nil, _genre), do: Iptv.list_public_series(limit: 12)
+  defp load_series(nil, _genre), do: Iptv.list_public_series(limit: @home_default_limit)
 
   defp load_series(user_id, genre) do
-    UserAnalytics.get_personalized_series(user_id, limit: 12, genre: genre)
+    UserAnalytics.get_personalized_series(user_id, limit: @home_default_limit, genre: genre)
   end
 
-  defp load_channels(nil, _category), do: Iptv.list_public_channels(limit: 24)
+  defp load_channels(nil, _category), do: Iptv.list_public_channels(limit: @home_channels_limit)
 
   defp load_channels(user_id, category) do
-    UserAnalytics.get_personalized_channels(user_id, limit: 24, category: category)
+    UserAnalytics.get_personalized_channels(user_id,
+      limit: @home_channels_limit,
+      category: category
+    )
   end
 
   defp load_recommendations(user_id) do
-    case UserAnalytics.get_recommendations(user_id, limit: 12) do
+    case UserAnalytics.get_recommendations(user_id, limit: @home_default_limit) do
       recommendations when is_list(recommendations) -> recommendations
       {:ok, recommendations} -> recommendations
       _ -> []
@@ -273,7 +286,7 @@ defmodule StreamixWeb.Home.Data do
   defp check_featured_favorite(nil, _user_id), do: false
 
   defp check_featured_favorite({type, content}, user_id) do
-    Iptv.is_favorite?(user_id, content_type(type), content.id)
+    Iptv.favorite?(user_id, content_type(type), content.id)
   end
 
   defp content_type(:movie), do: "movie"
@@ -317,7 +330,7 @@ defmodule StreamixWeb.Home.Data do
     assign(
       socket,
       :favorites,
-      Iptv.list_home_favorites(socket.assigns.current_scope.user.id, limit: 12)
+      Iptv.list_home_favorites(socket.assigns.current_scope.user.id, limit: @home_default_limit)
     )
   end
 

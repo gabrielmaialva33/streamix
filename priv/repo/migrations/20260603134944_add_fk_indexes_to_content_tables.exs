@@ -40,8 +40,6 @@ defmodule Streamix.Repo.Migrations.AddFkIndexesToContentTables do
     execute("DROP INDEX CONCURRENTLY IF EXISTS movies_catalog_item_id_provider_id_index")
     execute("DROP INDEX CONCURRENTLY IF EXISTS series_catalog_item_id_provider_id_index")
 
-    execute(
-      "DROP INDEX CONCURRENTLY IF EXISTS live_channels_catalog_item_id_provider_id_index"
-    )
+    execute("DROP INDEX CONCURRENTLY IF EXISTS live_channels_catalog_item_id_provider_id_index")
   end
 end

@@ -28,7 +28,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
            |> put_flash(:error, "Filme não pertence ao GIndex")
            |> push_navigate(to: ~p"/gindex/movies")}
         else
-          is_favorite = Iptv.is_favorite?(user_id, "movie", movie.id)
+          is_favorite = Iptv.favorite?(user_id, "movie", movie.id)
           movie = Iptv.get_movie_with_provider!(movie.id)
 
           socket =

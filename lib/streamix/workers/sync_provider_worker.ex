@@ -71,56 +71,61 @@ defmodule Streamix.Workers.SyncProviderWorker do
         :ok
 
       provider ->
-        # Update status to syncing
-        iptv.update_provider(provider, %{sync_status: "syncing"})
-        broadcast_sync_status(provider, "syncing")
-
-        sync_opts = [series_details: series_details]
-
-        case iptv.sync_provider(provider, sync_opts) do
-          {:ok, _result} ->
-            # Reload provider to get updated counts
-            updated_provider = iptv.get_provider!(provider.id)
-
-            # Confirm the status update BEFORE broadcasting. Broadcasting a
-            # "completed" event when the DB still says "syncing" leaves the
-            # UI permanently out of sync with the provider row.
-            case iptv.update_provider(provider, %{sync_status: "completed"}) do
-              {:ok, _} ->
-                broadcast_sync_status(provider, "completed", %{
-                  live_channels_count: updated_provider.live_channels_count,
-                  movies_count: updated_provider.movies_count,
-                  series_count: updated_provider.series_count
-                })
-
-                :ok
-
-              {:error, changeset} ->
-                Logger.error(
-                  "[SyncProviderWorker] provider #{provider.id} sync succeeded " <>
-                    "but status update failed: #{inspect(changeset.errors)}"
-                )
-
-                {:error, {:status_update_failed, changeset}}
-            end
-
-          {:error, reason} ->
-            # Same pattern on the failure path: only broadcast after the
-            # status row reflects the outcome.
-            case iptv.update_provider(provider, %{sync_status: "failed"}) do
-              {:ok, _} ->
-                broadcast_sync_status(provider, "failed", %{error: inspect(reason)})
-
-              {:error, changeset} ->
-                Logger.error(
-                  "[SyncProviderWorker] provider #{provider.id} failed AND status " <>
-                    "update failed: #{inspect(changeset.errors)}"
-                )
-            end
-
-            {:error, reason}
-        end
+        run_xtream_sync(iptv, provider, series_details)
     end
+  end
+
+  defp run_xtream_sync(iptv, provider, series_details) do
+    iptv.update_provider(provider, %{sync_status: "syncing"})
+    broadcast_sync_status(provider, "syncing")
+
+    case iptv.sync_provider(provider, series_details: series_details) do
+      {:ok, _result} -> finish_success(iptv, provider)
+      {:error, reason} -> finish_failure(iptv, provider, reason)
+    end
+  end
+
+  # Confirm the status update BEFORE broadcasting. Broadcasting a
+  # "completed" event when the DB still says "syncing" leaves the UI
+  # permanently out of sync with the provider row.
+  defp finish_success(iptv, provider) do
+    updated_provider = iptv.get_provider!(provider.id)
+
+    case iptv.update_provider(provider, %{sync_status: "completed"}) do
+      {:ok, _} ->
+        broadcast_sync_status(provider, "completed", %{
+          live_channels_count: updated_provider.live_channels_count,
+          movies_count: updated_provider.movies_count,
+          series_count: updated_provider.series_count
+        })
+
+        :ok
+
+      {:error, changeset} ->
+        Logger.error(
+          "[SyncProviderWorker] provider #{provider.id} sync succeeded " <>
+            "but status update failed: #{inspect(changeset.errors)}"
+        )
+
+        {:error, {:status_update_failed, changeset}}
+    end
+  end
+
+  # Same ordering as the success branch: broadcast only after the status
+  # row reflects the outcome.
+  defp finish_failure(iptv, provider, reason) do
+    case iptv.update_provider(provider, %{sync_status: "failed"}) do
+      {:ok, _} ->
+        broadcast_sync_status(provider, "failed", %{error: inspect(reason)})
+
+      {:error, changeset} ->
+        Logger.error(
+          "[SyncProviderWorker] provider #{provider.id} failed AND status " <>
+            "update failed: #{inspect(changeset.errors)}"
+        )
+    end
+
+    {:error, reason}
   end
 
   defp parse_series_details_option(nil), do: :skip

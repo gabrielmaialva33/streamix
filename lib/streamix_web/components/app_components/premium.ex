@@ -64,7 +64,7 @@ defmodule StreamixWeb.AppComponents.Premium do
 
   def premium_cta_banner(assigns) do
     if assigns.current_scope &&
-         Streamix.Access.can_play_global_content?(
+         Streamix.Access.plays_global_content?(
            assigns.current_scope.user,
            Streamix.Iptv.get_global_provider()
          ) do
