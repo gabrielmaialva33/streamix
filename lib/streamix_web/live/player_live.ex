@@ -371,7 +371,9 @@ defmodule StreamixWeb.PlayerLive do
          stream_url,
          playback_session
        ) do
-    record_watch_history(user_id, type, content)
+    # Mount runs twice (static HTTP + WS upgrade). Writing watch history on
+    # the static pass duplicated every play into the timeline.
+    if connected?(socket), do: record_watch_history(user_id, type, content)
     prepare_connected_player(socket, type, content, user_id)
 
     next_episode = load_next_episode(type, content, provider, user_id)
@@ -402,13 +404,19 @@ defmodule StreamixWeb.PlayerLive do
 
   defp prepare_connected_player(socket, type, content, user_id) do
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:progress")
+      topic = "user:#{user_id}:progress"
+      # Defensive idempotent subscribe: unsubscribe first so a re-mount on
+      # the same LV process (live-redirect within /watch flow) doesn't
+      # stack subscriptions and trigger duplicate handle_info callbacks.
+      Phoenix.PubSub.unsubscribe(Streamix.PubSub, topic)
+      Phoenix.PubSub.subscribe(Streamix.PubSub, topic)
       prewarm_upstream_redirect(type, content, user_id)
     end
   end
 
   defp prepare_torrent_gate(socket, type, user_id, content, provider, playback_session) do
-    record_watch_history(user_id, type, content)
+    # Mount runs twice — see comment in prepare_player_socket. Same guard.
+    if connected?(socket), do: record_watch_history(user_id, type, content)
     start_torrent_session_task(socket, content)
 
     info_hash = content.torrent_stream.info_hash
@@ -527,7 +535,10 @@ defmodule StreamixWeb.PlayerLive do
       live_view_pid = self()
       stream = content.torrent_stream
 
-      Task.start(fn ->
+      # Task.Supervisor.start_child instead of bare Task.start so a crash
+      # in StreamSession.start_or_join surfaces in the supervisor tree
+      # (and shows up in observers) rather than vanishing silently.
+      Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
         result = StreamSession.start_or_join(stream.info_hash, stream.magnet_uri, live_view_pid)
         send(live_view_pid, {:torrent_session_ready, result})
       end)

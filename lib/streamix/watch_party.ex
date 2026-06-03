@@ -175,13 +175,18 @@ defmodule Streamix.WatchParty do
   def list_messages(room_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
 
+    # Pull the most recent `limit` messages and flip to chronological order
+    # for the chat stream. The previous `asc + limit` showed the *oldest*
+    # 50, which on an active room meant the chat scrolled to a stale
+    # window the moment a member opened it.
     from(m in Message,
       where: m.room_id == ^room_id,
-      order_by: [asc: m.inserted_at],
+      order_by: [desc: m.inserted_at],
       limit: ^limit,
       preload: [:user]
     )
     |> Repo.all()
+    |> Enum.reverse()
   end
 
   # --- Server Management ---

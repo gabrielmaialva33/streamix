@@ -74,6 +74,10 @@ defmodule Streamix.Iptv.History do
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
 
+    # CASE over catalog_item.content_type picks the right subquery for each
+    # row instead of running all four — was a 4× scalar subquery per row,
+    # which on a 100-row history meant 400 index lookups vs 100 with the
+    # CASE form. Same total result, fraction of the planner work.
     user_progress_query(user_id)
     |> maybe_filter_by_type(content_type)
     |> order_by([progress: progress], desc: progress.last_watched_at)
@@ -84,7 +88,15 @@ defmodule Streamix.Iptv.History do
       content_id:
         selected_as(
           fragment(
-            "COALESCE((SELECT m0.id FROM movies AS m0 WHERE m0.catalog_item_id = ?), (SELECT s0.id FROM series AS s0 WHERE s0.catalog_item_id = ?), (SELECT e0.id FROM episodes AS e0 WHERE e0.catalog_item_id = ?), (SELECT l0.id FROM live_channels AS l0 WHERE l0.catalog_item_id = ?))",
+            """
+            CASE ?
+              WHEN 'movie' THEN (SELECT m0.id FROM movies AS m0 WHERE m0.catalog_item_id = ?)
+              WHEN 'series' THEN (SELECT s0.id FROM series AS s0 WHERE s0.catalog_item_id = ?)
+              WHEN 'episode' THEN (SELECT e0.id FROM episodes AS e0 WHERE e0.catalog_item_id = ?)
+              WHEN 'live_channel' THEN (SELECT l0.id FROM live_channels AS l0 WHERE l0.catalog_item_id = ?)
+            END
+            """,
+            catalog_item.content_type,
             progress.catalog_item_id,
             progress.catalog_item_id,
             progress.catalog_item_id,

@@ -115,19 +115,42 @@ defmodule Streamix.AI.UserAnalytics.Profile do
     end
   end
 
+  # One Qdrant request per collection (usually 2: movies + series), instead
+  # of one per entry. With ~100 items in history this turns a 100-roundtrip
+  # serial fetch into 2 batched lookups — was the source of the ConCache
+  # lock contention that hung the home loader at 15s.
   defp map_embeddings(history) do
     history
     |> Enum.reject(&(&1.content_type == "live_channel"))
-    |> Enum.reduce([], &prepend_embedding/2)
-    |> Enum.reverse()
+    |> Enum.group_by(&content_type_to_collection(&1.content_type))
+    |> Map.delete(:skip)
+    |> Enum.flat_map(fn {collection, entries} ->
+      fetch_embeddings_for_collection(collection, entries)
+    end)
   end
 
-  defp prepend_embedding(entry, acc) do
-    with collection when collection != :skip <- content_type_to_collection(entry.content_type),
-         {:ok, %{vector: vector}} <- Qdrant.get_point(collection, entry.content_id) do
-      [%{vector: vector, weight: calculate_weight(entry)} | acc]
-    else
-      _ -> acc
+  defp fetch_embeddings_for_collection(collection, entries) do
+    ids = Enum.map(entries, & &1.content_id)
+
+    case Qdrant.get_points(collection, ids) do
+      {:ok, points} ->
+        vectors_by_id = Map.new(points, &{&1.id, &1.vector})
+
+        entries
+        |> Enum.map(fn entry ->
+          case Map.get(vectors_by_id, entry.content_id) do
+            nil -> nil
+            vector -> %{vector: vector, weight: calculate_weight(entry)}
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      {:error, reason} ->
+        Logger.warning(
+          "[UserAnalytics] Qdrant batch fetch failed for #{collection}: #{inspect(reason)}"
+        )
+
+        []
     end
   end
 

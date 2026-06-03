@@ -242,6 +242,48 @@ defmodule Streamix.AI.Qdrant do
   end
 
   @doc """
+  Retrieves multiple points by ID in a single request.
+
+  Returns a list of `%{id, vector, payload}` maps for the points that
+  exist; missing IDs are silently skipped (consistent with Qdrant's
+  `/points` endpoint behaviour). Callers that need a 1:1 mapping should
+  index the result by `id` themselves.
+
+  Preferred over looping `get_point/2` when N is more than a handful —
+  one HTTP round-trip vs N is the difference between a snappy home and
+  a 15-second lock-contention stampede.
+  """
+  def get_points(_collection, []), do: {:ok, []}
+
+  def get_points(collection, ids) when is_list(ids) do
+    url = "#{base_url()}/collections/#{collection}/points"
+
+    body =
+      Jason.encode!(%{
+        ids: ids,
+        with_vector: true,
+        with_payload: true
+      })
+
+    case req_post(url, body) do
+      {:ok, %Req.Response{status: 200, body: %{"result" => results}}} ->
+        points =
+          Enum.map(results, fn r ->
+            %{id: r["id"], vector: r["vector"], payload: r["payload"]}
+          end)
+
+        {:ok, points}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        Logger.error("[Qdrant] Get points failed #{status}: #{inspect(body)}")
+        {:error, {:get_failed, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Deletes a point from a collection.
   """
   def delete_point(collection, id) do
