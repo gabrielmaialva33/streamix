@@ -8,6 +8,7 @@ defmodule Streamix.Gindex.Transport do
   alias Streamix.Gindex.EndpointManager
   alias Streamix.Gindex.HealthTracker
   alias Streamix.Gindex.Pacer
+  alias Streamix.Gindex.QuotaGuard
 
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(2)
@@ -29,7 +30,23 @@ defmodule Streamix.Gindex.Transport do
   @max_server_error_retries 2
 
   def request(method, url, body, base_url, opts \\ []) do
-    request_with_retry(method, url, body, base_url, opts, 0, 0)
+    # Consume one daily quota slot per public-API call. Internal
+    # retries (rate-limit backoff, 500 fallback) do NOT consume extra —
+    # this counter tracks logical operations from the scrapers, which
+    # is what the CF Worker budget effectively meters.
+    case QuotaGuard.consume() do
+      {:error, :exhausted, count} ->
+        :telemetry.execute(
+          [:streamix, :gindex, :request, :stop],
+          %{count: 1},
+          %{outcome: :quota_exhausted, base_url: base_url, operation: :list}
+        )
+
+        {:error, {:quota_exhausted, count}}
+
+      _ ->
+        request_with_retry(method, url, body, base_url, opts, 0, 0)
+    end
   end
 
   defp request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt) do
@@ -102,6 +119,16 @@ defmodule Streamix.Gindex.Transport do
   defp report_request_result(base_url, operation, {:ok, %{status: 200}}) do
     EndpointManager.report_success(base_url)
     HealthTracker.record_success(base_url, operation)
+    emit_request_stop(:ok, base_url, operation)
+  end
+
+  defp report_request_result(base_url, operation, {:ok, %{status: 500, body: resp_body}})
+       when is_binary(resp_body) do
+    error_type = detect_error_type(resp_body)
+    EndpointManager.report_error(base_url)
+    HealthTracker.record_error(base_url, operation, error_type)
+    outcome = if error_type == :javascript_error, do: :typeerror_skip, else: :other_error
+    emit_request_stop(outcome, base_url, operation)
   end
 
   defp report_request_result(base_url, operation, {:ok, %{status: status, body: resp_body}})
@@ -109,14 +136,29 @@ defmodule Streamix.Gindex.Transport do
     error_type = detect_error_type(resp_body)
     EndpointManager.report_error(base_url)
     HealthTracker.record_error(base_url, operation, error_type)
+    emit_request_stop(:other_error, base_url, operation)
+  end
+
+  defp report_request_result(base_url, operation, {:ok, %{status: status}})
+       when status in [429, 503] do
+    emit_request_stop(:rate_limited, base_url, operation)
   end
 
   defp report_request_result(base_url, operation, {:error, reason}) do
     EndpointManager.report_error(base_url)
     HealthTracker.record_error(base_url, operation, reason)
+    emit_request_stop(:other_error, base_url, operation)
   end
 
   defp report_request_result(_base_url, _operation, _result), do: :ok
+
+  defp emit_request_stop(outcome, base_url, operation) do
+    :telemetry.execute(
+      [:streamix, :gindex, :request, :stop],
+      %{count: 1},
+      %{outcome: outcome, base_url: base_url, operation: operation}
+    )
+  end
 
   defp retry_transport_error(
          reason,
@@ -173,11 +215,39 @@ defmodule Streamix.Gindex.Transport do
        when rate_limit_attempt < @max_server_error_retries do
     body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
 
-    if auth_error?(body_str) do
-      Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
-      {:ok, response}
-    else
-      retry_server_error(method, url, body, base_url, opts, attempt, rate_limit_attempt, body_str)
+    cond do
+      auth_error?(body_str) ->
+        Logger.error(
+          "[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}"
+        )
+
+        {:ok, response}
+
+      # Deterministic worker.js bug: `TypeError: Cannot read properties of
+      # undefined (reading 'map')` fires on the same (path, page_token)
+      # every time — burning retries costs ~35s and 3 requests against a
+      # 10K/day budget for zero recovery. Bubble the response so
+      # Pagination's partial-result path can keep what it already
+      # collected and move on.
+      javascript_error?(body_str) ->
+        Logger.warning(
+          "[GIndex] worker.js TypeError on #{method} #{url} — skipping retry: " <>
+            "#{String.slice(body_str, 0, 200)}"
+        )
+
+        {:ok, response}
+
+      true ->
+        retry_server_error(
+          method,
+          url,
+          body,
+          base_url,
+          opts,
+          attempt,
+          rate_limit_attempt,
+          body_str
+        )
     end
   end
 
@@ -252,6 +322,13 @@ defmodule Streamix.Gindex.Transport do
     base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
     base_delay + :rand.uniform(2000)
   end
+
+  defp javascript_error?(body) when is_binary(body) do
+    String.contains?(body, "TypeError") or
+      String.contains?(body, "Cannot read properties")
+  end
+
+  defp javascript_error?(_), do: false
 
   defp auth_error?(body) when is_binary(body) do
     body_lower = String.downcase(body)
