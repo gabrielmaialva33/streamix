@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.M3u.Parser do
+defmodule Streamix.Iptv.M3uParser do
   @moduledoc """
   Parser for the Xtream-flavoured M3U Plus format returned by `/get.php`.
 

@@ -1,7 +1,7 @@
-defmodule Streamix.Iptv.M3u.ParserTest do
+defmodule Streamix.Iptv.M3uParserTest do
   use ExUnit.Case, async: true
 
-  alias Streamix.Iptv.M3u.Parser
+  alias Streamix.Iptv.M3uParser
 
   @sample """
   #EXTM3U
