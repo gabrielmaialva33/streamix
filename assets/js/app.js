@@ -175,6 +175,90 @@ const createIconButton = (label, text) => {
   return button;
 };
 
+// Android / desktop Chrome PWA install flow. Captures the
+// `beforeinstallprompt` event (which the browser only fires on engaged
+// users) and surfaces our own "Instalar Streamix" CTA, since the
+// default mini-infobar UX is poor and barely discoverable.
+let deferredInstallPrompt = null;
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showAndroidInstallHint();
+});
+
+const showAndroidInstallHint = () => {
+  if (isStandalonePwa()) return;
+  if (safeStorage.get(INSTALL_HINT_DISMISSED_KEY) === "true") return;
+  if (document.getElementById("android-install-hint")) return;
+  if (!deferredInstallPrompt) return;
+
+  const hint = document.createElement("aside");
+  hint.id = "android-install-hint";
+  hint.className =
+    "fixed inset-x-4 bottom-4 z-[9998] rounded-lg border border-border bg-surface/95 p-4 shadow-2xl backdrop-blur safe-area-bottom";
+  hint.setAttribute("role", "dialog");
+  hint.setAttribute("aria-label", "Instalar Streamix");
+
+  const row = document.createElement("div");
+  row.className = "flex items-start gap-3";
+
+  const icon = document.createElement("div");
+  icon.className =
+    "grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand text-lg font-semibold text-white";
+  icon.textContent = "S";
+
+  const content = document.createElement("div");
+  content.className = "min-w-0 flex-1";
+
+  const title = document.createElement("p");
+  title.className = "text-sm font-semibold text-text-primary";
+  title.textContent = "Instale o Streamix";
+
+  const copy = document.createElement("p");
+  copy.className = "mt-1 text-xs leading-5 text-text-secondary";
+  copy.textContent = "Acesso rápido do app pela tela inicial, modo offline e notificações.";
+
+  const installBtn = document.createElement("button");
+  installBtn.type = "button";
+  installBtn.className =
+    "mt-3 inline-flex items-center justify-center rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-hover";
+  installBtn.textContent = "Instalar";
+  installBtn.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    try {
+      await deferredInstallPrompt.userChoice;
+    } catch (_e) {
+      // user canceled
+    }
+    deferredInstallPrompt = null;
+    hint.remove();
+  });
+
+  content.appendChild(title);
+  content.appendChild(copy);
+  content.appendChild(installBtn);
+
+  const close = createIconButton("Dispensar oferta de instalação", "×");
+  close.addEventListener("click", () => {
+    safeStorage.set(INSTALL_HINT_DISMISSED_KEY, "true");
+    hint.remove();
+  });
+
+  row.appendChild(icon);
+  row.appendChild(content);
+  row.appendChild(close);
+  hint.appendChild(row);
+  document.body.appendChild(hint);
+};
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  document.getElementById("android-install-hint")?.remove();
+  safeStorage.set(INSTALL_HINT_DISMISSED_KEY, "true");
+});
+
 const showIosInstallHint = () => {
   if (!isIosWebKit() || !isSafariBrowser() || isStandalonePwa()) return;
   if (safeStorage.get(INSTALL_HINT_DISMISSED_KEY) === "true") return;

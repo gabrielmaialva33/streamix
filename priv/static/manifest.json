@@ -40,6 +40,29 @@
       "purpose": "maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/images/screenshot-home-wide.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Página inicial do Streamix"
+    },
+    {
+      "src": "/images/screenshot-home-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Página inicial do Streamix (mobile)"
+    },
+    {
+      "src": "/images/screenshot-browse-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Catálogo de conteúdo"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Buscar",
@@ -60,6 +83,15 @@
       "url": "/favorites"
     }
   ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "categories": [
     "entertainment",
     "video"
