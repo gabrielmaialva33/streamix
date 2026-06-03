@@ -5,7 +5,7 @@ defmodule Streamix.Repo.Migrations.CreateWatchPartyTables do
     create table(:watch_party_rooms) do
       add :invite_code, :string, null: false
       add :host_user_id, references(:users, on_delete: :delete_all), null: false
-      add :catalog_item_id, references(:catalog_items, on_delete: :restrict), null: false
+      add :catalog_item_id, references(:catalog_items, on_delete: :delete_all), null: false
       add :status, :string, null: false, default: "active"
       add :max_participants, :integer, null: false, default: 10
       add :settings, :map, default: %{}

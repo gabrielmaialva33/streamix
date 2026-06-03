@@ -28,6 +28,7 @@ defmodule Streamix.Repo.Migrations.CreateLiveChannels do
     )
 
     create unique_index(:live_channels, [:catalog_item_id])
+    create index(:live_channels, [:catalog_item_id, :provider_id])
 
     execute(
       """
@@ -35,7 +36,7 @@ defmodule Streamix.Repo.Migrations.CreateLiveChannels do
         ADD CONSTRAINT live_channels_catalog_item_provider_fk
         FOREIGN KEY (catalog_item_id, provider_id)
         REFERENCES catalog_items (id, provider_id)
-        ON DELETE RESTRICT
+        ON DELETE CASCADE
       """,
       "ALTER TABLE live_channels DROP CONSTRAINT IF EXISTS live_channels_catalog_item_provider_fk"
     )

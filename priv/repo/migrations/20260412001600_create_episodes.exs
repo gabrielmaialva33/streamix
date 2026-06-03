@@ -21,7 +21,7 @@ defmodule Streamix.Repo.Migrations.CreateEpisodes do
       add :gindex_url_expires_at, :utc_datetime
       add :track_metadata, :jsonb
       add :season_id, references(:seasons, on_delete: :delete_all), null: false
-      add :catalog_item_id, references(:catalog_items, on_delete: :restrict), null: false
+      add :catalog_item_id, references(:catalog_items, on_delete: :delete_all), null: false
 
       timestamps(type: :utc_datetime)
     end

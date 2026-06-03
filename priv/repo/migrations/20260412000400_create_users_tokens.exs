@@ -17,6 +17,7 @@ defmodule Streamix.Repo.Migrations.CreateUsersTokens do
     end
 
     create index(:users_tokens, [:user_id])
+    create index(:users_tokens, [:user_id, :context])
     create unique_index(:users_tokens, [:context, :token])
   end
 end

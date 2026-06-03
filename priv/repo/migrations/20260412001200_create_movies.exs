@@ -52,6 +52,7 @@ defmodule Streamix.Repo.Migrations.CreateMovies do
     )
 
     create unique_index(:movies, [:catalog_item_id])
+    create index(:movies, [:catalog_item_id, :provider_id])
 
     execute(
       """
@@ -59,7 +60,7 @@ defmodule Streamix.Repo.Migrations.CreateMovies do
         ADD CONSTRAINT movies_catalog_item_provider_fk
         FOREIGN KEY (catalog_item_id, provider_id)
         REFERENCES catalog_items (id, provider_id)
-        ON DELETE RESTRICT
+        ON DELETE CASCADE
       """,
       "ALTER TABLE movies DROP CONSTRAINT IF EXISTS movies_catalog_item_provider_fk"
     )

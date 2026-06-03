@@ -33,6 +33,7 @@ defmodule Streamix.Repo.Migrations.CreateSeries do
     create index(:series, [:gindex_path])
     create index(:series, [:provider_id, :name])
     create unique_index(:series, [:catalog_item_id])
+    create index(:series, [:catalog_item_id, :provider_id])
 
     create index(:series, [:anilist_id],
              where: "anilist_id IS NOT NULL",
@@ -65,7 +66,7 @@ defmodule Streamix.Repo.Migrations.CreateSeries do
         ADD CONSTRAINT series_catalog_item_provider_fk
         FOREIGN KEY (catalog_item_id, provider_id)
         REFERENCES catalog_items (id, provider_id)
-        ON DELETE RESTRICT
+        ON DELETE CASCADE
       """,
       "ALTER TABLE series DROP CONSTRAINT IF EXISTS series_catalog_item_provider_fk"
     )
