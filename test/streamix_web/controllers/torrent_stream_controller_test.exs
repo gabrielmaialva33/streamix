@@ -1,9 +1,9 @@
 defmodule StreamixWeb.TorrentStreamControllerTest do
   use StreamixWeb.ConnCase, async: false
 
-  alias Streamix.Iptv.Torrent.TorrentStream
   alias Streamix.Iptv.TorrentProvider
   alias Streamix.Repo
+  alias Streamix.Torrent.TorrentStream
 
   @magnet "magnet:?xt=urn:btih:#{String.duplicate("a", 40)}"
 
@@ -114,19 +114,19 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
   defp setup_torrent_session_supervisors do
     # Ensure the supervisors required by start_or_join exist for the
     # integration test path. Tests not exercising this don't need them.
-    case Process.whereis(Streamix.Iptv.Torrent.StreamRegistry) do
+    case Process.whereis(Streamix.Torrent.StreamRegistry) do
       nil ->
-        start_supervised!({Registry, keys: :unique, name: Streamix.Iptv.Torrent.StreamRegistry})
+        start_supervised!({Registry, keys: :unique, name: Streamix.Torrent.StreamRegistry})
 
       _ ->
         :ok
     end
 
-    case Process.whereis(Streamix.Iptv.Torrent.StreamSessionSupervisor) do
+    case Process.whereis(Streamix.Torrent.StreamSessionSupervisor) do
       nil ->
         start_supervised!(
           {DynamicSupervisor,
-           name: Streamix.Iptv.Torrent.StreamSessionSupervisor, strategy: :one_for_one}
+           name: Streamix.Torrent.StreamSessionSupervisor, strategy: :one_for_one}
         )
 
       _ ->

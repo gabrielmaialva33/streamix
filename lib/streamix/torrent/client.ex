@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Client do
+defmodule Streamix.Torrent.Client do
   @moduledoc """
   HTTP wrapper around the rqbit sidecar's REST API.
 

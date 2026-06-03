@@ -1,7 +1,7 @@
-defmodule Streamix.Iptv.Torrent.MagnetTest do
+defmodule Streamix.Torrent.MagnetTest do
   use ExUnit.Case, async: true
 
-  alias Streamix.Iptv.Torrent.Magnet
+  alias Streamix.Torrent.Magnet
 
   @hash "5B6E178EC1C77D932068BE9BE185BAD19D564C49"
 

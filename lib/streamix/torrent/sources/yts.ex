@@ -1,6 +1,6 @@
-defmodule Streamix.Iptv.Torrent.Sources.Yts do
+defmodule Streamix.Torrent.Sources.Yts do
   @moduledoc """
-  YTS source — implements `Streamix.Iptv.Torrent.Source` against the
+  YTS source — implements `Streamix.Torrent.Source` against the
   yts.bz/api/v2 JSON API.
 
   YTS exposes ~75k movies, every one with a hash + size + seeders
@@ -14,9 +14,9 @@ defmodule Streamix.Iptv.Torrent.Sources.Yts do
   synthesize one with `Magnet.build/3` and the curated tracker list.
   """
 
-  @behaviour Streamix.Iptv.Torrent.Source
+  @behaviour Streamix.Torrent.Source
 
-  alias Streamix.Iptv.Torrent.Magnet
+  alias Streamix.Torrent.Magnet
 
   @slug "yts"
   @name "YTS"

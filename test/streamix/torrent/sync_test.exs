@@ -1,10 +1,10 @@
-defmodule Streamix.Iptv.Torrent.SyncTest do
+defmodule Streamix.Torrent.SyncTest do
   use Streamix.DataCase, async: false
 
   alias Streamix.Iptv.{Movie, Provider}
-  alias Streamix.Iptv.Torrent.{Sync, TorrentStream}
   alias Streamix.Repo
   alias Streamix.TestSupport.TorrentTestSource
+  alias Streamix.Torrent.{Sync, TorrentStream}
 
   setup do
     previous_sources = Application.get_env(:streamix, :torrent_sources)
@@ -156,7 +156,7 @@ defmodule Streamix.Iptv.Torrent.SyncTest do
 
     test "propagates source errors", %{provider: provider} do
       defmodule FailingSource do
-        @behaviour Streamix.Iptv.Torrent.Source
+        @behaviour Streamix.Torrent.Source
         @impl true
         def slug, do: "failing"
         @impl true
@@ -231,7 +231,7 @@ defmodule Streamix.Iptv.Torrent.SyncTest do
   end
 
   defmodule SecondSource do
-    @behaviour Streamix.Iptv.Torrent.Source
+    @behaviour Streamix.Torrent.Source
 
     @impl true
     def slug, do: "second"

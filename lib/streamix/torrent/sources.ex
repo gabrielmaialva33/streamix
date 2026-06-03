@@ -1,9 +1,9 @@
-defmodule Streamix.Iptv.Torrent.Sources do
+defmodule Streamix.Torrent.Sources do
   @moduledoc """
   Registry of enabled torrent sources.
 
-  Each source implements the `Streamix.Iptv.Torrent.Source` behaviour
-  and is iterated by `Streamix.Iptv.Torrent.Sync.sync_provider/1` to
+  Each source implements the `Streamix.Torrent.Source` behaviour
+  and is iterated by `Streamix.Torrent.Sync.sync_provider/1` to
   populate the `movies` and `torrent_streams` tables.
 
   The default list includes the built-in adapters. Sources that need a
@@ -12,12 +12,12 @@ defmodule Streamix.Iptv.Torrent.Sources do
   via:
 
       config :streamix, :torrent_sources, [
-        Streamix.Iptv.Torrent.Sources.Yts,
-        Streamix.Iptv.Torrent.Sources.GratisTorrent
+        Streamix.Torrent.Sources.Yts,
+        Streamix.Torrent.Sources.GratisTorrent
       ]
   """
 
-  alias Streamix.Iptv.Torrent.Sources.{ComandoTorrent, Eztv, GratisTorrent, Yts}
+  alias Streamix.Torrent.Sources.{ComandoTorrent, Eztv, GratisTorrent, Yts}
 
   @default_sources [Yts, Eztv, GratisTorrent, ComandoTorrent]
 

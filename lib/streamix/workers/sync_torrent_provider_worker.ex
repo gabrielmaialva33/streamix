@@ -4,7 +4,7 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
 
   Loads (or creates) the system torrent provider, then enqueues one
   `Streamix.Workers.Torrent.SyncSourceWorker` job per source returned
-  by `Streamix.Iptv.Torrent.sources/0`.
+  by `Streamix.Torrent.sources/0`.
 
   Queue: `:torrent_sync`. Triggered nightly by the Oban cron plugin.
   Mirrors `Streamix.Workers.SyncGindexProviderWorker`.
@@ -12,8 +12,9 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
 
   use Oban.Worker, queue: :torrent_sync, max_attempts: 3
 
-  alias Streamix.Iptv.{Provider, Torrent, TorrentProvider}
+  alias Streamix.Iptv.{Provider, TorrentProvider}
   alias Streamix.Repo
+  alias Streamix.Torrent
   alias Streamix.Workers.Torrent.SyncSourceWorker
 
   require Logger

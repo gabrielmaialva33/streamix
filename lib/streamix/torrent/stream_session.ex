@@ -1,10 +1,10 @@
-defmodule Streamix.Iptv.Torrent.StreamSession do
+defmodule Streamix.Torrent.StreamSession do
   @moduledoc """
   GenServer that owns the lifecycle of a single rqbit torrent while
   Streamix users are watching it.
 
   One process per `info_hash`, registered in
-  `Streamix.Iptv.Torrent.StreamRegistry`. The first viewer triggers an
+  `Streamix.Torrent.StreamRegistry`. The first viewer triggers an
   `add` call on rqbit; subsequent viewers piggy-back on the same
   process. When the last viewer leaves we schedule a 60s grace period
   before exiting — the `Reaper` (or our own `terminate/2`) tells rqbit
@@ -29,10 +29,10 @@ defmodule Streamix.Iptv.Torrent.StreamSession do
 
   require Logger
 
-  alias Streamix.Iptv.Torrent.Client
+  alias Streamix.Torrent.Client
 
-  @registry Streamix.Iptv.Torrent.StreamRegistry
-  @supervisor Streamix.Iptv.Torrent.StreamSessionSupervisor
+  @registry Streamix.Torrent.StreamRegistry
+  @supervisor Streamix.Torrent.StreamSessionSupervisor
 
   # Bytes that must be buffered before we let the controller hand off
   # to the player. 5 MB picks up the moov atom for most mp4/mkv files

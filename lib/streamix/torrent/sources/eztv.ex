@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Sources.Eztv do
+defmodule Streamix.Torrent.Sources.Eztv do
   @moduledoc """
   EZTV-compatible source adapter.
 
@@ -8,9 +8,9 @@ defmodule Streamix.Iptv.Torrent.Sources.Eztv do
   upstream HTML layout in the app.
   """
 
-  @behaviour Streamix.Iptv.Torrent.Source
+  @behaviour Streamix.Torrent.Source
 
-  alias Streamix.Iptv.Torrent.Sources.Helpers
+  alias Streamix.Torrent.Sources.Helpers
 
   @slug "eztv"
   @name "EZTV"

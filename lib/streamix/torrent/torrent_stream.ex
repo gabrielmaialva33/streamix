@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.TorrentStream do
+defmodule Streamix.Torrent.TorrentStream do
   @moduledoc """
   A single magnet/info_hash known for a movie or episode.
 

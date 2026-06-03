@@ -4,9 +4,9 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorkerTest do
   use Oban.Testing, repo: Streamix.Repo
 
   alias Streamix.Iptv.Provider
-  alias Streamix.Iptv.Torrent.TorrentStream
   alias Streamix.Repo
   alias Streamix.TestSupport.TorrentTestSource
+  alias Streamix.Torrent.TorrentStream
   alias Streamix.Workers.Torrent.SyncSourceWorker
 
   setup do

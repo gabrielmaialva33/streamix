@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Reaper do
+defmodule Streamix.Torrent.Reaper do
   @moduledoc """
   Periodic sweeper that drops rqbit torrents Streamix has lost track
   of.
@@ -24,9 +24,9 @@ defmodule Streamix.Iptv.Torrent.Reaper do
 
   require Logger
 
-  alias Streamix.Iptv.Torrent.{Client, StreamSession}
+  alias Streamix.Torrent.{Client, StreamSession}
 
-  @registry Streamix.Iptv.Torrent.StreamRegistry
+  @registry Streamix.Torrent.StreamRegistry
 
   @default_interval :timer.minutes(5)
 

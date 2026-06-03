@@ -1,6 +1,6 @@
 defmodule Streamix.TestSupport.TorrentTestSource do
   @moduledoc """
-  In-memory implementation of `Streamix.Iptv.Torrent.Source` used by
+  In-memory implementation of `Streamix.Torrent.Source` used by
   the orchestrator unit tests.
 
   Pages and items are seeded via the application env at
@@ -13,7 +13,7 @@ defmodule Streamix.TestSupport.TorrentTestSource do
       ])
   """
 
-  @behaviour Streamix.Iptv.Torrent.Source
+  @behaviour Streamix.Torrent.Source
 
   @impl true
   def slug, do: "test"

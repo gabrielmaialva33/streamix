@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Sources.Helpers do
+defmodule Streamix.Torrent.Sources.Helpers do
   @moduledoc """
   Shared source helpers for torrent indexers.
 
@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.Torrent.Sources.Helpers do
   pagination so BR sources do not copy/paste fragile scraper code.
   """
 
-  alias Streamix.Iptv.Torrent.Magnet
+  alias Streamix.Torrent.Magnet
 
   @headers [
     {"user-agent", "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.cloud)"},

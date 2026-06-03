@@ -26,9 +26,9 @@ defmodule StreamixWeb.TorrentStreamController do
   alias Plug.Conn
 
   alias Streamix.Access
-  alias Streamix.Iptv.Torrent.{Client, StreamSession, TorrentStream}
   alias Streamix.Iptv.TorrentProvider
   alias Streamix.Repo
+  alias Streamix.Torrent.{Client, StreamSession, TorrentStream}
 
   # Headers we copy from the rqbit response back to the browser.
   @forwardable_response_headers ~w(content-type content-length content-range accept-ranges)

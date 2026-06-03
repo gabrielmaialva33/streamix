@@ -1,7 +1,7 @@
-defmodule Streamix.Iptv.Torrent.ReaperTest do
+defmodule Streamix.Torrent.ReaperTest do
   use ExUnit.Case, async: false
 
-  alias Streamix.Iptv.Torrent.Reaper
+  alias Streamix.Torrent.Reaper
 
   setup do
     {:ok, server, port, agent} = start_rqbit_stub()
@@ -13,7 +13,7 @@ defmodule Streamix.Iptv.Torrent.ReaperTest do
     )
 
     # Spin up the registry so the Reaper can check it.
-    start_supervised!({Registry, keys: :unique, name: Streamix.Iptv.Torrent.StreamRegistry})
+    start_supervised!({Registry, keys: :unique, name: Streamix.Torrent.StreamRegistry})
 
     on_exit(fn ->
       if prior, do: Application.put_env(:streamix, :torrent_provider, prior)
@@ -56,7 +56,7 @@ defmodule Streamix.Iptv.Torrent.ReaperTest do
     end)
 
     # Pretend a StreamSession owns this hash.
-    {:ok, _} = Registry.register(Streamix.Iptv.Torrent.StreamRegistry, info_hash, :session)
+    {:ok, _} = Registry.register(Streamix.Torrent.StreamRegistry, info_hash, :session)
 
     {:ok, _pid} = start_supervised({Reaper, [interval: :timer.minutes(60)]})
     # See sibling test: sweep_now is synchronous.

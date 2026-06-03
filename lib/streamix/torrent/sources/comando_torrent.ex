@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Sources.ComandoTorrent do
+defmodule Streamix.Torrent.Sources.ComandoTorrent do
   @moduledoc """
   ComandoTorrent-compatible BR source adapter.
 
@@ -7,9 +7,9 @@ defmodule Streamix.Iptv.Torrent.Sources.ComandoTorrent do
   so the sync layer only sees stable `Source.listing_item/0` maps.
   """
 
-  @behaviour Streamix.Iptv.Torrent.Source
+  @behaviour Streamix.Torrent.Source
 
-  alias Streamix.Iptv.Torrent.Sources.Helpers
+  alias Streamix.Torrent.Sources.Helpers
 
   @slug "comandotorrent"
   @name "ComandoTorrent"

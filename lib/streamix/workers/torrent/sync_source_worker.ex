@@ -1,6 +1,6 @@
 defmodule Streamix.Workers.Torrent.SyncSourceWorker do
   @moduledoc """
-  Oban worker that runs `Streamix.Iptv.Torrent.Sync.sync_source/2`
+  Oban worker that runs `Streamix.Torrent.Sync.sync_source/2`
   for a single `{provider_id, source_slug}` pair.
 
   Queue: `:torrent_sync`. Triggered by
@@ -12,8 +12,8 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
   use Oban.Worker, queue: :torrent_sync, max_attempts: 3
 
   alias Streamix.Iptv.Provider
-  alias Streamix.Iptv.Torrent
   alias Streamix.Repo
+  alias Streamix.Torrent
 
   require Logger
 

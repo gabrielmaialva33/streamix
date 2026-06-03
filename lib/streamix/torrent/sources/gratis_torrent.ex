@@ -1,16 +1,16 @@
-defmodule Streamix.Iptv.Torrent.Sources.GratisTorrent do
+defmodule Streamix.Torrent.Sources.GratisTorrent do
   @moduledoc """
   GratisTorrent-compatible BR source adapter.
 
   Configure `GRATISTORRENT_SOURCE_URL` with a normalized JSON feed.
   Source-specific crawlers should emit that stable payload and reuse
-  `Streamix.Iptv.Torrent.Sources.Helpers` for magnet and release
+  `Streamix.Torrent.Sources.Helpers` for magnet and release
   normalization.
   """
 
-  @behaviour Streamix.Iptv.Torrent.Source
+  @behaviour Streamix.Torrent.Source
 
-  alias Streamix.Iptv.Torrent.Sources.Helpers
+  alias Streamix.Torrent.Sources.Helpers
 
   @slug "gratistorrent"
   @name "GratisTorrent"

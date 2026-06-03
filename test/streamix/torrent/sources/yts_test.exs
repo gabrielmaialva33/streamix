@@ -1,7 +1,7 @@
-defmodule Streamix.Iptv.Torrent.Sources.YtsTest do
+defmodule Streamix.Torrent.Sources.YtsTest do
   use ExUnit.Case, async: true
 
-  alias Streamix.Iptv.Torrent.Sources.Yts
+  alias Streamix.Torrent.Sources.Yts
 
   @movie_payload %{
     "id" => 76_117,

@@ -1,7 +1,7 @@
-defmodule Streamix.Iptv.Torrent.StreamSessionTest do
+defmodule Streamix.Torrent.StreamSessionTest do
   use ExUnit.Case, async: false
 
-  alias Streamix.Iptv.Torrent.StreamSession
+  alias Streamix.Torrent.StreamSession
 
   @info_hash String.duplicate("a", 40)
   @magnet "magnet:?xt=urn:btih:#{String.duplicate("a", 40)}"
@@ -19,11 +19,10 @@ defmodule Streamix.Iptv.Torrent.StreamSessionTest do
 
     # Local registry + supervisor so we don't depend on the application
     # tree (which only starts torrent infra when enabled at boot).
-    start_supervised!({Registry, keys: :unique, name: Streamix.Iptv.Torrent.StreamRegistry})
+    start_supervised!({Registry, keys: :unique, name: Streamix.Torrent.StreamRegistry})
 
     start_supervised!(
-      {DynamicSupervisor,
-       name: Streamix.Iptv.Torrent.StreamSessionSupervisor, strategy: :one_for_one}
+      {DynamicSupervisor, name: Streamix.Torrent.StreamSessionSupervisor, strategy: :one_for_one}
     )
 
     on_exit(fn ->

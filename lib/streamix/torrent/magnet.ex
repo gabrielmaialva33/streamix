@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Magnet do
+defmodule Streamix.Torrent.Magnet do
   @moduledoc """
   Builds and parses BitTorrent magnet URIs.
 

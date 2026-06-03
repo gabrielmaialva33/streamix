@@ -1,21 +1,21 @@
-defmodule Streamix.Iptv.Torrent.Sync do
+defmodule Streamix.Torrent.Sync do
   @moduledoc """
   Orchestrator for torrent provider synchronization.
 
-  Iterates the configured `Streamix.Iptv.Torrent.Sources` modules,
+  Iterates the configured `Streamix.Torrent.Sources` modules,
   pages through each source's listing while honouring its declared
   rate limit, and upserts the result into the `movies` +
   `torrent_streams` tables.
 
-  Mirrors `Streamix.Iptv.Gindex.Sync.sync_provider/1` in shape so the
+  Mirrors `Streamix.Gindex.Sync.sync_provider/1` in shape so the
   worker layer can stay consistent across catalogs.
   """
 
   import Ecto.Query, warn: false
 
   alias Streamix.Iptv.{CatalogItem, Movie, Provider}
-  alias Streamix.Iptv.Torrent.{Sources, TorrentStream}
   alias Streamix.Repo
+  alias Streamix.Torrent.{Sources, TorrentStream}
 
   require Logger
 

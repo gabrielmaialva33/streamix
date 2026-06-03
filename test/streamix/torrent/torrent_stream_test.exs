@@ -1,7 +1,7 @@
-defmodule Streamix.Iptv.Torrent.TorrentStreamTest do
+defmodule Streamix.Torrent.TorrentStreamTest do
   use Streamix.DataCase, async: true
 
-  alias Streamix.Iptv.Torrent.TorrentStream
+  alias Streamix.Torrent.TorrentStream
 
   describe "changeset/2" do
     test "downcases the info_hash and accepts a 40-char hex" do

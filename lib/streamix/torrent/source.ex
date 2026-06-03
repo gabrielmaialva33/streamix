@@ -1,4 +1,4 @@
-defmodule Streamix.Iptv.Torrent.Source do
+defmodule Streamix.Torrent.Source do
   @moduledoc """
   Behaviour every torrent source (YTS, EZTV, GratisTorrent, …)
   implements so the sync orchestrator can iterate sources uniformly.
