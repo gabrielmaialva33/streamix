@@ -203,11 +203,16 @@ if gemini_api_key = get_env.("GEMINI_API_KEY") do
   config :streamix, :gemini, api_key: gemini_api_key
 end
 
-# NVIDIA NIM configuration for embeddings (1024 dimensions)
+# NVIDIA NIM configuration for embeddings (1024 dimensions).
+# 2026-06: NVIDIA moved the embedding API to the OpenAI-compatible
+# `integrate.api.nvidia.com/v1` surface, which requires the new
+# namespaced model id `nvidia/nv-embedqa-e5-v5` (the old short form
+# returns 404 "page not found"). Override via NVIDIA_EMBEDDING_MODEL
+# if a different model is needed.
 if nvidia_api_key = get_env.("NVIDIA_API_KEY") do
   config :streamix, :nvidia,
     api_key: nvidia_api_key,
-    embedding_model: get_env.("NVIDIA_EMBEDDING_MODEL") || "nv-embedqa-e5-v5"
+    embedding_model: get_env.("NVIDIA_EMBEDDING_MODEL") || "nvidia/nv-embedqa-e5-v5"
 end
 
 # Qdrant vector database configuration
