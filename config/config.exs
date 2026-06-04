@@ -214,6 +214,12 @@ config :streamix, Oban,
        {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
+       # TMDB lookup for freshly-ingested gindex rows (poster + tmdb_id).
+       # 30min after the sync gives the orchestrator time to finalize.
+       # The orchestrator also auto-triggers this worker on
+       # sync_status=completed; this cron is the safety net for runs
+       # that ended in "failed" or when the auto-trigger didn't fire.
+       {"30 3 * * *", Streamix.Workers.Gindex.BackfillTmdbWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
        # Index embeddings for semantic search daily at 5 AM
