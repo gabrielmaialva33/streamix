@@ -47,6 +47,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
 
   alias Streamix.Iptv.{Episode, Movie, Provider, Season, Series}
   alias Streamix.Repo
+  alias Streamix.Workers.Gindex.BackfillTmdbWorker
 
   require Logger
 
@@ -182,9 +183,38 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
         |> Provider.sync_changeset(attrs)
         |> Repo.update()
 
+        # Kick off TMDB enrichment as soon as the catalog is settled.
+        # We trigger on partial-success runs too (status=failed but DB
+        # rows present) because the fresh rows still need posters; the
+        # nightly 03:30 cron is the safety net if this enqueue fails.
+        # 30s schedule_in gives Postgres time to commit the provider
+        # update before the enrich worker queries.
+        maybe_enqueue_enrich(counts, workflow_id)
+
         :ok
     end
   end
+
+  defp maybe_enqueue_enrich(%{movies_count: m, series_count: s}, workflow_id)
+       when m > 0 or s > 0 do
+    case %{}
+         |> BackfillTmdbWorker.new(schedule_in: 30)
+         |> Oban.insert() do
+      {:ok, %Oban.Job{id: id, conflict?: conflict}} ->
+        Logger.info(
+          "[GIndex Orchestrator] workflow=#{workflow_id} enqueued enrich job=#{id} " <>
+            "conflict=#{conflict}"
+        )
+
+      {:error, reason} ->
+        Logger.warning(
+          "[GIndex Orchestrator] workflow=#{workflow_id} failed to enqueue enrich: " <>
+            inspect(reason)
+        )
+    end
+  end
+
+  defp maybe_enqueue_enrich(_counts, _workflow_id), do: :ok
 
   # Counts come from the DB rather than the rolled-up sibling stats so
   # the provider row matches reality even when meta is missing (e.g.
