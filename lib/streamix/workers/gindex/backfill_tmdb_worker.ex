@@ -35,6 +35,21 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   @cron_limit 1_500
   @batch_size 50
   @poster_size "w500"
+  # Re-queue misses older than this so TMDB additions / transient
+  # failures get a second chance. Runs once per cron-mode invocation
+  # (`args=%{}`), not on continuation loops.
+  @stale_miss_after_days 7
+  # Loop continuation: when enqueue_pending hits the full per-kind cap
+  # we're almost certainly leaving pending rows behind. Schedule a
+  # follow-up cycle to drain. 5 min spaces it past the batches we just
+  # queued so we don't re-pick the same ids before they've been
+  # processed.
+  @loop_schedule_in 5 * 60
+  # Pure safety belt: cap how many continuation hops a single cron run
+  # can chain. 10× @cron_limit = 15k movies + 15k series, well above
+  # any realistic gindex catalog. Prevents runaway scheduling if a
+  # data bug ever keeps `tmdb_searched_at` from being stamped.
+  @max_loop_hops 10
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(15)
@@ -48,10 +63,17 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     process_batch(Series, :series, ids)
   end
 
+  def perform(%Oban.Job{args: %{"continue" => true, "hop" => hop}}) do
+    drain_loop(hop)
+  end
+
   def perform(%Oban.Job{args: args}) when map_size(args) == 0 do
+    requeued = requeue_stale_misses()
     enqueued = enqueue_pending()
-    Logger.info("[GIndex Enrich] cron enqueued #{enqueued} rows")
-    :ok
+
+    Logger.info("[GIndex Enrich] cron retry_requeued=#{requeued} enqueued=#{enqueued} rows")
+
+    maybe_continue(enqueued, 1)
   end
 
   # --- Batch processing ---
@@ -254,6 +276,73 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   end
 
   # --- Cron enqueue ---
+
+  defp drain_loop(hop) when is_integer(hop) and hop > @max_loop_hops do
+    Logger.warning(
+      "[GIndex Enrich] continuation hop=#{hop} exceeded #{@max_loop_hops}, halting drain"
+    )
+
+    :ok
+  end
+
+  defp drain_loop(hop) do
+    enqueued = enqueue_pending()
+    Logger.info("[GIndex Enrich] drain hop=#{hop} enqueued=#{enqueued} rows")
+    maybe_continue(enqueued, hop + 1)
+  end
+
+  defp maybe_continue(enqueued, next_hop) do
+    if enqueued >= @cron_limit do
+      case %{"continue" => true, "hop" => next_hop}
+           |> __MODULE__.new(schedule_in: @loop_schedule_in)
+           |> Oban.insert() do
+        {:ok, %Oban.Job{id: id}} ->
+          Logger.info(
+            "[GIndex Enrich] queued continuation job=#{id} hop=#{next_hop} " <>
+              "in #{@loop_schedule_in}s"
+          )
+
+        {:error, reason} ->
+          Logger.warning(
+            "[GIndex Enrich] failed to queue continuation hop=#{next_hop}: #{inspect(reason)}"
+          )
+      end
+    end
+
+    :ok
+  end
+
+  # Wipe `tmdb_searched_at` on rows that missed more than `@stale_miss_after_days`
+  # ago so they re-enter the eligibility pool. TMDB ships titles late, parse
+  # heuristics improve, and transient network errors get encoded as misses;
+  # without retry, the system never recovers them. Bounded UPDATE keeps
+  # this cheap on a large catalog.
+  defp requeue_stale_misses do
+    cutoff =
+      DateTime.utc_now()
+      |> DateTime.add(-@stale_miss_after_days * 24 * 60 * 60, :second)
+      |> DateTime.truncate(:second)
+
+    {movie_n, _} =
+      from(m in Movie,
+        where:
+          not is_nil(m.tmdb_miss_reason) and
+            not is_nil(m.tmdb_searched_at) and
+            m.tmdb_searched_at < ^cutoff
+      )
+      |> Repo.update_all(set: [tmdb_searched_at: nil, tmdb_miss_reason: nil])
+
+    {series_n, _} =
+      from(s in Series,
+        where:
+          not is_nil(s.tmdb_miss_reason) and
+            not is_nil(s.tmdb_searched_at) and
+            s.tmdb_searched_at < ^cutoff
+      )
+      |> Repo.update_all(set: [tmdb_searched_at: nil, tmdb_miss_reason: nil])
+
+    movie_n + series_n
+  end
 
   defp enqueue_pending do
     movie_ids = pending_ids(Movie, @cron_limit)
