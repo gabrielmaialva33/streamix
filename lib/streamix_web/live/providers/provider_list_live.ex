@@ -74,7 +74,12 @@ defmodule StreamixWeb.Providers.ProviderListLive do
        |> stream_insert(:providers, %{provider | sync_status: "pending"})
        |> put_flash(:info, "Sincronização iniciada para #{provider.name}")}
     else
-      {:noreply, put_flash(socket, :error, "Provedor não encontrado")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
+       )}
     end
   end
 
@@ -94,7 +99,12 @@ defmodule StreamixWeb.Providers.ProviderListLive do
           {:noreply, put_flash(socket, :error, "Não foi possível excluir o provedor")}
       end
     else
-      {:noreply, put_flash(socket, :error, "Provedor não encontrado")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
+       )}
     end
   end
 

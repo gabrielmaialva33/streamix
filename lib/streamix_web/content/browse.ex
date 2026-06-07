@@ -204,7 +204,10 @@ defmodule StreamixWeb.Content.Browse do
     else
       {:redirect,
        socket
-       |> Phoenix.LiveView.put_flash(:error, "Provedor não encontrado")
+       |> Phoenix.LiveView.put_flash(
+         :error,
+         "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
+       )
        |> Phoenix.LiveView.push_navigate(to: ~p"/providers")}
     end
   end

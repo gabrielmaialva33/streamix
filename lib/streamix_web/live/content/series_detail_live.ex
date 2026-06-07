@@ -57,7 +57,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Provedor não encontrado")
+       |> put_flash(
+         :error,
+         "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
+       )
        |> push_navigate(to: ~p"/")}
     end
   end
