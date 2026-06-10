@@ -173,8 +173,8 @@ defmodule Streamix.Torrent.Client do
   public hostname (e.g. a Cloudflare tunnel), a WAF/edge rule rejects
   any request missing this header. Empty list when no secret is
   configured (local/dev with rqbit on localhost) so behaviour is
-  unchanged there. The same header is reused by the stream proxy in
-  `StreamixWeb.TorrentStreamController`.
+  unchanged there. The web-layer stream proxy reuses this same header
+  via `auth_headers/0`.
   """
   @spec auth_headers() :: [{String.t(), String.t()}]
   def auth_headers do
