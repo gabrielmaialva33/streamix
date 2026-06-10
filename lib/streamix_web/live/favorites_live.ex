@@ -204,7 +204,7 @@ defmodule StreamixWeb.FavoritesLive do
       {@label}
       <span
         :if={@count > 0}
-        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20"
+        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-2xs rounded bg-black/20"
       >
         {@count}
       </span>
@@ -241,7 +241,7 @@ defmodule StreamixWeb.FavoritesLive do
         <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <.icon name="hero-play-circle-solid" class="size-16 text-brand" />
         </div>
-        <span class="absolute top-2 left-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white">
+        <span class="absolute top-2 left-2 px-2 py-0.5 text-2xs font-medium rounded bg-black/60 text-white backdrop-blur-sm">
           {format_content_type(@favorite.content_type)}
         </span>
       </div>

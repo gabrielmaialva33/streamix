@@ -365,7 +365,7 @@ defmodule StreamixWeb.Home.Carousel do
                 ]}
               >
                 <.icon name="hero-film" class="size-6 text-brand/60 mb-1" />
-                <span class="text-[9px] text-text-muted leading-tight line-clamp-2">
+                <span class="text-2xs text-text-muted leading-tight line-clamp-2">
                   {@movie.name}
                 </span>
               </div>
@@ -375,7 +375,7 @@ defmodule StreamixWeb.Home.Carousel do
             </div>
             <div
               :if={@movie.rating}
-              class="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 bg-black/70 rounded text-[10px] text-white"
+              class="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 bg-black/70 rounded text-2xs text-white"
             >
               <.icon name="hero-star-solid" class="size-2.5 text-warning" />
               {Float.round(Decimal.to_float(@movie.rating), 1)}

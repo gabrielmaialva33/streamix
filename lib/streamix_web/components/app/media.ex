@@ -47,13 +47,13 @@ defmodule StreamixWeb.App.Media do
               ]}
             >
               <.icon name="hero-tv" class="size-6 sm:size-10 text-text-muted/40 mb-1" />
-              <span class="text-[9px] sm:text-xs text-text-muted leading-tight line-clamp-2">
+              <span class="text-2xs sm:text-xs text-text-muted leading-tight line-clamp-2">
                 {@channel.name}
               </span>
             </div>
           </div>
 
-          <span class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-md bg-brand/90 text-white backdrop-blur-sm">
+          <span class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 text-2xs font-bold rounded-md bg-brand/90 text-white backdrop-blur-sm">
             <span class="w-1.5 h-1.5 rounded-full bg-white live-pulse" /> AO VIVO
           </span>
 

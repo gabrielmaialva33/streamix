@@ -82,12 +82,12 @@ defmodule StreamixWeb.Home.Cards do
             ]}
           >
             <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />
-            <span class="text-[8px] sm:text-xs text-text-muted leading-tight line-clamp-2">
+            <span class="text-2xs sm:text-xs text-text-muted leading-tight line-clamp-2">
               {@channel.name}
             </span>
           </div>
         </div>
-        <div class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-brand rounded text-[8px] sm:text-xs text-white font-semibold">
+        <div class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-brand rounded text-2xs sm:text-xs text-white font-semibold">
           <span class="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-white rounded-full animate-pulse" /> AO VIVO
         </div>
         <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
@@ -95,7 +95,7 @@ defmodule StreamixWeb.Home.Cards do
         </div>
       </div>
       <div class="pt-1.5 sm:pt-2 px-0.5">
-        <h3 class="text-[11px] sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors mt-0.5">
+        <h3 class="text-2xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors mt-0.5">
           {@channel.name}
         </h3>
       </div>
@@ -148,7 +148,7 @@ defmodule StreamixWeb.Home.Cards do
         <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
           {@entry.content_name || "Desconhecido"}
         </h3>
-        <p class="text-[10px] sm:text-xs text-text-muted flex items-center gap-1 sm:gap-2 mt-1">
+        <p class="text-2xs text-text-muted flex items-center gap-1 sm:gap-2 mt-1">
           <span class="px-1 sm:px-1.5 py-0.5 rounded bg-surface-hover text-text-secondary">
             {format_content_type(@entry.content_type)}
           </span>

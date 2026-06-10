@@ -221,7 +221,7 @@ defmodule StreamixWeb.HistoryLive do
       {@label}
       <span
         :if={@count > 0}
-        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-[10px] sm:text-xs rounded bg-black/20"
+        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-2xs rounded bg-black/20"
       >
         {@count}
       </span>
@@ -273,8 +273,8 @@ defmodule StreamixWeb.HistoryLive do
         <h4 class="font-medium text-sm sm:text-base text-text-primary truncate">
           {@entry.content_name || "Desconhecido"}
         </h4>
-        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-text-secondary mt-0.5 sm:mt-1">
-          <span class="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs rounded bg-surface-hover">
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-2xs sm:text-2sm text-text-secondary mt-0.5 sm:mt-1">
+          <span class="px-1.5 sm:px-2 py-0.5 text-2xs font-medium rounded bg-surface-hover">
             {format_content_type(@entry.content_type)}
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
