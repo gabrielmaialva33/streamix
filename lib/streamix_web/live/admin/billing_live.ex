@@ -63,7 +63,7 @@ defmodule StreamixWeb.Admin.BillingLive do
         />
       </div>
 
-      <section class="rounded-lg border border-border bg-surface overflow-hidden">
+      <section class="surface-card overflow-hidden">
         <div class="border-b border-border px-5 py-4">
           <h2 class="font-semibold text-text-primary">Pagamentos recentes</h2>
         </div>
@@ -89,7 +89,7 @@ defmodule StreamixWeb.Admin.BillingLive do
         </table>
       </section>
 
-      <section class="rounded-lg border border-border bg-surface overflow-hidden">
+      <section class="surface-card overflow-hidden">
         <div class="border-b border-border px-5 py-4">
           <h2 class="font-semibold text-text-primary">Invoices recentes</h2>
         </div>

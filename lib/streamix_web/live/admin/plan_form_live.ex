@@ -135,7 +135,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
             min="0"
           />
 
-          <fieldset class="rounded-lg border border-border bg-surface p-4 space-y-4">
+          <fieldset class="surface-card p-4 space-y-4">
             <legend class="px-1 text-sm font-semibold text-text-primary">Features do plano</legend>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

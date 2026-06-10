@@ -95,7 +95,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
       <%!-- Two-column layout --%>
       <div class="grid lg:grid-cols-2 gap-4 sm:gap-6">
         <%!-- Card 1: Join --%>
-        <div class="bg-surface rounded-lg border border-border p-6 sm:p-8 flex flex-col shadow-card">
+        <div class="surface-card p-6 sm:p-8 flex flex-col">
           <div class="flex items-center gap-3 mb-5">
             <div class="w-10 h-10 rounded-lg bg-brand/15 flex items-center justify-center">
               <.icon name="hero-arrow-right-on-rectangle" class="size-5 text-brand" />
@@ -138,7 +138,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
         </div>
 
         <%!-- Card 2: Create --%>
-        <div class="relative overflow-hidden rounded-lg border border-border p-6 sm:p-8 flex flex-col bg-surface shadow-card">
+        <div class="relative overflow-hidden surface-card p-6 sm:p-8 flex flex-col">
           <div class="relative flex items-center gap-3 mb-5">
             <div class="w-10 h-10 rounded-lg bg-accent/15 flex items-center justify-center">
               <.icon name="hero-plus-circle" class="size-5 text-accent" />

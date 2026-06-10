@@ -127,7 +127,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <%!-- User details --%>
-        <section class="rounded-lg border border-border bg-surface p-5 space-y-5 shadow-card">
+        <section class="surface-card p-5 space-y-5">
           <h2 class="text-lg font-semibold text-text-primary">Detalhes do Usuário</h2>
 
           <div class="text-sm space-y-2">
@@ -172,7 +172,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
         </section>
 
         <%!-- Subscription management --%>
-        <section class="rounded-lg border border-border bg-surface p-5 space-y-5 shadow-card">
+        <section class="surface-card p-5 space-y-5">
           <h2 class="text-lg font-semibold text-text-primary">Subscription</h2>
 
           <%= if @active_sub do %>

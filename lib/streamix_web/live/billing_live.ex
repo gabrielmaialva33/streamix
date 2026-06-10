@@ -63,7 +63,7 @@ defmodule StreamixWeb.BillingLive do
       </div>
 
       <section class="grid gap-4 lg:grid-cols-3">
-        <div class="rounded-lg border border-border bg-surface p-5">
+        <div class="surface-card p-5">
           <p class="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Plano</p>
           <h2 class="mt-2 text-xl font-semibold text-text-primary">
             <%= if @active_subscription do %>
@@ -81,7 +81,7 @@ defmodule StreamixWeb.BillingLive do
           </p>
         </div>
 
-        <div class="rounded-lg border border-border bg-surface p-5">
+        <div class="surface-card p-5">
           <p class="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Telas</p>
           <h2 class="mt-2 text-xl font-semibold text-text-primary">
             {@active_playback_count} / {feature_limit(@active_subscription, "concurrent_streams")}
@@ -89,7 +89,7 @@ defmodule StreamixWeb.BillingLive do
           <p class="mt-2 text-sm text-text-secondary">Sessões ativas agora.</p>
         </div>
 
-        <div class="rounded-lg border border-border bg-surface p-5">
+        <div class="surface-card p-5">
           <p class="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Stripe</p>
           <h2 class="mt-2 text-xl font-semibold text-text-primary">
             <%= if @stripe_customer do %>
@@ -104,7 +104,7 @@ defmodule StreamixWeb.BillingLive do
         </div>
       </section>
 
-      <section class="rounded-lg border border-border bg-surface overflow-hidden">
+      <section class="surface-card overflow-hidden">
         <div class="border-b border-border px-5 py-4">
           <h2 class="font-semibold text-text-primary">Invoices</h2>
         </div>
@@ -135,7 +135,7 @@ defmodule StreamixWeb.BillingLive do
         </p>
       </section>
 
-      <section class="rounded-lg border border-border bg-surface overflow-hidden">
+      <section class="surface-card overflow-hidden">
         <div class="border-b border-border px-5 py-4">
           <h2 class="font-semibold text-text-primary">Pagamentos</h2>
         </div>

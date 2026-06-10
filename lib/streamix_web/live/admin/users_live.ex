@@ -49,7 +49,7 @@ defmodule StreamixWeb.Admin.UsersLive do
 
       <div
         :if={@users != []}
-        class="rounded-lg border border-border bg-surface overflow-hidden shadow-card"
+        class="surface-card overflow-hidden"
       >
         <table class="w-full text-sm">
           <thead>
