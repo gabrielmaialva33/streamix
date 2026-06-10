@@ -32,38 +32,23 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       year_badge: 1
     ]
 
-  # Mount for /browse/series/:id (global provider)
-  def mount(%{"id" => series_id}, _session, socket)
-      when not is_map_key(socket.assigns, :provider) do
+  # Mount for /providers/:provider_id/series/:id (user provider). Must
+  # come first: the browse clause's pattern also matches these params.
+  def mount(%{"provider_id" => _, "id" => series_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Detail.global_provider()
 
-    if provider do
-      mount_with_provider(socket, provider, series_id, user_id, :browse)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Catálogo não disponível")
-       |> push_navigate(to: ~p"/providers")}
-    end
+    Detail.with_provider(socket, :provider, params, fn provider ->
+      mount_with_provider(socket, provider, series_id, user_id, :provider)
+    end)
   end
 
-  # Mount for /providers/:provider_id/series/:id (user provider)
-  def mount(%{"provider_id" => provider_id, "id" => series_id}, _session, socket) do
+  # Mount for /browse/series/:id (global provider)
+  def mount(%{"id" => series_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Detail.playable_provider(user_id, provider_id)
 
-    if provider do
-      mount_with_provider(socket, provider, series_id, user_id, :provider)
-    else
-      {:ok,
-       socket
-       |> put_flash(
-         :error,
-         "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
-       )
-       |> push_navigate(to: ~p"/")}
-    end
+    Detail.with_provider(socket, :browse, %{}, fn provider ->
+      mount_with_provider(socket, provider, series_id, user_id, :browse)
+    end)
   end
 
   defp mount_with_provider(socket, provider, series_id, user_id, mode) do

@@ -25,42 +25,28 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       synopsis_section: 1
     ]
 
-  # Mount for /browse/series/:series_id/episode/:id (global provider)
-  def mount(%{"series_id" => series_id, "id" => episode_id}, _session, socket)
-      when not is_map_key(socket.assigns, :provider) do
-    user_id = socket.assigns.current_scope.user.id
-    provider = Detail.global_provider()
-
-    if provider do
-      mount_with_provider(socket, provider, series_id, episode_id, user_id, :browse)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Catálogo não disponível")
-       |> push_navigate(to: ~p"/providers")}
-    end
-  end
-
-  # Mount for /providers/:provider_id/series/:series_id/episode/:id (user provider)
+  # Mount for /providers/:provider_id/series/:series_id/episode/:id (user
+  # provider). Must come first: the browse clause's pattern also matches
+  # these params.
   def mount(
-        %{"provider_id" => provider_id, "series_id" => series_id, "id" => episode_id},
+        %{"provider_id" => _, "series_id" => series_id, "id" => episode_id} = params,
         _session,
         socket
       ) do
     user_id = socket.assigns.current_scope.user.id
-    provider = Detail.playable_provider(user_id, provider_id)
 
-    if provider do
+    Detail.with_provider(socket, :provider, params, fn provider ->
       mount_with_provider(socket, provider, series_id, episode_id, user_id, :provider)
-    else
-      {:ok,
-       socket
-       |> put_flash(
-         :error,
-         "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
-       )
-       |> push_navigate(to: ~p"/")}
-    end
+    end)
+  end
+
+  # Mount for /browse/series/:series_id/episode/:id (global provider)
+  def mount(%{"series_id" => series_id, "id" => episode_id}, _session, socket) do
+    user_id = socket.assigns.current_scope.user.id
+
+    Detail.with_provider(socket, :browse, %{}, fn provider ->
+      mount_with_provider(socket, provider, series_id, episode_id, user_id, :browse)
+    end)
   end
 
   defp mount_with_provider(socket, provider, series_id, episode_id, user_id, mode) do

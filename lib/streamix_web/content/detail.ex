@@ -3,6 +3,8 @@ defmodule StreamixWeb.Content.Detail do
   Shared content-detail operations used by movie, series, and episode LiveViews.
   """
 
+  use StreamixWeb, :verified_routes
+
   require Logger
 
   alias Streamix.Access
@@ -10,6 +12,45 @@ defmodule StreamixWeb.Content.Detail do
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Helpers.ImageProxy
+
+  @provider_unavailable_message "Esse provedor não está disponível para sua conta. " <>
+                                  "Pode estar inativo, ter sido removido ou ser privado de outro usuário."
+
+  @doc """
+  Resolves the provider for a detail-page mount and hands it to `fun`.
+
+  `:browse` resolves the global provider; `:provider` resolves
+  `params["provider_id"]` as a playable provider for the current user.
+  When the provider is unavailable, returns the standard
+  flash-and-redirect `{:ok, socket}` without invoking `fun`.
+  """
+  def with_provider(socket, :browse, _params, fun) do
+    case global_provider() do
+      nil ->
+        {:ok,
+         socket
+         |> Phoenix.LiveView.put_flash(:error, "Catálogo não disponível")
+         |> Phoenix.LiveView.push_navigate(to: ~p"/providers")}
+
+      provider ->
+        fun.(provider)
+    end
+  end
+
+  def with_provider(socket, :provider, %{"provider_id" => provider_id}, fun) do
+    user_id = socket.assigns.current_scope.user.id
+
+    case playable_provider(user_id, provider_id) do
+      nil ->
+        {:ok,
+         socket
+         |> Phoenix.LiveView.put_flash(:error, @provider_unavailable_message)
+         |> Phoenix.LiveView.push_navigate(to: ~p"/")}
+
+      provider ->
+        fun.(provider)
+    end
+  end
 
   def global_provider, do: Iptv.get_global_provider()
 
