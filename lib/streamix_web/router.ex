@@ -252,6 +252,10 @@ defmodule StreamixWeb.Router do
     get "/tv/apk", TvDownloadController, :apk
     get "/tv/wgt", TvDownloadController, :wgt
 
+    # PWA share target (manifest.json share_target) — lands shared
+    # titles/links on search.
+    get "/share", ShareController, :index
+
     live_session :public,
       on_mount:
         @sandbox_on_mount ++
