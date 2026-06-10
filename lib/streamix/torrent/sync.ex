@@ -349,4 +349,35 @@ defmodule Streamix.Torrent.Sync do
     |> Provider.sync_changeset(%{sync_status: status})
     |> Repo.update()
   end
+
+  @doc """
+  Recomputes the provider's catalog counter from the database and marks
+  it synced.
+
+  `finalize/2` only runs on the full `sync_provider/1` path. Production
+  fans out one `SyncSourceWorker` per source instead, and those never
+  touched the provider row — so `movies_count` stayed at 0 and
+  `sync_status` at whatever a prior full run (or the initial bootstrap)
+  left behind, even with tens of thousands of rows ingested. Each
+  source worker calls this on success so the counter reflects the real
+  catalog regardless of which path or how many sources ran.
+
+  Counts from `movies` directly (source of truth) rather than summing
+  per-source stats, which can drift across partial/parallel runs.
+  """
+  @spec refresh_provider_counts(Provider.t()) :: {:ok, Provider.t()} | {:error, term()}
+  def refresh_provider_counts(%Provider{provider_type: :torrent} = provider) do
+    movies_count = Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    provider
+    |> Provider.sync_changeset(%{
+      sync_status: "completed",
+      movies_count: movies_count,
+      vod_synced_at: now
+    })
+    |> Repo.update()
+  end
+
+  def refresh_provider_counts(%Provider{}), do: {:error, :not_torrent_provider}
 end

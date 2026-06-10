@@ -12,6 +12,7 @@ defmodule Streamix.Torrent do
 
   defdelegate sync_provider(provider), to: Sync
   defdelegate sync_source(provider, source_module), to: Sync
+  defdelegate refresh_provider_counts(provider), to: Sync
 
   @doc """
   Lists the configured torrent sources.

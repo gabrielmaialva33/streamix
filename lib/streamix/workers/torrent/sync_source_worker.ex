@@ -23,6 +23,10 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
          module when is_atom(module) and not is_nil(module) <- Torrent.source_for(source_slug) do
       case Torrent.sync_source(provider, module) do
         {:ok, stats} ->
+          # Keep the provider counter/status honest. The per-source
+          # fan-out never hit finalize/2, so this was left stale.
+          Torrent.refresh_provider_counts(provider)
+
           Logger.info(
             "[Torrent SyncSource] provider=#{provider_id} slug=#{source_slug} ok " <>
               "movies=#{stats.movies} torrents=#{stats.torrents}"

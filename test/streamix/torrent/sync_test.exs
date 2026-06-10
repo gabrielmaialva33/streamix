@@ -171,6 +171,36 @@ defmodule Streamix.Torrent.SyncTest do
     end
   end
 
+  describe "refresh_provider_counts/1" do
+    test "recomputes movies_count from the DB and marks completed", %{provider: provider} do
+      seed_pages([
+        {1,
+         [
+           sample_item("ext-1", "Movie One", [magnet("a")]),
+           sample_item("ext-2", "Movie Two", [magnet("b")])
+         ], %{next_page: nil}}
+      ])
+
+      {:ok, _stats} = Sync.sync_source(provider, TorrentTestSource)
+
+      # Simulate the stale state the per-source fan-out used to leave.
+      provider
+      |> Provider.sync_changeset(%{sync_status: "failed", movies_count: 0})
+      |> Repo.update!()
+
+      {:ok, refreshed} = Sync.refresh_provider_counts(Repo.reload!(provider))
+
+      assert refreshed.movies_count == 2
+      assert refreshed.sync_status == "completed"
+      assert refreshed.vod_synced_at
+    end
+
+    test "rejects non-torrent providers" do
+      assert {:error, :not_torrent_provider} =
+               Sync.refresh_provider_counts(%Provider{provider_type: :xtream, id: 1})
+    end
+  end
+
   # Helpers
 
   defp seed_pages(pages), do: Application.put_env(:streamix, :torrent_test_source, pages)
