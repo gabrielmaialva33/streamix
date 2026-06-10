@@ -1,6 +1,6 @@
 defmodule StreamixWeb.ServiceWorkerController do
   @moduledoc """
-  Serves `priv/static/sw.js` with a per-release `CACHE_VERSION` baked in.
+  Serves `priv/sw.js` with a per-release `CACHE_VERSION` baked in.
 
   The static plug used to hand back the file byte-for-byte on every
   deploy. The browser update protocol for a Service Worker only fires
@@ -23,10 +23,11 @@ defmodule StreamixWeb.ServiceWorkerController do
   @version_marker "__SW_CACHE_VERSION__"
 
   def show(conn, _params) do
-    static_dir =
-      Application.app_dir(:streamix, "priv/static")
-
-    sw_file = Path.join(static_dir, @sw_path)
+    # The source lives in priv/ (not priv/static/) on purpose: Plug.Static
+    # raises InvalidPathError for files that exist under its root but are
+    # not in the :only list, so keeping it there would 400 every request
+    # before it ever reached this controller.
+    sw_file = Path.join(Application.app_dir(:streamix, "priv"), @sw_path)
     version = cache_version()
 
     body =
@@ -66,7 +67,7 @@ defmodule StreamixWeb.ServiceWorkerController do
       _ ->
         # Dev / tests: no digested manifest yet. Use the SW file's own
         # mtime so an edit invalidates the cache locally.
-        case File.stat(Path.join(Application.app_dir(:streamix, "priv/static"), @sw_path)) do
+        case File.stat(Path.join(Application.app_dir(:streamix, "priv"), @sw_path)) do
           {:ok, %File.Stat{mtime: mtime}} ->
             "dev-" <> Integer.to_string(:erlang.phash2(mtime), 16)
 
