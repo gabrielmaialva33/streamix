@@ -12,6 +12,7 @@ defmodule StreamixWeb.SearchLive do
 
   import StreamixWeb.AppComponents
   import StreamixWeb.ContentComponents
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
@@ -102,17 +103,6 @@ defmodule StreamixWeb.SearchLive do
   defp toggle_favorite(user_id, type, content_id) do
     FavoriteState.toggle(user_id, type, content_id)
   end
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

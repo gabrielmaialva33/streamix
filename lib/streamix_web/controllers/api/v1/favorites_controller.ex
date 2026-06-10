@@ -5,6 +5,8 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   use StreamixWeb, :controller
 
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+
   alias Streamix.Iptv
   alias StreamixWeb.Api.Envelope
 
@@ -158,17 +160,6 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   defp parse_int(_, default), do: default
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
 
   defp invalid_content_id(conn) do
     conn

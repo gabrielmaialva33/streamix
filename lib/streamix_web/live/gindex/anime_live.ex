@@ -8,6 +8,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   import StreamixWeb.AppComponents
   import StreamixWeb.ContentComponents
   import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
@@ -108,17 +109,6 @@ defmodule StreamixWeb.Gindex.AnimeLive do
         {:noreply, socket}
     end
   end
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

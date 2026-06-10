@@ -12,6 +12,7 @@ defmodule StreamixWeb.FavoritesLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.AppComponents
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
@@ -109,17 +110,6 @@ defmodule StreamixWeb.FavoritesLive do
 
   # OfflineSync hook events (client-side sync, no server action needed)
   def handle_event("refresh_data", _params, socket), do: {:noreply, socket}
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

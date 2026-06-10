@@ -18,6 +18,8 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   """
   use StreamixWeb, :controller
 
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+
   alias Streamix.AI.UserAnalytics
   alias Streamix.Billing
   alias Streamix.Helpers
@@ -250,17 +252,6 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
 
   defp parse_int(value, _default) when is_integer(value), do: value
   defp parse_int(_, default), do: default
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
 
   defp invalid_id(conn) do
     conn

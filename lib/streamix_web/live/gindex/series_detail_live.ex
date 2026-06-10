@@ -9,6 +9,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   def mount(%{"id" => series_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
@@ -101,17 +102,6 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
 
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
 
   # ============================================
   # Render

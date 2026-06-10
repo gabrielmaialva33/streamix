@@ -19,6 +19,8 @@ defmodule StreamixWeb.Api.V1.SearchController do
   """
   use StreamixWeb, :controller
 
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+
   alias Streamix.AI.SemanticSearch
   alias Streamix.Helpers
   alias Streamix.Iptv
@@ -109,7 +111,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
         |> put_status(:bad_request)
         |> json(%{error: "Invalid collection"})
 
-      :invalid_id ->
+      :error ->
         conn
         |> put_status(:bad_request)
         |> json(%{error: "Invalid id"})
@@ -208,17 +210,6 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp parse_collection("movies"), do: {:ok, :movies}
   defp parse_collection("series"), do: {:ok, :series}
   defp parse_collection(_), do: :invalid_collection
-
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :invalid_id
-    end
-  end
-
-  defp parse_positive_integer(_), do: :invalid_id
 
   defp merge_movie(result, movie) do
     %{
