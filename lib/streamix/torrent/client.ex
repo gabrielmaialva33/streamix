@@ -166,6 +166,24 @@ defmodule Streamix.Torrent.Client do
     Keyword.fetch!(TorrentProvider.config(), :rqbit_url)
   end
 
+  @doc """
+  Shared-secret header sent on every rqbit call.
+
+  rqbit has no native auth, so when the sidecar is reachable over a
+  public hostname (e.g. a Cloudflare tunnel), a WAF/edge rule rejects
+  any request missing this header. Empty list when no secret is
+  configured (local/dev with rqbit on localhost) so behaviour is
+  unchanged there. The same header is reused by the stream proxy in
+  `StreamixWeb.TorrentStreamController`.
+  """
+  @spec auth_headers() :: [{String.t(), String.t()}]
+  def auth_headers do
+    case TorrentProvider.config()[:rqbit_auth_secret] do
+      secret when is_binary(secret) and secret != "" -> [{"x-internal-auth", secret}]
+      _ -> []
+    end
+  end
+
   # Internals
 
   defp request(method, path, opts \\ []) do
@@ -174,7 +192,7 @@ defmodule Streamix.Torrent.Client do
     content_type = Keyword.get(opts, :content_type, "application/json")
     timeout = Keyword.get(opts, :timeout, @default_timeout)
 
-    headers = [{"accept", "application/json"}]
+    headers = [{"accept", "application/json"} | auth_headers()]
 
     headers =
       if body && content_type, do: [{"content-type", content_type} | headers], else: headers

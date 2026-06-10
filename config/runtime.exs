@@ -185,7 +185,11 @@ end
 if config_env() != :test and get_env.("TORRENT_ENABLED") == "true" do
   config :streamix, :torrent_provider,
     enabled: true,
-    rqbit_url: get_env.("RQBIT_URL") || "http://rqbit:3030"
+    rqbit_url: get_env.("RQBIT_URL") || "http://rqbit:3030",
+    # Shared secret sent as `X-Internal-Auth` on every rqbit call. rqbit
+    # has no auth of its own, so when it is reachable over a public
+    # hostname an edge/WAF rule must reject requests missing this header.
+    rqbit_auth_secret: get_env.("RQBIT_AUTH_SECRET")
 
   config :streamix, :torrent_source_endpoints,
     eztv: get_env.("EZTV_SOURCE_URL"),

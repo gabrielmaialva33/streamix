@@ -206,12 +206,17 @@ defmodule StreamixWeb.TorrentStreamController do
   end
 
   defp build_request_headers(conn) do
-    Enum.flat_map(@forwardable_request_headers, fn name ->
-      case Conn.get_req_header(conn, name) do
-        [value | _] -> [{name, value}]
-        [] -> []
-      end
-    end)
+    forwarded =
+      Enum.flat_map(@forwardable_request_headers, fn name ->
+        case Conn.get_req_header(conn, name) do
+          [value | _] -> [{name, value}]
+          [] -> []
+        end
+      end)
+
+    # The stream proxy hits rqbit directly (not via Client.request/3),
+    # so it must carry the same shared-secret header the edge expects.
+    Client.auth_headers() ++ forwarded
   end
 
   defp parse_file_idx(nil), do: {:ok, nil}
