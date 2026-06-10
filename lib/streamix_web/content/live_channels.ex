@@ -5,10 +5,12 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   import Phoenix.Component, only: [assign: 2]
 
+  import StreamixWeb.Helpers.Params, only: [parse_integer: 1]
+
   alias Phoenix.LiveView
-  alias Streamix.Access
   alias Streamix.Iptv
   alias Streamix.Iptv.Epg
+  alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
 
   use StreamixWeb, :verified_routes
@@ -23,7 +25,7 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(current_path: "/browse")
     |> assign(provider: nil)
     |> assign(mode: :browse)
-    |> assign(premium_access: premium_access?(user))
+    |> assign(premium_access: Detail.premium_access?(user))
     |> assign(categories: [])
     |> assign(selected_category: nil)
     |> assign(search: "")
@@ -223,18 +225,6 @@ defmodule StreamixWeb.Content.LiveChannels do
     end
   end
 
-  def parse_integer(nil), do: nil
-  def parse_integer(""), do: nil
-
-  def parse_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} -> integer
-      _ -> nil
-    end
-  end
-
-  def parse_integer(value), do: value
-
   defp apply_route_context(socket, %{"provider_id" => provider_id}) do
     user = socket.assigns.current_scope.user
     provider = Iptv.get_playable_provider(user.id, provider_id)
@@ -302,10 +292,6 @@ defmodule StreamixWeb.Content.LiveChannels do
   defp load_favorites_map(socket) do
     favorite_ids = Iptv.list_favorite_ids(socket.assigns.user_id, "live_channel")
     assign(socket, favorites_map: favorite_ids)
-  end
-
-  defp premium_access?(user) do
-    Access.plays_global_content?(user, Iptv.get_global_provider())
   end
 
   defp maybe_add_filter(opts, _key, nil), do: opts

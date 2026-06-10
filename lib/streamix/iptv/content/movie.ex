@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.Movie do
   import Ecto.Changeset
 
   alias Streamix.Iptv.{
+    Assets,
     CatalogItem,
     Genre,
     MovieAsset,
@@ -79,47 +80,25 @@ defmodule Streamix.Iptv.Movie do
   Returns backdrop URLs from assets, sorted by position.
   """
   @spec backdrop_urls(t()) :: [String.t()]
-  def backdrop_urls(%__MODULE__{assets: assets}) when is_list(assets) do
-    assets
-    |> Enum.filter(&(&1.asset_type == "backdrop"))
-    |> Enum.sort_by(& &1.position)
-    |> Enum.map(& &1.url)
-  end
-
-  def backdrop_urls(_), do: []
+  defdelegate backdrop_urls(movie), to: Assets
 
   @doc """
   Returns image URLs from assets, sorted by position.
   """
   @spec image_urls(t()) :: [String.t()]
-  def image_urls(%__MODULE__{assets: assets}) when is_list(assets) do
-    assets
-    |> Enum.filter(&(&1.asset_type == "image"))
-    |> Enum.sort_by(& &1.position)
-    |> Enum.map(& &1.url)
-  end
-
-  def image_urls(_), do: []
+  defdelegate image_urls(movie), to: Assets
 
   @doc """
   Returns true if the movie has any backdrop assets.
   """
   @spec has_backdrops?(t()) :: boolean()
-  def has_backdrops?(%__MODULE__{assets: assets}) when is_list(assets) do
-    Enum.any?(assets, &(&1.asset_type == "backdrop"))
-  end
-
-  def has_backdrops?(_), do: false
+  defdelegate has_backdrops?(movie), to: Assets
 
   @doc """
   Returns true if the movie has any image assets.
   """
   @spec has_images?(t()) :: boolean()
-  def has_images?(%__MODULE__{assets: assets}) when is_list(assets) do
-    Enum.any?(assets, &(&1.asset_type == "image"))
-  end
-
-  def has_images?(_), do: false
+  defdelegate has_images?(movie), to: Assets
 
   @doc """
   Builds the stream URL for this movie.

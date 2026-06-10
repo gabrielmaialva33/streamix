@@ -103,7 +103,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(provider: provider)
           |> assign(premium_access: Detail.premium_access?(user, provider))
           |> assign(movie: movie)
-          |> assign(lcp_image: get_backdrop(movie) || maybe_proxy(movie.stream_icon))
+          |> assign(lcp_image: Detail.hero_image(movie, movie.stream_icon))
           |> assign(mode: mode)
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
@@ -151,7 +151,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
     <div class="min-h-screen bg-background">
       <.detail_hero
         id={"detail-hero-#{@movie.id}"}
-        image={get_backdrop(@movie) || maybe_proxy(@movie.stream_icon)}
+        image={Detail.hero_image(@movie, @movie.stream_icon)}
         alt={@movie.name}
         back_path={back_path(@mode, @provider)}
         fallback_hook?
@@ -287,16 +287,4 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp alternate_title(_), do: nil
-
-  defp get_backdrop(%Movie{} = movie) do
-    case Movie.backdrop_urls(movie) do
-      [url | _] -> ImageProxy.proxy(url)
-      _ -> nil
-    end
-  end
-
-  defp get_backdrop(_), do: nil
-
-  defp maybe_proxy(nil), do: nil
-  defp maybe_proxy(url) when is_binary(url), do: ImageProxy.proxy(url)
 end

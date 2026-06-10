@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias StreamixWeb.Content.Detail
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   import StreamixWeb.Content.DetailComponents,
     only: [
@@ -92,7 +93,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         premium_access: Detail.premium_access?(socket.assigns.current_scope.user, provider)
       )
       |> assign(series: series)
-      |> assign(lcp_image: get_backdrop(series) || maybe_proxy(series.cover))
+      |> assign(lcp_image: Detail.hero_image(series, series.cover))
       |> assign(mode: mode)
       |> assign(seasons: sorted_seasons)
       |> assign(expanded_seasons: Detail.initial_expanded(sorted_seasons))
@@ -187,17 +188,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     {:noreply, assign(socket, selected_gallery_image: nil)}
   end
 
-  defp parse_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp parse_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> :error
-    end
-  end
-
-  defp parse_positive_integer(_), do: :error
-
   # ============================================
   # Render
   # ============================================
@@ -206,7 +196,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     ~H"""
     <div class="min-h-screen bg-background">
       <.detail_hero
-        image={get_backdrop(@series) || maybe_proxy(@series.cover)}
+        image={Detail.hero_image(@series, @series.cover)}
         alt={@series.name}
         back_path={back_path(@mode, @provider)}
       />
@@ -347,16 +337,4 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp alternate_title(_), do: nil
-
-  defp get_backdrop(%Series{} = series) do
-    case Series.backdrop_urls(series) do
-      [url | _] -> ImageProxy.proxy(url)
-      _ -> nil
-    end
-  end
-
-  defp get_backdrop(_), do: nil
-
-  defp maybe_proxy(nil), do: nil
-  defp maybe_proxy(url) when is_binary(url), do: ImageProxy.proxy(url)
 end

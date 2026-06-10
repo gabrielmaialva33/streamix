@@ -34,6 +34,7 @@ defmodule Streamix.Iptv do
   """
 
   alias Streamix.Iptv.{
+    Assets,
     Catalog,
     Channels,
     Epg,
@@ -235,6 +236,12 @@ defmodule Streamix.Iptv do
   defdelegate list_top_rated(type, opts \\ []), to: Catalog
   defdelegate list_categories(provider_id, type \\ nil), to: Catalog
   defdelegate get_category!(id), to: Catalog
+
+  # =============================================================================
+  # Content assets
+  # =============================================================================
+  defdelegate backdrop_urls(content), to: Assets
+  defdelegate image_urls(content), to: Assets
 
   # =============================================================================
   # EPG (Electronic Program Guide)

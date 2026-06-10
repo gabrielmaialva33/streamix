@@ -17,9 +17,7 @@ defmodule StreamixWeb.Home.Helpers do
     end
   end
 
-  def backdrop_urls(%Iptv.Movie{} = movie), do: Iptv.Movie.backdrop_urls(movie)
-  def backdrop_urls(%Iptv.Series{} = series), do: Iptv.Series.backdrop_urls(series)
-  def backdrop_urls(_), do: []
+  def backdrop_urls(content), do: Iptv.backdrop_urls(content)
 
   def content_path(:movie, movie), do: ~p"/watch/movie/#{movie.id}"
   def content_path(:series, series), do: ~p"/browse/series/#{series.id}"

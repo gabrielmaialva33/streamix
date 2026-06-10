@@ -8,9 +8,11 @@ defmodule StreamixWeb.Content.Browse do
 
   import Phoenix.Component, only: [assign: 2]
 
+  import StreamixWeb.Helpers.Params, only: [parse_integer: 1]
+
   alias Phoenix.LiveView
-  alias Streamix.Access
   alias Streamix.Iptv
+  alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
 
   use StreamixWeb, :verified_routes
@@ -45,7 +47,7 @@ defmodule StreamixWeb.Content.Browse do
     socket
     |> assign(user_id: user.id)
     |> assign(user: user)
-    |> assign(premium_access: premium_access?(user))
+    |> assign(premium_access: Detail.premium_access?(user))
     |> assign(mode: :browse)
     |> assign(source: "iptv")
     |> assign(provider: nil)
@@ -163,18 +165,6 @@ defmodule StreamixWeb.Content.Browse do
 
   def detail_path(%{assigns: %{mode: :provider, provider: provider}}, :series, id),
     do: ~p"/providers/#{provider.id}/series/#{id}"
-
-  def parse_integer(nil), do: nil
-  def parse_integer(""), do: nil
-
-  def parse_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {integer, ""} -> integer
-      _ -> nil
-    end
-  end
-
-  def parse_integer(value), do: value
 
   defp parse_sort(kind, sort) do
     if sort in config!(kind).valid_sorts, do: sort
@@ -385,10 +375,6 @@ defmodule StreamixWeb.Content.Browse do
 
   defp append_query(path, params) do
     path <> "?" <> URI.encode_query(params)
-  end
-
-  defp premium_access?(user) do
-    Access.plays_global_content?(user, Iptv.get_global_provider())
   end
 
   defp filter_adult_categories(categories, true), do: categories

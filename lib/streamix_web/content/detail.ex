@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.Detail do
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Helpers.ImageProxy
 
   def global_provider, do: Iptv.get_global_provider()
 
@@ -16,6 +17,19 @@ defmodule StreamixWeb.Content.Detail do
     do: Iptv.get_playable_provider(user_id, provider_id)
 
   def premium_access?(user, provider), do: Access.plays_global_content?(user, provider)
+
+  def premium_access?(user), do: premium_access?(user, global_provider())
+
+  @doc """
+  Returns the proxied hero image for a content item: the first backdrop
+  asset when present, otherwise the proxied fallback URL.
+  """
+  def hero_image(content, fallback_url) do
+    case Iptv.backdrop_urls(content) do
+      [url | _] -> ImageProxy.proxy(url)
+      _ -> ImageProxy.proxy(fallback_url)
+    end
+  end
 
   def favorite?(nil, _content_type, _content_id), do: false
 
