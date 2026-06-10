@@ -17,7 +17,7 @@ defmodule StreamixWeb.HomeDataTest do
 
       refute Iptv.favorite?(user.id, "movie", movie.id)
 
-      socket = Data.toggle_content_favorite(socket, "movie", Integer.to_string(movie.id))
+      socket = HomeData.toggle_content_favorite(socket, "movie", Integer.to_string(movie.id))
 
       assert Iptv.favorite?(user.id, "movie", movie.id)
       assert MapSet.member?(socket.assigns.movie_favorites_map, movie.id)
@@ -41,7 +41,7 @@ defmodule StreamixWeb.HomeDataTest do
           series_favorites_map: MapSet.new([series.id])
         )
 
-      socket = Data.toggle_content_favorite(socket, :series, series.id)
+      socket = HomeData.toggle_content_favorite(socket, :series, series.id)
 
       refute Iptv.favorite?(user.id, "series", series.id)
       refute MapSet.member?(socket.assigns.series_favorites_map, series.id)
