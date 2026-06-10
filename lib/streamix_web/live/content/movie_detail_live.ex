@@ -107,7 +107,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   def handle_event("play_movie", _, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/movie/#{socket.assigns.movie.id}")}
+    {:noreply,
+     push_navigate(socket, to: watch_path(socket.assigns.provider, socket.assigns.movie))}
   end
 
   def handle_event("toggle_favorite", _, socket) do
@@ -266,6 +267,18 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp back_path(:browse, _provider), do: ~p"/browse/movies"
   defp back_path(:provider, provider), do: ~p"/providers/#{provider.id}/movies"
+
+  # Torrent movies play through the rqbit swarm gate (/watch/torrent/:id,
+  # where :id is the best torrent_stream). Everything else is a direct
+  # VOD play keyed on the movie id.
+  defp watch_path(%{provider_type: :torrent}, movie) do
+    case Detail.best_torrent_stream(movie.id) do
+      %{id: stream_id} -> ~p"/watch/torrent/#{stream_id}"
+      _ -> ~p"/watch/movie/#{movie.id}"
+    end
+  end
+
+  defp watch_path(_provider, movie), do: ~p"/watch/movie/#{movie.id}"
 
   defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do
     if title != name, do: name

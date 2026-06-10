@@ -107,6 +107,13 @@
               active={String.starts_with?(@current_path || "", "/browse")}
             />
             <.nav_link
+              path={~p"/torrent"}
+              label="Torrents"
+              icon="hero-bolt"
+              icon_active="hero-bolt-solid"
+              active={String.starts_with?(@current_path || "", "/torrent")}
+            />
+            <.nav_link
               path={~p"/favorites"}
               label="Minha Lista"
               icon="hero-heart"

@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.Detail do
   alias Streamix.Access
   alias Streamix.AI.SemanticSearch
   alias Streamix.Iptv
+  alias Streamix.Torrent
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -58,6 +59,9 @@ defmodule StreamixWeb.Content.Detail do
     do: Iptv.get_playable_provider(user_id, provider_id)
 
   def premium_access?(user, provider), do: Access.plays_global_content?(user, provider)
+
+  @doc "Best (most-seeded) torrent stream for a movie, or nil."
+  def best_torrent_stream(movie_id), do: Torrent.best_stream_for_movie(movie_id)
 
   def premium_access?(user), do: premium_access?(user, global_provider())
 
