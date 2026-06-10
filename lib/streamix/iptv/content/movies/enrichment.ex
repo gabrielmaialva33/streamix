@@ -10,7 +10,11 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
 
   alias Streamix.Repo
 
-  def fetch_xtream_attrs(%Movie{provider: provider} = movie) do
+  # Only Xtream providers expose a VOD info API. Torrent/GIndex movies
+  # carry no credentials, so calling XtreamClient with nil user/pass
+  # crashed `build_url` (URI.encode_www_form(nil)). Skip straight to the
+  # TMDB enrichment path instead.
+  def fetch_xtream_attrs(%Movie{provider: %{provider_type: :xtream} = provider} = movie) do
     case XtreamClient.get_vod_info(
            provider.url,
            provider.username,
@@ -43,6 +47,8 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
         %{}
     end
   end
+
+  def fetch_xtream_attrs(%Movie{}), do: %{}
 
   def resolve_movie_tmdb_id(%Movie{} = movie) do
     title = movie.title || movie.name
