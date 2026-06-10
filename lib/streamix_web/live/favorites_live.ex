@@ -17,7 +17,7 @@ defmodule StreamixWeb.FavoritesLive do
   alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
-  @page_size 24
+  @per_page 24
 
   @doc false
   def mount(_params, _session, socket) do
@@ -277,9 +277,9 @@ defmodule StreamixWeb.FavoritesLive do
     user_id = socket.assigns.user_id
     filter = socket.assigns.filter
     page = socket.assigns.page
-    offset = page * @page_size
+    offset = page * @per_page
 
-    opts = [limit: @page_size, offset: offset]
+    opts = [limit: @per_page, offset: offset]
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
     favorites =
@@ -288,7 +288,7 @@ defmodule StreamixWeb.FavoritesLive do
 
     socket
     |> assign(loading: false)
-    |> assign(end_of_list: length(favorites) < @page_size)
+    |> assign(end_of_list: length(favorites) < @per_page)
     |> stream(:favorites, favorites)
   end
 
@@ -319,7 +319,7 @@ defmodule StreamixWeb.FavoritesLive do
 
   defp get_play_path("live_channel", id), do: ~p"/watch/live_channel/#{id}"
   defp get_play_path("movie", id), do: ~p"/watch/movie/#{id}"
-  defp get_play_path("series", id), do: ~p"/providers/0/series/#{id}"
+  defp get_play_path("series", id), do: ~p"/browse/series/#{id}"
   defp get_play_path("episode", id), do: ~p"/watch/episode/#{id}"
   defp get_play_path(_, _), do: ~p"/"
 

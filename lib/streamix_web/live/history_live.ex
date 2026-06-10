@@ -17,7 +17,7 @@ defmodule StreamixWeb.HistoryLive do
   alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
-  @page_size 20
+  @per_page 20
 
   @doc false
   def mount(_params, _session, socket) do
@@ -314,16 +314,16 @@ defmodule StreamixWeb.HistoryLive do
     user_id = socket.assigns.user_id
     filter = socket.assigns.filter
     page = socket.assigns.page
-    offset = page * @page_size
+    offset = page * @per_page
 
-    opts = [limit: @page_size, offset: offset]
+    opts = [limit: @per_page, offset: offset]
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
     history = Iptv.list_watch_history(user_id, opts)
 
     socket
     |> assign(loading: false)
-    |> assign(end_of_list: length(history) < @page_size)
+    |> assign(end_of_list: length(history) < @per_page)
     |> stream(:history, history)
   end
 
