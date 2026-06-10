@@ -371,8 +371,13 @@ if config_env() != :test and get_env.("PHX_SERVER") do
   config :streamix, StreamixWeb.Endpoint, server: true
 end
 
-config :streamix, StreamixWeb.Endpoint,
-  http: [port: String.to_integer(get_env.("PORT") || "4000")]
+# Test keeps the fixed port from config/test.exs (4002) so the suite can
+# run alongside a dev server on 4000 — this stanza would otherwise
+# deep-merge port 4000 over it.
+if config_env() != :test do
+  config :streamix, StreamixWeb.Endpoint,
+    http: [port: String.to_integer(get_env.("PORT") || "4000")]
+end
 
 if config_env() == :prod do
   # Production-only tuning for the Repo (pool, queue timings, ssl, etc).
