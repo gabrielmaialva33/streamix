@@ -71,8 +71,12 @@ defmodule StreamixWeb.Router do
   pipeline :api_v1 do
     plug :accepts, ["json"]
     plug StreamixWeb.Plugs.CORS
-    # 120 requests per minute per IP
-    plug StreamixWeb.Plugs.RateLimit, limit: 120, period: 60_000
+    # 360 requests per minute per IP. The TV app fires dozens of catalog
+    # calls per screen (categories + grids + EPG), so 120/min tripped on
+    # ordinary navigation; 360 covers ~12 screen changes a minute while
+    # still stopping bulk catalog scraping. Households share one IP, so
+    # don't tighten this without per-user keying.
+    plug StreamixWeb.Plugs.RateLimit, limit: 360, period: 60_000
     plug StreamixWeb.Plugs.ApiKeyAuth
   end
 
