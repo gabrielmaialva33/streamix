@@ -93,6 +93,40 @@ defmodule Streamix.Cache do
   end
 
   @doc """
+  Gets a value through the in-memory (L1-only) cache, or computes and
+  caches it if not found.
+
+  Use instead of `fetch/3` for values that must never be serialized into
+  Redis — e.g. structs carrying decrypted credentials. Entries are
+  per-node: each node computes and invalidates its own copy, so keep the
+  TTL short when cross-node staleness matters. `nil` results are not
+  memoised.
+  """
+  @spec fetch_local(term(), pos_integer(), (-> term())) :: term()
+  def fetch_local(key, ttl_ms, fun) when is_function(fun, 0) do
+    if Application.get_env(:streamix, :disable_local_cache, false) do
+      fun.()
+    else
+      case L1.get(key) do
+        nil ->
+          value = fun.()
+          L1.put(key, value, ttl_ms)
+          value
+
+        value ->
+          value
+      end
+    end
+  end
+
+  @doc "Removes an entry written by `fetch_local/3` from this node's L1."
+  @spec delete_local(term()) :: :ok
+  def delete_local(key) do
+    L1.delete(key)
+    :ok
+  end
+
+  @doc """
   Gets a value from cache, or computes and caches it if not found.
   This is the recommended way to use the cache.
 

@@ -31,6 +31,11 @@ config :streamix, :session_secure, false
 # Disable rate limiting in tests to prevent flaky failures on repeated logins.
 config :streamix, :disable_rate_limit, true
 
+# L1 entries (e.g. the cached global provider) use fixed keys and ConCache
+# is shared across the suite while the DB is per-test sandboxed — bypass
+# the local cache so tests never see another test's entries.
+config :streamix, :disable_local_cache, true
+
 # The provider health sampler runs in its own process and periodically touches
 # the database. Disable it in tests so SQL sandbox ownership stays per-test.
 config :streamix, :provider_health_monitor_enabled, false

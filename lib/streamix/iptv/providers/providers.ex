@@ -9,9 +9,16 @@ defmodule Streamix.Iptv.Providers do
   import Ecto.Query, warn: false
 
   alias Streamix.Billing
+  alias Streamix.Cache
   alias Streamix.Iptv.{Provider, Sync, XtreamClient}
   alias Streamix.Repo
   alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
+
+  # L1-only (provider structs carry decrypted credentials — never Redis).
+  # Short TTL bounds cross-node staleness; writes below invalidate this
+  # node eagerly.
+  @global_provider_cache_key {:providers, :global}
+  @global_provider_cache_ttl :timer.seconds(60)
 
   # =============================================================================
   # Listing
@@ -123,14 +130,16 @@ defmodule Streamix.Iptv.Providers do
   """
   @spec get_global() :: Provider.t() | nil
   def get_global do
-    Provider
-    |> where([p], p.is_system == true)
-    |> where([p], p.visibility == :global)
-    |> where([p], p.provider_type == :xtream)
-    |> where([p], p.is_active == true)
-    |> order_by([p], desc: p.inserted_at, desc: p.id)
-    |> limit(1)
-    |> Repo.one()
+    Cache.fetch_local(@global_provider_cache_key, @global_provider_cache_ttl, fn ->
+      Provider
+      |> where([p], p.is_system == true)
+      |> where([p], p.visibility == :global)
+      |> where([p], p.provider_type == :xtream)
+      |> where([p], p.is_active == true)
+      |> order_by([p], desc: p.inserted_at, desc: p.id)
+      |> limit(1)
+      |> Repo.one()
+    end)
   end
 
   @doc """
@@ -158,6 +167,7 @@ defmodule Streamix.Iptv.Providers do
     %Provider{}
     |> Provider.changeset(attrs)
     |> Repo.insert()
+    |> invalidate_global_cache()
   end
 
   @doc """
@@ -213,6 +223,7 @@ defmodule Streamix.Iptv.Providers do
     provider
     |> Provider.changeset(attrs)
     |> Repo.update()
+    |> invalidate_global_cache()
   end
 
   @doc """
@@ -220,8 +231,17 @@ defmodule Streamix.Iptv.Providers do
   """
   @spec delete(Provider.t()) :: {:ok, Provider.t()} | {:error, Ecto.Changeset.t()}
   def delete(%Provider{} = provider) do
-    Repo.delete(provider)
+    provider
+    |> Repo.delete()
+    |> invalidate_global_cache()
   end
+
+  defp invalidate_global_cache({:ok, _} = result) do
+    Cache.delete_local(@global_provider_cache_key)
+    result
+  end
+
+  defp invalidate_global_cache(result), do: result
 
   @doc """
   Returns a changeset for tracking provider changes.
