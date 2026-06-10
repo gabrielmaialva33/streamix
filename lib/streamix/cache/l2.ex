@@ -75,14 +75,30 @@ defmodule Streamix.Cache.L2 do
 
   @doc "FLUSHDB. Used by `Streamix.Cache.invalidate_all/0` with fallback."
   def flush do
+    if flushdb_available?(), do: try_flushdb(), else: :error
+  end
+
+  defp try_flushdb do
     case Redix.command(@redis, ["FLUSHDB"]) do
       {:ok, _} ->
         :ok
+
+      {:error, %Redix.Error{message: "ERR unknown command" <> _}} ->
+        # Managed Redis commonly renames/disables FLUSHDB. Remember it so
+        # later flushes go straight to the SCAN+DEL fallback instead of
+        # re-asking (and re-logging) on every call.
+        :persistent_term.put({__MODULE__, :flushdb_available}, false)
+        Logger.info("Cache.L2 FLUSHDB unavailable (renamed/disabled); using SCAN+DEL fallback")
+        :error
 
       {:error, reason} ->
         log_error("FLUSHDB", "*", reason)
         :error
     end
+  end
+
+  defp flushdb_available? do
+    :persistent_term.get({__MODULE__, :flushdb_available}, true)
   end
 
   @doc "L2 size snapshot for `Streamix.Cache.stats/0`."
