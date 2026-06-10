@@ -179,8 +179,10 @@ end
 
 # Torrent aggregator provider. Off by default — it requires an rqbit
 # sidecar to be reachable and brings its own resource/legal footprint,
-# so opt-in. RQBIT_URL points at the sidecar's HTTP API.
-if get_env.("TORRENT_ENABLED") == "true" do
+# so opt-in. RQBIT_URL points at the sidecar's HTTP API. Always off in
+# test: the suite boots its own Registry/stub processes and would
+# collide with the application-supervised ones.
+if config_env() != :test and get_env.("TORRENT_ENABLED") == "true" do
   config :streamix, :torrent_provider,
     enabled: true,
     rqbit_url: get_env.("RQBIT_URL") || "http://rqbit:3030"
