@@ -416,7 +416,12 @@ window.setTimeout(() => {
 if (document.startViewTransition) {
   document.addEventListener("phx:page-loading-start", (info) => {
     if (info.detail?.kind === "redirect") {
-      document.startViewTransition();
+      // Rapid navigation skips the pending transition; the skip surfaces
+      // as an AbortError rejection on `ready` (and can cascade to
+      // `finished`), so swallow both to keep the console clean.
+      const transition = document.startViewTransition();
+      transition.ready.catch(() => {});
+      transition.finished.catch(() => {});
     }
   });
 }
