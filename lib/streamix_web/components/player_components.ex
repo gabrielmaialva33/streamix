@@ -95,6 +95,8 @@ defmodule StreamixWeb.PlayerComponents do
       data-uhd-hevc={@uhd_hevc}
       data-media-title={@media_title}
       data-media-subtitle={@media_subtitle}
+      data-imdb-id={Map.get(@content, :imdb_id)}
+      data-subtitle-lang="pt-BR"
     >
       <%!-- Loading indicator --%>
       <div

@@ -489,6 +489,8 @@ const VideoPlayer = {
     this.contentType = this.el.dataset.contentType || "live";
     this.sourceType = this.el.dataset.sourceType || null;
     this.contentId = this.el.dataset.contentId;
+    this.imdbId = this.el.dataset.imdbId || null;
+    this.subtitleLang = this.el.dataset.subtitleLang || "pt-BR";
     this.mediaTitle = this.el.dataset.mediaTitle || document.title || "Streamix";
     this.mediaSubtitle = this.el.dataset.mediaSubtitle || "Streamix";
     this.initialMode = this.el.dataset.streamingMode || null;
@@ -1891,6 +1893,11 @@ const VideoPlayer = {
       this.avPlayer.destroy();
       this.avPlayer = null;
     }
+    if (this._externalSubtitleBlobUrl) {
+      URL.revokeObjectURL(this._externalSubtitleBlobUrl);
+      this._externalSubtitleBlobUrl = null;
+    }
+    this._externalSubtitleLoadedFor = null;
     if (this.avbridge) {
       this.avbridge.destroy().catch((err) => {
         log.debug("[VideoPlayer] avbridge cleanup threw:", err);
@@ -3195,6 +3202,55 @@ const VideoPlayer = {
       }
     } catch (e) {
       log.warn("[VideoPlayer] Failed to detect AVPlayer tracks:", e);
+    }
+
+    // Offer an external subtitle when the file ships none in the wanted
+    // language (e.g. English-audio torrents). Runs after the embedded
+    // probe so embedded tracks always take precedence.
+    await this.loadExternalSubtitleIfAvailable(sessionId);
+  },
+
+  /**
+   * Fetch a PT-BR subtitle by IMDb id and inject it as an external track.
+   * No-op without an imdb id, when the player lacks external-subtitle
+   * support, or when the backend has nothing (204). Uses a Blob URL so
+   * the player doesn't re-request (and to dodge CORS).
+   */
+  async loadExternalSubtitleIfAvailable(sessionId = this.playbackSessionId) {
+    if (!this.imdbId || !this.avPlayer) return;
+    if (typeof this.avPlayer.loadExternalSubtitle !== "function") return;
+    // Once per session — `detectAVPlayerTracks` calls back into here, and
+    // we re-probe after injecting, which would otherwise recurse.
+    if (this._externalSubtitleLoadedFor === sessionId) return;
+    this._externalSubtitleLoadedFor = sessionId;
+
+    try {
+      const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?lang=${encodeURIComponent(this.subtitleLang)}`;
+      const res = await fetch(url, { headers: { accept: "text/vtt" } });
+      if (res.status !== 200) return; // 204 = no subtitle available
+      if (!this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
+
+      const vtt = await res.text();
+      if (!vtt || !this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
+
+      this._externalSubtitleBlobUrl = URL.createObjectURL(
+        new Blob([vtt], { type: "text/vtt" }),
+      );
+
+      await this.avPlayer.loadExternalSubtitle({
+        source: this._externalSubtitleBlobUrl,
+        lang: this.subtitleLang,
+        title: "Português (auto)",
+      });
+
+      // Re-probe so the new track shows up in the subtitle menu.
+      if (this.isCurrentPlaybackSession(sessionId)) {
+        await this.detectAVPlayerTracks(sessionId);
+      }
+
+      log.debug("[VideoPlayer] External subtitle loaded for", this.imdbId);
+    } catch (e) {
+      log.warn("[VideoPlayer] External subtitle load failed:", e);
     }
   },
 
