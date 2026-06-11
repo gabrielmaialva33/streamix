@@ -1,20 +1,20 @@
 defmodule Streamix.Torrent.Sources.GratisTorrent do
   @moduledoc """
-  GratisTorrent-compatible BR source adapter.
+  GratisTorrent BR source (dubbed / dual-audio movies).
 
-  Configure `GRATISTORRENT_SOURCE_URL` with a normalized JSON feed.
-  Source-specific crawlers should emit that stable payload and reuse
-  `Streamix.Torrent.Sources.Helpers` for magnet and release
-  normalization.
+  Tries, in order: the native HTML scraper (`:torrent_scrapers` config
+  with a `base_url`), then a normalized JSON feed
+  (`GRATISTORRENT_SOURCE_URL`), then disabled. Same shape as
+  `Streamix.Torrent.Sources.ComandoTorrent`.
   """
 
   @behaviour Streamix.Torrent.Source
 
-  alias Streamix.Torrent.Sources.Helpers
+  alias Streamix.Torrent.Sources.{Helpers, HtmlScraper}
 
   @slug "gratistorrent"
   @name "GratisTorrent"
-  @rate_limit_ms 1_000
+  @rate_limit_ms 1_500
 
   @impl true
   def slug, do: @slug
@@ -27,6 +27,13 @@ defmodule Streamix.Torrent.Sources.GratisTorrent do
 
   @impl true
   def fetch_listing(opts \\ []) do
+    case HtmlScraper.fetch_listing(@slug, opts) do
+      {:ok, [], %{disabled?: true}} -> fetch_feed(opts)
+      result -> result
+    end
+  end
+
+  defp fetch_feed(opts) do
     case Helpers.fetch_normalized_feed(@slug, opts) do
       {:error, :not_configured} -> {:ok, [], %{next_page: nil, disabled?: true}}
       result -> result

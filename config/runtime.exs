@@ -195,6 +195,23 @@ if config_env() != :test and get_env.("TORRENT_ENABLED") == "true" do
     eztv: get_env.("EZTV_SOURCE_URL"),
     gratistorrent: get_env.("GRATISTORRENT_SOURCE_URL"),
     comandotorrent: get_env.("COMANDOTORRENT_SOURCE_URL")
+
+  # Native HTML scrapers for BR torrent sites (dubbed/dual movies). Set a
+  # site's `*_BASE_URL` to enable; selectors fall back to the common
+  # WordPress shape and can be tuned per site if the layout differs.
+  config :streamix, :torrent_scrapers,
+    comandotorrent: [
+      base_url: get_env.("COMANDOTORRENT_BASE_URL"),
+      list_path: get_env.("COMANDOTORRENT_LIST_PATH") || "/",
+      post_link_selector:
+        get_env.("COMANDOTORRENT_POST_SELECTOR") || "article h2 a, .title a, h2.entry-title a"
+    ],
+    gratistorrent: [
+      base_url: get_env.("GRATISTORRENT_BASE_URL"),
+      list_path: get_env.("GRATISTORRENT_LIST_PATH") || "/",
+      post_link_selector:
+        get_env.("GRATISTORRENT_POST_SELECTOR") || "article h2 a, .title a, h2.entry-title a"
+    ]
 else
   config :streamix, :torrent_provider, enabled: false
 end
