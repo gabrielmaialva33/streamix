@@ -199,6 +199,15 @@ else
   config :streamix, :torrent_provider, enabled: false
 end
 
+# External subtitles. Providers are tried in chain order; each is only
+# used when its API key is present, so a missing key degrades to "no
+# subtitle" instead of erroring. Both keys are free with signup.
+config :streamix, :open_subtitles,
+  api_key: get_env.("OPENSUBTITLES_API_KEY"),
+  user_agent: get_env.("OPENSUBTITLES_USER_AGENT") || "Streamix v1"
+
+config :streamix, :subdl, api_key: get_env.("SUBDL_API_KEY")
+
 # AI Embeddings configuration for semantic search
 # Set EMBEDDING_PROVIDER to choose: "gemini" (default) or "nvidia"
 # Both can be configured for automatic fallback
