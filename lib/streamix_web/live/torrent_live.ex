@@ -11,7 +11,6 @@ defmodule StreamixWeb.TorrentLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.AppComponents
-  import StreamixWeb.ContentComponents
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
@@ -106,29 +105,19 @@ defmodule StreamixWeb.TorrentLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div class="space-y-1">
-          <div class="flex items-center gap-2">
-            <span class="inline-flex size-9 items-center justify-center rounded-lg bg-brand/15 text-brand">
-              <.icon name="hero-bolt" class="size-5" />
-            </span>
-            <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Torrents</h1>
-          </div>
-          <p class="text-2sm text-text-secondary">
-            Filmes via swarm P2P, ordenados por saúde da rede.
-            <span :if={@total_count > 0} class="text-text-muted">
-              {@total_count} títulos
-            </span>
-          </p>
+      <header class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex size-9 items-center justify-center rounded-lg bg-brand/15 text-brand">
+            <.icon name="hero-bolt" class="size-5" />
+          </span>
+          <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Torrents</h1>
         </div>
-
-        <.source_tabs
-          selected="torrent"
-          path="/torrent"
-          iptv_path="/browse"
-          gindex_path="/browse/animes"
-          torrent_path="/torrent"
-        />
+        <p class="text-2sm text-text-secondary">
+          Filmes via swarm P2P, ordenados por saúde da rede.
+          <span :if={@total_count > 0} class="text-text-muted">
+            {@total_count} títulos
+          </span>
+        </p>
       </header>
 
       <.search_input value={@search} placeholder="Buscar torrents..." />

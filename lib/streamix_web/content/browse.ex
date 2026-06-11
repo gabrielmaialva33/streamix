@@ -202,6 +202,14 @@ defmodule StreamixWeb.Content.Browse do
     end
   end
 
+  # Torrent has its own dedicated screen (`/torrent`) — it is not a
+  # source that shares the generic catalog grid. Redirect legacy
+  # `?source=torrent` links there instead of silently falling back to
+  # the IPTV provider.
+  defp apply_route_context(socket, _kind, _params, "torrent") do
+    {:redirect, LiveView.push_navigate(socket, to: "/torrent")}
+  end
+
   defp apply_route_context(socket, kind, _params, "gindex") do
     config = config!(kind)
 
