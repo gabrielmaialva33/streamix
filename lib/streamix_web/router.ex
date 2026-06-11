@@ -130,6 +130,11 @@ defmodule StreamixWeb.Router do
     # language + codec name). Choki content uses hls.js for runtime
     # enumeration and never hits this.
     get "/gindex-tracks/:type/:id", Api.V1.GindexTracksController, :show
+
+    # External subtitles (WebVTT) by IMDb id — used by the player's
+    # loadExternalSubtitle. Anonymous + rate-limited; payload is public
+    # subtitle text.
+    get "/subtitles/:imdb_id", Api.V1.SubtitlesController, :show
   end
 
   # Credential-handling routes: tight bucket to discourage brute-force.
