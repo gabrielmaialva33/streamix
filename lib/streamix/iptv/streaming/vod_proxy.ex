@@ -44,11 +44,11 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   require Logger
 
-  # XCIPTV is whitelisted by most IPTV providers' WAFs; the BEAM's default
+  # IPTVSmartersPlayer is whitelisted by most IPTV providers' WAFs; the BEAM's default
   # `Req/...` UA gets bounced. Standardized across every Streamix surface
   # (catalog, EPG, multiplexer, redirect resolver) so the upstream sees a
   # single coherent client identity.
-  @upstream_user_agent "XCIPTV-v6.0.0"
+  @upstream_user_agent "IPTVSmartersPlayer"
 
   # Headers we forward verbatim from the player to the upstream so seek,
   # cache validation and conditional GETs all work end-to-end.

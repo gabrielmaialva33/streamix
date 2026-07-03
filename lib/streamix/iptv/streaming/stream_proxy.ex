@@ -195,11 +195,11 @@ defmodule Streamix.Iptv.StreamProxy do
     # Masquerade as a common IPTV player. Upstreams increasingly gate
     # access on User-Agent (we caught a 403 on the raw default UA when
     # a provider tightened its WAF in April 2026), and the XtreamClient
-    # info endpoint already sends `XCIPTV-v6.0.0` — keeping the same UA
+    # info endpoint already sends `IPTVSmartersPlayer` — keeping the same UA
     # across every request surface keeps provider analytics /
     # allowlisting consistent across info-lookup and media playback.
     headers = [
-      {"user-agent", "XCIPTV-v6.0.0"},
+      {"user-agent", "IPTVSmartersPlayer"},
       {"accept", "*/*"},
       {"connection", "keep-alive"}
     ]

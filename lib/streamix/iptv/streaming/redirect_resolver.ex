@@ -439,7 +439,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     [
       redirect: false,
       retry: false,
-      headers: [{"user-agent", "XCIPTV-v6.0.0"}],
+      headers: [{"user-agent", "IPTVSmartersPlayer"}],
       decode_body: false,
       # Tight timeouts: a healthy provider responds with a 302 in
       # under 1s. Anything past 8s receive or 5s connect is almost
