@@ -1,7 +1,11 @@
 # Build stage
-ARG ELIXIR_VERSION=1.18.2
-ARG OTP_VERSION=27.2.1
-ARG DEBIAN_VERSION=bookworm-20250113-slim
+# OTP bumped 27.2.1 -> 27.3.4: 27.2's stricter TLS key-usage validation
+# rejected the (rotated) Fastly cert chains behind builds.hex.pm and
+# release-assets.githubusercontent.com (key_usage_mismatch), breaking
+# `mix local.hex` and the vix precompiled-binary download. 27.3.4 relaxes it.
+ARG ELIXIR_VERSION=1.18.4
+ARG OTP_VERSION=27.3.4
+ARG DEBIAN_VERSION=bookworm-20250520-slim
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
@@ -19,16 +23,9 @@ RUN apt-get update -y && apt-get install -y build-essential git curl \
 # Prepare build dir
 WORKDIR /app
 
-# Install hex + rebar. Erlang/OTP 27.2's stricter TLS key-usage validation
-# rejects builds.hex.pm's Fastly cert chain (key_usage_mismatch), so
-# `mix local.hex` / `mix local.rebar` fail over Erlang's httpc. Install hex
-# from the GitHub source (git, added above) and rebar3 over curl/OpenSSL —
-# curl validates the same cert fine — then point mix at the fetched binary.
-RUN mix archive.install github hexpm/hex branch latest --force && \
-    curl -fsSL https://github.com/erlang/rebar3/releases/latest/download/rebar3 \
-      -o /usr/local/bin/rebar3 && \
-    chmod +x /usr/local/bin/rebar3 && \
-    mix local.rebar rebar3 /usr/local/bin/rebar3 --force
+# Install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
 
 # Set build ENV
 ENV MIX_ENV="prod"
