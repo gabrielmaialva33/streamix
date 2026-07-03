@@ -19,9 +19,16 @@ RUN apt-get update -y && apt-get install -y build-essential git curl \
 # Prepare build dir
 WORKDIR /app
 
-# Install hex + rebar
-RUN mix local.hex --force && \
-    mix local.rebar --force
+# Install hex + rebar. Erlang/OTP 27.2's stricter TLS key-usage validation
+# rejects builds.hex.pm's Fastly cert chain (key_usage_mismatch), so
+# `mix local.hex` / `mix local.rebar` fail over Erlang's httpc. Install hex
+# from the GitHub source (git, added above) and rebar3 over curl/OpenSSL —
+# curl validates the same cert fine — then point mix at the fetched binary.
+RUN mix archive.install github hexpm/hex branch latest --force && \
+    curl -fsSL https://github.com/erlang/rebar3/releases/latest/download/rebar3 \
+      -o /usr/local/bin/rebar3 && \
+    chmod +x /usr/local/bin/rebar3 && \
+    mix local.rebar rebar3 /usr/local/bin/rebar3 --force
 
 # Set build ENV
 ENV MIX_ENV="prod"
