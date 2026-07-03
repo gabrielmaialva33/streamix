@@ -63,6 +63,12 @@ defmodule Streamix.Iptv.Sync.Series.Upsert do
       |> MapSet.new()
 
     series_list
+    # Some panels list the same series_id more than once in a single
+    # payload. insert_all's ON CONFLICT can't touch the same
+    # (provider_id, series_id) row twice within one command, so a dup in a
+    # batch aborts the whole series sync with Postgres 21000
+    # (cardinality_violation). Dedupe up front — first occurrence wins.
+    |> Enum.uniq_by(& &1["series_id"])
     |> Enum.chunk_every(Helpers.batch_size())
     |> Enum.reduce({0, []}, fn batch, {acc_count, acc_ids} ->
       batch_series_ids = Enum.map(batch, & &1["series_id"])
