@@ -19,6 +19,14 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
     seasons_data = info["seasons"] || []
     episodes_map = info["episodes"] || %{}
 
+    # Some panels return the episodes grouped by season number while
+    # leaving the top-level `seasons` list empty (or omitting a season the
+    # `episodes` map still references). Without a matching season row,
+    # `season_num_to_id` resolves to nil below and `upsert_episodes/4`
+    # silently drops those episodes — leaving the series unplayable. Backfill
+    # the missing seasons straight from the episode-map keys.
+    seasons_data = ensure_seasons_cover_episode_keys(seasons_data, episodes_map)
+
     Enrichment.update_series_from_info(series, info["info"])
 
     {season_count, inserted_seasons, current_season_nums} =
@@ -53,6 +61,27 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
       end)
 
     {:ok, %{seasons: season_count, episodes: episode_count}}
+  end
+
+  # Builds placeholder season maps for every numeric key in the episodes
+  # map that isn't already present in `seasons_data`. Only `season_number`
+  # is known here; the remaining columns fall back to their defaults in
+  # `season_attrs/3`. Non-numeric keys ("special", "bonus", …) are left
+  # out — `sync/2` logs and skips those episodes anyway.
+  defp ensure_seasons_cover_episode_keys(seasons_data, episodes_map) do
+    existing_nums =
+      for season <- seasons_data,
+          {num, ""} <- [Integer.parse(to_string(season["season_number"]))],
+          into: MapSet.new(),
+          do: num
+
+    synthetic =
+      for key <- Map.keys(episodes_map),
+          {num, ""} <- [Integer.parse(to_string(key))],
+          not MapSet.member?(existing_nums, num),
+          do: %{"season_number" => num}
+
+    seasons_data ++ synthetic
   end
 
   defp upsert_seasons(seasons_data, series_id, now) do
