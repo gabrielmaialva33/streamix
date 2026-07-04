@@ -165,7 +165,7 @@ defmodule StreamixWeb.PlayerComponents do
       <div
         :if={@show_controls}
         id="player-controls"
-        class="absolute inset-0 flex flex-col justify-between opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto transition-opacity duration-300 z-10"
+        class="absolute inset-0 z-30 flex flex-col justify-between opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto transition-opacity duration-300"
       >
         <%!-- Top bar --%>
         <div

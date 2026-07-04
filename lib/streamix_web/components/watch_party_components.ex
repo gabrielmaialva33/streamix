@@ -17,7 +17,7 @@ defmodule StreamixWeb.WatchPartyComponents do
     ~H"""
     <.link
       navigate={~p"/party/new/#{@content_type}/#{@content_id}"}
-      class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
+      class="inline-flex min-h-11 items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
     >
       <.icon name="hero-users" class="size-4 sm:size-5" /> Watch Party
     </.link>

@@ -242,7 +242,7 @@
     utility in app.css adds env(safe-area-inset-top) on top of that so
     content clears the notch on iPhone X+ / Dynamic Island devices.
   --%>
-  <main id="main-content" class="flex-1 pb-20 sm:pb-8 px-[4%] main-safe-top" tabindex="-1">
+  <main id="main-content" class="flex-1 px-[4%] main-safe-top main-safe-bottom" tabindex="-1">
     {@inner_content}
   </main>
 
@@ -256,14 +256,14 @@
     --%>
     <div
       style="padding-bottom: env(safe-area-inset-bottom);"
-      class="pb-20 md:pb-0"
+      class={[!detail_path?(@current_path) && "pb-20", "md:pb-0"]}
     >
       <StreamixWeb.FooterComponents.app_footer current_scope={@current_scope} />
     </div>
   <% end %>
   
 <!-- Bottom Navigation Bar (Mobile Only) -->
-  <%= if @current_scope do %>
+  <%= if not is_nil(@current_scope) and not detail_path?(@current_path) do %>
     <%!--
       iOS Safari: safe-area-bottom handles the home-indicator. Inline style
       also adds env(safe-area-inset-left/right) so the tabs don't sit under

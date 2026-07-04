@@ -1142,6 +1142,19 @@ img {
     }
 }
 
+/* Fixed mobile bottom navigation sits outside normal document flow. Reserve
+   enough scroll space so the last row/card can clear the tab bar and the
+   iOS home indicator instead of ending underneath it. */
+.main-safe-bottom {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+    .main-safe-bottom {
+        padding-bottom: 2rem;
+    }
+}
+
 /* Card hover effect — spring physics */
 .content-card {
     transition:
@@ -1151,9 +1164,11 @@ img {
     will-change: transform;
 }
 
-.content-card:hover {
-    transform: translateY(-6px) scale(1.02);
-    box-shadow: var(--shadow-card-hover);
+@media (hover: hover) and (pointer: fine) {
+    .content-card:hover {
+        transform: translateY(-6px) scale(1.02);
+        box-shadow: var(--shadow-card-hover);
+    }
 }
 
 /* Button press effect — spring */

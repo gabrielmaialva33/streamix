@@ -257,6 +257,7 @@ defmodule StreamixWeb.Content.DetailComponents do
           navigate={@back_path}
           class={[
             "inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium",
+            "min-h-11",
             @compact_back? && "max-w-[200px] sm:max-w-none"
           ]}
         >
@@ -429,7 +430,7 @@ defmodule StreamixWeb.Content.DetailComponents do
     <button
       type="button"
       phx-click={@event}
-      class="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
+      class="inline-flex min-h-11 items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
     >
       <.icon name="hero-play-solid" class="size-4 sm:size-5" /> {@label}
     </button>
@@ -472,7 +473,7 @@ defmodule StreamixWeb.Content.DetailComponents do
       href={@url}
       target="_blank"
       rel="noopener noreferrer"
-      class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-surface border border-border text-text-primary font-semibold rounded-lg hover:bg-surface-hover transition-colors text-sm"
+      class="inline-flex min-h-11 items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-surface border border-border text-text-primary font-semibold rounded-lg hover:bg-surface-hover transition-colors text-sm"
     >
       <.icon name="hero-play-circle" class="size-4 sm:size-5 text-brand" /> Trailer
     </a>
@@ -489,7 +490,7 @@ defmodule StreamixWeb.Content.DetailComponents do
       href={"https://www.themoviedb.org/#{@type}/#{@tmdb_id}"}
       target="_blank"
       rel="noopener noreferrer"
-      class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-xs sm:text-sm"
+      class="inline-flex min-h-11 items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-xs sm:text-sm"
       title="Ver no The Movie Database"
     >
       <svg class="size-3.5 sm:size-4" viewBox="0 0 24 24" fill="currentColor">
