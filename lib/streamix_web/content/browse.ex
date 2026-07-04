@@ -309,6 +309,22 @@ defmodule StreamixWeb.Content.Browse do
     assign_items(socket, :series, items)
   end
 
+  defp load_items(%{assigns: %{source: "iptv", provider_filter: "all"}} = socket, kind) do
+    user = socket.assigns.user
+    config = config!(kind)
+
+    items =
+      list_visible_items(kind, socket.assigns.user_id,
+        search: socket.assigns.search,
+        limit: @per_page,
+        offset: offset(socket.assigns.page),
+        dedupe: true,
+        show_adult: user.show_adult_content
+      )
+
+    assign_items(socket, config.stream, items)
+  end
+
   defp load_items(%{assigns: %{source: "iptv", provider: nil, sort: sort}} = socket, :movies)
        when sort in ["new", "trending", "rating"] do
     items =
@@ -339,22 +355,6 @@ defmodule StreamixWeb.Content.Browse do
     |> assign(has_more: false)
     |> assign(loading: false)
     |> assign(empty_results: true)
-  end
-
-  defp load_items(%{assigns: %{source: "iptv", provider_filter: "all"}} = socket, kind) do
-    user = socket.assigns.user
-    config = config!(kind)
-
-    items =
-      list_visible_items(kind, socket.assigns.user_id,
-        search: socket.assigns.search,
-        limit: @per_page,
-        offset: offset(socket.assigns.page),
-        dedupe: true,
-        show_adult: user.show_adult_content
-      )
-
-    assign_items(socket, config.stream, items)
   end
 
   defp load_items(socket, kind) do

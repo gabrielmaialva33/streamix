@@ -49,4 +49,17 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
       refute has_element?(view, "#browse-premium-cta a[href=\"/plans\"]")
     end
   end
+
+  describe "provider filter" do
+    test "provider=all lists visible channels even when no global provider exists", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Private Live Catalog"})
+      channel = channel_fixture(provider, %{name: "Private Live Channel"})
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse")
+
+      assert has_element?(view, "#channel-img-#{channel.id}")
+    end
+  end
 end

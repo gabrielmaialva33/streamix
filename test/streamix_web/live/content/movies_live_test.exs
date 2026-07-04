@@ -44,6 +44,19 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
     end
   end
 
+  describe "provider filter" do
+    test "provider=all lists visible movies even when no global provider exists", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Private Catalog"})
+      movie = movie_fixture(provider, %{name: "Private Browse Movie"})
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies")
+
+      assert has_element?(view, "#movie-card-#{movie.id}")
+    end
+  end
+
   describe "premium signals" do
     setup do
       user = user_fixture()

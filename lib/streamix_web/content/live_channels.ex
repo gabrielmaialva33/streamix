@@ -282,14 +282,17 @@ defmodule StreamixWeb.Content.LiveChannels do
   defp apply_route_context(socket, _params, provider_filter) do
     user = socket.assigns.current_scope.user
 
-    case selected_browse_provider(user.id, provider_filter) do
-      nil ->
+    case {provider_filter, selected_browse_provider(user.id, provider_filter)} do
+      {"all", provider} ->
+        {:ok, assign_provider_context(socket, provider, :browse, provider_filter)}
+
+      {_provider_filter, nil} ->
         {:redirect,
          socket
          |> Phoenix.LiveView.put_flash(:error, "Catálogo não disponível. Configure um provedor.")
          |> Phoenix.LiveView.push_navigate(to: ~p"/providers")}
 
-      provider ->
+      {_provider_filter, provider} ->
         {:ok, assign_provider_context(socket, provider, :browse, provider_filter)}
     end
   end
@@ -408,6 +411,8 @@ defmodule StreamixWeb.Content.LiveChannels do
       _ -> Iptv.get_global_provider()
     end
   end
+
+  defp maybe_prepare_provider_updates(_socket, nil), do: false
 
   defp maybe_prepare_provider_updates(socket, provider) do
     if Phoenix.LiveView.connected?(socket) do

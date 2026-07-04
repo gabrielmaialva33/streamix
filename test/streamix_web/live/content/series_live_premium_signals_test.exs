@@ -42,9 +42,13 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
           is_active: true
         })
 
-      featured_series = series_fixture(global_provider, %{name: "A Premium Series"})
+      featured_series =
+        series_fixture(global_provider, %{name: "A Premium Series", tmdb_id: "premium-series"})
+
       owned_provider = provider_fixture(user)
-      _owned_series = series_fixture(owned_provider, %{name: "A Private Series"})
+
+      _owned_series =
+        series_fixture(owned_provider, %{name: "A Private Series", tmdb_id: "private-series"})
 
       %{
         user: user,
