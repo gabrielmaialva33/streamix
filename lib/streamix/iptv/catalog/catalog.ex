@@ -476,15 +476,12 @@ defmodule Streamix.Iptv.Catalog do
 
   @doc """
   Lists categories for a provider, optionally filtered by type.
-  Results are cached.
   """
   @spec list_categories(integer(), String.t() | nil) :: [Category.t()]
   def list_categories(provider_id, type \\ nil) do
-    Cache.fetch_categories(provider_id, type, fn ->
-      query = Category |> where(provider_id: ^provider_id)
-      query = if type, do: where(query, type: ^type), else: query
-      query |> order_by(:name) |> Repo.all()
-    end)
+    query = Category |> where(provider_id: ^provider_id)
+    query = if type, do: where(query, type: ^type), else: query
+    query |> order_by(:name) |> Repo.all()
   end
 
   @doc """
