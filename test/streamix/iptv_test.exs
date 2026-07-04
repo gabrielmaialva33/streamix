@@ -232,6 +232,28 @@ defmodule Streamix.IptvTest do
       refute hd(all).id == hd(offset).id
     end
 
+    test "list_visible_live_channels/2 returns visible providers only" do
+      user = user_fixture()
+      other_user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      public = provider_fixture(user, %{name: "Public", visibility: "public"})
+      own_private = provider_fixture(user, %{name: "Own Private"})
+      other_private = provider_fixture(other_user, %{name: "Other Private"})
+
+      global_channel = channel_fixture(global, %{name: "Global News"})
+      public_channel = channel_fixture(public, %{name: "Public News"})
+      private_channel = channel_fixture(own_private, %{name: "Private News"})
+      other_channel = channel_fixture(other_private, %{name: "Other News"})
+
+      results = Iptv.list_visible_live_channels(user.id, search: "News", limit: 10)
+      result_ids = MapSet.new(results, & &1.id)
+
+      assert MapSet.member?(result_ids, global_channel.id)
+      assert MapSet.member?(result_ids, public_channel.id)
+      assert MapSet.member?(result_ids, private_channel.id)
+      refute MapSet.member?(result_ids, other_channel.id)
+    end
+
     test "supports search filter" do
       user = user_fixture()
       provider = provider_fixture(user)
@@ -448,6 +470,68 @@ defmodule Streamix.IptvTest do
              ]
     end
 
+    test "list_visible_movies/2 collapses variants across visible providers" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      older =
+        movie_fixture(global, %{
+          name: "Same Movie",
+          title: "Same Movie",
+          year: 2026,
+          stream_id: 1_101
+        })
+
+      newer =
+        movie_fixture(fallback, %{
+          name: "Same Movie 4K HDR",
+          title: "Same Movie 4K HDR",
+          year: 2026,
+          stream_id: 1_102
+        })
+
+      results = Iptv.list_visible_movies(user.id, search: "Same Movie", limit: 10)
+
+      assert Enum.map(results, & &1.id) == [newer.id]
+      refute Enum.any?(results, &(&1.id == older.id))
+    end
+
+    test "list_visible_movies/2 keeps filling the page after dense duplicate variants" do
+      user = user_fixture()
+      provider = global_provider_fixture(%{name: "Global"})
+
+      for i <- 1..130 do
+        movie_fixture(provider, %{
+          name: "AAA Dense Movie 4K",
+          title: "AAA Dense Movie 4K",
+          year: 2026,
+          stream_id: 20_000 + i
+        })
+      end
+
+      for i <- 1..10 do
+        movie_fixture(provider, %{
+          name: "ZZZ Unique Movie #{i}",
+          title: "ZZZ Unique Movie #{i}",
+          year: 2026,
+          stream_id: 21_000 + i
+        })
+      end
+
+      results = Iptv.list_visible_movies(user.id, limit: 5)
+
+      assert length(results) == 5
+
+      assert Enum.map(results, & &1.name) == [
+               "AAA Dense Movie 4K",
+               "ZZZ Unique Movie 1",
+               "ZZZ Unique Movie 10",
+               "ZZZ Unique Movie 2",
+               "ZZZ Unique Movie 3"
+             ]
+    end
+
     test "list_series/2 returns lightweight provider browse cards" do
       user = user_fixture()
       provider = provider_fixture(user)
@@ -538,6 +622,68 @@ defmodule Streamix.IptvTest do
       results = Iptv.list_series(provider.id, search: "Desencanto", dedupe: true, limit: 10)
 
       assert Enum.map(results, & &1.id) == [series.id]
+    end
+
+    test "list_visible_series/2 collapses variants across visible providers" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      older =
+        series_content_fixture(global, %{
+          name: "Same Show",
+          title: "Same Show",
+          year: 2026,
+          series_id: 1_201
+        })
+
+      newer =
+        series_content_fixture(fallback, %{
+          name: "Same Show 4K HDR",
+          title: "Same Show 4K HDR",
+          year: 2026,
+          series_id: 1_202
+        })
+
+      results = Iptv.list_visible_series(user.id, search: "Same Show", limit: 10)
+
+      assert Enum.map(results, & &1.id) == [newer.id]
+      refute Enum.any?(results, &(&1.id == older.id))
+    end
+
+    test "list_visible_series/2 keeps filling the page after dense duplicate variants" do
+      user = user_fixture()
+      provider = global_provider_fixture(%{name: "Global"})
+
+      for i <- 1..130 do
+        series_content_fixture(provider, %{
+          name: "AAA Dense Show 4K",
+          title: "AAA Dense Show 4K",
+          year: 2026,
+          series_id: 22_000 + i
+        })
+      end
+
+      for i <- 1..10 do
+        series_content_fixture(provider, %{
+          name: "ZZZ Unique Show #{i}",
+          title: "ZZZ Unique Show #{i}",
+          year: 2026,
+          series_id: 23_000 + i
+        })
+      end
+
+      results = Iptv.list_visible_series(user.id, limit: 5)
+
+      assert length(results) == 5
+
+      assert Enum.map(results, & &1.name) == [
+               "AAA Dense Show 4K",
+               "ZZZ Unique Show 1",
+               "ZZZ Unique Show 10",
+               "ZZZ Unique Show 2",
+               "ZZZ Unique Show 3"
+             ]
     end
 
     test "list_public_movies/1 preloads genres but not credits" do

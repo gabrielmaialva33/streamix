@@ -106,6 +106,14 @@ defmodule Streamix.Iptv.SeriesOps do
   end
 
   @doc """
+  Lists series across all providers visible to a user.
+  """
+  @spec list_visible(integer(), keyword()) :: [Series.t()]
+  def list_visible(user_id, opts \\ []) do
+    Queries.list_visible(user_id, opts)
+  end
+
+  @doc """
   Lists featured series from public/global providers for public display.
   """
   @spec list_public(keyword()) :: [Series.t()]

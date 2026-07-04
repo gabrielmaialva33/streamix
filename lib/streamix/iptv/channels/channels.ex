@@ -44,6 +44,22 @@ defmodule Streamix.Iptv.Channels do
     |> Repo.all()
   end
 
+  @doc """
+  Lists live channels across all Xtream providers visible to a user.
+  """
+  @spec list_visible(integer(), keyword()) :: [LiveChannel.t()]
+  def list_visible(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+
+    user_id
+    |> build_visible_query(opts)
+    |> order_by([c], asc: c.name)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Repo.all()
+  end
+
   # Shared filter pipeline for list/2 and count/2. Keeping both paths behind
   # this single builder is the only way to guarantee that `total` and the
   # items returned in `list` stay in sync — the previous implementation had
@@ -81,6 +97,31 @@ defmodule Streamix.Iptv.Channels do
       query
     else
       AdultFilter.exclude_adult_channels(query, provider_id)
+    end
+  end
+
+  defp build_visible_query(user_id, opts) do
+    search = Keyword.get(opts, :search)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    query =
+      LiveChannel
+      |> Access.visible_to_user(user_id)
+      |> where([_c, p], p.provider_type == :xtream and p.is_active == true)
+      |> exclude_dead()
+
+    query =
+      if search && search != "" do
+        escaped = Helpers.escape_like(search)
+        where(query, [c], ilike(c.name, ^"%#{escaped}%"))
+      else
+        query
+      end
+
+    if show_adult do
+      query
+    else
+      AdultFilter.exclude_adult_content(query)
     end
   end
 

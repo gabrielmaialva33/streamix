@@ -22,6 +22,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @detail_preloads [:assets, :genres, credits: :person]
   @variant_terms ~r/\b(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\b/iu
   @card_fields ~w(id series_id provider_id catalog_item_id name title year cover rating plot gindex_path dub_available inserted_at updated_at)a
+  @visible_dedupe_min_window 120
 
   @spec list(integer(), keyword()) :: [Series.t()]
   def list(provider_id, opts \\ []) do
@@ -33,6 +34,68 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     provider_id
     |> build_filtered_query(opts)
     |> maybe_dedupe_variants(dedupe?)
+    |> apply_series_sort(sort)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> select_card_fields()
+    |> preload(^@summary_preloads)
+    |> Repo.all()
+  end
+
+  @spec list_visible(integer(), keyword()) :: [Series.t()]
+  def list_visible(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    sort = Keyword.get(opts, :sort)
+    dedupe? = Keyword.get(opts, :dedupe, true)
+
+    if dedupe? do
+      list_visible_deduped(user_id, opts, limit, offset, sort)
+    else
+      list_visible_candidates(user_id, opts, sort, limit, offset)
+    end
+  end
+
+  defp list_visible_deduped(user_id, opts, limit, offset, sort) do
+    target_count = offset + limit
+    batch_limit = max(limit * 4, @visible_dedupe_min_window)
+
+    user_id
+    |> collect_visible_cards(opts, sort, batch_limit, 0, target_count, %{})
+    |> sort_visible_cards(sort)
+    |> Enum.slice(offset, limit)
+  end
+
+  defp collect_visible_cards(
+         user_id,
+         opts,
+         sort,
+         batch_limit,
+         batch_offset,
+         target_count,
+         cards_by_key
+       ) do
+    batch = list_visible_candidates(user_id, opts, sort, batch_limit, batch_offset)
+    cards_by_key = newest_canonical_cards(batch, cards_by_key)
+
+    if map_size(cards_by_key) >= target_count or length(batch) < batch_limit do
+      Map.values(cards_by_key)
+    else
+      collect_visible_cards(
+        user_id,
+        opts,
+        sort,
+        batch_limit,
+        batch_offset + batch_limit,
+        target_count,
+        cards_by_key
+      )
+    end
+  end
+
+  defp list_visible_candidates(user_id, opts, sort, limit, offset) do
+    user_id
+    |> build_visible_query(opts)
     |> apply_series_sort(sort)
     |> limit(^limit)
     |> offset(^offset)
@@ -302,6 +365,17 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> maybe_exclude_adult(provider_id, show_adult)
   end
 
+  defp build_visible_query(user_id, opts) do
+    search = Keyword.get(opts, :search)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    Series
+    |> Access.visible_to_user(user_id)
+    |> where([_s, p], p.provider_type == :xtream and p.is_active == true)
+    |> maybe_where_search(search)
+    |> maybe_exclude_adult(show_adult)
+  end
+
   defp maybe_dedupe_variants(query, true), do: dedupe_variants(query)
   defp maybe_dedupe_variants(query, _), do: query
 
@@ -341,17 +415,28 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   defp maybe_exclude_adult(query, provider_id, _show_adult),
     do: AdultFilter.exclude_adult_series(query, provider_id)
 
+  defp maybe_exclude_adult(query, true), do: query
+  defp maybe_exclude_adult(query, _show_adult), do: AdultFilter.exclude_adult_content(query)
+
   defp apply_series_sort(query, "rating_desc"),
-    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.rating), desc: s.year, asc: s.name])
+    do:
+      order_by(query, [s], [
+        fragment("? DESC NULLS LAST", s.rating),
+        desc: s.year,
+        asc: s.name,
+        desc: s.id
+      ])
 
   defp apply_series_sort(query, "created_desc"),
-    do: order_by(query, [s], desc: s.inserted_at)
+    do: order_by(query, [s], desc: s.inserted_at, desc: s.id)
 
   defp apply_series_sort(query, "year_desc"),
-    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.year), asc: s.name])
+    do: order_by(query, [s], [fragment("? DESC NULLS LAST", s.year), asc: s.name, desc: s.id])
 
-  defp apply_series_sort(query, "name_asc"), do: order_by(query, [s], asc: s.name)
-  defp apply_series_sort(query, _), do: order_by(query, [s], desc: s.year, asc: s.name)
+  defp apply_series_sort(query, "name_asc"), do: order_by(query, [s], asc: s.name, desc: s.id)
+
+  defp apply_series_sort(query, _),
+    do: order_by(query, [s], desc: s.year, asc: s.name, desc: s.id)
 
   defp count_query(query, true), do: select(query, [s], count(s.id, :distinct))
   defp count_query(query, false), do: select(query, [s], count(s.id))
@@ -444,6 +529,58 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   end
 
   defp normalize_variant_title(_), do: ""
+
+  defp canonical_variant_key(%Series{} = series) do
+    case blank_to_nil(series.tmdb_id) do
+      nil -> {:title, normalize_variant_title(series.title || series.name), series.year}
+      tmdb_id -> {:tmdb, tmdb_id}
+    end
+  end
+
+  defp newest_canonical_cards(series, cards_by_key) do
+    series
+    |> Enum.reduce(cards_by_key, fn item, acc ->
+      Map.update(acc, canonical_variant_key(item), item, &newer_card(item, &1))
+    end)
+  end
+
+  defp newer_card(item, current) do
+    if item.id > current.id, do: item, else: current
+  end
+
+  defp sort_visible_cards(series, "rating_desc") do
+    Enum.sort_by(series, fn item ->
+      {desc_numeric(item.rating), desc_year(item.year), item.name || "", -item.id}
+    end)
+  end
+
+  defp sort_visible_cards(series, "created_desc") do
+    Enum.sort_by(series, fn item ->
+      {desc_datetime(item.inserted_at), -item.id}
+    end)
+  end
+
+  defp sort_visible_cards(series, "name_asc") do
+    Enum.sort_by(series, fn item -> {item.name || "", -item.id} end)
+  end
+
+  defp sort_visible_cards(series, _sort) do
+    Enum.sort_by(series, fn item -> {desc_year(item.year), item.name || "", -item.id} end)
+  end
+
+  defp desc_numeric(%Decimal{} = value), do: -Decimal.to_float(value)
+  defp desc_numeric(value) when is_number(value), do: -value
+  defp desc_numeric(_value), do: 1_000_000_000
+
+  defp desc_year(year) when is_integer(year), do: -year
+  defp desc_year(_year), do: 1_000_000_000
+
+  defp desc_datetime(%DateTime{} = datetime), do: -DateTime.to_unix(datetime, :microsecond)
+
+  defp desc_datetime(%NaiveDateTime{} = datetime),
+    do: -NaiveDateTime.diff(datetime, ~N[1970-01-01 00:00:00], :microsecond)
+
+  defp desc_datetime(_datetime), do: 1_000_000_000_000_000
 
   defp strip_variant_terms(value) when is_binary(value) do
     value

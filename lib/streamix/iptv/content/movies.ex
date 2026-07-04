@@ -23,6 +23,7 @@ defmodule Streamix.Iptv.Movies do
   @detail_preloads [:assets, :genres, credits: :person]
   @variant_preloads [:provider, :categories]
   @variant_terms ~r/\b(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\b/iu
+  @visible_dedupe_min_window 120
 
   # =============================================================================
   # Listing
@@ -71,6 +72,74 @@ defmodule Streamix.Iptv.Movies do
   @spec list_gindex(keyword()) :: [Movie.t()]
   def list_gindex(opts \\ []) do
     Content.GindexMovies.list(opts)
+  end
+
+  @doc """
+  Lists movies across all providers visible to a user.
+
+  This powers the aggregate browse mode (`provider=all`): the grid shows one
+  canonical card per movie while the detail page exposes provider variants.
+  """
+  @spec list_visible(integer(), keyword()) :: [Movie.t()]
+  def list_visible(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    sort = Keyword.get(opts, :sort)
+    dedupe? = Keyword.get(opts, :dedupe, true)
+
+    if dedupe? do
+      list_visible_deduped(user_id, opts, limit, offset, sort)
+    else
+      list_visible_candidates(user_id, opts, sort, limit, offset)
+    end
+  end
+
+  defp list_visible_deduped(user_id, opts, limit, offset, sort) do
+    target_count = offset + limit
+    batch_limit = max(limit * 4, @visible_dedupe_min_window)
+
+    user_id
+    |> collect_visible_cards(opts, sort, batch_limit, 0, target_count, %{})
+    |> sort_visible_cards(sort)
+    |> Enum.slice(offset, limit)
+  end
+
+  defp collect_visible_cards(
+         user_id,
+         opts,
+         sort,
+         batch_limit,
+         batch_offset,
+         target_count,
+         cards_by_key
+       ) do
+    batch = list_visible_candidates(user_id, opts, sort, batch_limit, batch_offset)
+    cards_by_key = newest_canonical_cards(batch, cards_by_key)
+
+    if map_size(cards_by_key) >= target_count or length(batch) < batch_limit do
+      Map.values(cards_by_key)
+    else
+      collect_visible_cards(
+        user_id,
+        opts,
+        sort,
+        batch_limit,
+        batch_offset + batch_limit,
+        target_count,
+        cards_by_key
+      )
+    end
+  end
+
+  defp list_visible_candidates(user_id, opts, sort, limit, offset) do
+    user_id
+    |> Queries.filtered_visible(opts)
+    |> Queries.sorted(sort)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Queries.select_card_fields()
+    |> preload(^@summary_preloads)
+    |> Repo.all()
   end
 
   @doc """
@@ -334,6 +403,58 @@ defmodule Streamix.Iptv.Movies do
   end
 
   defp normalize_variant_title(_), do: ""
+
+  defp canonical_variant_key(%Movie{} = movie) do
+    case blank_to_nil(movie.tmdb_id) do
+      nil -> {:title, normalize_variant_title(movie.title || movie.name), movie.year}
+      tmdb_id -> {:tmdb, tmdb_id}
+    end
+  end
+
+  defp newest_canonical_cards(movies, cards_by_key) do
+    movies
+    |> Enum.reduce(cards_by_key, fn movie, acc ->
+      Map.update(acc, canonical_variant_key(movie), movie, &newer_card(movie, &1))
+    end)
+  end
+
+  defp newer_card(movie, current) do
+    if movie.id > current.id, do: movie, else: current
+  end
+
+  defp sort_visible_cards(movies, "rating_desc") do
+    Enum.sort_by(movies, fn movie ->
+      {desc_numeric(movie.rating), desc_year(movie.year), movie.name || "", -movie.id}
+    end)
+  end
+
+  defp sort_visible_cards(movies, "created_desc") do
+    Enum.sort_by(movies, fn movie ->
+      {desc_datetime(movie.inserted_at), -movie.id}
+    end)
+  end
+
+  defp sort_visible_cards(movies, "name_asc") do
+    Enum.sort_by(movies, fn movie -> {movie.name || "", -movie.id} end)
+  end
+
+  defp sort_visible_cards(movies, _sort) do
+    Enum.sort_by(movies, fn movie -> {desc_year(movie.year), movie.name || "", -movie.id} end)
+  end
+
+  defp desc_numeric(%Decimal{} = value), do: -Decimal.to_float(value)
+  defp desc_numeric(value) when is_number(value), do: -value
+  defp desc_numeric(_value), do: 1_000_000_000
+
+  defp desc_year(year) when is_integer(year), do: -year
+  defp desc_year(_year), do: 1_000_000_000
+
+  defp desc_datetime(%DateTime{} = datetime), do: -DateTime.to_unix(datetime, :microsecond)
+
+  defp desc_datetime(%NaiveDateTime{} = datetime),
+    do: -NaiveDateTime.diff(datetime, ~N[1970-01-01 00:00:00], :microsecond)
+
+  defp desc_datetime(_datetime), do: 1_000_000_000_000_000
 
   defp strip_variant_terms(value) when is_binary(value) do
     value

@@ -28,17 +28,34 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     |> maybe_exclude_adult(provider_id, show_adult)
   end
 
+  def filtered_visible(user_id, opts) do
+    search = Keyword.get(opts, :search)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    Movie
+    |> Access.visible_to_user(user_id)
+    |> where([_m, p], p.provider_type == :xtream and p.is_active == true)
+    |> maybe_where_search(search)
+    |> maybe_exclude_adult(show_adult)
+  end
+
   def sorted(query, "rating_desc"),
-    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.rating), desc: m.year, asc: m.name])
+    do:
+      order_by(query, [m], [
+        fragment("? DESC NULLS LAST", m.rating),
+        desc: m.year,
+        asc: m.name,
+        desc: m.id
+      ])
 
   def sorted(query, "created_desc"),
-    do: order_by(query, [m], desc: m.inserted_at)
+    do: order_by(query, [m], desc: m.inserted_at, desc: m.id)
 
   def sorted(query, "year_desc"),
-    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.year), asc: m.name])
+    do: order_by(query, [m], [fragment("? DESC NULLS LAST", m.year), asc: m.name, desc: m.id])
 
-  def sorted(query, "name_asc"), do: order_by(query, [m], asc: m.name)
-  def sorted(query, _sort), do: order_by(query, [m], desc: m.year, asc: m.name)
+  def sorted(query, "name_asc"), do: order_by(query, [m], asc: m.name, desc: m.id)
+  def sorted(query, _sort), do: order_by(query, [m], desc: m.year, asc: m.name, desc: m.id)
 
   def dedupe_variants(query) do
     key = canonical_key()
@@ -116,6 +133,9 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
 
   defp maybe_exclude_adult(query, provider_id, _show_adult),
     do: AdultFilter.exclude_adult_movies(query, provider_id)
+
+  defp maybe_exclude_adult(query, true), do: query
+  defp maybe_exclude_adult(query, _show_adult), do: AdultFilter.exclude_adult_content(query)
 
   def canonical_key do
     dynamic(

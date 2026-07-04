@@ -24,6 +24,24 @@ defmodule Streamix.Iptv.AdultFilter do
   end
 
   @doc """
+  Filters a catalog-item backed query to exclude content in any adult category.
+
+  Use this for aggregate queries that span multiple providers; provider-scoped
+  helpers above are cheaper when the query already targets one provider.
+  """
+  def exclude_adult_content(query) do
+    adult_ci_ids =
+      from(ic in "item_categories",
+        join: c in Category,
+        on: c.id == ic.category_id,
+        where: c.is_adult == true,
+        select: ic.catalog_item_id
+      )
+
+    from(item in query, where: item.catalog_item_id not in subquery(adult_ci_ids))
+  end
+
+  @doc """
   Filters a movie query to exclude movies in adult categories.
   """
   def exclude_adult_movies(query, provider_id) do

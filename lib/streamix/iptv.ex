@@ -103,6 +103,7 @@ defmodule Streamix.Iptv do
   # Live Channels
   # =============================================================================
   defdelegate list_live_channels(provider_id, opts \\ []), to: Channels, as: :list
+  defdelegate list_visible_live_channels(user_id, opts \\ []), to: Channels, as: :list_visible
   defdelegate list_public_channels(opts \\ []), to: Channels, as: :list_public
   defdelegate count_live_channels(provider_id, opts \\ []), to: Channels, as: :count
   defdelegate get_live_channel!(id), to: Channels, as: :get!
@@ -119,6 +120,7 @@ defmodule Streamix.Iptv do
   # Movies (VOD)
   # =============================================================================
   defdelegate list_movies(provider_id, opts \\ []), to: Movies, as: :list
+  defdelegate list_visible_movies(user_id, opts \\ []), to: Movies, as: :list_visible
   defdelegate list_public_movies(opts \\ []), to: Movies, as: :list_public
   defdelegate count_movies(provider_id, opts \\ []), to: Movies, as: :count
   defdelegate get_movie!(id), to: Movies, as: :get!
@@ -142,6 +144,7 @@ defmodule Streamix.Iptv do
   # Series
   # =============================================================================
   defdelegate list_series(provider_id, opts \\ []), to: SeriesOps, as: :list
+  defdelegate list_visible_series(user_id, opts \\ []), to: SeriesOps, as: :list_visible
   defdelegate list_public_series(opts \\ []), to: SeriesOps, as: :list_public
   defdelegate count_series(provider_id, opts \\ []), to: SeriesOps, as: :count
   defdelegate get_series!(id), to: SeriesOps, as: :get!
