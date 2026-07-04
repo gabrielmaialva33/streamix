@@ -177,13 +177,15 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   defp public_host?(host) do
     case :inet.parse_address(String.to_charlist(host)) do
       {:ok, address} -> public_ip?(address)
-      {:error, :einval} -> not internal_hostname?(host)
+      {:error, :einval} -> not numeric_hostname?(host) and not internal_hostname?(host)
     end
   end
 
   defp internal_hostname?(host) do
     String.ends_with?(host, [".localhost", ".local", ".internal"])
   end
+
+  defp numeric_hostname?(host), do: String.match?(host, ~r/^[0-9a-fx.:-]+$/)
 
   defp public_ip?({10, _, _, _}), do: false
   defp public_ip?({127, _, _, _}), do: false

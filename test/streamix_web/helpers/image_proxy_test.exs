@@ -25,5 +25,7 @@ defmodule StreamixWeb.Helpers.ImageProxyTest do
     assert ImageProxy.poster("http://127.0.0.1/admin.jpg", :carousel) == nil
     assert ImageProxy.poster("http://10.8.0.1/admin.jpg", :carousel) == nil
     assert ImageProxy.poster("http://localhost/admin.jpg", :carousel) == nil
+    assert ImageProxy.poster("http://2130706433/admin.jpg", :carousel) == nil
+    assert ImageProxy.poster("http://0x7f000001/admin.jpg", :carousel) == nil
   end
 end
