@@ -21,7 +21,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @search_result_preloads [:assets, :genres]
   @detail_preloads [:assets, :genres, credits: :person]
   @variant_terms ~r/\b(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\b/iu
-  @card_fields ~w(id series_id provider_id catalog_item_id name title year cover rating plot gindex_path dub_available inserted_at updated_at)a
+  @card_fields ~w(id series_id provider_id catalog_item_id name title year cover rating plot tmdb_id gindex_path dub_available inserted_at updated_at)a
   @visible_dedupe_min_window 120
 
   @spec list(integer(), keyword()) :: [Series.t()]

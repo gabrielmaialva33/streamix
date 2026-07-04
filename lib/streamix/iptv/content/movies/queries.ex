@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     RankedSearch
   }
 
-  @card_fields ~w(id stream_id provider_id catalog_item_id name title year stream_icon rating plot duration_secs inserted_at updated_at)a
+  @card_fields ~w(id stream_id provider_id catalog_item_id name title year stream_icon rating plot duration_secs tmdb_id inserted_at updated_at)a
 
   def filtered_provider(provider_id, opts) do
     search = Keyword.get(opts, :search)

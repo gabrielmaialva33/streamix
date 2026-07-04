@@ -497,6 +497,46 @@ defmodule Streamix.IptvTest do
       refute Enum.any?(results, &(&1.id == older.id))
     end
 
+    test "list_visible_movies/2 uses tmdb_id for canonical cards" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      same_title =
+        movie_fixture(global, %{
+          name: "The Thing",
+          title: "The Thing",
+          year: 1982,
+          tmdb_id: "1091",
+          stream_id: 1_301
+        })
+
+      remake =
+        movie_fixture(fallback, %{
+          name: "The Thing",
+          title: "The Thing",
+          year: 1982,
+          tmdb_id: "60935",
+          stream_id: 1_302
+        })
+
+      localized_variant =
+        movie_fixture(fallback, %{
+          name: "The Thing 4K HDR",
+          title: "A Coisa 4K HDR",
+          year: 1982,
+          tmdb_id: "1091",
+          stream_id: 1_303
+        })
+
+      results = Iptv.list_visible_movies(user.id, search: "Thing", limit: 10)
+      result_ids = MapSet.new(results, & &1.id)
+
+      assert MapSet.member?(result_ids, localized_variant.id)
+      assert MapSet.member?(result_ids, remake.id)
+      refute MapSet.member?(result_ids, same_title.id)
+    end
+
     test "list_visible_movies/2 keeps filling the page after dense duplicate variants" do
       user = user_fixture()
       provider = global_provider_fixture(%{name: "Global"})
@@ -649,6 +689,46 @@ defmodule Streamix.IptvTest do
 
       assert Enum.map(results, & &1.id) == [newer.id]
       refute Enum.any?(results, &(&1.id == older.id))
+    end
+
+    test "list_visible_series/2 uses tmdb_id for canonical cards" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      original =
+        series_content_fixture(global, %{
+          name: "The Returned",
+          title: "The Returned",
+          year: 2012,
+          tmdb_id: "43255",
+          series_id: 1_401
+        })
+
+      same_title =
+        series_content_fixture(fallback, %{
+          name: "The Returned",
+          title: "The Returned",
+          year: 2012,
+          tmdb_id: "61231",
+          series_id: 1_402
+        })
+
+      localized_variant =
+        series_content_fixture(fallback, %{
+          name: "The Returned 4K",
+          title: "Les Revenants 4K",
+          year: 2012,
+          tmdb_id: "43255",
+          series_id: 1_403
+        })
+
+      results = Iptv.list_visible_series(user.id, search: "Returned", limit: 10)
+      result_ids = MapSet.new(results, & &1.id)
+
+      assert MapSet.member?(result_ids, localized_variant.id)
+      assert MapSet.member?(result_ids, same_title.id)
+      refute MapSet.member?(result_ids, original.id)
     end
 
     test "list_visible_series/2 keeps filling the page after dense duplicate variants" do
