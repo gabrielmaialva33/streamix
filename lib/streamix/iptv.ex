@@ -10,7 +10,7 @@ defmodule Streamix.Iptv do
   * **Browse / catalog** — `list_movies/2`, `list_series/2`, `list_live_channels/2`,
     `list_public_*`, `list_new_releases/1`, `list_trending_movies/1`, `search/2`,
     `get_movie/1`, `get_series/1`, `get_episode/1`, `get_live_channel/1`,
-    `get_featured_content/0`, `get_public_stats/0`. Backed by `Streamix.Iptv.Catalog`
+    `get_featured_content/0`, `get_public_stats/1`. Backed by `Streamix.Iptv.Catalog`
     plus the specialised `Movies`/`SeriesOps`/`Channels` modules.
 
   * **User data (favorites & history)** — `list_favorites/2`, `add_favorite/3`,
@@ -223,7 +223,7 @@ defmodule Streamix.Iptv do
   # Catalog (Public Content)
   # =============================================================================
   defdelegate get_featured_content(), to: Catalog
-  defdelegate get_public_stats(), to: Catalog
+  defdelegate get_public_stats(opts \\ []), to: Catalog
 
   defdelegate list_public_movies_by_genre(genre, opts \\ []),
     to: Catalog,

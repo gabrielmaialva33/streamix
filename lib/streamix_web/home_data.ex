@@ -172,7 +172,7 @@ defmodule StreamixWeb.HomeData do
         channels: fn -> load_channels(user_id(socket), socket.assigns.channels_category) end
       })
 
-    stats = reconcile_public_stats(sections.stats, sections)
+    stats = public_stats(sections.stats, sections)
 
     socket
     |> assign(:featured, sections.featured)
@@ -185,15 +185,35 @@ defmodule StreamixWeb.HomeData do
     |> assign(:channels, sections.channels)
   end
 
-  defp reconcile_public_stats(stats, sections) do
+  defp public_stats(stats, sections) do
+    stats = normalize_public_stats(stats)
+
+    if stale_public_stats?(stats, sections) do
+      Iptv.get_public_stats(refresh: true)
+      |> normalize_public_stats()
+    else
+      stats
+    end
+  end
+
+  defp normalize_public_stats(stats) do
     %{
-      movies_count: max(public_count(stats, :movies_count), length(sections.movies || [])),
-      series_count: max(public_count(stats, :series_count), length(sections.series || [])),
-      channels_count: max(public_count(stats, :channels_count), length(sections.channels || []))
+      movies_count: public_count(stats, :movies_count),
+      series_count: public_count(stats, :series_count),
+      channels_count: public_count(stats, :channels_count)
     }
   end
 
-  defp public_count(stats, key) when is_map(stats), do: Map.get(stats, key, 0) || 0
+  defp stale_public_stats?(stats, sections) do
+    public_count(stats, :movies_count) < length(sections.movies || []) or
+      public_count(stats, :series_count) < length(sections.series || []) or
+      public_count(stats, :channels_count) < length(sections.channels || [])
+  end
+
+  defp public_count(stats, key) when is_map(stats) do
+    Map.get(stats, key) || Map.get(stats, Atom.to_string(key), 0) || 0
+  end
+
   defp public_count(_stats, _key), do: 0
 
   defp load_user_data(%{assigns: %{current_scope: nil}} = socket) do

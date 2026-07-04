@@ -140,33 +140,44 @@ defmodule Streamix.Iptv.Catalog do
   Only counts content from public/global providers.
   Results are cached for 30 minutes.
   """
-  @spec get_public_stats() :: %{String.t() => integer()}
-  def get_public_stats do
-    Cache.fetch_public_stats(fn ->
-      channels_count =
-        LiveChannel
-        |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
-        |> where([c, p], p.visibility in [:global, :public])
-        |> Repo.aggregate(:count)
+  @spec get_public_stats(keyword()) :: %{String.t() => integer()}
+  def get_public_stats(opts \\ []) do
+    if Keyword.get(opts, :refresh, false) do
+      refresh_public_stats()
+    else
+      Cache.fetch_public_stats(&compute_public_stats/0)
+    end
+  end
 
-      movies_count =
-        Movie
-        |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-        |> where([m, p], p.visibility in [:global, :public])
-        |> Repo.aggregate(:count)
+  defp refresh_public_stats do
+    Cache.delete(Cache.public_stats_key())
+    Cache.fetch_public_stats(&compute_public_stats/0)
+  end
 
-      series_count =
-        Series
-        |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-        |> where([s, p], p.visibility in [:global, :public])
-        |> Repo.aggregate(:count)
+  defp compute_public_stats do
+    channels_count =
+      LiveChannel
+      |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+      |> where([c, p], p.visibility in [:global, :public])
+      |> Repo.aggregate(:count)
 
-      %{
-        channels_count: channels_count,
-        movies_count: movies_count,
-        series_count: series_count
-      }
-    end)
+    movies_count =
+      Movie
+      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
+      |> where([m, p], p.visibility in [:global, :public])
+      |> Repo.aggregate(:count)
+
+    series_count =
+      Series
+      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
+      |> where([s, p], p.visibility in [:global, :public])
+      |> Repo.aggregate(:count)
+
+    %{
+      channels_count: channels_count,
+      movies_count: movies_count,
+      series_count: series_count
+    }
   end
 
   # =============================================================================
