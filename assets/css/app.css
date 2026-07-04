@@ -696,7 +696,8 @@ html.ios-webkit .glass-subtle {
     }
 
     .category-chip {
-        padding: 5px 12px;
+        min-height: 44px;
+        padding: 0 12px;
         font-size: 12px;
     }
 }
