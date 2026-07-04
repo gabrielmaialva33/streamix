@@ -20,4 +20,10 @@ defmodule StreamixWeb.Helpers.ImageProxyTest do
     assert ImageProxy.poster("http://imagecdn.sh/images/poster.jpg", :carousel) ==
              "https://img.test/proxy?url=http%3A%2F%2Fimagecdn.sh%2Fimages%2Fposter.jpg&_v=v2"
   end
+
+  test "does not proxy private network image URLs" do
+    assert ImageProxy.poster("http://127.0.0.1/admin.jpg", :carousel) == nil
+    assert ImageProxy.poster("http://10.8.0.1/admin.jpg", :carousel) == nil
+    assert ImageProxy.poster("http://localhost/admin.jpg", :carousel) == nil
+  end
 end

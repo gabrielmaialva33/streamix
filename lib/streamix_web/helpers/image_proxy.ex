@@ -154,10 +154,57 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   end
 
   defp proxy_insecure_external_image("http://" <> _ = url) do
-    "#{image_proxy_url()}/proxy?url=#{URI.encode_www_form(url)}"
+    if safe_external_http_image_url?(url) do
+      "#{image_proxy_url()}/proxy?url=#{URI.encode_www_form(url)}"
+    end
   end
 
   defp proxy_insecure_external_image(url), do: url
+
+  defp safe_external_http_image_url?(url) do
+    case URI.parse(url) do
+      %URI{scheme: "http", host: host} when is_binary(host) ->
+        public_host?(String.downcase(host))
+
+      _ ->
+        false
+    end
+  end
+
+  defp public_host?(host) when host in ["localhost", "localhost.localdomain"], do: false
+  defp public_host?(host) when byte_size(host) == 0, do: false
+
+  defp public_host?(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, address} -> public_ip?(address)
+      {:error, :einval} -> not internal_hostname?(host)
+    end
+  end
+
+  defp internal_hostname?(host) do
+    String.ends_with?(host, [".localhost", ".local", ".internal"])
+  end
+
+  defp public_ip?({10, _, _, _}), do: false
+  defp public_ip?({127, _, _, _}), do: false
+  defp public_ip?({0, _, _, _}), do: false
+  defp public_ip?({169, 254, _, _}), do: false
+  defp public_ip?({172, second, _, _}) when second in 16..31, do: false
+  defp public_ip?({192, 168, _, _}), do: false
+  defp public_ip?({100, second, _, _}) when second in 64..127, do: false
+  defp public_ip?({_, _, _, _}), do: true
+  defp public_ip?({0, 0, 0, 0, 0, 0, 0, 1}), do: false
+
+  defp public_ip?({first, _, _, _, _, _, _, _}) do
+    cond do
+      first == 0 -> false
+      Bitwise.band(first, 0xFE00) == 0xFC00 -> false
+      Bitwise.band(first, 0xFFC0) == 0xFE80 -> false
+      true -> true
+    end
+  end
+
+  defp add_cache_buster(nil), do: nil
 
   defp add_cache_buster(url) do
     if String.contains?(url, "?") do
