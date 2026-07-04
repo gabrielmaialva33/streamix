@@ -20,6 +20,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @summary_preloads [:genres]
   @search_result_preloads [:assets, :genres]
   @detail_preloads [:assets, :genres, credits: :person]
+  @variant_terms ~r/\b(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\b/iu
   @card_fields ~w(id series_id provider_id catalog_item_id name title year cover rating plot gindex_path dub_available inserted_at updated_at)a
 
   @spec list(integer(), keyword()) :: [Series.t()]
@@ -27,9 +28,11 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     limit = Keyword.get(opts, :limit, 100)
     offset = Keyword.get(opts, :offset, 0)
     sort = Keyword.get(opts, :sort)
+    dedupe? = Keyword.get(opts, :dedupe, false)
 
     provider_id
     |> build_filtered_query(opts)
+    |> maybe_dedupe_variants(dedupe?)
     |> apply_series_sort(sort)
     |> limit(^limit)
     |> offset(^offset)
@@ -40,6 +43,20 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
 
   def select_card_fields(query) do
     select(query, [s], struct(s, ^@card_fields))
+  end
+
+  def dedupe_variants(query) do
+    key = canonical_key()
+
+    representative_ids =
+      query
+      |> exclude(:order_by)
+      |> exclude(:distinct)
+      |> distinct(^[key])
+      |> order_by(^[asc: key, desc: :id])
+      |> select([s], s.id)
+
+    from(s in Series, where: s.id in subquery(representative_ids))
   end
 
   @spec list_public(keyword()) :: [Series.t()]
@@ -191,6 +208,80 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> Repo.all()
   end
 
+  @spec list_variants(Series.t(), integer(), keyword()) :: [Series.t()]
+  def list_variants(%Series{} = series, user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 12)
+    candidate_limit = max(limit * 4, 32)
+    tmdb_id = blank_to_nil(series.tmdb_id)
+    normalized_title = normalize_variant_title(series.title || series.name)
+    search_title = variant_search_title(series)
+
+    tmdb_variants =
+      case tmdb_id do
+        nil -> []
+        tmdb_id -> variants_by_tmdb_id(tmdb_id, user_id, limit)
+      end
+
+    title_variants =
+      case {series.year, normalized_title, search_title} do
+        {nil, _, _} ->
+          []
+
+        {_, "", _} ->
+          []
+
+        {_, _, ""} ->
+          []
+
+        {year, _, _} ->
+          variants_by_title(search_title, normalized_title, year, user_id, candidate_limit)
+      end
+
+    (tmdb_variants ++ title_variants)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.filter(&has_playable_episodes?/1)
+    |> Enum.sort_by(fn series -> {-series.id, provider_sort_name(series)} end)
+    |> Enum.take(limit)
+  end
+
+  defp variants_by_tmdb_id(tmdb_id, user_id, limit) do
+    Series
+    |> Access.visible_to_user(user_id)
+    |> where([s, _p], s.tmdb_id == ^tmdb_id)
+    |> order_by([s, p], desc: s.id, asc: p.name)
+    |> limit(^limit)
+    |> preload(^variant_preloads())
+    |> Repo.all()
+  end
+
+  defp variants_by_title(search_title, normalized_title, year, user_id, limit) do
+    Series
+    |> Access.visible_to_user(user_id)
+    |> where([s, _p], s.year == ^year)
+    |> where(
+      [s, _p],
+      fragment("? % ?", ^search_title, s.name) or
+        fragment("? % coalesce(?, '')", ^search_title, s.title)
+    )
+    |> order_by(
+      [s, p],
+      desc:
+        fragment(
+          "GREATEST(similarity(?, ?), similarity(?, coalesce(?, '')))",
+          ^search_title,
+          s.name,
+          ^search_title,
+          s.title
+        ),
+      desc: s.id,
+      asc: p.name
+    )
+    |> limit(^limit)
+    |> preload(^variant_preloads())
+    |> Repo.all()
+    |> Enum.filter(&(normalize_variant_title(&1.title || &1.name) == normalized_title))
+  end
+
   @spec count_episodes_for_series(integer()) :: integer()
   def count_episodes_for_series(series_id) do
     Episode
@@ -211,12 +302,28 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> maybe_exclude_adult(provider_id, show_adult)
   end
 
+  defp maybe_dedupe_variants(query, true), do: dedupe_variants(query)
+  defp maybe_dedupe_variants(query, _), do: query
+
   defp maybe_where_search(query, nil), do: query
   defp maybe_where_search(query, ""), do: query
 
   defp maybe_where_search(query, search) do
     escaped = Helpers.escape_like(search)
-    where(query, [s], ilike(s.name, ^"%#{escaped}%"))
+    compacted = compact_search(search)
+
+    where(
+      query,
+      [s],
+      ilike(s.name, ^"%#{escaped}%") or
+        ilike(s.title, ^"%#{escaped}%") or
+        fragment(
+          "regexp_replace(lower(coalesce(?, ?)), '[^[:alnum:]]+', '', 'g') LIKE ?",
+          s.title,
+          s.name,
+          ^"%#{compacted}%"
+        )
+    )
   end
 
   defp maybe_join_category(query, nil), do: query
@@ -248,6 +355,106 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
 
   defp count_query(query, true), do: select(query, [s], count(s.id, :distinct))
   defp count_query(query, false), do: select(query, [s], count(s.id))
+
+  defp compact_search(search) when is_binary(search) do
+    search
+    |> String.downcase()
+    |> String.replace(~r/[^[:alnum:]]+/u, "")
+    |> Helpers.escape_like()
+  end
+
+  defp compact_search(_), do: ""
+
+  defp canonical_key do
+    dynamic(
+      [s],
+      fragment(
+        """
+        CASE
+          WHEN nullif(?, '') IS NOT NULL THEN 'tmdb:' || ?
+          ELSE 'title:' ||
+            lower(
+              btrim(
+                regexp_replace(
+                  regexp_replace(
+                    regexp_replace(
+                      regexp_replace(
+                        coalesce(?, ?),
+                        '\\s*\\[[^\\]]+\\]',
+                        ' ',
+                        'g'
+                      ),
+                      '\\m(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\\M',
+                      ' ',
+                      'gi'
+                    ),
+                    '[[:punct:]]+',
+                    ' ',
+                    'g'
+                  ),
+                  '\\s+',
+                  ' ',
+                  'g'
+                )
+              )
+            ) || ':' || coalesce(?::text, '')
+        END
+        """,
+        s.tmdb_id,
+        s.tmdb_id,
+        s.title,
+        s.name,
+        s.year
+      )
+    )
+  end
+
+  defp has_playable_episodes?(%{seasons: seasons}) when is_list(seasons) do
+    Enum.any?(seasons, fn season -> season.episodes != [] end)
+  end
+
+  defp has_playable_episodes?(_series), do: false
+
+  defp variant_preloads do
+    [:provider, :categories, seasons: {public_seasons_query(), episodes: public_episodes_query()}]
+  end
+
+  defp provider_sort_name(%{provider: %{name: name}}) when is_binary(name), do: name
+  defp provider_sort_name(_), do: ""
+
+  defp variant_search_title(%Series{} = series) do
+    series.title
+    |> blank_to_nil()
+    |> Kernel.||(series.name)
+    |> strip_variant_terms()
+  end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    if String.trim(value) == "", do: nil, else: value
+  end
+
+  defp blank_to_nil(value), do: value
+
+  defp normalize_variant_title(value) when is_binary(value) do
+    value
+    |> strip_variant_terms()
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  defp normalize_variant_title(_), do: ""
+
+  defp strip_variant_terms(value) when is_binary(value) do
+    value
+    |> String.replace(~r/\s*\[[^\]]+\]/u, " ")
+    |> String.replace(@variant_terms, " ")
+    |> String.replace(~r/[[:punct:]]+/u, " ")
+    |> String.replace(~r/\s+/u, " ")
+    |> String.trim()
+  end
+
+  defp strip_variant_terms(_), do: ""
 
   defp public_seasons_query do
     from(s in Season, where: s.season_number > 0, order_by: s.season_number)

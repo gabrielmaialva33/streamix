@@ -40,6 +40,20 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
   def sorted(query, "name_asc"), do: order_by(query, [m], asc: m.name)
   def sorted(query, _sort), do: order_by(query, [m], desc: m.year, asc: m.name)
 
+  def dedupe_variants(query) do
+    key = canonical_key()
+
+    representative_ids =
+      query
+      |> exclude(:order_by)
+      |> exclude(:distinct)
+      |> distinct(^[key])
+      |> order_by(^[asc: key, desc: :id])
+      |> select([m], m.id)
+
+    from(m in Movie, where: m.id in subquery(representative_ids))
+  end
+
   def select_card_fields(query) do
     select(query, [m], struct(m, ^@card_fields))
   end
@@ -102,6 +116,87 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
 
   defp maybe_exclude_adult(query, provider_id, _show_adult),
     do: AdultFilter.exclude_adult_movies(query, provider_id)
+
+  def canonical_key do
+    dynamic(
+      [m],
+      fragment(
+        """
+        CASE
+          WHEN nullif(?, '') IS NOT NULL THEN 'tmdb:' || ?
+          ELSE 'title:' ||
+            lower(
+              btrim(
+                regexp_replace(
+                  regexp_replace(
+                    regexp_replace(
+                      regexp_replace(
+                        coalesce(?, ?),
+                        '\\s*\\[[^\\]]+\\]',
+                        ' ',
+                        'g'
+                      ),
+                      '\\m(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\\M',
+                      ' ',
+                      'gi'
+                    ),
+                    '[[:punct:]]+',
+                    ' ',
+                    'g'
+                  ),
+                  '\\s+',
+                  ' ',
+                  'g'
+                )
+              )
+            ) || ':' || coalesce(?::text, '')
+        END
+        """,
+        m.tmdb_id,
+        m.tmdb_id,
+        m.title,
+        m.name,
+        m.year
+      )
+    )
+  end
+
+  def normalized_title do
+    dynamic(
+      [m],
+      fragment(
+        """
+        lower(
+          btrim(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(
+                  regexp_replace(
+                    coalesce(?, ?),
+                    '\\s*\\[[^\\]]+\\]',
+                    ' ',
+                    'g'
+                  ),
+                  '\\m(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\\M',
+                  ' ',
+                  'gi'
+                ),
+                '[[:punct:]]+',
+                ' ',
+                'g'
+              ),
+              '\\s+',
+              ' ',
+              'g'
+            )
+          )
+        )
+        """,
+        m.title,
+        m.name
+      )
+    )
+  end
 
   defp count_query(query, true), do: select(query, [m], count(m.id, :distinct))
   defp count_query(query, false), do: select(query, [m], count(m.id))

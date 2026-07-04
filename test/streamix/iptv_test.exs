@@ -326,6 +326,128 @@ defmodule Streamix.IptvTest do
       refute Ecto.assoc_loaded?(result.credits)
     end
 
+    test "list_movies/2 can collapse provider variants into one browse card" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Terror",
+          type: "vod",
+          external_id: "vod-terror"
+        })
+
+      older =
+        movie_fixture(provider, %{
+          name: "0.0MHz [L]",
+          title: "0.0MHz [L]",
+          year: nil,
+          stream_id: 2_097_724
+        })
+
+      newer =
+        movie_fixture(provider, %{
+          name: "0.0MHz [L]",
+          title: "0.0MHz [L]",
+          year: nil,
+          stream_id: 2_112_503
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: older.catalog_item_id, category_id: category.id},
+        %{catalog_item_id: newer.catalog_item_id, category_id: category.id}
+      ])
+
+      results =
+        Iptv.list_movies(provider.id,
+          category_id: category.id,
+          dedupe: true,
+          limit: 10,
+          sort: "name_asc"
+        )
+
+      assert Enum.map(results, & &1.id) == [newer.id]
+      refute Enum.any?(results, &(&1.id == older.id))
+    end
+
+    test "list_movies/2 dedupe ignores punctuation differences in provider titles" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      older =
+        movie_fixture(provider, %{
+          name: "#PartiuFama Cancelado no Amor [L]",
+          title: "#PartiuFama Cancelado no Amor [L]",
+          stream_id: 1_001
+        })
+
+      newer =
+        movie_fixture(provider, %{
+          name: "#PartiuFama: Cancelado no Amor",
+          title: "#PartiuFama: Cancelado no Amor",
+          stream_id: 1_002
+        })
+
+      results = Iptv.list_movies(provider.id, dedupe: true, limit: 10, sort: "name_asc")
+
+      assert Enum.map(results, & &1.id) == [newer.id]
+      refute Enum.any?(results, &(&1.id == older.id))
+    end
+
+    test "list_movie_variants/3 returns visible provider variants with categories" do
+      user = user_fixture()
+      provider_a = provider_fixture(user, %{name: "Provider A"})
+      provider_b = provider_fixture(user, %{name: "Provider B"})
+
+      category_a =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider_a.id,
+          name: "FILMES I TERROR",
+          type: "vod",
+          external_id: "vod-terror"
+        })
+
+      category_b =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider_b.id,
+          name: "4K HDR",
+          type: "vod",
+          external_id: "vod-4k-hdr"
+        })
+
+      movie_a =
+        movie_fixture(provider_a, %{
+          name: "0.0MHz [L]",
+          title: "0.0MHz [L]",
+          stream_id: 2_097_724
+        })
+
+      movie_b =
+        movie_fixture(provider_b, %{
+          name: "0.0MHz 4K HDR",
+          title: "0.0MHz 4K HDR",
+          year: 2019,
+          tmdb_id: "157433",
+          stream_id: 2_112_503
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: movie_a.catalog_item_id, category_id: category_a.id},
+        %{catalog_item_id: movie_b.catalog_item_id, category_id: category_b.id}
+      ])
+
+      variants = Iptv.list_movie_variants(movie_b, user.id)
+
+      assert Enum.map(variants, & &1.id) == [movie_b.id, movie_a.id]
+      assert Enum.map(variants, & &1.provider.name) == ["Provider B", "Provider A"]
+
+      assert Enum.map(variants, fn movie -> Enum.map(movie.categories, & &1.name) end) == [
+               ["4K HDR"],
+               ["FILMES I TERROR"]
+             ]
+    end
+
     test "list_series/2 returns lightweight provider browse cards" do
       user = user_fixture()
       provider = provider_fixture(user)
@@ -354,6 +476,68 @@ defmodule Streamix.IptvTest do
       refute Ecto.assoc_loaded?(result.provider)
       refute Ecto.assoc_loaded?(result.assets)
       refute Ecto.assoc_loaded?(result.credits)
+    end
+
+    test "list_series/2 can collapse provider variants into one browse card" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Animações",
+          type: "series",
+          external_id: "series-animation"
+        })
+
+      older =
+        series_content_fixture(provider, %{
+          name: "Disenchantment [L]",
+          title: "Disenchantment [L]",
+          year: 2018,
+          series_id: 1_001
+        })
+
+      newer =
+        series_content_fixture(provider, %{
+          name: "Disenchantment 4K HDR",
+          title: "Disenchantment 4K HDR",
+          year: 2018,
+          series_id: 1_002
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: older.catalog_item_id, category_id: category.id},
+        %{catalog_item_id: newer.catalog_item_id, category_id: category.id}
+      ])
+
+      results =
+        Iptv.list_series(provider.id,
+          category_id: category.id,
+          dedupe: true,
+          limit: 10,
+          sort: "name_asc"
+        )
+
+      assert Enum.map(results, & &1.id) == [newer.id]
+      refute Enum.any?(results, &(&1.id == older.id))
+    end
+
+    test "list_series/2 search ignores title punctuation" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      series =
+        series_content_fixture(provider, %{
+          name: "(Des)encanto",
+          title: "(Des)encanto",
+          year: 2018,
+          series_id: 1_003
+        })
+
+      results = Iptv.list_series(provider.id, search: "Desencanto", dedupe: true, limit: 10)
+
+      assert Enum.map(results, & &1.id) == [series.id]
     end
 
     test "list_public_movies/1 preloads genres but not credits" do

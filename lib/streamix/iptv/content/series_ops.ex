@@ -310,6 +310,14 @@ defmodule Streamix.Iptv.SeriesOps do
     Queries.search_public(query, opts)
   end
 
+  @doc """
+  Lists visible provider variants for the same canonical series.
+  """
+  @spec list_variants(Series.t(), integer(), keyword()) :: [Series.t()]
+  def list_variants(%Series{} = series, user_id, opts \\ []) do
+    Queries.list_variants(series, user_id, opts)
+  end
+
   # =============================================================================
   # TMDB Info Fetching
   # =============================================================================
