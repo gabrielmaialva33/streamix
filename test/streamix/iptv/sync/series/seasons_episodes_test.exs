@@ -81,11 +81,21 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodesTest do
     # Some panels (e.g. the Streamix Fallback xtream) return `season_number`
     # as "1" instead of 1. `insert_all` doesn't cast, so the raw string used
     # to blow up against the integer column and crash the series mount.
-    test "coerces season_number to integer so insert_all doesn't crash", %{series: series} do
+    test "coerces season_number, episode_count and duration_secs to integer", %{series: series} do
+      ep = fn id, num ->
+        %{
+          "id" => to_string(id),
+          "episode_num" => to_string(num),
+          "title" => "E#{num}",
+          "container_extension" => "mp4",
+          "info" => %{"duration_secs" => "1380"}
+        }
+      end
+
       info = %{
         "info" => %{},
-        "seasons" => [%{"season_number" => "1", "name" => "Season 1"}],
-        "episodes" => %{"1" => [episode(100, 1), episode(101, 2)]}
+        "seasons" => [%{"season_number" => "1", "episode_count" => "2", "name" => "Season 1"}],
+        "episodes" => %{"1" => [ep.(100, 1), ep.(101, 2)]}
       }
 
       assert {:ok, %{seasons: 1, episodes: 2}} = SeasonsEpisodes.sync(series, info)

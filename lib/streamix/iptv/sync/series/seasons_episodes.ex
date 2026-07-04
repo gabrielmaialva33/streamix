@@ -125,7 +125,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
       cover: season["cover"] || season["cover_big"],
       air_date: Helpers.parse_date(season["air_date"]),
       overview: season["overview"],
-      episode_count: season["episode_count"] || 0,
+      episode_count: Helpers.parse_int(season["episode_count"]) || 0,
       series_id: series_id,
       inserted_at: now,
       updated_at: now
@@ -242,7 +242,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
       title: episode["title"],
       plot: get_in(episode, ["info", "plot"]),
       cover: get_in(episode, ["info", "cover_big"]) || get_in(episode, ["info", "movie_image"]),
-      duration_secs: get_in(episode, ["info", "duration_secs"]),
+      duration_secs: Helpers.parse_int(get_in(episode, ["info", "duration_secs"])),
       container_extension: episode["container_extension"],
       season_id: season_id,
       inserted_at: now,
