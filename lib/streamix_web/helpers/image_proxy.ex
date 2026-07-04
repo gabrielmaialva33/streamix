@@ -72,6 +72,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     |> String.replace("http://imgmxa.net", imgmxa_proxy_url())
     # Provider logos via our nginx proxy (port 8084)
     |> proxy_provider_logos()
+    |> proxy_insecure_external_image()
     |> add_cache_buster()
   end
 
@@ -89,6 +90,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     |> String.replace("https://imgmxa.net", imgmxa_proxy_url())
     |> String.replace("http://imgmxa.net", imgmxa_proxy_url())
     |> proxy_provider_logos()
+    |> proxy_insecure_external_image()
   end
 
   # Upgrades any TMDB image URL to HTTPS and collapses accidental
@@ -150,6 +152,12 @@ defmodule StreamixWeb.Helpers.ImageProxy do
       url
     end
   end
+
+  defp proxy_insecure_external_image("http://" <> _ = url) do
+    "#{image_proxy_url()}/proxy?url=#{URI.encode_www_form(url)}"
+  end
+
+  defp proxy_insecure_external_image(url), do: url
 
   defp add_cache_buster(url) do
     if String.contains?(url, "?") do
