@@ -37,9 +37,22 @@ defmodule Streamix.AccountsFixtures do
     user = unconfirmed_user_fixture(attrs)
 
     # Confirm the user directly in the database
+    user =
+      user
+      |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now(:second))
+      |> Streamix.Repo.update!()
+
+    remove_default_signup_trial(user)
+
     user
-    |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now(:second))
-    |> Streamix.Repo.update!()
+  end
+
+  defp remove_default_signup_trial(user) do
+    Streamix.Repo.delete_all(
+      from(s in Streamix.Billing.Subscription,
+        where: s.user_id == ^user.id and s.external_reference == ^"trial:signup:#{user.id}"
+      )
+    )
   end
 
   def admin_user_fixture(attrs \\ %{}) do

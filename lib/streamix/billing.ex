@@ -23,6 +23,7 @@ defmodule Streamix.Billing do
   defdelegate sync_plan_features!(plan, features), to: Plans
   defdelegate list_plans(), to: Plans
   defdelegate get_plan!(id), to: Plans
+  defdelegate get_plan_by_slug(slug), to: Plans
   defdelegate create_plan(attrs), to: Plans
   defdelegate update_plan(plan, attrs), to: Plans
   defdelegate get_plan_by_stripe_price_id(price_id), to: Plans
@@ -60,6 +61,7 @@ defmodule Streamix.Billing do
   # Subscription lifecycle
   defdelegate cancel_subscription_by_external_reference!(external_reference), to: Subscriptions
   defdelegate sync_provider_subscription!(user, plan, attrs), to: Subscriptions
+  defdelegate ensure_default_free_subscription(user), to: Subscriptions
   defdelegate start_trial_subscription(user, plan), to: Subscriptions
   defdelegate ensure_manual_subscription!(user, plan, attrs), to: Subscriptions
   defdelegate create_manual_subscription(user, plan, attrs), to: Subscriptions

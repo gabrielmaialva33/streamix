@@ -57,6 +57,12 @@ defmodule Streamix.Billing.Plans do
 
   def get_plan!(id), do: Repo.get!(Plan, id)
 
+  def get_plan_by_slug(slug) when is_binary(slug) and slug != "" do
+    Repo.get_by(Plan, slug: slug)
+  end
+
+  def get_plan_by_slug(_slug), do: nil
+
   def create_plan(attrs) do
     {attrs, features} = split_features(attrs)
 

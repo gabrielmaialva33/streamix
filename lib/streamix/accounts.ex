@@ -5,6 +5,7 @@ defmodule Streamix.Accounts do
 
   import Ecto.Query, warn: false
   alias Streamix.Accounts.{Role, User, UserNotifier, UserToken}
+  alias Streamix.Billing
   alias Streamix.Repo
 
   ## Database getters
@@ -120,7 +121,18 @@ defmodule Streamix.Accounts do
     |> User.registration_changeset(attrs)
     |> ensure_default_role()
     |> Repo.insert()
+    |> maybe_attach_default_free_subscription()
   end
+
+  defp maybe_attach_default_free_subscription({:ok, %User{} = user}) do
+    case Billing.ensure_default_free_subscription(user) do
+      {:ok, _subscription} -> {:ok, user}
+      {:error, :default_free_plan_not_found} -> {:ok, user}
+      {:error, _changeset_or_reason} -> {:ok, user}
+    end
+  end
+
+  defp maybe_attach_default_free_subscription(result), do: result
 
   defp ensure_default_role(changeset) do
     if Ecto.Changeset.get_field(changeset, :role_id) do

@@ -1,7 +1,7 @@
 defmodule Streamix.AccountsTest do
   use Streamix.DataCase
 
-  alias Streamix.Accounts
+  alias Streamix.{Accounts, Billing}
 
   import Streamix.AccountsFixtures
   alias Streamix.Accounts.{User, UserToken}
@@ -63,6 +63,33 @@ defmodule Streamix.AccountsTest do
         })
 
       assert Accounts.role_name(user) == "customer"
+    end
+
+    test "register_user_with_password/1 attaches the default free trial when available" do
+      plan =
+        Billing.ensure_plan!(%{
+          name: "Free Trial",
+          slug: "free-trial",
+          description: "7 dias grátis",
+          price_cents: 0,
+          currency: "USD",
+          billing_interval: "month",
+          trial_days: 7,
+          active: true,
+          grants_global_access: true,
+          features: %{global_catalog: true, concurrent_streams: 1, max_providers: 1}
+        })
+
+      {:ok, user} =
+        Accounts.register_user_with_password(%{
+          email: unique_user_email(),
+          password: valid_user_password()
+        })
+
+      assert %{plan_id: plan_id, source: "trial", status: "active", expires_at: %DateTime{}} =
+               Billing.active_subscription_for_user(user)
+
+      assert plan_id == plan.id
     end
 
     test "register_user_with_password/1 ignores attempts to self-assign admin role" do

@@ -106,6 +106,39 @@ defmodule Streamix.Billing.Subscriptions do
 
   def start_trial_subscription(_user, _plan), do: {:error, :trial_not_available}
 
+  def ensure_default_free_subscription(%User{} = user) do
+    case Repo.get_by(Plan, slug: default_free_plan_slug(), active: true) do
+      %Plan{} = plan ->
+        ensure_default_free_subscription(user, plan)
+
+      nil ->
+        {:error, :default_free_plan_not_found}
+    end
+  end
+
+  defp ensure_default_free_subscription(%User{} = user, %Plan{} = plan) do
+    now = DateTime.utc_now(:second)
+    external_reference = default_free_subscription_reference(user)
+
+    attrs = %{
+      status: "active",
+      source: "trial",
+      external_reference: external_reference,
+      starts_at: now,
+      expires_at: default_free_expires_at(now, plan)
+    }
+
+    case Repo.get_by(Subscription, external_reference: external_reference) do
+      nil ->
+        %Subscription{}
+        |> Subscription.create_changeset(user, plan, attrs)
+        |> Repo.insert()
+
+      %Subscription{} = subscription ->
+        {:ok, subscription}
+    end
+  end
+
   def ensure_manual_subscription!(%User{} = user, %Plan{} = plan, attrs)
       when is_map(attrs) do
     attrs = Map.merge(%{source: "manual", status: "active"}, attrs)
@@ -174,4 +207,17 @@ defmodule Streamix.Billing.Subscriptions do
   defp manual_subscription_reference(%User{id: user_id}, %Plan{id: plan_id}) do
     "seed:manual:#{user_id}:#{plan_id}"
   end
+
+  defp default_free_plan_slug, do: "free-trial"
+
+  defp default_free_subscription_reference(%User{id: user_id}) do
+    "trial:signup:#{user_id}"
+  end
+
+  defp default_free_expires_at(now, %Plan{trial_days: trial_days})
+       when is_integer(trial_days) and trial_days > 0 do
+    DateTime.add(now, trial_days, :day)
+  end
+
+  defp default_free_expires_at(_now, _plan), do: nil
 end
