@@ -49,6 +49,28 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       assert html =~ "Routed Movie"
     end
 
+    test "provider route back link honors a safe return path", ctx do
+      conn = log_in_user(ctx.conn, ctx.user)
+
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/providers/#{ctx.provider.id}/movies/#{ctx.movie.id}?return_to=/browse/movies/#{ctx.movie.id}"
+        )
+
+      assert has_element?(view, ~s(a[href="/browse/movies/#{ctx.movie.id}"]))
+    end
+
+    test "provider route ignores unsafe return paths", ctx do
+      conn = log_in_user(ctx.conn, ctx.user)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/providers/#{ctx.provider.id}/movies/#{ctx.movie.id}?return_to=//evil.test")
+
+      assert has_element?(view, ~s(a[href="/providers/#{ctx.provider.id}/movies"]))
+      refute has_element?(view, ~s(a[href="//evil.test"]))
+    end
+
     test "provider route with inaccessible provider redirects home", ctx do
       conn = log_in_user(ctx.conn, ctx.user)
 

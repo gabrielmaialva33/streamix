@@ -163,6 +163,44 @@ defmodule StreamixWeb.PlayerLiveTest do
       end
     end
 
+    test "close player returns to safe return path", %{conn: conn, user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          is_system: false,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{name: "Returnable Movie"})
+
+      {:ok, view, _html} =
+        live(conn, ~p"/watch/movie/#{movie.id}?return_to=/browse/movies/#{movie.id}")
+
+      return_path = "/browse/movies/#{movie.id}"
+
+      assert {:error, {:live_redirect, %{to: ^return_path}}} =
+               render_hook(view, "close_player", %{})
+    end
+
+    test "close player ignores unsafe return path", %{conn: conn, user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          is_system: false,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{name: "Unsafe Return Movie"})
+
+      {:ok, view, _html} = live(conn, ~p"/watch/movie/#{movie.id}?return_to=//evil.test")
+      return_path = "/providers/#{provider.id}/movies"
+
+      assert {:error, {:live_redirect, %{to: ^return_path}}} =
+               render_hook(view, "close_player", %{})
+    end
+
     test "owned episode opens with series subtitle metadata", %{conn: conn, user: user} do
       provider =
         provider_fixture(user, %{

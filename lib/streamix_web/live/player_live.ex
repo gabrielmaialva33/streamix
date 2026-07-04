@@ -30,12 +30,13 @@ defmodule StreamixWeb.PlayerLive do
   @torrent_peer_target 30
 
   @impl true
-  def mount(%{"type" => type, "id" => id}, _session, socket) do
+  def mount(%{"type" => type, "id" => id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
+    return_to = safe_return_path(params["return_to"])
 
     case load_content_preflight(type, id, user_id) do
       {:ok, content, provider} ->
-        handle_loaded_content(socket, type, user_id, content, provider)
+        handle_loaded_content(socket, type, user_id, content, provider, return_to)
 
       {:error, :not_found} ->
         {:ok,
@@ -301,9 +302,9 @@ defmodule StreamixWeb.PlayerLive do
   # Private Helpers
   # ============================================
 
-  defp handle_loaded_content(socket, type, user_id, content, provider) do
+  defp handle_loaded_content(socket, type, user_id, content, provider, return_to) do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
-      load_authorized_content(socket, type, user_id, content, provider)
+      load_authorized_content(socket, type, user_id, content, provider, return_to)
     else
       {:ok,
        socket
@@ -315,10 +316,18 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp load_authorized_content(socket, "torrent" = type, user_id, content, provider) do
+  defp load_authorized_content(socket, "torrent" = type, user_id, content, provider, return_to) do
     case reserve_playback_session(socket, type, content, user_id) do
       {:ok, playback_session} ->
-        prepare_torrent_gate(socket, type, user_id, content, provider, playback_session)
+        prepare_torrent_gate(
+          socket,
+          type,
+          user_id,
+          content,
+          provider,
+          playback_session,
+          return_to
+        )
 
       {:error, :concurrent_stream_limit_reached} ->
         {:ok,
@@ -328,10 +337,10 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp load_authorized_content(socket, type, user_id, content, provider) do
+  defp load_authorized_content(socket, type, user_id, content, provider, return_to) do
     case resolve_stream_url(type, content, provider, user_id) do
       {:ok, stream_url} ->
-        start_authorized_player(socket, type, user_id, content, provider, stream_url)
+        start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to)
 
       {:error, :not_found} ->
         {:ok,
@@ -341,7 +350,7 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp start_authorized_player(socket, type, user_id, content, provider, stream_url) do
+  defp start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to) do
     case reserve_playback_session(socket, type, content, user_id) do
       {:ok, playback_session} ->
         prepare_player_socket(
@@ -351,7 +360,8 @@ defmodule StreamixWeb.PlayerLive do
           content,
           provider,
           stream_url,
-          playback_session
+          playback_session,
+          return_to
         )
 
       {:error, :concurrent_stream_limit_reached} ->
@@ -369,7 +379,8 @@ defmodule StreamixWeb.PlayerLive do
          content,
          provider,
          stream_url,
-         playback_session
+         playback_session,
+         return_to
        ) do
     # Mount runs twice (static HTTP + WS upgrade). Writing watch history on
     # the static pass duplicated every play into the timeline.
@@ -398,6 +409,7 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(user_id: user_id)
       |> assign(next_episode: next_episode)
       |> assign(playback_session: playback_session)
+      |> assign(return_to: return_to)
 
     {:ok, socket}
   end
@@ -414,7 +426,7 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp prepare_torrent_gate(socket, type, user_id, content, provider, playback_session) do
+  defp prepare_torrent_gate(socket, type, user_id, content, provider, playback_session, return_to) do
     # Mount runs twice — see comment in prepare_player_socket. Same guard.
     if connected?(socket), do: record_watch_history(user_id, type, content)
     start_torrent_session_task(socket, content)
@@ -441,6 +453,7 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(user_id: user_id)
       |> assign(next_episode: nil)
       |> assign(playback_session: playback_session)
+      |> assign(return_to: return_to)
       |> assign(torrent_info_hash: info_hash)
       |> assign(
         torrent_status_url: "#{StreamixWeb.Endpoint.url()}/api/stream/torrent/#{info_hash}/status"
@@ -480,6 +493,9 @@ defmodule StreamixWeb.PlayerLive do
     })
   end
 
+  defp get_back_path(%{assigns: %{return_to: return_to}}) when is_binary(return_to),
+    do: return_to
+
   defp get_back_path(socket) do
     case socket.assigns.content_type do
       :live_channel ->
@@ -506,6 +522,14 @@ defmodule StreamixWeb.PlayerLive do
         ~p"/"
     end
   end
+
+  defp safe_return_path(path) when is_binary(path) do
+    if String.starts_with?(path, "/") and not String.starts_with?(path, "//") do
+      path
+    end
+  end
+
+  defp safe_return_path(_), do: nil
 
   defp find_quality_label(qualities, level) when is_list(qualities) do
     case Enum.find(qualities, fn q -> q["index"] == level end) do
