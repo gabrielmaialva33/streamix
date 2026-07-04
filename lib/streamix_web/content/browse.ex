@@ -51,6 +51,8 @@ defmodule StreamixWeb.Content.Browse do
     |> assign(mode: :browse)
     |> assign(source: "iptv")
     |> assign(provider: nil)
+    |> assign(provider_filter: "all")
+    |> assign(provider_options: [])
     |> assign(categories: [])
     |> assign(selected_category: nil)
     |> assign(search: "")
@@ -144,7 +146,7 @@ defmodule StreamixWeb.Content.Browse do
 
   def build_path(%{assigns: assigns}, kind, category, search) do
     config = config!(kind)
-    params = query_params(assigns.source, category, search)
+    params = query_params(assigns.source, assigns.provider_filter, category, search)
 
     case assigns.mode do
       :browse ->
@@ -155,10 +157,24 @@ defmodule StreamixWeb.Content.Browse do
     end
   end
 
+  def provider_filter_path(%{assigns: assigns}, kind, provider_filter) do
+    config = config!(kind)
+    provider_filter = provider_filter(provider_filter)
+
+    append_query(
+      config.browse_path,
+      query_params(assigns.source, provider_filter, nil, assigns.search)
+    )
+  end
+
   def detail_path(%{assigns: %{source: "gindex"}}, :movies, id), do: ~p"/gindex/movies/#{id}"
   def detail_path(%{assigns: %{source: "gindex"}}, :series, id), do: ~p"/gindex/series/#{id}"
-  def detail_path(%{assigns: %{mode: :browse}}, :movies, id), do: ~p"/browse/movies/#{id}"
-  def detail_path(%{assigns: %{mode: :browse}}, :series, id), do: ~p"/browse/series/#{id}"
+
+  def detail_path(%{assigns: %{mode: :browse, provider_filter: provider_filter}}, :movies, id),
+    do: with_provider_query(~p"/browse/movies/#{id}", provider_filter)
+
+  def detail_path(%{assigns: %{mode: :browse, provider_filter: provider_filter}}, :series, id),
+    do: with_provider_query(~p"/browse/series/#{id}", provider_filter)
 
   def detail_path(%{assigns: %{mode: :provider, provider: provider}}, :movies, id),
     do: ~p"/providers/#{provider.id}/movies/#{id}"
@@ -187,6 +203,8 @@ defmodule StreamixWeb.Content.Browse do
        |> assign(page_title: "#{config.title} - #{provider.name}")
        |> assign(current_path: provider_path(kind, provider))
        |> assign(provider: provider)
+       |> assign(provider_filter: Integer.to_string(provider.id))
+       |> assign(provider_options: provider_options(socket.assigns.user_id))
        |> assign(mode: :provider)
        |> assign(source: "iptv")
        |> assign(categories: categories)
@@ -218,28 +236,34 @@ defmodule StreamixWeb.Content.Browse do
      |> assign(page_title: config.gindex_title)
      |> assign(current_path: config.browse_path)
      |> assign(provider: nil)
+     |> assign(provider_filter: "all")
+     |> assign(provider_options: provider_options(socket.assigns.user_id))
      |> assign(mode: :browse)
      |> assign(source: "gindex")
      |> assign(categories: [])
      |> assign(gindex_counts: Iptv.gindex_counts())}
   end
 
-  defp apply_route_context(socket, kind, _params, _source) do
+  defp apply_route_context(socket, kind, params, _source) do
     config = config!(kind)
     user = socket.assigns.user
-    provider = Iptv.get_global_provider()
+    provider_filter = provider_filter(params["provider"])
+    provider = selected_browse_provider(socket.assigns.user_id, provider_filter)
 
     categories =
       case provider do
         nil -> []
+        _provider when provider_filter == "all" -> []
         provider -> Iptv.list_categories(provider.id, config.category_type)
       end
 
     {:ok,
      socket
-     |> assign(page_title: config.title)
-     |> assign(current_path: config.browse_path)
+     |> assign(page_title: provider_page_title(config.title, provider, provider_filter))
+     |> assign(current_path: with_provider_query(config.browse_path, provider_filter))
      |> assign(provider: provider)
+     |> assign(provider_filter: provider_filter)
+     |> assign(provider_options: provider_options(socket.assigns.user_id))
      |> assign(mode: :browse)
      |> assign(source: "iptv")
      |> assign(categories: filter_adult_categories(categories, user.show_adult_content))
@@ -317,6 +341,7 @@ defmodule StreamixWeb.Content.Browse do
         search: socket.assigns.search,
         limit: @per_page,
         offset: offset(socket.assigns.page),
+        dedupe: true,
         show_adult: user.show_adult_content
       )
 
@@ -363,17 +388,24 @@ defmodule StreamixWeb.Content.Browse do
     }
   end
 
-  defp query_params("gindex", category, search) do
+  defp query_params("gindex", _provider_filter, category, search) do
     %{"source" => "gindex"}
     |> maybe_put_query("category", category)
     |> maybe_put_query("search", search)
   end
 
-  defp query_params(_source, category, search) do
+  defp query_params(_source, provider_filter, category, search) do
     %{}
+    |> maybe_put_provider_query(provider_filter)
     |> maybe_put_query("category", category)
     |> maybe_put_query("search", search)
   end
+
+  defp maybe_put_provider_query(params, provider_filter) when provider_filter in [nil, "all"],
+    do: params
+
+  defp maybe_put_provider_query(params, provider_filter),
+    do: Map.put(params, "provider", provider_filter)
 
   defp maybe_put_query(params, _key, nil), do: params
   defp maybe_put_query(params, _key, ""), do: params
@@ -394,4 +426,45 @@ defmodule StreamixWeb.Content.Browse do
   defp provider_path(:series, provider), do: "/providers/#{provider.id}/series"
 
   defp config!(kind), do: Map.fetch!(@configs, kind)
+
+  defp provider_options(user_id) do
+    user_id
+    |> Iptv.list_visible_providers()
+    |> Enum.filter(&(&1.provider_type == :xtream))
+  end
+
+  defp provider_filter(nil), do: "all"
+  defp provider_filter(""), do: "all"
+  defp provider_filter("all"), do: "all"
+
+  defp provider_filter(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {id, ""} when id > 0 -> Integer.to_string(id)
+      _ -> "all"
+    end
+  end
+
+  defp provider_filter(_), do: "all"
+
+  defp selected_browse_provider(_user_id, "all"), do: Iptv.get_global_provider()
+
+  defp selected_browse_provider(user_id, provider_filter) do
+    case Integer.parse(provider_filter) do
+      {provider_id, ""} -> Iptv.get_playable_provider(user_id, provider_id)
+      _ -> Iptv.get_global_provider()
+    end
+  end
+
+  defp provider_page_title(title, provider, provider_filter)
+       when provider_filter not in [nil, "all"] and not is_nil(provider),
+       do: "#{title} - #{provider.name}"
+
+  defp provider_page_title(title, _provider, _provider_filter), do: title
+
+  defp with_provider_query(path, provider_filter) when provider_filter in [nil, "all"], do: path
+
+  defp with_provider_query(path, provider_filter) do
+    separator = if String.contains?(path, "?"), do: "&", else: "?"
+    path <> separator <> "provider=" <> URI.encode_www_form(provider_filter)
+  end
 end

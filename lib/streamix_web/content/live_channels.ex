@@ -24,6 +24,8 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(page_title: "Ao Vivo")
     |> assign(current_path: "/browse")
     |> assign(provider: nil)
+    |> assign(provider_filter: "all")
+    |> assign(provider_options: [])
     |> assign(mode: :browse)
     |> assign(premium_access: Detail.premium_access?(user))
     |> assign(categories: [])
@@ -44,13 +46,15 @@ defmodule StreamixWeb.Content.LiveChannels do
   def assign_params(socket, params) do
     category = parse_integer(params["category"])
     search = params["search"] || ""
+    provider_filter = provider_filter(params["provider"])
 
-    case apply_route_context(socket, params) do
+    case apply_route_context(socket, params, provider_filter) do
       {:ok, socket} ->
         socket =
           socket
           |> assign(selected_category: category)
           |> assign(search: search)
+          |> assign(provider_filter: provider_filter)
           |> assign(page: 1)
           |> LiveView.stream(:channels, [], reset: true)
           |> load_channels()
@@ -190,12 +194,13 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(empty_results: socket.assigns.page == 1 and Enum.empty?(channels))
   end
 
-  def build_path(%{assigns: %{mode: :browse}}, nil, ""), do: ~p"/browse"
-  def build_path(%{assigns: %{mode: :browse}}, nil, search), do: ~p"/browse?search=#{search}"
-  def build_path(%{assigns: %{mode: :browse}}, category, ""), do: ~p"/browse?category=#{category}"
-
-  def build_path(%{assigns: %{mode: :browse}}, category, search),
-    do: ~p"/browse?category=#{category}&search=#{search}"
+  def build_path(%{assigns: %{mode: :browse} = assigns}, category, search) do
+    %{}
+    |> maybe_put_provider_query(assigns.provider_filter)
+    |> maybe_put_query("category", category)
+    |> maybe_put_query("search", search)
+    |> then(&append_query(~p"/browse", &1))
+  end
 
   def build_path(%{assigns: %{mode: :provider, provider: provider}}, nil, ""),
     do: ~p"/providers/#{provider.id}"
@@ -208,6 +213,15 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def build_path(%{assigns: %{mode: :provider, provider: provider}}, category, search),
     do: ~p"/providers/#{provider.id}?category=#{category}&search=#{search}"
+
+  def provider_filter_path(%{assigns: assigns}, provider_filter) do
+    provider_filter = provider_filter(provider_filter)
+
+    %{}
+    |> maybe_put_provider_query(provider_filter)
+    |> maybe_put_query("search", assigns.search)
+    |> then(&append_query(~p"/browse", &1))
+  end
 
   def empty_message(:provider, "idle"), do: "Sincronize o provedor para carregar os canais"
   def empty_message(_, _), do: "Tente ajustar seus filtros"
@@ -225,12 +239,12 @@ defmodule StreamixWeb.Content.LiveChannels do
     end
   end
 
-  defp apply_route_context(socket, %{"provider_id" => provider_id}) do
+  defp apply_route_context(socket, %{"provider_id" => provider_id}, _provider_filter) do
     user = socket.assigns.current_scope.user
     provider = Iptv.get_playable_provider(user.id, provider_id)
 
     if provider do
-      {:ok, assign_provider_context(socket, provider, :provider)}
+      {:ok, assign_provider_context(socket, provider, :provider, Integer.to_string(provider.id))}
     else
       {:redirect,
        socket
@@ -242,8 +256,10 @@ defmodule StreamixWeb.Content.LiveChannels do
     end
   end
 
-  defp apply_route_context(socket, _params) do
-    case Iptv.get_global_provider() do
+  defp apply_route_context(socket, _params, provider_filter) do
+    user = socket.assigns.current_scope.user
+
+    case selected_browse_provider(user.id, provider_filter) do
       nil ->
         {:redirect,
          socket
@@ -251,22 +267,28 @@ defmodule StreamixWeb.Content.LiveChannels do
          |> Phoenix.LiveView.push_navigate(to: ~p"/providers")}
 
       provider ->
-        {:ok, assign_provider_context(socket, provider, :browse)}
+        {:ok, assign_provider_context(socket, provider, :browse, provider_filter)}
     end
   end
 
-  defp assign_provider_context(socket, provider, mode) do
+  defp assign_provider_context(socket, provider, mode, provider_filter) do
     user = socket.assigns.current_scope.user
 
     categories =
-      provider.id
-      |> Iptv.list_categories("live")
-      |> filter_adult_categories(user.show_adult_content)
+      if mode == :browse and provider_filter == "all" do
+        []
+      else
+        provider.id
+        |> Iptv.list_categories("live")
+        |> filter_adult_categories(user.show_adult_content)
+      end
 
     socket
     |> assign(page_title: provider_page_title(provider, mode))
-    |> assign(current_path: provider_current_path(provider, mode))
+    |> assign(current_path: provider_current_path(provider, mode, provider_filter))
     |> assign(provider: provider)
+    |> assign(provider_filter: provider_filter)
+    |> assign(provider_options: provider_options(socket.assigns.user_id))
     |> assign(mode: mode)
     |> assign(categories: categories)
     |> assign(epg_syncing: maybe_prepare_provider_updates(socket, provider))
@@ -298,14 +320,58 @@ defmodule StreamixWeb.Content.LiveChannels do
   defp maybe_add_filter(opts, _key, ""), do: opts
   defp maybe_add_filter(opts, key, value), do: Keyword.put(opts, key, value)
 
+  defp maybe_put_query(params, _key, nil), do: params
+  defp maybe_put_query(params, _key, ""), do: params
+  defp maybe_put_query(params, key, value), do: Map.put(params, key, value)
+
+  defp maybe_put_provider_query(params, provider_filter) when provider_filter in [nil, "all"],
+    do: params
+
+  defp maybe_put_provider_query(params, provider_filter),
+    do: Map.put(params, "provider", provider_filter)
+
+  defp append_query(path, params) when map_size(params) == 0, do: path
+  defp append_query(path, params), do: path <> "?" <> URI.encode_query(params)
+
   defp filter_adult_categories(categories, true), do: categories
   defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
 
   defp provider_page_title(_provider, :browse), do: "Ao Vivo"
   defp provider_page_title(provider, :provider), do: "#{provider.name} - Ao Vivo"
 
-  defp provider_current_path(_provider, :browse), do: "/browse"
-  defp provider_current_path(provider, :provider), do: "/providers/#{provider.id}"
+  defp provider_current_path(_provider, :browse, provider_filter),
+    do: append_query("/browse", maybe_put_provider_query(%{}, provider_filter))
+
+  defp provider_current_path(provider, :provider, _provider_filter),
+    do: "/providers/#{provider.id}"
+
+  defp provider_options(user_id) do
+    user_id
+    |> Iptv.list_visible_providers()
+    |> Enum.filter(&(&1.provider_type == :xtream))
+  end
+
+  defp provider_filter(nil), do: "all"
+  defp provider_filter(""), do: "all"
+  defp provider_filter("all"), do: "all"
+
+  defp provider_filter(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {id, ""} when id > 0 -> Integer.to_string(id)
+      _ -> "all"
+    end
+  end
+
+  defp provider_filter(_), do: "all"
+
+  defp selected_browse_provider(_user_id, "all"), do: Iptv.get_global_provider()
+
+  defp selected_browse_provider(user_id, provider_filter) do
+    case Integer.parse(provider_filter) do
+      {provider_id, ""} -> Iptv.get_playable_provider(user_id, provider_id)
+      _ -> Iptv.get_global_provider()
+    end
+  end
 
   defp maybe_prepare_provider_updates(socket, provider) do
     if Phoenix.LiveView.connected?(socket) do

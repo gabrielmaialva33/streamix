@@ -47,6 +47,10 @@ defmodule StreamixWeb.Content.SeriesLive do
      )}
   end
 
+  def handle_event("filter_provider", %{"provider" => provider}, socket) do
+    {:noreply, push_patch(socket, to: Browse.provider_filter_path(socket, :series, provider))}
+  end
+
   def handle_event("load_more", _, socket) do
     {:noreply, Browse.load_more(socket, :series)}
   end
@@ -97,6 +101,12 @@ defmodule StreamixWeb.Content.SeriesLive do
             class="browse-toolbar__search"
           />
         </div>
+
+        <.provider_filter
+          :if={@mode == :browse and @source == "iptv"}
+          providers={@provider_options}
+          selected={@provider_filter}
+        />
 
         <.premium_cta_banner
           :if={@mode == :browse and @source == "iptv" and not @premium_access}

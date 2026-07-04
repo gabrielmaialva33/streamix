@@ -45,6 +45,10 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
      )}
   end
 
+  def handle_event("filter_provider", %{"provider" => provider}, socket) do
+    {:noreply, push_patch(socket, to: LiveChannels.provider_filter_path(socket, provider))}
+  end
+
   def handle_event("load_more", _, socket) do
     {:noreply, LiveChannels.load_more(socket)}
   end
@@ -191,6 +195,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           <% end %>
         </div>
 
+        <.provider_filter
+          :if={@mode == :browse}
+          providers={@provider_options}
+          selected={@provider_filter}
+        />
+
         <.premium_cta_banner
           :if={@mode == :browse and not @premium_access}
           id="browse-premium-cta"
@@ -200,6 +210,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
       <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
         <.category_filter_v2
+          :if={length(@categories) > 0}
           categories={@categories}
           selected={@selected_category}
           layout={:sidebar}

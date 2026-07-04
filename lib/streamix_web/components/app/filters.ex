@@ -7,6 +7,44 @@ defmodule StreamixWeb.App.Filters do
 
   import StreamixWeb.CoreComponents
 
+  attr :providers, :list, required: true
+  attr :selected, :string, default: "all"
+  attr :on_change, :string, default: "filter_provider"
+
+  def provider_filter(assigns) do
+    ~H"""
+    <div :if={@providers != []} class="flex items-center gap-1.5 min-w-0">
+      <span class="hidden lg:inline text-xs font-medium text-text-muted">Provider</span>
+      <div class="flex min-w-0 items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        <button
+          type="button"
+          phx-click={@on_change}
+          phx-value-provider="all"
+          class={[
+            "category-chip whitespace-nowrap",
+            @selected in [nil, "all"] && "category-chip--active"
+          ]}
+        >
+          Todos
+        </button>
+        <button
+          :for={provider <- @providers}
+          type="button"
+          phx-click={@on_change}
+          phx-value-provider={provider.id}
+          class={[
+            "category-chip max-w-44 whitespace-nowrap",
+            to_string(@selected) == to_string(provider.id) && "category-chip--active"
+          ]}
+          title={provider.name}
+        >
+          <span class="truncate">{provider.name}</span>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
   attr :categories, :list, required: true
   attr :selected, :any, default: nil
   attr :on_change, :string, default: "filter_category"
