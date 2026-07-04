@@ -21,8 +21,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
     opts = [
       content_type: params["type"],
-      limit: parse_int(params["limit"], 50),
-      offset: parse_int(params["offset"], 0)
+      limit: parse_limit(params["limit"], 50),
+      offset: parse_offset(params["offset"])
     ]
 
     items = Iptv.list_watch_history(user.id, opts)
@@ -51,34 +51,50 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   def upsert(conn, %{"type" => type, "content_id" => content_id} = params) do
     user = conn.assigns.current_user
 
-    progress = parse_int(params["progress_seconds"], 0)
-    duration = parse_int(params["duration_seconds"], nil)
-    completed = params["completed"] || false
+    case playable_history_target(user.id, type, content_id) do
+      {:ok, content_id} ->
+        progress = parse_int(params["progress_seconds"], 0)
+        duration = parse_int(params["duration_seconds"], nil)
+        completed = params["completed"] || false
 
-    attrs = %{
-      progress_seconds: progress,
-      completed: completed
-    }
+        attrs = %{
+          progress_seconds: progress,
+          completed: completed
+        }
 
-    attrs = if duration, do: Map.put(attrs, :duration_seconds, duration), else: attrs
+        attrs = if duration, do: Map.put(attrs, :duration_seconds, duration), else: attrs
 
-    case Iptv.add_watch_history(user.id, type, content_id, attrs) do
-      {:ok, entry} ->
-        conn
-        |> put_status(:created)
-        |> json(%{
-          id: entry.id,
-          content_type: entry[:content_type],
-          content_id: entry[:content_id],
-          progress_seconds: entry.progress_seconds,
-          duration_seconds: entry.duration_seconds,
-          completed: entry.completed
-        })
+        case Iptv.add_watch_history(user.id, type, content_id, attrs) do
+          {:ok, entry} ->
+            conn
+            |> put_status(:created)
+            |> json(%{
+              id: entry.id,
+              content_type: entry[:content_type],
+              content_id: entry[:content_id],
+              progress_seconds: entry.progress_seconds,
+              duration_seconds: entry.duration_seconds,
+              completed: entry.completed
+            })
 
-      {:error, _changeset} ->
+          {:error, _changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{error: %{code: "save_failed", message: "Failed to save history"}})
+        end
+
+      {:error, :invalid_content_id} ->
+        invalid_id(conn)
+
+      {:error, :invalid_content_type} ->
         conn
         |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "save_failed", message: "Failed to save history"}})
+        |> json(%{error: %{code: "invalid_content_type", message: "Invalid content type"}})
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: %{code: "content_not_found", message: "Content not found"}})
     end
   end
 
@@ -119,9 +135,44 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
   defp parse_int(_, default), do: default
 
+  defp parse_limit(value, default) do
+    value
+    |> parse_int(default)
+    |> min(100)
+    |> max(1)
+  end
+
+  defp parse_offset(value) do
+    value
+    |> parse_int(0)
+    |> max(0)
+  end
+
   defp invalid_id(conn) do
     conn
     |> put_status(:bad_request)
     |> json(%{error: %{code: "invalid_id", message: "Invalid history id"}})
   end
+
+  defp playable_history_target(user_id, type, raw_content_id) do
+    with {:ok, content_id} <- parse_positive_integer(raw_content_id),
+         true <- playable_history?(user_id, type, content_id) do
+      {:ok, content_id}
+    else
+      :error -> {:error, :invalid_content_id}
+      :invalid_content_type -> {:error, :invalid_content_type}
+      false -> {:error, :not_found}
+    end
+  end
+
+  defp playable_history?(user_id, "movie", content_id),
+    do: not is_nil(Iptv.get_playable_movie(user_id, content_id))
+
+  defp playable_history?(user_id, "episode", content_id),
+    do: not is_nil(Iptv.get_playable_episode(user_id, content_id))
+
+  defp playable_history?(user_id, "live_channel", content_id),
+    do: not is_nil(Iptv.get_playable_channel(user_id, content_id))
+
+  defp playable_history?(_user_id, _type, _content_id), do: :invalid_content_type
 end

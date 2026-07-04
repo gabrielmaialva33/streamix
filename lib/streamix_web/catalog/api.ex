@@ -57,9 +57,15 @@ defmodule StreamixWeb.Catalog.Api do
   end
 
   def series_detail(id) do
-    case Iptv.get_series_with_sync!(id) do
-      {:ok, series} -> {:ok, Serializer.serialize_series_detail(series)}
-      _ -> {:error, :not_found}
+    case Iptv.get_public_series(id) do
+      nil ->
+        {:error, :not_found}
+
+      series ->
+        case Iptv.get_series_with_sync!(series.id) do
+          {:ok, series} -> {:ok, Serializer.serialize_series_detail(series)}
+          _ -> {:error, :not_found}
+        end
     end
   rescue
     Ecto.NoResultsError -> {:error, :not_found}
@@ -173,21 +179,21 @@ defmodule StreamixWeb.Catalog.Api do
   def top_rated(params), do: shelf(params, &Iptv.list_top_rated/2)
 
   def movie_stream(id) do
-    case Iptv.get_movie_for_stream(id) do
+    case Iptv.get_public_movie(id) do
       nil -> {:error, :not_found}
       movie -> {:ok, %{stream_url: StreamUrls.signed_movie_url(movie)}}
     end
   end
 
   def episode_stream(id) do
-    case Iptv.get_episode_for_stream(id) do
+    case Iptv.get_public_episode(id) do
       nil -> {:error, :not_found}
       episode -> {:ok, %{stream_url: StreamUrls.signed_episode_url(episode)}}
     end
   end
 
   def channel_stream(id) do
-    case Iptv.get_live_channel_for_stream(id) do
+    case Iptv.get_public_channel(id) do
       nil -> {:error, :not_found}
       channel -> {:ok, %{stream_url: StreamUrls.signed_channel_url(channel)}}
     end

@@ -1,6 +1,7 @@
 defmodule StreamixWeb.Api.V1.CatalogControllerTest do
   use StreamixWeb.ConnCase, async: false
 
+  import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv.{CatalogItem, Episode, Season}
@@ -248,6 +249,52 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
     end
   end
 
+  describe "public catalog detail access" do
+    test "returns not found for malformed ids", %{conn: conn} do
+      response =
+        conn
+        |> get(~p"/api/v1/catalog/movies/not-a-number")
+        |> json_response(404)
+
+      assert response == %{"error" => "Movie not found"}
+    end
+
+    test "does not expose a private series by direct id", %{conn: conn} do
+      owner = user_fixture()
+      provider = provider_fixture(owner)
+      series = series_content_fixture(provider, %{name: "Private Show"})
+
+      response =
+        conn
+        |> get(~p"/api/v1/catalog/series/#{series.id}")
+        |> json_response(404)
+
+      assert response == %{"error" => "Series not found"}
+    end
+  end
+
+  describe "public catalog stream access" do
+    test "does not issue stream URLs for private provider content", %{conn: conn} do
+      owner = user_fixture()
+      provider = provider_fixture(owner)
+      movie = movie_fixture(provider)
+      channel = channel_fixture(provider)
+      episode = private_episode_fixture(provider)
+
+      assert conn
+             |> get(~p"/api/v1/catalog/movies/#{movie.id}/stream")
+             |> json_response(404) == %{"error" => "Movie not found"}
+
+      assert conn
+             |> get(~p"/api/v1/catalog/channels/#{channel.id}/stream")
+             |> json_response(404) == %{"error" => "Channel not found"}
+
+      assert conn
+             |> get(~p"/api/v1/catalog/episodes/#{episode.id}/stream")
+             |> json_response(404) == %{"error" => "Episode not found"}
+    end
+  end
+
   describe "GET /api/v1/catalog/channels — has_more honors dead-channel filter" do
     test "has_more is false on last page when remainder is dead", %{
       conn: conn,
@@ -326,5 +373,29 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
       # "Highly Rated" (9.8) should outrank "New Release" (7.1)
       assert List.first(names) == "Highly Rated"
     end
+  end
+
+  defp private_episode_fixture(provider) do
+    series = series_content_fixture(provider, %{name: "Private Series"})
+
+    season =
+      %Season{}
+      |> Season.changeset(%{season_number: 1, name: "Season 1", series_id: series.id})
+      |> Repo.insert!()
+
+    catalog_item =
+      %CatalogItem{}
+      |> CatalogItem.changeset(%{content_type: "episode", provider_id: provider.id})
+      |> Repo.insert!()
+
+    %Episode{}
+    |> Episode.changeset(%{
+      episode_id: System.unique_integer([:positive]),
+      episode_num: 1,
+      title: "Private Episode",
+      season_id: season.id,
+      catalog_item_id: catalog_item.id
+    })
+    |> Repo.insert!()
   end
 end
