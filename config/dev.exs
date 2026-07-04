@@ -6,6 +6,10 @@ config :streamix, Streamix.Repo,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
 
+# Local development runs over plain HTTP, so browser session cookies can't be
+# marked secure here. Production keeps the secure default from endpoint.ex.
+config :streamix, :session_secure, false
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
