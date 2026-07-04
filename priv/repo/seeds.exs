@@ -80,9 +80,9 @@ basic_plan =
 
 premium_plan =
   Billing.ensure_plan!(%{
-    name: "Premium Mensal",
+    name: "Global Mensal",
     slug: "premium-monthly",
-    description: "Catálogo global, AI premium e mais providers",
+    description: "Catálogo global, AI avançada e mais providers",
     price_cents: 1_999,
     currency: "USD",
     billing_interval: "month",
