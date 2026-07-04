@@ -56,45 +56,45 @@ defmodule StreamixWeb.PlayerHelpers do
   def load_content(_, _, _), do: {:error, :not_found}
 
   def load_content_preflight("live_channel", id, user_id) do
-    case Iptv.get_playable_channel(user_id, id) do
-      nil -> {:error, :not_found}
-      channel -> {:ok, channel, channel.provider}
+    with {:ok, id} <- parse_id(id),
+         %{} = channel <- Iptv.get_playable_channel(user_id, id) do
+      {:ok, channel, channel.provider}
+    else
+      _ -> {:error, :not_found}
     end
   end
 
   def load_content_preflight("movie", id, user_id) do
-    case Iptv.get_playable_movie(user_id, id) do
-      nil -> {:error, :not_found}
-      movie -> {:ok, movie, movie.provider}
+    with {:ok, id} <- parse_id(id),
+         %{} = movie <- Iptv.get_playable_movie(user_id, id) do
+      {:ok, movie, movie.provider}
+    else
+      _ -> {:error, :not_found}
     end
   end
 
   def load_content_preflight("episode", id, user_id) do
-    case Iptv.get_playable_episode(user_id, id) do
-      nil -> {:error, :not_found}
-      episode -> {:ok, episode, episode.season.series.provider}
+    with {:ok, id} <- parse_id(id),
+         %{} = episode <- Iptv.get_playable_episode(user_id, id) do
+      {:ok, episode, episode.season.series.provider}
+    else
+      _ -> {:error, :not_found}
     end
   end
 
   def load_content_preflight("gindex", id, _user_id) do
-    movie = Iptv.get_movie_with_provider!(id)
-
-    if movie.gindex_path do
-      {:ok, movie, movie.provider}
-    else
-      {:error, :not_found}
+    case parse_id(id) do
+      {:ok, id} -> load_gindex_movie(id)
+      :error -> {:error, :not_found}
     end
   rescue
     Ecto.NoResultsError -> {:error, :not_found}
   end
 
   def load_content_preflight("gindex_episode", id, _user_id) do
-    episode = Iptv.get_episode_with_context!(id)
-
-    if episode.gindex_path do
-      {:ok, episode, episode.season.series.provider}
-    else
-      {:error, :not_found}
+    case parse_id(id) do
+      {:ok, id} -> load_gindex_episode(id)
+      :error -> {:error, :not_found}
     end
   rescue
     Ecto.NoResultsError -> {:error, :not_found}
@@ -108,6 +108,26 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   def load_content_preflight(_, _, _), do: {:error, :not_found}
+
+  defp load_gindex_movie(id) do
+    movie = Iptv.get_movie_with_provider!(id)
+
+    if movie.gindex_path do
+      {:ok, movie, movie.provider}
+    else
+      {:error, :not_found}
+    end
+  end
+
+  defp load_gindex_episode(id) do
+    episode = Iptv.get_episode_with_context!(id)
+
+    if episode.gindex_path do
+      {:ok, episode, episode.season.series.provider}
+    else
+      {:error, :not_found}
+    end
+  end
 
   def load_next_episode(type, content, provider, user_id \\ nil)
 

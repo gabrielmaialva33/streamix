@@ -77,5 +77,50 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       assert {:error, {:live_redirect, %{to: "/"}}} =
                live(conn, ~p"/providers/999999/movies/#{ctx.movie.id}")
     end
+
+    test "browse route with malformed movie id redirects instead of crashing", ctx do
+      conn = log_in_user(ctx.conn, ctx.user)
+
+      assert {:error, {:live_redirect, %{to: "/browse/movies"}}} =
+               live(conn, ~p"/browse/movies/not-a-number")
+    end
+
+    test "browse route opens a visible private movie without a global provider", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Private Detail Catalog"})
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Private Detail Movie",
+          plot: "Visible private movie.",
+          content_rating: "14",
+          tmdb_id: "private-detail-movie"
+        })
+
+      conn = log_in_user(conn, user)
+
+      {:ok, _view, html} = live(conn, ~p"/browse/movies/#{movie.id}")
+
+      assert html =~ "Private Detail Movie"
+    end
+
+    test "browse route blocks another user's private movie", %{conn: conn} do
+      user = user_fixture()
+      owner = user_fixture()
+      provider = provider_fixture(owner, %{name: "Other Private Detail Catalog"})
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Other Private Detail Movie",
+          plot: "Private movie.",
+          content_rating: "14",
+          tmdb_id: "other-private-detail-movie"
+        })
+
+      conn = log_in_user(conn, user)
+
+      assert {:error, {:live_redirect, %{to: "/browse/movies"}}} =
+               live(conn, ~p"/browse/movies/#{movie.id}")
+    end
   end
 end

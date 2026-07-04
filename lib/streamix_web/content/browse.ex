@@ -105,28 +105,35 @@ defmodule StreamixWeb.Content.Browse do
   end
 
   def toggle_favorite(socket, kind, id) do
-    item_id = parse_integer(id)
+    case parse_integer(id) do
+      nil -> socket
+      item_id -> toggle_playable_favorite(socket, kind, item_id)
+    end
+  end
 
-    if is_nil(item_id) do
-      socket
-    else
-      config = config!(kind)
-      item = get_item!(kind, item_id)
+  defp toggle_playable_favorite(socket, kind, item_id) do
+    case get_playable_item(kind, socket.assigns.user_id, item_id) do
+      nil -> socket
+      item -> toggle_loaded_favorite(socket, kind, item_id, item)
+    end
+  end
 
-      case FavoriteState.toggle(
-             socket.assigns.user_id,
-             config.content_type,
-             item_id,
-             favorite_attrs(kind, item)
-           ) do
-        {:ok, status} ->
-          socket
-          |> FavoriteState.apply_map(:favorites_map, item_id, status)
-          |> LiveView.stream_insert(config.stream, item)
+  defp toggle_loaded_favorite(socket, kind, item_id, item) do
+    config = config!(kind)
 
-        {:error, _reason} ->
-          socket
-      end
+    case FavoriteState.toggle(
+           socket.assigns.user_id,
+           config.content_type,
+           item_id,
+           favorite_attrs(kind, item)
+         ) do
+      {:ok, status} ->
+        socket
+        |> FavoriteState.apply_map(:favorites_map, item_id, status)
+        |> LiveView.stream_insert(config.stream, item)
+
+      {:error, _reason} ->
+        socket
     end
   end
 
@@ -397,8 +404,8 @@ defmodule StreamixWeb.Content.Browse do
   defp list_visible_items(:movies, user_id, opts), do: Iptv.list_visible_movies(user_id, opts)
   defp list_visible_items(:series, user_id, opts), do: Iptv.list_visible_series(user_id, opts)
 
-  defp get_item!(:movies, id), do: Iptv.get_movie!(id)
-  defp get_item!(:series, id), do: Iptv.get_series!(id)
+  defp get_playable_item(:movies, user_id, id), do: Iptv.get_playable_movie(user_id, id)
+  defp get_playable_item(:series, user_id, id), do: Iptv.get_playable_series(user_id, id)
 
   defp favorite_attrs(:movies, movie) do
     %{

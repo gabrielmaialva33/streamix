@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Iptv
   alias Streamix.Iptv.{CatalogItem, Series}
   alias Streamix.Repo
 
@@ -80,6 +81,22 @@ defmodule StreamixWeb.Content.SeriesLivePremiumSignalsTest do
 
       refute has_element?(view, "#browse-premium-cta")
       refute has_element?(view, "#browse-premium-cta a[href=\"/plans\"]")
+    end
+  end
+
+  describe "provider filter" do
+    test "forged favorite event cannot favorite another user's private series", %{conn: conn} do
+      user = user_fixture()
+      owner = user_fixture()
+      private_provider = provider_fixture(owner, %{name: "Other Private Catalog"})
+      private_series = series_content_fixture(private_provider, %{name: "Other Private Series"})
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/series")
+
+      render_hook(view, "toggle_favorite", %{"id" => private_series.id, "type" => "series"})
+
+      refute Iptv.favorite?(user.id, "series", private_series.id)
     end
   end
 end

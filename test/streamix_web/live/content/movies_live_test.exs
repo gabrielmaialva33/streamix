@@ -5,6 +5,8 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Iptv
+
   describe "Infinite Scroll" do
     setup do
       user = user_fixture()
@@ -54,6 +56,20 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       {:ok, view, _html} = live(conn, ~p"/browse/movies")
 
       assert has_element?(view, "#movie-card-#{movie.id}")
+    end
+
+    test "forged favorite event cannot favorite another user's private movie", %{conn: conn} do
+      user = user_fixture()
+      owner = user_fixture()
+      private_provider = provider_fixture(owner, %{name: "Other Private Catalog"})
+      private_movie = movie_fixture(private_provider, %{name: "Other Private Movie"})
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies")
+
+      render_hook(view, "toggle_favorite", %{"id" => private_movie.id, "type" => "movie"})
+
+      refute Iptv.favorite?(user.id, "movie", private_movie.id)
     end
   end
 

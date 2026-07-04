@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   import StreamixWeb.Content.DetailComponents,
     only: [
@@ -74,7 +75,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp mount_with_provider(socket, provider, movie_id, user_id, mode, return_to, provider_filter) do
     user = socket.assigns.current_scope.user
 
-    case Detail.get_movie(movie_id) do
+    movie =
+      case parse_positive_integer(movie_id) do
+        {:ok, movie_id} -> Detail.get_playable_movie(user_id, movie_id)
+        :error -> nil
+      end
+
+    case movie do
       nil ->
         {:ok,
          socket

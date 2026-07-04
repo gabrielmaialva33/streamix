@@ -186,5 +186,58 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       refute has_element?(view, "[data-premium-badge]")
       refute has_element?(view, "#series-detail-premium-cta")
     end
+
+    test "series detail browse opens a visible private series without a global provider", %{
+      conn: conn
+    } do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Private Series Detail Catalog"})
+
+      series =
+        series_fixture(provider, %{
+          name: "Private Detail Series",
+          plot: "Visible private series.",
+          content_rating: "14",
+          tmdb_id: "private-detail-series"
+        })
+
+      season = season_fixture(series)
+      episode_fixture(season, provider)
+
+      conn = log_in_user(conn, user)
+      {:ok, _view, html} = live(conn, ~p"/browse/series/#{series.id}")
+
+      assert html =~ "Private Detail Series"
+    end
+
+    test "series detail browse blocks another user's private series", %{conn: conn} do
+      user = user_fixture()
+      owner = user_fixture()
+      provider = provider_fixture(owner, %{name: "Other Private Series Detail Catalog"})
+
+      series =
+        series_fixture(provider, %{
+          name: "Other Private Detail Series",
+          plot: "Private series.",
+          content_rating: "14",
+          tmdb_id: "other-private-detail-series"
+        })
+
+      season = season_fixture(series)
+      episode_fixture(season, provider)
+
+      conn = log_in_user(conn, user)
+
+      assert {:error, {:live_redirect, %{to: "/browse/series"}}} =
+               live(conn, ~p"/browse/series/#{series.id}")
+    end
+
+    test "series detail browse with malformed id redirects instead of crashing", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+
+      assert {:error, {:live_redirect, %{to: "/browse/series"}}} =
+               live(conn, ~p"/browse/series/not-a-number")
+    end
   end
 end

@@ -72,10 +72,20 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_with_provider(socket, provider, series_id, user_id, mode, return_to, provider_filter) do
-    {:ok, series} = Detail.get_series_with_sync!(series_id)
-    mount_series_found(socket, provider, series, user_id, mode, return_to, provider_filter)
-  rescue
-    Ecto.NoResultsError -> mount_series_not_found(socket, mode, provider, return_to)
+    series =
+      case parse_positive_integer(series_id) do
+        {:ok, series_id} -> Detail.get_playable_series(user_id, series_id)
+        :error -> nil
+      end
+
+    case series do
+      nil ->
+        mount_series_not_found(socket, mode, provider, return_to)
+
+      series ->
+        {:ok, series} = Detail.get_series_with_sync!(series.id)
+        mount_series_found(socket, provider, series, user_id, mode, return_to, provider_filter)
+    end
   end
 
   defp mount_series_not_found(socket, mode, provider, return_to) do

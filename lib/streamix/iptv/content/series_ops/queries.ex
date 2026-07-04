@@ -155,6 +155,14 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> Repo.all()
   end
 
+  @spec get_playable(integer(), integer()) :: Series.t() | nil
+  def get_playable(user_id, series_id) do
+    Series
+    |> Access.playable(user_id, series_id)
+    |> preload(^[:provider | @detail_preloads])
+    |> Repo.one()
+  end
+
   @spec get_public(integer()) :: Series.t() | nil
   def get_public(series_id) do
     Series

@@ -79,7 +79,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def play_channel(socket, id) do
     with channel_id when is_integer(channel_id) <- parse_integer(id),
-         channel <- Iptv.get_live_channel_with_provider!(channel_id) do
+         %{} = channel <- Iptv.get_playable_channel(socket.assigns.user_id, channel_id) do
       Iptv.add_watch_history(socket.assigns.user_id, "live_channel", channel.id, %{
         content_name: channel.name,
         content_icon: channel.stream_icon
@@ -92,39 +92,22 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   def toggle_favorite(socket, id) do
-    channel_id = parse_integer(id)
-
-    if is_nil(channel_id) do
-      socket
-    else
-      channel = Iptv.get_live_channel!(channel_id)
-
-      case FavoriteState.toggle(socket.assigns.user_id, "live_channel", channel_id, %{
-             content_name: channel.name,
-             content_icon: channel.stream_icon
-           }) do
-        {:ok, status} ->
-          socket
-          |> FavoriteState.apply_map(:favorites_map, channel_id, status)
-          |> LiveView.stream_insert(:channels, channel)
-
-        {:error, _reason} ->
-          socket
-      end
+    case parse_integer(id) do
+      nil -> socket
+      channel_id -> toggle_playable_channel(socket, channel_id)
     end
   end
 
-  def refresh_epg(socket, nil, _channel_ids), do: socket
   def refresh_epg(socket, _provider, []), do: socket
 
-  def refresh_epg(socket, provider, channel_ids) do
+  def refresh_epg(socket, _provider, channel_ids) do
     ids =
       channel_ids
       |> Enum.map(&parse_integer/1)
       |> Enum.filter(&is_integer/1)
       |> Enum.take(@per_page)
 
-    refresh_epg_by_id(socket, provider, ids)
+    refresh_epg_by_id(socket, ids)
   end
 
   def update_provider_after_sync(socket, %{status: status} = payload) do
@@ -320,21 +303,52 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(epg_syncing: maybe_prepare_provider_updates(socket, provider))
   end
 
-  defp refresh_epg_by_id(socket, _provider, []), do: socket
+  defp refresh_epg_by_id(socket, []), do: socket
 
-  defp refresh_epg_by_id(socket, provider, ids) do
-    programs = Epg.current_programs_for_channels(provider.id, ids)
+  defp refresh_epg_by_id(socket, ids) do
+    channels =
+      ids
+      |> Enum.map(&Iptv.get_playable_channel(socket.assigns.user_id, &1))
+      |> Enum.filter(&match?(%{}, &1))
 
-    Enum.reduce(ids, socket, fn channel_id, socket ->
-      case Iptv.get_live_channel(channel_id) do
-        nil ->
-          socket
+    programs_by_provider =
+      channels
+      |> Enum.group_by(& &1.provider_id)
+      |> Map.new(fn {provider_id, provider_channels} ->
+        ids = Enum.map(provider_channels, & &1.id)
+        {provider_id, Epg.current_programs_for_channels(provider_id, ids)}
+      end)
 
-        channel ->
-          current = Map.get(programs, to_string(channel_id))
-          LiveView.stream_insert(socket, :channels, Map.put(channel, :current_program, current))
-      end
+    Enum.reduce(channels, socket, fn channel, socket ->
+      current =
+        programs_by_provider
+        |> Map.get(channel.provider_id, %{})
+        |> Map.get(to_string(channel.id))
+
+      LiveView.stream_insert(socket, :channels, Map.put(channel, :current_program, current))
     end)
+  end
+
+  defp toggle_playable_channel(socket, channel_id) do
+    case Iptv.get_playable_channel(socket.assigns.user_id, channel_id) do
+      %{} = channel -> toggle_loaded_channel(socket, channel_id, channel)
+      nil -> socket
+    end
+  end
+
+  defp toggle_loaded_channel(socket, channel_id, channel) do
+    case FavoriteState.toggle(socket.assigns.user_id, "live_channel", channel_id, %{
+           content_name: channel.name,
+           content_icon: channel.stream_icon
+         }) do
+      {:ok, status} ->
+        socket
+        |> FavoriteState.apply_map(:favorites_map, channel_id, status)
+        |> LiveView.stream_insert(:channels, channel)
+
+      {:error, _reason} ->
+        socket
+    end
   end
 
   defp load_favorites_map(socket) do

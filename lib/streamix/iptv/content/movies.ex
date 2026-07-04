@@ -242,7 +242,7 @@ defmodule Streamix.Iptv.Movies do
   def get_playable(user_id, movie_id) do
     Movie
     |> Access.playable(user_id, movie_id)
-    |> preload(:provider)
+    |> preload(^[:provider | @detail_preloads])
     |> Repo.one()
   end
 

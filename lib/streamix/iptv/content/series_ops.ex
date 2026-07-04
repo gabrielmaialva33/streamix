@@ -148,6 +148,15 @@ defmodule Streamix.Iptv.SeriesOps do
   def get(id), do: Repo.get(Series, id)
 
   @doc """
+  Gets a series if visible to the user (global, public, or user's private).
+  Use this for player access control and user actions like favorites.
+  """
+  @spec get_playable(integer(), integer()) :: Series.t() | nil
+  def get_playable(user_id, series_id) do
+    Queries.get_playable(user_id, series_id)
+  end
+
+  @doc """
   Gets multiple series by their IDs.
   Returns series in arbitrary order.
   """

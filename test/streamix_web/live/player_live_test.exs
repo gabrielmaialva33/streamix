@@ -8,6 +8,7 @@ defmodule StreamixWeb.PlayerLiveTest do
   alias Streamix.Billing.Subscription
   alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Repo
+  alias StreamixWeb.PlayerHelpers
 
   defp plan_fixture(attrs \\ %{}) do
     params =
@@ -59,6 +60,19 @@ defmodule StreamixWeb.PlayerLiveTest do
 
   describe "mount access control" do
     setup :register_and_log_in_user
+
+    test "rejects malformed ids before querying Ecto" do
+      assert {:error, :not_found} = PlayerHelpers.load_content_preflight("movie", "nope", 1)
+      assert {:error, :not_found} = PlayerHelpers.load_content_preflight("episode", "nope", 1)
+
+      assert {:error, :not_found} =
+               PlayerHelpers.load_content_preflight("live_channel", "nope", 1)
+
+      assert {:error, :not_found} = PlayerHelpers.load_content_preflight("gindex", "nope", 1)
+
+      assert {:error, :not_found} =
+               PlayerHelpers.load_content_preflight("gindex_episode", "nope", 1)
+    end
 
     test "customer without subscription is redirected to /plans when opening global content", %{
       conn: conn,

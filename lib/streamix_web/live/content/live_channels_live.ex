@@ -250,7 +250,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
         <.empty_state
           icon="hero-tv"
           title="Nenhum canal encontrado"
-          message={empty_message(@mode, @provider.sync_status)}
+          message={empty_message(@mode, provider_sync_status(@provider))}
         >
           <:action>
             <button
@@ -265,7 +265,11 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
         </.empty_state>
       </div>
 
-      <.video_player_v2 :if={@playing_channel} channel={@playing_channel} provider={@provider} />
+      <.video_player_v2
+        :if={@playing_channel}
+        channel={@playing_channel}
+        provider={@playing_channel.provider}
+      />
     </div>
     """
   end
@@ -276,4 +280,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
 
   defdelegate empty_message(mode, sync_status), to: LiveChannels
   defdelegate format_relative_time(datetime), to: LiveChannels
+
+  defp provider_sync_status(nil), do: nil
+  defp provider_sync_status(provider), do: provider.sync_status
 end

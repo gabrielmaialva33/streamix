@@ -149,6 +149,7 @@ defmodule Streamix.Iptv do
   defdelegate count_series(provider_id, opts \\ []), to: SeriesOps, as: :count
   defdelegate get_series!(id), to: SeriesOps, as: :get!
   defdelegate get_series(id), to: SeriesOps, as: :get
+  defdelegate get_playable_series(user_id, series_id), to: SeriesOps, as: :get_playable
   defdelegate get_public_series(series_id), to: SeriesOps, as: :get_public
   defdelegate get_series_with_seasons(id), to: SeriesOps, as: :get_with_seasons
   defdelegate get_series_with_seasons!(id), to: SeriesOps, as: :get_with_seasons!

@@ -25,17 +25,8 @@ defmodule StreamixWeb.Content.Detail do
   When the provider is unavailable, returns the standard
   flash-and-redirect `{:ok, socket}` without invoking `fun`.
   """
-  def with_provider(socket, :browse, _params, fun) do
-    case global_provider() do
-      nil ->
-        {:ok,
-         socket
-         |> Phoenix.LiveView.put_flash(:error, "Catálogo não disponível")
-         |> Phoenix.LiveView.push_navigate(to: ~p"/providers")}
-
-      provider ->
-        fun.(provider)
-    end
+  def with_provider(_socket, :browse, _params, fun) do
+    fun.(global_provider())
   end
 
   def with_provider(socket, :provider, %{"provider_id" => provider_id}, fun) do
@@ -101,7 +92,8 @@ defmodule StreamixWeb.Content.Detail do
     FavoriteState.preserve_boolean(current, result)
   end
 
-  def get_movie(movie_id), do: Iptv.get_movie(movie_id)
+  def get_playable_movie(user_id, movie_id), do: Iptv.get_playable_movie(user_id, movie_id)
+  def get_playable_series(user_id, series_id), do: Iptv.get_playable_series(user_id, series_id)
   def get_series_with_sync!(series_id), do: Iptv.get_series_with_sync!(series_id)
   def get_episode_with_context!(episode_id), do: Iptv.get_episode_with_context!(episode_id)
 
