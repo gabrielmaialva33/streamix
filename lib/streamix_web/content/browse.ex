@@ -134,6 +134,17 @@ defmodule StreamixWeb.Content.Browse do
     %{live: 0, movies: counts.movies, series: counts.series, animes: counts.animes}
   end
 
+  def counts(
+        %{mode: :browse, source: "iptv", provider_filter: "all", provider_options: providers},
+        _kind
+      ) do
+    %{
+      live: sum_provider_count(providers, :live_channels_count),
+      movies: sum_provider_count(providers, :movies_count),
+      series: sum_provider_count(providers, :series_count)
+    }
+  end
+
   def counts(%{provider: nil}, _kind), do: %{live: 0, movies: 0, series: 0, animes: 0}
 
   def counts(%{provider: provider}, _kind) do
@@ -330,6 +341,22 @@ defmodule StreamixWeb.Content.Browse do
     |> assign(empty_results: true)
   end
 
+  defp load_items(%{assigns: %{source: "iptv", provider_filter: "all"}} = socket, kind) do
+    user = socket.assigns.user
+    config = config!(kind)
+
+    items =
+      list_visible_items(kind, socket.assigns.user_id,
+        search: socket.assigns.search,
+        limit: @per_page,
+        offset: offset(socket.assigns.page),
+        dedupe: true,
+        show_adult: user.show_adult_content
+      )
+
+    assign_items(socket, config.stream, items)
+  end
+
   defp load_items(socket, kind) do
     user = socket.assigns.user
     provider_id = socket.assigns.provider.id
@@ -366,6 +393,9 @@ defmodule StreamixWeb.Content.Browse do
 
   defp list_provider_items(:movies, provider_id, opts), do: Iptv.list_movies(provider_id, opts)
   defp list_provider_items(:series, provider_id, opts), do: Iptv.list_series(provider_id, opts)
+
+  defp list_visible_items(:movies, user_id, opts), do: Iptv.list_visible_movies(user_id, opts)
+  defp list_visible_items(:series, user_id, opts), do: Iptv.list_visible_series(user_id, opts)
 
   defp get_item!(:movies, id), do: Iptv.get_movie!(id)
   defp get_item!(:series, id), do: Iptv.get_series!(id)
@@ -431,6 +461,10 @@ defmodule StreamixWeb.Content.Browse do
     user_id
     |> Iptv.list_visible_providers()
     |> Enum.filter(&(&1.provider_type == :xtream))
+  end
+
+  defp sum_provider_count(providers, field) do
+    Enum.reduce(providers, 0, fn provider, total -> total + Map.get(provider, field, 0) end)
   end
 
   defp provider_filter(nil), do: "all"

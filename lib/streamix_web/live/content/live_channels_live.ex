@@ -151,13 +151,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             <.browse_tabs
               selected={:live}
               source="iptv"
-              counts={
-                %{
-                  live: @provider.live_channels_count,
-                  movies: @provider.movies_count,
-                  series: @provider.series_count
-                }
-              }
+              counts={LiveChannels.counts(assigns)}
             />
           <% else %>
             <.content_tabs

@@ -171,7 +171,6 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def load_channels(socket) do
     user = socket.assigns.current_scope.user
-    provider = socket.assigns.provider
 
     opts =
       [
@@ -183,9 +182,17 @@ defmodule StreamixWeb.Content.LiveChannels do
       |> maybe_add_filter(:search, socket.assigns.search)
 
     channels =
-      provider.id
-      |> Iptv.list_live_channels(opts)
-      |> Iptv.enrich_channels_with_epg(provider.id)
+      if socket.assigns.mode == :browse and socket.assigns.provider_filter == "all" do
+        socket.assigns.user_id
+        |> Iptv.list_visible_live_channels(Keyword.delete(opts, :category_id))
+        |> enrich_channels_by_provider()
+      else
+        provider = socket.assigns.provider
+
+        provider.id
+        |> Iptv.list_live_channels(opts)
+        |> Iptv.enrich_channels_with_epg(provider.id)
+      end
 
     socket
     |> LiveView.stream(:channels, channels)
@@ -225,6 +232,22 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def empty_message(:provider, "idle"), do: "Sincronize o provedor para carregar os canais"
   def empty_message(_, _), do: "Tente ajustar seus filtros"
+
+  def counts(%{provider_filter: "all", provider_options: providers}) do
+    %{
+      live: sum_provider_count(providers, :live_channels_count),
+      movies: sum_provider_count(providers, :movies_count),
+      series: sum_provider_count(providers, :series_count)
+    }
+  end
+
+  def counts(%{provider: provider}) do
+    %{
+      live: provider.live_channels_count,
+      movies: provider.movies_count,
+      series: provider.series_count
+    }
+  end
 
   def format_relative_time(nil), do: "Nunca"
 
@@ -316,6 +339,15 @@ defmodule StreamixWeb.Content.LiveChannels do
     assign(socket, favorites_map: favorite_ids)
   end
 
+  defp enrich_channels_by_provider(channels) do
+    channels
+    |> Enum.group_by(& &1.provider_id)
+    |> Enum.flat_map(fn {provider_id, provider_channels} ->
+      Iptv.enrich_channels_with_epg(provider_channels, provider_id)
+    end)
+    |> Enum.sort_by(& &1.name)
+  end
+
   defp maybe_add_filter(opts, _key, nil), do: opts
   defp maybe_add_filter(opts, _key, ""), do: opts
   defp maybe_add_filter(opts, key, value), do: Keyword.put(opts, key, value)
@@ -349,6 +381,10 @@ defmodule StreamixWeb.Content.LiveChannels do
     user_id
     |> Iptv.list_visible_providers()
     |> Enum.filter(&(&1.provider_type == :xtream))
+  end
+
+  defp sum_provider_count(providers, field) do
+    Enum.reduce(providers, 0, fn provider, total -> total + Map.get(provider, field, 0) end)
   end
 
   defp provider_filter(nil), do: "all"
