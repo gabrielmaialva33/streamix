@@ -105,6 +105,9 @@ defmodule StreamixWeb.Content.Detail do
   def get_series_with_sync!(series_id), do: Iptv.get_series_with_sync!(series_id)
   def get_episode_with_context!(episode_id), do: Iptv.get_episode_with_context!(episode_id)
 
+  def movie_variants(movie, user_id), do: Iptv.list_movie_variants(movie, user_id)
+  def series_variants(series, user_id), do: Iptv.list_series_variants(series, user_id)
+
   def maybe_fetch_movie_info(movie) do
     if needs_detailed_info?(movie) do
       case Iptv.fetch_movie_info(movie) do
