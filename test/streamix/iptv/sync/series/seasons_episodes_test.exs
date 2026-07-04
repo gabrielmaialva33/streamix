@@ -76,4 +76,32 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodesTest do
       assert episodes_for_series(series.id) == 2
     end
   end
+
+  describe "sync/2 when the provider serializes season_number as a string" do
+    # Some panels (e.g. the Streamix Fallback xtream) return `season_number`
+    # as "1" instead of 1. `insert_all` doesn't cast, so the raw string used
+    # to blow up against the integer column and crash the series mount.
+    test "coerces season_number to integer so insert_all doesn't crash", %{series: series} do
+      info = %{
+        "info" => %{},
+        "seasons" => [%{"season_number" => "1", "name" => "Season 1"}],
+        "episodes" => %{"1" => [episode(100, 1), episode(101, 2)]}
+      }
+
+      assert {:ok, %{seasons: 1, episodes: 2}} = SeasonsEpisodes.sync(series, info)
+      assert episodes_for_series(series.id) == 2
+    end
+
+    test "backfills string season keys from the episode map too", %{series: series} do
+      # seasons empty + episodes keyed by string "2"
+      info = %{
+        "info" => %{},
+        "seasons" => [],
+        "episodes" => %{"2" => [episode(200, 1)]}
+      }
+
+      assert {:ok, %{seasons: 1, episodes: 1}} = SeasonsEpisodes.sync(series, info)
+      assert episodes_for_series(series.id) == 1
+    end
+  end
 end

@@ -16,8 +16,17 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
   def sync(%Series{} = series, info) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    seasons_data = info["seasons"] || []
     episodes_map = info["episodes"] || %{}
+
+    # Normalize `season_number` to an integer up front. Panels are
+    # inconsistent — some serialize it as 1, others as "1". `insert_all`
+    # does not cast, so a string value blows up against the integer column
+    # and crashes the whole series sync (and the detail mount). Drop
+    # seasons whose number can't be parsed.
+    seasons_data =
+      (info["seasons"] || [])
+      |> Enum.map(&normalize_season_number/1)
+      |> Enum.reject(&is_nil/1)
 
     # Some panels return the episodes grouped by season number while
     # leaving the top-level `seasons` list empty (or omitting a season the
@@ -82,6 +91,13 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
           do: %{"season_number" => num}
 
     seasons_data ++ synthetic
+  end
+
+  defp normalize_season_number(season) do
+    case Helpers.parse_int(season["season_number"]) do
+      nil -> nil
+      num -> Map.put(season, "season_number", num)
+    end
   end
 
   defp upsert_seasons(seasons_data, series_id, now) do
