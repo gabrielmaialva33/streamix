@@ -172,9 +172,11 @@ defmodule StreamixWeb.HomeData do
         channels: fn -> load_channels(user_id(socket), socket.assigns.channels_category) end
       })
 
+    stats = reconcile_public_stats(sections.stats, sections)
+
     socket
     |> assign(:featured, sections.featured)
-    |> assign(:stats, sections.stats)
+    |> assign(:stats, stats)
     |> assign(:trending, sections.trending)
     |> assign(:new_releases, sections.new_releases)
     |> assign(:top_10, sections.top_10)
@@ -182,6 +184,17 @@ defmodule StreamixWeb.HomeData do
     |> assign(:series, sections.series)
     |> assign(:channels, sections.channels)
   end
+
+  defp reconcile_public_stats(stats, sections) do
+    %{
+      movies_count: max(public_count(stats, :movies_count), length(sections.movies || [])),
+      series_count: max(public_count(stats, :series_count), length(sections.series || [])),
+      channels_count: max(public_count(stats, :channels_count), length(sections.channels || []))
+    }
+  end
+
+  defp public_count(stats, key) when is_map(stats), do: Map.get(stats, key, 0) || 0
+  defp public_count(_stats, _key), do: 0
 
   defp load_user_data(%{assigns: %{current_scope: nil}} = socket) do
     socket
