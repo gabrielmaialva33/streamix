@@ -166,7 +166,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
                   value="true"
                   checked={feature_enabled?(@plan, "ai_recommendations", false)}
                   class="rounded border-border bg-surface text-brand focus:ring-brand"
-                /> AI premium
+                /> AI avançada
               </label>
 
               <label class="flex items-center gap-2 text-sm text-text-secondary">

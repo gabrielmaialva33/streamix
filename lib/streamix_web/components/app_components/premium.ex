@@ -9,7 +9,7 @@ defmodule StreamixWeb.AppComponents.Premium do
   import StreamixWeb.CoreComponents
 
   attr :class, :string, default: nil
-  attr :label, :string, default: "Premium"
+  attr :label, :string, default: "Acesso global"
 
   def premium_badge(assigns) do
     ~H"""
@@ -30,9 +30,10 @@ defmodule StreamixWeb.AppComponents.Premium do
   def plan_access_badge(assigns) do
     assigns =
       assign(assigns,
-        label: if(assigns.grants_global_access, do: "Premium", else: "Disponível sob ativação"),
+        label:
+          if(assigns.grants_global_access, do: "Global incluso", else: "Disponível sob ativação"),
         icon: if(assigns.grants_global_access, do: "hero-sparkles", else: "hero-clock"),
-        variant: if(assigns.grants_global_access, do: "premium", else: "neutral")
+        variant: if(assigns.grants_global_access, do: "global", else: "neutral")
       )
 
     ~H"""
@@ -82,12 +83,12 @@ defmodule StreamixWeb.AppComponents.Premium do
         %{
           title: "Liberte o acesso global ao catálogo",
           description:
-            "Ative um plano premium para acessar o catálogo global sem bloqueios e acompanhar sua assinatura em um só lugar.",
+            "Ative um plano para acessar o catálogo global sem bloqueios e acompanhar sua assinatura em um só lugar.",
           cta_label: "Ver planos"
         }
       else
         %{
-          title: "Conheça os planos premium",
+          title: "Conheça os planos do Streamix",
           description:
             "Acesse o catálogo global e confira o que cada plano oferece antes de entrar ou criar sua conta.",
           cta_label: "Explorar planos"

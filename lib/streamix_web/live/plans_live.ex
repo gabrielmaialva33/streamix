@@ -81,9 +81,9 @@ defmodule StreamixWeb.PlansLive do
     <div id="plans-page" class="space-y-8 pb-12">
       <section class="rounded-3xl border border-border bg-gradient-to-br from-surface via-background to-brand/10 p-6 sm:p-8">
         <div class="max-w-3xl space-y-4">
-          <.premium_badge />
+          <.premium_badge label="Acesso global" />
           <h1 class="text-3xl sm:text-5xl font-bold text-text-primary tracking-tight">
-            Acesso premium para todo o catálogo
+            Acesso global para todo o catálogo
           </h1>
           <p class="text-base sm:text-lg text-text-secondary max-w-2xl">
             A página reúne os planos disponíveis, destaca quais liberam acesso global e mostra o estado atual da sua assinatura.
@@ -123,7 +123,7 @@ defmodule StreamixWeb.PlansLive do
                 <%= if @active_subscription do %>
                   Seu plano está ativo e libera o acesso global ao catálogo.
                 <% else %>
-                  Você ainda pode explorar os planos disponíveis e ativar o acesso premium.
+                  Você ainda pode explorar os planos disponíveis e ativar o acesso global.
                 <% end %>
               </p>
             </div>
@@ -194,7 +194,7 @@ defmodule StreamixWeb.PlansLive do
               />
               <span>
                 <%= if plan.grants_global_access do %>
-                  Atualizações contínuas e acesso premium
+                  Atualizações contínuas e acesso global
                 <% else %>
                   Ativação manual antes da liberação
                 <% end %>
@@ -221,7 +221,7 @@ defmodule StreamixWeb.PlansLive do
 
             <div class="mt-6 pt-4 border-t border-border flex items-center justify-between gap-3">
               <p class="text-xs uppercase tracking-[0.18em] text-text-muted">
-                {if plan.grants_global_access, do: "Premium", else: "Plano"}
+                {if plan.grants_global_access, do: "Global", else: "Plano"}
               </p>
               <%= if plan.id == @current_plan_id do %>
                 <span
@@ -265,7 +265,7 @@ defmodule StreamixWeb.PlansLive do
           <.icon name="hero-sparkles" class="mx-auto mb-3 size-10 text-text-muted" />
           <h3 class="text-lg font-semibold text-text-primary">Nenhum plano ativo no momento</h3>
           <p class="mt-2 text-sm text-text-secondary">
-            Cadastre planos ativos no billing para exibir as opções premium nesta página.
+            Cadastre planos ativos no billing para exibir as opções disponíveis nesta página.
           </p>
         </div>
       </section>
@@ -314,8 +314,8 @@ defmodule StreamixWeb.PlansLive do
   defp plan_cta_icon(_plan), do: "hero-credit-card"
 
   defp upgrade_title("providers"), do: "Limite de providers atingido"
-  defp upgrade_title("watch_party"), do: "Watch Party premium"
-  defp upgrade_title("ai"), do: "AI premium"
+  defp upgrade_title("watch_party"), do: "Watch Party avançado"
+  defp upgrade_title("ai"), do: "AI avançada"
   defp upgrade_title("screens"), do: "Limite de telas atingido"
   defp upgrade_title(_reason), do: "Upgrade disponível"
 
@@ -326,7 +326,7 @@ defmodule StreamixWeb.PlansLive do
     do: "Escolha um plano com Watch Party para criar salas sincronizadas."
 
   defp upgrade_message("ai"),
-    do: "Escolha um plano com AI premium para liberar recomendações inteligentes."
+    do: "Escolha um plano com AI avançada para liberar recomendações inteligentes."
 
   defp upgrade_message("screens"),
     do: "Escolha um plano com mais streams simultâneos para assistir em mais telas."

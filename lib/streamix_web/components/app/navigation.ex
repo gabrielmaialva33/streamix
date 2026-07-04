@@ -117,7 +117,7 @@ defmodule StreamixWeb.App.Navigation do
             class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-colors w-full"
           >
             <.icon name="hero-sparkles" class="size-5" />
-            <span>Ver planos premium</span>
+            <span>Ver planos</span>
           </.link>
           <.link
             navigate={~p"/login"}

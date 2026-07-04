@@ -76,7 +76,7 @@ defmodule StreamixWeb.BillingLive do
             <%= if @active_subscription do %>
               Status {@active_subscription.status}
             <% else %>
-              Assine um plano para liberar catálogo global e recursos premium.
+              Assine um plano para liberar catálogo global e recursos avançados.
             <% end %>
           </p>
         </div>
