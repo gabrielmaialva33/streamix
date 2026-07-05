@@ -224,6 +224,7 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate get_featured_content(), to: Catalog
   defdelegate get_public_stats(opts \\ []), to: Catalog
+  defdelegate list_genres_for(kind), to: Catalog
 
   defdelegate list_public_movies_by_genre(genre, opts \\ []),
     to: Catalog,

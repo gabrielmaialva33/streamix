@@ -691,6 +691,68 @@ defmodule Streamix.IptvTest do
       refute Enum.any?(results, &(&1.id == older.id))
     end
 
+    test "list_visible_series/2 filters by canonical genre" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+
+      drama = Repo.insert!(%Streamix.Iptv.Genre{name: "drama genre test"})
+
+      matching = series_content_fixture(global, %{name: "Dramatic Show", series_id: 1_301})
+      other = series_content_fixture(global, %{name: "Comedy Show", series_id: 1_302})
+
+      Repo.insert_all("series_genres", [%{series_id: matching.id, genre_id: drama.id}])
+
+      results = Iptv.list_visible_series(user.id, genre_id: drama.id, limit: 10)
+
+      assert Enum.map(results, & &1.id) == [matching.id]
+      refute Enum.any?(results, &(&1.id == other.id))
+    end
+
+    test "list_visible_movies/2 filters by canonical genre" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+
+      action = Repo.insert!(%Streamix.Iptv.Genre{name: "action genre test"})
+
+      matching = movie_fixture(global, %{name: "Action Flick", stream_id: 1_303})
+      other = movie_fixture(global, %{name: "Quiet Film", stream_id: 1_304})
+
+      Repo.insert_all("movie_genres", [%{movie_id: matching.id, genre_id: action.id}])
+
+      results = Iptv.list_visible_movies(user.id, genre_id: action.id, limit: 10)
+
+      assert Enum.map(results, & &1.id) == [matching.id]
+      refute Enum.any?(results, &(&1.id == other.id))
+    end
+
+    test "list_genres_for/1 returns genres ordered by content volume" do
+      Streamix.Cache.delete("catalog:genres:series")
+
+      global = global_provider_fixture(%{name: "Global"})
+
+      drama = Repo.insert!(%Streamix.Iptv.Genre{name: "volume drama"})
+      niche = Repo.insert!(%Streamix.Iptv.Genre{name: "volume niche"})
+
+      series_a = series_content_fixture(global, %{name: "Show A", series_id: 1_305})
+      series_b = series_content_fixture(global, %{name: "Show B", series_id: 1_306})
+
+      Repo.insert_all("series_genres", [
+        %{series_id: series_a.id, genre_id: drama.id},
+        %{series_id: series_b.id, genre_id: drama.id},
+        %{series_id: series_a.id, genre_id: niche.id}
+      ])
+
+      genres = Iptv.list_genres_for(:series)
+      names = Enum.map(genres, & &1.name)
+
+      drama_index = Enum.find_index(names, &(&1 == "volume drama"))
+      niche_index = Enum.find_index(names, &(&1 == "volume niche"))
+
+      assert drama_index < niche_index
+
+      Streamix.Cache.delete("catalog:genres:series")
+    end
+
     test "list_visible_series/2 uses tmdb_id for canonical cards" do
       user = user_fixture()
       global = global_provider_fixture(%{name: "Global"})

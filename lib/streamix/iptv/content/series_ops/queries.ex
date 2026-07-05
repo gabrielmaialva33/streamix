@@ -376,11 +376,13 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   defp build_visible_query(user_id, opts) do
     search = Keyword.get(opts, :search)
     show_adult = Keyword.get(opts, :show_adult, false)
+    genre_id = Keyword.get(opts, :genre_id)
 
     Series
     |> Access.visible_to_user(user_id)
     |> where([_s, p], p.provider_type == :xtream and p.is_active == true)
     |> maybe_where_search(search)
+    |> maybe_join_genre(genre_id)
     |> maybe_exclude_adult(show_adult)
   end
 
@@ -414,6 +416,16 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     query
     |> join(:inner, [s], ic in "item_categories",
       on: ic.catalog_item_id == s.catalog_item_id and ic.category_id == ^category_id
+    )
+    |> distinct([s], s.id)
+  end
+
+  defp maybe_join_genre(query, nil), do: query
+
+  defp maybe_join_genre(query, genre_id) do
+    query
+    |> join(:inner, [s], sg in "series_genres",
+      on: sg.series_id == s.id and sg.genre_id == ^genre_id
     )
     |> distinct([s], s.id)
   end

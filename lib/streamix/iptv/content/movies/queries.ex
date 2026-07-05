@@ -31,11 +31,13 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
   def filtered_visible(user_id, opts) do
     search = Keyword.get(opts, :search)
     show_adult = Keyword.get(opts, :show_adult, false)
+    genre_id = Keyword.get(opts, :genre_id)
 
     Movie
     |> Access.visible_to_user(user_id)
     |> where([_m, p], p.provider_type == :xtream and p.is_active == true)
     |> maybe_where_search(search)
+    |> maybe_join_genre(genre_id)
     |> maybe_exclude_adult(show_adult)
   end
 
@@ -122,6 +124,16 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     query
     |> join(:inner, [m], ic in "item_categories",
       on: ic.catalog_item_id == m.catalog_item_id and ic.category_id == ^category_id
+    )
+    |> distinct([m], m.id)
+  end
+
+  defp maybe_join_genre(query, nil), do: query
+
+  defp maybe_join_genre(query, genre_id) do
+    query
+    |> join(:inner, [m], mg in "movie_genres",
+      on: mg.movie_id == m.id and mg.genre_id == ^genre_id
     )
     |> distinct([m], m.id)
   end

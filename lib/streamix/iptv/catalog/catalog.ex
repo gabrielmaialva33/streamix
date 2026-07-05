@@ -185,6 +185,29 @@ defmodule Streamix.Iptv.Catalog do
   # =============================================================================
 
   @doc """
+  Lists canonical genres that have content of the given kind, ordered by
+  content volume. Powers the genre sidebar on the unified browse pages.
+  """
+  @spec list_genres_for(:movies | :series) :: [%{id: integer(), name: String.t()}]
+  def list_genres_for(kind) when kind in [:movies, :series] do
+    Cache.fetch("catalog:genres:#{kind}", :timer.hours(6), fn ->
+      genre_query_for(kind)
+      |> group_by([g], [g.id, g.name])
+      |> order_by([g], desc: count(), asc: g.name)
+      |> select([g], %{id: g.id, name: g.name})
+      |> Repo.all()
+    end)
+  end
+
+  defp genre_query_for(:movies) do
+    join(Streamix.Iptv.Genre, :inner, [g], link in "movie_genres", on: link.genre_id == g.id)
+  end
+
+  defp genre_query_for(:series) do
+    join(Streamix.Iptv.Genre, :inner, [g], link in "series_genres", on: link.genre_id == g.id)
+  end
+
+  @doc """
   Lists movies by genre/category from public/global providers.
   """
   @spec list_movies_by_genre(String.t(), keyword()) :: [Movie.t()]
