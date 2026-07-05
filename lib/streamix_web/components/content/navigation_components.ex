@@ -20,17 +20,18 @@ defmodule StreamixWeb.Content.NavigationComponents do
   attr :path, :string, default: "/browse/movies"
   attr :iptv_path, :string, default: nil
   attr :gindex_path, :string, default: nil
+  attr :query_params, :map, default: %{}
 
   def source_tabs(assigns) do
     assigns =
       assigns
       |> assign_new(:iptv_target, fn ->
         path = assigns[:iptv_path] || assigns.path
-        browse_path(path, "iptv")
+        browse_path(path, "iptv", assigns.query_params)
       end)
       |> assign_new(:gindex_target, fn ->
         path = assigns[:gindex_path] || assigns.path
-        browse_path(path, "gindex")
+        browse_path(path, "gindex", Map.delete(assigns.query_params, "provider"))
       end)
 
     ~H"""
@@ -64,13 +65,14 @@ defmodule StreamixWeb.Content.NavigationComponents do
   attr :selected, :atom, required: true, values: [:live, :movies, :series, :animes]
   attr :counts, :map, default: %{}
   attr :source, :string, default: "iptv"
+  attr :query_params, :map, default: %{}
 
   def browse_tabs(assigns) do
     ~H"""
     <nav class="content-nav">
       <.browse_tab_item
         :if={@source == "gindex"}
-        href={browse_path("/browse/animes", @source)}
+        href={browse_path("/browse/animes", @source, @query_params)}
         icon="hero-sparkles"
         label="Animes"
         count={@counts[:animes]}
@@ -78,21 +80,21 @@ defmodule StreamixWeb.Content.NavigationComponents do
       />
       <.browse_tab_item
         :if={@source != "gindex"}
-        href={browse_path("/browse", @source)}
+        href={browse_path("/browse", @source, @query_params)}
         icon="hero-tv"
         label="Ao Vivo"
         count={@counts[:live]}
         selected={@selected == :live}
       />
       <.browse_tab_item
-        href={browse_path("/browse/movies", @source)}
+        href={browse_path("/browse/movies", @source, @query_params)}
         icon="hero-film"
         label="Filmes"
         count={@counts[:movies]}
         selected={@selected == :movies}
       />
       <.browse_tab_item
-        href={browse_path("/browse/series", @source)}
+        href={browse_path("/browse/series", @source, @query_params)}
         icon="hero-video-camera"
         label="Séries"
         count={@counts[:series]}
@@ -222,7 +224,14 @@ defmodule StreamixWeb.Content.NavigationComponents do
   # Helpers
   # ============================================
 
-  defp browse_path(path, "iptv"), do: path
-  defp browse_path(path, "gindex"), do: path <> "?source=gindex"
-  defp browse_path(path, _), do: path
+  defp browse_path(path, "iptv", params), do: append_query(path, params)
+
+  defp browse_path(path, "gindex", params) do
+    append_query(path, Map.put(params, "source", "gindex"))
+  end
+
+  defp browse_path(path, _, params), do: append_query(path, params)
+
+  defp append_query(path, params) when map_size(params) == 0, do: path
+  defp append_query(path, params), do: path <> "?" <> URI.encode_query(params)
 end

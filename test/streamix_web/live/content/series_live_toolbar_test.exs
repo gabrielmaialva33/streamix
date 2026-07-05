@@ -51,10 +51,12 @@ defmodule StreamixWeb.Content.SeriesLiveToolbarTest do
       _series = series_content_fixture(global, %{name: "Any Show"})
 
       conn = log_in_user(conn, user)
-      {:ok, view, _html} = live(conn, ~p"/browse/series?provider=#{global.id}")
+      {:ok, view, html} = live(conn, ~p"/browse/series?provider=#{global.id}&search=tagged")
 
       assert has_element?(view, "#provider-dropdown [aria-selected=\"true\"]", global.name)
       assert has_element?(view, "#provider-dropdown [aria-label=\"Limpar filtro de provedor\"]")
+      assert html =~ ~s(href="/browse?provider=#{global.id}&amp;search=tagged")
+      assert html =~ ~s(href="/browse/movies?provider=#{global.id}&amp;search=tagged")
     end
   end
 

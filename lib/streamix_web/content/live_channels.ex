@@ -213,6 +213,12 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> then(&append_query(~p"/browse", &1))
   end
 
+  def browse_tab_params(assigns) do
+    %{}
+    |> maybe_put_provider_query(assigns.provider_filter)
+    |> maybe_put_query("search", assigns.search)
+  end
+
   def empty_message(:provider, "idle"), do: "Sincronize o provedor para carregar os canais"
   def empty_message(_, _), do: "Tente ajustar seus filtros"
 

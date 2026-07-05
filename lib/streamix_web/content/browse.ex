@@ -185,6 +185,19 @@ defmodule StreamixWeb.Content.Browse do
     )
   end
 
+  def browse_tab_params(%{source: "iptv"} = assigns) do
+    %{}
+    |> maybe_put_provider_query(assigns.provider_filter)
+    |> maybe_put_query("search", assigns.search)
+  end
+
+  def browse_tab_params(%{source: "gindex"} = assigns) do
+    %{}
+    |> maybe_put_query("search", assigns.search)
+  end
+
+  def browse_tab_params(_assigns), do: %{}
+
   def detail_path(%{assigns: %{source: "gindex"}}, :movies, id), do: ~p"/gindex/movies/#{id}"
   def detail_path(%{assigns: %{source: "gindex"}}, :series, id), do: ~p"/gindex/series/#{id}"
 

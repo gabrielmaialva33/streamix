@@ -83,6 +83,7 @@ defmodule StreamixWeb.Content.MoviesLive do
             <.browse_tabs
               selected={:movies}
               source={@source}
+              query_params={Browse.browse_tab_params(assigns)}
               counts={Browse.counts(assigns, :movies)}
             />
           <% else %>

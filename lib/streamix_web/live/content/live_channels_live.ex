@@ -151,6 +151,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             <.browse_tabs
               selected={:live}
               source="iptv"
+              query_params={LiveChannels.browse_tab_params(assigns)}
               counts={LiveChannels.counts(assigns)}
             />
           <% else %>
