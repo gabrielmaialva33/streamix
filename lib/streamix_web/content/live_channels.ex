@@ -50,6 +50,8 @@ defmodule StreamixWeb.Content.LiveChannels do
 
     case apply_route_context(socket, params, provider_filter) do
       {:ok, socket} ->
+        category = selected_category_for(socket.assigns, category)
+
         socket =
           socket
           |> assign(selected_category: category)
@@ -167,7 +169,7 @@ defmodule StreamixWeb.Content.LiveChannels do
     channels =
       if socket.assigns.mode == :browse and socket.assigns.provider_filter == "all" do
         socket.assigns.user_id
-        |> Iptv.list_visible_live_channels(Keyword.delete(opts, :category_id))
+        |> Iptv.list_visible_live_channels(opts)
         |> enrich_channels_by_provider()
       else
         provider = socket.assigns.provider
@@ -288,6 +290,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp assign_provider_context(socket, provider, mode, provider_filter) do
     user = socket.assigns.current_scope.user
+    provider_options = provider_options(socket.assigns.user_id)
 
     categories =
       if mode == :browse and provider_filter == "all" do
@@ -303,7 +306,7 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(current_path: provider_current_path(provider, mode, provider_filter))
     |> assign(provider: provider)
     |> assign(provider_filter: provider_filter)
-    |> assign(provider_options: provider_options(socket.assigns.user_id))
+    |> assign(provider_options: provider_options)
     |> assign(mode: mode)
     |> assign(categories: categories)
     |> assign(epg_syncing: maybe_prepare_provider_updates(socket, provider))
@@ -390,6 +393,9 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp filter_adult_categories(categories, true), do: categories
   defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
+
+  defp selected_category_for(%{mode: :browse, provider_filter: "all"}, _category), do: nil
+  defp selected_category_for(_assigns, category), do: category
 
   defp provider_page_title(_provider, :browse), do: "Ao Vivo"
   defp provider_page_title(provider, :provider), do: "#{provider.name} - Ao Vivo"

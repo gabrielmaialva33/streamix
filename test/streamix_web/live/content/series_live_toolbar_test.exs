@@ -5,14 +5,10 @@ defmodule StreamixWeb.Content.SeriesLiveToolbarTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Cache
-  alias Streamix.Iptv.Genre
+  alias Streamix.Iptv.Category
   alias Streamix.Repo
 
   setup do
-    Cache.delete("catalog:genres:series")
-    on_exit(fn -> Cache.delete("catalog:genres:series") end)
-
     user = user_fixture()
 
     global =
@@ -60,28 +56,48 @@ defmodule StreamixWeb.Content.SeriesLiveToolbarTest do
     end
   end
 
-  describe "unified genre sidebar" do
-    test "browse mode lists canonical genres and filters by them", %{
+  describe "category sidebar" do
+    test "browse mode only lists and applies categories after a provider is selected", %{
       conn: conn,
       user: user,
       global: global
     } do
-      genre = Repo.insert!(%Genre{name: "toolbar test genre"})
+      category =
+        Repo.insert!(%Category{
+          provider_id: global.id,
+          name: "Toolbar test category",
+          type: "series",
+          external_id: "series-toolbar-test"
+        })
 
       tagged = series_content_fixture(global, %{name: "Tagged Show", series_id: 2_401})
       untagged = series_content_fixture(global, %{name: "Untagged Show", series_id: 2_402})
 
-      Repo.insert_all("series_genres", [%{series_id: tagged.id, genre_id: genre.id}])
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: tagged.catalog_item_id, category_id: category.id}
+      ])
 
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/browse/series")
 
-      assert has_element?(view, "button", "Toolbar test genre")
+      refute has_element?(view, "button", "Toolbar test category")
       assert has_element?(view, "#series-card-#{tagged.id}")
       assert has_element?(view, "#series-card-#{untagged.id}")
 
-      {:ok, view, _html} = live(conn, ~p"/browse/series?category=#{genre.id}")
+      {:ok, view, _html} = live(conn, ~p"/browse/series?category=#{category.id}")
 
+      refute has_element?(view, "button", "Toolbar test category")
+      assert has_element?(view, "#series-card-#{tagged.id}")
+      assert has_element?(view, "#series-card-#{untagged.id}")
+
+      {:ok, view, _html} = live(conn, ~p"/browse/series?provider=#{global.id}")
+
+      assert has_element?(view, "button", "Toolbar test category")
+
+      {:ok, view, _html} =
+        live(conn, ~p"/browse/series?provider=#{global.id}&category=#{category.id}")
+
+      assert has_element?(view, ".category-pill--sidebar-active", "Toolbar test category")
       assert has_element?(view, "#series-card-#{tagged.id}")
       refute has_element?(view, "#series-card-#{untagged.id}")
     end

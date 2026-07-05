@@ -6,6 +6,8 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv
+  alias Streamix.Iptv.Category
+  alias Streamix.Repo
 
   describe "Infinite Scroll" do
     setup do
@@ -56,6 +58,50 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       {:ok, view, _html} = live(conn, ~p"/browse/movies")
 
       assert has_element?(view, "#movie-card-#{movie.id}")
+    end
+
+    test "categories are only shown and applied after a provider is selected", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Private Movie Catalog"})
+
+      category =
+        Repo.insert!(%Category{
+          provider_id: provider.id,
+          name: "Ação",
+          type: "vod",
+          external_id: "vod-action"
+        })
+
+      matching = movie_fixture(provider, %{name: "Tagged Private Movie"})
+      other = movie_fixture(provider, %{name: "Untagged Private Movie"})
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: matching.catalog_item_id, category_id: category.id}
+      ])
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies")
+
+      refute has_element?(view, "button", "Ação")
+      assert has_element?(view, "#movie-card-#{matching.id}")
+      assert has_element?(view, "#movie-card-#{other.id}")
+
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?category=#{category.id}")
+
+      refute has_element?(view, "button", "Ação")
+      assert has_element?(view, "#movie-card-#{matching.id}")
+      assert has_element?(view, "#movie-card-#{other.id}")
+
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?provider=#{provider.id}")
+
+      assert has_element?(view, "button", "Ação")
+
+      {:ok, view, _html} =
+        live(conn, ~p"/browse/movies?provider=#{provider.id}&category=#{category.id}")
+
+      assert has_element?(view, ".category-pill--sidebar-active", "Ação")
+      assert has_element?(view, "#movie-card-#{matching.id}")
+      refute has_element?(view, "#movie-card-#{other.id}")
     end
 
     test "forged favorite event cannot favorite another user's private movie", %{conn: conn} do

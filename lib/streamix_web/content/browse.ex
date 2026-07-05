@@ -76,6 +76,8 @@ defmodule StreamixWeb.Content.Browse do
 
     case apply_route_context(socket, kind, params, source) do
       {:ok, socket} ->
+        category = selected_category_for(socket.assigns, category)
+
         socket =
           socket
           |> assign(selected_category: category)
@@ -284,7 +286,7 @@ defmodule StreamixWeb.Content.Browse do
     categories =
       cond do
         provider_filter == "all" ->
-          browse_genre_options(kind)
+          []
 
         is_nil(provider) ->
           []
@@ -343,7 +345,6 @@ defmodule StreamixWeb.Content.Browse do
     items =
       list_visible_items(kind, socket.assigns.user_id,
         search: socket.assigns.search,
-        genre_id: socket.assigns.selected_category,
         limit: @per_page,
         offset: offset(socket.assigns.page),
         dedupe: true,
@@ -478,15 +479,12 @@ defmodule StreamixWeb.Content.Browse do
   defp filter_adult_categories(categories, true), do: categories
   defp filter_adult_categories(categories, _), do: Enum.reject(categories, & &1.is_adult)
 
-  # Canonical genres replace per-provider categories on the unified browse
-  # ("all" providers) view, where no single provider owns the category list.
-  defp browse_genre_options(kind) do
-    kind
-    |> Iptv.list_genres_for()
-    |> Enum.map(&%{&1 | name: String.capitalize(&1.name)})
-  end
-
   defp offset(page), do: (page - 1) * @per_page
+
+  defp selected_category_for(%{source: "iptv", mode: :browse, provider_filter: "all"}, _category),
+    do: nil
+
+  defp selected_category_for(_assigns, category), do: category
 
   defp provider_path(:movies, provider), do: "/providers/#{provider.id}/movies"
   defp provider_path(:series, provider), do: "/providers/#{provider.id}/series"

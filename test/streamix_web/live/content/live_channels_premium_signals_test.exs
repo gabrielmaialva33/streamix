@@ -6,6 +6,7 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv
+  alias Streamix.Repo
 
   describe "premium signals" do
     setup do
@@ -87,6 +88,52 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
 
       assert html =~ ~s(id="video-player-modal")
       assert html =~ URI.encode_www_form(provider.url)
+    end
+
+    test "categories are only shown and applied after a provider is selected", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Private Live Catalog"})
+
+      category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Esportes",
+          type: "live",
+          external_id: "live-sports"
+        })
+
+      matching = channel_fixture(provider, %{name: "Sports Private Channel"})
+      other = channel_fixture(provider, %{name: "News Private Channel"})
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: matching.catalog_item_id, category_id: category.id}
+      ])
+
+      conn = log_in_user(conn, user)
+      {:ok, view, html} = live(conn, ~p"/browse?search=private")
+
+      assert has_element?(view, "#provider-dropdown")
+      assert html =~ ~s(href="/browse/movies?search=private")
+      assert html =~ ~s(href="/browse/series?search=private")
+      refute has_element?(view, "button", "Esportes")
+      assert has_element?(view, "#channel-img-#{matching.id}")
+      assert has_element?(view, "#channel-img-#{other.id}")
+
+      {:ok, view, _html} = live(conn, ~p"/browse?category=#{category.id}")
+
+      refute has_element?(view, "button", "Esportes")
+      assert has_element?(view, "#channel-img-#{matching.id}")
+      assert has_element?(view, "#channel-img-#{other.id}")
+
+      {:ok, view, _html} = live(conn, ~p"/browse?provider=#{provider.id}")
+
+      assert has_element?(view, "button", "Esportes")
+
+      {:ok, view, _html} = live(conn, ~p"/browse?provider=#{provider.id}&category=#{category.id}")
+
+      assert has_element?(view, ".category-pill--sidebar-active", "Esportes")
+      assert has_element?(view, "#channel-img-#{matching.id}")
+      refute has_element?(view, "#channel-img-#{other.id}")
     end
 
     test "forged events cannot play or favorite another user's private channel", %{conn: conn} do
