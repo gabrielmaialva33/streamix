@@ -167,6 +167,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             />
           <% end %>
 
+          <.provider_dropdown
+            :if={@mode == :browse}
+            providers={@provider_options}
+            selected={@provider_filter}
+          />
+
           <.search_input
             value={@search}
             placeholder="Buscar canais..."
@@ -188,12 +194,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             </button>
           <% end %>
         </div>
-
-        <.provider_filter
-          :if={@mode == :browse}
-          providers={@provider_options}
-          selected={@provider_filter}
-        />
 
         <.premium_cta_banner
           :if={@mode == :browse and not @premium_access}

@@ -18,7 +18,7 @@ defmodule StreamixWeb.AppComponents do
   defdelegate video_player_v2(assigns), to: StreamixWeb.App.Media
 
   defdelegate category_filter_v2(assigns), to: StreamixWeb.App.Filters
-  defdelegate provider_filter(assigns), to: StreamixWeb.App.Filters
+  defdelegate provider_dropdown(assigns), to: StreamixWeb.App.Filters
   defdelegate search_input(assigns), to: StreamixWeb.App.Filters
 
   defdelegate empty_state(assigns), to: StreamixWeb.App.Feedback

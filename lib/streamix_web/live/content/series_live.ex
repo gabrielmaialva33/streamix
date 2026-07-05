@@ -95,18 +95,18 @@ defmodule StreamixWeb.Content.SeriesLive do
             />
           <% end %>
 
+          <.provider_dropdown
+            :if={@mode == :browse and @source == "iptv"}
+            providers={@provider_options}
+            selected={@provider_filter}
+          />
+
           <.search_input
             value={@search}
             placeholder="Buscar séries..."
             class="browse-toolbar__search"
           />
         </div>
-
-        <.provider_filter
-          :if={@mode == :browse and @source == "iptv"}
-          providers={@provider_options}
-          selected={@provider_filter}
-        />
 
         <.premium_cta_banner
           :if={@mode == :browse and @source == "iptv" and not @premium_access}

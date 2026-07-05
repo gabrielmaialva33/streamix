@@ -7,42 +7,93 @@ defmodule StreamixWeb.App.Filters do
 
   import StreamixWeb.CoreComponents
 
+  alias Phoenix.LiveView.JS
+
   attr :providers, :list, required: true
   attr :selected, :string, default: "all"
   attr :on_change, :string, default: "filter_provider"
+  attr :class, :any, default: nil
 
-  def provider_filter(assigns) do
+  def provider_dropdown(assigns) do
+    selected_provider =
+      Enum.find(assigns.providers, &provider_selected?(&1, assigns.selected))
+
+    assigns = assign(assigns, :selected_provider, selected_provider)
+
     ~H"""
-    <div :if={@providers != []} class="flex items-center gap-1.5 min-w-0">
-      <span class="hidden lg:inline text-xs font-medium text-text-muted">Provider</span>
-      <div class="flex min-w-0 items-center gap-1.5 overflow-x-auto scrollbar-hide">
-        <button
-          type="button"
-          phx-click={@on_change}
-          phx-value-provider="all"
-          class={[
-            "category-chip whitespace-nowrap",
-            @selected in [nil, "all"] && "category-chip--active"
-          ]}
-        >
-          Todos
-        </button>
+    <div :if={@providers != []} id="provider-dropdown" class={["relative flex-shrink-0", @class]}>
+      <button
+        type="button"
+        phx-click={JS.toggle(to: "#provider-dropdown-menu")}
+        class={[
+          "category-chip gap-1.5",
+          @selected_provider && "category-chip--active pr-8"
+        ]}
+        aria-haspopup="listbox"
+        aria-label="Filtrar por provedor"
+        title={(@selected_provider && @selected_provider.name) || "Filtrar por provedor"}
+      >
+        <.icon name="hero-server-stack" class="size-4 flex-shrink-0" />
+        <span class="truncate max-w-36">
+          {(@selected_provider && @selected_provider.name) || "Provedor"}
+        </span>
+        <.icon
+          :if={!@selected_provider}
+          name="hero-chevron-down"
+          class="size-3.5 flex-shrink-0 opacity-70"
+        />
+      </button>
+      <button
+        :if={@selected_provider}
+        type="button"
+        phx-click={@on_change}
+        phx-value-provider="all"
+        class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full p-0.5 text-white/80 hover:text-white hover:bg-white/20 transition-colors"
+        aria-label="Limpar filtro de provedor"
+        title="Voltar ao catálogo completo"
+      >
+        <.icon name="hero-x-mark" class="size-3.5" />
+      </button>
+      <div
+        id="provider-dropdown-menu"
+        class="hidden absolute left-0 top-full mt-2 w-60 glass rounded-xl shadow-dropdown py-1.5 z-50"
+        phx-click-away={JS.hide(to: "#provider-dropdown-menu")}
+        role="listbox"
+      >
+        <p class="px-3.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+          Filtrar por provedor
+        </p>
         <button
           :for={provider <- @providers}
           type="button"
-          phx-click={@on_change}
-          phx-value-provider={provider.id}
-          class={[
-            "category-chip max-w-44 whitespace-nowrap",
-            to_string(@selected) == to_string(provider.id) && "category-chip--active"
-          ]}
+          role="option"
+          aria-selected={to_string(provider_selected?(provider, @selected))}
+          phx-click={
+            JS.hide(to: "#provider-dropdown-menu")
+            |> JS.push(@on_change, value: %{provider: provider_toggle_value(provider, @selected)})
+          }
+          class="flex w-full items-center justify-between gap-2 px-3.5 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors"
           title={provider.name}
         >
           <span class="truncate">{provider.name}</span>
+          <.icon
+            :if={provider_selected?(provider, @selected)}
+            name="hero-check"
+            class="size-4 flex-shrink-0 text-brand"
+          />
         </button>
       </div>
     </div>
     """
+  end
+
+  defp provider_selected?(provider, selected),
+    do: to_string(provider.id) == to_string(selected)
+
+  # Clicking the already-selected provider clears the filter back to the
+  # unified catalog; there is no dedicated "all" entry in the menu.
+  defp provider_toggle_value(provider, selected) do
+    if provider_selected?(provider, selected), do: "all", else: to_string(provider.id)
   end
 
   attr :categories, :list, required: true
