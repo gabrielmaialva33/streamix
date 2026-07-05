@@ -348,6 +348,31 @@ defmodule Streamix.IptvTest do
       refute Ecto.assoc_loaded?(result.credits)
     end
 
+    test "list_visible_live_channels/2 filters by category across visible providers" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "Visible Live"})
+
+      category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Esportes",
+          type: "live",
+          external_id: "live-sports"
+        })
+
+      matching = channel_fixture(provider, %{name: "Sports Live"})
+      other = channel_fixture(provider, %{name: "News Live"})
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: matching.catalog_item_id, category_id: category.id}
+      ])
+
+      results = Iptv.list_visible_live_channels(user.id, category_id: category.id, limit: 10)
+
+      assert Enum.map(results, & &1.id) == [matching.id]
+      refute Enum.any?(results, &(&1.id == other.id))
+    end
+
     test "list_movies/2 can collapse provider variants into one browse card" do
       user = user_fixture()
       provider = provider_fixture(user)

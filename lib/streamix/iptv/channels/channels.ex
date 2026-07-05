@@ -102,6 +102,7 @@ defmodule Streamix.Iptv.Channels do
 
   defp build_visible_query(user_id, opts) do
     search = Keyword.get(opts, :search)
+    category_id = Keyword.get(opts, :category_id)
     show_adult = Keyword.get(opts, :show_adult, false)
 
     query =
@@ -114,6 +115,15 @@ defmodule Streamix.Iptv.Channels do
       if search && search != "" do
         escaped = Helpers.escape_like(search)
         where(query, [c], ilike(c.name, ^"%#{escaped}%"))
+      else
+        query
+      end
+
+    query =
+      if category_id do
+        join(query, :inner, [c, _p], ic in "item_categories",
+          on: ic.catalog_item_id == c.catalog_item_id and ic.category_id == ^category_id
+        )
       else
         query
       end
