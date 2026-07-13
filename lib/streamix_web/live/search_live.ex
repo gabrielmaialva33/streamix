@@ -83,6 +83,10 @@ defmodule StreamixWeb.SearchLive do
     {:noreply, push_navigate(socket, to: ~p"/providers/#{provider_id}/movies/#{id}")}
   end
 
+  def handle_event("show_details", %{"id" => id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/browse/movies/#{id}")}
+  end
+
   def handle_event("view_series", %{"id" => id}, socket) do
     {:noreply, push_navigate(socket, to: ~p"/browse/series/#{id}")}
   end
@@ -336,9 +340,11 @@ defmodule StreamixWeb.SearchLive do
       |> assign(loading: false)
       |> assign(searched: false)
     else
+      show_adult = socket.assigns.current_scope.user.show_adult_content
+
       channels = search_channels(user_id, query)
-      movies = search_movies(user_id, query)
-      series = search_series(user_id, query)
+      movies = search_movies(user_id, query, show_adult)
+      series = search_series(user_id, query, show_adult)
       favorite_ids = search_favorite_ids(user_id, channels, movies, series)
 
       socket
@@ -358,12 +364,12 @@ defmodule StreamixWeb.SearchLive do
     Iptv.search_channels(user_id, query, limit: 24)
   end
 
-  defp search_movies(user_id, query) do
-    Iptv.search_movies(user_id, query, limit: 24)
+  defp search_movies(user_id, query, show_adult) do
+    Iptv.search_movies(user_id, query, limit: 24, show_adult: show_adult)
   end
 
-  defp search_series(user_id, query) do
-    Iptv.search_series(user_id, query, limit: 24)
+  defp search_series(user_id, query, show_adult) do
+    Iptv.search_series(user_id, query, limit: 24, show_adult: show_adult)
   end
 
   defp search_favorite_ids(user_id, channels, movies, series) do
