@@ -16,13 +16,13 @@ defmodule Streamix.Iptv.Movies do
   }
 
   alias Streamix.Iptv.Content.Movies.{Enrichment, Queries}
+  alias Streamix.Iptv.Content.VariantCards
   alias Streamix.Repo
 
   @summary_preloads [:genres]
   @search_result_preloads [:assets, :genres]
   @detail_preloads [:assets, :genres, credits: :person]
   @variant_preloads [:provider, :categories]
-  @variant_terms ~r/\b(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\b/iu
   @visible_dedupe_min_window 120
 
   # =============================================================================
@@ -99,7 +99,7 @@ defmodule Streamix.Iptv.Movies do
     batch_limit = max(limit * 4, @visible_dedupe_min_window)
 
     user_id
-    |> collect_visible_cards(opts, sort, batch_limit, 0, target_count, %{})
+    |> collect_visible_cards(opts, sort, batch_limit, 0, target_count, VariantCards.new())
     |> sort_visible_cards(sort)
     |> Enum.slice(offset, limit)
   end
@@ -111,13 +111,13 @@ defmodule Streamix.Iptv.Movies do
          batch_limit,
          batch_offset,
          target_count,
-         cards_by_key
+         clusters
        ) do
     batch = list_visible_candidates(user_id, opts, sort, batch_limit, batch_offset)
-    cards_by_key = newest_canonical_cards(batch, cards_by_key)
+    clusters = Enum.reduce(batch, clusters, &VariantCards.add(&2, &1))
 
-    if map_size(cards_by_key) >= target_count or length(batch) < batch_limit do
-      Map.values(cards_by_key)
+    if VariantCards.count(clusters) >= target_count or length(batch) < batch_limit do
+      VariantCards.cards(clusters)
     else
       collect_visible_cards(
         user_id,
@@ -126,7 +126,7 @@ defmodule Streamix.Iptv.Movies do
         batch_limit,
         batch_offset + batch_limit,
         target_count,
-        cards_by_key
+        clusters
       )
     end
   end
@@ -274,15 +274,19 @@ defmodule Streamix.Iptv.Movies do
 
   @doc """
   Searches movies across all visible providers (global + public + user's private).
+
+  Provider variants of the same title are collapsed into one canonical
+  card (see `Streamix.Iptv.Content.VariantCards`), so duplicates never
+  crowd distinct titles out of the result page.
   """
   @spec search(integer(), String.t(), keyword()) :: [Movie.t()]
   def search(user_id, query, opts \\ []) do
-    limit = Keyword.get(opts, :limit, 24)
-
-    user_id
-    |> Queries.visible_search(query, limit)
-    |> preload(^@summary_preloads)
-    |> Repo.all()
+    list_visible(user_id,
+      search: query,
+      sort: "rating_desc",
+      limit: Keyword.get(opts, :limit, 24),
+      show_adult: Keyword.get(opts, :show_adult, false)
+    )
   end
 
   @doc """
@@ -316,7 +320,7 @@ defmodule Streamix.Iptv.Movies do
     limit = Keyword.get(opts, :limit, 24)
     candidate_limit = max(limit * 4, 48)
     tmdb_id = blank_to_nil(movie.tmdb_id)
-    normalized_title = normalize_variant_title(movie.title || movie.name)
+    normalized_title = VariantCards.normalize_title(movie.title || movie.name)
     search_title = variant_search_title(movie)
 
     tmdb_variants =
@@ -372,7 +376,7 @@ defmodule Streamix.Iptv.Movies do
     |> limit(^limit)
     |> preload(^@variant_preloads)
     |> Repo.all()
-    |> Enum.filter(&(normalize_variant_title(&1.title || &1.name) == normalized_title))
+    |> Enum.filter(&(VariantCards.normalize_title(&1.title || &1.name) == normalized_title))
   end
 
   defp provider_sort_name(%{provider: %{name: name}}) when is_binary(name), do: name
@@ -385,7 +389,7 @@ defmodule Streamix.Iptv.Movies do
     movie.title
     |> blank_to_nil()
     |> Kernel.||(movie.name)
-    |> strip_variant_terms()
+    |> VariantCards.strip_variant_terms()
   end
 
   defp blank_to_nil(value) when is_binary(value) do
@@ -393,34 +397,6 @@ defmodule Streamix.Iptv.Movies do
   end
 
   defp blank_to_nil(value), do: value
-
-  defp normalize_variant_title(value) when is_binary(value) do
-    value
-    |> strip_variant_terms()
-    |> String.replace(~r/\s+/u, " ")
-    |> String.trim()
-    |> String.downcase()
-  end
-
-  defp normalize_variant_title(_), do: ""
-
-  defp canonical_variant_key(%Movie{} = movie) do
-    case blank_to_nil(movie.tmdb_id) do
-      nil -> {:title, normalize_variant_title(movie.title || movie.name), movie.year}
-      tmdb_id -> {:tmdb, tmdb_id}
-    end
-  end
-
-  defp newest_canonical_cards(movies, cards_by_key) do
-    movies
-    |> Enum.reduce(cards_by_key, fn movie, acc ->
-      Map.update(acc, canonical_variant_key(movie), movie, &newer_card(movie, &1))
-    end)
-  end
-
-  defp newer_card(movie, current) do
-    if movie.id > current.id, do: movie, else: current
-  end
 
   defp sort_visible_cards(movies, "rating_desc") do
     Enum.sort_by(movies, fn movie ->
@@ -455,17 +431,6 @@ defmodule Streamix.Iptv.Movies do
     do: -NaiveDateTime.diff(datetime, ~N[1970-01-01 00:00:00], :microsecond)
 
   defp desc_datetime(_datetime), do: 1_000_000_000_000_000
-
-  defp strip_variant_terms(value) when is_binary(value) do
-    value
-    |> String.replace(~r/\s*\[[^\]]+\]/u, " ")
-    |> String.replace(@variant_terms, " ")
-    |> String.replace(~r/[[:punct:]]+/u, " ")
-    |> String.replace(~r/\s+/u, " ")
-    |> String.trim()
-  end
-
-  defp strip_variant_terms(_), do: ""
 
   # =============================================================================
   # Movie Info Fetching

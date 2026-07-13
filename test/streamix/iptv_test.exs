@@ -716,6 +716,133 @@ defmodule Streamix.IptvTest do
       refute Enum.any?(results, &(&1.id == older.id))
     end
 
+    test "search_movies/3 collapses provider variants that disagree on year metadata" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      year_in_title =
+        movie_fixture(global, %{
+          name: "Evil Island (2023)",
+          title: "Evil Island (2023)",
+          year: 0,
+          stream_id: 1_401
+        })
+
+      canonical =
+        movie_fixture(fallback, %{
+          name: "Evil Island",
+          title: "Evil Island",
+          year: 2023,
+          tmdb_id: "999001",
+          stream_id: 1_402
+        })
+
+      no_year =
+        movie_fixture(fallback, %{
+          name: "Evil Island [L]",
+          title: nil,
+          year: nil,
+          stream_id: 1_403
+        })
+
+      results = Iptv.search_movies(user.id, "Evil Island", limit: 10)
+
+      assert Enum.map(results, & &1.id) == [canonical.id]
+      refute Enum.any?(results, &(&1.id in [year_in_title.id, no_year.id]))
+    end
+
+    test "search_movies/3 keeps distinct works with the same title separate" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+
+      remake_original =
+        movie_fixture(global, %{
+          name: "The Mummy Search",
+          title: "The Mummy Search",
+          year: 1999,
+          stream_id: 1_404
+        })
+
+      remake_new =
+        movie_fixture(global, %{
+          name: "The Mummy Search",
+          title: "The Mummy Search",
+          year: 2017,
+          stream_id: 1_405
+        })
+
+      results = Iptv.search_movies(user.id, "Mummy Search", limit: 10)
+
+      assert Enum.sort(Enum.map(results, & &1.id)) ==
+               Enum.sort([remake_original.id, remake_new.id])
+    end
+
+    test "search_movies/3 fills the page with distinct titles past duplicate variants" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      for {provider, stream_id} <- [{global, 1_406}, {fallback, 1_407}, {fallback, 1_408}] do
+        movie_fixture(provider, %{
+          name: "Zombie Saga 4K",
+          title: "Zombie Saga",
+          year: 2020,
+          rating: 9.0,
+          stream_id: stream_id
+        })
+      end
+
+      low_rated =
+        movie_fixture(global, %{
+          name: "Zombie Saga: Origins",
+          title: "Zombie Saga: Origins",
+          year: 2005,
+          rating: 3.0,
+          stream_id: 1_409
+        })
+
+      results = Iptv.search_movies(user.id, "Zombie Saga", limit: 2)
+
+      assert length(results) == 2
+      assert low_rated.id in Enum.map(results, & &1.id)
+    end
+
+    test "search_series/3 collapses provider variants that disagree on year metadata" do
+      user = user_fixture()
+      global = global_provider_fixture(%{name: "Global"})
+      fallback = provider_fixture(user, %{name: "Fallback", visibility: "public"})
+
+      _year_in_title =
+        series_content_fixture(global, %{
+          name: "Dark Absolute (2021)",
+          title: "Dark Absolute (2021)",
+          year: 0,
+          series_id: 1_501
+        })
+
+      canonical =
+        series_content_fixture(fallback, %{
+          name: "Dark Absolute",
+          title: "Dark Absolute",
+          year: 2021,
+          tmdb_id: "999002",
+          series_id: 1_502
+        })
+
+      _no_year =
+        series_content_fixture(fallback, %{
+          name: "Dark Absolute [L]",
+          title: nil,
+          year: nil,
+          series_id: 1_503
+        })
+
+      results = Iptv.search_series(user.id, "Dark Absolute", limit: 10)
+
+      assert Enum.map(results, & &1.id) == [canonical.id]
+    end
+
     test "list_visible_series/2 filters by canonical genre" do
       user = user_fixture()
       global = global_provider_fixture(%{name: "Global"})
