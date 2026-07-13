@@ -272,15 +272,15 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 current_scope={@current_scope}
               />
 
+              <%!-- Synopsis --%>
+              <.synopsis_section text={@movie.plot} />
+
               <.movie_versions
                 variants={@movie_variants}
                 current_movie_id={@movie.id}
                 selected_movie_id={@selected_movie.id}
                 current_path={@current_path}
               />
-              
-    <!-- Synopsis -->
-              <.synopsis_section text={@movie.plot} />
               
     <!-- Details Grid -->
               <.credits_grid content={@movie} />

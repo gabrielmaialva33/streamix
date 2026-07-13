@@ -305,15 +305,15 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 current_scope={@current_scope}
               />
 
+              <%!-- Synopsis --%>
+              <.synopsis_section text={@series.plot} />
+
               <.series_sources
                 sources={@series_sources}
                 current_series_id={@series.id}
                 selected_series_id={@selected_series.id}
                 current_path={@current_path}
               />
-              
-    <!-- Synopsis -->
-              <.synopsis_section text={@series.plot} />
               
     <!-- Details Grid -->
               <.credits_grid content={@series} director_label="Criado por" />
