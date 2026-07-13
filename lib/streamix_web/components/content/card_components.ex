@@ -109,7 +109,7 @@ defmodule StreamixWeb.Content.CardComponents do
               {@movie_name}
             </h3>
             <p class="min-h-4 text-xs text-text-secondary">
-              {Map.get(@movie, :year) || ""}
+              {display_year(Map.get(@movie, :year))}
             </p>
           </div>
           <button
@@ -223,7 +223,7 @@ defmodule StreamixWeb.Content.CardComponents do
               {@series_name}
             </h3>
             <p class="min-h-4 text-xs text-text-secondary">
-              {Map.get(@series, :year) || ""}
+              {display_year(Map.get(@series, :year))}
             </p>
           </div>
           <button

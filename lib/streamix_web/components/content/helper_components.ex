@@ -17,6 +17,9 @@ defmodule StreamixWeb.Content.HelperComponents do
     |> Decimal.to_string()
   end
 
+  def display_year(year) when is_integer(year) and year > 0, do: year
+  def display_year(_), do: ""
+
   def format_duration(nil), do: nil
   def format_duration(0), do: nil
 
