@@ -23,7 +23,7 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
   end
 
   describe "GET /api/stream/torrent/:info_hash/:file_idx" do
-    test "redirects anonymous users to login (browser pipeline)", %{conn: conn} do
+    test "redirects anonymous users to login", %{conn: conn} do
       hash = String.duplicate("a", 40)
 
       conn =
@@ -85,6 +85,19 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
 
       conn = get(conn, "/api/stream/torrent/#{hash}/status")
       assert conn.status == 404
+    end
+
+    test "accepts JSON requests from the swarm gate", %{conn: conn} do
+      hash = String.duplicate("d", 40)
+
+      conn =
+        conn
+        |> log_in_test_user()
+        |> put_req_header("accept", "application/json")
+        |> get("/api/stream/torrent/#{hash}/status")
+
+      assert conn.status == 404
+      refute conn.status == 406
     end
   end
 

@@ -57,6 +57,14 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
   end
 
+  # Torrent endpoints serve both JSON status and media bytes. Keep session
+  # authentication without the browser pipeline's HTML-only Accept check.
+  pipeline :authenticated_stream do
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :fetch_current_scope_for_user
+  end
+
   # Strict rate limiting for password-handling auth endpoints. Kept
   # tight to blunt credential-stuffing: five attempts per minute per IP
   # is enough for a human who mistyped and far too few for a bot.
@@ -106,7 +114,7 @@ defmodule StreamixWeb.Router do
   # browser is allowed to reach it, and `:require_authenticated_user`
   # gates that surface.
   scope "/api", StreamixWeb do
-    pipe_through [:browser, :require_authenticated_user]
+    pipe_through [:authenticated_stream, :require_authenticated_user]
 
     get "/stream/torrent/:info_hash/status", TorrentStreamController, :status
     get "/stream/torrent/:info_hash", TorrentStreamController, :stream
