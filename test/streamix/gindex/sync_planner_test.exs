@@ -44,6 +44,16 @@ defmodule Streamix.Gindex.SyncPlannerTest do
 
       assert Enum.all?(roots, &(&1.base_url == provider.gindex_url))
     end
+
+    test "rotates the first root by UTC day so one catalog kind cannot starve forever" do
+      provider = gindex_provider()
+
+      day_one = SyncPlanner.roots_for(provider, ~D[2026-01-01])
+      day_two = SyncPlanner.roots_for(provider, ~D[2026-01-02])
+
+      assert Enum.map(day_two, & &1.path) ==
+               Enum.map(tl(day_one) ++ [hd(day_one)], & &1.path)
+    end
   end
 
   describe "roots_for/1 with configured drives" do

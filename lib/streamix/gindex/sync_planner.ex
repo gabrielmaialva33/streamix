@@ -30,8 +30,8 @@ defmodule Streamix.Gindex.SyncPlanner do
   @doc """
   Returns the list of scan roots for a provider. Preloads `:drives` if needed.
   """
-  @spec roots_for(Provider.t()) :: [root()]
-  def roots_for(%Provider{} = provider) do
+  @spec roots_for(Provider.t(), Date.t()) :: [root()]
+  def roots_for(%Provider{} = provider, date \\ Date.utc_today()) do
     provider = Providers.preload_drives(provider)
     base_url = provider.gindex_url || provider.url
 
@@ -46,7 +46,17 @@ defmodule Streamix.Gindex.SyncPlanner do
         list -> list
       end
 
-    Enum.map(roots, &Map.put(&1, :base_url, base_url))
+    roots
+    |> rotate_for_date(date)
+    |> Enum.map(&Map.put(&1, :base_url, base_url))
+  end
+
+  defp rotate_for_date([], _date), do: []
+
+  defp rotate_for_date(roots, %Date{} = date) do
+    offset = rem(Date.day_of_year(date) - 1, length(roots))
+    {before, after_offset} = Enum.split(roots, offset)
+    after_offset ++ before
   end
 
   defp drive_to_root(%{drive_type: kind_str, metadata: %{"path" => path}} = _drive)
