@@ -3,7 +3,7 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
   Serves an external subtitle as WebVTT for the player to load via
   `loadExternalSubtitle`.
 
-  The player calls `GET /api/v1/subtitles/:imdb_id?lang=pt-BR`; we
+  The player calls `GET /api/subtitles/:imdb_id?lang=pt-BR`; we
   resolve it through `Streamix.Subtitles` (provider chain + cache) and
   return `text/vtt`. Anonymous + rate-limited like the rest of `/api`:
   the payload is just public subtitle text. `204 No Content` when no

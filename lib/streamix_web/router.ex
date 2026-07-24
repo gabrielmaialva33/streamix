@@ -50,6 +50,13 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
   end
 
+  # WebVTT is not part of Plug's default MIME registry, so the generic
+  # JSON API pipeline rejects the player's `Accept: text/vtt` with 406.
+  pipeline :subtitle_rate_limited do
+    plug StreamixWeb.Plugs.CORS
+    plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
+  end
+
   # Strict rate limiting for password-handling auth endpoints. Kept
   # tight to blunt credential-stuffing: five attempts per minute per IP
   # is enough for a human who mistyped and far too few for a bot.
@@ -130,10 +137,14 @@ defmodule StreamixWeb.Router do
     # language + codec name). Choki content uses hls.js for runtime
     # enumeration and never hits this.
     get "/gindex-tracks/:type/:id", Api.V1.GindexTracksController, :show
+  end
 
-    # External subtitles (WebVTT) by IMDb id — used by the player's
-    # loadExternalSubtitle. Anonymous + rate-limited; payload is public
-    # subtitle text.
+  # External subtitles (WebVTT) by IMDb id — anonymous + rate-limited.
+  # Kept outside the JSON-only pipeline so `Accept: text/vtt` reaches
+  # the controller instead of being rejected with 406.
+  scope "/api", StreamixWeb do
+    pipe_through :subtitle_rate_limited
+
     get "/subtitles/:imdb_id", Api.V1.SubtitlesController, :show
   end
 
