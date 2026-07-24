@@ -103,6 +103,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           mode
           |> detail_base_path(provider, movie)
           |> with_provider_filter(provider_filter)
+          |> with_return_to(return_to)
 
         preferred_provider_id = preferred_provider_id(provider_filter, mode, provider)
 
@@ -299,6 +300,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
             kind={:movie}
             mode={@mode}
             provider={@provider}
+            return_to={@current_path}
             title="Títulos Similares"
           />
         </div>

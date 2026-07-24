@@ -1,3 +1,4 @@
+import BrowseScrollRestoration from "./browse_scroll_restoration";
 import ContentCard from "./content_card";
 import EpgRefresh from "./epg_refresh";
 import HeaderSearch from "./header_search";
@@ -14,6 +15,7 @@ import VideoPlayer from "./video_player";
 import WatchPartySync from "./watch_party_sync";
 
 export default {
+  BrowseScrollRestoration,
   ThemeToggle,
   TorrentSwarmGate,
   VideoPlayer,

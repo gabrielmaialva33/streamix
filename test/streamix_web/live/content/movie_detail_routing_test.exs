@@ -75,6 +75,26 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       )
     end
 
+    test "play keeps the original catalog return target through the detail page", ctx do
+      conn = log_in_user(ctx.conn, ctx.user)
+      origin = "/browse/movies?provider=#{ctx.provider.id}&search=Routed"
+
+      detail_path =
+        "/browse/movies/#{ctx.movie.id}?provider=#{ctx.provider.id}" <>
+          "&return_to=#{URI.encode_www_form(origin)}"
+
+      {:ok, view, _html} = live(conn, detail_path)
+
+      view
+      |> element(~s(button[phx-click="play_movie"]))
+      |> render_click()
+
+      assert_redirect(
+        view,
+        "/watch/movie/#{ctx.movie.id}?return_to=#{URI.encode_www_form(detail_path)}"
+      )
+    end
+
     test "version watch links do not request cross-session live navigation", ctx do
       conn = log_in_user(ctx.conn, ctx.user)
       {:ok, view, _html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")

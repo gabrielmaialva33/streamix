@@ -46,6 +46,32 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       assert view |> has_element?("#movies > div:nth-child(51)")
       refute view |> has_element?("#movies > div:nth-child(52)")
     end
+
+    test "restores all loaded pages from the URL", %{conn: conn, user: user} do
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?page=2")
+
+      assert view |> has_element?("#movies > div:nth-child(51)")
+      refute view |> has_element?("#movies > div:nth-child(52)")
+    end
+
+    test "detail navigation keeps the loaded page as its return target", %{
+      conn: conn,
+      user: user,
+      featured_movie: movie
+    } do
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?page=2")
+
+      view
+      |> element("#movie-img-fb-#{movie.id}")
+      |> render_click()
+
+      assert_redirect(
+        view,
+        "/browse/movies/#{movie.id}?return_to=%2Fbrowse%2Fmovies%3Fpage%3D2"
+      )
+    end
   end
 
   describe "provider filter" do
@@ -102,6 +128,18 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       assert has_element?(view, ".category-pill--sidebar-active", "Ação")
       assert has_element?(view, "#movie-card-#{matching.id}")
       refute has_element?(view, "#movie-card-#{other.id}")
+
+      view
+      |> element("#movie-img-fb-#{matching.id}")
+      |> render_click()
+
+      return_to =
+        URI.encode_www_form("/browse/movies?category=#{category.id}&provider=#{provider.id}")
+
+      assert_redirect(
+        view,
+        "/browse/movies/#{matching.id}?provider=#{provider.id}&return_to=#{return_to}"
+      )
     end
 
     test "forged favorite event cannot favorite another user's private movie", %{conn: conn} do

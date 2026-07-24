@@ -48,15 +48,15 @@ defmodule StreamixWeb.HomeLive do
   # `<.link navigate>`. We translate them into push_navigate calls so the UX
   # stays identical to the old inline cards that wrapped everything in a link.
   def handle_event("play_movie", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/browse/movies/#{id}")}
+    {:noreply, push_navigate(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
   end
 
   def handle_event("show_details", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/browse/movies/#{id}")}
+    {:noreply, push_navigate(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/browse/series/#{id}")}
+    {:noreply, push_navigate(socket, to: with_return_to(~p"/browse/series/#{id}", ~p"/"))}
   end
 
   def handle_event("toggle_featured_favorite", _, socket) do
@@ -82,6 +82,10 @@ defmodule StreamixWeb.HomeLive do
 
   def handle_event("filter_channels_category", %{"genre" => category}, socket) do
     {:noreply, Data.filter_channels_category(socket, category)}
+  end
+
+  defp with_return_to(path, return_to) do
+    path <> "?return_to=" <> URI.encode_www_form(return_to)
   end
 
   def render(assigns) do

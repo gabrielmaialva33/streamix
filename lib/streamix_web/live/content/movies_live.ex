@@ -52,7 +52,8 @@ defmodule StreamixWeb.Content.MoviesLive do
   end
 
   def handle_event("load_more", _, socket) do
-    {:noreply, Browse.load_more(socket, :movies)}
+    socket = Browse.load_more(socket, :movies)
+    {:reply, %{page: socket.assigns.page}, socket}
   end
 
   def handle_event("play_movie", %{"id" => id}, socket) do
@@ -73,7 +74,7 @@ defmodule StreamixWeb.Content.MoviesLive do
 
   def render(assigns) do
     ~H"""
-    <div class="space-y-4 sm:space-y-5">
+    <div id="movies-browse" phx-hook="BrowseScrollRestoration" class="space-y-4 sm:space-y-5">
       <div class="browse-toolbar">
         <%!-- Row 1: Source toggle + Content tabs --%>
         <div class="browse-toolbar__row">
@@ -149,6 +150,7 @@ defmodule StreamixWeb.Content.MoviesLive do
             id="movies-sentinel"
             phx-hook="InfiniteScroll"
             data-page={@page}
+            data-sync-page-url="true"
             class="h-4"
           />
 

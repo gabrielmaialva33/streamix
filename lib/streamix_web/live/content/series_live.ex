@@ -52,7 +52,8 @@ defmodule StreamixWeb.Content.SeriesLive do
   end
 
   def handle_event("load_more", _, socket) do
-    {:noreply, Browse.load_more(socket, :series)}
+    socket = Browse.load_more(socket, :series)
+    {:reply, %{page: socket.assigns.page}, socket}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
@@ -69,7 +70,7 @@ defmodule StreamixWeb.Content.SeriesLive do
 
   def render(assigns) do
     ~H"""
-    <div class="space-y-4 sm:space-y-5">
+    <div id="series-browse" phx-hook="BrowseScrollRestoration" class="space-y-4 sm:space-y-5">
       <div class="browse-toolbar">
         <%!-- Row 1: Source toggle + Content tabs --%>
         <div class="browse-toolbar__row">
@@ -145,6 +146,7 @@ defmodule StreamixWeb.Content.SeriesLive do
             id="series-sentinel"
             phx-hook="InfiniteScroll"
             data-page={@page}
+            data-sync-page-url="true"
             class="h-4"
           />
 

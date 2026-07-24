@@ -37,7 +37,10 @@ defmodule StreamixWeb.SearchLiveTest do
       |> element("#movie-img-fb-#{movie.id}")
       |> render_click()
 
-      assert_redirect(view, "/browse/movies/#{movie.id}")
+      assert_redirect(
+        view,
+        "/browse/movies/#{movie.id}?return_to=%2Fsearch%3Fq%3DSearch%2BClick"
+      )
     end
 
     test "clicking a series poster navigates to the series detail", %{
@@ -56,7 +59,10 @@ defmodule StreamixWeb.SearchLiveTest do
       |> element("#series-img-fb-#{series.id}")
       |> render_click()
 
-      assert_redirect(view, "/browse/series/#{series.id}")
+      assert_redirect(
+        view,
+        "/browse/series/#{series.id}?return_to=%2Fsearch%3Fq%3DSearch%2BClick"
+      )
     end
   end
 end

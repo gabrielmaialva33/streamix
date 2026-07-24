@@ -13,6 +13,7 @@ const InfiniteScroll = {
   mounted() {
     this.pending = false;
     this.page = parseInt(this.el.dataset.page || "1", 10);
+    this.syncPageUrl = this.el.dataset.syncPageUrl === "true";
 
     this.observer = new IntersectionObserver(
       (entries) => {
@@ -57,7 +58,12 @@ const InfiniteScroll = {
     }
 
     this.pending = true;
-    this.pushEvent("load_more", {}, () => {
+    this.pushEvent("load_more", {}, (reply) => {
+      if (this.syncPageUrl) {
+        const page = Number.parseInt(reply?.page || this.el.dataset.page || this.page, 10);
+        this.syncPageInUrl(page);
+      }
+
       setTimeout(() => {
         if (!this.destroyedHook) {
           this.pending = false;
@@ -65,6 +71,23 @@ const InfiniteScroll = {
         }
       }, 100);
     });
+  },
+
+  syncPageInUrl(page) {
+    if (!Number.isInteger(page) || page < 1) return;
+
+    const url = new URL(window.location.href);
+    if (page > 1) {
+      url.searchParams.set("page", page.toString());
+    } else {
+      url.searchParams.delete("page");
+    }
+
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
   },
 
   scheduleVisibilityCheck() {

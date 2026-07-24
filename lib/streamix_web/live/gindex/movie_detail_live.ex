@@ -10,8 +10,9 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
-  def mount(%{"id" => movie_id}, _session, socket) do
+  def mount(%{"id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
+    return_to = safe_return_path(params["return_to"])
 
     case Iptv.get_movie(movie_id) do
       nil ->
@@ -34,7 +35,10 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
           socket =
             socket
             |> assign(page_title: movie.title || movie.name)
-            |> assign(current_path: "/gindex/movies/#{movie.id}")
+            |> assign(
+              current_path: with_return_to(~p"/gindex/movies/#{movie.id}", return_to),
+              return_to: return_to
+            )
             |> assign(movie: movie)
             |> assign(lcp_image: movie.stream_icon)
             |> assign(display_title: DH.display_title_movie(movie))
@@ -52,7 +56,14 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   def handle_event("play_movie", _, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/gindex/#{socket.assigns.movie.id}")}
+    {:noreply,
+     redirect(socket,
+       to:
+         with_return_to(
+           ~p"/watch/gindex/#{socket.assigns.movie.id}",
+           socket.assigns.current_path
+         )
+     )}
   end
 
   def handle_event("toggle_favorite", _, socket) do
@@ -96,7 +107,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
         <!-- Back Button -->
         <div class="absolute top-20 left-4 sm:left-6 z-30">
           <.link
-            navigate={~p"/gindex/movies"}
+            navigate={@return_to || ~p"/browse/movies?source=gindex"}
             class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar
@@ -213,4 +224,17 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     </div>
     """
   end
+
+  defp with_return_to(path, return_to) when is_binary(return_to) do
+    separator = if String.contains?(path, "?"), do: "&", else: "?"
+    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
+  end
+
+  defp with_return_to(path, _return_to), do: path
+
+  defp safe_return_path(path) when is_binary(path) do
+    if String.starts_with?(path, "/") and not String.starts_with?(path, "//"), do: path
+  end
+
+  defp safe_return_path(_path), do: nil
 end

@@ -40,6 +40,7 @@ defmodule StreamixWeb.SearchLive do
     socket =
       socket
       |> assign(query: query)
+      |> assign(current_path: ~p"/search?q=#{query}")
       |> assign(loading: true)
       |> perform_search()
 
@@ -80,15 +81,28 @@ defmodule StreamixWeb.SearchLive do
   end
 
   def handle_event("play_movie", %{"id" => id, "provider_id" => provider_id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/providers/#{provider_id}/movies/#{id}")}
+    {:noreply,
+     push_navigate(socket,
+       to:
+         with_return_to(
+           ~p"/providers/#{provider_id}/movies/#{id}",
+           socket.assigns.current_path
+         )
+     )}
   end
 
   def handle_event("show_details", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/browse/movies/#{id}")}
+    {:noreply,
+     push_navigate(socket,
+       to: with_return_to(~p"/browse/movies/#{id}", socket.assigns.current_path)
+     )}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/browse/series/#{id}")}
+    {:noreply,
+     push_navigate(socket,
+       to: with_return_to(~p"/browse/series/#{id}", socket.assigns.current_path)
+     )}
   end
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => type}, socket) do
@@ -106,6 +120,10 @@ defmodule StreamixWeb.SearchLive do
 
   defp toggle_favorite(user_id, type, content_id) do
     FavoriteState.toggle(user_id, type, content_id)
+  end
+
+  defp with_return_to(path, return_to) do
+    path <> "?return_to=" <> URI.encode_www_form(return_to)
   end
 
   # ============================================

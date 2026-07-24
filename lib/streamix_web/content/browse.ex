@@ -18,6 +18,7 @@ defmodule StreamixWeb.Content.Browse do
   use StreamixWeb, :verified_routes
 
   @per_page 48
+  @max_restore_pages 25
 
   @configs %{
     movies: %{
@@ -73,6 +74,7 @@ defmodule StreamixWeb.Content.Browse do
     category = parse_integer(params["category"])
     search = params["search"] || ""
     sort = parse_sort(kind, params["sort"])
+    restore_page = restore_page(params["page"])
 
     case apply_route_context(socket, kind, params, source) do
       {:ok, socket} ->
@@ -84,8 +86,11 @@ defmodule StreamixWeb.Content.Browse do
           |> assign(search: search)
           |> assign(sort: sort)
           |> assign(page: 1)
+          |> assign(has_more: true)
+          |> assign(loading: false)
+          |> assign(empty_results: false)
           |> LiveView.stream(config!(kind).stream, [], reset: true)
-          |> load_items(kind)
+          |> load_through_page(kind, restore_page)
           |> load_favorites_map(kind)
 
         {:ok, socket}
@@ -200,24 +205,24 @@ defmodule StreamixWeb.Content.Browse do
 
   def browse_tab_params(_assigns), do: %{}
 
-  def detail_path(%{assigns: %{source: "gindex"}}, :movies, id), do: ~p"/gindex/movies/#{id}"
-  def detail_path(%{assigns: %{source: "gindex"}}, :series, id), do: ~p"/gindex/series/#{id}"
-
-  def detail_path(%{assigns: %{mode: :browse, provider_filter: provider_filter}}, :movies, id),
-    do: with_provider_query(~p"/browse/movies/#{id}", provider_filter)
-
-  def detail_path(%{assigns: %{mode: :browse, provider_filter: provider_filter}}, :series, id),
-    do: with_provider_query(~p"/browse/series/#{id}", provider_filter)
-
-  def detail_path(%{assigns: %{mode: :provider, provider: provider}}, :movies, id),
-    do: ~p"/providers/#{provider.id}/movies/#{id}"
-
-  def detail_path(%{assigns: %{mode: :provider, provider: provider}}, :series, id),
-    do: ~p"/providers/#{provider.id}/series/#{id}"
+  def detail_path(%{assigns: assigns}, kind, id) do
+    assigns
+    |> detail_destination(kind, id)
+    |> with_return_to(browse_return_path(assigns, kind))
+  end
 
   defp parse_sort(kind, sort) do
     if sort in config!(kind).valid_sorts, do: sort
   end
+
+  defp restore_page(page) when is_binary(page) do
+    case Integer.parse(page) do
+      {page, ""} when page > 1 -> min(page, @max_restore_pages)
+      _ -> 1
+    end
+  end
+
+  defp restore_page(_page), do: 1
 
   defp apply_route_context(socket, kind, %{"provider_id" => provider_id}, _source) do
     config = config!(kind)
@@ -415,6 +420,22 @@ defmodule StreamixWeb.Content.Browse do
     |> assign(empty_results: empty_results)
   end
 
+  defp load_through_page(socket, kind, target_page) do
+    Enum.reduce_while(1..target_page, socket, fn page, socket ->
+      if page == 1 or socket.assigns.has_more do
+        socket =
+          socket
+          |> assign(page: page)
+          |> assign(loading: true)
+          |> load_items(kind)
+
+        {:cont, socket}
+      else
+        {:halt, socket}
+      end
+    end)
+  end
+
   defp load_favorites_map(socket, kind) do
     favorite_ids = Iptv.list_favorite_ids(socket.assigns.user_id, config!(kind).content_type)
     assign(socket, favorites_map: favorite_ids)
@@ -460,6 +481,42 @@ defmodule StreamixWeb.Content.Browse do
     |> maybe_put_query("search", search)
   end
 
+  defp browse_return_path(assigns, kind) do
+    params =
+      assigns.source
+      |> query_params(assigns.provider_filter, assigns.selected_category, assigns.search)
+      |> maybe_put_query("sort", assigns.sort)
+      |> maybe_put_page(assigns.page)
+
+    case assigns.mode do
+      :browse ->
+        append_query(config!(kind).browse_path, params)
+
+      :provider ->
+        append_query(provider_path(kind, assigns.provider), Map.delete(params, "source"))
+    end
+  end
+
+  defp detail_destination(%{source: "gindex"}, :movies, id), do: ~p"/gindex/movies/#{id}"
+  defp detail_destination(%{source: "gindex"}, :series, id), do: ~p"/gindex/series/#{id}"
+
+  defp detail_destination(%{mode: :browse, provider_filter: provider_filter}, :movies, id),
+    do: with_provider_query(~p"/browse/movies/#{id}", provider_filter)
+
+  defp detail_destination(%{mode: :browse, provider_filter: provider_filter}, :series, id),
+    do: with_provider_query(~p"/browse/series/#{id}", provider_filter)
+
+  defp detail_destination(%{mode: :provider, provider: provider}, :movies, id),
+    do: ~p"/providers/#{provider.id}/movies/#{id}"
+
+  defp detail_destination(%{mode: :provider, provider: provider}, :series, id),
+    do: ~p"/providers/#{provider.id}/series/#{id}"
+
+  defp with_return_to(path, return_to) do
+    separator = if String.contains?(path, "?"), do: "&", else: "?"
+    path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
+  end
+
   defp maybe_put_provider_query(params, provider_filter) when provider_filter in [nil, "all"],
     do: params
 
@@ -469,6 +526,11 @@ defmodule StreamixWeb.Content.Browse do
   defp maybe_put_query(params, _key, nil), do: params
   defp maybe_put_query(params, _key, ""), do: params
   defp maybe_put_query(params, key, value), do: Map.put(params, key, value)
+
+  defp maybe_put_page(params, page) when is_integer(page) and page > 1,
+    do: Map.put(params, "page", page)
+
+  defp maybe_put_page(params, _page), do: params
 
   defp append_query(path, params) when map_size(params) == 0, do: path
 

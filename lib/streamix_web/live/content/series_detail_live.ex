@@ -332,6 +332,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             kind={:series}
             mode={@mode}
             provider={@provider}
+            return_to={@current_path}
             title="Séries Similares"
           />
           
