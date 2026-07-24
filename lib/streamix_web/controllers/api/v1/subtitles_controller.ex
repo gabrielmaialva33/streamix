@@ -13,28 +13,30 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
   use StreamixWeb, :controller
 
   alias Streamix.Subtitles
+  alias Streamix.Subtitles.Vtt
 
   @imdb_re ~r/^tt\d{6,9}$/
 
   def show(conn, %{"imdb_id" => imdb_id} = params) do
     lang = sanitize_lang(params["lang"])
+    offset_ms = sanitize_offset(params["offset_ms"])
 
     if Regex.match?(@imdb_re, imdb_id) do
-      respond(conn, Subtitles.get_vtt(imdb_id, lang))
+      respond(conn, Subtitles.get_vtt(imdb_id, lang), offset_ms)
     else
       conn |> put_status(:bad_request) |> json(%{error: "invalid imdb_id"})
     end
   end
 
-  defp respond(conn, {:ok, vtt}) do
+  defp respond(conn, {:ok, vtt}, offset_ms) do
     conn
     |> put_resp_content_type("text/vtt")
     |> put_resp_header("cache-control", "public, max-age=86400")
-    |> send_resp(200, vtt)
+    |> send_resp(200, Vtt.shift(vtt, offset_ms))
   end
 
-  defp respond(conn, :not_found), do: send_resp(conn, 204, "")
-  defp respond(conn, :disabled), do: send_resp(conn, 204, "")
+  defp respond(conn, :not_found, _offset_ms), do: send_resp(conn, 204, "")
+  defp respond(conn, :disabled, _offset_ms), do: send_resp(conn, 204, "")
 
   # Keep the lang tag to a safe shape (e.g. "pt-BR", "en"); fall back to
   # pt-BR. Avoids passing arbitrary input down to the providers.
@@ -43,4 +45,13 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
   end
 
   defp sanitize_lang(_), do: "pt-BR"
+
+  defp sanitize_offset(offset) when is_binary(offset) do
+    case Integer.parse(offset) do
+      {value, ""} -> max(-600_000, min(600_000, value))
+      _ -> 0
+    end
+  end
+
+  defp sanitize_offset(_offset), do: 0
 end

@@ -13,6 +13,7 @@ defmodule StreamixWeb.User.SettingsLive do
       |> assign(current_email: user.email)
       |> assign(email_form: to_form(Accounts.change_user_email(user), as: "user"))
       |> assign(password_form: to_form(Accounts.change_user_password(user), as: "user"))
+      |> assign(settings_form: to_form(Accounts.change_user_settings(user), as: "user"))
       |> assign(trigger_submit: false)
 
     {:ok, socket}
@@ -75,6 +76,35 @@ defmodule StreamixWeb.User.SettingsLive do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Erro ao atualizar preferências")}
     end
+  end
+
+  def handle_event("save_subtitle_preferences", %{"user" => attrs}, socket) do
+    user = socket.assigns.current_scope.user
+
+    params = %{
+      "subtitles_enabled" => Map.get(attrs, "subtitles_enabled", "false"),
+      "subtitle_language" => Map.get(attrs, "subtitle_language", "pt-BR")
+    }
+
+    update_settings(socket, user, params, "Preferências de legenda atualizadas")
+  end
+
+  def handle_event("adjust_subtitle_offset", %{"delta" => delta}, socket) do
+    user = socket.assigns.current_scope.user
+
+    case Integer.parse(delta) do
+      {delta, ""} ->
+        offset = user.subtitle_offset_ms + delta
+        update_settings(socket, user, %{subtitle_offset_ms: offset}, "Sincronismo atualizado")
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Ajuste de legenda inválido")}
+    end
+  end
+
+  def handle_event("reset_subtitle_offset", _, socket) do
+    user = socket.assigns.current_scope.user
+    update_settings(socket, user, %{subtitle_offset_ms: 0}, "Sincronismo restaurado")
   end
 
   def render(assigns) do
@@ -204,9 +234,79 @@ defmodule StreamixWeb.User.SettingsLive do
         </section>
 
         <section
+          id="subtitle-preferences"
+          class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-3"
+        >
+          <div class="mb-4">
+            <h2 class="text-base font-semibold text-text-primary">Legendas</h2>
+            <p class="mt-1 text-sm text-text-secondary">
+              Escolha o idioma automático e corrija legendas adiantadas ou atrasadas.
+            </p>
+          </div>
+
+          <.form
+            for={@settings_form}
+            id="subtitle-preferences-form"
+            phx-submit="save_subtitle_preferences"
+            class="space-y-4"
+          >
+            <.input
+              field={@settings_form[:subtitle_language]}
+              type="select"
+              label="Idioma preferido"
+              options={[
+                {"Português (Brasil)", "pt-BR"},
+                {"Português (Portugal)", "pt-PT"},
+                {"English", "en"},
+                {"Español", "es"}
+              ]}
+            />
+            <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-text-primary">
+              <input
+                type="checkbox"
+                name={@settings_form[:subtitles_enabled].name}
+                value="true"
+                checked={@current_scope.user.subtitles_enabled}
+                class="size-5 rounded border-border text-brand focus:ring-brand"
+              /> Ativar legenda externa automaticamente quando disponível
+            </label>
+            <.button type="submit" variant="primary">Salvar legendas</.button>
+          </.form>
+
+          <div class="mt-5 border-t border-border pt-4">
+            <p class="text-sm font-medium text-text-primary">
+              Sincronismo: {format_subtitle_offset(@current_scope.user.subtitle_offset_ms)}
+            </p>
+            <p class="mt-1 text-xs text-text-secondary">
+              Valor positivo atrasa a legenda; negativo adianta.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                :for={
+                  {label, delta} <- [{"-1s", -1000}, {"-0,5s", -500}, {"+0,5s", 500}, {"+1s", 1000}]
+                }
+                type="button"
+                phx-click="adjust_subtitle_offset"
+                phx-value-delta={delta}
+                class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-text-primary transition-colors hover:bg-surface-hover"
+              >
+                {label}
+              </button>
+              <button
+                type="button"
+                phx-click="reset_subtitle_offset"
+                class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover"
+              >
+                Zerar
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section
           id="pwa-repair"
           phx-hook="PwaRepair"
-          class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-3"
+          class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-4"
         >
           <div class="flex flex-col gap-4">
             <div>
@@ -242,5 +342,32 @@ defmodule StreamixWeb.User.SettingsLive do
       </div>
     </div>
     """
+  end
+
+  defp update_settings(socket, user, attrs, message) do
+    case Accounts.update_user_settings(user, attrs) do
+      {:ok, updated_user} ->
+        {:noreply,
+         socket
+         |> assign(current_scope: %{socket.assigns.current_scope | user: updated_user})
+         |> assign(
+           settings_form: to_form(Accounts.change_user_settings(updated_user), as: "user")
+         )
+         |> put_flash(:info, message)}
+
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> assign(settings_form: to_form(changeset, as: "user"))
+         |> put_flash(:error, "Não foi possível salvar as preferências")}
+    end
+  end
+
+  defp format_subtitle_offset(0), do: "0s"
+
+  defp format_subtitle_offset(offset_ms) do
+    seconds = offset_ms / 1_000
+    sign = if seconds > 0, do: "+", else: ""
+    "#{sign}#{:erlang.float_to_binary(seconds, decimals: 1)}s"
   end
 end

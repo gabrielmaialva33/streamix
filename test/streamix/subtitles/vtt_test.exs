@@ -41,4 +41,12 @@ defmodule Streamix.Subtitles.VttTest do
     refute vtt =~ "\r"
     assert vtt =~ "00:00:01.000 --> 00:00:02.000"
   end
+
+  test "shifts cues forward and backward without producing negative timestamps" do
+    vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nhi\n"
+
+    assert Vtt.shift(vtt, 500) =~ "00:00:01.500 --> 00:00:03.000"
+    assert Vtt.shift(vtt, -1_500) =~ "00:00:00.000 --> 00:00:01.000"
+    assert Vtt.shift(vtt, 0) == vtt
+  end
 end

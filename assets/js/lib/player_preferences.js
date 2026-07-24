@@ -207,7 +207,7 @@ export function getPreferences(contentId = null) {
     volume: contentPrefs.volume ?? globalPrefs.volume ?? 1,
     muted: contentPrefs.muted ?? globalPrefs.muted ?? false,
     audioTrack: contentPrefs.audioTrack ?? null,
-    subtitleTrack: contentPrefs.subtitleTrack ?? -1,
+    subtitleTrack: contentPrefs.subtitleTrack ?? globalPrefs.subtitleTrack ?? null,
     playbackRate: globalPrefs.playbackRate ?? 1,
     preferAVPlayer: globalPrefs.preferAVPlayer ?? false, // Manual audio compatibility mode
   };

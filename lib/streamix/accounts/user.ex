@@ -12,6 +12,9 @@ defmodule Streamix.Accounts.User do
     field :confirmed_at, :utc_datetime
     field :authenticated_at, :utc_datetime, virtual: true
     field :show_adult_content, :boolean, default: false
+    field :subtitles_enabled, :boolean, default: true
+    field :subtitle_language, :string, default: "pt-BR"
+    field :subtitle_offset_ms, :integer, default: 0
 
     belongs_to :role, Streamix.Accounts.Role
 
@@ -174,6 +177,17 @@ defmodule Streamix.Accounts.User do
   """
   def settings_changeset(user, attrs) do
     user
-    |> cast(attrs, [:show_adult_content])
+    |> cast(attrs, [
+      :show_adult_content,
+      :subtitles_enabled,
+      :subtitle_language,
+      :subtitle_offset_ms
+    ])
+    |> validate_inclusion(:subtitle_language, ["pt-BR", "pt-PT", "en", "es"])
+    |> validate_number(:subtitle_offset_ms,
+      greater_than_or_equal_to: -600_000,
+      less_than_or_equal_to: 600_000
+    )
+    |> check_constraint(:subtitle_offset_ms, name: :subtitle_offset_ms_range)
   end
 end

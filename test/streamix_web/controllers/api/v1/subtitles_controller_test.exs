@@ -51,6 +51,24 @@ defmodule StreamixWeb.Api.V1.SubtitlesControllerTest do
     assert get_resp_header(conn, "cache-control") == ["public, max-age=86400"]
   end
 
+  test "applies a bounded playback offset without changing the cached source", %{conn: conn} do
+    Application.put_env(:streamix, :subtitle_providers, [StubHit])
+
+    shifted =
+      conn
+      |> get("/api/subtitles/tt0111161?lang=pt-BR&offset_ms=750")
+      |> response(200)
+
+    assert shifted =~ "00:00:01.750 --> 00:00:02.750"
+
+    original =
+      build_conn()
+      |> get("/api/subtitles/tt0111161?lang=pt-BR")
+      |> response(200)
+
+    assert original =~ "00:00:01.000 --> 00:00:02.000"
+  end
+
   test "returns 204 when subtitle providers are disabled", %{conn: conn} do
     Application.put_env(:streamix, :subtitle_providers, [StubDisabled])
 

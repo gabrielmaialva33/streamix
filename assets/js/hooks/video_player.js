@@ -415,7 +415,9 @@ const VideoPlayer = {
     this.sourceType = this.el.dataset.sourceType || null;
     this.contentId = this.el.dataset.contentId;
     this.imdbId = this.el.dataset.imdbId || null;
+    this.subtitlesEnabled = this.el.dataset.subtitlesEnabled !== "false";
     this.subtitleLang = this.el.dataset.subtitleLang || "pt-BR";
+    this.subtitleOffsetMs = Number(this.el.dataset.subtitleOffsetMs || 0);
     this.mediaTitle = this.el.dataset.mediaTitle || document.title || "Streamix";
     this.mediaSubtitle = this.el.dataset.mediaSubtitle || "Streamix";
     this.initialMode = this.el.dataset.streamingMode || null;
@@ -3232,7 +3234,7 @@ const VideoPlayer = {
         },
       ];
 
-      const preferredTrack = this._preferredSubtitleTrack === 0 ? 0 : -1;
+      const preferredTrack = this.subtitlesEnabled && this._preferredSubtitleTrack !== -1 ? 0 : -1;
       this.setSubtitleTrack(preferredTrack);
       this.playerUI.updateSubtitleOptions(this.subtitleTracks, preferredTrack, (track) =>
         this.setSubtitleTrack(track),
@@ -3257,7 +3259,11 @@ const VideoPlayer = {
     if (this._externalSubtitleLoadedFor === sessionId) return null;
     this._externalSubtitleLoadedFor = sessionId;
 
-    const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?lang=${encodeURIComponent(this.subtitleLang)}`;
+    const params = new URLSearchParams({
+      lang: this.subtitleLang,
+      offset_ms: String(this.subtitleOffsetMs),
+    });
+    const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?${params}`;
     const res = await fetch(url, { headers: { accept: "text/vtt" } });
     if (res.status !== 200) return null; // 204 = no subtitle available
     if (!this.isCurrentPlaybackSession(sessionId)) return null;
