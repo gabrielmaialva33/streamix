@@ -1028,7 +1028,34 @@ export class AVPlayerWrapper {
         }
       }
 
-      // Method 2: For MP4/MKV, use selectedSubtitleStream and formatContext
+      // Method 2: AVPlayer's public stream API covers embedded and external
+      // subtitles for MP4/MKV without reaching into private player state.
+      if (typeof this.player.getStreams === "function") {
+        const selectedId = this.player.getSelectedSubtitleStreamId?.() ?? -1;
+        const streams = this.player.getStreams();
+        const subtitleStreams = streams?.filter((stream) => stream.mediaType === "Subtitle") || [];
+
+        if (subtitleStreams.length > 0) {
+          return subtitleStreams.map((stream, index) => {
+            const metadata = stream.metadata || {};
+
+            return {
+              id: stream.id,
+              index,
+              streamIndex: stream.index,
+              label:
+                metadata.title ||
+                metadata.languageString ||
+                metadata.name ||
+                `Subtitle ${index + 1}`,
+              language: metadata.language || "",
+              selected: stream.id === selectedId,
+            };
+          });
+        }
+      }
+
+      // Method 3: Legacy fallback for versions without the public stream API.
       const formatContext = this.player.getFormatContext?.();
       const selectedSub = this.player.selectedSubtitleStream;
       const selectedVideo = this.player.selectedVideoStream;
@@ -1087,6 +1114,19 @@ export class AVPlayerWrapper {
     }
 
     return [];
+  }
+
+  /**
+   * Add an external subtitle track to the current media.
+   * @param {{source: string|File, lang?: string, title?: string}} externalSubtitle
+   * @returns {Promise<number>} The AVPlayer stream id
+   */
+  async loadExternalSubtitle(externalSubtitle) {
+    if (!this.player || typeof this.player.loadExternalSubtitle !== "function") {
+      throw new Error("AVPlayer external subtitles are unavailable");
+    }
+
+    return await this.player.loadExternalSubtitle(externalSubtitle);
   }
 
   /**
