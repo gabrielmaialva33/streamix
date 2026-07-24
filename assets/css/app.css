@@ -1307,9 +1307,84 @@ header[data-scrolled="false"] {
     -webkit-tap-highlight-color: transparent;
 }
 
+.player-safe-top {
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+    padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+}
+
+.player-safe-bottom {
+    padding: 1rem;
+    padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+
+.player-safe-corner {
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    left: calc(0.75rem + env(safe-area-inset-left, 0px));
+}
+
+.player-flash-stack {
+    top: calc(4.5rem + env(safe-area-inset-top, 0px));
+    right: calc(1rem + env(safe-area-inset-right, 0px));
+    left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 640px) {
+    .player-safe-top {
+        padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
+        padding-right: calc(1.5rem + env(safe-area-inset-right, 0px));
+        padding-left: calc(1.5rem + env(safe-area-inset-left, 0px));
+    }
+
+    .player-safe-bottom {
+        padding: 1.5rem;
+        padding-right: calc(1.5rem + env(safe-area-inset-right, 0px));
+        padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+        padding-left: calc(1.5rem + env(safe-area-inset-left, 0px));
+    }
+
+    .player-safe-corner {
+        top: calc(1.5rem + env(safe-area-inset-top, 0px));
+        left: calc(1.5rem + env(safe-area-inset-left, 0px));
+    }
+
+    .player-flash-stack {
+        left: auto;
+        width: min(24rem, calc(100vw - 2rem - env(safe-area-inset-right, 0px)));
+    }
+}
+
 /* Smooth opacity transition for controls */
 #player-controls {
     transition: opacity 0.3s ease-in-out;
+}
+
+/* A full-screen player must always retain an escape hatch on touch devices.
+   Keep only the safe-area-aware close button interactive while the rest of
+   the controls auto-hide. */
+@media (hover: none), (pointer: coarse) {
+    #player-controls.controls-hidden {
+        opacity: 1 !important;
+        pointer-events: none !important;
+    }
+
+    #player-controls.controls-hidden #player-top-controls {
+        background: transparent;
+    }
+
+    #player-controls.controls-hidden .player-title,
+    #player-controls.controls-hidden .player-secondary-control,
+    #player-controls.controls-hidden #player-bottom-controls {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    #player-controls.controls-hidden #player-close-btn {
+        opacity: 0.72;
+        pointer-events: auto;
+    }
 }
 
 /* Active/pressed states for mobile */

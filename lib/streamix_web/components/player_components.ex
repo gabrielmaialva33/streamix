@@ -170,20 +170,21 @@ defmodule StreamixWeb.PlayerComponents do
         <%!-- Top bar --%>
         <div
           id="player-top-controls"
-          class="bg-gradient-to-b from-black/80 via-black/40 to-transparent p-3 sm:p-6"
+          class="player-safe-top bg-gradient-to-b from-black/80 via-black/40 to-transparent"
         >
           <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2 sm:gap-3">
+            <div class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
               <button
                 :if={@on_close}
+                id="player-close-btn"
                 type="button"
                 phx-click={@on_close}
                 aria-label="Fechar player"
-                class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
+                class="flex size-12 shrink-0 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
               >
                 <.icon name="hero-x-mark" class="size-6" aria-hidden="true" />
               </button>
-              <div class="min-w-0 flex-1">
+              <div class="player-title min-w-0 flex-1 transition-opacity">
                 <h2 class="text-base sm:text-xl font-semibold text-white drop-shadow-lg truncate">
                   {content_title(@content, @content_type)}
                 </h2>
@@ -198,7 +199,7 @@ defmodule StreamixWeb.PlayerComponents do
               id="pip-btn"
               phx-click={JS.dispatch("player:toggle-pip")}
               aria-label="Modo Picture-in-Picture"
-              class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation flex-shrink-0"
+              class="player-secondary-control flex size-12 shrink-0 touch-manipulation items-center justify-center rounded-full text-white/90 transition-all hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
               title="Modo Picture-in-Picture"
             >
               <.icon name="hero-rectangle-stack" class="size-5" aria-hidden="true" />
@@ -209,7 +210,7 @@ defmodule StreamixWeb.PlayerComponents do
         <%!-- Bottom bar --%>
         <div
           id="player-bottom-controls"
-          class="bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6"
+          class="player-safe-bottom bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity"
         >
           <%!-- Progress bar --%>
           <.progress_bar :if={@content_type not in [:live, :live_channel]} />
@@ -226,7 +227,7 @@ defmodule StreamixWeb.PlayerComponents do
 
             <%!-- Right --%>
             <div class="flex items-center gap-1 sm:gap-2">
-              <.speed_button :if={@content_type != :live} />
+              <.speed_button :if={@content_type not in [:live, :live_channel]} />
               <.settings_button />
               <.fullscreen_button />
             </div>
@@ -347,6 +348,7 @@ defmodule StreamixWeb.PlayerComponents do
   attr :content, :map, required: true
   attr :status_url, :string, required: true
   attr :peer_target, :integer, default: 30
+  attr :on_close, :string, default: nil
 
   def torrent_swarm_gate(assigns) do
     ~H"""
@@ -357,6 +359,17 @@ defmodule StreamixWeb.PlayerComponents do
       data-peer-target={@peer_target}
       class="absolute inset-0 flex items-center justify-center bg-black"
     >
+      <button
+        :if={@on_close}
+        id="torrent-swarm-close-btn"
+        type="button"
+        phx-click={@on_close}
+        aria-label="Fechar player"
+        class="player-safe-corner fixed z-40 flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
+      >
+        <.icon name="hero-x-mark" class="size-6" aria-hidden="true" />
+      </button>
+
       <div class="flex w-full max-w-md flex-col items-center gap-5 px-6 text-center">
         <div class="relative">
           <div class="size-16 rounded-full border-4 border-white/10 border-t-brand animate-spin" />
@@ -420,7 +433,7 @@ defmodule StreamixWeb.PlayerComponents do
       id="play-pause-btn"
       phx-click={JS.dispatch("player:toggle-play")}
       aria-label="Reproduzir ou pausar"
-      class="p-3 sm:p-2 rounded-full text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
+      class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/20 sm:size-11"
     >
       <.icon name="hero-play-solid" class="size-8 sm:size-7 play-icon" aria-hidden="true" />
       <.icon name="hero-pause-solid" class="size-8 sm:size-7 pause-icon hidden" aria-hidden="true" />
@@ -436,7 +449,7 @@ defmodule StreamixWeb.PlayerComponents do
         id="mute-btn"
         phx-click={JS.dispatch("player:toggle-mute")}
         aria-label="Ativar ou desativar som"
-        class="p-3 sm:p-2 rounded-full text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
+        class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/20 sm:size-11"
       >
         <.icon name="hero-speaker-wave" class="size-6 sm:size-5 volume-on-icon" aria-hidden="true" />
         <.icon
@@ -467,7 +480,10 @@ defmodule StreamixWeb.PlayerComponents do
 
   def time_display(assigns) do
     ~H"""
-    <div id="time-display" class="text-white/90 text-xs sm:text-sm font-medium tabular-nums">
+    <div
+      id="time-display"
+      class="hidden text-xs font-medium tabular-nums text-white/90 min-[360px]:block sm:text-sm"
+    >
       <span id="current-time">0:00</span>
       <span class="text-white/50 mx-0.5 sm:mx-1">/</span>
       <span id="duration">0:00</span>
@@ -493,7 +509,7 @@ defmodule StreamixWeb.PlayerComponents do
         aria-label="Velocidade de reproducao"
         aria-haspopup="menu"
         aria-expanded="false"
-        class="px-3 py-2 sm:py-1.5 rounded text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors text-sm font-medium touch-manipulation"
+        class="flex size-12 touch-manipulation items-center justify-center rounded text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
       >
         <span id="speed-label">1x</span>
       </button>
@@ -530,7 +546,7 @@ defmodule StreamixWeb.PlayerComponents do
         aria-label="Configuracoes"
         aria-haspopup="menu"
         aria-expanded="false"
-        class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
+        class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
       >
         <.icon name="hero-cog-6-tooth" class="size-6 sm:size-5" aria-hidden="true" />
       </button>
@@ -623,7 +639,7 @@ defmodule StreamixWeb.PlayerComponents do
       id="fullscreen-btn"
       phx-click={JS.dispatch("player:toggle-fullscreen")}
       aria-label="Tela cheia"
-      class="p-3 sm:p-2 rounded-full text-white/90 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors touch-manipulation"
+      class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
       title="Tela cheia"
     >
       <.icon name="hero-arrows-pointing-out" class="size-6 sm:size-5 expand-icon" aria-hidden="true" />

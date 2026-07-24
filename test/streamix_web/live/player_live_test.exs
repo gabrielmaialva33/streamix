@@ -188,12 +188,17 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       movie = movie_fixture(provider, %{name: "Returnable Movie"})
 
-      {:ok, view, _html} =
+      {:ok, view, html} =
         live(conn, ~p"/watch/movie/#{movie.id}?return_to=/browse/movies/#{movie.id}")
 
       return_path = "/browse/movies/#{movie.id}"
 
-      assert {:error, {:live_redirect, %{to: ^return_path}}} =
+      assert html =~ ~s(id="player-close-btn")
+      assert html =~ "player-safe-top"
+      assert html =~ "player-flash-stack"
+      assert html =~ "size-12"
+
+      assert {:error, {:redirect, %{status: 302, to: ^return_path}}} =
                render_hook(view, "close_player", %{})
     end
 
@@ -211,8 +216,22 @@ defmodule StreamixWeb.PlayerLiveTest do
       {:ok, view, _html} = live(conn, ~p"/watch/movie/#{movie.id}?return_to=//evil.test")
       return_path = "/providers/#{provider.id}/movies"
 
-      assert {:error, {:live_redirect, %{to: ^return_path}}} =
+      assert {:error, {:redirect, %{status: 302, to: ^return_path}}} =
                render_hook(view, "close_player", %{})
+    end
+
+    test "torrent buffering gate keeps a safe-area-aware close button visible" do
+      html =
+        render_component(&StreamixWeb.PlayerComponents.torrent_swarm_gate/1,
+          content: %{title: "Torrent Movie", name: "Torrent Movie"},
+          status_url: "/api/torrent/status/demo",
+          on_close: "close_player"
+        )
+
+      assert html =~ ~s(id="torrent-swarm-close-btn")
+      assert html =~ "player-safe-corner"
+      assert html =~ "size-12"
+      assert html =~ ~s(aria-label="Fechar player")
     end
 
     test "owned episode opens with series subtitle metadata", %{conn: conn, user: user} do

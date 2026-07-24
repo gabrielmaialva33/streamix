@@ -215,7 +215,7 @@ defmodule StreamixWeb.PlayerLive do
 
   def handle_event("close_player", _, socket) do
     back_path = get_back_path(socket)
-    {:noreply, push_navigate(socket, to: back_path)}
+    {:noreply, redirect(socket, to: back_path)}
   end
 
   def handle_event("torrent_swarm_ready", _params, socket) do
@@ -274,7 +274,7 @@ defmodule StreamixWeb.PlayerLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="fixed inset-0 bg-black">
+    <div class="fixed inset-0 h-[100dvh] w-[100dvw] overflow-hidden bg-black">
       <.video_player
         :if={@player_state != :torrent_buffering}
         content={@content}
@@ -293,6 +293,7 @@ defmodule StreamixWeb.PlayerLive do
         content={@content}
         status_url={@torrent_status_url}
         peer_target={@torrent_peer_target}
+        on_close="close_player"
       />
     </div>
     """

@@ -963,6 +963,15 @@ const VideoPlayer = {
       if (now - this._lastIosPwaTapAt < 350) return;
       this._lastIosPwaTapAt = now;
 
+      if (!this.playerUI.controlsVisible) {
+        this.playerUI.showControls();
+        this.playerUI.scheduleHideControls();
+        this.reportIosPwaTelemetry("controls_revealed", {
+          target: event.target?.tagName || "unknown",
+        });
+        return;
+      }
+
       const pausedBefore = this.isPaused();
       this.reportIosPwaTelemetry("center_tap_play_pause", {
         paused_before: pausedBefore,
@@ -3842,10 +3851,20 @@ const VideoPlayer = {
     const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
     if (isTouchDevice) {
-      this.video.addEventListener("click", (e) => {
-        if (this.nativeTouchControls) return;
+      this._onMobilePlayerClick = (event) => {
+        if (this.nativeTouchControls || this.iosPwaMode) return;
 
-        e.preventDefault();
+        const target = event.target;
+        if (
+          !(target instanceof Element) ||
+          target.closest(
+            "button, a, input, select, textarea, label, [role='button'], #player-controls",
+          )
+        ) {
+          return;
+        }
+
+        event.preventDefault();
         const now = Date.now();
         const timeSinceLastTap = now - this.lastTapTime;
 
@@ -3856,7 +3875,8 @@ const VideoPlayer = {
         }
 
         this.lastTapTime = now;
-      });
+      };
+      this.el.addEventListener("click", this._onMobilePlayerClick);
 
       this.playerUI.showControls();
       this.playerUI.scheduleHideControls();
@@ -4131,6 +4151,11 @@ const VideoPlayer = {
     if (this._onIosPwaTap) {
       this.el?.removeEventListener("click", this._onIosPwaTap);
       this._onIosPwaTap = null;
+    }
+
+    if (this._onMobilePlayerClick) {
+      this.el?.removeEventListener("click", this._onMobilePlayerClick);
+      this._onMobilePlayerClick = null;
     }
 
     // Clear audio check timeout

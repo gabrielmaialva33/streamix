@@ -10,7 +10,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       mix test --include playwright test/streamix_web/e2e/player_lifecycle_test.exs
   """
 
-  use PhoenixTest.Playwright.Case, async: false, browser: :webkit
+  use PhoenixTest.Playwright.Case, async: false, browser: :webkit, browser_pool: false
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
@@ -33,6 +33,40 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     |> visit(~p"/watch/movie/#{movie.id}")
     |> assert_has("body .phx-connected #video-player-container")
     |> assert_player_resumed_once()
+  end
+
+  @tag browser_context_opts: [
+         viewport: %{width: 390, height: 844},
+         is_mobile: true,
+         device_scale_factor: 3.0
+       ]
+  test "keeps touch controls reachable in iPhone portrait", %{conn: session} do
+    session
+    |> open_mobile_player()
+    |> assert_mobile_controls_fit(390, 844)
+  end
+
+  @tag browser_context_opts: [
+         viewport: %{width: 844, height: 390},
+         is_mobile: true,
+         device_scale_factor: 3.0
+       ]
+  test "keeps touch controls reachable in iPhone landscape", %{conn: session} do
+    session
+    |> open_mobile_player()
+    |> assert_mobile_controls_fit(844, 390)
+  end
+
+  defp open_mobile_player(session) do
+    user = user_fixture()
+    provider = provider_fixture(user, %{is_active: true, url: StreamixWeb.Endpoint.url()})
+    movie = movie_fixture(provider, %{container_extension: "mp4"})
+
+    session
+    |> install_authenticated_cookie(user)
+    |> install_media_probe(movie.id)
+    |> visit(~p"/watch/movie/#{movie.id}")
+    |> assert_has("body .phx-connected #video-player-container")
   end
 
   defp install_authenticated_cookie(session, user) do
@@ -222,6 +256,90 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       [is_function: true, timeout: 4_000],
       fn state ->
         assert state["events"] == ["seek:25", "play:25"]
+      end
+    )
+  end
+
+  defp assert_mobile_controls_fit(session, expected_width, expected_height) do
+    PhoenixTest.Playwright.evaluate(
+      session,
+      """
+      async () => {
+        const container = document.querySelector("#video-player-container");
+        const hook = container && container.__videoPlayerHook;
+        if (!container || !hook) throw new Error("player hook unavailable");
+
+        hook.nativeTouchControls = false;
+        hook.playerUI.setNativeControlsMode(false);
+        hook.playerUI.setIsPlayingFn(() => true);
+        hook.playerUI.showControls();
+
+        const ids = [
+          "player-close-btn",
+          "pip-btn",
+          "play-pause-btn",
+          "mute-btn",
+          "speed-btn",
+          "settings-btn",
+          "fullscreen-btn"
+        ];
+
+        const controls = Object.fromEntries(
+          ids.map((id) => {
+            const element = document.getElementById(id);
+            if (!element) return [id, null];
+            const rect = element.getBoundingClientRect();
+            return [id, {
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom,
+              width: rect.width,
+              height: rect.height
+            }];
+          })
+        );
+
+        hook.playerUI.hideControls();
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const closeStyle = getComputedStyle(document.getElementById("player-close-btn"));
+        const bottomStyle = getComputedStyle(document.getElementById("player-bottom-controls"));
+        const hiddenState = {
+          controlsVisible: hook.playerUI.controlsVisible,
+          closeOpacity: Number(closeStyle.opacity),
+          closePointerEvents: closeStyle.pointerEvents,
+          bottomOpacity: Number(bottomStyle.opacity)
+        };
+
+        container.click();
+
+        return {
+          viewport: {width: innerWidth, height: innerHeight},
+          controls,
+          hiddenState,
+          revealedAfterTap: hook.playerUI.controlsVisible
+        };
+      }
+      """,
+      [is_function: true],
+      fn state ->
+        assert state["viewport"] == %{"width" => expected_width, "height" => expected_height}
+
+        for {id, rect} <- state["controls"] do
+          assert rect, "#{id} was not rendered"
+          assert rect["width"] >= 44, "#{id} width is below 44px: #{rect["width"]}"
+          assert rect["height"] >= 44, "#{id} height is below 44px: #{rect["height"]}"
+          assert rect["left"] >= 0, "#{id} crosses the left viewport edge"
+          assert rect["top"] >= 0, "#{id} crosses the top viewport edge"
+          assert rect["right"] <= expected_width, "#{id} crosses the right viewport edge"
+          assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
+        end
+
+        assert state["hiddenState"]["controlsVisible"] == false
+        assert state["hiddenState"]["closeOpacity"] > 0
+        assert state["hiddenState"]["closePointerEvents"] == "auto"
+        assert state["hiddenState"]["bottomOpacity"] == 0
+        assert state["revealedAfterTap"] == true
       end
     )
   end
