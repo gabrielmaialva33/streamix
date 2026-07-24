@@ -204,6 +204,7 @@ defmodule Streamix.Torrent.Client do
         headers: headers,
         receive_timeout: timeout,
         finch: Streamix.Finch,
+        retry: false,
         decode_json: [keys: :strings]
       ]
       |> maybe_put_body(body)

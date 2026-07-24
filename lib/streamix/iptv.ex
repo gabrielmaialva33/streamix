@@ -43,7 +43,13 @@ defmodule Streamix.Iptv do
     SeriesOps
   }
 
-  alias Streamix.Iptv.{Favorites, History}
+  alias Streamix.Iptv.{
+    Favorites,
+    History,
+    ProviderHealth,
+    ProviderHealthMonitor,
+    TorrentProvider
+  }
 
   # =============================================================================
   # Favorites (catalog_item_id)
@@ -218,6 +224,10 @@ defmodule Streamix.Iptv do
   defdelegate test_connection(url, username, password), to: Providers
   defdelegate sync_provider(provider, opts \\ []), to: Providers, as: :sync
   defdelegate async_sync_provider(provider), to: Providers, as: :async_sync
+  defdelegate get_torrent_provider(), to: TorrentProvider, as: :get
+  defdelegate provider_health_summary(), to: ProviderHealth, as: :overall_status
+  defdelegate list_provider_health_reports(opts \\ []), to: ProviderHealth, as: :list_reports
+  defdelegate cached_provider_health_summary(), to: ProviderHealthMonitor, as: :get
 
   # =============================================================================
   # Catalog (Public Content)

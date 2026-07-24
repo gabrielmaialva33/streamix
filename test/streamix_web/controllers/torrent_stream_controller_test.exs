@@ -99,6 +99,22 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
       assert conn.status == 404
       refute conn.status == 406
     end
+
+    test "returns a retryable state when rqbit is unavailable", %{conn: conn} do
+      {:ok, _provider} = TorrentProvider.ensure_exists!()
+      ts = insert_torrent_stream!()
+
+      response =
+        conn
+        |> log_in_test_user(Streamix.AccountsFixtures.admin_user_fixture())
+        |> put_req_header("accept", "application/json")
+        |> get("/api/stream/torrent/#{ts.info_hash}/status")
+        |> json_response(503)
+
+      assert response["state"] == "degraded"
+      assert response["retryable"] == true
+      assert response["failure_code"] == "engine_unavailable"
+    end
   end
 
   # ---- helpers ----
@@ -119,8 +135,7 @@ defmodule StreamixWeb.TorrentStreamControllerTest do
     |> Repo.insert!()
   end
 
-  defp log_in_test_user(conn) do
-    user = Streamix.AccountsFixtures.user_fixture()
+  defp log_in_test_user(conn, user \\ Streamix.AccountsFixtures.user_fixture()) do
     log_in_user(conn, user)
   end
 

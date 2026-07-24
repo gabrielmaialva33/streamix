@@ -39,9 +39,6 @@ defmodule Streamix.Torrent.StreamSession do
   # and gives the player ~5–10 s of seek headroom.
   @ready_bytes 5_000_000
 
-  # How often we poll rqbit while waiting for `state == "live"`.
-  @ready_poll_ms 250
-
   # Hard ceiling on the wait — controller surfaces 504 to the client
   # and the player retries. 30 s matches `start_or_join/3`'s caller
   # timeout in the controller.
@@ -51,6 +48,7 @@ defmodule Streamix.Torrent.StreamSession do
   # navigating user time to come back without re-triggering the rqbit
   # add + buffer cycle.
   @idle_grace_ms 60_000
+  @max_add_attempts 3
 
   # Heuristic — extension list for "this is the video file".
   @video_exts ~w(.mp4 .mkv .mov .avi .ts .webm .m4v .flv .wmv)
@@ -125,6 +123,26 @@ defmodule Streamix.Torrent.StreamSession do
     end
   end
 
+  @doc "Requests a fresh rqbit add attempt for a degraded or failed session."
+  @spec retry(info_hash()) :: :ok
+  def retry(info_hash) do
+    case whereis(normalize_hash(info_hash)) do
+      nil -> :ok
+      pid -> GenServer.cast(pid, :retry)
+    end
+  end
+
+  @doc "Returns a stable, non-sensitive lifecycle snapshot for status UIs."
+  @spec snapshot(info_hash()) :: map() | nil
+  def snapshot(info_hash) do
+    case whereis(normalize_hash(info_hash)) do
+      nil -> nil
+      pid -> GenServer.call(pid, :snapshot, 1_000)
+    end
+  catch
+    :exit, _ -> nil
+  end
+
   @doc """
   Returns the pid of the session for `info_hash`, or nil.
   """
@@ -134,6 +152,8 @@ defmodule Streamix.Torrent.StreamSession do
       [{pid, _}] -> pid
       [] -> nil
     end
+  rescue
+    ArgumentError -> nil
   end
 
   defp via(info_hash), do: {:via, Registry, {@registry, info_hash}}
@@ -156,39 +176,35 @@ defmodule Streamix.Torrent.StreamSession do
       viewers: %{},
       monitors: %{},
       idle_timer: nil,
-      pending_joins: []
+      pending_joins: [],
+      stage: :connecting,
+      add_attempts: 0,
+      last_error: nil,
+      retry_timer: nil
     }
 
     {:ok, state, {:continue, :ensure_added}}
   end
 
   @impl true
-  def handle_continue(:ensure_added, state) do
-    case Client.add(state.magnet_uri) do
-      {:ok, summary} ->
-        file_idx = pick_video_file(summary)
-
-        Logger.info(
-          "[Torrent.StreamSession] added #{state.info_hash}, file_idx=#{inspect(file_idx)}"
-        )
-
-        schedule_ready_check()
-        {:noreply, %{state | added?: true, file_idx: file_idx}}
-
-      {:error, reason} ->
-        Logger.warning(
-          "[Torrent.StreamSession] add failed for #{state.info_hash}: #{inspect(reason)}"
-        )
-
-        # Tell pending joiners and bow out — the session can't recover
-        # without a working rqbit add.
-        {:stop, {:add_failed, reason}, state}
-    end
-  end
+  def handle_continue(:ensure_added, state), do: attempt_add(state)
 
   @impl true
+  def handle_call(:snapshot, _from, state) do
+    {:reply,
+     %{
+       stage: state.stage,
+       failure_code: failure_code(state.last_error),
+       add_attempts: state.add_attempts,
+       ready?: state.ready?
+     }, state}
+  end
+
   def handle_call({:join_and_wait, viewer_pid}, from, state) do
-    state = register_viewer(state, viewer_pid)
+    state =
+      state
+      |> register_viewer(viewer_pid)
+      |> maybe_restart_failed_session()
 
     if state.ready? and is_integer(state.file_idx) do
       {:reply, {:ok, %{info_hash: state.info_hash, file_idx: state.file_idx}}, state}
@@ -201,6 +217,10 @@ defmodule Streamix.Torrent.StreamSession do
   end
 
   @impl true
+  def handle_cast(:retry, state) do
+    {:noreply, maybe_restart_failed_session(state)}
+  end
+
   def handle_cast({:touch, viewer_pid}, state) do
     {:noreply, touch_viewer(state, viewer_pid)}
   end
@@ -211,6 +231,10 @@ defmodule Streamix.Torrent.StreamSession do
   end
 
   @impl true
+  def handle_info(:retry_add, state) do
+    attempt_add(%{state | retry_timer: nil})
+  end
+
   def handle_info(:ready_check, state) do
     case Client.stats(state.info_hash) do
       {:ok, stats} ->
@@ -220,7 +244,8 @@ defmodule Streamix.Torrent.StreamSession do
 
           live_and_buffered?(stats) ->
             file_idx = state.file_idx || try_pick_file_now(state.info_hash)
-            state = %{state | ready?: true, file_idx: file_idx}
+            state = %{state | ready?: true, file_idx: file_idx, stage: :ready, last_error: nil}
+            emit_state(state, :ready)
 
             state =
               reply_pending_joins(state, {:ok, %{info_hash: state.info_hash, file_idx: file_idx}})
@@ -229,12 +254,12 @@ defmodule Streamix.Torrent.StreamSession do
 
           true ->
             schedule_ready_check()
-            {:noreply, prune_expired_joins(state)}
+            {:noreply, %{prune_expired_joins(state) | stage: :buffering}}
         end
 
-      {:error, _reason} ->
+      {:error, reason} ->
         schedule_ready_check()
-        {:noreply, prune_expired_joins(state)}
+        {:noreply, %{prune_expired_joins(state) | stage: :degraded, last_error: reason}}
     end
   end
 
@@ -282,6 +307,57 @@ defmodule Streamix.Torrent.StreamSession do
   end
 
   # ---- Helpers ----
+
+  defp attempt_add(state) do
+    attempt = state.add_attempts + 1
+
+    case Client.add(state.magnet_uri) do
+      {:ok, summary} ->
+        file_idx = pick_video_file(summary)
+
+        Logger.info(
+          "[Torrent.StreamSession] added #{state.info_hash}, file_idx=#{inspect(file_idx)}"
+        )
+
+        schedule_ready_check()
+
+        state = %{
+          state
+          | added?: true,
+            file_idx: file_idx,
+            stage: :buffering,
+            last_error: nil,
+            retry_timer: nil
+        }
+
+        emit_state(state, :buffering)
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Torrent.StreamSession] add attempt #{attempt}/#{@max_add_attempts} failed " <>
+            "for #{state.info_hash}: #{inspect(reason)}"
+        )
+
+        state = %{state | add_attempts: attempt, last_error: reason}
+
+        if attempt < @max_add_attempts do
+          timer = Process.send_after(self(), :retry_add, retry_delay(attempt))
+          state = %{state | stage: :degraded, retry_timer: timer}
+          emit_state(state, :degraded)
+          {:noreply, state}
+        else
+          state =
+            state
+            |> Map.put(:stage, :failed)
+            |> Map.put(:retry_timer, nil)
+            |> reply_pending_joins({:error, :engine_unavailable})
+
+          emit_state(state, :failed)
+          {:noreply, state}
+        end
+    end
+  end
 
   defp register_viewer(state, viewer_pid) do
     case Map.get(state.viewers, viewer_pid) do
@@ -350,8 +426,51 @@ defmodule Streamix.Torrent.StreamSession do
     %{state | idle_timer: nil}
   end
 
+  defp maybe_restart_failed_session(%{stage: stage, retry_timer: nil} = state)
+       when stage in [:failed, :degraded] do
+    send(self(), :retry_add)
+
+    %{
+      state
+      | stage: :connecting,
+        add_attempts: 0,
+        last_error: nil
+    }
+  end
+
+  defp maybe_restart_failed_session(state), do: state
+
+  defp retry_delay(attempt) do
+    base_ms = session_config(:retry_base_ms, 500)
+    trunc(:math.pow(3, attempt - 1) * base_ms)
+  end
+
+  defp failure_code(nil), do: nil
+  defp failure_code({:transport_error, _reason}), do: "engine_unavailable"
+  defp failure_code({:http_error, status, _body}) when status in 500..599, do: "engine_5xx"
+  defp failure_code(_reason), do: "engine_error"
+
+  defp emit_state(state, stage) do
+    :telemetry.execute(
+      [:streamix, :torrent, :session, :state],
+      %{system_time: System.system_time()},
+      %{
+        info_hash: state.info_hash,
+        stage: stage,
+        attempts: state.add_attempts,
+        failure_code: failure_code(state.last_error)
+      }
+    )
+  end
+
   defp schedule_ready_check do
-    Process.send_after(self(), :ready_check, @ready_poll_ms)
+    Process.send_after(self(), :ready_check, session_config(:ready_poll_ms, 250))
+  end
+
+  defp session_config(key, default) do
+    :streamix
+    |> Application.get_env(:torrent_session, [])
+    |> Keyword.get(key, default)
   end
 
   defp live_and_buffered?(%{state: "live", progress_bytes: bytes}) when bytes >= @ready_bytes,

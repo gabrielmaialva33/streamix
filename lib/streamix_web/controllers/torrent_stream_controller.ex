@@ -26,9 +26,7 @@ defmodule StreamixWeb.TorrentStreamController do
   alias Plug.Conn
 
   alias Streamix.Access
-  alias Streamix.Iptv.TorrentProvider
-  alias Streamix.Repo
-  alias Streamix.Torrent.{Client, StreamSession, TorrentStream}
+  alias Streamix.{Iptv, Torrent}
 
   # Headers we copy from the rqbit response back to the browser.
   @forwardable_response_headers ~w(content-type content-length content-range accept-ranges)
@@ -48,11 +46,11 @@ defmodule StreamixWeb.TorrentStreamController do
     file_idx_raw = Map.get(params, "file_idx")
 
     with {:ok, file_idx} <- parse_file_idx(file_idx_raw),
-         %TorrentStream{} = ts <- find_torrent_stream(info_hash),
+         %{} = ts <- Torrent.get_stream_by_hash(info_hash),
          user = current_user(conn),
          :ok <- authorize(user, ts),
          {:ok, session} <-
-           StreamSession.start_or_join(ts.info_hash, ts.magnet_uri, self()) do
+           Torrent.start_or_join(ts.info_hash, ts.magnet_uri, self()) do
       do_stream(conn, ts.info_hash, file_idx || session.file_idx)
     else
       :not_found ->
@@ -78,19 +76,11 @@ defmodule StreamixWeb.TorrentStreamController do
   LiveView buffering UI.
   """
   def status(conn, %{"info_hash" => info_hash}) do
-    with %TorrentStream{} = ts <- find_torrent_stream(info_hash),
+    with %{} = ts <- Torrent.get_stream_by_hash(info_hash),
          user = current_user(conn),
          :ok <- authorize(user, ts),
-         {:ok, stats} <- Client.stats(ts.info_hash) do
-      json(conn, %{
-        info_hash: ts.info_hash,
-        state: stats.state,
-        progress_bytes: stats.progress_bytes,
-        total_bytes: stats.total_bytes,
-        finished: stats.finished,
-        live_peers: stats.live_peers,
-        download_speed_bps: stats.download_speed_bps
-      })
+         result <- Torrent.status(ts.info_hash) do
+      respond_with_status(conn, result)
     else
       :not_found ->
         send_resp(conn, 404, "torrent not found")
@@ -98,29 +88,15 @@ defmodule StreamixWeb.TorrentStreamController do
       :unauthorized ->
         send_resp(conn, 403, "forbidden")
 
-      {:error, :not_found} ->
-        # Torrent row exists but rqbit doesn't know about it yet —
-        # frontend treats this as "not yet adding".
-        json(conn, %{
-          info_hash: String.downcase(info_hash),
-          state: "absent",
-          progress_bytes: 0,
-          total_bytes: 0,
-          finished: false,
-          live_peers: 0,
-          download_speed_bps: 0
-        })
-
-      {:error, reason} ->
-        Logger.warning("[TorrentStream] stats failed: #{inspect(reason)}")
-        send_resp(conn, 502, "torrent backend unavailable")
+      {:error, payload} ->
+        respond_with_status(conn, {:error, payload})
     end
   end
 
   # ---- Internals ----
 
   defp do_stream(conn, info_hash, file_idx) do
-    upstream_url = Client.stream_url(info_hash, file_idx)
+    upstream_url = Torrent.stream_url(info_hash, file_idx)
     headers = build_request_headers(conn)
 
     # Use Finch directly: streaming HTTP into Plug.Conn.chunk is what
@@ -216,7 +192,7 @@ defmodule StreamixWeb.TorrentStreamController do
 
     # The stream proxy hits rqbit directly (not via Client.request/3),
     # so it must carry the same shared-secret header the edge expects.
-    Client.auth_headers() ++ forwarded
+    Torrent.auth_headers() ++ forwarded
   end
 
   defp parse_file_idx(nil), do: {:ok, nil}
@@ -230,17 +206,6 @@ defmodule StreamixWeb.TorrentStreamController do
 
   defp parse_file_idx(_), do: {:error, :bad_file_idx}
 
-  defp find_torrent_stream(info_hash) when is_binary(info_hash) do
-    hash = String.downcase(info_hash)
-
-    case Repo.get_by(TorrentStream, info_hash: hash) do
-      %TorrentStream{} = ts -> ts
-      nil -> :not_found
-    end
-  end
-
-  defp find_torrent_stream(_), do: :not_found
-
   defp authorize(nil, _ts), do: :unauthorized
 
   defp authorize(user, _ts) do
@@ -248,7 +213,7 @@ defmodule StreamixWeb.TorrentStreamController do
     # TorrentProvider. The Access gate handles admin / subscribed /
     # explicit-permission paths — we just supply the provider so it
     # can recognize this as global content.
-    case TorrentProvider.get() do
+    case Iptv.get_torrent_provider() do
       nil ->
         :unauthorized
 
@@ -266,5 +231,13 @@ defmodule StreamixWeb.TorrentStreamController do
       %{user: user} -> user
       _ -> nil
     end
+  end
+
+  defp respond_with_status(conn, {:ok, payload}), do: json(conn, payload)
+
+  defp respond_with_status(conn, {:error, payload}) do
+    conn
+    |> put_status(:service_unavailable)
+    |> json(payload)
   end
 end

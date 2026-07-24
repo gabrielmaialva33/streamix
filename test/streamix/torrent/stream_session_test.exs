@@ -9,12 +9,18 @@ defmodule Streamix.Torrent.StreamSessionTest do
   setup do
     # Spin up a fake rqbit so the live Client.add/list/stats path works
     # end-to-end against an in-process Bandit listener.
-    {:ok, server, port} = start_rqbit_stub()
+    {:ok, server, agent, port} = start_rqbit_stub()
     prior = Application.get_env(:streamix, :torrent_provider)
+    prior_session = Application.get_env(:streamix, :torrent_session)
 
     Application.put_env(:streamix, :torrent_provider,
       enabled: true,
       rqbit_url: "http://127.0.0.1:#{port}"
+    )
+
+    Application.put_env(:streamix, :torrent_session,
+      ready_poll_ms: 10,
+      retry_base_ms: 10
     )
 
     # Local registry + supervisor so we don't depend on the application
@@ -26,10 +32,11 @@ defmodule Streamix.Torrent.StreamSessionTest do
     )
 
     on_exit(fn ->
-      if prior, do: Application.put_env(:streamix, :torrent_provider, prior)
+      restore_env(:torrent_provider, prior)
+      restore_env(:torrent_session, prior_session)
     end)
 
-    %{stub: server, port: port}
+    %{stub: server, rqbit_state: agent, port: port}
   end
 
   test "start_or_join boots a session and resolves once rqbit reports live" do
@@ -54,6 +61,18 @@ defmodule Streamix.Torrent.StreamSessionTest do
 
     assert_receive :joined, 5_000
     assert pid_first == StreamSession.whereis(@info_hash)
+  end
+
+  test "retries transient rqbit add failures before reporting unavailable", %{
+    rqbit_state: agent
+  } do
+    Agent.update(agent, &Map.put(&1, :remaining_add_failures, 2))
+
+    assert {:ok, %{file_idx: 0}} =
+             StreamSession.start_or_join(@info_hash, @magnet, self())
+
+    assert Agent.get(agent, &Map.get(&1, :add_attempts)) == 3
+    assert %{stage: :ready, failure_code: nil} = StreamSession.snapshot(@info_hash)
   end
 
   test "leave with no remaining viewers schedules idle teardown" do
@@ -104,7 +123,7 @@ defmodule Streamix.Torrent.StreamSessionTest do
   # ---- rqbit stub ----
 
   defp start_rqbit_stub do
-    {:ok, agent} = Agent.start_link(fn -> %{} end)
+    {:ok, agent} = Agent.start_link(fn -> %{add_attempts: 0, remaining_add_failures: 0} end)
 
     {:ok, server} =
       start_supervised(
@@ -117,8 +136,11 @@ defmodule Streamix.Torrent.StreamSessionTest do
       )
 
     {:ok, {_, port}} = ThousandIsland.listener_info(server)
-    {:ok, server, port}
+    {:ok, server, agent, port}
   end
+
+  defp restore_env(key, nil), do: Application.delete_env(:streamix, key)
+  defp restore_env(key, value), do: Application.put_env(:streamix, key, value)
 
   defmodule StubPlug do
     @moduledoc false
@@ -132,21 +154,35 @@ defmodule Streamix.Torrent.StreamSessionTest do
     end
 
     defp do_call(%{method: "POST", path_info: ["torrents"]} = conn, agent) do
-      hash = String.duplicate("a", 40)
-      Agent.update(agent, &Map.put(&1, hash, true))
+      should_fail? =
+        Agent.get_and_update(agent, fn state ->
+          remaining = Map.get(state, :remaining_add_failures, 0)
 
-      body = %{
-        "id" => 1,
-        "info_hash" => hash,
-        "name" => "ubuntu",
-        "files" => [
-          %{"name" => "ubuntu.iso", "length" => 100_000_000, "included" => true}
-        ]
-      }
+          {remaining > 0,
+           state
+           |> Map.update(:add_attempts, 1, &(&1 + 1))
+           |> Map.put(:remaining_add_failures, max(0, remaining - 1))}
+        end)
 
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(200, Jason.encode!(body))
+      if should_fail? do
+        send_resp(conn, 503, "warming up")
+      else
+        hash = String.duplicate("a", 40)
+        Agent.update(agent, &Map.put(&1, hash, true))
+
+        body = %{
+          "id" => 1,
+          "info_hash" => hash,
+          "name" => "ubuntu",
+          "files" => [
+            %{"name" => "ubuntu.iso", "length" => 100_000_000, "included" => true}
+          ]
+        }
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(body))
+      end
     end
 
     defp do_call(%{method: "GET", path_info: ["torrents", _id, "stats", "v1"]} = conn, _agent) do
