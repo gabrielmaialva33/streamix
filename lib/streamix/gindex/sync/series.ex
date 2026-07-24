@@ -41,15 +41,15 @@ defmodule Streamix.Gindex.Sync.Series do
   def upsert_batch(%Provider{} = provider, series_list) when is_list(series_list) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    total_episodes =
-      Enum.reduce(series_list, 0, fn series_data, acc ->
+    {total_series, total_episodes} =
+      Enum.reduce(series_list, {0, 0}, fn series_data, {series_acc, episode_acc} ->
         case Persistence.upsert_series_content(provider, series_data, now) do
-          {:ok, episode_count} -> acc + episode_count
-          {:error, _} -> acc
+          {:ok, episode_count} -> {series_acc + 1, episode_acc + episode_count}
+          {:error, _} -> {series_acc, episode_acc}
         end
       end)
 
-    {:ok, %{series_count: length(series_list), episodes_count: total_episodes}}
+    {:ok, %{series_count: total_series, episodes_count: total_episodes}}
   rescue
     e ->
       Logger.error("[GIndex Sync] Failed to upsert series batch: #{inspect(e)}")
