@@ -3,115 +3,270 @@ name: CI/CD
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  ELIXIR_VERSION: 1.18.4
+  OTP_VERSION: 27.3.4
+  NODE_VERSION: 20
 
 jobs:
-  build:
-    name: Build & push image
+  backend:
+    name: Backend quality
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: backend-${{ github.ref }}
+      cancel-in-progress: true
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: streamix
+          POSTGRES_PASSWORD: streamix
+          POSTGRES_DB: streamix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U streamix -d streamix_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MIX_ENV: test
+      TEST_DATABASE_URL: ecto://streamix:streamix@localhost:5432/streamix_test
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+          version-type: strict
+
+      - name: Cache dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: deps
+          key: beam-deps-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            beam-deps-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
+
+      - name: Cache compiled application
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: _build/test
+          key: beam-build-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex', 'config/*.exs', 'mix.exs') }}
+          restore-keys: |
+            beam-build-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}-
+
+      - name: Install dependencies
+        run: mix deps.get --only test
+
+      - name: Static analysis and security
+        run: |
+          mix deps.unlock --check-unused
+          mix format --check-formatted
+          mix compile --warnings-as-errors
+          mix credo --strict
+          mix deps.audit
+          mix hex.audit
+
+      - name: Test
+        run: mix test
+
+  frontend:
+    name: Frontend quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: frontend-${{ github.ref }}
+      cancel-in-progress: true
+
+    defaults:
+      run:
+        working-directory: assets
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint -- --error-on-warnings
+
+  build:
+    name: Build candidate image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: image-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write
 
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
       image_digest: ${{ steps.build.outputs.digest }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - uses: docker/login-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest
-
-      - id: build
-        uses: docker/build-push-action@v6
+      - name: Build and push candidate
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
+  promote:
+    name: Promote approved image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [backend, frontend, build]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point latest at approved digest
+        env:
+          IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
+        run: |
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
+            "${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+
   deploy:
     name: Deploy to VPS
-    runs-on: ubuntu-latest
-    needs: build
-    # Only deploy on direct pushes to master. Being explicit here means a
-    # future workflow edit can't accidentally ship a feature branch to prod.
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    # Serialize deploys — if a second push lands mid-rollout we queue it
-    # instead of racing two `docker compose up` against the same host.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, promote]
     concurrency:
       group: deploy-production
       cancel-in-progress: false
-    # Lets the repo tie protection rules / required reviewers to the env
-    # without touching the workflow.
     environment:
       name: production
       url: https://streamix.mahina.cloud
 
     steps:
-      - name: Pull new image & recreate container on VPS
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Deploy approved digest
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          # script_stop makes the remote shell exit on the first failing
-          # command — without it, a failed `pull` still marks the job green.
           script_stop: true
           script: |
             set -euo pipefail
             cd /opt/streamix
 
-            echo "[deploy] sha=${{ needs.build.outputs.image_tag }}"
-            echo "[deploy] pulling image..."
-            docker compose pull streamix
+            image_name="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+            image_digest="${{ needs.build.outputs.image_digest }}"
+            image_ref="${image_name}@${image_digest}"
+            previous_image=$(docker inspect -f '{{.Image}}' streamix 2>/dev/null || true)
 
-            echo "[deploy] recreating container..."
+            if [ -n "$previous_image" ]; then
+              docker tag "$previous_image" "${image_name}:rollback"
+            fi
+
+            echo "[deploy] pulling ${image_ref}"
+            docker pull "$image_ref"
+            docker tag "$image_ref" "${image_name}:latest"
+
+            echo "[deploy] running migrations"
+            if ! docker compose run --rm --no-deps streamix /app/bin/migrate; then
+              if [ -n "$previous_image" ]; then
+                docker tag "$previous_image" "${image_name}:latest"
+              fi
+              exit 1
+            fi
+
+            echo "[deploy] recreating container"
             docker compose up -d --force-recreate --remove-orphans streamix
 
-            echo "[deploy] waiting up to 90s for healthy status..."
+            echo "[deploy] waiting up to 90s for healthy status"
             i=0
             while [ $i -lt 45 ]; do
               status=$(docker inspect -f '{{.State.Health.Status}}' streamix 2>/dev/null || true)
               if [ "$status" = "healthy" ]; then
-                echo "[deploy] OK: streamix healthy"
+                echo "[deploy] OK: streamix healthy at ${image_digest}"
                 docker image prune -f >/dev/null 2>&1 || true
                 exit 0
               fi
               if [ "$status" = "unhealthy" ]; then
-                echo "[deploy] FAIL: streamix unhealthy, recent logs:"
-                docker logs --tail 120 streamix
-                exit 1
+                break
               fi
               i=$((i + 1))
               sleep 2
             done
 
-            echo "[deploy] FAIL: streamix never became healthy, recent logs:"
-            docker logs --tail 200 streamix
+            echo "[deploy] FAIL: rollout unhealthy, recent logs:"
+            docker logs --tail 200 streamix || true
+
+            if [ -n "$previous_image" ]; then
+              echo "[deploy] rolling back to ${previous_image}"
+              docker tag "$previous_image" "${image_name}:latest"
+              docker compose up -d --force-recreate --remove-orphans streamix
+            fi
+
             exit 1
