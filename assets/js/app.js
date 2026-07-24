@@ -70,11 +70,6 @@ const isIosWebKit = () =>
 const isStandalonePwa = () =>
   displayModeQuery?.matches === true || window.navigator.standalone === true;
 
-const isSafariBrowser = () => {
-  const ua = navigator.userAgent || "";
-  return /Safari/i.test(ua) && !/(CriOS|FxiOS|EdgiOS|OPiOS|Chrome|Android)/i.test(ua);
-};
-
 const safeStorage = {
   get(key) {
     try {
