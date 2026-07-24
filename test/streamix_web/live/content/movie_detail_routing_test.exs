@@ -5,6 +5,9 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Repo
+  alias Streamix.Torrent.TorrentStream
+
   # Regression: the browse mount clause used to match provider routes too
   # (its pattern matched any params with "id" and no on_mount ever set the
   # :provider assign), so /providers/:provider_id/... silently mounted with
@@ -103,6 +106,50 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
         "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
 
       assert has_element?(view, ~s|a[href="#{watch_path}"]:not([data-phx-link])|)
+    end
+
+    test "torrent version watch links enter the swarm gate", %{conn: conn} do
+      user = user_fixture()
+
+      provider =
+        global_provider_fixture(%{
+          name: "Torrent Detail Catalog",
+          provider_type: :torrent
+        })
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Torrent Routed Movie",
+          title: "Torrent Routed Movie",
+          plot: "A torrent movie used to pin playback routing.",
+          content_rating: "14",
+          tmdb_id: "torrent-routed-movie"
+        })
+
+      info_hash =
+        System.unique_integer([:positive])
+        |> Integer.to_string(16)
+        |> String.pad_leading(40, "0")
+
+      stream =
+        %TorrentStream{}
+        |> TorrentStream.changeset(%{
+          info_hash: info_hash,
+          magnet_uri: "magnet:?xt=urn:btih:#{info_hash}",
+          source_slug: "test",
+          movie_id: movie.id,
+          quality: "1080p",
+          seeders: 10
+        })
+        |> Repo.insert!()
+
+      conn = log_in_user(conn, user)
+      detail_path = ~p"/providers/#{provider.id}/movies/#{movie.id}"
+      {:ok, view, _html} = live(conn, detail_path)
+      watch_path = "/watch/torrent/#{stream.id}?return_to=#{URI.encode_www_form(detail_path)}"
+
+      assert has_element?(view, ~s|a[href="#{watch_path}"]:not([data-phx-link])|)
+      refute has_element?(view, ~s|a[href="/watch/movie/#{movie.id}"]|)
     end
 
     test "provider route ignores unsafe return paths", ctx do

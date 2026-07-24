@@ -470,7 +470,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
             <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
               <.link
-                href={with_return_to(~p"/watch/movie/#{variant.id}", @current_path)}
+                href={watch_path(variant.provider, variant, @current_path)}
                 class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-hover sm:flex-none"
               >
                 <.icon name="hero-play-solid" class="size-3.5" /> Assistir
