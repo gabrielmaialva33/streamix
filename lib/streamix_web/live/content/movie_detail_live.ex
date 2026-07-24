@@ -95,9 +95,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         # Prewarm the upstream redirect chain in the background. The
         # user is on the detail page now and will likely click play in
         # a few seconds — by then the resolution is cached.
-        if connected?(socket) do
-          PlayerHelpers.prewarm_upstream_redirect("movie", movie, user_id)
-        end
+        maybe_prewarm_upstream_redirect(socket, provider, movie, user_id)
 
         current_path =
           mode
@@ -512,6 +510,13 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp watch_path(_provider, movie, return_to),
     do: with_return_to(~p"/watch/movie/#{movie.id}", return_to)
+
+  defp maybe_prewarm_upstream_redirect(_socket, %{provider_type: :torrent}, _movie, _user_id),
+    do: :ok
+
+  defp maybe_prewarm_upstream_redirect(socket, _provider, movie, user_id) do
+    if connected?(socket), do: PlayerHelpers.prewarm_upstream_redirect("movie", movie, user_id)
+  end
 
   defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do
     if title != name, do: name
