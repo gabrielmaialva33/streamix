@@ -25,7 +25,10 @@ const WatchPartySync = {
     this.clockOffset = 0; // local - server (ms)
     this.clockOffsetSamples = [];
     this.clockPingId = 0;
-    this.clockPingStart = 0;
+    this.clockPingAttempts = 0;
+    this.clockPings = new Map();
+    this.clockPingTimer = null;
+    this.lastServerCommandTime = 0;
 
     this._waitForPlayer();
 
@@ -45,14 +48,26 @@ const WatchPartySync = {
       }
     };
     window.addEventListener("phx:copy", this._copyHandler);
+
+    this._visibilityHandler = () => {
+      if (document.visibilityState === "visible") {
+        this._estimateClockOffset();
+        this.pushEvent("wp_request_sync", {});
+      }
+    };
+    document.addEventListener("visibilitychange", this._visibilityHandler);
   },
 
   destroyed() {
     if (this.beaconInterval) clearInterval(this.beaconInterval);
     if (this.rateResetTimer) clearTimeout(this.rateResetTimer);
     if (this.syncLockTimeout) clearTimeout(this.syncLockTimeout);
+    if (this.clockPingTimer) clearTimeout(this.clockPingTimer);
+    for (const ping of this.clockPings.values()) clearTimeout(ping.timeout);
+    this.clockPings.clear();
     this._unwrapPlayerEvents();
     window.removeEventListener("phx:copy", this._copyHandler);
+    document.removeEventListener("visibilitychange", this._visibilityHandler);
   },
 
   _waitForPlayer(attempts = 0) {
@@ -94,51 +109,71 @@ const WatchPartySync = {
   _estimateClockOffset() {
     // Send 5 pings, take median RTT for offset
     this.clockOffsetSamples = [];
+    this.clockPingAttempts = 0;
+    for (const ping of this.clockPings.values()) clearTimeout(ping.timeout);
+    this.clockPings.clear();
+    if (this.clockPingTimer) clearTimeout(this.clockPingTimer);
     this._sendClockPing();
   },
 
   _sendClockPing() {
-    if (this.clockOffsetSamples.length >= 5) {
+    if (this.clockPingAttempts >= 5) {
       this._computeClockOffset();
       return;
     }
+    this.clockPingAttempts++;
     this.clockPingId++;
-    this.clockPingStart = Date.now();
-    this.pushEvent("wp_clock_ping", {
-      id: this.clockPingId,
-      client_time: this.clockPingStart,
-    });
-    // If no pong in 2s, skip this sample
-    setTimeout(() => {
-      if (this.clockOffsetSamples.length < this.clockPingId) {
-        this._sendClockPing();
-      }
+    const id = this.clockPingId;
+    const startedAt = Date.now();
+    const timeout = setTimeout(() => {
+      this.clockPings.delete(id);
+      this._scheduleClockPing();
     }, 2000);
+    this.clockPings.set(id, { startedAt, timeout });
+
+    this.pushEvent("wp_clock_ping", {
+      id,
+      client_time: startedAt,
+    });
   },
 
   _handleClockPong(data) {
+    const ping = this.clockPings.get(data.id);
+    if (!ping) return;
+
+    clearTimeout(ping.timeout);
+    this.clockPings.delete(data.id);
+
     const now = Date.now();
-    const rtt = now - this.clockPingStart;
+    const rtt = now - ping.startedAt;
     const serverTime = data.server_time;
     // Offset = (client_send + client_receive) / 2 - server_time
-    const offset = (this.clockPingStart + now) / 2 - serverTime;
+    const offset = (ping.startedAt + now) / 2 - serverTime;
 
     if (rtt < 1000) {
       // Only use samples with reasonable RTT
       this.clockOffsetSamples.push({ offset, rtt });
     }
 
-    // Send next ping after short delay
-    setTimeout(() => this._sendClockPing(), 200);
+    this._scheduleClockPing();
+  },
+
+  _scheduleClockPing() {
+    if (this.clockPingTimer) clearTimeout(this.clockPingTimer);
+    this.clockPingTimer = setTimeout(() => this._sendClockPing(), 200);
   },
 
   _computeClockOffset() {
     if (this.clockOffsetSamples.length === 0) return;
 
-    // Sort by RTT, take median offset (lowest RTT = most accurate)
-    const sorted = [...this.clockOffsetSamples].sort((a, b) => a.rtt - b.rtt);
-    // Use the sample with lowest RTT (most accurate)
-    this.clockOffset = sorted[0].offset;
+    // Discard slow samples, then use the median offset so one lucky but
+    // asymmetric request cannot pull every viewer out of sync.
+    const offsets = [...this.clockOffsetSamples]
+      .sort((a, b) => a.rtt - b.rtt)
+      .slice(0, 3)
+      .map((sample) => sample.offset)
+      .sort((a, b) => a - b);
+    this.clockOffset = offsets[Math.floor(offsets.length / 2)];
 
     // clock synced
   },
@@ -215,6 +250,9 @@ const WatchPartySync = {
 
     // Host ignores sync commands (they are the source of truth)
     if (this.isHost) return;
+
+    if (cmd.server_time && cmd.server_time <= this.lastServerCommandTime) return;
+    if (cmd.server_time) this.lastServerCommandTime = cmd.server_time;
 
     // Don't apply corrections while buffering
     if (this.isBuffering && cmd.type === "sync") return;
