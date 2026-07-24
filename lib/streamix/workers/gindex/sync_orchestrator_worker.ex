@@ -27,7 +27,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
 
   use Oban.Worker,
     queue: :gindex_dispatch,
-    max_attempts: 20,
+    max_attempts: 120,
     priority: 1,
     # One orchestrator per workflow is plenty. `keys: [:workflow_id]`
     # in open-source Oban doesn't scope the uniqueness check tightly
@@ -58,7 +58,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
   @poll_interval 30
   # Safety valve: if the orchestrator snoozes 120× (= 1h wall time)
   # something is really stuck, so we finalize anyway and log loudly.
-  @max_attempts 120
+  @max_checks 120
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(30)
@@ -72,14 +72,16 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     siblings = length(in_flight)
     total = Map.get(args, "total_roots", 0)
 
-    if siblings > 0 and attempt < @max_attempts do
+    if siblings > 0 and attempt < @max_checks do
+      poll_interval = poll_interval(in_flight)
+
       Logger.info(
         "[GIndex Orchestrator] workflow=#{workflow_id} waiting " <>
           "(#{siblings}/#{total} in flight: #{format_in_flight(in_flight)}, " <>
-          "attempt #{attempt})"
+          "attempt #{attempt}, next check in #{poll_interval}s)"
       )
 
-      {:snooze, @poll_interval}
+      {:snooze, poll_interval}
     else
       stats = collect_stats(workflow_id, provider_id)
       finalize(provider_id, workflow_id, stats, siblings, attempt)
@@ -99,7 +101,8 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
       select: %{
         state: j.state,
         kind: fragment("?->>'kind'", j.args),
-        path: fragment("?->>'path'", j.args)
+        path: fragment("?->>'path'", j.args),
+        scheduled_at: j.scheduled_at
       }
     )
     |> Repo.all()
@@ -109,6 +112,23 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     Enum.map_join(in_flight, " ", fn %{state: state, kind: kind, path: path} ->
       "#{kind}:#{path}[#{state}]"
     end)
+  end
+
+  defp poll_interval(in_flight) do
+    if Enum.all?(in_flight, &(&1.state == "scheduled")) do
+      now = DateTime.utc_now()
+
+      in_flight
+      |> Enum.map(& &1.scheduled_at)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.min(DateTime, fn -> nil end)
+      |> case do
+        nil -> @poll_interval
+        scheduled_at -> max(@poll_interval, DateTime.diff(scheduled_at, now, :second) + 5)
+      end
+    else
+      @poll_interval
+    end
   end
 
   defp collect_stats(workflow_id, provider_id) do
@@ -152,9 +172,10 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     final_status =
       cond do
         stats.roots_failed == 0 and remaining_siblings == 0 -> "completed"
-        attempt >= @max_attempts -> "failed"
+        stats.roots_failed > 0 -> "failed"
+        attempt >= @max_checks -> "failed"
         remaining_siblings > 0 -> "failed"
-        true -> "completed"
+        true -> "failed"
       end
 
     counts = recount_provider(provider_id)

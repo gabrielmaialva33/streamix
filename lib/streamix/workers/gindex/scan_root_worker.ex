@@ -27,14 +27,17 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     # work when the scheduler is picking from a backlog — ensures a
     # cron-triggered sync isn't starved by other sync-queue traffic.
     priority: 1,
-    # Don't re-enqueue the same root while one is still running or scheduled —
-    # protects against a cron tick landing on top of a still-running dispatch.
+    # Don't re-enqueue the same provider/path while one is still active, even
+    # when a new dispatch has a different workflow_id. Quota-paused roots may
+    # stay scheduled across UTC midnight.
     unique: [
-      period: :timer.hours(1),
-      fields: [:args],
-      states: [:available, :scheduled, :executing]
+      period: :timer.hours(48),
+      fields: [:worker, :args],
+      keys: [:provider_id, :base_url, :path, :kind],
+      states: [:available, :scheduled, :executing, :retryable]
     ]
 
+  alias Streamix.Gindex.QuotaGuard
   alias Streamix.Gindex.Sync
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
@@ -87,6 +90,16 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
           })
 
           :ok
+
+        {:error, {:quota_exhausted, count}} ->
+          delay = QuotaGuard.seconds_until_reset()
+
+          Logger.warning(
+            "[GIndex ScanRoot] quota exhausted at #{count}; pausing provider=#{provider_id} " <>
+              "kind=#{kind} path=#{path} for #{delay}s until the next UTC window"
+          )
+
+          {:snooze, delay}
 
         {:error, reason} = err ->
           Logger.warning(

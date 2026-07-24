@@ -15,6 +15,8 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
   use Oban.Worker, queue: :gindex_dispatch, max_attempts: 3
 
+  import Ecto.Query
+
   alias Streamix.Gindex.SyncPlanner
   alias Streamix.Iptv.GIndexProvider
   alias Streamix.Iptv.Provider
@@ -46,6 +48,21 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   end
 
   defp dispatch(provider) do
+    case active_workflow(provider.id) do
+      nil ->
+        start_workflow(provider)
+
+      workflow_id ->
+        Logger.info(
+          "[GIndex Dispatcher] provider #{provider.id} already has active workflow=" <>
+            "#{workflow_id}; skipping duplicate dispatch"
+        )
+
+        :ok
+    end
+  end
+
+  defp start_workflow(provider) do
     roots = SyncPlanner.roots_for(provider)
     # UUID tag that links every job in this dispatch together — the
     # orchestrator uses it to know which ScanRoot siblings belong to
@@ -105,6 +122,23 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
     end
 
     :ok
+  end
+
+  defp active_workflow(provider_id) do
+    provider_id = Integer.to_string(provider_id)
+
+    from(j in Oban.Job,
+      where:
+        j.worker in [
+          "Streamix.Workers.Gindex.ScanRootWorker",
+          "Streamix.Workers.Gindex.SyncOrchestratorWorker"
+        ],
+      where: j.state in ~w(available scheduled executing retryable),
+      where: fragment("?->>'provider_id' = ?", j.args, ^provider_id),
+      select: fragment("?->>'workflow_id'", j.args),
+      limit: 1
+    )
+    |> Repo.one()
   end
 
   defp mark_status(provider, status) do
