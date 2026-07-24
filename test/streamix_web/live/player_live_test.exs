@@ -250,6 +250,35 @@ defmodule StreamixWeb.PlayerLiveTest do
                render_hook(view, "close_player", %{})
     end
 
+    test "adjusts subtitle sync from the player settings menu", %{conn: conn, user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          is_system: false,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{name: "Filme com legenda"})
+
+      {:ok, view, html} = live(conn, ~p"/watch/movie/#{movie.id}")
+
+      assert html =~ ~s(id="subtitle-sync-controls")
+      assert html =~ ~s(id="subtitle-sync-value")
+      assert html =~ "0s"
+
+      render_click(view, "adjust_subtitle_offset", %{"delta" => "500"})
+
+      assert_push_event(view, "subtitle_offset_changed", %{offset_ms: 500})
+      assert Streamix.Accounts.get_user!(user.id).subtitle_offset_ms == 500
+      assert render(view) =~ "+0.5s"
+
+      render_click(view, "reset_subtitle_offset")
+
+      assert_push_event(view, "subtitle_offset_changed", %{offset_ms: 0})
+      assert Streamix.Accounts.get_user!(user.id).subtitle_offset_ms == 0
+    end
+
     test "torrent buffering gate keeps a safe-area-aware close button visible" do
       html =
         render_component(&StreamixWeb.PlayerComponents.torrent_swarm_gate/1,

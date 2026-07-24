@@ -89,24 +89,6 @@ defmodule StreamixWeb.User.SettingsLive do
     update_settings(socket, user, params, "Preferências de legenda atualizadas")
   end
 
-  def handle_event("adjust_subtitle_offset", %{"delta" => delta}, socket) do
-    user = socket.assigns.current_scope.user
-
-    case Integer.parse(delta) do
-      {delta, ""} ->
-        offset = user.subtitle_offset_ms + delta
-        update_settings(socket, user, %{subtitle_offset_ms: offset}, "Sincronismo atualizado")
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Ajuste de legenda inválido")}
-    end
-  end
-
-  def handle_event("reset_subtitle_offset", _, socket) do
-    user = socket.assigns.current_scope.user
-    update_settings(socket, user, %{subtitle_offset_ms: 0}, "Sincronismo restaurado")
-  end
-
   def render(assigns) do
     ~H"""
     <div class="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
@@ -240,7 +222,7 @@ defmodule StreamixWeb.User.SettingsLive do
           <div class="mb-4">
             <h2 class="text-base font-semibold text-text-primary">Legendas</h2>
             <p class="mt-1 text-sm text-text-secondary">
-              Escolha o idioma automático e corrija legendas adiantadas ou atrasadas.
+              Escolha o idioma e a ativação automática das legendas.
             </p>
           </div>
 
@@ -272,35 +254,6 @@ defmodule StreamixWeb.User.SettingsLive do
             </label>
             <.button type="submit" variant="primary">Salvar legendas</.button>
           </.form>
-
-          <div class="mt-5 border-t border-border pt-4">
-            <p class="text-sm font-medium text-text-primary">
-              Sincronismo: {format_subtitle_offset(@current_scope.user.subtitle_offset_ms)}
-            </p>
-            <p class="mt-1 text-xs text-text-secondary">
-              Valor positivo atrasa a legenda; negativo adianta.
-            </p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button
-                :for={
-                  {label, delta} <- [{"-1s", -1000}, {"-0,5s", -500}, {"+0,5s", 500}, {"+1s", 1000}]
-                }
-                type="button"
-                phx-click="adjust_subtitle_offset"
-                phx-value-delta={delta}
-                class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-text-primary transition-colors hover:bg-surface-hover"
-              >
-                {label}
-              </button>
-              <button
-                type="button"
-                phx-click="reset_subtitle_offset"
-                class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover"
-              >
-                Zerar
-              </button>
-            </div>
-          </div>
         </section>
 
         <section
@@ -361,13 +314,5 @@ defmodule StreamixWeb.User.SettingsLive do
          |> assign(settings_form: to_form(changeset, as: "user"))
          |> put_flash(:error, "Não foi possível salvar as preferências")}
     end
-  end
-
-  defp format_subtitle_offset(0), do: "0s"
-
-  defp format_subtitle_offset(offset_ms) do
-    seconds = offset_ms / 1_000
-    sign = if seconds > 0, do: "+", else: ""
-    "#{sign}#{:erlang.float_to_binary(seconds, decimals: 1)}s"
   end
 end

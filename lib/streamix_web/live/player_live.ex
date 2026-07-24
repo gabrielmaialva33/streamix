@@ -20,7 +20,7 @@ defmodule StreamixWeb.PlayerLive do
 
   require Logger
 
-  alias Streamix.{Access, Billing}
+  alias Streamix.{Access, Accounts, Billing}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
@@ -219,6 +219,21 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, push_event(socket, "set_subtitle_track", %{track: track})}
   end
 
+  def handle_event("adjust_subtitle_offset", %{"delta" => delta}, socket) do
+    case Integer.parse(delta) do
+      {delta, ""} ->
+        user = socket.assigns.current_scope.user
+        update_subtitle_offset(socket, user.subtitle_offset_ms + delta)
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Ajuste de legenda inválido")}
+    end
+  end
+
+  def handle_event("reset_subtitle_offset", _params, socket) do
+    update_subtitle_offset(socket, 0)
+  end
+
   def handle_event("toggle_pip", _, socket) do
     {:noreply, push_event(socket, "toggle_pip", %{})}
   end
@@ -321,6 +336,23 @@ defmodule StreamixWeb.PlayerLive do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp update_subtitle_offset(socket, offset_ms) do
+    user = socket.assigns.current_scope.user
+
+    case Accounts.update_user_settings(user, %{subtitle_offset_ms: offset_ms}) do
+      {:ok, updated_user} ->
+        {:noreply,
+         socket
+         |> assign(current_scope: %{socket.assigns.current_scope | user: updated_user})
+         |> push_event("subtitle_offset_changed", %{
+           offset_ms: updated_user.subtitle_offset_ms
+         })}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Não foi possível ajustar a legenda")}
+    end
+  end
 
   defp handle_loaded_content(socket, type, user_id, content, provider, return_to) do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do

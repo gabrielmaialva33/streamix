@@ -234,7 +234,7 @@ defmodule StreamixWeb.PlayerComponents do
             <%!-- Right --%>
             <div class="flex items-center gap-1 sm:gap-2">
               <.speed_button :if={@content_type not in [:live, :live_channel]} />
-              <.settings_button />
+              <.settings_button subtitle_offset_ms={@subtitle_offset_ms} />
               <.fullscreen_button />
             </div>
           </div>
@@ -553,6 +553,8 @@ defmodule StreamixWeb.PlayerComponents do
     """
   end
 
+  attr :subtitle_offset_ms, :integer, default: 0
+
   def settings_button(assigns) do
     ~H"""
     <div class="relative" id="settings-container">
@@ -569,7 +571,7 @@ defmodule StreamixWeb.PlayerComponents do
       </button>
       <div
         id="settings-menu"
-        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[220px] sm:min-w-[200px] border border-white/10 max-h-[60vh] overflow-y-auto"
+        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[280px] border border-white/10 max-h-[60vh] overflow-y-auto"
         phx-click-away={JS.hide(to: "#settings-menu")}
       >
         <%!-- Quality --%>
@@ -615,6 +617,38 @@ defmodule StreamixWeb.PlayerComponents do
                 <.icon name="hero-check" class="size-4" />
               </span>
             </button>
+          </div>
+          <div id="subtitle-sync-controls" class="border-t border-white/10 px-4 py-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-xs font-semibold uppercase tracking-wider text-white/50">
+                Sincronismo
+              </span>
+              <span id="subtitle-sync-value" class="text-sm font-medium tabular-nums text-white">
+                {format_subtitle_offset(@subtitle_offset_ms)}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-white/45">− adianta · + atrasa</p>
+            <div class="mt-2 grid grid-cols-5 gap-1">
+              <button
+                :for={
+                  {label, delta} <- [{"−1s", -1000}, {"−0,5", -500}, {"+0,5", 500}, {"+1s", 1000}]
+                }
+                type="button"
+                phx-click="adjust_subtitle_offset"
+                phx-value-delta={delta}
+                aria-label={"Ajustar legenda em #{label}"}
+                class="min-h-10 touch-manipulation rounded-md bg-white/5 px-1 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20"
+              >
+                {label}
+              </button>
+              <button
+                type="button"
+                phx-click="reset_subtitle_offset"
+                class="min-h-10 touch-manipulation rounded-md bg-white/5 px-1 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20"
+              >
+                Zerar
+              </button>
+            </div>
           </div>
         </div>
 
@@ -672,6 +706,15 @@ defmodule StreamixWeb.PlayerComponents do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp format_subtitle_offset(0), do: "0s"
+
+  defp format_subtitle_offset(offset_ms) do
+    seconds = offset_ms / 1_000
+    sign = if seconds > 0, do: "+", else: ""
+    precision = if rem(offset_ms, 1_000) == 0, do: 0, else: 1
+    "#{sign}#{:erlang.float_to_binary(seconds, decimals: precision)}s"
+  end
 
   # Token-based URLs (already proxied through /api/stream/proxy?token=) — pass through as-is
   # These never contain credentials and are already ready for the player
