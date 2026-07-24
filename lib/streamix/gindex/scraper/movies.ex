@@ -79,6 +79,13 @@ defmodule Streamix.Gindex.Scraper.Movies do
   end
 
   def scrape_movie_folder(base_url, folder) do
+    case scrape_movie_folder_result(base_url, folder) do
+      {:ok, movie} -> movie
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp scrape_movie_folder_result(base_url, folder) do
     Logger.debug("[GIndex Scraper] Scraping movie folder: #{folder.name}")
 
     folder_meta = Parser.parse_movie_folder(folder.name)
@@ -89,7 +96,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
         |> Enum.filter(fn file -> file.type == :file and Parser.video_file?(file.name) end)
         |> case do
           [] -> find_video_in_subfolders(base_url, folder.path, files)
-          [video | _rest] -> build_movie_data(folder_meta, video, folder.path)
+          [video | _rest] -> {:ok, build_movie_data(folder_meta, video, folder.path)}
         end
 
       {:error, reason} ->
@@ -97,7 +104,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
           "[GIndex Scraper] Failed to list folder #{folder.path}: #{inspect(reason)}"
         )
 
-        nil
+        {:error, reason}
     end
   end
 
@@ -112,20 +119,30 @@ defmodule Streamix.Gindex.Scraper.Movies do
           done: false
         }
 
-      {:error, _reason} ->
-        %{done: true}
+      {:error, reason} ->
+        %{done: false, terminal_error: reason}
     end
+  end
+
+  defp scrape_next_movie(%{terminal_error: reason} = state) do
+    {[{:gindex_error, reason}], %{state | done: true, terminal_error: nil}}
   end
 
   defp scrape_next_movie(%{done: true} = state), do: {:halt, state}
 
   defp scrape_next_movie(%{current_folders: [folder | rest]} = state) do
-    movie = scrape_movie_folder(state.base_url, folder)
+    case scrape_movie_folder_result(state.base_url, folder) do
+      {:ok, nil} ->
+        scrape_next_movie(%{state | current_folders: rest})
 
-    if movie do
-      {[movie], %{state | current_folders: rest}}
-    else
-      scrape_next_movie(%{state | current_folders: rest})
+      {:ok, movie} ->
+        {[movie], %{state | current_folders: rest}}
+
+      {:error, {:quota_exhausted, _} = reason} ->
+        {[{:gindex_error, reason}], %{state | current_folders: [], categories: [], done: true}}
+
+      {:error, _reason} ->
+        scrape_next_movie(%{state | current_folders: rest})
     end
   end
 
@@ -144,6 +161,9 @@ defmodule Streamix.Gindex.Scraper.Movies do
             current_folders: folders
         })
 
+      {:error, {:quota_exhausted, _} = reason} ->
+        {[{:gindex_error, reason}], %{state | categories: [], current_folders: [], done: true}}
+
       {:error, _reason} ->
         scrape_next_movie(%{state | categories: rest_categories})
     end
@@ -154,7 +174,14 @@ defmodule Streamix.Gindex.Scraper.Movies do
   defp find_video_in_subfolders(base_url, parent_path, items) do
     items
     |> Enum.filter(&(&1.type == :folder))
-    |> Enum.find_value(&check_subfolder_for_video(base_url, &1, parent_path))
+    |> Enum.reduce_while({:ok, nil}, fn subfolder, _acc ->
+      case check_subfolder_for_video(base_url, subfolder, parent_path) do
+        {:ok, nil} -> {:cont, {:ok, nil}}
+        {:ok, movie} -> {:halt, {:ok, movie}}
+        {:error, {:quota_exhausted, _}} = error -> {:halt, error}
+        {:error, _reason} -> {:cont, {:ok, nil}}
+      end
+    end)
   end
 
   defp check_subfolder_for_video(base_url, subfolder, parent_path) do
@@ -165,11 +192,13 @@ defmodule Streamix.Gindex.Scraper.Movies do
 
         if video do
           folder_meta = Parser.parse_movie_folder(Path.basename(parent_path))
-          build_movie_data(folder_meta, video, parent_path)
+          {:ok, build_movie_data(folder_meta, video, parent_path)}
+        else
+          {:ok, nil}
         end
 
-      _ ->
-        nil
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

@@ -16,41 +16,79 @@ defmodule Streamix.Gindex.Sync.Movies do
   @batch_size 25
 
   def sync(%Provider{} = provider, base_url, movies_path) do
-    {count, batches, failures} =
+    result =
       base_url
       |> Scraper.scrape_movies(movies_path)
-      |> Stream.chunk_every(@batch_size)
-      |> Enum.reduce({0, 0, 0}, fn batch, {count, batches, failures} ->
-        case upsert_batch(provider, batch) do
-          {:ok, n} -> {count + n, batches + 1, failures}
-          {:error, _} -> {count, batches + 1, failures + 1}
+      |> consume_stream(provider)
+
+    case result do
+      {:error, reason} ->
+        {:error, reason}
+
+      {:ok, count, batches, failures} ->
+        # If more than half the batches failed to upsert, treat the whole
+        # run as a failure so ScanRootWorker retries instead of pinning the
+        # provider to sync_status=completed with a partial catalog.
+        cond do
+          batches == 0 ->
+            Logger.warning("[GIndex Sync] No movie batches produced for #{movies_path}")
+            {:error, :empty_scrape}
+
+          failures * 2 > batches ->
+            Logger.error(
+              "[GIndex Sync] #{failures}/#{batches} movie batches failed for #{movies_path}"
+            )
+
+            {:error, {:batch_failures, failures, batches}}
+
+          true ->
+            {:ok, count}
         end
-      end)
-
-    # If more than half the batches failed to upsert, treat the whole
-    # run as a failure so ScanRootWorker retries instead of pinning the
-    # provider to sync_status=completed with a partial catalog. The old
-    # path swallowed every batch error as `0` and returned {:ok, 0},
-    # which is the same false-success that bit us in series/animes.
-    cond do
-      batches == 0 ->
-        Logger.warning("[GIndex Sync] No movie batches produced for #{movies_path}")
-        {:error, :empty_scrape}
-
-      failures * 2 > batches ->
-        Logger.error(
-          "[GIndex Sync] #{failures}/#{batches} movie batches failed for #{movies_path}"
-        )
-
-        {:error, {:batch_failures, failures, batches}}
-
-      true ->
-        {:ok, count}
     end
   rescue
     e ->
       Logger.error("[GIndex Sync] Error during sync: #{inspect(e)}")
       {:error, e}
+  end
+
+  defp consume_stream(stream, provider) do
+    stream
+    |> Enum.reduce_while({[], 0, 0, 0}, fn
+      {:gindex_error, reason}, _acc ->
+        {:halt, {:error, reason}}
+
+      movie, {batch, count, batches, failures} ->
+        batch = [movie | batch]
+
+        if length(batch) == @batch_size do
+          {count, batches, failures} =
+            persist_batch(provider, Enum.reverse(batch), count, batches, failures)
+
+          {:cont, {[], count, batches, failures}}
+        else
+          {:cont, {batch, count, batches, failures}}
+        end
+    end)
+    |> case do
+      {:error, _reason} = error ->
+        error
+
+      {[], count, batches, failures} ->
+        {:ok, count, batches, failures}
+
+      {batch, count, batches, failures} ->
+        {count, batches, failures} =
+          persist_batch(provider, Enum.reverse(batch), count, batches, failures)
+
+        {:ok, count, batches, failures}
+    end
+  end
+
+  defp persist_batch(provider, batch, count, batches, failures) do
+    case upsert_batch(provider, batch) do
+      {:ok, inserted} -> {count + inserted, batches + 1, failures}
+      {:error, _reason} -> {count, batches + 1, failures + 1}
+    end
   end
 
   def sync_category(%Provider{} = provider, base_url, category_path) do
