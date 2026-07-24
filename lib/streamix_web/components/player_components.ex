@@ -29,6 +29,9 @@ defmodule StreamixWeb.PlayerComponents do
   attr :provider_type, :string, default: nil
   attr :next_episode, :map, default: nil
   attr :expected_duration, :integer, default: 0
+  attr :subtitles_enabled, :boolean, default: true
+  attr :subtitle_language, :string, default: "pt-BR"
+  attr :subtitle_offset_ms, :integer, default: 0
 
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
@@ -96,7 +99,9 @@ defmodule StreamixWeb.PlayerComponents do
       data-media-title={@media_title}
       data-media-subtitle={@media_subtitle}
       data-imdb-id={Map.get(@content, :imdb_id)}
-      data-subtitle-lang="pt-BR"
+      data-subtitles-enabled={to_string(@subtitles_enabled)}
+      data-subtitle-lang={@subtitle_language}
+      data-subtitle-offset-ms={@subtitle_offset_ms}
     >
       <%!-- Loading indicator --%>
       <div
@@ -386,6 +391,9 @@ defmodule StreamixWeb.PlayerComponents do
           >
             Buffering swarm 0/{@peer_target} peers
           </p>
+          <p id="torrent-swarm-detail" class="mt-1 min-h-5 text-xs text-white/50">
+            Preparando o motor torrent.
+          </p>
         </div>
 
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
@@ -395,6 +403,14 @@ defmodule StreamixWeb.PlayerComponents do
             style="width: 0%"
           />
         </div>
+
+        <button
+          id="torrent-swarm-retry"
+          type="button"
+          class="hidden min-h-11 rounded-lg bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/20 active:bg-white/25"
+        >
+          Tentar novamente
+        </button>
       </div>
     </div>
     """

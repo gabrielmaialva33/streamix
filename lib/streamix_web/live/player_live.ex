@@ -25,7 +25,7 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerHelpers
 
   alias Streamix.Iptv
-  alias Streamix.Torrent.StreamSession
+  alias Streamix.Torrent
 
   @torrent_peer_target 30
 
@@ -117,7 +117,17 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
-  def handle_event("player_error", _params, socket) do
+  def handle_event("player_error", params, socket) do
+    :telemetry.execute(
+      [:streamix, :player, :error],
+      %{system_time: System.system_time()},
+      %{
+        stage: params["stage"] || params["error_name"] || "unknown",
+        content_type: socket.assigns[:content_type],
+        engine: params["engine"] || "unknown"
+      }
+    )
+
     {:noreply, socket}
   end
 
@@ -222,6 +232,12 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, maybe_start_torrent_player(socket)}
   end
 
+  def handle_event("torrent_swarm_retry", _params, socket) do
+    Torrent.retry(socket.assigns.torrent_info_hash)
+    start_torrent_session_task(socket, socket.assigns.content)
+    {:noreply, assign(socket, torrent_failure_reason: nil)}
+  end
+
   # Events from JS that we don't need to handle but must acknowledge
   def handle_event("quality_switched", _params, socket), do: {:noreply, socket}
   def handle_event("playback_rate_changed", _params, socket), do: {:noreply, socket}
@@ -244,8 +260,8 @@ defmodule StreamixWeb.PlayerLive do
   def handle_info({:torrent_session_ready, {:error, reason}}, socket) do
     {:noreply,
      socket
-     |> put_flash(:error, "Swarm indisponível: #{inspect(reason)}")
-     |> push_navigate(to: get_back_path(socket))}
+     |> assign(torrent_failure_reason: reason)
+     |> push_event("torrent_swarm_failed", %{reason: inspect(reason)})}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -261,7 +277,7 @@ defmodule StreamixWeb.PlayerLive do
     end
 
     if Map.has_key?(socket.assigns, :torrent_info_hash) do
-      StreamSession.leave(socket.assigns.torrent_info_hash, self())
+      Torrent.leave(socket.assigns.torrent_info_hash, self())
     end
 
     :ok
@@ -287,6 +303,9 @@ defmodule StreamixWeb.PlayerLive do
         show_controls={true}
         next_episode={@next_episode}
         expected_duration={Map.get(@content, :duration_secs, 0) || 0}
+        subtitles_enabled={@current_scope.user.subtitles_enabled}
+        subtitle_language={@current_scope.user.subtitle_language}
+        subtitle_offset_ms={@current_scope.user.subtitle_offset_ms}
       />
       <.torrent_swarm_gate
         :if={@player_state == :torrent_buffering}
@@ -456,9 +475,8 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(playback_session: playback_session)
       |> assign(return_to: return_to)
       |> assign(torrent_info_hash: info_hash)
-      |> assign(
-        torrent_status_url: "#{StreamixWeb.Endpoint.url()}/api/stream/torrent/#{info_hash}/status"
-      )
+      |> assign(torrent_failure_reason: nil)
+      |> assign(torrent_status_url: ~p"/api/stream/torrent/#{info_hash}/status")
       |> assign(torrent_peer_target: @torrent_peer_target)
 
     {:ok, socket}
@@ -561,10 +579,10 @@ defmodule StreamixWeb.PlayerLive do
       stream = content.torrent_stream
 
       # Task.Supervisor.start_child instead of bare Task.start so a crash
-      # in StreamSession.start_or_join surfaces in the supervisor tree
+      # in Torrent.start_or_join surfaces in the supervisor tree
       # (and shows up in observers) rather than vanishing silently.
       Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
-        result = StreamSession.start_or_join(stream.info_hash, stream.magnet_uri, live_view_pid)
+        result = Torrent.start_or_join(stream.info_hash, stream.magnet_uri, live_view_pid)
         send(live_view_pid, {:torrent_session_ready, result})
       end)
     end
@@ -587,11 +605,11 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp torrent_stream_url(info_hash, nil) do
-    "#{StreamixWeb.Endpoint.url()}/api/stream/torrent/#{info_hash}"
+    "/api/stream/torrent/#{info_hash}"
   end
 
   defp torrent_stream_url(info_hash, file_idx) do
-    "#{StreamixWeb.Endpoint.url()}/api/stream/torrent/#{info_hash}/#{file_idx}"
+    "/api/stream/torrent/#{info_hash}/#{file_idx}"
   end
 
   defp progress_ref("torrent", %{movie_id: movie_id}) when is_integer(movie_id),
