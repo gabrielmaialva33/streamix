@@ -88,31 +88,62 @@ defmodule Streamix.Gindex.Sync.Persistence do
   end
 
   defp upsert_episodes(season, episodes_data, provider_id, now) do
-    existing_ci_map = existing_episode_catalog_items(season.id)
-    episode_ids = Enum.map(episodes_data, & &1.episode_id)
-    new_eids = Enum.reject(episode_ids, &Map.has_key?(existing_ci_map, &1))
-    new_ci_ids = Helpers.pre_create_catalog_items(length(new_eids), "episode", provider_id, now)
-    ci_map = Map.merge(existing_ci_map, Enum.zip(new_eids, new_ci_ids) |> Map.new())
+    episodes_data = Enum.uniq_by(episodes_data, & &1.episode_num)
+    existing = existing_episode_catalog_items(season.id)
+
+    new_episodes =
+      Enum.reject(episodes_data, fn episode ->
+        Map.has_key?(existing.by_id, episode.episode_id) or
+          Map.has_key?(existing.by_num, episode.episode_num)
+      end)
+
+    new_ci_ids =
+      Helpers.pre_create_catalog_items(length(new_episodes), "episode", provider_id, now)
+
+    new_ci_map =
+      new_episodes
+      |> Enum.map(&episode_key/1)
+      |> Enum.zip(new_ci_ids)
+      |> Map.new()
 
     entries =
       Enum.map(episodes_data, fn episode ->
-        Normalizers.Episode.attrs(episode, season, ci_map[episode.episode_id], now)
+        catalog_item_id =
+          existing.by_id[episode.episode_id] ||
+            existing.by_num[episode.episode_num] ||
+            new_ci_map[episode_key(episode)]
+
+        Normalizers.Episode.attrs(episode, season, catalog_item_id, now)
       end)
 
     conflict_opts = [
-      on_conflict: {:replace, [:title, :name, :container_extension, :gindex_path, :updated_at]},
-      conflict_target: [:season_id, :episode_id]
+      on_conflict:
+        {:replace, [:episode_id, :title, :name, :container_extension, :gindex_path, :updated_at]},
+      conflict_target: [:season_id, :episode_num]
     ]
 
-    {count, _} = Repo.insert_all(Episode, entries, conflict_opts)
-    count
+    case entries do
+      [] ->
+        0
+
+      _ ->
+        {count, _} = Repo.insert_all(Episode, entries, conflict_opts)
+        count
+    end
   end
 
   defp existing_episode_catalog_items(season_id) do
-    Episode
-    |> where(season_id: ^season_id)
-    |> select([e], {e.episode_id, e.catalog_item_id})
-    |> Repo.all()
-    |> Map.new()
+    rows =
+      Episode
+      |> where(season_id: ^season_id)
+      |> select([e], {e.episode_id, e.episode_num, e.catalog_item_id})
+      |> Repo.all()
+
+    %{
+      by_id: Map.new(rows, fn {episode_id, _episode_num, ci_id} -> {episode_id, ci_id} end),
+      by_num: Map.new(rows, fn {_episode_id, episode_num, ci_id} -> {episode_num, ci_id} end)
+    }
   end
+
+  defp episode_key(episode), do: {episode.episode_id, episode.episode_num}
 end
