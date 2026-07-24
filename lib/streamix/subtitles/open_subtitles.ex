@@ -34,10 +34,8 @@ defmodule Streamix.Subtitles.OpenSubtitles do
     end
   end
 
-  # OpenSubtitles wants the numeric imdb id (no "tt" prefix).
   defp search_best_file(imdb_id, lang) do
-    numeric = String.replace_leading(imdb_id, "tt", "")
-    query = URI.encode_query(%{"imdb_id" => numeric, "languages" => normalize_lang(lang)})
+    query = URI.encode_query(%{"imdb_id" => imdb_id, "languages" => normalize_lang(lang)})
 
     case req(:get, "/subtitles?" <> query) do
       {:ok, %{status: 200, body: %{"data" => data}}} when is_list(data) and data != [] ->
