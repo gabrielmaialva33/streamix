@@ -201,6 +201,9 @@ jobs:
           mix deps.get --only test
           npm --prefix assets ci --no-audit --no-fund
 
+      - name: Build frontend assets
+        run: mix assets.build
+
       - name: Install Chromium and Firefox
         run: npx --prefix assets playwright install chromium firefox --with-deps
 
