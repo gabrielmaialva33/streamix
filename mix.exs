@@ -61,7 +61,7 @@ defmodule Streamix.MixProject do
        compile: false,
        depth: 1},
       {:swoosh, "~> 1.16"},
-      {:req, "~> 0.5"},
+      {:req, "~> 0.6"},
       {:floki, "~> 0.36"},
       {:redix, "~> 1.5"},
       {:oban, "~> 2.18"},
