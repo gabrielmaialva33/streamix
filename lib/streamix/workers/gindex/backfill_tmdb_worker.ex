@@ -161,7 +161,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
         :hit
 
       {:miss, reason} ->
-        {:tomato_miss, reasons ++ ["tomato:#{reason}"]}
+        {:tomato_miss, reasons ++ ["tomato:#{format_miss_reason(reason)}"]}
     end
   end
 
@@ -180,7 +180,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
         :hit
 
       {:miss, reason} ->
-        {:anilist_miss, reasons ++ ["anilist:#{reason}"]}
+        {:anilist_miss, reasons ++ ["anilist:#{format_miss_reason(reason)}"]}
     end
   end
 
@@ -192,7 +192,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
         :hit
 
       {:miss, reason} ->
-        {:tmdb_miss, reasons ++ ["tmdb:#{reason}"]}
+        {:tmdb_miss, reasons ++ ["tmdb:#{format_miss_reason(reason)}"]}
     end
   end
 
@@ -209,11 +209,16 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   defp mark_miss(schema, id, reason) do
     update_row(schema, id, %{
       tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
-      tmdb_miss_reason: to_string(reason)
+      tmdb_miss_reason: format_miss_reason(reason)
     })
 
     :miss
   end
+
+  @doc false
+  def format_miss_reason(reason) when is_binary(reason), do: reason
+  def format_miss_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  def format_miss_reason(reason), do: inspect(reason)
 
   defp anime_path?(path) when is_binary(path) do
     String.contains?(String.downcase(path), "anime")
