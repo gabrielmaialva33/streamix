@@ -14,6 +14,7 @@ defmodule Streamix.Application do
     # Configure DNS resolution to avoid stale cache issues in containers
     # The BEAM's default inet resolver can cache DNS indefinitely
     configure_dns_resolver()
+    Streamix.Operations.setup()
 
     children =
       [

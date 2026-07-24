@@ -6,7 +6,7 @@ defmodule Streamix.Gindex do
   and retrieve streaming URLs.
   """
 
-  alias Streamix.Gindex.{Client, Parser, Sync, UrlCache}
+  alias Streamix.Gindex.{Client, EndpointManager, Parser, QuotaGuard, Sync, Telemetry, UrlCache}
 
   # Delegate sync functions
   defdelegate sync_provider(provider), to: Sync
@@ -29,4 +29,17 @@ defmodule Streamix.Gindex do
   # Direct client access for advanced usage
   defdelegate list_folder(base_url, path), to: Client
   defdelegate get_download_url(base_url, file_path), to: Client
+
+  @doc "Operational snapshot consumed by the admin dashboard."
+  def operations_status do
+    %{
+      quota: QuotaGuard.status(),
+      telemetry: Telemetry.summary(),
+      endpoints:
+        EndpointManager.get_status()
+        |> Enum.map(&Map.take(&1, [:name, :priority, :circuit_state, :error_count]))
+    }
+  rescue
+    _ -> %{quota: %{count: 0, limit: 0, percent: 0}, telemetry: %{}, endpoints: []}
+  end
 end

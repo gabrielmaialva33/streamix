@@ -71,5 +71,25 @@ defmodule Streamix.Accounts.AdminTest do
 
       assert updated.show_adult_content == true
     end
+
+    test "validates subtitle preferences" do
+      user = user_fixture()
+
+      assert {:ok, updated} =
+               Accounts.update_user_settings_admin(user, %{
+                 subtitles_enabled: false,
+                 subtitle_language: "es",
+                 subtitle_offset_ms: -500
+               })
+
+      refute updated.subtitles_enabled
+      assert updated.subtitle_language == "es"
+      assert updated.subtitle_offset_ms == -500
+
+      assert {:error, changeset} =
+               Accounts.update_user_settings_admin(user, %{subtitle_offset_ms: 700_000})
+
+      assert "must be less than or equal to 600000" in errors_on(changeset).subtitle_offset_ms
+    end
   end
 end

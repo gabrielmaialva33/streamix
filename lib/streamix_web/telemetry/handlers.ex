@@ -41,6 +41,8 @@ defmodule StreamixWeb.Telemetry.Handlers do
       [:streamix, :gindex, :scan_root, :meta_write_failed],
       # Stream token audit
       [:streamix, :stream_token, :bypass_used],
+      [:streamix, :torrent, :session, :state],
+      [:streamix, :player, :error],
       # AI recommendations
       [:streamix, :recommendations, :search_failed],
       # Audit / security
@@ -110,6 +112,26 @@ defmodule StreamixWeb.Telemetry.Handlers do
     # Already logged in resolver.ex — this handler exists so a future
     # dashboard / counter aggregates without changing emission.
     :ok
+  end
+
+  def handle_event([:streamix, :torrent, :session, :state], _, meta, _) do
+    Streamix.Operations.record_event(:torrent_state, meta[:stage])
+
+    if meta[:stage] in [:degraded, :failed] do
+      Logger.warning(
+        "[Torrent] state=#{meta[:stage]} attempts=#{meta[:attempts]} " <>
+          "failure=#{meta[:failure_code]}"
+      )
+    end
+  end
+
+  def handle_event([:streamix, :player, :error], _, meta, _) do
+    Streamix.Operations.record_event(:playback_failure, meta[:stage])
+
+    Logger.warning(
+      "[Player] failure stage=#{meta[:stage]} content_type=#{meta[:content_type]} " <>
+        "engine=#{meta[:engine]}"
+    )
   end
 
   def handle_event([:streamix, :recommendations, :search_failed], _, meta, _) do

@@ -119,6 +119,14 @@ defmodule StreamixWeb.Telemetry do
       counter("streamix.sync.api_call.count",
         tags: [:action, :status],
         description: "Number of Xtream API calls"
+      ),
+      counter("streamix.torrent.session.state.count",
+        tags: [:stage, :failure_code],
+        description: "Torrent session lifecycle transitions"
+      ),
+      counter("streamix.player.error.count",
+        tags: [:stage, :content_type, :engine],
+        description: "Playback failures by stage and engine"
       )
     ]
   end
