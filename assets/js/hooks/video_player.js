@@ -441,6 +441,9 @@ const VideoPlayer = {
     // Track state
     this.audioTracks = [];
     this.subtitleTracks = [];
+    this._nativeExternalSubtitleTrack = null;
+    this._externalSubtitleBlobUrl = null;
+    this._externalSubtitleLoadedFor = null;
     this.selectedAudioTrack = 0;
     this.selectedSubtitleTrack = -1;
 
@@ -839,6 +842,9 @@ const VideoPlayer = {
     if (this.streamLoader) {
       this.streamLoader.setSubtitleTrack(trackIndex);
     }
+    if (this._nativeExternalSubtitleTrack?.track) {
+      this._nativeExternalSubtitleTrack.track.mode = trackIndex === -1 ? "disabled" : "showing";
+    }
     this.selectedSubtitleTrack = trackIndex;
 
     // Save preference
@@ -848,7 +854,10 @@ const VideoPlayer = {
     this.pushEventSafe("subtitle_track_changed", {
       track: trackIndex,
       label:
-        track?.name || track?.lang || (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
+        track?.label ||
+        track?.name ||
+        track?.lang ||
+        (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
     });
   },
 
@@ -1827,6 +1836,10 @@ const VideoPlayer = {
       this.avPlayer.destroy();
       this.avPlayer = null;
     }
+    if (this._nativeExternalSubtitleTrack) {
+      this._nativeExternalSubtitleTrack.remove();
+      this._nativeExternalSubtitleTrack = null;
+    }
     if (this._externalSubtitleBlobUrl) {
       URL.revokeObjectURL(this._externalSubtitleBlobUrl);
       this._externalSubtitleBlobUrl = null;
@@ -2793,6 +2806,10 @@ const VideoPlayer = {
         if (!this.isCurrentPlaybackSession(sessionId)) return;
         this.traceNativeLifecycle("native_metadata_loaded", sessionId);
         this.playerUI.hideLoading();
+
+        if (this.sourceType === "torrent") {
+          this.loadNativeExternalSubtitleIfAvailable(sessionId);
+        }
       },
       { once: true },
     );
@@ -2945,6 +2962,11 @@ const VideoPlayer = {
 
       this.video.classList.add("hidden");
       this.resetNativeMediaElement();
+      if (this._nativeExternalSubtitleTrack) {
+        this._nativeExternalSubtitleTrack.remove();
+        this._nativeExternalSubtitleTrack = null;
+      }
+      this.subtitleTracks = [];
 
       if (this.avPlayer) {
         const oldAvPlayer = this.avPlayer;
@@ -3153,24 +3175,14 @@ const VideoPlayer = {
   async loadExternalSubtitleIfAvailable(sessionId = this.playbackSessionId) {
     if (!this.imdbId || !this.avPlayer) return;
     if (typeof this.avPlayer.loadExternalSubtitle !== "function") return;
-    // Once per session — `detectAVPlayerTracks` calls back into here, and
-    // we re-probe after injecting, which would otherwise recurse.
-    if (this._externalSubtitleLoadedFor === sessionId) return;
-    this._externalSubtitleLoadedFor = sessionId;
+    if (this.hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return;
 
     try {
-      const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?lang=${encodeURIComponent(this.subtitleLang)}`;
-      const res = await fetch(url, { headers: { accept: "text/vtt" } });
-      if (res.status !== 200) return; // 204 = no subtitle available
-      if (!this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
-
-      const vtt = await res.text();
-      if (!vtt || !this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
-
-      this._externalSubtitleBlobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+      const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId);
+      if (!subtitleUrl || !this.avPlayer) return;
 
       await this.avPlayer.loadExternalSubtitle({
-        source: this._externalSubtitleBlobUrl,
+        source: subtitleUrl,
         lang: this.subtitleLang,
         title: "Português (auto)",
       });
@@ -3184,6 +3196,105 @@ const VideoPlayer = {
     } catch (e) {
       log.warn("[VideoPlayer] External subtitle load failed:", e);
     }
+  },
+
+  /**
+   * Attach the external WebVTT to the native HTML5 player used by
+   * ordinary torrent MP4s and expose it through Streamix's subtitle menu.
+   */
+  async loadNativeExternalSubtitleIfAvailable(sessionId = this.playbackSessionId) {
+    if (!this.imdbId || !this.video || this.sourceType !== "torrent") return;
+
+    const nativeTracks = Array.from(this.video.textTracks || []).map((track) => ({
+      label: track.label,
+      language: track.language,
+    }));
+    if (this.hasSubtitleInLanguage(nativeTracks, this.subtitleLang)) return;
+
+    try {
+      const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId);
+      if (!subtitleUrl || !this.video) return;
+
+      const trackElement = document.createElement("track");
+      trackElement.kind = "subtitles";
+      trackElement.label = "Português (auto)";
+      trackElement.srclang = this.subtitleLang;
+      trackElement.src = subtitleUrl;
+      this.video.appendChild(trackElement);
+      this._nativeExternalSubtitleTrack = trackElement;
+
+      this.subtitleTracks = [
+        {
+          index: 0,
+          id: 0,
+          label: trackElement.label,
+          language: trackElement.srclang,
+        },
+      ];
+
+      const preferredTrack = this._preferredSubtitleTrack === 0 ? 0 : -1;
+      this.setSubtitleTrack(preferredTrack);
+      this.playerUI.updateSubtitleOptions(this.subtitleTracks, preferredTrack, (track) =>
+        this.setSubtitleTrack(track),
+      );
+
+      this.pushEventSafe("subtitle_tracks_available", {
+        tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
+        current: preferredTrack,
+      });
+
+      log.debug("[VideoPlayer] Native external subtitle loaded for", this.imdbId);
+    } catch (e) {
+      log.warn("[VideoPlayer] Native external subtitle load failed:", e);
+    }
+  },
+
+  /**
+   * Fetch one subtitle per playback session and return a Blob URL that
+   * either the native player or AVPlayer can consume without CORS.
+   */
+  async fetchExternalSubtitleUrl(sessionId) {
+    if (this._externalSubtitleLoadedFor === sessionId) return null;
+    this._externalSubtitleLoadedFor = sessionId;
+
+    const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?lang=${encodeURIComponent(this.subtitleLang)}`;
+    const res = await fetch(url, { headers: { accept: "text/vtt" } });
+    if (res.status !== 200) return null; // 204 = no subtitle available
+    if (!this.isCurrentPlaybackSession(sessionId)) return null;
+
+    const vtt = await res.text();
+    if (!vtt || !this.isCurrentPlaybackSession(sessionId)) return null;
+
+    if (this._externalSubtitleBlobUrl) {
+      URL.revokeObjectURL(this._externalSubtitleBlobUrl);
+    }
+    this._externalSubtitleBlobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+    return this._externalSubtitleBlobUrl;
+  },
+
+  /**
+   * Check whether an embedded/existing track already satisfies the requested
+   * language. Providers and media containers commonly use pt, pt-BR or por.
+   */
+  hasSubtitleInLanguage(tracks, wantedLanguage) {
+    if (!Array.isArray(tracks) || tracks.length === 0 || !wantedLanguage) return false;
+
+    const wanted = wantedLanguage.toLowerCase().split("-")[0];
+
+    return tracks.some((track) => {
+      const language = String(track.language || "").toLowerCase();
+      const label = String(track.label || "")
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .toLowerCase();
+
+      if (language === wanted || language.startsWith(`${wanted}-`)) return true;
+      if (wanted === "pt") {
+        return ["por", "pob"].includes(language) || label.includes("portugu");
+      }
+
+      return false;
+    });
   },
 
   /**
