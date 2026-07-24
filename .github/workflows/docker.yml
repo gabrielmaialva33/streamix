@@ -125,6 +125,88 @@ jobs:
       - name: Lint
         run: npm run lint -- --error-on-warnings
 
+  playback-e2e:
+    name: Torrent + subtitle tracer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: playback-e2e-${{ github.ref }}
+      cancel-in-progress: true
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: streamix
+          POSTGRES_PASSWORD: streamix
+          POSTGRES_DB: streamix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U streamix -d streamix_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MIX_ENV: test
+      TEST_DATABASE_URL: ecto://streamix:streamix@localhost:5432/streamix_test
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+          version-type: strict
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - name: Cache BEAM dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build/test
+          key: playback-e2e-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex', 'config/*.exs', 'mix.exs') }}
+          restore-keys: |
+            playback-e2e-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('assets/package-lock.json') }}
+
+      - name: Install dependencies
+        run: |
+          mix deps.get --only test
+          npm --prefix assets ci --no-audit --no-fund
+
+      - name: Install Chromium and Firefox
+        run: npx --prefix assets playwright install chromium firefox --with-deps
+
+      - name: Run deterministic playback tracer
+        run: mix test --include playwright test/streamix_web/e2e/torrent_subtitle_tracer_test.exs
+
   build:
     name: Build candidate image
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
@@ -164,6 +246,8 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -173,7 +257,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [backend, frontend, build]
+    needs: [backend, frontend, playback-e2e, build]
     permissions:
       contents: read
       packages: write
@@ -208,64 +292,15 @@ jobs:
       url: https://streamix.mahina.cloud
 
     steps:
+      - name: Checkout deployment scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Deploy approved digest
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: ./.github/actions/deploy-production
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            set -euo pipefail
-            cd /opt/streamix
-
-            image_name="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-            image_digest="${{ needs.build.outputs.image_digest }}"
-            image_ref="${image_name}@${image_digest}"
-            previous_image=$(docker inspect -f '{{.Image}}' streamix 2>/dev/null || true)
-
-            if [ -n "$previous_image" ]; then
-              docker tag "$previous_image" "${image_name}:rollback"
-            fi
-
-            echo "[deploy] pulling ${image_ref}"
-            docker pull "$image_ref"
-            docker tag "$image_ref" "${image_name}:latest"
-
-            echo "[deploy] running migrations"
-            if ! docker compose run --rm --no-deps streamix /app/bin/migrate; then
-              if [ -n "$previous_image" ]; then
-                docker tag "$previous_image" "${image_name}:latest"
-              fi
-              exit 1
-            fi
-
-            echo "[deploy] recreating container"
-            docker compose up -d --force-recreate --remove-orphans streamix
-
-            echo "[deploy] waiting up to 90s for healthy status"
-            i=0
-            while [ $i -lt 45 ]; do
-              status=$(docker inspect -f '{{.State.Health.Status}}' streamix 2>/dev/null || true)
-              if [ "$status" = "healthy" ]; then
-                echo "[deploy] OK: streamix healthy at ${image_digest}"
-                docker image prune -f >/dev/null 2>&1 || true
-                exit 0
-              fi
-              if [ "$status" = "unhealthy" ]; then
-                break
-              fi
-              i=$((i + 1))
-              sleep 2
-            done
-
-            echo "[deploy] FAIL: rollout unhealthy, recent logs:"
-            docker logs --tail 200 streamix || true
-
-            if [ -n "$previous_image" ]; then
-              echo "[deploy] rolling back to ${previous_image}"
-              docker tag "$previous_image" "${image_name}:latest"
-              docker compose up -d --force-recreate --remove-orphans streamix
-            fi
-
-            exit 1
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          image-digest: ${{ needs.build.outputs.image_digest }}

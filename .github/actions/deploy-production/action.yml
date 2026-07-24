@@ -1,0 +1,73 @@
+name: Deploy production digest
+description: Preflight SSH and deploy one immutable GHCR digest to production.
+
+inputs:
+  host:
+    description: SSH host
+    required: true
+  username:
+    description: SSH user
+    required: true
+  private-key:
+    description: SSH private key
+    required: true
+  port:
+    description: SSH port
+    required: false
+    default: "22"
+  image-name:
+    description: Fully qualified image name without a tag
+    required: true
+  image-digest:
+    description: Immutable sha256 image digest
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Validate approved digest
+      shell: bash
+      env:
+        IMAGE_DIGEST: ${{ inputs.image-digest }}
+      run: |
+        if [[ ! "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          echo "::error::image-digest must be a sha256 digest"
+          exit 2
+        fi
+
+    - name: Wait for SSH
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.host }}
+        SSH_PORT: ${{ inputs.port }}
+      run: |
+        for attempt in 1 2 3; do
+          if timeout 5 bash -c "exec 3<>/dev/tcp/${SSH_HOST}/${SSH_PORT}"; then
+            echo "[deploy] SSH reachable on attempt ${attempt}"
+            exit 0
+          fi
+
+          if [ "${attempt}" -lt 3 ]; then
+            backoff=$((attempt * 5))
+            echo "[deploy] SSH unavailable, retrying in ${backoff}s"
+            sleep "${backoff}"
+          fi
+        done
+
+        echo "::error::SSH remained unreachable after 3 attempts"
+        exit 1
+
+    - name: Deploy approved digest
+      uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        IMAGE_DIGEST: ${{ inputs.image-digest }}
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.username }}
+        key: ${{ inputs.private-key }}
+        port: ${{ inputs.port }}
+        timeout: 30s
+        command_timeout: 8m
+        envs: IMAGE_NAME,IMAGE_DIGEST
+        script_path: scripts/deploy-production.sh

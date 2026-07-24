@@ -1,0 +1,42 @@
+name: Deploy production digest
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: Approved GHCR digest (sha256:...)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy:
+    name: Deploy existing image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://streamix.mahina.cloud
+
+    steps:
+      - name: Checkout deployment scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Deploy approved digest
+        uses: ./.github/actions/deploy-production
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          image-digest: ${{ inputs.image_digest }}

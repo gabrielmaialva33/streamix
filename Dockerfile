@@ -8,6 +8,7 @@ ARG OTP_VERSION=27.3.4
 ARG DEBIAN_VERSION=bookworm-20250520-slim
 ARG NODE_VERSION=20.20.2
 ARG NODE_SHA256=df770b2a6f130ed8627c9782c988fda9669fa23898329a61a871e32f965e007d
+ARG GIT_SHA=unknown
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
@@ -70,6 +71,8 @@ RUN mix release
 # Start a new build stage for the final image
 FROM ${RUNNER_IMAGE}
 
+ARG GIT_SHA=unknown
+
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates curl \
     libvips42 \
@@ -89,6 +92,7 @@ RUN chown nobody /app
 # Set runner ENV
 ENV MIX_ENV="prod"
 ENV PHX_SERVER="true"
+ENV STREAMIX_REVISION="${GIT_SHA}"
 
 # Copy the release from builder
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/streamix ./
