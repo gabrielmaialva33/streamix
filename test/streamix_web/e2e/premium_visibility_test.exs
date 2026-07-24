@@ -21,7 +21,10 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
+  import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
+  import StreamixWeb.ConnCase, only: [log_in_user: 2]
 
+  alias PlaywrightEx.BrowserContext
   alias Streamix.Billing.{Plan, Subscription}
   alias Streamix.Repo
 
@@ -76,17 +79,34 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
     end
   end
 
-  # Hit the protected page first so `user_return_to` is stored in the session;
-  # after login we land directly on /browse/movies, skipping HomeLive (which
-  # uses Task.async_stream and would crash without sandbox in the child tasks).
-  defp login(conn, user) do
-    conn
+  # Premium visibility is the behavior under test. Authenticate through the
+  # same signed session cookie as ConnCase so browser-specific form timing
+  # cannot make this suite flaky.
+  defp login(session, user) do
+    cookie =
+      build_conn()
+      |> log_in_user(user)
+      |> get(~p"/browse/movies")
+      |> Map.fetch!(:resp_cookies)
+      |> Map.fetch!("_streamix_key")
+
+    session
+    |> PhoenixTest.Playwright.unwrap(fn %{context_id: context_id} ->
+      {:ok, _} =
+        BrowserContext.add_cookies(context_id,
+          timeout: 5_000,
+          cookies: [
+            %{
+              "name" => "_streamix_key",
+              "value" => cookie.value,
+              "url" => StreamixWeb.Endpoint.url(),
+              "httpOnly" => true,
+              "sameSite" => "Lax"
+            }
+          ]
+        )
+    end)
     |> visit(~p"/browse/movies")
-    # Wait for LoginLive to connect so phx-change/submit handlers are wired.
-    |> assert_has("body .phx-connected form[action='/login']")
-    |> fill_in("Email", with: user.email)
-    |> fill_in("Senha", with: valid_user_password())
-    |> submit()
     |> assert_has("#movies")
   end
 
