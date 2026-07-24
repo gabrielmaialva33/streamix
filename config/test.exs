@@ -36,6 +36,10 @@ config :streamix, :disable_rate_limit, true
 # the local cache so tests never see another test's entries.
 config :streamix, :disable_local_cache, true
 
+# Qdrant is optional and must never make the test suite depend on a service
+# running on the developer machine or CI runner.
+config :streamix, :qdrant, enabled: false
+
 # The provider health sampler runs in its own process and periodically touches
 # the database. Disable it in tests so SQL sandbox ownership stays per-test.
 config :streamix, :provider_health_monitor_enabled, false

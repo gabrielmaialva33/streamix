@@ -31,10 +31,7 @@ defmodule Streamix.AI.Qdrant do
   Checks if Qdrant is configured and reachable.
   """
   def enabled? do
-    case health_check() do
-      {:ok, _} -> true
-      _ -> false
-    end
+    configured?() and match?({:ok, _}, health_check())
   end
 
   @doc """
@@ -42,7 +39,7 @@ defmodule Streamix.AI.Qdrant do
   Uses the root endpoint which returns server info.
   """
   def health_check do
-    case Req.get("#{base_url()}/", receive_timeout: 5_000) do
+    case req_get("#{base_url()}/", 5_000) do
       {:ok, %Req.Response{status: 200, body: %{"version" => _}}} -> {:ok, :healthy}
       {:ok, %Req.Response{status: 200}} -> {:ok, :healthy}
       {:ok, %Req.Response{status: status}} -> {:error, {:unhealthy, status}}
@@ -383,6 +380,11 @@ defmodule Streamix.AI.Qdrant do
       System.get_env("QDRANT_API_KEY")
   end
 
+  defp configured? do
+    Application.get_env(:streamix, :qdrant, [])
+    |> Keyword.get(:enabled, true)
+  end
+
   defp headers do
     base = [{"Content-Type", "application/json"}]
 
@@ -393,15 +395,41 @@ defmodule Streamix.AI.Qdrant do
     end
   end
 
-  defp req_get(url) do
-    Req.get(url, headers: headers(), receive_timeout: 10_000)
+  defp req_get(url, receive_timeout \\ 10_000)
+
+  defp req_get(url, receive_timeout) do
+    request_if_configured(fn ->
+      Req.get(url,
+        headers: headers(),
+        receive_timeout: receive_timeout,
+        retry: false
+      )
+    end)
   end
 
   defp req_post(url, body) do
-    Req.post(url, body: body, headers: headers(), receive_timeout: 30_000)
+    request_if_configured(fn ->
+      Req.post(url,
+        body: body,
+        headers: headers(),
+        receive_timeout: 30_000,
+        retry: false
+      )
+    end)
   end
 
   defp req_put(url, body) do
-    Req.put(url, body: body, headers: headers(), receive_timeout: 30_000)
+    request_if_configured(fn ->
+      Req.put(url,
+        body: body,
+        headers: headers(),
+        receive_timeout: 30_000,
+        retry: false
+      )
+    end)
+  end
+
+  defp request_if_configured(request) do
+    if configured?(), do: request.(), else: {:error, :disabled}
   end
 end
