@@ -17,6 +17,9 @@ priv/static/cache_manifest.json
 # Generated files
 cover/
 doc/
+test/
+tmp/
+.elixir_ls/
 
 # Test and dev files
 .fetch

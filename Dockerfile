@@ -6,19 +6,26 @@
 ARG ELIXIR_VERSION=1.18.4
 ARG OTP_VERSION=27.3.4
 ARG DEBIAN_VERSION=bookworm-20250520-slim
+ARG NODE_VERSION=20.20.2
+ARG NODE_SHA256=df770b2a6f130ed8627c9782c988fda9669fa23898329a61a871e32f965e007d
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
+ARG NODE_VERSION
+ARG NODE_SHA256
+
 # Install build dependencies including Node.js and libvips headers (vix
 # compiles a NIF against libvips during `mix deps.compile`).
-RUN apt-get update -y && apt-get install -y build-essential git curl \
-    libvips-dev pkg-config \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl git libvips-dev pkg-config xz-utils \
+    && curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    && echo "${NODE_SHA256}  node-v${NODE_VERSION}-linux-x64.tar.xz" | sha256sum -c - \
+    && tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C /usr/local --strip-components=1 \
+    && rm "node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Prepare build dir
 WORKDIR /app
@@ -41,7 +48,7 @@ RUN mix deps.compile
 
 # Install npm dependencies
 COPY assets/package.json assets/package-lock.json assets/
-RUN cd assets && npm ci
+RUN cd assets && npm ci --omit=dev --no-audit --no-fund
 
 # Copy application files
 COPY priv priv
@@ -64,10 +71,10 @@ RUN mix release
 FROM ${RUNNER_IMAGE}
 
 RUN apt-get update -y && \
-    apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl \
+    apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates curl \
     libvips42 \
     ffmpeg \
-    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
