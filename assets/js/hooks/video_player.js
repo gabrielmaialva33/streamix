@@ -42,7 +42,6 @@ import { selectEngine } from "../player/engine_selector";
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
 let detectAudioIssue = null;
-let preloadCommonWasm = null;
 let avPlayerModulePromise = null;
 
 async function loadAVPlayer() {
@@ -55,10 +54,9 @@ async function loadAVPlayer() {
     const module = await avPlayerModulePromise;
     AVPlayerWrapper = module.AVPlayerWrapper;
     detectAudioIssue = module.detectAudioIssue;
-    preloadCommonWasm = module.preloadCommonWasm;
     log.debug("AVPlayer module loaded");
   }
-  return { AVPlayerWrapper, detectAudioIssue, preloadCommonWasm };
+  return { AVPlayerWrapper, detectAudioIssue };
 }
 
 // Lazy load avbridge only when GIndex MKV/HEVC is selected. The
@@ -188,43 +186,6 @@ function scheduleLowPriority(callback, { timeout = 2500 } = {}) {
   return () => window.clearTimeout(id);
 }
 
-// Advanced WASM pre-loading with WebAssembly.compile for faster startup
-let wasmPreloaded = false;
-
-async function preloadAVPlayerWasm(opts = {}) {
-  if (wasmPreloaded) return;
-  wasmPreloaded = true;
-
-  try {
-    // Load module and use advanced pre-loading with WebAssembly.compile.
-    // The narrow default (H.264 + AAC, ~1 MB) covers every IPTV
-    // stream we serve. We only opt-in to the heavier set when the
-    // hint says we'll actually need it.
-    const { preloadCommonWasm } = await loadAVPlayer();
-    if (preloadCommonWasm) {
-      log.debug("Starting advanced WASM pre-compilation...", opts);
-      await preloadCommonWasm(opts);
-      log.debug("WASM pre-compilation complete");
-    }
-  } catch (e) {
-    log.debug("WASM pre-load failed (non-critical):", e.message);
-    // Fallback to simple prefetch
-    const wasmFiles = [
-      "/avplayer/decode/h264-atomic.wasm",
-      "/avplayer/decode/ac3-atomic.wasm",
-      "/avplayer/decode/aac-atomic.wasm",
-    ];
-    wasmFiles.forEach((url) => {
-      const link = document.createElement("link");
-      link.rel = "prefetch";
-      link.href = url;
-      link.as = "fetch";
-      link.crossOrigin = "anonymous";
-      document.head.appendChild(link);
-    });
-  }
-}
-
 /**
  * Enhanced VideoPlayer Hook for Streamix
  *
@@ -258,9 +219,6 @@ const VideoPlayer = {
 
     // Expose hook instance on element for child hooks (like ProgressBar) to access
     this.el.__videoPlayerHook = this;
-
-    // Smart preloading based on Device Codec Memory and content type
-    this.smartPreload();
 
     // Run diagnostics as low-priority work so startup playback and user
     // gestures are not competing with WebCodecs/codec probes on the main thread.
@@ -297,39 +255,6 @@ const VideoPlayer = {
             ? "low-end-device"
             : "normal",
     };
-  },
-
-  /**
-   * Smart preloading based on past experience and content type
-   * Netflix pattern: pre-load resources before they're needed
-   */
-  smartPreload() {
-    const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
-    const recommendedPlayer = getRecommendedPlayer(contentKey);
-    const policy = this.getPlaybackResourcePolicy();
-
-    // Pre-load AVPlayer if:
-    // 1. Device Codec Memory recommends it
-    // 2. Manual preference is set
-    // 3. GIndex/MKV content (likely needs AVPlayer for audio)
-    const shouldPreloadAVPlayer =
-      recommendedPlayer === "avplayer" ||
-      this.preferAVPlayer ||
-      this.sourceType === "gindex" ||
-      this.currentStreamType === "mkv";
-
-    if (policy.avoidSpeculativeWork && !this.preferAVPlayer && recommendedPlayer !== "avplayer") {
-      log.debug("[VideoPlayer] Skipping speculative AVPlayer preload:", policy.reason);
-      return;
-    }
-
-    if (shouldPreloadAVPlayer) {
-      log.debug("[VideoPlayer] Smart preload: AVPlayer WASM");
-      preloadAVPlayerWasm({
-        stream_type: this.currentStreamType,
-        source_type: this.sourceType,
-      });
-    }
   },
 
   /**
@@ -3233,9 +3158,7 @@ const VideoPlayer = {
       const vtt = await res.text();
       if (!vtt || !this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
 
-      this._externalSubtitleBlobUrl = URL.createObjectURL(
-        new Blob([vtt], { type: "text/vtt" }),
-      );
+      this._externalSubtitleBlobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
 
       await this.avPlayer.loadExternalSubtitle({
         source: this._externalSubtitleBlobUrl,

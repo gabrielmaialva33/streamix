@@ -61,6 +61,30 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       assert has_element?(view, ~s(a[href="/browse/movies/#{ctx.movie.id}"]))
     end
 
+    test "play uses a full redirect when entering the player live session", ctx do
+      conn = log_in_user(ctx.conn, ctx.user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")
+
+      view
+      |> element(~s(button[phx-click="play_movie"]))
+      |> render_click()
+
+      assert_redirect(
+        view,
+        "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
+      )
+    end
+
+    test "version watch links do not request cross-session live navigation", ctx do
+      conn = log_in_user(ctx.conn, ctx.user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")
+
+      watch_path =
+        "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
+
+      assert has_element?(view, ~s|a[href="#{watch_path}"]:not([data-phx-link])|)
+    end
+
     test "provider route ignores unsafe return paths", ctx do
       conn = log_in_user(ctx.conn, ctx.user)
 
