@@ -40,9 +40,27 @@ defmodule Streamix.Gindex.QuotaGuard do
   # vs Redis. The next-day key starts fresh anyway, so a stale 36h
   # entry costs at most one extra KB in Redis.
   @key_ttl 36 * 60 * 60
+  @reset_buffer_seconds 5
+
+  # Atomically reserve a slot without incrementing an already exhausted
+  # counter. The old INCR-first flow turned every denied request into a
+  # larger counter, which made retry storms look like real upstream usage.
+  @consume_script """
+  local current = tonumber(redis.call("GET", KEYS[1]) or "0")
+  local limit = tonumber(ARGV[1])
+
+  if current >= limit then
+    return {current, 0}
+  end
+
+  local count = redis.call("INCR", KEYS[1])
+  redis.call("EXPIRE", KEYS[1], tonumber(ARGV[2]))
+  return {count, 1}
+  """
 
   @doc """
-  Increments today's counter by 1 and classifies the result.
+  Atomically reserves one slot in today's counter and classifies the result.
+  Once exhausted, denied calls return the current count without incrementing it.
 
   Returns:
     * `{:ok, :ok, count}`           — under threshold
@@ -53,9 +71,19 @@ defmodule Streamix.Gindex.QuotaGuard do
   def consume do
     key = key_for_today()
 
-    case Redix.pipeline(:streamix_redis, [["INCR", key], ["EXPIRE", key, @key_ttl]]) do
-      {:ok, [count, _]} when is_integer(count) ->
-        classify(count)
+    case Redix.command(:streamix_redis, [
+           "EVAL",
+           @consume_script,
+           "1",
+           key,
+           Integer.to_string(@daily_limit),
+           Integer.to_string(@key_ttl)
+         ]) do
+      {:ok, [count, 1]} when is_integer(count) ->
+        classify_allowed(count)
+
+      {:ok, [count, 0]} when is_integer(count) ->
+        deny(count)
 
       _ ->
         {:ok, :ok, 0}
@@ -103,27 +131,37 @@ defmodule Streamix.Gindex.QuotaGuard do
     end
   end
 
-  defp classify(count) do
+  @doc """
+  Seconds until the next UTC quota window, with a small clock-skew buffer.
+  """
+  @spec seconds_until_reset(DateTime.t()) :: pos_integer()
+  def seconds_until_reset(now \\ DateTime.utc_now()) do
+    next_date = now |> DateTime.to_date() |> Date.add(1)
+    {:ok, next_midnight} = DateTime.new(next_date, ~T[00:00:00], "Etc/UTC")
+
+    max(1, DateTime.diff(next_midnight, now, :second) + @reset_buffer_seconds)
+  end
+
+  defp classify_allowed(count) do
     percent = percent(count)
 
-    cond do
-      count > @daily_limit ->
-        Logger.error(
-          "[GIndex Quota] EXHAUSTED #{count}/#{@daily_limit} (#{percent}%) — denying request"
-        )
+    if percent >= @warning_pct do
+      if rem(count, 100) == 0 do
+        Logger.warning("[GIndex Quota] WARN #{count}/#{@daily_limit} (#{percent}%)")
+      end
 
-        {:error, :exhausted, count}
-
-      percent >= @warning_pct ->
-        if rem(count, 100) == 0 do
-          Logger.warning("[GIndex Quota] WARN #{count}/#{@daily_limit} (#{percent}%)")
-        end
-
-        {:ok, :warning, count}
-
-      true ->
-        {:ok, :ok, count}
+      {:ok, :warning, count}
+    else
+      {:ok, :ok, count}
     end
+  end
+
+  defp deny(count) do
+    Logger.error(
+      "[GIndex Quota] EXHAUSTED #{count}/#{@daily_limit} (#{percent(count)}%) — denying request"
+    )
+
+    {:error, :exhausted, count}
   end
 
   defp percent(count) when is_integer(count) and count >= 0 do
