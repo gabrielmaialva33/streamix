@@ -1307,6 +1307,18 @@ header[data-scrolled="false"] {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* Keep native WebVTT subtitles readable without the browser's dark caption box. */
+#video-element::cue {
+    color: white;
+    background-color: transparent;
+    text-shadow:
+        -1px -1px 2px rgb(0 0 0 / 0.95),
+        1px -1px 2px rgb(0 0 0 / 0.95),
+        -1px 1px 2px rgb(0 0 0 / 0.95),
+        1px 1px 2px rgb(0 0 0 / 0.95),
+        0 2px 4px rgb(0 0 0 / 0.9);
+}
+
 .player-safe-top {
     padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
     padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));

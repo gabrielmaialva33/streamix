@@ -444,6 +444,8 @@ const VideoPlayer = {
     this.audioTracks = [];
     this.subtitleTracks = [];
     this._nativeExternalSubtitleTrack = null;
+    this._nativeExternalSubtitleReloading = false;
+    this._subtitleOffsetReloadTimer = null;
     this._externalSubtitleBlobUrl = null;
     this._externalSubtitleLoadedFor = null;
     this.selectedAudioTrack = 0;
@@ -863,6 +865,78 @@ const VideoPlayer = {
     });
   },
 
+  async setSubtitleOffset(offsetMs) {
+    const parsedOffset = Number(offsetMs);
+    if (!Number.isFinite(parsedOffset)) return;
+
+    this.subtitleOffsetMs = Math.max(-600_000, Math.min(600_000, Math.trunc(parsedOffset)));
+    this.updateSubtitleOffsetLabel();
+
+    if (this.usingAVPlayer && this.avPlayer) {
+      this.applyAVPlayerSubtitleDelay();
+      return;
+    }
+
+    if (!this._nativeExternalSubtitleTrack && !this._nativeExternalSubtitleReloading) return;
+
+    const selectedTrack = this.selectedSubtitleTrack;
+    clearTimeout(this._subtitleOffsetReloadTimer);
+    this._subtitleOffsetReloadTimer = setTimeout(
+      () => this.reloadNativeExternalSubtitle(selectedTrack),
+      150,
+    );
+  },
+
+  async reloadNativeExternalSubtitle(selectedTrack) {
+    this._subtitleOffsetReloadTimer = null;
+
+    if (this._nativeExternalSubtitleReloading) {
+      this._subtitleOffsetReloadTimer = setTimeout(
+        () => this.reloadNativeExternalSubtitle(selectedTrack),
+        150,
+      );
+      return;
+    }
+
+    this._nativeExternalSubtitleReloading = true;
+    this._nativeExternalSubtitleTrack?.remove();
+    this._nativeExternalSubtitleTrack = null;
+    this._externalSubtitleLoadedFor = null;
+
+    if (this._externalSubtitleBlobUrl) {
+      URL.revokeObjectURL(this._externalSubtitleBlobUrl);
+      this._externalSubtitleBlobUrl = null;
+    }
+
+    try {
+      await this.loadNativeExternalSubtitleIfAvailable(this.playbackSessionId, true);
+      if (this._nativeExternalSubtitleTrack) {
+        this.setSubtitleTrack(selectedTrack === -1 ? -1 : 0);
+      } else {
+        this.subtitleTracks = [];
+        this.setSubtitleTrack(-1);
+        this.playerUI.updateSubtitleOptions([], -1, (track) => this.setSubtitleTrack(track));
+      }
+    } finally {
+      this._nativeExternalSubtitleReloading = false;
+    }
+  },
+
+  updateSubtitleOffsetLabel() {
+    const label = this.el.querySelector("#subtitle-sync-value");
+    if (!label) return;
+
+    const seconds = this.subtitleOffsetMs / 1_000;
+    const value = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
+    label.textContent = `${seconds > 0 ? "+" : ""}${value}s`;
+  },
+
+  applyAVPlayerSubtitleDelay() {
+    if (!this.avPlayer || typeof this.avPlayer.setSubtitleDelay !== "function") return;
+
+    this.avPlayer.setSubtitleDelay(this.subtitleOffsetMs);
+  },
+
   updateSubtitleTracks() {
     const hls = this.streamLoader?.getHls();
     if (!hls) return;
@@ -1132,6 +1206,9 @@ const VideoPlayer = {
     this.handleEvent("set_quality", ({ level }) => this.setQuality(level));
     this.handleEvent("set_audio_track", ({ track }) => this.setAudioTrack(track));
     this.handleEvent("set_subtitle_track", ({ track }) => this.setSubtitleTrack(track));
+    this.handleEvent("subtitle_offset_changed", ({ offset_ms: offsetMs }) =>
+      this.setSubtitleOffset(offsetMs),
+    );
     this.handleEvent("toggle_pip", () => this.togglePiP());
     this.handleEvent("set_streaming_mode", ({ mode }) => this.switchStreamingMode(mode));
     this.handleEvent("seek", ({ time }) => this.seekTo(time));
@@ -1842,6 +1919,9 @@ const VideoPlayer = {
       this._nativeExternalSubtitleTrack.remove();
       this._nativeExternalSubtitleTrack = null;
     }
+    clearTimeout(this._subtitleOffsetReloadTimer);
+    this._subtitleOffsetReloadTimer = null;
+    this._nativeExternalSubtitleReloading = false;
     if (this._externalSubtitleBlobUrl) {
       URL.revokeObjectURL(this._externalSubtitleBlobUrl);
       this._externalSubtitleBlobUrl = null;
@@ -3138,6 +3218,7 @@ const VideoPlayer = {
         }));
 
         const currentTrack = subtitleTracks.findIndex((t) => t.selected);
+        this.selectedSubtitleTrack = currentTrack;
 
         this.playerUI.updateSubtitleOptions(this.subtitleTracks, currentTrack, (track) =>
           this.setAVPlayerSubtitleTrack(track),
@@ -3165,6 +3246,7 @@ const VideoPlayer = {
     // Offer an external subtitle when the file ships none in the wanted
     // language (e.g. English-audio torrents). Runs after the embedded
     // probe so embedded tracks always take precedence.
+    this.applyAVPlayerSubtitleDelay();
     await this.loadExternalSubtitleIfAvailable(sessionId);
   },
 
@@ -3180,7 +3262,9 @@ const VideoPlayer = {
     if (this.hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return;
 
     try {
-      const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId);
+      // AVPlayer applies the preference through its native subtitle-delay
+      // control, so fetch an unshifted VTT and avoid applying the offset twice.
+      const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId, 0);
       if (!subtitleUrl || !this.avPlayer) return;
 
       await this.avPlayer.loadExternalSubtitle({
@@ -3204,14 +3288,14 @@ const VideoPlayer = {
    * Attach the external WebVTT to the native HTML5 player used by
    * ordinary torrent MP4s and expose it through Streamix's subtitle menu.
    */
-  async loadNativeExternalSubtitleIfAvailable(sessionId = this.playbackSessionId) {
+  async loadNativeExternalSubtitleIfAvailable(sessionId = this.playbackSessionId, force = false) {
     if (!this.imdbId || !this.video || this.sourceType !== "torrent") return;
 
     const nativeTracks = Array.from(this.video.textTracks || []).map((track) => ({
       label: track.label,
       language: track.language,
     }));
-    if (this.hasSubtitleInLanguage(nativeTracks, this.subtitleLang)) return;
+    if (!force && this.hasSubtitleInLanguage(nativeTracks, this.subtitleLang)) return;
 
     try {
       const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId);
@@ -3255,13 +3339,13 @@ const VideoPlayer = {
    * Fetch one subtitle per playback session and return a Blob URL that
    * either the native player or AVPlayer can consume without CORS.
    */
-  async fetchExternalSubtitleUrl(sessionId) {
+  async fetchExternalSubtitleUrl(sessionId, offsetMs = this.subtitleOffsetMs) {
     if (this._externalSubtitleLoadedFor === sessionId) return null;
     this._externalSubtitleLoadedFor = sessionId;
 
     const params = new URLSearchParams({
       lang: this.subtitleLang,
-      offset_ms: String(this.subtitleOffsetMs),
+      offset_ms: String(offsetMs),
     });
     const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?${params}`;
     const res = await fetch(url, { headers: { accept: "text/vtt" } });
@@ -3426,6 +3510,7 @@ const VideoPlayer = {
         });
         log.debug("[VideoPlayer] AVPlayer subtitle track changed to:", track.label);
       }
+      this.applyAVPlayerSubtitleDelay();
     } catch (e) {
       log.error("[VideoPlayer] Failed to change AVPlayer subtitle track:", e);
     }

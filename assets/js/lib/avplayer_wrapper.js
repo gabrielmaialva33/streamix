@@ -1194,6 +1194,16 @@ export class AVPlayerWrapper {
   }
 
   /**
+   * Shift subtitle rendering without reloading the media.
+   * Positive values delay subtitles; negative values advance them.
+   * @param {number} delayMs
+   */
+  setSubtitleDelay(delayMs) {
+    if (!this.player || typeof this.player.setSubtitleDelay !== "function") return;
+    this.player.setSubtitleDelay(Math.trunc(delayMs));
+  }
+
+  /**
    * Get human-readable codec name from codec ID
    * @private
    */
