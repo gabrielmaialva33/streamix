@@ -8,6 +8,7 @@ defmodule StreamixWeb.PlayerLiveTest do
   alias Streamix.Billing.Subscription
   alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Repo
+  alias Streamix.Torrent.TorrentStream
   alias StreamixWeb.PlayerHelpers
 
   defp plan_fixture(attrs \\ %{}) do
@@ -72,6 +73,35 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       assert {:error, :not_found} =
                PlayerHelpers.load_content_preflight("gindex_episode", "nope", 1)
+    end
+
+    test "torrent preflight carries the movie IMDb id into player content", %{user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          is_system: false,
+          provider_type: "torrent",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{name: "Torrent Legendado", imdb_id: "tt15047880"})
+      info_hash = :crypto.strong_rand_bytes(20) |> Base.encode16(case: :lower)
+
+      stream =
+        %TorrentStream{}
+        |> TorrentStream.changeset(%{
+          info_hash: info_hash,
+          magnet_uri: "magnet:?xt=urn:btih:#{info_hash}",
+          source_slug: "test",
+          movie_id: movie.id
+        })
+        |> Repo.insert!()
+
+      assert {:ok, content, loaded_provider} =
+               PlayerHelpers.load_content_preflight("torrent", stream.id, user.id)
+
+      assert content.imdb_id == "tt15047880"
+      assert loaded_provider.id == provider.id
     end
 
     test "customer without subscription is redirected to /plans when opening global content", %{

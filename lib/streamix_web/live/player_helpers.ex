@@ -330,6 +330,7 @@ defmodule StreamixWeb.PlayerHelpers do
       movie_id: movie.id,
       name: movie.name,
       title: movie.title || movie.name,
+      imdb_id: movie.imdb_id,
       stream_icon: movie.stream_icon,
       cover: movie.stream_icon,
       duration_secs: movie.duration_secs,
