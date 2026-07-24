@@ -170,6 +170,7 @@ defmodule StreamixWeb.PlayerComponents do
       <div
         :if={@show_controls}
         id="player-controls"
+        phx-mounted={JS.ignore_attributes(["class", "style"])}
         class="absolute inset-0 z-30 flex flex-col justify-between opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto transition-opacity duration-300"
       >
         <%!-- Top bar --%>

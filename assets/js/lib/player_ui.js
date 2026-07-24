@@ -73,6 +73,7 @@ export class PlayerUI {
     this.controlsVisible = true;
     this.controlsTimeout = null;
     this.isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    this.elements.controls?.classList.toggle("touch-device", this.isTouchDevice);
     this.nativeControlsMode = false;
 
     // Setup menu focus traps

@@ -301,11 +301,21 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         );
 
         hook.playerUI.hideControls();
+        const immediateControlsClass = document.getElementById("player-controls").className;
         await new Promise((resolve) => setTimeout(resolve, 350));
+        const controlsStyle = getComputedStyle(document.getElementById("player-controls"));
         const closeStyle = getComputedStyle(document.getElementById("player-close-btn"));
         const bottomStyle = getComputedStyle(document.getElementById("player-bottom-controls"));
         const hiddenState = {
           controlsVisible: hook.playerUI.controlsVisible,
+          isTouchDevice: hook.playerUI.isTouchDevice,
+          sameControlsNode:
+            hook.playerUI.elements.controls === document.getElementById("player-controls"),
+          immediateControlsClass,
+          controlsClass: document.getElementById("player-controls").className,
+          controlsOpacity: Number(controlsStyle.opacity),
+          coarsePointer: matchMedia("(pointer: coarse)").matches,
+          hoverNone: matchMedia("(hover: none)").matches,
           closeOpacity: Number(closeStyle.opacity),
           closePointerEvents: closeStyle.pointerEvents,
           bottomOpacity: Number(bottomStyle.opacity)
@@ -338,7 +348,10 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         assert state["hiddenState"]["controlsVisible"] == false
         assert state["hiddenState"]["closeOpacity"] > 0
         assert state["hiddenState"]["closePointerEvents"] == "auto"
-        assert state["hiddenState"]["bottomOpacity"] == 0
+
+        assert state["hiddenState"]["bottomOpacity"] == 0,
+               "bottom controls remained visible: #{inspect(state["hiddenState"])}"
+
         assert state["revealedAfterTap"] == true
       end
     )
