@@ -48,7 +48,7 @@ defmodule Streamix.Accounts.IpTrackerTest do
       assert_receive {:ip_tracker_task_started, fun} when is_function(fun, 0)
       assert_receive {:ip_tracker_task_finished, {:ok, %AccessLog{}}}
 
-      assert %AccessLog{} = access_log = Repo.one!(AccessLog)
+      assert %AccessLog{} = access_log = Repo.get_by!(AccessLog, user_id: user.id)
       assert access_log.user_id == user.id
       assert access_log.ip_address == "203.0.113.10"
       assert access_log.path == "/login"
