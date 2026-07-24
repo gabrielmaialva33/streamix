@@ -64,19 +64,30 @@ playwright_browser =
     _ -> :chromium
   end
 
+playwright_options = [
+  browser: playwright_browser,
+  headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
+  js_logger: false,
+  trace: System.get_env("PW_TRACE", "false") in ~w(t true),
+  screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true),
+  # Give LiveView channels time to drain before dropping the sandbox owner,
+  # avoiding DBConnection.ConnectionError flakiness at test teardown.
+  ecto_sandbox_stop_owner_delay: 200
+]
+
+playwright_options =
+  case System.get_env("PLAYWRIGHT_WS_ENDPOINT") do
+    endpoint when is_binary(endpoint) and endpoint != "" ->
+      Keyword.merge(playwright_options, ws_endpoint: endpoint, browser_pool: false)
+
+    _ ->
+      playwright_options
+  end
+
 config :phoenix_test,
   otp_app: :streamix,
   endpoint: StreamixWeb.Endpoint,
-  playwright: [
-    browser: playwright_browser,
-    headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
-    js_logger: false,
-    trace: System.get_env("PW_TRACE", "false") in ~w(t true),
-    screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true),
-    # Give LiveView channels time to drain before dropping the sandbox owner,
-    # avoiding DBConnection.ConnectionError flakiness at test teardown.
-    ecto_sandbox_stop_owner_delay: 200
-  ]
+  playwright: playwright_options
 
 # In test we don't send emails
 config :streamix, Streamix.Mailer, adapter: Swoosh.Adapters.Test

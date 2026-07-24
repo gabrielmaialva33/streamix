@@ -97,7 +97,8 @@ defmodule Streamix.MixProject do
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       # E2E cross-browser testing (Chromium/Firefox/WebKit)
-      {:phoenix_test_playwright, "~> 0.12", only: :test, runtime: false}
+      {:phoenix_test_playwright, "~> 0.12", only: :test, runtime: false},
+      {:websockex, "~> 0.4", only: :test}
     ]
   end
 

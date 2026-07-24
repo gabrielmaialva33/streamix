@@ -44,6 +44,19 @@ mix test --include slow
 mix test --include playwright test/streamix_web/e2e
 ```
 
+On Arch Linux, run the WebKit-focused browser suite through the pinned
+Playwright Ubuntu container instead of installing compatibility libraries:
+
+```bash
+scripts/test-webkit-docker.sh
+```
+
+Pass one or more test paths to narrow the run:
+
+```bash
+scripts/test-webkit-docker.sh test/streamix_web/e2e/player_lifecycle_test.exs
+```
+
 ## Assertions
 
 - Prefer stable DOM ids, data attributes, and `has_element?/2` / `element/3` in LiveView tests.
