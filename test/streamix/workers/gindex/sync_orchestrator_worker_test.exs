@@ -54,4 +54,31 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorkerTest do
     assert :ok = SyncOrchestratorWorker.perform(job)
     assert Repo.reload!(provider).sync_status == "failed"
   end
+
+  test "keeps waiting for an in-flight root after many polls" do
+    provider = gindex_provider()
+    workflow_id = Ecto.UUID.generate()
+
+    %{
+      "provider_id" => provider.id,
+      "base_url" => provider.gindex_url,
+      "path" => "/1:/Filmes/",
+      "kind" => "movies",
+      "workflow_id" => workflow_id
+    }
+    |> ScanRootWorker.new()
+    |> Oban.insert!()
+
+    job = %Oban.Job{
+      args: %{
+        "provider_id" => provider.id,
+        "workflow_id" => workflow_id,
+        "total_roots" => 1
+      },
+      attempt: 120
+    }
+
+    assert {:snooze, 30} = SyncOrchestratorWorker.perform(job)
+    assert Repo.reload!(provider).sync_status == "syncing"
+  end
 end

@@ -56,9 +56,6 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
   # 30 seconds between checks — cheap enough not to pressure the DB
   # but tight enough that the finalization isn't visibly lagged.
   @poll_interval 30
-  # Safety valve: if the orchestrator snoozes 120× (= 1h wall time)
-  # something is really stuck, so we finalize anyway and log loudly.
-  @max_checks 120
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(30)
@@ -72,7 +69,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     siblings = length(in_flight)
     total = Map.get(args, "total_roots", 0)
 
-    if siblings > 0 and attempt < @max_checks do
+    if siblings > 0 do
       poll_interval = poll_interval(in_flight)
 
       Logger.info(
@@ -84,7 +81,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
       {:snooze, poll_interval}
     else
       stats = collect_stats(workflow_id, provider_id)
-      finalize(provider_id, workflow_id, stats, siblings, attempt)
+      finalize(provider_id, workflow_id, stats)
     end
   end
 
@@ -168,22 +165,15 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     }
   end
 
-  defp finalize(provider_id, workflow_id, stats, remaining_siblings, attempt) do
-    final_status =
-      cond do
-        stats.roots_failed == 0 and remaining_siblings == 0 -> "completed"
-        stats.roots_failed > 0 -> "failed"
-        attempt >= @max_checks -> "failed"
-        remaining_siblings > 0 -> "failed"
-        true -> "failed"
-      end
+  defp finalize(provider_id, workflow_id, stats) do
+    final_status = if stats.roots_failed == 0, do: "completed", else: "failed"
 
     counts = recount_provider(provider_id)
 
     Logger.info(
       "[GIndex Orchestrator] workflow=#{workflow_id} finalizing: " <>
         "status=#{final_status} roots=#{stats.roots_completed}/#{stats.roots_total} " <>
-        "(#{stats.roots_failed} failed, #{remaining_siblings} stuck) " <>
+        "(#{stats.roots_failed} failed) " <>
         "rolled_up=#{inspect(stats.rolled_up)} db_counts=#{inspect(counts)}"
     )
 
