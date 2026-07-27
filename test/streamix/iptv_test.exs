@@ -418,6 +418,47 @@ defmodule Streamix.IptvTest do
       refute Enum.any?(results, &(&1.id == older.id))
     end
 
+    test "list_movies/2 keeps placeholder adult entries as distinct browse cards" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      first =
+        movie_fixture(provider, %{
+          name: "+18 XXX",
+          title: "+18 XXX",
+          year: nil,
+          stream_id: 3_000_001
+        })
+
+      second =
+        movie_fixture(provider, %{
+          name: "+18 XXX",
+          title: "+18 XXX",
+          year: nil,
+          stream_id: 3_000_002
+        })
+
+      results =
+        Iptv.list_movies(provider.id,
+          dedupe: true,
+          show_adult: true,
+          limit: 10,
+          sort: "name_asc"
+        )
+
+      assert MapSet.new(results, & &1.id) == MapSet.new([first.id, second.id])
+
+      visible_results =
+        Iptv.list_visible_movies(user.id,
+          dedupe: true,
+          show_adult: true,
+          limit: 10,
+          sort: "name_asc"
+        )
+
+      assert MapSet.new(visible_results, & &1.id) == MapSet.new([first.id, second.id])
+    end
+
     test "list_movies/2 dedupe ignores punctuation differences in provider titles" do
       user = user_fixture()
       provider = provider_fixture(user)
@@ -493,6 +534,29 @@ defmodule Streamix.IptvTest do
                ["4K HDR"],
                ["FILMES I TERROR"]
              ]
+    end
+
+    test "list_movie_variants/3 does not present unrelated placeholder entries as sources" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      selected =
+        movie_fixture(provider, %{
+          name: "+18 XXX",
+          title: "+18 XXX",
+          year: nil,
+          stream_id: 3_100_001
+        })
+
+      _unrelated =
+        movie_fixture(provider, %{
+          name: "+18 XXX",
+          title: "+18 XXX",
+          year: nil,
+          stream_id: 3_100_002
+        })
+
+      assert Enum.map(Iptv.list_movie_variants(selected, user.id), & &1.id) == []
     end
 
     test "list_visible_movies/2 collapses variants across visible providers" do

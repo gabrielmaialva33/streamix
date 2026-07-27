@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Accounts
   alias Streamix.Iptv
   alias Streamix.Iptv.Category
   alias Streamix.Repo
@@ -140,6 +141,37 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
         view,
         "/browse/movies/#{matching.id}?provider=#{provider.id}&return_to=#{return_to}"
       )
+    end
+
+    test "adult category keeps distinct movies that use the same placeholder title", %{conn: conn} do
+      user = user_fixture()
+      {:ok, user} = Accounts.update_user_settings(user, %{show_adult_content: true})
+      provider = provider_fixture(user, %{name: "Adult Catalog"})
+
+      category =
+        Repo.insert!(%Category{
+          provider_id: provider.id,
+          name: "FILMES | Adultos +18",
+          type: "vod",
+          external_id: "adult-vod",
+          is_adult: true
+        })
+
+      first = movie_fixture(provider, %{name: "+18 XXX", title: "+18 XXX", year: nil})
+      second = movie_fixture(provider, %{name: "+18 XXX", title: "+18 XXX", year: nil})
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: first.catalog_item_id, category_id: category.id},
+        %{catalog_item_id: second.catalog_item_id, category_id: category.id}
+      ])
+
+      conn = log_in_user(conn, user)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/browse/movies?provider=#{provider.id}&category=#{category.id}")
+
+      assert has_element?(view, "#movie-card-#{first.id}")
+      assert has_element?(view, "#movie-card-#{second.id}")
     end
 
     test "forged favorite event cannot favorite another user's private movie", %{conn: conn} do
