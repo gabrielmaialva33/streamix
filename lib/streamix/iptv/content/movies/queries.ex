@@ -156,6 +156,8 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
         """
         CASE
           WHEN nullif(?, '') IS NOT NULL THEN 'tmdb:' || ?
+          WHEN regexp_replace(lower(coalesce(?, ?)), '[^[:alnum:]]+', '', 'g') = '18xxx'
+            THEN 'item:' || ?::text
           ELSE 'title:' ||
             lower(
               btrim(
@@ -186,6 +188,9 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
         """,
         m.tmdb_id,
         m.tmdb_id,
+        m.title,
+        m.name,
+        m.id,
         m.title,
         m.name,
         m.year
