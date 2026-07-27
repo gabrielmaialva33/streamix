@@ -1139,6 +1139,9 @@ const VideoPlayer = {
 
     // Video Element Events
     this.video?.addEventListener("play", () => {
+      // Autoplay-blocked overlay must not survive playback started by any
+      // other path (keyboard, watch party sync, HLS/AVPlayer retry races)
+      this.playerUI.removePlayButton();
       this.playerUI.updatePlayPauseUI(false);
       this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
     });
