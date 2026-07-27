@@ -3,7 +3,7 @@ defmodule Streamix.Gindex.PaginationTest do
 
   alias Streamix.Gindex.Pagination
 
-  test "module accepts configurable pagination delay" do
+  setup do
     original = Application.get_env(:streamix, Pagination)
 
     Application.put_env(:streamix, Pagination, delay_ms: 0, jitter_ms: 0)
@@ -14,6 +14,105 @@ defmodule Streamix.Gindex.PaginationTest do
         else: Application.delete_env(:streamix, Pagination)
     end)
 
-    assert {:module, Pagination} = Code.ensure_compiled(Pagination)
+    :ok
+  end
+
+  test "continues the same cursor through a fallback endpoint" do
+    test_pid = self()
+
+    request_fun = fn :post, _url, body, base_url ->
+      %{"page_token" => page_token, "page_index" => 0} = Jason.decode!(body)
+      send(test_pid, {:request, base_url, page_token})
+
+      case {base_url, page_token} do
+        {"https://broken.example", nil} ->
+          folder_response(["Filme A"], "next-page")
+
+        {"https://broken.example", "next-page"} ->
+          {:ok, %{status: 500, body: "TypeError"}}
+
+        {"https://healthy.example", "next-page"} ->
+          folder_response(["Filme B"], nil)
+      end
+    end
+
+    assert {:ok, items} =
+             Pagination.list_folder_all(
+               ["https://broken.example", "https://healthy.example"],
+               "/1:/Filmes/2026/",
+               request_fun: request_fun
+             )
+
+    assert Enum.map(items, & &1.name) == ["Filme A", "Filme B"]
+
+    assert_receive {:request, "https://broken.example", nil}
+    assert_receive {:request, "https://broken.example", "next-page"}
+    assert_receive {:request, "https://healthy.example", "next-page"}
+    refute_receive {:request, "https://healthy.example", nil}
+  end
+
+  test "returns an error instead of presenting an incomplete listing as success" do
+    request_fun = fn :post, _url, body, base_url ->
+      page_token = Jason.decode!(body)["page_token"]
+
+      case {base_url, page_token} do
+        {"https://broken.example", nil} ->
+          folder_response(["Filme A"], "next-page")
+
+        {_base_url, "next-page"} ->
+          {:ok, %{status: 500, body: "TypeError"}}
+      end
+    end
+
+    assert {:error,
+            {:partial_listing,
+             %{
+               path: "/1:/Filmes/2026/",
+               page: 1,
+               items_collected: 1,
+               reason: {:all_endpoints_failed, failures}
+             }}} =
+             Pagination.list_folder_all(
+               ["https://broken.example", "https://also-broken.example"],
+               "/1:/Filmes/2026/",
+               request_fun: request_fun
+             )
+
+    assert length(failures) == 2
+  end
+
+  test "does not fan out a shared quota exhaustion across mirrors" do
+    test_pid = self()
+
+    request_fun = fn :post, _url, _body, base_url ->
+      send(test_pid, {:request, base_url})
+      {:error, {:quota_exhausted, 8_000}}
+    end
+
+    assert {:error, {:quota_exhausted, 8_000}} =
+             Pagination.list_folder_all(
+               ["https://one.example", "https://two.example"],
+               "/1:/Filmes/",
+               request_fun: request_fun
+             )
+
+    assert_receive {:request, "https://one.example"}
+    refute_receive {:request, "https://two.example"}
+  end
+
+  defp folder_response(names, next_page_token) do
+    files =
+      Enum.map(names, fn name ->
+        %{
+          "name" => name,
+          "mimeType" => "application/vnd.google-apps.folder"
+        }
+      end)
+
+    {:ok,
+     %{
+       status: 200,
+       body: %{"data" => %{"files" => files, "nextPageToken" => next_page_token}}
+     }}
   end
 end

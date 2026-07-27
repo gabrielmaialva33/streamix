@@ -164,8 +164,8 @@ defmodule Streamix.Gindex.Scraper.Movies do
       {:error, {:quota_exhausted, _} = reason} ->
         {[{:gindex_error, reason}], %{state | categories: [], current_folders: [], done: true}}
 
-      {:error, _reason} ->
-        scrape_next_movie(%{state | categories: rest_categories})
+      {:error, reason} ->
+        {[{:gindex_error, reason}], %{state | categories: [], current_folders: [], done: true}}
     end
   end
 

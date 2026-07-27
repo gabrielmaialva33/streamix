@@ -110,10 +110,11 @@ defmodule Streamix.Gindex.Client do
   production.
   """
   def list_folder_all(base_url, path) when is_binary(base_url) do
-    key = {:list_folder_all, base_url, path}
+    endpoints = listing_endpoints(base_url)
+    key = {:list_folder_all, endpoints, path}
 
     SingleFlight.execute(key, fn ->
-      Pagination.list_folder_all(base_url, path)
+      Pagination.list_folder_all(endpoints, path)
     end)
   end
 
@@ -228,5 +229,24 @@ defmodule Streamix.Gindex.Client do
 
   def get_best_endpoint_for(_operation) do
     EndpointManager.get_endpoint()
+  end
+
+  defp listing_endpoints(preferred_url) do
+    fallbacks =
+      case Process.whereis(EndpointManager) do
+        nil ->
+          []
+
+        _pid ->
+          case EndpointManager.get_all_endpoints() do
+            {:ok, endpoints} -> Enum.map(endpoints, & &1.url)
+            _ -> []
+          end
+      end
+
+    [preferred_url | fallbacks]
+    |> Enum.map(&String.trim_trailing(&1, "/"))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
   end
 end
