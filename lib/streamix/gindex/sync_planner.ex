@@ -22,7 +22,8 @@ defmodule Streamix.Gindex.SyncPlanner do
   @default_roots [
     %{path: "/1:/Filmes/", kind: :movies},
     %{path: "/0:/Filmes/", kind: :movies},
-    %{path: "/1:/Séries/", kind: :series},
+    %{path: "/1:/Séries/Séries WEB-DL/", kind: :series},
+    %{path: "/1:/Séries/Séries Misturado/", kind: :series},
     %{path: "/0:/Desenhos/", kind: :series},
     %{path: "/0:/Animes/", kind: :animes}
   ]
@@ -37,8 +38,7 @@ defmodule Streamix.Gindex.SyncPlanner do
 
     configured =
       provider.drives
-      |> Enum.map(&drive_to_root/1)
-      |> Enum.reject(&is_nil/1)
+      |> Enum.flat_map(&drive_to_roots/1)
 
     roots =
       case configured do
@@ -59,15 +59,29 @@ defmodule Streamix.Gindex.SyncPlanner do
     after_offset ++ before
   end
 
-  defp drive_to_root(%{drive_type: kind_str, metadata: %{"path" => path}} = _drive)
-       when is_binary(kind_str) and is_binary(path) and path != "" do
+  defp drive_to_roots(%{drive_type: kind_str, metadata: %{"paths" => paths}})
+       when is_binary(kind_str) and is_list(paths) do
     case kind_atom(kind_str) do
-      nil -> nil
-      kind -> %{path: path, kind: kind}
+      nil ->
+        []
+
+      kind ->
+        paths
+        |> Enum.filter(&(is_binary(&1) and &1 != ""))
+        |> Enum.uniq()
+        |> Enum.map(&%{path: &1, kind: kind})
     end
   end
 
-  defp drive_to_root(_), do: nil
+  defp drive_to_roots(%{drive_type: kind_str, metadata: %{"path" => path}})
+       when is_binary(kind_str) and is_binary(path) and path != "" do
+    case kind_atom(kind_str) do
+      nil -> []
+      kind -> [%{path: path, kind: kind}]
+    end
+  end
+
+  defp drive_to_roots(_), do: []
 
   defp kind_atom("movies"), do: :movies
   defp kind_atom("series"), do: :series

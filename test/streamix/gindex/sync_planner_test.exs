@@ -42,6 +42,14 @@ defmodule Streamix.Gindex.SyncPlannerTest do
       kinds = Enum.map(roots, & &1.kind) |> Enum.uniq() |> Enum.sort()
       assert kinds == [:animes, :movies, :series]
 
+      series_paths =
+        roots
+        |> Enum.filter(&(&1.kind == :series))
+        |> Enum.map(& &1.path)
+
+      assert "/1:/Séries/Séries WEB-DL/" in series_paths
+      assert "/1:/Séries/Séries Misturado/" in series_paths
+      refute "/1:/Séries/" in series_paths
       assert Enum.all?(roots, &(&1.base_url == provider.gindex_url))
     end
 
@@ -77,6 +85,29 @@ defmodule Streamix.Gindex.SyncPlannerTest do
       roots = SyncPlanner.roots_for(provider)
       assert length(roots) == 1
       assert hd(roots).kind == :movies
+    end
+
+    test "expands a configured paths list into independent scan roots" do
+      provider = gindex_provider()
+
+      %ProviderDrive{}
+      |> ProviderDrive.changeset(%{
+        provider_id: provider.id,
+        name: "series roots",
+        drive_type: "series",
+        metadata: %{
+          "paths" => [
+            "/1:/Séries/Séries WEB-DL/",
+            "/1:/Séries/Séries Misturado/"
+          ]
+        }
+      })
+      |> Repo.insert!()
+
+      roots = SyncPlanner.roots_for(provider)
+
+      assert Enum.map(roots, & &1.path) |> Enum.sort() ==
+               ["/1:/Séries/Séries Misturado/", "/1:/Séries/Séries WEB-DL/"]
     end
 
     test "skips drives that have no path in metadata" do
