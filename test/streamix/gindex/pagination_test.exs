@@ -17,7 +17,7 @@ defmodule Streamix.Gindex.PaginationTest do
     :ok
   end
 
-  test "continues the same cursor through a fallback endpoint" do
+  test "restarts the listing when a partial cursor fails on the first endpoint" do
     test_pid = self()
 
     request_fun = fn :post, _url, body, base_url ->
@@ -31,7 +31,10 @@ defmodule Streamix.Gindex.PaginationTest do
         {"https://broken.example", "next-page"} ->
           {:ok, %{status: 500, body: "TypeError"}}
 
-        {"https://healthy.example", "next-page"} ->
+        {"https://healthy.example", nil} ->
+          folder_response(["Filme A"], "healthy-next-page")
+
+        {"https://healthy.example", "healthy-next-page"} ->
           folder_response(["Filme B"], nil)
       end
     end
@@ -47,8 +50,9 @@ defmodule Streamix.Gindex.PaginationTest do
 
     assert_receive {:request, "https://broken.example", nil}
     assert_receive {:request, "https://broken.example", "next-page"}
-    assert_receive {:request, "https://healthy.example", "next-page"}
-    refute_receive {:request, "https://healthy.example", nil}
+    assert_receive {:request, "https://healthy.example", nil}
+    assert_receive {:request, "https://healthy.example", "healthy-next-page"}
+    refute_receive {:request, "https://healthy.example", "next-page"}
   end
 
   test "returns an error instead of presenting an incomplete listing as success" do
@@ -56,7 +60,7 @@ defmodule Streamix.Gindex.PaginationTest do
       page_token = Jason.decode!(body)["page_token"]
 
       case {base_url, page_token} do
-        {"https://broken.example", nil} ->
+        {_base_url, nil} ->
           folder_response(["Filme A"], "next-page")
 
         {_base_url, "next-page"} ->
@@ -78,7 +82,20 @@ defmodule Streamix.Gindex.PaginationTest do
                request_fun: request_fun
              )
 
-    assert length(failures) == 2
+    assert [
+             %{
+               endpoint: "https://broken.example",
+               page: 1,
+               items_collected: 1,
+               reason: {:http_error, 500}
+             },
+             %{
+               endpoint: "https://also-broken.example",
+               page: 1,
+               items_collected: 1,
+               reason: {:http_error, 500}
+             }
+           ] = failures
   end
 
   test "does not fan out a shared quota exhaustion across mirrors" do

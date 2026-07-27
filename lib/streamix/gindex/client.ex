@@ -96,11 +96,11 @@ defmodule Streamix.Gindex.Client do
   @doc """
   Lists ALL contents of a folder using a specific base URL.
 
-  The upstream Cloudflare Worker only accepts ONE pagination cursor at a
-  time: either `page_token` (with `page_index: 0`) or a bare
-  `page_index` (with `page_token: nil`). Sending both increments the
-  worker crashes with a 500 TypeError, so `Pagination` keeps
-  `page_index` pinned at 0 and walks via `nextPageToken`.
+  The upstream Cloudflare Worker only accepts one pagination cursor at
+  a time. `Pagination` keeps `page_index` pinned at 0 and walks each
+  endpoint via `nextPageToken`. If a cursor fails partway through, the
+  listing restarts from page zero on the next endpoint because cursors
+  aren't reliably portable between all GIndex deployments.
 
   Single-flight on `{base_url, path}`: concurrent callers requesting the
   same listing block on the leader's result instead of opening parallel
