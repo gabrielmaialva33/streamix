@@ -49,16 +49,10 @@ defmodule Streamix.Gindex.Pagination do
     list_from_endpoints(remaining, path, request_fun, failures)
   end
 
-  # GIndex worker pagination contract (verified against the upstream
-  # Cloudflare Worker via curl probes):
-  #
-  #   * page_token=nil   + page_index=N  → returns page N
-  #   * page_token=TOKEN + page_index=0  → returns the page after TOKEN
-  #   * page_token=TOKEN + page_index>0  → HTTP 500 TypeError on the worker
-  #
-  # We pick the token-based variant: keep `page_index: 0` on the wire
-  # and let the cursor advance via `nextPageToken`. `log_page` is
-  # bookkeeping for log lines only and never reaches the request body.
+  # GIndex 2.3.6 expects the cursor and its matching page index together.
+  # Its own app.min.js sends `nextPageToken` with `curPageIndex + 1`.
+  # Keeping page_index at zero repeats the first page until worker.js
+  # eventually crashes with a TypeError.
   defp list_folder_paginated(base_url, path, page_token, log_page, acc, request_fun) do
     body =
       Jason.encode!(%{
@@ -66,7 +60,7 @@ defmodule Streamix.Gindex.Pagination do
         type: "folder",
         password: "",
         page_token: page_token,
-        page_index: 0
+        page_index: log_page
       })
 
     case request_page(base_url, path, body, request_fun) do

@@ -21,8 +21,8 @@ defmodule Streamix.Gindex.PaginationTest do
     test_pid = self()
 
     request_fun = fn :post, _url, body, base_url ->
-      %{"page_token" => page_token, "page_index" => 0} = Jason.decode!(body)
-      send(test_pid, {:request, base_url, page_token})
+      %{"page_token" => page_token, "page_index" => page_index} = Jason.decode!(body)
+      send(test_pid, {:request, base_url, page_token, page_index})
 
       case {base_url, page_token} do
         {"https://broken.example", nil} ->
@@ -48,11 +48,11 @@ defmodule Streamix.Gindex.PaginationTest do
 
     assert Enum.map(items, & &1.name) == ["Filme A", "Filme B"]
 
-    assert_receive {:request, "https://broken.example", nil}
-    assert_receive {:request, "https://broken.example", "next-page"}
-    assert_receive {:request, "https://healthy.example", nil}
-    assert_receive {:request, "https://healthy.example", "healthy-next-page"}
-    refute_receive {:request, "https://healthy.example", "next-page"}
+    assert_receive {:request, "https://broken.example", nil, 0}
+    assert_receive {:request, "https://broken.example", "next-page", 1}
+    assert_receive {:request, "https://healthy.example", nil, 0}
+    assert_receive {:request, "https://healthy.example", "healthy-next-page", 1}
+    refute_receive {:request, "https://healthy.example", "next-page", _page_index}
   end
 
   test "returns an error instead of presenting an incomplete listing as success" do

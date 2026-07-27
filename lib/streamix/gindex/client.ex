@@ -96,10 +96,9 @@ defmodule Streamix.Gindex.Client do
   @doc """
   Lists ALL contents of a folder using a specific base URL.
 
-  The upstream Cloudflare Worker only accepts one pagination cursor at
-  a time. `Pagination` keeps `page_index` pinned at 0 and walks each
-  endpoint via `nextPageToken`. If a cursor fails partway through, the
-  listing restarts from page zero on the next endpoint because cursors
+  GIndex 2.3.6 expects `nextPageToken` together with the matching
+  incremented `page_index`. If a listing still fails partway through,
+  it restarts from page zero on the next endpoint because cursors
   aren't reliably portable between all GIndex deployments.
 
   Single-flight on `{base_url, path}`: concurrent callers requesting the
