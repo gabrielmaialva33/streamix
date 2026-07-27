@@ -330,10 +330,19 @@ defmodule Streamix.Iptv.Movies do
       end
 
     title_variants =
-      case {normalized_title, search_title} do
-        {"", _} -> []
-        {_, ""} -> []
-        _ -> variants_by_title(search_title, normalized_title, user_id, candidate_limit)
+      case {normalized_title, search_title,
+            VariantCards.reliable_title?(movie.title || movie.name)} do
+        {"", _, _} ->
+          []
+
+        {_, "", _} ->
+          []
+
+        {_, _, false} ->
+          []
+
+        {_, _, true} ->
+          variants_by_title(search_title, normalized_title, user_id, candidate_limit)
       end
 
     (tmdb_variants ++ title_variants)

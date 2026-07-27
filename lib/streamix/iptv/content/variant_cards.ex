@@ -15,6 +15,7 @@ defmodule Streamix.Iptv.Content.VariantCards do
 
   @variant_terms ~r/\b(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\b/iu
   @year_tag ~r/\(\s*((?:19|20)\d{2})\s*\)/u
+  @placeholder_titles MapSet.new(["18 xxx"])
 
   @doc "Empty accumulator for `add/2`."
   @spec new() :: map()
@@ -31,7 +32,7 @@ defmodule Streamix.Iptv.Content.VariantCards do
     year = release_year(item)
     title = normalize_title(item.title || item.name)
 
-    case find_cluster(clusters, tmdb, year, title) do
+    case find_cluster(clusters, tmdb, year, title, reliable_normalized_title?(title)) do
       nil -> start_cluster(clusters, item, tmdb, year, title)
       id -> merge_into(clusters, id, item, tmdb, year, title)
     end
@@ -59,6 +60,19 @@ defmodule Streamix.Iptv.Content.VariantCards do
   def normalize_title(_), do: ""
 
   @doc """
+  Returns whether a title carries enough identity to match provider variants.
+
+  Some providers expose unrelated entries under a shared placeholder such as
+  `+18 XXX`. Those entries must stay independent unless they share a TMDB id.
+  """
+  @spec reliable_title?(String.t() | nil) :: boolean()
+  def reliable_title?(value) do
+    value
+    |> normalize_title()
+    |> reliable_normalized_title?()
+  end
+
+  @doc """
   Strips `[tags]`, `(year)`, quality/language markers, and punctuation,
   but keeps the original casing. Used to build trigram search terms.
   """
@@ -78,12 +92,14 @@ defmodule Streamix.Iptv.Content.VariantCards do
   # A shared TMDB id always identifies the same work, even across
   # localized titles. Without one, fall back to a title cluster whose
   # accumulated metadata does not contradict the new variant.
-  defp find_cluster(clusters, tmdb, year, title) do
+  defp find_cluster(clusters, tmdb, year, title, reliable_title?) do
     (tmdb && clusters.by_tmdb[tmdb]) ||
-      Enum.find(clusters.by_title[title] || [], fn id ->
-        {cluster_tmdb, cluster_year} = clusters.meta[id]
-        same_or_missing(cluster_tmdb, tmdb) and same_or_missing(cluster_year, year)
-      end)
+      if reliable_title? do
+        Enum.find(clusters.by_title[title] || [], fn id ->
+          {cluster_tmdb, cluster_year} = clusters.meta[id]
+          same_or_missing(cluster_tmdb, tmdb) and same_or_missing(cluster_year, year)
+        end)
+      end
   end
 
   defp start_cluster(clusters, item, tmdb, year, title) do
@@ -124,6 +140,9 @@ defmodule Streamix.Iptv.Content.VariantCards do
   defp same_or_missing(nil, _), do: true
   defp same_or_missing(_, nil), do: true
   defp same_or_missing(a, b), do: a == b
+
+  defp reliable_normalized_title?(""), do: false
+  defp reliable_normalized_title?(title), do: not MapSet.member?(@placeholder_titles, title)
 
   defp best_card(a, b), do: if(score(b) > score(a), do: b, else: a)
 
