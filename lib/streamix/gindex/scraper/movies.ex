@@ -115,6 +115,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
           base_url: base_url,
           categories: categories,
           current_category: nil,
+          current_movies: [],
           current_folders: [],
           done: false
         }
@@ -129,6 +130,10 @@ defmodule Streamix.Gindex.Scraper.Movies do
   end
 
   defp scrape_next_movie(%{done: true} = state), do: {:halt, state}
+
+  defp scrape_next_movie(%{current_movies: [movie | rest]} = state) do
+    {[movie], %{state | current_movies: rest}}
+  end
 
   defp scrape_next_movie(%{current_folders: [folder | rest]} = state) do
     case scrape_movie_folder_result(state.base_url, folder) do
@@ -152,12 +157,22 @@ defmodule Streamix.Gindex.Scraper.Movies do
     case Client.list_folder_all(state.base_url, category.path) do
       {:ok, items} ->
         folders = Enum.filter(items, &(&1.type == :folder))
-        Logger.info("[GIndex Scraper] Found #{length(folders)} movie folders in #{category.name}")
+
+        movies =
+          items
+          |> Enum.filter(&(&1.type == :file and Parser.video_file?(&1.name)))
+          |> Enum.map(&movie_from_direct_file(&1, category.path))
+
+        Logger.info(
+          "[GIndex Scraper] Found #{length(folders)} movie folders and " <>
+            "#{length(movies)} direct movie files in #{category.name}"
+        )
 
         scrape_next_movie(%{
           state
           | categories: rest_categories,
             current_category: category,
+            current_movies: movies,
             current_folders: folders
         })
 
@@ -200,6 +215,19 @@ defmodule Streamix.Gindex.Scraper.Movies do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc false
+  def movie_from_direct_file(video_file, category_path) do
+    release_info = Parser.parse_release_name(video_file.name)
+
+    folder_meta = %{
+      name: release_info.name,
+      original_name: nil,
+      year: release_info.year
+    }
+
+    build_movie_data(folder_meta, video_file, category_path)
   end
 
   defp build_movie_data(folder_meta, video_file, folder_path) do
