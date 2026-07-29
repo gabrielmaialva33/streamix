@@ -10,6 +10,7 @@ defmodule Streamix.AI.Qdrant do
   - `movies` - Movie embeddings with metadata
   - `series` - Series embeddings with metadata
   - `animes` - Anime embeddings with metadata
+  - `user_profiles` - Aggregated taste vectors for personalized recommendations
 
   ## Configuration
 
@@ -23,7 +24,7 @@ defmodule Streamix.AI.Qdrant do
   alias Streamix.AI.Embeddings
 
   @default_url "http://localhost:6333"
-  @collections ~w(movies series animes)
+  @collections ~w(movies series animes user_profiles)
 
   # Public API
 
