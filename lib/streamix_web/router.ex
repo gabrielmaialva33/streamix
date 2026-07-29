@@ -100,6 +100,7 @@ defmodule StreamixWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    get "/health/ready", HealthController, :ready
     post "/billing/webhooks/stripe", BillingWebhookController, :stripe
 
     # Client-side diagnostic beacon. Fired by app.js when the home

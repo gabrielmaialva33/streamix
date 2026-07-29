@@ -213,7 +213,8 @@ Main API surfaces under `/api/v1`:
 
 Healthcheck:
 
-- `GET /api/health`
+- `GET /api/health` - shallow process liveness
+- `GET /api/health/ready` - database, Redis, providers, semantic search, and rqbit readiness
 
 ## :computer: Stack
 
