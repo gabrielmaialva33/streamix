@@ -346,24 +346,25 @@ defmodule StreamixWeb.Helpers.ImageProxy do
       iex> srcset("/abc.jpg")
       "https://tmdb.mahina.cloud/t/p/w185/abc.jpg 185w, https://tmdb.mahina.cloud/t/p/w342/abc.jpg 342w, https://tmdb.mahina.cloud/t/p/w500/abc.jpg 500w"
   """
-  def srcset(nil), do: nil
-  def srcset(""), do: nil
+  def srcset(path, context \\ :card)
+  def srcset(nil, _context), do: nil
+  def srcset("", _context), do: nil
 
-  def srcset(path) when is_binary(path) do
+  def srcset(path, context) when is_binary(path) do
     # Extract just the path if full URL
     clean_path = extract_tmdb_path(path)
 
     if clean_path do
-      [
-        {"w185", "185w"},
-        {"w342", "342w"},
-        {"w500", "500w"}
-      ]
+      context
+      |> srcset_variants()
       |> Enum.map_join(", ", fn {size, width} ->
         "#{tmdb_proxy_url()}/t/p/#{size}#{clean_path} #{width}"
       end)
     end
   end
+
+  defp srcset_variants(:hero), do: [{"w500", "500w"}, {"w780", "780w"}, {"w1280", "1280w"}]
+  defp srcset_variants(_context), do: [{"w185", "185w"}, {"w342", "342w"}, {"w500", "500w"}]
 
   defp extract_tmdb_path(url) do
     # Match TMDB path pattern: /abc123.jpg

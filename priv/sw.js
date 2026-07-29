@@ -1,6 +1,6 @@
 /**
- * Streamix Service Worker v10
- * - WASM caching for instant AVPlayer startup
+ * Streamix Service Worker v11
+ * - On-demand WASM caching for AVPlayer
  * - Static assets caching
  * - PWA offline support
  */
@@ -24,30 +24,11 @@ const STATIC_ASSETS = [
     '/images/icon-maskable-512.png'
 ];
 
-// WASM files for AVPlayer (cache-first strategy)
-const WASM_ASSETS = [
-    '/avplayer/decode/h264-atomic.wasm',
-    '/avplayer/decode/ac3-atomic.wasm',
-    '/avplayer/decode/aac-atomic.wasm',
-    '/avplayer/decode/hevc-atomic.wasm',
-    '/avplayer/decode/mp3-atomic.wasm',
-    '/avplayer/decode/av1-atomic.wasm',
-    '/avplayer/decode/vp9-atomic.wasm',
-    '/avplayer/decode/opus-atomic.wasm',
-    '/avplayer/decode/eac3-atomic.wasm',
-    '/avplayer/decode/dca-atomic.wasm',
-    '/avplayer/decode/flac-atomic.wasm',
-    '/avplayer/decode/vorbis-atomic.wasm'
-];
-
-// Player libs to cache
-const PLAYER_LIBS = [
-    // These are bundled in app.js, but the chunks might be separate
-];
-
 async function cacheOptionalAssets(cache, urls) {
     const results = await Promise.allSettled(
         urls.map(async (url) => {
+            if (await cache.match(url)) return;
+
             const response = await fetch(url, {cache: 'no-cache'});
             if (response.ok) {
                 await cache.put(url, response);
@@ -61,27 +42,11 @@ async function cacheOptionalAssets(cache, urls) {
     }
 }
 
-// Install - cache static assets and WASM
+// Install only the lightweight app shell. Player decoders total several
+// megabytes and are cached on first playback by the fetch handler below.
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(async (cache) => {
-            await cacheOptionalAssets(cache, STATIC_ASSETS);
-
-            // Cache WASM files (non-blocking, some may not exist)
-            const wasmPromises = WASM_ASSETS.map(async (url) => {
-                try {
-                    const response = await fetch(url, {cache: 'no-cache'});
-                    if (response.ok) {
-                        await cache.put(url, response);
-                    }
-                } catch (e) {
-                    // WASM file not found - skip silently
-                }
-            });
-
-            await Promise.allSettled(wasmPromises);
-            await self.skipWaiting();
-        })
+        caches.open(CACHE_NAME).then((cache) => cacheOptionalAssets(cache, STATIC_ASSETS))
     );
 });
 
@@ -107,9 +72,10 @@ self.addEventListener('activate', (event) => {
             } catch (e) {
                 console.warn('[SW] Re-warm failed:', e);
             }
+
+            await self.clients.claim();
         })()
     );
-    self.clients.claim();
 });
 
 // Message handler - skip waiting when user requests update
@@ -161,12 +127,32 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // JS/CSS bundles - Network-first with cache fallback.
-    // PWA shells must not get stuck on old app.js: if HTML ships new
-    // controls but SW serves an older bundle, buttons like /debug/pwa
-    // update/clear-cache cannot attach their handlers.
+    // Digested JS/CSS is immutable: a new deploy produces a new URL, so a
+    // cached response can be returned immediately without any stale-bundle
+    // risk. Development assets have stable names and remain network-first.
     if (url.pathname.startsWith('/assets/') &&
         (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'))) {
+        const immutable =
+            url.searchParams.get('vsn') === 'd' ||
+            /-[a-z0-9_-]{8,32}\.(?:js|css)$/i.test(url.pathname);
+
+        if (immutable) {
+            event.respondWith(
+                caches.match(request).then((cached) => {
+                    if (cached) return cached;
+
+                    return fetch(request).then((response) => {
+                        if (response.ok) {
+                            const clone = response.clone();
+                            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                        }
+                        return response;
+                    });
+                })
+            );
+            return;
+        }
+
         event.respondWith(
             (async () => {
                 const cached = await caches.match(request);

@@ -287,9 +287,20 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       session,
       """
       async () => {
-        const container = document.querySelector("#video-player-container");
-        const hook = container && container.__videoPlayerHook;
-        if (!container || !hook) throw new Error("player hook unavailable");
+        const deadline = performance.now() + 3000;
+        let container = document.querySelector("#video-player-container");
+        let hook = container && container.__videoPlayerHook;
+
+        while ((!container || !hook) && performance.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          container = document.querySelector("#video-player-container");
+          hook = container && container.__videoPlayerHook;
+        }
+
+        if (!container || !hook) {
+          const lazyError = container?.dataset.lazyHookError || "none";
+          throw new Error(`player hook unavailable; lazy error: ${lazyError}`);
+        }
 
         hook.nativeTouchControls = false;
         hook.playerUI.setNativeControlsMode(false);
@@ -365,7 +376,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         };
       }
       """,
-      [is_function: true],
+      [is_function: true, timeout: 5_000],
       fn state ->
         assert state["viewport"] == %{"width" => expected_width, "height" => expected_height}
 

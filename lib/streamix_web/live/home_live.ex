@@ -4,6 +4,7 @@ defmodule StreamixWeb.HomeLive do
   require Logger
 
   alias StreamixWeb.HomeData, as: Data
+  alias StreamixWeb.LiveSessionNavigation
 
   import StreamixWeb.Home.Authenticated
   import StreamixWeb.Home.Landing
@@ -16,7 +17,7 @@ defmodule StreamixWeb.HomeLive do
     socket =
       socket
       |> assign(page_title: "Início")
-      |> assign(current_path: "/")
+      |> assign(current_path: home_path(socket))
       |> assign(loading: true)
       |> Data.assign_empty()
 
@@ -40,22 +41,19 @@ defmodule StreamixWeb.HomeLive do
   # Event Handlers
   # ============================================
 
-  # Shared card navigation events (movie_card / series_card from
-  # StreamixWeb.Content.CardComponents). The home carousels delegate rendering
-  # to the shared cards, which emit these LV events instead of rendering a
-  # `<.link navigate>`. These destinations belong to the authenticated
-  # live_session, so use an HTTP redirect instead of crossing sessions over
-  # the existing LiveView socket.
+  # `/` is the public session while `/home` is authenticated. The classifier
+  # keeps signed-in card navigation on the current LiveView socket and falls
+  # back to a normal redirect for the public landing.
   def handle_event("play_movie", %{"id" => id}, socket) do
-    {:noreply, redirect(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
+    {:noreply, navigate_from_home(socket, ~p"/browse/movies/#{id}")}
   end
 
   def handle_event("show_details", %{"id" => id}, socket) do
-    {:noreply, redirect(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
+    {:noreply, navigate_from_home(socket, ~p"/browse/movies/#{id}")}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
-    {:noreply, redirect(socket, to: with_return_to(~p"/browse/series/#{id}", ~p"/"))}
+    {:noreply, navigate_from_home(socket, ~p"/browse/series/#{id}")}
   end
 
   def handle_event("toggle_featured_favorite", _, socket) do
@@ -86,6 +84,14 @@ defmodule StreamixWeb.HomeLive do
   defp with_return_to(path, return_to) do
     path <> "?return_to=" <> URI.encode_www_form(return_to)
   end
+
+  defp navigate_from_home(socket, path) do
+    current_path = socket.assigns.current_path
+    LiveSessionNavigation.navigate(socket, current_path, with_return_to(path, current_path))
+  end
+
+  defp home_path(%{host_uri: %URI{path: "/home"}}), do: "/home"
+  defp home_path(_socket), do: "/"
 
   def render(assigns) do
     ~H"""

@@ -5,8 +5,11 @@
  * - Delayed expansion (~600ms) to prevent accidental triggers
  * - Expanded preview with title, rating, year, plot, action buttons
  * - Smart positioning to avoid viewport edges
- * - Touch device support (tap to expand, tap outside to close)
- * - WASM pre-loading for faster playback startup
+ * - Desktop intent-based WASM pre-loading
+ *
+ * Touch devices keep the native tap-to-open path. Building a hover preview
+ * and compiling decoders immediately before mobile navigation only adds work
+ * to the hottest interaction.
  */
 
 // Track if we've already preloaded WASM
@@ -83,36 +86,28 @@ const ContentCard = {
 
     // Hover delay (Netflix uses ~600ms)
     this.hoverDelay = 600;
-    this.isTouch = "ontouchstart" in window;
+    this.supportsHover =
+      window.matchMedia?.("(hover: hover) and (pointer: fine)").matches ??
+      !("ontouchstart" in window);
 
     // Bind handlers
     this.handleMouseEnter = this.handleMouseEnter.bind(this);
     this.handleMouseLeave = this.handleMouseLeave.bind(this);
-    this.handleTouchStart = this.handleTouchStart.bind(this);
     this.handleFocus = this.handleFocus.bind(this);
 
-    // Add event listeners
-    if (this.isTouch) {
-      this.el.addEventListener("touchstart", this.handleTouchStart, { passive: true });
-    } else {
+    // Hover previews are a desktop affordance. Mobile taps should navigate
+    // immediately without a preview DOM/layout cycle.
+    if (this.supportsHover) {
       this.el.addEventListener("mouseenter", this.handleMouseEnter);
       this.el.addEventListener("mouseleave", this.handleMouseLeave);
       this.el.addEventListener("focus", this.handleFocus);
     }
-
-    // Intersection observer for WASM preloading
-    this.setupIntersectionObserver();
   },
 
   destroyed() {
     this.el.removeEventListener("mouseenter", this.handleMouseEnter);
     this.el.removeEventListener("mouseleave", this.handleMouseLeave);
     this.el.removeEventListener("focus", this.handleFocus);
-    this.el.removeEventListener("touchstart", this.handleTouchStart);
-
-    if (this.observer) {
-      this.observer.disconnect();
-    }
 
     // Always clear pending timeout, regardless of pendingPreview flag
     if (this.previewTimeout) {
@@ -172,16 +167,6 @@ const ContentCard = {
 
   handleFocus() {
     this.preloadWasm();
-  },
-
-  handleTouchStart(_e) {
-    // On touch, tap toggles preview
-    if (this.activePreview) {
-      this._closePreview();
-    } else {
-      closeActivePreview(); // Close any other instance's preview
-      this.showPreview();
-    }
   },
 
   _closePreview() {
@@ -436,34 +421,6 @@ const ContentCard = {
     } catch {
       // pre-load failed, non-critical
     }
-  },
-
-  setupIntersectionObserver() {
-    if (hasPreloadedWasm) return;
-    // Idempotent — if mounted() re-runs (LV update / scroll re-render),
-    // disconnect the previous observer so we don't accumulate one per
-    // re-mount.
-    if (this.observer) {
-      this.observer.disconnect();
-    }
-
-    const options = {
-      root: null,
-      rootMargin: "200px",
-      threshold: 0,
-    };
-
-    this.observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting && !hasPreloadedWasm) {
-          this.preloadWasm();
-          this.observer.disconnect();
-          break;
-        }
-      }
-    }, options);
-
-    this.observer.observe(this.el);
   },
 };
 

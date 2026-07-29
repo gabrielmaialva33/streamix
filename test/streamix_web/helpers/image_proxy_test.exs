@@ -28,4 +28,14 @@ defmodule StreamixWeb.Helpers.ImageProxyTest do
     assert ImageProxy.poster("http://2130706433/admin.jpg", :carousel) == nil
     assert ImageProxy.poster("http://0x7f000001/admin.jpg", :carousel) == nil
   end
+
+  test "builds a responsive TMDB hero source set" do
+    srcset =
+      ImageProxy.srcset("https://tmdb.mahina.cloud/t/p/w1280/backdrop.jpg?_v=v2", :hero)
+
+    assert srcset =~ "/w500/backdrop.jpg 500w"
+    assert srcset =~ "/w780/backdrop.jpg 780w"
+    assert srcset =~ "/w1280/backdrop.jpg 1280w"
+    refute srcset =~ "/w185/"
+  end
 end

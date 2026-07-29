@@ -4,7 +4,7 @@ defmodule Streamix.Accounts do
   """
 
   import Ecto.Query, warn: false
-  alias Streamix.Accounts.{IpTracker, Role, Scope, User, UserNotifier, UserToken}
+  alias Streamix.Accounts.{IpTracker, Role, Scope, SessionPolicy, User, UserNotifier, UserToken}
   alias Streamix.Billing
   alias Streamix.Repo
 
@@ -440,6 +440,11 @@ defmodule Streamix.Accounts do
   end
 
   ## Session
+
+  @doc """
+  Returns how long a persistent authentication session remains valid.
+  """
+  defdelegate session_max_age_seconds(), to: SessionPolicy, as: :max_age_seconds
 
   @doc """
   Generates a session token.

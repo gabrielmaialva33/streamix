@@ -1,3 +1,4 @@
+import { createLazyHook } from "../lib/lazy_hook";
 import BrowseScrollRestoration from "./browse_scroll_restoration";
 import ContentCard from "./content_card";
 import EpgRefresh from "./epg_refresh";
@@ -11,9 +12,10 @@ import PwaInstall from "./pwa_install";
 import PwaRepair from "./pwa_repair";
 import ScrollHeader from "./scroll_header";
 import ThemeToggle from "./theme_toggle";
-import TorrentSwarmGate from "./torrent_swarm_gate";
-import VideoPlayer from "./video_player";
-import WatchPartySync from "./watch_party_sync";
+
+const TorrentSwarmGate = createLazyHook("TorrentSwarmGate", () => import("./torrent_swarm_gate"));
+const VideoPlayer = createLazyHook("VideoPlayer", () => import("./video_player"));
+const WatchPartySync = createLazyHook("WatchPartySync", () => import("./watch_party_sync"));
 
 export default {
   BrowseScrollRestoration,

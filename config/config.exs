@@ -7,6 +7,12 @@
 # General application configuration
 import Config
 
+# Player decoders are fetched on demand and are immutable. Include WASM in
+# Phoenix's digested static compressors so the first playback transfers the
+# compressed artifact instead of hundreds of raw kilobytes per codec.
+config :phoenix,
+  gzippable_exts: ~w(.js .map .css .txt .text .html .json .svg .eot .ttf .wasm)
+
 config :streamix, :scopes,
   user: [
     default: true,

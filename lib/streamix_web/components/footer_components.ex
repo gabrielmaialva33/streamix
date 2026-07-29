@@ -8,6 +8,8 @@ defmodule StreamixWeb.FooterComponents do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
+  alias StreamixWeb.App.Navigation
+
   @doc """
   Renders the public application footer with nav links, version, and
   a lightweight copyright line.
@@ -16,6 +18,7 @@ defmodule StreamixWeb.FooterComponents do
   "Admin" link on `current_scope.user` admin status when available.
   """
   attr :current_scope, :any, default: nil
+  attr :current_path, :string, default: "/"
 
   def app_footer(assigns) do
     assigns =
@@ -28,21 +31,23 @@ defmodule StreamixWeb.FooterComponents do
       end)
       |> assign_new(:year, fn -> Date.utc_today().year end)
       |> assign_new(:admin?, fn -> admin_scope?(assigns[:current_scope]) end)
+      |> assign_new(:home_path, fn -> if assigns[:current_scope], do: ~p"/home", else: ~p"/" end)
 
     ~H"""
     <footer class="mt-12 sm:mt-16 border-t border-border/50 bg-background">
       <div class="mx-auto max-w-7xl px-[4%] py-8 sm:py-10">
         <div class="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,2fr)] lg:gap-12">
           <section aria-label="Sobre o Streamix" class="max-w-sm">
-            <.link
-              href={~p"/"}
+            <Navigation.session_link
+              path={@home_path}
+              current_path={@current_path}
               class="inline-flex min-h-11 items-center gap-2 text-text-primary"
             >
               <span class="inline-flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white">
                 S
               </span>
               <span class="text-base font-semibold">Streamix</span>
-            </.link>
+            </Navigation.session_link>
             <p class="mt-3 text-sm leading-6 text-text-muted">
               Catálogo, histórico, favoritos e salas sincronizadas em uma experiência única.
             </p>
@@ -57,10 +62,26 @@ defmodule StreamixWeb.FooterComponents do
                 Assistir
               </h3>
               <ul class="space-y-2">
-                <li><.footer_link href={~p"/"}>Início</.footer_link></li>
-                <li><.footer_link href={~p"/browse"}>Catálogo</.footer_link></li>
-                <li><.footer_link href={~p"/favorites"}>Minha Lista</.footer_link></li>
-                <li><.footer_link href={~p"/history"}>Histórico</.footer_link></li>
+                <li>
+                  <.footer_link href={@home_path} current_path={@current_path}>
+                    Início
+                  </.footer_link>
+                </li>
+                <li>
+                  <.footer_link href={~p"/browse"} current_path={@current_path}>
+                    Catálogo
+                  </.footer_link>
+                </li>
+                <li>
+                  <.footer_link href={~p"/favorites"} current_path={@current_path}>
+                    Minha Lista
+                  </.footer_link>
+                </li>
+                <li>
+                  <.footer_link href={~p"/history"} current_path={@current_path}>
+                    Histórico
+                  </.footer_link>
+                </li>
               </ul>
             </div>
 
@@ -69,9 +90,21 @@ defmodule StreamixWeb.FooterComponents do
                 Social
               </h3>
               <ul class="space-y-2">
-                <li><.footer_link href={~p"/party"}>Watch Party</.footer_link></li>
-                <li><.footer_link href={~p"/party"}>Minhas Salas</.footer_link></li>
-                <li><.footer_link href={~p"/party"}>Entrar em Sala</.footer_link></li>
+                <li>
+                  <.footer_link href={~p"/party"} current_path={@current_path}>
+                    Watch Party
+                  </.footer_link>
+                </li>
+                <li>
+                  <.footer_link href={~p"/party"} current_path={@current_path}>
+                    Minhas Salas
+                  </.footer_link>
+                </li>
+                <li>
+                  <.footer_link href={~p"/party"} current_path={@current_path}>
+                    Entrar em Sala
+                  </.footer_link>
+                </li>
               </ul>
             </div>
 
@@ -80,9 +113,21 @@ defmodule StreamixWeb.FooterComponents do
                 Conta
               </h3>
               <ul class="space-y-2">
-                <li><.footer_link href={~p"/settings"}>Configurações</.footer_link></li>
-                <li><.footer_link href={~p"/providers"}>Provedores</.footer_link></li>
-                <li :if={@admin?}><.footer_link href={~p"/admin"}>Admin</.footer_link></li>
+                <li>
+                  <.footer_link href={~p"/settings"} current_path={@current_path}>
+                    Configurações
+                  </.footer_link>
+                </li>
+                <li>
+                  <.footer_link href={~p"/providers"} current_path={@current_path}>
+                    Provedores
+                  </.footer_link>
+                </li>
+                <li :if={@admin?}>
+                  <.footer_link href={~p"/admin"} current_path={@current_path}>
+                    Admin
+                  </.footer_link>
+                </li>
               </ul>
             </div>
 
@@ -119,16 +164,18 @@ defmodule StreamixWeb.FooterComponents do
   end
 
   attr :href, :any, required: true
+  attr :current_path, :string, required: true
   slot :inner_block, required: true
 
   defp footer_link(assigns) do
     ~H"""
-    <.link
-      href={@href}
+    <Navigation.session_link
+      path={@href}
+      current_path={@current_path}
       class="inline-flex min-h-11 min-w-11 items-center text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:min-h-0 sm:min-w-0"
     >
       {render_slot(@inner_block)}
-    </.link>
+    </Navigation.session_link>
     """
   end
 

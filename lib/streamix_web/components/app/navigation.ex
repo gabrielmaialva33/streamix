@@ -35,11 +35,13 @@ defmodule StreamixWeb.App.Navigation do
   attr :current_path, :string, default: "/"
 
   def sidebar(assigns) do
+    assigns = assign(assigns, :home_path, if(assigns.current_scope, do: ~p"/home", else: ~p"/"))
+
     ~H"""
     <div class="flex flex-col h-full">
       <div class="p-4 border-b border-border">
         <.session_link
-          path={~p"/"}
+          path={@home_path}
           current_path={@current_path}
           class="flex min-h-11 items-center gap-2 text-xl font-bold text-brand"
         >

@@ -20,6 +20,7 @@ import {
 const OfflineSync = {
   mounted() {
     this.syncType = this.el.dataset.syncType;
+    this.lastSyncedData = null;
 
     // Initial sync from server data
     this.syncFromServer();
@@ -48,7 +49,8 @@ const OfflineSync = {
 
   async syncFromServer() {
     const dataAttr = this.el.dataset.syncData;
-    if (!dataAttr) return;
+    if (!dataAttr || dataAttr === this.lastSyncedData) return;
+    this.lastSyncedData = dataAttr;
 
     try {
       const data = JSON.parse(dataAttr);
@@ -60,6 +62,7 @@ const OfflineSync = {
         await syncHistory(data);
       }
     } catch (err) {
+      this.lastSyncedData = null;
       console.warn("[OfflineSync] Failed to sync:", err);
     }
   },

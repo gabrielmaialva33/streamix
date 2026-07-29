@@ -333,6 +333,7 @@ defmodule StreamixWeb.Router do
             StreamixWeb.OnMount.ThemeEvents
           ],
       layout: {StreamixWeb.Layouts, :app} do
+      live "/home", HomeLive, :index
       live "/settings", User.SettingsLive, :index
       live "/billing", BillingLive, :index
       live "/search", SearchLive, :index
@@ -435,15 +436,25 @@ defmodule StreamixWeb.Router do
     get "/metrics", MetricsController, :scrape
   end
 
-  # Emits an HTTP 103 Early Hints informational response with a
-  # `Link: <source.mahina.cloud>; rel=preconnect` header so the browser
-  # opens the TCP+TLS connection to the stream proxy *while* Phoenix is
-  # still busy mounting the LiveView (DB queries, history record,
-  # prewarm task). For navigation requests with adapters that support
-  # 103 (Bandit on HTTP/1.1+, HTTP/2, HTTP/3), this shaves a full RTT
-  # off the player's first byte. The same Link is repeated as a regular
-  # response header for browsers that ignore informational responses.
-  defp put_early_hints(conn, _opts) do
+  # Only player requests benefit from opening the stream-proxy connection.
+  # Sending this on login/catalog pages paid a TCP+TLS handshake that those
+  # pages never used. Keep the hint authenticated as well, so a redirect to
+  # login does not touch the media origin.
+  defp put_early_hints(
+         %{assigns: %{current_scope: %{user: user}}, request_path: path} = conn,
+         _opts
+       )
+       when not is_nil(user) do
+    if player_path?(path), do: put_stream_proxy_hint(conn), else: conn
+  end
+
+  defp put_early_hints(conn, _opts), do: conn
+
+  defp player_path?("/watch/" <> _rest), do: true
+  defp player_path?("/party/" <> rest), do: String.ends_with?(rest, "/watch")
+  defp player_path?(_path), do: false
+
+  defp put_stream_proxy_hint(conn) do
     proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
     link = "<#{proxy}>; rel=preconnect; crossorigin"
 

@@ -91,16 +91,14 @@
       }
     />
     <meta :if={assigns[:og_image]} name="twitter:image" content={assigns[:og_image]} />
+    <%!-- DNS hints are cheap; the actual TCP/TLS preconnect is emitted only
+    for authenticated player routes by StreamixWeb.Router. --%>
     <link
-      rel="preconnect"
-      href={Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")}
-    />
-    <link
-      rel="preconnect"
+      rel="dns-prefetch"
       href={Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}
     />
-    <link rel="preconnect" href="https://s4.anilist.co" crossorigin />
-    <link rel="preconnect" href="https://cdn.tomatoanimes.com" />
+    <link rel="dns-prefetch" href="https://s4.anilist.co" />
+    <link rel="dns-prefetch" href="https://cdn.tomatoanimes.com" />
     <link
       :if={assigns[:lcp_image]}
       rel="preload"
@@ -117,8 +115,8 @@
       nonce={assigns[:csp_nonce]}
     >
     </script>
-    <script type="speculationrules">
-      {"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"/watch/*"}},{"not":{"href_matches":"/api/*"}},{"not":{"selector_matches":".no-prefetch"}}]},"eagerness":"moderate"}]}
+    <script type="speculationrules" nonce={assigns[:csp_nonce]}>
+      {"prefetch":[{"where":{"or":[{"href_matches":"/browse/*"},{"href_matches":"/gindex/*"}]},"eagerness":"moderate"}]}
     </script>
   </head>
   <body>

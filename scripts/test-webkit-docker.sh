@@ -85,6 +85,7 @@ if [ "$#" -eq 0 ]; then
   set -- \
     test/streamix_web/e2e/player_lifecycle_test.exs \
     test/streamix_web/e2e/webkit_reconnect_test.exs \
+    test/streamix_web/e2e/login_persistence_test.exs \
     test/streamix_web/e2e/home_skeleton_test.exs \
     test/streamix_web/e2e/premium_visibility_test.exs
 fi

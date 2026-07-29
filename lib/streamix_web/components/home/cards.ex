@@ -72,6 +72,7 @@ defmodule StreamixWeb.Home.Cards do
             alt={@channel.name}
             class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
             loading="lazy"
+            decoding="async"
             data-fallback-target
           />
           <div
@@ -122,6 +123,7 @@ defmodule StreamixWeb.Home.Cards do
             alt={@entry.content_name}
             class="w-full h-full object-cover"
             loading="lazy"
+            decoding="async"
             data-fallback-target
           />
           <div
@@ -182,6 +184,7 @@ defmodule StreamixWeb.Home.Cards do
             alt={@favorite.content_name}
             class="w-full h-full object-cover"
             loading="lazy"
+            decoding="async"
             data-fallback-target
           />
           <div

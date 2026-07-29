@@ -96,13 +96,20 @@ async function getAllItems(storeName) {
 }
 
 /**
- * Clear a store
+ * Atomically replace a store snapshot.
+ *
+ * Keeping clear + puts in one transaction avoids a window where an unrelated
+ * reader can observe an empty offline catalog between two transactions.
  */
-async function clearStore(storeName) {
+async function replaceItems(storeName, items) {
   await initDB();
   const tx = db.transaction(storeName, "readwrite");
   const store = tx.objectStore(storeName);
   store.clear();
+
+  for (const item of items) {
+    store.put(item);
+  }
 
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
@@ -122,9 +129,7 @@ export async function syncFavorites(favorites) {
     ...f,
     synced_at: Date.now(),
   }));
-  await clearStore(STORES.FAVORITES);
-  await saveItems(STORES.FAVORITES, items);
-  console.log("[OfflineStore] Synced", items.length, "favorites");
+  await replaceItems(STORES.FAVORITES, items);
 }
 
 /**
@@ -182,9 +187,7 @@ export async function syncHistory(history) {
     ...h,
     synced_at: Date.now(),
   }));
-  await clearStore(STORES.HISTORY);
-  await saveItems(STORES.HISTORY, items);
-  console.log("[OfflineStore] Synced", items.length, "history items");
+  await replaceItems(STORES.HISTORY, items);
 }
 
 /**

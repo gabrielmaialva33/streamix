@@ -17,8 +17,6 @@
 // If you have dependencies that try to import CSS, esbuild will generate a separate `app.css` file.
 // To load it, simply add a second `<link>` to your `root.html.heex` file.
 
-// Alpine.js for reactive UI components
-import Alpine from "alpinejs";
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html";
 // Establish Phoenix Socket and LiveView configuration.
@@ -29,9 +27,7 @@ import topbar from "../vendor/topbar";
 import customHooks from "./hooks";
 import { getEnvInfo } from "./lib/logger";
 import { promptForPwaInstall, pwaInstallMode } from "./lib/pwa_install";
-
-window.Alpine = Alpine;
-Alpine.start();
+import { createControllerChangeGuard } from "./lib/service_worker_runtime";
 
 // Global poster / cover fallback. Some catalog images live on aging
 // CDN77 mirrors (e.g. `gstaticontent.com/images/<md5>.jpg`) and
@@ -50,6 +46,7 @@ document.addEventListener(
   (event) => {
     const target = event.target;
     if (!(target instanceof HTMLImageElement)) return;
+    if (target.matches("[data-fallback-target]")) return;
     if (target.dataset.fallbackApplied === "1") return;
     target.dataset.fallbackApplied = "1";
     target.removeAttribute("srcset");
@@ -521,7 +518,10 @@ if ("serviceWorker" in navigator) {
     if (!window.__swControllerChangeBound) {
       window.__swControllerChangeBound = true;
       let refreshing = false;
+      const shouldReload = createControllerChangeGuard(navigator.serviceWorker.controller);
+
       navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!shouldReload(navigator.serviceWorker.controller)) return;
         if (refreshing) return;
         refreshing = true;
         window.location.reload();

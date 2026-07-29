@@ -3,7 +3,7 @@ defmodule StreamixWeb.User.LoginLive do
 
   def mount(_params, _session, socket) do
     email = Phoenix.Flash.get(socket.assigns.flash, :email)
-    form = to_form(%{"email" => email}, as: "user")
+    form = to_form(%{"email" => email, "remember_me" => "true"}, as: "user")
 
     socket =
       socket
@@ -11,12 +11,7 @@ defmodule StreamixWeb.User.LoginLive do
       |> assign(current_path: "/login")
       |> assign(form: form)
 
-    {:ok, socket, temporary_assigns: [form: form]}
-  end
-
-  def handle_event("validate", %{"user" => params}, socket) do
-    form = to_form(params, as: "user")
-    {:noreply, assign(socket, form: form)}
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -37,8 +32,8 @@ defmodule StreamixWeb.User.LoginLive do
       </p>
     </div>
 
-    <.simple_form for={@form} action={~p"/login"} phx-change="validate" method="post">
-      <.input field={@form[:email]} type="email" label="Email" required autocomplete="email" />
+    <.simple_form for={@form} action={~p"/login"} method="post">
+      <.input field={@form[:email]} type="email" label="Email" required autocomplete="username" />
       <.input
         field={@form[:password]}
         type="password"
@@ -47,8 +42,17 @@ defmodule StreamixWeb.User.LoginLive do
         autocomplete="current-password"
       />
 
-      <div class="flex items-center justify-between">
-        <.input field={@form[:remember_me]} type="checkbox" label="Lembrar de mim" />
+      <div class="w-full">
+        <.input
+          field={@form[:remember_me]}
+          type="checkbox"
+          label="Lembrar de mim"
+          class="size-5 shrink-0 rounded border-border bg-surface text-brand focus:ring-2 focus:ring-brand focus:ring-offset-background disabled:opacity-50"
+          aria-describedby="remember-me-help"
+        />
+        <p id="remember-me-help" class="-mt-2 pl-8 text-xs text-text-muted">
+          Mantém sua conta conectada neste dispositivo por até 60 dias.
+        </p>
       </div>
 
       <:actions>

@@ -11,10 +11,13 @@ defmodule StreamixWeb.UserAuth do
 
   alias Streamix.Accounts
 
-  # Session validity: 60 days
-  @max_age 60 * 60 * 24 * 60
   @remember_me_cookie "_streamix_user_remember_me"
-  @remember_me_options [sign: true, max_age: @max_age, same_site: "Lax"]
+  @remember_me_options [
+    sign: true,
+    same_site: "Lax",
+    secure: Application.compile_env(:streamix, :session_secure, true),
+    http_only: true
+  ]
 
   @doc """
   Logs the user in.
@@ -44,7 +47,8 @@ defmodule StreamixWeb.UserAuth do
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do
-    put_resp_cookie(conn, @remember_me_cookie, token, @remember_me_options)
+    options = Keyword.put(@remember_me_options, :max_age, Accounts.session_max_age_seconds())
+    put_resp_cookie(conn, @remember_me_cookie, token, options)
   end
 
   defp maybe_write_remember_me_cookie(conn, _token, _params) do
@@ -267,5 +271,5 @@ defmodule StreamixWeb.UserAuth do
 
   defp maybe_store_return_to(conn), do: conn
 
-  defp signed_in_path(_conn), do: ~p"/"
+  defp signed_in_path(_conn), do: ~p"/home"
 end

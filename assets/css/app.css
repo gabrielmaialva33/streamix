@@ -243,11 +243,6 @@ label {
     --scrollbar-thumb-hover: #454545;
 }
 
-/* Alpine.js cloak - hide elements before Alpine initializes */
-[x-cloak] {
-    display: none !important;
-}
-
 /* Base styles */
 html,
 body {
@@ -330,6 +325,13 @@ textarea:focus-visible,
     -webkit-backdrop-filter: blur(8px);
 }
 
+/* Skip layout and paint for off-screen catalog shelves. Browsers without
+   content-visibility support simply ignore this progressive enhancement. */
+@utility render-lazy {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+}
+
 /*
  * Safari iOS escape hatch — heavy backdrop-filter on fixed elements
  * stalls the WebSocket handshake, which lined up with users seeing
@@ -339,10 +341,11 @@ textarea:focus-visible,
  * Ref: https://mrpopov.com/posts/elixir-phoenix-optimisations-iphone-safari/
  */
 html.ios-webkit .glass,
-html.ios-webkit .glass-subtle {
+html.ios-webkit .glass-subtle,
+html.ios-webkit header[data-scrolled="true"] {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background: rgba(20, 20, 20, 0.92);
+    background: rgba(20, 20, 20, 0.92) !important;
 }
 
 @utility card-hover {
@@ -380,8 +383,6 @@ html.ios-webkit .glass-subtle {
     transition:
         transform var(--duration-normal) var(--ease-spring),
         box-shadow var(--duration-normal) var(--ease-smooth);
-    will-change: transform;
-
     &:hover {
         transform: scale(1.08);
         box-shadow:
@@ -1165,7 +1166,6 @@ img {
         transform var(--duration-normal) var(--ease-spring),
         box-shadow var(--duration-normal) var(--ease-smooth),
         outline var(--duration-fast) var(--ease-smooth);
-    will-change: transform;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1200,6 +1200,19 @@ header[data-scrolled="true"] {
 header[data-scrolled="false"] {
     background: transparent !important;
     border-bottom-color: transparent !important;
+}
+
+/* Backdrop blur and dozens of promoted card layers are disproportionately
+   expensive on low-power mobile GPUs. Keep the opaque visual treatment and
+   let the browser promote only the card that is actually animating. */
+@media (hover: none) and (pointer: coarse) {
+    .glass,
+    .glass-subtle,
+    header[data-scrolled="true"] {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(20, 20, 20, 0.96) !important;
+    }
 }
 
 /* Poster card overlay — info on hover */

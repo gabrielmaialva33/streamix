@@ -45,17 +45,40 @@ defmodule StreamixWeb.Home.Carousel do
 
           this.leftBtn = this.el.querySelector('[data-scroll-dir="left"]')
           this.rightBtn = this.el.querySelector('[data-scroll-dir="right"]')
+          this.arrowFrame = null
+          this.onLeftClick = () => this.scroll(-1)
+          this.onRightClick = () => this.scroll(1)
+          this.onTrackScroll = () => this.scheduleArrowUpdate()
 
-          this.leftBtn?.addEventListener('click', () => this.scroll(-1))
-          this.rightBtn?.addEventListener('click', () => this.scroll(1))
-          this.track.addEventListener('scroll', () => this.updateArrows(), { passive: true })
+          this.leftBtn?.addEventListener('click', this.onLeftClick)
+          this.rightBtn?.addEventListener('click', this.onRightClick)
+          this.track.addEventListener('scroll', this.onTrackScroll, { passive: true })
 
-          requestAnimationFrame(() => this.updateArrows())
+          this.scheduleArrowUpdate()
+        },
+
+        updated() {
+          this.scheduleArrowUpdate()
+        },
+
+        destroyed() {
+          this.leftBtn?.removeEventListener('click', this.onLeftClick)
+          this.rightBtn?.removeEventListener('click', this.onRightClick)
+          this.track?.removeEventListener('scroll', this.onTrackScroll)
+          if (this.arrowFrame) cancelAnimationFrame(this.arrowFrame)
         },
 
         scroll(dir) {
           const amount = this.track.clientWidth * 0.8
           this.track.scrollBy({ left: dir * amount, behavior: 'smooth' })
+        },
+
+        scheduleArrowUpdate() {
+          if (!this.track || this.arrowFrame) return
+          this.arrowFrame = requestAnimationFrame(() => {
+            this.arrowFrame = null
+            this.updateArrows()
+          })
         },
 
         updateArrows() {
@@ -82,7 +105,7 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
-    <div class="px-[4%]">
+    <div class="render-lazy px-[4%]">
       <div class="flex items-center justify-between mb-3 sm:mb-4">
         <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
           <.icon :if={@icon} name={@icon} class="size-5 text-brand" />
@@ -188,7 +211,7 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
-    <div class="px-[4%]">
+    <div class="render-lazy px-[4%]">
       <.section_header
         title="Em Alta Agora"
         icon="hero-fire-solid"
@@ -232,7 +255,7 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
-    <div class="px-[4%]">
+    <div class="render-lazy px-[4%]">
       <.section_header
         title="Séries Populares"
         icon="hero-tv-solid"
@@ -268,7 +291,7 @@ defmodule StreamixWeb.Home.Carousel do
 
   def render_ai_channels_section(assigns) do
     ~H"""
-    <div class="px-[4%]">
+    <div class="render-lazy px-[4%]">
       <.section_header
         title="TV ao Vivo"
         icon="hero-signal-solid"
@@ -298,7 +321,7 @@ defmodule StreamixWeb.Home.Carousel do
 
   def render_top_10(assigns) do
     ~H"""
-    <div class="px-[4%]">
+    <div class="render-lazy px-[4%]">
       <div class="flex items-center justify-between mb-3 sm:mb-4">
         <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
           <.icon name="hero-trophy" class="size-5 text-warning" />
@@ -355,6 +378,7 @@ defmodule StreamixWeb.Home.Carousel do
                 alt={@movie.name}
                 class="w-full h-full object-cover transition-transform duration-300"
                 loading="lazy"
+                decoding="async"
                 data-fallback-target
               />
               <div

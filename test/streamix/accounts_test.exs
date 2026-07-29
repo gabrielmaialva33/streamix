@@ -404,9 +404,18 @@ defmodule Streamix.AccountsTest do
       refute Accounts.get_user_by_session_token("oops")
     end
 
-    test "does not return user for expired token", %{token: token} do
-      dt = ~N[2020-01-01 00:00:00]
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt, authenticated_at: dt])
+    test "keeps a persistent session valid within 60 days", %{user: user, token: token} do
+      inserted_at = DateTime.add(DateTime.utc_now(:second), -59 * 24 * 60 * 60, :second)
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: inserted_at])
+
+      assert {session_user, _token_inserted_at} = Accounts.get_user_by_session_token(token)
+      assert session_user.id == user.id
+    end
+
+    test "does not return user after the 60 day session window", %{token: token} do
+      inserted_at = DateTime.add(DateTime.utc_now(:second), -61 * 24 * 60 * 60, :second)
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: inserted_at])
+
       refute Accounts.get_user_by_session_token(token)
     end
   end

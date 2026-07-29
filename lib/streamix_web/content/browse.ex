@@ -361,25 +361,27 @@ defmodule StreamixWeb.Content.Browse do
 
   defp load_items(%{assigns: %{source: "iptv", provider: nil, sort: sort}} = socket, :movies)
        when sort in ["new", "trending", "rating"] do
+    pagination = [limit: @per_page, offset: offset(socket.assigns.page)]
+
     items =
       case sort do
-        "new" -> Iptv.list_new_releases(limit: socket.assigns.page * @per_page)
-        "trending" -> Iptv.list_trending("movies", limit: socket.assigns.page * @per_page)
-        "rating" -> Iptv.list_top_10_movies(limit: socket.assigns.page * @per_page)
+        "new" -> Iptv.list_new_releases(pagination)
+        "trending" -> Iptv.list_trending("movies", pagination)
+        "rating" -> Iptv.list_top_10_movies(pagination)
       end
-      |> Enum.drop(offset(socket.assigns.page))
 
     assign_items(socket, :movies, items, sort != "rating")
   end
 
   defp load_items(%{assigns: %{source: "iptv", provider: nil, sort: sort}} = socket, :series)
        when sort in ["popularity", "rating"] do
+    pagination = [limit: @per_page, offset: offset(socket.assigns.page)]
+
     items =
       case sort do
-        "popularity" -> Iptv.list_trending("series", limit: socket.assigns.page * @per_page)
-        "rating" -> Iptv.list_top_10_series(limit: socket.assigns.page * @per_page)
+        "popularity" -> Iptv.list_trending("series", pagination)
+        "rating" -> Iptv.list_top_10_series(pagination)
       end
-      |> Enum.drop(offset(socket.assigns.page))
 
     assign_items(socket, :series, items, sort != "rating")
   end

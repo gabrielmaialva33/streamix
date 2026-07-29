@@ -8,6 +8,8 @@ defmodule StreamixWeb.LiveSessionNavigationTest do
              "/browse/movies?provider=all",
              "/browse/series/42"
            )
+
+    assert LiveSessionNavigation.same_session?("/browse", "/home")
   end
 
   test "detects public, admin, and player boundaries" do

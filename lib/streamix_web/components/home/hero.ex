@@ -9,6 +9,8 @@ defmodule StreamixWeb.Home.Hero do
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
 
+  alias StreamixWeb.Helpers.ImageProxy
+
   def render_hero_section(assigns) do
     ~H"""
     <%!--
@@ -52,9 +54,13 @@ defmodule StreamixWeb.Home.Hero do
     <img
       :if={@backdrop}
       src={@backdrop}
+      srcset={ImageProxy.srcset(@backdrop, :hero)}
+      sizes="100vw"
       alt=""
       class="absolute inset-0 w-full h-full object-cover object-top hero-backdrop"
       loading="eager"
+      fetchpriority="high"
+      decoding="async"
       id="hero-poster"
     />
     <div

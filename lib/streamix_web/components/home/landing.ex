@@ -13,14 +13,18 @@ defmodule StreamixWeb.Home.Landing do
   def render_landing_page(assigns) do
     ~H"""
     <% featured = featured_content(@featured) %>
-    <% hero_image = if featured, do: public_image(featured) %>
+    <% hero_image = if featured, do: public_hero_image(featured) %>
     <div class="relative min-h-[52dvh] sm:min-h-[62dvh] overflow-hidden -mt-16 sm:-mt-20 pt-20 sm:pt-24">
       <%= if hero_image do %>
         <img
           src={hero_image}
+          srcset={ImageProxy.srcset(hero_image, :hero)}
+          sizes="100vw"
           alt=""
           class="absolute inset-0 w-full h-full object-cover object-top opacity-45"
           loading="eager"
+          fetchpriority="high"
+          decoding="async"
         />
       <% else %>
         <div class="absolute inset-0 auth-branded-bg" />
@@ -179,7 +183,7 @@ defmodule StreamixWeb.Home.Landing do
 
   def public_media_shelf(assigns) do
     ~H"""
-    <div id={@id}>
+    <div id={@id} class="render-lazy">
       <div class="mb-3 flex items-center gap-2 sm:mb-4">
         <.icon name={@icon} class="size-5 text-brand" />
         <h2 class="text-base font-semibold text-text-primary sm:text-xl">{@title}</h2>
@@ -201,6 +205,8 @@ defmodule StreamixWeb.Home.Landing do
   attr :class, :string, default: nil
 
   def public_media_card(assigns) do
+    assigns = assign(assigns, :image_url, public_card_image(assigns.item))
+
     ~H"""
     <article
       class={[
@@ -212,18 +218,19 @@ defmodule StreamixWeb.Home.Landing do
       <div class="aspect-[2/3] overflow-hidden rounded-md bg-surface-hover shadow-sm transition-transform duration-300 group-hover:-translate-y-1 sm:rounded-lg">
         <div id={"public-#{@kind}-img-#{@item.id}"} phx-hook="ImageFallback" class="h-full w-full">
           <img
-            :if={public_image(@item)}
-            src={public_image(@item)}
+            :if={@image_url}
+            src={@image_url}
             alt={public_title(@item)}
             class="h-full w-full object-cover"
             loading="lazy"
+            decoding="async"
             data-fallback-target
           />
           <div
             data-fallback
             class={[
               "flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
-              public_image(@item) && "hidden"
+              @image_url && "hidden"
             ]}
           >
             <.icon
@@ -253,7 +260,7 @@ defmodule StreamixWeb.Home.Landing do
 
   def public_channel_shelf(assigns) do
     ~H"""
-    <div id="public-channels">
+    <div id="public-channels" class="render-lazy">
       <div class="mb-3 flex items-center gap-2 sm:mb-4">
         <.icon name="hero-signal-solid" class="size-5 text-brand" />
         <h2 class="text-base font-semibold text-text-primary sm:text-xl">TV ao vivo pública</h2>
@@ -283,6 +290,7 @@ defmodule StreamixWeb.Home.Landing do
             alt={@channel.name}
             class="h-full w-full object-contain p-1.5 sm:p-2"
             loading="lazy"
+            decoding="async"
             data-fallback-target
           />
           <div
@@ -318,9 +326,16 @@ defmodule StreamixWeb.Home.Landing do
 
   defp public_title(content), do: Map.get(content, :title) || Map.get(content, :name)
 
-  defp public_image(content) do
+  defp public_hero_image(content) do
+    url =
+      Map.get(content, :backdrop) || Map.get(content, :cover) || Map.get(content, :stream_icon)
+
+    if url in [nil, ""], do: nil, else: ImageProxy.poster(url, :hero_backdrop)
+  end
+
+  defp public_card_image(content) do
     url = Map.get(content, :stream_icon) || Map.get(content, :cover)
-    if url in [nil, ""], do: nil, else: ImageProxy.proxy(url)
+    if url in [nil, ""], do: nil, else: ImageProxy.poster(url, :carousel)
   end
 
   defp public_rating(content) do

@@ -41,7 +41,7 @@ defmodule StreamixWeb.FavoritesLiveTest do
       assert has_element?(view, "button", "Ao Vivo")
       assert has_element?(view, "button", "Filmes")
       assert has_element?(view, "button", "Séries")
-      assert has_element?(view, "footer a[href='/'].min-w-11")
+      assert has_element?(view, "footer a[href='/home'].min-w-11")
     end
 
     test "uses poster and wide artwork ratios according to content", %{conn: conn, user: user} do

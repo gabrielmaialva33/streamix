@@ -182,45 +182,44 @@ defmodule StreamixWeb.App.Filters do
       <div
         :if={@overflow != []}
         id="category-more-wrapper"
-        phx-update="ignore"
         class="relative flex-shrink-0"
-        x-data="{ open: false }"
-        @click.outside="open = false"
       >
         <button
           type="button"
+          phx-click={JS.toggle(to: "#category-more-menu")}
           class={[
             "category-chip inline-flex items-center gap-1",
             @selected_in_overflow && "category-chip--active"
           ]}
-          @click="open = !open"
+          aria-haspopup="listbox"
+          aria-controls="category-more-menu"
         >
           <span>{if @selected_in_overflow, do: @selected_name, else: "Mais"}</span>
           <.icon name="hero-chevron-down-mini" class="size-3" />
         </button>
         <div
-          x-show="open"
-          x-transition:enter="transition ease-out duration-100"
-          x-transition:enter-start="opacity-0 scale-95"
-          x-transition:enter-end="opacity-100 scale-100"
-          x-transition:leave="transition ease-in duration-75"
-          x-transition:leave-start="opacity-100 scale-100"
-          x-transition:leave-end="opacity-0 scale-95"
-          x-cloak
-          class="absolute right-0 z-50 mt-2 w-52 max-h-72 overflow-y-auto glass rounded-xl shadow-dropdown"
+          id="category-more-menu"
+          class="hidden absolute right-0 z-50 mt-2 w-52 max-h-72 overflow-y-auto glass rounded-xl shadow-dropdown"
+          phx-click-away={JS.hide(to: "#category-more-menu")}
+          phx-window-keydown={JS.hide(to: "#category-more-menu")}
+          phx-key="escape"
+          role="listbox"
         >
           <div class="py-1">
             <button
               :for={category <- @overflow}
               type="button"
-              phx-click={@on_change}
-              phx-value-category={category.id}
+              phx-click={
+                JS.hide(to: "#category-more-menu")
+                |> JS.push(@on_change, value: %{category: category.id})
+              }
+              role="option"
+              aria-selected={to_string(@selected) == to_string(category.id)}
               class={[
                 "w-full px-3 py-2 text-left text-xs hover:bg-white/5 transition-colors",
                 to_string(@selected) == to_string(category.id) &&
                   "text-brand font-medium"
               ]}
-              @click="open = false"
             >
               {category.name}
             </button>

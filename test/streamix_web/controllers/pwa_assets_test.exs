@@ -44,4 +44,8 @@ defmodule StreamixWeb.PwaAssetsTest do
     assert get_resp_header(response, "service-worker-allowed") == ["/"]
     refute response.resp_body =~ "__SW_CACHE_VERSION__"
   end
+
+  test "player decoders are included in static compression" do
+    assert ".wasm" in Application.fetch_env!(:phoenix, :gzippable_exts)
+  end
 end

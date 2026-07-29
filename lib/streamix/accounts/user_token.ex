@@ -4,7 +4,7 @@ defmodule Streamix.Accounts.UserToken do
   """
   use Ecto.Schema
   import Ecto.Query
-  alias Streamix.Accounts.UserToken
+  alias Streamix.Accounts.{SessionPolicy, UserToken}
 
   @hash_algorithm :sha256
   @rand_size 32
@@ -13,8 +13,6 @@ defmodule Streamix.Accounts.UserToken do
   # since someone with access to the email may take over the account.
   @magic_link_validity_in_minutes 15
   @change_email_validity_in_days 7
-  @session_validity_in_days 14
-
   schema "users_tokens" do
     field :token, :binary
     field :context, :string
@@ -71,14 +69,16 @@ defmodule Streamix.Accounts.UserToken do
 
   The query returns the user found by the token, if any, along with the token's creation time.
 
-  The token is valid if it matches the value in the database and it has
-  not expired (after @session_validity_in_days).
+  The token is valid if it matches the value in the database and remains
+  inside the window defined by `Streamix.Accounts.SessionPolicy`.
   """
   def verify_session_token_query(token) do
+    validity_in_days = SessionPolicy.validity_in_days()
+
     query =
       from token in by_token_and_context_query(token, "session"),
         join: user in assoc(token, :user),
-        where: token.inserted_at > ago(@session_validity_in_days, "day"),
+        where: token.inserted_at > ago(^validity_in_days, "day"),
         select: {%{user | authenticated_at: token.authenticated_at}, token.inserted_at}
 
     {:ok, query}

@@ -787,6 +787,27 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       assert result.youtube_trailer == nil
     end
 
+    test "ranked catalog queries apply offsets in SQL-sized pages" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{visibility: "public"})
+      year = Date.utc_today().year
+
+      [first, second, _third] =
+        for {name, rating} <- [{"First", "99.0"}, {"Second", "98.0"}, {"Third", "97.0"}] do
+          movie_fixture(provider, %{
+            name: name,
+            stream_icon: "http://example.com/#{String.downcase(name)}.jpg",
+            year: year,
+            rating: Decimal.new(rating)
+          })
+        end
+
+      assert Enum.map(Iptv.list_new_releases(limit: 1, offset: 1), & &1.id) == [second.id]
+      assert Enum.map(Iptv.list_top_10_movies(limit: 1, offset: 1), & &1.id) == [second.id]
+      assert Enum.map(Iptv.list_trending("movies", limit: 1, offset: 1), & &1.id) == [second.id]
+      assert Enum.map(Iptv.list_new_releases(limit: 1), & &1.id) == [first.id]
+    end
+
     test "list_top_10_series/1 returns lightweight series cards" do
       user = user_fixture()
 

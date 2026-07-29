@@ -325,6 +325,7 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_trending_movies(keyword()) :: [Movie.t()]
   def list_trending_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
+    offset = Keyword.get(opts, :offset, 0)
     days = Keyword.get(opts, :days, 7)
     since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
 
@@ -343,14 +344,14 @@ defmodule Streamix.Iptv.Catalog do
         group_by: movie.id,
         select: {movie.id, count(progress.id)},
         order_by: [desc: count(progress.id)],
-        limit: ^(limit * 2)
+        limit: ^((limit + offset) * 2)
       )
       |> Repo.all()
       |> Enum.map(fn {id, _count} -> id end)
 
     if trending_ids == [] do
       # Fallback to high-rated recent movies
-      list_new_releases(limit: limit)
+      list_new_releases(limit: limit, offset: offset)
     else
       public_movies_query()
       |> where([movie: movie], movie.id in ^trending_ids)
@@ -358,6 +359,7 @@ defmodule Streamix.Iptv.Catalog do
       |> preload(^@summary_preloads)
       |> Repo.all()
       |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
+      |> Enum.drop(offset)
       |> Enum.take(limit)
     end
   end
@@ -368,6 +370,7 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_trending_series(keyword()) :: [Series.t()]
   def list_trending_series(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
+    offset = Keyword.get(opts, :offset, 0)
     days = Keyword.get(opts, :days, 7)
     since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
 
@@ -389,7 +392,7 @@ defmodule Streamix.Iptv.Catalog do
         group_by: season.series_id,
         select: {season.series_id, count(progress.id)},
         order_by: [desc: count(progress.id)],
-        limit: ^(limit * 3)
+        limit: ^((limit + offset) * 3)
       )
       |> Repo.all()
 
@@ -398,6 +401,7 @@ defmodule Streamix.Iptv.Catalog do
       public_series_query()
       |> with_series_cover()
       |> order_by([series: series], desc: series.rating)
+      |> offset(^offset)
       |> limit(^limit)
       |> select_series_card_fields()
       |> preload(^@summary_preloads)
@@ -411,6 +415,7 @@ defmodule Streamix.Iptv.Catalog do
       |> preload(^@summary_preloads)
       |> Repo.all()
       |> Enum.sort_by(fn series -> Enum.find_index(series_ids, &(&1 == series.id)) end)
+      |> Enum.drop(offset)
       |> Enum.take(limit)
     end
   end
@@ -421,12 +426,14 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_new_releases(keyword()) :: [Movie.t()]
   def list_new_releases(opts \\ []) do
     limit = Keyword.get(opts, :limit, 12)
+    offset = Keyword.get(opts, :offset, 0)
     current_year = Date.utc_today().year
 
     public_movies_query()
     |> where([movie: movie], movie.year >= ^(current_year - 2))
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.year, desc: movie.rating)
+    |> offset(^offset)
     |> limit(^limit)
     |> select_movie_card_fields()
     |> preload(^@summary_preloads)
@@ -440,6 +447,7 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_top_10_movies(keyword()) :: [Movie.t()]
   def list_top_10_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
+    offset = Keyword.get(opts, :offset, 0)
 
     # We used to require `plot` as well, but the gindex enrichment only
     # writes `stream_icon` + `tmdb_id` today (plot would need a second
@@ -450,6 +458,7 @@ defmodule Streamix.Iptv.Catalog do
     |> where([movie: movie], not is_nil(movie.rating))
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.rating)
+    |> offset(^offset)
     |> limit(^limit)
     |> select_movie_card_fields()
     |> preload(^@summary_preloads)
@@ -462,11 +471,13 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_top_10_series(keyword()) :: [Series.t()]
   def list_top_10_series(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
+    offset = Keyword.get(opts, :offset, 0)
 
     public_series_query()
     |> where([series: series], not is_nil(series.rating))
     |> with_series_cover()
     |> order_by([series: series], desc: series.rating)
+    |> offset(^offset)
     |> limit(^limit)
     |> select_series_card_fields()
     |> preload(^@summary_preloads)

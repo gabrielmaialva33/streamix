@@ -45,7 +45,7 @@ defmodule StreamixWeb.Content.CardComponents do
       data-title={@movie_name}
       data-year={Map.get(@movie, :year)}
       data-rating={@display_rating}
-      data-plot={Map.get(@movie, :plot)}
+      data-plot={preview_plot(@movie)}
       data-cover={ImageProxy.poster(Map.get(@movie, :backdrop) || Map.get(@movie, :cover), :carousel)}
       data-genre={Map.get(@movie, :genre)}
       data-duration={format_duration(Map.get(@movie, :duration))}
@@ -66,6 +66,7 @@ defmodule StreamixWeb.Content.CardComponents do
           alt={@movie_name}
           class="w-full h-full object-cover"
           loading="lazy"
+          decoding="async"
           data-fallback-target
         />
         <div
@@ -160,7 +161,7 @@ defmodule StreamixWeb.Content.CardComponents do
       data-title={@series_name}
       data-year={Map.get(@series, :year)}
       data-rating={@display_rating}
-      data-plot={Map.get(@series, :plot)}
+      data-plot={preview_plot(@series)}
       data-cover={
         ImageProxy.poster(Map.get(@series, :backdrop) || Map.get(@series, :cover), :carousel)
       }
@@ -180,6 +181,7 @@ defmodule StreamixWeb.Content.CardComponents do
           alt={@series_name}
           class="w-full h-full object-cover"
           loading="lazy"
+          decoding="async"
           data-fallback-target
         />
         <div
@@ -270,6 +272,7 @@ defmodule StreamixWeb.Content.CardComponents do
           alt={episode_title(@episode)}
           class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
+          decoding="async"
           data-fallback-target
         />
         <div
@@ -315,5 +318,12 @@ defmodule StreamixWeb.Content.CardComponents do
       </div>
     </div>
     """
+  end
+
+  defp preview_plot(item) do
+    case Map.get(item, :plot) do
+      plot when is_binary(plot) -> String.slice(plot, 0, 240)
+      _other -> nil
+    end
   end
 end
