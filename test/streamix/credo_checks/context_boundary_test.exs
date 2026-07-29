@@ -52,7 +52,20 @@ defmodule Streamix.CredoChecks.ContextBoundaryTest do
     end)
   end
 
-  test "ignores context internals outside the web delivery layer" do
+  test "rejects new context internals in workers" do
+    """
+    defmodule Streamix.Workers.Example do
+      alias Streamix.Iptv.Sync.Cleanup
+    end
+    """
+    |> to_source_file("lib/streamix/workers/example.ex")
+    |> run_check(ContextBoundary)
+    |> assert_issue(fn issue ->
+      assert issue.trigger == "Streamix.Iptv.Sync.Cleanup"
+    end)
+  end
+
+  test "accepts an explicitly registered worker schema dependency" do
     """
     defmodule Streamix.Workers.Example do
       alias Streamix.Iptv.Movie
