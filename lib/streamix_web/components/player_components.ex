@@ -466,6 +466,7 @@ defmodule StreamixWeb.PlayerComponents do
         id="mute-btn"
         phx-click={JS.dispatch("player:toggle-mute")}
         aria-label="Ativar ou desativar som"
+        aria-pressed="false"
         class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/20 sm:size-11"
       >
         <.icon name="hero-speaker-wave" class="size-6 sm:size-5 volume-on-icon" aria-hidden="true" />

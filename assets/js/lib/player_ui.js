@@ -36,6 +36,7 @@ export class PlayerUI {
       centerPlay: container.querySelector("#center-play"),
 
       // Volume
+      muteButton: container.querySelector("#mute-btn"),
       volumeOnIcon: container.querySelector(".volume-on-icon"),
       volumeOffIcon: container.querySelector(".volume-off-icon"),
       volumeSlider: container.querySelector("#volume-slider"),
@@ -254,10 +255,11 @@ export class PlayerUI {
   // ============================================
 
   updateVolumeUI(volume, muted) {
-    const { volumeOnIcon, volumeOffIcon, volumeSlider } = this.elements;
+    const { muteButton, volumeOnIcon, volumeOffIcon, volumeSlider } = this.elements;
+    const silent = muted || volume === 0;
 
     if (volumeOnIcon && volumeOffIcon) {
-      if (muted || volume === 0) {
+      if (silent) {
         volumeOnIcon.classList.add("hidden");
         volumeOffIcon.classList.remove("hidden");
       } else {
@@ -266,8 +268,13 @@ export class PlayerUI {
       }
     }
 
+    if (muteButton) {
+      muteButton.setAttribute("aria-pressed", String(silent));
+      muteButton.setAttribute("aria-label", silent ? "Ativar som" : "Desativar som");
+    }
+
     if (volumeSlider) {
-      volumeSlider.value = muted ? 0 : Math.round(volume * 100);
+      volumeSlider.value = silent ? 0 : Math.round(volume * 100);
     }
   }
 

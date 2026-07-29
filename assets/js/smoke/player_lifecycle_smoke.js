@@ -1,10 +1,17 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const { chromium } = require("playwright");
 
 const url = process.env.STREAMIX_SMOKE_URL || "https://streamix.mahina.cloud/watch/movie/33781";
 const storageState = process.env.STREAMIX_SMOKE_STORAGE_STATE;
+const email = process.env.STREAMIX_SMOKE_EMAIL;
+const password = process.env.STREAMIX_SMOKE_PASSWORD;
+const localAssetDir = process.env.STREAMIX_SMOKE_ASSET_DIR;
 const contentId = process.env.STREAMIX_SMOKE_CONTENT_ID || "33781";
 const resumeTime = Number(process.env.STREAMIX_SMOKE_RESUME_TIME || 25);
 const timeoutMs = Number(process.env.STREAMIX_SMOKE_TIMEOUT_MS || 20_000);
+const initialVolume = 0.72;
+const adjustedVolume = 0.65;
 
 function fail(message, snapshot) {
   console.error(JSON.stringify({ ok: false, message, snapshot }, null, 2));
@@ -26,17 +33,49 @@ function assertLifecycle(snapshot) {
   }
 }
 
+function assertInitialAudio(snapshot) {
+  if (snapshot.hookMuted !== true) fail("stored mute state was not loaded", snapshot);
+  if (snapshot.hookVolume !== initialVolume) fail("stored volume was not loaded", snapshot);
+  if (snapshot.sliderValue !== 0) fail("muted slider did not render at zero", snapshot);
+  if (!snapshot.volumeOnHidden || snapshot.volumeOffHidden) {
+    fail("muted icon state is out of sync", snapshot);
+  }
+  if (snapshot.muteAriaPressed !== "true") fail("mute button state is not exposed", snapshot);
+}
+
+function assertAdjustedAudio(snapshot) {
+  if (snapshot.hookMuted !== false) fail("raising volume did not unmute the player", snapshot);
+  if (snapshot.videoMuted !== false) fail("native audio state stayed muted", snapshot);
+  if (snapshot.sliderValue !== adjustedVolume * 100) {
+    fail("volume slider did not keep the selected value", snapshot);
+  }
+  if (snapshot.volumeOnHidden || !snapshot.volumeOffHidden) {
+    fail("audible icon state is out of sync", snapshot);
+  }
+  if (snapshot.muteAriaPressed !== "false") fail("mute button still reports muted", snapshot);
+  if (snapshot.savedMuted !== false || snapshot.savedVolume !== adjustedVolume) {
+    fail("adjusted audio state was not persisted", snapshot);
+  }
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext(storageState ? { storageState } : {});
+  const context = await browser.newContext({
+    ...(storageState ? { storageState } : {}),
+    serviceWorkers: "block",
+  });
 
   await context.addInitScript(
-    ({ contentId, resumeTime }) => {
+    ({ contentId, initialVolume, resumeTime }) => {
       window.__streamixSmoke = { events: [] };
 
       const positions = {};
       positions[contentId] = { time: resumeTime, duration: 7200, timestamp: Date.now() };
       localStorage.setItem("streamix_playback_positions", JSON.stringify(positions));
+      localStorage.setItem(
+        "streamix_player_prefs",
+        JSON.stringify({ global: { muted: true, volume: initialVolume } }),
+      );
 
       const currentTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "currentTime");
       if (currentTime?.set && currentTime?.get) {
@@ -58,10 +97,44 @@ async function main() {
         return play.apply(this, args);
       };
     },
-    { contentId, resumeTime },
+    { contentId, initialVolume, resumeTime },
   );
 
   const page = await context.newPage();
+
+  if (!storageState && email && password) {
+    await page.goto(new URL("/login", url).href, {
+      waitUntil: "domcontentloaded",
+      timeout: timeoutMs,
+    });
+    await page.locator('input[name="user[email]"]').fill(email);
+    await page.locator('input[name="user[password]"]').fill(password);
+    await page.getByRole("button", { name: "Entrar", exact: true }).click();
+    await page.waitForURL((currentUrl) => currentUrl.pathname !== "/login", {
+      timeout: timeoutMs,
+    });
+  }
+
+  if (localAssetDir) {
+    const jsRoot = path.resolve(localAssetDir, "js");
+
+    await page.route("**/assets/js/**", async (route) => {
+      const marker = "/assets/js/";
+      const pathname = new URL(route.request().url()).pathname;
+      const relativePath = decodeURIComponent(pathname.slice(pathname.indexOf(marker) + marker.length));
+      const assetPath = path.resolve(jsRoot, relativePath);
+
+      if (assetPath.startsWith(`${jsRoot}${path.sep}`) && fs.existsSync(assetPath)) {
+        await route.fulfill({
+          body: fs.readFileSync(assetPath),
+          contentType: "application/javascript",
+        });
+      } else {
+        await route.continue();
+      }
+    });
+  }
+
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForSelector("#video-player-container", { timeout: timeoutMs });
   await page.waitForTimeout(3_000);
@@ -70,6 +143,7 @@ async function main() {
     const video = document.querySelector("#video-element");
     const container = document.querySelector("#video-player-container");
     const avMount = document.querySelector("#avplayer-mount");
+    const hook = container?.__videoPlayerHook;
     const buffered = [];
 
     if (video) {
@@ -88,13 +162,48 @@ async function main() {
       readyState: video ? video.readyState : null,
       networkState: video ? video.networkState : null,
       paused: video ? video.paused : null,
+      hookMuted: hook?.avPlayerMuted,
+      hookVolume: hook?.avPlayerVolume,
+      sliderValue: Number(document.querySelector("#volume-slider")?.value),
+      volumeOnHidden: document.querySelector(".volume-on-icon")?.classList.contains("hidden"),
+      volumeOffHidden: document.querySelector(".volume-off-icon")?.classList.contains("hidden"),
+      muteAriaPressed: document.querySelector("#mute-btn")?.getAttribute("aria-pressed"),
       buffered,
       events: window.__streamixSmoke?.events || [],
     };
   });
 
   assertLifecycle(snapshot);
-  console.log(JSON.stringify({ ok: true, url, snapshot }, null, 2));
+  assertInitialAudio(snapshot);
+
+  await page.evaluate((volume) => {
+    const slider = document.querySelector("#volume-slider");
+    slider.value = String(volume * 100);
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+  }, adjustedVolume);
+  await page.waitForTimeout(100);
+
+  const adjustedAudio = await page.evaluate(() => {
+    const video = document.querySelector("#video-element");
+    const container = document.querySelector("#video-player-container");
+    const hook = container?.__videoPlayerHook;
+    const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs") || "{}");
+
+    return {
+      hookMuted: hook?.avPlayerMuted,
+      hookVolume: hook?.avPlayerVolume,
+      videoMuted: video?.muted,
+      sliderValue: Number(document.querySelector("#volume-slider")?.value),
+      volumeOnHidden: document.querySelector(".volume-on-icon")?.classList.contains("hidden"),
+      volumeOffHidden: document.querySelector(".volume-off-icon")?.classList.contains("hidden"),
+      muteAriaPressed: document.querySelector("#mute-btn")?.getAttribute("aria-pressed"),
+      savedMuted: prefs.global?.muted,
+      savedVolume: prefs.global?.volume,
+    };
+  });
+
+  assertAdjustedAudio(adjustedAudio);
+  console.log(JSON.stringify({ ok: true, url, snapshot, adjustedAudio }, null, 2));
 
   await browser.close();
 }
