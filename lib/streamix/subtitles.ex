@@ -53,6 +53,10 @@ defmodule Streamix.Subtitles do
   @spec available?() :: boolean()
   def available?, do: enabled_providers() != []
 
+  @doc "Shifts every WebVTT cue by the requested offset in milliseconds."
+  @spec shift_vtt(binary(), integer()) :: binary()
+  defdelegate shift_vtt(vtt, offset_ms), to: Vtt, as: :shift
+
   # A cached entry from any enabled provider is good -- they all yield the
   # same normalized VTT for the title.
   defp cache_lookup(providers, imdb_id, lang) do

@@ -1,6 +1,6 @@
 defmodule Streamix.Torrent do
   @moduledoc """
-  Public API for torrent ingestion + playback.
+  Public facade for torrent ingestion and playback.
 
   Mirrors `Streamix.Gindex` in shape: this module is the single
   entrypoint outside the `Streamix.Torrent.*` namespace, so the

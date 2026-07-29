@@ -134,13 +134,7 @@ config :streamix, StreamixWeb.Api.V1.ImageResizeController,
 
 # GIndex pacer budgets (requests-per-second). Tunable from the env
 # without a code change — useful when upstream capacity changes.
-#
-# Default dropped from 5 to 3 after observing the AnimeZeY Worker start
-# returning 500s under 4-scanner concurrency; a sequential 30-burst at
-# the same rate all came back 200, so the issue is concentrated load,
-# not total throughput. 3 RPS keeps the pacer well under whatever
-# their internal ceiling is without killing sync throughput.
-config :streamix, Streamix.Iptv.Gindex.Pacer,
+config :streamix, Streamix.Gindex.Pacer,
   # 1 q/s. The free Cloudflare Workers tier the upstream
   # `*.workers.dev` instances run on has a daily ceiling of ~10K req
   # account-wide; at 3 q/s we ate the budget in under an hour and got
@@ -151,7 +145,7 @@ config :streamix, Streamix.Iptv.Gindex.Pacer,
   anilist: String.to_integer(get_env.("GINDEX_ANILIST_RPS") || "1"),
   tomato: String.to_integer(get_env.("GINDEX_TOMATO_RPS") || "2")
 
-config :streamix, Streamix.Iptv.Gindex.Pagination,
+config :streamix, Streamix.Gindex.Pagination,
   delay_ms: String.to_integer(get_env.("GINDEX_PAGE_DELAY_MS") || "5000"),
   jitter_ms: String.to_integer(get_env.("GINDEX_PAGE_JITTER_MS") || "1000")
 

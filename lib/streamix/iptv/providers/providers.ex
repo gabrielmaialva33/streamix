@@ -50,6 +50,20 @@ defmodule Streamix.Iptv.Providers do
   end
 
   @doc """
+  Lists personal Xtream providers eligible for the periodic sync dispatcher.
+
+  System providers and source adapters such as GIndex and Torrent have their
+  own schedulers and must not enter the Xtream worker.
+  """
+  @spec list_personal_xtream() :: [Provider.t()]
+  def list_personal_xtream do
+    Provider
+    |> where([p], p.provider_type == :xtream and p.is_system == false)
+    |> order_by(asc: :id)
+    |> Repo.all()
+  end
+
+  @doc """
   Lists all providers visible to a user:
   - Global (is_system: true)
   - Public (visibility: :public)

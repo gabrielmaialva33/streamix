@@ -41,11 +41,15 @@ defmodule Streamix.Iptv do
     ContentRef,
     Epg,
     EpgProgram,
+    EpgSync,
+    GIndexProvider,
+    GlobalProvider,
     LiveChannel,
     Movies,
     Provider,
     Providers,
-    SeriesOps
+    SeriesOps,
+    Sync
   }
 
   alias Streamix.Iptv.Streaming.{FailoverPolicy, RedirectResolver, StreamErrors, VodProxy}
@@ -223,6 +227,7 @@ defmodule Streamix.Iptv do
   defdelegate get_user_provider(user_id, provider_id), to: Providers
   defdelegate get_public_provider(provider_id), to: Providers, as: :get_public
   defdelegate get_global_provider(), to: Providers, as: :get_global
+  defdelegate list_personal_xtream_providers(), to: Providers, as: :list_personal_xtream
   defdelegate get_playable_provider(user_id, provider_id), to: Providers, as: :get_playable
   defdelegate create_provider(attrs), to: Providers, as: :create
   defdelegate create_provider(user_id, attrs), to: Providers, as: :create_for_user
@@ -236,6 +241,16 @@ defmodule Streamix.Iptv do
   defdelegate test_connection(url, username, password), to: Providers
   defdelegate sync_provider(provider, opts \\ []), to: Providers, as: :sync
   defdelegate async_sync_provider(provider), to: Providers, as: :async_sync
+  defdelegate global_provider_enabled?(), to: GlobalProvider, as: :enabled?
+
+  defdelegate ensure_global_provider(owner \\ nil),
+    to: GlobalProvider,
+    as: :ensure_exists!
+
+  defdelegate gindex_provider_enabled?(), to: GIndexProvider, as: :enabled?
+  defdelegate ensure_gindex_provider(), to: GIndexProvider, as: :ensure_exists!
+  defdelegate torrent_provider_enabled?(), to: TorrentProvider, as: :enabled?
+  defdelegate ensure_torrent_provider(), to: TorrentProvider, as: :ensure_exists!
   defdelegate get_torrent_provider(), to: TorrentProvider, as: :get
   defdelegate provider_health_summary(), to: ProviderHealth, as: :overall_status
   defdelegate list_provider_health_reports(opts \\ []), to: ProviderHealth, as: :list_reports
@@ -304,6 +319,7 @@ defmodule Streamix.Iptv do
   defdelegate sync_channel_epg(provider, stream_id, epg_channel_id), to: Epg, as: :sync_channel
   defdelegate sync_channels_epg(provider, channels), to: Epg, as: :sync_channels
   defdelegate ensure_epg_available(provider, channels), to: Epg
+  defdelegate sync_all_epg(provider), to: EpgSync
 
   @doc """
   Enqueues a background job to sync EPG for all channels of a provider.
@@ -313,6 +329,11 @@ defmodule Streamix.Iptv do
     alias Streamix.Workers.SyncEpgWorker
     SyncEpgWorker.enqueue(provider)
   end
+
+  defdelegate sync_series_details(series), to: Sync
+
+  defdelegate cleanup_orphaned_user_data(provider_id \\ nil, opts \\ []),
+    to: Sync
 
   # =============================================================================
   # Stream delivery
