@@ -78,7 +78,7 @@ defmodule Streamix.Torrent.Reaper do
     end
   end
 
-  defp maybe_reap(%{info_hash: hash} = torrent) when is_binary(hash) do
+  defp maybe_reap(%{info_hash: hash}) when is_binary(hash) do
     info_hash = String.downcase(hash)
 
     # Two-phase check: a viewer can register a brand-new session in the
@@ -88,13 +88,13 @@ defmodule Streamix.Torrent.Reaper do
     if registered?(info_hash) do
       :ok
     else
-      reap_if_still_unregistered(info_hash, torrent)
+      reap_if_still_unregistered(info_hash)
     end
   end
 
   defp maybe_reap(_), do: :ok
 
-  defp reap_if_still_unregistered(info_hash, torrent) do
+  defp reap_if_still_unregistered(info_hash) do
     if registered?(info_hash) do
       Logger.debug("[Torrent.Reaper] skipping #{info_hash} — session registered mid-sweep")
 
@@ -108,13 +108,6 @@ defmodule Streamix.Torrent.Reaper do
 
         {:error, reason} ->
           Logger.warning("[Torrent.Reaper] failed to remove #{info_hash}: #{inspect(reason)}")
-      end
-
-      # If for some reason the id was preferred and removal still
-      # left the torrent in place, try the numeric id too.
-      case torrent do
-        %{id: id} when is_integer(id) -> Client.remove(id)
-        _ -> :ok
       end
     end
   end

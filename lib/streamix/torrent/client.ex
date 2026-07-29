@@ -9,13 +9,13 @@ defmodule Streamix.Torrent.Client do
   is a single request to rqbit with the response decoded to a stable
   Elixir shape.
 
-  ## Endpoint summary (rqbit 8.x)
+  ## Endpoint summary (rqbit 9.x)
 
       POST   /torrents?overwrite=true   — add a magnet, returns id + metadata
       GET    /torrents                  — list every torrent rqbit knows about
       GET    /torrents/{id}             — full details (files, peers, etc)
       GET    /torrents/{id}/stats/v1    — live progress snapshot
-      DELETE /torrents/{id}             — stop and forget
+      POST   /torrents/{id}/delete      — stop, forget, and delete files
       GET    /torrents/{id}/stream/{i}  — Range-aware HTTP stream of file `i`
 
   `id` accepts either rqbit's numeric ID or the info_hash, but we
@@ -137,7 +137,7 @@ defmodule Streamix.Torrent.Client do
   """
   @spec remove(info_hash() | non_neg_integer()) :: :ok | {:error, term()}
   def remove(id_or_hash) do
-    request(:delete, "/torrents/#{id_or_hash}")
+    request(:post, "/torrents/#{id_or_hash}/delete")
     |> case do
       {:ok, %{status: status}} when status in 200..299 -> :ok
       {:ok, %{status: 404}} -> :ok

@@ -38,12 +38,12 @@ defmodule Streamix.Torrent.ReaperTest do
 
     {:ok, _pid} = start_supervised({Reaper, [interval: :timer.minutes(60)]})
     # sweep_now is a synchronous GenServer.call — once it returns, the
-    # reaper has already issued the DELETE and the stub agent's :deleted
+    # reaper has already issued the delete action and the stub agent's :deleted
     # list is populated. No sleep needed.
     Reaper.sweep_now()
 
     deleted = Agent.get(agent, &Map.get(&1, :deleted, []))
-    assert String.duplicate("a", 40) in deleted
+    assert deleted == [String.duplicate("a", 40)]
   end
 
   test "leaves alone torrents that have a registered session", %{agent: agent} do
@@ -104,7 +104,10 @@ defmodule Streamix.Torrent.ReaperTest do
       |> send_resp(200, Jason.encode!(%{"torrents" => torrents}))
     end
 
-    defp do_call(%{method: "DELETE", path_info: ["torrents", id]} = conn, agent) do
+    defp do_call(
+           %{method: "POST", path_info: ["torrents", id, "delete"]} = conn,
+           agent
+         ) do
       Agent.update(agent, fn state ->
         Map.update(state, :deleted, [id], &[id | &1])
       end)
