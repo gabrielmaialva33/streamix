@@ -12,7 +12,13 @@ config :bcrypt_elixir, :log_rounds, 1
 # for built-in test partitioning in CI.
 config :streamix, Streamix.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  pool_size: System.schedulers_online() * 2,
+  # Coverage instrumentation makes concurrent association preloads noticeably
+  # slower. Give tasks sharing one sandbox owner time to serialize instead of
+  # dropping them after DBConnection's tiny adaptive queue window.
+  queue_target: 2_000,
+  queue_interval: 5_000,
+  timeout: 30_000
 
 # Endpoint runs in server mode so Playwright E2E tests can hit it.
 # ConnTest/LiveViewTest don't care — they mock the conn.
@@ -74,9 +80,9 @@ playwright_options = [
   js_logger: false,
   trace: System.get_env("PW_TRACE", "false") in ~w(t true),
   screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true),
-  # Give LiveView channels time to drain before dropping the sandbox owner,
-  # avoiding DBConnection.ConnectionError flakiness at test teardown.
-  ecto_sandbox_stop_owner_delay: 200
+  # Remote WebKit can take longer than Chromium to close its LiveView
+  # websocket. Keep the sandbox owner alive until that teardown completes.
+  ecto_sandbox_stop_owner_delay: 1_000
 ]
 
 playwright_options =

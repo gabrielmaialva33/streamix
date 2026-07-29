@@ -64,9 +64,20 @@ database_url =
 
 maybe_ipv6 = if get_env.("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+repo_pool_size =
+  case config_env() do
+    :test ->
+      String.to_integer(
+        get_env.("TEST_POOL_SIZE") || Integer.to_string(System.schedulers_online() * 2)
+      )
+
+    _ ->
+      String.to_integer(get_env.("POOL_SIZE") || "10")
+  end
+
 config :streamix, Streamix.Repo,
   url: database_url,
-  pool_size: String.to_integer(get_env.("POOL_SIZE") || "10"),
+  pool_size: repo_pool_size,
   socket_options: maybe_ipv6
 
 # Redis URL (loaded from .env in dev/test via Dotenvy, System env in prod)

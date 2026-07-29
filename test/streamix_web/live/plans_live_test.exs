@@ -1,5 +1,7 @@
 defmodule StreamixWeb.PlansLiveTest do
-  use StreamixWeb.ConnCase, async: true
+  # Every test clears the shared seed plans. Concurrent DELETE transactions on
+  # the same table block each other until sandbox rollback and starve the pool.
+  use StreamixWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 

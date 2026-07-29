@@ -1,5 +1,7 @@
 defmodule StreamixWeb.Admin.PlansLiveTest do
-  use StreamixWeb.ConnCase, async: true
+  # The setup clears shared seed plans, so this module cannot safely overlap
+  # another transaction that deletes from the same table.
+  use StreamixWeb.ConnCase, async: false
 
   import Ecto.Query
   import Phoenix.LiveViewTest
