@@ -22,7 +22,6 @@ defmodule Streamix.Application do
         Streamix.Repo,
         maybe_oban_startup_recovery_child(),
         {Streamix.RateLimit, clean_period: :timer.minutes(10)},
-        {Oban, Application.fetch_env!(:streamix, Oban)},
         {Task.Supervisor, name: Streamix.TaskSupervisor},
         {Redix, {redis_url(), [name: :streamix_redis]}},
         # L1 in-memory cache (ConCache) for hot data
@@ -92,6 +91,11 @@ defmodule Streamix.Application do
         # every 5 min.
         maybe_torrent_children(),
         StreamixWeb.Presence,
+        # Workers depend on Finch, Redis, PubSub and the domain processes
+        # above. Starting Oban after them also makes it stop before them,
+        # preventing in-flight jobs from failing while dependencies are
+        # already gone during a deploy.
+        {Oban, Application.fetch_env!(:streamix, Oban)},
         # Start to serve requests, typically the last entry
         StreamixWeb.Endpoint
       ]
