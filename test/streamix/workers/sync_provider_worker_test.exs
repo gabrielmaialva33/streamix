@@ -1,5 +1,5 @@
 defmodule Streamix.Workers.SyncProviderWorkerTest do
-  use Streamix.DataCase, async: true
+  use Streamix.DataCase, async: false
 
   alias Streamix.Iptv
   alias Streamix.Workers.SyncProviderWorker
@@ -133,6 +133,38 @@ defmodule Streamix.Workers.SyncProviderWorkerTest do
                         movies_count: 8,
                         series_count: 9
                       }}
+    end
+
+    test "persists completed when the provider started in completed state" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{sync_status: "completed"})
+
+      Application.put_env(
+        :streamix,
+        :sync_provider_worker_iptv_module,
+        Streamix.TestSupport.SyncProviderWorkerIptvStub
+      )
+
+      job = %Oban.Job{args: %{"provider_id" => provider.id}}
+
+      assert :ok = SyncProviderWorker.perform(job)
+      assert Iptv.get_provider!(provider.id).sync_status == "completed"
+    end
+
+    test "persists failed when the provider started in failed state" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{sync_status: "failed"})
+
+      Application.put_env(
+        :streamix,
+        :sync_provider_worker_iptv_module,
+        Streamix.TestSupport.FailingSyncProviderWorkerIptvStub
+      )
+
+      job = %Oban.Job{args: %{"provider_id" => provider.id}}
+
+      assert {:error, :forced_failure} = SyncProviderWorker.perform(job)
+      assert Iptv.get_provider!(provider.id).sync_status == "failed"
     end
 
     @tag :integration

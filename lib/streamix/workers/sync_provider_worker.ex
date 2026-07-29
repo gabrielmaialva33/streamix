@@ -87,14 +87,14 @@ defmodule Streamix.Workers.SyncProviderWorker do
   # "completed" event when the DB still says "syncing" leaves the UI
   # permanently out of sync with the provider row.
   defp finish_success(iptv, provider) do
-    updated_provider = iptv.get_provider!(provider.id)
+    current_provider = iptv.get_provider!(provider.id)
 
-    case iptv.update_provider(provider, %{sync_status: "completed"}) do
-      {:ok, _} ->
+    case iptv.update_provider(current_provider, %{sync_status: "completed"}) do
+      {:ok, completed_provider} ->
         broadcast_sync_status(provider, "completed", %{
-          live_channels_count: updated_provider.live_channels_count,
-          movies_count: updated_provider.movies_count,
-          series_count: updated_provider.series_count
+          live_channels_count: completed_provider.live_channels_count,
+          movies_count: completed_provider.movies_count,
+          series_count: completed_provider.series_count
         })
 
         :ok
@@ -112,7 +112,9 @@ defmodule Streamix.Workers.SyncProviderWorker do
   # Same ordering as the success branch: broadcast only after the status
   # row reflects the outcome.
   defp finish_failure(iptv, provider, reason) do
-    case iptv.update_provider(provider, %{sync_status: "failed"}) do
+    current_provider = iptv.get_provider!(provider.id)
+
+    case iptv.update_provider(current_provider, %{sync_status: "failed"}) do
       {:ok, _} ->
         broadcast_sync_status(provider, "failed", %{error: inspect(reason)})
 

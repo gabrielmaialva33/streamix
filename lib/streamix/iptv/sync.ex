@@ -202,9 +202,7 @@ defmodule Streamix.Iptv.Sync do
           |> maybe_put(:vod_synced_at, now, :movies, failures)
           |> maybe_put(:series_synced_at, now, :series, failures)
 
-        provider
-        |> Provider.sync_changeset(attrs)
-        |> Repo.update()
+        update_sync_state(provider, attrs)
 
         failed_types = Enum.map(failures, fn {type, _} -> type end)
 
@@ -241,8 +239,7 @@ defmodule Streamix.Iptv.Sync do
       {:ok, details} ->
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        provider
-        |> Provider.sync_changeset(%{
+        update_sync_state(provider, %{
           sync_status: "completed",
           live_channels_count: live_count,
           movies_count: vod_count,
@@ -251,7 +248,6 @@ defmodule Streamix.Iptv.Sync do
           vod_synced_at: now,
           series_synced_at: now
         })
-        |> Repo.update()
 
         Logger.info(
           "Full sync completed: #{live_count} live, #{vod_count} movies, #{series_count} series"
@@ -325,8 +321,17 @@ defmodule Streamix.Iptv.Sync do
   end
 
   defp update_status(provider, status) do
-    provider
-    |> Provider.sync_changeset(%{sync_status: status})
+    update_sync_state(provider, %{sync_status: status})
+  end
+
+  # A sync changes the provider status multiple times while callers keep the
+  # struct they loaded before the run. Refresh before building the changeset:
+  # otherwise Ecto can treat a terminal status as unchanged in memory and skip
+  # the SQL update even though the database currently says "syncing".
+  defp update_sync_state(provider, attrs) do
+    Provider
+    |> Repo.get!(provider.id)
+    |> Provider.sync_changeset(attrs)
     |> Repo.update()
   end
 end
