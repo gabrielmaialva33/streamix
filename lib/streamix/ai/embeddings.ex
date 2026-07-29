@@ -133,7 +133,6 @@ defmodule Streamix.AI.Embeddings do
 
   defp dim_for(:gemini), do: Gemini.embedding_dimensions()
   defp dim_for(:nvidia), do: Nvidia.embedding_dimensions()
-  defp dim_for(_), do: nil
 
   defp embed_with_fallback(text, primary, fallback, opts) do
     case do_embed(text, primary, opts) do
