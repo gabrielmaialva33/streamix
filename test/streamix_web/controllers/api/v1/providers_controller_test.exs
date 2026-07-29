@@ -1,5 +1,5 @@
 defmodule StreamixWeb.Api.V1.ProvidersControllerTest do
-  use StreamixWeb.ConnCase, async: true
+  use StreamixWeb.ConnCase, async: false
 
   import Streamix.AccountsFixtures
 
