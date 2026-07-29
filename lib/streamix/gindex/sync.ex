@@ -56,20 +56,22 @@ defmodule Streamix.Gindex.Sync do
   @doc """
   Syncs a single root path for a given kind.
   """
-  @spec sync_kind(Provider.t(), String.t(), String.t(), atom()) ::
+  @spec sync_kind(Provider.t(), String.t(), String.t(), atom(), keyword()) ::
           {:ok, map()} | {:error, term()}
-  def sync_kind(%Provider{} = provider, base_url, path, :movies) do
+  def sync_kind(provider, base_url, path, kind, opts \\ [])
+
+  def sync_kind(%Provider{} = provider, base_url, path, :movies, _opts) do
     case Movies.sync(provider, base_url, path) do
       {:ok, count} -> {:ok, %{movies_count: count}}
       error -> error
     end
   end
 
-  def sync_kind(%Provider{} = provider, base_url, path, :series) do
-    Series.sync(provider, base_url, [path])
+  def sync_kind(%Provider{} = provider, base_url, path, :series, opts) do
+    Series.sync(provider, base_url, [path], opts)
   end
 
-  def sync_kind(%Provider{} = provider, base_url, path, :animes) do
+  def sync_kind(%Provider{} = provider, base_url, path, :animes, _opts) do
     Animes.sync(provider, base_url, path)
   end
 
@@ -88,8 +90,11 @@ defmodule Streamix.Gindex.Sync do
   """
   def sync_series_batch(%Provider{} = provider, series_list) when is_list(series_list) do
     Logger.info("[GIndex Sync] Syncing batch of #{length(series_list)} series")
-    Series.upsert_batch(provider, series_list)
-    {:ok, length(series_list)}
+
+    case Series.upsert_batch(provider, series_list) do
+      {:ok, _stats} -> {:ok, length(series_list)}
+      {:error, _reason} = error -> error
+    end
   end
 
   @doc """

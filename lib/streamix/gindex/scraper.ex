@@ -45,7 +45,13 @@ defmodule Streamix.Gindex.Scraper do
   def scrape_series_folder(base_url, series_path),
     do: Series.scrape_series_folder(base_url, series_path)
 
+  def list_series_folders(base_url, series_path),
+    do: Series.list_series_folders(base_url, series_path)
+
   def scrape_single_series(base_url, folder), do: Series.scrape_single_series(base_url, folder)
+
+  def scrape_single_series_result(base_url, folder),
+    do: Series.scrape_single_series_result(base_url, folder)
 
   def scrape_seasons(base_url, season_folders, series_path),
     do: Series.scrape_seasons(base_url, season_folders, series_path)

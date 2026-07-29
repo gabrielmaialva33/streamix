@@ -159,6 +159,7 @@ defmodule StreamixWeb.PlayerComponents do
       <%!-- Video element. JS starts playback only after resume seek is applied. --%>
       <video
         id="video-element"
+        phx-update="ignore"
         class="absolute inset-0 w-full h-full object-contain"
         preload="metadata"
         playsinline

@@ -22,9 +22,23 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
   alias PlaywrightEx.BrowserContext
 
-  test "resumes VOD before play and enables native controls on iOS WebKit", %{conn: session} do
+  setup do
+    {:ok, server} =
+      start_supervised(
+        {Bandit,
+         plug: __MODULE__.MediaStub, scheme: :http, port: 0, ip: :loopback, startup_log: false}
+      )
+
+    {:ok, {_, port}} = ThousandIsland.listener_info(server)
+    %{media_origin: "http://127.0.0.1:#{port}"}
+  end
+
+  test "resumes VOD before play and enables native controls on iOS WebKit", %{
+    conn: session,
+    media_origin: media_origin
+  } do
     user = user_fixture()
-    provider = provider_fixture(user, %{is_active: true, url: StreamixWeb.Endpoint.url()})
+    provider = provider_fixture(user, %{is_active: true, url: media_origin})
     movie = movie_fixture(provider, %{container_extension: "mp4", stream_id: 9_001})
 
     session
@@ -38,28 +52,36 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
   @tag browser_context_opts: [
          viewport: %{width: 390, height: 844},
          is_mobile: true,
-         device_scale_factor: 3.0
+         device_scale_factor: 3.0,
+         service_workers: "block"
        ]
-  test "keeps touch controls reachable in iPhone portrait", %{conn: session} do
+  test "keeps touch controls reachable in iPhone portrait", %{
+    conn: session,
+    media_origin: media_origin
+  } do
     session
-    |> open_mobile_player()
+    |> open_mobile_player(media_origin)
     |> assert_mobile_controls_fit(390, 844)
   end
 
   @tag browser_context_opts: [
          viewport: %{width: 844, height: 390},
          is_mobile: true,
-         device_scale_factor: 3.0
+         device_scale_factor: 3.0,
+         service_workers: "block"
        ]
-  test "keeps touch controls reachable in iPhone landscape", %{conn: session} do
+  test "keeps touch controls reachable in iPhone landscape", %{
+    conn: session,
+    media_origin: media_origin
+  } do
     session
-    |> open_mobile_player()
+    |> open_mobile_player(media_origin)
     |> assert_mobile_controls_fit(844, 390)
   end
 
-  defp open_mobile_player(session) do
+  defp open_mobile_player(session, media_origin) do
     user = user_fixture()
-    provider = provider_fixture(user, %{is_active: true, url: StreamixWeb.Endpoint.url()})
+    provider = provider_fixture(user, %{is_active: true, url: media_origin})
     movie = movie_fixture(provider, %{container_extension: "mp4"})
 
     session
@@ -355,5 +377,18 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         assert state["revealedAfterTap"] == true
       end
     )
+  end
+
+  defmodule MediaStub do
+    @moduledoc false
+    import Plug.Conn
+
+    def init(opts), do: opts
+
+    def call(conn, _opts) do
+      conn
+      |> put_resp_content_type("video/mp4")
+      |> send_resp(200, "")
+    end
   end
 end

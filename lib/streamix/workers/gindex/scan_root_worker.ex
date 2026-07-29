@@ -16,13 +16,11 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
   use Oban.Worker,
     queue: :gindex_scan,
-    # Bumped 3 → 5. The scrapers now surface upstream 500s instead of
-    # swallowing them as empty success, so a flaky Cloudflare Worker
-    # shard burns one attempt instead of pinning the provider to
-    # sync_status=completed with zero series. Oban's exponential
-    # backoff pairs with the 30s GIndex token cooldown nicely; 5 tries
-    # spans roughly the worst-case CF outage window we observed.
-    max_attempts: 5,
+    # A root may span thousands of folders behind a flaky Cloudflare
+    # Worker. Checkpoints make retries cheap, so keep enough attempts to
+    # survive a longer upstream outage instead of discarding the whole
+    # workflow after a few minutes.
+    max_attempts: 12,
     # Priority 1 (vs default 3) keeps ScanRoot ahead of lower-urgency
     # work when the scheduler is picking from a backlog — ensures a
     # cron-triggered sync isn't starved by other sync-queue traffic.
@@ -50,7 +48,12 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   def timeout(_job), do: @timeout
 
   @impl Oban.Worker
-  def perform(
+  def perform(job) do
+    perform_with(job, &Sync.sync_kind/5, &QuotaGuard.seconds_until_reset/0)
+  end
+
+  @doc false
+  def perform_with(
         %Oban.Job{
           args: %{
             "provider_id" => provider_id,
@@ -58,14 +61,16 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
             "path" => path,
             "kind" => kind
           }
-        } = job
+        } = job,
+        sync_fun,
+        reset_delay_fun
       ) do
     with %Provider{} = provider <- Repo.get(Provider, provider_id),
          {:ok, kind_atom} <- parse_kind(kind) do
       Logger.info("[GIndex ScanRoot] start provider=#{provider_id} kind=#{kind} path=#{path}")
       started_at = System.monotonic_time(:millisecond)
 
-      case Sync.sync_kind(provider, base_url, path, kind_atom) do
+      case sync_fun.(provider, base_url, path, kind_atom, sync_opts(job, kind_atom, path)) do
         {:ok, stats} ->
           took_ms = System.monotonic_time(:millisecond) - started_at
 
@@ -86,13 +91,22 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
             "kind" => kind,
             "path" => path,
             "stats" => stringify_stats(stats),
-            "took_ms" => took_ms
+            "took_ms" => took_ms,
+            "paused_reason" => nil,
+            "quota_count" => nil,
+            "series_checkpoint" => nil,
+            "checkpoint_path" => nil
           })
 
           :ok
 
         {:error, {:quota_exhausted, count}} ->
-          delay = QuotaGuard.seconds_until_reset()
+          delay = reset_delay_fun.()
+
+          write_meta(job, %{
+            "paused_reason" => "quota_exhausted",
+            "quota_count" => count
+          })
 
           Logger.warning(
             "[GIndex ScanRoot] quota exhausted at #{count}; pausing provider=#{provider_id} " <>
@@ -133,9 +147,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
   defp stringify_stats(_), do: %{}
 
-  defp write_meta(%Oban.Job{id: id, meta: existing}, payload) do
-    new_meta = Map.merge(existing || %{}, payload)
-
+  defp write_meta(%Oban.Job{id: id}, payload) do
     case Repo.get(Oban.Job, id) do
       nil ->
         :telemetry.execute(
@@ -147,6 +159,8 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
         {:error, :job_not_found}
 
       job ->
+        new_meta = Map.merge(job.meta || %{}, payload)
+
         job
         |> Ecto.Changeset.change(meta: new_meta)
         |> Repo.update()
@@ -174,4 +188,18 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
         end
     end
   end
+
+  defp sync_opts(job, :series, path) do
+    [
+      checkpoint: Map.get(job.meta || %{}, "series_checkpoint"),
+      on_checkpoint: fn checkpoint ->
+        write_meta(job, %{
+          "series_checkpoint" => checkpoint,
+          "checkpoint_path" => path
+        })
+      end
+    ]
+  end
+
+  defp sync_opts(_job, _kind, _path), do: []
 end

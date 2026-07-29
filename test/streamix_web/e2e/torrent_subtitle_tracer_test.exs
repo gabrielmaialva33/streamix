@@ -211,6 +211,8 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
             imdbId: hook.imdbId,
             sessionId: hook.playbackSessionId,
             externalLoadedFor: hook._externalSubtitleLoadedFor,
+            sameVideoNode: hook.video === document.querySelector("#video-element"),
+            nativeTrackConnected: hook._nativeExternalSubtitleTrack?.isConnected,
             tracks: hook.subtitleTracks
           },
           subtitleStatus: subtitleResponse.status,
@@ -223,7 +225,10 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
         assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
         assert state["subtitleLang"] == "pt-BR"
         assert state["subtitleOffsetMs"] == "500"
+        assert state["hookState"]["sameVideoNode"]
+        assert state["hookState"]["nativeTrackConnected"]
         assert state["trackLabel"] == "Português (auto)", inspect(state)
+        assert state["trackCount"] == 1, inspect(state)
         assert state["subtitleOptions"] =~ "Português (auto)", inspect(state)
         assert state["subtitleStatus"] == 200
         assert state["shifted"] =~ "00:00:01.500 --> 00:00:02.500"

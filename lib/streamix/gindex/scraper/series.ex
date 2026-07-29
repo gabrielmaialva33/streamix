@@ -38,12 +38,7 @@ defmodule Streamix.Gindex.Scraper.Series do
       {:ok, folders} ->
         Logger.info("[GIndex Scraper] Found #{length(folders)} series folders in #{series_path}")
 
-        series_list =
-          folders
-          |> Enum.map(&scrape_single_series(base_url, &1))
-          |> Enum.reject(&is_nil/1)
-
-        {:ok, series_list}
+        collect_series(base_url, folders)
 
       {:error, reason} ->
         Logger.warning(
@@ -54,7 +49,27 @@ defmodule Streamix.Gindex.Scraper.Series do
     end
   end
 
-  defp list_series_folders(base_url, series_path) do
+  defp collect_series(base_url, folders) do
+    folders
+    |> Enum.reduce_while({:ok, []}, fn folder, state ->
+      collect_series_folder(base_url, folder, state)
+    end)
+    |> reverse_collected_series()
+  end
+
+  defp collect_series_folder(base_url, folder, {:ok, acc}) do
+    case scrape_single_series_result(base_url, folder) do
+      {:ok, series} -> {:cont, {:ok, [series | acc]}}
+      :empty -> {:cont, {:ok, acc}}
+      {:error, _reason} = error -> {:halt, error}
+    end
+  end
+
+  defp reverse_collected_series({:ok, series}), do: {:ok, Enum.reverse(series)}
+  defp reverse_collected_series({:error, _reason} = error), do: error
+
+  @doc false
+  def list_series_folders(base_url, series_path) do
     key = "gindex:disc:series:" <> base_url <> ":" <> series_path
 
     case Cache.get(key) do
@@ -75,6 +90,15 @@ defmodule Streamix.Gindex.Scraper.Series do
   end
 
   def scrape_single_series(base_url, folder) do
+    case scrape_single_series_result(base_url, folder) do
+      {:ok, series} -> series
+      :empty -> nil
+      {:error, _reason} -> nil
+    end
+  end
+
+  @doc false
+  def scrape_single_series_result(base_url, folder) do
     Logger.debug("[GIndex Scraper] Scraping series: #{folder.name}")
 
     folder_meta = Parser.parse_series_folder(folder.name)
@@ -82,24 +106,28 @@ defmodule Streamix.Gindex.Scraper.Series do
 
     case Client.list_folder(base_url, folder.path) do
       {:ok, items} ->
-        seasons =
-          items
-          |> Enum.filter(fn item -> item.type == :folder and season_folder?(item) end)
-          |> scrape_seasons(base_url, folder.path)
+        season_folders =
+          Enum.filter(items, fn item -> item.type == :folder and season_folder?(item) end)
 
-        if Enum.empty?(seasons) do
-          nil
-        else
-          %{
-            series_id: series_id,
-            name: folder_meta.name,
-            title: folder_meta.original_name,
-            year: folder_meta.year,
-            gindex_path: folder.path,
-            seasons: seasons,
-            season_count: length(seasons),
-            episode_count: Enum.sum(Enum.map(seasons, & &1.episode_count))
-          }
+        case scrape_seasons_result(base_url, season_folders, folder.path) do
+          {:ok, []} ->
+            :empty
+
+          {:ok, seasons} ->
+            {:ok,
+             %{
+               series_id: series_id,
+               name: folder_meta.name,
+               title: folder_meta.original_name,
+               year: folder_meta.year,
+               gindex_path: folder.path,
+               seasons: seasons,
+               season_count: length(seasons),
+               episode_count: Enum.sum(Enum.map(seasons, & &1.episode_count))
+             }}
+
+          {:error, _reason} = error ->
+            error
         end
 
       {:error, reason} ->
@@ -107,22 +135,44 @@ defmodule Streamix.Gindex.Scraper.Series do
           "[GIndex Scraper] Failed to list series #{folder.name}: #{inspect(reason)}"
         )
 
-        nil
+        {:error, reason}
     end
   end
 
   def scrape_seasons(season_folders, base_url, series_path) when is_list(season_folders) do
-    season_folders
-    |> Enum.map(&scrape_single_season(base_url, &1, series_path))
-    |> Enum.reject(&is_nil/1)
-    |> Enum.sort_by(& &1.season_number)
+    case scrape_seasons_result(base_url, season_folders, series_path) do
+      {:ok, seasons} -> seasons
+      {:error, _reason} -> []
+    end
   end
 
   def scrape_seasons(base_url, season_folders, series_path) when is_binary(base_url) do
     scrape_seasons(season_folders, base_url, series_path)
   end
 
-  def scrape_single_season(base_url, folder, _series_path) do
+  defp scrape_seasons_result(base_url, season_folders, series_path) do
+    Enum.reduce_while(season_folders, {:ok, []}, fn folder, {:ok, acc} ->
+      case scrape_single_season_result(base_url, folder, series_path) do
+        {:ok, season} -> {:cont, {:ok, [season | acc]}}
+        :empty -> {:cont, {:ok, acc}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, seasons} -> {:ok, Enum.sort_by(seasons, & &1.season_number)}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def scrape_single_season(base_url, folder, series_path) do
+    case scrape_single_season_result(base_url, folder, series_path) do
+      {:ok, season} -> season
+      :empty -> nil
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp scrape_single_season_result(base_url, folder, _series_path) do
     Logger.debug("[GIndex Scraper] Scraping season: #{folder.name}")
 
     season_number = Parser.parse_season_folder(folder.name).season_number
@@ -135,15 +185,16 @@ defmodule Streamix.Gindex.Scraper.Series do
           |> scrape_episodes_from_files(base_url, season_number)
 
         if Enum.empty?(episodes) do
-          check_season_subfolders(base_url, items, season_number)
+          check_season_subfolders_result(base_url, items, season_number)
         else
-          %{
-            season_number: season_number,
-            name: folder.name,
-            gindex_path: folder.path,
-            episodes: episodes,
-            episode_count: length(episodes)
-          }
+          {:ok,
+           %{
+             season_number: season_number,
+             name: folder.name,
+             gindex_path: folder.path,
+             episodes: episodes,
+             episode_count: length(episodes)
+           }}
         end
 
       {:error, reason} ->
@@ -151,7 +202,7 @@ defmodule Streamix.Gindex.Scraper.Series do
           "[GIndex Scraper] Failed to list season #{folder.name}: #{inspect(reason)}"
         )
 
-        nil
+        {:error, reason}
     end
   end
 
@@ -188,38 +239,49 @@ defmodule Streamix.Gindex.Scraper.Series do
     |> Enum.sort_by(& &1.episode_num)
   end
 
-  defp check_season_subfolders(base_url, items, season_number) do
+  defp check_season_subfolders_result(base_url, items, season_number) do
     subfolders = Enum.filter(items, &(&1.type == :folder))
 
-    all_episodes =
-      subfolders
-      |> Enum.flat_map(&scrape_subfolder_episodes(base_url, &1, season_number))
-      |> Enum.sort_by(& &1.episode_num)
+    Enum.reduce_while(subfolders, {:ok, []}, fn subfolder, {:ok, acc} ->
+      case scrape_subfolder_episodes_result(base_url, subfolder, season_number) do
+        {:ok, episodes} -> {:cont, {:ok, episodes ++ acc}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, []} ->
+        :empty
 
-    if Enum.empty?(all_episodes) do
-      nil
-    else
-      first_subfolder = List.first(subfolders)
+      {:ok, episodes} ->
+        first_subfolder = List.first(subfolders)
+        all_episodes = Enum.sort_by(episodes, & &1.episode_num)
 
-      %{
-        season_number: season_number,
-        name: first_subfolder && first_subfolder.name,
-        gindex_path: first_subfolder && first_subfolder.path,
-        episodes: all_episodes,
-        episode_count: length(all_episodes)
-      }
+        {:ok,
+         %{
+           season_number: season_number,
+           name: first_subfolder && first_subfolder.name,
+           gindex_path: first_subfolder && first_subfolder.path,
+           episodes: all_episodes,
+           episode_count: length(all_episodes)
+         }}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
-  defp scrape_subfolder_episodes(base_url, subfolder, season_number) do
+  defp scrape_subfolder_episodes_result(base_url, subfolder, season_number) do
     case Client.list_folder(base_url, subfolder.path) do
       {:ok, sub_items} ->
-        sub_items
-        |> Enum.filter(fn item -> item.type == :file and Parser.video_file?(item.name) end)
-        |> build_episodes(season_number)
+        episodes =
+          sub_items
+          |> Enum.filter(fn item -> item.type == :file and Parser.video_file?(item.name) end)
+          |> build_episodes(season_number)
 
-      {:error, _reason} ->
-        []
+        {:ok, episodes}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

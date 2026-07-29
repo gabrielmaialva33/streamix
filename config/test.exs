@@ -67,6 +67,10 @@ playwright_browser =
 playwright_options = [
   browser: playwright_browser,
   headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
+  # Keep browser E2E contexts deterministic. Service-worker activation can
+  # reload a page while Playwright is evaluating it, destroying the execution
+  # context and turning unrelated player assertions into flakes.
+  browser_context_opts: [service_workers: "block"],
   js_logger: false,
   trace: System.get_env("PW_TRACE", "false") in ~w(t true),
   screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true),
