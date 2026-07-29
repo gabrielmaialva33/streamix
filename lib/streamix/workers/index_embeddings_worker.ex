@@ -28,36 +28,47 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
 
   require Logger
 
-  alias Streamix.AI.SemanticSearch
-
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
-    if SemanticSearch.available?() do
-      collection = Map.get(args, "collection")
-      provider_id = Map.get(args, "provider_id")
+    semantic_search = semantic_search_module()
 
-      case collection do
-        "movies" ->
-          index_movies(provider_id)
+    case semantic_search.setup() do
+      :ok ->
+        index(semantic_search, args)
 
-        "series" ->
-          index_series(provider_id)
+      {:error, :not_available} ->
+        Logger.info("[IndexEmbeddings] Semantic search not available, skipping")
+        :ok
 
-        _ ->
-          # Index all
-          index_movies(provider_id)
-          index_series(provider_id)
-      end
-    else
-      Logger.info("[IndexEmbeddings] Semantic search not available, skipping")
-      :ok
+      {:error, reason} ->
+        Logger.error("[IndexEmbeddings] Failed to set up semantic search: #{inspect(reason)}")
+        {:error, {:setup_failed, reason}}
     end
   end
 
-  defp index_movies(provider_id) do
+  defp index(semantic_search, args) do
+    collection = Map.get(args, "collection")
+    provider_id = Map.get(args, "provider_id")
+
+    case collection do
+      "movies" ->
+        index_movies(semantic_search, provider_id)
+
+      "series" ->
+        index_series(semantic_search, provider_id)
+
+      _ ->
+        case index_movies(semantic_search, provider_id) do
+          :ok -> index_series(semantic_search, provider_id)
+          {:error, _reason} = error -> error
+        end
+    end
+  end
+
+  defp index_movies(semantic_search, provider_id) do
     Logger.info("[IndexEmbeddings] Starting movies indexing...")
 
-    case SemanticSearch.index_all_movies(provider_id) do
+    case semantic_search.index_all_movies(provider_id) do
       {:ok, count} ->
         Logger.info("[IndexEmbeddings] Indexed #{count} movies")
         :ok
@@ -68,10 +79,10 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
     end
   end
 
-  defp index_series(provider_id) do
+  defp index_series(semantic_search, provider_id) do
     Logger.info("[IndexEmbeddings] Starting series indexing...")
 
-    case SemanticSearch.index_all_series(provider_id) do
+    case semantic_search.index_all_series(provider_id) do
       {:ok, count} ->
         Logger.info("[IndexEmbeddings] Indexed #{count} series")
         :ok
@@ -80,5 +91,9 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
         Logger.error("[IndexEmbeddings] Failed to index series: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  defp semantic_search_module do
+    Application.get_env(:streamix, :semantic_search_module, Streamix.AI.SemanticSearch)
   end
 end

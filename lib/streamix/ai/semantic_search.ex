@@ -143,21 +143,23 @@ defmodule Streamix.AI.SemanticSearch do
   Respects NVIDIA rate limits by processing in batches with delays.
   Returns the count of successfully indexed items.
   """
-  def index_contents(contents, collection) when is_list(contents) and is_atom(collection) do
+  def index_contents(contents, collection, opts \\ [])
+      when is_list(contents) and is_atom(collection) do
+    batch_indexer = Keyword.get(opts, :batch_indexer, &index_batch/2)
+    rate_limit_delay = Keyword.get(opts, :rate_limit_delay, @rate_limit_delay)
+
     contents
     |> Enum.map(&content_to_map/1)
     |> Enum.chunk_every(@batch_size)
-    |> Enum.reduce({:ok, 0}, fn batch, {:ok, count} ->
-      case index_batch(batch, collection) do
+    |> Enum.reduce_while({:ok, 0}, fn batch, {:ok, count} ->
+      case batch_indexer.(batch, collection) do
         {:ok, indexed} ->
-          # Rate limit delay between batches
-          Process.sleep(@rate_limit_delay)
-          {:ok, count + indexed}
+          Process.sleep(rate_limit_delay)
+          {:cont, {:ok, count + indexed}}
 
         {:error, reason} ->
           Logger.error("[SemanticSearch] Batch indexing failed: #{inspect(reason)}")
-          # Continue with next batch
-          {:ok, count}
+          {:halt, {:error, {:batch_failed, collection, count, reason}}}
       end
     end)
   end

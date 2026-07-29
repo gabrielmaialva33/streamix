@@ -51,8 +51,15 @@ defmodule Streamix.AI.Qdrant do
   Ensures all required collections exist with proper configuration.
   """
   def setup_collections do
-    Enum.each(@collections, &ensure_collection/1)
-    :ok
+    Enum.reduce_while(@collections, :ok, fn collection, :ok ->
+      case ensure_collection(collection) do
+        :ok ->
+          {:cont, :ok}
+
+        {:error, reason} ->
+          {:halt, {:error, {:collection_setup_failed, collection, reason}}}
+      end
+    end)
   end
 
   @doc """
@@ -313,6 +320,9 @@ defmodule Streamix.AI.Qdrant do
       {:ok, %Req.Response{status: 404}} ->
         {:error, :not_found}
 
+      {:ok, %Req.Response{status: status}} ->
+        {:error, {:collection_info_failed, status}}
+
       {:error, reason} ->
         {:error, reason}
     end
@@ -330,6 +340,10 @@ defmodule Streamix.AI.Qdrant do
 
       {:ok, %Req.Response{status: 404}} ->
         create_collection(name)
+
+      {:ok, %Req.Response{status: status}} ->
+        Logger.error("[Qdrant] Failed to check collection #{name}: HTTP #{status}")
+        {:error, {:check_failed, status}}
 
       {:error, reason} ->
         Logger.error("[Qdrant] Failed to check collection #{name}: #{inspect(reason)}")
