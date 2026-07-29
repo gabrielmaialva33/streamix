@@ -127,7 +127,6 @@ assets/
 | IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG, favorites, history        |
 | AI          | `Streamix.AI.*`       | Embeddings, semantic search, user analytics, Qdrant integration |
 | Billing     | `Streamix.Billing`    | Plans, subscriptions, premium access                            |
-| Library     | `Streamix.Library`    | Shared content references across content types                  |
 | Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence                            |
 | Queue       | `Streamix.Queue`      | Optional RabbitMQ + Broadway execution path                     |
 

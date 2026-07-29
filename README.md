@@ -103,7 +103,7 @@ graph TD
 
     subgraph Core["Core Contexts"]
         ACC[Accounts + Access]
-        IPTV[IPTV + Library]
+        IPTV[IPTV + Catalog]
         BILL[Billing]
         CACHE[ConCache + Redis]
     end
@@ -172,9 +172,9 @@ sequenceDiagram
 | Area                | Main modules                                                                           |
 |---------------------|----------------------------------------------------------------------------------------|
 | Auth and roles      | `Streamix.Accounts`, `Streamix.Access`                                                 |
-| IPTV and catalog    | `Streamix.Iptv`, `Streamix.Library`                                                    |
+| IPTV and catalog    | `Streamix.Iptv`                                                                         |
 | Billing             | `Streamix.Billing`                                                                     |
-| AI                  | `Streamix.AI.SemanticSearch`, `Streamix.AI.UserAnalytics`                              |
+| AI                  | `Streamix.AI`                                                                            |
 | Realtime rooms      | `Streamix.WatchParty`, `Streamix.WatchParty.RoomServer`                                |
 | Stream delivery     | `StreamixWeb.StreamToken`, `StreamixWeb.StreamController`, `Streamix.Iptv.StreamProxy` |
 | Background jobs     | `Streamix.Workers.*`, `Oban`                                                           |
