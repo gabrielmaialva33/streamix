@@ -1,4 +1,11 @@
 import {
+  adjustAudioVolume,
+  audioOutputVolume,
+  hydrateAudioState,
+  setAudioVolume,
+  toggleAudioMute,
+} from "../lib/audio_state";
+import {
   getCapabilitySummary,
   getCodecCapabilityReport,
   getMediaDecodingInfo,
@@ -34,7 +41,6 @@ import {
   getStreamingConfig,
   selectStreamingMode,
 } from "../lib/streaming_config";
-import { linearToPerceived } from "../lib/volume_utils";
 import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../lib/webcodecs_decoder";
 import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../lib/worker_mse";
 import { selectEngine } from "../player/engine_selector";
@@ -550,14 +556,10 @@ const VideoPlayer = {
 
   loadPreferences() {
     const prefs = getPreferences(this.contentId);
-    const storedVolume = Number(prefs.volume);
-    const volume = Number.isFinite(storedVolume) ? Math.max(0, Math.min(1, storedVolume)) : 1;
-    const muted = prefs.muted === true || prefs.muted === "true";
+    const audioState = hydrateAudioState(prefs);
 
     // Apply volume (prefs.volume is UI value, convert to perceived for backends)
-    this.avPlayerVolume = volume;
-    this.avPlayerMuted = muted;
-    this._lastAudibleVolume = volume > 0 ? volume : 1;
+    this.setCanonicalAudioState(audioState);
     this.applyAudioState();
 
     // Store track preferences to apply after manifest loads
@@ -1325,7 +1327,7 @@ const VideoPlayer = {
   // ============================================
 
   applyAudioState() {
-    const outputVolume = linearToPerceived(this.avPlayerVolume);
+    const outputVolume = audioOutputVolume(this.canonicalAudioState());
 
     // Keep the native element synchronized even while it is hidden. That
     // makes a later AVPlayer -> native fallback inherit the same audio state.
@@ -1335,12 +1337,26 @@ const VideoPlayer = {
     }
 
     if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayer.setVolume(this.avPlayerMuted ? 0 : outputVolume);
+      this.avPlayer.setVolume(outputVolume);
     }
 
     if (this.usingH265web && this.h265web) {
-      this.h265web.setVolume(this.avPlayerMuted ? 0 : outputVolume);
+      this.h265web.setVolume(outputVolume);
     }
+  },
+
+  canonicalAudioState() {
+    return {
+      volume: this.avPlayerVolume,
+      muted: this.avPlayerMuted,
+      lastAudibleVolume: this._lastAudibleVolume,
+    };
+  },
+
+  setCanonicalAudioState(state) {
+    this.avPlayerVolume = state.volume;
+    this.avPlayerMuted = state.muted;
+    this._lastAudibleVolume = state.lastAudibleVolume;
   },
 
   updateVolumeUI() {
@@ -1397,17 +1413,15 @@ const VideoPlayer = {
   },
 
   setVolume(volume) {
-    const nextVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+    const audioState = setAudioVolume(this.canonicalAudioState(), volume);
+    this.setCanonicalAudioState(audioState);
 
-    this.avPlayerVolume = nextVolume;
-    if (nextVolume > 0) {
-      this.avPlayerMuted = false;
-      this._lastAudibleVolume = nextVolume;
+    if (audioState.volume > 0) {
       saveMuted(false);
     }
 
     this.applyAudioState();
-    saveVolume(nextVolume);
+    saveVolume(audioState.volume);
     this.updateVolumeUI();
   },
 
@@ -1523,11 +1537,12 @@ const VideoPlayer = {
     const state = readIosPlayerState(this.contentId);
     if (!state) return;
 
-    if (Number.isFinite(state.volume)) {
-      this.avPlayerVolume = Math.max(0, Math.min(1, state.volume));
-      if (this.avPlayerVolume > 0) this._lastAudibleVolume = this.avPlayerVolume;
-    }
-    if (typeof state.muted === "boolean") this.avPlayerMuted = state.muted;
+    this.setCanonicalAudioState(
+      hydrateAudioState({
+        volume: Number.isFinite(state.volume) ? state.volume : this.avPlayerVolume,
+        muted: typeof state.muted === "boolean" ? state.muted : this.avPlayerMuted,
+      }),
+    );
     this.applyAudioState();
 
     if (Number.isFinite(state.playbackRate) && state.playbackRate > 0) {
@@ -3138,8 +3153,7 @@ const VideoPlayer = {
         }
       }
 
-      // Apply saved volume (convert UI value to perceived)
-      avPlayer.setVolume(this.avPlayerMuted ? 0 : linearToPerceived(this.avPlayerVolume));
+      avPlayer.setVolume(audioOutputVolume(this.canonicalAudioState()));
 
       log.debug("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
       await avPlayer.play();
@@ -3839,7 +3853,7 @@ const VideoPlayer = {
 
       // Apply volume settings — wrapper exposes only `setVolume`
       // (no `mute()`). Use volume 0 for the muted state.
-      avPlayer.setVolume(this.avPlayerMuted ? 0 : linearToPerceived(this.avPlayerVolume));
+      avPlayer.setVolume(audioOutputVolume(this.canonicalAudioState()));
 
       // Mark as using AVPlayer
       this.usingAVPlayer = true;
@@ -4205,34 +4219,32 @@ const VideoPlayer = {
   },
 
   toggleMute() {
-    const isSilent = this.avPlayerMuted || this.avPlayerVolume === 0;
-    this.avPlayerMuted = !isSilent;
+    const previousVolume = this.avPlayerVolume;
+    const audioState = toggleAudioMute(this.canonicalAudioState());
+    this.setCanonicalAudioState(audioState);
 
-    if (!this.avPlayerMuted && this.avPlayerVolume === 0) {
-      this.avPlayerVolume = this._lastAudibleVolume;
-      saveVolume(this.avPlayerVolume);
+    if (audioState.volume !== previousVolume) {
+      saveVolume(audioState.volume);
     }
 
     this.applyAudioState();
-    saveMuted(this.avPlayerMuted);
+    saveMuted(audioState.muted);
     this.updateVolumeUI();
-    this.pushEventSafe("mute_toggled", { muted: this.avPlayerMuted });
+    this.pushEventSafe("mute_toggled", { muted: audioState.muted });
   },
 
   adjustVolume(delta) {
-    const newVolume = Math.max(0, Math.min(1, this.avPlayerVolume + delta));
+    const audioState = adjustAudioVolume(this.canonicalAudioState(), delta);
+    this.setCanonicalAudioState(audioState);
 
-    this.avPlayerVolume = newVolume;
-    if (newVolume > 0) {
-      this.avPlayerMuted = false;
-      this._lastAudibleVolume = newVolume;
+    if (audioState.volume > 0) {
       saveMuted(false);
     }
 
     this.applyAudioState();
-    saveVolume(newVolume);
+    saveVolume(audioState.volume);
     this.updateVolumeUI();
-    this.pushEventSafe("volume_changed", { volume: Math.round(newVolume * 100) });
+    this.pushEventSafe("volume_changed", { volume: Math.round(audioState.volume * 100) });
   },
 
   seek(seconds) {

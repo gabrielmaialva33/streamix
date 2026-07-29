@@ -11,7 +11,8 @@
       "js/app.js",
       "js/hooks/**/*.js",
       "js/lib/**/*.js",
-      "js/player/**/*.js"
+      "js/player/**/*.js",
+      "js/test/**/*.js"
     ]
   },
   "formatter": {
