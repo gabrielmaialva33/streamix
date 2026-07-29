@@ -128,10 +128,8 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       movie_ids = Iptv.list_favorite_ids(user.id, "movie")
       series_ids = Iptv.list_favorite_ids(user.id, "series")
 
-      assert MapSet.member?(movie_ids, movie1.id)
-      assert MapSet.member?(movie_ids, movie2.id)
-      refute MapSet.member?(movie_ids, series.id)
-      assert MapSet.member?(series_ids, series.id)
+      assert movie_ids == MapSet.new([movie1.id, movie2.id])
+      assert series_ids == MapSet.new([series.id])
     end
   end
 
