@@ -1,5 +1,5 @@
 /**
- * Streamix Service Worker v9
+ * Streamix Service Worker v10
  * - WASM caching for instant AVPlayer startup
  * - Static assets caching
  * - PWA offline support
@@ -15,7 +15,6 @@ const OFFLINE_URL = '/offline.html';
 
 // Static assets to precache
 const STATIC_ASSETS = [
-    '/',
     OFFLINE_URL,
     '/manifest.json',
     '/images/icon.svg',
@@ -224,26 +223,26 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // HTML pages - Network-first with 3s timeout fallback to cache.
-    // Prevents long spinners on flaky mobile networks (Safari iOS suspend).
-    if (request.headers.get('accept')?.includes('text/html')) {
+    // HTML pages are always fetched from the network and never persisted.
+    // They can contain authenticated LiveView state, CSRF tokens and
+    // account-specific navigation, so serving an old cached page after logout
+    // would expose private UI to the next browser session.
+    if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
         event.respondWith(
             (async () => {
                 const controller = new AbortController();
                 const timeout = setTimeout(() => controller.abort(), 3000);
 
                 try {
-                    const response = await fetch(request, {signal: controller.signal});
+                    const response = await fetch(request, {
+                        cache: 'no-store',
+                        signal: controller.signal
+                    });
                     clearTimeout(timeout);
-                    if (response.ok) {
-                        const clone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-                    }
                     return response;
                 } catch (_e) {
                     clearTimeout(timeout);
-                    const cached = await caches.match(request);
-                    return cached || await caches.match(OFFLINE_URL) || await caches.match('/') || Response.error();
+                    return await caches.match(OFFLINE_URL) || Response.error();
                 }
             })()
         );

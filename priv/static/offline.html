@@ -70,6 +70,10 @@
         line-height: 1.5;
       }
 
+      form {
+        margin: 0;
+      }
+
       button {
         width: 100%;
         min-height: 44px;
@@ -85,11 +89,13 @@
   <body>
     <main>
       <img src="/images/apple-touch-icon.png" alt="" />
-      <h1>Voce esta offline</h1>
+      <h1>Você está offline</h1>
       <p>
-        O Streamix manteve o app aberto, mas essa tela precisa de conexao para carregar dados novos.
+        O Streamix manteve o app aberto, mas essa tela precisa de conexão para carregar dados novos.
       </p>
-      <button type="button" onclick="window.location.reload()">Tentar novamente</button>
+      <form action="/" method="get">
+        <button type="submit">Tentar novamente</button>
+      </form>
     </main>
   </body>
 </html>

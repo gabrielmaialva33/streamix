@@ -42,23 +42,23 @@
   ],
   "screenshots": [
     {
-      "src": "/images/screenshot-home-wide.png",
+      "src": "/images/screenshot-home-wide.jpg",
       "sizes": "1920x1080",
-      "type": "image/png",
+      "type": "image/jpeg",
       "form_factor": "wide",
       "label": "Página inicial do Streamix"
     },
     {
-      "src": "/images/screenshot-home-narrow.png",
+      "src": "/images/screenshot-home-narrow.jpg",
       "sizes": "750x1334",
-      "type": "image/png",
+      "type": "image/jpeg",
       "form_factor": "narrow",
       "label": "Página inicial do Streamix (mobile)"
     },
     {
-      "src": "/images/screenshot-browse-narrow.png",
+      "src": "/images/screenshot-browse-narrow.jpg",
       "sizes": "750x1334",
-      "type": "image/png",
+      "type": "image/jpeg",
       "form_factor": "narrow",
       "label": "Catálogo de conteúdo"
     }
@@ -86,6 +86,7 @@
   "share_target": {
     "action": "/share",
     "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
     "params": {
       "title": "title",
       "text": "text",
