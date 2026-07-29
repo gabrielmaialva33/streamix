@@ -199,18 +199,25 @@ defmodule StreamixWeb.User.SettingsLive do
               </p>
             </div>
             <button
+              id="adult-content-toggle"
               type="button"
               phx-click="toggle_adult_content"
-              class={[
-                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface",
-                if(@current_scope.user.show_adult_content, do: "bg-brand", else: "bg-gray-600")
-              ]}
+              class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface"
               aria-label="Alternar conteúdo adulto"
+              aria-pressed={to_string(@current_scope.user.show_adult_content)}
             >
               <span class={[
-                "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                if(@current_scope.user.show_adult_content, do: "translate-x-5", else: "translate-x-0")
-              ]} />
+                "relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
+                if(@current_scope.user.show_adult_content, do: "bg-brand", else: "bg-gray-600")
+              ]}>
+                <span class={[
+                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                  if(@current_scope.user.show_adult_content,
+                    do: "translate-x-5",
+                    else: "translate-x-0"
+                  )
+                ]} />
+              </span>
             </button>
           </div>
         </section>
@@ -257,38 +264,40 @@ defmodule StreamixWeb.User.SettingsLive do
         </section>
 
         <section
-          id="pwa-repair"
-          phx-hook="PwaRepair"
+          id="pwa-app"
           class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-4"
         >
           <div class="flex flex-col gap-4">
             <div>
-              <h2 class="text-base font-semibold text-text-primary">App no iPhone</h2>
+              <h2 class="text-base font-semibold text-text-primary">App Streamix</h2>
               <p class="mt-1 text-sm text-text-secondary">
-                Use quando o PWA ficar preso em uma versão antiga, não aplicar correções ou carregar
-                assets do cache.
+                Instale o app no celular ou repare o cache se ele ficar preso em uma versão antiga.
               </p>
             </div>
 
-            <p data-pwa-repair-status class="text-sm text-text-secondary">
-              Verificando cache local...
-            </p>
+            <StreamixWeb.App.Pwa.install_action id="settings-pwa-install" />
 
-            <div class="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                data-pwa-repair-action="repair"
-                class="inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand/90 disabled:cursor-wait disabled:opacity-70"
-              >
-                Atualizar app e limpar cache
-              </button>
-              <button
-                type="button"
-                data-pwa-repair-action="clear"
-                class="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-wait disabled:opacity-70"
-              >
-                Limpar cache local
-              </button>
+            <div id="pwa-repair" phx-hook="PwaRepair" class="flex flex-col gap-3">
+              <p data-pwa-repair-status class="text-sm text-text-secondary">
+                Verificando cache local...
+              </p>
+
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  data-pwa-repair-action="repair"
+                  class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand/90 disabled:cursor-wait disabled:opacity-70"
+                >
+                  Atualizar app e limpar cache
+                </button>
+                <button
+                  type="button"
+                  data-pwa-repair-action="clear"
+                  class="inline-flex min-h-11 items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-wait disabled:opacity-70"
+                >
+                  Limpar cache local
+                </button>
+              </div>
             </div>
           </div>
         </section>

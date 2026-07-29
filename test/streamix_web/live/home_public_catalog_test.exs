@@ -41,6 +41,7 @@ defmodule StreamixWeb.HomePublicCatalogTest do
       assert has_element?(view, "#public-stat-movies", "1")
       assert has_element?(view, "#public-stat-series", "1")
       assert has_element?(view, "#public-stat-channels", "1")
+      assert has_element?(view, "#landing-pwa-install[phx-hook='PwaInstall']")
       refute html =~ "Reúna todos os seus provedores IPTV"
     end
 

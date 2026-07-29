@@ -7,6 +7,7 @@ import InfiniteScroll from "./infinite_scroll";
 import Modal from "./modal";
 import OfflineSync from "./offline_sync";
 import ProgressBar from "./progress_bar";
+import PwaInstall from "./pwa_install";
 import PwaRepair from "./pwa_repair";
 import ScrollHeader from "./scroll_header";
 import ThemeToggle from "./theme_toggle";
@@ -25,6 +26,7 @@ export default {
   HeaderSearch,
   ContentCard,
   OfflineSync,
+  PwaInstall,
   PwaRepair,
   ImageFallback,
   ScrollHeader,

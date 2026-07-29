@@ -57,6 +57,7 @@ defmodule StreamixWeb.Home.Landing do
             >
               <.icon name="hero-user-plus" class="size-5" /> Conta free
             </.link>
+            <StreamixWeb.App.Pwa.install_action id="landing-pwa-install" variant="hero" />
           </div>
         </div>
       </div>

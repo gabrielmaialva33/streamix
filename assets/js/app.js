@@ -28,6 +28,7 @@ import { hooks as colocatedHooks } from "phoenix-colocated/streamix";
 import topbar from "../vendor/topbar";
 import customHooks from "./hooks";
 import { getEnvInfo } from "./lib/logger";
+import { promptForPwaInstall, pwaInstallMode } from "./lib/pwa_install";
 
 window.Alpine = Alpine;
 Alpine.start();
@@ -62,6 +63,7 @@ const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
 const LAST_ROUTE_KEY = "streamix:pwa-last-route";
 const LAST_ROUTE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const STREAMIX_CACHE_PREFIX = "streamix-";
+const PWA_INSTALL_STATE_EVENT = "streamix:pwa-install-state";
 
 const isIosWebKit = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -163,7 +165,7 @@ const createIconButton = (label, text) => {
   const button = document.createElement("button");
   button.type = "button";
   button.className =
-    "shrink-0 rounded-md px-2 py-1 text-sm text-text-secondary hover:text-text-primary";
+    "flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-2 py-1 text-sm text-text-secondary hover:text-text-primary";
   button.setAttribute("aria-label", label);
   button.textContent = text;
   return button;
@@ -234,9 +236,54 @@ const repairPwaApp = async ({ reload = true } = {}) => {
   return { deletedCaches, hasRegistration: Boolean(registration) };
 };
 
+let deferredPwaInstallPrompt = null;
+
+const pwaInstallState = () =>
+  pwaInstallMode({
+    standalone: isStandalonePwa(),
+    iosWebKit: isIosWebKit(),
+    hasNativePrompt: deferredPwaInstallPrompt !== null,
+  });
+
+const publishPwaInstallState = () => {
+  window.dispatchEvent(
+    new CustomEvent(PWA_INSTALL_STATE_EVENT, {
+      detail: { state: pwaInstallState() },
+    }),
+  );
+};
+
+const installPwaApp = async () => {
+  const state = pwaInstallState();
+  if (state === "ios") return { outcome: "instructions", platform: "ios" };
+  if (state !== "native") return { outcome: state, platform: null };
+
+  const promptEvent = deferredPwaInstallPrompt;
+  deferredPwaInstallPrompt = null;
+
+  try {
+    return await promptForPwaInstall(promptEvent);
+  } finally {
+    publishPwaInstallState();
+  }
+};
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredPwaInstallPrompt = event;
+  publishPwaInstallState();
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredPwaInstallPrompt = null;
+  publishPwaInstallState();
+});
+
 window.StreamixPwa = {
   clearCaches: clearStreamixCaches,
   expectedCacheName: fetchExpectedCacheName,
+  installApp: installPwaApp,
+  installState: pwaInstallState,
   repairApp: repairPwaApp,
   streamixCacheNames,
 };
@@ -262,7 +309,7 @@ const showPwaRepairToast = ({ expectedCache, caches: currentCaches }) => {
 
   const update = document.createElement("button");
   update.type = "button";
-  update.className = "rounded-md bg-brand px-3 py-2 text-xs font-medium text-white";
+  update.className = "min-h-11 rounded-md bg-brand px-3 py-2 text-xs font-medium text-white";
   update.textContent = "Atualizar app";
   update.addEventListener("click", async () => {
     update.disabled = true;
@@ -511,7 +558,7 @@ function showUpdateToast(waitingWorker) {
   // Update button
   const updateBtn = document.createElement("button");
   updateBtn.className =
-    "px-3 py-1.5 bg-brand text-white text-sm font-medium rounded-md hover:bg-brand-hover transition-colors";
+    "min-h-11 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-hover";
   updateBtn.textContent = "Atualizar";
   updateBtn.addEventListener("click", () => {
     waitingWorker.postMessage({ type: "SKIP_WAITING" });
@@ -520,7 +567,8 @@ function showUpdateToast(waitingWorker) {
 
   // Dismiss button with SVG
   const dismissBtn = document.createElement("button");
-  dismissBtn.className = "p-1 text-text-secondary hover:text-text-primary transition-colors";
+  dismissBtn.className =
+    "flex size-11 items-center justify-center text-text-secondary transition-colors hover:text-text-primary";
   dismissBtn.setAttribute("aria-label", "Fechar");
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

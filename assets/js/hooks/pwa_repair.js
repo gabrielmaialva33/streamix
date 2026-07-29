@@ -20,7 +20,7 @@ const PwaRepair = {
   async refreshStatus() {
     const pwa = window.StreamixPwa;
     if (!pwa) {
-      this.setStatus("Reparo indisponivel neste navegador.");
+      this.setStatus("Reparo indisponível neste navegador.");
       return;
     }
 
@@ -34,7 +34,7 @@ const PwaRepair = {
         expected ? `Cache atual: ${current}. Esperado: ${expected}.` : `Cache atual: ${current}.`,
       );
     } catch (error) {
-      this.setStatus(`Nao foi possivel ler o cache: ${error.message}`);
+      this.setStatus(`Não foi possível ler o cache: ${error.message}`);
     }
   },
 
