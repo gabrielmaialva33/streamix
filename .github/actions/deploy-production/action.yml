@@ -21,6 +21,22 @@ inputs:
   image-digest:
     description: Immutable sha256 image digest
     required: true
+  expected-revision:
+    description: Git revision expected from the deployed health endpoint
+    required: false
+    default: ""
+  base-url:
+    description: Public production URL used by deployment canaries
+    required: false
+    default: https://streamix.mahina.cloud
+  canary-email:
+    description: Optional API canary account email
+    required: false
+    default: ""
+  canary-password:
+    description: Optional API canary account password
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -62,6 +78,10 @@ runs:
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         IMAGE_DIGEST: ${{ inputs.image-digest }}
+        EXPECTED_REVISION: ${{ inputs.expected-revision }}
+        DEPLOY_BASE_URL: ${{ inputs.base-url }}
+        DEPLOY_CANARY_EMAIL: ${{ inputs.canary-email }}
+        DEPLOY_CANARY_PASSWORD: ${{ inputs.canary-password }}
       with:
         host: ${{ inputs.host }}
         username: ${{ inputs.username }}
@@ -69,5 +89,5 @@ runs:
         port: ${{ inputs.port }}
         timeout: 30s
         command_timeout: 8m
-        envs: IMAGE_NAME,IMAGE_DIGEST
+        envs: IMAGE_NAME,IMAGE_DIGEST,EXPECTED_REVISION,DEPLOY_BASE_URL,DEPLOY_CANARY_EMAIL,DEPLOY_CANARY_PASSWORD
         script_path: scripts/deploy-production.sh

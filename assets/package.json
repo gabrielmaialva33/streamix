@@ -7,13 +7,13 @@
     "lint:fix": "biome check --fix js/",
     "format": "biome format --write js/",
     "test": "node --test js/test/*.test.js",
+    "budget:assets": "cd .. && mix assets.deploy && cd assets && node js/smoke/asset_budget.cjs",
     "smoke:player": "node js/smoke/player_lifecycle_smoke.cjs",
     "smoke:pwa": "node js/smoke/pwa_first_install_smoke.cjs"
   },
   "dependencies": {
     "@libmedia/avplayer": "1.3.1",
     "avbridge": "^2.13.0",
-    "h265web.js": "^2.2.2",
     "hls.js": "^1.6.16",
     "mpegts.js": "^1.8.0"
   },

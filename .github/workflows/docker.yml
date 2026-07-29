@@ -58,6 +58,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -86,8 +88,11 @@ jobs:
         run: mix deps.get --only test
 
       - name: Static analysis and security
+        env:
+          MIGRATION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           bash scripts/check-runtime-versions.sh
+          bash scripts/check-migration-safety.sh
           mix deps.unlock --check-unused
           mix format --check-formatted
           mix compile --warnings-as-errors
@@ -162,6 +167,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Lint
         run: npm run lint -- --error-on-warnings
 
@@ -169,7 +177,7 @@ jobs:
         run: npm test
 
   e2e:
-    name: WebKit browser tests
+    name: Browser and PWA tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
@@ -239,6 +247,12 @@ jobs:
 
       - name: Run WebKit journeys
         run: bash scripts/test-webkit-docker.sh
+
+      - name: Run Chromium PWA installability smoke
+        run: bash scripts/test-pwa-chromium.sh
+
+      - name: Enforce production asset budgets
+        run: npm --prefix assets run budget:assets
 
   build:
     name: Build candidate image
@@ -337,3 +351,6 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           image-digest: ${{ needs.build.outputs.image_digest }}
+          expected-revision: ${{ github.sha }}
+          canary-email: ${{ secrets.DEPLOY_CANARY_EMAIL }}
+          canary-password: ${{ secrets.DEPLOY_CANARY_PASSWORD }}

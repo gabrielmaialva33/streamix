@@ -40,3 +40,5 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           image-digest: ${{ inputs.image_digest }}
+          canary-email: ${{ secrets.DEPLOY_CANARY_EMAIL }}
+          canary-password: ${{ secrets.DEPLOY_CANARY_PASSWORD }}

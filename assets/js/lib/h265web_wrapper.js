@@ -22,6 +22,13 @@
 // we vendored them directly. Override the base URL via the
 // `data-h265web-base-url` attribute on the player container — useful
 // for self-hosting on a separate origin.
+//
+// Provenance: vendored from h265web.js 2.2.2 in Streamix commit
+// `15e06dd`. Main runtime SHA-256:
+// `882dd69c1f76c19a5e3cefb80103c03e45fc5cd1903fd1f71be1523871a20168`.
+// Keep this note and refresh the hash whenever the vendored SDK changes;
+// the npm package is intentionally not installed because the browser
+// never imports it and its legacy build tree carries known advisories.
 
 import { avplayerLogger as log } from "./logger";
 
