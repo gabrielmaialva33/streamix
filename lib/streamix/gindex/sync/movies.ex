@@ -99,6 +99,7 @@ defmodule Streamix.Gindex.Sync.Movies do
   end
 
   def upsert_batch(%Provider{} = provider, movies) when is_list(movies) do
+    movies = Enum.uniq_by(movies, & &1.stream_id)
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     stream_ids = Enum.map(movies, & &1.stream_id)
     existing_ci_map = existing_catalog_items(provider.id, stream_ids)

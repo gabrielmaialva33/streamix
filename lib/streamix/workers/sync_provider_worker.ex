@@ -56,10 +56,8 @@ defmodule Streamix.Workers.SyncProviderWorker do
         # Same defensive shape as the GIndex branch: torrent providers
         # are credential-less aggregators and `XtreamClient.build_url/5`
         # FunctionClauseErrors on their nil username/password. Route
-        # them to the dedicated torrent worker. Production today still
-        # ships a legacy "all non-gindex" enqueue in
-        # `SyncAllProvidersWorker`, so this guard prevents the crash
-        # even when an old cron job slips through.
+        # them to the dedicated torrent worker. This guard also protects
+        # against stale or manually inserted jobs.
         Logger.info(
           "[SyncProviderWorker] redispatching torrent provider #{provider.id} to Torrent worker"
         )

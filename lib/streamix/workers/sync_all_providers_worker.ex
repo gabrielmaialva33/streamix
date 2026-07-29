@@ -1,7 +1,11 @@
 defmodule Streamix.Workers.SyncAllProvidersWorker do
   @moduledoc """
-  Periodic worker that triggers sync for Xtream providers only.
+  Periodic worker that triggers sync for personal Xtream providers only.
   Runs via Oban Cron plugin every 6 hours.
+
+  The system/global Xtream provider is owned exclusively by
+  `SyncGlobalProviderWorker`. Keeping it out of this dispatcher prevents
+  overlapping syncs against the same provider and catalog rows.
 
   GIndex has its own dispatcher (`SyncGindexProviderWorker`) that fans
   out to per-root `ScanRootWorker`s with bounded timeouts. Torrent
@@ -32,7 +36,9 @@ defmodule Streamix.Workers.SyncAllProvidersWorker do
     Logger.info("Starting periodic sync for all providers")
 
     providers =
-      from(p in Provider, where: p.provider_type == :xtream)
+      from(p in Provider,
+        where: p.provider_type == :xtream and p.is_system == false
+      )
       |> Repo.all()
 
     count = length(providers)

@@ -210,8 +210,8 @@ config :streamix, Oban,
        {"0 2 * * *", Streamix.Workers.CleanupOrphanedDataWorker},
        # Sync all providers every 6 hours
        {"0 */6 * * *", Streamix.Workers.SyncAllProvidersWorker},
-       # Sync global provider every 4 hours
-       {"0 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
+       # Sync global provider every 4 hours, offset from the all-providers burst
+       {"10 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
        # TMDB lookup for freshly-ingested gindex rows (poster + tmdb_id).

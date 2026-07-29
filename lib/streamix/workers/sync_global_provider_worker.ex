@@ -3,14 +3,16 @@ defmodule Streamix.Workers.SyncGlobalProviderWorker do
   Periodic worker that syncs the global provider (configured via env vars).
   Runs via Oban Cron plugin every 4 hours.
 
-  When RabbitMQ is enabled, enqueues tasks to Broadway for distributed processing.
-  Otherwise, runs sync directly in this process.
+  Delegates to `SyncProviderWorker`, which owns the complete sync lifecycle and
+  has provider-scoped uniqueness. The older RabbitMQ fan-out split categories
+  into independent messages without a finalizer, leaving the provider stuck in
+  `syncing` and allowing it to race the all-providers cron.
   """
 
   use Oban.Worker, queue: :sync, max_attempts: 3
 
   alias Streamix.Iptv.GlobalProvider
-  alias Streamix.Queue
+  alias Streamix.Workers.SyncProviderWorker
 
   require Logger
 
@@ -39,32 +41,14 @@ defmodule Streamix.Workers.SyncGlobalProviderWorker do
   end
 
   defp sync_global_provider(provider) do
-    if Queue.enabled?() do
-      # Use Broadway for distributed processing
-      Logger.info("[IPTV] Enqueueing sync via RabbitMQ/Broadway")
-      Queue.enqueue_iptv_sync(provider)
-    else
-      # Direct execution
-      sync_directly()
-    end
-  end
-
-  defp sync_directly do
-    case GlobalProvider.sync!() do
-      {:ok, stats} ->
-        Logger.info(
-          "[IPTV] Global provider sync completed - Live: #{stats.live}, VOD: #{stats.vod}, Series: #{stats.series}"
-        )
-
+    case SyncProviderWorker.enqueue(provider, series_details: :skip) do
+      {:ok, _job} ->
+        Logger.info("[IPTV] Enqueued global provider sync")
         :ok
 
-      {:error, :not_found} ->
-        Logger.warning("[IPTV] Global provider not found in database")
-        {:error, :not_found}
-
       {:error, reason} ->
-        Logger.error("[IPTV] Global provider sync failed: #{inspect(reason)}")
-        {:error, reason}
+        Logger.error("[IPTV] Failed to enqueue global provider sync: #{inspect(reason)}")
+        {:error, {:enqueue_failed, reason}}
     end
   end
 end
