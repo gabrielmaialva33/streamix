@@ -7,7 +7,11 @@
   below (env(safe-area-inset-*) only works on the elements that actually
   paint into the unsafe zone).
 --%>
-<div class={["flex min-h-dvh flex-col bg-background", if(banner_visible?, do: "pt-9", else: "")]}>
+<div
+  id="client-telemetry"
+  phx-hook="ClientTelemetry"
+  class={["flex min-h-dvh flex-col bg-background", if(banner_visible?, do: "pt-9", else: "")]}
+>
   <%!--
     Skip-to-content link — first focusable element on the page. Hidden
     until it receives keyboard focus (sr-only + focus:not-sr-only), at

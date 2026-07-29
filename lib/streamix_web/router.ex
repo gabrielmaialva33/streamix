@@ -287,7 +287,8 @@ defmodule StreamixWeb.Router do
           [
             {StreamixWeb.UserAuth, :mount_current_scope},
             StreamixWeb.OnMount.ProviderHealth,
-            StreamixWeb.OnMount.ThemeEvents
+            StreamixWeb.OnMount.ThemeEvents,
+            StreamixWeb.OnMount.ClientTelemetry
           ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/", HomeLive, :index
@@ -305,7 +306,8 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :redirect_if_authenticated},
-            StreamixWeb.OnMount.ThemeEvents
+            StreamixWeb.OnMount.ThemeEvents,
+            StreamixWeb.OnMount.ClientTelemetry
           ],
       layout: {StreamixWeb.Layouts, :auth} do
       live "/login", User.LoginLive, :new
@@ -330,7 +332,8 @@ defmodule StreamixWeb.Router do
           [
             {StreamixWeb.UserAuth, :require_authenticated},
             StreamixWeb.OnMount.ProviderHealth,
-            StreamixWeb.OnMount.ThemeEvents
+            StreamixWeb.OnMount.ThemeEvents,
+            StreamixWeb.OnMount.ClientTelemetry
           ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/home", HomeLive, :index
@@ -388,7 +391,8 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :require_authenticated},
-            StreamixWeb.OnMount.ThemeEvents
+            StreamixWeb.OnMount.ThemeEvents,
+            StreamixWeb.OnMount.ClientTelemetry
           ],
       layout: {StreamixWeb.Layouts, :player} do
       live "/watch/:type/:id", PlayerLive, :show
@@ -402,7 +406,8 @@ defmodule StreamixWeb.Router do
           [
             {StreamixWeb.UserAuth, :require_authenticated},
             {StreamixWeb.UserAuth, :require_admin},
-            StreamixWeb.OnMount.ThemeEvents
+            StreamixWeb.OnMount.ThemeEvents,
+            StreamixWeb.OnMount.ClientTelemetry
           ],
       layout: {StreamixWeb.Layouts, :app} do
       live "/admin", Admin.DashboardLive, :index

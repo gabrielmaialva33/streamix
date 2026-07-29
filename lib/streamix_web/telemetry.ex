@@ -127,6 +127,24 @@ defmodule StreamixWeb.Telemetry do
       counter("streamix.player.error.count",
         tags: [:stage, :content_type, :engine],
         description: "Playback failures by stage and engine"
+      ),
+      counter("streamix.qoe.event.count",
+        tags: [:kind, :engine, :outcome],
+        description: "Persisted client QoE samples"
+      ),
+      distribution("streamix.qoe.event.ttff_ms",
+        tags: [:kind, :engine],
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "Client time to first frame in milliseconds"
+      ),
+      sum("streamix.qoe.event.buffer_count",
+        tags: [:kind, :engine],
+        description: "Client buffering events"
+      ),
+      distribution("streamix.qoe.event.buffer_duration_ms",
+        tags: [:kind, :engine],
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "Client buffering duration in milliseconds"
       )
     ]
   end

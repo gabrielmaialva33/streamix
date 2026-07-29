@@ -1,5 +1,6 @@
 import { createLazyHook } from "../lib/lazy_hook";
 import BrowseScrollRestoration from "./browse_scroll_restoration";
+import ClientTelemetry from "./client_telemetry";
 import ContentCard from "./content_card";
 import EpgRefresh from "./epg_refresh";
 import HeaderSearch from "./header_search";
@@ -19,6 +20,7 @@ const WatchPartySync = createLazyHook("WatchPartySync", () => import("./watch_pa
 
 export default {
   BrowseScrollRestoration,
+  ClientTelemetry,
   ThemeToggle,
   TorrentSwarmGate,
   VideoPlayer,

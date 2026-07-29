@@ -3,15 +3,14 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
   REST API for client telemetry ingestion.
 
   Accepts batched playback metrics from mobile/TV apps.
-  Deduplicates by batch_id. Stores for quality-of-experience analysis.
+  Samples are allowlisted, bounded and persisted for quality-of-experience
+  analysis. Client retries are deduplicated by batch and sample index.
   """
   use StreamixWeb, :controller
 
-  require Logger
+  alias Streamix.Qoe
 
   plug StreamixWeb.Plugs.BearerAuth
-
-  @max_batch_size 50
 
   @doc """
   POST /api/v1/telemetry/playback
@@ -43,25 +42,11 @@ defmodule StreamixWeb.Api.V1.TelemetryController do
       |> put_status(:bad_request)
       |> json(%{error: %{code: "invalid_body", message: "Expected telemetry metric payload"}})
     else
-      metrics = Enum.take(metrics, @max_batch_size)
-
-      Logger.info("[Telemetry] user=#{user.id} batch=#{batch_id} count=#{length(metrics)}")
-
-      Enum.each(metrics, fn metric ->
-        Logger.info(
-          "[Telemetry] user=#{user.id} " <>
-            "engine=#{metric["engine"] || metric["player"]} " <>
-            "type=#{metric["stream_type"] || metric["content_type"]} " <>
-            "event=#{metric["event"] || metric["type"]} " <>
-            "ttff=#{metric["time_to_first_frame_ms"]}ms " <>
-            "buffers=#{metric["buffer_count"]} " <>
-            "errors=#{metric["error_count"]}"
-        )
-      end)
+      {:ok, result} = Qoe.ingest(user.id, batch_id, metrics)
 
       conn
       |> put_status(:accepted)
-      |> json(%{accepted: length(metrics), batch_id: batch_id})
+      |> json(result)
     end
   end
 

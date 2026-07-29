@@ -57,9 +57,11 @@ import {
   getStreamingConfig,
   selectStreamingMode,
 } from "../lib/streaming_config";
+import { perceivedToLinear } from "../lib/volume_utils";
 import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../lib/webcodecs_decoder";
 import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../lib/worker_mse";
 import { selectEngine } from "../player/engine_selector";
+import { PlaybackSession } from "../player/playback_session";
 
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
@@ -466,6 +468,7 @@ const VideoPlayer = {
     this.startTime = Date.now();
     this.lastProgressReport = 0;
     this.playbackSessionId = 0;
+    this.playbackMetrics = new PlaybackSession();
 
     // PiP state
     this.pipActive = false;
@@ -1100,8 +1103,11 @@ const VideoPlayer = {
     });
     this.video?.addEventListener("play", () => this.updateMediaSessionPlaybackState());
     this.video?.addEventListener("pause", () => this.updateMediaSessionPlaybackState());
-    this.video?.addEventListener("ended", () => this.updateMediaSessionPlaybackState());
-    this.video?.addEventListener("volumechange", () => this.updateVolumeUI());
+    this.video?.addEventListener("ended", () => {
+      this.updateMediaSessionPlaybackState();
+      this.flushPlaybackMetrics("completed");
+    });
+    this.video?.addEventListener("volumechange", () => this.handleNativeVolumeChange());
     this.video?.addEventListener("timeupdate", () => {
       this.updateTimeUI();
 
@@ -1109,6 +1115,7 @@ const VideoPlayer = {
       // Fixes "infinite loading" on live streams where playing/canplaythrough don't re-fire
       if (this.video && !this.video.paused && this.video.readyState >= 3) {
         this.playerUI.hideLoading();
+        this.playbackMetrics?.markPlaying();
       }
     });
     this.video?.addEventListener("loadedmetadata", () => this.updateTimeUI());
@@ -1124,6 +1131,7 @@ const VideoPlayer = {
         const bufferAhead = bufferedEnd - this.video.currentTime;
         if (bufferAhead > 1) {
           this.playerUI.hideLoading();
+          this.playbackMetrics?.setBuffering(false);
         }
       }
     });
@@ -1144,6 +1152,7 @@ const VideoPlayer = {
     this._onPageTeardown = (event) => {
       this.handleIosPageHide(event);
       if (this.iosPwaMode && event?.persisted) return;
+      this.flushPlaybackMetrics("cancelled");
       this.emergencyStopPlayback();
     };
     window.addEventListener("pagehide", this._onPageTeardown, { capture: true });
@@ -1231,6 +1240,7 @@ const VideoPlayer = {
         ) {
           this.playerUI.showLoading();
           this.pushEventSafe("buffering", { buffering: true });
+          this.playbackMetrics?.setBuffering(true);
         }
       }, bufferingDelay);
     });
@@ -1242,6 +1252,7 @@ const VideoPlayer = {
         this._bufferingDebounce = null;
       }
       this.pushEventSafe("buffering", { buffering: false });
+      this.playbackMetrics?.markPlaying();
       this.playerUI.hideLoading();
       this.playerUI.hideError();
     });
@@ -1254,6 +1265,7 @@ const VideoPlayer = {
         this._bufferingDebounce = null;
       }
       this.pushEventSafe("buffering", { buffering: false });
+      this.playbackMetrics?.setBuffering(false);
       this.playerUI.hideLoading();
     });
   },
@@ -1297,6 +1309,40 @@ const VideoPlayer = {
 
   updateVolumeUI() {
     this.playerUI.updateVolumeUI(this.avPlayerVolume, this.avPlayerMuted);
+  },
+
+  handleNativeVolumeChange() {
+    if (!this.video || this.usingAVPlayer || this.usingH265web || !this.nativeTouchControls) {
+      this.updateVolumeUI();
+      return;
+    }
+
+    const expectedVolume = audioOutputVolume(this.canonicalAudioState());
+    const volumeMismatch = Math.abs(this.video.volume - expectedVolume) > 0.01;
+    const mutedMismatch = this.video.muted !== this.avPlayerMuted;
+
+    if (volumeMismatch || mutedMismatch) {
+      this.playbackMetrics?.markMutedMismatch();
+
+      let audioState;
+
+      if (!this.video.muted && this.video.volume === 0) {
+        audioState = toggleAudioMute({ ...this.canonicalAudioState(), muted: true });
+      } else {
+        audioState = setAudioVolume(
+          this.canonicalAudioState(),
+          perceivedToLinear(this.video.volume),
+        );
+        audioState.muted = this.video.muted;
+      }
+
+      this.setCanonicalAudioState(audioState);
+      saveVolume(audioState.volume);
+      saveMuted(audioState.muted);
+      this.applyAudioState();
+    }
+
+    this.updateVolumeUI();
   },
 
   updateTimeUI() {
@@ -1749,6 +1795,7 @@ const VideoPlayer = {
     }
     this.playerUI?.hideLoading();
     this.pushEventSafe("buffering", { buffering: false });
+    this.playbackMetrics?.setBuffering(false);
   },
 
   buildEngineContext(recommendedPlayer) {
@@ -1801,6 +1848,16 @@ const VideoPlayer = {
   },
 
   reportPlayerLifecycle(stage, extra = {}) {
+    if (stage === "player_engine_selected") {
+      if (extra.fallback) {
+        this.playbackMetrics?.recordFallback(extra.engine);
+      } else {
+        this.playbackMetrics?.selectEngine(extra.engine);
+      }
+    } else if (stage === "player_engine_fallback") {
+      this.playbackMetrics?.recordFallback(extra.to);
+    }
+
     this.pushEventSafe("player_lifecycle", {
       stage,
       session_id: this.playbackSessionId,
@@ -1822,6 +1879,11 @@ const VideoPlayer = {
     } catch (error) {
       log.debug(`[VideoPlayer] Ignoring ${event} after LiveView disconnect:`, error);
     }
+  },
+
+  flushPlaybackMetrics(outcome) {
+    const metric = this.playbackMetrics?.finish(outcome);
+    if (metric) this.pushEventSafe("client_telemetry", metric);
   },
 
   retryPlaybackFromError() {
@@ -2296,9 +2358,15 @@ const VideoPlayer = {
     this.currentStreamType = this.el.dataset.streamType || getStreamType(this.streamUrl);
     log.debug("Detected stream type:", this.currentStreamType);
 
+    this.flushPlaybackMetrics("restarted");
     this.cleanup();
     const sessionId = this.beginPlaybackSession();
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
+    this.playbackMetrics.begin({
+      contentType: this.contentType,
+      streamType: this.currentStreamType,
+      displayMode: isStandalonePwa() ? "standalone" : "browser",
+    });
     this.reportPlayerLifecycle("player_session_started", {
       session_id: sessionId,
       engine: this.currentStreamType,
@@ -2321,6 +2389,7 @@ const VideoPlayer = {
     const recommendedPlayer = getRecommendedPlayer(contentKey);
     const engineContext = this.buildEngineContext(recommendedPlayer);
     const engine = selectEngine(engineContext);
+    this.playbackMetrics.selectEngine(engine);
 
     log.debug("[VideoPlayer] Engine decision context", {
       currentStreamType: this.currentStreamType,
@@ -2377,6 +2446,8 @@ const VideoPlayer = {
   },
 
   handleStreamError(type, data) {
+    this.playbackMetrics?.recordError();
+
     // Create enriched error report for telemetry
     const errorReport = createErrorReport(
       { message: data.details || data.errorDetail || "Stream error", type },
@@ -2576,8 +2647,10 @@ const VideoPlayer = {
         }
       }
       await this.avbridge.play();
+      this.playbackMetrics?.markPlaying();
     } catch (err) {
       log.warn("[Avbridge] init failed, falling back to AVPlayer:", err);
+      this.playbackMetrics?.recordError();
       this.reportPlayerLifecycle("player_engine_fallback", {
         from: "avbridge",
         to: "avplayer",
@@ -2650,8 +2723,10 @@ const VideoPlayer = {
         }
       }
       await this.h265web.play();
+      this.playbackMetrics?.markPlaying();
     } catch (err) {
       log.warn("[H265web] init failed, falling back to AVPlayer:", err);
+      this.playbackMetrics?.recordError();
       this.reportPlayerLifecycle("player_engine_fallback", {
         from: "h265web",
         to: "avplayer",
@@ -2699,6 +2774,7 @@ const VideoPlayer = {
       );
     } catch (e) {
       console.error("mpegts.js initialization error:", e);
+      this.playbackMetrics?.recordError();
       if (isHlsJsSupported()) {
         this.playWithHls();
       } else {
@@ -2803,6 +2879,7 @@ const VideoPlayer = {
       }
 
       const error = this.video.error;
+      this.playbackMetrics?.recordError();
       let message = "Falha na reproducao";
 
       if (error) {
@@ -3029,6 +3106,7 @@ const VideoPlayer = {
           this.playerUI.hideLoading();
           this.playerUI.updatePlayPauseUI(false);
           this.startAVPlayerTimeUpdates();
+          this.playbackMetrics?.markPlaying();
 
           // Record successful AVPlayer playback for Device Codec Memory
           const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
@@ -3045,6 +3123,7 @@ const VideoPlayer = {
         onError: (error) => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.error("[VideoPlayer] AVPlayer error:", error);
+          this.playbackMetrics?.recordError();
           this.revertToNativePlayer();
         },
         onTimeUpdate: () => {
@@ -3056,6 +3135,7 @@ const VideoPlayer = {
           log.debug("[VideoPlayer] AVPlayer ended");
           this.playerUI.updatePlayPauseUI(true);
           this.stopAVPlayerTimeUpdates();
+          this.flushPlaybackMetrics("completed");
         },
       });
       this.avPlayer = avPlayer;
@@ -3098,6 +3178,7 @@ const VideoPlayer = {
     } catch (error) {
       if (!this.isCurrentPlaybackSession(sessionId)) return;
       log.error("[VideoPlayer] AVPlayer fallback failed:", error);
+      this.playbackMetrics?.recordError();
 
       // Forget the cached "avplayer" recommendation for this content
       // type so the next attempt re-evaluates engine_selector instead
@@ -3735,12 +3816,14 @@ const VideoPlayer = {
         onError: (e) => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.error("[VideoPlayer] AVPlayer error:", e);
+          this.playbackMetrics?.recordError();
         },
         onPlay: () => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           this.playerUI.updatePlayPauseUI(false); // false = not paused
           this.playerUI.hideLoading();
           this.startAVPlayerTimeUpdates();
+          this.playbackMetrics?.markPlaying();
         },
         onPause: () => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
@@ -3754,6 +3837,7 @@ const VideoPlayer = {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           this.playerUI.updatePlayPauseUI(true);
           this.stopAVPlayerTimeUpdates();
+          this.flushPlaybackMetrics("completed");
         },
       });
       this.avPlayer = avPlayer;
@@ -4266,6 +4350,7 @@ const VideoPlayer = {
   // ============================================
 
   destroyed() {
+    this.flushPlaybackMetrics("cancelled");
     this._destroyed = true;
     this._startupDiagnosticsCancel?.();
     this._startupDiagnosticsCancel = null;

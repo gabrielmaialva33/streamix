@@ -1,9 +1,10 @@
 defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
   use StreamixWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Streamix.AccountsFixtures
 
-  alias Streamix.Accounts
+  alias Streamix.{Accounts, Repo}
 
   setup do
     original_api_keys = Application.get_env(:streamix, :api_keys, [])
@@ -27,20 +28,55 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
   end
 
   test "accepts the canonical metrics batch", %{conn: conn} do
-    conn =
+    batch_id = Ecto.UUID.generate()
+
+    first =
       post(conn, ~p"/api/v1/telemetry/playback", %{
-        "batch_id" => "batch-1",
+        "batch_id" => batch_id,
         "metrics" => [
           %{
             "stream_type" => "movie",
             "engine" => "native",
+            "time_to_first_frame_ms" => 840,
             "buffer_count" => 1,
-            "error_count" => 0
+            "error_count" => 0,
+            "url" => "https://upstream.invalid/secret-token"
           }
         ]
       })
 
-    assert %{"accepted" => 1, "batch_id" => "batch-1"} = json_response(conn, 202)
+    assert %{"accepted" => 1, "batch_id" => ^batch_id} = json_response(first, 202)
+
+    second =
+      post(conn, ~p"/api/v1/telemetry/playback", %{
+        "batch_id" => batch_id,
+        "metrics" => [%{"stream_type" => "movie", "engine" => "native"}]
+      })
+
+    assert %{"accepted" => 0, "batch_id" => ^batch_id} = json_response(second, 202)
+
+    event =
+      from(event in "qoe_events",
+        select: %{
+          engine: event.engine,
+          ttff_ms: event.ttff_ms,
+          user_id: event.user_id,
+          batch_id: event.batch_id
+        }
+      )
+      |> Repo.one!()
+
+    assert event.engine == "native"
+    assert event.ttff_ms == 840
+    assert is_integer(event.user_id)
+    assert event.batch_id == batch_id
+
+    columns =
+      Repo.query!(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'qoe_events'"
+      ).rows
+
+    refute ["url"] in columns
   end
 
   test "accepts single event payloads from lightweight clients", %{conn: conn} do
