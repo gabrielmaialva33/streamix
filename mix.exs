@@ -5,10 +5,11 @@ defmodule Streamix.MixProject do
     [
       app: :streamix,
       version: "0.0.100",
-      elixir: "~> 1.18",
+      elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
+      test_coverage: [summary: [threshold: 45]],
       dialyzer: dialyzer(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
@@ -114,7 +115,7 @@ defmodule Streamix.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      quality: ["compile --warnings-as-errors", "credo --strict", "test", "dialyzer"],
+      quality: ["compile --warnings-as-errors", "credo --strict", "test --cover", "dialyzer"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": [
         "compile",
@@ -131,7 +132,7 @@ defmodule Streamix.MixProject do
         "deps.unlock --unused",
         "format",
         "credo --strict",
-        "test"
+        "test --cover"
       ]
     ]
   end
@@ -140,7 +141,12 @@ defmodule Streamix.MixProject do
     [
       ignore_warnings: ".dialyzer_ignore.exs",
       plt_local_path: "priv/plts",
-      plt_add_apps: [:ex_unit, :mix]
+      plt_add_apps: [:ex_unit, :mix],
+      # OTP 28 reports false opaque violations for regular MapSet usage because
+      # MapSet delegates to the opaque :sets type. Elixir core recommends
+      # disabling only this warning family until the toolchains converge:
+      # https://github.com/elixir-lang/elixir/issues/15673
+      flags: [:no_opaque]
     ]
   end
 end

@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Elixir-1.18+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
+  <img src="https://img.shields.io/badge/Elixir-1.19+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
   <img src="https://img.shields.io/badge/Phoenix-1.8.2+-f97316?style=flat&logo=phoenix-framework" alt="Phoenix" />
   <img src="https://img.shields.io/badge/LiveView-1.1+-0ea5e9?style=flat&logo=phoenix-framework" alt="LiveView" />
   <img src="https://img.shields.io/badge/TimescaleDB-pg17-1d4ed8?style=flat&logo=postgresql" alt="TimescaleDB" />
@@ -220,8 +220,8 @@ Healthcheck:
 
 | Tecnologia  | Versao      | Papel                     |
 |-------------|-------------|---------------------------|
-| Elixir      | `~> 1.18`   | runtime da aplicacao      |
-| OTP         | 27          | supervisao e concorrencia |
+| Elixir      | `~> 1.19`   | runtime da aplicacao      |
+| OTP         | 28          | supervisao e concorrencia |
 | Phoenix     | `~> 1.8.2`  | framework web             |
 | LiveView    | `~> 1.1.0`  | UI em tempo real          |
 | Ecto SQL    | `~> 3.13`   | camada de banco           |
@@ -252,9 +252,9 @@ Healthcheck:
 ### Pre-requisitos
 
 - Docker
-- Elixir 1.18+
-- OTP 27+
-- Node.js 20+ e npm
+- Elixir 1.19+
+- OTP 28+
+- Node.js 26+ e npm
 
 ### 1. Suba a infraestrutura local
 

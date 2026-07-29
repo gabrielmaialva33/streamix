@@ -30,8 +30,8 @@ do not document or modify an in-tree Tizen app here.
 
 ## Stack
 
-- Elixir `~> 1.18`
-- OTP 27
+- Elixir `~> 1.19`
+- OTP 28
 - Phoenix `~> 1.8.2`
 - Phoenix LiveView `~> 1.1.0`
 - Ecto SQL `~> 3.13`

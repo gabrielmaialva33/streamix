@@ -39,10 +39,19 @@ Default `mix test` excludes `:integration`, `:slow`, and `:playwright`.
 Run opt-in suites explicitly:
 
 ```bash
+mix test --cover
 mix test --include integration
 mix test --include slow
 mix test --include playwright test/streamix_web/e2e
 ```
+
+`mix test --cover` enforces the current 45% project-wide ratchet. Raise the
+threshold as coverage improves; do not lower it or add broad module exclusions
+to make a regression pass.
+
+CI runs the default suite with coverage, the deterministic `:slow` tests, and
+the four self-contained WebKit journeys. The `:integration` tag remains manual
+because those cases require live providers or external torrent services.
 
 On Arch Linux, run the WebKit-focused browser suite through the pinned
 Playwright Ubuntu container instead of installing compatibility libraries:

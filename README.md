@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Elixir-1.18+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
+  <img src="https://img.shields.io/badge/Elixir-1.19+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
   <img src="https://img.shields.io/badge/Phoenix-1.8.2+-f97316?style=flat&logo=phoenix-framework" alt="Phoenix" />
   <img src="https://img.shields.io/badge/LiveView-1.1+-0ea5e9?style=flat&logo=phoenix-framework" alt="LiveView" />
   <img src="https://img.shields.io/badge/TimescaleDB-pg17-1d4ed8?style=flat&logo=postgresql" alt="TimescaleDB" />
@@ -222,8 +222,8 @@ Healthcheck:
 
 | Technology  | Version      | Role                        |
 |-------------|--------------|-----------------------------|
-| Elixir      | `~> 1.18`    | Application runtime         |
-| OTP         | 27           | Supervision and concurrency |
+| Elixir      | `~> 1.19`    | Application runtime         |
+| OTP         | 28           | Supervision and concurrency |
 | Phoenix     | `~> 1.8.2`   | Web framework               |
 | LiveView    | `~> 1.1.0`   | Realtime UI                 |
 | Ecto SQL    | `~> 3.13`    | Database layer              |
@@ -254,9 +254,9 @@ Healthcheck:
 ### Prerequisites
 
 - Docker
-- Elixir 1.18+
-- OTP 27+
-- Node.js 20+ and npm
+- Elixir 1.19+
+- OTP 28+
+- Node.js 26+ and npm
 
 ### 1. Start local infrastructure
 

@@ -12,9 +12,9 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  ELIXIR_VERSION: 1.18.4
-  OTP_VERSION: 27.3.4
-  NODE_VERSION: 20
+  ELIXIR_VERSION: 1.19.5
+  OTP_VERSION: 28.5
+  NODE_VERSION: 26.2.0
 
 jobs:
   backend:
@@ -53,6 +53,7 @@ jobs:
       MIX_ENV: test
       TEST_DATABASE_URL: ecto://streamix:streamix@localhost:5432/streamix_test
       REDIS_URL: redis://localhost:6379
+      RABBITMQ_ENABLED: "false"
 
     steps:
       - name: Checkout
@@ -86,6 +87,7 @@ jobs:
 
       - name: Static analysis and security
         run: |
+          bash scripts/check-runtime-versions.sh
           mix deps.unlock --check-unused
           mix format --check-formatted
           mix compile --warnings-as-errors
@@ -94,7 +96,45 @@ jobs:
           mix hex.audit
 
       - name: Test
-        run: mix test
+        run: |
+          mix test --cover
+          mix test --only slow
+
+  dialyzer:
+    name: Dialyzer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: dialyzer-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+          version-type: strict
+
+      - name: Cache dependencies and PLT
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            deps
+            _build/dev
+            priv/plts
+          key: dialyzer-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            dialyzer-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Check contracts
+        run: mix dialyzer
 
   frontend:
     name: Frontend quality
@@ -124,6 +164,81 @@ jobs:
 
       - name: Lint
         run: npm run lint -- --error-on-warnings
+
+      - name: Unit tests
+        run: npm test
+
+  e2e:
+    name: WebKit browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: e2e-${{ github.ref }}
+      cancel-in-progress: true
+
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: streamix
+          POSTGRES_PASSWORD: streamix
+          POSTGRES_DB: streamix_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U streamix -d streamix_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MIX_ENV: test
+      TEST_DATABASE_URL: ecto://streamix:streamix@localhost:5432/streamix_test
+      REDIS_URL: redis://localhost:6379
+      RABBITMQ_ENABLED: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up BEAM
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+          version-type: strict
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - name: Cache dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: deps
+          key: e2e-beam-deps-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            e2e-beam-deps-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
+
+      - name: Install dependencies
+        run: |
+          mix deps.get --only test
+          npm ci --prefix assets --no-audit --no-fund
+
+      - name: Run WebKit journeys
+        run: bash scripts/test-webkit-docker.sh
 
   build:
     name: Build candidate image
@@ -175,7 +290,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [backend, frontend, build]
+    needs: [backend, dialyzer, frontend, e2e, build]
     permissions:
       contents: read
       packages: write

@@ -1,13 +1,10 @@
 # Build stage
-# OTP bumped 27.2.1 -> 27.3.4: 27.2's stricter TLS key-usage validation
-# rejected the (rotated) Fastly cert chains behind builds.hex.pm and
-# release-assets.githubusercontent.com (key_usage_mismatch), breaking
-# `mix local.hex` and the vix precompiled-binary download. 27.3.4 relaxes it.
-ARG ELIXIR_VERSION=1.18.4
-ARG OTP_VERSION=27.3.4
-ARG DEBIAN_VERSION=bookworm-20250520-slim
-ARG NODE_VERSION=20.20.2
-ARG NODE_SHA256=df770b2a6f130ed8627c9782c988fda9669fa23898329a61a871e32f965e007d
+# Keep these pins aligned with `.tool-versions` and the CI workflow.
+ARG ELIXIR_VERSION=1.19.5
+ARG OTP_VERSION=28.5
+ARG DEBIAN_VERSION=bookworm-20260610-slim
+ARG NODE_VERSION=26.2.0
+ARG NODE_SHA256=9f786864128a11375e398b8dfacd4a5e995ec4b6a6c8b3b52ac9afbc95ea8158
 ARG GIT_SHA=unknown
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"

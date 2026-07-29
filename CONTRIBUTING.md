@@ -16,10 +16,10 @@ By contributing, you agree that your contributions are licensed under the [MIT L
 
 ### Requirements
 
-- Elixir 1.18+
-- OTP 27+
+- Elixir 1.19+
+- OTP 28+
 - Docker
-- Node.js 20+ and npm
+- Node.js 26+ and npm
 
 ### First-Time Setup
 
