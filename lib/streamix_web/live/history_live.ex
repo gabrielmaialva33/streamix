@@ -11,7 +11,6 @@ defmodule StreamixWeb.HistoryLive do
   """
   use StreamixWeb, :live_view
 
-  import StreamixWeb.AppComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
@@ -46,9 +45,6 @@ defmodule StreamixWeb.HistoryLive do
   # ============================================
   # Event Handlers
   # ============================================
-
-  # ThemeToggle hook event (client-side theme management, no server action needed)
-  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   # OfflineSync hook events (client-side sync, no server action needed)
   def handle_event("refresh_data", _params, socket), do: {:noreply, socket}

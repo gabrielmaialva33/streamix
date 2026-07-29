@@ -52,9 +52,6 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
 
   # Event Handlers
 
-  # ThemeToggle hook event (client-side theme management, no server action needed)
-  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
-
   def handle_event("play_movie", _, socket) do
     {:noreply,
      redirect(socket,

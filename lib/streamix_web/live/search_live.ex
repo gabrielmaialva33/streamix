@@ -10,8 +10,6 @@ defmodule StreamixWeb.SearchLive do
   """
   use StreamixWeb, :live_view
 
-  import StreamixWeb.AppComponents
-  import StreamixWeb.ContentComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
@@ -54,9 +52,6 @@ defmodule StreamixWeb.SearchLive do
   # ============================================
   # Event Handlers
   # ============================================
-
-  # ThemeToggle hook event (client-side theme management, no server action needed)
-  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   @doc false
   def handle_event("search", %{"query" => query}, socket) do

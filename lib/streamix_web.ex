@@ -92,10 +92,18 @@ defmodule StreamixWeb do
       import Phoenix.HTML
       # Core UI components
       import StreamixWeb.CoreComponents
-      # Application-specific components
-      import StreamixWeb.AppComponents
-      # Content components (movies, series, carousels)
-      import StreamixWeb.ContentComponents
+      # Application-specific components. Import the defining modules directly
+      # so Phoenix retains each component's attr/slot contract at call sites.
+      import StreamixWeb.App.Feedback
+      import StreamixWeb.App.Filters
+      import StreamixWeb.App.Media
+      import StreamixWeb.App.Navigation
+      import StreamixWeb.App.Premium
+      # Content components (movies, series, navigation, carousels)
+      import StreamixWeb.Content.CardComponents
+      import StreamixWeb.Content.CarouselComponents
+      import StreamixWeb.Content.DetailComponents
+      import StreamixWeb.Content.NavigationComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

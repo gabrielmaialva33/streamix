@@ -3,7 +3,7 @@ defmodule StreamixWeb.Content.CardComponents do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
   import StreamixWeb.CoreComponents
-  import StreamixWeb.AppComponents
+  import StreamixWeb.App.Premium
   import StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
 

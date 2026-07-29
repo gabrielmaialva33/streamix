@@ -5,7 +5,8 @@ defmodule StreamixWeb.HomeLive do
 
   alias StreamixWeb.HomeData, as: Data
 
-  import StreamixWeb.HomeComponents
+  import StreamixWeb.Home.Authenticated
+  import StreamixWeb.Home.Landing
 
   def mount(_params, _session, socket) do
     Logger.info(
@@ -38,9 +39,6 @@ defmodule StreamixWeb.HomeLive do
   # ============================================
   # Event Handlers
   # ============================================
-
-  # ThemeToggle hook event (client-side theme management, no server action needed)
-  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   # Shared card navigation events (movie_card / series_card from
   # StreamixWeb.Content.CardComponents). The home carousels delegate rendering

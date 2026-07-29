@@ -6,8 +6,8 @@ defmodule StreamixWeb.Home.Authenticated do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
-  import StreamixWeb.AppComponents
-  import StreamixWeb.ContentComponents
+  import StreamixWeb.App.Premium
+  import StreamixWeb.Content.CarouselComponents
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Carousel
   import StreamixWeb.Home.Hero

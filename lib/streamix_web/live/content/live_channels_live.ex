@@ -5,9 +5,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   """
   use StreamixWeb, :live_view
 
-  import StreamixWeb.AppComponents
-  import StreamixWeb.ContentComponents
-
   alias StreamixWeb.Content.LiveChannels
 
   def mount(_params, _session, socket) do
@@ -27,9 +24,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   # ============================================
   # Event Handlers
   # ============================================
-
-  # ThemeToggle hook event (client-side theme management, no server action needed)
-  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   def handle_event("filter_category", %{"category" => category}, socket) do
     category = if category == "", do: nil, else: category

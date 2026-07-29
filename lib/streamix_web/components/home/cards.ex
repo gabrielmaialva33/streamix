@@ -6,7 +6,7 @@ defmodule StreamixWeb.Home.Cards do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
-  import StreamixWeb.ContentComponents
+  import StreamixWeb.Content.CardComponents
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
 

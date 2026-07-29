@@ -6,7 +6,7 @@ defmodule StreamixWeb.Home.Carousel do
   use Phoenix.Component
   use StreamixWeb, :verified_routes
 
-  import StreamixWeb.ContentComponents
+  import StreamixWeb.Content.NavigationComponents
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Cards
   import StreamixWeb.Home.Helpers

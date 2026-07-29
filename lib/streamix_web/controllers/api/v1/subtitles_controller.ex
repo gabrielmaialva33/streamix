@@ -13,7 +13,6 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
   use StreamixWeb, :controller
 
   alias Streamix.Subtitles
-  alias Streamix.Subtitles.Vtt
 
   @imdb_re ~r/^tt\d{6,9}$/
 
@@ -32,7 +31,7 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
     conn
     |> put_resp_content_type("text/vtt")
     |> put_resp_header("cache-control", "public, max-age=86400")
-    |> send_resp(200, Vtt.shift(vtt, offset_ms))
+    |> send_resp(200, Subtitles.shift_vtt(vtt, offset_ms))
   end
 
   defp respond(conn, :not_found, _offset_ms), do: send_resp(conn, 204, "")

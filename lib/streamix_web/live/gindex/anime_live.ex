@@ -5,8 +5,6 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   """
   use StreamixWeb, :live_view
 
-  import StreamixWeb.AppComponents
-  import StreamixWeb.ContentComponents
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
@@ -53,9 +51,6 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   # ============================================
   # Event Handlers
   # ============================================
-
-  # ThemeToggle hook event (client-side theme management, no server action needed)
-  def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   def handle_event("search", %{"search" => search}, socket) do
     path =

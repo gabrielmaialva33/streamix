@@ -1,4 +1,4 @@
-defmodule StreamixWeb.AppComponents.Premium do
+defmodule StreamixWeb.App.Premium do
   @moduledoc """
   Premium and plan-access UI components.
   """
