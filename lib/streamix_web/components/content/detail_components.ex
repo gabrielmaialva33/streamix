@@ -1,28 +1,8 @@
 defmodule StreamixWeb.Content.DetailComponents do
   @moduledoc """
-  Detail and modal components shared across movie / series / episode pages.
-
-  > **TODO (planned split):** this module is ~900 lines and 26 public
-  > components. The shape we want to land on, when the refactor budget
-  > allows, is:
-  >
-  >   * `detail_components/badges.ex` — `rating_badge`, `content_rating_badge`,
-  >     `year_badge`, `duration_badge`, `date_badge`, `extension_badge`,
-  >     `series_count_badge`
-  >   * `detail_components/actions.ex` — `play_button`, `favorite_button`,
-  >     `trailer_link`, `tmdb_link`
-  >   * `detail_components/modals.ex` — `gallery_preview`, `image_gallery`,
-  >     `content_detail_modal`, `season_accordion`, `detail_season_accordion`
-  >   * `detail_components.ex` (top) — keeps the layout primitives
-  >     (`detail_hero`, `detail_title`, `genre_chips`, `synopsis_section`,
-  >     `credits_grid`, `similar_grid`, `detail_episode_item`,
-  >     `episode_navigation`) plus the `detail_format_duration/1` helper.
-  >
-  > The split changes the import surface (LiveViews currently do
-  > `import StreamixWeb.Content.DetailComponents`), so it's deliberately
-  > batched into its own PR — not done in this round because the call
-  > sites are spread across all detail LiveViews + tests and the win is
-  > stylistic, not load-bearing.
+  Layout, gallery, and episode components shared across movie, series, and
+  episode pages. Compact metadata lives in `DetailComponents.Badges`; user
+  actions live in `DetailComponents.Actions`.
   """
   use Phoenix.Component
   use StreamixWeb, :verified_routes
@@ -292,118 +272,6 @@ defmodule StreamixWeb.Content.DetailComponents do
     """
   end
 
-  attr :rating, :any, default: nil
-  attr :class, :any, default: nil
-  attr :divide_by_two?, :boolean, default: true
-
-  def rating_badge(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :display_rating,
-        detail_format_rating(assigns.rating, assigns.divide_by_two?)
-      )
-
-    ~H"""
-    <span
-      :if={@display_rating}
-      class={[
-        "inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-warning/10 text-warning rounded-md text-xs sm:text-sm font-semibold",
-        @class
-      ]}
-    >
-      <.icon name="hero-star-solid" class="size-3 sm:size-3.5" />
-      {@display_rating}
-    </span>
-    """
-  end
-
-  attr :rating, :string, default: nil
-
-  def content_rating_badge(assigns) do
-    ~H"""
-    <span
-      :if={@rating}
-      class={[
-        "inline-flex items-center justify-center min-w-[36px] sm:min-w-[42px] h-6 sm:h-8 px-2 sm:px-2.5 rounded-md text-[10px] sm:text-xs font-bold",
-        content_rating_class(@rating)
-      ]}
-      title="Classificação Indicativa"
-    >
-      {@rating}
-    </span>
-    """
-  end
-
-  attr :year, :any, default: nil
-
-  def year_badge(assigns) do
-    ~H"""
-    <span
-      :if={@year}
-      class="inline-flex items-center h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-primary rounded-md text-xs sm:text-sm font-medium"
-    >
-      {@year}
-    </span>
-    """
-  end
-
-  attr :seconds, :integer, default: nil
-
-  def duration_badge(assigns) do
-    assigns = assign(assigns, :duration, detail_format_duration(assigns.seconds))
-
-    ~H"""
-    <span
-      :if={@duration}
-      class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
-    >
-      <.icon name="hero-clock" class="size-3 sm:size-3.5" />{@duration}
-    </span>
-    """
-  end
-
-  attr :date, :any, default: nil
-
-  def date_badge(assigns) do
-    assigns = assign(assigns, :formatted_date, detail_format_date(assigns.date))
-
-    ~H"""
-    <span
-      :if={@formatted_date}
-      class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm"
-    >
-      <.icon name="hero-calendar" class="size-3 sm:size-3.5" />{@formatted_date}
-    </span>
-    """
-  end
-
-  attr :extension, :string, default: nil
-
-  def extension_badge(assigns) do
-    ~H"""
-    <span
-      :if={@extension}
-      class="inline-flex items-center h-6 sm:h-8 px-2 sm:px-2.5 bg-brand/20 text-brand rounded-md uppercase text-[10px] sm:text-xs font-bold"
-    >
-      {@extension}
-    </span>
-    """
-  end
-
-  attr :seasons, :list, default: []
-
-  def series_count_badge(assigns) do
-    assigns = assign(assigns, :episode_count, count_episodes(assigns.seasons))
-
-    ~H"""
-    <span class="inline-flex items-center gap-1 h-6 sm:h-8 px-2 sm:px-2.5 bg-surface text-text-secondary rounded-md text-xs sm:text-sm">
-      <.icon name="hero-tv" class="size-3 sm:size-3.5" />
-      {length(@seasons)} temp · {@episode_count} eps
-    </span>
-    """
-  end
-
   attr :genres, :list, default: []
 
   def genre_chips(assigns) do
@@ -419,85 +287,6 @@ defmodule StreamixWeb.Content.DetailComponents do
         {genre.name}
       </span>
     </div>
-    """
-  end
-
-  attr :event, :string, required: true
-  attr :label, :string, required: true
-
-  def play_button(assigns) do
-    ~H"""
-    <button
-      type="button"
-      phx-click={@event}
-      class="inline-flex min-h-11 items-center justify-center gap-1.5 w-full sm:w-auto px-4 sm:px-8 py-2.5 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-xs sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
-    >
-      <.icon name="hero-play-solid" class="size-4 sm:size-5" /> {@label}
-    </button>
-    """
-  end
-
-  attr :favorite?, :boolean, default: false
-  attr :label_on, :string, default: "Remover dos favoritos"
-  attr :label_off, :string, default: "Adicionar aos favoritos"
-
-  def favorite_button(assigns) do
-    ~H"""
-    <button
-      type="button"
-      phx-click="toggle_favorite"
-      class={[
-        "inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
-        @favorite? && "bg-brand border-brand text-white",
-        !@favorite? &&
-          "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
-      ]}
-      aria-label={if @favorite?, do: @label_on, else: @label_off}
-    >
-      <.icon
-        name={if @favorite?, do: "hero-heart-solid", else: "hero-heart"}
-        class="size-4 sm:size-5"
-      />
-    </button>
-    """
-  end
-
-  attr :youtube_id, :string, default: nil
-
-  def trailer_link(assigns) do
-    assigns = assign(assigns, :url, trailer_url(assigns.youtube_id))
-
-    ~H"""
-    <a
-      :if={@url}
-      href={@url}
-      target="_blank"
-      rel="noopener noreferrer"
-      class="inline-flex min-h-11 items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-surface border border-border text-text-primary font-semibold rounded-lg hover:bg-surface-hover transition-colors text-sm"
-    >
-      <.icon name="hero-play-circle" class="size-4 sm:size-5 text-brand" /> Trailer
-    </a>
-    """
-  end
-
-  attr :tmdb_id, :any, default: nil
-  attr :type, :string, required: true, values: ["movie", "tv"]
-
-  def tmdb_link(assigns) do
-    ~H"""
-    <a
-      :if={@tmdb_id}
-      href={"https://www.themoviedb.org/#{@type}/#{@tmdb_id}"}
-      target="_blank"
-      rel="noopener noreferrer"
-      class="inline-flex min-h-11 items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:bg-surface-hover transition-colors text-xs sm:text-sm"
-      title="Ver no The Movie Database"
-    >
-      <svg class="size-3.5 sm:size-4" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-      </svg>
-      TMDB
-    </a>
     """
   end
 
@@ -806,71 +595,9 @@ defmodule StreamixWeb.Content.DetailComponents do
     """
   end
 
-  def detail_format_duration(seconds) when is_integer(seconds) and seconds > 0 do
-    total_minutes = div(seconds, 60)
-    hours = div(total_minutes, 60)
-    mins = rem(total_minutes, 60)
-
-    cond do
-      hours > 0 and mins > 0 -> "#{hours}h #{mins}min"
-      hours > 0 -> "#{hours}h"
-      true -> "#{mins}min"
-    end
-  end
-
-  def detail_format_duration(_), do: nil
-
-  defp detail_format_rating(nil, _divide_by_two?), do: nil
-
-  defp detail_format_rating(%Decimal{} = rating, true) do
-    rating
-    |> Decimal.div(2)
-    |> Decimal.round(1)
-    |> Decimal.to_string()
-  end
-
-  defp detail_format_rating(%Decimal{} = rating, false) do
-    rating
-    |> Decimal.to_float()
-    |> :erlang.float_to_binary(decimals: 1)
-  end
-
-  defp detail_format_rating(rating, true) when is_number(rating) do
-    Float.round(rating / 2, 1) |> to_string()
-  end
-
-  defp detail_format_rating(rating, false) when is_number(rating) do
-    :erlang.float_to_binary(rating * 1.0, decimals: 1)
-  end
-
-  defp detail_format_rating(_, _divide_by_two?), do: nil
-
-  defp detail_format_date(nil), do: nil
-  defp detail_format_date(date), do: Calendar.strftime(date, "%d/%m/%Y")
-
-  defp content_rating_class(rating) when is_binary(rating) do
-    case String.upcase(rating) do
-      value when value in ["L", "G", "TV-G", "TV-Y", "TV-Y7"] -> "bg-success/10 text-success"
-      value when value in ["10", "PG", "TV-PG"] -> "bg-info/10 text-info"
-      value when value in ["12", "PG-13", "TV-14"] -> "bg-warning/10 text-warning"
-      "14" -> "bg-warning/15 text-warning"
-      value when value in ["16", "R", "TV-MA"] -> "bg-error/10 text-error"
-      value when value in ["18", "NC-17"] -> "bg-error/15 text-error"
-      _ -> "bg-surface text-text-secondary"
-    end
-  end
-
-  defp content_rating_class(_), do: "bg-surface text-text-secondary"
-
-  defp trailer_url(youtube_id) when is_binary(youtube_id) do
-    if String.contains?(youtube_id, "youtube.com") or String.contains?(youtube_id, "youtu.be") do
-      youtube_id
-    else
-      "https://www.youtube.com/watch?v=#{youtube_id}"
-    end
-  end
-
-  defp trailer_url(_), do: nil
+  defdelegate detail_format_duration(seconds),
+    to: StreamixWeb.Content.DetailComponents.Badges,
+    as: :format_duration
 
   defp director_names(%{credits: credits}) when is_list(credits) do
     credits
@@ -897,10 +624,6 @@ defmodule StreamixWeb.Content.DetailComponents do
   end
 
   defp truncate_cast(_), do: ""
-
-  defp count_episodes(seasons) do
-    Enum.sum(Enum.map(seasons, fn season -> length(season.episodes || []) end))
-  end
 
   defp present?(value), do: is_binary(value) and value != ""
 
