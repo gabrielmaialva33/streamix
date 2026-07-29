@@ -4,8 +4,9 @@ defmodule Streamix.ObanStartupRecovery do
 
   This child starts after `Streamix.Repo` and before Oban. At that point no
   local queue can be executing work yet, so any row still marked `executing`
-  belongs to the previous container. Retryable rows become `available`;
-  exhausted rows become `discarded`, matching Oban Lifeline semantics.
+  belongs to the previous container. Every orphan becomes `available` and
+  gains one attempt, preserving the retry budget consumed when the previous
+  container claimed the interrupted execution.
 
   This must stay disabled in multi-node deployments because another node may
   legitimately own an executing row.
@@ -26,14 +27,11 @@ defmodule Streamix.ObanStartupRecovery do
   @impl GenServer
   def init(:ok) do
     case recover() do
-      {:ok, %{available: 0, discarded: 0}} ->
+      {:ok, %{recovered: 0}} ->
         :ok
 
-      {:ok, counts} ->
-        Logger.warning(
-          "[ObanStartupRecovery] recovered #{counts.available} jobs; " <>
-            "discarded #{counts.discarded} exhausted jobs"
-        )
+      {:ok, %{recovered: recovered}} ->
+        Logger.warning("[ObanStartupRecovery] recovered #{recovered} interrupted jobs")
 
       {:error, reason} ->
         Logger.error("[ObanStartupRecovery] recovery failed: #{inspect(reason)}")
@@ -49,24 +47,20 @@ defmodule Streamix.ObanStartupRecovery do
   @doc """
   Reconciles all currently executing jobs before Oban queues start.
   """
-  @spec recover() ::
-          {:ok, %{available: non_neg_integer(), discarded: non_neg_integer()}}
-          | {:error, term()}
+  @spec recover() :: {:ok, %{recovered: non_neg_integer()}} | {:error, term()}
   def recover do
     now = DateTime.utc_now()
 
     Repo.transaction(fn ->
-      {available, _} =
+      {recovered, _} =
         Oban.Job
-        |> where([job], job.state == "executing" and job.attempt < job.max_attempts)
-        |> Repo.update_all(set: [state: "available"])
+        |> where([job], job.state == "executing")
+        |> Repo.update_all(
+          set: [state: "available", scheduled_at: now],
+          inc: [max_attempts: 1]
+        )
 
-      {discarded, _} =
-        Oban.Job
-        |> where([job], job.state == "executing" and job.attempt >= job.max_attempts)
-        |> Repo.update_all(set: [state: "discarded", discarded_at: now])
-
-      %{available: available, discarded: discarded}
+      %{recovered: recovered}
     end)
   end
 end
