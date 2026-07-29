@@ -17,9 +17,8 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
   import Ecto.Query
 
-  alias Streamix.Gindex.SyncPlanner
-  alias Streamix.Iptv.GIndexProvider
-  alias Streamix.Iptv.Provider
+  alias Streamix.Gindex
+  alias Streamix.Iptv
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.ScanRootWorker
   alias Streamix.Workers.Gindex.SyncOrchestratorWorker
@@ -28,11 +27,11 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
   @impl Oban.Worker
   def perform(_job) do
-    if GIndexProvider.enabled?() do
+    if Iptv.gindex_provider_enabled?() do
       Logger.info("[GIndex Dispatcher] ensuring provider exists")
 
-      case GIndexProvider.ensure_exists!() do
-        {:ok, %Provider{} = provider} ->
+      case Iptv.ensure_gindex_provider() do
+        {:ok, %{id: _} = provider} ->
           dispatch(provider)
 
         {:ok, :disabled} ->
@@ -63,7 +62,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   end
 
   defp start_workflow(provider) do
-    roots = SyncPlanner.roots_for(provider)
+    roots = Gindex.sync_roots_for(provider)
     # UUID tag that links every job in this dispatch together — the
     # orchestrator uses it to know which ScanRoot siblings belong to
     # the same sync run when it decides whether finalization is due.
@@ -142,8 +141,6 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   end
 
   defp mark_status(provider, status) do
-    provider
-    |> Provider.sync_changeset(%{sync_status: status})
-    |> Repo.update()
+    Iptv.update_provider(provider, %{sync_status: status})
   end
 end

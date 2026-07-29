@@ -22,14 +22,14 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
 
   require Logger
 
-  alias Streamix.AI.UserAnalytics
+  alias Streamix.AI
   alias Streamix.Iptv
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"user_id" => user_id}}) do
     Logger.debug("[UpdateUserProfile] Updating profile for user #{user_id}")
 
-    case UserAnalytics.compute_user_profile(user_id) do
+    case AI.compute_user_profile(user_id) do
       {:ok, _vector} ->
         Logger.info("[UpdateUserProfile] Profile updated for user #{user_id}")
         :ok

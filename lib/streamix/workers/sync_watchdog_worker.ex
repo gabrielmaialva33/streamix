@@ -22,6 +22,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
 
   import Ecto.Query
 
+  alias Streamix.Iptv
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
 
@@ -85,9 +86,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
           ">#{@stuck_threshold_minutes}m with no in-flight jobs — resetting to failed"
       )
 
-      provider
-      |> Provider.sync_changeset(%{sync_status: "failed"})
-      |> Repo.update()
+      Iptv.update_provider(provider, %{sync_status: "failed"})
     else
       Logger.debug(
         "[SyncWatchdog] provider #{provider.id} still has #{in_flight} in-flight jobs, leaving syncing"

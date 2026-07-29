@@ -20,7 +20,6 @@ defmodule Streamix.Workers.SyncProviderWorker do
     unique: [period: 300, keys: [:provider_id]]
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Provider
   alias Streamix.Workers.SyncGindexProviderWorker
   alias Streamix.Workers.SyncTorrentProviderWorker
 
@@ -144,11 +143,11 @@ defmodule Streamix.Workers.SyncProviderWorker do
   """
   def enqueue(provider_or_id, opts \\ [])
 
-  def enqueue(%Provider{} = provider, opts) do
+  def enqueue(%{id: provider_id}, opts) do
     series_details = Keyword.get(opts, :series_details, :skip)
     job_opts = job_opts(opts)
 
-    %{provider_id: provider.id, series_details: to_string(series_details)}
+    %{provider_id: provider_id, series_details: to_string(series_details)}
     |> new(job_opts)
     |> Oban.insert()
   end

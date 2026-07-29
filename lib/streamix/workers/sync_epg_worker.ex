@@ -26,7 +26,6 @@ defmodule Streamix.Workers.SyncEpgWorker do
     unique: [period: 300, keys: [:provider_id]]
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.{EpgSync, Provider}
 
   require Logger
 
@@ -41,13 +40,13 @@ defmodule Streamix.Workers.SyncEpgWorker do
     end
   end
 
-  defp run(%Provider{} = provider, attempt) do
+  defp run(%{id: _} = provider, attempt) do
     Logger.info(
       "[SyncEpgWorker] Starting XMLTV-based EPG sync for provider #{provider.id} " <>
         "(attempt #{attempt})"
     )
 
-    case EpgSync.sync_all_epg(provider) do
+    case Iptv.sync_all_epg(provider) do
       {:ok, %{channels: ch, programs: pr} = stats} ->
         broadcast(provider, %{synced: ch, programs: pr, failed: 0})
         Logger.info("[SyncEpgWorker] Done: #{inspect(stats)}")
@@ -93,7 +92,7 @@ defmodule Streamix.Workers.SyncEpgWorker do
   @doc """
   Enqueues an EPG sync job for the given provider.
   """
-  def enqueue(%Provider{} = provider), do: enqueue(provider.id)
+  def enqueue(%{id: id}), do: enqueue(id)
 
   def enqueue(provider_id) when is_integer(provider_id) or is_binary(provider_id) do
     %{provider_id: provider_id}

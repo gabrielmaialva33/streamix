@@ -35,9 +35,8 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
       states: [:available, :scheduled, :executing, :retryable]
     ]
 
-  alias Streamix.Gindex.QuotaGuard
-  alias Streamix.Gindex.Sync
-  alias Streamix.Iptv.Provider
+  alias Streamix.Gindex
+  alias Streamix.Iptv
   alias Streamix.Repo
 
   require Logger
@@ -49,7 +48,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
   @impl Oban.Worker
   def perform(job) do
-    perform_with(job, &Sync.sync_kind/5, &QuotaGuard.seconds_until_reset/0)
+    perform_with(job, &Gindex.sync_kind/5, &Gindex.seconds_until_quota_reset/0)
   end
 
   @doc false
@@ -65,7 +64,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
         sync_fun,
         reset_delay_fun
       ) do
-    with %Provider{} = provider <- Repo.get(Provider, provider_id),
+    with %{id: _} = provider <- Iptv.get_provider(provider_id),
          {:ok, kind_atom} <- parse_kind(kind) do
       Logger.info("[GIndex ScanRoot] start provider=#{provider_id} kind=#{kind} path=#{path}")
       started_at = System.monotonic_time(:millisecond)

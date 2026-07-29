@@ -11,7 +11,7 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   primary, so anything under that threshold is almost certainly a row
   written by the broken parse pipeline.
 
-  Fetches via `Movies.fetch_info/1` / `SeriesOps.fetch_info/1`, which
+  Fetches via the public IPTV facade, which
   reuses the TMDB cache and only hits the API when needed.
 
   ## Usage
@@ -34,7 +34,8 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.{Movie, MovieAsset, Movies, Series, SeriesAsset, SeriesOps}
+  alias Streamix.Iptv
+  alias Streamix.Iptv.{Movie, MovieAsset, Series, SeriesAsset}
   alias Streamix.Repo
 
   require Logger
@@ -55,14 +56,14 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"kind" => "movies", "ids" => ids}}) do
     movies = Repo.all(from m in Movie, where: m.id in ^ids, preload: [:assets, :credits])
-    run_batch(movies, &Movies.fetch_info/1, "movies")
+    run_batch(movies, &Iptv.fetch_movie_info/1, "movies")
   end
 
   def perform(%Oban.Job{args: %{"kind" => "series", "ids" => ids}}) do
     series =
       Repo.all(from s in Series, where: s.id in ^ids, preload: [:assets, credits: :person])
 
-    run_batch(series, &SeriesOps.fetch_info/1, "series")
+    run_batch(series, &Iptv.fetch_series_info/1, "series")
   end
 
   # Cron entrypoint — no args means "go find pending items and enqueue".
@@ -121,7 +122,7 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   # Picks top-rated movies whose backdrop gallery is incomplete. We count
   # backdrops per movie and exclude anything already at/above the healthy
   # threshold; everything else gets re-enriched. Unlike the first
-  # iteration, we no longer require a tmdb_id up-front — Movies.fetch_info/1
+  # iteration, we no longer require a tmdb_id up-front — the IPTV facade
   # resolves it via TMDB search on first run when Xtream doesn't ship one.
   defp pending_movie_ids(limit) do
     movies_with_enough_backdrops =

@@ -23,7 +23,7 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv.Provider
+  alias Streamix.Iptv
   alias Streamix.Repo
   alias Streamix.Torrent
 
@@ -79,7 +79,7 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorker do
         "completed=#{completed} failed=#{failed}"
     )
 
-    case Repo.get(Provider, provider_id) do
+    case Iptv.get_provider(provider_id) do
       nil ->
         Logger.warning("[Torrent Orchestrator] provider #{provider_id} not found")
         :ok

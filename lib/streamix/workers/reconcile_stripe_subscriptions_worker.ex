@@ -5,13 +5,13 @@ defmodule Streamix.Workers.ReconcileStripeSubscriptionsWorker do
 
   use Oban.Worker, queue: :billing, max_attempts: 3
 
-  alias Streamix.Billing.Stripe
+  alias Streamix.Billing
 
   require Logger
 
   @impl Oban.Worker
   def perform(_job) do
-    case Stripe.reconcile_subscriptions() do
+    case Billing.reconcile_stripe_subscriptions() do
       {:ok, summary} ->
         Logger.info("Stripe reconciliation completed: #{inspect(summary)}")
         :ok

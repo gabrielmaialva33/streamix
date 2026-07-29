@@ -19,7 +19,7 @@ defmodule Streamix.Workers.CleanupOrphanedDataWorker do
       states: [:available, :scheduled, :executing, :retryable]
     ]
 
-  alias Streamix.Iptv.Sync.Cleanup
+  alias Streamix.Iptv
 
   require Logger
 
@@ -35,7 +35,7 @@ defmodule Streamix.Workers.CleanupOrphanedDataWorker do
 
     Logger.info("[CleanupWorker] Starting orphan batch limit=#{batch_size}")
 
-    case Cleanup.cleanup_orphaned_user_data(nil, limit: batch_size) do
+    case Iptv.cleanup_orphaned_user_data(nil, limit: batch_size) do
       {:ok, counts} ->
         Logger.info(
           "[CleanupWorker] Batch completed: #{counts.favorites} favorites, " <>
