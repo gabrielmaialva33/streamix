@@ -25,6 +25,22 @@ defmodule Streamix.Iptv.Streaming.UpstreamPumpTest do
     assert Process.alive?(self())
   end
 
+  test "reports Finch transport errors with the streaming accumulator removed" do
+    req = Finch.build(:get, "http://127.0.0.1:1/unreachable")
+
+    pump =
+      UpstreamPump.start(req, Streamix.StreamFinch, self(),
+        receive_timeout: 500,
+        pool_timeout: 500
+      )
+
+    assert_receive {pid, {:error, %Finch.TransportError{reason: :econnrefused}}}
+                   when pid == pump.pid,
+                   2_000
+
+    assert_receive {:DOWN, ref, :process, pid, :normal} when ref == pump.ref and pid == pump.pid
+  end
+
   defp start_chunk_server do
     {:ok, server} =
       start_supervised(

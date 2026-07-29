@@ -83,7 +83,7 @@ defmodule Streamix.Iptv.Streaming.UpstreamPump do
       {:ok, _final_in_flight} ->
         send(target, {pump_pid, :done})
 
-      {:error, reason} ->
+      {:error, reason, _final_in_flight} ->
         send(target, {pump_pid, {:error, reason}})
     end
   end

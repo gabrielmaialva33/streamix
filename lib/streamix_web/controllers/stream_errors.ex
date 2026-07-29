@@ -3,10 +3,10 @@ defmodule StreamixWeb.StreamErrors do
   Compatibility wrapper for `Streamix.Iptv.Streaming.StreamErrors`.
   """
 
-  alias Streamix.Iptv.Streaming.StreamErrors
+  alias Streamix.Iptv
 
-  @type code :: StreamErrors.code()
+  @type code :: Iptv.stream_error_code()
 
-  defdelegate halt(conn, code, opts \\ []), to: StreamErrors
-  defdelegate code_from_reason(reason), to: StreamErrors
+  defdelegate halt(conn, code, opts \\ []), to: Iptv, as: :halt_stream_error
+  defdelegate code_from_reason(reason), to: Iptv, as: :stream_error_code_from_reason
 end

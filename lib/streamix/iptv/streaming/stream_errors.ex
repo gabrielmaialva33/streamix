@@ -20,6 +20,7 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
           | :subscription_required
           | :content_not_found
           | :token_unauthorized
+          | :unauthorized
           | :unsafe_url
           | :missing_token
           | :unknown
@@ -46,6 +47,7 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
     },
     token_expired: {:unauthorized, "Stream token expired"},
     invalid_token: {:unauthorized, "Invalid stream token"},
+    unauthorized: {:unauthorized, "Unauthorized"},
     missing_token: {:bad_request, "Missing token parameter"},
     subscription_required: {:forbidden, "Subscription required"},
     token_unauthorized: {:forbidden, "Token not authorized for this content"},
@@ -107,7 +109,6 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
   end
 
   defp conn_status(status) when is_atom(status), do: Status.code(status)
-  defp conn_status(status) when is_integer(status), do: status
 
   defp maybe_merge(map, _key, nil), do: map
   defp maybe_merge(map, key, value), do: Map.put(map, key, value)

@@ -13,8 +13,6 @@ defmodule StreamixWeb.StreamController do
   require Logger
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Provider
-  alias Streamix.Iptv.Streaming.{FailoverPolicy, RedirectResolver, VodProxy}
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
   alias StreamixWeb.StreamToken
@@ -123,14 +121,14 @@ defmodule StreamixWeb.StreamController do
   defp stream_by_type(%{method: "HEAD"} = conn, url, _type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
-      _ -> VodProxy.head(conn, url, url_chain: derive_url_chain(url, meta))
+      _ -> Iptv.head_stream(conn, url, url_chain: derive_url_chain(url, meta))
     end
   end
 
   defp stream_by_type(conn, url, _type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
-      _ -> VodProxy.pipe(conn, url, url_chain: derive_url_chain(url, meta))
+      _ -> Iptv.pipe_stream(conn, url, url_chain: derive_url_chain(url, meta))
     end
   end
 
@@ -144,7 +142,7 @@ defmodule StreamixWeb.StreamController do
         [url]
 
       provider ->
-        FailoverPolicy.build_url_chain(url, Provider.url_chain(provider))
+        Iptv.provider_stream_url_chain(provider, url)
     end
   end
 
@@ -182,7 +180,7 @@ defmodule StreamixWeb.StreamController do
         fn _ -> false end
       end
 
-    case RedirectResolver.resolve(url, stop_fn: stop_fn) do
+    case Iptv.resolve_stream_url(url, stop_fn: stop_fn) do
       {:ok, final_url} ->
         # Pick a source proxy from the configured pool. Each request
         # gets a different source (round-robin across the user's session

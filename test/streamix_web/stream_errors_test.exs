@@ -58,6 +58,18 @@ defmodule StreamixWeb.StreamErrorsTest do
       body = Phoenix.ConnTest.json_response(conn, 400)
       assert body["error"]["code"] == "definitely_not_a_code"
     end
+
+    test "uses a canonical 401 response for internal authorization failures" do
+      conn =
+        build_conn(:get, "/any")
+        |> StreamErrors.halt(:unauthorized)
+
+      assert conn.status == 401
+      assert conn.halted
+
+      assert %{"error" => %{"code" => "unauthorized", "message" => "Unauthorized"}} =
+               Phoenix.ConnTest.json_response(conn, 401)
+    end
   end
 
   describe "code_from_reason/1" do

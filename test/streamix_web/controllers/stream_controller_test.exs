@@ -9,6 +9,39 @@ defmodule StreamixWeb.StreamControllerTest do
 
   alias StreamixWeb.StreamToken
 
+  describe "GET /api/stream/resolve internal authorization" do
+    setup do
+      previous = Application.get_env(:streamix, :gindex_resolve_secret)
+
+      on_exit(fn ->
+        if is_nil(previous) do
+          Application.delete_env(:streamix, :gindex_resolve_secret)
+        else
+          Application.put_env(:streamix, :gindex_resolve_secret, previous)
+        end
+      end)
+    end
+
+    test "returns the canonical 401 when the internal secret is not configured", %{conn: conn} do
+      Application.delete_env(:streamix, :gindex_resolve_secret)
+
+      conn = get(conn, "/api/stream/resolve?token=irrelevant")
+
+      assert %{"error" => %{"code" => "unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns the canonical 401 when the internal header is invalid", %{conn: conn} do
+      Application.put_env(:streamix, :gindex_resolve_secret, "expected-secret")
+
+      conn =
+        conn
+        |> put_req_header("x-internal-auth", "wrong-secret")
+        |> get("/api/stream/resolve?token=irrelevant")
+
+      assert %{"error" => %{"code" => "unauthorized"}} = json_response(conn, 401)
+    end
+  end
+
   test "global token with user but without subscription returns forbidden subscription error", %{
     conn: conn
   } do
