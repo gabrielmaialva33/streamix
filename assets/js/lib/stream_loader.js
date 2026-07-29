@@ -102,15 +102,6 @@ export function isHlsSupported() {
 }
 
 /**
- * Check if MPEG-TS is supported (lightweight, no library import needed)
- */
-export function isMpegtsSupported() {
-  const mediaSource = window.MediaSource || window.ManagedMediaSource;
-  if (!mediaSource) return false;
-  return typeof mediaSource.isTypeSupported === "function";
-}
-
-/**
  * Check if native HLS is supported (Safari)
  */
 export function isNativeHlsSupported() {

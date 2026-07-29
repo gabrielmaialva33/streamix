@@ -12,10 +12,21 @@ import {
 } from "../lib/codec_detector";
 import { CodecAwareABR, getCodecRecommendation } from "../lib/codec_priority";
 import { createErrorReport, detectErrorPatterns, formatErrorForLog } from "../lib/error_telemetry";
+import {
+  buildIosPlayerState,
+  readIosPlayerState,
+  writeIosPlayerState,
+} from "../lib/ios_playback_state";
 import { KeyboardManager } from "../lib/keyboard_manager";
 import { playerLogger as log, setErrorReporter } from "../lib/logger";
 import { NativeBufferManager } from "../lib/native_buffer";
 import { NetworkMonitor } from "../lib/network_monitor";
+import {
+  nextEpisodeCountdownWidth,
+  nextEpisodePath,
+  parseNextEpisode,
+  shouldTriggerNextEpisode,
+} from "../lib/next_episode";
 import { diagnoseError, runQuickDiagnostics } from "../lib/player_diagnostics";
 import { getHls, isHlsJsSupported, isMpegtsSupported } from "../lib/player_libs";
 import {
@@ -33,6 +44,11 @@ import {
   saveVolume,
 } from "../lib/player_preferences";
 import { PlayerUI } from "../lib/player_ui";
+import {
+  buildQualityProbeCandidates,
+  detectQualityCodec,
+  qualityVideoCodec,
+} from "../lib/quality_probe";
 import { getFileExtension, getStreamType, StreamLoader } from "../lib/stream_loader";
 import {
   ContentType,
@@ -92,8 +108,6 @@ async function loadAvbridge() {
 // it. Keep that off the critical path.
 let H265webWrapper = null;
 let h265webModulePromise = null;
-const IOS_PLAYER_STATE_KEY = "streamix:ios-player-state";
-const IOS_PLAYER_STATE_MAX_AGE = 12 * 60 * 60 * 1000;
 
 async function loadH265web() {
   if (!H265webWrapper) {
@@ -161,25 +175,6 @@ function isStandalonePwa() {
 
 function isIosPwaMode() {
   return isAppleTouchDevice() && isStandalonePwa();
-}
-
-function readIosPlayerState(contentId) {
-  if (!contentId) return null;
-
-  try {
-    const state = JSON.parse(localStorage.getItem(IOS_PLAYER_STATE_KEY) || "null");
-    if (!state || state.contentId !== contentId) return null;
-    if (Date.now() - state.savedAt > IOS_PLAYER_STATE_MAX_AGE) return null;
-    return state;
-  } catch {
-    return null;
-  }
-}
-
-function writeIosPlayerState(state) {
-  try {
-    localStorage.setItem(IOS_PLAYER_STATE_KEY, JSON.stringify({ ...state, savedAt: Date.now() }));
-  } catch {}
 }
 
 function scheduleLowPriority(callback, { timeout = 2500 } = {}) {
@@ -518,7 +513,11 @@ const VideoPlayer = {
     this.featureFlagH265web = readH265webFlag(this.el);
 
     // Next episode state (for pre-fetch)
-    this.nextEpisode = this.parseNextEpisode();
+    const serializedNextEpisode = this.el.dataset.nextEpisode;
+    this.nextEpisode = parseNextEpisode(serializedNextEpisode);
+    if (serializedNextEpisode && !this.nextEpisode) {
+      log.warn("[VideoPlayer] Failed to parse next episode data");
+    }
     this.nextEpisodeShown = false;
     this.nextEpisodeCountdown = null;
     this.nextEpisodePreloader = null;
@@ -538,20 +537,6 @@ const VideoPlayer = {
     this._wasPlayingBeforeHidden = false;
     this._lastIosPwaTapAt = 0;
     this._resumeAfterNativeSeek = false;
-  },
-
-  /**
-   * Parse next episode data from data attribute
-   */
-  parseNextEpisode() {
-    const data = this.el.dataset.nextEpisode;
-    if (!data) return null;
-    try {
-      return JSON.parse(data);
-    } catch {
-      log.warn("[VideoPlayer] Failed to parse next episode data");
-      return null;
-    }
   },
 
   loadPreferences() {
@@ -686,7 +671,7 @@ const VideoPlayer = {
     // Enhance quality list with codec information
     const enhancedQualities = this.availableQualities.map((q) => ({
       ...q,
-      codec: this.detectQualityCodec(q),
+      codec: detectQualityCodec(q),
     }));
 
     this.playerUI.updateQualityOptions(enhancedQualities, currentLevel, (level) =>
@@ -711,62 +696,13 @@ const VideoPlayer = {
     this.probeQualityDecodeCapabilities(enhancedQualities);
   },
 
-  /**
-   * Detect codec from quality level
-   */
-  detectQualityCodec(quality) {
-    const codecs = quality.videoCodec || quality.codecs || "";
-    if (codecs.includes("av01") || codecs.includes("av1")) return "av1";
-    if (codecs.includes("hvc1") || codecs.includes("hev1") || codecs.includes("hevc"))
-      return "hevc";
-    if (codecs.includes("vp09") || codecs.includes("vp9")) return "vp9";
-    if (codecs.includes("avc1") || codecs.includes("h264")) return "h264";
-    return "unknown";
-  },
-
-  getQualityVideoCodecString(quality) {
-    const rawCodecs = [quality.videoCodec, quality.codecs].filter(Boolean).join(",");
-    const codec = rawCodecs
-      .split(",")
-      .map((value) => value.trim().replaceAll('"', ""))
-      .find((value) => /^(avc1|hvc1|hev1|av01|vp09|vp9)/i.test(value));
-
-    return codec || null;
-  },
-
-  buildQualityMediaConfig(quality) {
-    const codec = this.getQualityVideoCodecString(quality);
-    if (!codec || !quality.width || !quality.height || !quality.bitrate) {
-      return null;
-    }
-
-    const isWebmCodec = codec.startsWith("vp9") || codec.startsWith("vp09");
-
-    return {
-      type: "media-source",
-      video: {
-        contentType: `${isWebmCodec ? "video/webm" : "video/mp4"}; codecs="${codec}"`,
-        width: quality.width,
-        height: quality.height,
-        bitrate: quality.bitrate,
-        framerate: Number(quality.frameRate) || 30,
-      },
-    };
-  },
-
   probeQualityDecodeCapabilities(qualities) {
     const policy = this.getPlaybackResourcePolicy();
     if (!policy.shouldRunAdvancedDiagnostics || !navigator.mediaCapabilities?.decodingInfo) {
       return;
     }
 
-    const candidates = qualities
-      .map((quality) => ({
-        quality,
-        config: this.buildQualityMediaConfig(quality),
-      }))
-      .filter(({ config }) => config)
-      .slice(0, 8);
+    const candidates = buildQualityProbeCandidates(qualities);
 
     if (candidates.length === 0) return;
 
@@ -780,7 +716,7 @@ const VideoPlayer = {
           index: quality.index,
           height: quality.height,
           bitrate: quality.bitrate,
-          codec: this.getQualityVideoCodecString(quality),
+          codec: qualityVideoCodec(quality),
           decodingInfo: await getMediaDecodingInfo(config),
         })),
       );
@@ -1483,25 +1419,29 @@ const VideoPlayer = {
 
     const currentTime = Math.floor(this.getCurrentTime());
     const duration = Math.floor(this.getDuration());
-    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0) return;
+    const paused = this.isPaused();
+    const state = buildIosPlayerState(
+      {
+        contentId: this.contentId,
+        path: `${window.location.pathname}${window.location.search}`,
+        currentTime,
+        duration,
+        paused,
+        muted: this.avPlayerMuted,
+        volume: this.avPlayerVolume,
+        playbackRate: this.video?.playbackRate ?? 1,
+      },
+      extra,
+    );
+    if (!state) return;
 
     if (currentTime > 0) {
       savePlaybackPosition(this.contentId, currentTime, duration);
     }
 
-    writeIosPlayerState({
-      contentId: this.contentId,
-      path: `${window.location.pathname}${window.location.search}`,
-      time: currentTime,
-      duration,
-      paused: this.isPaused(),
-      userPaused: extra.userPaused ?? this.isPaused(),
-      wasPlaying: extra.wasPlaying ?? !this.isPaused(),
-      muted: this.avPlayerMuted,
-      volume: this.avPlayerVolume,
-      playbackRate: this.video?.playbackRate ?? 1,
-      reason: extra.reason || "snapshot",
-    });
+    if (!writeIosPlayerState(state)) {
+      log.debug("[VideoPlayer] iOS PWA state storage unavailable");
+    }
   },
 
   handleIosVisibilityChange() {
@@ -1582,13 +1522,7 @@ const VideoPlayer = {
   checkNextEpisodeTrigger(currentTime, duration) {
     if (!this.nextEpisode || this.nextEpisodeShown) return;
 
-    const timeRemaining = duration - currentTime;
-    const percentComplete = (currentTime / duration) * 100;
-
-    // Trigger at 30s before end or 90% progress
-    const shouldTrigger = timeRemaining <= 30 || percentComplete >= 90;
-
-    if (shouldTrigger) {
+    if (shouldTriggerNextEpisode(currentTime, duration)) {
       this.showNextEpisodeOverlay();
       try {
         this.preloadNextEpisode();
@@ -1639,7 +1573,7 @@ const VideoPlayer = {
     this.nextEpisodeCountdown = setInterval(() => {
       countdown--;
       if (countdownBar) {
-        countdownBar.style.width = `${countdown * 10}%`;
+        countdownBar.style.width = `${nextEpisodeCountdownWidth(countdown)}%`;
       }
       if (countdown <= 0) {
         try {
@@ -1684,18 +1618,11 @@ const VideoPlayer = {
 
     this.hideNextEpisodeOverlay();
 
-    // Whitelist validation to prevent path traversal
-    const ALLOWED_TYPES = ["episode", "movie", "live"];
-    const type = ALLOWED_TYPES.includes(this.nextEpisode.type) ? this.nextEpisode.type : "episode";
-
-    // Validate ID is numeric to prevent injection
-    const id = parseInt(this.nextEpisode.id, 10);
-    if (Number.isNaN(id) || id <= 0) {
+    const path = nextEpisodePath(this.nextEpisode);
+    if (!path) {
       log.warn("[VideoPlayer] Invalid next episode ID:", this.nextEpisode.id);
       return;
     }
-
-    const path = `/watch/${type}/${id}`;
 
     log.debug("[VideoPlayer] Navigating to next episode:", path);
 
