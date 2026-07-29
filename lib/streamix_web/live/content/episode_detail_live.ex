@@ -67,7 +67,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
       {:ok,
        socket
        |> put_flash(:error, "Episódio não encontrado")
-       |> push_navigate(to: ~p"/")}
+       |> redirect(to: ~p"/")}
   end
 
   defp mount_episode_found(socket, provider, episode, series, user_id, mode) do
@@ -122,7 +122,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   def handle_event("theme_init", _params, socket), do: {:noreply, socket}
 
   def handle_event("play_episode", _, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/episode/#{socket.assigns.episode.id}")}
+    {:noreply, redirect(socket, to: ~p"/watch/episode/#{socket.assigns.episode.id}")}
   end
 
   def handle_event("toggle_favorite", _, socket) do

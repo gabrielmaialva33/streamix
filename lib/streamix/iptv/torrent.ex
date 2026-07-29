@@ -15,8 +15,8 @@ defmodule Streamix.Torrent do
   @ready_bytes 5_000_000
 
   defdelegate sync_provider(provider), to: Sync
-  defdelegate sync_source(provider, source_module), to: Sync
-  defdelegate refresh_provider_counts(provider), to: Sync
+  defdelegate sync_source(provider, source_module, opts \\ []), to: Sync
+  defdelegate refresh_provider_counts(provider, opts \\ []), to: Sync
 
   # Catalog read model (powers the dedicated torrent screen).
   defdelegate provider(), to: Catalog

@@ -48,7 +48,7 @@ defmodule Streamix.Torrent.Sources.Helpers do
   def configured_endpoint(slug) do
     endpoints = Application.get_env(:streamix, :torrent_source_endpoints, %{})
 
-    case Map.get(endpoints, slug) || Map.get(endpoints, endpoint_key(slug)) do
+    case endpoint_from_config(endpoints, slug) do
       endpoint when is_binary(endpoint) and endpoint != "" -> {:ok, endpoint}
       _ -> {:error, :not_configured}
     end
@@ -241,4 +241,14 @@ defmodule Streamix.Torrent.Sources.Helpers do
   defp endpoint_key("gratistorrent"), do: :gratistorrent
   defp endpoint_key("comandotorrent"), do: :comandotorrent
   defp endpoint_key(_), do: nil
+
+  defp endpoint_from_config(endpoints, slug) when is_map(endpoints) do
+    Map.get(endpoints, slug) || Map.get(endpoints, endpoint_key(slug))
+  end
+
+  defp endpoint_from_config(endpoints, slug) when is_list(endpoints) do
+    Keyword.get(endpoints, endpoint_key(slug))
+  end
+
+  defp endpoint_from_config(_endpoints, _slug), do: nil
 end

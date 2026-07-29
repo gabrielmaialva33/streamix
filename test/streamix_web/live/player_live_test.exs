@@ -120,12 +120,12 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       result = live(conn, ~p"/watch/live_channel/#{channel.id}")
 
-      assert {:error, {:live_redirect, %{to: to, flash: flash}}} = result
+      assert {:error, {:redirect, %{to: to, flash: flash}}} = result
       assert to == ~p"/plans"
       assert flash["error"] =~ "assinatura"
 
-      {:ok, _plans_view, html} = follow_redirect(result, conn, ~p"/plans")
-      refute html =~ "Canal Global Bloqueado"
+      {:ok, plans_conn} = follow_redirect(result, conn, ~p"/plans")
+      refute html_response(plans_conn, 200) =~ "Canal Global Bloqueado"
     end
 
     test "customer without subscription is redirected to /plans when opening global movie content",
@@ -145,7 +145,7 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       result = live(conn, ~p"/watch/movie/#{movie.id}")
 
-      assert {:error, {:live_redirect, %{to: to, flash: flash}}} = result
+      assert {:error, {:redirect, %{to: to, flash: flash}}} = result
       assert to == ~p"/plans"
       assert flash["error"] =~ "assinatura"
     end
@@ -162,7 +162,7 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       result = live(conn, ~p"/watch/gindex/#{movie.id}")
 
-      assert {:error, {:live_redirect, %{to: to, flash: flash}}} = result
+      assert {:error, {:redirect, %{to: to, flash: flash}}} = result
       assert to == ~p"/plans"
       assert flash["error"] =~ "assinatura"
     end

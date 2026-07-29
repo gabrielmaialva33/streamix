@@ -40,7 +40,7 @@ defmodule StreamixWeb.PlansLive do
           {:noreply,
            socket
            |> put_flash(:info, "Trial grátis ativado por #{plan.trial_days} dias.")
-           |> push_navigate(to: ~p"/billing")}
+           |> redirect(to: ~p"/billing")}
       end
     else
       {:error, :trial_already_used} ->
@@ -59,7 +59,7 @@ defmodule StreamixWeb.PlansLive do
          put_flash(socket, :error, "Não foi possível iniciar o checkout: #{inspect(reason)}")}
 
       _ ->
-        {:noreply, push_navigate(socket, to: ~p"/login")}
+        {:noreply, redirect(socket, to: ~p"/login")}
     end
   end
 
@@ -246,7 +246,7 @@ defmodule StreamixWeb.PlansLive do
                 <% else %>
                   <.link
                     id={"plan-cta-#{plan.slug}"}
-                    navigate={~p"/register"}
+                    href={~p"/register"}
                     data-cta-state="register"
                     class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
                   >

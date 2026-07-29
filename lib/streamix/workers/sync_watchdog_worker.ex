@@ -38,6 +38,12 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
   # Xtream / global providers ride on this single worker.
   @xtream_worker "Streamix.Workers.SyncProviderWorker"
 
+  @torrent_workers [
+    "Streamix.Workers.SyncTorrentProviderWorker",
+    "Streamix.Workers.Torrent.SyncSourceWorker",
+    "Streamix.Workers.Torrent.SyncOrchestratorWorker"
+  ]
+
   @in_flight_states ~w(available scheduled executing retryable)
   @stuck_threshold_minutes 60
 
@@ -92,5 +98,6 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
   end
 
   defp workers_for(%Provider{provider_type: :gindex}), do: @gindex_workers
+  defp workers_for(%Provider{provider_type: :torrent}), do: @torrent_workers
   defp workers_for(_), do: [@xtream_worker]
 end

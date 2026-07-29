@@ -1,6 +1,7 @@
 defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
-  use ExUnit.Case, async: false
+  use Streamix.DataCase, async: false
 
+  alias Streamix.Repo
   alias Streamix.Workers.IndexEmbeddingsWorker
 
   setup do
@@ -55,6 +56,36 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
     assert IndexEmbeddingsWorker.timeout(%Oban.Job{}) == :timer.minutes(150)
   end
 
+  test "resumes directly from a persisted series checkpoint" do
+    job = %Oban.Job{
+      args: %{},
+      meta: %{
+        "checkpoint_collection" => "series",
+        "checkpoint_after_id" => 42
+      }
+    }
+
+    assert :ok = IndexEmbeddingsWorker.perform(job)
+
+    assert_receive :setup
+    refute_receive {:movies, _}
+    assert_receive {:series, nil}
+    assert_receive {:series_after_id, 42}
+  end
+
+  test "persists the last successful content id in Oban metadata" do
+    job =
+      %{"collection" => "movies"}
+      |> IndexEmbeddingsWorker.new()
+      |> Oban.insert!()
+
+    assert :ok = IndexEmbeddingsWorker.perform(job)
+
+    checkpoint = Repo.get!(Oban.Job, job.id).meta
+    assert checkpoint["checkpoint_collection"] == "movies"
+    assert checkpoint["checkpoint_after_id"] == 101
+  end
+
   defp set_results(results) do
     Application.put_env(:streamix, :index_embeddings_test_results, results)
   end
@@ -70,15 +101,25 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
       result(:setup, :ok)
     end
 
-    def index_all_movies(provider_id) do
+    def index_all_movies(provider_id, opts) do
       report({:movies, provider_id})
-      result(:movies, {:ok, 2})
+      report({:movies_after_id, Keyword.fetch!(opts, :after_id)})
+      maybe_checkpoint(:movies, opts, result(:movies, {:ok, 2}))
     end
 
-    def index_all_series(provider_id) do
+    def index_all_series(provider_id, opts) do
       report({:series, provider_id})
-      result(:series, {:ok, 3})
+      report({:series_after_id, Keyword.fetch!(opts, :after_id)})
+      maybe_checkpoint(:series, opts, result(:series, {:ok, 3}))
     end
+
+    defp maybe_checkpoint(collection, opts, {:ok, _count} = result) do
+      checkpoint_id = if collection == :movies, do: 101, else: 202
+      :ok = Keyword.fetch!(opts, :on_batch).(checkpoint_id, 1)
+      result
+    end
+
+    defp maybe_checkpoint(_collection, _opts, result), do: result
 
     defp report(message) do
       send(Application.fetch_env!(:streamix, :index_embeddings_test_pid), message)

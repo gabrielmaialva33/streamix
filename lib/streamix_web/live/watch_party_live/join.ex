@@ -37,7 +37,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
         {:ok,
          socket
          |> put_flash(:error, "Watch Party não encontrada ou já encerrou")
-         |> push_navigate(to: ~p"/")}
+         |> redirect(to: ~p"/")}
 
       room ->
         content_name = CatalogItem.content_name(room.catalog_item)
@@ -61,7 +61,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
     case WatchParty.join_room(room.id, user_id) do
       {:ok, _participant} ->
-        {:noreply, push_navigate(socket, to: ~p"/party/#{room.invite_code}/watch")}
+        {:noreply, redirect(socket, to: ~p"/party/#{room.invite_code}/watch")}
 
       {:error, :room_full} ->
         {:noreply, put_flash(socket, :error, "A sala está cheia")}
@@ -103,7 +103,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
           </button>
 
           <.link
-            navigate={~p"/"}
+            href={~p"/"}
             class="block text-sm text-text-muted hover:text-text-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-brand rounded"
           >
             Voltar

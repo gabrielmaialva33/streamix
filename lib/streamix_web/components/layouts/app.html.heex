@@ -94,6 +94,7 @@
           <nav class="hidden md:flex items-center gap-1">
             <.nav_link
               path={~p"/"}
+              current_path={@current_path}
               label="Início"
               icon="hero-home"
               icon_active="hero-home-solid"
@@ -101,6 +102,7 @@
             />
             <.nav_link
               path={~p"/browse"}
+              current_path={@current_path}
               label="Catálogo"
               icon="hero-film"
               icon_active="hero-film-solid"
@@ -108,6 +110,7 @@
             />
             <.nav_link
               path={~p"/torrent"}
+              current_path={@current_path}
               label="Torrents"
               icon="hero-bolt"
               icon_active="hero-bolt-solid"
@@ -115,6 +118,7 @@
             />
             <.nav_link
               path={~p"/favorites"}
+              current_path={@current_path}
               label="Minha Lista"
               icon="hero-heart"
               icon_active="hero-heart-solid"
@@ -122,6 +126,7 @@
             />
             <.nav_link
               path={~p"/party"}
+              current_path={@current_path}
               label="Watch Party"
               icon="hero-users"
               icon_active="hero-users-solid"
@@ -137,7 +142,7 @@
         <%= if @current_scope do %>
           <!-- Search button (desktop) -->
           <.link
-            navigate={~p"/search"}
+            href={~p"/search"}
             aria-label="Abrir busca global"
             class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-hover/50 hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-all text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
@@ -170,20 +175,28 @@
                 </p>
               </div>
               <div class="py-1">
-                <.dropdown_item navigate={~p"/history"} icon="hero-clock" label="Histórico" />
+                <.dropdown_item
+                  navigate={~p"/history"}
+                  current_path={@current_path}
+                  icon="hero-clock"
+                  label="Histórico"
+                />
                 <.dropdown_item
                   navigate={~p"/providers"}
+                  current_path={@current_path}
                   icon="hero-server-stack"
                   label="Meus Provedores"
                 />
                 <.dropdown_item
                   navigate={~p"/settings"}
+                  current_path={@current_path}
                   icon="hero-cog-6-tooth"
                   label="Configurações"
                 />
                 <.dropdown_item
                   :if={Streamix.Accounts.admin?(@current_scope.user)}
                   navigate={~p"/admin"}
+                  current_path={@current_path}
                   icon="hero-shield-check"
                   label="Admin"
                 />
@@ -203,13 +216,13 @@
           <%= if @current_path not in ["/login", "/register"] do %>
             <div class="flex items-center gap-2">
               <.link
-                navigate={~p"/login"}
+                href={~p"/login"}
                 class="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors rounded-xl"
               >
                 Entrar
               </.link>
               <.link
-                navigate={~p"/register"}
+                href={~p"/register"}
                 class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-xl hover:bg-brand-hover transition-all shadow-sm hover:shadow-md"
               >
                 Começar
@@ -276,6 +289,7 @@
       <div class="flex items-center justify-around h-14">
         <.bottom_tab
           path={~p"/"}
+          current_path={@current_path}
           icon="hero-home"
           icon_active="hero-home-solid"
           label="Início"
@@ -283,6 +297,7 @@
         />
         <.bottom_tab
           path={~p"/browse"}
+          current_path={@current_path}
           icon="hero-squares-2x2"
           icon_active="hero-squares-2x2-solid"
           label="Catálogo"
@@ -290,6 +305,7 @@
         />
         <.bottom_tab
           path={~p"/search"}
+          current_path={@current_path}
           icon="hero-magnifying-glass"
           icon_active="hero-magnifying-glass-solid"
           label="Busca"
@@ -298,6 +314,7 @@
         />
         <.bottom_tab
           path={~p"/favorites"}
+          current_path={@current_path}
           icon="hero-heart"
           icon_active="hero-heart-solid"
           label="Lista"
@@ -305,6 +322,7 @@
         />
         <.bottom_tab
           path={~p"/settings"}
+          current_path={@current_path}
           icon="hero-user-circle"
           icon_active="hero-user-circle-solid"
           label="Perfil"

@@ -236,13 +236,13 @@ defmodule StreamixWeb.Home.Hero do
 
       <div class="flex gap-2 sm:gap-3">
         <.link
-          navigate={content_path(@type, @content)}
+          href={content_path(@type, @content)}
           class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black text-sm sm:text-base font-semibold rounded-md hover:bg-white/90 transition-colors"
         >
           <.icon name="hero-play-solid" class="size-4 sm:size-6" /> Assistir
         </.link>
         <.link
-          navigate={content_info_path(@type, @content)}
+          href={content_info_path(@type, @content)}
           class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-surface/60 text-text-primary text-sm sm:text-base font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
         >
           <.icon name="hero-information-circle" class="size-4 sm:size-6" /> <span class="hidden sm:inline">Mais </span>Info

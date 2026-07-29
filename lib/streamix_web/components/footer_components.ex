@@ -34,7 +34,7 @@ defmodule StreamixWeb.FooterComponents do
       <div class="mx-auto max-w-7xl px-[4%] py-8 sm:py-10">
         <div class="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,2fr)] lg:gap-12">
           <section aria-label="Sobre o Streamix" class="max-w-sm">
-            <.link navigate={~p"/"} class="inline-flex items-center gap-2 text-text-primary">
+            <.link href={~p"/"} class="inline-flex items-center gap-2 text-text-primary">
               <span class="inline-flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white">
                 S
               </span>
@@ -54,10 +54,10 @@ defmodule StreamixWeb.FooterComponents do
                 Assistir
               </h3>
               <ul class="space-y-2">
-                <li><.footer_link navigate={~p"/"}>Início</.footer_link></li>
-                <li><.footer_link navigate={~p"/browse"}>Catálogo</.footer_link></li>
-                <li><.footer_link navigate={~p"/favorites"}>Minha Lista</.footer_link></li>
-                <li><.footer_link navigate={~p"/history"}>Histórico</.footer_link></li>
+                <li><.footer_link href={~p"/"}>Início</.footer_link></li>
+                <li><.footer_link href={~p"/browse"}>Catálogo</.footer_link></li>
+                <li><.footer_link href={~p"/favorites"}>Minha Lista</.footer_link></li>
+                <li><.footer_link href={~p"/history"}>Histórico</.footer_link></li>
               </ul>
             </div>
 
@@ -66,9 +66,9 @@ defmodule StreamixWeb.FooterComponents do
                 Social
               </h3>
               <ul class="space-y-2">
-                <li><.footer_link navigate={~p"/party"}>Watch Party</.footer_link></li>
-                <li><.footer_link navigate={~p"/party"}>Minhas Salas</.footer_link></li>
-                <li><.footer_link navigate={~p"/party"}>Entrar em Sala</.footer_link></li>
+                <li><.footer_link href={~p"/party"}>Watch Party</.footer_link></li>
+                <li><.footer_link href={~p"/party"}>Minhas Salas</.footer_link></li>
+                <li><.footer_link href={~p"/party"}>Entrar em Sala</.footer_link></li>
               </ul>
             </div>
 
@@ -77,9 +77,9 @@ defmodule StreamixWeb.FooterComponents do
                 Conta
               </h3>
               <ul class="space-y-2">
-                <li><.footer_link navigate={~p"/settings"}>Configurações</.footer_link></li>
-                <li><.footer_link navigate={~p"/providers"}>Provedores</.footer_link></li>
-                <li :if={@admin?}><.footer_link navigate={~p"/admin"}>Admin</.footer_link></li>
+                <li><.footer_link href={~p"/settings"}>Configurações</.footer_link></li>
+                <li><.footer_link href={~p"/providers"}>Provedores</.footer_link></li>
+                <li :if={@admin?}><.footer_link href={~p"/admin"}>Admin</.footer_link></li>
               </ul>
             </div>
 
@@ -115,13 +115,13 @@ defmodule StreamixWeb.FooterComponents do
     """
   end
 
-  attr :navigate, :any, required: true
+  attr :href, :any, required: true
   slot :inner_block, required: true
 
   defp footer_link(assigns) do
     ~H"""
     <.link
-      navigate={@navigate}
+      href={@href}
       class="text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       {render_slot(@inner_block)}

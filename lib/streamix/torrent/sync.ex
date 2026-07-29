@@ -21,10 +21,11 @@ defmodule Streamix.Torrent.Sync do
 
   # Hard ceiling on pagination — keeps a runaway source (next_page that
   # never returns nil, server bug, etc.) from wedging an Oban worker
-  # past its timeout. YTS currently has ~75k movies / 50 per page, so
-  # 1000 pages = 50k items is comfortably above the working set without
-  # being so high that a misbehaving source can hold a slot forever.
-  @max_pages 1000
+  # past its timeout. YTS currently has ~76k movies / 50 per page
+  # (roughly 1,526 pages), so the old 1,000-page cap silently truncated
+  # a third of the catalog. Crossing this generous safety valve is an
+  # error, never a false success.
+  @max_pages 10_000
 
   @doc """
   Syncs all enabled torrent sources for the given torrent provider.
@@ -60,33 +61,51 @@ defmodule Streamix.Torrent.Sync do
 
   Returns `{:ok, stats}` with the totals collected for this source.
   """
-  @spec sync_source(Provider.t(), module()) ::
+  @spec sync_source(Provider.t(), module(), keyword()) ::
           {:ok, %{movies: non_neg_integer(), torrents: non_neg_integer()}}
           | {:error, term()}
-  def sync_source(%Provider{provider_type: :torrent} = provider, source_module)
+  def sync_source(provider, source_module, opts \\ [])
+
+  def sync_source(%Provider{provider_type: :torrent} = provider, source_module, opts)
       when is_atom(source_module) do
+    start_page = positive_integer_option(opts, :start_page, 1)
+    max_pages = positive_integer_option(opts, :max_pages, @max_pages)
+    on_page = Keyword.get(opts, :on_page, fn _progress -> :ok end)
+
     Logger.info(
-      "[Torrent Sync] Source #{source_module.slug()} starting for provider #{provider.id}"
+      "[Torrent Sync] Source #{source_module.slug()} starting for provider #{provider.id} " <>
+        "at page #{start_page}"
     )
 
-    sync_pages(provider, source_module, 1, %{movies: 0, torrents: 0})
+    sync_pages(
+      provider,
+      source_module,
+      start_page,
+      %{movies: 0, torrents: 0},
+      max_pages,
+      on_page
+    )
   end
 
-  def sync_source(%Provider{} = _provider, _source_module) do
+  def sync_source(%Provider{} = _provider, _source_module, _opts) do
     {:error, :not_torrent_provider}
   end
 
   # Pagination loop. Stops when the source signals no `next_page`,
   # the page cap is hit, or fetch_listing returns an error.
-  defp sync_pages(_provider, source_module, page, acc) when page > @max_pages do
-    Logger.warning(
-      "[Torrent Sync] Source #{source_module.slug()} hit @max_pages=#{@max_pages}; bailing"
-    )
+  defp sync_pages(_provider, source_module, page, _acc, max_pages, _on_page)
+       when page > max_pages do
+    reason = %{
+      source: source_module.slug(),
+      page: page,
+      max_pages: max_pages
+    }
 
-    {:ok, acc}
+    Logger.error("[Torrent Sync] page safety limit exceeded: #{inspect(reason)}")
+    {:error, {:page_limit_exceeded, reason}}
   end
 
-  defp sync_pages(provider, source_module, page, acc) do
+  defp sync_pages(provider, source_module, page, acc, max_pages, on_page) do
     case source_module.fetch_listing(page: page) do
       {:ok, items, meta} ->
         {movies_count, torrents_count} = upsert_items(provider, source_module, items)
@@ -96,24 +115,15 @@ defmodule Streamix.Torrent.Sync do
           torrents: acc.torrents + torrents_count
         }
 
-        case Map.get(meta, :next_page) do
-          nil ->
-            Logger.info(
-              "[Torrent Sync] Source #{source_module.slug()} done at page #{page}: " <>
-                "#{new_acc.movies} movies / #{new_acc.torrents} torrents"
-            )
-
-            {:ok, new_acc}
-
-          next when is_integer(next) ->
-            # Intentional Process.sleep: this is an Oban worker process
-            # dedicated to this sync — there's no LiveView or GenServer
-            # mailbox being starved. Switching to send_after/handle_info
-            # would require restructuring sync_pages as a GenServer for
-            # no real win.
-            Process.sleep(source_module.rate_limit_ms())
-            sync_pages(provider, source_module, next, new_acc)
-        end
+        continue_sync(
+          provider,
+          source_module,
+          page,
+          Map.get(meta, :next_page),
+          new_acc,
+          max_pages,
+          on_page
+        )
 
       {:error, reason} ->
         Logger.error(
@@ -121,6 +131,87 @@ defmodule Streamix.Torrent.Sync do
         )
 
         {:error, reason}
+    end
+  end
+
+  defp continue_sync(
+         _provider,
+         source_module,
+         page,
+         nil,
+         acc,
+         _max_pages,
+         on_page
+       ) do
+    with :ok <- report_page(on_page, page, nil, acc) do
+      Logger.info(
+        "[Torrent Sync] Source #{source_module.slug()} done at page #{page}: " <>
+          "#{acc.movies} movies / #{acc.torrents} torrents"
+      )
+
+      {:ok, acc}
+    end
+  end
+
+  defp continue_sync(
+         provider,
+         source_module,
+         page,
+         next_page,
+         acc,
+         max_pages,
+         on_page
+       )
+       when is_integer(next_page) and next_page > page do
+    with :ok <- report_page(on_page, page, next_page, acc) do
+      # Intentional Process.sleep: this is an Oban worker process
+      # dedicated to this sync — there's no LiveView or GenServer
+      # mailbox being starved. Switching to send_after/handle_info
+      # would require restructuring sync_pages as a GenServer for
+      # no real win.
+      Process.sleep(source_module.rate_limit_ms())
+      sync_pages(provider, source_module, next_page, acc, max_pages, on_page)
+    end
+  end
+
+  defp continue_sync(
+         _provider,
+         source_module,
+         page,
+         next_page,
+         _acc,
+         _max_pages,
+         _on_page
+       ) do
+    reason = %{
+      source: source_module.slug(),
+      page: page,
+      next_page: next_page
+    }
+
+    Logger.error("[Torrent Sync] invalid pagination cursor: #{inspect(reason)}")
+    {:error, {:invalid_pagination, reason}}
+  end
+
+  defp report_page(on_page, page, next_page, acc) when is_function(on_page, 1) do
+    case on_page.(Map.merge(acc, %{page: page, next_page: next_page})) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:checkpoint_failed, reason}}
+      other -> {:error, {:checkpoint_failed, {:unexpected_result, other}}}
+    end
+  rescue
+    error -> {:error, {:checkpoint_failed, Exception.message(error)}}
+  catch
+    :exit, reason -> {:error, {:checkpoint_failed, {:exit, reason}}}
+  end
+
+  defp positive_integer_option(opts, key, default) do
+    case Keyword.get(opts, key, default) do
+      value when is_integer(value) and value > 0 ->
+        value
+
+      invalid ->
+        raise ArgumentError, "expected #{inspect(key)} to be positive, got: #{inspect(invalid)}"
     end
   end
 
@@ -365,19 +456,23 @@ defmodule Streamix.Torrent.Sync do
   Counts from `movies` directly (source of truth) rather than summing
   per-source stats, which can drift across partial/parallel runs.
   """
-  @spec refresh_provider_counts(Provider.t()) :: {:ok, Provider.t()} | {:error, term()}
-  def refresh_provider_counts(%Provider{provider_type: :torrent} = provider) do
+  @spec refresh_provider_counts(Provider.t(), keyword()) ::
+          {:ok, Provider.t()} | {:error, term()}
+  def refresh_provider_counts(provider, opts \\ [])
+
+  def refresh_provider_counts(%Provider{provider_type: :torrent} = provider, opts) do
     movies_count = Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+    sync_status = Keyword.get(opts, :sync_status, "completed")
 
     provider
     |> Provider.sync_changeset(%{
-      sync_status: "completed",
+      sync_status: sync_status,
       movies_count: movies_count,
       vod_synced_at: now
     })
     |> Repo.update()
   end
 
-  def refresh_provider_counts(%Provider{}), do: {:error, :not_torrent_provider}
+  def refresh_provider_counts(%Provider{}, _opts), do: {:error, :not_torrent_provider}
 end

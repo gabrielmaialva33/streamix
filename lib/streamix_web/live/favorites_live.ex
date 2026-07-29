@@ -79,7 +79,7 @@ defmodule StreamixWeb.FavoritesLive do
 
   def handle_event("play", %{"id" => id, "type" => type}, socket) do
     path = get_play_path(type, id)
-    {:noreply, push_navigate(socket, to: path)}
+    {:noreply, redirect(socket, to: path)}
   end
 
   def handle_event(

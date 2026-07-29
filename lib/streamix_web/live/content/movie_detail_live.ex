@@ -7,6 +7,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   alias Streamix.Iptv.Movie
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
@@ -83,10 +84,12 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
     case movie do
       nil ->
+        target = back_path(return_to, mode, provider)
+
         {:ok,
          socket
          |> put_flash(:error, "Filme não encontrado")
-         |> push_navigate(to: back_path(return_to, mode, provider))}
+         |> LiveSessionNavigation.navigate("/browse/movies", target)}
 
       movie ->
         is_favorite = Detail.favorite?(user_id, "movie", movie.id)

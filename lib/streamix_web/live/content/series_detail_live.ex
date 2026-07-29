@@ -7,6 +7,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   alias Streamix.Iptv.Series
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.LiveSessionNavigation
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
@@ -89,10 +90,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_series_not_found(socket, mode, provider, return_to) do
+    target = back_path(return_to, mode, provider)
+
     {:ok,
      socket
      |> put_flash(:error, "Série não encontrada")
-     |> push_navigate(to: back_path(return_to, mode, provider))}
+     |> LiveSessionNavigation.navigate("/browse/series", target)}
   end
 
   defp mount_series_found(socket, provider, series, user_id, mode, return_to, provider_filter) do

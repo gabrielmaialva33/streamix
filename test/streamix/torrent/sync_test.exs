@@ -169,6 +169,51 @@ defmodule Streamix.Torrent.SyncTest do
 
       assert {:error, :boom} = Sync.sync_source(provider, FailingSource)
     end
+
+    test "resumes from a persisted page and reports the next checkpoint", %{
+      provider: provider
+    } do
+      seed_pages([
+        {1, [sample_item("old", "Already Indexed", [magnet("old")])], %{next_page: 2}},
+        {2, [sample_item("new", "Resumed Movie", [magnet("new")])], %{next_page: nil}}
+      ])
+
+      test_pid = self()
+
+      assert {:ok, %{movies: 1, torrents: 1}} =
+               Sync.sync_source(provider, TorrentTestSource,
+                 start_page: 2,
+                 on_page: fn progress ->
+                   send(test_pid, {:checkpoint, progress})
+                   :ok
+                 end
+               )
+
+      assert_receive {:checkpoint, %{page: 2, next_page: nil, movies: 1, torrents: 1}}
+
+      assert [movie] = Repo.all(Movie)
+      assert movie.title == "Resumed Movie"
+    end
+
+    test "returns an error instead of reporting success at the page safety limit", %{
+      provider: provider
+    } do
+      seed_pages([
+        {1, [sample_item("p1", "Page 1", [magnet("limit")])], %{next_page: 2}}
+      ])
+
+      assert {:error, {:page_limit_exceeded, %{source: "test", page: 2, max_pages: 1}}} =
+               Sync.sync_source(provider, TorrentTestSource, max_pages: 1)
+    end
+
+    test "rejects non-monotonic pagination cursors", %{provider: provider} do
+      seed_pages([
+        {1, [sample_item("p1", "Page 1", [magnet("loop")])], %{next_page: 1}}
+      ])
+
+      assert {:error, {:invalid_pagination, %{source: "test", page: 1, next_page: 1}}} =
+               Sync.sync_source(provider, TorrentTestSource)
+    end
   end
 
   describe "refresh_provider_counts/1" do

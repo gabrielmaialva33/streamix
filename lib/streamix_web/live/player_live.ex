@@ -42,7 +42,7 @@ defmodule StreamixWeb.PlayerLive do
         {:ok,
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
-         |> push_navigate(to: ~p"/")}
+         |> redirect(to: ~p"/")}
     end
   end
 
@@ -364,7 +364,7 @@ defmodule StreamixWeb.PlayerLive do
          :error,
          "Você precisa de uma assinatura ativa ou permissão para assistir conteúdo global."
        )
-       |> push_navigate(to: ~p"/plans")}
+       |> redirect(to: ~p"/plans")}
     end
   end
 
@@ -385,7 +385,7 @@ defmodule StreamixWeb.PlayerLive do
         {:ok,
          socket
          |> put_flash(:error, "Limite de telas simultâneas atingido para o seu plano.")
-         |> push_navigate(to: ~p"/plans?upgrade=screens")}
+         |> redirect(to: ~p"/plans?upgrade=screens")}
     end
   end
 
@@ -398,7 +398,7 @@ defmodule StreamixWeb.PlayerLive do
         {:ok,
          socket
          |> put_flash(:error, "Conteúdo não encontrado")
-         |> push_navigate(to: ~p"/")}
+         |> redirect(to: ~p"/")}
     end
   end
 
@@ -420,7 +420,7 @@ defmodule StreamixWeb.PlayerLive do
         {:ok,
          socket
          |> put_flash(:error, "Limite de telas simultâneas atingido para o seu plano.")
-         |> push_navigate(to: ~p"/plans?upgrade=screens")}
+         |> redirect(to: ~p"/plans?upgrade=screens")}
     end
   end
 

@@ -107,7 +107,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
         <!-- Back Button -->
         <div class="absolute top-20 left-4 sm:left-6 z-30">
           <.link
-            navigate={@return_to || ~p"/browse/movies?source=gindex"}
+            href={@return_to || ~p"/browse/movies?source=gindex"}
             class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar

@@ -52,7 +52,7 @@ defmodule StreamixWeb.Home.Landing do
               <.icon name="hero-squares-2x2" class="size-5" /> Explorar catálogo
             </a>
             <.link
-              navigate={~p"/register"}
+              href={~p"/register"}
               class="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/20 sm:text-base"
             >
               <.icon name="hero-user-plus" class="size-5" /> Conta free
@@ -143,7 +143,7 @@ defmodule StreamixWeb.Home.Landing do
           </p>
         </div>
         <.link
-          navigate={~p"/register"}
+          href={~p"/register"}
           class="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
         >
           Criar conta free <.icon name="hero-arrow-right" class="size-4" />

@@ -254,7 +254,7 @@ defmodule StreamixWeb.Content.DetailComponents do
 
       <div class="absolute top-4 left-4 sm:top-6 sm:left-6 z-10">
         <.link
-          navigate={@back_path}
+          href={@back_path}
           class={[
             "inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium",
             "min-h-11",

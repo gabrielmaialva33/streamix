@@ -22,7 +22,7 @@ defmodule StreamixWeb.App.Media do
     ~H"""
     <div class="group relative">
       <.link
-        navigate={~p"/watch/live_channel/#{@channel.id}"}
+        href={~p"/watch/live_channel/#{@channel.id}"}
         class="block rounded-xl overflow-hidden bg-surface-elevated border border-glass-border hover:border-brand/30 transition-all card-glow hover:-translate-y-1 cursor-pointer"
       >
         <div class="relative aspect-video bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 flex items-center justify-center p-4 sm:p-6">

@@ -24,7 +24,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         {:ok,
          socket
          |> put_flash(:error, "Watch Party nao encontrada")
-         |> push_navigate(to: ~p"/")}
+         |> redirect(to: ~p"/")}
 
       room ->
         mount_room(socket, room, user_id)
@@ -44,7 +44,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
       {:ok,
        socket
        |> put_flash(:error, "Conteudo nao encontrado")
-       |> push_navigate(to: ~p"/")}
+       |> redirect(to: ~p"/")}
     else
       do_mount_room(socket, room, user_id, is_host, content_type, content_id, ContentRef)
     end
@@ -74,20 +74,20 @@ defmodule StreamixWeb.WatchPartyLive.Show do
             {:ok,
              socket
              |> put_flash(:error, "Watch Party cheia")
-             |> push_navigate(to: ~p"/party")}
+             |> redirect(to: ~p"/party")}
 
           {:error, _reason} ->
             {:ok,
              socket
              |> put_flash(:error, "Não foi possível entrar na Watch Party")
-             |> push_navigate(to: ~p"/party")}
+             |> redirect(to: ~p"/party")}
         end
 
       {:error, :not_found} ->
         {:ok,
          socket
          |> put_flash(:error, "Conteudo nao encontrado")
-         |> push_navigate(to: ~p"/")}
+         |> redirect(to: ~p"/")}
     end
   end
 
@@ -224,7 +224,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
   def handle_event("wp_leave", _, socket) do
     WatchParty.leave_room(socket.assigns.room.id, socket.assigns.user_id)
-    {:noreply, push_navigate(socket, to: ~p"/")}
+    {:noreply, redirect(socket, to: ~p"/")}
   end
 
   def handle_event("wp_end_party", _, socket) do
@@ -232,7 +232,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
       WatchParty.end_room(socket.assigns.room.id, socket.assigns.user_id)
     end
 
-    {:noreply, push_navigate(socket, to: ~p"/")}
+    {:noreply, redirect(socket, to: ~p"/")}
   end
 
   # Acknowledge player events we don't handle in party mode
@@ -251,7 +251,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   def handle_event("codec_abr_suggestion", _params, socket), do: {:noreply, socket}
   def handle_event("diagnostic_suggestion", _params, socket), do: {:noreply, socket}
   def handle_event("update_watch_time", _params, socket), do: {:noreply, socket}
-  def handle_event("close_player", _, socket), do: {:noreply, push_navigate(socket, to: ~p"/")}
+  def handle_event("close_player", _, socket), do: {:noreply, redirect(socket, to: ~p"/")}
   def handle_event("quality_switched", _params, socket), do: {:noreply, socket}
   def handle_event("playback_rate_changed", _params, socket), do: {:noreply, socket}
   def handle_event("duration_available", _params, socket), do: {:noreply, socket}
@@ -295,7 +295,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     {:noreply,
      socket
      |> put_flash(:info, "O host encerrou a Watch Party")
-     |> push_navigate(to: ~p"/")}
+     |> redirect(to: ~p"/")}
   end
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do

@@ -150,6 +150,7 @@ defmodule Streamix.AI.SemanticSearch do
     batch_indexer = Keyword.get(opts, :batch_indexer, &index_batch/2)
     rate_limit_delay = Keyword.get(opts, :rate_limit_delay, @rate_limit_delay)
     batch_size = Keyword.get(opts, :batch_size, @batch_size)
+    on_batch = Keyword.get(opts, :on_batch, fn _last_id, _indexed_total -> :ok end)
     total_contents = length(contents)
 
     batches =
@@ -162,6 +163,7 @@ defmodule Streamix.AI.SemanticSearch do
     context = %{
       batch_indexer: batch_indexer,
       collection: collection,
+      on_batch: on_batch,
       rate_limit_delay: rate_limit_delay,
       total_batches: total_batches,
       total_contents: total_contents
@@ -175,21 +177,42 @@ defmodule Streamix.AI.SemanticSearch do
   defp index_content_batch({batch, batch_number}, {:ok, count}, context) do
     batch
     |> context.batch_indexer.(context.collection)
-    |> handle_index_batch(batch_number, count, context)
+    |> handle_index_batch(batch, batch_number, count, context)
   end
 
-  defp handle_index_batch({:ok, indexed}, batch_number, count, context) do
+  defp handle_index_batch({:ok, indexed}, batch, batch_number, count, context) do
     indexed_total = count + indexed
+    last_id = batch |> List.last() |> Map.fetch!(:id)
 
-    maybe_log_index_progress(batch_number, indexed_total, context)
-    maybe_wait_for_next_batch(batch_number, context)
+    case report_index_checkpoint(context.on_batch, last_id, indexed_total) do
+      :ok ->
+        maybe_log_index_progress(batch_number, indexed_total, context)
+        maybe_wait_for_next_batch(batch_number, context)
 
-    {:cont, {:ok, indexed_total}}
+        {:cont, {:ok, indexed_total}}
+
+      {:error, reason} ->
+        Logger.error("[SemanticSearch] Checkpoint persistence failed: #{inspect(reason)}")
+        {:halt, {:error, {:checkpoint_failed, context.collection, count, reason}}}
+    end
   end
 
-  defp handle_index_batch({:error, reason}, _batch_number, count, context) do
+  defp handle_index_batch({:error, reason}, _batch, _batch_number, count, context) do
     Logger.error("[SemanticSearch] Batch indexing failed: #{inspect(reason)}")
     {:halt, {:error, {:batch_failed, context.collection, count, reason}}}
+  end
+
+  defp report_index_checkpoint(callback, last_id, indexed_total)
+       when is_function(callback, 2) do
+    case callback.(last_id, indexed_total) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:unexpected_result, other}}
+    end
+  rescue
+    error -> {:error, Exception.message(error)}
+  catch
+    :exit, reason -> {:error, {:exit, reason}}
   end
 
   defp maybe_log_index_progress(batch_number, indexed_total, context) do
@@ -211,10 +234,13 @@ defmodule Streamix.AI.SemanticSearch do
   Use with caution - this can take a long time for large datasets.
   Consider using the background worker instead.
   """
-  def index_all_movies(provider_id \\ nil) do
+  def index_all_movies(provider_id \\ nil, opts \\ []) do
+    after_id = Keyword.get(opts, :after_id, 0)
+
     query =
       from(m in Streamix.Iptv.Movie,
-        where: not is_nil(m.title),
+        where: not is_nil(m.title) and m.id > ^after_id,
+        order_by: [asc: m.id],
         preload: [:genres]
       )
 
@@ -237,18 +263,21 @@ defmodule Streamix.AI.SemanticSearch do
         }
       end)
 
-    Logger.info("[SemanticSearch] Indexing #{length(movies)} movies")
+    Logger.info("[SemanticSearch] Indexing #{length(movies)} movies after id #{after_id}")
 
-    index_contents(movies, :movies)
+    index_contents(movies, :movies, opts)
   end
 
   @doc """
   Indexes all series from database.
   """
-  def index_all_series(provider_id \\ nil) do
+  def index_all_series(provider_id \\ nil, opts \\ []) do
+    after_id = Keyword.get(opts, :after_id, 0)
+
     query =
       from(s in Streamix.Iptv.Series,
-        where: not is_nil(s.title),
+        where: not is_nil(s.title) and s.id > ^after_id,
+        order_by: [asc: s.id],
         preload: [:genres]
       )
 
@@ -271,9 +300,9 @@ defmodule Streamix.AI.SemanticSearch do
         }
       end)
 
-    Logger.info("[SemanticSearch] Indexing #{length(series)} series")
+    Logger.info("[SemanticSearch] Indexing #{length(series)} series after id #{after_id}")
 
-    index_contents(series, :series)
+    index_contents(series, :series, opts)
   end
 
   @doc """

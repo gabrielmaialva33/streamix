@@ -8,6 +8,8 @@ defmodule StreamixWeb.App.Navigation do
 
   import StreamixWeb.CoreComponents
 
+  alias StreamixWeb.LiveSessionNavigation
+
   attr :class, :string, default: nil
 
   def theme_toggle(assigns) do
@@ -36,10 +38,14 @@ defmodule StreamixWeb.App.Navigation do
     ~H"""
     <div class="flex flex-col h-full">
       <div class="p-4 border-b border-border">
-        <.link navigate={~p"/"} class="flex items-center gap-2 text-xl font-bold text-brand">
+        <.session_link
+          path={~p"/"}
+          current_path={@current_path}
+          class="flex items-center gap-2 text-xl font-bold text-brand"
+        >
           <.icon name="hero-play-circle-solid" class="size-8" />
           <span>Streamix</span>
-        </.link>
+        </.session_link>
       </div>
 
       <nav class="flex-1 p-4 space-y-6">
@@ -112,27 +118,30 @@ defmodule StreamixWeb.App.Navigation do
         </div>
 
         <div :if={!@current_scope} class="space-y-2">
-          <.link
-            navigate={~p"/plans"}
+          <.session_link
+            path={~p"/plans"}
+            current_path={@current_path}
             class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-colors w-full"
           >
             <.icon name="hero-sparkles" class="size-5" />
             <span>Ver planos</span>
-          </.link>
-          <.link
-            navigate={~p"/login"}
+          </.session_link>
+          <.session_link
+            path={~p"/login"}
+            current_path={@current_path}
             class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors w-full"
           >
             <.icon name="hero-arrow-right-end-on-rectangle" class="size-5" />
             <span>Entrar</span>
-          </.link>
-          <.link
-            navigate={~p"/register"}
+          </.session_link>
+          <.session_link
+            path={~p"/register"}
+            current_path={@current_path}
             class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors w-full"
           >
             <.icon name="hero-user-plus" class="size-5" />
             <span>Cadastrar</span>
-          </.link>
+          </.session_link>
         </div>
       </div>
     </div>
@@ -144,8 +153,9 @@ defmodule StreamixWeb.App.Navigation do
     assigns = assign(assigns, :active, active)
 
     ~H"""
-    <.link
-      navigate={@path}
+    <.session_link
+      path={@path}
+      current_path={@current_path}
       class={[
         "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
         @active && "bg-brand/20 text-brand font-medium",
@@ -154,11 +164,12 @@ defmodule StreamixWeb.App.Navigation do
     >
       <.icon name={@icon} class="size-5" />
       <span>{@label}</span>
-    </.link>
+    </.session_link>
     """
   end
 
   attr :path, :string, required: true
+  attr :current_path, :string, required: true
   attr :label, :string, required: true
   attr :icon, :string, required: true
   attr :icon_active, :string, required: true
@@ -167,8 +178,9 @@ defmodule StreamixWeb.App.Navigation do
 
   def nav_link(assigns) do
     ~H"""
-    <.link
-      navigate={@path}
+    <.session_link
+      path={@path}
+      current_path={@current_path}
       aria-current={@active && "page"}
       class={[
         "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
@@ -182,11 +194,12 @@ defmodule StreamixWeb.App.Navigation do
     >
       <.icon name={if @active, do: @icon_active, else: @icon} class="size-4" />
       <span>{@label}</span>
-    </.link>
+    </.session_link>
     """
   end
 
   attr :path, :string, required: true
+  attr :current_path, :string, required: true
   attr :icon, :string, required: true
   attr :icon_active, :string, required: true
   attr :label, :string, required: true
@@ -195,8 +208,9 @@ defmodule StreamixWeb.App.Navigation do
 
   def bottom_tab(assigns) do
     ~H"""
-    <.link
-      navigate={@path}
+    <.session_link
+      path={@path}
+      current_path={@current_path}
       aria-current={@active && "page"}
       class={[
         "flex flex-col items-center justify-center flex-1 h-full py-1.5 transition-all touch-manipulation",
@@ -215,24 +229,61 @@ defmodule StreamixWeb.App.Navigation do
         />
       </span>
       <span class="text-[10px] mt-0.5 font-medium">{@label}</span>
-    </.link>
+    </.session_link>
     """
   end
 
   attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
   attr :icon, :string, required: true
   attr :label, :string, required: true
   attr :rest, :global
 
   def dropdown_item(assigns) do
     ~H"""
-    <.link
-      navigate={@navigate}
+    <.session_link
+      path={@navigate}
+      current_path={@current_path}
       class="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
       {@rest}
     >
       <.icon name={@icon} class="size-4" />
       <span>{@label}</span>
+    </.session_link>
+    """
+  end
+
+  attr :path, :string, required: true
+  attr :current_path, :string, required: true
+  attr :class, :any, default: nil
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  def session_link(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :same_session?,
+        LiveSessionNavigation.same_session?(assigns.current_path, assigns.path)
+      )
+
+    ~H"""
+    <.link
+      :if={@same_session?}
+      navigate={@path}
+      class={@class}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </.link>
+    <.link
+      :if={!@same_session?}
+      href={@path}
+      class={@class}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
     </.link>
     """
   end

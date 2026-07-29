@@ -45,18 +45,19 @@ defmodule StreamixWeb.HomeLive do
   # Shared card navigation events (movie_card / series_card from
   # StreamixWeb.Content.CardComponents). The home carousels delegate rendering
   # to the shared cards, which emit these LV events instead of rendering a
-  # `<.link navigate>`. We translate them into push_navigate calls so the UX
-  # stays identical to the old inline cards that wrapped everything in a link.
+  # `<.link navigate>`. These destinations belong to the authenticated
+  # live_session, so use an HTTP redirect instead of crossing sessions over
+  # the existing LiveView socket.
   def handle_event("play_movie", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
+    {:noreply, redirect(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
   end
 
   def handle_event("show_details", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
+    {:noreply, redirect(socket, to: with_return_to(~p"/browse/movies/#{id}", ~p"/"))}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: with_return_to(~p"/browse/series/#{id}", ~p"/"))}
+    {:noreply, redirect(socket, to: with_return_to(~p"/browse/series/#{id}", ~p"/"))}
   end
 
   def handle_event("toggle_featured_favorite", _, socket) do

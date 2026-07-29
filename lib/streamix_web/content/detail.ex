@@ -37,7 +37,7 @@ defmodule StreamixWeb.Content.Detail do
         {:ok,
          socket
          |> Phoenix.LiveView.put_flash(:error, @provider_unavailable_message)
-         |> Phoenix.LiveView.push_navigate(to: ~p"/")}
+         |> Phoenix.LiveView.redirect(to: ~p"/")}
 
       provider ->
         fun.(provider)

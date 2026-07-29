@@ -165,7 +165,7 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
     test "provider route with inaccessible provider redirects home", ctx do
       conn = log_in_user(ctx.conn, ctx.user)
 
-      assert {:error, {:live_redirect, %{to: "/"}}} =
+      assert {:error, {:redirect, %{to: "/"}}} =
                live(conn, ~p"/providers/999999/movies/#{ctx.movie.id}")
     end
 

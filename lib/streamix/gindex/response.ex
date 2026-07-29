@@ -30,7 +30,7 @@ defmodule Streamix.Gindex.Response do
   def extract_download_link(body, base_url) when is_map(body) do
     case body do
       %{"link" => link} when is_binary(link) and link != "" ->
-        {:ok, base_url |> Url.join(link) |> ensure_inline_download()}
+        {:ok, base_url |> Url.join_link(link) |> ensure_inline_download()}
 
       _ ->
         {:error, :download_url_not_found}

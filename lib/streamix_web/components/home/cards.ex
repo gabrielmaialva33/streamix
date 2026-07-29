@@ -58,7 +58,7 @@ defmodule StreamixWeb.Home.Cards do
 
     ~H"""
     <.link
-      navigate={~p"/watch/live_channel/#{@channel.id}"}
+      href={~p"/watch/live_channel/#{@channel.id}"}
       class={[
         "group block transition-all duration-300 content-card w-full sm:w-[150px] lg:w-[176px]",
         @class
@@ -108,7 +108,7 @@ defmodule StreamixWeb.Home.Cards do
 
     ~H"""
     <.link
-      navigate={watch_path(@entry.content_type, @entry.content_id)}
+      href={watch_path(@entry.content_type, @entry.content_id)}
       class={[
         "group flex-shrink-0 w-full sm:w-[220px] lg:w-[240px] block transition-all duration-300",
         @class
@@ -164,7 +164,7 @@ defmodule StreamixWeb.Home.Cards do
 
     ~H"""
     <.link
-      navigate={watch_path(@favorite.content_type, @favorite.content_id)}
+      href={watch_path(@favorite.content_type, @favorite.content_id)}
       class={[
         "group flex-shrink-0 w-full sm:w-[96px] lg:w-[108px] rounded-lg overflow-hidden bg-surface content-card transition-transform duration-300 hover:-translate-y-1",
         @class

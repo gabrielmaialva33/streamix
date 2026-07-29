@@ -75,14 +75,14 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   end
 
   def handle_event("play_episode", %{"id" => episode_id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/watch/gindex_episode/#{episode_id}")}
+    {:noreply, redirect(socket, to: ~p"/watch/gindex_episode/#{episode_id}")}
   end
 
   def handle_event("play_first_episode", _, socket) do
     case socket.assigns.seasons do
       [first_season | _] when first_season.episodes != [] ->
         [first_episode | _] = Enum.sort_by(first_season.episodes, & &1.episode_num)
-        {:noreply, push_navigate(socket, to: ~p"/watch/gindex_episode/#{first_episode.id}")}
+        {:noreply, redirect(socket, to: ~p"/watch/gindex_episode/#{first_episode.id}")}
 
       _ ->
         {:noreply, put_flash(socket, :error, "Nenhum episódio disponível")}

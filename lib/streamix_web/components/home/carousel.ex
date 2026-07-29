@@ -90,7 +90,7 @@ defmodule StreamixWeb.Home.Carousel do
         </h2>
         <.link
           :if={@see_more_path}
-          navigate={@see_more_path}
+          href={@see_more_path}
           class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
         >
           Ver mais <.icon name="hero-chevron-right" class="size-4" />
@@ -117,7 +117,7 @@ defmodule StreamixWeb.Home.Carousel do
         </.carousel_arrows>
         <.link
           :if={@see_more_path && length(@items) > 6}
-          navigate={@see_more_path}
+          href={@see_more_path}
           class="sm:hidden mt-3 flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary hover:text-text-primary bg-surface/50 rounded-lg transition-colors"
         >
           Ver todos os canais <.icon name="hero-arrow-right" class="size-4" />
@@ -171,7 +171,7 @@ defmodule StreamixWeb.Home.Carousel do
         </.carousel_arrows>
         <.link
           :if={@see_more_path && length(@items) > 6 && @type not in [:history]}
-          navigate={@see_more_path}
+          href={@see_more_path}
           class="sm:hidden mt-3 flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary hover:text-text-primary bg-surface/50 rounded-lg transition-colors"
         >
           Ver mais <.icon name="hero-arrow-right" class="size-4" />
@@ -305,7 +305,7 @@ defmodule StreamixWeb.Home.Carousel do
           {@title}
         </h2>
         <.link
-          navigate={~p"/browse/movies?sort=rating"}
+          href={~p"/browse/movies?sort=rating"}
           class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
         >
           Ver mais <.icon name="hero-chevron-right" class="size-4" />
@@ -330,7 +330,7 @@ defmodule StreamixWeb.Home.Carousel do
   def top_10_card(assigns) do
     ~H"""
     <.link
-      navigate={~p"/browse/movies/#{@movie.id}"}
+      href={~p"/browse/movies/#{@movie.id}"}
       class="group flex-shrink-0 relative"
     >
       <div class="flex items-end">
@@ -402,7 +402,7 @@ defmodule StreamixWeb.Home.Carousel do
 
     ~H"""
     <.link
-      navigate={@path}
+      href={@path}
       class={[
         "group flex-shrink-0 rounded-lg overflow-hidden bg-surface/50 border border-white/10",
         "hover:bg-surface hover:border-white/20 transition-all duration-200",
