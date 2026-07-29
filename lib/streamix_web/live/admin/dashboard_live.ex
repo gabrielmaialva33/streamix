@@ -66,7 +66,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
           </code>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <.operation_card
             label="Providers"
             status={@operations.providers.status}
@@ -86,6 +86,11 @@ defmodule StreamixWeb.Admin.DashboardLive do
             label="Oban"
             status={oban_status(@operations.oban)}
             detail={format_oban(@operations.oban)}
+          />
+          <.operation_card
+            label="QoE (24h)"
+            status={qoe_status(@operations.qoe)}
+            detail={format_qoe(@operations.qoe)}
           />
         </div>
 
@@ -208,6 +213,14 @@ defmodule StreamixWeb.Admin.DashboardLive do
 
   defp format_oban(oban) do
     "#{Map.get(oban, "available", 0)} aguardando · #{Map.get(oban, "executing", 0)} rodando"
+  end
+
+  defp qoe_status(qoe) do
+    if Map.get(qoe, :error_count, 0) > 0, do: :degraded, else: :healthy
+  end
+
+  defp format_qoe(qoe) do
+    "#{Map.get(qoe, :playback_sessions, 0)} sessões · TTFF #{Map.get(qoe, :avg_ttff_ms, 0)}ms"
   end
 
   defp sum_counts(counts), do: counts |> Map.values() |> Enum.sum()

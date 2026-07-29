@@ -22,8 +22,11 @@ defmodule StreamixWeb do
   # fresh `CACHE_VERSION`. Static plug would otherwise hand back the
   # byte-identical file on every deploy, the browser would skip the
   # SW update step, and the old cache would stay pinned forever.
+  # `manifest.json` is also omitted: like the service worker, it must be
+  # revalidated on every launch so install metadata cannot stay pinned for
+  # a year by Plug.Static's immutable production cache.
   def static_paths,
-    do: ~w(assets fonts images favicon.ico robots.txt avplayer vendor manifest.json offline.html)
+    do: ~w(assets fonts images favicon.ico robots.txt avplayer vendor offline.html)
 
   def router do
     quote do

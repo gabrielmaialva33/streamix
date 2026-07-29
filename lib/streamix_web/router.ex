@@ -267,6 +267,7 @@ defmodule StreamixWeb.Router do
   # script differs byte-by-byte from the on-disk one, so this is what
   # un-pins users from a stale cache after a deploy.
   scope "/", StreamixWeb do
+    get "/manifest.json", ManifestController, :show
     get "/sw.js", ServiceWorkerController, :show
   end
 

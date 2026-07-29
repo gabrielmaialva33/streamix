@@ -9,7 +9,7 @@ defmodule Streamix.Operations do
 
   import Ecto.Query
 
-  alias Streamix.{Gindex, Iptv, Repo, Torrent}
+  alias Streamix.{BuildInfo, Gindex, Iptv, Qoe, Repo, Torrent}
 
   @event_table :streamix_operations_events
 
@@ -26,6 +26,7 @@ defmodule Streamix.Operations do
     %{
       revision: release_revision(),
       oban: oban_summary(),
+      qoe: Qoe.summary(),
       providers: %{status: :unknown, counts: %{}},
       torrent: %{status: :unknown, active_torrents: 0, message: "carregando"},
       gindex: %{quota: %{count: 0, limit: 0, percent: 0}, telemetry: %{}, endpoints: []},
@@ -79,9 +80,9 @@ defmodule Streamix.Operations do
   end
 
   defp release_revision do
-    case System.get_env("STREAMIX_REVISION") do
-      revision when is_binary(revision) and revision != "" -> String.slice(revision, 0, 12)
-      _ -> "development"
+    case BuildInfo.revision() do
+      "unknown" -> "development"
+      revision -> String.slice(revision, 0, 12)
     end
   end
 

@@ -10,7 +10,7 @@ defmodule Streamix.OperationalHealth do
 
   alias Ecto.Adapters.SQL
   alias Streamix.AI.{Embeddings, Qdrant, SemanticSearch}
-  alias Streamix.{Iptv, Repo, Torrent}
+  alias Streamix.{BuildInfo, Iptv, Repo, Torrent}
 
   @check_timeout :timer.seconds(6)
   @required_checks [:database, :redis]
@@ -31,6 +31,7 @@ defmodule Streamix.OperationalHealth do
 
     %{
       status: overall_status(checks),
+      release: BuildInfo.snapshot(),
       checks: checks,
       timestamp: DateTime.utc_now()
     }
@@ -58,8 +59,8 @@ defmodule Streamix.OperationalHealth do
   end
 
   defp check_database do
-    case SQL.query(Repo, "SELECT 1", [], timeout: 2_000) do
-      {:ok, _result} -> %{status: :ok}
+    case SQL.query(Repo, "SELECT max(version)::text FROM schema_migrations", [], timeout: 2_000) do
+      {:ok, %{rows: [[migration]]}} -> %{status: :ok, migration: migration}
       {:error, _reason} -> %{status: :unavailable}
     end
   rescue
