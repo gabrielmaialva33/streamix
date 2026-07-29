@@ -28,7 +28,11 @@ defmodule Streamix.Iptv.Sync do
   defdelegate sync_series(provider), to: Series
   defdelegate sync_series_details(series), to: Series
   defdelegate sync_all_series_details(provider), to: Series
-  defdelegate cleanup_orphaned_user_data, to: Cleanup
+  defdelegate cleanup_orphaned_user_data(), to: Cleanup
+  defdelegate cleanup_orphaned_user_data(provider_id), to: Cleanup
+  defdelegate cleanup_orphaned_user_data(provider_id, opts), to: Cleanup
+
+  @post_sync_cleanup_limit 500
 
   @doc """
   Syncs all content from a provider (categories, live, vod, series).
@@ -257,7 +261,7 @@ defmodule Streamix.Iptv.Sync do
         # orphan pass, plus the favorites/watch_progress/rooms that point at
         # them. Otherwise stranded catalog_items linger until the nightly
         # worker and can crash surfaces that join through them (see HomeLive).
-        Cleanup.cleanup_orphaned_user_data()
+        cleanup_provider_orphans(provider.id)
 
         {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}
 
@@ -265,6 +269,29 @@ defmodule Streamix.Iptv.Sync do
         update_status(provider, "failed")
         {:error, reason}
     end
+  end
+
+  defp cleanup_provider_orphans(provider_id) do
+    case Cleanup.cleanup_orphaned_user_data(provider_id, limit: @post_sync_cleanup_limit) do
+      {:ok, _counts} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Sync] Provider #{provider_id} cleanup deferred to scheduled worker: #{inspect(reason)}"
+        )
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[Sync] Provider #{provider_id} cleanup deferred to scheduled worker: " <>
+          Exception.message(error)
+      )
+  catch
+    :exit, reason ->
+      Logger.warning(
+        "[Sync] Provider #{provider_id} cleanup exited and was deferred: #{inspect(reason)}"
+      )
   end
 
   defp handle_series_details(provider, opts) do
