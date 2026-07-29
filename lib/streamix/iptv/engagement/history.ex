@@ -110,6 +110,11 @@ defmodule Streamix.Iptv.History do
       watched_at: progress.last_watched_at
     })
     |> Repo.all()
+    # Provider resyncs can delete a content row while its CatalogItem (and
+    # therefore WatchProgress) survives until orphan cleanup. Analytics
+    # consumers send content_id to Qdrant, where JSON null is not a valid
+    # point ID, so omit those stale rows at the read boundary.
+    |> Enum.reject(&is_nil(&1.content_id))
   end
 
   @doc """

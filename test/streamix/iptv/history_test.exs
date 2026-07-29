@@ -43,5 +43,21 @@ defmodule Streamix.Iptv.HistoryTest do
                :watched_at
              ]
     end
+
+    test "omits progress whose content row was deleted" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider)
+
+      {:ok, _entry} =
+        History.add(user.id, "movie", movie.id, %{
+          progress_seconds: 50,
+          duration_seconds: 100
+        })
+
+      Repo.delete!(movie)
+
+      assert History.list_for_analytics(user.id, limit: 10) == []
+    end
   end
 end
