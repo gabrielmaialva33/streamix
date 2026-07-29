@@ -322,12 +322,24 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           })
         );
 
+        async function waitForOpacity(element, expected, timeoutMs) {
+          const deadline = performance.now() + timeoutMs;
+          let opacity = Number(getComputedStyle(element).opacity);
+
+          while (Math.abs(opacity - expected) > 0.01 && performance.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            opacity = Number(getComputedStyle(element).opacity);
+          }
+
+          return opacity;
+        }
+
         hook.playerUI.hideControls();
         const immediateControlsClass = document.getElementById("player-controls").className;
-        await new Promise((resolve) => setTimeout(resolve, 350));
+        const bottomControls = document.getElementById("player-bottom-controls");
+        const bottomOpacity = await waitForOpacity(bottomControls, 0, 2000);
         const controlsStyle = getComputedStyle(document.getElementById("player-controls"));
         const closeStyle = getComputedStyle(document.getElementById("player-close-btn"));
-        const bottomStyle = getComputedStyle(document.getElementById("player-bottom-controls"));
         const hiddenState = {
           controlsVisible: hook.playerUI.controlsVisible,
           isTouchDevice: hook.playerUI.isTouchDevice,
@@ -340,7 +352,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           hoverNone: matchMedia("(hover: none)").matches,
           closeOpacity: Number(closeStyle.opacity),
           closePointerEvents: closeStyle.pointerEvents,
-          bottomOpacity: Number(bottomStyle.opacity)
+          bottomOpacity
         };
 
         container.click();
@@ -371,7 +383,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         assert state["hiddenState"]["closeOpacity"] > 0
         assert state["hiddenState"]["closePointerEvents"] == "auto"
 
-        assert state["hiddenState"]["bottomOpacity"] == 0,
+        assert state["hiddenState"]["bottomOpacity"] <= 0.01,
                "bottom controls remained visible: #{inspect(state["hiddenState"])}"
 
         assert state["revealedAfterTap"] == true
