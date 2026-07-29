@@ -16,7 +16,6 @@ const OFFLINE_URL = '/offline.html';
 // Static assets to precache
 const STATIC_ASSETS = [
     OFFLINE_URL,
-    '/manifest.json',
     '/images/icon.svg',
     '/images/apple-touch-icon.png',
     '/images/icon-192.png',

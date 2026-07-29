@@ -6,6 +6,9 @@ const PwaInstall = {
     this.status = this.el.querySelector("[data-pwa-install-status]");
     this.iosDialog = this.el.querySelector("[data-pwa-ios-dialog]");
     this.closeButtons = [...this.el.querySelectorAll("[data-pwa-ios-close]")];
+    this.dialogTitle = this.el.querySelector("[data-pwa-install-dialog-title]");
+    this.iosSteps = this.el.querySelector("[data-pwa-ios-steps]");
+    this.manualSteps = this.el.querySelector("[data-pwa-manual-steps]");
 
     this.install = this.install.bind(this);
     this.closeIosDialog = this.closeIosDialog.bind(this);
@@ -32,21 +35,28 @@ const PwaInstall = {
   },
 
   renderState() {
-    const mode = window.StreamixPwa?.installState?.() || "unavailable";
+    const mode = window.StreamixPwa?.installState?.() || "manual";
     this.el.dataset.pwaInstallMode = mode;
-    this.el.hidden = mode !== "native" && mode !== "ios";
+    this.el.hidden = mode === "installed";
 
     if (!this.installButton) return;
 
     this.installButton.dataset.pwaInstallMode = mode;
     this.installButton.setAttribute(
       "aria-label",
-      mode === "ios" ? "Ver como adicionar o Streamix à Tela de Início" : "Instalar app Streamix",
+      mode === "native"
+        ? "Instalar app Streamix"
+        : "Ver como adicionar o Streamix à Tela de Início",
     );
 
     const label = this.installButton.querySelector("[data-pwa-install-label]");
     if (label) {
-      label.textContent = mode === "ios" ? "Adicionar à Tela de Início" : "Instalar app";
+      label.textContent =
+        mode === "native"
+          ? "Instalar app"
+          : mode === "ios"
+            ? "Adicionar à Tela de Início"
+            : "Como instalar";
     }
   },
 
@@ -55,8 +65,9 @@ const PwaInstall = {
     if (!pwa || !this.installButton) return;
 
     const mode = pwa.installState();
-    if (mode === "ios") {
-      this.openIosDialog();
+    if (mode === "ios" || mode === "manual") {
+      this.openInstallDialog(mode);
+      this.reportTelemetry("pwa_install_help_opened", { mode });
       return;
     }
 
@@ -65,6 +76,11 @@ const PwaInstall = {
 
     try {
       const result = await pwa.installApp();
+      this.reportTelemetry("pwa_install_prompt", {
+        mode,
+        outcome: result.outcome,
+        platform: result.platform,
+      });
       this.setStatus(
         result.outcome === "accepted"
           ? "Instalação iniciada."
@@ -78,8 +94,18 @@ const PwaInstall = {
     }
   },
 
-  openIosDialog() {
+  openInstallDialog(mode) {
     if (!this.iosDialog) return;
+    const ios = mode === "ios";
+
+    if (this.dialogTitle) {
+      this.dialogTitle.textContent = ios
+        ? "Adicionar o Streamix no iPhone"
+        : "Instalar o Streamix neste dispositivo";
+    }
+    if (this.iosSteps) this.iosSteps.hidden = !ios;
+    if (this.manualSteps) this.manualSteps.hidden = ios;
+
     this.iosDialog.hidden = false;
     document.body.classList.add("overflow-hidden");
     this.iosDialog.querySelector("[data-pwa-ios-close='button']")?.focus();
@@ -100,6 +126,22 @@ const PwaInstall = {
 
   setStatus(message) {
     if (this.status) this.status.textContent = message;
+  },
+
+  reportTelemetry(event, extra = {}) {
+    const batchId =
+      globalThis.crypto?.randomUUID?.() ||
+      `pwa-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    this.pushEvent("client_telemetry", {
+      batch_id: batchId,
+      kind: "pwa",
+      event,
+      display_mode: window.matchMedia?.("(display-mode: standalone)")?.matches
+        ? "standalone"
+        : "browser",
+      ...extra,
+    });
   },
 };
 

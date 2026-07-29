@@ -16,7 +16,7 @@ test("prefers the installed and native states before iOS instructions", () => {
     pwaInstallMode({ standalone: false, iosWebKit: true, hasNativePrompt: false }),
     "ios",
   );
-  assert.equal(pwaInstallMode(), "unavailable");
+  assert.equal(pwaInstallMode(), "manual");
 });
 
 test("normalizes the browser install prompt result", async () => {

@@ -26,7 +26,6 @@ defmodule StreamixWeb.App.Pwa do
     <div
       id={@id}
       phx-hook="PwaInstall"
-      hidden
       class={["w-full sm:w-auto", @variant == "settings" && "self-start"]}
     >
       <button
@@ -62,7 +61,11 @@ defmodule StreamixWeb.App.Pwa do
         <div class="absolute inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] mx-auto max-w-md rounded-xl border border-border bg-surface p-5 text-left shadow-2xl">
           <div class="flex items-start justify-between gap-4">
             <div>
-              <h2 id={"#{@id}-ios-title"} class="text-lg font-semibold text-text-primary">
+              <h2
+                id={"#{@id}-ios-title"}
+                data-pwa-install-dialog-title
+                class="text-lg font-semibold text-text-primary"
+              >
                 Adicionar o Streamix no iPhone
               </h2>
               <p class="mt-1 text-sm leading-6 text-text-secondary">
@@ -79,7 +82,7 @@ defmodule StreamixWeb.App.Pwa do
             </button>
           </div>
 
-          <ol class="mt-4 space-y-3 text-sm text-text-primary">
+          <ol data-pwa-ios-steps class="mt-4 space-y-3 text-sm text-text-primary">
             <li class="flex items-center gap-3">
               <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand/15 font-semibold text-brand">
                 1
@@ -100,6 +103,21 @@ defmodule StreamixWeb.App.Pwa do
               Confirme em <strong>Adicionar</strong>
             </li>
           </ol>
+
+          <div
+            data-pwa-manual-steps
+            hidden
+            class="mt-4 space-y-3 text-sm leading-6 text-text-primary"
+          >
+            <p>
+              Abra o menu do navegador e escolha <strong>Instalar app</strong>
+              ou <strong>Adicionar à tela inicial</strong>.
+            </p>
+            <p class="text-text-secondary">
+              Se a opção ainda não aparecer, mantenha esta página aberta por alguns segundos e
+              tente novamente. O Streamix avisará assim que o instalador nativo estiver disponível.
+            </p>
+          </div>
         </div>
       </div>
     </div>

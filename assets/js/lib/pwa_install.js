@@ -6,7 +6,7 @@ export function pwaInstallMode({
   if (standalone) return "installed";
   if (hasNativePrompt) return "native";
   if (iosWebKit) return "ios";
-  return "unavailable";
+  return "manual";
 }
 
 export async function promptForPwaInstall(promptEvent) {

@@ -38,6 +38,11 @@ async function main() {
     context.on("request", (request) => requests.push(request.url()));
 
     const page = await context.newPage();
+    page.on("console", (message) => {
+      if (message.type() === "error") console.error(`[browser console] ${message.text()}`);
+    });
+    page.on("pageerror", (error) => console.error(`[browser pageerror] ${error.message}`));
+    const cdp = await context.newCDPSession(page);
     page.on("framenavigated", (frame) => {
       if (frame === page.mainFrame() && frame.url().startsWith(baseUrl)) {
         frameNavigations.push(frame.url());
@@ -45,9 +50,32 @@ async function main() {
     });
 
     await page.goto(`${baseUrl}/login`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("body .phx-connected", { timeout: 5_000 });
+    await page.waitForFunction(
+      () => window.liveSocket?.isConnected?.() === true,
+      null,
+      { timeout: 10_000 },
+    );
+    await page.waitForSelector("#client-telemetry", { timeout: 5_000 });
     await waitForFirstController(page);
     await page.waitForTimeout(300);
+
+    const [appManifest, installabilityResult, manifestResponse, manifestCached] =
+      await Promise.all([
+        cdp.send("Page.getAppManifest"),
+        cdp.send("Page.getInstallabilityErrors"),
+        context.request.get(`${baseUrl}/manifest.json`),
+        page.evaluate(async () => {
+          const keys = await caches.keys();
+          const matches = await Promise.all(
+            keys
+              .filter((key) => key.startsWith("streamix-"))
+              .map(async (key) => Boolean(await (await caches.open(key)).match("/manifest.json"))),
+          );
+          return matches.some(Boolean);
+        }),
+      ]);
+    const installabilityErrors =
+      installabilityResult.installabilityErrors || installabilityResult;
 
     const wasmRequests = requests.filter((url) => new URL(url).pathname.endsWith(".wasm"));
     const appRequests = requests.filter(
@@ -64,12 +92,22 @@ async function main() {
     );
     assert.deepEqual(wasmRequests, [], "PWA install downloaded player decoders");
     assert.equal(appRequests.length, 1, "application bundle was requested more than once");
+    assert.deepEqual(appManifest.errors, [], "manifest contains browser validation errors");
+    assert.deepEqual(installabilityErrors, [], "Chromium reports the app as non-installable");
+    assert.equal(
+      manifestResponse.headers()["cache-control"],
+      "no-cache, must-revalidate",
+      "manifest must be revalidated after deploys",
+    );
+    assert.equal(manifestCached, false, "service worker must not pin the manifest");
 
     console.log(
       JSON.stringify({
         appRequests: appRequests.length,
         documentLoads,
         frameNavigations,
+        installabilityErrors: installabilityErrors.length,
+        manifestCached,
         serviceWorkerControlled: true,
         wasmRequests: wasmRequests.length,
       }),

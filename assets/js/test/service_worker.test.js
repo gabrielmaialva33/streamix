@@ -132,6 +132,7 @@ test("does not precache the dynamic home page", async () => {
     typeof request === "string" ? request : new URL(request.url).pathname,
   );
   assert.equal(requestedPaths.includes("/"), false);
+  assert.equal(requestedPaths.includes("/manifest.json"), false);
   assert.equal(requestedPaths.includes("/offline.html"), true);
 });
 
