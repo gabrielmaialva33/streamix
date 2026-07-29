@@ -421,6 +421,7 @@ html.ios-webkit .glass-subtle {
 
 .segmented-control__item {
     display: flex;
+    min-height: 44px;
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
@@ -465,6 +466,7 @@ html.ios-webkit .glass-subtle {
 
 .content-nav__tab {
     display: flex;
+    min-height: 44px;
     align-items: center;
     gap: 8px;
     padding: 10px 18px;
@@ -610,6 +612,7 @@ html.ios-webkit .glass-subtle {
 
 .search-expand__input {
     width: 100%;
+    min-height: 44px;
     padding: 8px 12px 8px 36px;
     font-size: 13px;
     background: var(--color-surface);

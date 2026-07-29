@@ -222,7 +222,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       {:ok, view, _html} = live(conn, ~p"/browse/movies")
 
       assert has_element?(view, "#browse-premium-cta")
-      assert render(view |> element("#browse-premium-cta a")) =~ ~s(href="/plans")
+      assert render(view |> element("#browse-premium-cta a.min-h-11")) =~ ~s(href="/plans")
       assert has_element?(view, "#movie-card-#{featured_movie.id} [data-premium-badge]")
     end
 

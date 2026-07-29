@@ -19,7 +19,7 @@ defmodule StreamixWeb.App.Navigation do
       type="button"
       phx-hook="ThemeToggle"
       class={[
-        "flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors",
+        "flex size-11 items-center justify-center gap-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors",
         @class
       ]}
       title="Alternar tema"
@@ -41,7 +41,7 @@ defmodule StreamixWeb.App.Navigation do
         <.session_link
           path={~p"/"}
           current_path={@current_path}
-          class="flex items-center gap-2 text-xl font-bold text-brand"
+          class="flex min-h-11 items-center gap-2 text-xl font-bold text-brand"
         >
           <.icon name="hero-play-circle-solid" class="size-8" />
           <span>Streamix</span>
@@ -110,7 +110,7 @@ defmodule StreamixWeb.App.Navigation do
           <.link
             href={~p"/logout"}
             method="delete"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors w-full"
+            class="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
             <.icon name="hero-arrow-right-on-rectangle" class="size-5" />
             <span>Sair</span>
@@ -121,7 +121,7 @@ defmodule StreamixWeb.App.Navigation do
           <.session_link
             path={~p"/plans"}
             current_path={@current_path}
-            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 transition-colors w-full"
+            class="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-brand transition-colors hover:bg-brand/20"
           >
             <.icon name="hero-sparkles" class="size-5" />
             <span>Ver planos</span>
@@ -129,7 +129,7 @@ defmodule StreamixWeb.App.Navigation do
           <.session_link
             path={~p"/login"}
             current_path={@current_path}
-            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-brand text-white hover:bg-brand-hover transition-colors w-full"
+            class="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2 text-white transition-colors hover:bg-brand-hover"
           >
             <.icon name="hero-arrow-right-end-on-rectangle" class="size-5" />
             <span>Entrar</span>
@@ -137,7 +137,7 @@ defmodule StreamixWeb.App.Navigation do
           <.session_link
             path={~p"/register"}
             current_path={@current_path}
-            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors w-full"
+            class="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
             <.icon name="hero-user-plus" class="size-5" />
             <span>Cadastrar</span>
@@ -157,7 +157,7 @@ defmodule StreamixWeb.App.Navigation do
       path={@path}
       current_path={@current_path}
       class={[
-        "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+        "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 transition-colors",
         @active && "bg-brand/20 text-brand font-medium",
         !@active && "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
       ]}
@@ -183,7 +183,7 @@ defmodule StreamixWeb.App.Navigation do
       current_path={@current_path}
       aria-current={@active && "page"}
       class={[
-        "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
+        "flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
         @active && !@accent && "text-text-primary bg-surface-hover/60",
         !@active && !@accent &&
           "text-text-secondary hover:text-text-primary hover:bg-surface-hover/40",
@@ -244,7 +244,7 @@ defmodule StreamixWeb.App.Navigation do
     <.session_link
       path={@navigate}
       current_path={@current_path}
-      class="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
+      class="flex min-h-11 items-center gap-2.5 px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover/50 hover:text-text-primary"
       {@rest}
     >
       <.icon name={@icon} class="size-4" />

@@ -34,7 +34,10 @@ defmodule StreamixWeb.FooterComponents do
       <div class="mx-auto max-w-7xl px-[4%] py-8 sm:py-10">
         <div class="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,2fr)] lg:gap-12">
           <section aria-label="Sobre o Streamix" class="max-w-sm">
-            <.link href={~p"/"} class="inline-flex items-center gap-2 text-text-primary">
+            <.link
+              href={~p"/"}
+              class="inline-flex min-h-11 items-center gap-2 text-text-primary"
+            >
               <span class="inline-flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white">
                 S
               </span>
@@ -122,7 +125,7 @@ defmodule StreamixWeb.FooterComponents do
     ~H"""
     <.link
       href={@href}
-      class="text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      class="inline-flex min-h-11 min-w-11 items-center text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:min-h-0 sm:min-w-0"
     >
       {render_slot(@inner_block)}
     </.link>
@@ -138,7 +141,7 @@ defmodule StreamixWeb.FooterComponents do
       href={@href}
       target="_blank"
       rel="noopener noreferrer"
-      class="text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      class="inline-flex min-h-11 min-w-11 items-center text-sm text-text-muted transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:min-h-0 sm:min-w-0"
     >
       {render_slot(@inner_block)}
     </a>

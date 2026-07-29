@@ -87,10 +87,10 @@ defmodule StreamixWeb.App.Media do
         phx-value-type="live_channel"
         aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
         class={[
-          "absolute top-2 right-2 z-10 p-1.5 rounded-full backdrop-blur-sm transition-all",
+          "absolute right-2 top-2 z-10 flex size-11 items-center justify-center rounded-full backdrop-blur-sm transition-all",
           @is_favorite && "text-brand bg-brand/20",
           !@is_favorite &&
-            "text-white/60 bg-black/30 opacity-0 group-hover:opacity-100 hover:text-brand hover:bg-brand/20"
+            "bg-black/30 text-white/60 opacity-100 hover:bg-brand/20 hover:text-brand sm:opacity-0 sm:group-hover:opacity-100"
         ]}
       >
         <.icon

@@ -84,7 +84,7 @@
       <div class="flex items-center gap-4 sm:gap-8">
         <a
           href="/"
-          class="flex items-center gap-1.5 sm:gap-2 text-xl sm:text-2xl font-bold text-brand"
+          class="flex min-h-11 min-w-11 items-center justify-center gap-1.5 text-xl font-bold text-brand sm:min-w-0 sm:justify-start sm:gap-2 sm:text-2xl"
         >
           <.icon name="hero-play-circle-solid" class="size-6 sm:size-8" />
           <span class="hidden sm:inline">Streamix</span>
@@ -157,7 +157,8 @@
           <div class="relative">
             <button
               type="button"
-              class="flex items-center gap-2 p-1 rounded-xl hover:bg-surface-hover/50 transition-colors"
+              class="flex size-11 items-center justify-center gap-2 rounded-xl hover:bg-surface-hover/50 transition-colors"
+              aria-label="Abrir menu da conta"
               phx-click={toggle_user_menu()}
             >
               <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-brand-hover flex items-center justify-center text-white text-sm font-semibold shadow-sm">
@@ -205,7 +206,7 @@
                 <.link
                   href={~p"/logout"}
                   method="delete"
-                  class="flex items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
+                  class="flex min-h-11 items-center gap-2.5 px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover/50 transition-colors"
                 >
                   <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Sair
                 </.link>
@@ -217,13 +218,13 @@
             <div class="flex items-center gap-2">
               <.link
                 href={~p"/login"}
-                class="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors rounded-xl"
+                class="inline-flex min-h-11 items-center rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
               >
                 Entrar
               </.link>
               <.link
                 href={~p"/register"}
-                class="px-4 py-2 text-sm font-semibold bg-brand text-white rounded-xl hover:bg-brand-hover transition-all shadow-sm hover:shadow-md"
+                class="inline-flex min-h-11 items-center rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-hover hover:shadow-md"
               >
                 Começar
               </.link>

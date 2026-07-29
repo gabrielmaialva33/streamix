@@ -118,7 +118,7 @@ defmodule StreamixWeb.Content.CardComponents do
             phx-click={@on_favorite}
             phx-value-id={@movie.id}
             phx-value-type="movie"
-            class="flex-shrink-0 p-1 rounded-md text-text-secondary hover:text-brand hover:bg-brand/10 hover:scale-110 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
+            class="flex size-11 flex-shrink-0 items-center justify-center rounded-md text-text-secondary transition-all hover:scale-110 hover:bg-brand/10 hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand"
             aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
           >
             <.icon
@@ -232,7 +232,7 @@ defmodule StreamixWeb.Content.CardComponents do
             phx-click={@on_favorite}
             phx-value-id={@series.id}
             phx-value-type="series"
-            class="flex-shrink-0 p-1 rounded-md text-text-secondary hover:text-brand hover:bg-brand/10 hover:scale-110 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
+            class="flex size-11 flex-shrink-0 items-center justify-center rounded-md text-text-secondary transition-all hover:scale-110 hover:bg-brand/10 hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand"
             aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
           >
             <.icon

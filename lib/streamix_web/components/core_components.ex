@@ -60,7 +60,7 @@ defmodule StreamixWeb.CoreComponents do
         </div>
         <button
           type="button"
-          class="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
+          class="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-60 hover:bg-white/10 hover:opacity-100"
           aria-label="fechar"
         >
           <.icon name="hero-x-mark" class="size-5" />
@@ -86,7 +86,7 @@ defmodule StreamixWeb.CoreComponents do
 
   def button(%{rest: rest} = assigns) do
     base_classes =
-      "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
+      "inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
 
     variant_classes =
       case assigns.variant do
@@ -178,7 +178,7 @@ defmodule StreamixWeb.CoreComponents do
 
     ~H"""
     <div class="mb-3">
-      <label class="flex items-center gap-3 cursor-pointer">
+      <label class="flex min-h-11 items-center gap-3 cursor-pointer">
         <input
           type="hidden"
           name={@name}
@@ -215,7 +215,7 @@ defmodule StreamixWeb.CoreComponents do
         id={@id}
         name={@name}
         class={[
-          @class || "w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
+          @class || "min-h-11 w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
           "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
           "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
           @errors == [] && "border-border",
@@ -244,7 +244,7 @@ defmodule StreamixWeb.CoreComponents do
         id={@id}
         name={@name}
         class={[
-          @class || "w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
+          @class || "min-h-11 w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
           "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
           "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
           @errors == [] && "border-border",
@@ -272,7 +272,7 @@ defmodule StreamixWeb.CoreComponents do
         id={@id}
         value={Form.normalize_value(@type, @value)}
         class={[
-          @class || "w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
+          @class || "min-h-11 w-full px-3 py-2.5 rounded-lg border bg-surface text-text-primary",
           "focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent",
           "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
           @errors == [] && "border-border",
@@ -514,7 +514,7 @@ defmodule StreamixWeb.CoreComponents do
           <p :if={@label} id={"#{@id}-label"} class="sr-only">{@label}</p>
           <button
             type="button"
-            class="absolute right-4 top-4 p-1 rounded-full text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+            class="absolute right-2 top-2 flex size-11 items-center justify-center rounded-full text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
             phx-click={@on_cancel}
             aria-label="Fechar"
           >
