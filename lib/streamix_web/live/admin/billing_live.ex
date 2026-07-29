@@ -4,7 +4,6 @@ defmodule StreamixWeb.Admin.BillingLive do
   import StreamixWeb.AdminComponents
 
   alias Streamix.Billing
-  alias Streamix.Billing.Stripe
 
   def mount(_params, _session, socket) do
     socket =
@@ -16,7 +15,7 @@ defmodule StreamixWeb.Admin.BillingLive do
   end
 
   def handle_event("reconcile_stripe", _params, socket) do
-    case Stripe.reconcile_subscriptions() do
+    case Billing.reconcile_stripe_subscriptions() do
       {:ok, _summary} ->
         {:noreply,
          socket

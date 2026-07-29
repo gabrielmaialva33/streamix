@@ -244,5 +244,4 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
 
   defp nil_if_empty([]), do: nil
   defp nil_if_empty(list) when is_list(list), do: list
-  defp nil_if_empty(_), do: nil
 end

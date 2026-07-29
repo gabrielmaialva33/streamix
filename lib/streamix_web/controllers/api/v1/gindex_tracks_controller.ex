@@ -14,12 +14,12 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
 
   use StreamixWeb, :controller
 
-  alias Streamix.Gindex.MetadataProbe
+  alias Streamix.Gindex
 
   def show(conn, %{"type" => type, "id" => id}) do
     with {:ok, type_atom} <- parse_type(type),
          {id_int, ""} <- Integer.parse(id),
-         {:ok, tracks} <- MetadataProbe.fetch(type_atom, id_int) do
+         {:ok, tracks} <- Gindex.fetch_media_tracks(type_atom, id_int) do
       json(conn, tracks)
     else
       :error ->

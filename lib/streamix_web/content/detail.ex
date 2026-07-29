@@ -8,7 +8,7 @@ defmodule StreamixWeb.Content.Detail do
   require Logger
 
   alias Streamix.Access
-  alias Streamix.AI.SemanticSearch
+  alias Streamix.AI
   alias Streamix.Iptv
   alias Streamix.Torrent
   alias StreamixWeb.Content.FavoriteState
@@ -173,7 +173,7 @@ defmodule StreamixWeb.Content.Detail do
   end
 
   defp similar(content_id, type, fetch_full, log_context) do
-    case SemanticSearch.similar(content_id, type, limit: 6) do
+    case AI.similar_content(content_id, type, limit: 6) do
       {:ok, results} ->
         results
         |> Enum.map(& &1.id)

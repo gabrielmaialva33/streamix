@@ -14,7 +14,7 @@ defmodule Streamix.Ecto.Inet do
   def cast(ip) when is_binary(ip) do
     case parse_ip(ip) do
       {:ok, _tuple} -> {:ok, ip}
-      :error -> :error
+      {:error, _reason} -> :error
     end
   end
 
@@ -31,7 +31,7 @@ defmodule Streamix.Ecto.Inet do
   def dump(ip) when is_binary(ip) do
     case parse_ip(ip) do
       {:ok, tuple} -> {:ok, %Postgrex.INET{address: tuple}}
-      :error -> :error
+      {:error, _reason} -> :error
     end
   end
 

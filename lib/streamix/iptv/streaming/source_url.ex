@@ -75,7 +75,6 @@ defmodule Streamix.Iptv.Streaming.SourceUrl do
       :expired -> {:error, :expired}
       false -> {:error, :bad_sig}
       {:error, _} = err -> err
-      _ -> {:error, :bad_sig}
     end
   end
 

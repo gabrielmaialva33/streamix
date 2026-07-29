@@ -51,8 +51,6 @@ defmodule Streamix.Gindex.SyncPlanner do
     |> Enum.map(&Map.put(&1, :base_url, base_url))
   end
 
-  defp rotate_for_date([], _date), do: []
-
   defp rotate_for_date(roots, %Date{} = date) do
     offset = rem(Date.day_of_year(date) - 1, length(roots))
     {before, after_offset} = Enum.split(roots, offset)

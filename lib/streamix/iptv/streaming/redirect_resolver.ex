@@ -287,8 +287,6 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     end
   end
 
-  defp loops_back_to_self?(_), do: false
-
   # Redis I/O — best-effort. The local ETS layer is authoritative for
   # this process; Redis is just a "warm start" pool that survives
   # container restarts. Any Redis hiccup is logged at debug level and
@@ -390,7 +388,6 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   defp retryable?(%Req.TransportError{reason: :econnrefused}), do: true
   defp retryable?(%Req.TransportError{reason: :ehostunreach}), do: true
   defp retryable?(%Req.TransportError{reason: :nxdomain}), do: true
-  defp retryable?(:timeout), do: true
   defp retryable?({:unexpected_status, status}) when status in [502, 503, 504], do: true
   defp retryable?(_), do: false
 

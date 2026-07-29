@@ -2,10 +2,9 @@ defmodule StreamixWeb.User.RegisterLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Accounts
-  alias Streamix.Accounts.User
 
   def mount(_params, _session, socket) do
-    changeset = Accounts.change_user_registration(%User{})
+    changeset = Accounts.new_user_registration()
 
     socket =
       socket
@@ -18,10 +17,7 @@ defmodule StreamixWeb.User.RegisterLive do
   end
 
   def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset =
-      %User{}
-      |> Accounts.change_user_registration(user_params)
-      |> Map.put(:action, :validate)
+    changeset = Accounts.new_user_registration(user_params) |> Map.put(:action, :validate)
 
     {:noreply, assign_form(socket, changeset)}
   end

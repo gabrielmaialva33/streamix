@@ -6,22 +6,27 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Iptv.Series
+  alias Streamix.Iptv
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.PlayerHelpers
 
   import StreamixWeb.CoreComponents, only: [icon: 1]
 
-  import StreamixWeb.Content.DetailComponents,
+  import StreamixWeb.Content.DetailComponents.Actions, only: [favorite_button: 1]
+
+  import StreamixWeb.Content.DetailComponents.Badges,
     only: [
       content_rating_badge: 1,
       date_badge: 1,
-      detail_hero: 1,
       duration_badge: 1,
-      episode_navigation: 1,
       extension_badge: 1,
-      favorite_button: 1,
-      rating_badge: 1,
+      rating_badge: 1
+    ]
+
+  import StreamixWeb.Content.DetailComponents,
+    only: [
+      detail_hero: 1,
+      episode_navigation: 1,
       synopsis_section: 1
     ]
 
@@ -294,14 +299,12 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
   defp present?(value), do: is_binary(value) and value != ""
 
-  defp get_series_backdrop(%Series{} = series) do
-    case Series.backdrop_urls(series) do
+  defp get_series_backdrop(series) do
+    case Iptv.backdrop_urls(series) do
       [url | _] -> url
       _ -> get_series_backdrop_fallback(series)
     end
   end
-
-  defp get_series_backdrop(_), do: nil
 
   defp get_series_backdrop_fallback(%{cover: cover}) when is_binary(cover), do: cover
   defp get_series_backdrop_fallback(_), do: nil

@@ -3,7 +3,7 @@ defmodule StreamixWeb.BillingWebhookController do
 
   require Logger
 
-  alias Streamix.Billing.Stripe
+  alias Streamix.Billing
 
   # Stripe retries on timeout, so we have to answer quickly. Anything
   # that takes longer than this is almost certainly a sync reconciliation
@@ -14,7 +14,7 @@ defmodule StreamixWeb.BillingWebhookController do
     raw_body = conn.assigns[:raw_body] || ""
     signature = conn |> get_req_header("stripe-signature") |> List.first()
 
-    case with_timeout(fn -> Stripe.handle_webhook(raw_body, signature) end) do
+    case with_timeout(fn -> Billing.handle_stripe_webhook(raw_body, signature) end) do
       {:ok, _result} ->
         json(conn, %{received: true})
 

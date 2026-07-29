@@ -8,7 +8,7 @@ defmodule StreamixWeb.App.Media do
 
   import StreamixWeb.CoreComponents
 
-  alias Streamix.Iptv.LiveChannel
+  alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
   attr :channel, :map, required: true
@@ -228,7 +228,7 @@ defmodule StreamixWeb.App.Media do
   attr :use_proxy, :boolean, default: true
 
   def video_player_v2(assigns) do
-    stream_url = LiveChannel.stream_url(assigns.channel, assigns.provider)
+    stream_url = Iptv.live_channel_stream_url(assigns.channel, assigns.provider)
 
     proxy_url =
       if assigns.use_proxy do

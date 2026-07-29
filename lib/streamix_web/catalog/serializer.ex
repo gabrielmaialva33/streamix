@@ -10,7 +10,7 @@ defmodule StreamixWeb.Catalog.Serializer do
   """
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Movie, Series}
+  alias Streamix.Iptv
   alias StreamixWeb.Catalog.ImageProxy
   alias StreamixWeb.Catalog.StreamUrls
   alias StreamixWeb.Helpers.ResizeUrl
@@ -36,7 +36,7 @@ defmodule StreamixWeb.Catalog.Serializer do
 
   defp serialize_featured_movie(movie) do
     poster = ImageProxy.proxy(movie.stream_icon)
-    backdrops = Movie.backdrop_urls(movie) || []
+    backdrops = Iptv.backdrop_urls(movie)
     hero_backdrop = List.first(backdrops) || movie.stream_icon
 
     %{
@@ -56,7 +56,7 @@ defmodule StreamixWeb.Catalog.Serializer do
 
   defp serialize_featured_series(series) do
     poster = ImageProxy.proxy(series.cover)
-    backdrops = Series.backdrop_urls(series) || []
+    backdrops = Iptv.backdrop_urls(series)
     hero_backdrop = List.first(backdrops) || series.cover
 
     %{
@@ -122,12 +122,12 @@ defmodule StreamixWeb.Catalog.Serializer do
       content_rating: movie.content_rating,
       tagline: movie.tagline,
       poster: ImageProxy.proxy(movie.stream_icon),
-      backdrop: ImageProxy.proxy(Movie.backdrop_urls(movie)),
+      backdrop: ImageProxy.proxy(Iptv.backdrop_urls(movie)),
       youtube_trailer: movie.youtube_trailer,
       stream_url: StreamUrls.signed_movie_url(movie),
       browser_stream_url: StreamUrls.browser_movie_url(movie)
     }
-    |> with_image_variants(movie.stream_icon, List.first(Movie.backdrop_urls(movie) || []))
+    |> with_image_variants(movie.stream_icon, List.first(Iptv.backdrop_urls(movie)))
   end
 
   # ---------------------------------------------------------------------
@@ -160,12 +160,12 @@ defmodule StreamixWeb.Catalog.Serializer do
       cast: Helpers.cast_names(series.credits),
       director: Helpers.director_names(series.credits),
       poster: ImageProxy.proxy(series.cover),
-      backdrop: ImageProxy.proxy(Series.backdrop_urls(series)),
+      backdrop: ImageProxy.proxy(Iptv.backdrop_urls(series)),
       season_count: length(seasons),
       episode_count: Enum.sum(Enum.map(seasons, fn s -> length(s.episodes || []) end)),
       seasons: Enum.map(seasons, &serialize_season/1)
     }
-    |> with_image_variants(series.cover, List.first(Series.backdrop_urls(series) || []))
+    |> with_image_variants(series.cover, List.first(Iptv.backdrop_urls(series)))
   end
 
   def serialize_season(season) do

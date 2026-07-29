@@ -2,7 +2,6 @@ defmodule StreamixWeb.BillingLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Billing
-  alias Streamix.Billing.Stripe
 
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
@@ -24,7 +23,7 @@ defmodule StreamixWeb.BillingLive do
   def handle_event("stripe_portal", _params, socket) do
     user = socket.assigns.current_scope.user
 
-    case Stripe.create_portal_session(user, StreamixWeb.Endpoint.url() <> ~p"/billing") do
+    case Billing.create_stripe_portal_session(user, StreamixWeb.Endpoint.url() <> ~p"/billing") do
       {:ok, url} ->
         {:noreply, Phoenix.LiveView.redirect(socket, external: url)}
 

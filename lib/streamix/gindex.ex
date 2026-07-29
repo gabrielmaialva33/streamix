@@ -6,7 +6,17 @@ defmodule Streamix.Gindex do
   and retrieve streaming URLs.
   """
 
-  alias Streamix.Gindex.{Client, EndpointManager, Parser, QuotaGuard, Sync, Telemetry, UrlCache}
+  alias Streamix.Gindex.{
+    Client,
+    DisplayName,
+    EndpointManager,
+    MetadataProbe,
+    Parser,
+    QuotaGuard,
+    Sync,
+    Telemetry,
+    UrlCache
+  }
 
   # Delegate sync functions
   defdelegate sync_provider(provider), to: Sync
@@ -25,6 +35,9 @@ defmodule Streamix.Gindex do
   defdelegate parse_movie_folder(folder_name), to: Parser
   defdelegate parse_release_name(filename), to: Parser
   defdelegate parse_episode_name(filename), to: Parser
+  defdelegate clean_display_title(value), to: DisplayName, as: :clean_title
+  defdelegate clean_episode_title(value), to: DisplayName, as: :clean_episode
+  defdelegate fetch_media_tracks(type, id), to: MetadataProbe, as: :fetch
 
   # Direct client access for advanced usage
   defdelegate list_folder(base_url, path), to: Client

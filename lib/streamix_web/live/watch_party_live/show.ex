@@ -8,8 +8,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.PlayerHelpers
   import StreamixWeb.WatchPartyComponents
 
-  alias Streamix.Iptv.CatalogItem
-  alias Streamix.Iptv.ContentRef
+  alias Streamix.Iptv
   alias Streamix.WatchParty
   alias StreamixWeb.Presence
 
@@ -37,7 +36,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     catalog_item = room.catalog_item
 
     content_type = catalog_item.content_type
-    content_entity = CatalogItem.content(catalog_item)
+    content_entity = Iptv.catalog_item_content(catalog_item)
     content_id = if content_entity, do: content_entity.id, else: nil
 
     if is_nil(content_id) do
@@ -46,11 +45,11 @@ defmodule StreamixWeb.WatchPartyLive.Show do
        |> put_flash(:error, "Conteudo nao encontrado")
        |> redirect(to: ~p"/")}
     else
-      do_mount_room(socket, room, user_id, is_host, content_type, content_id, ContentRef)
+      do_mount_room(socket, room, user_id, is_host, content_type, content_id)
     end
   end
 
-  defp do_mount_room(socket, room, user_id, is_host, content_type, content_id, _content_ref) do
+  defp do_mount_room(socket, room, user_id, is_host, content_type, content_id) do
     case load_content(content_type, to_string(content_id), user_id) do
       {:ok, content, provider, stream_url} ->
         WatchParty.ensure_room_server(room)

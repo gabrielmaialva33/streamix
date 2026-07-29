@@ -9,7 +9,6 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   alias Phoenix.LiveView
   alias Streamix.Iptv
-  alias Streamix.Iptv.Epg
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
 
@@ -325,7 +324,7 @@ defmodule StreamixWeb.Content.LiveChannels do
       |> Enum.group_by(& &1.provider_id)
       |> Map.new(fn {provider_id, provider_channels} ->
         ids = Enum.map(provider_channels, & &1.id)
-        {provider_id, Epg.current_programs_for_channels(provider_id, ids)}
+        {provider_id, Iptv.current_programs_for_channels(provider_id, ids)}
       end)
 
     Enum.reduce(channels, socket, fn channel, socket ->

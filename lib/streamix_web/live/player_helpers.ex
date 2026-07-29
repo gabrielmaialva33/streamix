@@ -5,9 +5,7 @@ defmodule StreamixWeb.PlayerHelpers do
   """
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Streaming.RedirectResolver
-  alias Streamix.Repo
-  alias Streamix.Torrent.TorrentStream
+  alias Streamix.Torrent
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 
@@ -246,7 +244,7 @@ defmodule StreamixWeb.PlayerHelpers do
   defp do_prewarm(type, id, user_id) do
     with {:ok, upstream_type} <- prewarmable_upstream_type(type),
          {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
-      RedirectResolver.prewarm_async(url, stop_fn: fn _ -> false end)
+      Iptv.prewarm_stream_url(url, stop_fn: fn _ -> false end)
     else
       _ -> :ok
     end
@@ -315,11 +313,11 @@ defmodule StreamixWeb.PlayerHelpers do
   defp parse_id(_), do: :error
 
   defp load_torrent_stream(id) do
-    case Repo.get(TorrentStream, id) |> Repo.preload(movie: :provider) do
-      %TorrentStream{movie: %{provider: provider} = movie} = stream ->
+    case Torrent.get_stream_for_playback(id) do
+      {:ok, stream, movie, provider} ->
         {:ok, torrent_movie_content(movie, stream), provider}
 
-      _ ->
+      :not_found ->
         {:error, :not_found}
     end
   end

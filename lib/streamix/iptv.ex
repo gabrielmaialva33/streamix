@@ -36,12 +36,19 @@ defmodule Streamix.Iptv do
   alias Streamix.Iptv.{
     Assets,
     Catalog,
+    CatalogItem,
     Channels,
+    ContentRef,
     Epg,
+    EpgProgram,
+    LiveChannel,
     Movies,
+    Provider,
     Providers,
     SeriesOps
   }
+
+  alias Streamix.Iptv.Streaming.{FailoverPolicy, RedirectResolver, StreamErrors, VodProxy}
 
   alias Streamix.Iptv.{
     Favorites,
@@ -121,6 +128,7 @@ defmodule Streamix.Iptv do
   defdelegate get_live_channel_with_provider!(id), to: Channels, as: :get_with_provider!
   defdelegate search_channels(user_id, query, opts \\ []), to: Channels, as: :search
   defdelegate search_public_channels(query, opts \\ []), to: Channels, as: :search_public
+  defdelegate live_channel_stream_url(channel, provider), to: LiveChannel, as: :stream_url
 
   # =============================================================================
   # Movies (VOD)
@@ -221,6 +229,10 @@ defmodule Streamix.Iptv do
   defdelegate update_provider(provider, attrs), to: Providers, as: :update
   defdelegate delete_provider(provider), to: Providers, as: :delete
   defdelegate change_provider(provider, attrs \\ %{}), to: Providers, as: :change
+
+  def new_provider, do: %Provider{}
+  def new_provider_changeset(attrs \\ %{}), do: Providers.change(%Provider{}, attrs)
+
   defdelegate test_connection(url, username, password), to: Providers
   defdelegate sync_provider(provider, opts \\ []), to: Providers, as: :sync
   defdelegate async_sync_provider(provider), to: Providers, as: :async_sync
@@ -228,6 +240,13 @@ defmodule Streamix.Iptv do
   defdelegate provider_health_summary(), to: ProviderHealth, as: :overall_status
   defdelegate list_provider_health_reports(opts \\ []), to: ProviderHealth, as: :list_reports
   defdelegate cached_provider_health_summary(), to: ProviderHealthMonitor, as: :get
+
+  @doc """
+  Builds the failover URL chain for a provider without exposing provider internals.
+  """
+  def provider_stream_url_chain(provider, original_url) do
+    FailoverPolicy.build_url_chain(original_url, Provider.url_chain(provider))
+  end
 
   # =============================================================================
   # Catalog (Public Content)
@@ -259,12 +278,28 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate backdrop_urls(content), to: Assets
   defdelegate image_urls(content), to: Assets
+  defdelegate has_images?(content), to: Assets
+
+  defdelegate catalog_item_content(catalog_item), to: CatalogItem, as: :content
+  defdelegate catalog_item_content_name(catalog_item), to: CatalogItem, as: :content_name
+  defdelegate catalog_item_content_icon(catalog_item), to: CatalogItem, as: :content_icon
+
+  defdelegate resolve_catalog_item_id(content_type, content_id),
+    to: ContentRef,
+    as: :resolve_catalog_item_id
 
   # =============================================================================
   # EPG (Electronic Program Guide)
   # =============================================================================
   defdelegate get_now_and_next(provider_id, epg_channel_id), to: Epg
   defdelegate get_current_programs_batch(provider_id, epg_channel_ids), to: Epg
+  defdelegate current_programs_for_channels(provider_id, channel_ids), to: Epg
+
+  defdelegate programs_window_for_channels(provider_id, channel_ids, starts_at, ends_at),
+    to: Epg
+
+  defdelegate epg_program_progress(program), to: EpgProgram, as: :progress
+
   defdelegate enrich_channels_with_epg(channels, provider_id), to: Epg
   defdelegate sync_channel_epg(provider, stream_id, epg_channel_id), to: Epg, as: :sync_channel
   defdelegate sync_channels_epg(provider, channels), to: Epg, as: :sync_channels
@@ -278,4 +313,16 @@ defmodule Streamix.Iptv do
     alias Streamix.Workers.SyncEpgWorker
     SyncEpgWorker.enqueue(provider)
   end
+
+  # =============================================================================
+  # Stream delivery
+  # =============================================================================
+  @type stream_error_code :: StreamErrors.code()
+
+  defdelegate halt_stream_error(conn, code, opts \\ []), to: StreamErrors, as: :halt
+  defdelegate stream_error_code_from_reason(reason), to: StreamErrors, as: :code_from_reason
+  defdelegate resolve_stream_url(url, opts \\ []), to: RedirectResolver, as: :resolve
+  defdelegate prewarm_stream_url(url, opts \\ []), to: RedirectResolver, as: :prewarm_async
+  defdelegate pipe_stream(conn, url, opts \\ []), to: VodProxy, as: :pipe
+  defdelegate head_stream(conn, url, opts \\ []), to: VodProxy, as: :head
 end

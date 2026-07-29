@@ -10,8 +10,6 @@ defmodule StreamixWeb.UserAuth do
   require Logger
 
   alias Streamix.Accounts
-  alias Streamix.Accounts.IpTracker
-  alias Streamix.Accounts.Scope
 
   # Session validity: 60 days
   @max_age 60 * 60 * 24 * 60
@@ -31,12 +29,12 @@ defmodule StreamixWeb.UserAuth do
   """
   def log_in_user(conn, user, params \\ %{}) do
     # Capture IP and device info for the session
-    ip_info = IpTracker.get_request_info(conn)
+    ip_info = Accounts.request_info(conn)
     token = Accounts.generate_user_session_token(user, ip_info)
     user_return_to = get_session(conn, :user_return_to)
 
     # Log the login access asynchronously
-    IpTracker.log_access_async(conn, user.id)
+    Accounts.log_access_async(conn, user.id)
 
     conn
     |> renew_session()
@@ -100,7 +98,7 @@ defmodule StreamixWeb.UserAuth do
 
     case user_and_ts do
       {user, token_inserted_at} ->
-        scope = Scope.for_user(%{user | authenticated_at: token_inserted_at})
+        scope = Accounts.scope_for_user(%{user | authenticated_at: token_inserted_at})
         Logger.metadata(user_id: user.id)
 
         conn
@@ -227,7 +225,7 @@ defmodule StreamixWeb.UserAuth do
 
       case user_and_ts do
         {user, token_inserted_at} ->
-          Scope.for_user(%{user | authenticated_at: token_inserted_at})
+          Accounts.scope_for_user(%{user | authenticated_at: token_inserted_at})
 
         nil ->
           nil

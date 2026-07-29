@@ -62,10 +62,8 @@ defmodule StreamixWeb.Catalog.Api do
         {:error, :not_found}
 
       series ->
-        case Iptv.get_series_with_sync!(series.id) do
-          {:ok, series} -> {:ok, Serializer.serialize_series_detail(series)}
-          _ -> {:error, :not_found}
-        end
+        series = Iptv.get_series_with_sync!(series.id)
+        {:ok, Serializer.serialize_series_detail(series)}
     end
   rescue
     Ecto.NoResultsError -> {:error, :not_found}

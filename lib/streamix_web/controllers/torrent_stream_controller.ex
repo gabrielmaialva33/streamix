@@ -87,9 +87,6 @@ defmodule StreamixWeb.TorrentStreamController do
 
       :unauthorized ->
         send_resp(conn, 403, "forbidden")
-
-      {:error, payload} ->
-        respond_with_status(conn, {:error, payload})
     end
   end
 
@@ -126,15 +123,11 @@ defmodule StreamixWeb.TorrentStreamController do
       {:ok, %{conn: conn}} ->
         send_resp(conn, 502, "torrent upstream error")
 
-      {:error, %{conn: chunked_conn, sent_headers?: true}, _reason} ->
+      {:error, _reason, %{conn: chunked_conn, sent_headers?: true}} ->
         # Headers were already on the wire; let the chunked send drop.
         chunked_conn
 
-      {:error, _acc, reason} ->
-        Logger.warning("[TorrentStream] upstream error: #{inspect(reason)}")
-        send_resp(conn, 502, "torrent upstream error")
-
-      {:error, reason} ->
+      {:error, reason, _acc} ->
         Logger.warning("[TorrentStream] upstream error: #{inspect(reason)}")
         send_resp(conn, 502, "torrent upstream error")
     end

@@ -8,6 +8,12 @@ defmodule Streamix.Billing.Plans do
   alias Streamix.Billing.{Plan, PlanFeature}
   alias Streamix.Repo
 
+  def new_plan, do: %Plan{}
+
+  def change_plan(%Plan{} = plan, attrs \\ %{}) do
+    Plan.changeset(plan, attrs)
+  end
+
   def list_active_plans do
     from(p in Plan,
       where: p.active == true,
@@ -56,6 +62,30 @@ defmodule Streamix.Billing.Plans do
   end
 
   def get_plan!(id), do: Repo.get!(Plan, id)
+
+  def get_plan_with_features!(id) do
+    Plan
+    |> Repo.get!(id)
+    |> Repo.preload(:features)
+  end
+
+  def feature_enabled?(%Plan{features: features}, feature, default) when is_list(features) do
+    case Enum.find(features, &(&1.feature == feature)) do
+      nil -> default
+      plan_feature -> plan_feature.enabled
+    end
+  end
+
+  def feature_enabled?(_plan, _feature, default), do: default
+
+  def feature_limit(%Plan{features: features}, feature) when is_list(features) do
+    case Enum.find(features, &(&1.feature == feature)) do
+      nil -> nil
+      plan_feature -> plan_feature.limit
+    end
+  end
+
+  def feature_limit(_plan, _feature), do: nil
 
   def get_plan_by_slug(slug) when is_binary(slug) and slug != "" do
     Repo.get_by(Plan, slug: slug)

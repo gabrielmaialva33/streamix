@@ -42,6 +42,19 @@ defmodule Streamix.Torrent do
 
   def get_stream_by_hash(_info_hash), do: :not_found
 
+  @doc """
+  Loads a torrent stream together with the movie and provider needed by playback.
+  """
+  def get_stream_for_playback(id) do
+    case Repo.get(TorrentStream, id) |> Repo.preload(movie: :provider) do
+      %TorrentStream{movie: %{provider: provider} = movie} = stream ->
+        {:ok, stream, movie, provider}
+
+      _ ->
+        :not_found
+    end
+  end
+
   defdelegate start_or_join(info_hash, magnet_uri, viewer_pid), to: StreamSession
   defdelegate leave(info_hash, viewer_pid), to: StreamSession
   defdelegate retry(info_hash), to: StreamSession
@@ -162,7 +175,5 @@ defmodule Streamix.Torrent do
 
   defp classify_failure({:transport_error, _reason}), do: "engine_unavailable"
   defp classify_failure({:http_error, status, _body}) when status in 500..599, do: "engine_5xx"
-  defp classify_failure(:timeout), do: "engine_timeout"
-  defp classify_failure(:engine_unavailable), do: "engine_unavailable"
   defp classify_failure(_reason), do: "engine_error"
 end

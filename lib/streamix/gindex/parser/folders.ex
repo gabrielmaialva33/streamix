@@ -118,10 +118,10 @@ defmodule Streamix.Gindex.Parser.Folders do
   end
 
   @anime_season_patterns [
-    {~r/^(.+?)\s+(\d+)$/, :simple},
     {~r/^(.+?)\s+((2nd|3rd|4th|5th)\s+Season)$/i, :ordinal},
     {~r/^(.+?)\s+(Season\s+\d+)$/i, :simple},
-    {~r/^(.+?)\s+(Part\s+\d+)$/i, :simple}
+    {~r/^(.+?)\s+(Part\s+\d+)$/i, :simple},
+    {~r/^(.+?)\s+(\d+)$/, :simple}
   ]
 
   defp extract_season_indicator(name) do

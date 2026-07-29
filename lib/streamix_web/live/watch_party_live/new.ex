@@ -7,7 +7,7 @@ defmodule StreamixWeb.WatchPartyLive.New do
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
   import StreamixWeb.PlayerHelpers
 
-  alias Streamix.Iptv.ContentRef
+  alias Streamix.Iptv
   alias Streamix.WatchParty
 
   def mount(%{"type" => type, "id" => id}, _session, socket) do
@@ -16,7 +16,7 @@ defmodule StreamixWeb.WatchPartyLive.New do
 
     with {:ok, content_id} <- parse_positive_integer(id),
          {:ok, content, _provider, _stream_url} <- load_content(type, id, user_id),
-         {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(type, content_id),
+         {:ok, catalog_item_id} <- Iptv.resolve_catalog_item_id(type, content_id),
          attrs = %{
            catalog_item_id: catalog_item_id,
            content_name: content_title(content, type),

@@ -20,11 +20,10 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  alias Streamix.AI.UserAnalytics
+  alias Streamix.AI
   alias Streamix.Billing
   alias Streamix.Helpers
   alias Streamix.Iptv
-  alias Streamix.Iptv.{Movie, Series}
   alias StreamixWeb.Helpers.ImageProxy
 
   # Pipeline `:api_v1` never sets `current_scope` (that's a browser-only
@@ -43,7 +42,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     collection = Map.get(params, "type", "movies")
     limit = parse_int(params["limit"], 20)
 
-    case UserAnalytics.get_recommendations(user_id, type: collection, limit: limit) do
+    case AI.get_recommendations(user_id, type: collection, limit: limit) do
       recommendations when is_list(recommendations) ->
         enriched = enrich_results(recommendations, collection)
 
@@ -96,7 +95,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
         collection = Map.get(params, "type", "movies")
         limit = parse_int(params["limit"], 10)
 
-        case UserAnalytics.get_similar_to(content_id, collection, limit: limit) do
+        case AI.get_similar_to(content_id, collection, limit: limit) do
           {:ok, results} ->
             enriched = enrich_results(results, collection)
 
@@ -130,7 +129,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     user_id = conn.assigns.current_user.id
     limit = parse_int(params["limit"], 10)
 
-    {:ok, channels} = UserAnalytics.get_channel_recommendations(user_id, limit: limit)
+    {:ok, channels} = AI.get_channel_recommendations(user_id, limit: limit)
     serialized = Enum.map(channels, &serialize_channel/1)
     json(conn, %{channels: serialized, personalized: true})
   end
@@ -142,7 +141,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   def insights(conn, _params) do
     user_id = conn.assigns.current_user.id
 
-    insights = UserAnalytics.get_user_insights(user_id)
+    insights = AI.get_user_insights(user_id)
 
     json(conn, %{insights: insights})
   end
@@ -154,7 +153,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   def refresh(conn, _params) do
     user_id = conn.assigns.current_user.id
 
-    case UserAnalytics.compute_user_profile(user_id) do
+    case AI.compute_user_profile(user_id) do
       {:ok, _vector} ->
         json(conn, %{status: "refreshed"})
 
@@ -209,7 +208,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
       poster: ImageProxy.card(movie.stream_icon),
-      backdrop: Movie.backdrop_urls(movie) |> List.first() |> ImageProxy.hero(),
+      backdrop: Iptv.backdrop_urls(movie) |> List.first() |> ImageProxy.hero(),
       plot: movie.plot,
       score: Map.get(result, :score)
     }
@@ -224,7 +223,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
       poster: ImageProxy.card(series.cover),
-      backdrop: Series.backdrop_urls(series) |> List.first() |> ImageProxy.hero(),
+      backdrop: Iptv.backdrop_urls(series) |> List.first() |> ImageProxy.hero(),
       plot: series.plot,
       score: Map.get(result, :score)
     }

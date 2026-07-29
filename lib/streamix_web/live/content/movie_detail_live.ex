@@ -5,7 +5,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.Iptv.Movie
+  alias Streamix.Iptv
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
@@ -13,25 +13,28 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  import StreamixWeb.Content.DetailComponents,
+  import StreamixWeb.Content.DetailComponents.Actions,
+    only: [favorite_button: 1, play_button: 1, tmdb_link: 1, trailer_link: 1]
+
+  import StreamixWeb.Content.DetailComponents.Badges,
     only: [
       content_rating_badge: 1,
+      duration_badge: 1,
+      extension_badge: 1,
+      rating_badge: 1,
+      year_badge: 1
+    ]
+
+  import StreamixWeb.Content.DetailComponents,
+    only: [
       credits_grid: 1,
       detail_hero: 1,
       detail_title: 1,
-      duration_badge: 1,
-      extension_badge: 1,
-      favorite_button: 1,
       gallery_preview: 1,
       genre_chips: 1,
       image_gallery: 1,
-      play_button: 1,
-      rating_badge: 1,
       similar_grid: 1,
-      synopsis_section: 1,
-      tmdb_link: 1,
-      trailer_link: 1,
-      year_badge: 1
+      synopsis_section: 1
     ]
 
   # Mount for /providers/:provider_id/movies/:id (user provider). Must
@@ -291,7 +294,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           
     <!-- Image Gallery -->
           <.image_gallery
-            images={if Movie.has_images?(@movie), do: Movie.image_urls(@movie), else: []}
+            images={if Iptv.has_images?(@movie), do: Iptv.image_urls(@movie), else: []}
             alt="Imagem do filme"
           />
           
@@ -315,8 +318,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # Private Helpers
   # ============================================
 
-  defp og_image_url(%Movie{} = movie) do
-    case Movie.backdrop_urls(movie) do
+  defp og_image_url(movie) do
+    case Iptv.backdrop_urls(movie) do
       [url | _] -> url
       _ -> og_image_url_fallback(movie)
     end

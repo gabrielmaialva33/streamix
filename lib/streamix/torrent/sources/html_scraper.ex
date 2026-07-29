@@ -198,8 +198,6 @@ defmodule Streamix.Torrent.Sources.HtmlScraper do
     end
   end
 
-  defp blankless(_), do: nil
-
   defp config(slug) do
     :streamix
     |> Application.get_env(:torrent_scrapers, [])

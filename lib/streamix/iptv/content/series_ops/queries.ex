@@ -464,8 +464,6 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> Helpers.escape_like()
   end
 
-  defp compact_search(_), do: ""
-
   defp canonical_key do
     dynamic(
       [s],

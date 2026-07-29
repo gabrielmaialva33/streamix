@@ -188,41 +188,36 @@ defmodule Streamix.Iptv.Sync do
   defp maybe_add_failure(failures, _type, {:ok, _}), do: failures
 
   defp finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts) do
-    case handle_series_details(provider, opts) do
-      {:ok, details} ->
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
+    with {:ok, details} <- handle_series_details(provider, opts) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        # Build update attrs only for successful syncs
-        attrs =
-          %{sync_status: "partial"}
-          |> maybe_put(:live_channels_count, live_count, :live, failures)
-          |> maybe_put(:movies_count, vod_count, :movies, failures)
-          |> maybe_put(:series_count, series_count, :series, failures)
-          |> maybe_put(:live_synced_at, now, :live, failures)
-          |> maybe_put(:vod_synced_at, now, :movies, failures)
-          |> maybe_put(:series_synced_at, now, :series, failures)
+      # Build update attrs only for successful syncs
+      attrs =
+        %{sync_status: "partial"}
+        |> maybe_put(:live_channels_count, live_count, :live, failures)
+        |> maybe_put(:movies_count, vod_count, :movies, failures)
+        |> maybe_put(:series_count, series_count, :series, failures)
+        |> maybe_put(:live_synced_at, now, :live, failures)
+        |> maybe_put(:vod_synced_at, now, :movies, failures)
+        |> maybe_put(:series_synced_at, now, :series, failures)
 
-        update_sync_state(provider, attrs)
+      update_sync_state(provider, attrs)
 
-        failed_types = Enum.map(failures, fn {type, _} -> type end)
+      failed_types = Enum.map(failures, fn {type, _} -> type end)
 
-        Logger.info(
-          "[Sync] Partial sync completed: #{live_count} live, #{vod_count} movies, " <>
-            "#{series_count} series (failed: #{inspect(failed_types)})"
-        )
+      Logger.info(
+        "[Sync] Partial sync completed: #{live_count} live, #{vod_count} movies, " <>
+          "#{series_count} series (failed: #{inspect(failed_types)})"
+      )
 
-        {:ok,
-         %{
-           live: live_count,
-           movies: vod_count,
-           series: series_count,
-           details: details,
-           failures: failures
-         }}
-
-      {:error, reason} ->
-        update_status(provider, "failed")
-        {:error, reason}
+      {:ok,
+       %{
+         live: live_count,
+         movies: vod_count,
+         series: series_count,
+         details: details,
+         failures: failures
+       }}
     end
   end
 
@@ -235,35 +230,30 @@ defmodule Streamix.Iptv.Sync do
   end
 
   defp finalize_sync(provider, live_count, vod_count, series_count, opts) do
-    case handle_series_details(provider, opts) do
-      {:ok, details} ->
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
+    with {:ok, details} <- handle_series_details(provider, opts) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        update_sync_state(provider, %{
-          sync_status: "completed",
-          live_channels_count: live_count,
-          movies_count: vod_count,
-          series_count: series_count,
-          live_synced_at: now,
-          vod_synced_at: now,
-          series_synced_at: now
-        })
+      update_sync_state(provider, %{
+        sync_status: "completed",
+        live_channels_count: live_count,
+        movies_count: vod_count,
+        series_count: series_count,
+        live_synced_at: now,
+        vod_synced_at: now,
+        series_synced_at: now
+      })
 
-        Logger.info(
-          "Full sync completed: #{live_count} live, #{vod_count} movies, #{series_count} series"
-        )
+      Logger.info(
+        "Full sync completed: #{live_count} live, #{vod_count} movies, #{series_count} series"
+      )
 
-        # Sweep catalog_items whose content row was removed by this sync's
-        # orphan pass, plus the favorites/watch_progress/rooms that point at
-        # them. Otherwise stranded catalog_items linger until the nightly
-        # worker and can crash surfaces that join through them (see HomeLive).
-        cleanup_provider_orphans(provider.id)
+      # Sweep catalog_items whose content row was removed by this sync's
+      # orphan pass, plus the favorites/watch_progress/rooms that point at
+      # them. Otherwise stranded catalog_items linger until the nightly
+      # worker and can crash surfaces that join through them (see HomeLive).
+      cleanup_provider_orphans(provider.id)
 
-        {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}
-
-      {:error, reason} ->
-        update_status(provider, "failed")
-        {:error, reason}
+      {:ok, %{live: live_count, movies: vod_count, series: series_count, details: details}}
     end
   end
 

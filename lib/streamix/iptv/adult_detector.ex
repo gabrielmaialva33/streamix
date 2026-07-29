@@ -25,7 +25,12 @@ defmodule Streamix.Iptv.AdultDetector do
       false
   """
   def adult_category?(name) when is_binary(name) do
-    normalized = String.downcase(name)
+    normalized =
+      name
+      |> String.normalize(:nfd)
+      |> String.replace(~r/\p{Mn}/u, "")
+      |> String.downcase()
+
     Enum.any?(@adult_keywords, &String.contains?(normalized, &1))
   end
 

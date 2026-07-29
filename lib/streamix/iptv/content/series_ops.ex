@@ -196,9 +196,9 @@ defmodule Streamix.Iptv.SeriesOps do
   @doc """
   Gets a series with seasons/episodes, syncing on-demand if needed.
   Syncs from the API if the series has no episodes or is missing tmdb_id.
-  Returns {:ok, series} or {:error, reason}.
+  Returns the refreshed series and raises when the row does not exist.
   """
-  @spec get_with_sync!(integer()) :: {:ok, Series.t()}
+  @spec get_with_sync!(integer()) :: Series.t()
   def get_with_sync!(id) do
     series = get!(id)
 
@@ -212,7 +212,7 @@ defmodule Streamix.Iptv.SeriesOps do
       end
     end
 
-    {:ok, get_with_seasons!(id)}
+    get_with_seasons!(id)
   end
 
   defp upstream_available?(provider_id) when is_integer(provider_id) do

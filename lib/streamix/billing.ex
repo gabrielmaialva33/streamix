@@ -14,15 +14,21 @@ defmodule Streamix.Billing do
     Payments,
     Plans,
     PlaybackSessions,
+    Stripe,
     Subscriptions
   }
 
   # Plans
+  defdelegate new_plan(), to: Plans
+  defdelegate change_plan(plan, attrs \\ %{}), to: Plans
   defdelegate list_active_plans(), to: Plans
   defdelegate ensure_plan!(attrs), to: Plans
   defdelegate sync_plan_features!(plan, features), to: Plans
   defdelegate list_plans(), to: Plans
   defdelegate get_plan!(id), to: Plans
+  defdelegate get_plan_with_features!(id), to: Plans
+  defdelegate plan_feature_enabled?(plan, feature, default), to: Plans, as: :feature_enabled?
+  defdelegate plan_feature_limit(plan, feature), to: Plans, as: :feature_limit
   defdelegate get_plan_by_slug(slug), to: Plans
   defdelegate create_plan(attrs), to: Plans
   defdelegate update_plan(plan, attrs), to: Plans
@@ -45,6 +51,18 @@ defmodule Streamix.Billing do
   defdelegate list_recent_payments(limit), to: Payments
   defdelegate list_recent_invoices(), to: Payments
   defdelegate list_recent_invoices(limit), to: Payments
+
+  # Stripe boundary
+  defdelegate create_stripe_checkout_session(user, plan, attrs),
+    to: Stripe,
+    as: :create_checkout_session
+
+  defdelegate create_stripe_portal_session(user, return_url),
+    to: Stripe,
+    as: :create_portal_session
+
+  defdelegate reconcile_stripe_subscriptions(), to: Stripe, as: :reconcile_subscriptions
+  defdelegate handle_stripe_webhook(raw_body, signature), to: Stripe, as: :handle_webhook
 
   # Provider customers
   defdelegate get_billing_customer(user, provider), to: Customers

@@ -4,7 +4,6 @@ defmodule StreamixWeb.Admin.PlanFormLive do
   import StreamixWeb.AdminComponents
 
   alias Streamix.Billing
-  alias Streamix.Billing.Plan
 
   def mount(_params, _session, socket) do
     {:ok, assign(socket, current_path: "/admin/plans")}
@@ -15,17 +14,18 @@ defmodule StreamixWeb.Admin.PlanFormLive do
   end
 
   defp apply_action(socket, :new, _params) do
-    changeset = Plan.changeset(%Plan{}, %{})
+    plan = Billing.new_plan()
+    changeset = Billing.change_plan(plan)
 
     socket
     |> assign(page_title: "Admin — Novo Plano")
-    |> assign(plan: %Plan{})
+    |> assign(plan: plan)
     |> assign(form: to_form(changeset))
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    plan = Billing.get_plan!(id) |> Streamix.Repo.preload(:features)
-    changeset = Plan.changeset(plan, %{})
+    plan = Billing.get_plan_with_features!(id)
+    changeset = Billing.change_plan(plan)
 
     socket
     |> assign(page_title: "Admin — Editar #{plan.name}")
@@ -36,7 +36,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
   def handle_event("validate", %{"plan" => plan_params}, socket) do
     changeset =
       socket.assigns.plan
-      |> Plan.changeset(plan_params)
+      |> Billing.change_plan(plan_params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -231,21 +231,8 @@ defmodule StreamixWeb.Admin.PlanFormLive do
     """
   end
 
-  defp feature_enabled?(%Plan{features: features}, feature, default) when is_list(features) do
-    case Enum.find(features, &(&1.feature == feature)) do
-      nil -> default
-      plan_feature -> plan_feature.enabled
-    end
-  end
+  defp feature_enabled?(plan, feature, default),
+    do: Billing.plan_feature_enabled?(plan, feature, default)
 
-  defp feature_enabled?(_plan, _feature, default), do: default
-
-  defp feature_limit(%Plan{features: features}, feature) when is_list(features) do
-    case Enum.find(features, &(&1.feature == feature)) do
-      nil -> nil
-      plan_feature -> plan_feature.limit
-    end
-  end
-
-  defp feature_limit(_plan, _feature), do: nil
+  defp feature_limit(plan, feature), do: Billing.plan_feature_limit(plan, feature)
 end

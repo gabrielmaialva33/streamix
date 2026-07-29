@@ -2,7 +2,6 @@ defmodule StreamixWeb.PlansLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Billing
-  alias Streamix.Billing.Stripe
 
   def mount(params, _session, socket) do
     plans = Billing.list_active_plans()
@@ -69,7 +68,7 @@ defmodule StreamixWeb.PlansLive do
         {:ok, %{trial: true}}
       end
     else
-      Stripe.create_checkout_session(user, plan, %{
+      Billing.create_stripe_checkout_session(user, plan, %{
         success_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=success",
         cancel_url: StreamixWeb.Endpoint.url() <> ~p"/plans?checkout=canceled"
       })

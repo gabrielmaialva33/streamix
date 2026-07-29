@@ -5,7 +5,7 @@ defmodule StreamixWeb.HomeData do
 
   import Phoenix.Component, only: [assign: 2, assign: 3]
 
-  alias Streamix.AI.UserAnalytics
+  alias Streamix.AI
   alias Streamix.Cache
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
@@ -47,9 +47,9 @@ defmodule StreamixWeb.HomeData do
     |> assign(trending_period: 7)
     |> assign(series_genre: "all")
     |> assign(channels_category: "all")
-    |> assign(genre_filters: UserAnalytics.get_user_genre_filters(nil))
-    |> assign(period_filters: UserAnalytics.get_period_filters())
-    |> assign(channel_filters: UserAnalytics.get_channel_category_filters())
+    |> assign(genre_filters: AI.get_user_genre_filters(nil))
+    |> assign(period_filters: AI.get_period_filters())
+    |> assign(channel_filters: AI.get_channel_category_filters())
   end
 
   def load(socket) do
@@ -77,8 +77,8 @@ defmodule StreamixWeb.HomeData do
 
       uid ->
         # Result is discarded; the side effect is the populated cache.
-        _ = UserAnalytics.get_user_profile(uid)
-        _ = UserAnalytics.get_user_insights(uid)
+        _ = AI.get_user_profile(uid)
+        _ = AI.get_user_insights(uid)
         socket
     end
   end
@@ -264,7 +264,7 @@ defmodule StreamixWeb.HomeData do
 
   defp load_trending(user_id, genre, period) do
     Cache.fetch("home:trending:user:#{user_id}:#{genre}:#{period}", @trending_ttl, fn ->
-      UserAnalytics.get_personalized_trending(user_id,
+      AI.get_personalized_trending(user_id,
         limit: @home_default_limit,
         genre: genre,
         days: period
@@ -281,20 +281,20 @@ defmodule StreamixWeb.HomeData do
   defp load_series(nil, _genre), do: Iptv.list_public_series(limit: @home_default_limit)
 
   defp load_series(user_id, genre) do
-    UserAnalytics.get_personalized_series(user_id, limit: @home_default_limit, genre: genre)
+    AI.get_personalized_series(user_id, limit: @home_default_limit, genre: genre)
   end
 
   defp load_channels(nil, _category), do: Iptv.list_public_channels(limit: @home_channels_limit)
 
   defp load_channels(user_id, category) do
-    UserAnalytics.get_personalized_channels(user_id,
+    AI.get_personalized_channels(user_id,
       limit: @home_channels_limit,
       category: category
     )
   end
 
   defp load_recommendations(user_id) do
-    case UserAnalytics.get_recommendations(user_id, limit: @home_default_limit) do
+    case AI.get_recommendations(user_id, limit: @home_default_limit) do
       recommendations when is_list(recommendations) -> recommendations
       {:ok, recommendations} -> recommendations
       _ -> []
@@ -303,7 +303,7 @@ defmodule StreamixWeb.HomeData do
 
   defp load_genre_filters(user_id) do
     Cache.fetch("home:genre_filters:user:#{user_id}", @genre_filters_ttl, fn ->
-      UserAnalytics.get_user_genre_filters(user_id)
+      AI.get_user_genre_filters(user_id)
     end)
   end
 

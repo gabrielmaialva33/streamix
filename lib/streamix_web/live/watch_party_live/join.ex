@@ -6,7 +6,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
   import StreamixWeb.WatchPartyComponents
 
-  alias Streamix.Iptv.CatalogItem
+  alias Streamix.Iptv
   alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -40,8 +40,8 @@ defmodule StreamixWeb.WatchPartyLive.Join do
          |> redirect(to: ~p"/")}
 
       room ->
-        content_name = CatalogItem.content_name(room.catalog_item)
-        content_icon = CatalogItem.content_icon(room.catalog_item)
+        content_name = Iptv.catalog_item_content_name(room.catalog_item)
+        content_icon = Iptv.catalog_item_content_icon(room.catalog_item)
 
         socket =
           socket

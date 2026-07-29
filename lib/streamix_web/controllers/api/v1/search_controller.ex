@@ -21,10 +21,9 @@ defmodule StreamixWeb.Api.V1.SearchController do
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  alias Streamix.AI.SemanticSearch
+  alias Streamix.AI
   alias Streamix.Helpers
   alias Streamix.Iptv
-  alias Streamix.Iptv.{Movie, Series}
 
   @doc """
   Handle CORS preflight OPTIONS requests.
@@ -41,13 +40,13 @@ defmodule StreamixWeb.Api.V1.SearchController do
   Semantic search for movies using natural language.
   """
   def movies(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
-    if SemanticSearch.available?() do
+    if AI.semantic_search_available?() do
       opts = [
         limit: parse_int(conn.params["limit"], 20),
         min_score: parse_float(conn.params["min_score"], 0.6)
       ]
 
-      case SemanticSearch.search(query, :movies, opts) do
+      case AI.semantic_search(query, :movies, opts) do
         {:ok, results} ->
           movies = enrich_movie_results(results)
           json(conn, %{movies: movies, query: query, semantic: true})
@@ -71,13 +70,13 @@ defmodule StreamixWeb.Api.V1.SearchController do
   Semantic search for series using natural language.
   """
   def series(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
-    if SemanticSearch.available?() do
+    if AI.semantic_search_available?() do
       opts = [
         limit: parse_int(conn.params["limit"], 20),
         min_score: parse_float(conn.params["min_score"], 0.6)
       ]
 
-      case SemanticSearch.search(query, :series, opts) do
+      case AI.semantic_search(query, :series, opts) do
         {:ok, results} ->
           series = enrich_series_results(results)
           json(conn, %{series: series, query: query, semantic: true})
@@ -119,7 +118,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp similar_results(conn, collection, collection_atom, content_id, limit) do
-    if SemanticSearch.available?() do
+    if AI.semantic_search_available?() do
       search_similar(conn, collection, collection_atom, content_id, limit)
     else
       conn
@@ -129,7 +128,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp search_similar(conn, collection, collection_atom, content_id, limit) do
-    case SemanticSearch.similar(content_id, collection_atom, limit: limit) do
+    case AI.similar_content(content_id, collection_atom, limit: limit) do
       {:ok, results} ->
         items = enrich_results(results, collection_atom)
         json(conn, %{items: items, source_id: content_id, collection: collection})
@@ -151,11 +150,11 @@ defmodule StreamixWeb.Api.V1.SearchController do
   Returns semantic search availability and stats.
   """
   def status(conn, _params) do
-    available = SemanticSearch.available?()
+    available = AI.semantic_search_available?()
 
     stats =
       if available do
-        {:ok, stats} = SemanticSearch.stats()
+        {:ok, stats} = AI.semantic_search_stats()
         stats
       else
         %{}
@@ -172,7 +171,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   Returns detailed semantic search system info.
   """
   def info(conn, _params) do
-    json(conn, SemanticSearch.info())
+    json(conn, AI.semantic_search_info())
   end
 
   # Private functions
@@ -205,7 +204,6 @@ defmodule StreamixWeb.Api.V1.SearchController do
 
   defp enrich_results(results, :movies), do: enrich_movie_results(results)
   defp enrich_results(results, :series), do: enrich_series_results(results)
-  defp enrich_results(results, _), do: results
 
   defp parse_collection("movies"), do: {:ok, :movies}
   defp parse_collection("series"), do: {:ok, :series}
@@ -220,7 +218,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
       poster: proxy_image(movie.stream_icon),
-      backdrop: proxy_image(Movie.backdrop_urls(movie)),
+      backdrop: proxy_image(Iptv.backdrop_urls(movie)),
       plot: movie.plot,
       score: result.score
     }
@@ -235,7 +233,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
       poster: proxy_image(series.cover),
-      backdrop: proxy_image(Series.backdrop_urls(series)),
+      backdrop: proxy_image(Iptv.backdrop_urls(series)),
       plot: series.plot,
       score: result.score
     }

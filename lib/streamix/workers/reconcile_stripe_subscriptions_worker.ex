@@ -19,9 +19,6 @@ defmodule Streamix.Workers.ReconcileStripeSubscriptionsWorker do
       {:error, :stripe_not_configured} ->
         Logger.info("Stripe reconciliation skipped: Stripe is not configured")
         :ok
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 end

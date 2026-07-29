@@ -7,7 +7,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   use StreamixWeb, :controller
 
-  alias Streamix.Iptv.Providers
+  alias Streamix.Iptv
 
   plug StreamixWeb.Plugs.BearerAuth
 
@@ -17,7 +17,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   def index(conn, _params) do
     user = conn.assigns.current_user
-    providers = Providers.list(user.id)
+    providers = Iptv.list_providers(user.id)
 
     json(conn, %{
       providers: Enum.map(providers, &serialize/1)
@@ -41,7 +41,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
       visibility: :private
     }
 
-    case Providers.create_for_user(user.id, attrs) do
+    case Iptv.create_provider(user.id, attrs) do
       {:ok, provider} ->
         conn
         |> put_status(:created)
@@ -70,8 +70,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
     user = conn.assigns.current_user
 
     with {:ok, provider_id} <- parse_id(id),
-         provider when not is_nil(provider) <- Providers.get_user_provider(user.id, provider_id) do
-      case Providers.delete(provider) do
+         provider when not is_nil(provider) <- Iptv.get_user_provider(user.id, provider_id) do
+      case Iptv.delete_provider(provider) do
         {:ok, _} ->
           send_resp(conn, 204, "")
 
@@ -99,8 +99,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
     user = conn.assigns.current_user
 
     with {:ok, provider_id} <- parse_id(id),
-         provider when not is_nil(provider) <- Providers.get_user_provider(user.id, provider_id) do
-      case Providers.async_sync(provider) do
+         provider when not is_nil(provider) <- Iptv.get_user_provider(user.id, provider_id) do
+      case Iptv.async_sync_provider(provider) do
         {:ok, _job} ->
           conn
           |> put_status(:accepted)

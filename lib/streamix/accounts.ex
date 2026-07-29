@@ -4,7 +4,7 @@ defmodule Streamix.Accounts do
   """
 
   import Ecto.Query, warn: false
-  alias Streamix.Accounts.{Role, User, UserNotifier, UserToken}
+  alias Streamix.Accounts.{IpTracker, Role, Scope, User, UserNotifier, UserToken}
   alias Streamix.Billing
   alias Streamix.Repo
 
@@ -85,6 +85,13 @@ defmodule Streamix.Accounts do
   end
 
   ## User registration
+
+  @doc """
+  Builds a registration changeset without exposing the user schema to web callers.
+  """
+  def new_user_registration(attrs \\ %{}, opts \\ []) do
+    User.registration_changeset(%User{}, attrs, opts)
+  end
 
   @doc """
   Registers a user.
@@ -222,6 +229,26 @@ defmodule Streamix.Accounts do
   def change_user_registration(user, attrs \\ %{}, opts \\ []) do
     User.registration_changeset(user, attrs, opts)
   end
+
+  @doc """
+  Builds the authenticated request scope for a user.
+  """
+  defdelegate scope_for_user(user), to: Scope, as: :for_user
+
+  @doc """
+  Extracts the session metadata persisted with an authenticated request.
+  """
+  defdelegate request_info(conn), to: IpTracker, as: :get_request_info
+
+  @doc """
+  Records an access event without blocking the request.
+  """
+  defdelegate log_access_async(conn, user_id), to: IpTracker
+
+  @doc """
+  Returns the normalized client IP used by request rate limiting.
+  """
+  defdelegate client_ip(conn), to: IpTracker, as: :get_client_ip
 
   ## Settings
 

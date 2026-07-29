@@ -14,7 +14,7 @@ defmodule StreamixWeb.Gindex.DetailHelpers do
   `Map.get/2`.
   """
 
-  alias Streamix.Gindex.DisplayName
+  alias Streamix.Gindex
 
   @doc """
   Display title for series and animes.
@@ -33,7 +33,7 @@ defmodule StreamixWeb.Gindex.DetailHelpers do
     if is_binary(title) and String.trim(title) != "" and title != name do
       title
     else
-      DisplayName.clean_title(name)
+      Gindex.clean_display_title(name)
     end
   end
 
@@ -50,7 +50,7 @@ defmodule StreamixWeb.Gindex.DetailHelpers do
     if is_binary(title) and String.trim(title) != "" do
       title
     else
-      DisplayName.clean_title(Map.get(entity, :name))
+      Gindex.clean_display_title(Map.get(entity, :name))
     end
   end
 
@@ -68,7 +68,7 @@ defmodule StreamixWeb.Gindex.DetailHelpers do
         Map.get(episode, :name) ||
         "Episódio #{Map.get(episode, :episode_num)}"
 
-    cleaned = DisplayName.clean_episode(raw)
+    cleaned = Gindex.clean_episode_title(raw)
     if cleaned == "", do: raw, else: cleaned
   end
 end

@@ -5,7 +5,6 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   use StreamixWeb, :live_component
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Provider
 
   def mount(socket) do
     {:ok,
@@ -19,7 +18,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
       if provider do
         Iptv.change_provider(provider)
       else
-        Iptv.change_provider(%Provider{})
+        Iptv.new_provider_changeset()
       end
 
     {:ok,
@@ -30,8 +29,11 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
 
   def handle_event("validate", %{"provider" => params}, socket) do
     changeset =
-      (socket.assigns.provider || %Provider{})
-      |> Iptv.change_provider(params)
+      if socket.assigns.provider do
+        Iptv.change_provider(socket.assigns.provider, params)
+      else
+        Iptv.new_provider_changeset(params)
+      end
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset, as: "provider"))}

@@ -43,7 +43,6 @@ defmodule Streamix.Gindex.AnimeMatcher do
         {:miss, :low_score}
       end
     else
-      {:ok, []} -> {:miss, :no_results}
       [] -> {:miss, :no_results}
       {:error, reason} -> {:miss, reason}
     end
