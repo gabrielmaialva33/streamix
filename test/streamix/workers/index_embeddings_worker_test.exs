@@ -51,6 +51,10 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
     refute_receive {:series, _}
   end
 
+  test "allows long backfills but stays below the Lifeline threshold" do
+    assert IndexEmbeddingsWorker.timeout(%Oban.Job{}) == :timer.minutes(150)
+  end
+
   defp set_results(results) do
     Application.put_env(:streamix, :index_embeddings_test_results, results)
   end

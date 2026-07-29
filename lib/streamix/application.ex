@@ -20,6 +20,7 @@ defmodule Streamix.Application do
       [
         StreamixWeb.Telemetry,
         Streamix.Repo,
+        maybe_oban_startup_recovery_child(),
         {Streamix.RateLimit, clean_period: :timer.minutes(10)},
         {Oban, Application.fetch_env!(:streamix, Oban)},
         {Task.Supervisor, name: Streamix.TaskSupervisor},
@@ -115,6 +116,14 @@ defmodule Streamix.Application do
     Streamix.Gindex.Telemetry.setup()
 
     result
+  end
+
+  defp maybe_oban_startup_recovery_child do
+    if Application.get_env(:streamix, :recover_orphaned_jobs_on_startup, false) do
+      [Streamix.ObanStartupRecovery]
+    else
+      []
+    end
   end
 
   defp maybe_provider_health_monitor_child do

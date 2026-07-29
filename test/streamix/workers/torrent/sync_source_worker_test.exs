@@ -90,6 +90,10 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorkerTest do
       assert changeset.changes.queue == "torrent_sync"
       assert changeset.changes.max_attempts == 3
     end
+
+    test "allows a full source walk but stays below the Lifeline threshold" do
+      assert SyncSourceWorker.timeout(%Oban.Job{}) == :timer.minutes(150)
+    end
   end
 
   defp pad(seed) do

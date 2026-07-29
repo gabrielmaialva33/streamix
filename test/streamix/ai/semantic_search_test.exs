@@ -5,7 +5,7 @@ defmodule Streamix.AI.SemanticSearchTest do
 
   test "index_contents stops after the first failed batch and reports prior progress" do
     contents =
-      Enum.map(1..25, fn id ->
+      Enum.map(1..130, fn id ->
         %{id: id, title: "Content #{id}", provider_id: 1}
       end)
 
@@ -16,7 +16,7 @@ defmodule Streamix.AI.SemanticSearchTest do
 
       case hd(batch).id do
         1 -> {:ok, length(batch)}
-        11 -> {:error, :provider_unavailable}
+        65 -> {:error, :provider_unavailable}
       end
     end
 
@@ -24,11 +24,11 @@ defmodule Streamix.AI.SemanticSearchTest do
              batch_indexer: batch_indexer,
              rate_limit_delay: 0
            ) ==
-             {:error, {:batch_failed, :movies, 10, :provider_unavailable}}
+             {:error, {:batch_failed, :movies, 64, :provider_unavailable}}
 
-    first_batch_ids = Enum.to_list(1..10)
-    second_batch_ids = Enum.to_list(11..20)
-    third_batch_ids = Enum.to_list(21..25)
+    first_batch_ids = Enum.to_list(1..64)
+    second_batch_ids = Enum.to_list(65..128)
+    third_batch_ids = Enum.to_list(129..130)
 
     assert_received {:batch, :movies, ^first_batch_ids}
     assert_received {:batch, :movies, ^second_batch_ids}

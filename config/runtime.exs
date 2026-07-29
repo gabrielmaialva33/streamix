@@ -230,6 +230,14 @@ config :streamix, :subdl, api_key: get_env.("SUBDL_API_KEY")
 # Both can be configured for automatic fallback
 config :streamix, :embeddings, provider: get_env.("EMBEDDING_PROVIDER") || "gemini"
 
+# Production currently runs a single BEAM node. Any Oban job left in
+# `executing` before that node starts is therefore an orphan from the previous
+# container and can be made available immediately. Disable this before adding
+# a second worker node.
+config :streamix,
+       :recover_orphaned_jobs_on_startup,
+       config_env() == :prod and get_env.("OBAN_RECOVER_ORPHANED_ON_STARTUP") != "false"
+
 # Gemini AI configuration for embeddings (3072 dimensions)
 if gemini_api_key = get_env.("GEMINI_API_KEY") do
   config :streamix, :gemini, api_key: gemini_api_key

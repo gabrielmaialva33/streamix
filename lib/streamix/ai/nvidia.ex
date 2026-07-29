@@ -30,6 +30,7 @@ defmodule Streamix.AI.Nvidia do
   @base_url "https://integrate.api.nvidia.com/v1"
   @default_model "nvidia/nv-embedqa-e5-v5"
   @embedding_dimensions 1024
+  @max_rate_limit_retries 5
 
   @doc """
   Returns the embedding dimensions for the current model.
@@ -124,7 +125,7 @@ defmodule Streamix.AI.Nvidia do
 
   # Private functions
 
-  defp do_embed_batch(texts, input_type) do
+  defp do_embed_batch(texts, input_type, rate_limit_attempt \\ 0) do
     url = "#{@base_url}/embeddings"
 
     body =
@@ -142,7 +143,7 @@ defmodule Streamix.AI.Nvidia do
       {"Accept", "application/json"}
     ]
 
-    case Req.post(url, body: body, headers: headers, receive_timeout: 30_000) do
+    case Req.post(url, body: body, headers: headers, receive_timeout: 30_000, retry: false) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         embeddings =
           body["data"]
@@ -151,10 +152,14 @@ defmodule Streamix.AI.Nvidia do
 
         {:ok, embeddings}
 
+      {:ok, %Req.Response{status: 429}} when rate_limit_attempt < @max_rate_limit_retries ->
+        delay = 2_000 * Integer.pow(2, rate_limit_attempt)
+        Logger.warning("[NVIDIA] Rate limited, retrying in #{delay}ms")
+        Process.sleep(delay)
+        do_embed_batch(texts, input_type, rate_limit_attempt + 1)
+
       {:ok, %Req.Response{status: 429}} ->
-        Logger.warning("[NVIDIA] Rate limited, retrying in 2s")
-        Process.sleep(2000)
-        do_embed_batch(texts, input_type)
+        {:error, :rate_limit_retries_exhausted}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         Logger.error("[NVIDIA] API error #{status}: #{inspect(body)}")

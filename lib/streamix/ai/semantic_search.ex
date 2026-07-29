@@ -26,11 +26,13 @@ defmodule Streamix.AI.SemanticSearch do
 
   import Ecto.Query
 
-  @batch_size 10
-  # NVIDIA / Gemini both cap free-tier embedding endpoints around
-  # 40 requests/minute. Express the delay as derivation-from-rate so the
-  # relationship survives someone bumping the cap without bumping the
-  # other constant.
+  # The NVIDIA endpoint accepts 64 E5 inputs in one request (also within
+  # Gemini's batch API envelope). Sending 10 made a full production backfill
+  # take most of a day without reducing the number of billable inputs.
+  @batch_size 64
+  # Keep the hosted endpoint allocation conservative at 40 requests/minute.
+  # Express the delay as derivation-from-rate so the relationship survives
+  # someone bumping the cap without bumping the other constant.
   @requests_per_minute 40
   @rate_limit_delay div(60_000, @requests_per_minute)
 
@@ -147,21 +149,60 @@ defmodule Streamix.AI.SemanticSearch do
       when is_list(contents) and is_atom(collection) do
     batch_indexer = Keyword.get(opts, :batch_indexer, &index_batch/2)
     rate_limit_delay = Keyword.get(opts, :rate_limit_delay, @rate_limit_delay)
+    batch_size = Keyword.get(opts, :batch_size, @batch_size)
+    total_contents = length(contents)
 
-    contents
-    |> Enum.map(&content_to_map/1)
-    |> Enum.chunk_every(@batch_size)
-    |> Enum.reduce_while({:ok, 0}, fn batch, {:ok, count} ->
-      case batch_indexer.(batch, collection) do
-        {:ok, indexed} ->
-          Process.sleep(rate_limit_delay)
-          {:cont, {:ok, count + indexed}}
+    batches =
+      contents
+      |> Enum.map(&content_to_map/1)
+      |> Enum.chunk_every(batch_size)
 
-        {:error, reason} ->
-          Logger.error("[SemanticSearch] Batch indexing failed: #{inspect(reason)}")
-          {:halt, {:error, {:batch_failed, collection, count, reason}}}
-      end
-    end)
+    total_batches = length(batches)
+
+    context = %{
+      batch_indexer: batch_indexer,
+      collection: collection,
+      rate_limit_delay: rate_limit_delay,
+      total_batches: total_batches,
+      total_contents: total_contents
+    }
+
+    batches
+    |> Enum.with_index(1)
+    |> Enum.reduce_while({:ok, 0}, &index_content_batch(&1, &2, context))
+  end
+
+  defp index_content_batch({batch, batch_number}, {:ok, count}, context) do
+    batch
+    |> context.batch_indexer.(context.collection)
+    |> handle_index_batch(batch_number, count, context)
+  end
+
+  defp handle_index_batch({:ok, indexed}, batch_number, count, context) do
+    indexed_total = count + indexed
+
+    maybe_log_index_progress(batch_number, indexed_total, context)
+    maybe_wait_for_next_batch(batch_number, context)
+
+    {:cont, {:ok, indexed_total}}
+  end
+
+  defp handle_index_batch({:error, reason}, _batch_number, count, context) do
+    Logger.error("[SemanticSearch] Batch indexing failed: #{inspect(reason)}")
+    {:halt, {:error, {:batch_failed, context.collection, count, reason}}}
+  end
+
+  defp maybe_log_index_progress(batch_number, indexed_total, context) do
+    if rem(batch_number, 10) == 0 or batch_number == context.total_batches do
+      Logger.info(
+        "[SemanticSearch] #{context.collection} batch #{batch_number}/#{context.total_batches}, " <>
+          "#{indexed_total}/#{context.total_contents} indexed"
+      )
+    end
+  end
+
+  defp maybe_wait_for_next_batch(batch_number, context) do
+    if batch_number < context.total_batches, do: Process.sleep(context.rate_limit_delay)
   end
 
   @doc """

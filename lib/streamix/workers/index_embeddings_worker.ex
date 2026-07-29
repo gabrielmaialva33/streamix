@@ -29,6 +29,9 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
   require Logger
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(150)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
     semantic_search = semantic_search_module()
 

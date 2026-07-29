@@ -18,6 +18,9 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
   require Logger
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(150)
+
+  @impl Oban.Worker
   def perform(%Oban.Job{args: %{"provider_id" => provider_id, "source_slug" => source_slug}}) do
     with %Provider{provider_type: :torrent} = provider <- Repo.get(Provider, provider_id),
          module when is_atom(module) and not is_nil(module) <- Torrent.source_for(source_slug) do
