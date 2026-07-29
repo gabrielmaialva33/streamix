@@ -191,7 +191,7 @@ defmodule StreamixWeb.FavoritesLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-brand",
+        "min-h-11 flex-shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand sm:px-4 sm:py-2 sm:text-sm",
         @current == @type && "bg-brand text-white",
         @current != @type &&
           "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
@@ -209,13 +209,22 @@ defmodule StreamixWeb.FavoritesLive do
   end
 
   defp favorite_item(assigns) do
+    assigns =
+      assign(assigns, :poster?, assigns.favorite.content_type in ["movie", "series"])
+
     ~H"""
     <div
       id={@id}
-      class="bg-surface rounded-lg overflow-hidden hover:bg-surface-hover transition-colors group border border-transparent hover:border-border"
+      data-favorite-kind={if(@poster?, do: "poster", else: "wide")}
+      class="group self-start overflow-hidden rounded-lg border border-transparent bg-surface transition-colors hover:border-border hover:bg-surface-hover"
     >
       <div
-        class="relative aspect-video bg-surface-hover cursor-pointer"
+        data-favorite-play
+        class={[
+          "relative cursor-pointer bg-surface-hover",
+          @poster? && "aspect-[2/3]",
+          !@poster? && "aspect-video"
+        ]}
         phx-click="play"
         phx-value-id={@favorite.content_id}
         phx-value-type={@favorite.content_type}
@@ -224,7 +233,11 @@ defmodule StreamixWeb.FavoritesLive do
           :if={@favorite.content_icon}
           src={ImageProxy.proxy(@favorite.content_icon)}
           alt={@favorite.content_name}
-          class="w-full h-full object-contain p-2"
+          class={[
+            "h-full w-full",
+            @poster? && "object-cover",
+            !@poster? && "object-contain p-4"
+          ]}
           loading="lazy"
           decoding="async"
         />
@@ -254,7 +267,7 @@ defmodule StreamixWeb.FavoritesLive do
             phx-click="remove_favorite"
             phx-value-type={@favorite.content_type}
             phx-value-content_id={@favorite.content_id}
-            class="p-1 text-text-secondary sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:text-error hover:bg-error/10 rounded-md focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-error"
+            class="flex size-11 items-center justify-center rounded-md text-text-secondary transition-all hover:bg-error/10 hover:text-error focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-error sm:opacity-0 sm:group-hover:opacity-100"
             aria-label="Remover dos favoritos"
           >
             <.icon name="hero-trash" class="size-4" />

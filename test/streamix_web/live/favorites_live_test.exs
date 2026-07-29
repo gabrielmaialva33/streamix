@@ -37,10 +37,46 @@ defmodule StreamixWeb.FavoritesLiveTest do
     test "displays filter buttons", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/favorites")
 
-      assert has_element?(view, "button", "Todos")
+      assert has_element?(view, "button.min-h-11", "Todos")
       assert has_element?(view, "button", "Ao Vivo")
       assert has_element?(view, "button", "Filmes")
       assert has_element?(view, "button", "Séries")
+      assert has_element?(view, "footer a[href='/'].min-w-11")
+    end
+
+    test "uses poster and wide artwork ratios according to content", %{conn: conn, user: user} do
+      provider = provider_fixture(user, %{visibility: "global", is_system: true})
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Filme Vertical",
+          title: "Filme Vertical",
+          stream_icon: "https://example.com/movie.jpg"
+        })
+
+      channel =
+        channel_fixture(provider, %{
+          name: "Canal Horizontal",
+          stream_icon: "https://example.com/channel.png"
+        })
+
+      movie_favorite_fixture(user, movie)
+      favorite_fixture(user, channel)
+
+      {:ok, view, html} = live(conn, ~p"/favorites")
+
+      assert has_element?(
+               view,
+               "[data-favorite-kind='poster'] [data-favorite-play] img.object-cover"
+             )
+
+      assert has_element?(
+               view,
+               "[data-favorite-kind='wide'] [data-favorite-play].aspect-video img.object-contain"
+             )
+
+      assert html =~ "aspect-[2/3]"
+      assert has_element?(view, "button[aria-label='Remover dos favoritos'].size-11")
     end
   end
 
@@ -115,7 +151,7 @@ defmodule StreamixWeb.FavoritesLiveTest do
 
       # Click play on the favorite item (first matching element)
       view
-      |> element("div.aspect-video[phx-click='play'][phx-value-id='#{channel.id}']")
+      |> element("[data-favorite-play][phx-click='play'][phx-value-id='#{channel.id}']")
       |> render_click()
 
       # Should navigate to watch page
