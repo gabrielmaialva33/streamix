@@ -163,6 +163,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
       <div
         id="providers"
         phx-update="stream"
+        aria-label="Provedores configurados"
         class="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3"
       >
         <div :for={{dom_id, provider} <- @streams.providers} id={dom_id} class="h-full min-w-0">

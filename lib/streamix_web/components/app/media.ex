@@ -108,8 +108,14 @@ defmodule StreamixWeb.App.Media do
   attr :on_delete, :string, default: "delete_provider"
 
   def provider_card(assigns) do
+    assigns =
+      assign(assigns, :sync_message, sync_status_message(assigns.provider.sync_status))
+
     ~H"""
-    <div class="flex h-full min-w-0 flex-col rounded-xl bg-surface border border-border p-4 hover:border-brand/30 transition-colors">
+    <div
+      data-sync-status={@provider.sync_status}
+      class="flex h-full min-w-0 flex-col rounded-xl border border-border bg-surface p-4 transition-colors hover:border-brand/30"
+    >
       <div class="flex items-start justify-between gap-4">
         <div class="min-w-0 flex-1">
           <h3 class="font-semibold text-text-primary truncate">{@provider.name}</h3>
@@ -117,6 +123,18 @@ defmodule StreamixWeb.App.Media do
         </div>
         <.sync_status_badge status={@provider.sync_status} />
       </div>
+
+      <p
+        :if={@sync_message}
+        data-sync-state-message
+        class={[
+          "mt-2 text-xs",
+          @provider.sync_status == "failed" && "text-error",
+          @provider.sync_status != "failed" && "text-text-muted"
+        ]}
+      >
+        {@sync_message}
+      </p>
 
       <div class="mt-4 min-h-12 text-sm text-text-secondary">
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -148,22 +166,23 @@ defmodule StreamixWeb.App.Media do
         </div>
       </div>
 
-      <div class="mt-auto flex items-center justify-end gap-2 pt-3 border-t border-border">
+      <div class="mt-auto flex flex-wrap items-center justify-end gap-1 border-t border-border pt-3 sm:gap-2">
         <button
           type="button"
           phx-click={@on_sync}
           phx-value-id={@provider.id}
           disabled={@provider.sync_status in ["pending", "syncing"]}
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors disabled:opacity-50"
+          class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-50"
         >
           <.icon
             name="hero-arrow-path"
             class={["size-4", @provider.sync_status == "syncing" && "animate-spin"]}
-          /> Sync
+          /> Sincronizar
         </button>
         <.link
           navigate={~p"/providers/#{@provider.id}"}
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
+          aria-label="Ver provedor"
+          class="inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           <.icon name="hero-eye" class="size-4" /> Ver
         </.link>
@@ -171,7 +190,8 @@ defmodule StreamixWeb.App.Media do
           type="button"
           phx-click={@on_edit}
           phx-value-id={@provider.id}
-          class="p-1.5 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
+          aria-label="Editar provedor"
+          class="flex size-11 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           <.icon name="hero-pencil" class="size-4" />
         </button>
@@ -180,7 +200,8 @@ defmodule StreamixWeb.App.Media do
           phx-click={@on_delete}
           phx-value-id={@provider.id}
           data-confirm="Tem certeza que deseja excluir este provedor?"
-          class="p-1.5 text-text-secondary hover:text-error hover:bg-error/10 rounded-md transition-colors"
+          aria-label="Excluir provedor"
+          class="flex size-11 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-error/10 hover:text-error"
         >
           <.icon name="hero-trash" class="size-4" />
         </button>
@@ -188,6 +209,11 @@ defmodule StreamixWeb.App.Media do
     </div>
     """
   end
+
+  defp sync_status_message("pending"), do: "Sincronização aguardando processamento."
+  defp sync_status_message("syncing"), do: "Sincronizando o catálogo deste provedor."
+  defp sync_status_message("failed"), do: "A última sincronização falhou. Tente novamente."
+  defp sync_status_message(_status), do: nil
 
   defp sync_status_badge(assigns) do
     {bg, text, label} =

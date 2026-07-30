@@ -21,4 +21,46 @@ defmodule StreamixWeb.Providers.ProviderListLiveTest do
       assert render(view) =~ "Meu Provider"
     end
   end
+
+  describe "provider status" do
+    setup :register_and_log_in_user
+
+    test "renders pending sync state and touch-safe labelled actions", %{
+      conn: conn,
+      user: user
+    } do
+      provider =
+        provider_fixture(user, %{
+          name: "Provider pendente",
+          sync_status: "pending"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/providers")
+      card = "#providers-#{provider.id} [data-sync-status='pending']"
+
+      assert has_element?(view, card, "Pendente")
+      assert has_element?(view, "#{card} [data-sync-state-message]")
+
+      assert has_element?(
+               view,
+               "#{card} button[phx-click='sync_provider'][disabled].min-h-11",
+               "Sincronizar"
+             )
+
+      assert has_element?(
+               view,
+               "#{card} a[aria-label='Ver provedor'].min-h-11"
+             )
+
+      assert has_element?(
+               view,
+               "#{card} button[aria-label='Editar provedor'].size-11"
+             )
+
+      assert has_element?(
+               view,
+               "#{card} button[aria-label='Excluir provedor'].size-11"
+             )
+    end
+  end
 end
