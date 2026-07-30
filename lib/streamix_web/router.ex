@@ -50,6 +50,15 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
   end
 
+  # Public diagnostic beacons can't authenticate because `sendBeacon()` can't
+  # attach the app's custom headers. Give them a separate, intentionally small
+  # bucket so they can't flood logs or consume the stream-proxy allowance.
+  pipeline :internal_diag_rate_limited do
+    plug :accepts, ["json"]
+    plug StreamixWeb.Plugs.CORS
+    plug StreamixWeb.Plugs.RateLimit, limit: 6, period: 60_000
+  end
+
   # WebVTT is not part of Plug's default MIME registry, so the generic
   # JSON API pipeline rejects the player's `Accept: text/vtt` with 406.
   pipeline :subtitle_rate_limited do
@@ -102,11 +111,14 @@ defmodule StreamixWeb.Router do
     get "/health", HealthController, :index
     get "/health/ready", HealthController, :ready
     post "/billing/webhooks/stripe", BillingWebhookController, :stripe
+  end
 
-    # Client-side diagnostic beacon. Fired by app.js when the home
-    # skeleton stays visible >8s — gives us UA + transport + display
-    # mode to triage the Safari iOS stuck-skeleton bug. No auth: the
-    # beacon comes from sendBeacon() which can't set custom headers.
+  # Client-side diagnostic beacon. Fired by app.js when the home skeleton
+  # stays visible >8s. It remains unauthenticated because sendBeacon() can't
+  # set custom headers, but has a dedicated rate-limit bucket.
+  scope "/api", StreamixWeb do
+    pipe_through :internal_diag_rate_limited
+
     post "/internal/home-stuck", InternalDiagController, :home_stuck
   end
 

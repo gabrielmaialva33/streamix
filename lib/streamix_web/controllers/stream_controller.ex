@@ -13,6 +13,7 @@ defmodule StreamixWeb.StreamController do
   require Logger
 
   alias Streamix.Iptv
+  alias Streamix.SafeLog
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
   alias StreamixWeb.StreamToken
@@ -349,7 +350,6 @@ defmodule StreamixWeb.StreamController do
   # Replaces /live/USERNAME/PASSWORD/, /movie/USERNAME/PASSWORD/,
   # and /series/USERNAME/PASSWORD/ with redacted placeholders.
   defp sanitize_url(url) do
-    url
-    |> String.replace(~r{/(live|movie|series)/[^/]+/[^/]+/}, "/\\1/[REDACTED]/[REDACTED]/")
+    SafeLog.redact_url(url)
   end
 end

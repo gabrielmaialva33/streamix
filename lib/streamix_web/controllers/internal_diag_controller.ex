@@ -9,20 +9,35 @@ defmodule StreamixWeb.InternalDiagController do
 
   require Logger
 
+  alias Streamix.Accounts
+  alias Streamix.SafeLog
+
+  @diagnostic_fields [
+    {"ua", 384},
+    {"transport", 64},
+    {"connected", 32},
+    {"standalone", 32},
+    {"iosWebkit", 32},
+    {"at", 64}
+  ]
+
   def home_stuck(conn, params) do
     Logger.warning(fn ->
       [
         "[home-stuck] ",
         "ip=",
-        format_ip(conn.remote_ip),
+        Accounts.client_ip(conn),
         " ",
-        params |> Map.take(~w(ua transport connected standalone iosWebkit at)) |> inspect()
+        params |> bounded_diagnostics() |> inspect()
       ]
     end)
 
     send_resp(conn, 204, "")
   end
 
-  defp format_ip(ip) when is_tuple(ip), do: ip |> :inet.ntoa() |> to_string()
-  defp format_ip(_), do: "?"
+  defp bounded_diagnostics(params) do
+    Map.new(@diagnostic_fields, fn {field, limit} ->
+      {field, params |> Map.get(field) |> SafeLog.scalar(limit)}
+    end)
+  end
 end

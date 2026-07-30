@@ -31,6 +31,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   use GenServer
   require Logger
 
+  alias Streamix.SafeLog
+
   @table :stream_redirect_cache
   @ok_ttl_seconds 60
   @err_ttl_seconds 3
@@ -292,6 +294,10 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   # container restarts. Any Redis hiccup is logged at debug level and
   # does not affect resolution latency.
 
+  # Values under this private prefix are written exclusively by
+  # redis_set_async/3 below. :safe prevents constructing executable or
+  # unknown runtime terms if Redis contents are corrupted.
+  # sobelow_skip ["Misc.BinToTerm"]
   defp redis_get(key) do
     full_key = @redis_prefix <> key
 
@@ -465,6 +471,6 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   defp sanitize(url) do
-    String.replace(url, ~r{/(live|movie|series)/[^/]+/[^/]+/}, "/\\1/[REDACTED]/[REDACTED]/")
+    SafeLog.redact_url(url)
   end
 end

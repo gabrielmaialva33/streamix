@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.StreamProxy do
   require Logger
 
   alias Streamix.Gindex.UrlCache
+  alias Streamix.SafeLog
 
   @cache_table :stream_proxy_cache
   # 5 minutes cache
@@ -260,11 +261,7 @@ defmodule Streamix.Iptv.StreamProxy do
     Process.send_after(self(), :cleanup, @cleanup_interval_ms)
   end
 
-  defp truncate_url(url) when byte_size(url) > 80 do
-    String.slice(url, 0, 77) <> "..."
-  end
-
-  defp truncate_url(url), do: url
+  defp truncate_url(url), do: SafeLog.redact_url(url, max_length: 80)
 
   # Ensure body is always binary
   defp ensure_binary(body) when is_binary(body), do: body

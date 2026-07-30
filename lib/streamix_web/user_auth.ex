@@ -7,8 +7,6 @@ defmodule StreamixWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
-  require Logger
-
   alias Streamix.Accounts
 
   @remember_me_cookie "_streamix_user_remember_me"

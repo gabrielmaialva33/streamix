@@ -15,8 +15,6 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
   """
 
   import Plug.Conn
-  require Logger
-
   def init(opts), do: opts
 
   def call(%{method: "OPTIONS"} = conn, _opts) do

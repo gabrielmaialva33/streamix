@@ -34,6 +34,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   alias Plug.Conn
 
+  alias Streamix.SafeLog
+
   alias Streamix.Iptv.Streaming.{
     FailoverPolicy,
     FallbackVideo,
@@ -552,7 +554,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp sanitize(url) do
-    Regex.replace(~r{/(movie|series|live)/[^/]+/[^/]+/}, url, "/\\1/***/***/")
+    SafeLog.redact_url(url)
   end
 
   defp emit_telemetry(event, state, metadata \\ []) do

@@ -11,6 +11,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   require Logger
 
   alias Streamix.Iptv.StreamMultiplexerSupervisor
+  alias Streamix.SafeLog
   alias Streamix.Security.UrlValidator
 
   @connect_timeout 10_000
@@ -300,14 +301,14 @@ defmodule Streamix.Iptv.StreamMultiplexer do
         reconnect_redirect(redirect_url, state)
 
       {:error, reason} ->
-        Logger.error("[StreamMux] SSRF blocked redirect to #{redirect_url}")
+        Logger.error("[StreamMux] SSRF blocked redirect to #{SafeLog.redact_url(redirect_url)}")
         close_upstream(state)
         stop_with_stream_error(reason, state)
     end
   end
 
   defp reconnect_redirect(redirect_url, state) do
-    Logger.info("[StreamMux] Following redirect to #{redirect_url}")
+    Logger.info("[StreamMux] Following redirect to #{SafeLog.redact_url(redirect_url)}")
     close_upstream(state)
 
     case connect_upstream(redirect_url) do
