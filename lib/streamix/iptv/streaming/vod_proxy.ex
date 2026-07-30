@@ -195,7 +195,10 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         end
 
       {:error, reason} ->
-        Logger.warning("[VodProxy] resolve failed for #{sanitize(url)}: #{inspect(reason)}")
+        Logger.warning(
+          "[VodProxy] resolve failed for #{sanitize(url)}: #{SafeLog.redact_inspect(reason)}"
+        )
+
         rotate_or_fallback(conn, rest, reason)
     end
   end
@@ -304,14 +307,16 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp handle_pre_flight_error(conn, reason, state) do
     if retryable_pre_flight_error?(reason) and state.retry_count < @max_mid_stream_retries do
       Logger.info(
-        "[VodProxy] pre-flight failure (#{inspect(reason)}); retry #{state.retry_count + 1}"
+        "[VodProxy] pre-flight failure (#{SafeLog.redact_inspect(reason)}); " <>
+          "retry #{state.retry_count + 1}"
       )
 
       next_state = %{state | retry_count: state.retry_count + 1}
       emit_telemetry(:upstream_retry, next_state, reason: reason)
       retry_with_fresh_chain(conn, next_state)
     else
-      Logger.warning("[VodProxy] upstream pre-flight failed: #{inspect(reason)}")
+      Logger.warning("[VodProxy] upstream pre-flight failed: #{SafeLog.redact_inspect(reason)}")
+
       emit_telemetry(:complete, state, outcome: :pre_flight_failed, reason: reason)
       serve_fallback_or_halt(conn, reason)
     end
@@ -320,7 +325,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp handle_mid_stream_error(chunked_conn, total_sent, reason, state) do
     if state.retry_count < @max_mid_stream_retries do
       Logger.warning(
-        "[VodProxy] mid-stream upstream failure (#{inspect(reason)}); resume @ byte #{total_sent}; retry #{state.retry_count + 1}"
+        "[VodProxy] mid-stream upstream failure (#{SafeLog.redact_inspect(reason)}); " <>
+          "resume @ byte #{total_sent}; retry #{state.retry_count + 1}"
       )
 
       state = %{state | bytes_sent: total_sent, retry_count: state.retry_count + 1}

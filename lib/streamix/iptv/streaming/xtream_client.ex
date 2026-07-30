@@ -17,6 +17,7 @@ defmodule Streamix.Iptv.XtreamClient do
 
   alias Streamix.Iptv.Sync.Telemetry
   alias Streamix.Iptv.XtreamCircuitBreaker
+  alias Streamix.SafeLog
 
   require Logger
 
@@ -268,7 +269,8 @@ defmodule Streamix.Iptv.XtreamClient do
         delay = full_jitter_delay(attempt)
 
         Logger.warning(
-          "[XtreamClient] Transport error #{inspect(reason)}, retry #{attempt + 1}/#{@max_retries}"
+          "[XtreamClient] Transport error #{SafeLog.redact_inspect(reason)}, " <>
+            "retry #{attempt + 1}/#{@max_retries}"
         )
 
         Process.sleep(delay)

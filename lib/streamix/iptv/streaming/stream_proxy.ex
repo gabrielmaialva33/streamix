@@ -68,7 +68,8 @@ defmodule Streamix.Iptv.StreamProxy do
 
       {:error, reason} ->
         Logger.warning(
-          "StreamProxy: Failed to get GIndex URL for movie #{movie_id}: #{inspect(reason)}"
+          "StreamProxy: Failed to get GIndex URL for movie #{movie_id}: " <>
+            SafeLog.redact_inspect(reason)
         )
 
         {:error, reason}
@@ -235,11 +236,18 @@ defmodule Streamix.Iptv.StreamProxy do
         {:error, {:http_error, status}}
 
       {:error, %Req.TransportError{reason: reason}} ->
-        Logger.error("StreamProxy: Transport error #{inspect(reason)} for #{truncate_url(url)}")
+        Logger.error(
+          "StreamProxy: Transport error #{SafeLog.redact_inspect(reason)} " <>
+            "for #{truncate_url(url)}"
+        )
+
         {:error, {:transport_error, reason}}
 
       {:error, reason} ->
-        Logger.error("StreamProxy: Error #{inspect(reason)} for #{truncate_url(url)}")
+        Logger.error(
+          "StreamProxy: Error #{SafeLog.redact_inspect(reason)} for #{truncate_url(url)}"
+        )
+
         {:error, reason}
     end
   end

@@ -117,7 +117,8 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
       {:error, reason} ->
         Logger.error(
-          "[StreamMux] Failed to connect upstream for #{state.stream_key}: #{inspect(reason)}"
+          "[StreamMux] Failed to connect upstream for #{state.stream_key}: " <>
+            SafeLog.redact_inspect(reason)
         )
 
         broadcast(state.stream_key, {:stream_error, reason})
@@ -226,7 +227,10 @@ defmodule Streamix.Iptv.StreamMultiplexer do
         end
 
       {:error, mint_conn, reason, _responses} ->
-        Logger.error("[StreamMux] Stream error for #{state.stream_key}: #{inspect(reason)}")
+        Logger.error(
+          "[StreamMux] Stream error for #{state.stream_key}: #{SafeLog.redact_inspect(reason)}"
+        )
+
         state = %{state | mint_conn: mint_conn}
         broadcast(state.stream_key, {:stream_error, reason})
         # Attempt reconnect
@@ -271,7 +275,10 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp process_response({:error, _ref, reason}, state) do
-    Logger.error("[StreamMux] Upstream error for #{state.stream_key}: #{inspect(reason)}")
+    Logger.error(
+      "[StreamMux] Upstream error for #{state.stream_key}: #{SafeLog.redact_inspect(reason)}"
+    )
+
     broadcast(state.stream_key, {:stream_error, reason})
     {:ok, state}
   end
@@ -323,7 +330,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
          }}
 
       {:error, reason} ->
-        Logger.error("[StreamMux] Redirect connect failed: #{inspect(reason)}")
+        Logger.error("[StreamMux] Redirect connect failed: #{SafeLog.redact_inspect(reason)}")
         stop_with_stream_error(reason, state)
     end
   end

@@ -1,6 +1,7 @@
 defmodule Streamix.Iptv.Streaming.VodProxyTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
   import Plug.Test
 
   alias Streamix.Iptv.Streaming.{RedirectResolver, VodProxy}
@@ -109,6 +110,20 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     assert complete_meta == %{outcome: :client_closed, retry_count: 0}
   end
 
+  test "redacts tokens nested inside resolver errors" do
+    port = start_proxy_server(:invalid_query_redirect)
+
+    log =
+      capture_log(fn ->
+        VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream")
+      end)
+
+    assert log =~ "invalid_request_target"
+    assert log =~ "stream_id=3333506"
+    assert log =~ "token=[REDACTED]"
+    refute log =~ "top-secret"
+  end
+
   defp attach_stream_proxy_telemetry do
     test_pid = self()
     handler_id = {__MODULE__, self(), System.unique_integer([:positive])}
@@ -178,6 +193,16 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
 
     defp handle_request(conn, :terminal, 1), do: send_resp(conn, 200, "resolver")
     defp handle_request(conn, :terminal, _request_number), do: send_resp(conn, 404, "missing")
+
+    defp handle_request(conn, :invalid_query_redirect, _request_number) do
+      conn
+      |> put_resp_header(
+        "location",
+        "http://#{conn.host}:#{conn.port}/video.mp4" <>
+          "?stream_id=3333506&token=top-secret&label=bad value"
+      )
+      |> send_resp(302, "")
+    end
   end
 
   defmodule ClosingAdapter do

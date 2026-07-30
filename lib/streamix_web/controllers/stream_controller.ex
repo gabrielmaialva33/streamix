@@ -215,7 +215,7 @@ defmodule StreamixWeb.StreamController do
         end
 
       {:error, reason} ->
-        Logger.error("Stream proxy: VOD resolve failed: #{inspect(reason)}")
+        Logger.error("Stream proxy: VOD resolve failed: #{SafeLog.redact_inspect(reason)}")
 
         if transient_error?(reason) do
           retry_later(conn)

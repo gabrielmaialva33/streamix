@@ -35,6 +35,25 @@ defmodule Streamix.SafeLogTest do
     end
   end
 
+  describe "redact_inspect/2" do
+    test "redacts secrets nested inside transport errors without losing the error class" do
+      reason = %Req.HTTPError{
+        protocol: :http1,
+        reason:
+          {:invalid_request_target,
+           "/2 Fast 2 Furious.mp4?login=firevods&stream_id=3333506&token=top-secret"}
+      }
+
+      redacted = SafeLog.redact_inspect(reason)
+
+      assert redacted =~ "Req.HTTPError"
+      assert redacted =~ "invalid_request_target"
+      assert redacted =~ "stream_id=3333506"
+      assert redacted =~ "token=[REDACTED]"
+      refute redacted =~ "top-secret"
+    end
+  end
+
   describe "scalar/2" do
     test "bounds text and rejects nested client payloads" do
       assert SafeLog.scalar("abcdef", 4) == "abc…"

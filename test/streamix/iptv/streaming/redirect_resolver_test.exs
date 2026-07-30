@@ -66,6 +66,18 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
     test "missing Location header on redirect returns :missing_location", %{base: base} do
       assert {:error, :missing_location} = RedirectResolver.resolve("#{base}/headless-redirect")
     end
+
+    test "percent-encodes redirect path spaces without changing the query", %{
+      base: base,
+      counter: counter
+    } do
+      assert {:ok, final} = RedirectResolver.resolve("#{base}/spaced-redirect")
+
+      assert final ==
+               "#{base}/2%20Fast%202%20Furious.mp4?login=firevods&stream_id=3333506&token=opaque"
+
+      assert Agent.get(counter, & &1)["/2%20Fast%202%20Furious.mp4"] == 1
+    end
   end
 
   describe "prewarm_async/2" do
@@ -151,6 +163,20 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
     # /headless-redirect → 302 without Location
     defp handle(conn, "/headless-redirect") do
       send_resp(conn, 302, "")
+    end
+
+    defp handle(conn, "/spaced-redirect") do
+      location =
+        "http://#{conn.host}:#{conn.port}/2 Fast 2 Furious.mp4" <>
+          "?login=firevods&stream_id=3333506&token=opaque"
+
+      conn
+      |> put_resp_header("location", location)
+      |> send_resp(302, "")
+    end
+
+    defp handle(conn, "/2%20Fast%202%20Furious.mp4") do
+      send_resp(conn, 200, "ok")
     end
 
     defp handle(conn, _other), do: send_resp(conn, 404, "")

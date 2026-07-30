@@ -9,6 +9,7 @@ defmodule Streamix.SafeLog do
 
   @default_text_limit 256
   @default_url_limit 240
+  @default_inspect_limit 512
 
   @credential_path ~r{/(live|movie|series)/[^/?#\s]+/[^/?#\s]+(?=/|$)}i
   @credential_query ~r{([?&](?:username|password|token|api[_-]?key|apikey|auth|authorization)=)[^&#\s]*}i
@@ -37,6 +38,19 @@ defmodule Streamix.SafeLog do
   end
 
   def redact_url(_value, _opts), do: "[invalid-url]"
+
+  @doc """
+  Inspects an error or transport reason, redacts nested URL credentials, and
+  bounds the resulting log value.
+  """
+  @spec redact_inspect(term(), keyword()) :: String.t()
+  def redact_inspect(value, opts \\ []) do
+    max_length = Keyword.get(opts, :max_length, @default_inspect_limit)
+
+    value
+    |> inspect(limit: 20, printable_limit: max_length * 2, width: :infinity)
+    |> redact_url(max_length: max_length)
+  end
 
   @doc """
   Returns a bounded scalar suitable for structured diagnostic metadata.

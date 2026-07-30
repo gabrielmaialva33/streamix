@@ -44,6 +44,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   @poll_interval_ms 50
   @redis :streamix_redis
   @redis_prefix "stream_redirect:"
+  @uri_path_characters ~c"/:@!$&'()*+,;=%"
 
   # Client API
 
@@ -206,7 +207,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
         catch
           kind, reason ->
             Logger.error(
-              "RedirectResolver: walk_chain crashed (#{kind}): #{inspect(reason)} for #{sanitize(url)}"
+              "RedirectResolver: walk_chain crashed (#{kind}): " <>
+                "#{SafeLog.redact_inspect(reason)} for #{sanitize(url)}"
             )
 
             {:error, {:resolver_crashed, kind, reason}}
@@ -327,9 +329,10 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       try do
         Redix.command(@redis, ["SETEX", full_key, Integer.to_string(ttl_seconds), payload])
       rescue
-        e -> Logger.debug("RedirectResolver: Redis SETEX failed: #{inspect(e)}")
+        e -> Logger.debug("RedirectResolver: Redis SETEX failed: #{SafeLog.redact_inspect(e)}")
       catch
-        :exit, reason -> Logger.debug("RedirectResolver: Redis exit: #{inspect(reason)}")
+        :exit, reason ->
+          Logger.debug("RedirectResolver: Redis exit: #{SafeLog.redact_inspect(reason)}")
       end
     end)
 
@@ -379,7 +382,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       {:error, reason} ->
         if retryable?(reason) and attempt < @retry_attempts do
           Logger.info(
-            "RedirectResolver: hop failed (#{inspect(reason)}), retrying chain (attempt #{attempt + 1}/#{@retry_attempts})"
+            "RedirectResolver: hop failed (#{SafeLog.redact_inspect(reason)}), " <>
+              "retrying chain (attempt #{attempt + 1}/#{@retry_attempts})"
           )
 
           walk_chain(url, opts, attempt + 1)
@@ -461,13 +465,31 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   defp absolute_location(url, location) do
-    if String.starts_with?(location, "http") do
-      location
-    else
-      url
-      |> URI.merge(location)
-      |> URI.to_string()
+    absolute_url =
+      if String.starts_with?(location, "http") do
+        location
+      else
+        url
+        |> URI.merge(location)
+        |> URI.to_string()
+      end
+
+    normalize_redirect_path(absolute_url)
+  end
+
+  defp normalize_redirect_path(url) do
+    case URI.parse(url) do
+      %URI{path: path} = uri when is_binary(path) ->
+        %{uri | path: URI.encode(path, &valid_uri_path_character?/1)}
+        |> URI.to_string()
+
+      _ ->
+        url
     end
+  end
+
+  defp valid_uri_path_character?(character) do
+    URI.char_unreserved?(character) or character in @uri_path_characters
   end
 
   defp sanitize(url) do
