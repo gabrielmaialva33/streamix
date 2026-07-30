@@ -9,11 +9,11 @@ defmodule StreamixWeb.Home.Helpers do
   def get_backdrop(content) do
     case backdrop_urls(content) do
       [first | _] ->
-        ImageProxy.hero(first)
+        ImageProxy.browser_poster(first, :hero)
 
       _ ->
         cover = Map.get(content, :cover) || Map.get(content, :stream_icon)
-        if cover && cover != "", do: ImageProxy.hero(cover), else: nil
+        ImageProxy.browser_poster(cover, :hero)
     end
   end
 

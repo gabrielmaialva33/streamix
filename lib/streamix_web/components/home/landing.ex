@@ -280,13 +280,20 @@ defmodule StreamixWeb.Home.Landing do
   attr :class, :string, default: nil
 
   def public_channel_card(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :image_url,
+        ImageProxy.browser_image(Map.get(assigns.channel, :stream_icon))
+      )
+
     ~H"""
     <article class={["group w-full sm:w-[150px] lg:w-[176px]", @class]} title={@channel.name}>
       <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-md bg-surface-hover shadow-sm transition-transform duration-300 group-hover:-translate-y-1 sm:rounded-lg">
         <div id={"public-channel-img-#{@channel.id}"} phx-hook="ImageFallback" class="h-full w-full">
           <img
-            :if={Map.get(@channel, :stream_icon) not in [nil, ""]}
-            src={ImageProxy.proxy(@channel.stream_icon)}
+            :if={@image_url}
+            src={@image_url}
             alt={@channel.name}
             class="h-full w-full object-contain p-1.5 sm:p-2"
             loading="lazy"
@@ -297,7 +304,7 @@ defmodule StreamixWeb.Home.Landing do
             data-fallback
             class={[
               "flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
-              Map.get(@channel, :stream_icon) not in [nil, ""] && "hidden"
+              @image_url && "hidden"
             ]}
           >
             <.icon name="hero-tv" class="mb-1 size-5 text-brand/60 sm:size-8" />

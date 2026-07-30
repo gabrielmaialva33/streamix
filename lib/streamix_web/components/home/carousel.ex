@@ -351,6 +351,9 @@ defmodule StreamixWeb.Home.Carousel do
   end
 
   def top_10_card(assigns) do
+    assigns =
+      assign(assigns, :image_url, ImageProxy.browser_poster(assigns.movie.stream_icon, :carousel))
+
     ~H"""
     <.link
       href={~p"/browse/movies/#{@movie.id}"}
@@ -373,8 +376,8 @@ defmodule StreamixWeb.Home.Carousel do
           <div class="aspect-[2/3] relative">
             <div id={"top10-img-#{@movie.id}"} phx-hook="ImageFallback" class="w-full h-full">
               <img
-                :if={@movie.stream_icon}
-                src={ImageProxy.proxy(@movie.stream_icon)}
+                :if={@image_url}
+                src={@image_url}
                 alt={@movie.name}
                 class="w-full h-full object-cover transition-transform duration-300"
                 loading="lazy"
@@ -385,7 +388,7 @@ defmodule StreamixWeb.Home.Carousel do
                 data-fallback
                 class={[
                   "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
-                  @movie.stream_icon && "hidden"
+                  @image_url && "hidden"
                 ]}
               >
                 <.icon name="hero-film" class="size-6 text-brand/60 mb-1" />

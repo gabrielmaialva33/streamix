@@ -54,7 +54,10 @@ defmodule StreamixWeb.Home.Cards do
   end
 
   def channel_card(assigns) do
-    assigns = assign_new(assigns, :class, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:class, fn -> nil end)
+      |> assign(:image_url, ImageProxy.browser_image(assigns.channel.stream_icon))
 
     ~H"""
     <.link
@@ -67,8 +70,8 @@ defmodule StreamixWeb.Home.Cards do
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
         <div id={"home-ch-img-#{@channel.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
-            :if={@channel.stream_icon not in [nil, ""]}
-            src={ImageProxy.proxy(@channel.stream_icon)}
+            :if={@image_url}
+            src={@image_url}
             alt={@channel.name}
             class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
             loading="lazy"
@@ -79,7 +82,7 @@ defmodule StreamixWeb.Home.Cards do
             data-fallback
             class={[
               "w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-2 text-center",
-              @channel.stream_icon not in [nil, ""] && "hidden"
+              @image_url && "hidden"
             ]}
           >
             <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />
@@ -105,7 +108,10 @@ defmodule StreamixWeb.Home.Cards do
   end
 
   def history_item(assigns) do
-    assigns = assign_new(assigns, :class, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:class, fn -> nil end)
+      |> assign(:image_url, ImageProxy.browser_image(assigns.entry.content_icon))
 
     ~H"""
     <.link
@@ -118,8 +124,8 @@ defmodule StreamixWeb.Home.Cards do
       <div class="aspect-video bg-surface-hover relative flex items-center justify-center rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
         <div id={"history-img-#{@entry.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
-            :if={@entry.content_icon}
-            src={ImageProxy.proxy(@entry.content_icon)}
+            :if={@image_url}
+            src={@image_url}
             alt={@entry.content_name}
             class="w-full h-full object-cover"
             loading="lazy"
@@ -130,7 +136,7 @@ defmodule StreamixWeb.Home.Cards do
             data-fallback
             class={[
               "w-full h-full flex items-center justify-center text-text-muted",
-              @entry.content_icon && "hidden"
+              @image_url && "hidden"
             ]}
           >
             <.icon name={content_type_icon(@entry.content_type)} class="size-8 sm:size-12" />
@@ -162,7 +168,10 @@ defmodule StreamixWeb.Home.Cards do
   end
 
   def favorite_item(assigns) do
-    assigns = assign_new(assigns, :class, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:class, fn -> nil end)
+      |> assign(:image_url, ImageProxy.browser_image(assigns.favorite.content_icon))
 
     ~H"""
     <.link
@@ -179,8 +188,8 @@ defmodule StreamixWeb.Home.Cards do
           class="w-full h-full"
         >
           <img
-            :if={@favorite.content_icon}
-            src={ImageProxy.proxy(@favorite.content_icon)}
+            :if={@image_url}
+            src={@image_url}
             alt={@favorite.content_name}
             class="w-full h-full object-cover"
             loading="lazy"
@@ -191,7 +200,7 @@ defmodule StreamixWeb.Home.Cards do
             data-fallback
             class={[
               "w-full h-full flex items-center justify-center text-text-muted",
-              @favorite.content_icon && "hidden"
+              @image_url && "hidden"
             ]}
           >
             <.icon name={content_type_icon(@favorite.content_type)} class="size-6 sm:size-10" />
