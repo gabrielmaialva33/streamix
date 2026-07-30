@@ -14,28 +14,31 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
 
   use StreamixWeb, :controller
 
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+
   alias Streamix.Gindex
+  alias StreamixWeb.Api.V1.Response
 
   def show(conn, %{"type" => type, "id" => id}) do
     with {:ok, type_atom} <- parse_type(type),
-         {id_int, ""} <- Integer.parse(id),
+         {:ok, id_int} <- parse_positive_integer(id),
          {:ok, tracks} <- Gindex.fetch_media_tracks(type_atom, id_int) do
       json(conn, tracks)
     else
       :error ->
-        conn |> put_status(:bad_request) |> json(%{error: "invalid id"})
+        Response.error(conn, :bad_request, "invalid_id", "Invalid content id")
 
       {:error, :unsupported_type} ->
-        conn |> put_status(:bad_request) |> json(%{error: "unsupported type"})
+        Response.error(conn, :bad_request, "unsupported_type", "Unsupported content type")
 
       {:error, :not_found} ->
-        conn |> put_status(:not_found) |> json(%{error: "content not found"})
+        Response.error(conn, :not_found, "content_not_found", "Content not found")
 
       {:error, :not_gindex} ->
         # Choki content has its own track enumeration via hls.js — there's
         # nothing for us to probe server-side. Tell the client so it can
         # fall back to the runtime path.
-        conn |> put_status(:not_found) |> json(%{error: "tracks not available"})
+        Response.error(conn, :not_found, "tracks_not_available", "Tracks not available")
 
       {:error, :probing} ->
         # Cache miss — probe was scheduled in background. Frontend
@@ -44,11 +47,6 @@ defmodule StreamixWeb.Api.V1.GindexTracksController do
         conn
         |> put_status(:accepted)
         |> json(%{status: "probing", retry_after: 5})
-
-      {:error, reason} ->
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{error: "probe failed", reason: inspect(reason)})
     end
   end
 

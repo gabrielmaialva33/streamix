@@ -83,6 +83,11 @@ defmodule StreamixWeb.Api.V1.SubtitlesControllerTest do
       |> get("/api/subtitles/not-an-imdb-id")
       |> json_response(400)
 
-    assert response == %{"error" => "invalid imdb_id"}
+    assert response == %{
+             "error" => %{
+               "code" => "invalid_imdb_id",
+               "message" => "Invalid IMDb id"
+             }
+           }
   end
 end

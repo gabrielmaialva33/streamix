@@ -12,6 +12,7 @@ defmodule StreamixWeb.Plugs.RateLimit do
   require Logger
 
   alias Streamix.Accounts
+  alias StreamixWeb.Api.V1.Response
 
   @default_limit 100
   @default_period 60_000
@@ -47,12 +48,12 @@ defmodule StreamixWeb.Plugs.RateLimit do
         conn
         |> put_rate_limit_headers(opts.limit, 0, opts.period)
         |> put_resp_header("retry-after", Integer.to_string(div(retry_after, 1000)))
-        |> put_status(:too_many_requests)
-        |> Phoenix.Controller.json(%{
-          error: "Too many requests",
-          message: "Rate limit exceeded. Please try again later.",
+        |> Response.error(
+          :too_many_requests,
+          "rate_limit_exceeded",
+          "Rate limit exceeded. Please try again later.",
           retry_after: div(retry_after, 1000)
-        })
+        )
         |> halt()
     end
   end

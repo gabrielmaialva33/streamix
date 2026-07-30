@@ -57,7 +57,8 @@ defmodule StreamixWeb.Plugs.ApiKeyAuthTest do
 
       assert conn.halted
       body = Phoenix.ConnTest.json_response(conn, 401)
-      assert body["message"] =~ "Missing"
+      assert body["error"]["code"] == "missing_api_key"
+      assert body["error"]["message"] =~ "Missing"
     end
 
     test "header still beats querystring noise" do

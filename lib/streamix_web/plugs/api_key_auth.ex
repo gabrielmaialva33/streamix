@@ -15,6 +15,9 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
   """
 
   import Plug.Conn
+
+  alias StreamixWeb.Api.V1.Response
+
   def init(opts), do: opts
 
   def call(%{method: "OPTIONS"} = conn, _opts) do
@@ -31,7 +34,10 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
       else
         {:error, :missing_key} ->
           conn
-          |> unauthorized("Missing API key. Include X-API-Key header.")
+          |> unauthorized(
+            "missing_api_key",
+            "Missing API key. Include X-API-Key header."
+          )
 
         {:error, :invalid_key} ->
           ip = format_ip(conn.remote_ip)
@@ -43,7 +49,7 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
           )
 
           conn
-          |> unauthorized("Invalid API key.")
+          |> unauthorized("invalid_api_key", "Invalid API key.")
       end
     else
       # No API keys configured - allow all requests (dev mode)
@@ -100,13 +106,9 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
     end
   end
 
-  defp unauthorized(conn, message) do
+  defp unauthorized(conn, code, message) do
     conn
-    |> put_status(:unauthorized)
-    |> Phoenix.Controller.json(%{
-      error: "Unauthorized",
-      message: message
-    })
+    |> Response.error(:unauthorized, code, message)
     |> halt()
   end
 

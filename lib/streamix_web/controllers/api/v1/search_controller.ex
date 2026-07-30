@@ -24,6 +24,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   alias Streamix.AI
   alias Streamix.Helpers
   alias Streamix.Iptv
+  alias StreamixWeb.Api.V1.Response
 
   @doc """
   Handle CORS preflight OPTIONS requests.
@@ -52,9 +53,13 @@ defmodule StreamixWeb.Api.V1.SearchController do
           json(conn, %{movies: movies, query: query, semantic: true})
 
         {:error, reason} ->
-          conn
-          |> put_status(:service_unavailable)
-          |> json(%{error: "Search failed", reason: inspect(reason)})
+          Response.internal_error(
+            conn,
+            :service_unavailable,
+            "search_failed",
+            "Search failed",
+            reason
+          )
       end
     else
       fallback_search(conn, query, :movies)
@@ -82,9 +87,13 @@ defmodule StreamixWeb.Api.V1.SearchController do
           json(conn, %{series: series, query: query, semantic: true})
 
         {:error, reason} ->
-          conn
-          |> put_status(:service_unavailable)
-          |> json(%{error: "Search failed", reason: inspect(reason)})
+          Response.internal_error(
+            conn,
+            :service_unavailable,
+            "search_failed",
+            "Search failed",
+            reason
+          )
       end
     else
       fallback_search(conn, query, :series)
@@ -106,14 +115,10 @@ defmodule StreamixWeb.Api.V1.SearchController do
       similar_results(conn, collection, collection_atom, content_id, limit)
     else
       :invalid_collection ->
-        conn
-        |> put_status(:bad_request)
-        |> json(%{error: "Invalid collection"})
+        Response.error(conn, :bad_request, "invalid_collection", "Invalid collection")
 
       :error ->
-        conn
-        |> put_status(:bad_request)
-        |> json(%{error: "Invalid id"})
+        Response.error(conn, :bad_request, "invalid_id", "Invalid content id")
     end
   end
 
@@ -121,9 +126,12 @@ defmodule StreamixWeb.Api.V1.SearchController do
     if AI.semantic_search_available?() do
       search_similar(conn, collection, collection_atom, content_id, limit)
     else
-      conn
-      |> put_status(:service_unavailable)
-      |> json(%{error: "Semantic search not available"})
+      Response.error(
+        conn,
+        :service_unavailable,
+        "semantic_search_unavailable",
+        "Semantic search not available"
+      )
     end
   end
 
@@ -134,14 +142,21 @@ defmodule StreamixWeb.Api.V1.SearchController do
         json(conn, %{items: items, source_id: content_id, collection: collection})
 
       {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: "Content not indexed yet"})
+        Response.error(
+          conn,
+          :not_found,
+          "content_not_indexed",
+          "Content not indexed yet"
+        )
 
       {:error, reason} ->
-        conn
-        |> put_status(:service_unavailable)
-        |> json(%{error: "Search failed", reason: inspect(reason)})
+        Response.internal_error(
+          conn,
+          :service_unavailable,
+          "search_failed",
+          "Search failed",
+          reason
+        )
     end
   end
 

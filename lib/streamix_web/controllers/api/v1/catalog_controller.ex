@@ -10,6 +10,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
+  alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.Catalog.Api
 
   def options(conn, _params) do
@@ -62,9 +63,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   defp render_result(conn, {:ok, payload}, _not_found_message), do: json(conn, payload)
 
   defp render_result(conn, {:error, :not_found}, not_found_message) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{error: not_found_message})
+    Response.error(conn, :not_found, "content_not_found", not_found_message)
   end
 
   defp render_id_result(conn, raw_id, fun, not_found_message) do

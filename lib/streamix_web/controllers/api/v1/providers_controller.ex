@@ -8,6 +8,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   use StreamixWeb, :controller
 
   alias Streamix.Iptv
+  alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
 
@@ -107,9 +108,13 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
           |> json(%{status: "sync_started", provider_id: provider.id})
 
         {:error, reason} ->
-          conn
-          |> put_status(:unprocessable_entity)
-          |> json(%{error: %{code: "sync_failed", message: inspect(reason)}})
+          Response.internal_error(
+            conn,
+            :unprocessable_entity,
+            "sync_failed",
+            "Failed to schedule provider sync",
+            reason
+          )
       end
     else
       {:error, :invalid_id} ->

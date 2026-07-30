@@ -256,7 +256,12 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
         |> get(~p"/api/v1/catalog/movies/not-a-number")
         |> json_response(404)
 
-      assert response == %{"error" => "Movie not found"}
+      assert response == %{
+               "error" => %{
+                 "code" => "content_not_found",
+                 "message" => "Movie not found"
+               }
+             }
     end
 
     test "does not expose a private series by direct id", %{conn: conn} do
@@ -269,7 +274,12 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
         |> get(~p"/api/v1/catalog/series/#{series.id}")
         |> json_response(404)
 
-      assert response == %{"error" => "Series not found"}
+      assert response == %{
+               "error" => %{
+                 "code" => "content_not_found",
+                 "message" => "Series not found"
+               }
+             }
     end
   end
 
@@ -283,15 +293,33 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
 
       assert conn
              |> get(~p"/api/v1/catalog/movies/#{movie.id}/stream")
-             |> json_response(404) == %{"error" => "Movie not found"}
+             |> json_response(404) ==
+               %{
+                 "error" => %{
+                   "code" => "content_not_found",
+                   "message" => "Movie not found"
+                 }
+               }
 
       assert conn
              |> get(~p"/api/v1/catalog/channels/#{channel.id}/stream")
-             |> json_response(404) == %{"error" => "Channel not found"}
+             |> json_response(404) ==
+               %{
+                 "error" => %{
+                   "code" => "content_not_found",
+                   "message" => "Channel not found"
+                 }
+               }
 
       assert conn
              |> get(~p"/api/v1/catalog/episodes/#{episode.id}/stream")
-             |> json_response(404) == %{"error" => "Episode not found"}
+             |> json_response(404) ==
+               %{
+                 "error" => %{
+                   "code" => "content_not_found",
+                   "message" => "Episode not found"
+                 }
+               }
     end
   end
 

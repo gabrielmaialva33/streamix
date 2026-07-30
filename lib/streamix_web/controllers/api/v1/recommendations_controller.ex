@@ -24,6 +24,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   alias Streamix.Billing
   alias Streamix.Helpers
   alias Streamix.Iptv
+  alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.Helpers.ImageProxy
 
   # Pipeline `:api_v1` never sets `current_scope` (that's a browser-only
@@ -62,9 +63,13 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
         })
 
       {:error, reason} ->
-        conn
-        |> put_status(:service_unavailable)
-        |> json(%{error: "Recommendations unavailable", reason: inspect(reason)})
+        Response.internal_error(
+          conn,
+          :service_unavailable,
+          "recommendations_unavailable",
+          "Recommendations unavailable",
+          reason
+        )
     end
   end
 
@@ -73,14 +78,12 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
       conn
     else
       conn
-      |> put_status(:payment_required)
-      |> json(%{
-        error: %{
-          code: "ai_recommendations_required",
-          message: "AI recommendations require a plan with advanced AI enabled",
-          upgrade_url: ~p"/plans?upgrade=ai"
-        }
-      })
+      |> Response.error(
+        :payment_required,
+        "ai_recommendations_required",
+        "AI recommendations require a plan with advanced AI enabled",
+        upgrade_url: ~p"/plans?upgrade=ai"
+      )
       |> halt()
     end
   end
@@ -106,14 +109,21 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
             })
 
           {:error, :not_found} ->
-            conn
-            |> put_status(:not_found)
-            |> json(%{error: "Content not indexed"})
+            Response.error(
+              conn,
+              :not_found,
+              "content_not_indexed",
+              "Content not indexed"
+            )
 
           {:error, reason} ->
-            conn
-            |> put_status(:service_unavailable)
-            |> json(%{error: "Similar search failed", reason: inspect(reason)})
+            Response.internal_error(
+              conn,
+              :service_unavailable,
+              "similar_search_failed",
+              "Similar search failed",
+              reason
+            )
         end
 
       :error ->
@@ -161,9 +171,13 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
         json(conn, %{status: "no_history", message: "Watch some content first"})
 
       {:error, reason} ->
-        conn
-        |> put_status(:service_unavailable)
-        |> json(%{error: "Refresh failed", reason: inspect(reason)})
+        Response.internal_error(
+          conn,
+          :service_unavailable,
+          "profile_refresh_failed",
+          "Refresh failed",
+          reason
+        )
     end
   end
 
@@ -253,8 +267,6 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   defp parse_int(_, default), do: default
 
   defp invalid_id(conn) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: "Invalid id"})
+    Response.error(conn, :bad_request, "invalid_id", "Invalid content id")
   end
 end

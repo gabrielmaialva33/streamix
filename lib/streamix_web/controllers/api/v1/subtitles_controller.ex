@@ -13,6 +13,7 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
   use StreamixWeb, :controller
 
   alias Streamix.Subtitles
+  alias StreamixWeb.Api.V1.Response
 
   @imdb_re ~r/^tt\d{6,9}$/
 
@@ -23,7 +24,7 @@ defmodule StreamixWeb.Api.V1.SubtitlesController do
     if Regex.match?(@imdb_re, imdb_id) do
       respond(conn, Subtitles.get_vtt(imdb_id, lang), offset_ms)
     else
-      conn |> put_status(:bad_request) |> json(%{error: "invalid imdb_id"})
+      Response.error(conn, :bad_request, "invalid_imdb_id", "Invalid IMDb id")
     end
   end
 
