@@ -79,23 +79,16 @@ defmodule Streamix.Billing.PlaybackSessions do
 
   def end_playback_session(nil), do: :ok
 
-  def end_playback_session(%PlaybackSession{} = playback_session) do
+  def end_playback_session(%PlaybackSession{id: playback_session_id}) do
     now = DateTime.utc_now(:second)
 
-    playback_session
-    |> Ecto.Changeset.change(status: "ended", ended_at: now, last_seen_at: now)
-    |> Repo.update()
-    |> case do
-      {:ok, _session} ->
-        :ok
+    from(playback_session in PlaybackSession,
+      where: playback_session.id == ^playback_session_id,
+      where: playback_session.status != "ended"
+    )
+    |> Repo.update_all(set: [status: "ended", ended_at: now, last_seen_at: now, updated_at: now])
 
-      {:error, changeset} ->
-        require Logger
-
-        Logger.warning("[Billing] end_playback_session failed: #{inspect(changeset.errors)}")
-
-        {:error, changeset}
-    end
+    :ok
   end
 
   def active_playback_count(%User{id: user_id}) do

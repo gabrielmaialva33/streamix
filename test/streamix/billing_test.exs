@@ -267,6 +267,20 @@ defmodule Streamix.BillingTest do
              })
   end
 
+  test "end_playback_session/1 is idempotent when the session no longer exists" do
+    user = user_fixture()
+
+    assert {:ok, session} =
+             Billing.start_playback_session(user, %{
+               content_type: "movie",
+               content_id: 1
+             })
+
+    Repo.delete!(session)
+
+    assert :ok = Billing.end_playback_session(session)
+  end
+
   test "start_trial_subscription/2 creates a one-time expiring trial" do
     user = user_fixture()
     plan = plan_fixture(price_cents: 0, trial_days: 7, grants_global_access: true)
