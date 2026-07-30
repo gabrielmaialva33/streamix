@@ -5,7 +5,7 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
   alias StreamixWeb.PlayerComponents
 
-  test "renders centered seek controls for finite VOD playback" do
+  test "keeps VOD controls and loading status in the bottom bar without seek buttons" do
     html =
       render_component(&PlayerComponents.video_player/1,
         content: %{id: 42, name: "Filme de teste", title: "Filme de teste"},
@@ -16,14 +16,13 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
     document = Floki.parse_fragment!(html)
 
-    assert Floki.find(document, "#player-primary-controls #seek-backward-btn") != []
-    assert Floki.find(document, "#player-primary-controls #play-pause-btn") != []
-    assert Floki.find(document, "#player-primary-controls #seek-forward-btn") != []
-
-    assert Floki.find(
-             document,
-             "#seek-backward-btn[aria-label='Voltar 10 segundos'][phx-click]"
-           ) != []
+    assert Floki.find(document, "#player-bottom-controls #player-primary-controls") != []
+    assert Floki.find(document, "#player-bottom-controls #play-pause-btn") != []
+    assert Floki.find(document, "#player-bottom-controls #loading-indicator") != []
+    assert Floki.find(document, "#loading-indicator.absolute") == []
+    assert Floki.find(document, "#center-play") == []
+    assert Floki.find(document, "#seek-backward-btn") == []
+    assert Floki.find(document, "#seek-forward-btn") == []
 
     assert Floki.find(document, "#player-close-btn.size-12") != []
   end
@@ -38,8 +37,8 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
     document = Floki.parse_fragment!(html)
 
-    assert Floki.find(document, "#player-primary-controls #play-pause-btn") != []
-    assert Floki.find(document, "#seek-backward-btn") == []
-    assert Floki.find(document, "#seek-forward-btn") == []
+    assert Floki.find(document, "#player-bottom-controls #player-primary-controls") != []
+    assert Floki.find(document, "#player-bottom-controls #play-pause-btn") != []
+    assert Floki.find(document, "#center-play") == []
   end
 end

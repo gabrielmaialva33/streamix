@@ -329,6 +329,8 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         hook.playerUI.setIsPlayingFn(() => true);
         hook.playerUI.showControls();
 
+        const bottomControls = document.getElementById("player-bottom-controls");
+        const bottomRect = bottomControls.getBoundingClientRect();
         const ids = [
           "player-close-btn",
           "pip-btn",
@@ -369,7 +371,6 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
         hook.playerUI.hideControls();
         const immediateControlsClass = document.getElementById("player-controls").className;
-        const bottomControls = document.getElementById("player-bottom-controls");
         const bottomOpacity = await waitForOpacity(bottomControls, 0, 2000);
         const controlsStyle = getComputedStyle(document.getElementById("player-controls"));
         const closeStyle = getComputedStyle(document.getElementById("player-close-btn"));
@@ -393,6 +394,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         return {
           viewport: {width: innerWidth, height: innerHeight},
           controls,
+          bottomBounds: {
+            top: bottomRect.top,
+            bottom: bottomRect.bottom
+          },
+          centerOverlayCount:
+            container.querySelectorAll("#center-play, .play-overlay, .shortcut-feedback").length,
+          seekButtonCount:
+            container.querySelectorAll("#seek-backward-btn, #seek-forward-btn").length,
           hiddenState,
           revealedAfterTap: hook.playerUI.controlsVisible
         };
@@ -412,6 +421,18 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
         end
 
+        for id <- ~w(play-pause-btn mute-btn speed-btn settings-btn fullscreen-btn) do
+          rect = state["controls"][id]
+
+          assert rect["top"] >= state["bottomBounds"]["top"],
+                 "#{id} is not inside the bottom control bar"
+
+          assert rect["bottom"] <= state["bottomBounds"]["bottom"],
+                 "#{id} crosses the bottom control bar"
+        end
+
+        assert state["centerOverlayCount"] == 0
+        assert state["seekButtonCount"] == 0
         assert state["hiddenState"]["controlsVisible"] == false
         assert state["hiddenState"]["closeOpacity"] > 0
         assert state["hiddenState"]["closePointerEvents"] == "auto"
