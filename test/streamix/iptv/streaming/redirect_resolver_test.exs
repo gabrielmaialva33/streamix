@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
   setup do
     RedirectResolver.clear_cache()
     counter = start_supervised!({Agent, fn -> %{} end})
-    port = start_test_server(counter)
+    port = start_test_server(counter, self())
     base = "http://127.0.0.1:#{port}"
     %{base: base, counter: counter}
   end
@@ -35,6 +35,9 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
         for _ <- 1..8 do
           Task.async(fn -> RedirectResolver.resolve(slow) end)
         end
+
+      assert_receive {:request_started, "/slow", request_pid}
+      send(request_pid, :release_slow_request)
 
       results = Task.await_many(tasks, 10_000)
 
@@ -69,13 +72,10 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
     test "populates the cache so subsequent resolve/2 is a hit", %{base: base, counter: counter} do
       :ok = RedirectResolver.prewarm_async("#{base}/r1")
 
-      # Wait until the prewarm task finishes — bounded poll on the cache.
-      assert eventually(fn ->
-               match?(
-                 {:ok, _},
-                 RedirectResolver.resolve("#{base}/r1")
-               )
-             end)
+      # The request proves the prewarm task owns the single-flight slot.
+      # resolve/2 now waits on that same work instead of racing a poll loop.
+      assert_receive {:request_started, "/r1", _request_pid}
+      assert {:ok, _final} = RedirectResolver.resolve("#{base}/r1")
 
       hits_after_prewarm = Agent.get(counter, & &1)
 
@@ -86,11 +86,11 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
 
   # --- Test server -----------------------------------------------------
 
-  defp start_test_server(counter) do
+  defp start_test_server(counter, observer) do
     {:ok, server} =
       start_supervised(
         {Bandit,
-         plug: {__MODULE__.StubPlug, counter: counter},
+         plug: {__MODULE__.StubPlug, counter: counter, observer: observer},
          scheme: :http,
          port: 0,
          ip: :loopback,
@@ -101,24 +101,6 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
     port
   end
 
-  defp eventually(fun, deadline \\ 2_000) do
-    deadline_at = System.monotonic_time(:millisecond) + deadline
-    do_eventually(fun, deadline_at)
-  end
-
-  defp do_eventually(fun, deadline_at) do
-    if fun.() do
-      true
-    else
-      if System.monotonic_time(:millisecond) > deadline_at do
-        false
-      else
-        Process.sleep(25)
-        do_eventually(fun, deadline_at)
-      end
-    end
-  end
-
   defmodule StubPlug do
     @moduledoc false
     import Plug.Conn
@@ -127,7 +109,9 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
 
     def call(conn, opts) do
       counter = Keyword.fetch!(opts, :counter)
+      observer = Keyword.fetch!(opts, :observer)
       Agent.update(counter, &Map.update(&1, conn.request_path, 1, fn n -> n + 1 end))
+      send(observer, {:request_started, conn.request_path, self()})
 
       handle(conn, conn.request_path)
     end
@@ -149,12 +133,14 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
       send_resp(conn, 200, "ok")
     end
 
-    # /slow → final (200) but with a small delay so concurrent callers
-    # genuinely race the lock instead of finishing before the second
-    # resolver reaches lookup/1.
+    # /slow holds the first request open until the test releases it, so
+    # concurrent callers deterministically reach the single-flight lock.
     defp handle(conn, "/slow") do
-      Process.sleep(150)
-      send_resp(conn, 200, "ok")
+      receive do
+        :release_slow_request -> send_resp(conn, 200, "ok")
+      after
+        2_000 -> send_resp(conn, 504, "test request timed out")
+      end
     end
 
     # /boom → 500

@@ -5,7 +5,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{CatalogItem, Series}
+  alias Streamix.Iptv.CatalogItem
   alias Streamix.Iptv.Sync.CategoryAssocs
   alias Streamix.Repo
 
@@ -18,13 +18,13 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
   """
   def upsert_batched(streams, provider_id, category_lookup, now, opts) do
     schema = Keyword.fetch!(opts, :schema)
+    stream_id_field = Keyword.fetch!(opts, :stream_id_field)
     attrs_fn = Keyword.fetch!(opts, :attrs_fn)
     category_fn = Keyword.fetch!(opts, :category_fn)
     catalog_content_type = Keyword.fetch!(opts, :content_type)
     telemetry_type = Keyword.get(opts, :type)
     provider = Keyword.get(opts, :provider)
-    stream_id_field = if schema == Series, do: :series_id, else: :stream_id
-    stream_id_key = if stream_id_field == :series_id, do: "series_id", else: "stream_id"
+    stream_id_key = Atom.to_string(stream_id_field)
 
     # Dedupe by the conflict target. Some panels (e.g. grupobrtv) return the
     # same stream_id more than once; if two land in the same insert_all batch,
@@ -41,6 +41,19 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
       |> Repo.all()
       |> MapSet.new()
 
+    batch_context = %{
+      attrs_fn: attrs_fn,
+      catalog_content_type: catalog_content_type,
+      category_fn: category_fn,
+      category_lookup: category_lookup,
+      existing_stream_ids: existing_stream_ids,
+      now: now,
+      provider_id: provider_id,
+      schema: schema,
+      stream_id_field: stream_id_field,
+      stream_id_key: stream_id_key
+    }
+
     streams
     |> Enum.chunk_every(@batch_size)
     |> Enum.with_index(1)
@@ -48,34 +61,10 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
       batch_start = System.monotonic_time()
       batch_stream_ids = Enum.map(batch, & &1[stream_id_key])
 
-      ci_map =
-        build_catalog_item_map(
-          schema,
-          provider_id,
-          stream_id_field,
-          batch_stream_ids,
-          existing_stream_ids,
-          catalog_content_type,
-          now
-        )
-
-      content_data =
-        Enum.map(batch, fn stream ->
-          sid = stream[stream_id_key]
-          stream |> attrs_fn.(provider_id, now) |> Map.put(:catalog_item_id, ci_map[sid])
+      inserted =
+        transact_batch!(fn ->
+          upsert_batch(batch, batch_stream_ids, batch_context)
         end)
-
-      {inserted, returned} =
-        Repo.insert_all(schema, content_data,
-          on_conflict: {:replace_all_except, [:id, :inserted_at, :catalog_item_id]},
-          conflict_target: [:provider_id, stream_id_field],
-          returning: [:id, stream_id_field, :catalog_item_id]
-        )
-
-      catalog_item_ids = Enum.map(returned, & &1.catalog_item_id) |> Enum.reject(&is_nil/1)
-      category_assocs = category_fn.(batch, returned, category_lookup)
-
-      CategoryAssocs.rebuild_diff(catalog_item_ids, category_assocs)
 
       maybe_emit_batch_telemetry(
         provider,
@@ -86,9 +75,55 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
         total_batches
       )
 
-      {acc_count + inserted, batch_stream_ids ++ acc_ids}
+      {acc_count + inserted, Enum.reverse(batch_stream_ids, acc_ids)}
     end)
     |> then(fn {count, ids} -> {count, Enum.reverse(ids)} end)
+  end
+
+  defp upsert_batch(batch, batch_stream_ids, context) do
+    ci_map =
+      build_catalog_item_map(
+        context.schema,
+        context.provider_id,
+        context.stream_id_field,
+        batch_stream_ids,
+        context.existing_stream_ids,
+        context.catalog_content_type,
+        context.now
+      )
+
+    content_data =
+      Enum.map(batch, fn stream ->
+        sid = stream[context.stream_id_key]
+
+        stream
+        |> context.attrs_fn.(context.provider_id, context.now)
+        |> Map.put(:catalog_item_id, ci_map[sid])
+      end)
+
+    {inserted, returned} =
+      Repo.insert_all(context.schema, content_data,
+        on_conflict: {:replace_all_except, [:id, :inserted_at, :catalog_item_id]},
+        conflict_target: [:provider_id, context.stream_id_field],
+        returning: [:id, context.stream_id_field, :catalog_item_id]
+      )
+
+    catalog_item_ids = Enum.map(returned, & &1.catalog_item_id) |> Enum.reject(&is_nil/1)
+    category_assocs = context.category_fn.(batch, returned, context.category_lookup)
+
+    CategoryAssocs.rebuild_diff(catalog_item_ids, category_assocs)
+
+    {:ok, inserted}
+  end
+
+  defp transact_batch!(fun) do
+    case Repo.transact(fun) do
+      {:ok, result} ->
+        result
+
+      {:error, reason} ->
+        raise "content upsert batch transaction failed: #{inspect(reason)}"
+    end
   end
 
   defp build_catalog_item_map(
@@ -169,47 +204,5 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
 
     {_count, items} = Repo.insert_all(CatalogItem, entries, returning: [:id])
     Enum.map(items, & &1.id)
-  end
-
-  @doc """
-  Generic orphan deletion for content types.
-  """
-  def delete_orphaned_content(provider_id, current_stream_ids, opts) do
-    schema = Keyword.fetch!(opts, :schema)
-    table_name = Keyword.fetch!(opts, :table_name)
-
-    Repo.query!(
-      """
-      DELETE FROM item_categories
-      WHERE catalog_item_id IN (
-        SELECT catalog_item_id FROM #{table_name}
-        WHERE provider_id = $1 AND stream_id != ALL($2)
-      )
-      """,
-      [provider_id, current_stream_ids]
-    )
-
-    {:ok, %{rows: rows}} =
-      Repo.query(
-        """
-        SELECT catalog_item_id FROM #{table_name}
-        WHERE provider_id = $1 AND stream_id != ALL($2)
-        """,
-        [provider_id, current_stream_ids]
-      )
-
-    orphan_catalog_ids = Enum.map(rows, fn [id] -> id end)
-
-    {count, _} =
-      schema
-      |> where([c], c.provider_id == ^provider_id)
-      |> where([c], c.stream_id not in ^current_stream_ids)
-      |> Repo.delete_all()
-
-    if orphan_catalog_ids != [] do
-      Repo.query!("DELETE FROM catalog_items WHERE id = ANY($1)", [orphan_catalog_ids])
-    end
-
-    count
   end
 end

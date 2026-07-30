@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.Sync.Movies do
 
   @sync_opts [
     schema: Movie,
-    table_name: "movies",
+    stream_id_field: :stream_id,
     content_type: "movie"
   ]
 

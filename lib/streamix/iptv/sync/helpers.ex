@@ -3,7 +3,13 @@ defmodule Streamix.Iptv.Sync.Helpers do
   Backwards-compatible facade for shared sync helpers.
   """
 
-  alias Streamix.Iptv.Sync.{CategoryAssocs, ContentUpsert, Metadata, ValueParser}
+  alias Streamix.Iptv.Sync.{
+    CategoryAssocs,
+    ContentUpsert,
+    Metadata,
+    OrphanCleanup,
+    ValueParser
+  }
 
   defdelegate batch_size(), to: ContentUpsert
 
@@ -28,7 +34,10 @@ defmodule Streamix.Iptv.Sync.Helpers do
     as: :upsert_batched
 
   defdelegate pre_create_catalog_items(count, content_type, provider_id, now), to: ContentUpsert
-  defdelegate delete_orphaned_content(provider_id, current_stream_ids, opts), to: ContentUpsert
+
+  defdelegate delete_orphaned_content(provider_id, current_stream_ids, opts),
+    to: OrphanCleanup,
+    as: :delete
 
   defdelegate sync_genres_and_credits(
                 streams,
