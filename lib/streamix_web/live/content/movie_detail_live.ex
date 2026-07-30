@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
 
+  import StreamixWeb.App.Premium
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 

@@ -3,7 +3,9 @@ defmodule StreamixWeb.App.Pwa do
   Install discovery and iOS home-screen guidance for the Streamix PWA.
   """
 
-  use StreamixWeb, :html
+  use Phoenix.Component
+
+  import StreamixWeb.CoreComponents, only: [icon: 1]
 
   attr :id, :string, required: true
   attr :variant, :string, values: ~w(hero settings), default: "settings"

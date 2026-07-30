@@ -24,6 +24,7 @@ defmodule StreamixWeb.E2E.WebKitReconnectTest do
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
+  @moduletag ecto_sandbox_stop_owner_delay: 100
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures

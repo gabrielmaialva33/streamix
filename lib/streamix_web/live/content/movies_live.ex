@@ -6,6 +6,12 @@ defmodule StreamixWeb.Content.MoviesLive do
   """
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Filters
+  import StreamixWeb.App.Premium
+  import StreamixWeb.Content.CardComponents
+  import StreamixWeb.Content.NavigationComponents
+
   alias StreamixWeb.Content.Browse
 
   # Mount for /browse/movies (global provider or gindex)

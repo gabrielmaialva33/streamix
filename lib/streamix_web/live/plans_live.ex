@@ -1,6 +1,8 @@
 defmodule StreamixWeb.PlansLive do
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Premium
+
   alias Streamix.Billing
 
   def mount(params, _session, socket) do

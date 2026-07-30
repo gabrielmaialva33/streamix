@@ -10,6 +10,8 @@ defmodule StreamixWeb.TorrentLive do
   """
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Filters
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 

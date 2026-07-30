@@ -10,6 +10,9 @@ defmodule StreamixWeb.SearchLive do
   """
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Media
+  import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv

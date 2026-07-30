@@ -16,32 +16,38 @@ defmodule StreamixWeb.HomeCatalogLoaderTest do
            }
   end
 
-  # Process.sleep is the natural way to simulate slow fetchers in the
-  # three closures below — the assertion is exactly that the loader runs
-  # them in parallel (elapsed << 3 * 150ms). No monitored process exists
-  # to assert_receive on; the sleep IS the unit under observation.
   test "runs independent section loaders concurrently" do
-    started_at = System.monotonic_time(:millisecond)
+    test_pid = self()
+    release_ref = make_ref()
 
-    result =
-      HomeCatalogLoader.load(%{
-        featured: fn ->
-          Process.sleep(150)
-          :featured
-        end,
-        stats: fn ->
-          Process.sleep(150)
-          :stats
-        end,
-        movies: fn ->
-          Process.sleep(150)
-          :movies
+    loader = fn key ->
+      fn ->
+        send(test_pid, {:loader_started, key, self()})
+
+        receive do
+          {:release_loader, ^release_ref} -> key
         end
-      })
+      end
+    end
 
-    elapsed = System.monotonic_time(:millisecond) - started_at
+    task =
+      Task.async(fn ->
+        HomeCatalogLoader.load(%{
+          featured: loader.(:featured),
+          stats: loader.(:stats),
+          movies: loader.(:movies)
+        })
+      end)
 
-    assert result == %{featured: :featured, stats: :stats, movies: :movies}
-    assert elapsed < 350
+    loader_pids =
+      for expected_key <- [:featured, :stats, :movies], into: %{} do
+        assert_receive {:loader_started, ^expected_key, loader_pid}
+        {expected_key, loader_pid}
+      end
+
+    assert loader_pids |> Map.values() |> Enum.uniq() |> length() == 3
+    Enum.each(loader_pids, fn {_key, pid} -> send(pid, {:release_loader, release_ref}) end)
+
+    assert Task.await(task) == %{featured: :featured, stats: :stats, movies: :movies}
   end
 end

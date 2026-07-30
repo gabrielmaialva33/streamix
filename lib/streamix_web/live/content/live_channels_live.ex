@@ -5,6 +5,12 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   """
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Filters
+  import StreamixWeb.App.Media
+  import StreamixWeb.App.Premium
+  import StreamixWeb.Content.NavigationComponents
+
   alias StreamixWeb.Content.LiveChannels
 
   def mount(_params, _session, socket) do

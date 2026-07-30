@@ -17,6 +17,7 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
+  @moduletag ecto_sandbox_stop_owner_delay: 100
 
   import Phoenix.ConnTest, only: [build_conn: 0, get: 2]
   import Streamix.AccountsFixtures

@@ -2,7 +2,12 @@ defmodule StreamixWeb.Layouts do
   @moduledoc """
   This module holds layouts and related functionality.
   """
-  use StreamixWeb, :html
+  use Phoenix.Component
+  use StreamixWeb, :verified_routes
+
+  import Phoenix.Controller, only: [get_csrf_token: 0]
+  import StreamixWeb.App.Navigation
+  import StreamixWeb.CoreComponents
 
   embed_templates "layouts/*"
 

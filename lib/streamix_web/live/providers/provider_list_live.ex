@@ -1,6 +1,9 @@
 defmodule StreamixWeb.Providers.ProviderListLive do
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Media
+
   alias Streamix.{Accounts, Iptv}
 
   def mount(_params, _session, socket) do

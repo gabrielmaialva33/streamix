@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.LiveSessionNavigation
 
+  import StreamixWeb.App.Premium
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
