@@ -64,6 +64,7 @@ import {
   scheduleLowPriority,
 } from "../player/playback_environment";
 import { PlaybackSession } from "../player/playback_session";
+import { clampSeekTime, relativeSeekTarget } from "../player/playback_time";
 import { diagnoseError, runQuickDiagnostics } from "../player/player_diagnostics";
 import {
   forgetRecommendedPlayer,
@@ -1011,6 +1012,9 @@ const VideoPlayer = {
     this.lifecycle.listen(this.el, "player:toggle-mute", () => this.toggleMute());
     this.lifecycle.listen(this.el, "player:toggle-fullscreen", () => this.toggleFullscreen());
     this.lifecycle.listen(this.el, "player:toggle-pip", () => this.togglePiP());
+    this.lifecycle.listen(this.el, "player:seek-relative", (event) => {
+      this.seek(Number(event.detail?.seconds));
+    });
     this.lifecycle.listen(this.el, "player:set-speed", (e) => {
       const speed = parseFloat(e.detail?.speed || 1);
       this.setPlaybackRate(speed);
@@ -3835,42 +3839,44 @@ const VideoPlayer = {
   },
 
   seek(seconds) {
+    if (this.contentType === "live") return;
+
     if (this.usingAVPlayer && this.avPlayer) {
       const currentTime = this.avPlayer.getCurrentTime();
       const duration = this.avPlayer.getDuration();
-      if (duration > 0) {
-        const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
-        this.avPlayer.seek(newTime).catch((e) => {
-          log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
-        });
-      }
-    } else if (this.video?.duration) {
-      this.seekNativeTo(this.video.currentTime + seconds);
+      const target = relativeSeekTarget(currentTime, seconds, duration);
+      if (target === null) return;
+
+      this.avPlayer.seek(target).catch((e) => {
+        log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
+      });
+    } else if (this.video) {
+      const target = relativeSeekTarget(this.video.currentTime, seconds, this.getDuration());
+      if (target !== null) this.seekNativeTo(target);
     }
   },
 
   seekTo(time) {
+    if (this.contentType === "live") return;
+
+    const target = clampSeekTime(time, this.getDuration());
+    if (target === null) return;
+
     if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayer.seek(time).catch((e) => {
+      this.avPlayer.seek(target).catch((e) => {
         log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
       });
     } else if (this.video) {
-      this.seekNativeTo(time);
+      this.seekNativeTo(target);
     }
   },
 
   seekNativeTo(time) {
-    if (!this.video || !Number.isFinite(time)) return;
-
-    const duration = this.video.duration;
-    const target =
-      Number.isFinite(duration) && duration > 0
-        ? Math.max(0, Math.min(duration, time))
-        : Math.max(0, time);
+    if (!this.video || this.contentType === "live") return;
 
     this.lastTimelineSeekAt = Date.now();
     this._resumeAfterNativeSeek = !this.video.paused;
-    this.video.currentTime = target;
+    this.video.currentTime = time;
   },
 
   getCurrentTime() {

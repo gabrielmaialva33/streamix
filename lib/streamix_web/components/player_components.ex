@@ -214,6 +214,22 @@ defmodule StreamixWeb.PlayerComponents do
           </div>
         </div>
 
+        <%!-- Primary playback controls --%>
+        <div
+          id="player-primary-controls"
+          class="flex flex-1 items-center justify-center gap-3 px-4 sm:gap-5"
+        >
+          <.seek_button
+            :if={@content_type not in [:live, :live_channel]}
+            direction={:backward}
+          />
+          <.play_pause_button prominent />
+          <.seek_button
+            :if={@content_type not in [:live, :live_channel]}
+            direction={:forward}
+          />
+        </div>
+
         <%!-- Bottom bar --%>
         <div
           id="player-bottom-controls"
@@ -226,7 +242,6 @@ defmodule StreamixWeb.PlayerComponents do
           <div class="flex items-center justify-between mt-4">
             <%!-- Left --%>
             <div class="flex items-center gap-2 sm:gap-4">
-              <.play_pause_button />
               <.volume_control />
               <.time_display :if={@content_type not in [:live, :live_channel]} />
               <.live_badge :if={@content_type in [:live, :live_channel]} />
@@ -444,6 +459,44 @@ defmodule StreamixWeb.PlayerComponents do
     """
   end
 
+  attr :direction, :atom, required: true, values: [:backward, :forward]
+
+  def seek_button(assigns) do
+    assigns =
+      case assigns.direction do
+        :backward ->
+          assign(assigns,
+            id: "seek-backward-btn",
+            label: "Voltar 10 segundos",
+            seconds: -10,
+            icon: "hero-arrow-uturn-left"
+          )
+
+        :forward ->
+          assign(assigns,
+            id: "seek-forward-btn",
+            label: "Avançar 10 segundos",
+            seconds: 10,
+            icon: "hero-arrow-uturn-right"
+          )
+      end
+
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      phx-click={JS.dispatch("player:seek-relative", detail: %{seconds: @seconds})}
+      aria-label={@label}
+      class="flex size-14 touch-manipulation flex-col items-center justify-center rounded-full bg-black/35 text-white transition-colors hover:bg-white/15 active:bg-white/25"
+    >
+      <.icon name={@icon} class="size-6" aria-hidden="true" />
+      <span class="-mt-1 text-[10px] font-bold tabular-nums">10</span>
+    </button>
+    """
+  end
+
+  attr :prominent, :boolean, default: false
+
   def play_pause_button(assigns) do
     ~H"""
     <button
@@ -451,10 +504,26 @@ defmodule StreamixWeb.PlayerComponents do
       id="play-pause-btn"
       phx-click={JS.dispatch("player:toggle-play")}
       aria-label="Reproduzir ou pausar"
-      class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/20 sm:size-11"
+      class={[
+        "flex touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 active:bg-white/25",
+        @prominent && "size-16 bg-white text-black hover:bg-white/90 active:bg-white/80",
+        !@prominent && "size-12 hover:bg-white/10 sm:size-11"
+      ]}
     >
-      <.icon name="hero-play-solid" class="size-8 sm:size-7 play-icon" aria-hidden="true" />
-      <.icon name="hero-pause-solid" class="size-8 sm:size-7 pause-icon hidden" aria-hidden="true" />
+      <.icon
+        name="hero-play-solid"
+        class={["play-icon", @prominent && "size-9", !@prominent && "size-8 sm:size-7"]}
+        aria-hidden="true"
+      />
+      <.icon
+        name="hero-pause-solid"
+        class={[
+          "pause-icon hidden",
+          @prominent && "size-9",
+          !@prominent && "size-8 sm:size-7"
+        ]}
+        aria-hidden="true"
+      />
     </button>
     """
   end

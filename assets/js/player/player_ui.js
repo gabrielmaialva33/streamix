@@ -5,7 +5,8 @@
  * HTML structure is in HEEX templates - this only manages state/visibility.
  */
 
-import { createFocusTrap } from "../core/focus_trap";
+import { createFocusTrap } from "../core/focus_trap.js";
+import { bufferDiagnosticsEnabled } from "./player_diagnostics_visibility.js";
 
 /**
  * PlayerUI class - manages UI state updates
@@ -335,6 +336,11 @@ export class PlayerUI {
    */
   updateBufferHealthIndicator(bufferSeconds) {
     let indicator = this.container.querySelector("#buffer-health");
+
+    if (!bufferDiagnosticsEnabled(window)) {
+      indicator?.remove();
+      return;
+    }
 
     // Create indicator if it doesn't exist
     if (!indicator) {
