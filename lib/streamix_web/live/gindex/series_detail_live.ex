@@ -247,8 +247,8 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
               </div>
             </div>
           </div>
-          
-    <!-- Episodes Section -->
+
+          <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
             <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
 

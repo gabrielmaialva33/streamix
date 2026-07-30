@@ -79,7 +79,7 @@ defmodule StreamixWeb.CoreComponents do
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
+  attr :rest, :global, include: ~w(href navigate patch method download name value type disabled)
   attr :class, :any, default: nil
   attr :variant, :string, values: ~w(primary secondary ghost default), default: "default"
   slot :inner_block, required: true
@@ -508,8 +508,7 @@ defmodule StreamixWeb.CoreComponents do
           phx-click={@on_cancel}
           aria-label="Fechar diálogo"
           tabindex="-1"
-        >
-        </button>
+        ></button>
         <div class="relative bg-surface rounded-xl shadow-2xl border border-border max-w-md w-full mx-4 p-6">
           <p :if={@label} id={"#{@id}-label"} class="sr-only">{@label}</p>
           <button

@@ -156,8 +156,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
         min_height_class="min-h-[240px] sm:min-h-[300px]"
         compact_back?
       />
-      
-    <!-- Content Section -->
+
+      <!-- Content Section -->
       <div class="relative -mt-20 sm:-mt-28 lg:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
         <div class="max-w-5xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
@@ -180,8 +180,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 </div>
               </div>
             </div>
-            
-    <!-- Info -->
+
+            <!-- Info -->
             <div class="flex-1 space-y-3 sm:space-y-4 lg:space-y-5 text-center lg:text-left">
               <!-- Series & Season Info -->
               <div class="space-y-0.5 sm:space-y-1">
@@ -195,13 +195,13 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   T{@season.season_number} · Ep {@episode.episode_num} de {@total_episodes}
                 </p>
               </div>
-              
-    <!-- Episode Title -->
+
+              <!-- Episode Title -->
               <h1 class="text-xl sm:text-2xl lg:text-4xl font-bold text-text-primary leading-tight">
                 {episode_display_title(@episode)}
               </h1>
-              
-    <!-- Meta Tags -->
+
+              <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
                 <.content_rating_badge rating={@series.content_rating} />
                 <.rating_badge
@@ -213,8 +213,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 <.duration_badge seconds={@episode.duration_secs} />
                 <.extension_badge extension={@episode.container_extension} />
               </div>
-              
-    <!-- Action Buttons -->
+
+              <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
                 <button
                   type="button"
@@ -235,11 +235,11 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   label_off="Adicionar série aos favoritos"
                 />
               </div>
-              
-    <!-- Synopsis -->
+
+              <!-- Synopsis -->
               <.synopsis_section text={@episode.plot} />
-              
-    <!-- Series Synopsis (if no episode synopsis) -->
+
+              <!-- Series Synopsis (if no episode synopsis) -->
               <.synopsis_section
                 :if={!present?(@episode.plot)}
                 title="Sobre a Série"
@@ -248,8 +248,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
               />
             </div>
           </div>
-          
-    <!-- Episode Navigation -->
+
+          <!-- Episode Navigation -->
           <.episode_navigation
             mode={@mode}
             provider={@provider}

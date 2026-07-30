@@ -49,9 +49,9 @@ defmodule StreamixWeb.TorrentLive do
       socket
       |> assign(search: search)
       |> assign(page: 1)
+      |> assign(favorites_map: MapSet.new())
       |> stream(:movies, [], reset: true)
       |> load_movies()
-      |> load_favorites_map()
 
     {:noreply, socket}
   end
@@ -116,7 +116,7 @@ defmodule StreamixWeb.TorrentLive do
         </p>
       </header>
 
-      <.search_input value={@search} placeholder="Buscar torrents..." />
+      <.search_input id="torrent-search-form" value={@search} placeholder="Buscar torrents..." />
 
       <div :if={!@provider} class="surface-card p-8 text-center">
         <.icon name="hero-bolt-slash" class="mx-auto size-10 text-text-muted" />
@@ -249,8 +249,12 @@ defmodule StreamixWeb.TorrentLive do
       has_more = length(movies) >= @per_page
       empty_results = socket.assigns.page == 1 and Enum.empty?(movies)
 
+      favorite_ids =
+        Iptv.list_favorite_ids(socket.assigns.user_id, "movie", Enum.map(movies, & &1.id))
+
       socket
       |> stream(:movies, movies)
+      |> assign(favorites_map: MapSet.union(socket.assigns.favorites_map, favorite_ids))
       |> assign(has_more: has_more)
       |> assign(loading: false)
       |> assign(empty_results: empty_results)
@@ -260,10 +264,5 @@ defmodule StreamixWeb.TorrentLive do
       |> assign(loading: false)
       |> assign(empty_results: false)
     end
-  end
-
-  defp load_favorites_map(socket) do
-    ids = Iptv.list_favorite_ids(socket.assigns.user_id, "movie")
-    assign(socket, favorites_map: ids)
   end
 end

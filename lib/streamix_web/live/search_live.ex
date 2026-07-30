@@ -132,7 +132,7 @@ defmodule StreamixWeb.SearchLive do
       <div class="flex flex-col gap-4">
         <h1 class="text-3xl font-bold text-text-primary">Buscar</h1>
 
-        <form phx-submit="search" phx-change="search" class="max-w-xl">
+        <form id="global-search-form" phx-submit="search" phx-change="search" class="max-w-xl">
           <div class="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-colors">
             <.icon name="hero-magnifying-glass" class="size-5 text-text-secondary flex-shrink-0" />
             <%!--

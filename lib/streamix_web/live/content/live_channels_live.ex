@@ -169,6 +169,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           />
 
           <.search_input
+            id="live-channels-search-form"
             value={@search}
             placeholder="Buscar canais..."
             class="browse-toolbar__search"
@@ -222,8 +223,8 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
               />
             </div>
           </div>
-          
-    <!-- Infinite Scroll Sentinel -->
+
+          <!-- Infinite Scroll Sentinel -->
           <div
             :if={@has_more && !@loading}
             id="channels-sentinel"

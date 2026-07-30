@@ -98,6 +98,7 @@ defmodule StreamixWeb.Content.SeriesLive do
           />
 
           <.search_input
+            id="series-search-form"
             value={@search}
             placeholder="Buscar séries..."
             class="browse-toolbar__search"
@@ -133,8 +134,8 @@ defmodule StreamixWeb.Content.SeriesLive do
               />
             </div>
           </div>
-          
-    <!-- Infinite Scroll Sentinel -->
+
+          <!-- Infinite Scroll Sentinel -->
           <div
             :if={@has_more && !@loading}
             id="series-sentinel"

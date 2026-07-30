@@ -795,6 +795,4 @@ defmodule StreamixWeb.PlayerComponents do
 
     haystack != "" and Regex.match?(@fourk_hevc_pattern, haystack)
   end
-
-  defp detect_4k_hevc?(_), do: false
 end

@@ -143,6 +143,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
 
       assert has_element?(view, "#movie-detail-premium-cta")
       assert has_element?(view, "[data-premium-badge]")
+      assert render_async(view) =~ "A Premium Movie"
     end
 
     test "movie detail browse hides premium badge and cta for entitled users", %{
@@ -170,6 +171,7 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
 
       assert has_element?(view, "#series-detail-premium-cta")
       assert has_element?(view, "[data-premium-badge]")
+      assert render_async(view) =~ "A Premium Series"
     end
 
     test "series detail browse hides premium badge and cta for entitled users", %{

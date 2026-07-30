@@ -466,6 +466,7 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       results = Iptv.list_visible_series(user.id, search: "Same Show", limit: 10)
 
       assert Enum.map(results, & &1.id) == [newer.id]
+      assert Enum.all?(results, &Ecto.assoc_loaded?(&1.genres))
       refute Enum.any?(results, &(&1.id == older.id))
     end
 
@@ -721,8 +722,11 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       end
 
       results = Iptv.list_visible_series(user.id, limit: 5)
+      next_results = Iptv.list_visible_series(user.id, limit: 5, offset: 5)
 
       assert length(results) == 5
+      assert length(next_results) == 5
+      assert MapSet.disjoint?(MapSet.new(results, & &1.id), MapSet.new(next_results, & &1.id))
 
       assert Enum.map(results, & &1.name) == [
                "AAA Dense Show 4K",
@@ -730,6 +734,14 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
                "ZZZ Unique Show 10",
                "ZZZ Unique Show 2",
                "ZZZ Unique Show 3"
+             ]
+
+      assert Enum.map(next_results, & &1.name) == [
+               "ZZZ Unique Show 4",
+               "ZZZ Unique Show 5",
+               "ZZZ Unique Show 6",
+               "ZZZ Unique Show 7",
+               "ZZZ Unique Show 8"
              ]
     end
 

@@ -102,6 +102,7 @@ defmodule StreamixWeb.Content.MoviesLive do
           />
 
           <.search_input
+            id="movies-search-form"
             value={@search}
             placeholder="Buscar filmes..."
             class="browse-toolbar__search"
@@ -137,8 +138,8 @@ defmodule StreamixWeb.Content.MoviesLive do
               />
             </div>
           </div>
-          
-    <!-- Infinite Scroll Sentinel -->
+
+          <!-- Infinite Scroll Sentinel -->
           <div
             :if={@has_more && !@loading}
             id="movies-sentinel"

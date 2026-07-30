@@ -3,6 +3,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
 
   import Ecto.Query, warn: false
 
+  alias Streamix.Cache
   alias Streamix.Helpers
 
   alias Streamix.Iptv.{
@@ -23,6 +24,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @detail_preloads [:assets, :genres, credits: :person]
   @card_fields ~w(id series_id provider_id catalog_item_id name title year cover rating plot tmdb_id gindex_path dub_available inserted_at updated_at)a
   @visible_dedupe_min_window 120
+  @visible_candidates_cache_ttl :timer.seconds(45)
 
   @spec list(integer(), keyword()) :: [Series.t()]
   def list(provider_id, opts \\ []) do
@@ -64,6 +66,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> collect_visible_cards(opts, sort, batch_limit, 0, target_count, VariantCards.new())
     |> sort_visible_cards(sort)
     |> Enum.slice(offset, limit)
+    |> Repo.preload(@summary_preloads)
   end
 
   defp collect_visible_cards(
@@ -75,7 +78,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
          target_count,
          clusters
        ) do
-    batch = list_visible_candidates(user_id, opts, sort, batch_limit, batch_offset)
+    batch = cached_visible_candidates(user_id, opts, sort, batch_limit, batch_offset)
     clusters = Enum.reduce(batch, clusters, &VariantCards.add(&2, &1))
 
     if VariantCards.count(clusters) >= target_count or length(batch) < batch_limit do
@@ -95,13 +98,33 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
 
   defp list_visible_candidates(user_id, opts, sort, limit, offset) do
     user_id
+    |> list_visible_candidate_cards(opts, sort, limit, offset)
+    |> Repo.preload(@summary_preloads)
+  end
+
+  defp cached_visible_candidates(user_id, opts, sort, limit, offset) do
+    cache_key =
+      {__MODULE__, :visible_candidates, user_id, visible_filter_key(opts), sort, limit, offset}
+
+    Cache.fetch_local(cache_key, @visible_candidates_cache_ttl, fn ->
+      list_visible_candidate_cards(user_id, opts, sort, limit, offset)
+    end)
+  end
+
+  defp list_visible_candidate_cards(user_id, opts, sort, limit, offset) do
+    user_id
     |> build_visible_query(opts)
     |> apply_series_sort(sort)
     |> limit(^limit)
     |> offset(^offset)
     |> select_card_fields()
-    |> preload(^@summary_preloads)
     |> Repo.all()
+  end
+
+  defp visible_filter_key(opts) do
+    opts
+    |> Keyword.drop([:dedupe, :limit, :offset])
+    |> Enum.sort()
   end
 
   def select_card_fields(query) do

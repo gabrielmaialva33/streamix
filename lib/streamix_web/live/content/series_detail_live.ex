@@ -102,7 +102,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_series_found(socket, provider, series, user_id, mode, return_to, provider_filter) do
-    series = Detail.maybe_fetch_series_info(series)
     sorted_seasons = Detail.seasons_with_episodes(series)
     preferred_provider_id = preferred_provider_id(provider_filter, mode, provider)
 
@@ -140,16 +139,53 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> assign(expanded_seasons: Detail.initial_expanded(sorted_seasons))
       |> assign(is_favorite: Detail.favorite?(user_id, "series", series.id))
       |> assign(user_id: user_id)
-      |> assign(similar_series: Detail.similar_series(series.id))
+      |> assign(similar_series: [])
       |> assign(selected_gallery_image: nil)
+      |> start_detail_tasks(series)
 
     {:ok, socket}
   end
+
+  def handle_async({:series_enrichment, series_id}, {:ok, series}, socket)
+      when series_id == socket.assigns.series.id do
+    {:noreply,
+     socket
+     |> assign(page_title: series.title || series.name)
+     |> assign(series: series)
+     |> assign(lcp_image: Detail.hero_image(series, series.cover))}
+  end
+
+  def handle_async({:series_recommendations, series_id}, {:ok, series}, socket)
+      when series_id == socket.assigns.series.id do
+    {:noreply, assign(socket, similar_series: series)}
+  end
+
+  def handle_async({task, _series_id}, {:ok, _result}, socket)
+      when task in [:series_enrichment, :series_recommendations],
+      do: {:noreply, socket}
+
+  def handle_async({task, _series_id}, {:exit, _reason}, socket)
+      when task in [:series_enrichment, :series_recommendations],
+      do: {:noreply, socket}
 
   defp series_path_for(:browse, _provider, series), do: "/browse/series/#{series.id}"
 
   defp series_path_for(_mode, provider, series),
     do: "/providers/#{provider.id}/series/#{series.id}"
+
+  defp start_detail_tasks(socket, series) do
+    if connected?(socket) do
+      socket
+      |> start_async({:series_enrichment, series.id}, fn ->
+        Detail.maybe_fetch_series_info(series)
+      end)
+      |> start_async({:series_recommendations, series.id}, fn ->
+        Detail.similar_series(series.id)
+      end)
+    else
+      socket
+    end
+  end
 
   # ============================================
   # Event Handlers
@@ -239,8 +275,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         alt={@series.name}
         back_path={back_path(@return_to, @mode, @provider)}
       />
-      
-    <!-- Content Section -->
+
+      <!-- Content Section -->
       <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
         <div class="max-w-7xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
@@ -263,8 +299,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 </div>
               </div>
             </div>
-            
-    <!-- Info -->
+
+            <!-- Info -->
             <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <.detail_title
                 title={@series.title || @series.name}
@@ -275,19 +311,19 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               <div :if={@mode == :browse and not @premium_access} data-premium-badge>
                 <.premium_badge />
               </div>
-              
-    <!-- Meta Tags -->
+
+              <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
                 <.content_rating_badge rating={@series.content_rating} />
                 <.rating_badge rating={@series.rating} />
                 <.year_badge year={@series.year} />
                 <.series_count_badge seasons={@seasons} />
               </div>
-              
-    <!-- Genres -->
+
+              <!-- Genres -->
               <.genre_chips genres={@series.genres} />
-              
-    <!-- Action Buttons -->
+
+              <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
                 <.play_button event="play_first_episode" label="Assistir" />
 
@@ -317,19 +353,19 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 selected_series_id={@selected_series.id}
                 current_path={@current_path}
               />
-              
-    <!-- Details Grid -->
+
+              <!-- Details Grid -->
               <.credits_grid content={@series} director_label="Criado por" />
             </div>
           </div>
-          
-    <!-- Image Gallery -->
+
+          <!-- Image Gallery -->
           <.image_gallery
             images={if Iptv.has_images?(@series), do: Iptv.image_urls(@series), else: []}
             alt="Imagem da série"
           />
-          
-    <!-- Similar Series -->
+
+          <!-- Similar Series -->
           <.similar_grid
             items={@similar_series}
             kind={:series}
@@ -338,8 +374,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             return_to={@current_path}
             title="Séries Similares"
           />
-          
-    <!-- Episodes Section -->
+
+          <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
             <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
 

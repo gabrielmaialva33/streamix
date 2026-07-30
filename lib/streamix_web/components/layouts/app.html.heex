@@ -66,8 +66,8 @@
       <% end %>
     </div>
   <% end %>
-  
-<!-- Scroll-aware Header -->
+
+  <!-- Scroll-aware Header -->
   <%!--
     iOS Safari notched devices: when the banner is hidden the header sits at
     top-0 and needs safe-area-inset-top padding so the logo/nav aren't under
@@ -142,8 +142,8 @@
           </nav>
         <% end %>
       </div>
-      
-<!-- Right side: Search + User -->
+
+      <!-- Right side: Search + User -->
       <div class="flex items-center gap-2 sm:gap-3">
         <%= if @current_scope do %>
           <!-- Search button (desktop) -->
@@ -158,8 +158,8 @@
               /
             </kbd>
           </.link>
-          
-<!-- User avatar dropdown -->
+
+          <!-- User avatar dropdown -->
           <div class="relative">
             <button
               type="button"
@@ -240,8 +240,8 @@
       </div>
     </div>
   </header>
-  
-<!-- Flash Messages (Toast style - top right) -->
+
+  <!-- Flash Messages (Toast style - top right) -->
   <%!--
     iOS Safari: offset from the top needs to include env(safe-area-inset-top)
     so toasts don't sit under the notch / Dynamic Island.
@@ -253,8 +253,8 @@
     <.flash flash={@flash} kind={:info} />
     <.flash flash={@flash} kind={:error} />
   </div>
-  
-<!-- Main Content -->
+
+  <!-- Main Content -->
   <%!--
     iOS Safari: the header absorbs env(safe-area-inset-top) via its own
     padding (see <header> above), so here we only keep the regular header
@@ -284,8 +284,8 @@
       />
     </div>
   <% end %>
-  
-<!-- Bottom Navigation Bar (Mobile Only) -->
+
+  <!-- Bottom Navigation Bar (Mobile Only) -->
   <%= if not is_nil(@current_scope) and not detail_path?(@current_path) do %>
     <%!--
       iOS Safari: safe-area-bottom handles the home-indicator. Inline style

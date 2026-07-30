@@ -146,6 +146,9 @@ defmodule Streamix.Cache.L2 do
     e -> {:error, {:encode_error, e}}
   end
 
+  # Redis values are emitted exclusively by encode/1 above and the :safe
+  # option prevents creation of executable or unknown runtime terms.
+  # sobelow_skip ["Misc.BinToTerm"]
   defp decode(value) do
     :erlang.binary_to_term(value, [:safe])
   rescue

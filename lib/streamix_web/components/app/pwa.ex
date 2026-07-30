@@ -55,8 +55,7 @@ defmodule StreamixWeb.App.Pwa do
           data-pwa-ios-close="backdrop"
           aria-label="Fechar instruções de instalação"
           class="absolute inset-0 size-full bg-black/75 backdrop-blur-sm"
-        >
-        </button>
+        ></button>
 
         <div class="absolute inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] mx-auto max-w-md rounded-xl border border-border bg-surface p-5 text-left shadow-2xl">
           <div class="flex items-start justify-between gap-4">

@@ -106,7 +106,12 @@ defmodule StreamixWeb.WatchPartyLive.Index do
             </div>
           </div>
 
-          <form phx-submit="join" phx-change="validate" class="space-y-3 mt-auto">
+          <form
+            id="join-watch-party-form"
+            phx-submit="join"
+            phx-change="validate"
+            class="space-y-3 mt-auto"
+          >
             <div>
               <input
                 type="text"

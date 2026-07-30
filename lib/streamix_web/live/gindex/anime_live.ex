@@ -124,6 +124,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
           <div class="browse-toolbar__divider" />
           <.browse_tabs selected={:animes} source="gindex" counts={@gindex_counts} />
           <.search_input
+            id="anime-search-form"
             value={@search}
             placeholder="Buscar animes..."
             class="browse-toolbar__search"
@@ -144,8 +145,8 @@ defmodule StreamixWeb.Gindex.AnimeLive do
           />
         </div>
       </div>
-      
-    <!-- Infinite Scroll Sentinel -->
+
+      <!-- Infinite Scroll Sentinel -->
       <div
         :if={@has_more && !@loading}
         id="animes-sentinel"

@@ -230,6 +230,7 @@ defmodule StreamixWeb.App.Filters do
     """
   end
 
+  attr :id, :string, required: true
   attr :value, :string, default: ""
   attr :placeholder, :string, default: "Buscar..."
   attr :on_change, :string, default: "search"
@@ -238,6 +239,7 @@ defmodule StreamixWeb.App.Filters do
   def search_input(assigns) do
     ~H"""
     <form
+      id={@id}
       phx-change={@on_change}
       phx-submit={@on_change}
       class={["search-expand flex-1", @class == "" && "max-w-xs sm:max-w-sm", @class]}

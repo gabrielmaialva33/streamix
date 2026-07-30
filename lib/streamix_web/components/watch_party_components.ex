@@ -83,8 +83,7 @@ defmodule StreamixWeb.WatchPartyComponents do
         class="hidden sm:inline-flex items-center gap-1 text-[11px] text-white/60 font-medium"
       >
         <span class="relative flex w-1.5 h-1.5">
-          <span class="absolute inline-flex w-full h-full rounded-full bg-success opacity-75 animate-ping">
-          </span>
+          <span class="absolute inline-flex w-full h-full rounded-full bg-success opacity-75 animate-ping"></span>
           <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-success"></span>
         </span>
         {@total} {if @total == 1, do: "online", else: "online"}

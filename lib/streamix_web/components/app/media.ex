@@ -209,8 +209,6 @@ defmodule StreamixWeb.App.Media do
     """
   end
 
-  defp format_relative_time(nil), do: "Nunca"
-
   defp format_relative_time(datetime) do
     diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
 
@@ -272,8 +270,7 @@ defmodule StreamixWeb.App.Media do
           controls
           preload="metadata"
           playsinline
-        >
-        </video>
+        ></video>
       </div>
     </div>
     """

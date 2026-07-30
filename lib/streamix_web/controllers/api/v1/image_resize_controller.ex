@@ -102,7 +102,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
            receive_timeout: @upstream_timeout,
            max_redirects: 3,
            decode_body: false,
-           finch: Streamix.Finch
+           finch: [name: Streamix.Finch]
          ) do
       {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
         if byte_size(body) > @max_upstream_bytes do
@@ -141,6 +141,9 @@ defmodule StreamixWeb.Api.V1.ImageResizeController do
   defp thumbnail(image, width, height),
     do: Image.thumbnail(image, "#{width}x#{height}")
 
+  # `path` is always cache_path/4 output: a configured root plus a SHA-256
+  # digest. No request path or filename is ever joined into it.
+  # sobelow_skip ["Traversal.FileModule"]
   defp write_cache(path, bytes) do
     with :ok <- File.mkdir_p(Path.dirname(path)),
          :ok <- File.write(path, bytes) do

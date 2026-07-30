@@ -96,7 +96,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
       movie ->
         is_favorite = Detail.favorite?(user_id, "movie", movie.id)
-        movie = Detail.maybe_fetch_movie_info(movie)
 
         # Prewarm the upstream redirect chain in the background. The
         # user is on the detail page now and will likely click play in
@@ -118,6 +117,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> sort_movie_variants(movie.id, preferred_provider_id)
 
         selected_movie = selected_variant(movie_variants, movie, preferred_provider_id)
+        movie_watch_paths = build_watch_paths(movie_variants, current_path)
 
         socket =
           socket
@@ -137,30 +137,48 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(preferred_provider_id: preferred_provider_id)
           |> assign(is_favorite: is_favorite)
           |> assign(user_id: user_id)
-          |> assign(similar_movies: Detail.similar_movies(movie.id))
+          |> assign(similar_movies: [])
           |> assign(movie_variants: movie_variants)
           |> assign(selected_movie: selected_movie)
+          |> assign(movie_watch_paths: movie_watch_paths)
+          |> assign(selected_watch_path: Map.fetch!(movie_watch_paths, selected_movie.id))
           |> assign(selected_gallery_image: nil)
+          |> start_detail_tasks(movie)
 
         {:ok, socket}
     end
   end
+
+  def handle_async({:movie_enrichment, movie_id}, {:ok, movie}, socket)
+      when movie_id == socket.assigns.movie.id do
+    {:noreply,
+     socket
+     |> assign(page_title: movie.title || movie.name)
+     |> assign(page_description: movie.plot || "Assista #{movie.title || movie.name} no Streamix")
+     |> assign(og_image: og_image_url(movie))
+     |> assign(movie: movie)
+     |> assign(lcp_image: Detail.hero_image(movie, movie.stream_icon))}
+  end
+
+  def handle_async({:movie_recommendations, movie_id}, {:ok, movies}, socket)
+      when movie_id == socket.assigns.movie.id do
+    {:noreply, assign(socket, similar_movies: movies)}
+  end
+
+  def handle_async({task, _movie_id}, {:ok, _result}, socket)
+      when task in [:movie_enrichment, :movie_recommendations],
+      do: {:noreply, socket}
+
+  def handle_async({task, _movie_id}, {:exit, _reason}, socket)
+      when task in [:movie_enrichment, :movie_recommendations],
+      do: {:noreply, socket}
 
   # ============================================
   # Event Handlers
   # ============================================
 
   def handle_event("play_movie", _, socket) do
-    {:noreply,
-     redirect(
-       socket,
-       to:
-         watch_path(
-           socket.assigns.provider,
-           socket.assigns.selected_movie,
-           socket.assigns.current_path
-         )
-     )}
+    {:noreply, redirect(socket, to: socket.assigns.selected_watch_path)}
   end
 
   def handle_event("toggle_favorite", _, socket) do
@@ -194,8 +212,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         back_path={back_path(@return_to, @mode, @provider)}
         fallback_hook?
       />
-      
-    <!-- Content Section -->
+
+      <!-- Content Section -->
       <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
         <div class="max-w-7xl mx-auto">
           <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
@@ -229,8 +247,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 </div>
               </div>
             </div>
-            
-    <!-- Info -->
+
+            <!-- Info -->
             <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <.detail_title
                 title={@movie.title || @movie.name}
@@ -241,8 +259,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               <div :if={@mode == :browse and not @premium_access} data-premium-badge>
                 <.premium_badge />
               </div>
-              
-    <!-- Meta Tags -->
+
+              <!-- Meta Tags -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
                 <.content_rating_badge rating={@movie.content_rating} />
                 <.rating_badge rating={@movie.rating} />
@@ -250,11 +268,11 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 <.duration_badge seconds={@movie.duration_secs} />
                 <.extension_badge extension={@movie.container_extension} />
               </div>
-              
-    <!-- Genres -->
+
+              <!-- Genres -->
               <.genre_chips genres={@movie.genres} />
-              
-    <!-- Action Buttons -->
+
+              <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
                 <.play_button event="play_movie" label="Assistir Agora" />
 
@@ -281,21 +299,22 @@ defmodule StreamixWeb.Content.MovieDetailLive do
                 variants={@movie_variants}
                 current_movie_id={@movie.id}
                 selected_movie_id={@selected_movie.id}
+                watch_paths={@movie_watch_paths}
                 current_path={@current_path}
               />
-              
-    <!-- Details Grid -->
+
+              <!-- Details Grid -->
               <.credits_grid content={@movie} />
             </div>
           </div>
-          
-    <!-- Image Gallery -->
+
+          <!-- Image Gallery -->
           <.image_gallery
             images={if Iptv.has_images?(@movie), do: Iptv.image_urls(@movie), else: []}
             alt="Imagem do filme"
           />
-          
-    <!-- Similar Movies -->
+
+          <!-- Similar Movies -->
           <.similar_grid
             items={@similar_movies}
             kind={:movie}
@@ -473,7 +492,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
             <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
               <.link
-                href={watch_path(variant.provider, variant, @current_path)}
+                href={Map.fetch!(@watch_paths, variant.id)}
                 class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-hover sm:flex-none"
               >
                 <.icon name="hero-play-solid" class="size-3.5" /> Assistir
@@ -514,11 +533,31 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp watch_path(_provider, movie, return_to),
     do: with_return_to(~p"/watch/movie/#{movie.id}", return_to)
 
+  defp build_watch_paths(variants, return_to) do
+    Map.new(variants, fn variant ->
+      {variant.id, watch_path(variant.provider, variant, return_to)}
+    end)
+  end
+
   defp maybe_prewarm_upstream_redirect(_socket, %{provider_type: :torrent}, _movie, _user_id),
     do: :ok
 
   defp maybe_prewarm_upstream_redirect(socket, _provider, movie, user_id) do
     if connected?(socket), do: PlayerHelpers.prewarm_upstream_redirect("movie", movie, user_id)
+  end
+
+  defp start_detail_tasks(socket, movie) do
+    if connected?(socket) do
+      socket
+      |> start_async({:movie_enrichment, movie.id}, fn ->
+        Detail.maybe_fetch_movie_info(movie)
+      end)
+      |> start_async({:movie_recommendations, movie.id}, fn ->
+        Detail.similar_movies(movie.id)
+      end)
+    else
+      socket
+    end
   end
 
   defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do

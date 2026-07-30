@@ -23,8 +23,6 @@ defmodule Streamix.Cache do
     * `stats/0` — L1+L2 snapshot
   """
 
-  require Logger
-
   alias Streamix.Cache.{Keys, L1, L2}
 
   @default_ttl 3600
