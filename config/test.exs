@@ -12,6 +12,10 @@ config :bcrypt_elixir, :log_rounds, 1
 # ALLOW_REMOTE_TEST_DATABASE=i-know-this-is-a-test-database is explicitly set.
 # The MIX_TEST_PARTITION environment variable can be used for built-in test
 # partitioning in CI.
+#
+# Redis follows the same safety boundary. TEST_REDIS_URL is authoritative; a
+# local REDIS_URL falls back to database 15, while remote hosts fail closed
+# unless an isolated non-zero database is explicitly authorized.
 config :streamix, Streamix.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2,

@@ -262,21 +262,13 @@ defmodule Streamix.Cache do
 
   @doc """
   Invalidates all cache entries. Use with caution.
-  Clears both L1 (in-memory) and L2 (Redis).
+  Clears L1 and every L2 entry owned by the `cache:` Redis namespace.
+  Operational Redis state owned by other subsystems is preserved.
   """
   @spec invalidate_all() :: :ok
   def invalidate_all do
     L1.clear()
-
-    case L2.flush() do
-      :ok ->
-        :ok
-
-      :error ->
-        # Redis FLUSHDB rejected (e.g. ACL restriction) — fall back to a
-        # full-pattern SCAN delete.
-        delete_pattern("*")
-        :ok
-    end
+    _ = L2.delete_pattern("*")
+    :ok
   end
 end

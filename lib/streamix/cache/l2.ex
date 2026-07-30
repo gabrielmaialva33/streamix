@@ -10,6 +10,7 @@ defmodule Streamix.Cache.L2 do
   require Logger
 
   @redis :streamix_redis
+  @namespace "cache:"
   @scan_count 100
 
   @doc """
@@ -17,7 +18,9 @@ defmodule Streamix.Cache.L2 do
   can promote into L1 with the same TTL) or `nil` on miss / error.
   """
   def get(key) do
-    case Redix.pipeline(@redis, [["GET", key], ["PTTL", key]]) do
+    redis_key = redis_key(key)
+
+    case Redix.pipeline(@redis, [["GET", redis_key], ["PTTL", redis_key]]) do
       {:ok, [nil, _]} ->
         nil
 
@@ -34,7 +37,7 @@ defmodule Streamix.Cache.L2 do
   def set(key, value, ttl_seconds) do
     case encode(value) do
       {:ok, encoded} ->
-        case Redix.command(@redis, ["SETEX", key, ttl_seconds, encoded]) do
+        case Redix.command(@redis, ["SETEX", redis_key(key), ttl_seconds, encoded]) do
           {:ok, _} ->
             :ok
 
@@ -51,7 +54,7 @@ defmodule Streamix.Cache.L2 do
 
   @doc "Delete a single key."
   def delete(key) do
-    case Redix.command(@redis, ["DEL", key]) do
+    case Redix.command(@redis, ["DEL", redis_key(key)]) do
       {:ok, _} -> :ok
       {:error, reason} -> log_error("DEL", key, reason)
     end
@@ -69,36 +72,9 @@ defmodule Streamix.Cache.L2 do
   """
   def delete_pattern(pattern, on_key_deleted \\ fn _key -> :ok end)
       when is_function(on_key_deleted, 1) do
-    count = scan_and_delete(pattern, "0", 0, on_key_deleted)
+    callback = fn key -> key |> logical_key() |> on_key_deleted.() end
+    count = scan_and_delete(redis_pattern(pattern), "0", 0, callback)
     {:ok, count}
-  end
-
-  @doc "FLUSHDB. Used by `Streamix.Cache.invalidate_all/0` with fallback."
-  def flush do
-    if flushdb_available?(), do: try_flushdb(), else: :error
-  end
-
-  defp try_flushdb do
-    case Redix.command(@redis, ["FLUSHDB"]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, %Redix.Error{message: "ERR unknown command" <> _}} ->
-        # Managed Redis commonly renames/disables FLUSHDB. Remember it so
-        # later flushes go straight to the SCAN+DEL fallback instead of
-        # re-asking (and re-logging) on every call.
-        :persistent_term.put({__MODULE__, :flushdb_available}, false)
-        Logger.info("Cache.L2 FLUSHDB unavailable (renamed/disabled); using SCAN+DEL fallback")
-        :error
-
-      {:error, reason} ->
-        log_error("FLUSHDB", "*", reason)
-        :error
-    end
-  end
-
-  defp flushdb_available? do
-    :persistent_term.get({__MODULE__, :flushdb_available}, true)
   end
 
   @doc "L2 size snapshot for `Streamix.Cache.stats/0`."
@@ -110,6 +86,10 @@ defmodule Streamix.Cache.L2 do
   end
 
   # ----- internals -----
+
+  defp redis_key(key), do: @namespace <> key
+  defp redis_pattern(pattern), do: @namespace <> pattern
+  defp logical_key(@namespace <> key), do: key
 
   defp scan_and_delete(pattern, cursor, count, on_key_deleted) do
     case Redix.command(@redis, ["SCAN", cursor, "MATCH", pattern, "COUNT", @scan_count]) do

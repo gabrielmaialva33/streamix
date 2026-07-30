@@ -15,6 +15,14 @@ defmodule Streamix.CacheTest do
       assert Cache.get("test:key") == "value"
     end
 
+    test "stores L2 entries inside the cache namespace" do
+      assert :ok = Cache.set("test:namespaced", "value")
+
+      assert {:ok, nil} = Redix.command(:streamix_redis, ["GET", "test:namespaced"])
+      assert {:ok, encoded} = Redix.command(:streamix_redis, ["GET", "cache:test:namespaced"])
+      assert :erlang.binary_to_term(encoded, [:safe]) == "value"
+    end
+
     test "returns nil for non-existent key" do
       assert is_nil(Cache.get("nonexistent:key"))
     end
@@ -169,6 +177,21 @@ defmodule Streamix.CacheTest do
       assert is_nil(Cache.get("key1"))
       assert is_nil(Cache.get("key2"))
       assert is_nil(Cache.get("key3"))
+    end
+
+    test "preserves operational Redis state outside the cache namespace" do
+      operational_key = "gindex:quota:cache-regression"
+      assert {:ok, "OK"} = Redix.command(:streamix_redis, ["SET", operational_key, "8000"])
+
+      on_exit(fn ->
+        Redix.command(:streamix_redis, ["DEL", operational_key])
+      end)
+
+      Cache.set("key-to-clear", "value")
+      assert :ok = Cache.invalidate_all()
+
+      assert is_nil(Cache.get("key-to-clear"))
+      assert {:ok, "8000"} = Redix.command(:streamix_redis, ["GET", operational_key])
     end
   end
 
