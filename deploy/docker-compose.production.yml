@@ -36,7 +36,7 @@ services:
       - shared_network
 
   redis:
-    image: ${REDIS_IMAGE:-redis:7-alpine}
+    image: ${REDIS_IMAGE:-redis:8-alpine}
     container_name: streamix-redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
