@@ -41,6 +41,13 @@ defmodule StreamixWeb.Helpers.ImageProxyTest do
            ) == nil
   end
 
+  test "omits blocked raw images while keeping normal browser images proxied" do
+    assert ImageProxy.browser_image("https://png.pngtree.com/png-vector/blocked-image.png") == nil
+
+    assert ImageProxy.browser_image("https://example.com/icon.png") ==
+             "https://example.com/icon.png?_v=v2"
+  end
+
   test "keeps normal browser posters on the existing proxy path" do
     assert ImageProxy.browser_poster("https://example.com/poster.jpg", :carousel) ==
              "https://example.com/poster.jpg?_v=v2"

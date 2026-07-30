@@ -94,6 +94,20 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     |> proxy_insecure_external_image()
   end
 
+  @doc """
+  Resolves an image intended for direct browser loading.
+
+  Hosts with verified hotlink or ORB failures return `nil` so components can
+  render their local fallback before the browser issues a doomed request.
+  """
+  @spec browser_image(String.t() | nil) :: String.t() | nil
+  def browser_image(nil), do: nil
+  def browser_image(""), do: nil
+
+  def browser_image(url) when is_binary(url) do
+    if browser_blocked_host?(url), do: nil, else: proxy(url)
+  end
+
   # Upgrades any TMDB image URL to HTTPS and collapses accidental
   # double slashes between the host and the path. Only touches TMDB
   # URLs so we don't accidentally mangle provider logo paths.
@@ -342,16 +356,17 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   @doc """
   Resolves a poster intended for direct browser loading.
 
-  Hosts with verified hotlink or ORB failures return `nil` so server-rendered
-  components can select their local fallback before the browser issues a
-  doomed request.
+  Applies the context-specific resize before the same browser safety boundary
+  as `browser_image/1`.
   """
   @spec browser_poster(String.t() | nil, atom()) :: String.t() | nil
   def browser_poster(nil, _ctx), do: nil
   def browser_poster("", _ctx), do: nil
 
   def browser_poster(url, ctx) when is_binary(url) do
-    if browser_blocked_host?(url), do: nil, else: poster(url, ctx)
+    url
+    |> resize(poster_size(ctx))
+    |> browser_image()
   end
 
   defp browser_blocked_host?(url) do
