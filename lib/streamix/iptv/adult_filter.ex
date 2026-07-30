@@ -30,15 +30,20 @@ defmodule Streamix.Iptv.AdultFilter do
   helpers above are cheaper when the query already targets one provider.
   """
   def exclude_adult_content(query) do
-    adult_ci_ids =
+    adult_content =
       from(ic in "item_categories",
         join: c in Category,
         on: c.id == ic.category_id,
-        where: c.is_adult == true,
-        select: ic.catalog_item_id
+        where:
+          ic.catalog_item_id == parent_as(:adult_filter_item).catalog_item_id and
+            c.is_adult == true,
+        select: 1
       )
 
-    from(item in query, where: item.catalog_item_id not in subquery(adult_ci_ids))
+    from(item in query,
+      as: :adult_filter_item,
+      where: not exists(subquery(adult_content))
+    )
   end
 
   @doc """
