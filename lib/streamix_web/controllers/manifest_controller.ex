@@ -5,6 +5,9 @@ defmodule StreamixWeb.ManifestController do
   Browsers may keep an installed application's manifest for a long time.
   Revalidation here, paired with keeping the manifest out of the service
   worker precache, lets icon, shortcut and install metadata follow a deploy.
+
+  The source lives outside `priv/static` so `Plug.Static` cannot intercept or
+  reject the request before the controller applies those cache semantics.
   """
 
   use StreamixWeb, :controller
@@ -14,7 +17,7 @@ defmodule StreamixWeb.ManifestController do
   def show(conn, _params) do
     body =
       :streamix
-      |> Application.app_dir("priv/static")
+      |> Application.app_dir("priv")
       |> Path.join(@manifest_path)
       |> File.read!()
 

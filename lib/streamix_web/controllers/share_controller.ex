@@ -1,6 +1,6 @@
 defmodule StreamixWeb.ShareController do
   @moduledoc """
-  Web Share Target endpoint (`share_target` in `priv/static/manifest.json`).
+  Web Share Target endpoint (`share_target` in `priv/manifest.json`).
 
   When the installed PWA is picked in the OS share sheet, the browser
   opens `/share?title=...&text=...&url=...`. We land the user on search

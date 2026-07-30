@@ -222,7 +222,7 @@ API surfaces under `/api/v1`:
 - Tailwind CSS v4 only. No `@apply`, no `tailwind.config.js`, no daisyUI rollout.
 - Frontend packages come from `assets/package.json`; remember `npm ci`.
 - The web app currently supports dark mode by default and a client-side light mode toggle.
-- PWA assets live in `priv/static/manifest.json` and `priv/static/sw.js`.
+- PWA sources live in `priv/manifest.json` and `priv/sw.js`; controllers serve both with release-aware cache headers.
 
 ## Testing
 
