@@ -43,6 +43,8 @@ Notes:
 - `mix setup` runs migrations, seeds, and builds assets.
 - `priv/repo/seeds.exs` requires `ADMIN_PASSWORD`.
 - test DB setup can be omitted from `.env`; `TEST_DATABASE_URL` is inferred from `DATABASE_URL` when missing.
+- tests refuse remote hosts and non-`*_test` database names by default; the deliberate remote override is documented
+  in `.env.example`.
 - optional features such as Qdrant, RabbitMQ, GIndex, and global provider sync are configured through `.env`.
 
 ## Where to Contribute
@@ -115,6 +117,8 @@ mix test path/to/test.exs:42
 mix credo --strict
 mix quality
 mix precommit
+PLAYWRIGHT_BROWSER=firefox bash scripts/test-playwright-docker.sh
+bash scripts/test-pwa-chromium.sh
 ```
 
 Expectations:
@@ -123,6 +127,8 @@ Expectations:
 - keep compiler warnings at zero
 - run `mix precommit` before asking for review
 - if you touch JS hooks or player code, run `cd assets && npm ci` first if dependencies are missing
+- browser-sensitive changes must pass Chromium, Firefox and WebKit; PWA/mobile changes must also pass the constrained
+  Chromium + iPhone smoke
 
 ## Database and Migrations
 

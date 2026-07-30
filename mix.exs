@@ -9,7 +9,10 @@ defmodule Streamix.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      test_coverage: [summary: [threshold: 46]],
+      test_coverage: [
+        tool: Streamix.TestSupport.RiskCoverage,
+        summary: [threshold: 46]
+      ],
       dialyzer: dialyzer(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
@@ -29,7 +32,7 @@ defmodule Streamix.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, quality: :test]
     ]
   end
 
