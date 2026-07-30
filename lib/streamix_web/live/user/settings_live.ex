@@ -277,28 +277,59 @@ defmodule StreamixWeb.User.SettingsLive do
 
             <StreamixWeb.App.Pwa.install_action id="settings-pwa-install" />
 
-            <div id="pwa-repair" phx-hook="PwaRepair" class="flex flex-col gap-3">
-              <p data-pwa-repair-status class="text-sm text-text-secondary">
-                Verificando cache local...
-              </p>
+            <details
+              id="pwa-diagnostics"
+              class="group overflow-hidden rounded-lg border border-border bg-surface-elevated/40"
+            >
+              <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium text-text-primary">
+                <span class="flex items-center gap-2">
+                  <.icon name="hero-wrench-screwdriver" class="size-4 text-text-secondary" />
+                  Diagnóstico do app
+                </span>
+                <.icon
+                  name="hero-chevron-down"
+                  class="size-4 text-text-secondary transition-transform group-open:rotate-180"
+                />
+              </summary>
 
-              <div class="flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  data-pwa-repair-action="repair"
-                  class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand/90 disabled:cursor-wait disabled:opacity-70"
+              <div
+                id="pwa-repair"
+                phx-hook="PwaRepair"
+                class="flex flex-col gap-3 border-t border-border p-3"
+              >
+                <p
+                  data-pwa-repair-status
+                  aria-live="polite"
+                  class="text-sm text-text-secondary"
                 >
-                  Atualizar app e limpar cache
-                </button>
-                <button
-                  type="button"
-                  data-pwa-repair-action="clear"
-                  class="inline-flex min-h-11 items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-wait disabled:opacity-70"
-                >
-                  Limpar cache local
-                </button>
+                  Verificando cache local...
+                </p>
+
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    data-pwa-repair-action="repair"
+                    class="inline-flex min-h-11 items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand/90 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    Atualizar app e limpar cache
+                  </button>
+                  <button
+                    type="button"
+                    data-pwa-repair-action="clear"
+                    class="inline-flex min-h-11 items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-wait disabled:opacity-70"
+                  >
+                    Limpar cache local
+                  </button>
+                  <button
+                    type="button"
+                    data-pwa-repair-action="sync"
+                    class="inline-flex min-h-11 items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-wait disabled:opacity-70 sm:col-span-2"
+                  >
+                    Tentar sincronização offline
+                  </button>
+                </div>
               </div>
-            </div>
+            </details>
           </div>
         </section>
       </div>

@@ -15,7 +15,8 @@ import {
   syncFavorites,
   syncHistory,
   upsertHistory,
-} from "../pwa/offline_store";
+} from "../pwa/offline_store.js";
+import { OFFLINE_SYNC_RETRY_EVENT } from "../pwa/offline_sync_events.js";
 
 const OfflineSync = {
   mounted() {
@@ -28,8 +29,13 @@ const OfflineSync = {
     // Listen for online/offline events
     this.handleOnline = () => this.onOnline();
     this.handleOffline = () => this.onOffline();
+    this.handleRetry = () => {
+      this.lastSyncedData = null;
+      this.syncFromServer();
+    };
     window.addEventListener("online", this.handleOnline);
     window.addEventListener("offline", this.handleOffline);
+    window.addEventListener(OFFLINE_SYNC_RETRY_EVENT, this.handleRetry);
 
     // Listen for LiveView events
     this.handleEvent("sync_favorite_add", (data) => this.onFavoriteAdd(data));
@@ -45,6 +51,7 @@ const OfflineSync = {
   destroyed() {
     window.removeEventListener("online", this.handleOnline);
     window.removeEventListener("offline", this.handleOffline);
+    window.removeEventListener(OFFLINE_SYNC_RETRY_EVENT, this.handleRetry);
   },
 
   async syncFromServer() {

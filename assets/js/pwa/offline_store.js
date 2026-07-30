@@ -12,13 +12,65 @@ const STORES = {
   METADATA: "content_metadata",
 };
 
+const FAVORITE_TYPES = new Set(["live_channel", "movie", "series", "episode"]);
+const DECIMAL_CONTENT_ID = /^\d{1,19}$/;
+
 let db = null;
+
+function invalidFavorite(field) {
+  return new TypeError(`[OfflineStore] invalid ${field} in favorite snapshot`);
+}
+
+function normalizeContentId(contentId) {
+  const candidate =
+    typeof contentId === "number" && Number.isSafeInteger(contentId)
+      ? String(contentId)
+      : contentId;
+
+  if (typeof candidate !== "string" || !DECIMAL_CONTENT_ID.test(candidate)) {
+    throw invalidFavorite("content_id");
+  }
+
+  const canonical = candidate.replace(/^0+/, "");
+  if (!canonical) throw invalidFavorite("content_id");
+
+  return canonical;
+}
+
+export function favoriteKey(contentType, contentId) {
+  if (!FAVORITE_TYPES.has(contentType)) {
+    throw invalidFavorite("content_type");
+  }
+
+  return `${contentType}:${normalizeContentId(contentId)}`;
+}
+
+export function normalizeFavorite(favorite, syncedAt = Date.now()) {
+  if (!favorite || typeof favorite !== "object" || Array.isArray(favorite)) {
+    throw invalidFavorite("item");
+  }
+
+  const contentType = favorite.content_type;
+  const contentId = normalizeContentId(favorite.content_id);
+  const id = favoriteKey(contentType, contentId);
+
+  return {
+    ...favorite,
+    id,
+    content_type: contentType,
+    content_id: contentId,
+    synced_at: syncedAt,
+  };
+}
 
 /**
  * Initialize the IndexedDB database
  */
 export async function initDB() {
   if (db) return db;
+  if (typeof indexedDB === "undefined") {
+    throw new Error("[OfflineStore] IndexedDB is unavailable");
+  }
 
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -125,10 +177,10 @@ async function replaceItems(storeName, items) {
  * Sync favorites from server to IndexedDB
  */
 export async function syncFavorites(favorites) {
-  const items = favorites.map((f) => ({
-    ...f,
-    synced_at: Date.now(),
-  }));
+  if (!Array.isArray(favorites)) throw invalidFavorite("snapshot");
+
+  const syncedAt = Date.now();
+  const items = favorites.map((favorite) => normalizeFavorite(favorite, syncedAt));
   await replaceItems(STORES.FAVORITES, items);
 }
 
@@ -143,36 +195,25 @@ export async function getFavorites() {
  * Add a single favorite
  */
 export async function addFavorite(favorite) {
-  await saveItems(STORES.FAVORITES, [{ ...favorite, synced_at: Date.now() }]);
+  await saveItems(STORES.FAVORITES, [normalizeFavorite(favorite)]);
 }
 
 /**
  * Remove a favorite by content type and id
  */
 export async function removeFavorite(contentType, contentId) {
+  const key = favoriteKey(contentType, contentId);
   await initDB();
   const tx = db.transaction(STORES.FAVORITES, "readwrite");
   const store = tx.objectStore(STORES.FAVORITES);
+  store.delete(key);
 
-  // Find and delete the item
-  const request = store.openCursor();
-  return new Promise((resolve, reject) => {
-    request.onsuccess = (event) => {
-      const cursor = event.target.result;
-      if (cursor) {
-        const item = cursor.value;
-        if (item.content_type === contentType && String(item.content_id) === String(contentId)) {
-          cursor.delete();
-          resolve(true);
-          return;
-        }
-        cursor.continue();
-      } else {
-        resolve(false);
-      }
-    };
-    request.onerror = () => reject(request.error);
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
+
+  return true;
 }
 
 // ============================================
@@ -269,5 +310,7 @@ export async function getStats() {
   };
 }
 
-// Auto-initialize on import
-initDB().catch((err) => console.warn("[OfflineStore] Init failed:", err));
+// Auto-initialize only in browser contexts that expose IndexedDB.
+if (typeof indexedDB !== "undefined") {
+  initDB().catch((err) => console.warn("[OfflineStore] Init failed:", err));
+}

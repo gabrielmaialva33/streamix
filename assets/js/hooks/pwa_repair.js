@@ -1,20 +1,26 @@
+import { requestOfflineSyncRetry } from "../pwa/offline_sync_events.js";
+
 const PwaRepair = {
   mounted() {
     this.status = this.el.querySelector("[data-pwa-repair-status]");
     this.repairButton = this.el.querySelector("[data-pwa-repair-action='repair']");
     this.clearButton = this.el.querySelector("[data-pwa-repair-action='clear']");
+    this.syncButton = this.el.querySelector("[data-pwa-repair-action='sync']");
 
     this.repair = this.repair.bind(this);
     this.clear = this.clear.bind(this);
+    this.retryOfflineSync = this.retryOfflineSync.bind(this);
 
     this.repairButton?.addEventListener("click", this.repair);
     this.clearButton?.addEventListener("click", this.clear);
+    this.syncButton?.addEventListener("click", this.retryOfflineSync);
     this.refreshStatus();
   },
 
   destroyed() {
     this.repairButton?.removeEventListener("click", this.repair);
     this.clearButton?.removeEventListener("click", this.clear);
+    this.syncButton?.removeEventListener("click", this.retryOfflineSync);
   },
 
   async refreshStatus() {
@@ -68,8 +74,13 @@ const PwaRepair = {
     }
   },
 
+  retryOfflineSync() {
+    requestOfflineSyncRetry(window);
+    this.setStatus("Nova sincronização offline solicitada.");
+  },
+
   setBusy(disabled, label = null) {
-    for (const button of [this.repairButton, this.clearButton]) {
+    for (const button of [this.repairButton, this.clearButton, this.syncButton]) {
       if (!button) continue;
       button.disabled = disabled;
     }

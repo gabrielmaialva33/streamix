@@ -4,14 +4,21 @@ defmodule StreamixWeb.User.SettingsLiveTest do
   import Phoenix.LiveViewTest
   import Streamix.AccountsFixtures
 
-  test "renders PWA repair tools for authenticated users", %{conn: conn} do
+  test "keeps PWA install visible and maintenance inside a collapsed diagnostic", %{conn: conn} do
     conn = log_in_user(conn, user_fixture())
 
     assert {:ok, view, html} = live(conn, ~p"/settings")
     assert html =~ "App Streamix"
-    assert html =~ "Atualizar app e limpar cache"
-    assert html =~ "phx-hook=\"PwaRepair\""
     assert has_element?(view, "#settings-pwa-install[phx-hook='PwaInstall']")
+    assert has_element?(view, "#pwa-diagnostics:not([open])", "Diagnóstico do app")
+    assert has_element?(view, "#pwa-diagnostics #pwa-repair[phx-hook='PwaRepair']")
+
+    assert has_element?(
+             view,
+             "#pwa-diagnostics button[data-pwa-repair-action='sync']",
+             "Tentar sincronização offline"
+           )
+
     assert has_element?(view, "#adult-content-toggle.size-11[aria-pressed='false']")
   end
 
