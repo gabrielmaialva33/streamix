@@ -173,12 +173,50 @@ else
   config :streamix, :tomato, enabled: false
 end
 
-# GIndex provider configuration (Google Drive Index for movies/series/animes)
-# Paths are configured via gindex_drives on the provider record
+# GIndex provider configuration (Google Drive Index for movies/series/animes).
+# Paths are configured via gindex_drives on the provider record.
 if get_env.("GINDEX_ENABLED") == "true" do
-  config :streamix, :gindex_provider,
-    enabled: true,
-    url: get_env.("GINDEX_URL")
+  validate_gindex_url = fn url ->
+    url = String.trim(url)
+    uri = URI.parse(url)
+
+    if uri.scheme in ["http", "https"] and is_binary(uri.host) and uri.host != "" do
+      String.trim_trailing(url, "/")
+    else
+      raise ArgumentError, "invalid GIndex endpoint URL; expected an http(s) URL with a host"
+    end
+  end
+
+  endpoints =
+    case get_env.("GINDEX_ENDPOINTS") do
+      value when is_binary(value) ->
+        value
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.map(validate_gindex_url)
+        |> Enum.uniq()
+
+      _ ->
+        []
+    end
+
+  gindex_config =
+    case endpoints do
+      [primary | _] ->
+        [enabled: true, url: primary, endpoints: endpoints]
+
+      [] ->
+        case get_env.("GINDEX_URL") do
+          url when is_binary(url) ->
+            [enabled: true, url: validate_gindex_url.(url)]
+
+          _ ->
+            [enabled: true]
+        end
+    end
+
+  config :streamix, :gindex_provider, gindex_config
 else
   config :streamix, :gindex_provider, enabled: false
 end
