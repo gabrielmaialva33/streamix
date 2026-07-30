@@ -55,7 +55,6 @@ defmodule Streamix.ContextBoundariesTest do
               "lib/streamix/iptv/engagement/favorite.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/watch_event.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/watch_progress.ex alias Streamix.Accounts.User",
-              "lib/streamix/iptv/providers/gindex_provider.ex alias Streamix.Gindex.Sync",
               "lib/streamix/iptv/providers/global_provider.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/providers/provider.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/streaming/stream_proxy.ex alias Streamix.Gindex.UrlCache",
