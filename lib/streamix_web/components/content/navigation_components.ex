@@ -212,7 +212,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
       <.link
         :if={@see_more_path}
         navigate={@see_more_path}
-        class="text-xs sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
+        class="inline-flex min-h-11 items-center text-xs sm:min-h-0 sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
       >
         Ver mais <span class="hidden sm:inline">→</span>
       </.link>
