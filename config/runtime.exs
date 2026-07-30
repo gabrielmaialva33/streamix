@@ -201,20 +201,35 @@ if get_env.("GINDEX_ENABLED") == "true" do
         []
     end
 
-  gindex_config =
-    case endpoints do
-      [primary | _] ->
-        [enabled: true, url: primary, endpoints: endpoints]
-
-      [] ->
-        case get_env.("GINDEX_URL") do
-          url when is_binary(url) ->
-            [enabled: true, url: validate_gindex_url.(url)]
-
-          _ ->
-            [enabled: true]
-        end
+  configured_url =
+    case get_env.("GINDEX_URL") do
+      url when is_binary(url) -> validate_gindex_url.(url)
+      _ -> nil
     end
+
+  sync_url =
+    case get_env.("GINDEX_SYNC_URL") do
+      url when is_binary(url) -> validate_gindex_url.(url)
+      _ -> List.first(endpoints) || configured_url
+    end
+
+  stream_url =
+    case get_env.("GINDEX_STREAM_URL") do
+      url when is_binary(url) -> validate_gindex_url.(url)
+      _ -> configured_url
+    end
+
+  put_if_present = fn
+    config, _key, nil -> config
+    config, key, value -> Keyword.put(config, key, value)
+  end
+
+  gindex_config =
+    [enabled: true]
+    |> put_if_present.(:url, sync_url)
+    |> put_if_present.(:sync_url, sync_url)
+    |> put_if_present.(:stream_url, stream_url)
+    |> put_if_present.(:endpoints, if(endpoints == [], do: nil, else: endpoints))
 
   config :streamix, :gindex_provider, gindex_config
 else

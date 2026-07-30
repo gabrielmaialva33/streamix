@@ -13,6 +13,7 @@ defmodule Streamix.Gindex.Client do
   """
 
   alias Streamix.Gindex.EndpointManager
+  alias Streamix.Gindex.EndpointPolicy
   alias Streamix.Gindex.HealthTracker
   alias Streamix.Gindex.Pagination
   alias Streamix.Gindex.Response
@@ -127,13 +128,8 @@ defmodule Streamix.Gindex.Client do
       {:ok, "https://example.workers.dev/download.aspx?file=TOKEN&expiry=...&mac=..."}
   """
   def get_download_url(file_path) do
-    case EndpointManager.get_endpoint() do
-      {:ok, base_url} ->
-        get_download_url(base_url, file_path)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    EndpointPolicy.stream_url()
+    |> get_download_url(file_path)
   end
 
   @doc """
@@ -165,13 +161,8 @@ defmodule Streamix.Gindex.Client do
   Gets file info including size and modified date.
   """
   def get_file_info(file_path) do
-    case EndpointManager.get_endpoint() do
-      {:ok, base_url} ->
-        get_file_info(base_url, file_path)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    EndpointPolicy.stream_url()
+    |> get_file_info(file_path)
   end
 
   @doc """

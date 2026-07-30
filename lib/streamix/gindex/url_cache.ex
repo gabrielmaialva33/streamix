@@ -13,7 +13,7 @@ defmodule Streamix.Gindex.UrlCache do
 
   use GenServer
 
-  alias Streamix.Gindex.Client
+  alias Streamix.Gindex.{Client, EndpointPolicy}
   alias Streamix.Iptv.{Episode, Movie}
   alias Streamix.Repo
 
@@ -152,7 +152,7 @@ defmodule Streamix.Gindex.UrlCache do
   end
 
   defp fetch_and_cache_movie_url(movie_id, provider, path) do
-    base_url = provider.gindex_url || provider.url
+    base_url = EndpointPolicy.stream_url(provider.gindex_url || provider.url)
 
     case Client.get_download_url(base_url, path) do
       {:ok, url} ->
@@ -242,7 +242,7 @@ defmodule Streamix.Gindex.UrlCache do
   end
 
   defp fetch_and_cache_episode_url(episode_id, provider, path) do
-    base_url = provider.gindex_url || provider.url
+    base_url = EndpointPolicy.stream_url(provider.gindex_url || provider.url)
 
     case Client.get_download_url(base_url, path) do
       {:ok, url} ->

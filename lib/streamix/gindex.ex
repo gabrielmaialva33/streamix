@@ -10,6 +10,7 @@ defmodule Streamix.Gindex do
     Client,
     DisplayName,
     EndpointManager,
+    EndpointPolicy,
     MetadataProbe,
     Parser,
     QuotaGuard,
@@ -27,6 +28,7 @@ defmodule Streamix.Gindex do
   defdelegate sync_kind(provider, base_url, path, kind, opts \\ []), to: Sync
   defdelegate sync_roots_for(provider, date \\ Date.utc_today()), to: SyncPlanner, as: :roots_for
   defdelegate seconds_until_quota_reset(), to: QuotaGuard, as: :seconds_until_reset
+  defdelegate sync_url(config), to: EndpointPolicy
 
   # Delegate URL cache functions
   defdelegate get_movie_url(movie_id), to: UrlCache

@@ -19,13 +19,11 @@ defmodule Streamix.Gindex.Transport do
   @rate_limit_base_delay :timer.seconds(30)
   @max_rate_limit_retries 4
 
-  # 500 from the goindex worker is the deterministic
-  # "Cannot read properties of undefined (reading 'map')" bug
-  # (see worker.js:2400 in @googledrive/index@2.3.6 — fixed in 2.5.6+).
-  # Backing off for minutes does nothing because the bug fires on the
-  # same (path, page_token) shape every time. Burn 2 fast retries —
-  # which still gives us a fallback-endpoint shot at retry_server_error
-  # — and then bubble the partial result up to the scraper.
+  # A worker.js TypeError is deterministic for that request shape and skips
+  # retries. Other 500s get two same-origin retries because they are often
+  # transient. Cross-Worker fallback happens only in Pagination, which can
+  # safely restart a listing from page zero instead of replaying a foreign
+  # cursor or signed token.
   @server_error_base_delay :timer.seconds(5)
   @max_server_error_retries 2
 
@@ -275,25 +273,16 @@ defmodule Streamix.Gindex.Transport do
          body_str
        ) do
     EndpointManager.report_error(base_url)
+    delay = server_error_delay(rate_limit_attempt)
 
-    case EndpointManager.get_endpoint() do
-      {:ok, new_base_url} when new_base_url != base_url ->
-        Logger.info("[GIndex] Switching to fallback endpoint: #{new_base_url}")
-        path = String.replace_prefix(url, base_url, "")
-        request_with_retry(method, new_base_url <> path, body, new_base_url, opts, attempt, 0)
+    Logger.warning(
+      "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
+        "req=#{summarize_retry_body(body)} " <>
+        "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_server_error_retries})"
+    )
 
-      _ ->
-        delay = server_error_delay(rate_limit_attempt)
-
-        Logger.warning(
-          "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
-            "req=#{summarize_retry_body(body)} " <>
-            "waiting #{div(delay, 1000)}s before retry (attempt #{rate_limit_attempt + 1}/#{@max_server_error_retries})"
-        )
-
-        Process.sleep(delay)
-        request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
-    end
+    Process.sleep(delay)
+    request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
   end
 
   defp server_error_delay(rate_limit_attempt) do

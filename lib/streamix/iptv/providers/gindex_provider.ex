@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.GIndexProvider do
   It is identified by `is_system: true`, `visibility: :global`, and `provider_type: :gindex`.
   """
 
-  alias Streamix.Gindex.Sync
+  alias Streamix.Gindex
   alias Streamix.Iptv.Provider
   alias Streamix.Iptv.Providers
   alias Streamix.Repo
@@ -48,11 +48,12 @@ defmodule Streamix.Iptv.GIndexProvider do
   def ensure_exists! do
     if enabled?() do
       cfg = config()
+      sync_url = Gindex.sync_url(cfg)
 
       attrs = %{
         name: "GIndex",
-        url: cfg[:url],
-        gindex_url: cfg[:url],
+        url: sync_url,
+        gindex_url: sync_url,
         provider_type: :gindex,
         is_system: true,
         visibility: :global,
@@ -106,7 +107,7 @@ defmodule Streamix.Iptv.GIndexProvider do
         {:error, :not_found}
 
       provider ->
-        Sync.sync_provider(provider)
+        Gindex.sync_provider(provider)
     end
   end
 

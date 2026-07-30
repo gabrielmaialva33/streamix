@@ -63,8 +63,8 @@ defmodule Streamix.Gindex.EndpointManagerTest do
                priority: 1
              },
              %{
-               name: :animezey_legacy,
-               url: "https://animezey16082023.animezey16082023.workers.dev",
+               name: :sync_primary,
+               url: "https://1.animezey23112022.workers.dev",
                priority: 2
              }
            ] = configured_endpoints
@@ -83,13 +83,13 @@ defmodule Streamix.Gindex.EndpointManagerTest do
 
     assert [
              %{
-               name: :animezeydl,
-               url: "https://1.animezeydl.workers.dev",
+               name: :sync_primary,
+               url: "https://1.animezey23112022.workers.dev",
                priority: 1
              },
              %{
-               name: :animezey_legacy,
-               url: "https://animezey16082023.animezey16082023.workers.dev",
+               name: :stream_primary,
+               url: "https://1.animezeydl.workers.dev",
                priority: 2
              }
            ] = configured_endpoints

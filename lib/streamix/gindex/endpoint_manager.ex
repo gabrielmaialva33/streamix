@@ -16,30 +16,21 @@ defmodule Streamix.Gindex.EndpointManager do
   use GenServer
   require Logger
 
+  alias Streamix.Gindex.EndpointPolicy
+
   @table_name :gindex_endpoints
 
-  # Keep failover in the application, where a paginated listing can restart
-  # from page zero on the next Worker. Cloudflare cursor and download tokens
-  # are bound to the Worker that issued them and must never be replayed against
-  # another host by a transparent reverse-proxy fallback.
+  # Keep failover in the application, where a paginated listing restarts from
+  # page zero on the next Worker. Cloudflare cursors are bound to the Worker
+  # that issued them and must never be replayed against another host.
   #
   # Live canary on 2026-07-29:
-  #   * animezeydl completed all five pages (2,115 anime entries) and served a
-  #     byte-range download as 206 video/x-matroska;
-  #   * animezey16082023 served byte ranges correctly but remains the secondary
-  #     because its listings intermittently return 500.
-  @default_endpoints [
-    %{
-      name: :animezeydl,
-      url: "https://1.animezeydl.workers.dev",
-      priority: 1
-    },
-    %{
-      name: :animezey_legacy,
-      url: "https://animezey16082023.animezey16082023.workers.dev",
-      priority: 2
-    }
-  ]
+  #   * animezey23112022 traversed nested catalog folders reliably but returned
+  #     HTML instead of MKV bytes for signed downloads;
+  #   * animezeydl completed the large paginated listings and served byte-range
+  #     downloads as 206 video/x-matroska, but intermittently failed on nested
+  #     listings. It is therefore the sync fallback and stream authority.
+  @default_endpoints EndpointPolicy.default_endpoints()
 
   # Circuit breaker settings
   # 5xx bursts from the upstream Cloudflare Worker are routinely
