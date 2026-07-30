@@ -12,6 +12,7 @@ defmodule StreamixWeb.FavoritesLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.App.Feedback
+  import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
@@ -128,7 +129,7 @@ defmodule StreamixWeb.FavoritesLive do
       <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
         <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Minha Lista</h1>
 
-        <div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
+        <div id="favorites-filter-strip" data-filter-strip class="filter-strip">
           <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
           <.filter_button
             type="live_channel"
@@ -211,71 +212,83 @@ defmodule StreamixWeb.FavoritesLive do
 
   defp favorite_item(assigns) do
     assigns =
-      assign(assigns, :poster?, assigns.favorite.content_type in ["movie", "series"])
+      assigns
+      |> assign(:poster?, assigns.favorite.content_type in ["movie", "series"])
+      |> assign(
+        :image_url,
+        case assigns.favorite.content_icon do
+          icon when is_binary(icon) and icon != "" -> ImageProxy.proxy(icon)
+          _other -> nil
+        end
+      )
+      |> assign(:title, assigns.favorite.content_name || "Desconhecido")
 
     ~H"""
-    <div
+    <.poster_media_card
+      :if={@poster?}
       id={@id}
-      data-favorite-kind={if(@poster?, do: "poster", else: "wide")}
-      class="group self-start overflow-hidden rounded-lg border border-transparent bg-surface transition-colors hover:border-border hover:bg-surface-hover"
+      image_id={"favorite-image-#{@favorite.content_type}-#{@favorite.content_id}"}
+      title={@title}
+      subtitle={format_content_type(@favorite.content_type)}
+      image_url={@image_url}
+      fallback_icon={content_type_icon(@favorite.content_type)}
+      content_id={@favorite.content_id}
+      content_type={@favorite.content_type}
+      on_click="play"
+      data-favorite-kind="poster"
+      class="self-start border border-transparent hover:border-border"
     >
-      <div
-        data-favorite-play
-        class={[
-          "relative cursor-pointer bg-surface-hover",
-          @poster? && "aspect-[2/3]",
-          !@poster? && "aspect-video"
-        ]}
-        phx-click="play"
-        phx-value-id={@favorite.content_id}
-        phx-value-type={@favorite.content_type}
-      >
-        <img
-          :if={@favorite.content_icon}
-          src={ImageProxy.proxy(@favorite.content_icon)}
-          alt={@favorite.content_name}
-          class={[
-            "h-full w-full",
-            @poster? && "object-cover",
-            !@poster? && "object-contain p-4"
-          ]}
-          loading="lazy"
-          decoding="async"
-        />
-        <div
-          :if={!@favorite.content_icon}
-          class="w-full h-full flex items-center justify-center text-text-secondary/30"
-        >
-          <.icon name={content_type_icon(@favorite.content_type)} class="size-12" />
-        </div>
-        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-circle-solid" class="size-16 text-brand" />
-        </div>
-        <span class="absolute top-2 left-2 px-2 py-0.5 text-2xs font-medium rounded bg-black/60 text-white backdrop-blur-sm">
+      <:badge>
+        <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
           {format_content_type(@favorite.content_type)}
         </span>
-      </div>
-      <div class="p-3">
-        <div class="flex items-start justify-between gap-2">
-          <h3
-            class="font-medium text-sm text-text-primary truncate flex-1"
-            title={@favorite.content_name}
-          >
-            {@favorite.content_name || "Desconhecido"}
-          </h3>
-          <button
-            type="button"
-            phx-click="remove_favorite"
-            phx-value-type={@favorite.content_type}
-            phx-value-content_id={@favorite.content_id}
-            class="flex size-11 items-center justify-center rounded-md text-text-secondary transition-all hover:bg-error/10 hover:text-error focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-error sm:opacity-0 sm:group-hover:opacity-100"
-            aria-label="Remover dos favoritos"
-          >
-            <.icon name="hero-trash" class="size-4" />
-          </button>
-        </div>
-      </div>
-    </div>
+      </:badge>
+      <:secondary_action>
+        <.remove_favorite_button favorite={@favorite} />
+      </:secondary_action>
+    </.poster_media_card>
+
+    <.landscape_media_card
+      :if={!@poster?}
+      id={@id}
+      image_id={"favorite-image-#{@favorite.content_type}-#{@favorite.content_id}"}
+      title={@title}
+      subtitle={format_content_type(@favorite.content_type)}
+      image_url={@image_url}
+      image_fit={if @favorite.content_type == "live_channel", do: "contain", else: "cover"}
+      fallback_icon={content_type_icon(@favorite.content_type)}
+      content_id={@favorite.content_id}
+      content_type={@favorite.content_type}
+      on_click="play"
+      data-favorite-kind="wide"
+      class="self-start border border-transparent hover:border-border"
+    >
+      <:badge>
+        <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
+          {format_content_type(@favorite.content_type)}
+        </span>
+      </:badge>
+      <:secondary_action>
+        <.remove_favorite_button favorite={@favorite} />
+      </:secondary_action>
+    </.landscape_media_card>
+    """
+  end
+
+  attr :favorite, :map, required: true
+
+  defp remove_favorite_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="remove_favorite"
+      phx-value-type={@favorite.content_type}
+      phx-value-content_id={@favorite.content_id}
+      class="flex size-11 items-center justify-center rounded-md bg-surface/90 text-text-secondary shadow-sm transition-all hover:bg-error/10 hover:text-error focus:outline-none focus:ring-2 focus:ring-error"
+      aria-label="Remover dos favoritos"
+    >
+      <.icon name="hero-trash" class="size-4" />
+    </button>
     """
   end
 

@@ -19,8 +19,8 @@ defmodule StreamixWeb.HistoryLiveTest do
     test "renders history page with empty state", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/history")
 
-      assert html =~ "Historico"
-      assert html =~ "Nenhum historico"
+      assert html =~ "Histórico"
+      assert html =~ "Nenhum histórico"
       assert has_element?(view, "[data-sync-type='history']")
     end
 
@@ -32,16 +32,17 @@ defmodule StreamixWeb.HistoryLiveTest do
       {:ok, _view, html} = live(conn, ~p"/history")
 
       assert html =~ "Canal Assistido"
-      refute html =~ "Nenhum historico"
+      refute html =~ "Nenhum histórico"
     end
 
     test "displays filter buttons", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/history")
 
+      assert has_element?(view, "#history-filter-strip[data-filter-strip]")
       assert has_element?(view, "button", "Todos")
       assert has_element?(view, "button", "Ao Vivo")
       assert has_element?(view, "button", "Filmes")
-      assert has_element?(view, "button", "Episodios")
+      assert has_element?(view, "button", "Episódios")
     end
   end
 
@@ -122,11 +123,20 @@ defmodule StreamixWeb.HistoryLiveTest do
     end
 
     test "displays progress indicator for partially watched content", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/history")
+      {:ok, view, html} = live(conn, ~p"/history")
 
       assert html =~ "Filme com Progresso"
       # Progress bar should be at 50%
       assert html =~ "width: 50%"
+      assert has_element?(view, "#history-list.responsive-wide-grid")
+      assert has_element?(view, "#history-list [data-media-primary][phx-click='play']")
+
+      assert has_element?(
+               view,
+               "#history-list [data-media-secondary] button[aria-label='Remover do histórico'].size-11"
+             )
+
+      refute has_element?(view, "#history-list [data-media-primary] button")
     end
   end
 
@@ -146,7 +156,9 @@ defmodule StreamixWeb.HistoryLiveTest do
 
       # Click play on the history entry (first matching element with relative wrapper)
       view
-      |> element("div.relative[phx-click='play'][phx-value-id='#{channel.id}']")
+      |> element(
+        "[data-media-primary][phx-click='play'][phx-value-id='#{channel.id}'][phx-value-type='live_channel']"
+      )
       |> render_click()
 
       # Should navigate to watch page
@@ -185,7 +197,7 @@ defmodule StreamixWeb.HistoryLiveTest do
       {:ok, _view, html} = live(conn, ~p"/history")
 
       # Should show "agora mesmo" or similar relative time
-      assert html =~ "agora mesmo" or html =~ "min atras"
+      assert html =~ "agora mesmo" or html =~ "min atrás"
     end
   end
 end

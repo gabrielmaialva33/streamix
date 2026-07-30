@@ -32,6 +32,7 @@ defmodule StreamixWeb.SearchLiveTest do
       {:ok, view, _html} = live(conn, ~p"/search?q=Search+Click")
 
       assert has_element?(view, "#movie-card-#{movie.id}")
+      assert has_element?(view, "#search-filter-strip[data-filter-strip]")
 
       view
       |> element("#movie-card-#{movie.id} > [data-media-primary]")
@@ -63,6 +64,21 @@ defmodule StreamixWeb.SearchLiveTest do
         view,
         "/browse/series/#{series.id}?return_to=%2Fsearch%3Fq%3DSearch%2BClick"
       )
+    end
+
+    test "initial and empty states provide bounded status surfaces", %{
+      conn: conn,
+      user: user
+    } do
+      conn = log_in_user(conn, user)
+      {:ok, initial_view, _html} = live(conn, ~p"/search")
+
+      assert has_element?(initial_view, "#search-hints.border")
+
+      {:ok, empty_view, html} = live(conn, ~p"/search?q=zzzz-no-streamix-result-zzzz")
+
+      assert has_element?(empty_view, "#search-empty[role='status']")
+      assert html =~ "zzzz-no-streamix-result-zzzz"
     end
   end
 end

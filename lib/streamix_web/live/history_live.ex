@@ -12,6 +12,7 @@ defmodule StreamixWeb.HistoryLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.App.Feedback
+  import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Iptv
@@ -28,7 +29,7 @@ defmodule StreamixWeb.HistoryLive do
 
     socket =
       socket
-      |> assign(page_title: "Historico")
+      |> assign(page_title: "Histórico")
       |> assign(current_path: "/history")
       |> assign(user_id: user_id)
       |> assign(filter: "all")
@@ -134,10 +135,10 @@ defmodule StreamixWeb.HistoryLive do
       />
 
       <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
-        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Historico</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Histórico</h1>
 
-        <div class="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
-          <div class="flex gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide">
+        <div class="flex min-w-0 items-center gap-2 sm:justify-end sm:gap-4">
+          <div id="history-filter-strip" data-filter-strip class="filter-strip min-w-0 flex-1">
             <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
             <.filter_button
               type="live_channel"
@@ -153,7 +154,7 @@ defmodule StreamixWeb.HistoryLive do
             />
             <.filter_button
               type="episode"
-              label="Episodios"
+              label="Episódios"
               current={@filter}
               count={@counts["episode"] || 0}
             />
@@ -163,8 +164,9 @@ defmodule StreamixWeb.HistoryLive do
             :if={total_count(@counts) > 0}
             type="button"
             phx-click="clear_history"
-            data-confirm="Tem certeza que deseja limpar todo o historico?"
-            class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-error hover:bg-error/10 rounded-lg transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-error"
+            data-confirm="Tem certeza que deseja limpar todo o histórico?"
+            aria-label="Limpar todo o histórico"
+            class="flex size-11 flex-shrink-0 items-center justify-center rounded-lg text-error transition-colors hover:bg-error/10 focus:outline-none focus:ring-2 focus:ring-error sm:w-auto sm:px-3"
           >
             <.icon name="hero-trash" class="size-4" />
             <span class="hidden sm:inline ml-1">Limpar</span>
@@ -175,7 +177,7 @@ defmodule StreamixWeb.HistoryLive do
       <div
         id="history-list"
         phx-update="stream"
-        class="space-y-2 sm:space-y-3"
+        class="responsive-wide-grid"
       >
         <.history_entry :for={{dom_id, entry} <- @streams.history} id={dom_id} entry={entry} />
       </div>
@@ -209,7 +211,7 @@ defmodule StreamixWeb.HistoryLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-brand",
+        "min-h-11 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-brand",
         @current == @type && "bg-brand text-white",
         @current != @type &&
           "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
@@ -227,79 +229,58 @@ defmodule StreamixWeb.HistoryLive do
   end
 
   defp history_entry(assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :image_url,
+        case assigns.entry.content_icon do
+          icon when is_binary(icon) and icon != "" -> ImageProxy.proxy(icon)
+          _other -> nil
+        end
+      )
+      |> assign(:title, assigns.entry.content_name || "Desconhecido")
+
     ~H"""
-    <div
+    <.landscape_media_card
       id={@id}
-      class="flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg bg-surface hover:bg-surface-hover transition-colors group border border-transparent hover:border-border"
+      image_id={"history-image-#{@entry.id}"}
+      title={@title}
+      subtitle={format_relative_time(@entry.watched_at)}
+      image_url={@image_url}
+      image_fit={if @entry.content_type == "live_channel", do: "contain", else: "cover"}
+      fallback_icon={content_type_icon(@entry.content_type)}
+      content_id={@entry.content_id}
+      content_type={@entry.content_type}
+      on_click="play"
+      progress={progress_percent(@entry) / 100}
+      data-history-entry
+      class="self-start border border-transparent hover:border-border"
     >
-      <div
-        class="relative w-20 sm:w-24 h-14 sm:h-16 rounded bg-surface-hover flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
-        phx-click="play"
-        phx-value-id={@entry.content_id}
-        phx-value-type={@entry.content_type}
-      >
-        <img
-          :if={@entry.content_icon}
-          src={ImageProxy.proxy(@entry.content_icon)}
-          alt={@entry.content_name}
-          class="w-full h-full object-contain"
-          loading="lazy"
-          decoding="async"
-        />
-        <.icon
-          :if={!@entry.content_icon}
-          name={content_type_icon(@entry.content_type)}
-          class="size-6 sm:size-8 text-text-secondary/30"
-        />
-        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <.icon name="hero-play-solid" class="size-6 sm:size-8 text-white" />
-        </div>
-
-        <.progress_indicator
-          :if={progress_percent(@entry) > 0}
-          percent={progress_percent(@entry)}
-        />
-      </div>
-
-      <div
-        class="flex-1 min-w-0 cursor-pointer"
-        phx-click="play"
-        phx-value-id={@entry.content_id}
-        phx-value-type={@entry.content_type}
-      >
-        <h4 class="font-medium text-sm sm:text-base text-text-primary truncate">
-          {@entry.content_name || "Desconhecido"}
-        </h4>
-        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-2xs sm:text-2sm text-text-secondary mt-0.5 sm:mt-1">
-          <span class="px-1.5 sm:px-2 py-0.5 text-2xs font-medium rounded bg-surface-hover">
-            {format_content_type(@entry.content_type)}
-          </span>
-          <span>{format_relative_time(@entry.watched_at)}</span>
+      <:badge>
+        <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
+          {format_content_type(@entry.content_type)}
+        </span>
+      </:badge>
+      <:metadata>
+        <div class="mt-2 flex items-center gap-2 text-xs text-text-muted">
           <span :if={@entry.duration_seconds}>
-            . {format_duration(@entry.duration_seconds)}
+            {format_duration(@entry.duration_seconds)}
           </span>
         </div>
-      </div>
-
-      <button
-        type="button"
-        phx-click="remove_entry"
-        phx-value-id={@entry.id}
-        phx-value-type={@entry.content_type}
-        class="p-1.5 sm:p-2 text-text-secondary hover:text-error hover:bg-error/10 rounded-md sm:opacity-0 sm:group-hover:opacity-100 transition-all focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-error"
-        aria-label="Remover do historico"
-      >
-        <.icon name="hero-x-mark" class="size-4 sm:size-5" />
-      </button>
-    </div>
-    """
-  end
-
-  defp progress_indicator(assigns) do
-    ~H"""
-    <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
-      <div class="h-full bg-brand" style={"width: #{@percent}%"}></div>
-    </div>
+      </:metadata>
+      <:secondary_action>
+        <button
+          type="button"
+          phx-click="remove_entry"
+          phx-value-id={@entry.id}
+          phx-value-type={@entry.content_type}
+          class="flex size-11 items-center justify-center rounded-md bg-surface/90 text-text-secondary shadow-sm transition-all hover:bg-error/10 hover:text-error focus:outline-none focus:ring-2 focus:ring-error"
+          aria-label="Remover do histórico"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </:secondary_action>
+    </.landscape_media_card>
     """
   end
 
@@ -373,8 +354,8 @@ defmodule StreamixWeb.HistoryLive do
 
   defp format_content_type("live_channel"), do: "Ao Vivo"
   defp format_content_type("movie"), do: "Filme"
-  defp format_content_type("series"), do: "Serie"
-  defp format_content_type("episode"), do: "Episodio"
+  defp format_content_type("series"), do: "Série"
+  defp format_content_type("episode"), do: "Episódio"
   defp format_content_type(type), do: type || "Desconhecido"
 
   defp format_relative_time(nil), do: ""
@@ -384,9 +365,9 @@ defmodule StreamixWeb.HistoryLive do
 
     cond do
       diff < 60 -> "agora mesmo"
-      diff < 3600 -> "#{div(diff, 60)} min atras"
-      diff < 86_400 -> "#{div(diff, 3600)}h atras"
-      diff < 604_800 -> "#{div(diff, 86_400)} dias atras"
+      diff < 3600 -> "#{div(diff, 60)} min atrás"
+      diff < 86_400 -> "#{div(diff, 3600)}h atrás"
+      diff < 604_800 -> "#{div(diff, 86_400)} dias atrás"
       true -> Calendar.strftime(datetime, "%d/%m/%Y")
     end
   end
@@ -404,15 +385,15 @@ defmodule StreamixWeb.HistoryLive do
 
   defp format_duration(_), do: ""
 
-  defp empty_title("all"), do: "Nenhum historico"
+  defp empty_title("all"), do: "Nenhum histórico"
   defp empty_title("live_channel"), do: "Nenhum canal assistido"
   defp empty_title("movie"), do: "Nenhum filme assistido"
-  defp empty_title("episode"), do: "Nenhum episodio assistido"
-  defp empty_title(_), do: "Nenhum historico"
+  defp empty_title("episode"), do: "Nenhum episódio assistido"
+  defp empty_title(_), do: "Nenhum histórico"
 
-  defp empty_message("all"), do: "Seu historico de visualizacao aparecera aqui."
-  defp empty_message("live_channel"), do: "Os canais que voce assistir aparecerao aqui."
-  defp empty_message("movie"), do: "Os filmes que voce assistir aparecerao aqui."
-  defp empty_message("episode"), do: "Os episodios que voce assistir aparecerao aqui."
-  defp empty_message(_), do: "Seu historico aparecera aqui."
+  defp empty_message("all"), do: "Seu histórico de visualização aparecerá aqui."
+  defp empty_message("live_channel"), do: "Os canais que você assistir aparecerão aqui."
+  defp empty_message("movie"), do: "Os filmes que você assistir aparecerão aqui."
+  defp empty_message("episode"), do: "Os episódios que você assistir aparecerão aqui."
+  defp empty_message(_), do: "Seu histórico aparecerá aqui."
 end

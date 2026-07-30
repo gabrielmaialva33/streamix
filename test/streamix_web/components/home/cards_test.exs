@@ -3,6 +3,7 @@ defmodule StreamixWeb.Home.CardsTest do
 
   import Phoenix.LiveViewTest
 
+  alias StreamixWeb.Content.CarouselComponents, as: ContentCarousel
   alias StreamixWeb.Home.{Cards, Carousel, Landing}
 
   @blocked_image "https://png.pngtree.com/png-vector/blocked-image.png"
@@ -70,5 +71,27 @@ defmodule StreamixWeb.Home.CardsTest do
     refute top_ten_html =~ "<img"
     refute public_channel_html =~ "png.pngtree.com"
     refute public_channel_html =~ "<img"
+  end
+
+  test "authenticated poster carousels use two readable mobile columns" do
+    movie = %{id: 60, name: "Filme", provider_id: 7}
+
+    home_html =
+      render_component(&Carousel.render_content_carousel/1,
+        type: :movies,
+        title: "Filmes",
+        items: [movie],
+        see_more_path: nil
+      )
+
+    recommendation_html =
+      render_component(&ContentCarousel.for_you_section/1,
+        recommendations: [movie]
+      )
+
+    assert home_html =~ "grid-cols-2"
+    refute home_html =~ "grid-cols-3"
+    assert recommendation_html =~ "grid-cols-2"
+    refute recommendation_html =~ "grid-cols-3"
   end
 end

@@ -37,6 +37,7 @@ defmodule StreamixWeb.FavoritesLiveTest do
     test "displays filter buttons", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/favorites")
 
+      assert has_element?(view, "#favorites-filter-strip[data-filter-strip]")
       assert has_element?(view, "button.min-h-11", "Todos")
       assert has_element?(view, "button", "Ao Vivo")
       assert has_element?(view, "button", "Filmes")
@@ -67,16 +68,22 @@ defmodule StreamixWeb.FavoritesLiveTest do
 
       assert has_element?(
                view,
-               "[data-favorite-kind='poster'] [data-favorite-play] img.object-cover"
+               "[data-favorite-kind='poster'] [data-media-primary] img.object-cover"
              )
 
       assert has_element?(
                view,
-               "[data-favorite-kind='wide'] [data-favorite-play].aspect-video img.object-contain"
+               "[data-favorite-kind='wide'] [data-media-primary] img.object-contain"
              )
 
       assert html =~ "aspect-[2/3]"
-      assert has_element?(view, "button[aria-label='Remover dos favoritos'].size-11")
+
+      assert has_element?(
+               view,
+               "[data-media-secondary] button[aria-label='Remover dos favoritos'].size-11"
+             )
+
+      refute has_element?(view, "[data-media-primary] button")
     end
   end
 
@@ -151,7 +158,9 @@ defmodule StreamixWeb.FavoritesLiveTest do
 
       # Click play on the favorite item (first matching element)
       view
-      |> element("[data-favorite-play][phx-click='play'][phx-value-id='#{channel.id}']")
+      |> element(
+        "[data-media-primary][phx-click='play'][phx-value-id='#{channel.id}'][phx-value-type='live_channel']"
+      )
       |> render_click()
 
       # Should navigate to watch page

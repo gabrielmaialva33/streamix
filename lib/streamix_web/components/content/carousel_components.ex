@@ -32,8 +32,8 @@ defmodule StreamixWeb.Content.CarouselComponents do
           </p>
         </div>
       <% else %>
-        <%!-- Mobile: 3-column grid --%>
-        <div class="grid grid-cols-3 gap-2 sm:hidden">
+        <%!-- Mobile: readable 2-column grid --%>
+        <div class="grid grid-cols-2 gap-3 sm:hidden">
           <.movie_card
             :for={item <- Enum.take(@recommendations, 6)}
             movie={item}

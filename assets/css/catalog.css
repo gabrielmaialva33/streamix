@@ -301,10 +301,32 @@
 }
 
 /* Responsive content grids shared across catalog, search, and detail surfaces. */
+.filter-strip {
+    display: flex;
+    gap: 0.5rem;
+    min-width: 0;
+    margin-inline: -1rem;
+    padding: 0.125rem 1rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    scroll-padding-inline: 1rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.filter-strip::-webkit-scrollbar {
+    display: none;
+}
+
+.filter-strip > * {
+    min-height: var(--touch-target-min);
+    flex: 0 0 auto;
+}
+
 .responsive-poster-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
 }
 
 .responsive-wide-grid,
@@ -315,6 +337,12 @@
 }
 
 @media (min-width: 640px) {
+    .filter-strip {
+        margin-inline: 0;
+        padding-inline: 0;
+        scroll-padding-inline: 0;
+    }
+
     .responsive-poster-grid,
     .responsive-wide-grid,
     .responsive-gallery-grid {
@@ -573,4 +601,3 @@ select:focus-visible {
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
-

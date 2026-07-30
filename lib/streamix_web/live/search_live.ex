@@ -169,7 +169,7 @@ defmodule StreamixWeb.SearchLive do
       </div>
 
       <div :if={@searched && has_results?(@results)} class="space-y-8">
-        <div class="flex gap-2 flex-wrap">
+        <div id="search-filter-strip" data-filter-strip class="filter-strip">
           <.filter_button type="all" label="Todos" current={@filter} count={total_count(@results)} />
           <.filter_button
             type="channels"
@@ -210,12 +210,18 @@ defmodule StreamixWeb.SearchLive do
         />
       </div>
 
-      <.empty_state
+      <div
         :if={@searched && !has_results?(@results)}
-        icon="hero-magnifying-glass"
-        title="Nenhum resultado encontrado"
-        message={"Não encontramos resultados para \"#{@query}\". Tente uma busca diferente."}
-      />
+        id="search-empty"
+        role="status"
+        aria-live="polite"
+      >
+        <.empty_state
+          icon="hero-magnifying-glass"
+          title="Nenhum resultado encontrado"
+          message={"Não encontramos resultados para \"#{@query}\". Tente uma busca diferente."}
+        />
+      </div>
 
       <.search_hints :if={!@searched} />
     </div>
@@ -229,7 +235,7 @@ defmodule StreamixWeb.SearchLive do
       phx-click="filter"
       phx-value-type={@type}
       class={[
-        "px-4 py-2 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-brand whitespace-nowrap",
+        "min-h-11 flex-shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand",
         @current == @type && "bg-brand text-white",
         @current != @type &&
           "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
@@ -309,28 +315,31 @@ defmodule StreamixWeb.SearchLive do
 
   defp search_hints(assigns) do
     ~H"""
-    <div class="flex flex-col items-center justify-center py-12 text-center">
+    <div
+      id="search-hints"
+      class="flex flex-col items-center justify-center rounded-2xl border border-border bg-surface/40 px-4 py-10 text-center sm:py-12"
+    >
       <div class="rounded-full bg-surface p-4 mb-4">
         <.icon name="hero-magnifying-glass" class="size-12 text-text-secondary/30" />
       </div>
       <h3 class="text-lg font-medium text-text-primary mb-4">O que você quer assistir?</h3>
 
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
-        <div class="flex items-center gap-3 p-4 rounded-lg bg-surface">
+        <div class="flex items-center gap-3 rounded-lg border border-border bg-surface p-4">
           <.icon name="hero-tv" class="size-8 text-brand" />
           <div class="text-left">
             <p class="font-medium text-text-primary">Canais</p>
             <p class="text-sm text-text-secondary">TV ao vivo</p>
           </div>
         </div>
-        <div class="flex items-center gap-3 p-4 rounded-lg bg-surface">
+        <div class="flex items-center gap-3 rounded-lg border border-border bg-surface p-4">
           <.icon name="hero-film" class="size-8 text-brand" />
           <div class="text-left">
             <p class="font-medium text-text-primary">Filmes</p>
             <p class="text-sm text-text-secondary">Catálogo VOD</p>
           </div>
         </div>
-        <div class="flex items-center gap-3 p-4 rounded-lg bg-surface">
+        <div class="flex items-center gap-3 rounded-lg border border-border bg-surface p-4">
           <.icon name="hero-video-camera" class="size-8 text-brand" />
           <div class="text-left">
             <p class="font-medium text-text-primary">Séries</p>

@@ -280,6 +280,7 @@ defmodule StreamixWeb.Content.CardComponents do
       data-content-type={@content_type}
       phx-click={@on_click}
       phx-value-id={@content_id}
+      phx-value-type={@content_type}
       phx-value-provider_id={@provider_id}
       aria-label={"Abrir #{@title}"}
       class={@class}

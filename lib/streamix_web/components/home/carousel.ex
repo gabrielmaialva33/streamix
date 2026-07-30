@@ -123,7 +123,7 @@ defmodule StreamixWeb.Home.Carousel do
         <.carousel_arrows id={@carousel_id}>
           <div
             data-carousel-track
-            class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]"
+            class="grid grid-cols-2 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[220px] lg:auto-cols-[280px]"
           >
             <.channel_card
               :for={{channel, idx} <- Enum.with_index(@items)}
@@ -150,7 +150,7 @@ defmodule StreamixWeb.Home.Carousel do
           <div
             data-carousel-track
             class={[
-              "grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth",
+              "grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth",
               @type in [:history] && "grid-cols-1 sm:grid-cols-none"
             ]}
           >
@@ -228,7 +228,7 @@ defmodule StreamixWeb.Home.Carousel do
       <.carousel_arrows id="carousel-trending">
         <div
           data-carousel-track
-          class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
+          class="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
         >
           <.render_movie_card
             :for={{movie, idx} <- Enum.with_index(@items)}
@@ -269,7 +269,7 @@ defmodule StreamixWeb.Home.Carousel do
       <.carousel_arrows id="carousel-series">
         <div
           data-carousel-track
-          class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
+          class="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"
         >
           <.render_series_card
             :for={{series, idx} <- Enum.with_index(@items)}
@@ -305,7 +305,7 @@ defmodule StreamixWeb.Home.Carousel do
       <.carousel_arrows id="carousel-channels">
         <div
           data-carousel-track
-          class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[150px] lg:auto-cols-[176px] xl:auto-cols-[184px]"
+          class="grid grid-cols-2 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth sm:auto-cols-[150px] lg:auto-cols-[176px] xl:auto-cols-[184px]"
         >
           <.channel_card
             :for={{channel, idx} <- Enum.with_index(@items)}
