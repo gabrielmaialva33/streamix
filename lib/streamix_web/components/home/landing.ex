@@ -330,12 +330,12 @@ defmodule StreamixWeb.Home.Landing do
     url =
       Map.get(content, :backdrop) || Map.get(content, :cover) || Map.get(content, :stream_icon)
 
-    if url in [nil, ""], do: nil, else: ImageProxy.poster(url, :hero_backdrop)
+    ImageProxy.browser_poster(url, :hero_backdrop)
   end
 
   defp public_card_image(content) do
     url = Map.get(content, :stream_icon) || Map.get(content, :cover)
-    if url in [nil, ""], do: nil, else: ImageProxy.poster(url, :carousel)
+    ImageProxy.browser_poster(url, :carousel)
   end
 
   defp public_rating(content) do

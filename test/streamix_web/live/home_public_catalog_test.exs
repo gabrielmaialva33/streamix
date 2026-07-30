@@ -87,5 +87,30 @@ defmodule StreamixWeb.HomePublicCatalogTest do
       refute has_element?(view, "#public-stat-movies", "12")
       refute has_element?(view, "#public-stat-channels", "24")
     end
+
+    test "renders the local fallback without requesting browser-blocked poster hosts", %{
+      conn: conn
+    } do
+      provider = global_provider_fixture(%{name: "Streamix Global Images"})
+      Cache.delete(Cache.public_stats_key())
+      on_exit(fn -> Cache.delete(Cache.public_stats_key()) end)
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Blocked Poster Movie",
+          title: "Blocked Poster Movie",
+          stream_icon: "https://png.pngtree.com/thumb_back/fw800/background/20230616/pngtree.jpg"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/")
+      html = render(view)
+
+      refute html =~ "png.pngtree.com"
+
+      assert has_element?(
+               view,
+               "#public-movie-img-#{movie.id} [data-fallback]:not(.hidden)"
+             )
+    end
   end
 end

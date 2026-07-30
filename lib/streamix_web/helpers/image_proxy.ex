@@ -16,6 +16,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   """
 
   @image_cache_version "v2"
+  @browser_blocked_hosts ["png.pngtree.com", "static.vecteezy.com"]
 
   defp tmdb_proxy_url,
     do: Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")
@@ -337,6 +338,31 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   def poster(nil, _ctx), do: nil
   def poster("", _ctx), do: nil
   def poster(url, ctx), do: url |> resize(poster_size(ctx)) |> proxy()
+
+  @doc """
+  Resolves a poster intended for direct browser loading.
+
+  Hosts with verified hotlink or ORB failures return `nil` so server-rendered
+  components can select their local fallback before the browser issues a
+  doomed request.
+  """
+  @spec browser_poster(String.t() | nil, atom()) :: String.t() | nil
+  def browser_poster(nil, _ctx), do: nil
+  def browser_poster("", _ctx), do: nil
+
+  def browser_poster(url, ctx) when is_binary(url) do
+    if browser_blocked_host?(url), do: nil, else: poster(url, ctx)
+  end
+
+  defp browser_blocked_host?(url) do
+    case URI.parse(url) do
+      %URI{host: host} when is_binary(host) ->
+        String.downcase(host) in @browser_blocked_hosts
+
+      _ ->
+        false
+    end
+  end
 
   @doc """
   Returns srcset for responsive images (Netflix progressive loading).

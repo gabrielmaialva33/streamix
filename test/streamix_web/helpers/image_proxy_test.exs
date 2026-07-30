@@ -29,6 +29,23 @@ defmodule StreamixWeb.Helpers.ImageProxyTest do
     assert ImageProxy.poster("http://0x7f000001/admin.jpg", :carousel) == nil
   end
 
+  test "omits poster hosts proven unusable in browsers" do
+    assert ImageProxy.browser_poster(
+             "https://png.pngtree.com/thumb_back/fw800/background/20230616/pngtree.jpg",
+             :carousel
+           ) == nil
+
+    assert ImageProxy.browser_poster(
+             "https://static.vecteezy.com/system/resources/previews/001/poster.png",
+             :hero
+           ) == nil
+  end
+
+  test "keeps normal browser posters on the existing proxy path" do
+    assert ImageProxy.browser_poster("https://example.com/poster.jpg", :carousel) ==
+             "https://example.com/poster.jpg?_v=v2"
+  end
+
   test "builds a responsive TMDB hero source set" do
     srcset =
       ImageProxy.srcset("https://tmdb.mahina.cloud/t/p/w1280/backdrop.jpg?_v=v2", :hero)
