@@ -10,6 +10,7 @@
     "test": "node --test js/test/*.test.js",
     "budget:assets": "cd .. && mix assets.deploy && cd assets && node js/smoke/asset_budget.cjs",
     "smoke:player": "node js/smoke/player_lifecycle_smoke.cjs",
+    "smoke:mobile": "node js/smoke/mobile_browser_smoke.cjs",
     "smoke:pwa": "node js/smoke/pwa_first_install_smoke.cjs"
   },
   "dependencies": {

@@ -70,8 +70,16 @@ import {
 import { perceivedToLinear } from "../lib/volume_utils";
 import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../lib/webcodecs_decoder";
 import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../lib/worker_mse";
+import { createAspectRatioController } from "../player/aspect_ratio_controller";
 import { selectEngine } from "../player/engine_selector";
+import { createMobileControls } from "../player/mobile_controls";
+import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
 import { PlaybackSession } from "../player/playback_session";
+import {
+  findPortugueseTrack,
+  formatTrackLabel,
+  hasSubtitleInLanguage,
+} from "../player/track_metadata";
 
 // Lazy load AVPlayer only when needed
 let AVPlayerWrapper = null;
@@ -164,7 +172,10 @@ const VideoPlayer = {
     this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
     this.setupMediaSession();
-    this.setupAspectRatio();
+    this.aspectRatioController = createAspectRatioController({
+      root: this.el,
+      video: this.video,
+    });
     this.trackWatchTime();
 
     // Configure error reporter to send errors to backend
@@ -401,6 +412,8 @@ const VideoPlayer = {
 
     // Keyboard manager
     this.keyboardManager = null;
+    this.aspectRatioController = null;
+    this.mobileControls = null;
 
     // AVPlayer fallback state
     this.avPlayer = null;
@@ -996,7 +1009,14 @@ const VideoPlayer = {
     this.setupIosPwaTapControls();
 
     // Mobile Touch Support
-    this.setupMobileControls();
+    this.mobileControls = createMobileControls({
+      root: this.el,
+      controls: this.el.querySelector("#player-controls"),
+      video: this.video,
+      playerUI: this.playerUI,
+      shouldUseNativeControls: () => this.nativeTouchControls || this.iosPwaMode,
+      toggleFullscreen: () => this.toggleFullscreen(),
+    });
 
     // Volume slider input
     const volumeSlider = this.el.querySelector("#volume-slider");
@@ -2001,39 +2021,12 @@ const VideoPlayer = {
     );
   },
 
-  getNativePlaybackSnapshot() {
-    if (!this.video) return {};
-
-    const bufferedRanges = [];
-    for (let i = 0; i < this.video.buffered.length; i++) {
-      bufferedRanges.push(
-        `${this.video.buffered.start(i).toFixed(2)}-${this.video.buffered.end(i).toFixed(2)}`,
-      );
-    }
-
-    return {
-      current_time: Number.isFinite(this.video.currentTime)
-        ? Number(this.video.currentTime.toFixed(3))
-        : 0,
-      duration: Number.isFinite(this.video.duration) ? Number(this.video.duration.toFixed(3)) : 0,
-      ready_state: this.video.readyState,
-      network_state: this.video.networkState,
-      paused: this.video.paused,
-      seeking: this.video.seeking,
-      autoplay: this.video.autoplay,
-      preload: this.video.preload || this.video.getAttribute("preload"),
-      buffered_range_count: bufferedRanges.length,
-      buffered_ranges: bufferedRanges.join(","),
-      has_current_src: !!this.video.currentSrc,
-    };
-  },
-
   traceNativeLifecycle(stage, sessionId, extra = {}) {
     if (!this.playerLifecycleLogs) return;
 
     const payload = {
       session_id: sessionId,
-      ...this.getNativePlaybackSnapshot(),
+      ...buildNativePlaybackSnapshot(this.video),
       ...extra,
     };
 
@@ -3142,7 +3135,7 @@ const VideoPlayer = {
         this.audioTracks = audioTracks.map((track, index) => ({
           index,
           id: track.id,
-          label: this.formatTrackLabel(track),
+          label: formatTrackLabel(track),
           language: track.language || "",
           codec: track.codec || "",
         }));
@@ -3176,7 +3169,7 @@ const VideoPlayer = {
         this.subtitleTracks = subtitleTracks.map((track, index) => ({
           index,
           id: track.id,
-          label: this.formatTrackLabel(track),
+          label: formatTrackLabel(track),
           language: track.language || "",
         }));
 
@@ -3222,7 +3215,7 @@ const VideoPlayer = {
   async loadExternalSubtitleIfAvailable(sessionId = this.playbackSessionId) {
     if (!this.imdbId || !this.avPlayer) return;
     if (typeof this.avPlayer.loadExternalSubtitle !== "function") return;
-    if (this.hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return;
+    if (hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return;
 
     try {
       // AVPlayer applies the preference through its native subtitle-delay
@@ -3258,7 +3251,7 @@ const VideoPlayer = {
       label: track.label,
       language: track.language,
     }));
-    if (!force && this.hasSubtitleInLanguage(nativeTracks, this.subtitleLang)) return;
+    if (!force && hasSubtitleInLanguage(nativeTracks, this.subtitleLang)) return;
 
     try {
       const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId);
@@ -3323,77 +3316,6 @@ const VideoPlayer = {
     }
     this._externalSubtitleBlobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
     return this._externalSubtitleBlobUrl;
-  },
-
-  /**
-   * Check whether an embedded/existing track already satisfies the requested
-   * language. Providers and media containers commonly use pt, pt-BR or por.
-   */
-  hasSubtitleInLanguage(tracks, wantedLanguage) {
-    if (!Array.isArray(tracks) || tracks.length === 0 || !wantedLanguage) return false;
-
-    const wanted = wantedLanguage.toLowerCase().split("-")[0];
-
-    return tracks.some((track) => {
-      const language = String(track.language || "").toLowerCase();
-      const label = String(track.label || "")
-        .normalize("NFD")
-        .replace(/\p{Diacritic}/gu, "")
-        .toLowerCase();
-
-      if (language === wanted || language.startsWith(`${wanted}-`)) return true;
-      if (wanted === "pt") {
-        return ["por", "pob"].includes(language) || label.includes("portugu");
-      }
-
-      return false;
-    });
-  },
-
-  /**
-   * Format track label from track metadata
-   */
-  formatTrackLabel(track) {
-    const parts = [];
-    if (
-      track.label &&
-      track.label !== `Audio ${track.index + 1}` &&
-      track.label !== `Subtitle ${track.index + 1}`
-    ) {
-      parts.push(track.label);
-    }
-    if (track.language) {
-      const langName = this.getLanguageName(track.language);
-      if (!parts.includes(langName)) {
-        parts.push(langName);
-      }
-    }
-    if (track.codec) {
-      parts.push(`(${track.codec})`);
-    }
-    if (track.channels && track.channels > 0) {
-      parts.push(`${track.channels}ch`);
-    }
-    return parts.length > 0 ? parts.join(" ") : `Track ${track.index + 1}`;
-  },
-
-  /**
-   * Get human readable language name
-   */
-  getLanguageName(code) {
-    const languages = {
-      por: "Português",
-      pt: "Português",
-      "pt-BR": "Português (BR)",
-      eng: "English",
-      en: "English",
-      spa: "Español",
-      es: "Español",
-      jpn: "Japanese",
-      ja: "Japanese",
-      und: "Indefinido",
-    };
-    return languages[code] || code;
   },
 
   buildAVPlayerLoadOptions(ext, isLive) {
@@ -3533,7 +3455,7 @@ const VideoPlayer = {
         this._probedAudioTracks = audio.map((track, index) => ({
           index,
           id: track.index,
-          label: this.formatTrackLabel({
+          label: formatTrackLabel({
             index,
             label: track.title,
             language: track.language,
@@ -3545,7 +3467,8 @@ const VideoPlayer = {
 
         log.debug("[VideoPlayer] Probed audio tracks:", this._probedAudioTracks);
 
-        preferredAudioTrack = this.findPortugueseTrack(this._probedAudioTracks);
+        preferredAudioTrack = findPortugueseTrack(this._probedAudioTracks);
+        log.debug("[VideoPlayer] Preferred Portuguese track index:", preferredAudioTrack);
 
         this.playerUI.updateAudioOptions(
           this._probedAudioTracks,
@@ -3563,7 +3486,7 @@ const VideoPlayer = {
         this._probedSubtitleTracks = subtitle.map((track, index) => ({
           index,
           id: track.index,
-          label: this.formatTrackLabel({
+          label: formatTrackLabel({
             index,
             label: track.title,
             language: track.language,
@@ -3608,33 +3531,6 @@ const VideoPlayer = {
     } catch (e) {
       log.debug("[VideoPlayer] Track probe API call failed:", e?.message);
     }
-  },
-
-  /**
-   * Find Portuguese audio track (prefers pt-BR)
-   * Returns the track index or 0 if not found
-   */
-  findPortugueseTrack(tracks) {
-    if (!tracks || tracks.length <= 1) return 0;
-
-    // Priority order for Portuguese variants
-    const ptPatterns = [
-      /\bpt[-_]?br\b/i, // pt-br, pt_br, ptbr
-      /\bportugu[eê]s?\b/i, // portuguese
-      /\bbrazil/i, // brazilian
-      /\bpt\b/i, // pt (generic portuguese)
-      /\bpor\b/i, // por (ISO 639-2)
-    ];
-
-    for (const pattern of ptPatterns) {
-      const found = tracks.find((t) => pattern.test(t.language) || pattern.test(t.label));
-      if (found) {
-        log.debug("[VideoPlayer] Found Portuguese track:", found.label, "at index", found.index);
-        return found.index;
-      }
-    }
-
-    return 0; // Default to first track
   },
 
   /**
@@ -3921,166 +3817,6 @@ const VideoPlayer = {
   },
 
   // ============================================
-  // Aspect Ratio Toggle (settings menu)
-  // ============================================
-
-  setupAspectRatio() {
-    const STORAGE_KEY = "streamix:player:aspect";
-    const validModes = ["auto", "cover", "16-9", "4-3", "native"];
-    const stored = (() => {
-      try {
-        return localStorage.getItem(STORAGE_KEY);
-      } catch (_) {
-        return null;
-      }
-    })();
-    const initial = validModes.includes(stored) ? stored : "auto";
-
-    const apply = (mode) => {
-      const targets = [];
-      if (this.video) targets.push(this.video);
-      // AVPlayer's canvas + any <video> it nests for hardware decode.
-      const mount = this.el.querySelector("#avplayer-mount");
-      if (mount) {
-        targets.push(...mount.querySelectorAll("canvas, video"));
-      }
-      for (const el of targets) {
-        el.style.objectFit = "";
-        el.style.aspectRatio = "";
-        switch (mode) {
-          case "cover":
-            el.style.objectFit = "cover";
-            break;
-          case "16-9":
-            el.style.objectFit = "contain";
-            el.style.aspectRatio = "16 / 9";
-            break;
-          case "4-3":
-            el.style.objectFit = "contain";
-            el.style.aspectRatio = "4 / 3";
-            break;
-          case "native":
-            el.style.objectFit = "none";
-            break;
-          default:
-            // Falls back to the Tailwind class `object-contain`
-            // already on the element.
-            break;
-        }
-      }
-      // Update check icons in the menu.
-      this.el.querySelectorAll(".aspect-check").forEach((el) => {
-        el.classList.toggle("hidden", el.dataset.aspectCheck !== mode);
-      });
-    };
-
-    apply(initial);
-
-    this.el.querySelectorAll(".aspect-option").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const mode = btn.dataset.aspectMode;
-        if (!validModes.includes(mode)) return;
-        try {
-          localStorage.setItem(STORAGE_KEY, mode);
-        } catch (_) {
-          // localStorage may be disabled — best-effort.
-        }
-        apply(mode);
-      });
-    });
-
-    // Re-apply when AVPlayer mounts/unmounts its canvas (the canvas
-    // node is created lazily, after this initial apply runs).
-    const mount = this.el.querySelector("#avplayer-mount");
-    if (mount && typeof MutationObserver === "function") {
-      this._aspectObserver = new MutationObserver(() => {
-        let current;
-        try {
-          current = localStorage.getItem(STORAGE_KEY) || "auto";
-        } catch (_) {
-          current = "auto";
-        }
-        apply(current);
-      });
-      this._aspectObserver.observe(mount, {
-        childList: true,
-        subtree: true,
-      });
-    }
-  },
-
-  // ============================================
-  // Mobile Touch Controls
-  // ============================================
-
-  setupMobileControls() {
-    const controls = this.el.querySelector("#player-controls");
-    if (!controls) return;
-
-    this.lastTapTime = 0;
-    const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-
-    if (isTouchDevice) {
-      this._onMobilePlayerClick = (event) => {
-        if (this.nativeTouchControls || this.iosPwaMode) return;
-
-        const target = event.target;
-        if (
-          !(target instanceof Element) ||
-          target.closest(
-            "button, a, input, select, textarea, label, [role='button'], #player-controls",
-          )
-        ) {
-          return;
-        }
-
-        event.preventDefault();
-        const now = Date.now();
-        const timeSinceLastTap = now - this.lastTapTime;
-
-        if (timeSinceLastTap < 300) {
-          this.toggleFullscreen();
-        } else {
-          this.playerUI.toggleControlsVisibility();
-        }
-
-        this.lastTapTime = now;
-      };
-      this.el.addEventListener("click", this._onMobilePlayerClick);
-
-      this.playerUI.showControls();
-      this.playerUI.scheduleHideControls();
-
-      // passive: true so Safari/iOS doesn't fire the "non-passive
-      // touchstart blocked main thread" warning, and so the touch
-      // gesture doesn't get cancelled by the listener.
-      controls.addEventListener("touchstart", () => this.playerUI.clearHideControlsTimeout(), {
-        passive: true,
-      });
-
-      controls.addEventListener("touchend", () => this.playerUI.scheduleHideControls(), {
-        passive: true,
-      });
-    }
-
-    this.el.addEventListener("mousemove", () => {
-      if (!isTouchDevice) {
-        this.playerUI.showControls();
-        this.playerUI.scheduleHideControls();
-      }
-    });
-
-    this.video.addEventListener("play", () => {
-      this.playerUI.scheduleHideControls();
-    });
-
-    this.video.addEventListener("pause", () => {
-      this.playerUI.showControls();
-      this.playerUI.clearHideControlsTimeout();
-    });
-  },
-
-  // ============================================
   // Keyboard Shortcuts (YouTube-style)
   // ============================================
 
@@ -4287,8 +4023,10 @@ const VideoPlayer = {
     this.playerUI?.clearHideControlsTimeout();
     this.playerUI?.destroy();
     this.stopAVPlayerTimeUpdates();
-    this._aspectObserver?.disconnect();
-    this._aspectObserver = null;
+    this.aspectRatioController?.destroy();
+    this.aspectRatioController = null;
+    this.mobileControls?.destroy();
+    this.mobileControls = null;
 
     if (this._onFullscreenChange) {
       document.removeEventListener("fullscreenchange", this._onFullscreenChange);
@@ -4315,11 +4053,6 @@ const VideoPlayer = {
     if (this._onIosPwaTap) {
       this.el?.removeEventListener("click", this._onIosPwaTap);
       this._onIosPwaTap = null;
-    }
-
-    if (this._onMobilePlayerClick) {
-      this.el?.removeEventListener("click", this._onMobilePlayerClick);
-      this._onMobilePlayerClick = null;
     }
 
     // Clear audio check timeout
