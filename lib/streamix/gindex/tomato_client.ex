@@ -84,7 +84,7 @@ defmodule Streamix.Gindex.TomatoClient do
       json: body,
       headers: headers(),
       receive_timeout: @timeout,
-      finch: Streamix.Finch
+      finch: [name: Streamix.Finch]
     )
   end
 
@@ -93,7 +93,7 @@ defmodule Streamix.Gindex.TomatoClient do
     |> Req.get(
       headers: headers(),
       receive_timeout: @timeout,
-      finch: Streamix.Finch
+      finch: [name: Streamix.Finch]
     )
   end
 

@@ -16,7 +16,7 @@ defmodule Streamix.Workers.CleanupOrphanedDataWorker do
     unique: [
       period: :infinity,
       fields: [:worker],
-      states: [:available, :scheduled, :executing, :retryable]
+      states: :incomplete
     ]
 
   alias Streamix.Iptv

@@ -68,7 +68,7 @@ defmodule Streamix.Gindex.AnilistClient do
     |> Req.post(
       json: body,
       receive_timeout: @timeout,
-      finch: Streamix.Finch,
+      finch: [name: Streamix.Finch],
       headers: [{"accept", "application/json"}]
     )
     |> handle_response()

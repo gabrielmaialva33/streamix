@@ -28,7 +28,7 @@ defmodule Streamix.Billing.Stripe.Client do
 
     case http_client().get("#{url}?#{query}",
            headers: authorization_headers(secret_key),
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            receive_timeout: @receive_timeout
          ) do
       {:ok, %Req.Response{status: status, body: %{"data" => data}}} when status in 200..299 ->
@@ -46,7 +46,7 @@ defmodule Streamix.Billing.Stripe.Client do
     case http_client().post(url,
            body: URI.encode_query(form),
            headers: authorization_headers(secret_key) ++ content_type_headers(),
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            receive_timeout: @receive_timeout
          ) do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->

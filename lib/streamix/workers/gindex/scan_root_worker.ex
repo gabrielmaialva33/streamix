@@ -32,7 +32,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
       period: :timer.hours(48),
       fields: [:worker, :args],
       keys: [:provider_id, :base_url, :path, :kind],
-      states: [:available, :scheduled, :executing, :retryable]
+      states: :incomplete
     ]
 
   alias Streamix.Gindex

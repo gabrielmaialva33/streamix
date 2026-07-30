@@ -23,8 +23,6 @@ defmodule Streamix.Gindex.TmdbMatcher do
 
   alias Streamix.Iptv.TmdbClient
 
-  require Logger
-
   @min_score 500
 
   @type kind :: :movie | :series

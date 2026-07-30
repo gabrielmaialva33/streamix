@@ -10,8 +10,6 @@ defmodule Streamix.Iptv.EpgParser do
     full catalog. Used by `SyncEpgWorker`.
   """
 
-  require Logger
-
   @doc """
   Parses the short EPG API response (get_short_epg action).
   Returns a list of program maps ready for database insertion.

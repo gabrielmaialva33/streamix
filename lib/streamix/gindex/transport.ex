@@ -93,7 +93,7 @@ defmodule Streamix.Gindex.Transport do
       headers: build_headers(method),
       receive_timeout: Keyword.get(opts, :timeout, @default_timeout),
       redirect: Keyword.get(opts, :follow_redirects, true),
-      finch: Streamix.Finch
+      finch: [name: Streamix.Finch]
     ]
 
     if body, do: Keyword.put(req_opts, :body, body), else: req_opts

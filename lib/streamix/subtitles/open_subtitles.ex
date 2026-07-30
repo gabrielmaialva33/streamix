@@ -14,8 +14,6 @@ defmodule Streamix.Subtitles.OpenSubtitles do
 
   @behaviour Streamix.Subtitles.Source
 
-  require Logger
-
   @base "https://api.opensubtitles.com/api/v1"
   @slug "opensubtitles"
   @timeout :timer.seconds(10)

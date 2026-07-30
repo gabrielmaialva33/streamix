@@ -83,7 +83,7 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
     ]
 
     url
-    |> Req.get(headers: headers, receive_timeout: @timeout, finch: Streamix.Finch)
+    |> Req.get(headers: headers, receive_timeout: @timeout, finch: [name: Streamix.Finch])
     |> handle_response(url, profile, retries, token)
   end
 

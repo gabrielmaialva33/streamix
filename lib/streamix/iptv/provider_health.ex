@@ -179,7 +179,7 @@ defmodule Streamix.Iptv.ProviderHealth do
     case Req.get(api_url,
            receive_timeout: @probe_timeout,
            decode_body: false,
-           finch: Streamix.Finch
+           finch: [name: Streamix.Finch]
          ) do
       # A fully-loaded Xtream answers `/player_api.php` with a 200 and
       # a JSON body (often `{}` when called without credentials). 4xx

@@ -13,8 +13,6 @@ defmodule Streamix.Subtitles.SubDL do
 
   @behaviour Streamix.Subtitles.Source
 
-  require Logger
-
   @api "https://api.subdl.com/api/v1/subtitles"
   @dl_base "https://dl.subdl.com"
   @slug "subdl"

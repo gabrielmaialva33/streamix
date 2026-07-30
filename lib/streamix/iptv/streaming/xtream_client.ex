@@ -124,7 +124,7 @@ defmodule Streamix.Iptv.XtreamClient do
     with_circuit_breaker(provider_id, "get_xmltv", fn ->
       case Req.get(target,
              receive_timeout: :timer.seconds(120),
-             finch: Streamix.Finch,
+             finch: [name: Streamix.Finch],
              headers: [{"user-agent", "IPTVSmartersPlayer"}],
              decode_body: false
            ) do
@@ -175,7 +175,7 @@ defmodule Streamix.Iptv.XtreamClient do
     with_circuit_breaker(provider_id, "get_m3u_plus", fn ->
       case Req.get(target,
              receive_timeout: :timer.seconds(180),
-             finch: Streamix.Finch,
+             finch: [name: Streamix.Finch],
              headers: [{"user-agent", "IPTVSmartersPlayer"}],
              decode_body: false
            ) do
@@ -235,7 +235,7 @@ defmodule Streamix.Iptv.XtreamClient do
     # Use dedicated Finch pool for connection reuse during sync
     case Req.get(url,
            receive_timeout: @timeout,
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            headers: [{"user-agent", "IPTVSmartersPlayer"}]
          ) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
