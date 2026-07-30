@@ -16,7 +16,7 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
     unique: [
       period: :timer.hours(1),
       fields: [:worker],
-      states: [:available, :scheduled, :executing, :retryable]
+      states: :incomplete
     ]
 
   import Ecto.Query

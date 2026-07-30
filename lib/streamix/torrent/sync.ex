@@ -15,7 +15,7 @@ defmodule Streamix.Torrent.Sync do
 
   alias Streamix.Iptv.{CatalogItem, Movie, Provider}
   alias Streamix.Repo
-  alias Streamix.Torrent.{Sources, TorrentStream}
+  alias Streamix.Torrent.{Catalog, Sources, TorrentStream}
 
   require Logger
 
@@ -461,17 +461,21 @@ defmodule Streamix.Torrent.Sync do
   def refresh_provider_counts(provider, opts \\ [])
 
   def refresh_provider_counts(%Provider{provider_type: :torrent} = provider, opts) do
-    movies_count = Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-    sync_status = Keyword.get(opts, :sync_status, "completed")
+    with :ok <- Catalog.refresh_stats(provider.id) do
+      movies_count =
+        Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
 
-    provider
-    |> Provider.sync_changeset(%{
-      sync_status: sync_status,
-      movies_count: movies_count,
-      vod_synced_at: now
-    })
-    |> Repo.update()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      sync_status = Keyword.get(opts, :sync_status, "completed")
+
+      provider
+      |> Provider.sync_changeset(%{
+        sync_status: sync_status,
+        movies_count: movies_count,
+        vod_synced_at: now
+      })
+      |> Repo.update()
+    end
   end
 
   def refresh_provider_counts(%Provider{}, _opts), do: {:error, :not_torrent_provider}

@@ -29,6 +29,7 @@ defmodule Streamix.Torrent.CatalogTest do
       stream_fixture(weak, seeders: 3, quality: "720p")
       stream_fixture(strong, seeders: 50, quality: "1080p")
       stream_fixture(strong, seeders: 10, quality: "2160p")
+      refresh_stats(provider)
 
       assert [first, second] = Catalog.list_movies()
       assert first.id == strong.id
@@ -42,9 +43,19 @@ defmodule Streamix.Torrent.CatalogTest do
       _orphan = movie_fixture(provider, "No Streams")
       seeded = movie_fixture(provider, "Has Stream")
       stream_fixture(seeded, seeders: 5, quality: "1080p")
+      refresh_stats(provider)
 
       assert [only] = Catalog.list_movies()
       assert only.id == seeded.id
+    end
+
+    test "keeps movies whose current swarm has zero seeders", %{provider: provider} do
+      dead = movie_fixture(provider, "Dead Swarm")
+      stream_fixture(dead, seeders: 0, quality: "720p")
+      refresh_stats(provider)
+
+      assert [%{id: id, torrent_seeders: 0}] = Catalog.list_movies()
+      assert id == dead.id
     end
 
     test "filters by search", %{provider: provider} do
@@ -52,6 +63,7 @@ defmodule Streamix.Torrent.CatalogTest do
       b = movie_fixture(provider, "Tenet")
       stream_fixture(a, seeders: 5, quality: "1080p")
       stream_fixture(b, seeders: 5, quality: "1080p")
+      refresh_stats(provider)
 
       assert [only] = Catalog.list_movies(search: "inter")
       assert only.id == a.id
@@ -122,4 +134,6 @@ defmodule Streamix.Torrent.CatalogTest do
 
     stream
   end
+
+  defp refresh_stats(provider), do: :ok = Catalog.refresh_stats(provider.id)
 end

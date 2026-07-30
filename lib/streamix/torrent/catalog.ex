@@ -14,6 +14,7 @@ defmodule Streamix.Torrent.Catalog do
 
   import Ecto.Query
 
+  alias Streamix.Cache
   alias Streamix.Iptv.{Movie, TorrentProvider}
   alias Streamix.Repo
   alias Streamix.Torrent.TorrentStream
@@ -44,25 +45,19 @@ defmodule Streamix.Torrent.Catalog do
     offset = Keyword.get(opts, :offset, 0)
     search = opts[:search]
 
-    agg =
-      from ts in TorrentStream,
-        where: not is_nil(ts.movie_id),
-        group_by: ts.movie_id,
-        select: %{
-          movie_id: ts.movie_id,
-          max_seeders: max(ts.seeders),
-          top_quality: max(ts.quality)
-        }
-
     query =
       from m in Movie,
-        join: s in subquery(agg),
-        on: s.movie_id == m.id,
+        join: stats in "torrent_movie_stats",
+        on: stats.movie_id == m.id,
         where: m.provider_id == ^provider.id,
-        order_by: [desc: s.max_seeders, desc: m.id],
+        order_by: [desc: stats.max_seeders, desc: m.id],
         limit: ^limit,
         offset: ^offset,
-        select: %{m | torrent_seeders: s.max_seeders, torrent_quality: s.top_quality}
+        select: %{
+          m
+          | torrent_seeders: stats.max_seeders,
+            torrent_quality: stats.top_quality
+        }
 
     query
     |> maybe_search(search)
@@ -79,8 +74,25 @@ defmodule Streamix.Torrent.Catalog do
   @doc "Total movie count for the torrent provider (0 when off)."
   def count_movies do
     case provider() do
-      nil -> 0
-      provider -> Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
+      nil ->
+        0
+
+      provider ->
+        Cache.fetch_local({__MODULE__, :movie_count, provider.id}, :timer.minutes(5), fn ->
+          Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
+        end)
+    end
+  end
+
+  @doc false
+  def refresh_stats(provider_id) when is_integer(provider_id) do
+    case Repo.query("REFRESH MATERIALIZED VIEW torrent_movie_stats") do
+      {:ok, _result} ->
+        Cache.delete_local({__MODULE__, :movie_count, provider_id})
+        :ok
+
+      {:error, reason} ->
+        {:error, {:torrent_stats_refresh_failed, reason}}
     end
   end
 

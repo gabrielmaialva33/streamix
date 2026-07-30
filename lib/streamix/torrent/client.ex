@@ -203,9 +203,9 @@ defmodule Streamix.Torrent.Client do
         url: url,
         headers: headers,
         receive_timeout: timeout,
-        finch: Streamix.Finch,
+        finch: [name: Streamix.Finch],
         retry: false,
-        decode_json: [keys: :strings]
+        decoders: [json: &Jason.decode(&1, keys: :strings)]
       ]
       |> maybe_put_body(body)
 

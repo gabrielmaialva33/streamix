@@ -134,9 +134,9 @@ defmodule Streamix.Torrent.Sources.Helpers do
     case Req.get(endpoint,
            params: [page: page, limit: limit],
            receive_timeout: :timer.seconds(20),
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            headers: @headers,
-           decode_json: [keys: :strings]
+           decoders: [json: &Jason.decode(&1, keys: :strings)]
          ) do
       {:ok, %{status: 200, body: body}} -> {:ok, body}
       {:ok, %{status: status, body: body}} -> {:error, {:http_error, status, body}}

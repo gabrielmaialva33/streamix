@@ -174,7 +174,7 @@ defmodule Streamix.Torrent.Sources.HtmlScraper do
     case Req.get(url,
            headers: @headers,
            receive_timeout: @timeout,
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            decode_body: false,
            redirect: true
          ) do

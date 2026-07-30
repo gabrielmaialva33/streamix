@@ -48,13 +48,13 @@ defmodule Streamix.Torrent.Sources.Yts do
     case Req.get(@endpoint,
            params: params,
            receive_timeout: :timer.seconds(15),
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            headers: [
              {"user-agent",
               "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.cloud)"},
              {"accept", "application/json"}
            ],
-           decode_json: [keys: :strings]
+           decoders: [json: &Jason.decode(&1, keys: :strings)]
          ) do
       {:ok, %{status: 200, body: %{"status" => "ok", "data" => data}}} ->
         movies = Map.get(data, "movies", []) |> Enum.map(&decode_movie/1)

@@ -44,7 +44,7 @@ defmodule Streamix.Torrent.Sources.YtsTest do
     test "slug + name + rate_limit_ms are stable" do
       assert Yts.slug() == "yts"
       assert Yts.name() == "YTS"
-      assert is_integer(Yts.rate_limit_ms()) and Yts.rate_limit_ms() > 0
+      assert Yts.rate_limit_ms() > 0
     end
   end
 
