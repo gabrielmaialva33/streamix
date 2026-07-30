@@ -58,7 +58,7 @@ defmodule StreamixWeb.Content.HelperComponents do
 
     # Grid/carousel posters render at ~180px desktop / ~120px mobile, so
     # w342 (via :carousel context) is the sweet spot (~60% less data than w500).
-    ImageProxy.poster(url, :carousel)
+    ImageProxy.browser_poster(url, :carousel)
   end
 
   def get_display_rating(item) do

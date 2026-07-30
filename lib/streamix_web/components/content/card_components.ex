@@ -46,7 +46,12 @@ defmodule StreamixWeb.Content.CardComponents do
       data-year={Map.get(@movie, :year)}
       data-rating={@display_rating}
       data-plot={preview_plot(@movie)}
-      data-cover={ImageProxy.poster(Map.get(@movie, :backdrop) || Map.get(@movie, :cover), :carousel)}
+      data-cover={
+        ImageProxy.browser_poster(
+          Map.get(@movie, :backdrop) || Map.get(@movie, :cover),
+          :carousel
+        )
+      }
       data-genre={Map.get(@movie, :genre)}
       data-duration={format_duration(Map.get(@movie, :duration))}
       data-favorite={to_string(@is_favorite)}
@@ -148,7 +153,14 @@ defmodule StreamixWeb.Content.CardComponents do
   def series_card(assigns) do
     rating = get_display_rating(assigns.series)
     series_name = Map.get(assigns.series, :title) || Map.get(assigns.series, :name, "")
-    assigns = assign(assigns, display_rating: rating, series_name: series_name)
+    image_url = ImageProxy.browser_poster(Map.get(assigns.series, :cover), :carousel)
+
+    assigns =
+      assign(assigns,
+        display_rating: rating,
+        series_name: series_name,
+        image_url: image_url
+      )
 
     ~H"""
     <div
@@ -163,7 +175,10 @@ defmodule StreamixWeb.Content.CardComponents do
       data-rating={@display_rating}
       data-plot={preview_plot(@series)}
       data-cover={
-        ImageProxy.poster(Map.get(@series, :backdrop) || Map.get(@series, :cover), :carousel)
+        ImageProxy.browser_poster(
+          Map.get(@series, :backdrop) || Map.get(@series, :cover),
+          :carousel
+        )
       }
       data-genre={Map.get(@series, :genre)}
       data-favorite={to_string(@is_favorite)}
@@ -176,8 +191,8 @@ defmodule StreamixWeb.Content.CardComponents do
         phx-value-id={@series.id}
       >
         <img
-          :if={Map.get(@series, :cover)}
-          src={ImageProxy.poster(@series.cover, :carousel)}
+          :if={@image_url}
+          src={@image_url}
           alt={@series_name}
           class="w-full h-full object-cover"
           loading="lazy"
@@ -187,7 +202,7 @@ defmodule StreamixWeb.Content.CardComponents do
         <div
           class={[
             "w-full h-full flex items-center justify-center bg-surface-hover",
-            Map.get(@series, :cover) && "hidden"
+            @image_url && "hidden"
           ]}
           data-fallback
         >
