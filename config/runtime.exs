@@ -70,6 +70,86 @@ defmodule Streamix.RuntimeDatabaseSafety do
   end
 end
 
+defmodule Streamix.RuntimeConfig do
+  @moduledoc false
+
+  @truthy ~w(1 true yes on)
+  @falsy ~w(0 false no off)
+
+  def boolean!(name, value, default) when is_binary(name) and is_boolean(default) do
+    case normalize(value) do
+      nil ->
+        default
+
+      value when value in @truthy ->
+        true
+
+      value when value in @falsy ->
+        false
+
+      value ->
+        raise ArgumentError,
+              "#{name} must be a boolean (true/false, yes/no, on/off, or 1/0), got: " <>
+                inspect(value)
+    end
+  end
+
+  def integer!(name, value, default, opts \\ [])
+      when is_binary(name) and is_integer(default) do
+    integer =
+      case normalize(value) do
+        nil ->
+          default
+
+        value ->
+          case Integer.parse(value) do
+            {parsed, ""} ->
+              parsed
+
+            _other ->
+              raise ArgumentError, "#{name} must be an integer, got: #{inspect(value)}"
+          end
+      end
+
+    validate_integer_bound!(name, integer, :min, Keyword.get(opts, :min))
+    validate_integer_bound!(name, integer, :max, Keyword.get(opts, :max))
+    integer
+  end
+
+  def csv(nil), do: []
+
+  def csv(value) when is_binary(value) do
+    value
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+  end
+
+  defp normalize(nil), do: nil
+
+  defp normalize(value) when is_binary(value) do
+    case value |> String.trim() |> String.downcase() do
+      "" -> nil
+      normalized -> normalized
+    end
+  end
+
+  defp validate_integer_bound!(_name, _integer, _bound, nil), do: :ok
+
+  defp validate_integer_bound!(name, integer, :min, minimum) when integer < minimum do
+    raise ArgumentError, "#{name} must be an integer of at least #{minimum}, got: #{integer}"
+  end
+
+  defp validate_integer_bound!(name, integer, :max, maximum) when integer > maximum do
+    raise ArgumentError, "#{name} must be an integer of at most #{maximum}, got: #{integer}"
+  end
+
+  defp validate_integer_bound!(_name, _integer, _bound, _limit), do: :ok
+end
+
+alias Streamix.RuntimeConfig
+
 # Load .env file in dev/test environments
 # This creates an env map that merges .env with System.get_env()
 env =
@@ -125,10 +205,9 @@ database_url =
         get_env.("TEST_DATABASE_URL") || infer_test_database_url.(get_env.("DATABASE_URL"))
 
       allowed_hosts =
-        (get_env.("TEST_DATABASE_ALLOWED_HOSTS") || "")
-        |> String.split(",", trim: true)
-        |> Enum.map(&(String.trim(&1) |> String.downcase()))
-        |> Enum.reject(&(&1 == ""))
+        get_env.("TEST_DATABASE_ALLOWED_HOSTS")
+        |> RuntimeConfig.csv()
+        |> Enum.map(&String.downcase/1)
 
       Streamix.RuntimeDatabaseSafety.validate_test_url!(database_url,
         allow_remote?:
@@ -145,17 +224,23 @@ database_url =
     For example: ecto://USER:PASS@HOST/DATABASE
     """
 
-maybe_ipv6 = if get_env.("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
+maybe_ipv6 =
+  if RuntimeConfig.boolean!("ECTO_IPV6", get_env.("ECTO_IPV6"), false),
+    do: [:inet6],
+    else: []
 
 repo_pool_size =
   case config_env() do
     :test ->
-      String.to_integer(
-        get_env.("TEST_POOL_SIZE") || Integer.to_string(System.schedulers_online() * 2)
+      RuntimeConfig.integer!(
+        "TEST_POOL_SIZE",
+        get_env.("TEST_POOL_SIZE"),
+        System.schedulers_online() * 2,
+        min: 1
       )
 
     _ ->
-      String.to_integer(get_env.("POOL_SIZE") || "10")
+      RuntimeConfig.integer!("POOL_SIZE", get_env.("POOL_SIZE"), 10, min: 1)
   end
 
 config :streamix, Streamix.Repo,
@@ -181,7 +266,11 @@ config :streamix, :stripe,
 
 # Global provider configuration (optional)
 # Set GLOBAL_PROVIDER_ENABLED=true to enable
-if get_env.("GLOBAL_PROVIDER_ENABLED") == "true" do
+if RuntimeConfig.boolean!(
+     "GLOBAL_PROVIDER_ENABLED",
+     get_env.("GLOBAL_PROVIDER_ENABLED"),
+     false
+   ) do
   config :streamix, :global_provider,
     enabled: true,
     name: get_env.("GLOBAL_PROVIDER_NAME") || "Streamix Global",
@@ -235,14 +324,27 @@ config :streamix, Streamix.Gindex.Pacer,
   # account-wide; at 3 q/s we ate the budget in under an hour and got
   # rate-limited (503) for the remainder. Override with GINDEX_GDRIVE_RPS
   # if you control the upstream and want to push it.
-  gdrive: String.to_integer(get_env.("GINDEX_GDRIVE_RPS") || "1"),
-  tmdb_gindex: String.to_integer(get_env.("GINDEX_TMDB_RPS") || "10"),
-  anilist: String.to_integer(get_env.("GINDEX_ANILIST_RPS") || "1"),
-  tomato: String.to_integer(get_env.("GINDEX_TOMATO_RPS") || "2")
+  gdrive: RuntimeConfig.integer!("GINDEX_GDRIVE_RPS", get_env.("GINDEX_GDRIVE_RPS"), 1, min: 1),
+  tmdb_gindex: RuntimeConfig.integer!("GINDEX_TMDB_RPS", get_env.("GINDEX_TMDB_RPS"), 10, min: 1),
+  anilist:
+    RuntimeConfig.integer!("GINDEX_ANILIST_RPS", get_env.("GINDEX_ANILIST_RPS"), 1, min: 1),
+  tomato: RuntimeConfig.integer!("GINDEX_TOMATO_RPS", get_env.("GINDEX_TOMATO_RPS"), 2, min: 1)
 
 config :streamix, Streamix.Gindex.Pagination,
-  delay_ms: String.to_integer(get_env.("GINDEX_PAGE_DELAY_MS") || "5000"),
-  jitter_ms: String.to_integer(get_env.("GINDEX_PAGE_JITTER_MS") || "1000")
+  delay_ms:
+    RuntimeConfig.integer!(
+      "GINDEX_PAGE_DELAY_MS",
+      get_env.("GINDEX_PAGE_DELAY_MS"),
+      5_000,
+      min: 0
+    ),
+  jitter_ms:
+    RuntimeConfig.integer!(
+      "GINDEX_PAGE_JITTER_MS",
+      get_env.("GINDEX_PAGE_JITTER_MS"),
+      1_000,
+      min: 0
+    )
 
 # TomatoAnimes API — bearer token provides access to search + metadata
 # endpoints (https://edge.betomato.com/v2). Disabled when the env var
@@ -258,7 +360,7 @@ end
 
 # GIndex provider configuration (Google Drive Index for movies/series/animes).
 # Paths are configured via gindex_drives on the provider record.
-if get_env.("GINDEX_ENABLED") == "true" do
+if RuntimeConfig.boolean!("GINDEX_ENABLED", get_env.("GINDEX_ENABLED"), false) do
   validate_gindex_url = fn url ->
     url = String.trim(url)
     uri = URI.parse(url)
@@ -274,11 +376,8 @@ if get_env.("GINDEX_ENABLED") == "true" do
     case get_env.("GINDEX_ENDPOINTS") do
       value when is_binary(value) ->
         value
-        |> String.split(",")
-        |> Enum.map(&String.trim/1)
-        |> Enum.reject(&(&1 == ""))
+        |> RuntimeConfig.csv()
         |> Enum.map(validate_gindex_url)
-        |> Enum.uniq()
 
       _ ->
         []
@@ -324,7 +423,8 @@ end
 # so opt-in. RQBIT_URL points at the sidecar's HTTP API. Always off in
 # test: the suite boots its own Registry/stub processes and would
 # collide with the application-supervised ones.
-if config_env() != :test and get_env.("TORRENT_ENABLED") == "true" do
+if config_env() != :test and
+     RuntimeConfig.boolean!("TORRENT_ENABLED", get_env.("TORRENT_ENABLED"), false) do
   config :streamix, :torrent_provider,
     enabled: true,
     rqbit_url: get_env.("RQBIT_URL") || "http://rqbit:3030",
@@ -378,7 +478,12 @@ config :streamix, :embeddings, provider: get_env.("EMBEDDING_PROVIDER") || "gemi
 # a second worker node.
 config :streamix,
        :recover_orphaned_jobs_on_startup,
-       config_env() == :prod and get_env.("OBAN_RECOVER_ORPHANED_ON_STARTUP") != "false"
+       config_env() == :prod and
+         RuntimeConfig.boolean!(
+           "OBAN_RECOVER_ORPHANED_ON_STARTUP",
+           get_env.("OBAN_RECOVER_ORPHANED_ON_STARTUP"),
+           true
+         )
 
 # Gemini AI configuration for embeddings (3072 dimensions)
 if gemini_api_key = get_env.("GEMINI_API_KEY") do
@@ -400,25 +505,37 @@ end
 # Qdrant vector database configuration
 # Required for semantic search functionality
 config :streamix, :qdrant,
-  enabled: config_env() != :test and get_env.("QDRANT_ENABLED") != "false",
+  enabled:
+    config_env() != :test and
+      RuntimeConfig.boolean!("QDRANT_ENABLED", get_env.("QDRANT_ENABLED"), true),
   url: get_env.("QDRANT_URL") || "http://localhost:6333",
   api_key: get_env.("QDRANT_API_KEY")
 
 # RabbitMQ configuration for Broadway distributed workers
 # Set RABBITMQ_ENABLED=true to enable
-if get_env.("RABBITMQ_ENABLED") == "true" do
+if RuntimeConfig.boolean!("RABBITMQ_ENABLED", get_env.("RABBITMQ_ENABLED"), false) do
   config :streamix, :rabbitmq,
     enabled: true,
     connection: [
       host: get_env.("RABBITMQ_HOST") || "localhost",
-      port: String.to_integer(get_env.("RABBITMQ_PORT") || "5672"),
+      port:
+        RuntimeConfig.integer!("RABBITMQ_PORT", get_env.("RABBITMQ_PORT"), 5_672,
+          min: 1,
+          max: 65_535
+        ),
       username: get_env.("RABBITMQ_USERNAME") || "guest",
       password: get_env.("RABBITMQ_PASSWORD") || "guest",
       virtual_host: get_env.("RABBITMQ_VHOST") || "/"
     ],
     broadway: [
       # Keep at 1 to avoid GIndex rate limiting (tasks run sequentially)
-      processor_concurrency: String.to_integer(get_env.("BROADWAY_CONCURRENCY") || "1"),
+      processor_concurrency:
+        RuntimeConfig.integer!(
+          "BROADWAY_CONCURRENCY",
+          get_env.("BROADWAY_CONCURRENCY"),
+          1,
+          min: 1
+        ),
       batcher_concurrency: 1,
       batch_size: 10,
       batch_timeout: 2_000
@@ -436,16 +553,8 @@ end
 # Comma-separated env: `STREAM_PROXY_URLS=https://source.mahina.cloud,https://source2.mahina.cloud`
 # Falls back to the single `STREAM_PROXY_URL` for older deploys.
 stream_proxy_urls =
-  case get_env.("STREAM_PROXY_URLS") do
-    csv when is_binary(csv) and csv != "" ->
-      csv
-      |> String.split(",", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-
-    _ ->
-      []
-  end
+  get_env.("STREAM_PROXY_URLS")
+  |> RuntimeConfig.csv()
 
 case get_env.("STREAM_PROXY_BACKEND") do
   "redirect" -> config :streamix, :stream_proxy_backend, :redirect
@@ -480,25 +589,26 @@ config :streamix,
   # Preferred path: lighter bundle, MIT, does not need
   # SharedArrayBuffer. The hook falls back to AVPlayer if init
   # fails (e.g. the runtime cannot decode HEVC via WebCodecs).
-  feature_avbridge: (get_env.("FEATURE_AVBRIDGE") || "false") == "true",
+  feature_avbridge:
+    RuntimeConfig.boolean!("FEATURE_AVBRIDGE", get_env.("FEATURE_AVBRIDGE"), false),
   # Opt the browser into the h265web.js engine for GIndex MKV/HEVC
   # content. Alternate GPU path; needs SAB + COOP+COEP headers to
   # actually run multi-threaded decode (without them the SDK boots
   # but the AudioContext/decoder pipeline never starts). Off by
   # default; flip when the headers are wired.
-  feature_h265web: (get_env.("FEATURE_H265WEB") || "false") == "true"
+  feature_h265web: RuntimeConfig.boolean!("FEATURE_H265WEB", get_env.("FEATURE_H265WEB"), false)
 
 config :streamix,
-  player_lifecycle_logs: get_env.("PLAYER_LIFECYCLE_LOGS") in ~w(true 1 yes)
+  player_lifecycle_logs:
+    RuntimeConfig.boolean!(
+      "PLAYER_LIFECYCLE_LOGS",
+      get_env.("PLAYER_LIFECYCLE_LOGS"),
+      false
+    )
 
 # API Keys for TV app and external clients
 # Comma-separated list of valid API keys
-api_keys =
-  case get_env.("API_KEYS") do
-    nil -> []
-    "" -> []
-    keys -> String.split(keys, ",") |> Enum.map(&String.trim/1)
-  end
+api_keys = RuntimeConfig.csv(get_env.("API_KEYS"))
 
 config :streamix, :api_keys, api_keys
 
@@ -529,7 +639,7 @@ cors_origins =
       end
 
     origins ->
-      String.split(origins, ",") |> Enum.map(&String.trim/1)
+      RuntimeConfig.csv(origins)
   end
 
 config :streamix, :cors, origins: cors_origins
@@ -550,7 +660,8 @@ config :streamix, :cors, origins: cors_origins
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-if config_env() != :test and get_env.("PHX_SERVER") do
+if config_env() != :test and
+     RuntimeConfig.boolean!("PHX_SERVER", get_env.("PHX_SERVER"), false) do
   config :streamix, StreamixWeb.Endpoint, server: true
 end
 
@@ -559,14 +670,16 @@ end
 # deep-merge port 4000 over it.
 if config_env() != :test do
   config :streamix, StreamixWeb.Endpoint,
-    http: [port: String.to_integer(get_env.("PORT") || "4000")]
+    http: [
+      port: RuntimeConfig.integer!("PORT", get_env.("PORT"), 4_000, min: 1, max: 65_535)
+    ]
 end
 
 if config_env() == :prod do
   # Production-only tuning for the Repo (pool, queue timings, ssl, etc).
   # Base `url` and `socket_options` are set above for all environments.
   config :streamix, Streamix.Repo,
-    pool_size: String.to_integer(get_env.("POOL_SIZE") || "20"),
+    pool_size: RuntimeConfig.integer!("POOL_SIZE", get_env.("POOL_SIZE"), 20, min: 1),
     # Tighter queue_target — used to be 5 s which let a single saturated
     # sync worker swallow web request connections for the full 5 s
     # before DBConnection started returning errors. 2 s is closer to a
@@ -595,7 +708,7 @@ if config_env() == :prod do
   check_origin =
     case System.get_env("WEBSOCKET_ORIGINS") do
       nil -> ["//#{host}", "//localhost"]
-      origins -> String.split(origins, ",") |> Enum.map(&String.trim/1)
+      origins -> RuntimeConfig.csv(origins)
     end
 
   # LiveView signing salt - generate with: mix phx.gen.secret 32
@@ -611,7 +724,7 @@ if config_env() == :prod do
     http: [
       # Enable IPv6 and bind on all interfaces.
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
-      port: String.to_integer(System.get_env("PORT") || "4000"),
+      port: RuntimeConfig.integer!("PORT", System.get_env("PORT"), 4_000, min: 1, max: 65_535),
       # Bandit performance tuning
       thousand_island_options: [
         transport_options: [keepalive: true]

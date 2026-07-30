@@ -145,7 +145,9 @@ config :logger, :default_formatter,
     :native_resume_time,
     :native_has_audio_issue,
     :native_error_name,
-    :native_error_message
+    :native_error_message,
+    :api_error_code,
+    :reason_kind
   ]
 
 # Use Jason for JSON parsing in Phoenix

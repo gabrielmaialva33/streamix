@@ -81,10 +81,7 @@ playwright_options = [
   browser_context_opts: [service_workers: "block"],
   js_logger: false,
   trace: System.get_env("PW_TRACE", "false") in ~w(t true),
-  screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true),
-  # Remote WebKit can take longer than Chromium to close its LiveView
-  # websocket. Keep the sandbox owner alive until that teardown completes.
-  ecto_sandbox_stop_owner_delay: 1_000
+  screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true)
 ]
 
 playwright_options =
