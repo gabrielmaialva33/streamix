@@ -17,6 +17,7 @@ defmodule Streamix.Torrent.Catalog do
   alias Streamix.Cache
   alias Streamix.Iptv.{Movie, TorrentProvider}
   alias Streamix.Repo
+  alias Streamix.Torrent.StatsRefresher
   alias Streamix.Torrent.TorrentStream
 
   @default_limit 48
@@ -86,8 +87,8 @@ defmodule Streamix.Torrent.Catalog do
 
   @doc false
   def refresh_stats(provider_id) when is_integer(provider_id) do
-    case Repo.query("REFRESH MATERIALIZED VIEW torrent_movie_stats") do
-      {:ok, _result} ->
+    case StatsRefresher.refresh() do
+      :ok ->
         Cache.delete_local({__MODULE__, :movie_count, provider_id})
         :ok
 
