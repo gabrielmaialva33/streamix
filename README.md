@@ -313,7 +313,7 @@ Important variables in `.env.example`:
 - `TEST_DATABASE_URL` optional; inferred from `DATABASE_URL` when omitted
 - `REDIS_URL`
 - `GLOBAL_PROVIDER_*`
-- `GINDEX_ENABLED` / `GINDEX_URL`
+- `GINDEX_ENABLED` / `GINDEX_ENDPOINTS` (or legacy `GINDEX_URL`)
 - `TMDB_API_TOKEN`
 - `GEMINI_API_KEY` or `NVIDIA_API_KEY`
 - `QDRANT_URL`
