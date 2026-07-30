@@ -249,15 +249,11 @@ export async function detectHardwareAcceleration() {
   const gl2 = canvas.getContext("webgl2");
   results.webgl2 = !!gl2;
 
-  // Check WebGPU
-  if ("gpu" in navigator) {
-    try {
-      const adapter = await navigator.gpu?.requestAdapter();
-      results.webgpu = !!adapter;
-    } catch {
-      results.webgpu = false;
-    }
-  }
+  // Adapter availability is not used by playback selection. Requesting one
+  // during every player mount also makes Chromium log "No available adapters"
+  // on otherwise healthy devices, so capability reporting stops at API
+  // presence.
+  results.webgpu = "gpu" in navigator;
 
   return results;
 }
