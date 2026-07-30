@@ -5,7 +5,6 @@ defmodule Streamix.Application do
 
   use Application
 
-  alias Streamix.Gindex.SingleFlight
   alias Streamix.Iptv.TorrentProvider
   alias Streamix.Torrent.{Reaper, StreamRegistry, StreamSessionSupervisor}
 
@@ -14,13 +13,20 @@ defmodule Streamix.Application do
     # Configure DNS resolution to avoid stale cache issues in containers
     # The BEAM's default inet resolver can cache DNS indefinitely
     configure_dns_resolver()
-    Streamix.Operations.setup()
 
-    children =
+    opts = [strategy: :one_for_one, name: Streamix.Supervisor]
+    Supervisor.start_link(children(), opts)
+  end
+
+  @doc false
+  def children do
+    [
       [
         StreamixWeb.Telemetry,
-        Streamix.Repo,
-        maybe_oban_startup_recovery_child(),
+        Streamix.Repo
+      ],
+      maybe_oban_startup_recovery_child(),
+      [
         {Streamix.RateLimit, clean_period: :timer.minutes(10)},
         {Task.Supervisor, name: Streamix.TaskSupervisor},
         {Redix, {redis_url(), [name: :streamix_redis]}},
@@ -64,6 +70,7 @@ defmodule Streamix.Application do
         Streamix.DnsKeeper,
         {DNSCluster, query: Application.get_env(:streamix, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Streamix.PubSub},
+        Streamix.RuntimeBootstrap,
         # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
         # Stream proxy for caching IPTV streams
         Streamix.Iptv.StreamProxy,
@@ -76,50 +83,37 @@ defmodule Streamix.Application do
         # GIndex URL cache
         Streamix.Gindex.UrlCache,
         # Xtream circuit breaker (Netflix-style resilience)
-        Streamix.Iptv.XtreamCircuitBreaker,
-        maybe_provider_health_monitor_child(),
+        Streamix.Iptv.XtreamCircuitBreaker
+      ],
+      maybe_provider_health_monitor_child(),
+      [
         # Stream multiplexer infrastructure (1 upstream → N downstream)
         {Registry, keys: :unique, name: Streamix.StreamRegistry},
         {Streamix.Iptv.StreamMultiplexerSupervisor, []},
         # Watch Party infrastructure
         {Registry, keys: :unique, name: Streamix.WatchParty.Registry},
-        {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one},
+        {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one}
         # Torrent infrastructure (gated by config — only starts when the
         # torrent provider is enabled). Per-info_hash StreamSession
         # processes register in the Registry, are spawned via the
         # DynamicSupervisor, and the Reaper sweeps stragglers off rqbit
         # every 5 min.
-        maybe_torrent_children(),
+      ],
+      maybe_torrent_children(),
+      [
         StreamixWeb.Presence,
         # Workers depend on Finch, Redis, PubSub and the domain processes
         # above. Starting Oban after them also makes it stop before them,
         # preventing in-flight jobs from failing while dependencies are
         # already gone during a deploy.
-        {Oban, Application.fetch_env!(:streamix, Oban)},
-        # Start to serve requests, typically the last entry
-        StreamixWeb.Endpoint
-      ]
-      |> List.flatten()
-      |> Kernel.++(Streamix.Queue.Supervisor.child_spec_if_enabled())
-
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Streamix.Supervisor]
-    result = Supervisor.start_link(children, opts)
-
-    # Initialize providers after supervisor starts
-    init_providers()
-
-    # Bootstrap the GIndex single-flight ETS table. Public, named, no
-    # GenServer needed — the table lives for the life of the BEAM node.
-    SingleFlight.setup()
-
-    # Attach telemetry counters for the GIndex pipeline (request budget,
-    # scan-root completions). Heartbeat log lines fire every N requests
-    # so an operator tailing the container sees quota burn live.
-    Streamix.Gindex.Telemetry.setup()
-
-    result
+        {Oban, Application.fetch_env!(:streamix, Oban)}
+      ],
+      maybe_provider_bootstrap_child(),
+      Streamix.Queue.Supervisor.child_spec_if_enabled(),
+      # Start serving requests only after every runtime dependency is ready.
+      [StreamixWeb.Endpoint]
+    ]
+    |> Enum.concat()
   end
 
   defp maybe_oban_startup_recovery_child do
@@ -142,6 +136,14 @@ defmodule Streamix.Application do
     end
   end
 
+  defp maybe_provider_bootstrap_child do
+    if Application.get_env(:streamix, :env) == :test do
+      []
+    else
+      [{Streamix.ProviderBootstrap, []}]
+    end
+  end
+
   defp maybe_torrent_children do
     if TorrentProvider.enabled?() do
       [
@@ -151,82 +153,6 @@ defmodule Streamix.Application do
       ]
     else
       []
-    end
-  end
-
-  defp init_providers do
-    # Skip provider initialization during tests (Sandbox mode doesn't work with spawned tasks)
-    unless Application.get_env(:streamix, :env) == :test do
-      # Run in a separate process to not block app startup
-      case Streamix.TaskLauncher.start_child(fn ->
-             wait_for_repo_with_retry()
-             init_system_providers()
-           end) do
-        {:ok, _pid} ->
-          :ok
-
-        {:error, reason} ->
-          require Logger
-
-          Logger.warning(
-            "[Application] Failed to start provider initialization task: #{inspect(reason)}"
-          )
-      end
-    end
-  end
-
-  # Wait for Repo to be ready with exponential backoff
-  defp wait_for_repo_with_retry(attempts \\ 0, max_attempts \\ 10) do
-    case Streamix.Repo.query("SELECT 1") do
-      {:ok, _} ->
-        :ok
-
-      {:error, _} when attempts < max_attempts ->
-        # Exponential backoff: 100ms, 200ms, 400ms, ...
-        delay = min(:timer.seconds(5), (100 * :math.pow(2, attempts)) |> trunc())
-        Process.sleep(delay)
-        wait_for_repo_with_retry(attempts + 1, max_attempts)
-
-      {:error, reason} ->
-        require Logger
-
-        Logger.warning(
-          "[Application] Repo not ready after #{max_attempts} attempts: #{inspect(reason)}"
-        )
-
-        :error
-    end
-  end
-
-  defp init_system_providers do
-    alias Streamix.Iptv.{GIndexProvider, GlobalProvider, TorrentProvider}
-    require Logger
-
-    # Ensure GIndex provider exists if configured
-    case GIndexProvider.ensure_exists!() do
-      {:ok, _} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("[Application] GIndex provider init failed: #{inspect(reason)}")
-    end
-
-    # Ensure Global provider exists if configured
-    case GlobalProvider.ensure_exists!() do
-      {:ok, _} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("[Application] Global provider init failed: #{inspect(reason)}")
-    end
-
-    # Ensure Torrent aggregator provider exists if enabled
-    case TorrentProvider.ensure_exists!() do
-      {:ok, _} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("[Application] Torrent provider init failed: #{inspect(reason)}")
     end
   end
 
