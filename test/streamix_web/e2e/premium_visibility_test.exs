@@ -14,7 +14,14 @@ defmodule StreamixWeb.E2E.PremiumVisibilityTest do
   # async: false avoids Bandit connection reuse flakiness across parallel
   # sandboxed tests. If this suite grows, switch back to async: true and
   # tune `ecto_sandbox_stop_owner_delay` or pin Bandit to one handler.
-  use PhoenixTest.Playwright.Case, async: false
+  @playwright_browser (case System.get_env("PLAYWRIGHT_BROWSER") do
+                         "chromium" -> :chromium
+                         "firefox" -> :firefox
+                         "webkit" -> :webkit
+                         _ -> :chromium
+                       end)
+
+  use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright

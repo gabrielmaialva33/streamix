@@ -3,14 +3,25 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
   Browser-level coverage for player lifecycle behavior that is hard to
   validate with static LiveView tests.
 
-  The media element is stubbed in WebKit before app JS runs so the test
+  The media element is stubbed before app JS runs so the test
   stays deterministic and does not depend on upstream IPTV availability.
   Run with:
 
       mix test --include playwright test/streamix_web/e2e/player_lifecycle_test.exs
   """
 
-  use PhoenixTest.Playwright.Case, async: false, browser: :webkit, browser_pool: false
+  @playwright_browser (case System.get_env("PLAYWRIGHT_BROWSER") do
+                         "chromium" -> :chromium
+                         "firefox" -> :firefox
+                         "webkit" -> :webkit
+                         _ -> :webkit
+                       end)
+
+  use PhoenixTest.Playwright.Case,
+    async: false,
+    browser: @playwright_browser,
+    browser_pool: false
+
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
@@ -49,12 +60,17 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     |> assert_player_resumed_once()
   end
 
-  @tag browser_context_opts: [
-         viewport: %{width: 390, height: 844},
-         is_mobile: true,
-         device_scale_factor: 3.0,
-         service_workers: "block"
-       ]
+  @mobile_portrait_opts [
+                          viewport: %{width: 390, height: 844},
+                          device_scale_factor: 3.0,
+                          service_workers: "block"
+                        ] ++
+                          if(@playwright_browser == :firefox,
+                            do: [],
+                            else: [is_mobile: true]
+                          )
+
+  @tag browser_context_opts: @mobile_portrait_opts
   test "keeps touch controls reachable in iPhone portrait", %{
     conn: session,
     media_origin: media_origin
@@ -64,12 +80,17 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     |> assert_mobile_controls_fit(390, 844)
   end
 
-  @tag browser_context_opts: [
-         viewport: %{width: 844, height: 390},
-         is_mobile: true,
-         device_scale_factor: 3.0,
-         service_workers: "block"
-       ]
+  @mobile_landscape_opts [
+                           viewport: %{width: 844, height: 390},
+                           device_scale_factor: 3.0,
+                           service_workers: "block"
+                         ] ++
+                           if(@playwright_browser == :firefox,
+                             do: [],
+                             else: [is_mobile: true]
+                           )
+
+  @tag browser_context_opts: @mobile_landscape_opts
   test "keeps touch controls reachable in iPhone landscape", %{
     conn: session,
     media_origin: media_origin

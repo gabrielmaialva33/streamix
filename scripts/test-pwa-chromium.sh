@@ -32,12 +32,12 @@ trap cleanup EXIT INT TERM
 cd "${project_root}"
 
 echo "[pwa] preparing test database and production-shaped assets"
-MIX_ENV=test mix ecto.create --quiet
-MIX_ENV=test mix ecto.migrate --quiet
-MIX_ENV=test mix assets.deploy
+env MIX_ENV=test mix ecto.create --quiet
+env MIX_ENV=test mix ecto.migrate --quiet
+env MIX_ENV=test mix assets.deploy
 
 echo "[pwa] starting Streamix at ${base_url}"
-MIX_ENV=test mix phx.server >"${runtime_dir}/server.log" 2>&1 &
+env MIX_ENV=test mix phx.server >"${runtime_dir}/server.log" 2>&1 &
 server_pid=$!
 
 for _attempt in $(seq 1 60); do
@@ -74,3 +74,13 @@ docker run --rm \
   --env "PWA_BASE_URL=${base_url}" \
   "${image}" \
   node js/smoke/pwa_first_install_smoke.cjs
+
+echo "[pwa] running constrained Pixel/Chromium and iPhone/WebKit smoke"
+docker run --rm \
+  --init \
+  --network host \
+  --volume "${project_root}:/work:ro" \
+  --workdir /work/assets \
+  --env "PWA_BASE_URL=${base_url}" \
+  "${image}" \
+  node js/smoke/mobile_browser_smoke.cjs

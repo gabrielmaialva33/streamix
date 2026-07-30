@@ -74,10 +74,9 @@ defmodule Streamix.TestSupport.StreamProxyTestServer do
   defp handle_request(conn, _method, _path, _body_counter), do: send_resp(conn, 404, "not found")
 
   defp request_path(path) when is_binary(path) do
-    case URI.parse(path) do
-      %URI{path: nil} -> path
-      %URI{path: parsed_path} when is_binary(parsed_path) -> parsed_path
-      _ -> path
+    case URI.parse(path).path do
+      nil -> path
+      parsed_path -> parsed_path
     end
   end
 

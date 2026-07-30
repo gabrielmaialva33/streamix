@@ -1,23 +1,40 @@
 defmodule StreamixWeb.E2E.LoginPersistenceTest do
   @moduledoc """
-  Exercises the login form in WebKit with an iPhone-sized viewport.
+  Exercises the login form across the CI browser matrix with an
+  iPhone-sized viewport.
 
   Password managers replace both credential fields and dispatch input events
   together. The form must not patch itself and reset the persistent-login
   checkbox while those events are being processed.
   """
 
-  use PhoenixTest.Playwright.Case, async: false, browser: :webkit, browser_pool: false
+  @playwright_browser (case System.get_env("PLAYWRIGHT_BROWSER") do
+                         "chromium" -> :chromium
+                         "firefox" -> :firefox
+                         "webkit" -> :webkit
+                         _ -> :webkit
+                       end)
+
+  use PhoenixTest.Playwright.Case,
+    async: false,
+    browser: @playwright_browser,
+    browser_pool: false
+
   use StreamixWeb, :verified_routes
 
   @moduletag :playwright
 
-  @tag browser_context_opts: [
-         viewport: %{width: 390, height: 844},
-         is_mobile: true,
-         device_scale_factor: 3.0,
-         service_workers: "block"
-       ]
+  @mobile_context_opts [
+                         viewport: %{width: 390, height: 844},
+                         device_scale_factor: 3.0,
+                         service_workers: "block"
+                       ] ++
+                         if(@playwright_browser == :firefox,
+                           do: [],
+                           else: [is_mobile: true]
+                         )
+
+  @tag browser_context_opts: @mobile_context_opts
   test "keeps persistent login selected while the password manager fills credentials", %{
     conn: session
   } do
@@ -62,7 +79,8 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
         return {
           checked: checkbox.checked,
           formHasLiveChange: checkbox.form.hasAttribute("phx-change"),
-          emailAutocomplete: email.autocomplete,
+          emailAutocomplete: email.getAttribute("autocomplete"),
+          passwordAutocomplete: password.getAttribute("autocomplete"),
           checkboxSize: {
             width: checkboxRect.width,
             height: checkboxRect.height
@@ -76,6 +94,7 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
         assert state["checked"], inspect(state)
         refute state["formHasLiveChange"], inspect(state)
         assert state["emailAutocomplete"] == "username", inspect(state)
+        assert state["passwordAutocomplete"] == "current-password", inspect(state)
         assert state["checkboxSize"]["width"] >= 20, inspect(state)
         assert state["checkboxSize"]["height"] >= 20, inspect(state)
         assert state["touchTargetHeight"] >= 44, inspect(state)
