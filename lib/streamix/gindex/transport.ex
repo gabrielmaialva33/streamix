@@ -19,11 +19,11 @@ defmodule Streamix.Gindex.Transport do
   @rate_limit_base_delay :timer.seconds(30)
   @max_rate_limit_retries 4
 
-  # A worker.js TypeError is deterministic for that request shape and skips
-  # retries. Other 500s get two same-origin retries because they are often
-  # transient. Cross-Worker fallback happens only in Pagination, which can
-  # safely restart a listing from page zero instead of replaying a foreign
-  # cursor or signed token.
+  # Worker 500s, including the common JavaScript TypeError, are intermittent
+  # across Cloudflare requests. Give the same origin two retries before
+  # returning the error. Cross-Worker fallback happens only in Pagination,
+  # which can safely restart a listing from page zero instead of replaying a
+  # foreign cursor or signed token.
   @server_error_base_delay :timer.seconds(5)
   @max_server_error_retries 2
 
@@ -85,14 +85,17 @@ defmodule Streamix.Gindex.Transport do
   end
 
   defp build_request_opts(method, url, body, opts) do
-    req_opts = [
-      method: method,
-      url: url,
-      headers: build_headers(method),
-      receive_timeout: Keyword.get(opts, :timeout, @default_timeout),
-      redirect: Keyword.get(opts, :follow_redirects, true),
-      finch: [name: Streamix.Finch]
-    ]
+    req_opts =
+      [
+        method: method,
+        url: url,
+        headers: build_headers(method),
+        receive_timeout: Keyword.get(opts, :timeout, @default_timeout),
+        redirect: Keyword.get(opts, :follow_redirects, true),
+        retry: false,
+        finch: [name: Streamix.Finch]
+      ]
+      |> maybe_put(:plug, Keyword.get(opts, :plug))
 
     if body, do: Keyword.put(req_opts, :body, body), else: req_opts
   end
@@ -213,39 +216,21 @@ defmodule Streamix.Gindex.Transport do
        when rate_limit_attempt < @max_server_error_retries do
     body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
 
-    cond do
-      auth_error?(body_str) ->
-        Logger.error(
-          "[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}"
-        )
+    if auth_error?(body_str) do
+      Logger.error("[GIndex] Authentication/Token error (500): #{String.slice(body_str, 0, 500)}")
 
-        {:ok, response}
-
-      # Deterministic worker.js bug: `TypeError: Cannot read properties of
-      # undefined (reading 'map')` fires on the same (path, page_token)
-      # every time — burning retries costs ~35s and 3 requests against a
-      # 10K/day budget for zero recovery. Bubble the response so
-      # Pagination's partial-result path can keep what it already
-      # collected and move on.
-      javascript_error?(body_str) ->
-        Logger.warning(
-          "[GIndex] worker.js TypeError on #{method} #{url} — skipping retry: " <>
-            "#{String.slice(body_str, 0, 200)}"
-        )
-
-        {:ok, response}
-
-      true ->
-        retry_server_error(
-          method,
-          url,
-          body,
-          base_url,
-          opts,
-          attempt,
-          rate_limit_attempt,
-          body_str
-        )
+      {:ok, response}
+    else
+      retry_server_error(
+        method,
+        url,
+        body,
+        base_url,
+        opts,
+        attempt,
+        rate_limit_attempt,
+        body_str
+      )
     end
   end
 
@@ -273,7 +258,7 @@ defmodule Streamix.Gindex.Transport do
          body_str
        ) do
     EndpointManager.report_error(base_url)
-    delay = server_error_delay(rate_limit_attempt)
+    delay = server_error_delay(rate_limit_attempt, opts)
 
     Logger.warning(
       "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
@@ -285,9 +270,15 @@ defmodule Streamix.Gindex.Transport do
     request_with_retry(method, url, body, base_url, opts, attempt, rate_limit_attempt + 1)
   end
 
-  defp server_error_delay(rate_limit_attempt) do
-    base = (@server_error_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
-    base + :rand.uniform(1000)
+  defp server_error_delay(rate_limit_attempt, opts) do
+    case Keyword.get(opts, :server_error_delay_ms) do
+      delay when is_integer(delay) and delay >= 0 ->
+        delay
+
+      _ ->
+        base = (@server_error_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
+        base + :rand.uniform(1000)
+    end
   end
 
   defp summarize_retry_body(nil), do: "nil"
@@ -312,12 +303,8 @@ defmodule Streamix.Gindex.Transport do
     base_delay + :rand.uniform(2000)
   end
 
-  defp javascript_error?(body) when is_binary(body) do
-    String.contains?(body, "TypeError") or
-      String.contains?(body, "Cannot read properties")
-  end
-
-  defp javascript_error?(_), do: false
+  defp maybe_put(options, _key, nil), do: options
+  defp maybe_put(options, key, value), do: Keyword.put(options, key, value)
 
   defp auth_error?(body) when is_binary(body) do
     body_lower = String.downcase(body)

@@ -8,7 +8,7 @@ defmodule Streamix.Gindex.Telemetry do
   the existing telemetry events and surfaces:
 
     * total requests since boot (rough quota counter)
-    * skipped 500/TypeError responses (deterministic worker.js bug)
+    * 500/TypeError responses that exhausted same-origin retries
     * 429 / 503 rate-limit hits
     * fatal transport errors
     * scan-root completions per kind
