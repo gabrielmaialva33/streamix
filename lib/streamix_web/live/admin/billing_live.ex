@@ -8,7 +8,7 @@ defmodule StreamixWeb.Admin.BillingLive do
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Admin — Billing", current_path: "/admin/billing")
+      |> assign(page_title: "Admin — Cobrança", current_path: "/admin/billing")
       |> load_billing()
 
     {:ok, socket}
@@ -32,18 +32,18 @@ defmodule StreamixWeb.Admin.BillingLive do
     <div id="admin-billing" class="space-y-6">
       <.admin_tabs current_path={@current_path} />
 
-      <div class="flex items-center justify-between">
-        <h1 class="text-xl font-semibold text-text-primary">Billing</h1>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 class="text-xl font-semibold text-text-primary">Cobrança</h1>
         <button
           type="button"
           phx-click="reconcile_stripe"
-          class="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover"
+          class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover"
         >
           <.icon name="hero-arrow-path" class="size-4" /> Reconciliar Stripe
         </button>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-4">
+      <div class="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <.stat_card
           label="MRR"
           value={format_price(@stats.monthly_revenue_cents, "BRL")}
@@ -54,7 +54,7 @@ defmodule StreamixWeb.Admin.BillingLive do
           value={to_string(@stats.active_subscriptions)}
           icon="hero-check-circle"
         />
-        <.stat_card label="Customers" value={to_string(@stats.billing_customers)} icon="hero-users" />
+        <.stat_card label="Clientes" value={to_string(@stats.billing_customers)} icon="hero-users" />
         <.stat_card
           label="Falhas"
           value={to_string(@stats.failed_payments)}
@@ -62,58 +62,62 @@ defmodule StreamixWeb.Admin.BillingLive do
         />
       </div>
 
-      <section class="surface-card overflow-hidden">
+      <section class="surface-card">
         <div class="border-b border-border px-5 py-4">
           <h2 class="font-semibold text-text-primary">Pagamentos recentes</h2>
         </div>
-        <table class="w-full text-sm">
-          <thead class="bg-surface-hover/50 text-left text-text-muted">
-            <tr>
-              <th class="px-5 py-3">Usuário</th>
-              <th class="px-5 py-3">Plano</th>
-              <th class="px-5 py-3">Status</th>
-              <th class="px-5 py-3">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={payment <- @payments} class="border-t border-border/50">
-              <td class="px-5 py-3 text-text-primary">{payment.user.email}</td>
-              <td class="px-5 py-3 text-text-secondary">{payment.plan.name}</td>
-              <td class="px-5 py-3"><.status_badge status={payment.status} /></td>
-              <td class="px-5 py-3 text-text-primary">
-                {format_price(payment.amount_cents, payment.currency)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div data-admin-table="payments" class="overflow-x-auto">
+          <table class="w-full min-w-[36rem] text-sm">
+            <thead class="bg-surface-hover/50 text-left text-text-muted">
+              <tr>
+                <th class="px-5 py-3">Usuário</th>
+                <th class="px-5 py-3">Plano</th>
+                <th class="px-5 py-3">Status</th>
+                <th class="px-5 py-3">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={payment <- @payments} class="border-t border-border/50">
+                <td class="px-5 py-3 text-text-primary">{payment.user.email}</td>
+                <td class="px-5 py-3 text-text-secondary">{payment.plan.name}</td>
+                <td class="px-5 py-3"><.status_badge status={payment.status} /></td>
+                <td class="px-5 py-3 text-text-primary">
+                  {format_price(payment.amount_cents, payment.currency)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
-      <section class="surface-card overflow-hidden">
+      <section class="surface-card">
         <div class="border-b border-border px-5 py-4">
-          <h2 class="font-semibold text-text-primary">Invoices recentes</h2>
+          <h2 class="font-semibold text-text-primary">Faturas recentes</h2>
         </div>
-        <table class="w-full text-sm">
-          <thead class="bg-surface-hover/50 text-left text-text-muted">
-            <tr>
-              <th class="px-5 py-3">Usuário</th>
-              <th class="px-5 py-3">Número</th>
-              <th class="px-5 py-3">Status</th>
-              <th class="px-5 py-3">Valor pago</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={invoice <- @invoices} class="border-t border-border/50">
-              <td class="px-5 py-3 text-text-primary">{invoice.user.email}</td>
-              <td class="px-5 py-3 text-text-secondary">
-                {invoice.number || invoice.external_id || "-"}
-              </td>
-              <td class="px-5 py-3"><.status_badge status={invoice.status} /></td>
-              <td class="px-5 py-3 text-text-primary">
-                {format_price(invoice.amount_paid_cents, invoice.currency)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div data-admin-table="invoices" class="overflow-x-auto">
+          <table class="w-full min-w-[36rem] text-sm">
+            <thead class="bg-surface-hover/50 text-left text-text-muted">
+              <tr>
+                <th class="px-5 py-3">Usuário</th>
+                <th class="px-5 py-3">Número</th>
+                <th class="px-5 py-3">Status</th>
+                <th class="px-5 py-3">Valor pago</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={invoice <- @invoices} class="border-t border-border/50">
+                <td class="px-5 py-3 text-text-primary">{invoice.user.email}</td>
+                <td class="px-5 py-3 text-text-secondary">
+                  {invoice.number || invoice.external_id || "-"}
+                </td>
+                <td class="px-5 py-3"><.status_badge status={invoice.status} /></td>
+                <td class="px-5 py-3 text-text-primary">
+                  {format_price(invoice.amount_paid_cents, invoice.currency)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
     """

@@ -32,9 +32,10 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
   describe "plans listing" do
     test "shows plans table", %{conn: conn} do
       {:ok, _plan} = Billing.create_plan(@plan_attrs)
-      {:ok, _lv, html} = live(conn, ~p"/admin/plans")
+      {:ok, view, html} = live(conn, ~p"/admin/plans")
       assert html =~ "Premium"
       assert html =~ "month"
+      assert has_element?(view, "[data-admin-table='plans'].overflow-x-auto")
     end
 
     test "shows empty state when no plans", %{conn: conn} do

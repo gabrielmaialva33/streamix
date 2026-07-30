@@ -40,16 +40,16 @@ defmodule StreamixWeb.Admin.DashboardLive do
     <div id="admin-dashboard" class="space-y-6">
       <.admin_tabs current_path={@current_path} />
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="admin-dashboard-stats" class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <.stat_card label="Total Usuários" value={"#{@stats.total_users}"} icon="hero-users" />
         <.stat_card
-          label="Subscriptions Ativas"
+          label="Assinaturas ativas"
           value={"#{@stats.active_subscriptions}"}
           icon="hero-check-badge"
         />
-        <.stat_card label="Planos Ativos" value={"#{@stats.active_plans}"} icon="hero-credit-card" />
+        <.stat_card label="Planos ativos" value={"#{@stats.active_plans}"} icon="hero-credit-card" />
         <.stat_card
-          label="Receita Mensal"
+          label="Receita mensal"
           value={format_revenue(@stats.monthly_revenue_cents)}
           icon="hero-currency-dollar"
         />
@@ -68,7 +68,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
 
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <.operation_card
-            label="Providers"
+            label="Provedores"
             status={@operations.providers.status}
             detail={format_provider_counts(@operations.providers.counts)}
           />
@@ -78,7 +78,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
             detail={"#{@operations.torrent.active_torrents} torrents ativos"}
           />
           <.operation_card
-            label="GIndex quota"
+            label="Cota GIndex"
             status={quota_status(@operations.gindex.quota)}
             detail={format_quota(@operations.gindex.quota)}
           />
@@ -138,50 +138,56 @@ defmodule StreamixWeb.Admin.DashboardLive do
         </div>
       </section>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section class="surface-card p-5">
-          <h2 class="text-lg font-semibold text-text-primary mb-4">Últimos Usuários</h2>
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-text-muted border-b border-border">
-                <th class="pb-2">Email</th>
-                <th class="pb-2">Role</th>
-                <th class="pb-2">Registrado</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={user <- @recent_users} class="border-b border-border/50">
-                <td class="py-2 text-text-primary">{user.email}</td>
-                <td class="py-2"><.status_badge status={user.role.name} /></td>
-                <td class="py-2 text-text-secondary">
-                  {Calendar.strftime(user.inserted_at, "%d/%m/%Y")}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+        <section class="surface-card p-4 sm:p-5">
+          <h2 class="mb-4 text-lg font-semibold text-text-primary">Últimos usuários</h2>
+          <div data-admin-table="recent-users" class="overflow-x-auto">
+            <table class="w-full min-w-[34rem] text-sm">
+              <thead>
+                <tr class="border-b border-border text-left text-text-muted">
+                  <th class="pb-2">Email</th>
+                  <th class="pb-2">Perfil</th>
+                  <th class="pb-2">Registrado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={user <- @recent_users} class="border-b border-border/50">
+                  <td class="py-2 text-text-primary">{user.email}</td>
+                  <td class="py-2"><.status_badge status={user.role.name} /></td>
+                  <td class="py-2 text-text-secondary">
+                    {Calendar.strftime(user.inserted_at, "%d/%m/%Y")}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
-        <section class="surface-card p-5">
-          <h2 class="text-lg font-semibold text-text-primary mb-4">Últimas Subscriptions</h2>
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-text-muted border-b border-border">
-                <th class="pb-2">Usuário</th>
-                <th class="pb-2">Plano</th>
-                <th class="pb-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={sub <- @recent_subs} class="border-b border-border/50">
-                <td class="py-2 text-text-primary">{sub.user.email}</td>
-                <td class="py-2 text-text-secondary">{sub.plan.name}</td>
-                <td class="py-2"><.status_badge status={sub.status} /></td>
-              </tr>
-              <tr :if={@recent_subs == []}>
-                <td colspan="3" class="py-4 text-center text-text-muted">Nenhuma subscription</td>
-              </tr>
-            </tbody>
-          </table>
+        <section class="surface-card p-4 sm:p-5">
+          <h2 class="mb-4 text-lg font-semibold text-text-primary">Últimas assinaturas</h2>
+          <div data-admin-table="recent-subscriptions" class="overflow-x-auto">
+            <table class="w-full min-w-[34rem] text-sm">
+              <thead>
+                <tr class="border-b border-border text-left text-text-muted">
+                  <th class="pb-2">Usuário</th>
+                  <th class="pb-2">Plano</th>
+                  <th class="pb-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={sub <- @recent_subs} class="border-b border-border/50">
+                  <td class="py-2 text-text-primary">{sub.user.email}</td>
+                  <td class="py-2 text-text-secondary">{sub.plan.name}</td>
+                  <td class="py-2"><.status_badge status={sub.status} /></td>
+                </tr>
+                <tr :if={@recent_subs == []}>
+                  <td colspan="3" class="py-4 text-center text-text-muted">
+                    Nenhuma assinatura
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
     </div>

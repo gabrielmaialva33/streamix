@@ -33,23 +33,30 @@ defmodule StreamixWeb.Admin.DashboardLiveTest do
     test "shows stat cards", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/admin")
       assert html =~ "Total Usuários"
-      assert html =~ "Subscriptions Ativas"
-      assert html =~ "Planos Ativos"
-      assert html =~ "Receita Mensal"
+      assert html =~ "Assinaturas ativas"
+      assert html =~ "Planos ativos"
+      assert html =~ "Receita mensal"
+      assert has_element?(view, "#admin-dashboard-stats.grid-cols-2")
       assert has_element?(view, "#web-vitals-slo")
       assert has_element?(view, "#web-vitals-mobile", "Mobile / PWA")
     end
 
-    test "shows recent users table", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/admin")
-      assert html =~ "Últimos Usuários"
+    test "shows localized recent tables without page-level overflow", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/admin")
+      assert html =~ "Últimos usuários"
+      assert html =~ "Últimas assinaturas"
+      assert html =~ "Perfil"
+      assert has_element?(view, "[data-admin-table='recent-users'].overflow-x-auto")
+      assert has_element?(view, "[data-admin-table='recent-subscriptions'].overflow-x-auto")
     end
 
     test "shows admin tabs", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/admin")
+      {:ok, view, html} = live(conn, ~p"/admin")
       assert html =~ "Dashboard"
       assert html =~ "Planos"
+      assert html =~ "Cobrança"
       assert html =~ "Usuários"
+      assert has_element?(view, "#admin-navigation[aria-label='Administração']")
     end
   end
 end

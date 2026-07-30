@@ -14,8 +14,15 @@ defmodule StreamixWeb.Admin.UsersLiveTest do
 
   describe "users listing" do
     test "shows users table", %{conn: conn, admin: admin} do
-      {:ok, _lv, html} = live(conn, ~p"/admin/users")
+      _customer = user_fixture(%{email: "customer-label@example.com"})
+      {:ok, view, html} = live(conn, ~p"/admin/users")
+
       assert html =~ admin.email
+      assert html =~ "Perfil"
+      assert html =~ "Assinatura"
+      assert html =~ "Administrador"
+      assert html =~ "Cliente"
+      assert has_element?(view, "[data-admin-table='users'].overflow-x-auto")
     end
 
     test "filters by email search", %{conn: conn} do
@@ -36,6 +43,8 @@ defmodule StreamixWeb.Admin.UsersLiveTest do
       user = user_fixture(%{email: "target@example.com"})
       {:ok, _lv, html} = live(conn, ~p"/admin/users/#{user.id}")
       assert html =~ "target@example.com"
+      assert html =~ "Perfil"
+      assert html =~ "Assinatura"
     end
 
     test "updates user role", %{conn: conn} do

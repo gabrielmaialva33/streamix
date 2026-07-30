@@ -36,7 +36,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
          socket
          |> assign(user: updated_user)
          |> assign(role_form: to_form(Ecto.Changeset.change(updated_user, %{}), as: :user))
-         |> put_flash(:info, "Role atualizado para #{role_name}.")}
+         |> put_flash(:info, "Perfil atualizado para #{status_label(role_name)}.")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, role_form: to_form(changeset, as: :user))}
@@ -91,10 +91,10 @@ defmodule StreamixWeb.Admin.UserEditLive do
         {:noreply,
          socket
          |> assign(active_sub: active_sub)
-         |> put_flash(:info, "Subscription criada com sucesso.")}
+         |> put_flash(:info, "Assinatura criada com sucesso.")}
 
       {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Erro ao criar subscription.")}
+        {:noreply, put_flash(socket, :error, "Erro ao criar assinatura.")}
     end
   end
 
@@ -106,7 +106,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
       {:noreply,
        socket
        |> assign(active_sub: Billing.active_subscription_for_user(user))
-       |> put_flash(:info, "Subscription cancelada.")}
+       |> put_flash(:info, "Assinatura cancelada.")}
     else
       {:noreply, socket}
     end
@@ -118,10 +118,14 @@ defmodule StreamixWeb.Admin.UserEditLive do
       <.admin_tabs current_path={@current_path} />
 
       <div class="flex items-center gap-3">
-        <.link navigate={~p"/admin/users"} class="text-text-secondary hover:text-text-primary">
+        <.link
+          navigate={~p"/admin/users"}
+          aria-label="Voltar para usuários"
+          class="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+        >
           <.icon name="hero-arrow-left" class="size-5" />
         </.link>
-        <h1 class="text-xl font-semibold text-text-primary">{@user.email}</h1>
+        <h1 class="min-w-0 truncate text-xl font-semibold text-text-primary">{@user.email}</h1>
         <.status_badge status={@user.role.name} />
       </div>
 
@@ -147,11 +151,15 @@ defmodule StreamixWeb.Admin.UserEditLive do
             <.input
               name="user[role]"
               type="select"
-              label="Role"
+              label="Perfil"
               value={@user.role.name}
-              options={[{"Admin", "admin"}, {"Customer", "customer"}, {"Moderator", "moderator"}]}
+              options={[
+                {"Administrador", "admin"},
+                {"Cliente", "customer"},
+                {"Moderador", "moderator"}
+              ]}
             />
-            <.button type="submit" phx-disable-with="Salvando...">Salvar role</.button>
+            <.button type="submit" phx-disable-with="Salvando...">Salvar perfil</.button>
           </.form>
 
           <.form
@@ -171,9 +179,9 @@ defmodule StreamixWeb.Admin.UserEditLive do
           </.form>
         </section>
 
-        <%!-- Subscription management --%>
+        <%!-- Gerenciamento de assinatura --%>
         <section class="surface-card p-5 space-y-5">
-          <h2 class="text-lg font-semibold text-text-primary">Subscription</h2>
+          <h2 class="text-lg font-semibold text-text-primary">Assinatura</h2>
 
           <%= if @active_sub do %>
             <div class="rounded-lg border border-brand/20 bg-brand/5 p-4 space-y-2">
@@ -195,14 +203,14 @@ defmodule StreamixWeb.Admin.UserEditLive do
               <button
                 id="cancel-subscription-btn"
                 phx-click="cancel_subscription"
-                data-confirm="Tem certeza que quer cancelar esta subscription?"
-                class="mt-2 text-sm text-error hover:text-error/80 font-medium focus:outline-none focus:ring-2 focus:ring-error rounded"
+                data-confirm="Tem certeza que quer cancelar esta assinatura?"
+                class="mt-2 inline-flex min-h-11 items-center rounded text-sm font-medium text-error hover:text-error/80 focus:outline-none focus:ring-2 focus:ring-error"
               >
-                Cancelar subscription
+                Cancelar assinatura
               </button>
             </div>
           <% else %>
-            <p class="text-sm text-text-secondary">Nenhuma subscription ativa.</p>
+            <p class="text-sm text-text-secondary">Nenhuma assinatura ativa.</p>
 
             <.form
               for={@sub_form}
@@ -223,7 +231,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
                 label="Expira em (opcional)"
               />
               <.button type="submit" phx-disable-with="Criando...">
-                Criar subscription manual
+                Criar assinatura manual
               </.button>
             </.form>
           <% end %>

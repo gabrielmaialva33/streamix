@@ -21,11 +21,11 @@ defmodule StreamixWeb.Admin.PlansLive do
     <div id="admin-plans" class="space-y-6">
       <.admin_tabs current_path={@current_path} />
 
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-3">
         <h1 class="text-xl font-semibold text-text-primary">Planos</h1>
         <.link
           navigate={~p"/admin/plans/new"}
-          class="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-hover transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
+          class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
         >
           <.icon name="hero-plus" class="size-4" /> Novo plano
         </.link>
@@ -33,71 +33,75 @@ defmodule StreamixWeb.Admin.PlansLive do
 
       <div
         :if={@plans != []}
-        class="rounded-lg border border-border bg-surface overflow-hidden shadow-card"
+        class="rounded-lg border border-border bg-surface shadow-card"
       >
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-text-muted border-b border-border bg-surface-hover/50">
-              <th class="px-4 py-3">Nome</th>
-              <th class="px-4 py-3">Slug</th>
-              <th class="px-4 py-3">Preço</th>
-              <th class="px-4 py-3">Intervalo</th>
-              <th class="px-4 py-3">Stripe</th>
-              <th class="px-4 py-3">Trial</th>
-              <th class="px-4 py-3">Features</th>
-              <th class="px-4 py-3">Global</th>
-              <th class="px-4 py-3">Status</th>
-              <th class="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={plan <- @plans} class="border-b border-border/50 hover:bg-surface-hover/30">
-              <td class="px-4 py-3 font-medium text-text-primary">{plan.name}</td>
-              <td class="px-4 py-3 text-text-secondary font-mono text-xs">{plan.slug}</td>
-              <td class="px-4 py-3 text-text-primary">
-                {format_price(plan.price_cents, plan.currency)}
-              </td>
-              <td class="px-4 py-3 text-text-secondary">{plan.billing_interval}</td>
-              <td class="px-4 py-3 text-text-secondary font-mono text-xs">
-                {plan.stripe_price_id || "-"}
-              </td>
-              <td class="px-4 py-3 text-text-secondary">
-                {if plan.trial_days > 0, do: "#{plan.trial_days} dias", else: "-"}
-              </td>
-              <td class="px-4 py-3 text-text-secondary">
-                <div class="flex flex-wrap gap-1.5">
-                  <span
-                    :for={feature <- visible_features(plan)}
-                    class="rounded-md border border-border bg-surface-hover px-2 py-1 text-xs"
+        <div data-admin-table="plans" class="overflow-x-auto">
+          <table class="w-full min-w-[72rem] text-sm">
+            <thead>
+              <tr class="border-b border-border bg-surface-hover/50 text-left text-text-muted">
+                <th class="px-4 py-3">Nome</th>
+                <th class="px-4 py-3">Slug</th>
+                <th class="px-4 py-3">Preço</th>
+                <th class="px-4 py-3">Intervalo</th>
+                <th class="px-4 py-3">Stripe</th>
+                <th class="px-4 py-3">Teste</th>
+                <th class="px-4 py-3">Recursos</th>
+                <th class="px-4 py-3">Global</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={plan <- @plans} class="border-b border-border/50 hover:bg-surface-hover/30">
+                <td class="px-4 py-3 font-medium text-text-primary">{plan.name}</td>
+                <td class="px-4 py-3 font-mono text-xs text-text-secondary">{plan.slug}</td>
+                <td class="px-4 py-3 text-text-primary">
+                  {format_price(plan.price_cents, plan.currency)}
+                </td>
+                <td class="px-4 py-3 text-text-secondary">{plan.billing_interval}</td>
+                <td class="px-4 py-3 font-mono text-xs text-text-secondary">
+                  {plan.stripe_price_id || "-"}
+                </td>
+                <td class="px-4 py-3 text-text-secondary">
+                  {if plan.trial_days > 0, do: "#{plan.trial_days} dias", else: "-"}
+                </td>
+                <td class="px-4 py-3 text-text-secondary">
+                  <div class="flex flex-wrap gap-1.5">
+                    <span
+                      :for={feature <- visible_features(plan)}
+                      class="rounded-md border border-border bg-surface-hover px-2 py-1 text-xs"
+                    >
+                      {feature}
+                    </span>
+                  </div>
+                </td>
+                <td class="px-4 py-3">
+                  <.icon
+                    name={
+                      if plan.grants_global_access, do: "hero-check-circle", else: "hero-x-circle"
+                    }
+                    class={[
+                      "size-5",
+                      plan.grants_global_access && "text-success",
+                      !plan.grants_global_access && "text-text-muted"
+                    ]}
+                  />
+                </td>
+                <td class="px-4 py-3">
+                  <.status_badge status={if plan.active, do: "active", else: "expired"} />
+                </td>
+                <td class="px-4 py-3">
+                  <.link
+                    navigate={~p"/admin/plans/#{plan.id}"}
+                    class="inline-flex min-h-11 items-center text-sm text-brand hover:underline"
                   >
-                    {feature}
-                  </span>
-                </div>
-              </td>
-              <td class="px-4 py-3">
-                <.icon
-                  name={if plan.grants_global_access, do: "hero-check-circle", else: "hero-x-circle"}
-                  class={[
-                    "size-5",
-                    plan.grants_global_access && "text-success",
-                    !plan.grants_global_access && "text-text-muted"
-                  ]}
-                />
-              </td>
-              <td class="px-4 py-3">
-                <.status_badge status={if plan.active, do: "active", else: "expired"} />
-              </td>
-              <td class="px-4 py-3">
-                <.link
-                  navigate={~p"/admin/plans/#{plan.id}"}
-                  class="text-brand hover:underline text-sm"
-                >
-                  Editar
-                </.link>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                    Editar
+                  </.link>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div
