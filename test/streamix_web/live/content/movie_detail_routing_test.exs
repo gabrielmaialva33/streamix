@@ -30,7 +30,8 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
         movie_fixture(provider, %{
           name: "Routed Movie",
           plot: "A movie used to pin mount routing.",
-          content_rating: "16"
+          content_rating: "16",
+          tmdb_id: "routed-movie"
         })
 
       %{user: user, provider: provider, movie: movie}
@@ -105,7 +106,54 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       watch_path =
         "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
 
+      assert has_element?(view, "#recommended-movie-source #movie-source-#{ctx.movie.id}")
+      refute has_element?(view, "#alternative-movie-sources")
       assert has_element?(view, ~s|a[href="#{watch_path}"]:not([data-phx-link])|)
+    end
+
+    test "shows one recommended source and keeps alternatives collapsed", ctx do
+      alternative_provider =
+        provider_fixture(ctx.user, %{
+          name: "Alternative Movie Provider",
+          is_active: true
+        })
+
+      alternative_movie =
+        movie_fixture(alternative_provider, %{
+          name: "Routed Movie 4K",
+          title: "Routed Movie",
+          plot: "Alternate movie source.",
+          content_rating: "16",
+          tmdb_id: ctx.movie.tmdb_id
+        })
+
+      conn = log_in_user(ctx.conn, ctx.user)
+      {:ok, view, html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")
+      document = Floki.parse_document!(html)
+
+      assert length(Floki.find(document, "#recommended-movie-source [data-source-card='movie']")) ==
+               1
+
+      assert has_element?(
+               view,
+               "#recommended-movie-source #movie-source-#{ctx.movie.id}"
+             )
+
+      assert has_element?(view, "details#alternative-movie-sources:not([open])")
+
+      assert has_element?(
+               view,
+               "#alternative-movie-sources #movie-source-#{alternative_movie.id}"
+             )
+
+      alternative_watch_path =
+        "/watch/movie/#{alternative_movie.id}" <>
+          "?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
+
+      assert has_element?(
+               view,
+               ~s|#alternative-movie-sources a[href="#{alternative_watch_path}"]:not([data-phx-link])|
+             )
     end
 
     test "torrent version watch links enter the swarm gate", %{conn: conn} do

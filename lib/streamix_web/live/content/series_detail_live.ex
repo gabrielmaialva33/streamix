@@ -505,7 +505,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp first_episode(_), do: nil
 
   defp provider_name(%{provider: %{name: name}}) when is_binary(name) and name != "", do: name
-  defp provider_name(%{provider_id: provider_id}), do: "Provider #{provider_id}"
+  defp provider_name(%{provider_id: provider_id}), do: "Provedor #{provider_id}"
 
   defp source_categories(%{categories: categories}) when is_list(categories) do
     categories
@@ -527,107 +527,166 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp series_sources(assigns) do
+    recommended =
+      Enum.find(assigns.sources, &(&1.id == assigns.selected_series_id)) ||
+        List.first(assigns.sources)
+
+    alternatives =
+      if recommended do
+        Enum.reject(assigns.sources, &(&1.id == recommended.id))
+      else
+        []
+      end
+
+    assigns =
+      assigns
+      |> assign(:recommended, recommended)
+      |> assign(:alternatives, alternatives)
+
     ~H"""
-    <section :if={length(@sources) > 0} class="space-y-3 pt-2 pb-16 md:pb-2 text-left">
+    <section :if={@recommended} class="space-y-3 pb-2 pt-2 text-left">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-base sm:text-lg font-semibold text-text-primary">
-          {if length(@sources) == 1, do: "Fonte disponível", else: "Fontes disponíveis"}
-        </h2>
+        <h2 class="text-base font-semibold text-text-primary sm:text-lg">Fonte recomendada</h2>
         <span class="text-xs text-text-muted">
-          {length(@sources)} {if length(@sources) == 1, do: "provider", else: "providers"}
+          {length(@sources)} {if length(@sources) == 1, do: "provedor", else: "provedores"}
         </span>
       </div>
 
-      <div class="grid gap-2">
-        <article
-          :for={source <- @sources}
-          class={[
-            "rounded-lg border bg-surface/80 p-3 sm:p-4 transition-colors",
-            source.id == @selected_series_id && "border-brand/60 ring-1 ring-brand/30",
-            source.id != @selected_series_id && "border-border hover:border-brand/40"
-          ]}
-        >
-          <% {season_count, episode_count} = source_counts(source) %>
-          <% playable_episode = first_episode(Detail.seasons_with_episodes(source)) %>
-
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div class="min-w-0 space-y-2">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="truncate text-sm font-semibold text-text-primary">
-                  {source.title || source.name}
-                </span>
-                <span
-                  :if={source.id == @selected_series_id}
-                  class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
-                >
-                  Selecionada
-                </span>
-                <span
-                  :if={source.id == @current_series_id and source.id != @selected_series_id}
-                  class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
-                >
-                  Atual
-                </span>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-1.5 text-xs text-text-secondary">
-                <span class="inline-flex items-center gap-1 rounded bg-surface-hover px-2 py-1">
-                  <.icon name="hero-server-stack" class="size-3.5" />
-                  {provider_name(source)}
-                </span>
-                <span class="rounded bg-surface-hover px-2 py-1">
-                  {season_count} temporadas
-                </span>
-                <span class="rounded bg-surface-hover px-2 py-1">
-                  {episode_count} episódios
-                </span>
-                <span
-                  :if={source.dub_available}
-                  class="rounded bg-brand/10 px-2 py-1 font-medium text-brand"
-                >
-                  DUB
-                </span>
-              </div>
-
-              <div class="flex flex-wrap gap-1.5">
-                <.link
-                  :for={category <- source_categories(source)}
-                  navigate={provider_category_path(source, category)}
-                  class="inline-flex min-h-9 items-center rounded bg-white/5 px-2 py-1 text-[11px] text-text-muted hover:bg-brand/10 hover:text-text-primary"
-                >
-                  {category.name}
-                </.link>
-              </div>
-            </div>
-
-            <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
-              <.link
-                :if={playable_episode}
-                navigate={selected_episode_path(source, playable_episode, @current_path)}
-                class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-hover sm:flex-none"
-              >
-                <.icon name="hero-play-solid" class="size-3.5" /> Assistir
-              </.link>
-              <.link
-                navigate={provider_series_path(source)}
-                class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-hover px-3 py-2 text-xs font-semibold text-text-primary hover:border-brand/60 sm:flex-none"
-              >
-                <.icon name="hero-funnel" class="size-3.5" /> Catálogo
-              </.link>
-              <.link
-                :if={source.id != @current_series_id}
-                navigate={
-                  ~p"/providers/#{source.provider_id}/series/#{source.id}?return_to=#{@current_path}"
-                }
-                class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold text-text-secondary hover:border-brand/60 hover:text-text-primary sm:flex-none"
-              >
-                <.icon name="hero-information-circle" class="size-3.5" /> Detalhes
-              </.link>
-            </div>
-          </div>
-        </article>
+      <div id="recommended-series-source">
+        <.series_source_card
+          source={@recommended}
+          current_series_id={@current_series_id}
+          current_path={@current_path}
+          recommended?
+        />
       </div>
+
+      <details
+        :if={@alternatives != []}
+        id="alternative-series-sources"
+        class="group/source rounded-lg border border-border bg-surface/45"
+      >
+        <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary sm:px-4">
+          <span>Outras fontes ({length(@alternatives)})</span>
+          <.icon
+            name="hero-chevron-down"
+            class="size-4 transition-transform group-open/source:rotate-180"
+          />
+        </summary>
+        <div class="grid gap-2 border-t border-border p-2 sm:p-3">
+          <.series_source_card
+            :for={source <- @alternatives}
+            source={source}
+            current_series_id={@current_series_id}
+            current_path={@current_path}
+          />
+        </div>
+      </details>
     </section>
+    """
+  end
+
+  attr :source, :map, required: true
+  attr :current_series_id, :integer, required: true
+  attr :current_path, :string, required: true
+  attr :recommended?, :boolean, default: false
+
+  defp series_source_card(assigns) do
+    {season_count, episode_count} = source_counts(assigns.source)
+    playable_episode = first_episode(Detail.seasons_with_episodes(assigns.source))
+
+    assigns =
+      assigns
+      |> assign(:season_count, season_count)
+      |> assign(:episode_count, episode_count)
+      |> assign(:playable_episode, playable_episode)
+
+    ~H"""
+    <article
+      id={"series-source-#{@source.id}"}
+      data-source-card="series"
+      class={[
+        "rounded-lg border bg-surface/80 p-3 transition-colors sm:p-4",
+        @recommended? && "border-brand/60 ring-1 ring-brand/30",
+        !@recommended? && "border-border hover:border-brand/40"
+      ]}
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0 space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="truncate text-sm font-semibold text-text-primary">
+              {@source.title || @source.name}
+            </span>
+            <span
+              :if={@recommended?}
+              class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
+            >
+              Recomendada
+            </span>
+            <span
+              :if={@source.id == @current_series_id and not @recommended?}
+              class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
+            >
+              Atual
+            </span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5 text-xs text-text-secondary">
+            <span class="inline-flex items-center gap-1 rounded bg-surface-hover px-2 py-1">
+              <.icon name="hero-server-stack" class="size-3.5" />
+              {provider_name(@source)}
+            </span>
+            <span class="rounded bg-surface-hover px-2 py-1">
+              {@season_count} temporadas
+            </span>
+            <span class="rounded bg-surface-hover px-2 py-1">
+              {@episode_count} episódios
+            </span>
+            <span
+              :if={@source.dub_available}
+              class="rounded bg-brand/10 px-2 py-1 font-medium text-brand"
+            >
+              DUB
+            </span>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5">
+            <.link
+              :for={category <- source_categories(@source)}
+              navigate={provider_category_path(@source, category)}
+              class="inline-flex min-h-9 items-center rounded bg-white/5 px-2 py-1 text-[11px] text-text-muted hover:bg-brand/10 hover:text-text-primary"
+            >
+              {category.name}
+            </.link>
+          </div>
+        </div>
+
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
+          <.link
+            :if={@playable_episode}
+            navigate={selected_episode_path(@source, @playable_episode, @current_path)}
+            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-hover sm:flex-none"
+          >
+            <.icon name="hero-play-solid" class="size-3.5" /> Assistir
+          </.link>
+          <.link
+            navigate={provider_series_path(@source)}
+            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-hover px-3 py-2 text-xs font-semibold text-text-primary hover:border-brand/60 sm:flex-none"
+          >
+            <.icon name="hero-funnel" class="size-3.5" /> Catálogo
+          </.link>
+          <.link
+            :if={@source.id != @current_series_id}
+            navigate={
+              ~p"/providers/#{@source.provider_id}/series/#{@source.id}?return_to=#{@current_path}"
+            }
+            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold text-text-secondary hover:border-brand/60 hover:text-text-primary sm:flex-none"
+          >
+            <.icon name="hero-information-circle" class="size-3.5" /> Detalhes
+          </.link>
+        </div>
+      </div>
+    </article>
     """
   end
 

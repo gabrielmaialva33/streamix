@@ -189,6 +189,47 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       refute has_element?(view, "#series-detail-premium-cta")
     end
 
+    test "series detail recommends one source and collapses the alternatives", %{
+      conn: conn,
+      user: user,
+      series: series
+    } do
+      alternative_provider =
+        provider_fixture(user, %{
+          name: "Alternative Series Provider",
+          is_active: true
+        })
+
+      alternative_series =
+        series_fixture(alternative_provider, %{
+          name: "A Premium Series Alternative",
+          title: series.title,
+          plot: "Alternative source.",
+          content_rating: "14",
+          tmdb_id: series.tmdb_id
+        })
+
+      alternative_series
+      |> season_fixture()
+      |> episode_fixture(alternative_provider)
+
+      conn = log_in_user(conn, user)
+      {:ok, view, html} = live(conn, ~p"/browse/series/#{series.id}")
+      document = Floki.parse_document!(html)
+
+      assert length(
+               Floki.find(document, "#recommended-series-source [data-source-card='series']")
+             ) == 1
+
+      assert has_element?(view, "#recommended-series-source #series-source-#{series.id}")
+      assert has_element?(view, "details#alternative-series-sources:not([open])")
+
+      assert has_element?(
+               view,
+               "#alternative-series-sources #series-source-#{alternative_series.id}"
+             )
+    end
+
     test "series detail browse opens a visible private series without a global provider", %{
       conn: conn
     } do
