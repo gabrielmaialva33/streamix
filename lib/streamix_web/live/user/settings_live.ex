@@ -100,172 +100,196 @@ defmodule StreamixWeb.User.SettingsLive do
       </div>
 
       <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
-        <section class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-1">
-          <div class="mb-4">
-            <h2 class="text-base font-semibold text-text-primary">Email</h2>
+        <section
+          id="account-settings"
+          class="rounded-lg border border-border bg-surface p-4 sm:p-5"
+        >
+          <div class="mb-5">
+            <h2 class="text-lg font-semibold text-text-primary">Conta</h2>
             <p class="mt-1 text-sm text-text-secondary">
-              Atualize o endereço usado para entrar na sua conta.
+              Gerencie as credenciais usadas para acessar o Streamix.
             </p>
           </div>
 
-          <.simple_form
-            for={@email_form}
-            id="email_form"
-            phx-change="validate_email"
-            phx-submit="update_email"
-          >
-            <.input
-              field={@email_form[:email]}
-              type="email"
-              label="Email"
-              required
-              autocomplete="email"
-            />
-            <.input
-              field={@email_form[:current_password]}
-              type="password"
-              label="Senha atual"
-              required
-              name="current_password"
-              id="email_current_password"
-              autocomplete="current-password"
-            />
-
-            <:actions>
-              <.button type="submit" variant="primary" class="w-full sm:w-auto">
-                Alterar Email
-              </.button>
-            </:actions>
-          </.simple_form>
-        </section>
-
-        <section class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <div class="mb-4">
-            <h2 class="text-base font-semibold text-text-primary">Senha</h2>
-            <p class="mt-1 text-sm text-text-secondary">
-              Use uma senha forte para proteger seu acesso.
-            </p>
-          </div>
-
-          <.simple_form
-            for={@password_form}
-            id="password_form"
-            phx-change="validate_password"
-            phx-submit="update_password"
-            phx-trigger-action={@trigger_submit}
-            action={~p"/login"}
-            method="post"
-          >
-            <.input type="hidden" name={@password_form[:email].name} value={@current_email} />
-
-            <.input
-              field={@password_form[:password]}
-              type="password"
-              label="Nova senha"
-              required
-              autocomplete="new-password"
-            />
-            <p class="-mt-2 text-xs text-text-secondary">Mínimo de 12 caracteres</p>
-            <.input
-              field={@password_form[:password_confirmation]}
-              type="password"
-              label="Confirmar nova senha"
-              required
-              autocomplete="new-password"
-            />
-            <.input
-              field={@password_form[:current_password]}
-              type="password"
-              label="Senha atual"
-              required
-              name="current_password"
-              id="password_current_password"
-              autocomplete="current-password"
-            />
-
-            <:actions>
-              <.button type="submit" variant="primary" class="w-full sm:w-auto">
-                Alterar Senha
-              </.button>
-            </:actions>
-          </.simple_form>
-        </section>
-        <section class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-2">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 class="text-base font-semibold text-text-primary">Preferências de conteúdo</h2>
+          <div id="email-settings">
+            <div class="mb-4">
+              <h3 class="text-base font-semibold text-text-primary">Email</h3>
               <p class="mt-1 text-sm text-text-secondary">
-                Mostrar categorias e conteúdo marcados como adulto (+18)
+                Atualize o endereço usado para entrar na sua conta.
               </p>
             </div>
-            <button
-              id="adult-content-toggle"
-              type="button"
-              phx-click="toggle_adult_content"
-              class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface"
-              aria-label="Alternar conteúdo adulto"
-              aria-pressed={to_string(@current_scope.user.show_adult_content)}
+
+            <.simple_form
+              for={@email_form}
+              id="email_form"
+              phx-change="validate_email"
+              phx-submit="update_email"
             >
-              <span class={[
-                "relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
-                if(@current_scope.user.show_adult_content, do: "bg-brand", else: "bg-gray-600")
-              ]}>
-                <span class={[
-                  "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                  if(@current_scope.user.show_adult_content,
-                    do: "translate-x-5",
-                    else: "translate-x-0"
-                  )
-                ]} />
-              </span>
-            </button>
+              <.input
+                field={@email_form[:email]}
+                type="email"
+                label="Email"
+                required
+                autocomplete="email"
+              />
+              <.input
+                field={@email_form[:current_password]}
+                type="password"
+                label="Senha atual"
+                required
+                name="current_password"
+                id="email_current_password"
+                autocomplete="current-password"
+              />
+
+              <:actions>
+                <.button type="submit" variant="primary" class="w-full sm:w-auto">
+                  Alterar Email
+                </.button>
+              </:actions>
+            </.simple_form>
+          </div>
+
+          <div id="password-settings" class="mt-6 border-t border-border pt-5">
+            <div class="mb-4">
+              <h3 class="text-base font-semibold text-text-primary">Senha</h3>
+              <p class="mt-1 text-sm text-text-secondary">
+                Use uma senha forte para proteger seu acesso.
+              </p>
+            </div>
+
+            <.simple_form
+              for={@password_form}
+              id="password_form"
+              phx-change="validate_password"
+              phx-submit="update_password"
+              phx-trigger-action={@trigger_submit}
+              action={~p"/login"}
+              method="post"
+            >
+              <.input type="hidden" name={@password_form[:email].name} value={@current_email} />
+
+              <.input
+                field={@password_form[:password]}
+                type="password"
+                label="Nova senha"
+                required
+                autocomplete="new-password"
+              />
+              <p class="-mt-2 text-xs text-text-secondary">Mínimo de 12 caracteres</p>
+              <.input
+                field={@password_form[:password_confirmation]}
+                type="password"
+                label="Confirmar nova senha"
+                required
+                autocomplete="new-password"
+              />
+              <.input
+                field={@password_form[:current_password]}
+                type="password"
+                label="Senha atual"
+                required
+                name="current_password"
+                id="password_current_password"
+                autocomplete="current-password"
+              />
+
+              <:actions>
+                <.button type="submit" variant="primary" class="w-full sm:w-auto">
+                  Alterar Senha
+                </.button>
+              </:actions>
+            </.simple_form>
           </div>
         </section>
 
         <section
-          id="subtitle-preferences"
-          class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-3"
+          id="playback-preferences"
+          class="rounded-lg border border-border bg-surface p-4 sm:p-5"
         >
-          <div class="mb-4">
-            <h2 class="text-base font-semibold text-text-primary">Legendas</h2>
+          <div class="mb-5">
+            <h2 class="text-lg font-semibold text-text-primary">Reprodução</h2>
             <p class="mt-1 text-sm text-text-secondary">
-              Escolha o idioma e a ativação automática das legendas.
+              Ajuste o catálogo e o comportamento padrão do player.
             </p>
           </div>
 
-          <.form
-            for={@settings_form}
-            id="subtitle-preferences-form"
-            phx-submit="save_subtitle_preferences"
-            class="space-y-4"
+          <div id="content-preferences">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 class="text-base font-semibold text-text-primary">
+                  Preferências de conteúdo
+                </h3>
+                <p class="mt-1 text-sm text-text-secondary">
+                  Mostrar categorias e conteúdo marcados como adulto (+18)
+                </p>
+              </div>
+              <button
+                id="adult-content-toggle"
+                type="button"
+                phx-click="toggle_adult_content"
+                class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-surface"
+                aria-label="Alternar conteúdo adulto"
+                aria-pressed={to_string(@current_scope.user.show_adult_content)}
+              >
+                <span class={[
+                  "relative inline-flex h-6 w-11 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out",
+                  if(@current_scope.user.show_adult_content, do: "bg-brand", else: "bg-gray-600")
+                ]}>
+                  <span class={[
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                    if(@current_scope.user.show_adult_content,
+                      do: "translate-x-5",
+                      else: "translate-x-0"
+                    )
+                  ]} />
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="subtitle-preferences"
+            class="mt-6 border-t border-border pt-5"
           >
-            <.input
-              field={@settings_form[:subtitle_language]}
-              type="select"
-              label="Idioma preferido"
-              options={[
-                {"Português (Brasil)", "pt-BR"},
-                {"Português (Portugal)", "pt-PT"},
-                {"English", "en"},
-                {"Español", "es"}
-              ]}
-            />
-            <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-text-primary">
-              <input
+            <div class="mb-4">
+              <h3 class="text-base font-semibold text-text-primary">Legendas</h3>
+              <p class="mt-1 text-sm text-text-secondary">
+                Escolha o idioma e a ativação automática das legendas.
+              </p>
+            </div>
+
+            <.form
+              for={@settings_form}
+              id="subtitle-preferences-form"
+              phx-submit="save_subtitle_preferences"
+              class="space-y-4"
+            >
+              <.input
+                field={@settings_form[:subtitle_language]}
+                type="select"
+                label="Idioma preferido"
+                options={[
+                  {"Português (Brasil)", "pt-BR"},
+                  {"Português (Portugal)", "pt-PT"},
+                  {"English", "en"},
+                  {"Español", "es"}
+                ]}
+              />
+              <.input
+                field={@settings_form[:subtitles_enabled]}
                 type="checkbox"
-                name={@settings_form[:subtitles_enabled].name}
-                value="true"
-                checked={@current_scope.user.subtitles_enabled}
-                class="size-5 rounded border-border text-brand focus:ring-brand"
-              /> Ativar legenda externa automaticamente quando disponível
-            </label>
-            <.button type="submit" variant="primary">Salvar legendas</.button>
-          </.form>
+                label="Ativar legenda externa automaticamente quando disponível"
+                class="size-5 rounded border-border bg-surface text-brand focus:ring-2 focus:ring-brand focus:ring-offset-background"
+              />
+              <.button type="submit" variant="primary">Salvar legendas</.button>
+            </.form>
+          </div>
         </section>
 
         <section
           id="pwa-app"
-          class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-start-1 lg:row-start-4"
+          class="rounded-lg border border-border bg-surface p-4 sm:p-5 lg:col-span-2"
         >
           <div class="flex flex-col gap-4">
             <div>
