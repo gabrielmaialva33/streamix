@@ -4,7 +4,7 @@ Central instructions for coding agents working on **Streamix**. `CLAUDE.md` and 
 `@AGENTS.md`, so update this document only.
 
 > Principle: this file only captures repo-specific rules. When a rule is not listed here, follow standard
-> Elixir / Phoenix 1.8 / LiveView 1.1 conventions and the detailed guidance in
+> Elixir / Phoenix 1.8 / LiveView 1.2 conventions and the detailed guidance in
 > [`docs/phoenix-guidelines.md`](docs/phoenix-guidelines.md).
 
 ## Project Overview
@@ -22,7 +22,7 @@ application and REST API. The current tree includes:
 - signed stream URLs, a Phoenix stream proxy, and a live stream multiplexer
 - PWA assets, offline metadata sync hooks, and a mobile / TV-facing REST API
 
-Historical release tags go through `v1.5.0`, but the current `mix.exs` still reports `1.3.0`. Do not assume the
+Historical release tags go through `v1.5.0`, but the current `mix.exs` reports `0.0.100`. Do not assume the
 numeric app version is the canonical source of feature availability. Prefer the current tree and git history.
 
 This repository is the Phoenix backend + web UI. The older in-repo TV app was extracted to a separate repository, so
@@ -30,20 +30,20 @@ do not document or modify an in-tree Tizen app here.
 
 ## Stack
 
-- Elixir `~> 1.19`
-- OTP 28
+- Elixir `~> 1.20`
+- OTP 29
 - Phoenix `~> 1.8.2`
-- Phoenix LiveView `~> 1.1.0`
-- Ecto SQL `~> 3.13`
+- Phoenix LiveView `~> 1.2.0`
+- Ecto SQL `~> 3.14`
 - TimescaleDB on PostgreSQL 17 with `pg_trgm`
 - Redis 7
 - Qdrant (optional, for semantic search)
 - RabbitMQ 4 + Broadway (optional)
-- Oban 2.18
+- Oban 2.23
 - Req + Finch
 - Tailwind CSS v4
 - esbuild
-- npm-managed frontend packages in `assets/`
+- npm 12-managed frontend packages in `assets/`
 
 ## Local Setup
 
@@ -80,6 +80,14 @@ Important local setup facts:
 | `mix assets.build`             | build CSS + JS                                               |
 | `mix assets.deploy`            | minify and digest assets                                     |
 | `cd assets && npm ci`          | install frontend dependencies                                |
+
+## Dependency Currency
+
+- Track the latest stable releases for Hex, npm, Docker / Compose, and GitHub Actions. Dependabot checks all four
+  ecosystems daily through `.github/dependabot.yml`.
+- Keep GitHub Actions pinned to immutable commit SHAs and retain the release tag in a comment.
+- A stateful infrastructure major (PostgreSQL, TimescaleDB, Redis, RabbitMQ, Qdrant) still requires a rehearsed data
+  migration and rollback; "latest" never means replacing a production data format blindly.
 
 ## Project Structure
 

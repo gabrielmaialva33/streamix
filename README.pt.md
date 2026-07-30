@@ -15,9 +15,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Elixir-1.19+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
+  <img src="https://img.shields.io/badge/Elixir-1.20+-6e4a7e?style=flat&logo=elixir" alt="Elixir" />
   <img src="https://img.shields.io/badge/Phoenix-1.8.2+-f97316?style=flat&logo=phoenix-framework" alt="Phoenix" />
-  <img src="https://img.shields.io/badge/LiveView-1.1+-0ea5e9?style=flat&logo=phoenix-framework" alt="LiveView" />
+  <img src="https://img.shields.io/badge/LiveView-1.2+-0ea5e9?style=flat&logo=phoenix-framework" alt="LiveView" />
   <img src="https://img.shields.io/badge/TimescaleDB-pg17-1d4ed8?style=flat&logo=postgresql" alt="TimescaleDB" />
   <img src="https://img.shields.io/badge/Redis-7+-dc2626?style=flat&logo=redis" alt="Redis" />
   <img src="https://img.shields.io/badge/Qdrant-Opcional-111827?style=flat" alt="Qdrant" />
@@ -220,13 +220,13 @@ Healthcheck:
 
 | Tecnologia  | Versao      | Papel                     |
 |-------------|-------------|---------------------------|
-| Elixir      | `~> 1.19`   | runtime da aplicacao      |
-| OTP         | 28          | supervisao e concorrencia |
+| Elixir      | `~> 1.20`   | runtime da aplicacao      |
+| OTP         | 29          | supervisao e concorrencia |
 | Phoenix     | `~> 1.8.2`  | framework web             |
-| LiveView    | `~> 1.1.0`  | UI em tempo real          |
-| Ecto SQL    | `~> 3.13`   | camada de banco           |
+| LiveView    | `~> 1.2.0`  | UI em tempo real          |
+| Ecto SQL    | `~> 3.14`   | camada de banco           |
 | Req + Finch | deps atuais | cliente HTTP e pooling    |
-| Oban        | `~> 2.18`   | background jobs           |
+| Oban        | `~> 2.23`   | background jobs           |
 
 ### Dados e infra
 
@@ -252,9 +252,9 @@ Healthcheck:
 ### Pre-requisitos
 
 - Docker
-- Elixir 1.19+
-- OTP 28+
-- Node.js 26+ e npm
+- Elixir 1.20+
+- OTP 29+
+- Node.js 26+ e npm 12+
 
 ### 1. Suba a infraestrutura local
 

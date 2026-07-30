@@ -5,7 +5,7 @@ defmodule Streamix.MixProject do
     [
       app: :streamix,
       version: "0.0.100",
-      elixir: "~> 1.19",
+      elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
@@ -49,7 +49,7 @@ defmodule Streamix.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.1.0"},
+      {:phoenix_live_view, "~> 1.2.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
@@ -90,7 +90,7 @@ defmodule Streamix.MixProject do
       # Broadway + RabbitMQ for distributed sync workers
       {:broadway, "~> 1.2"},
       {:broadway_rabbitmq, "~> 0.8"},
-      # Override amqp_client to use latest version compatible with OTP 28
+      # Override the Erlang AMQP clients so the complete stack stays compatible with OTP 29.
       {:amqp, "~> 4.1", override: true},
       {:rabbit_common, "~> 4.0", override: true},
       {:amqp_client, "~> 4.0", override: true},
@@ -142,7 +142,7 @@ defmodule Streamix.MixProject do
       ignore_warnings: ".dialyzer_ignore.exs",
       plt_local_path: "priv/plts",
       plt_add_apps: [:ex_unit, :mix],
-      # OTP 28 reports false opaque violations for regular MapSet usage because
+      # Dialyzer reports false opaque violations for regular MapSet usage because
       # MapSet delegates to the opaque :sets type. Elixir core recommends
       # disabling only this warning family until the toolchains converge:
       # https://github.com/elixir-lang/elixir/issues/15673

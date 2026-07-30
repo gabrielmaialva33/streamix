@@ -12,9 +12,10 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  ELIXIR_VERSION: 1.19.5
-  OTP_VERSION: 28.5
-  NODE_VERSION: 26.2.0
+  ELIXIR_VERSION: 1.20.2
+  OTP_VERSION: 29.0.4
+  NODE_VERSION: 26.5.1
+  NPM_VERSION: 12.0.2
 
 jobs:
   backend:
@@ -97,6 +98,7 @@ jobs:
           mix format --check-formatted
           mix compile --warnings-as-errors
           mix credo --strict
+          mix sobelow
           mix deps.audit
           mix hex.audit
 
@@ -163,6 +165,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: assets/package-lock.json
+
+      - name: Set up npm
+        run: npm install --global "npm@${NPM_VERSION}" --no-audit --no-fund
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -232,6 +237,9 @@ jobs:
           cache: npm
           cache-dependency-path: assets/package-lock.json
 
+      - name: Set up npm
+        run: npm install --global "npm@${NPM_VERSION}" --no-audit --no-fund
+
       - name: Cache dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -277,7 +285,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -311,7 +319,7 @@ jobs:
 
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

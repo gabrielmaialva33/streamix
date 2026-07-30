@@ -92,7 +92,7 @@ config :streamix, Streamix.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure esbuild (the version is required)
 config :esbuild,
-  version: "0.25.4",
+  version: "0.28.1",
   streamix: [
     args:
       ~w(js/app.js --bundle --splitting --format=esm --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
@@ -102,7 +102,7 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.12",
+  version: "4.3.3",
   streamix: [
     args: ~w(
       --input=assets/css/app.css
@@ -230,6 +230,9 @@ config :streamix, Oban,
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
+       # Repair missing Qdrant collections after each application boot without
+       # making Phoenix startup depend on the optional vector database.
+       {"@reboot", Streamix.Workers.EnsureAiCollectionsWorker},
        # Backfill TMDB backdrop/image assets daily at 4 AM
        {"0 4 * * *", Streamix.Workers.BackfillTmdbAssetsWorker},
        # Reconcile providers stuck in `sync_status="syncing"` whose

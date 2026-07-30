@@ -42,7 +42,7 @@ defmodule Streamix.TvAppRelease do
   defp fetch_latest do
     case Req.get(@api_url,
            receive_timeout: 5_000,
-           finch: Streamix.Finch,
+           finch: [name: Streamix.Finch],
            headers: [
              {"accept", "application/vnd.github+json"},
              {"user-agent", "streamix.mahina.cloud"}

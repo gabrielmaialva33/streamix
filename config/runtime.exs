@@ -78,6 +78,7 @@ repo_pool_size =
 config :streamix, Streamix.Repo,
   url: database_url,
   pool_size: repo_pool_size,
+  migration_lock: :pg_advisory_lock,
   socket_options: maybe_ipv6
 
 # Redis URL (loaded from .env in dev/test via Dotenvy, System env in prod)
@@ -263,6 +264,7 @@ end
 # Qdrant vector database configuration
 # Required for semantic search functionality
 config :streamix, :qdrant,
+  enabled: config_env() != :test and get_env.("QDRANT_ENABLED") != "false",
   url: get_env.("QDRANT_URL") || "http://localhost:6333",
   api_key: get_env.("QDRANT_API_KEY")
 

@@ -1,10 +1,11 @@
 # Build stage
 # Keep these pins aligned with `.tool-versions` and the CI workflow.
-ARG ELIXIR_VERSION=1.19.5
-ARG OTP_VERSION=28.5
-ARG DEBIAN_VERSION=bookworm-20260610-slim
-ARG NODE_VERSION=26.2.0
-ARG NODE_SHA256=9f786864128a11375e398b8dfacd4a5e995ec4b6a6c8b3b52ac9afbc95ea8158
+ARG ELIXIR_VERSION=1.20.2
+ARG OTP_VERSION=29.0.4
+ARG DEBIAN_VERSION=bookworm-20260713-slim
+ARG NODE_VERSION=26.5.1
+ARG NODE_SHA256=cc7b3484ade63bd203a9d304f21ec37a3b622b988d7bdecf1dc4d68fc44a91b7
+ARG NPM_VERSION=12.0.2
 ARG GIT_SHA=unknown
 
 ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
@@ -14,6 +15,7 @@ FROM ${BUILDER_IMAGE} AS builder
 
 ARG NODE_VERSION
 ARG NODE_SHA256
+ARG NPM_VERSION
 
 # Install build dependencies including Node.js and libvips headers (vix
 # compiles a NIF against libvips during `mix deps.compile`).
@@ -23,6 +25,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     && echo "${NODE_SHA256}  node-v${NODE_VERSION}-linux-x64.tar.xz" | sha256sum -c - \
     && tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C /usr/local --strip-components=1 \
     && rm "node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    && npm install --global "npm@${NPM_VERSION}" --no-audit --no-fund \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Prepare build dir
@@ -46,6 +49,7 @@ RUN mix deps.compile
 
 # Install npm dependencies
 COPY assets/package.json assets/package-lock.json assets/
+COPY assets/patches assets/patches
 RUN cd assets && npm ci --omit=dev --no-audit --no-fund
 
 # Copy application files

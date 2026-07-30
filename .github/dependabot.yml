@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  - package-ecosystem: mix
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: npm
+    directory: /assets
+    schedule:
+      interval: daily
+      time: "06:10"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:20"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:30"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:40"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: deps
