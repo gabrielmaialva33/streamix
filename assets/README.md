@@ -54,6 +54,9 @@ cd ..
 
 Run `mix assets.build` from the repository root for the normal development
 bundle and `mix assets.deploy` for the minified, digested production bundle.
-The player smoke targets `STREAMIX_SMOKE_URL` and needs either
-`STREAMIX_SMOKE_STORAGE_STATE` or the `STREAMIX_SMOKE_EMAIL` /
-`STREAMIX_SMOKE_PASSWORD` pair when that route requires authentication.
+The player smoke needs either `STREAMIX_SMOKE_STORAGE_STATE` or the
+`STREAMIX_SMOKE_EMAIL` / `STREAMIX_SMOKE_PASSWORD` pair. Set
+`STREAMIX_SMOKE_URL` to target a specific watch route; otherwise it discovers a
+current public movie in production. Numeric watch routes provide their content
+ID automatically, while non-standard routes also need
+`STREAMIX_SMOKE_CONTENT_ID`.

@@ -2,12 +2,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { chromium } = require("playwright");
 
-const url = process.env.STREAMIX_SMOKE_URL || "https://streamix.mahina.cloud/watch/movie/33781";
+const productionOrigin = "https://streamix.mahina.cloud";
+const configuredUrl = process.env.STREAMIX_SMOKE_URL;
 const storageState = process.env.STREAMIX_SMOKE_STORAGE_STATE;
 const email = process.env.STREAMIX_SMOKE_EMAIL;
 const password = process.env.STREAMIX_SMOKE_PASSWORD;
 const localAssetDir = process.env.STREAMIX_SMOKE_ASSET_DIR;
-const contentId = process.env.STREAMIX_SMOKE_CONTENT_ID || "33781";
+const configuredContentId = process.env.STREAMIX_SMOKE_CONTENT_ID;
 const resumeTime = Number(process.env.STREAMIX_SMOKE_RESUME_TIME || 25);
 const timeoutMs = Number(process.env.STREAMIX_SMOKE_TIMEOUT_MS || 20_000);
 const initialVolume = 0.72;
@@ -34,8 +35,10 @@ function assertLifecycle(snapshot) {
 }
 
 function assertInitialAudio(snapshot) {
-  if (snapshot.hookMuted !== true) fail("stored mute state was not loaded", snapshot);
-  if (snapshot.hookVolume !== initialVolume) fail("stored volume was not loaded", snapshot);
+  if (snapshot.videoMuted !== true) fail("stored mute state was not applied to video", snapshot);
+  if (snapshot.savedMuted !== true || snapshot.savedVolume !== initialVolume) {
+    fail("stored audio preferences were not preserved", snapshot);
+  }
   if (snapshot.sliderValue !== 0) fail("muted slider did not render at zero", snapshot);
   if (!snapshot.volumeOnHidden || snapshot.volumeOffHidden) {
     fail("muted icon state is out of sync", snapshot);
@@ -44,7 +47,6 @@ function assertInitialAudio(snapshot) {
 }
 
 function assertAdjustedAudio(snapshot) {
-  if (snapshot.hookMuted !== false) fail("raising volume did not unmute the player", snapshot);
   if (snapshot.videoMuted !== false) fail("native audio state stayed muted", snapshot);
   if (snapshot.sliderValue !== adjustedVolume * 100) {
     fail("volume slider did not keep the selected value", snapshot);
@@ -58,12 +60,62 @@ function assertAdjustedAudio(snapshot) {
   }
 }
 
+function contentIdFromUrl(url) {
+  return new URL(url).pathname.match(/^\/watch\/[^/]+\/(\d+)$/)?.[1];
+}
+
+async function discoverProductionTarget(context) {
+  const page = await context.newPage();
+
+  try {
+    await page.goto(productionOrigin, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await page.waitForFunction(() => window.liveSocket?.isConnected?.() === true, null, {
+      timeout: timeoutMs,
+    });
+
+    const elementId = await page
+      .locator("[id^='public-movie-img-']")
+      .first()
+      .getAttribute("id", { timeout: timeoutMs });
+    const contentId = elementId?.match(/^public-movie-img-(\d+)$/)?.[1];
+
+    if (!contentId) {
+      throw new Error("could not discover a current public movie for the player smoke");
+    }
+
+    return {
+      contentId,
+      url: new URL(`/watch/movie/${contentId}`, productionOrigin).href,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+async function resolveTarget(context) {
+  if (!configuredUrl) return discoverProductionTarget(context);
+
+  const contentId = configuredContentId || contentIdFromUrl(configuredUrl);
+  if (!contentId) {
+    throw new Error(
+      "STREAMIX_SMOKE_CONTENT_ID is required when STREAMIX_SMOKE_URL has no numeric watch id",
+    );
+  }
+
+  return { contentId, url: new URL(configuredUrl).href };
+}
+
 async function main() {
+  if (!storageState && !(email && password)) {
+    fail("player smoke requires a storage state or email/password credentials", {});
+  }
+
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     ...(storageState ? { storageState } : {}),
     serviceWorkers: "block",
   });
+  const target = await resolveTarget(context);
 
   await context.addInitScript(
     ({ contentId, initialVolume, resumeTime }) => {
@@ -97,20 +149,20 @@ async function main() {
         return play.apply(this, args);
       };
     },
-    { contentId, initialVolume, resumeTime },
+    { contentId: target.contentId, initialVolume, resumeTime },
   );
 
   const page = await context.newPage();
 
   if (!storageState && email && password) {
-    await page.goto(new URL("/login", url).href, {
+    await page.goto(new URL("/login", target.url).href, {
       waitUntil: "domcontentloaded",
       timeout: timeoutMs,
     });
     await page.locator('input[name="user[email]"]').fill(email);
     await page.locator('input[name="user[password]"]').fill(password);
-    await page.getByRole("button", { name: "Entrar", exact: true }).click();
-    await page.waitForURL((currentUrl) => currentUrl.pathname !== "/login", {
+    await page.getByRole("button", { name: "Entrar", exact: true }).click({ noWaitAfter: true });
+    await page.waitForFunction(() => window.location.pathname !== "/login", null, {
       timeout: timeoutMs,
     });
   }
@@ -135,7 +187,7 @@ async function main() {
     });
   }
 
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForSelector("#video-player-container", { timeout: timeoutMs });
   await page.waitForTimeout(3_000);
 
@@ -143,7 +195,7 @@ async function main() {
     const video = document.querySelector("#video-element");
     const container = document.querySelector("#video-player-container");
     const avMount = document.querySelector("#avplayer-mount");
-    const hook = container?.__videoPlayerHook;
+    const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs") || "{}");
     const buffered = [];
 
     if (video) {
@@ -162,12 +214,13 @@ async function main() {
       readyState: video ? video.readyState : null,
       networkState: video ? video.networkState : null,
       paused: video ? video.paused : null,
-      hookMuted: hook?.avPlayerMuted,
-      hookVolume: hook?.avPlayerVolume,
+      videoMuted: video?.muted,
       sliderValue: Number(document.querySelector("#volume-slider")?.value),
       volumeOnHidden: document.querySelector(".volume-on-icon")?.classList.contains("hidden"),
       volumeOffHidden: document.querySelector(".volume-off-icon")?.classList.contains("hidden"),
       muteAriaPressed: document.querySelector("#mute-btn")?.getAttribute("aria-pressed"),
+      savedMuted: prefs.global?.muted,
+      savedVolume: prefs.global?.volume,
       buffered,
       events: window.__streamixSmoke?.events || [],
     };
@@ -185,13 +238,9 @@ async function main() {
 
   const adjustedAudio = await page.evaluate(() => {
     const video = document.querySelector("#video-element");
-    const container = document.querySelector("#video-player-container");
-    const hook = container?.__videoPlayerHook;
     const prefs = JSON.parse(localStorage.getItem("streamix_player_prefs") || "{}");
 
     return {
-      hookMuted: hook?.avPlayerMuted,
-      hookVolume: hook?.avPlayerVolume,
       videoMuted: video?.muted,
       sliderValue: Number(document.querySelector("#volume-slider")?.value),
       volumeOnHidden: document.querySelector(".volume-on-icon")?.classList.contains("hidden"),
@@ -203,7 +252,7 @@ async function main() {
   });
 
   assertAdjustedAudio(adjustedAudio);
-  console.log(JSON.stringify({ ok: true, url, snapshot, adjustedAudio }, null, 2));
+  console.log(JSON.stringify({ ok: true, url: target.url, snapshot, adjustedAudio }, null, 2));
 
   await browser.close();
 }
