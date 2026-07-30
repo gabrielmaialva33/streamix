@@ -1012,9 +1012,6 @@ const VideoPlayer = {
     this.lifecycle.listen(this.el, "player:toggle-mute", () => this.toggleMute());
     this.lifecycle.listen(this.el, "player:toggle-fullscreen", () => this.toggleFullscreen());
     this.lifecycle.listen(this.el, "player:toggle-pip", () => this.togglePiP());
-    this.lifecycle.listen(this.el, "player:seek-relative", (event) => {
-      this.seek(Number(event.detail?.seconds));
-    });
     this.lifecycle.listen(this.el, "player:set-speed", (e) => {
       const speed = parseFloat(e.detail?.speed || 1);
       this.setPlaybackRate(speed);
@@ -1048,9 +1045,6 @@ const VideoPlayer = {
 
     // Video Element Events
     this.lifecycle.listenOptional(this.video, "play", () => {
-      // Autoplay-blocked overlay must not survive playback started by any
-      // other path (keyboard, watch party sync, HLS/AVPlayer retry races)
-      this.playerUI.removePlayButton();
       this.playerUI.updatePlayPauseUI(false);
       this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
     });
@@ -2094,7 +2088,10 @@ const VideoPlayer = {
       }
 
       if (e.name === "NotAllowedError") {
-        this.playerUI.showPlayButton(() => this.playNativeAfterResume(this.playbackSessionId));
+        // Keep the standard bottom controls visible so the user can start
+        // playback without covering the video with an autoplay overlay.
+        this.playerUI.showControls();
+        this.playerUI.clearHideControlsTimeout();
       } else {
         this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
       }
@@ -3763,7 +3760,6 @@ const VideoPlayer = {
   setupKeyboardShortcuts() {
     this.keyboardManager = new KeyboardManager({
       contentType: this.contentType,
-      showFeedback: (icon) => this.playerUI.showShortcutFeedback(icon),
       actions: {
         togglePlayPause: () => this.togglePlayPause(),
         toggleMute: () => this.toggleMute(),
