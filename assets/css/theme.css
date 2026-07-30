@@ -57,6 +57,14 @@
     --warning-color: #f59e0b;
     --error-color: #ef4444;
     --info-color: #3b82f6;
+
+    /* Shared interaction and mobile-shell contract */
+    --touch-target-min: 2.75rem;
+    --player-target: 3rem;
+    --mobile-nav-height: 4rem;
+    --mobile-nav-surface: rgb(10 10 10 / 0.97);
+    --mobile-nav-border: rgb(255 255 255 / 0.09);
+    --mobile-nav-elevation: 0 -10px 30px rgb(0 0 0 / 0.38);
 }
 
 /* Dark mode only — no light mode variant */
@@ -239,6 +247,28 @@ textarea:focus-visible,
     -webkit-backdrop-filter: blur(8px);
 }
 
+.mobile-bottom-nav {
+    min-height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px));
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    background: var(--mobile-nav-surface);
+    border-top: 1px solid var(--mobile-nav-border);
+    box-shadow: var(--mobile-nav-elevation);
+}
+
+.mobile-bottom-tab {
+    min-width: var(--touch-target-min);
+    -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mobile-bottom-tab,
+    .mobile-bottom-tab span {
+        transition: none;
+    }
+}
+
 /* Skip layout and paint for off-screen catalog shelves. Browsers without
    content-visibility support simply ignore this progressive enhancement. */
 @utility render-lazy {
@@ -317,4 +347,3 @@ html.ios-webkit header[data-scrolled="true"] {
         var(--inset-highlight),
         var(--shadow-card);
 }
-

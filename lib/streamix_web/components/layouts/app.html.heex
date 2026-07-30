@@ -1,5 +1,6 @@
 <% banner_visible? = assigns[:provider_health] && @provider_health.show_banner? %>
 <% home_path = if @current_scope, do: ~p"/home", else: ~p"/" %>
+<% mobile_nav? = not is_nil(@current_scope) and not detail_path?(@current_path) %>
 <%!--
   iOS Safari: min-h-dvh tracks the *dynamic* viewport so the layout doesn't
   jump when the URL bar collapses. Tailwind v4 ships it natively. Notch
@@ -262,22 +263,12 @@
     utility in app.css adds env(safe-area-inset-top) on top of that so
     content clears the notch on iPhone X+ / Dynamic Island devices.
   --%>
-  <main id="main-content" class="flex-1 px-[4%] main-safe-top main-safe-bottom" tabindex="-1">
+  <main id="main-content" class="flex-1 px-[4%] pb-8 main-safe-top" tabindex="-1">
     {@inner_content}
   </main>
 
   <%= if @current_scope do %>
-    <%!--
-      iOS Safari: on mobile `pb-20` reserves space for the bottom-nav; on
-      desktop (md+) the nav is hidden so we don't need the spacer. The
-      inline style adds env(safe-area-inset-bottom) so the footer text
-      clears the iPhone home-indicator when the page is scrolled all the
-      way down.
-    --%>
-    <div
-      style="padding-bottom: env(safe-area-inset-bottom);"
-      class={[!detail_path?(@current_path) && "pb-20", "md:pb-0"]}
-    >
+    <div class={mobile_nav? && "mobile-nav-reserve"}>
       <StreamixWeb.FooterComponents.app_footer
         current_scope={@current_scope}
         current_path={@current_path}
@@ -286,59 +277,7 @@
   <% end %>
 
   <!-- Bottom Navigation Bar (Mobile Only) -->
-  <%= if not is_nil(@current_scope) and not detail_path?(@current_path) do %>
-    <%!--
-      iOS Safari: safe-area-bottom handles the home-indicator. Inline style
-      also adds env(safe-area-inset-left/right) so the tabs don't sit under
-      the Dynamic Island in landscape on iPhone X+.
-    --%>
-    <nav
-      style="padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
-      class="fixed bottom-0 left-0 right-0 z-40 md:hidden glass safe-area-bottom"
-    >
-      <div class="flex items-center justify-around h-14">
-        <.bottom_tab
-          path={home_path}
-          current_path={@current_path}
-          icon="hero-home"
-          icon_active="hero-home-solid"
-          label="Início"
-          active={@current_path in ["/", "/home"]}
-        />
-        <.bottom_tab
-          path={~p"/browse"}
-          current_path={@current_path}
-          icon="hero-squares-2x2"
-          icon_active="hero-squares-2x2-solid"
-          label="Catálogo"
-          active={String.starts_with?(@current_path || "", "/browse")}
-        />
-        <.bottom_tab
-          path={~p"/search"}
-          current_path={@current_path}
-          icon="hero-magnifying-glass"
-          icon_active="hero-magnifying-glass-solid"
-          label="Busca"
-          active={@current_path == "/search"}
-          center={true}
-        />
-        <.bottom_tab
-          path={~p"/favorites"}
-          current_path={@current_path}
-          icon="hero-heart"
-          icon_active="hero-heart-solid"
-          label="Lista"
-          active={@current_path == "/favorites"}
-        />
-        <.bottom_tab
-          path={~p"/settings"}
-          current_path={@current_path}
-          icon="hero-user-circle"
-          icon_active="hero-user-circle-solid"
-          label="Perfil"
-          active={@current_path == "/settings"}
-        />
-      </div>
-    </nav>
+  <%= if mobile_nav? do %>
+    <.mobile_bottom_nav home_path={home_path} current_path={@current_path} />
   <% end %>
 </div>
