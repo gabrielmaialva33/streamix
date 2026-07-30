@@ -171,14 +171,9 @@ config :streamix, Oban,
     billing: 1,
     series_details: 2,
     ai: 1,
-    # GIndex ingestion: a small dispatcher queue that just enqueues work,
-    # and a scan queue sized to match the number of healthy upstream
-    # mirrors. We currently pool three mirrors in EndpointManager
-    # (`@default_endpoints`) and the provider appears to rate-limit
-    # per-hostname, so three parallel scanners — one per mirror —
-    # triples effective throughput without recreating the
-    # "TypeError: Cannot read ...map" 500 storm we hit when four
-    # scanners pounded a single host.
+    # GIndex ingestion: a small dispatcher queue that just enqueues work.
+    # EndpointManager keeps an ordered two-Worker pool for whole-listing
+    # failover; it does not split one paginated walk across both hosts.
     gindex_dispatch: 1,
     # Concurrency 1 (down from 2): the upstream Cloudflare Worker is on
     # the free `*.workers.dev` plan and rate-limits at ~10K req/day

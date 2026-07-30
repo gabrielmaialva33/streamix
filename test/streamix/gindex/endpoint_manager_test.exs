@@ -44,7 +44,7 @@ defmodule Streamix.Gindex.EndpointManagerTest do
   test "keeps configured single URL as primary when adding default fallbacks" do
     Application.put_env(:streamix, :gindex_provider,
       enabled: true,
-      url: "https://configured.example.com"
+      url: "https://1.animezeydl.workers.dev/"
     )
 
     pid =
@@ -56,10 +56,42 @@ defmodule Streamix.Gindex.EndpointManagerTest do
 
     assert {:ok, configured_endpoints} = GenServer.call(pid, :get_all_endpoints)
 
-    assert %{name: :primary, url: "https://configured.example.com", priority: 1} =
-             hd(configured_endpoints)
+    assert [
+             %{
+               name: :primary,
+               url: "https://1.animezeydl.workers.dev/",
+               priority: 1
+             },
+             %{
+               name: :animezey_legacy,
+               url: "https://animezey16082023.animezey16082023.workers.dev",
+               priority: 2
+             }
+           ] = configured_endpoints
+  end
 
-    names = Enum.map(configured_endpoints, & &1.name)
-    assert Enum.uniq(names) == names
+  test "uses the verified two-Worker pool by default" do
+    Application.put_env(:streamix, :gindex_provider, enabled: true)
+
+    pid =
+      start_supervised!(
+        {EndpointManager,
+         name: :gindex_endpoint_manager_defaults_test, table_name: :gindex_endpoints_defaults_test}
+      )
+
+    assert {:ok, configured_endpoints} = GenServer.call(pid, :get_all_endpoints)
+
+    assert [
+             %{
+               name: :animezeydl,
+               url: "https://1.animezeydl.workers.dev",
+               priority: 1
+             },
+             %{
+               name: :animezey_legacy,
+               url: "https://animezey16082023.animezey16082023.workers.dev",
+               priority: 2
+             }
+           ] = configured_endpoints
   end
 end

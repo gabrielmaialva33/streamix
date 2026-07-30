@@ -17,52 +17,26 @@ defmodule Streamix.Gindex.EndpointManager do
   require Logger
 
   @table_name :gindex_endpoints
-  # Three mirrors confirmed live as of 2026-04-20 via enum + 20-burst
-  # each = 60/60 200. All three expose the identical 5-drive catalog
-  # (Animes / Desenhos / Filmes / Novelas / Outros), so EndpointManager
-  # can swap between them transparently. Keeping them as distinct hosts
-  # matters for the rate-limit story: the upstream Cloudflare Worker
-  # seems to throttle per-hostname, so spreading concurrent scanners
-  # across the pool buys roughly triple the effective request budget.
-  # Priority 1 is the only mirror serving paginated listings reliably.
-  # The other two return HTTP 500 on every page beyond index 0
-  # (`TypeError: Cannot read properties of undefined (reading 'map')`),
-  # which is a bug in their deployed worker.js — the `data.files`
-  # array is null when the upstream Drive folder is too big to fit
-  # in a single response. Promote the healthy mirror; HealthTracker
-  # will recycle the others if/when their owners ship a fix.
+
+  # Keep failover in the application, where a paginated listing can restart
+  # from page zero on the next Worker. Cloudflare cursor and download tokens
+  # are bound to the Worker that issued them and must never be replayed against
+  # another host by a transparent reverse-proxy fallback.
   #
-  # 2026-05-09: collapsed the 3 direct mirrors into a single edge
-  # entry — `https://gindex.mahina.cloud`. That hostname is an nginx
-  # reverse proxy on srv953258 (behind a Cloudflare Tunnel) that
-  # fans out to `1.animezey23112022.workers.dev` (primary) and
-  # `animezey16082023.animezey16082023.workers.dev` (fallback) at
-  # the upstream layer with `error_page 5xx → @gindex_fallback`.
-  # Centralizing there gives us:
-  #   * a single TLS keepalive pool to ride 4K MKV Range fetches,
-  #     so the BEAM no longer pays the SSL handshake on every chunk;
-  #   * Range/POST/HEAD passthrough plus permissive CORS, so the
-  #     browser-side AVPlayer talks to one origin instead of three;
-  #   * 5xx fallback handled at nginx, which removes the circuit
-  #     ping-pong we used to see when one Cloudflare Worker shard
-  #     started returning the deterministic TypeError.
-  #
-  # 2026-06-03: added the direct CF Worker as a priority-2 fallback.
-  # nginx mahina.cloud is a SPOF — when the Cloudflare Tunnel flaps or
-  # srv953258 reboots, every GIndex call dies until the tunnel comes
-  # back up. The direct worker URL bypasses our edge entirely. We only
-  # keep the *paginated-listing-safe* mirror (priority 1 in the legacy
-  # config); the other two returned 500 TypeError on any page > 0 and
-  # are intentionally absent.
+  # Live canary on 2026-07-29:
+  #   * animezeydl completed all five pages (2,115 anime entries) and served a
+  #     byte-range download as 206 video/x-matroska;
+  #   * animezey16082023 served byte ranges correctly but remains the secondary
+  #     because its listings intermittently return 500.
   @default_endpoints [
     %{
-      name: :proxy,
-      url: "https://gindex.mahina.cloud",
+      name: :animezeydl,
+      url: "https://1.animezeydl.workers.dev",
       priority: 1
     },
     %{
-      name: :cf_worker_direct,
-      url: "https://1.animezey23112022.workers.dev",
+      name: :animezey_legacy,
+      url: "https://animezey16082023.animezey16082023.workers.dev",
       priority: 2
     }
   ]
