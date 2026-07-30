@@ -5,6 +5,49 @@ defmodule StreamixWeb.Content.CardComponentsTest do
 
   alias StreamixWeb.Content.CardComponents
 
+  test "movie card exposes one semantic primary action and a sibling favorite control" do
+    html =
+      render_component(&CardComponents.movie_card/1,
+        movie: %{id: 42, name: "Filme", provider_id: 7}
+      )
+
+    document = Floki.parse_fragment!(html)
+
+    assert Floki.find(document, "#movie-card-42 > [data-media-primary][type=button]") != []
+
+    assert Floki.find(
+             document,
+             "#movie-card-42 > [data-media-secondary] button[aria-label='Adicionar aos favoritos']"
+           ) != []
+
+    assert Floki.find(document, "[data-media-primary] button") == []
+  end
+
+  test "landscape card renders navigation separately from its secondary action" do
+    html =
+      render_component(&CardComponents.landscape_media_card/1,
+        id: "landscape-card",
+        image_id: "landscape-image",
+        title: "Episódio",
+        content_id: 9,
+        content_type: "episode",
+        navigate: "/watch/episode/9",
+        secondary_action: [
+          %{
+            inner_block: fn _assigns, _changed ->
+              Phoenix.HTML.raw("<button type=\"button\">Remover</button>")
+            end
+          }
+        ]
+      )
+
+    document = Floki.parse_fragment!(html)
+
+    assert Floki.find(document, "#landscape-card > a[data-media-primary]") != []
+    assert Floki.find(document, "#landscape-card > [data-media-secondary] > button") != []
+    assert Floki.find(document, "a[data-media-primary] button") == []
+  end
+
   test "limits hover-preview metadata in the initial card HTML" do
     prefix = String.duplicate("a", 240)
     plot = prefix <> "payload-that-must-not-ship"

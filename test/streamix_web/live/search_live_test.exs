@@ -34,7 +34,7 @@ defmodule StreamixWeb.SearchLiveTest do
       assert has_element?(view, "#movie-card-#{movie.id}")
 
       view
-      |> element("#movie-img-fb-#{movie.id}")
+      |> element("#movie-card-#{movie.id} > [data-media-primary]")
       |> render_click()
 
       assert_redirect(
@@ -56,7 +56,7 @@ defmodule StreamixWeb.SearchLiveTest do
       assert has_element?(view, "#series-card-#{series.id}")
 
       view
-      |> element("#series-img-fb-#{series.id}")
+      |> element("#series-card-#{series.id} > [data-media-primary]")
       |> render_click()
 
       assert_redirect(

@@ -65,7 +65,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       {:ok, view, _html} = live(conn, ~p"/browse/movies?page=2")
 
       view
-      |> element("#movie-img-fb-#{movie.id}")
+      |> element("#movie-card-#{movie.id} > [data-media-primary]")
       |> render_click()
 
       assert_redirect(
@@ -131,7 +131,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       refute has_element?(view, "#movie-card-#{other.id}")
 
       view
-      |> element("#movie-img-fb-#{matching.id}")
+      |> element("#movie-card-#{matching.id} > [data-media-primary]")
       |> render_click()
 
       return_to =
