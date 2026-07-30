@@ -28,7 +28,7 @@ jobs:
 
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg17
+        image: timescale/timescaledb:latest-pg17@sha256:3e65c273cbf7218f2a28692492b4625b49f35c7d2142e945561ef52311a8c83a
         env:
           POSTGRES_USER: streamix
           POSTGRES_PASSWORD: streamix
@@ -41,7 +41,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -61,6 +61,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -94,6 +95,7 @@ jobs:
         run: |
           bash scripts/check-runtime-versions.sh
           bash scripts/check-migration-safety.sh
+          bash scripts/check-production-compose.sh
           mix deps.unlock --check-unused
           mix format --check-formatted
           mix compile --warnings-as-errors
@@ -118,6 +120,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -158,6 +162,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -182,16 +188,20 @@ jobs:
         run: npm test
 
   e2e:
-    name: Browser and PWA tests
+    name: Browser ${{ matrix.browser }} and PWA tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     concurrency:
-      group: e2e-${{ github.ref }}
+      group: e2e-${{ matrix.browser }}-${{ github.ref }}
       cancel-in-progress: true
 
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg17
+        image: timescale/timescaledb:latest-pg17@sha256:3e65c273cbf7218f2a28692492b4625b49f35c7d2142e945561ef52311a8c83a
         env:
           POSTGRES_USER: streamix
           POSTGRES_PASSWORD: streamix
@@ -204,7 +214,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -218,10 +228,13 @@ jobs:
       TEST_DATABASE_URL: ecto://streamix:streamix@localhost:5432/streamix_test
       REDIS_URL: redis://localhost:6379
       RABBITMQ_ENABLED: "false"
+      PLAYWRIGHT_BROWSER: ${{ matrix.browser }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up BEAM
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -253,13 +266,15 @@ jobs:
           mix deps.get --only test
           npm ci --prefix assets --no-audit --no-fund
 
-      - name: Run WebKit journeys
-        run: bash scripts/test-webkit-docker.sh
+      - name: Run ${{ matrix.browser }} journeys
+        run: bash scripts/test-playwright-docker.sh
 
       - name: Run Chromium PWA installability smoke
+        if: matrix.browser == 'chromium'
         run: bash scripts/test-pwa-chromium.sh
 
       - name: Enforce production asset budgets
+        if: matrix.browser == 'chromium'
         run: npm --prefix assets run budget:assets
 
   build:
@@ -272,7 +287,9 @@ jobs:
       cancel-in-progress: true
     permissions:
       contents: read
-      packages: write
+      packages: write # Push the candidate image and OCI attestations.
+      id-token: write # Mint the short-lived certificate used to sign attestations.
+      attestations: write # Create signed provenance and SBOM attestations.
 
     outputs:
       image_digest: ${{ steps.build.outputs.digest }}
@@ -280,6 +297,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -306,6 +325,62 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+          provenance: mode=max
+          sbom: true
+
+      - name: Scan candidate image for fixable critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          version: v0.70.0
+
+      - name: Generate SPDX SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output: streamix.spdx.json
+          version: v0.70.0
+
+      - name: Attest image provenance
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest image SBOM
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: streamix.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Verify signed provenance before promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          image="oci://${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+          signer="${GITHUB_REPOSITORY}/.github/workflows/docker.yml"
+
+          gh attestation verify "${image}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${signer}" \
+            --bundle-from-oci
+
+          gh attestation verify "${image}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${signer}" \
+            --predicate-type "https://spdx.dev/Document/v2.3" \
+            --bundle-from-oci
 
   promote:
     name: Promote approved image
@@ -313,9 +388,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [backend, dialyzer, frontend, e2e, build]
+    concurrency:
+      group: promote-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
-      packages: write
+      packages: write # Move the approved digest to the latest tag.
 
     steps:
       - name: Log in to GHCR
@@ -349,6 +427,8 @@ jobs:
     steps:
       - name: Checkout deployment scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Deploy approved digest
         uses: ./.github/actions/deploy-production

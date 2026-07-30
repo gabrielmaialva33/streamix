@@ -37,6 +37,15 @@ updates:
     commit-message:
       prefix: deps
 
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: daily
+      time: "06:35"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: deps
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

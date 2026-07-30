@@ -7,9 +7,14 @@ on:
         description: Approved GHCR digest (sha256:...)
         required: true
         type: string
+      expected_revision:
+        description: Full Git revision embedded in the approved image
+        required: true
+        type: string
 
 permissions:
   contents: read
+  packages: read # Pull the OCI attestation bundles from GHCR.
 
 env:
   REGISTRY: ghcr.io
@@ -30,6 +35,34 @@ jobs:
     steps:
       - name: Checkout deployment scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Verify signed provenance and SBOM
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+        run: |
+          image="oci://${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+          signer="${GITHUB_REPOSITORY}/.github/workflows/docker.yml"
+
+          gh attestation verify "${image}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${signer}" \
+            --bundle-from-oci
+
+          gh attestation verify "${image}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${signer}" \
+            --predicate-type "https://spdx.dev/Document/v2.3" \
+            --bundle-from-oci
 
       - name: Deploy approved digest
         uses: ./.github/actions/deploy-production
@@ -40,5 +73,6 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           image-digest: ${{ inputs.image_digest }}
+          expected-revision: ${{ inputs.expected_revision }}
           canary-email: ${{ secrets.DEPLOY_CANARY_EMAIL }}
           canary-password: ${{ secrets.DEPLOY_CANARY_PASSWORD }}

@@ -1,0 +1,115 @@
+name: streamix
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-timescale/timescaledb:latest-pg17}
+    container_name: streamix-postgres
+    command:
+      [
+        "postgres",
+        "-c",
+        "shared_preload_libraries=timescaledb,pg_stat_statements",
+        "-c",
+        "pg_stat_statements.max=5000",
+        "-c",
+        "pg_stat_statements.track=top"
+      ]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-streamix}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-streamix_prod}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - streamix_postgres_data:/home/postgres/pgdata/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-streamix} -d ${POSTGRES_DB:-streamix_prod}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shared_network
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: streamix-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - streamix_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shared_network
+
+  rabbitmq:
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4-management-alpine}
+    container_name: streamix-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    volumes:
+      - streamix_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shared_network
+
+  qdrant:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    container_name: streamix-qdrant
+    volumes:
+      - streamix_qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shared_network
+
+  streamix:
+    image: ${STREAMIX_IMAGE:-ghcr.io/gabrielmaialva33/streamix:latest}
+    container_name: streamix
+    env_file:
+      - ${STREAMIX_ENV_FILE:-.env}
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - shared_network
+
+volumes:
+  streamix_postgres_data:
+  streamix_redis_data:
+  streamix_rabbitmq_data:
+  streamix_qdrant_data:
+
+networks:
+  shared_network:
+    external: true

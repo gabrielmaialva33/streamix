@@ -23,8 +23,7 @@ inputs:
     required: true
   expected-revision:
     description: Git revision expected from the deployed health endpoint
-    required: false
-    default: ""
+    required: true
   base-url:
     description: Public production URL used by deployment canaries
     required: false
@@ -45,9 +44,15 @@ runs:
       shell: bash
       env:
         IMAGE_DIGEST: ${{ inputs.image-digest }}
+        EXPECTED_REVISION: ${{ inputs.expected-revision }}
       run: |
         if [[ ! "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
           echo "::error::image-digest must be a sha256 digest"
+          exit 2
+        fi
+
+        if [[ ! "${EXPECTED_REVISION}" =~ ^[0-9a-f]{40,64}$ ]]; then
+          echo "::error::expected-revision must be a full Git revision"
           exit 2
         fi
 
@@ -73,11 +78,22 @@ runs:
         echo "::error::SSH remained unreachable after 3 attempts"
         exit 1
 
+    - name: Package versioned production compose
+      id: compose
+      shell: bash
+      run: |
+        compose_file="deploy/docker-compose.production.yml"
+        bash scripts/check-production-compose.sh "${compose_file}"
+        echo "payload=$(base64 --wrap=0 "${compose_file}")" >>"${GITHUB_OUTPUT}"
+        echo "sha256=$(sha256sum "${compose_file}" | awk '{print $1}')" >>"${GITHUB_OUTPUT}"
+
     - name: Deploy approved digest
       uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         IMAGE_DIGEST: ${{ inputs.image-digest }}
+        PRODUCTION_COMPOSE_B64: ${{ steps.compose.outputs.payload }}
+        PRODUCTION_COMPOSE_SHA256: ${{ steps.compose.outputs.sha256 }}
         EXPECTED_REVISION: ${{ inputs.expected-revision }}
         DEPLOY_BASE_URL: ${{ inputs.base-url }}
         DEPLOY_CANARY_EMAIL: ${{ inputs.canary-email }}
@@ -89,5 +105,5 @@ runs:
         port: ${{ inputs.port }}
         timeout: 30s
         command_timeout: 8m
-        envs: IMAGE_NAME,IMAGE_DIGEST,EXPECTED_REVISION,DEPLOY_BASE_URL,DEPLOY_CANARY_EMAIL,DEPLOY_CANARY_PASSWORD
+        envs: IMAGE_NAME,IMAGE_DIGEST,PRODUCTION_COMPOSE_B64,PRODUCTION_COMPOSE_SHA256,EXPECTED_REVISION,DEPLOY_BASE_URL,DEPLOY_CANARY_EMAIL,DEPLOY_CANARY_PASSWORD
         script_path: scripts/deploy-production.sh
