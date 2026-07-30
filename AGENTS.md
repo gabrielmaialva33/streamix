@@ -120,9 +120,16 @@ lib/streamix_web/
 └── user_auth.ex              # Session/auth plumbing
 
 assets/
-├── css/app.css               # Tailwind v4 entrypoint + theme tokens
-├── js/app.js                 # LiveView bootstrap + service worker registration
-├── js/hooks/                 # Browser hooks (player, watch party, offline sync, theme)
+├── css/app.css               # Thin Tailwind v4 entrypoint; ordered domain imports
+├── css/*.css                 # Platform, theme, catalog, player, PWA, and surface styles
+├── js/app.js                 # Thin browser composition root
+├── js/bootstrap/             # LiveView and document-level browser setup
+├── js/core/                  # Shared browser primitives
+├── js/hooks/                 # LiveView hooks
+├── js/media/                 # Codec, buffering, decoder, and stream integrations
+├── js/player/                # Playback state, policy, controls, and UI
+├── js/pwa/                   # Install, cache, offline, and service-worker integration
+├── js/telemetry/             # Privacy-bounded browser diagnostics
 └── package.json              # npm dependencies for frontend runtime
 ```
 
