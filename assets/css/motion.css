@@ -1,0 +1,282 @@
+/* ============================================
+   Smooth Animations & Transitions
+   ============================================ */
+
+/* Fade in animation for images */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Hero backdrop fade */
+.hero-backdrop {
+    animation: fadeIn 0.8s ease-out forwards;
+}
+
+/* Hero trailer - scale YouTube iframe to cover hero area */
+#hero-trailer-player {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+#hero-trailer-player iframe {
+    width: 100vw;
+    height: 56.25vw; /* 16:9 */
+    min-height: 100%;
+    min-width: 177.78vh; /* 16:9 inverse */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Content slide up animation */
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-slide-up {
+    animation: slideUp 0.6s ease-out forwards;
+}
+
+/* Staggered animation delays for carousels */
+.stagger-1 {
+    animation-delay: 0.1s;
+}
+
+.stagger-2 {
+    animation-delay: 0.15s;
+}
+
+.stagger-3 {
+    animation-delay: 0.2s;
+}
+
+.stagger-4 {
+    animation-delay: 0.25s;
+}
+
+.stagger-5 {
+    animation-delay: 0.3s;
+}
+
+/* Image loading states - smooth fade in when loaded */
+img {
+    transition: opacity 0.3s ease;
+    opacity: 1;
+}
+
+/* Smooth page transitions */
+[data-phx-main] {
+    transition: opacity 0.15s ease-out;
+}
+
+.phx-page-loading [data-phx-main] {
+    opacity: 0.9;
+}
+
+/* LiveView connected/disconnected - no flash */
+.phx-connected {
+    opacity: 1;
+    transition: opacity 0.2s ease;
+}
+
+.phx-loading {
+    opacity: 0.95;
+    cursor: progress;
+}
+
+.phx-disconnected {
+    cursor: wait;
+}
+
+/* Disable loading indicator flash */
+.phx-no-feedback.phx-submit-loading,
+.phx-no-feedback.phx-change-loading {
+    opacity: 1;
+}
+
+/* Smooth scroll for carousels.
+   iOS Safari: `scroll-behavior: smooth` can cause janky momentum scroll on
+   iOS when combined with snap/overflow; scope it to non-reduced-motion
+   users and keep `-webkit-overflow-scrolling: touch` for inertia. */
+@media (prefers-reduced-motion: no-preference) {
+    .scroll-smooth {
+        scroll-behavior: smooth;
+    }
+}
+
+.scroll-smooth {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* iOS Safari: horizontal carousels should not trigger the window's rubber-
+   band when the user swipes past the end. `overscroll-behavior-x: contain`
+   keeps the bounce local to the track instead of propagating to <body>. */
+[data-carousel-track],
+.scrollbar-hide {
+    overscroll-behavior-x: contain;
+}
+
+/* iOS Safari: `position: sticky` only works when the flex/grid parent has
+   `align-items: start` (not the default `stretch`). The category sidebar
+   component uses `sm:sticky sm:top-24`; we auto-fix any ancestor flex
+   container that contains a sticky <aside> via :has() so the sticky
+   behavior holds on Safari without touching every call-site. */
+@media (min-width: 640px) {
+    :has(> aside.sm\:sticky) {
+        align-items: flex-start;
+    }
+}
+
+/* Adds env(safe-area-inset-top) to the main content's top padding so it
+   sits below the notch on iPhone X+. The fixed header absorbs its own
+   notch via inline style, so here we only compensate the main flow. */
+.main-safe-top {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+}
+
+@media (min-width: 640px) {
+    .main-safe-top {
+        padding-top: calc(4rem + env(safe-area-inset-top));
+    }
+}
+
+/* Fixed mobile bottom navigation sits outside normal document flow. Reserve
+   enough scroll space so the last row/card can clear the tab bar and the
+   iOS home indicator instead of ending underneath it. */
+.main-safe-bottom {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+    .main-safe-bottom {
+        padding-bottom: 2rem;
+    }
+}
+
+/* Card hover effect — spring physics */
+.content-card {
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth),
+        outline var(--duration-fast) var(--ease-smooth);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .content-card:hover {
+        transform: translateY(-6px) scale(1.02);
+        box-shadow: var(--shadow-card-hover);
+    }
+}
+
+/* Button press effect — spring */
+button:active,
+a:active {
+    transform: scale(0.97);
+    transition: transform 100ms var(--ease-spring);
+}
+
+/* Header scroll-aware transition */
+header {
+    transition:
+        background-color var(--duration-slow) var(--ease-smooth),
+        border-color var(--duration-slow) var(--ease-smooth);
+}
+
+/* Scroll-aware header: transparent at top, solid on scroll */
+header[data-scrolled="true"] {
+    background: var(--color-glass) !important;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border-bottom-color: var(--color-glass-border) !important;
+}
+
+header[data-scrolled="false"] {
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+}
+
+/* Backdrop blur and dozens of promoted card layers are disproportionately
+   expensive on low-power mobile GPUs. Keep the opaque visual treatment and
+   let the browser promote only the card that is actually animating. */
+@media (hover: none) and (pointer: coarse) {
+    .glass,
+    .glass-subtle,
+    header[data-scrolled="true"] {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(20, 20, 20, 0.96) !important;
+    }
+}
+
+/* Poster card overlay — info on hover */
+.poster-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 40%, transparent 100%);
+    opacity: 0;
+    transition: opacity var(--duration-normal) var(--ease-smooth);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0.75rem;
+    border-radius: var(--radius-lg);
+}
+
+.poster-card-wrapper:hover .poster-overlay {
+    opacity: 1;
+}
+
+/* Progress bar on poster cards */
+.poster-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    overflow: hidden;
+}
+
+.poster-progress-bar {
+    height: 100%;
+    background: var(--color-brand);
+    border-radius: inherit;
+    transition: width var(--duration-slow) var(--ease-smooth);
+}
+
+/* Live badge pulse */
+.live-pulse {
+    animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+

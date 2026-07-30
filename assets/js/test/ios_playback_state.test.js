@@ -6,7 +6,7 @@ import {
   IOS_PLAYER_STATE_KEY,
   readIosPlayerState,
   writeIosPlayerState,
-} from "../lib/ios_playback_state.js";
+} from "../player/ios_playback_state.js";
 
 function memoryStorage() {
   const values = new Map();

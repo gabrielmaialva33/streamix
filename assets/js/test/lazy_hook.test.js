@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createLazyHook } from "../lib/lazy_hook.js";
+import { createLazyHook } from "../core/lazy_hook.js";
 
 test("loads a hook only when its element mounts and preserves custom methods", async () => {
   let loadCount = 0;

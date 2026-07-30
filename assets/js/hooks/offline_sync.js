@@ -15,7 +15,7 @@ import {
   syncFavorites,
   syncHistory,
   upsertHistory,
-} from "../lib/offline_store";
+} from "../pwa/offline_store";
 
 const OfflineSync = {
   mounted() {

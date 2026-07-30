@@ -5,7 +5,7 @@
  * HTML structure is in HEEX templates - this only manages state/visibility.
  */
 
-import { createFocusTrap } from "./focus_trap";
+import { createFocusTrap } from "../core/focus_trap";
 
 /**
  * PlayerUI class - manages UI state updates

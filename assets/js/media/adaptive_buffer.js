@@ -15,7 +15,7 @@
 
 // Need to import Hls for events
 import Hls from "hls.js";
-import { streamLogger as log } from "./logger";
+import { streamLogger as log } from "../core/logger";
 
 // Buffer health states
 const BufferHealth = {

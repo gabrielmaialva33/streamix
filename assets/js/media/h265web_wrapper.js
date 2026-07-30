@@ -30,7 +30,7 @@
 // the npm package is intentionally not installed because the browser
 // never imports it and its legacy build tree carries known advisories.
 
-import { avplayerLogger as log } from "./logger";
+import { avplayerLogger as log } from "../core/logger";
 
 const DEFAULT_BASE_URL = "/vendor/h265web/";
 const SCRIPT_NAME = "h265web.js";

@@ -12,7 +12,7 @@
  * - Provides manual diagnostics for users
  */
 
-import { detectAudioCodecs, detectMSESupport, detectVideoCodecs } from "./codec_detector";
+import { detectAudioCodecs, detectMSESupport, detectVideoCodecs } from "../media/codec_detector";
 import { getRecommendedPlayer } from "./player_preferences";
 
 // Diagnostic test types

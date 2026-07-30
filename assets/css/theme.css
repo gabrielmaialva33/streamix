@@ -1,0 +1,320 @@
+/* ============================================
+   Streamix Theme - Cinematic Streaming Design
+   ============================================ */
+
+:root {
+    /* Catppuccin Latte Palette (Raw Values) */
+    --latte-rosewater: hsl(11deg 59% 67%);
+    --latte-flamingo: hsl(0deg 60% 67%);
+    --latte-pink: hsl(316deg 73% 69%);
+    --latte-mauve: hsl(266deg 85% 58%);
+    --latte-red: hsl(347deg 87% 44%);
+    --latte-maroon: hsl(355deg 76% 59%);
+    --latte-peach: hsl(22deg 99% 52%);
+    --latte-yellow: hsl(35deg 77% 49%);
+    --latte-green: hsl(109deg 58% 40%);
+    --latte-teal: hsl(183deg 74% 35%);
+    --latte-sky: hsl(197deg 97% 46%);
+    --latte-sapphire: hsl(189deg 70% 42%);
+    --latte-blue: hsl(220deg 91% 54%);
+    --latte-lavender: hsl(231deg 97% 72%);
+    --latte-text: hsl(234deg 16% 35%);
+    --latte-subtext1: hsl(233deg 13% 41%);
+    --latte-subtext0: hsl(233deg 10% 47%);
+    --latte-overlay2: hsl(232deg 10% 53%);
+    --latte-overlay1: hsl(231deg 10% 59%);
+    --latte-overlay0: hsl(228deg 11% 65%);
+    --latte-surface2: hsl(227deg 12% 71%);
+    --latte-surface1: hsl(225deg 14% 77%);
+    --latte-surface0: hsl(223deg 16% 83%);
+    --latte-base: hsl(220deg 23% 95%);
+    --latte-mantle: hsl(220deg 22% 92%);
+    --latte-crust: hsl(220deg 21% 89%);
+
+    /* Dark Mode (Default) */
+    --bg-color: #0a0a0a;
+    --surface-color: #141414;
+    --surface-hover-color: #1f1f1f;
+    --surface-elevated-color: #1a1a1a;
+    --border-color: #2a2a2a;
+
+    /* Glass */
+    --glass-color: rgba(20, 20, 20, 0.7);
+    --glass-border-color: rgba(255, 255, 255, 0.08);
+
+    /* Text */
+    --text-primary: #ffffff;
+    --text-secondary: #a3a3a3;
+    --text-muted: #6b6b6b;
+
+    /* Brand */
+    --brand-color: #e50914;
+    --brand-hover-color: #f6121d;
+    --accent-color: #46d369;
+
+    /* Status */
+    --success-color: #46d369;
+    --warning-color: #f59e0b;
+    --error-color: #ef4444;
+    --info-color: #3b82f6;
+}
+
+/* Dark mode only — no light mode variant */
+
+@theme {
+    /* Colors - mapped to variables */
+    --color-background: var(--bg-color);
+    --color-surface: var(--surface-color);
+    --color-surface-hover: var(--surface-hover-color);
+    --color-surface-elevated: var(--surface-elevated-color);
+    --color-border: var(--border-color);
+
+    /* Glass */
+    --color-glass: var(--glass-color);
+    --color-glass-border: var(--glass-border-color);
+
+    /* Text */
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-muted: var(--text-muted);
+
+    /* Brand colors */
+    --color-brand: var(--brand-color);
+    --color-brand-hover: var(--brand-hover-color);
+    --color-accent: var(--accent-color);
+
+    /* Status colors */
+    --color-success: var(--success-color);
+    --color-warning: var(--warning-color);
+    --color-error: var(--error-color);
+    --color-info: var(--info-color);
+
+    /* Latte Palette Extensions */
+    --color-latte-rosewater: var(--latte-rosewater);
+    --color-latte-flamingo: var(--latte-flamingo);
+    --color-latte-pink: var(--latte-pink);
+    --color-latte-mauve: var(--latte-mauve);
+    --color-latte-red: var(--latte-red);
+    --color-latte-maroon: var(--latte-maroon);
+    --color-latte-peach: var(--latte-peach);
+    --color-latte-yellow: var(--latte-yellow);
+    --color-latte-green: var(--latte-green);
+    --color-latte-teal: var(--latte-teal);
+    --color-latte-sky: var(--latte-sky);
+    --color-latte-sapphire: var(--latte-sapphire);
+    --color-latte-blue: var(--latte-blue);
+    --color-latte-lavender: var(--latte-lavender);
+    --color-latte-text: var(--latte-text);
+    --color-latte-subtext1: var(--latte-subtext1);
+    --color-latte-subtext0: var(--latte-subtext0);
+    --color-latte-overlay2: var(--latte-overlay2);
+    --color-latte-overlay1: var(--latte-overlay1);
+    --color-latte-overlay0: var(--latte-overlay0);
+    --color-latte-surface2: var(--latte-surface2);
+    --color-latte-surface1: var(--latte-surface1);
+    --color-latte-surface0: var(--latte-surface0);
+    --color-latte-base: var(--latte-base);
+    --color-latte-mantle: var(--latte-mantle);
+    --color-latte-crust: var(--latte-crust);
+
+    /* Spacing */
+    --spacing-gutter: 4%;
+
+    /* Compact metadata type scale (Metronic text-2sm / text-2xs) */
+    --text-2sm: 0.8125rem;
+    --text-2sm--line-height: calc(1.075 / 0.8125);
+    --text-2xs: 0.6875rem;
+    --text-2xs--line-height: calc(0.825 / 0.6875);
+
+    /* Border radius — Metronic-inspired scale */
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.25rem;
+
+    /* Shadows — Elevation system (Metronic-inspired) */
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-dropdown: 0 12px 48px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.8), 0 8px 24px rgba(0, 0, 0, 0.4);
+
+    /* Motion tokens — spring physics + smooth */
+    --duration-fast: 150ms;
+    --duration-normal: 200ms;
+    --duration-slow: 300ms;
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+    /* Surface finishing (Metronic v9.5 dark recipe: borders define
+       structure; a faint top inset reads as machined edge) */
+    --border-highlight: rgb(255 255 255 / 0.08);
+    --inset-highlight: inset 0 1px 0 rgb(255 255 255 / 0.04);
+
+    /* Scrollbar (thin, track-less — Metronic scrollable.css) */
+    --scrollbar-thumb: #2e2e2e;
+    --scrollbar-thumb-hover: #454545;
+}
+
+/* Base styles */
+html,
+body {
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: system-ui, -apple-system, sans-serif;
+    /* Disable macOS elastic/bounce scroll */
+    overscroll-behavior: none;
+}
+
+/* Thin, track-less scrollbars everywhere (Metronic scrollable.css).
+   The default Chrome scrollbar is a bright slab that breaks the dark
+   theme on every overflow container. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 0.4rem;
+    height: 0.4rem;
+}
+
+*::-webkit-scrollbar-track {
+    background-color: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 1.25rem;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+    background-color: transparent;
+}
+
+/* Brand-tinted text selection */
+::selection {
+    background-color: rgb(229 9 20 / 0.35);
+    color: #ffffff;
+}
+
+/* Visible keyboard focus on every interactive element; pointer focus
+   stays quiet (the .content-card rules above already special-case
+   carousel items). */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+/* Custom utility classes */
+@utility text-gradient {
+    background: linear-gradient(90deg, var(--color-brand), var(--color-accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+@utility glass {
+    background: var(--color-glass);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--color-glass-border);
+    box-shadow: var(--inset-highlight);
+}
+
+@utility glass-subtle {
+    background: var(--color-glass);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* Skip layout and paint for off-screen catalog shelves. Browsers without
+   content-visibility support simply ignore this progressive enhancement. */
+@utility render-lazy {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+}
+
+/*
+ * Safari iOS escape hatch — heavy backdrop-filter on fixed elements
+ * stalls the WebSocket handshake, which lined up with users seeing
+ * the home LiveView stuck on its skeleton. The fixed bottom nav uses
+ * `glass`. We drop the blur on iOS WebKit and bump opacity so the
+ * surface still reads as glass-like. Other browsers keep the effect.
+ * Ref: https://mrpopov.com/posts/elixir-phoenix-optimisations-iphone-safari/
+ */
+html.ios-webkit .glass,
+html.ios-webkit .glass-subtle,
+html.ios-webkit header[data-scrolled="true"] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(20, 20, 20, 0.92) !important;
+}
+
+@utility card-hover {
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth);
+
+    &:hover {
+        transform: scale(1.05);
+        box-shadow:
+            inset 0 0 0 1px var(--border-highlight),
+            var(--shadow-card-hover);
+        z-index: 10;
+    }
+}
+
+@utility card-lift {
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth);
+
+    &:hover {
+        transform: translateY(-6px) scale(1.02);
+        box-shadow:
+            inset 0 0 0 1px var(--border-highlight),
+            var(--shadow-card-hover);
+        z-index: 10;
+    }
+}
+
+@utility poster-card {
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    transition:
+        transform var(--duration-normal) var(--ease-spring),
+        box-shadow var(--duration-normal) var(--ease-smooth);
+    &:hover {
+        transform: scale(1.08);
+        box-shadow:
+            inset 0 0 0 1px var(--border-highlight),
+            var(--shadow-card-hover);
+        z-index: 20;
+    }
+}
+
+/* Elevated panel finish — border defines the edge, a faint top inset
+   light gives the machined look (Metronic dark cards). Drop on any
+   surface/section/dropdown container. */
+@utility surface-card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow:
+        var(--inset-highlight),
+        var(--shadow-card);
+}
+

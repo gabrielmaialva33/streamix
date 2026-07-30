@@ -9,7 +9,7 @@ import {
   isStandalonePwa,
   readEngineFlag,
   scheduleLowPriority,
-} from "../lib/playback_environment.js";
+} from "../player/playback_environment.js";
 
 test("reads experimental engine flags without requiring browser storage", () => {
   assert.equal(readEngineFlag({ dataset: { featureAvbridge: "true" } }, "avbridge"), true);

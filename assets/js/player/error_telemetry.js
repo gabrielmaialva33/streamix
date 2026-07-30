@@ -12,7 +12,7 @@
  * - Aggregates errors for pattern detection
  */
 
-import { getCapabilitySummary } from "./codec_detector";
+import { getCapabilitySummary } from "../media/codec_detector";
 import { getDeviceCompatibilityReport } from "./player_preferences";
 
 // Error history for pattern detection

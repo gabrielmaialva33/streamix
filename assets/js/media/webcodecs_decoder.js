@@ -8,7 +8,7 @@
  * and `video_player.js`. Trimmed to just those.
  */
 
-import { playerLogger as log } from "./logger";
+import { playerLogger as log } from "../core/logger";
 
 const hardwareSupportCache = new Map();
 let webCodecsCapabilityReportPromise = null;

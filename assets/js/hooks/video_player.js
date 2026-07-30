@@ -1,32 +1,58 @@
-import {
-  adjustAudioVolume,
-  audioOutputVolume,
-  hydrateAudioState,
-  setAudioVolume,
-  toggleAudioMute,
-} from "../lib/audio_state";
+import { KeyboardManager } from "../core/keyboard_manager";
+import { playerLogger as log, setErrorReporter } from "../core/logger";
 import {
   getCapabilitySummary,
   getCodecCapabilityReport,
   getMediaDecodingInfo,
-} from "../lib/codec_detector";
-import { CodecAwareABR, getCodecRecommendation } from "../lib/codec_priority";
-import { createErrorReport, detectErrorPatterns, formatErrorForLog } from "../lib/error_telemetry";
+} from "../media/codec_detector";
+import { CodecAwareABR, getCodecRecommendation } from "../media/codec_priority";
+import { NativeBufferManager } from "../media/native_buffer";
+import { NetworkMonitor } from "../media/network_monitor";
+import { getHls, isHlsJsSupported, isMpegtsSupported } from "../media/player_libs";
+import {
+  buildQualityProbeCandidates,
+  detectQualityCodec,
+  qualityVideoCodec,
+} from "../media/quality_probe";
+import { getFileExtension, getStreamType, StreamLoader } from "../media/stream_loader";
+import {
+  ContentType,
+  FeatureFlags,
+  getFeatureRecommendations,
+  getStreamingConfig,
+  selectStreamingMode,
+} from "../media/streaming_config";
+import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../media/webcodecs_decoder";
+import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../media/worker_mse";
+import { createAspectRatioController } from "../player/aspect_ratio_controller";
+import { createAudioController } from "../player/audio_controller";
+import { audioOutputVolume } from "../player/audio_state";
+import { selectEngine } from "../player/engine_selector";
+import {
+  createErrorReport,
+  detectErrorPatterns,
+  formatErrorForLog,
+} from "../player/error_telemetry";
+import { evaluateFallbackAttempt } from "../player/fallback_policy";
 import {
   buildIosPlayerState,
   readIosPlayerState,
   writeIosPlayerState,
-} from "../lib/ios_playback_state";
-import { KeyboardManager } from "../lib/keyboard_manager";
-import { playerLogger as log, setErrorReporter } from "../lib/logger";
-import { NativeBufferManager } from "../lib/native_buffer";
-import { NetworkMonitor } from "../lib/network_monitor";
+} from "../player/ios_playback_state";
+import { LifecycleScope } from "../player/lifecycle_scope";
+import { createMobileControls } from "../player/mobile_controls";
+import {
+  waitForNativeReady as awaitNativeReady,
+  waitForNativeSeek as awaitNativeSeek,
+  configureNativePlaybackElement as configureNativeElement,
+} from "../player/native_playback_controller";
+import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
 import {
   nextEpisodeCountdownWidth,
   nextEpisodePath,
   parseNextEpisode,
   shouldTriggerNextEpisode,
-} from "../lib/next_episode";
+} from "../player/next_episode";
 import {
   getPlaybackResourcePolicy,
   hasWebCodecsHevcSupport,
@@ -36,9 +62,9 @@ import {
   isStandalonePwa,
   readEngineFlag,
   scheduleLowPriority,
-} from "../lib/playback_environment";
-import { diagnoseError, runQuickDiagnostics } from "../lib/player_diagnostics";
-import { getHls, isHlsJsSupported, isMpegtsSupported } from "../lib/player_libs";
+} from "../player/playback_environment";
+import { PlaybackSession } from "../player/playback_session";
+import { diagnoseError, runQuickDiagnostics } from "../player/player_diagnostics";
 import {
   forgetRecommendedPlayer,
   getPlaybackPosition,
@@ -52,29 +78,8 @@ import {
   savePreferAVPlayer,
   saveSubtitleTrack,
   saveVolume,
-} from "../lib/player_preferences";
-import { PlayerUI } from "../lib/player_ui";
-import {
-  buildQualityProbeCandidates,
-  detectQualityCodec,
-  qualityVideoCodec,
-} from "../lib/quality_probe";
-import { getFileExtension, getStreamType, StreamLoader } from "../lib/stream_loader";
-import {
-  ContentType,
-  FeatureFlags,
-  getFeatureRecommendations,
-  getStreamingConfig,
-  selectStreamingMode,
-} from "../lib/streaming_config";
-import { perceivedToLinear } from "../lib/volume_utils";
-import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../lib/webcodecs_decoder";
-import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../lib/worker_mse";
-import { createAspectRatioController } from "../player/aspect_ratio_controller";
-import { selectEngine } from "../player/engine_selector";
-import { createMobileControls } from "../player/mobile_controls";
-import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
-import { PlaybackSession } from "../player/playback_session";
+} from "../player/player_preferences";
+import { PlayerUI } from "../player/player_ui";
 import {
   findPortugueseTrack,
   formatTrackLabel,
@@ -89,7 +94,7 @@ let avPlayerModulePromise = null;
 async function loadAVPlayer() {
   if (!AVPlayerWrapper) {
     log.debug("Lazy loading AVPlayer module...");
-    avPlayerModulePromise ||= import("../lib/avplayer_wrapper").catch((error) => {
+    avPlayerModulePromise ||= import("../media/avplayer_wrapper").catch((error) => {
       avPlayerModulePromise = null;
       throw error;
     });
@@ -111,7 +116,7 @@ let avbridgeModulePromise = null;
 async function loadAvbridge() {
   if (!AvbridgeWrapper) {
     log.debug("Lazy loading avbridge module...");
-    avbridgeModulePromise ||= import("../lib/avbridge_wrapper").catch((error) => {
+    avbridgeModulePromise ||= import("../media/avbridge_wrapper").catch((error) => {
       avbridgeModulePromise = null;
       throw error;
     });
@@ -132,7 +137,7 @@ let h265webModulePromise = null;
 async function loadH265web() {
   if (!H265webWrapper) {
     log.debug("Lazy loading h265web module...");
-    h265webModulePromise ||= import("../lib/h265web_wrapper").catch((error) => {
+    h265webModulePromise ||= import("../media/h265web_wrapper").catch((error) => {
       h265webModulePromise = null;
       throw error;
     });
@@ -342,6 +347,10 @@ const VideoPlayer = {
   },
 
   initializeState() {
+    this.lifecycle = new LifecycleScope({
+      onDisposeError: (error) => log.warn("[VideoPlayer] Lifecycle cleanup failed:", error),
+    });
+
     // DOM elements
     this.video = this.el.querySelector("video");
     this.configureNativePlaybackElement();
@@ -420,12 +429,15 @@ const VideoPlayer = {
     this.usingAVPlayer = false;
     this.audioCheckTimeout = null;
     this.avPlayerAttempted = false;
-    // Canonical audio state shared by every playback engine. Keeping this
-    // independent from the temporarily-reset native <video> prevents engine
-    // switches from showing an audible UI while the active output is muted.
-    this.avPlayerVolume = 1;
-    this.avPlayerMuted = false;
-    this._lastAudibleVolume = 1;
+    // One canonical audio state feeds every playback engine and the UI. It
+    // remains independent from temporary native <video> resets during engine
+    // switches, so muted/output state cannot drift across fallbacks.
+    this.audioController = createAudioController({
+      applyOutput: (snapshot) => this.applyAudioOutput(snapshot),
+      render: ({ volume, muted }) => this.playerUI?.updateVolumeUI(volume, muted),
+      saveVolume,
+      saveMuted,
+    });
     this.avPlayerTimeInterval = null;
     this.preferAVPlayer = false; // Manual audio compatibility mode
 
@@ -480,10 +492,9 @@ const VideoPlayer = {
 
   loadPreferences() {
     const prefs = getPreferences(this.contentId);
-    const audioState = hydrateAudioState(prefs);
 
     // Apply volume (prefs.volume is UI value, convert to perceived for backends)
-    this.setCanonicalAudioState(audioState);
+    this.setCanonicalAudioState(prefs);
     this.applyAudioState();
 
     // Store track preferences to apply after manifest loads
@@ -523,7 +534,7 @@ const VideoPlayer = {
     // Setup retry button
     const retryBtn = this.el.querySelector(".retry-btn");
     if (retryBtn) {
-      retryBtn.addEventListener("click", () => {
+      this.lifecycle.listen(retryBtn, "click", () => {
         this.playerUI.hideError();
         this.retryCount = 0;
         this.fallbackAttempts = 0;
@@ -947,7 +958,7 @@ const VideoPlayer = {
       });
       this.togglePlayPause();
     };
-    this.el.addEventListener("click", this._onIosPwaTap);
+    this.lifecycle.listen(this.el, "click", this._onIosPwaTap);
   },
 
   shouldHandleIosPwaTap(event) {
@@ -996,16 +1007,20 @@ const VideoPlayer = {
 
   setupEventListeners() {
     // DOM Custom Events from UI Controls
-    this.el.addEventListener("player:toggle-play", () => this.togglePlayPause());
-    this.el.addEventListener("player:toggle-mute", () => this.toggleMute());
-    this.el.addEventListener("player:toggle-fullscreen", () => this.toggleFullscreen());
-    this.el.addEventListener("player:toggle-pip", () => this.togglePiP());
-    this.el.addEventListener("player:set-speed", (e) => {
+    this.lifecycle.listen(this.el, "player:toggle-play", () => this.togglePlayPause());
+    this.lifecycle.listen(this.el, "player:toggle-mute", () => this.toggleMute());
+    this.lifecycle.listen(this.el, "player:toggle-fullscreen", () => this.toggleFullscreen());
+    this.lifecycle.listen(this.el, "player:toggle-pip", () => this.togglePiP());
+    this.lifecycle.listen(this.el, "player:set-speed", (e) => {
       const speed = parseFloat(e.detail?.speed || 1);
       this.setPlaybackRate(speed);
     });
-    this.el.addEventListener("player:toggle-avplayer", () => this.toggleAVPlayerPreference());
-    this.playerUI.elements.retryBtn?.addEventListener("click", () => this.retryPlaybackFromError());
+    this.lifecycle.listen(this.el, "player:toggle-avplayer", () => this.toggleAVPlayerPreference());
+    if (this.playerUI.elements.retryBtn) {
+      this.lifecycle.listen(this.playerUI.elements.retryBtn, "click", () =>
+        this.retryPlaybackFromError(),
+      );
+    }
     this.setupIosPwaTapControls();
 
     // Mobile Touch Support
@@ -1021,21 +1036,21 @@ const VideoPlayer = {
     // Volume slider input
     const volumeSlider = this.el.querySelector("#volume-slider");
     if (volumeSlider) {
-      volumeSlider.addEventListener("input", (e) => {
+      this.lifecycle.listen(volumeSlider, "input", (e) => {
         const volume = parseInt(e.target.value, 10) / 100;
         this.setVolume(volume);
       });
     }
 
     // Video Element Events
-    this.video?.addEventListener("play", () => {
+    this.lifecycle.listenOptional(this.video, "play", () => {
       // Autoplay-blocked overlay must not survive playback started by any
       // other path (keyboard, watch party sync, HLS/AVPlayer retry races)
       this.playerUI.removePlayButton();
       this.playerUI.updatePlayPauseUI(false);
       this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
     });
-    this.video?.addEventListener("pause", () => {
+    this.lifecycle.listenOptional(this.video, "pause", () => {
       this.playerUI.updatePlayPauseUI(true);
       this.clearNativeBufferingState();
       this.persistIosPlaybackState({
@@ -1044,14 +1059,18 @@ const VideoPlayer = {
         reason: "pause",
       });
     });
-    this.video?.addEventListener("play", () => this.updateMediaSessionPlaybackState());
-    this.video?.addEventListener("pause", () => this.updateMediaSessionPlaybackState());
-    this.video?.addEventListener("ended", () => {
+    this.lifecycle.listenOptional(this.video, "play", () => this.updateMediaSessionPlaybackState());
+    this.lifecycle.listenOptional(this.video, "pause", () =>
+      this.updateMediaSessionPlaybackState(),
+    );
+    this.lifecycle.listenOptional(this.video, "ended", () => {
       this.updateMediaSessionPlaybackState();
       this.flushPlaybackMetrics("completed");
     });
-    this.video?.addEventListener("volumechange", () => this.handleNativeVolumeChange());
-    this.video?.addEventListener("timeupdate", () => {
+    this.lifecycle.listenOptional(this.video, "volumechange", () =>
+      this.handleNativeVolumeChange(),
+    );
+    this.lifecycle.listenOptional(this.video, "timeupdate", () => {
       this.updateTimeUI();
 
       // Safety net: if video time is advancing, loading should be hidden
@@ -1061,11 +1080,11 @@ const VideoPlayer = {
         this.playbackMetrics?.markPlaying();
       }
     });
-    this.video?.addEventListener("loadedmetadata", () => this.updateTimeUI());
-    this.video?.addEventListener("ratechange", () =>
+    this.lifecycle.listenOptional(this.video, "loadedmetadata", () => this.updateTimeUI());
+    this.lifecycle.listenOptional(this.video, "ratechange", () =>
       this.playerUI.updateSpeedUI(this.video.playbackRate),
     );
-    this.video?.addEventListener("progress", () => {
+    this.lifecycle.listenOptional(this.video, "progress", () => {
       this.updateBufferBar();
 
       // For live streams: if buffer is filling, stream is healthy → hide loading
@@ -1083,14 +1102,14 @@ const VideoPlayer = {
     // remove it — without that, every LiveView nav stacked one
     // more listener on `document` for the lifetime of the SPA.
     this._onFullscreenChange = () => this.playerUI.updateFullscreenUI(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", this._onFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);
+    this.lifecycle.listen(document, "fullscreenchange", this._onFullscreenChange);
+    this.lifecycle.listen(document, "webkitfullscreenchange", this._onFullscreenChange);
 
     this._onIosVisibilityChange = () => this.handleIosVisibilityChange();
-    document.addEventListener("visibilitychange", this._onIosVisibilityChange);
+    this.lifecycle.listen(document, "visibilitychange", this._onIosVisibilityChange);
 
     this._onPageShow = () => this.resumeIosPlaybackState();
-    window.addEventListener("pageshow", this._onPageShow);
+    this.lifecycle.listen(window, "pageshow", this._onPageShow);
 
     this._onPageTeardown = (event) => {
       this.handleIosPageHide(event);
@@ -1098,8 +1117,8 @@ const VideoPlayer = {
       this.flushPlaybackMetrics("cancelled");
       this.emergencyStopPlayback();
     };
-    window.addEventListener("pagehide", this._onPageTeardown, { capture: true });
-    window.addEventListener("beforeunload", this._onPageTeardown, { capture: true });
+    this.lifecycle.listen(window, "pagehide", this._onPageTeardown, { capture: true });
+    this.lifecycle.listen(window, "beforeunload", this._onPageTeardown, { capture: true });
 
     // LiveView commands
     this.handleEvent("set_quality", ({ level }) => this.setQuality(level));
@@ -1122,20 +1141,20 @@ const VideoPlayer = {
     });
 
     // PiP events
-    this.video?.addEventListener("enterpictureinpicture", () => {
+    this.lifecycle.listenOptional(this.video, "enterpictureinpicture", () => {
       this.pipActive = true;
       this.pushEventSafe("pip_toggled", { active: true });
     });
 
-    this.video?.addEventListener("leavepictureinpicture", () => {
+    this.lifecycle.listenOptional(this.video, "leavepictureinpicture", () => {
       this.pipActive = false;
       this.pushEventSafe("pip_toggled", { active: false });
     });
 
     // Progress tracking for VOD
     if (this.contentType === "vod") {
-      this.video?.addEventListener("timeupdate", () => this.reportProgress());
-      this.video?.addEventListener("durationchange", () => {
+      this.lifecycle.listenOptional(this.video, "timeupdate", () => this.reportProgress());
+      this.lifecycle.listenOptional(this.video, "durationchange", () => {
         if (this.video.duration && Number.isFinite(this.video.duration)) {
           this.pushEventSafe("duration_available", {
             duration: Math.floor(this.video.duration),
@@ -1144,7 +1163,7 @@ const VideoPlayer = {
       });
     }
 
-    this.video?.addEventListener("seeking", () => {
+    this.lifecycle.listenOptional(this.video, "seeking", () => {
       this.lastTimelineSeekAt = Date.now();
       if (this._bufferingDebounce) {
         clearTimeout(this._bufferingDebounce);
@@ -1152,7 +1171,7 @@ const VideoPlayer = {
       }
     });
 
-    this.video?.addEventListener("seeked", () => {
+    this.lifecycle.listenOptional(this.video, "seeked", () => {
       if (!this._resumeAfterNativeSeek) return;
 
       this._resumeAfterNativeSeek = false;
@@ -1163,7 +1182,7 @@ const VideoPlayer = {
     });
 
     // Buffer health monitoring with debounce to prevent flickering
-    this.video?.addEventListener("waiting", () => {
+    this.lifecycle.listenOptional(this.video, "waiting", () => {
       // Debounce live buffering more aggressively; live TS/MSE often emits
       // sub-second waiting pulses while the next chunk is already arriving.
       if (this._bufferingDebounce) {
@@ -1188,7 +1207,7 @@ const VideoPlayer = {
       }, bufferingDelay);
     });
 
-    this.video?.addEventListener("playing", () => {
+    this.lifecycle.listenOptional(this.video, "playing", () => {
       // Cancel any pending buffering indicator
       if (this._bufferingDebounce) {
         clearTimeout(this._bufferingDebounce);
@@ -1202,7 +1221,7 @@ const VideoPlayer = {
 
     // Also hide loading on canplaythrough (video exits buffering during playback)
     // The "playing" event doesn't fire when video exits buffering if already playing
-    this.video?.addEventListener("canplaythrough", () => {
+    this.lifecycle.listenOptional(this.video, "canplaythrough", () => {
       if (this._bufferingDebounce) {
         clearTimeout(this._bufferingDebounce);
         this._bufferingDebounce = null;
@@ -1217,14 +1236,12 @@ const VideoPlayer = {
   // UI Update Helpers
   // ============================================
 
-  applyAudioState() {
-    const outputVolume = audioOutputVolume(this.canonicalAudioState());
-
+  applyAudioOutput({ outputVolume, muted }) {
     // Keep the native element synchronized even while it is hidden. That
     // makes a later AVPlayer -> native fallback inherit the same audio state.
     if (this.video) {
       this.video.volume = outputVolume;
-      this.video.muted = this.avPlayerMuted;
+      this.video.muted = muted;
     }
 
     if (this.usingAVPlayer && this.avPlayer) {
@@ -1236,22 +1253,20 @@ const VideoPlayer = {
     }
   },
 
+  applyAudioState() {
+    this.audioController.applyOutput();
+  },
+
   canonicalAudioState() {
-    return {
-      volume: this.avPlayerVolume,
-      muted: this.avPlayerMuted,
-      lastAudibleVolume: this._lastAudibleVolume,
-    };
+    return this.audioController.getState();
   },
 
   setCanonicalAudioState(state) {
-    this.avPlayerVolume = state.volume;
-    this.avPlayerMuted = state.muted;
-    this._lastAudibleVolume = state.lastAudibleVolume;
+    this.audioController.replaceState(state);
   },
 
   updateVolumeUI() {
-    this.playerUI.updateVolumeUI(this.avPlayerVolume, this.avPlayerMuted);
+    this.audioController.render();
   },
 
   handleNativeVolumeChange() {
@@ -1260,29 +1275,14 @@ const VideoPlayer = {
       return;
     }
 
-    const expectedVolume = audioOutputVolume(this.canonicalAudioState());
-    const volumeMismatch = Math.abs(this.video.volume - expectedVolume) > 0.01;
-    const mutedMismatch = this.video.muted !== this.avPlayerMuted;
+    const changed = this.audioController.syncNativeState({
+      outputVolume: this.video.volume,
+      muted: this.video.muted,
+    });
 
-    if (volumeMismatch || mutedMismatch) {
+    if (changed) {
       this.playbackMetrics?.markMutedMismatch();
-
-      let audioState;
-
-      if (!this.video.muted && this.video.volume === 0) {
-        audioState = toggleAudioMute({ ...this.canonicalAudioState(), muted: true });
-      } else {
-        audioState = setAudioVolume(
-          this.canonicalAudioState(),
-          perceivedToLinear(this.video.volume),
-        );
-        audioState.muted = this.video.muted;
-      }
-
-      this.setCanonicalAudioState(audioState);
-      saveVolume(audioState.volume);
-      saveMuted(audioState.muted);
-      this.applyAudioState();
+      return;
     }
 
     this.updateVolumeUI();
@@ -1338,16 +1338,7 @@ const VideoPlayer = {
   },
 
   setVolume(volume) {
-    const audioState = setAudioVolume(this.canonicalAudioState(), volume);
-    this.setCanonicalAudioState(audioState);
-
-    if (audioState.volume > 0) {
-      saveMuted(false);
-    }
-
-    this.applyAudioState();
-    saveVolume(audioState.volume);
-    this.updateVolumeUI();
+    this.audioController.setVolume(volume);
   },
 
   setPlaybackRate(rate) {
@@ -1409,6 +1400,7 @@ const VideoPlayer = {
     const currentTime = Math.floor(this.getCurrentTime());
     const duration = Math.floor(this.getDuration());
     const paused = this.isPaused();
+    const audioState = this.canonicalAudioState();
     const state = buildIosPlayerState(
       {
         contentId: this.contentId,
@@ -1416,8 +1408,8 @@ const VideoPlayer = {
         currentTime,
         duration,
         paused,
-        muted: this.avPlayerMuted,
-        volume: this.avPlayerVolume,
+        muted: audioState.muted,
+        volume: audioState.volume,
         playbackRate: this.video?.playbackRate ?? 1,
       },
       extra,
@@ -1466,12 +1458,11 @@ const VideoPlayer = {
     const state = readIosPlayerState(this.contentId);
     if (!state) return;
 
-    this.setCanonicalAudioState(
-      hydrateAudioState({
-        volume: Number.isFinite(state.volume) ? state.volume : this.avPlayerVolume,
-        muted: typeof state.muted === "boolean" ? state.muted : this.avPlayerMuted,
-      }),
-    );
+    const currentAudioState = this.canonicalAudioState();
+    this.setCanonicalAudioState({
+      volume: Number.isFinite(state.volume) ? state.volume : currentAudioState.volume,
+      muted: typeof state.muted === "boolean" ? state.muted : currentAudioState.muted,
+    });
     this.applyAudioState();
 
     if (Number.isFinite(state.playbackRate) && state.playbackRate > 0) {
@@ -1992,11 +1983,7 @@ const VideoPlayer = {
   },
 
   configureNativePlaybackElement() {
-    if (!this.video) return;
-
-    this.video.autoplay = false;
-    this.video.removeAttribute("autoplay");
-    this.video.preload = "metadata";
+    configureNativeElement(this.video);
   },
 
   shouldCheckNativeAudio() {
@@ -2047,61 +2034,19 @@ const VideoPlayer = {
   },
 
   waitForNativeReady(sessionId) {
-    if (!this.video || this.video.readyState >= HTMLMediaElement.HAVE_METADATA) {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      const done = () => {
-        cleanup();
-        resolve();
-      };
-      const cleanup = () => {
-        window.clearTimeout(timeout);
-        this.video?.removeEventListener("loadedmetadata", done);
-        this.video?.removeEventListener("canplay", done);
-        this.video?.removeEventListener("error", done);
-      };
-      const timeout = window.setTimeout(done, 2500);
-
-      this.video.addEventListener("loadedmetadata", done, { once: true });
-      this.video.addEventListener("canplay", done, { once: true });
-      this.video.addEventListener("error", done, { once: true });
-
-      if (!this.isCurrentPlaybackSession(sessionId)) done();
+    return awaitNativeReady({
+      video: this.video,
+      isCurrent: () => this.isCurrentPlaybackSession(sessionId),
     });
   },
 
   waitForNativeSeek(sessionId, targetTime) {
-    if (!this.video || targetTime <= 0 || !this.isCurrentPlaybackSession(sessionId)) {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      const done = () => {
-        cleanup();
-        resolve();
-      };
-      const cleanup = () => {
-        window.clearTimeout(timeout);
-        this.video?.removeEventListener("seeked", done);
-        this.video?.removeEventListener("timeupdate", done);
-        this.video?.removeEventListener("canplay", done);
-        this.video?.removeEventListener("error", done);
-      };
-      const timeout = window.setTimeout(done, 2500);
-
-      this.video.addEventListener("seeked", done, { once: true });
-      this.video.addEventListener("timeupdate", done, { once: true });
-      this.video.addEventListener("canplay", done, { once: true });
-      this.video.addEventListener("error", done, { once: true });
-
-      try {
-        this.video.currentTime = targetTime;
-      } catch (error) {
-        log.debug("[VideoPlayer] Native seek before play failed:", error.message);
-        done();
-      }
+    return awaitNativeSeek({
+      video: this.video,
+      targetTime,
+      isCurrent: () => this.isCurrentPlaybackSession(sessionId),
+      onSeekError: (error) =>
+        log.debug("[VideoPlayer] Native seek before play failed:", error.message),
     });
   },
 
@@ -2896,36 +2841,27 @@ const VideoPlayer = {
    * Check circuit breaker before attempting fallback (exponential backoff)
    */
   canAttemptFallback() {
-    const now = Date.now();
+    const decision = evaluateFallbackAttempt(
+      {
+        attempts: this.fallbackAttempts,
+        maxAttempts: this.maxFallbackAttempts,
+        lastAttemptAt: this.lastFallbackTime,
+        cooldowns: this.fallbackCooldowns,
+      },
+      Date.now(),
+    );
 
-    // Check if we've exceeded max attempts
-    if (this.fallbackAttempts >= this.maxFallbackAttempts) {
-      // Use last cooldown value (max) for reset check
-      const maxCooldown = this.fallbackCooldowns[this.fallbackCooldowns.length - 1];
-      if (now - this.lastFallbackTime < maxCooldown) {
-        log.debug("[VideoPlayer] Circuit breaker: max attempts reached, cooling down");
-        return false;
-      }
-      // Reset after cooldown
-      this.fallbackAttempts = 0;
+    this.fallbackAttempts = decision.attempts;
+
+    if (!decision.allowed) {
+      const remaining = Math.ceil(decision.remainingMs / 1000);
+      log.debug(
+        `[VideoPlayer] Circuit breaker: ${decision.reason}, waiting ${remaining}s ` +
+          `(attempt ${this.fallbackAttempts})`,
+      );
     }
 
-    // Check exponential backoff between attempts
-    if (this.fallbackAttempts > 0 && this.lastFallbackTime > 0) {
-      const cooldownIndex = Math.min(this.fallbackAttempts - 1, this.fallbackCooldowns.length - 1);
-      const requiredCooldown = this.fallbackCooldowns[cooldownIndex];
-      const elapsed = now - this.lastFallbackTime;
-
-      if (elapsed < requiredCooldown) {
-        const remaining = Math.ceil((requiredCooldown - elapsed) / 1000);
-        log.debug(
-          `[VideoPlayer] Circuit breaker: waiting ${remaining}s (attempt ${this.fallbackAttempts})`,
-        );
-        return false;
-      }
-    }
-
-    return true;
+    return decision.allowed;
   },
 
   async tryAVPlayerFallback() {
@@ -3835,7 +3771,7 @@ const VideoPlayer = {
         setPlaybackRate: (rate) => this.setPlaybackRate(rate),
         getDuration: () => this.getDuration(),
         isPaused: () => this.isPaused(),
-        isMuted: () => (this.usingAVPlayer ? this.avPlayerMuted : this.video?.muted),
+        isMuted: () => this.canonicalAudioState().muted,
         isPiPSupported: () => this.isPiPSupported(),
         getPlaybackRate: () => this.video?.playbackRate || 1,
       },
@@ -3889,31 +3825,12 @@ const VideoPlayer = {
   },
 
   toggleMute() {
-    const previousVolume = this.avPlayerVolume;
-    const audioState = toggleAudioMute(this.canonicalAudioState());
-    this.setCanonicalAudioState(audioState);
-
-    if (audioState.volume !== previousVolume) {
-      saveVolume(audioState.volume);
-    }
-
-    this.applyAudioState();
-    saveMuted(audioState.muted);
-    this.updateVolumeUI();
+    const audioState = this.audioController.toggleMute();
     this.pushEventSafe("mute_toggled", { muted: audioState.muted });
   },
 
   adjustVolume(delta) {
-    const audioState = adjustAudioVolume(this.canonicalAudioState(), delta);
-    this.setCanonicalAudioState(audioState);
-
-    if (audioState.volume > 0) {
-      saveMuted(false);
-    }
-
-    this.applyAudioState();
-    saveVolume(audioState.volume);
-    this.updateVolumeUI();
+    const audioState = this.audioController.adjustVolume(delta);
     this.pushEventSafe("volume_changed", { volume: Math.round(audioState.volume * 100) });
   },
 
@@ -4011,6 +3928,8 @@ const VideoPlayer = {
   destroyed() {
     this.flushPlaybackMetrics("cancelled");
     this._destroyed = true;
+    this.lifecycle?.dispose();
+    this.lifecycle = null;
     this._startupDiagnosticsCancel?.();
     this._startupDiagnosticsCancel = null;
     this._metadataProbeCancel?.();
@@ -4028,32 +3947,11 @@ const VideoPlayer = {
     this.mobileControls?.destroy();
     this.mobileControls = null;
 
-    if (this._onFullscreenChange) {
-      document.removeEventListener("fullscreenchange", this._onFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", this._onFullscreenChange);
-      this._onFullscreenChange = null;
-    }
-
-    if (this._onPageTeardown) {
-      window.removeEventListener("pagehide", this._onPageTeardown, { capture: true });
-      window.removeEventListener("beforeunload", this._onPageTeardown, { capture: true });
-      this._onPageTeardown = null;
-    }
-
-    if (this._onIosVisibilityChange) {
-      document.removeEventListener("visibilitychange", this._onIosVisibilityChange);
-      this._onIosVisibilityChange = null;
-    }
-
-    if (this._onPageShow) {
-      window.removeEventListener("pageshow", this._onPageShow);
-      this._onPageShow = null;
-    }
-
-    if (this._onIosPwaTap) {
-      this.el?.removeEventListener("click", this._onIosPwaTap);
-      this._onIosPwaTap = null;
-    }
+    this._onFullscreenChange = null;
+    this._onPageTeardown = null;
+    this._onIosVisibilityChange = null;
+    this._onPageShow = null;
+    this._onIosPwaTap = null;
 
     // Clear audio check timeout
     if (this.audioCheckTimeout) {

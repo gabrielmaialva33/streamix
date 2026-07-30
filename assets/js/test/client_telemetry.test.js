@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { classifyDeviceClass, surfaceForPath, webVitalPayload } from "../lib/client_telemetry.js";
+import {
+  classifyDeviceClass,
+  surfaceForPath,
+  webVitalPayload,
+} from "../telemetry/client_telemetry.js";
 
 test("classifies paths without sending a raw route", () => {
   assert.equal(surfaceForPath("/watch/movie/42?token=secret"), "watch");

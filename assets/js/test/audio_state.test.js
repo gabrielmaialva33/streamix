@@ -7,7 +7,7 @@ import {
   hydrateAudioState,
   setAudioVolume,
   toggleAudioMute,
-} from "../lib/audio_state.js";
+} from "../player/audio_state.js";
 
 test("hydrates legacy persisted values into one canonical state", () => {
   assert.deepEqual(hydrateAudioState({ volume: "0.72", muted: "true" }), {

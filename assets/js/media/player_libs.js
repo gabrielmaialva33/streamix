@@ -6,7 +6,7 @@
  * This keeps the main app.js bundle lean for non-player pages.
  */
 
-import { getEnvInfo } from "./logger";
+import { getEnvInfo } from "../core/logger";
 
 let _Hls = null;
 let _mpegts = null;

@@ -1,4 +1,4 @@
-import { createLazyHook } from "../lib/lazy_hook";
+import { createLazyHook } from "../core/lazy_hook";
 import BrowseScrollRestoration from "./browse_scroll_restoration";
 import ClientTelemetry from "./client_telemetry";
 import ContentCard from "./content_card";

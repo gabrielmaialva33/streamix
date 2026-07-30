@@ -1,0 +1,46 @@
+/* ============================================
+   View Transitions — smooth page navigation
+   ============================================ */
+
+@view-transition {
+    navigation: auto;
+}
+
+::view-transition-old(root) {
+    animation: vt-fade-out 120ms ease-in;
+}
+
+::view-transition-new(root) {
+    animation: vt-fade-in 120ms ease-out;
+}
+
+/* Auth layout */
+.auth-branded-panel {
+    display: none;
+}
+@media (width >= 1024px) {
+    .auth-branded-panel {
+        display: flex;
+    }
+}
+.auth-branded-bg {
+    background: url('/images/auth-bg.jpg') center / cover no-repeat #0a0a0a;
+}
+
+@keyframes vt-fade-out {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes vt-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}

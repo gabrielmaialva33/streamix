@@ -12,7 +12,7 @@
  * - Bandwidth estimation
  */
 
-import { bufferLogger as log } from "./logger";
+import { bufferLogger as log } from "../core/logger";
 
 // Buffer health states
 const BufferHealth = {

@@ -5,6 +5,7 @@
  * including AC3, DTS, EAC3 (Dolby Digital).
  */
 
+import { getEnvInfo, avplayerLogger as log } from "../core/logger";
 import { detectWebCodecsSupport } from "./codec_detector";
 import {
   AVPLAYER_CONFIG,
@@ -13,7 +14,6 @@ import {
   getWasmUrl as getWasmUrlFromConfig,
   OTHER_WASM_FILES,
 } from "./config";
-import { getEnvInfo, avplayerLogger as log } from "./logger";
 
 // Cache for tested local WASM availability
 const localWasmAvailable = new Map();

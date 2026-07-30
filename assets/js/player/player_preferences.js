@@ -5,7 +5,7 @@
  * Preferences are scoped by content ID when available.
  */
 
-import { prefsLogger as log } from "./logger";
+import { prefsLogger as log } from "../core/logger";
 
 const STORAGE_KEY = "streamix_player_prefs";
 const POSITION_KEY = "streamix_playback_positions";

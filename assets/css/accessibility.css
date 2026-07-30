@@ -1,0 +1,54 @@
+/* ============================================
+   Reduced Motion - Accessibility
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .shimmer {
+        animation: none !important;
+        background: transparent !important;
+    }
+
+    .content-card:hover {
+        transform: none;
+    }
+
+    .card-hover:hover {
+        transform: none;
+    }
+
+    .floating-reaction {
+        animation: none !important;
+        display: none;
+    }
+}
+
+/* Watch Party — Floating Reactions */
+@keyframes float-reaction {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-200px) scale(1.5);
+    }
+}
+
+.floating-reaction {
+    animation: float-reaction 2s ease-out forwards;
+    position: absolute;
+    bottom: 0;
+    font-size: 2rem;
+    pointer-events: none;
+}
+

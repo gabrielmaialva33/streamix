@@ -6,7 +6,7 @@ import {
   buildQualityProbeCandidates,
   detectQualityCodec,
   qualityVideoCodec,
-} from "../lib/quality_probe.js";
+} from "../media/quality_probe.js";
 
 test("normalizes common manifest codec families", () => {
   assert.equal(detectQualityCodec({ codecs: "av01.0.08M.08" }), "av1");

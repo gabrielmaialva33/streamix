@@ -1,4 +1,4 @@
-import { classifyDeviceClass, webVitalPayload } from "../lib/client_telemetry";
+import { classifyDeviceClass, webVitalPayload } from "../telemetry/client_telemetry";
 
 const newBatchId = () =>
   globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;

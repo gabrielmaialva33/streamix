@@ -9,7 +9,7 @@
  * to keep the main bundle small for non-player pages.
  */
 
-import { streamLogger as log } from "./logger";
+import { streamLogger as log } from "../core/logger";
 import { getHls, getMpegts } from "./player_libs";
 import { getStreamingConfig, StreamingMode } from "./streaming_config";
 

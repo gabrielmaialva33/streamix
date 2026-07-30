@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { promptForPwaInstall, pwaInstallMode } from "../lib/pwa_install.js";
+import { promptForPwaInstall, pwaInstallMode } from "../pwa/pwa_install.js";
 
 test("prefers the installed and native states before iOS instructions", () => {
   assert.equal(

@@ -6,7 +6,7 @@ import {
   nextEpisodePath,
   parseNextEpisode,
   shouldTriggerNextEpisode,
-} from "../lib/next_episode.js";
+} from "../player/next_episode.js";
 
 test("parses only serialized object payloads", () => {
   assert.deepEqual(parseNextEpisode('{"id":42,"type":"episode"}'), {

@@ -21,7 +21,7 @@ let preloadAVPlayerWasm = null;
 async function ensurePreloadFunctionLoaded() {
   if (!preloadAVPlayerWasm) {
     try {
-      const module = await import("../lib/avplayer_wrapper");
+      const module = await import("../media/avplayer_wrapper");
       preloadAVPlayerWasm = module.preloadCommonWasm;
     } catch (_e) {
       // Module may not exist yet

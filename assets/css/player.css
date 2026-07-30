@@ -1,0 +1,184 @@
+/* ============================================
+   Mobile-First Touch Optimizations
+   ============================================ */
+
+/* Touch manipulation for better responsiveness */
+.touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Minimum touch target size (44px recommended by Apple/Google) */
+@media (max-width: 640px) {
+
+    /* Touch targets for interactive buttons only - not all links */
+    .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Player controls - always visible on mobile until user taps */
+    #player-controls {
+        opacity: 1 !important;
+    }
+
+    #player-controls.controls-hidden {
+        opacity: 0 !important;
+    }
+
+    /* Larger progress bar on mobile */
+    #progress-container {
+        height: 6px !important;
+    }
+
+    /* Better spacing for mobile player controls */
+    .player-controls-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+}
+
+/* Safe area padding for notched devices */
+@supports (padding: max(0px)) {
+    .safe-area-bottom {
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+
+    .safe-area-top {
+        padding-top: max(16px, env(safe-area-inset-top));
+    }
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Video player touch area */
+#video-player-container {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Keep native WebVTT subtitles readable without the browser's dark caption box. */
+#video-element::cue {
+    color: white;
+    background-color: transparent;
+    text-shadow:
+        -1px -1px 2px rgb(0 0 0 / 0.95),
+        1px -1px 2px rgb(0 0 0 / 0.95),
+        -1px 1px 2px rgb(0 0 0 / 0.95),
+        1px 1px 2px rgb(0 0 0 / 0.95),
+        0 2px 4px rgb(0 0 0 / 0.9);
+}
+
+.player-safe-top {
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+    padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+}
+
+.player-safe-bottom {
+    padding: 1rem;
+    padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+
+.player-safe-corner {
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    left: calc(0.75rem + env(safe-area-inset-left, 0px));
+}
+
+.player-flash-stack {
+    top: calc(4.5rem + env(safe-area-inset-top, 0px));
+    right: calc(1rem + env(safe-area-inset-right, 0px));
+    left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 640px) {
+    .player-safe-top {
+        padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
+        padding-right: calc(1.5rem + env(safe-area-inset-right, 0px));
+        padding-left: calc(1.5rem + env(safe-area-inset-left, 0px));
+    }
+
+    .player-safe-bottom {
+        padding: 1.5rem;
+        padding-right: calc(1.5rem + env(safe-area-inset-right, 0px));
+        padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+        padding-left: calc(1.5rem + env(safe-area-inset-left, 0px));
+    }
+
+    .player-safe-corner {
+        top: calc(1.5rem + env(safe-area-inset-top, 0px));
+        left: calc(1.5rem + env(safe-area-inset-left, 0px));
+    }
+
+    .player-flash-stack {
+        left: auto;
+        width: min(24rem, calc(100vw - 2rem - env(safe-area-inset-right, 0px)));
+    }
+}
+
+/* Smooth opacity transition for controls */
+#player-controls {
+    transition: opacity 0.3s ease-in-out;
+}
+
+/* A full-screen player must always retain an escape hatch on touch devices.
+   Keep only the safe-area-aware close button interactive while the rest of
+   the controls auto-hide. */
+#player-controls.touch-device.controls-hidden {
+    opacity: 1 !important;
+    pointer-events: none !important;
+}
+
+#player-controls.touch-device.controls-hidden #player-top-controls {
+    background: transparent;
+}
+
+#player-controls.touch-device.controls-hidden .player-title,
+#player-controls.touch-device.controls-hidden .player-secondary-control,
+#player-controls.touch-device.controls-hidden #player-bottom-controls {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#player-controls.touch-device.controls-hidden #player-close-btn {
+    opacity: 0.72;
+    pointer-events: auto;
+}
+
+@media (hover: none), (pointer: coarse) {
+    #player-controls.controls-hidden {
+        opacity: 1 !important;
+        pointer-events: none !important;
+    }
+
+    #player-controls.controls-hidden #player-top-controls {
+        background: transparent;
+    }
+
+    #player-controls.controls-hidden .player-title,
+    #player-controls.controls-hidden .player-secondary-control,
+    #player-controls.controls-hidden #player-bottom-controls {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    #player-controls.controls-hidden #player-close-btn {
+        opacity: 0.72;
+        pointer-events: auto;
+    }
+}
+
+/* Active/pressed states for mobile */
+@media (hover: none) {
+
+    button:active,
+    a:active {
+        opacity: 0.8;
+        transform: scale(0.95);
+    }
+}
+
