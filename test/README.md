@@ -45,7 +45,7 @@ mix test --include slow
 mix test --include playwright test/streamix_web/e2e
 ```
 
-`mix test --cover` enforces the current 45% project-wide ratchet. Raise the
+`mix test --cover` enforces the current 46% project-wide ratchet. Raise the
 threshold as coverage improves; do not lower it or add broad module exclusions
 to make a regression pass.
 
