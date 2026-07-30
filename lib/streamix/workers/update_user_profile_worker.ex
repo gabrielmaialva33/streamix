@@ -17,7 +17,7 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
     unique: [
       period: 60,
       keys: [:user_id],
-      states: [:available, :scheduled, :executing]
+      states: :incomplete
     ]
 
   require Logger

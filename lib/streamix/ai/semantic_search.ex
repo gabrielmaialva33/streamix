@@ -58,6 +58,21 @@ defmodule Streamix.AI.SemanticSearch do
   end
 
   @doc """
+  Ensures vector collections exist without requiring Qdrant to be healthy first.
+
+  This is intended for retryable startup work. An intentionally disabled AI
+  subsystem is a successful no-op, while a configured but unavailable Qdrant
+  returns its connection error so the caller can retry.
+  """
+  def bootstrap_collections do
+    if Embeddings.enabled?() and Qdrant.configured?() do
+      Qdrant.setup_collections()
+    else
+      {:ok, :disabled}
+    end
+  end
+
+  @doc """
   Searches for content using natural language query.
 
   ## Parameters

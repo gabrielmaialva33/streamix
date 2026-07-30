@@ -29,14 +29,19 @@ defmodule Streamix.AI.UserAnalytics.Profile do
         computed_at: DateTime.utc_now() |> DateTime.to_iso8601()
       }
 
-      case Qdrant.upsert_point(@user_profile_collection, user_id, profile_vector, payload) do
+      case qdrant_module().upsert_point(
+             @user_profile_collection,
+             user_id,
+             profile_vector,
+             payload
+           ) do
         {:ok, _} ->
           Logger.info("[UserAnalytics] Updated profile for user #{user_id}")
           {:ok, profile_vector}
 
         {:error, reason} ->
           Logger.warning("[UserAnalytics] Failed to store profile: #{inspect(reason)}")
-          {:ok, profile_vector}
+          {:error, {:profile_store_failed, reason}}
       end
     end
   end
@@ -101,7 +106,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   defp content_type_to_collection(_), do: :skip
 
   defp fetch_or_compute_profile(user_id) do
-    case Qdrant.get_point(@user_profile_collection, user_id) do
+    case qdrant_module().get_point(@user_profile_collection, user_id) do
       {:ok, %{vector: vector}} -> vector
       {:error, :not_found} -> compute_profile_vector(user_id)
       {:error, _} -> nil
@@ -132,7 +137,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   defp fetch_embeddings_for_collection(collection, entries) do
     ids = Enum.map(entries, & &1.content_id)
 
-    case Qdrant.get_points(collection, ids) do
+    case qdrant_module().get_points(collection, ids) do
       {:ok, points} ->
         zip_entries_with_vectors(entries, points)
 
@@ -174,5 +179,9 @@ defmodule Streamix.AI.UserAnalytics.Profile do
     acc
     |> Enum.zip(vector)
     |> Enum.map(fn {current, value} -> current + value * weight / total_weight end)
+  end
+
+  defp qdrant_module do
+    Application.get_env(:streamix, :user_profile_qdrant_module, Qdrant)
   end
 end

@@ -9,6 +9,16 @@ defmodule Streamix.AI.UserAnalyticsTest do
   alias Streamix.AI.UserAnalytics.{Filters, Indexing, Insights, Profile, Recommendations}
   alias Streamix.Iptv.{Category, Genre, History, WatchProgress}
 
+  defmodule ProfileQdrantStub do
+    def get_points(_collection, ids) do
+      {:ok, Enum.map(ids, &%{id: &1, vector: [0.25, 0.75], payload: %{}})}
+    end
+
+    def upsert_point(_collection, _id, _vector, _payload) do
+      Application.fetch_env!(:streamix, :user_profile_qdrant_result)
+    end
+  end
+
   setup do
     original_nvidia = Application.get_env(:streamix, :nvidia)
     original_gemini = Application.get_env(:streamix, :gemini)
@@ -198,6 +208,27 @@ defmodule Streamix.AI.UserAnalyticsTest do
 
       assert UserAnalytics.get_user_profile(user.id) == Profile.get_user_profile(user.id)
       assert UserAnalytics.get_user_profile(user.id) == vector
+    end
+
+    test "returns persistence failures so callers can retry profile updates" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider, %{name: "Profile Persistence"})
+      watched_movie(user, movie)
+
+      previous_module = Application.get_env(:streamix, :user_profile_qdrant_module)
+      previous_result = Application.get_env(:streamix, :user_profile_qdrant_result)
+
+      Application.put_env(:streamix, :user_profile_qdrant_module, ProfileQdrantStub)
+      Application.put_env(:streamix, :user_profile_qdrant_result, {:error, :unavailable})
+
+      on_exit(fn ->
+        restore_env(:user_profile_qdrant_module, previous_module)
+        restore_env(:user_profile_qdrant_result, previous_result)
+      end)
+
+      assert UserAnalytics.compute_user_profile(user.id) ==
+               {:error, {:profile_store_failed, :unavailable}}
     end
   end
 

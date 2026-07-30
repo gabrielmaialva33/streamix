@@ -36,6 +36,17 @@ defmodule Streamix.AI.Qdrant do
   end
 
   @doc """
+  Checks whether Qdrant is enabled without performing a network request.
+
+  Startup jobs use this to distinguish an intentionally disabled optional
+  subsystem from a temporarily unavailable Qdrant instance that should retry.
+  """
+  def configured? do
+    Application.get_env(:streamix, :qdrant, [])
+    |> Keyword.get(:enabled, true)
+  end
+
+  @doc """
   Performs a health check on the Qdrant server.
   Uses the root endpoint which returns server info.
   """
@@ -393,11 +404,6 @@ defmodule Streamix.AI.Qdrant do
   defp api_key do
     Application.get_env(:streamix, :qdrant, [])[:api_key] ||
       System.get_env("QDRANT_API_KEY")
-  end
-
-  defp configured? do
-    Application.get_env(:streamix, :qdrant, [])
-    |> Keyword.get(:enabled, true)
   end
 
   defp headers do

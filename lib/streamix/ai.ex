@@ -18,6 +18,7 @@ defmodule Streamix.AI do
 
   defdelegate semantic_search_stats(), to: SemanticSearch, as: :stats
   defdelegate semantic_search_info(), to: SemanticSearch, as: :info
+  defdelegate ensure_vector_collections(), to: SemanticSearch, as: :bootstrap_collections
 
   # Personalization
   defdelegate compute_user_profile(user_id), to: UserAnalytics

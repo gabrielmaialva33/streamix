@@ -23,7 +23,7 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
     max_attempts: 3,
     unique: [
       period: :infinity,
-      states: [:available, :scheduled, :executing]
+      states: :incomplete
     ]
 
   require Logger
