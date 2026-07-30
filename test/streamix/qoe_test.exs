@@ -63,4 +63,54 @@ defmodule Streamix.QoeTest do
     assert {0, nil} = Qoe.purge_before(DateTime.add(DateTime.utc_now(), -60, :second))
     assert {2, nil} = Qoe.purge_before(DateTime.add(DateTime.utc_now(), 60, :second))
   end
+
+  test "calculates p75 Core Web Vitals SLOs by device class" do
+    mobile =
+      for index <- 0..19 do
+        %{
+          "kind" => "web_vital",
+          "event" => "page_vitals",
+          "device_class" => "mobile",
+          "lcp_ms" => 1_000 + index,
+          "inp_ms" => 100 + index,
+          "cls_milli" => 50 + index
+        }
+      end
+
+    desktop =
+      for _index <- 0..19 do
+        %{
+          "kind" => "web_vital",
+          "event" => "page_vitals",
+          "device_class" => "desktop",
+          "lcp_ms" => 4_500,
+          "inp_ms" => 550,
+          "cls_milli" => 300
+        }
+      end
+
+    assert {:ok, %{accepted: 40}} =
+             Qoe.ingest(nil, "device-segment-batch", mobile ++ desktop)
+
+    assert %{
+             web_vitals: 40,
+             web_vitals_slo: %{
+               all: %{sample_count: 40, status: :poor},
+               mobile: %{
+                 sample_count: 20,
+                 status: :good,
+                 lcp: %{p75: 1_014, samples: 20, status: :good},
+                 inp: %{p75: 114, samples: 20, status: :good},
+                 cls: %{p75: 64, samples: 20, status: :good}
+               },
+               desktop: %{
+                 sample_count: 20,
+                 status: :poor,
+                 lcp: %{p75: 4_500, samples: 20, status: :poor},
+                 inp: %{p75: 550, samples: 20, status: :poor},
+                 cls: %{p75: 300, samples: 20, status: :poor}
+               }
+             }
+           } = Qoe.summary()
+  end
 end

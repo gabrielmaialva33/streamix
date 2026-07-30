@@ -111,6 +111,33 @@ defmodule StreamixWeb.Admin.DashboardLive do
         </div>
       </section>
 
+      <section id="web-vitals-slo" class="surface-card p-5">
+        <div class="mb-4">
+          <h2 class="text-lg font-semibold text-text-primary">Core Web Vitals (24h)</h2>
+          <p class="text-sm text-text-secondary">
+            p75 real por dispositivo. Meta: LCP ≤ 2,5s · INP ≤ 200ms · CLS ≤ 0,1.
+          </p>
+        </div>
+
+        <div class="grid gap-3 lg:grid-cols-3">
+          <.web_vitals_card
+            id="web-vitals-all"
+            label="Todos"
+            segment={vital_segment(@operations.qoe, :all)}
+          />
+          <.web_vitals_card
+            id="web-vitals-mobile"
+            label="Mobile / PWA"
+            segment={vital_segment(@operations.qoe, :mobile)}
+          />
+          <.web_vitals_card
+            id="web-vitals-desktop"
+            label="Desktop"
+            segment={vital_segment(@operations.qoe, :desktop)}
+          />
+        </div>
+      </section>
+
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section class="surface-card p-5">
           <h2 class="text-lg font-semibold text-text-primary mb-4">Últimos Usuários</h2>
@@ -185,6 +212,39 @@ defmodule StreamixWeb.Admin.DashboardLive do
     """
   end
 
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :segment, :map, required: true
+
+  defp web_vitals_card(assigns) do
+    ~H"""
+    <article id={@id} class="rounded-lg border border-border bg-surface-hover/50 p-4">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-sm font-semibold text-text-primary">{@label}</h3>
+        <span class={[
+          "size-2.5 rounded-full",
+          status_color(vital_operation_status(@segment.status))
+        ]} />
+      </div>
+      <p class="mt-1 text-xs text-text-muted">{@segment.sample_count} navegações</p>
+      <dl class="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <dt class="text-text-muted">LCP</dt>
+          <dd class="font-medium text-text-primary">{format_vital(@segment.lcp, :milliseconds)}</dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">INP</dt>
+          <dd class="font-medium text-text-primary">{format_vital(@segment.inp, :milliseconds)}</dd>
+        </div>
+        <div>
+          <dt class="text-text-muted">CLS</dt>
+          <dd class="font-medium text-text-primary">{format_vital(@segment.cls, :cls)}</dd>
+        </div>
+      </dl>
+    </article>
+    """
+  end
+
   defp status_color(:healthy), do: "bg-success"
   defp status_color(:degraded), do: "bg-warning"
   defp status_color(:unhealthy), do: "bg-error"
@@ -221,6 +281,38 @@ defmodule StreamixWeb.Admin.DashboardLive do
 
   defp format_qoe(qoe) do
     "#{Map.get(qoe, :playback_sessions, 0)} sessões · TTFF #{Map.get(qoe, :avg_ttff_ms, 0)}ms"
+  end
+
+  defp vital_segment(qoe, segment) do
+    qoe
+    |> Map.get(:web_vitals_slo, %{})
+    |> Map.get(segment, empty_vital_segment())
+  end
+
+  defp empty_vital_segment do
+    empty_metric = %{p75: nil, samples: 0, status: :insufficient_data}
+
+    %{
+      sample_count: 0,
+      status: :insufficient_data,
+      lcp: empty_metric,
+      inp: empty_metric,
+      cls: empty_metric
+    }
+  end
+
+  defp vital_operation_status(:good), do: :healthy
+  defp vital_operation_status(:needs_improvement), do: :degraded
+  defp vital_operation_status(:poor), do: :unhealthy
+  defp vital_operation_status(_status), do: :disabled
+
+  defp format_vital(%{p75: nil}, _unit), do: "sem dados"
+  defp format_vital(%{p75: value}, :milliseconds), do: "#{value}ms"
+
+  defp format_vital(%{p75: value}, :cls) do
+    value
+    |> Kernel./(1_000)
+    |> :erlang.float_to_binary(decimals: 3)
   end
 
   defp sum_counts(counts), do: counts |> Map.values() |> Enum.sum()

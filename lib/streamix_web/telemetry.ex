@@ -29,6 +29,7 @@ defmodule StreamixWeb.Telemetry do
   # LiveView renders. Seconds-scale metrics get a separate bucket set.
   @latency_buckets_ms [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000]
   @latency_buckets_s [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+  @cls_buckets_milli [10, 25, 50, 100, 250, 500, 1_000]
 
   def metrics do
     [
@@ -60,6 +61,34 @@ defmodule StreamixWeb.Telemetry do
         tags: [:event],
         unit: {:native, :millisecond},
         reporter_options: [buckets: @latency_buckets_ms]
+      ),
+      distribution("phoenix.live_view.mount.stop.duration",
+        tags: [:view],
+        tag_values: &live_view_tags/1,
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "LiveView mount callback duration"
+      ),
+      distribution("phoenix.live_view.handle_params.stop.duration",
+        tags: [:view],
+        tag_values: &live_view_tags/1,
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "LiveView handle_params callback duration"
+      ),
+      distribution("phoenix.live_view.handle_event.stop.duration",
+        tags: [:view],
+        tag_values: &live_view_tags/1,
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "LiveView handle_event callback duration"
+      ),
+      distribution("phoenix.live_view.render.stop.duration",
+        tags: [:view],
+        tag_values: &live_view_tags/1,
+        unit: {:native, :millisecond},
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "LiveView render diff duration"
       ),
 
       # Database Metrics
@@ -145,6 +174,21 @@ defmodule StreamixWeb.Telemetry do
         tags: [:kind, :engine],
         reporter_options: [buckets: @latency_buckets_ms],
         description: "Client buffering duration in milliseconds"
+      ),
+      distribution("streamix.qoe.event.lcp_ms",
+        tags: [:device_class],
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "Largest Contentful Paint in milliseconds"
+      ),
+      distribution("streamix.qoe.event.inp_ms",
+        tags: [:device_class],
+        reporter_options: [buckets: @latency_buckets_ms],
+        description: "Interaction to Next Paint in milliseconds"
+      ),
+      distribution("streamix.qoe.event.cls_milli",
+        tags: [:device_class],
+        reporter_options: [buckets: @cls_buckets_milli],
+        description: "Cumulative Layout Shift multiplied by 1000"
       )
     ]
   end
@@ -156,4 +200,10 @@ defmodule StreamixWeb.Telemetry do
       # {StreamixWeb, :count_users, []}
     ]
   end
+
+  defp live_view_tags(%{socket: %{view: view}} = metadata) when is_atom(view) do
+    Map.put(metadata, :view, inspect(view))
+  end
+
+  defp live_view_tags(metadata), do: Map.put(metadata, :view, "unknown")
 end

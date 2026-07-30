@@ -20,13 +20,34 @@ export const surfaceForPath = (path = "/") => {
   return SURFACE_RULES.find(([pattern]) => pattern.test(pathname))?.[1] || "other";
 };
 
-export const webVitalPayload = ({ batchId, path, displayMode = "browser", lcp, inp, cls }) => {
+export const classifyDeviceClass = ({
+  mobileHint,
+  coarsePointer = false,
+  maxTouchPoints = 0,
+  viewportWidth = 1024,
+} = {}) => {
+  if (typeof mobileHint === "boolean") return mobileHint ? "mobile" : "desktop";
+
+  const touchDevice = Number(maxTouchPoints) > 0;
+  return touchDevice && (coarsePointer || Number(viewportWidth) < 768) ? "mobile" : "desktop";
+};
+
+export const webVitalPayload = ({
+  batchId,
+  path,
+  displayMode = "browser",
+  deviceClass = "unknown",
+  lcp,
+  inp,
+  cls,
+}) => {
   const payload = {
     batch_id: batchId,
     kind: "web_vital",
     event: "page_vitals",
     surface: surfaceForPath(path),
     display_mode: displayMode === "standalone" ? "standalone" : "browser",
+    device_class: ["mobile", "desktop"].includes(deviceClass) ? deviceClass : "unknown",
   };
 
   const lcpMs = boundedMetric(lcp, 86_400_000);

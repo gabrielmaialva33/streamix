@@ -27,8 +27,15 @@ defmodule Streamix.Qoe do
   @content_types ~w(live vod channel movie series episode anime torrent unknown)
   @stream_types ~w(hls mpegts ts mp4 mkv flv dash torrent unknown)
   @display_modes ~w(browser standalone fullscreen minimal-ui unknown)
+  @device_classes ~w(mobile desktop unknown)
   @surfaces ~w(home browse watch party favorites history auth settings admin other)
   @outcomes ~w(started playing completed error cancelled restarted accepted dismissed help_opened unknown)
+  @minimum_slo_samples 20
+  @vital_thresholds %{
+    lcp: %{good: 2_500, poor: 4_000},
+    inp: %{good: 200, poor: 500},
+    cls: %{good: 100, poor: 250}
+  }
   @enum_aliases %{
     "hls.js" => "hls",
     "hls-js" => "hls",
@@ -88,23 +95,26 @@ defmodule Streamix.Qoe do
   def summary(opts \\ []) do
     since = Keyword.get(opts, :since, DateTime.add(DateTime.utc_now(), -86_400, :second))
 
-    Event
-    |> where([event], event.inserted_at >= ^since)
-    |> select([event], %{
-      event_count: count(event.id),
-      playback_sessions: fragment("count(*) FILTER (WHERE ? = 'playback')::bigint", event.kind),
-      pwa_events: fragment("count(*) FILTER (WHERE ? = 'pwa')::bigint", event.kind),
-      web_vitals: fragment("count(*) FILTER (WHERE ? = 'web_vital')::bigint", event.kind),
-      avg_ttff_ms:
-        fragment(
-          "coalesce(round(avg(?) FILTER (WHERE ? = 'playback')), 0)::bigint",
-          event.ttff_ms,
-          event.kind
-        ),
-      buffer_count: fragment("coalesce(sum(?), 0)::bigint", event.buffer_count),
-      error_count: fragment("coalesce(sum(?), 0)::bigint", event.error_count)
-    })
-    |> Repo.one()
+    summary =
+      Event
+      |> where([event], event.inserted_at >= ^since)
+      |> select([event], %{
+        event_count: count(event.id),
+        playback_sessions: fragment("count(*) FILTER (WHERE ? = 'playback')::bigint", event.kind),
+        pwa_events: fragment("count(*) FILTER (WHERE ? = 'pwa')::bigint", event.kind),
+        web_vitals: fragment("count(*) FILTER (WHERE ? = 'web_vital')::bigint", event.kind),
+        avg_ttff_ms:
+          fragment(
+            "coalesce(round(avg(?) FILTER (WHERE ? = 'playback')), 0)::bigint",
+            event.ttff_ms,
+            event.kind
+          ),
+        buffer_count: fragment("coalesce(sum(?), 0)::bigint", event.buffer_count),
+        error_count: fragment("coalesce(sum(?), 0)::bigint", event.error_count)
+      })
+      |> Repo.one()
+
+    Map.put(summary, :web_vitals_slo, web_vitals_slo(since))
   end
 
   @doc "Deletes expired QoE samples and returns the number removed."
@@ -127,7 +137,11 @@ defmodule Streamix.Qoe do
           :outcome,
           :ttff_ms,
           :buffer_count,
-          :buffer_duration_ms
+          :buffer_duration_ms,
+          :device_class,
+          :lcp_ms,
+          :inp_ms,
+          :cls_milli
         ]
       )
 
@@ -145,6 +159,7 @@ defmodule Streamix.Qoe do
       stream_type: enum_value(metric, "stream_type", @stream_types, "unknown"),
       surface: enum_value(metric, "surface", @surfaces, "other"),
       display_mode: enum_value(metric, "display_mode", @display_modes, "unknown"),
+      device_class: enum_value(metric, "device_class", @device_classes, "unknown"),
       ttff_ms: integer_value(metric, ["ttff_ms", "time_to_first_frame_ms"], @max_duration_ms),
       buffer_count: integer_value(metric, ["buffer_count"], 10_000, 0),
       buffer_duration_ms:
@@ -165,21 +180,128 @@ defmodule Streamix.Qoe do
   end
 
   defp emit_metric(event) do
-    :telemetry.execute(
-      [:streamix, :qoe, :event],
+    measurements =
       %{
         count: 1,
-        ttff_ms: event.ttff_ms || 0,
         buffer_count: event.buffer_count || 0,
         buffer_duration_ms: event.buffer_duration_ms || 0
-      },
+      }
+      |> maybe_put_measurement(:ttff_ms, event.ttff_ms)
+      |> maybe_put_measurement(:lcp_ms, event.lcp_ms)
+      |> maybe_put_measurement(:inp_ms, event.inp_ms)
+      |> maybe_put_measurement(:cls_milli, event.cls_milli)
+
+    :telemetry.execute(
+      [:streamix, :qoe, :event],
+      measurements,
       %{
         kind: event.kind || "unknown",
         engine: event.engine || "unknown",
-        outcome: event.outcome || "unknown"
+        outcome: event.outcome || "unknown",
+        device_class: event.device_class || "unknown"
       }
     )
   end
+
+  defp web_vitals_slo(since) do
+    sql = """
+    SELECT
+      coalesce(device_class, 'all') AS segment,
+      count(*)::bigint AS sample_count,
+      count(lcp_ms)::bigint AS lcp_samples,
+      percentile_cont(0.75) WITHIN GROUP (ORDER BY lcp_ms)
+        FILTER (WHERE lcp_ms IS NOT NULL) AS lcp_p75,
+      count(inp_ms)::bigint AS inp_samples,
+      percentile_cont(0.75) WITHIN GROUP (ORDER BY inp_ms)
+        FILTER (WHERE inp_ms IS NOT NULL) AS inp_p75,
+      count(cls_milli)::bigint AS cls_samples,
+      percentile_cont(0.75) WITHIN GROUP (ORDER BY cls_milli)
+        FILTER (WHERE cls_milli IS NOT NULL) AS cls_p75
+    FROM qoe_events
+    WHERE kind = 'web_vital' AND inserted_at >= $1
+    GROUP BY GROUPING SETS ((device_class), ())
+    """
+
+    defaults = %{
+      all: empty_vital_segment(),
+      mobile: empty_vital_segment(),
+      desktop: empty_vital_segment()
+    }
+
+    sql
+    |> Repo.query!([since])
+    |> Map.fetch!(:rows)
+    |> Enum.reduce(defaults, fn
+      [segment, sample_count, lcp_samples, lcp, inp_samples, inp, cls_samples, cls], acc
+      when segment in ["all", "mobile", "desktop"] ->
+        Map.put(
+          acc,
+          String.to_existing_atom(segment),
+          build_vital_segment(
+            sample_count,
+            {lcp_samples, lcp},
+            {inp_samples, inp},
+            {cls_samples, cls}
+          )
+        )
+
+      _row, acc ->
+        acc
+    end)
+  end
+
+  defp build_vital_segment(sample_count, lcp, inp, cls) do
+    metrics = %{
+      lcp: build_vital_metric(:lcp, lcp),
+      inp: build_vital_metric(:inp, inp),
+      cls: build_vital_metric(:cls, cls)
+    }
+
+    %{sample_count: sample_count, status: overall_vital_status(metrics)}
+    |> Map.merge(metrics)
+  end
+
+  defp build_vital_metric(kind, {samples, percentile}) do
+    value = normalize_percentile(percentile)
+    thresholds = Map.fetch!(@vital_thresholds, kind)
+
+    %{
+      p75: value,
+      samples: samples,
+      target: thresholds.good,
+      status: vital_status(value, samples, thresholds)
+    }
+  end
+
+  defp empty_vital_segment do
+    build_vital_segment(0, {0, nil}, {0, nil}, {0, nil})
+  end
+
+  defp vital_status(_value, samples, _thresholds) when samples < @minimum_slo_samples,
+    do: :insufficient_data
+
+  defp vital_status(nil, _samples, _thresholds), do: :insufficient_data
+  defp vital_status(value, _samples, %{good: good}) when value <= good, do: :good
+  defp vital_status(value, _samples, %{poor: poor}) when value <= poor, do: :needs_improvement
+  defp vital_status(_value, _samples, _thresholds), do: :poor
+
+  defp overall_vital_status(metrics) do
+    statuses = Enum.map(metrics, fn {_kind, metric} -> metric.status end)
+
+    cond do
+      :poor in statuses -> :poor
+      :needs_improvement in statuses -> :needs_improvement
+      Enum.all?(statuses, &(&1 == :good)) -> :good
+      true -> :insufficient_data
+    end
+  end
+
+  defp normalize_percentile(nil), do: nil
+  defp normalize_percentile(value) when is_float(value), do: round(value)
+  defp normalize_percentile(value) when is_integer(value), do: value
+
+  defp maybe_put_measurement(measurements, _key, nil), do: measurements
+  defp maybe_put_measurement(measurements, key, value), do: Map.put(measurements, key, value)
 
   defp dedupe_key(user_id, batch_id, index) do
     :crypto.hash(:sha256, "#{user_id || "anonymous"}:#{batch_id}:#{index}")

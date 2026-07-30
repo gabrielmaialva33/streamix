@@ -27,6 +27,16 @@ import {
   parseNextEpisode,
   shouldTriggerNextEpisode,
 } from "../lib/next_episode";
+import {
+  getPlaybackResourcePolicy,
+  hasWebCodecsHevcSupport,
+  isAppleTouchDevice,
+  isFirefoxBrowser,
+  isIosPwaMode,
+  isStandalonePwa,
+  readEngineFlag,
+  scheduleLowPriority,
+} from "../lib/playback_environment";
 import { diagnoseError, runQuickDiagnostics } from "../lib/player_diagnostics";
 import { getHls, isHlsJsSupported, isMpegtsSupported } from "../lib/player_libs";
 import {
@@ -125,69 +135,8 @@ async function loadH265web() {
   return { H265webWrapper };
 }
 
-// Synchronous capability check used by `selectEngine`. A stricter
-// `VideoDecoder.isConfigSupported({ codec: "hvc1...." })` probe runs
-// inside h265web itself when it boots, and the hook treats any
-// init failure as a fallback signal — so this surface check is
-// intentionally cheap. Browsers that lack WebCodecs (e.g. older
-// Firefox) will never opt into h265web and stay on AVPlayer.
-function hasWebCodecsHevcSupport() {
-  return typeof window !== "undefined" && typeof window.VideoDecoder === "function";
-}
-
-// Feature-flag readout. Two ways to opt in (so we can flip remotely
-// without a redeploy): a `data-feature-*="true"` on the player
-// container (server-rendered, controlled from a single Application
-// config) or a `localStorage["streamix:<engine>"]` value of `"true"`
-// for ad-hoc browser testing. Default false until field telemetry
-// looks good.
-function readEngineFlag(containerEl, engine) {
-  const dataKey = `feature${engine.charAt(0).toUpperCase()}${engine.slice(1)}`;
-  if (containerEl?.dataset?.[dataKey] === "true") return true;
-  try {
-    if (typeof localStorage !== "undefined") {
-      return localStorage.getItem(`streamix:${engine}`) === "true";
-    }
-  } catch {
-    // Locked-down browser (3rd-party-cookie embed, Safari ITP) —
-    // localStorage throws on read; treat as not-opted-in.
-  }
-  return false;
-}
-
 const readAvbridgeFlag = (el) => readEngineFlag(el, "avbridge");
 const readH265webFlag = (el) => readEngineFlag(el, "h265web");
-
-function isFirefoxBrowser() {
-  return /firefox/i.test(navigator.userAgent);
-}
-
-function isAppleTouchDevice() {
-  const ua = navigator.userAgent || "";
-  const platform = navigator.platform || "";
-  return /iPad|iPhone|iPod/.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
-function isStandalonePwa() {
-  return (
-    window.navigator.standalone === true ||
-    window.matchMedia?.("(display-mode: standalone)")?.matches === true
-  );
-}
-
-function isIosPwaMode() {
-  return isAppleTouchDevice() && isStandalonePwa();
-}
-
-function scheduleLowPriority(callback, { timeout = 2500 } = {}) {
-  if (typeof window.requestIdleCallback === "function") {
-    const id = window.requestIdleCallback(callback, { timeout });
-    return () => window.cancelIdleCallback?.(id);
-  }
-
-  const id = window.setTimeout(callback, Math.min(timeout, 1000));
-  return () => window.clearTimeout(id);
-}
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -232,33 +181,7 @@ const VideoPlayer = {
   },
 
   getPlaybackResourcePolicy() {
-    const connection = navigator.connection || {};
-    const saveData = connection.saveData === true;
-    const effectiveType = connection.effectiveType || "unknown";
-    const deviceMemory = navigator.deviceMemory || 4;
-    const cpuCores = navigator.hardwareConcurrency || 4;
-    const lowEndDevice = deviceMemory <= 2 || cpuCores <= 4;
-    const constrainedNetwork = effectiveType === "slow-2g" || effectiveType === "2g";
-    const avoidSpeculativeWork = saveData || constrainedNetwork || lowEndDevice;
-
-    return {
-      saveData,
-      effectiveType,
-      deviceMemory,
-      cpuCores,
-      lowEndDevice,
-      constrainedNetwork,
-      avoidSpeculativeWork,
-      shouldRunAdvancedDiagnostics: !avoidSpeculativeWork,
-      shouldProbeTracks: !saveData && !constrainedNetwork,
-      reason: saveData
-        ? "save-data"
-        : constrainedNetwork
-          ? `network-${effectiveType}`
-          : lowEndDevice
-            ? "low-end-device"
-            : "normal",
-    };
+    return getPlaybackResourcePolicy();
   },
 
   /**

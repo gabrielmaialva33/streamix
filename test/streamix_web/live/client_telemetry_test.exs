@@ -16,10 +16,17 @@ defmodule StreamixWeb.ClientTelemetryTest do
       "kind" => "web_vital",
       "event" => "page_vitals",
       "surface" => "settings",
+      "device_class" => "mobile",
       "lcp_ms" => 900
     })
 
-    assert %Event{user_id: user_id, kind: "web_vital", lcp_ms: 900} = Repo.one!(Event)
+    assert %Event{
+             user_id: user_id,
+             kind: "web_vital",
+             device_class: "mobile",
+             lcp_ms: 900
+           } = Repo.one!(Event)
+
     assert user_id == user.id
   end
 end

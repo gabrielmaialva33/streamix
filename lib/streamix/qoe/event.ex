@@ -16,6 +16,7 @@ defmodule Streamix.Qoe.Event do
     field :stream_type, :string
     field :surface, :string
     field :display_mode, :string
+    field :device_class, :string, default: "unknown"
     field :ttff_ms, :integer
     field :buffer_count, :integer, default: 0
     field :buffer_duration_ms, :integer, default: 0

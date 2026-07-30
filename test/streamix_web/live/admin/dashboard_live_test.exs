@@ -31,11 +31,13 @@ defmodule StreamixWeb.Admin.DashboardLiveTest do
     end
 
     test "shows stat cards", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/admin")
+      {:ok, view, html} = live(conn, ~p"/admin")
       assert html =~ "Total Usuários"
       assert html =~ "Subscriptions Ativas"
       assert html =~ "Planos Ativos"
       assert html =~ "Receita Mensal"
+      assert has_element?(view, "#web-vitals-slo")
+      assert has_element?(view, "#web-vitals-mobile", "Mobile / PWA")
     end
 
     test "shows recent users table", %{conn: conn} do
