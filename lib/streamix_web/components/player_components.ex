@@ -103,18 +103,6 @@ defmodule StreamixWeb.PlayerComponents do
       data-subtitle-lang={@subtitle_language}
       data-subtitle-offset-ms={@subtitle_offset_ms}
     >
-      <%!-- Loading indicator --%>
-      <div
-        id="loading-indicator"
-        class="absolute inset-0 flex items-center justify-center bg-black/50 z-20 pointer-events-none"
-        aria-hidden="true"
-      >
-        <div class="flex flex-col items-center gap-4">
-          <div class="w-12 h-12 border-4 border-white/20 border-t-brand rounded-full animate-spin" />
-          <span class="text-white/80 text-sm">Carregando...</span>
-        </div>
-      </div>
-
       <%!-- Error container --%>
       <div
         id="error-container"
@@ -214,34 +202,32 @@ defmodule StreamixWeb.PlayerComponents do
           </div>
         </div>
 
-        <%!-- Primary playback controls --%>
-        <div
-          id="player-primary-controls"
-          class="flex flex-1 items-center justify-center gap-3 px-4 sm:gap-5"
-        >
-          <.seek_button
-            :if={@content_type not in [:live, :live_channel]}
-            direction={:backward}
-          />
-          <.play_pause_button prominent />
-          <.seek_button
-            :if={@content_type not in [:live, :live_channel]}
-            direction={:forward}
-          />
-        </div>
+        <div class="flex-1" aria-hidden="true" />
 
         <%!-- Bottom bar --%>
         <div
           id="player-bottom-controls"
           class="player-safe-bottom bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity"
         >
+          <%!-- Loading stays with the controls instead of covering the video. --%>
+          <div
+            id="loading-indicator"
+            class="mb-2 flex items-center gap-2 text-xs text-white/75"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="size-2 animate-pulse rounded-full bg-brand" aria-hidden="true" />
+            <span>Carregando...</span>
+          </div>
+
           <%!-- Progress bar --%>
           <.progress_bar :if={@content_type not in [:live, :live_channel]} />
 
           <%!-- Controls --%>
-          <div class="flex items-center justify-between mt-4">
+          <div class="mt-3 flex items-center justify-between gap-2">
             <%!-- Left --%>
-            <div class="flex items-center gap-2 sm:gap-4">
+            <div id="player-primary-controls" class="flex min-w-0 items-center gap-1 sm:gap-3">
+              <.play_pause_button />
               <.volume_control />
               <.time_display :if={@content_type not in [:live, :live_channel]} />
               <.live_badge :if={@content_type in [:live, :live_channel]} />
@@ -254,16 +240,6 @@ defmodule StreamixWeb.PlayerComponents do
               <.fullscreen_button />
             </div>
           </div>
-        </div>
-      </div>
-
-      <%!-- Center play button --%>
-      <div
-        id="center-play"
-        class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 transition-opacity"
-      >
-        <div class="p-5 rounded-full bg-black/40 backdrop-blur-sm">
-          <.icon name="hero-play-solid" class="size-16 text-white" />
         </div>
       </div>
 
@@ -459,44 +435,6 @@ defmodule StreamixWeb.PlayerComponents do
     """
   end
 
-  attr :direction, :atom, required: true, values: [:backward, :forward]
-
-  def seek_button(assigns) do
-    assigns =
-      case assigns.direction do
-        :backward ->
-          assign(assigns,
-            id: "seek-backward-btn",
-            label: "Voltar 10 segundos",
-            seconds: -10,
-            icon: "hero-arrow-uturn-left"
-          )
-
-        :forward ->
-          assign(assigns,
-            id: "seek-forward-btn",
-            label: "Avançar 10 segundos",
-            seconds: 10,
-            icon: "hero-arrow-uturn-right"
-          )
-      end
-
-    ~H"""
-    <button
-      type="button"
-      id={@id}
-      phx-click={JS.dispatch("player:seek-relative", detail: %{seconds: @seconds})}
-      aria-label={@label}
-      class="flex size-14 touch-manipulation flex-col items-center justify-center rounded-full bg-black/35 text-white transition-colors hover:bg-white/15 active:bg-white/25"
-    >
-      <.icon name={@icon} class="size-6" aria-hidden="true" />
-      <span class="-mt-1 text-[10px] font-bold tabular-nums">10</span>
-    </button>
-    """
-  end
-
-  attr :prominent, :boolean, default: false
-
   def play_pause_button(assigns) do
     ~H"""
     <button
@@ -504,24 +442,16 @@ defmodule StreamixWeb.PlayerComponents do
       id="play-pause-btn"
       phx-click={JS.dispatch("player:toggle-play")}
       aria-label="Reproduzir ou pausar"
-      class={[
-        "flex touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 active:bg-white/25",
-        @prominent && "size-16 bg-white text-black hover:bg-white/90 active:bg-white/80",
-        !@prominent && "size-12 hover:bg-white/10 sm:size-11"
-      ]}
+      class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/25 sm:size-11"
     >
       <.icon
         name="hero-play-solid"
-        class={["play-icon", @prominent && "size-9", !@prominent && "size-8 sm:size-7"]}
+        class="play-icon size-8 sm:size-7"
         aria-hidden="true"
       />
       <.icon
         name="hero-pause-solid"
-        class={[
-          "pause-icon hidden",
-          @prominent && "size-9",
-          !@prominent && "size-8 sm:size-7"
-        ]}
+        class="pause-icon hidden size-8 sm:size-7"
         aria-hidden="true"
       />
     </button>
