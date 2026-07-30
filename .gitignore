@@ -41,43 +41,31 @@ npm-debug.log
 
 # Environment variables
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
-.playwright-mcp
-tmp
-.claude
-.codex
+# Local development tools
+/.elixir_ls/
+/.playwright-mcp/
+/.claude/
+/.codex
+/.superpowers/
+/.antigravitycli/
 
-# Tizen App artifacts
+# Local browser and packaging artifacts
 *.wgt
 cookies.txt
+/test-results/
 
-# Test results
-test-results
-
-# superpowers
-docs/superpowers
-.superpowers
+# Generated agent documentation
+/docs/superpowers/
 
 # JetBrains IDEs
-.idea/
-streamix.iml
+/.idea/
+/streamix.iml
 
 # Git worktrees
-.worktrees/
-*.png
-
-# Assets that are tracked in git, but we want to ignore changes to them
-!priv/static/images/apple-touch-icon.png
-!priv/static/images/icon-192.png
-!priv/static/images/icon-512.png
-!priv/static/images/icon-maskable-512.png
-!priv/static/images/pwa/
-!priv/static/images/pwa/splash-*.png
+/.worktrees/
 
 # Ignore generated documentation, but not the source files
 architecture.md
-
-# Local configuration files
-.antigravitycli

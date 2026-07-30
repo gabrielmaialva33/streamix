@@ -19,17 +19,28 @@ cover/
 doc/
 test/
 tmp/
-.elixir_ls/
 
-# Test and dev files
+# Local tooling and workspaces
+.elixir_ls/
+.playwright-mcp/
+.claude/
+.codex
+.superpowers/
+.antigravitycli/
+.worktrees/
+
+# Test, browser, and packaging artifacts
 .fetch
 erl_crash.dump
-*.ez
 *.beam
+test-results/
+cookies.txt
+*.wgt
 
 # IDE
 .idea/
 .vscode/
+streamix.iml
 *.swp
 *.swo
 
