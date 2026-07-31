@@ -22,7 +22,9 @@ defmodule Streamix.Iptv.Sync.Movies do
   def sync_movies(%Provider{} = provider) do
     Logger.info("Syncing movies for provider #{provider.id}")
 
-    case XtreamClient.get_vod_streams(provider.url, provider.username, provider.password) do
+    case XtreamClient.get_vod_streams(provider.url, provider.username, provider.password,
+           provider_id: provider.id
+         ) do
       {:ok, streams} ->
         category_lookup = Helpers.build_category_lookup(provider.id, "vod")
         now = DateTime.utc_now() |> DateTime.truncate(:second)

@@ -17,11 +17,17 @@ defmodule Streamix.Iptv.Sync.Categories do
     Logger.info("Syncing categories for provider #{provider.id}")
 
     with {:ok, live_cats} <-
-           XtreamClient.get_live_categories(provider.url, provider.username, provider.password),
+           XtreamClient.get_live_categories(provider.url, provider.username, provider.password,
+             provider_id: provider.id
+           ),
          {:ok, vod_cats} <-
-           XtreamClient.get_vod_categories(provider.url, provider.username, provider.password),
+           XtreamClient.get_vod_categories(provider.url, provider.username, provider.password,
+             provider_id: provider.id
+           ),
          {:ok, series_cats} <-
-           XtreamClient.get_series_categories(provider.url, provider.username, provider.password) do
+           XtreamClient.get_series_categories(provider.url, provider.username, provider.password,
+             provider_id: provider.id
+           ) do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       all_categories =

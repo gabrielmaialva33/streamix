@@ -52,7 +52,14 @@ defmodule Streamix.Iptv do
     Sync
   }
 
-  alias Streamix.Iptv.Streaming.{FailoverPolicy, RedirectResolver, StreamErrors, VodProxy}
+  alias Streamix.Iptv.Streaming.{
+    FailoverPolicy,
+    LiveProxy,
+    RedirectResolver,
+    SourceSelector,
+    StreamErrors,
+    VodProxy
+  }
 
   alias Streamix.Iptv.{
     Favorites,
@@ -345,5 +352,7 @@ defmodule Streamix.Iptv do
   defdelegate resolve_stream_url(url, opts \\ []), to: RedirectResolver, as: :resolve
   defdelegate prewarm_stream_url(url, opts \\ []), to: RedirectResolver, as: :prewarm_async
   defdelegate pipe_stream(conn, url, opts \\ []), to: VodProxy, as: :pipe
+  defdelegate pipe_live_stream(conn, url, opts \\ []), to: LiveProxy, as: :pipe
   defdelegate head_stream(conn, url, opts \\ []), to: VodProxy, as: :head
+  defdelegate sort_stream_sources(sources, opts \\ []), to: SourceSelector, as: :sort
 end

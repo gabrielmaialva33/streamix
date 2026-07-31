@@ -22,7 +22,9 @@ defmodule Streamix.Iptv.Sync.Live do
   def sync_live_channels(%Provider{} = provider) do
     Logger.info("Syncing live channels for provider #{provider.id}")
 
-    case XtreamClient.get_live_streams(provider.url, provider.username, provider.password) do
+    case XtreamClient.get_live_streams(provider.url, provider.username, provider.password,
+           provider_id: provider.id
+         ) do
       {:ok, streams} ->
         category_lookup = Helpers.build_category_lookup(provider.id, "live")
         now = DateTime.utc_now() |> DateTime.truncate(:second)

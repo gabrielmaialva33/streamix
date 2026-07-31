@@ -19,7 +19,8 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
            provider.url,
            provider.username,
            provider.password,
-           movie.stream_id
+           movie.stream_id,
+           provider_id: provider.id
          ) do
       {:ok, %{"info" => info, "movie_data" => movie_data}} ->
         parse_vod_info(info, movie_data)

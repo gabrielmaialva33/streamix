@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
   import Ecto.Query, warn: false
 
   alias Streamix.Iptv.CatalogItem
+  alias Streamix.Iptv.Content.SourceEquivalence
   alias Streamix.Iptv.Sync.CategoryAssocs
   alias Streamix.Repo
 
@@ -109,8 +110,10 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
       )
 
     catalog_item_ids = Enum.map(returned, & &1.catalog_item_id) |> Enum.reject(&is_nil/1)
+    content_ids = Enum.map(returned, & &1.id)
     category_assocs = context.category_fn.(batch, returned, context.category_lookup)
 
+    {:ok, _linked_count} = SourceEquivalence.reconcile_content_ids(context.schema, content_ids)
     CategoryAssocs.rebuild_diff(catalog_item_ids, category_assocs)
 
     {:ok, inserted}

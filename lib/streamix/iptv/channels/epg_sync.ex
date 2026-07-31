@@ -28,7 +28,8 @@ defmodule Streamix.Iptv.EpgSync do
              provider.username,
              provider.password,
              stream_id,
-             limit: 20
+             limit: 20,
+             provider_id: provider.id
            ),
          {:ok, programs} <- EpgParser.parse_short_epg(data) do
       # Upsert the epg_channel first to get the integer FK
@@ -97,7 +98,10 @@ defmodule Streamix.Iptv.EpgSync do
   def sync_all_epg(%Provider{} = provider) do
     Logger.info("[EpgSync] Fetching XMLTV for provider #{provider.id}")
 
-    with {:ok, xml} <- XtreamClient.get_xmltv(provider.url, provider.username, provider.password),
+    with {:ok, xml} <-
+           XtreamClient.get_xmltv(provider.url, provider.username, provider.password,
+             provider_id: provider.id
+           ),
          _ <-
            Logger.info(
              "[EpgSync] Got #{Float.round(byte_size(xml) / 1024 / 1024, 2)} MB XMLTV, parsing"

@@ -46,6 +46,15 @@ defmodule Streamix.Iptv.Content.VariantCards do
   @spec cards(map()) :: [struct()]
   def cards(clusters), do: Map.values(clusters.cards)
 
+  @doc "Returns the explicit year or a `(YYYY)` year embedded in the title."
+  @spec release_year(struct() | map()) :: integer() | nil
+  def release_year(item) do
+    case Map.get(item, :year) do
+      year when is_integer(year) and year > 0 -> year
+      _ -> title_year(Map.get(item, :title)) || title_year(Map.get(item, :name))
+    end
+  end
+
   @doc """
   Normalizes a title for variant comparison: strips `[tags]`, `(year)`,
   quality/language markers, punctuation, and casing.
@@ -164,13 +173,6 @@ defmodule Streamix.Iptv.Content.VariantCards do
 
   # A provider that zeroes the `year` column often embeds the real year
   # in the name, e.g. "Evil Island (2023)".
-  defp release_year(item) do
-    case item.year do
-      year when is_integer(year) and year > 0 -> year
-      _ -> title_year(item.title) || title_year(item.name)
-    end
-  end
-
   defp title_year(value) when is_binary(value) do
     case Regex.run(@year_tag, value) do
       [_, year] -> String.to_integer(year)

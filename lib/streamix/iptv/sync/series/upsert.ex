@@ -22,7 +22,9 @@ defmodule Streamix.Iptv.Sync.Series.Upsert do
   def sync_series(%Provider{} = provider) do
     Logger.info("Syncing series for provider #{provider.id}")
 
-    case XtreamClient.get_series(provider.url, provider.username, provider.password) do
+    case XtreamClient.get_series(provider.url, provider.username, provider.password,
+           provider_id: provider.id
+         ) do
       {:ok, series_list} ->
         sync_series_list(provider, series_list)
 
