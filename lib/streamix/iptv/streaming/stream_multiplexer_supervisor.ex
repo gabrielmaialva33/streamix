@@ -3,7 +3,7 @@ defmodule Streamix.Iptv.StreamMultiplexerSupervisor do
   DynamicSupervisor for StreamMultiplexer processes.
 
   Each child manages a single upstream connection for a specific live channel,
-  fanning out chunks to N downstream viewers via PubSub.
+  fanning out chunks to demand-driven downstream subscribers.
   """
   use DynamicSupervisor
 

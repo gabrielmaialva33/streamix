@@ -48,6 +48,9 @@ config :streamix,
   # 302-to-source-proxy flow. Override at runtime via the
   # `STREAM_PROXY_BACKEND` env var.
   stream_proxy_backend: :beam,
+  live_multiplexer_enabled: true,
+  live_mux_idle_timeout_ms: 2_000,
+  live_mux_stream_idle_timeout_ms: 45_000,
   player_lifecycle_logs: false,
   # Regex patterns matched against the *final* URL after the redirect
   # chain resolves. A hit is treated as an upstream failure even when

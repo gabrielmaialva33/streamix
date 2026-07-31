@@ -119,18 +119,41 @@ defmodule StreamixWeb.StreamController do
     end
   end
 
-  defp stream_by_type(%{method: "HEAD"} = conn, url, _type, meta) do
+  defp stream_by_type(%{method: "HEAD"} = conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
-      _ -> Iptv.head_stream(conn, url, url_chain: derive_url_chain(url, meta))
+      _ -> Iptv.head_stream(conn, url, stream_options(url, type, meta))
     end
   end
 
-  defp stream_by_type(conn, url, _type, meta) do
+  defp stream_by_type(conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
-      _ -> Iptv.pipe_stream(conn, url, url_chain: derive_url_chain(url, meta))
+      _ -> pipe_from_beam(conn, url, type, meta)
     end
+  end
+
+  defp pipe_from_beam(conn, url, "channel", meta) do
+    opts = stream_options(url, "channel", meta)
+
+    if Application.get_env(:streamix, :live_multiplexer_enabled, true) do
+      Iptv.pipe_live_stream(conn, url, opts)
+    else
+      Iptv.pipe_stream(conn, url, opts)
+    end
+  end
+
+  defp pipe_from_beam(conn, url, type, meta) do
+    Iptv.pipe_stream(conn, url, stream_options(url, type, meta))
+  end
+
+  defp stream_options(url, type, meta) do
+    [
+      url_chain: derive_url_chain(url, meta),
+      provider_id: Map.get(meta, :provider_id),
+      content_id: Map.get(meta, :content_id),
+      media_type: type
+    ]
   end
 
   # Pulls the failover-aware host list off the originating provider so
