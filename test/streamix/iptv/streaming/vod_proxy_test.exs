@@ -4,11 +4,62 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
   import ExUnit.CaptureLog
   import Plug.Test
 
-  alias Streamix.Iptv.Streaming.{RedirectResolver, VodProxy}
+  alias Streamix.Iptv.ProviderCapabilities
+  alias Streamix.Iptv.Streaming.{ProviderRuntime, RedirectResolver, VodProxy}
 
   setup do
     RedirectResolver.clear_cache()
+    ProviderRuntime.reset()
     attach_stream_proxy_telemetry()
+    on_exit(&ProviderRuntime.reset/0)
+  end
+
+  test "rejects a stream before opening upstream when provider capacity is exhausted" do
+    provider_id = 9001
+
+    ProviderRuntime.put_capabilities(provider_id, %ProviderCapabilities{
+      authenticated?: true,
+      active?: true,
+      max_connections: 1
+    })
+
+    assert {:ok, held_lease} = ProviderRuntime.acquire(provider_id, :vod)
+
+    response =
+      VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:1/never-opened",
+        provider_id: provider_id,
+        media_type: "movie"
+      )
+
+    assert response.status == 503
+
+    assert %{"error" => %{"code" => "provider_capacity_exhausted", "retry_after" => 5}} =
+             Jason.decode!(response.resp_body)
+
+    ProviderRuntime.release(held_lease)
+  end
+
+  test "records provider and media identity without exposing the upstream URL" do
+    port = start_proxy_server(:ok)
+    provider_id = 9002
+
+    VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream",
+      provider_id: provider_id,
+      content_id: 42,
+      media_type: "movie"
+    )
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :start], _, metadata}
+    assert metadata.provider_id == provider_id
+    assert metadata.content_id == 42
+    assert metadata.media_type == "movie"
+    refute Map.has_key?(metadata, :url)
+    refute Map.has_key?(metadata, :final_url)
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :complete], _, _}
+
+    assert ProviderRuntime.snapshot(provider_id).dimensions.vod.status == :healthy
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 0
   end
 
   test "emits start and completion telemetry with byte counts" do

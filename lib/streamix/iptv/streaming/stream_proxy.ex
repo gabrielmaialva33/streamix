@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.StreamProxy do
   require Logger
 
   alias Streamix.Gindex.UrlCache
+  alias Streamix.Iptv.Streaming.UpstreamPolicy
   alias Streamix.SafeLog
 
   @cache_table :stream_proxy_cache
@@ -201,7 +202,7 @@ defmodule Streamix.Iptv.StreamProxy do
     # across every request surface keeps provider analytics /
     # allowlisting consistent across info-lookup and media playback.
     headers = [
-      {"user-agent", "IPTVSmartersPlayer"},
+      {"user-agent", UpstreamPolicy.user_agent()},
       {"accept", "*/*"},
       {"connection", "keep-alive"}
     ]

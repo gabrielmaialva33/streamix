@@ -15,6 +15,7 @@ defmodule Streamix.Iptv.XtreamClient do
   - Fail-fast when circuit is open
   """
 
+  alias Streamix.Iptv.Streaming.{ProviderRuntime, UpstreamPolicy}
   alias Streamix.Iptv.Sync.Telemetry
   alias Streamix.Iptv.XtreamCircuitBreaker
   alias Streamix.SafeLog
@@ -29,55 +30,55 @@ defmodule Streamix.Iptv.XtreamClient do
   # Account
   # ============================================================================
 
-  def get_account_info(url, username, password) do
-    api_call(url, username, password, nil)
+  def get_account_info(url, username, password, opts \\ []) do
+    api_call(url, username, password, nil, %{}, opts)
   end
 
   # ============================================================================
   # Live TV
   # ============================================================================
 
-  def get_live_categories(url, username, password) do
-    api_call(url, username, password, "get_live_categories")
+  def get_live_categories(url, username, password, opts \\ []) do
+    api_call(url, username, password, "get_live_categories", %{}, opts)
   end
 
   def get_live_streams(url, username, password, opts \\ []) do
     params = if cat = opts[:category_id], do: %{category_id: cat}, else: %{}
-    api_call(url, username, password, "get_live_streams", params)
+    api_call(url, username, password, "get_live_streams", params, opts)
   end
 
   # ============================================================================
   # VOD (Movies)
   # ============================================================================
 
-  def get_vod_categories(url, username, password) do
-    api_call(url, username, password, "get_vod_categories")
+  def get_vod_categories(url, username, password, opts \\ []) do
+    api_call(url, username, password, "get_vod_categories", %{}, opts)
   end
 
   def get_vod_streams(url, username, password, opts \\ []) do
     params = if cat = opts[:category_id], do: %{category_id: cat}, else: %{}
-    api_call(url, username, password, "get_vod_streams", params)
+    api_call(url, username, password, "get_vod_streams", params, opts)
   end
 
-  def get_vod_info(url, username, password, vod_id) do
-    api_call(url, username, password, "get_vod_info", %{vod_id: vod_id})
+  def get_vod_info(url, username, password, vod_id, opts \\ []) do
+    api_call(url, username, password, "get_vod_info", %{vod_id: vod_id}, opts)
   end
 
   # ============================================================================
   # Series
   # ============================================================================
 
-  def get_series_categories(url, username, password) do
-    api_call(url, username, password, "get_series_categories")
+  def get_series_categories(url, username, password, opts \\ []) do
+    api_call(url, username, password, "get_series_categories", %{}, opts)
   end
 
   def get_series(url, username, password, opts \\ []) do
     params = if cat = opts[:category_id], do: %{category_id: cat}, else: %{}
-    api_call(url, username, password, "get_series", params)
+    api_call(url, username, password, "get_series", params, opts)
   end
 
-  def get_series_info(url, username, password, series_id) do
-    api_call(url, username, password, "get_series_info", %{series_id: series_id})
+  def get_series_info(url, username, password, series_id, opts \\ []) do
+    api_call(url, username, password, "get_series_info", %{series_id: series_id}, opts)
   end
 
   # ============================================================================
@@ -96,14 +97,29 @@ defmodule Streamix.Iptv.XtreamClient do
   """
   def get_short_epg(url, username, password, stream_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
-    api_call(url, username, password, "get_short_epg", %{stream_id: stream_id, limit: limit})
+
+    api_call(
+      url,
+      username,
+      password,
+      "get_short_epg",
+      %{stream_id: stream_id, limit: limit},
+      opts
+    )
   end
 
   @doc """
   Fetches simple EPG data table for a stream.
   """
-  def get_simple_data_table(url, username, password, stream_id) do
-    api_call(url, username, password, "get_simple_data_table", %{stream_id: stream_id})
+  def get_simple_data_table(url, username, password, stream_id, opts \\ []) do
+    api_call(
+      url,
+      username,
+      password,
+      "get_simple_data_table",
+      %{stream_id: stream_id},
+      opts
+    )
   end
 
   @doc """
@@ -114,36 +130,18 @@ defmodule Streamix.Iptv.XtreamClient do
   Returns `{:ok, raw_xml_body}` on success. Bypasses the JSON
   `api_call/5` path because the response is XML.
   """
-  def get_xmltv(url, username, password) do
+  def get_xmltv(url, username, password, opts \\ []) do
     base = String.trim_trailing(url, "/")
 
     target =
       "#{base}/xmltv.php?username=#{URI.encode_www_form(username)}&password=#{URI.encode_www_form(password)}"
 
-    provider_id = :erlang.phash2({url, username})
+    provider_id = circuit_key(url, username, opts)
 
-    with_circuit_breaker(provider_id, "get_xmltv", fn ->
-      case Req.get(target,
-             receive_timeout: :timer.seconds(120),
-             finch: [name: Streamix.Finch],
-             headers: [{"user-agent", "IPTVSmartersPlayer"}],
-             decode_body: false
-           ) do
-        {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
-          {:ok, body}
-
-        {:ok, %{status: 200}} ->
-          {:error, :empty_xmltv}
-
-        {:ok, %{status: status}} ->
-          {:error, {:http_error, status}}
-
-        {:error, %Req.TransportError{reason: reason}} ->
-          {:error, {:transport_error, reason}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    tracked_control_call(provider_id, fn ->
+      with_circuit_breaker(provider_id, "get_xmltv", fn ->
+        request_document(target, opts, :timer.seconds(120), :empty_xmltv)
+      end)
     end)
   end
 
@@ -164,37 +162,19 @@ defmodule Streamix.Iptv.XtreamClient do
   Returns `{:ok, raw_m3u_body}` on success. Body parsing is the parser's
   job — we hand back raw bytes so the caller can stream it.
   """
-  def get_m3u_plus(url, username, password) do
+  def get_m3u_plus(url, username, password, opts \\ []) do
     base = String.trim_trailing(url, "/")
 
     target =
       "#{base}/get.php?username=#{URI.encode_www_form(username)}" <>
         "&password=#{URI.encode_www_form(password)}&type=m3u_plus&output=ts"
 
-    provider_id = :erlang.phash2({url, username})
+    provider_id = circuit_key(url, username, opts)
 
-    with_circuit_breaker(provider_id, "get_m3u_plus", fn ->
-      case Req.get(target,
-             receive_timeout: :timer.seconds(180),
-             finch: [name: Streamix.Finch],
-             headers: [{"user-agent", "IPTVSmartersPlayer"}],
-             decode_body: false
-           ) do
-        {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
-          {:ok, body}
-
-        {:ok, %{status: 200}} ->
-          {:error, :empty_m3u}
-
-        {:ok, %{status: status}} ->
-          {:error, {:http_error, status}}
-
-        {:error, %Req.TransportError{reason: reason}} ->
-          {:error, {:transport_error, reason}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    tracked_control_call(provider_id, fn ->
+      with_circuit_breaker(provider_id, "get_m3u_plus", fn ->
+        request_document(target, opts, :timer.seconds(180), :empty_m3u)
+      end)
     end)
   end
 
@@ -221,23 +201,50 @@ defmodule Streamix.Iptv.XtreamClient do
   # Private
   # ============================================================================
 
-  defp api_call(base_url, username, password, action, extra_params \\ %{}) do
+  defp api_call(base_url, username, password, action, extra_params, opts) do
     url = build_url(base_url, username, password, action, extra_params)
     action_name = action || "account_info"
 
-    # Use URL+username hash as provider identifier for circuit breaker
-    provider_id = :erlang.phash2({base_url, username})
+    provider_id = circuit_key(base_url, username, opts)
 
-    # Check circuit breaker before making request
-    with_circuit_breaker(provider_id, action_name, fn -> do_api_call(url, 0) end)
+    tracked_control_call(provider_id, fn ->
+      with_circuit_breaker(provider_id, action_name, fn -> do_api_call(url, 0, opts) end)
+    end)
   end
 
-  defp do_api_call(url, attempt) do
+  defp request_document(target, opts, default_timeout, empty_error) do
+    case Req.get(target,
+           receive_timeout: Keyword.get(opts, :request_timeout, default_timeout),
+           finch: [name: Streamix.Finch],
+           headers: [{"user-agent", UpstreamPolicy.user_agent()}],
+           decode_body: false
+         ) do
+      {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
+        {:ok, body}
+
+      {:ok, %{status: 200}} ->
+        {:error, empty_error}
+
+      {:ok, %{status: status}} ->
+        {:error, {:http_error, status}}
+
+      {:error, %Req.TransportError{reason: reason}} ->
+        {:error, {:transport_error, reason}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp do_api_call(url, attempt, opts) do
+    request_timeout = Keyword.get(opts, :request_timeout, @timeout)
+    max_retries = Keyword.get(opts, :max_retries, @max_retries)
+
     # Use dedicated Finch pool for connection reuse during sync
     case Req.get(url,
-           receive_timeout: @timeout,
+           receive_timeout: request_timeout,
            finch: [name: Streamix.Finch],
-           headers: [{"user-agent", "IPTVSmartersPlayer"}]
+           headers: [{"user-agent", UpstreamPolicy.user_agent()}]
          ) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
         {:ok, body}
@@ -245,7 +252,7 @@ defmodule Streamix.Iptv.XtreamClient do
       {:ok, %{status: 200, body: body}} when is_binary(body) ->
         Jason.decode(body)
 
-      {:ok, %{status: 429}} when attempt < @max_retries ->
+      {:ok, %{status: 429}} when attempt < max_retries ->
         # Rate limited — full-jitter exponential backoff. Picking a delay
         # uniformly in [base, 2 * base * 2^attempt) spreads parallel
         # retries across a wide window so N workers receiving a 429 at
@@ -255,26 +262,26 @@ defmodule Streamix.Iptv.XtreamClient do
         delay = full_jitter_delay(attempt)
 
         Logger.warning(
-          "[XtreamClient] Rate limited (429), retry #{attempt + 1}/#{@max_retries} in #{div(delay, 1000)}s"
+          "[XtreamClient] Rate limited (429), retry #{attempt + 1}/#{max_retries} in #{div(delay, 1000)}s"
         )
 
         Process.sleep(delay)
-        do_api_call(url, attempt + 1)
+        do_api_call(url, attempt + 1, opts)
 
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
 
-      {:error, %Req.TransportError{reason: reason}} when attempt < @max_retries ->
+      {:error, %Req.TransportError{reason: reason}} when attempt < max_retries ->
         # Same full-jitter backoff as the 429 branch — see comment above.
         delay = full_jitter_delay(attempt)
 
         Logger.warning(
           "[XtreamClient] Transport error #{SafeLog.redact_inspect(reason)}, " <>
-            "retry #{attempt + 1}/#{@max_retries}"
+            "retry #{attempt + 1}/#{max_retries}"
         )
 
         Process.sleep(delay)
-        do_api_call(url, attempt + 1)
+        do_api_call(url, attempt + 1, opts)
 
       {:error, %Req.TransportError{reason: reason}} ->
         {:error, {:transport_error, reason}}
@@ -332,6 +339,19 @@ defmodule Streamix.Iptv.XtreamClient do
     XtreamCircuitBreaker.report_error(provider_id, categorize_error(error_type))
   end
 
+  defp tracked_control_call(provider_id, fun) do
+    started_at = System.monotonic_time(:millisecond)
+    result = fun.()
+    latency_ms = System.monotonic_time(:millisecond) - started_at
+
+    case result do
+      {:ok, _} -> ProviderRuntime.record_success(provider_id, :control, latency_ms)
+      {:error, reason} -> ProviderRuntime.record_failure(provider_id, :control, reason)
+    end
+
+    result
+  end
+
   defp build_url(base_url, username, password, action, extra_params) do
     base = String.trim_trailing(base_url, "/")
     user = URI.encode_www_form(username)
@@ -348,4 +368,8 @@ defmodule Streamix.Iptv.XtreamClient do
 
   defp maybe_add_action(params, nil), do: params
   defp maybe_add_action(params, action), do: Map.put(params, :action, action)
+
+  defp circuit_key(base_url, username, opts) do
+    Keyword.get(opts, :provider_id) || :erlang.phash2({base_url, username})
+  end
 end

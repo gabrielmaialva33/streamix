@@ -64,10 +64,10 @@ let your IaC tool render it.
 - Rotate `__SHARED_HMAC_SECRET__` quarterly. The BEAM reads it from
   `STREAM_PROXY_HMAC_SECRET`; rotate both ends in the same deploy
   window or signed-URL playback will 403 until secrets converge.
-- The User-Agent (`XCIPTV-v6.0.0`) must stay in sync with the BEAM
+- The User-Agent (`IPTVSmartersPlayer` by default) must stay in sync with the BEAM
   identifiers in `lib/streamix/iptv/streaming/{vod_proxy,redirect_resolver,xtream_client,stream_proxy,stream_multiplexer}.ex`.
-  Casing matters — the provider's WAF treats `xciptv-v6.0.0` and
-  `XCIPTV-v6.0.0` as different clients.
+  The BEAM value can be overridden with `IPTV_UPSTREAM_USER_AGENT`; update this
+  nginx template in the same deployment when doing so. Casing matters to provider WAFs.
 
 ## Related modules on the BEAM side
 

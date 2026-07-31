@@ -34,13 +34,16 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   alias Plug.Conn
 
+  alias Streamix.Iptv.Channels
   alias Streamix.SafeLog
 
   alias Streamix.Iptv.Streaming.{
     FailoverPolicy,
     FallbackVideo,
+    ProviderRuntime,
     RedirectResolver,
     StreamErrors,
+    UpstreamPolicy,
     UpstreamPump
   }
 
@@ -50,8 +53,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   # `Req/...` UA gets bounced. Standardized across every Streamix surface
   # (catalog, EPG, multiplexer, redirect resolver) so the upstream sees a
   # single coherent client identity.
-  @upstream_user_agent "IPTVSmartersPlayer"
-
   # Headers we forward verbatim from the player to the upstream so seek,
   # cache validation and conditional GETs all work end-to-end.
   @forwardable_request_headers ~w(range if-range if-none-match if-modified-since)
@@ -104,17 +105,25 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   @spec pipe(Conn.t(), String.t(), keyword()) :: Conn.t()
   def pipe(conn, url, opts \\ []) do
     url_chain = Keyword.get(opts, :url_chain, [url])
-    pipe_chain(conn, url_chain)
+    context = stream_context(opts)
+
+    conn
+    |> Conn.put_private(:streamix_proxy_context, context)
+    |> with_provider_lease(context, &pipe_chain(&1, url_chain))
   end
 
   @spec head(Conn.t(), String.t(), keyword()) :: Conn.t()
   def head(conn, url, opts \\ []) do
-    opts
-    |> Keyword.get(:url_chain, [url])
-    |> head_chain(conn)
+    url_chain = Keyword.get(opts, :url_chain, [url])
+    context = stream_context(opts)
+
+    conn
+    |> Conn.put_private(:streamix_proxy_context, context)
+    |> with_provider_lease(context, &head_chain(url_chain, &1))
   end
 
   defp head_chain([], conn) do
+    record_failure(proxy_context(conn), :stream_resolution_failed)
     StreamErrors.halt(conn, :stream_resolution_failed)
   end
 
@@ -122,8 +131,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     case resolve_chain(url) do
       {:ok, final_url} ->
         case do_head(conn, final_url) do
-          {:ok, conn} -> conn
-          {:error, reason} -> rotate_head_or_halt(rest, conn, reason)
+          {:ok, conn} ->
+            record_success(proxy_context(conn))
+            conn
+
+          {:error, reason} ->
+            rotate_head_or_halt(rest, conn, reason)
         end
 
       {:error, reason} ->
@@ -132,6 +145,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp rotate_head_or_halt([], conn, reason) do
+    record_failure(proxy_context(conn), reason)
     StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
   end
 
@@ -168,16 +182,18 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   # the player's decoder state).
   defp pipe_chain(conn, []) do
     Logger.warning("[VodProxy] empty URL chain")
+    record_failure(proxy_context(conn), :stream_resolution_failed)
     StreamErrors.halt(conn, :stream_resolution_failed)
   end
 
   defp pipe_chain(conn, [url | rest]) do
-    state = %{
-      original_url: url,
-      bytes_sent: 0,
-      retry_count: 0,
-      started_at: System.monotonic_time(:millisecond)
-    }
+    state =
+      Map.merge(proxy_context(conn), %{
+        original_url: url,
+        bytes_sent: 0,
+        retry_count: 0,
+        started_at: System.monotonic_time(:millisecond)
+      })
 
     emit_telemetry(:start, state)
 
@@ -188,7 +204,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
             "[VodProxy] failover pattern hit on #{sanitize(final_url)}; rotating to next URL"
           )
 
-          rotate_or_fallback(conn, rest, :failover_pattern_match)
+          rotate_or_fallback(conn, rest, :failover_pattern_match, state)
         else
           conn = do_pipe(conn, final_url, state)
           maybe_rotate_after_pipe(conn, rest)
@@ -199,7 +215,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
           "[VodProxy] resolve failed for #{sanitize(url)}: #{SafeLog.redact_inspect(reason)}"
         )
 
-        rotate_or_fallback(conn, rest, reason)
+        rotate_or_fallback(conn, rest, reason, state)
     end
   end
 
@@ -217,10 +233,13 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     pipe_chain(conn, rest)
   end
 
-  defp rotate_or_fallback(conn, [], reason), do: serve_fallback_or_halt(conn, reason)
-  defp rotate_or_fallback(conn, rest, _reason), do: pipe_chain(conn, rest)
+  defp rotate_or_fallback(conn, [], reason, state),
+    do: serve_fallback_or_halt(conn, reason, state)
 
-  defp serve_fallback_or_halt(conn, reason) do
+  defp rotate_or_fallback(conn, rest, _reason, _state), do: pipe_chain(conn, rest)
+
+  defp serve_fallback_or_halt(conn, reason, state) do
+    record_failure(state, reason)
     code = StreamErrors.code_from_reason(reason)
     category = FallbackVideo.category_from_reason(reason)
 
@@ -243,6 +262,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp do_pipe(conn, _final_url, %{retry_count: n} = state)
        when n > @max_mid_stream_retries do
     Logger.warning("[VodProxy] giving up after #{n} retries for #{sanitize(state.original_url)}")
+    record_failure(state, :retry_limit_exceeded)
     emit_telemetry(:complete, state, outcome: :retry_limit_exceeded)
 
     conn
@@ -251,6 +271,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp do_pipe(conn, final_url, state) do
     if exceeded_retry_budget?(state) do
       Logger.warning("[VodProxy] retry budget exhausted for #{sanitize(state.original_url)}")
+      record_failure(state, :retry_budget_exhausted)
       emit_telemetry(:complete, state, outcome: :retry_budget_exhausted)
       conn
     else
@@ -266,11 +287,13 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp handle_attempt_result({:ok, conn, final_state}, _conn, state) do
+    record_success(state)
     emit_telemetry(:complete, state, outcome: :ok, bytes_sent: final_state.total_sent)
     conn
   end
 
   defp handle_attempt_result({:error, :client_closed, chunked_conn, final_state}, _conn, state) do
+    if final_state.total_sent > 0, do: record_success(state)
     emit_telemetry(:client_closed, state, bytes_sent: final_state.total_sent)
     emit_telemetry(:complete, state, outcome: :client_closed, bytes_sent: final_state.total_sent)
     chunked_conn
@@ -294,11 +317,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     Logger.warning("[VodProxy] terminal upstream status #{status}")
     emit_telemetry(:terminal_status, state, status: status)
     emit_telemetry(:complete, state, outcome: :terminal_status, status: status)
-    serve_fallback_or_halt(conn, {:unexpected_status, status})
+    serve_fallback_or_halt(conn, {:unexpected_status, status}, state)
   end
 
   defp handle_attempt_result({:error, :status_no_partial, status}, conn, state) do
     Logger.warning("[VodProxy] reconnect aborted: upstream ignored Range and returned #{status}")
+    record_failure(state, {:unexpected_status, status})
     emit_telemetry(:complete, state, outcome: :status_no_partial, status: status)
 
     conn
@@ -318,7 +342,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       Logger.warning("[VodProxy] upstream pre-flight failed: #{SafeLog.redact_inspect(reason)}")
 
       emit_telemetry(:complete, state, outcome: :pre_flight_failed, reason: reason)
-      serve_fallback_or_halt(conn, reason)
+      serve_fallback_or_halt(conn, reason, state)
     end
   end
 
@@ -333,6 +357,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       emit_telemetry(:upstream_retry, state, reason: reason, bytes_sent: total_sent)
       retry_with_fresh_chain(chunked_conn, state)
     else
+      record_failure(state, reason)
+
       emit_telemetry(:complete, state,
         outcome: :mid_stream_retry_limit_exceeded,
         bytes_sent: total_sent
@@ -351,7 +377,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       {:ok, fresh_url} ->
         do_pipe(conn, fresh_url, state)
 
-      {:error, _} ->
+      {:error, reason} ->
+        record_failure(state, reason)
         conn
     end
   end
@@ -529,7 +556,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   defp build_request_headers(conn, bytes_sent) do
     base = [
-      {"user-agent", @upstream_user_agent},
+      {"user-agent", UpstreamPolicy.user_agent()},
       {"accept", "*/*"},
       # `Connection: close` — pooled idle connections trip
       # `max_connections=1` quotas and trigger 509 storms.
@@ -563,11 +590,94 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     SafeLog.redact_url(url)
   end
 
+  defp stream_context(opts) do
+    media_type = opts |> Keyword.get(:media_type) |> normalize_media_type()
+
+    %{
+      provider_id: Keyword.get(opts, :provider_id),
+      content_id: Keyword.get(opts, :content_id),
+      media_type: media_type,
+      dimension: if(media_type == "channel", do: :live, else: :vod),
+      started_at: System.monotonic_time(:millisecond)
+    }
+  end
+
+  defp proxy_context(conn) do
+    Map.get(conn.private, :streamix_proxy_context) || stream_context([])
+  end
+
+  defp with_provider_lease(conn, context, fun) do
+    case ProviderRuntime.acquire(context.provider_id, context.dimension) do
+      {:ok, lease} ->
+        try do
+          fun.(conn)
+        after
+          ProviderRuntime.release(lease)
+        end
+
+      {:error, :capacity_exhausted} ->
+        state = Map.merge(context, %{bytes_sent: 0, retry_count: 0})
+        emit_telemetry(:capacity_exhausted, state)
+        StreamErrors.halt(conn, :provider_capacity_exhausted)
+    end
+  end
+
+  defp record_success(%{provider_id: provider_id, dimension: dimension} = state)
+       when is_integer(provider_id) do
+    latency_ms = System.monotonic_time(:millisecond) - state.started_at
+    ProviderRuntime.record_success(provider_id, dimension, latency_ms)
+    maybe_mark_channel_alive(state)
+  end
+
+  defp record_success(_state), do: :ok
+
+  defp record_failure(%{provider_id: provider_id, dimension: dimension} = state, reason)
+       when is_integer(provider_id) do
+    if content_missing?(reason) do
+      maybe_mark_channel_dead(state)
+    else
+      ProviderRuntime.record_failure(provider_id, dimension, reason)
+    end
+  end
+
+  defp record_failure(_state, _reason), do: :ok
+
+  defp content_missing?({:unexpected_status, status}) when status in [404, 410], do: true
+  defp content_missing?(_), do: false
+
+  defp maybe_mark_channel_alive(%{media_type: "channel", content_id: content_id})
+       when is_integer(content_id),
+       do: safe_channel_update(fn -> Channels.mark_alive(content_id) end)
+
+  defp maybe_mark_channel_alive(_state), do: :ok
+
+  defp maybe_mark_channel_dead(%{media_type: "channel", content_id: content_id})
+       when is_integer(content_id),
+       do: safe_channel_update(fn -> Channels.mark_dead(content_id) end)
+
+  defp maybe_mark_channel_dead(_state), do: :ok
+
+  defp safe_channel_update(fun) do
+    fun.()
+  rescue
+    error ->
+      Logger.warning("[VodProxy] channel liveness update failed: #{Exception.message(error)}")
+      :ok
+  end
+
+  defp normalize_media_type(nil), do: nil
+  defp normalize_media_type(value) when is_atom(value), do: Atom.to_string(value)
+  defp normalize_media_type(value) when is_binary(value), do: value
+  defp normalize_media_type(_), do: nil
+
   defp emit_telemetry(event, state, metadata \\ []) do
     metadata =
       metadata
       |> Keyword.put(:retry_count, state.retry_count)
       |> Keyword.put(:duration_ms, System.monotonic_time(:millisecond) - state.started_at)
+      |> maybe_put_metadata(:provider_id, Map.get(state, :provider_id))
+      |> maybe_put_metadata(:content_id, Map.get(state, :content_id))
+      |> maybe_put_metadata(:media_type, Map.get(state, :media_type))
 
     measurements = %{
       bytes_sent: Keyword.get(metadata, :bytes_sent, state.bytes_sent),
@@ -583,4 +693,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
     :telemetry.execute([:streamix, :stream_proxy, event], measurements, metadata)
   end
+
+  defp maybe_put_metadata(metadata, _key, nil), do: metadata
+  defp maybe_put_metadata(metadata, key, value), do: Keyword.put(metadata, key, value)
 end

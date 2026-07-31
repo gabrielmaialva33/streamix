@@ -31,6 +31,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   use GenServer
   require Logger
 
+  alias Streamix.Iptv.Streaming.UpstreamPolicy
   alias Streamix.SafeLog
 
   @table :stream_redirect_cache
@@ -446,7 +447,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     [
       redirect: false,
       retry: false,
-      headers: [{"user-agent", "IPTVSmartersPlayer"}],
+      headers: [{"user-agent", UpstreamPolicy.user_agent()}],
       decode_body: false,
       # Tight timeouts: a healthy provider responds with a 302 in
       # under 1s. Anything past 8s receive or 5s connect is almost

@@ -685,6 +685,25 @@ case get_env.("STREAM_PROXY_BACKEND") do
 end
 
 config :streamix,
+  iptv_upstream_user_agent: get_env.("IPTV_UPSTREAM_USER_AGENT") || "IPTVSmartersPlayer",
+  live_multiplexer_enabled:
+    RuntimeConfig.boolean!("LIVE_MULTIPLEXER_ENABLED", get_env.("LIVE_MULTIPLEXER_ENABLED"), true),
+  live_mux_idle_timeout_ms:
+    RuntimeConfig.integer!(
+      "LIVE_MUX_IDLE_TIMEOUT_MS",
+      get_env.("LIVE_MUX_IDLE_TIMEOUT_MS"),
+      2_000,
+      min: 0,
+      max: 60_000
+    ),
+  live_mux_stream_idle_timeout_ms:
+    RuntimeConfig.integer!(
+      "LIVE_MUX_STREAM_IDLE_TIMEOUT_MS",
+      get_env.("LIVE_MUX_STREAM_IDLE_TIMEOUT_MS"),
+      45_000,
+      min: 5_000,
+      max: 300_000
+    ),
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
   stream_proxy_urls: stream_proxy_urls,
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
