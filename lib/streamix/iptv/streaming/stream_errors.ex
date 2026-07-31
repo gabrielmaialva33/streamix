@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
           :upstream_unavailable
           | :upstream_not_found
           | :upstream_timeout
+          | :provider_capacity_exhausted
           | :stream_resolution_failed
           | :token_expired
           | :invalid_token
@@ -39,6 +40,11 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
     upstream_not_found: {
       :not_found,
       "Provider returned 404 — content may have been removed upstream"
+    },
+    provider_capacity_exhausted: {
+      :service_unavailable,
+      "Provider connection capacity is temporarily exhausted",
+      retry_after: 5
     },
     stream_resolution_failed: {
       :bad_gateway,

@@ -82,6 +82,8 @@ defmodule Streamix.Application do
         Streamix.Gindex.EndpointManager,
         # GIndex URL cache
         Streamix.Gindex.UrlCache,
+        # Provider capabilities, per-media health and upstream connection leases.
+        Streamix.Iptv.Streaming.ProviderRuntime,
         # Xtream circuit breaker (Netflix-style resilience)
         Streamix.Iptv.XtreamCircuitBreaker
       ],
