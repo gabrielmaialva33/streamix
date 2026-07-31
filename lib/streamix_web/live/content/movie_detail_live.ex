@@ -403,25 +403,15 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp sort_movie_variants(variants, current_movie_id, preferred_provider_id) do
-    Enum.sort_by(variants, fn variant ->
-      {
-        provider_rank(variant.provider_id, preferred_provider_id),
-        current_rank(variant.id, current_movie_id),
-        -quality_score(variant),
-        provider_name(variant),
-        variant.title || variant.name || ""
-      }
-    end)
+    Iptv.sort_stream_sources(variants,
+      media_type: :movie,
+      current_source_id: current_movie_id,
+      preferred_provider_id: preferred_provider_id
+    )
   end
 
   defp selected_variant([variant | _], _movie, _preferred_provider_id), do: variant
   defp selected_variant([], movie, _preferred_provider_id), do: movie
-
-  defp provider_rank(provider_id, provider_id) when not is_nil(provider_id), do: 0
-  defp provider_rank(_provider_id, _preferred_provider_id), do: 1
-
-  defp current_rank(current_movie_id, current_movie_id), do: 0
-  defp current_rank(_variant_id, _current_movie_id), do: 1
 
   defp movie_versions(assigns) do
     recommended =
@@ -656,20 +646,5 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
   defp contains_badge(value, needle, label) do
     if String.contains?(value, needle), do: label
-  end
-
-  defp quality_score(variant) do
-    source = String.downcase("#{variant.name} #{variant.title}")
-
-    [
-      {String.contains?(source, "4k"), 40},
-      {String.contains?(source, "2160p"), 35},
-      {String.contains?(source, "hdr"), 20},
-      {String.contains?(source, "1080p"), 10}
-    ]
-    |> Enum.reduce(0, fn
-      {true, points}, score -> score + points
-      {false, _points}, score -> score
-    end)
   end
 end

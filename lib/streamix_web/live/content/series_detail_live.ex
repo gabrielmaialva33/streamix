@@ -475,26 +475,17 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp sort_series_sources(sources, current_series_id, preferred_provider_id) do
-    Enum.sort_by(sources, fn source ->
-      {
-        provider_rank(source.provider_id, preferred_provider_id),
-        current_rank(source.id, current_series_id),
-        provider_name(source),
-        source.title || source.name || ""
-      }
-    end)
+    Iptv.sort_stream_sources(sources,
+      media_type: :series,
+      current_source_id: current_series_id,
+      preferred_provider_id: preferred_provider_id
+    )
   end
 
   defp selected_series_source([source | _], _series), do: source
   defp selected_series_source([], series), do: series
 
   defp dedupe_series_sources(sources), do: Enum.uniq_by(sources, & &1.provider_id)
-
-  defp provider_rank(provider_id, provider_id) when not is_nil(provider_id), do: 0
-  defp provider_rank(_provider_id, _preferred_provider_id), do: 1
-
-  defp current_rank(current_series_id, current_series_id), do: 0
-  defp current_rank(_source_id, _current_series_id), do: 1
 
   defp first_episode([first_season | _]) when first_season.episodes != [] do
     first_season.episodes

@@ -6,7 +6,15 @@ defmodule Streamix.Iptv.CatalogItem do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.{Category, Episode, LiveChannel, Movie, Provider, Series}
+  alias Streamix.Iptv.{
+    Category,
+    ContentSourceGroup,
+    Episode,
+    LiveChannel,
+    Movie,
+    Provider,
+    Series
+  }
 
   @content_types ~w(live_channel movie series episode)
 
@@ -14,8 +22,12 @@ defmodule Streamix.Iptv.CatalogItem do
 
   schema "catalog_items" do
     field :content_type, :string
+    field :source_match_method, :string
+    field :source_match_confidence, :integer
+    field :source_verified_at, :utc_datetime
 
     belongs_to :provider, Provider
+    belongs_to :source_group, ContentSourceGroup
     has_one :movie, Movie
     has_one :series, Series
     has_one :episode, Episode

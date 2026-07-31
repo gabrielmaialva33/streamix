@@ -136,14 +136,14 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
 
       assert has_element?(
                view,
-               "#recommended-movie-source #movie-source-#{ctx.movie.id}"
+               "#recommended-movie-source #movie-source-#{alternative_movie.id}"
              )
 
       assert has_element?(view, "details#alternative-movie-sources:not([open])")
 
       assert has_element?(
                view,
-               "#alternative-movie-sources #movie-source-#{alternative_movie.id}"
+               "#alternative-movie-sources #movie-source-#{ctx.movie.id}"
              )
 
       alternative_watch_path =
@@ -152,7 +152,7 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
 
       assert has_element?(
                view,
-               ~s|#alternative-movie-sources a[href="#{alternative_watch_path}"]:not([data-phx-link])|
+               ~s|#recommended-movie-source a[href="#{alternative_watch_path}"]:not([data-phx-link])|
              )
     end
 

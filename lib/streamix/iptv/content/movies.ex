@@ -16,6 +16,7 @@ defmodule Streamix.Iptv.Movies do
   }
 
   alias Streamix.Iptv.Content.Movies.{Enrichment, Queries}
+  alias Streamix.Iptv.Content.SourceEquivalence
   alias Streamix.Iptv.Content.VariantCards
   alias Streamix.Repo
 
@@ -323,6 +324,11 @@ defmodule Streamix.Iptv.Movies do
     normalized_title = VariantCards.normalize_title(movie.title || movie.name)
     search_title = variant_search_title(movie)
 
+    linked_variants =
+      movie.catalog_item_id
+      |> SourceEquivalence.catalog_item_ids()
+      |> variants_by_catalog_item_ids(user_id, limit)
+
     tmdb_variants =
       case tmdb_id do
         nil -> []
@@ -345,7 +351,7 @@ defmodule Streamix.Iptv.Movies do
           variants_by_title(search_title, normalized_title, user_id, candidate_limit)
       end
 
-    (tmdb_variants ++ title_variants)
+    (linked_variants ++ tmdb_variants ++ title_variants)
     |> Enum.uniq_by(& &1.id)
     |> Enum.sort_by(fn movie -> {-movie.id, provider_sort_name(movie)} end)
     |> Enum.take(limit)
@@ -356,6 +362,18 @@ defmodule Streamix.Iptv.Movies do
     |> Access.visible_to_user(user_id)
     |> where([m, _p], m.tmdb_id == ^tmdb_id)
     |> order_by([m, p], desc: m.id, asc: p.name)
+    |> limit(^limit)
+    |> preload(^@variant_preloads)
+    |> Repo.all()
+  end
+
+  defp variants_by_catalog_item_ids([], _user_id, _limit), do: []
+
+  defp variants_by_catalog_item_ids(catalog_item_ids, user_id, limit) do
+    Movie
+    |> Access.visible_to_user(user_id)
+    |> where([movie, _provider], movie.catalog_item_id in ^catalog_item_ids)
+    |> order_by([movie, provider], desc: movie.id, asc: provider.name)
     |> limit(^limit)
     |> preload(^@variant_preloads)
     |> Repo.all()
