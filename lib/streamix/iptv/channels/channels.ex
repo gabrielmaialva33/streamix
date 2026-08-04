@@ -380,13 +380,15 @@ defmodule Streamix.Iptv.Channels do
   @spec search(integer(), String.t(), keyword()) :: [LiveChannel.t()]
   def search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    offset = Keyword.get(opts, :offset, 0)
     escaped = Helpers.escape_like(query)
 
     LiveChannel
     |> Access.visible_to_user(user_id)
     |> where([c, _p], ilike(c.name, ^"%#{escaped}%"))
-    |> order_by([c], asc: c.name)
+    |> order_by([c], asc: c.name, desc: c.id)
     |> limit(^limit)
+    |> offset(^offset)
     |> Repo.all()
   end
 

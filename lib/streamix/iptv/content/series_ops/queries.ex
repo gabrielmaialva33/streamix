@@ -283,6 +283,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
       search: query,
       sort: "rating_desc",
       limit: Keyword.get(opts, :limit, 24),
+      offset: Keyword.get(opts, :offset, 0),
       show_adult: Keyword.get(opts, :show_adult, false)
     )
   end

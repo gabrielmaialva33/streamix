@@ -18,6 +18,9 @@ defmodule StreamixWeb.SearchLive do
   alias Streamix.Iptv
   alias StreamixWeb.Content.FavoriteState
 
+  @page_size 24
+  @result_types %{"channels" => :channels, "movies" => :movies, "series" => :series}
+
   @doc false
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
@@ -28,10 +31,14 @@ defmodule StreamixWeb.SearchLive do
       |> assign(current_path: "/search")
       |> assign(query: "")
       |> assign(filter: "all")
-      |> assign(results: %{channels: [], movies: [], series: []})
+      |> assign(result_counts: %{channels: 0, movies: 0, series: 0})
+      |> assign(has_more: %{channels: false, movies: false, series: false})
       |> assign(loading: false)
       |> assign(searched: false)
       |> assign(user_id: user_id)
+      |> stream(:search_channels, [])
+      |> stream(:search_movies, [])
+      |> stream(:search_series, [])
 
     {:ok, socket}
   end
@@ -59,12 +66,17 @@ defmodule StreamixWeb.SearchLive do
   @doc false
   def handle_event("search", %{"query" => query}, socket) do
     if String.trim(query) == "" do
-      {:noreply,
-       assign(socket,
-         query: "",
-         results: %{channels: [], movies: [], series: []},
-         searched: false
-       )}
+      socket =
+        socket
+        |> assign(
+          query: "",
+          result_counts: %{channels: 0, movies: 0, series: 0},
+          has_more: %{channels: false, movies: false, series: false},
+          searched: false
+        )
+        |> reset_result_streams()
+
+      {:noreply, socket}
     else
       {:noreply, push_patch(socket, to: ~p"/search?q=#{query}")}
     end
@@ -72,6 +84,13 @@ defmodule StreamixWeb.SearchLive do
 
   def handle_event("filter", %{"type" => type}, socket) do
     {:noreply, assign(socket, filter: type)}
+  end
+
+  def handle_event("load_more", %{"type" => type}, socket) do
+    case Map.fetch(@result_types, type) do
+      {:ok, result_type} -> {:noreply, load_more_results(socket, result_type)}
+      :error -> {:noreply, socket}
+    end
   end
 
   def handle_event("play_channel", %{"id" => id}, socket) do
@@ -108,8 +127,8 @@ defmodule StreamixWeb.SearchLive do
 
     case parse_positive_integer(id) do
       {:ok, content_id} ->
-        toggle_favorite(user_id, type, content_id)
-        {:noreply, perform_search(socket)}
+        result = toggle_favorite(user_id, type, content_id)
+        {:noreply, refresh_after_favorite(socket, result)}
 
       :error ->
         {:noreply, socket}
@@ -168,50 +187,65 @@ defmodule StreamixWeb.SearchLive do
         </form>
       </div>
 
-      <div :if={@searched && has_results?(@results)} class="space-y-8">
+      <div :if={@searched && has_results?(@result_counts)} class="space-y-8">
         <div id="search-filter-strip" data-filter-strip class="filter-strip">
-          <.filter_button type="all" label="Todos" current={@filter} count={total_count(@results)} />
+          <.filter_button
+            type="all"
+            label="Todos"
+            current={@filter}
+            count={total_count(@result_counts)}
+            has_more={Enum.any?(Map.values(@has_more))}
+          />
           <.filter_button
             type="channels"
             label="Canais"
             current={@filter}
-            count={length(@results.channels)}
+            count={@result_counts.channels}
+            has_more={@has_more.channels}
           />
           <.filter_button
             type="movies"
             label="Filmes"
             current={@filter}
-            count={length(@results.movies)}
+            count={@result_counts.movies}
+            has_more={@has_more.movies}
           />
           <.filter_button
             type="series"
             label="Séries"
             current={@filter}
-            count={length(@results.series)}
+            count={@result_counts.series}
+            has_more={@has_more.series}
           />
         </div>
 
         <.channels_section
-          :if={@filter in ["all", "channels"] && Enum.any?(@results.channels)}
-          channels={@results.channels}
-          show_all={@filter == "channels"}
+          :if={@result_counts.channels > 0}
+          channels={@streams.search_channels}
+          count={@result_counts.channels}
+          has_more={@has_more.channels}
+          hidden={@filter not in ["all", "channels"]}
         />
 
         <.movies_section
-          :if={@filter in ["all", "movies"] && Enum.any?(@results.movies)}
-          movies={@results.movies}
-          show_all={@filter == "movies"}
+          :if={@result_counts.movies > 0}
+          movies={@streams.search_movies}
+          count={@result_counts.movies}
+          has_more={@has_more.movies}
+          hidden={@filter not in ["all", "movies"]}
         />
 
         <.series_section
-          :if={@filter in ["all", "series"] && Enum.any?(@results.series)}
-          series={@results.series}
-          show_all={@filter == "series"}
+          :if={@result_counts.series > 0}
+          series={@streams.search_series}
+          count={@result_counts.series}
+          has_more={@has_more.series}
+          hidden={@filter not in ["all", "series"]}
         />
       </div>
 
       <div
-        :if={@searched && !has_results?(@results)}
+        :if={@searched && !has_results?(@result_counts)}
         id="search-empty"
         role="status"
         aria-live="polite"
@@ -242,74 +276,94 @@ defmodule StreamixWeb.SearchLive do
       ]}
     >
       {@label}
-      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-black/20">{@count}</span>
+      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-black/20">
+        {@count}{if @has_more, do: "+", else: ""}
+      </span>
     </button>
     """
   end
 
   defp channels_section(assigns) do
-    limit = if assigns.show_all, do: 100, else: 6
-    channels = Enum.take(assigns.channels, limit)
-    assigns = assign(assigns, :limited_channels, channels)
-
     ~H"""
-    <section class="space-y-4">
+    <section id="search-channels-section" class={["space-y-4", @hidden && "hidden"]}>
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-semibold text-text-primary">Canais ao Vivo</h2>
-        <span class="text-sm text-text-secondary">{length(@channels)} resultados</span>
+        <span class="text-sm text-text-secondary">
+          {result_count_label(@count, @has_more)}
+        </span>
       </div>
 
-      <div class="responsive-wide-grid">
-        <.live_channel_card
-          :for={channel <- @limited_channels}
-          channel={channel}
-          is_favorite={channel.is_favorite}
-          on_favorite="toggle_favorite"
-        />
+      <div id="search-channels-grid" phx-update="stream" class="responsive-wide-grid">
+        <div :for={{dom_id, channel} <- @channels} id={dom_id}>
+          <.live_channel_card
+            channel={channel}
+            is_favorite={channel.is_favorite}
+            on_favorite="toggle_favorite"
+          />
+        </div>
       </div>
+
+      <.load_more_button :if={@has_more} type="channels" label="Mostrar mais canais" />
     </section>
     """
   end
 
   defp movies_section(assigns) do
-    limit = if assigns.show_all, do: 100, else: 6
-    movies = Enum.take(assigns.movies, limit)
-    assigns = assign(assigns, :limited_movies, movies)
-
     ~H"""
-    <section class="space-y-4">
+    <section id="search-movies-section" class={["space-y-4", @hidden && "hidden"]}>
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-semibold text-text-primary">Filmes</h2>
-        <span class="text-sm text-text-secondary">{length(@movies)} resultados</span>
+        <span class="text-sm text-text-secondary">
+          {result_count_label(@count, @has_more)}
+        </span>
       </div>
 
-      <div class="responsive-poster-grid">
-        <div :for={movie <- @limited_movies}>
+      <div id="search-movies-grid" phx-update="stream" class="responsive-poster-grid">
+        <div :for={{dom_id, movie} <- @movies} id={dom_id}>
           <.movie_card movie={movie} is_favorite={movie.is_favorite} on_play="play_movie" />
         </div>
       </div>
+
+      <.load_more_button :if={@has_more} type="movies" label="Mostrar mais filmes" />
     </section>
     """
   end
 
   defp series_section(assigns) do
-    limit = if assigns.show_all, do: 100, else: 6
-    series_list = Enum.take(assigns.series, limit)
-    assigns = assign(assigns, :limited_series, series_list)
-
     ~H"""
-    <section class="space-y-4">
+    <section id="search-series-section" class={["space-y-4", @hidden && "hidden"]}>
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-semibold text-text-primary">Séries</h2>
-        <span class="text-sm text-text-secondary">{length(@series)} resultados</span>
+        <span class="text-sm text-text-secondary">
+          {result_count_label(@count, @has_more)}
+        </span>
       </div>
 
-      <div class="responsive-poster-grid">
-        <div :for={series <- @limited_series}>
+      <div id="search-series-grid" phx-update="stream" class="responsive-poster-grid">
+        <div :for={{dom_id, series} <- @series} id={dom_id}>
           <.series_card series={series} is_favorite={series.is_favorite} />
         </div>
       </div>
+
+      <.load_more_button :if={@has_more} type="series" label="Mostrar mais séries" />
     </section>
+    """
+  end
+
+  defp load_more_button(assigns) do
+    ~H"""
+    <div class="flex justify-center pt-2">
+      <button
+        id={"search-load-more-#{@type}"}
+        type="button"
+        phx-click="load_more"
+        phx-value-type={@type}
+        phx-disable-with="Carregando..."
+        class="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-surface px-5 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-brand"
+      >
+        {@label}
+      </button>
+    </div>
     """
   end
 
@@ -356,45 +410,149 @@ defmodule StreamixWeb.SearchLive do
   # ============================================
 
   defp perform_search(socket) do
+    perform_search(socket, %{channels: @page_size, movies: @page_size, series: @page_size})
+  end
+
+  defp perform_search(socket, page_sizes) do
     query = socket.assigns.query
     user_id = socket.assigns.user_id
 
     if String.trim(query) == "" do
       socket
-      |> assign(results: %{channels: [], movies: [], series: []})
+      |> assign(result_counts: %{channels: 0, movies: 0, series: 0})
+      |> assign(has_more: %{channels: false, movies: false, series: false})
       |> assign(loading: false)
       |> assign(searched: false)
+      |> reset_result_streams()
     else
       show_adult = socket.assigns.current_scope.user.show_adult_content
 
-      channels = search_channels(user_id, query)
-      movies = search_movies(user_id, query, show_adult)
-      series = search_series(user_id, query, show_adult)
+      {channels, more_channels?} = search_channels(user_id, query, 0, page_sizes.channels)
+
+      {movies, more_movies?} =
+        search_movies(user_id, query, show_adult, 0, page_sizes.movies)
+
+      {series, more_series?} =
+        search_series(user_id, query, show_adult, 0, page_sizes.series)
+
       favorite_ids = search_favorite_ids(user_id, channels, movies, series)
+
+      channels = mark_favorites(channels, favorite_ids.live_channels)
+      movies = mark_favorites(movies, favorite_ids.movies)
+      series = mark_favorites(series, favorite_ids.series)
 
       socket
       |> assign(
-        results: %{
-          channels: mark_favorites(channels, favorite_ids.live_channels),
-          movies: mark_favorites(movies, favorite_ids.movies),
-          series: mark_favorites(series, favorite_ids.series)
-        }
+        result_counts: %{
+          channels: length(channels),
+          movies: length(movies),
+          series: length(series)
+        },
+        has_more: %{
+          channels: more_channels?,
+          movies: more_movies?,
+          series: more_series?
+        },
+        loading: false,
+        searched: true
       )
-      |> assign(loading: false)
-      |> assign(searched: true)
+      |> stream(:search_channels, channels, reset: true)
+      |> stream(:search_movies, movies, reset: true)
+      |> stream(:search_series, series, reset: true)
     end
   end
 
-  defp search_channels(user_id, query) do
-    Iptv.search_channels(user_id, query, limit: 24)
+  defp search_channels(user_id, query, offset, page_size) do
+    user_id
+    |> Iptv.search_channels(query, limit: page_size + 1, offset: offset)
+    |> split_page(page_size)
   end
 
-  defp search_movies(user_id, query, show_adult) do
-    Iptv.search_movies(user_id, query, limit: 24, show_adult: show_adult)
+  defp search_movies(user_id, query, show_adult, offset, page_size) do
+    user_id
+    |> Iptv.search_movies(query,
+      limit: page_size + 1,
+      offset: offset,
+      show_adult: show_adult
+    )
+    |> split_page(page_size)
   end
 
-  defp search_series(user_id, query, show_adult) do
-    Iptv.search_series(user_id, query, limit: 24, show_adult: show_adult)
+  defp search_series(user_id, query, show_adult, offset, page_size) do
+    user_id
+    |> Iptv.search_series(query,
+      limit: page_size + 1,
+      offset: offset,
+      show_adult: show_adult
+    )
+    |> split_page(page_size)
+  end
+
+  defp split_page(items, page_size) do
+    {Enum.take(items, page_size), length(items) > page_size}
+  end
+
+  defp load_more_results(socket, result_type) do
+    if socket.assigns.has_more[result_type] do
+      current_count = socket.assigns.result_counts[result_type]
+      {next_page, has_more?} = search_page(socket, result_type, current_count)
+
+      next_page =
+        mark_favorites(
+          next_page,
+          favorite_ids_for(socket.assigns.user_id, result_type, next_page)
+        )
+
+      socket
+      |> assign(
+        result_counts:
+          Map.put(socket.assigns.result_counts, result_type, current_count + length(next_page)),
+        has_more: Map.put(socket.assigns.has_more, result_type, has_more?)
+      )
+      |> stream(result_stream(result_type), next_page, at: -1)
+    else
+      socket
+    end
+  end
+
+  defp search_page(socket, :channels, offset) do
+    search_channels(socket.assigns.user_id, socket.assigns.query, offset, @page_size)
+  end
+
+  defp search_page(socket, :movies, offset) do
+    search_movies(
+      socket.assigns.user_id,
+      socket.assigns.query,
+      socket.assigns.current_scope.user.show_adult_content,
+      offset,
+      @page_size
+    )
+  end
+
+  defp search_page(socket, :series, offset) do
+    search_series(
+      socket.assigns.user_id,
+      socket.assigns.query,
+      socket.assigns.current_scope.user.show_adult_content,
+      offset,
+      @page_size
+    )
+  end
+
+  defp result_stream(:channels), do: :search_channels
+  defp result_stream(:movies), do: :search_movies
+  defp result_stream(:series), do: :search_series
+
+  defp favorite_ids_for(user_id, :channels, items) do
+    Iptv.list_favorite_ids(user_id, "live_channel", Enum.map(items, & &1.id))
+  end
+
+  defp favorite_ids_for(user_id, :movies, items) do
+    Iptv.list_favorite_ids(user_id, "movie", Enum.map(items, & &1.id))
+  end
+
+  defp favorite_ids_for(user_id, :series, items) do
+    Iptv.list_favorite_ids(user_id, "series", Enum.map(items, & &1.id))
   end
 
   defp search_favorite_ids(user_id, channels, movies, series) do
@@ -409,11 +567,34 @@ defmodule StreamixWeb.SearchLive do
     Enum.map(items, &Map.put(&1, :is_favorite, MapSet.member?(favorite_ids, &1.id)))
   end
 
-  defp has_results?(results) do
-    Enum.any?(results.channels) || Enum.any?(results.movies) || Enum.any?(results.series)
+  defp refresh_after_favorite(socket, {:ok, _status}) do
+    page_sizes =
+      Map.new(socket.assigns.result_counts, fn {result_type, count} ->
+        {result_type, max(count, @page_size)}
+      end)
+
+    perform_search(socket, page_sizes)
   end
 
-  defp total_count(results) do
-    length(results.channels) + length(results.movies) + length(results.series)
+  defp refresh_after_favorite(socket, {:error, _reason}), do: socket
+
+  defp reset_result_streams(socket) do
+    socket
+    |> stream(:search_channels, [], reset: true)
+    |> stream(:search_movies, [], reset: true)
+    |> stream(:search_series, [], reset: true)
+  end
+
+  defp has_results?(result_counts) do
+    Enum.any?(Map.values(result_counts), &(&1 > 0))
+  end
+
+  defp total_count(result_counts), do: result_counts |> Map.values() |> Enum.sum()
+
+  defp result_count_label(count, has_more?) do
+    suffix = if has_more?, do: "+", else: ""
+    noun = if count == 1, do: "resultado", else: "resultados"
+
+    "#{count}#{suffix} #{noun}"
   end
 end
