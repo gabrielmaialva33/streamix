@@ -20,7 +20,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     * `plug StreamixWeb.Plugs.BearerAuth` — **required**. Missing /
       invalid tokens get a 401 and `halt/1`.
     * `plug StreamixWeb.Plugs.BearerAuth, optional: true` — **optional**.
-      A missing header keeps the connection going without a
+      A missing header keeps the connection going with a nil
       `:current_user` assign (useful when an endpoint has a
       "personalized if logged in" branch).
 
@@ -40,12 +40,16 @@ defmodule StreamixWeb.Plugs.BearerAuth do
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
   def call(conn, opts) do
     case authenticate(conn) do
-      {:ok, user} ->
-        assign(conn, :current_user, user)
+      {:ok, user, token} ->
+        conn
+        |> assign(:current_user, user)
+        |> assign(:current_session_token, token)
 
       :error ->
         if Keyword.get(opts, :optional, false) do
-          assign(conn, :current_user, nil)
+          conn
+          |> assign(:current_user, nil)
+          |> assign(:current_session_token, nil)
         else
           reject(conn)
         end
@@ -56,15 +60,13 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     with token_str when is_binary(token_str) <- get_bearer_token(conn),
          {:ok, token} <- decode_token(token_str),
          {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
-      {:ok, user}
+      {:ok, user, token}
     else
       _ -> :error
     end
   end
 
-  # Accept both padded and unpadded url-safe base64. The TV client
-  # emits padded output, `Base.url_encode64/1` in server-side tests
-  # emits unpadded — a loose decode catches both without leaking the
+  # Accept both padded and unpadded url-safe base64 without leaking the
   # distinction into every call site.
   defp decode_token(bin) do
     case Base.url_decode64(bin, padding: false) do
@@ -75,17 +77,20 @@ defmodule StreamixWeb.Plugs.BearerAuth do
 
   defp get_bearer_token(conn) do
     case get_req_header(conn, "authorization") do
-      ["Bearer " <> token] when byte_size(token) > 0 -> token
-      [raw] when is_binary(raw) -> fallback_bearer(raw)
+      [raw] when is_binary(raw) -> parse_bearer(raw)
       _ -> nil
     end
   end
 
-  # Some clients lower-case or omit the scheme separator — be lenient.
-  defp fallback_bearer(raw) do
-    case String.split(raw, " ", parts: 2) do
-      ["bearer", token] when byte_size(token) > 0 -> token
-      _ -> nil
+  # RFC 9110 authentication schemes are case-insensitive. Accept one or
+  # more spaces, but never accept a missing scheme separator.
+  defp parse_bearer(raw) do
+    case String.split(raw, ~r/\s+/, parts: 2, trim: true) do
+      [scheme, token] when byte_size(token) > 0 ->
+        if String.downcase(scheme) == "bearer", do: token
+
+      _ ->
+        nil
     end
   end
 
@@ -93,7 +98,7 @@ defmodule StreamixWeb.Plugs.BearerAuth do
     :telemetry.execute(
       [:streamix, :auth, :bearer, :rejected],
       %{count: 1},
-      %{ip: conn.remote_ip |> :inet.ntoa() |> to_string(), reason: :invalid_or_missing}
+      %{ip: Accounts.client_ip(conn), reason: :invalid_or_missing}
     )
 
     conn

@@ -6,12 +6,17 @@ defmodule StreamixWeb.Api.V1.AuthController do
   use StreamixWeb, :controller
 
   alias Streamix.Accounts
+  alias StreamixWeb.Api.V1.Response
+
+  plug StreamixWeb.Plugs.BearerAuth when action == :me
+  plug StreamixWeb.Plugs.BearerAuth, [optional: true] when action == :logout
 
   @doc """
   POST /api/v1/auth/register
   Creates a new user account and returns session token.
   """
-  def register(conn, %{"email" => email, "password" => password} = params) do
+  def register(conn, %{"email" => email, "password" => password} = params)
+      when is_binary(email) and is_binary(password) do
     case Accounts.register_user_with_password(%{
            email: email,
            password: password,
@@ -28,36 +33,48 @@ defmodule StreamixWeb.Api.V1.AuthController do
         })
 
       {:error, changeset} ->
-        errors = format_changeset_errors(changeset)
-
-        conn
-        |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "validation_failed", message: errors}})
+        Response.error(
+          conn,
+          :unprocessable_entity,
+          "validation_failed",
+          Response.changeset_message(changeset)
+        )
     end
   end
 
   def register(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "Email and password are required"}})
+    Response.error(
+      conn,
+      :bad_request,
+      "missing_params",
+      "Email and password are required"
+    )
   end
 
   @doc """
   POST /api/v1/auth/login
   Authenticates user and returns session token.
   """
-  def login(conn, %{"email" => email, "password" => password}) do
+  def login(conn, %{"email" => email, "password" => password})
+      when is_binary(email) and is_binary(password) do
     case Accounts.get_user_by_email_and_password(email, password) do
       nil ->
         :telemetry.execute(
           [:streamix, :auth, :login, :failed],
           %{count: 1},
-          %{email: email, ip: format_remote_ip(conn), reason: :invalid_credentials}
+          %{
+            email_fingerprint: email_fingerprint(email),
+            ip: format_remote_ip(conn),
+            reason: :invalid_credentials
+          }
         )
 
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: %{code: "invalid_credentials", message: "Invalid email or password"}})
+        Response.error(
+          conn,
+          :unauthorized,
+          "invalid_credentials",
+          "Invalid email or password"
+        )
 
       user ->
         token = Accounts.generate_user_session_token(user, ip_info(conn))
@@ -70,9 +87,12 @@ defmodule StreamixWeb.Api.V1.AuthController do
   end
 
   def login(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "Email and password are required"}})
+    Response.error(
+      conn,
+      :bad_request,
+      "missing_params",
+      "Email and password are required"
+    )
   end
 
   @doc """
@@ -81,15 +101,7 @@ defmodule StreamixWeb.Api.V1.AuthController do
   Expects: Authorization: Bearer <base64_token>
   """
   def me(conn, _params) do
-    case get_token_user(conn) do
-      nil ->
-        conn
-        |> put_status(:unauthorized)
-        |> json(%{error: %{code: "unauthorized", message: "Invalid or expired token"}})
-
-      {user, _inserted_at} ->
-        json(conn, %{user: serialize_user(user)})
-    end
+    json(conn, %{user: serialize_user(conn.assigns.current_user)})
   end
 
   @doc """
@@ -97,54 +109,21 @@ defmodule StreamixWeb.Api.V1.AuthController do
   Invalidates the session token.
   """
   def logout(conn, _params) do
-    case get_bearer_token(conn) do
-      nil ->
-        send_resp(conn, 204, "")
-
-      token_str ->
-        case Base.url_decode64(token_str) do
-          {:ok, token} ->
-            Accounts.delete_user_session_token(token)
-            send_resp(conn, 204, "")
-
-          :error ->
-            send_resp(conn, 204, "")
-        end
+    if token = conn.assigns.current_session_token do
+      Accounts.delete_user_session_token(token)
     end
-  end
 
-  # Helpers
-
-  defp get_token_user(conn) do
-    case get_bearer_token(conn) do
-      nil ->
-        nil
-
-      token_str ->
-        case Base.url_decode64(token_str) do
-          {:ok, token} -> Accounts.get_user_by_session_token(token)
-          :error -> nil
-        end
-    end
-  end
-
-  defp get_bearer_token(conn) do
-    case Plug.Conn.get_req_header(conn, "authorization") do
-      ["Bearer " <> token] -> token
-      _ -> nil
-    end
+    send_resp(conn, 204, "")
   end
 
   defp ip_info(conn) do
     %{
-      ip_address: format_remote_ip(conn),
+      ip_address: Accounts.client_ip(conn),
       user_agent: Plug.Conn.get_req_header(conn, "user-agent") |> List.first()
     }
   end
 
-  defp format_remote_ip(conn) do
-    conn.remote_ip |> :inet.ntoa() |> to_string()
-  end
+  defp format_remote_ip(conn), do: Accounts.client_ip(conn)
 
   defp serialize_user(user) do
     user = Accounts.preload_role(user)
@@ -157,12 +136,12 @@ defmodule StreamixWeb.Api.V1.AuthController do
     }
   end
 
-  defp format_changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-    |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
+  defp email_fingerprint(email) when is_binary(email) do
+    email
+    |> String.trim()
+    |> String.downcase()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 12)
   end
 end

@@ -39,6 +39,21 @@ defmodule StreamixWeb.Api.V1.Response do
     error(conn, status, code, message)
   end
 
+  @doc "Returns a stable, human-readable message for an Ecto changeset."
+  @spec changeset_message(Ecto.Changeset.t()) :: String.t()
+  def changeset_message(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(&interpolate_changeset_error/1)
+    |> Enum.map_join("; ", fn {field, errors} ->
+      "#{field}: #{Enum.join(errors, ", ")}"
+    end)
+  end
+
+  defp interpolate_changeset_error({message, opts}) do
+    replacements = Map.new(opts, fn {key, value} -> {Atom.to_string(key), to_string(value)} end)
+    Regex.replace(~r"%{(\w+)}", message, fn _, key -> Map.get(replacements, key, key) end)
+  end
+
   defp reason_kind(reason) when is_atom(reason), do: reason
   defp reason_kind({tag, _value}) when is_atom(tag), do: tag
   defp reason_kind({tag, _value, _metadata}) when is_atom(tag), do: tag

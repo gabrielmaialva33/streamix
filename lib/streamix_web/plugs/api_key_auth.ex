@@ -16,6 +16,7 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
 
   import Plug.Conn
 
+  alias Streamix.Accounts
   alias StreamixWeb.Api.V1.Response
 
   def init(opts), do: opts
@@ -40,7 +41,7 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
           )
 
         {:error, :invalid_key} ->
-          ip = format_ip(conn.remote_ip)
+          ip = Accounts.client_ip(conn)
 
           :telemetry.execute(
             [:streamix, :auth, :api_key, :rejected],
@@ -110,9 +111,5 @@ defmodule StreamixWeb.Plugs.ApiKeyAuth do
     conn
     |> Response.error(:unauthorized, code, message)
     |> halt()
-  end
-
-  defp format_ip(ip) do
-    ip |> Tuple.to_list() |> Enum.join(".")
   end
 end

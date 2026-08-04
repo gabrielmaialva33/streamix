@@ -153,7 +153,7 @@ defmodule StreamixWeb.Telemetry.Handlers do
 
   def handle_event([:streamix, :auth, :login, :failed], _, meta, _) do
     Logger.warning(
-      "[Audit] login failed email=#{meta[:email]} ip=#{meta[:ip]} reason=#{meta[:reason]}"
+      "[Audit] login failed account=#{meta[:email_fingerprint]} ip=#{meta[:ip]} reason=#{meta[:reason]}"
     )
   end
 
