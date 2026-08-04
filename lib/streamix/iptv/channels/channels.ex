@@ -457,6 +457,7 @@ defmodule Streamix.Iptv.Channels do
     |> distinct(true)
     |> order_by([channel], asc: channel.name)
     |> limit(^limit)
+    |> preload(:categories)
     |> Repo.all()
   end
 

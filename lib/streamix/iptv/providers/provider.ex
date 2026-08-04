@@ -139,10 +139,17 @@ defmodule Streamix.Iptv.Provider do
     validate_change(changeset, field, fn _, value ->
       provider_type = get_field(changeset, :provider_type)
 
-      case URI.parse(value) do
-        %URI{scheme: scheme} when scheme in ["http", "https"] -> []
-        %URI{scheme: "torrent"} when provider_type == :torrent -> []
-        _ -> [{field, "must be a valid HTTP/HTTPS URL"}]
+      case URI.new(value) do
+        {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
+        when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+          []
+
+        {:ok, %URI{scheme: "torrent", host: host}}
+        when provider_type == :torrent and is_binary(host) and host != "" ->
+          []
+
+        _ ->
+          [{field, "must be a valid HTTP/HTTPS URL"}]
       end
     end)
   end

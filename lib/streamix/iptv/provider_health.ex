@@ -71,9 +71,14 @@ defmodule Streamix.Iptv.ProviderHealth do
   hidden in the list.
   """
   @spec overall_status() :: %{status: status(), counts: %{atom() => non_neg_integer()}}
-  def overall_status do
-    reports = list_reports()
+  def overall_status, do: list_reports() |> overall_status()
 
+  @doc "Builds the roll-up from an already loaded report list."
+  @spec overall_status([provider_report()]) :: %{
+          status: status(),
+          counts: %{atom() => non_neg_integer()}
+        }
+  def overall_status(reports) when is_list(reports) do
     counts =
       reports
       |> Enum.frequencies_by(& &1.status)

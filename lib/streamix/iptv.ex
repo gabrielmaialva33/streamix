@@ -352,6 +352,7 @@ defmodule Streamix.Iptv do
   defdelegate ensure_torrent_provider(), to: TorrentProvider, as: :ensure_exists!
   defdelegate get_torrent_provider(), to: TorrentProvider, as: :get
   defdelegate provider_health_summary(), to: ProviderHealth, as: :overall_status
+  defdelegate provider_health_summary(reports), to: ProviderHealth, as: :overall_status
   defdelegate list_provider_health_reports(opts \\ []), to: ProviderHealth, as: :list_reports
   defdelegate cached_provider_health_summary(), to: ProviderHealthMonitor, as: :get
 

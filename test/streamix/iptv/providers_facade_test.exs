@@ -142,6 +142,12 @@ defmodule Streamix.Iptv.ProvidersFacadeTest do
       attrs = valid_provider_attrs(%{url: "not-a-url"})
       assert {:error, changeset} = Iptv.create_provider(user.id, attrs)
       assert "must be a valid HTTP/HTTPS URL" in errors_on(changeset).url
+
+      for invalid_url <- ["http:", "http://provider.example.com:bad", "https://u:p@example.com"] do
+        attrs = valid_provider_attrs(%{url: invalid_url})
+        assert {:error, changeset} = Iptv.create_provider(user.id, attrs)
+        assert "must be a valid HTTP/HTTPS URL" in errors_on(changeset).url
+      end
     end
 
     test "enforces unique constraint on user_id, url, username" do
