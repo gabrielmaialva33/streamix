@@ -74,5 +74,5 @@ jobs:
           image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           image-digest: ${{ inputs.image_digest }}
           expected-revision: ${{ inputs.expected_revision }}
-          canary-email: ${{ secrets.DEPLOY_CANARY_EMAIL }}
-          canary-password: ${{ secrets.DEPLOY_CANARY_PASSWORD }}
+          canary-email: ${{ secrets.DEPLOY_CANARY_EMAIL || secrets.ADMIN_EMAIL }}
+          canary-password: ${{ secrets.DEPLOY_CANARY_PASSWORD || secrets.ADMIN_PASSWORD }}

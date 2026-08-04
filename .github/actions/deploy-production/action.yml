@@ -29,13 +29,11 @@ inputs:
     required: false
     default: https://streamix.mahina.cloud
   canary-email:
-    description: Optional API canary account email
-    required: false
-    default: ""
+    description: API account email used by the authenticated production canary
+    required: true
   canary-password:
-    description: Optional API canary account password
-    required: false
-    default: ""
+    description: API account password used by the authenticated production canary
+    required: true
 
 runs:
   using: composite
@@ -45,6 +43,8 @@ runs:
       env:
         IMAGE_DIGEST: ${{ inputs.image-digest }}
         EXPECTED_REVISION: ${{ inputs.expected-revision }}
+        DEPLOY_CANARY_EMAIL: ${{ inputs.canary-email }}
+        DEPLOY_CANARY_PASSWORD: ${{ inputs.canary-password }}
       run: |
         if [[ ! "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
           echo "::error::image-digest must be a sha256 digest"
@@ -53,6 +53,11 @@ runs:
 
         if [[ ! "${EXPECTED_REVISION}" =~ ^[0-9a-f]{40,64}$ ]]; then
           echo "::error::expected-revision must be a full Git revision"
+          exit 2
+        fi
+
+        if [ -z "${DEPLOY_CANARY_EMAIL}" ] || [ -z "${DEPLOY_CANARY_PASSWORD}" ]; then
+          echo "::error::authenticated production canary credentials are required"
           exit 2
         fi
 

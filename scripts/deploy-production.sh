@@ -262,7 +262,8 @@ read_release_revision() {
 
 run_authenticated_canary() {
   if [ -z "${DEPLOY_CANARY_EMAIL:-}" ] && [ -z "${DEPLOY_CANARY_PASSWORD:-}" ]; then
-    return 0
+    echo "[deploy] authenticated canary credentials are required"
+    return 1
   fi
 
   if [ -z "${DEPLOY_CANARY_EMAIL:-}" ] || [ -z "${DEPLOY_CANARY_PASSWORD:-}" ]; then
