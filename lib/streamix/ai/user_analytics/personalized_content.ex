@@ -15,13 +15,15 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   - `:limit` - Number of results (default: 12)
   - `:genre` - Filter by genre ("all" | "action" | "comedy" | etc)
   - `:days` - Trending period (7 | 30 | nil for all time)
+  - `:show_adult` - Include adult content (default: false)
   """
   def get_personalized_trending(user_id, opts \\ []) do
     limit = opts[:limit] || 12
     genre = opts[:genre] || "all"
     days = opts[:days] || 7
+    show_adult = Keyword.get(opts, :show_adult, false)
 
-    Catalog.list_trending_movies(limit: limit * 2, days: days)
+    Catalog.list_trending_movies(limit: limit * 2, days: days, show_adult: show_adult)
     |> filter_by_genre(genre)
     |> maybe_reorder_by_user_taste(user_id)
     |> Enum.take(limit)
