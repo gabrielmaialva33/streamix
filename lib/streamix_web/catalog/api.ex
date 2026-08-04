@@ -113,26 +113,30 @@ defmodule StreamixWeb.Catalog.Api do
     end)
   end
 
-  def search(%{"q" => query} = params) when is_binary(query) and byte_size(query) >= 2 do
-    query = Params.search_query(query, 200)
-    limit = Params.search_limit(params)
-    [movies, series, channels] = search_buckets(query, limit, :timer.seconds(5))
+  def search(%{"q" => raw_query} = params) when is_binary(raw_query) do
+    query = Params.search_query(raw_query, 200)
 
-    %{
-      query: query,
-      movies: Enum.map(movies, &Serializer.serialize_ranked_movie/1),
-      series: Enum.map(series, &Serializer.serialize_ranked_series/1),
-      channels: Enum.map(channels, &Serializer.serialize_ranked_channel/1)
-    }
+    if String.length(query) >= 2 do
+      limit = Params.search_limit(params)
+      [movies, series, channels] = search_buckets(query, limit, :timer.seconds(5))
+
+      %{
+        query: query,
+        movies: Enum.map(movies, &Serializer.serialize_ranked_movie/1),
+        series: Enum.map(series, &Serializer.serialize_ranked_series/1),
+        channels: Enum.map(channels, &Serializer.serialize_ranked_channel/1)
+      }
+    else
+      empty_search(query)
+    end
   end
 
-  def search(_params), do: %{query: "", movies: [], series: [], channels: []}
+  def search(_params), do: empty_search("")
 
   def suggest(params) do
-    query = params["q"] || ""
+    query = Params.search_query(params["q"] || "", 100)
 
-    if byte_size(query) >= 1 do
-      query = Params.search_query(query, 100)
+    if String.length(query) >= 1 do
       limit = Params.suggest_limit(params)
       per_bucket = min(limit, 8)
       [movies, series, channels] = search_buckets(query, per_bucket, :timer.seconds(2))
@@ -216,10 +220,20 @@ defmodule StreamixWeb.Catalog.Api do
       on_timeout: :kill_task
     )
     |> Enum.map(fn
-      {:ok, list} -> list
-      {:exit, _} -> []
+      {:ok, list} ->
+        list
+
+      {:exit, reason} ->
+        Logger.warning("Catalog search bucket failed", reason_kind: reason_kind(reason))
+        []
     end)
   end
+
+  defp empty_search(query), do: %{query: query, movies: [], series: [], channels: []}
+
+  defp reason_kind(reason) when is_atom(reason), do: reason
+  defp reason_kind({tag, _}) when is_atom(tag), do: tag
+  defp reason_kind(_reason), do: :other
 
   defp run_sections(sections, timeout) do
     sections
@@ -231,8 +245,12 @@ defmodule StreamixWeb.Catalog.Api do
       ordered: false
     )
     |> Enum.reduce(%{}, fn
-      {:ok, {key, value}}, acc -> Map.put(acc, key, value)
-      {:exit, _reason}, acc -> acc
+      {:ok, {key, value}}, acc ->
+        Map.put(acc, key, value)
+
+      {:exit, reason}, acc ->
+        Logger.warning("Catalog home section failed", reason_kind: reason_kind(reason))
+        acc
     end)
   end
 

@@ -112,6 +112,24 @@ defmodule StreamixWeb.Api.V1.EpgControllerTest do
       # Only the valid id gets a keyed entry.
       assert Map.keys(response["now"]) == [to_string(live.id)]
     end
+
+    test "does not accept a valid integer prefix", %{conn: conn, provider: provider} do
+      {live, _} = seed_channel_with_program(provider, "ch.partial")
+
+      response =
+        conn
+        |> get("/api/v1/epg/now?channel_ids=#{live.id}junk")
+        |> json_response(200)
+
+      assert response == %{"now" => %{}}
+    end
+
+    test "caps the number of channel ids accepted per request", %{conn: conn} do
+      ids = Enum.map_join(1..150, ",", &Integer.to_string/1)
+      response = conn |> get("/api/v1/epg/now?channel_ids=#{ids}") |> json_response(200)
+
+      assert map_size(response["now"]) == 100
+    end
   end
 
   describe "GET /api/v1/epg/programs" do

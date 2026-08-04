@@ -14,9 +14,14 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   use StreamixWeb, :controller
 
+  import StreamixWeb.Helpers.Params,
+    only: [bounded_integer: 4, parse_positive_integer: 1]
+
   alias Streamix.Iptv
+  alias StreamixWeb.Api.V1.Response
 
   @max_hours 12
+  @max_channel_ids 100
 
   @doc """
   GET /api/v1/epg/programs
@@ -41,7 +46,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   def programs(conn, %{"channel_ids" => channel_ids_str} = params) do
     channel_ids = parse_channel_ids(channel_ids_str)
-    hours = params["hours"] |> parse_int(6) |> min(@max_hours) |> max(1)
+    hours = bounded_integer(params["hours"], 6, 1, @max_hours)
     provider = Iptv.get_global_provider()
 
     if is_nil(provider) or channel_ids == [] do
@@ -60,9 +65,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   end
 
   def programs(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "channel_ids is required"}})
+    Response.error(conn, :bad_request, "missing_params", "channel_ids is required")
   end
 
   @doc """
@@ -99,9 +102,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   end
 
   def now(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "channel_ids is required"}})
+    Response.error(conn, :bad_request, "missing_params", "channel_ids is required")
   end
 
   # =============================================================================
@@ -165,11 +166,12 @@ defmodule StreamixWeb.Api.V1.EpgController do
 
   defp parse_channel_ids(str) when is_binary(str) do
     str
-    |> String.split(",", trim: true)
+    |> String.splitter(",", trim: true)
+    |> Stream.take(@max_channel_ids)
     |> Enum.flat_map(fn raw ->
-      case raw |> String.trim() |> Integer.parse() do
-        {int, _} when int > 0 -> [int]
-        _ -> []
+      case raw |> String.trim() |> parse_positive_integer() do
+        {:ok, int} -> [int]
+        :error -> []
       end
     end)
     |> Enum.uniq()
@@ -179,16 +181,4 @@ defmodule StreamixWeb.Api.V1.EpgController do
 
   defp empty_keyed(ids), do: Map.new(ids, fn id -> {to_string(id), nil} end)
   defp empty_list_keyed(ids), do: Map.new(ids, fn id -> {to_string(id), []} end)
-
-  defp parse_int(nil, default), do: default
-  defp parse_int(val, _default) when is_integer(val), do: val
-
-  defp parse_int(val, default) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, ""} -> int
-      _ -> default
-    end
-  end
-
-  defp parse_int(_, default), do: default
 end

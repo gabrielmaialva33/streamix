@@ -5,12 +5,17 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   use StreamixWeb, :controller
 
-  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  import StreamixWeb.Helpers.Params,
+    only: [bounded_integer: 4, parse_positive_integer: 1]
 
   alias Streamix.Iptv
   alias StreamixWeb.Api.Envelope
+  alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
+
+  @content_types ~w(movie series episode live_channel)
+  @max_sync_operations 500
 
   @doc """
   GET /api/v1/favorites
@@ -21,7 +26,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     opts = [
       content_type: params["type"],
-      limit: parse_limit(params["limit"], 100),
+      limit: bounded_integer(params["limit"], 100, 1, 100),
       show_adult: user.show_adult_content
     ]
 
@@ -78,9 +83,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   def create(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "type and content_id required"}})
+    Response.error(conn, :bad_request, "missing_params", "type and content_id required")
   end
 
   @doc """
@@ -90,10 +93,13 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   def delete(conn, %{"type" => type, "content_id" => content_id}) do
     user = conn.assigns.current_user
 
-    case parse_positive_integer(content_id) do
-      {:ok, content_id} ->
-        Iptv.remove_favorite(user.id, type, content_id)
-        send_resp(conn, 204, "")
+    with true <- type in @content_types,
+         {:ok, content_id} <- parse_positive_integer(content_id) do
+      Iptv.remove_favorite(user.id, type, content_id)
+      send_resp(conn, 204, "")
+    else
+      false ->
+        invalid_content_type(conn)
 
       :error ->
         invalid_content_id(conn)
@@ -114,18 +120,19 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
           json(conn, %{status: Atom.to_string(action)})
 
         {:error, _} ->
-          conn
-          |> put_status(:unprocessable_entity)
-          |> json(%{error: %{code: "toggle_failed", message: "Failed to toggle favorite"}})
+          Response.error(
+            conn,
+            :unprocessable_entity,
+            "toggle_failed",
+            "Failed to toggle favorite"
+          )
       end
     else
       :error ->
         invalid_content_id(conn)
 
       false ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: %{code: "content_not_found", message: "Content not found"}})
+        content_not_found(conn)
 
       :invalid_content_type ->
         invalid_content_type(conn)
@@ -140,34 +147,33 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   Processes operations idempotently. Last-write-wins by timestamp.
   """
   def sync(conn, %{"operations" => operations}) when is_list(operations) do
-    user = conn.assigns.current_user
-    results = Enum.map(operations, &process_sync_operation(user.id, &1))
+    if length(operations) <= @max_sync_operations do
+      user = conn.assigns.current_user
+      {operations, pre_skipped} = latest_sync_operations(operations)
+      results = Enum.map(operations, &process_sync_operation(user.id, &1))
 
-    added = Enum.count(results, &(&1 == :added))
-    removed = Enum.count(results, &(&1 == :removed))
-    skipped = Enum.count(results, &(&1 == :skipped))
+      added = Enum.count(results, &(&1 == :added))
+      removed = Enum.count(results, &(&1 == :removed))
+      skipped = pre_skipped + Enum.count(results, &(&1 == :skipped))
 
-    json(conn, %{added: added, removed: removed, skipped: skipped})
-  end
-
-  def sync(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "operations array required"}})
-  end
-
-  defp process_sync_operation(user_id, %{
-         "type" => type,
-         "content_id" => content_id,
-         "action" => action
-       }) do
-    case parse_positive_integer(content_id) do
-      {:ok, content_id} -> process_parsed_sync_operation(user_id, type, content_id, action)
-      :error -> :skipped
+      json(conn, %{added: added, removed: removed, skipped: skipped})
+    else
+      Response.error(
+        conn,
+        413,
+        "too_many_operations",
+        "A favorites sync batch accepts at most #{@max_sync_operations} operations"
+      )
     end
   end
 
-  defp process_sync_operation(_user_id, _invalid), do: :skipped
+  def sync(conn, _params) do
+    Response.error(conn, :bad_request, "missing_params", "operations array required")
+  end
+
+  defp process_sync_operation(user_id, %{type: type, content_id: content_id, action: action}) do
+    process_parsed_sync_operation(user_id, type, content_id, action)
+  end
 
   defp process_parsed_sync_operation(user_id, type, content_id, action) do
     exists? = Iptv.favorite?(user_id, type, content_id)
@@ -195,43 +201,21 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
     :removed
   end
 
-  # Auth plug — validates Bearer token
-
-  defp parse_int(nil, default), do: default
-  defp parse_int(val, _default) when is_integer(val), do: val
-
-  defp parse_int(val, default) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, _} -> int
-      :error -> default
-    end
-  end
-
-  defp parse_int(_, default), do: default
-
-  defp parse_limit(value, default) do
-    value
-    |> parse_int(default)
-    |> min(100)
-    |> max(1)
-  end
-
   defp invalid_content_id(conn) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "invalid_content_id", message: "Invalid content id"}})
+    Response.error(conn, :bad_request, "invalid_content_id", "Invalid content id")
   end
 
   defp invalid_content_type(conn) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{error: %{code: "invalid_content_type", message: "Invalid content type"}})
+    Response.error(
+      conn,
+      :unprocessable_entity,
+      "invalid_content_type",
+      "Invalid content type"
+    )
   end
 
   defp content_not_found(conn) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{error: %{code: "content_not_found", message: "Content not found"}})
+    Response.error(conn, :not_found, "content_not_found", "Content not found")
   end
 
   defp playable_favorite_target(user_id, type, raw_content_id) do
@@ -266,4 +250,79 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
       playable_favorite?(user_id, type, content_id)
     end
   end
+
+  defp latest_sync_operations(operations) do
+    {latest, skipped} =
+      operations
+      |> Enum.with_index()
+      |> Enum.reduce({%{}, 0}, &reduce_sync_operation/2)
+
+    operations =
+      latest
+      |> Map.values()
+      |> Enum.sort_by(& &1.index)
+
+    {operations, skipped}
+  end
+
+  defp reduce_sync_operation({operation, index}, {latest, skipped}) do
+    case normalize_sync_operation(operation, index) do
+      {:ok, key, candidate} ->
+        duplicate? = Map.has_key?(latest, key)
+        latest = Map.update(latest, key, candidate, &latest_candidate(candidate, &1))
+        {latest, skipped + if(duplicate?, do: 1, else: 0)}
+
+      :error ->
+        {latest, skipped + 1}
+    end
+  end
+
+  defp latest_candidate(candidate, current) do
+    if newer_operation?(candidate, current), do: candidate, else: current
+  end
+
+  defp normalize_sync_operation(
+         %{"type" => type, "content_id" => raw_content_id, "action" => action} = operation,
+         index
+       )
+       when type in @content_types and action in ["add", "remove"] do
+    case parse_positive_integer(raw_content_id) do
+      {:ok, content_id} ->
+        candidate = %{
+          type: type,
+          content_id: content_id,
+          action: action,
+          timestamp: parse_operation_timestamp(operation["at"]),
+          index: index
+        }
+
+        {:ok, {type, content_id}, candidate}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp normalize_sync_operation(_operation, _index), do: :error
+
+  defp parse_operation_timestamp(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, timestamp, _offset} -> DateTime.to_unix(timestamp, :microsecond)
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp parse_operation_timestamp(_value), do: nil
+
+  defp newer_operation?(%{timestamp: left}, %{timestamp: right})
+       when is_integer(left) and is_integer(right),
+       do: left >= right
+
+  defp newer_operation?(%{timestamp: timestamp}, %{timestamp: nil}) when is_integer(timestamp),
+    do: true
+
+  defp newer_operation?(%{timestamp: nil}, %{timestamp: timestamp}) when is_integer(timestamp),
+    do: false
+
+  defp newer_operation?(left, right), do: left.index >= right.index
 end

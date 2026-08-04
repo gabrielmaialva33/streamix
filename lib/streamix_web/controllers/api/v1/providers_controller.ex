@@ -7,6 +7,8 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   """
   use StreamixWeb, :controller
 
+  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+
   alias Streamix.Iptv
   alias StreamixWeb.Api.V1.Response
 
@@ -49,18 +51,22 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
         |> json(serialize(provider))
 
       {:error, changeset} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "validation_failed", message: format_errors(changeset)}})
+        Response.error(
+          conn,
+          :unprocessable_entity,
+          "validation_failed",
+          Response.changeset_message(changeset)
+        )
     end
   end
 
   def create(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{
-      error: %{code: "missing_params", message: "name, url, username, and password required"}
-    })
+    Response.error(
+      conn,
+      :bad_request,
+      "missing_params",
+      "name, url, username, and password required"
+    )
   end
 
   @doc """
@@ -70,25 +76,26 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   def delete(conn, %{"id" => id}) do
     user = conn.assigns.current_user
 
-    with {:ok, provider_id} <- parse_id(id),
+    with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <- Iptv.get_user_provider(user.id, provider_id) do
       case Iptv.delete_provider(provider) do
         {:ok, _} ->
           send_resp(conn, 204, "")
 
         {:error, _} ->
-          conn
-          |> put_status(:unprocessable_entity)
-          |> json(%{error: %{code: "delete_failed", message: "Failed to delete provider"}})
+          Response.error(
+            conn,
+            :unprocessable_entity,
+            "delete_failed",
+            "Failed to delete provider"
+          )
       end
     else
-      {:error, :invalid_id} ->
+      :error ->
         invalid_id(conn)
 
       nil ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: %{code: "not_found", message: "Provider not found"}})
+        Response.error(conn, :not_found, "not_found", "Provider not found")
     end
   end
 
@@ -99,7 +106,7 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
   def sync(conn, %{"id" => id}) do
     user = conn.assigns.current_user
 
-    with {:ok, provider_id} <- parse_id(id),
+    with {:ok, provider_id} <- parse_positive_integer(id),
          provider when not is_nil(provider) <- Iptv.get_user_provider(user.id, provider_id) do
       case Iptv.async_sync_provider(provider) do
         {:ok, _job} ->
@@ -117,30 +124,16 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
           )
       end
     else
-      {:error, :invalid_id} ->
+      :error ->
         invalid_id(conn)
 
       nil ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: %{code: "not_found", message: "Provider not found"}})
+        Response.error(conn, :not_found, "not_found", "Provider not found")
     end
   end
-
-  defp parse_id(id) when is_binary(id) do
-    case Integer.parse(id) do
-      {integer, ""} when integer > 0 -> {:ok, integer}
-      _ -> {:error, :invalid_id}
-    end
-  end
-
-  defp parse_id(id) when is_integer(id) and id > 0, do: {:ok, id}
-  defp parse_id(_), do: {:error, :invalid_id}
 
   defp invalid_id(conn) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "invalid_id", message: "Invalid provider id"}})
+    Response.error(conn, :bad_request, "invalid_id", "Invalid provider id")
   end
 
   # Serializer — never exposes credentials
@@ -148,25 +141,33 @@ defmodule StreamixWeb.Api.V1.ProvidersController do
     %{
       id: provider.id,
       name: provider.name,
-      url: provider.url,
+      url: public_provider_url(provider.url),
       provider_type: provider.provider_type,
       is_active: provider.is_active,
-      last_synced_at: provider.last_synced_at,
-      channels_count: provider.channels_count || 0,
+      last_synced_at: latest_sync_at(provider),
+      channels_count: provider.live_channels_count || 0,
       movies_count: provider.movies_count || 0,
       series_count: provider.series_count || 0,
       inserted_at: provider.inserted_at
     }
   end
 
-  # Auth plug
-
-  defp format_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-    |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
+  defp latest_sync_at(provider) do
+    provider
+    |> Map.take([:live_synced_at, :vod_synced_at, :series_synced_at, :epg_synced_at])
+    |> Map.values()
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max_by(&DateTime.to_unix(&1, :microsecond), fn -> nil end)
   end
+
+  # Older rows may predate the URL userinfo validation. Keep the base URL
+  # useful to clients without ever reflecting embedded/query credentials.
+  defp public_provider_url(url) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, uri} -> URI.to_string(%{uri | userinfo: nil, query: nil, fragment: nil})
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp public_provider_url(_url), do: nil
 end

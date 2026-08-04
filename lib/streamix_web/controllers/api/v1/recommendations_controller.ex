@@ -308,10 +308,18 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   end
 
   defp serialize_channel(channel) do
+    categories =
+      channel.categories
+      |> Enum.map(& &1.name)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
     %{
       id: channel.id,
       name: channel.name,
-      category: channel.category,
+      category: List.first(categories),
+      categories: categories,
       logo: channel.stream_icon,
       provider_id: channel.provider_id
     }

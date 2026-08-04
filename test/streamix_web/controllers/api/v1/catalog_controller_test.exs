@@ -127,6 +127,17 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
     end
   end
 
+  describe "GET /api/v1/catalog/search" do
+    test "normalizes whitespace before applying the minimum query length", %{conn: conn} do
+      response =
+        conn
+        |> get("/api/v1/catalog/search?q=%20%20%20")
+        |> json_response(200)
+
+      assert response == %{"query" => "", "movies" => [], "series" => [], "channels" => []}
+    end
+  end
+
   describe "GET /api/v1/catalog/movies with sort" do
     setup %{provider: provider} do
       older =

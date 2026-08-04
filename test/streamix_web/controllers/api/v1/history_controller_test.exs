@@ -68,6 +68,34 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
       assert response["error"]["code"] == "content_not_found"
       assert Iptv.list_watch_history(user.id) == []
     end
+
+    test "rejects negative, partial, and non-boolean progress values", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider)
+
+      invalid_payloads = [
+        %{"progress_seconds" => -1},
+        %{"progress_seconds" => "12seconds"},
+        %{"duration_seconds" => -10},
+        %{"completed" => 1}
+      ]
+
+      for invalid <- invalid_payloads do
+        response =
+          conn
+          |> authenticated(user)
+          |> post(
+            ~p"/api/v1/history",
+            Map.merge(%{"type" => "movie", "content_id" => movie.id}, invalid)
+          )
+          |> json_response(400)
+
+        assert response["error"]["code"] == "invalid_progress"
+      end
+
+      assert Iptv.list_watch_history(user.id) == []
+    end
   end
 
   defp authenticated(conn, user) do

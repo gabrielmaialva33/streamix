@@ -6,9 +6,16 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   """
   use StreamixWeb, :controller
 
-  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  import StreamixWeb.Helpers.Params,
+    only: [
+      bounded_integer: 4,
+      parse_boolean: 2,
+      parse_non_negative_integer: 1,
+      parse_positive_integer: 1
+    ]
 
   alias Streamix.Iptv
+  alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
 
@@ -21,8 +28,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
     opts = [
       content_type: params["type"],
-      limit: parse_limit(params["limit"], 50),
-      offset: parse_offset(params["offset"]),
+      limit: bounded_integer(params["limit"], 50, 1, 100),
+      offset: bounded_integer(params["offset"], 0, 0, 100_000),
       show_adult: user.show_adult_content
     ]
 
@@ -54,55 +61,37 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
     case playable_history_target(user.id, type, content_id) do
       {:ok, content_id} ->
-        progress = parse_int(params["progress_seconds"], 0)
-        duration = parse_int(params["duration_seconds"], nil)
-        completed = params["completed"] || false
+        case progress_attrs(params) do
+          {:ok, attrs} ->
+            save_history(conn, user.id, type, content_id, attrs)
 
-        attrs = %{
-          progress_seconds: progress,
-          completed: completed
-        }
-
-        attrs = if duration, do: Map.put(attrs, :duration_seconds, duration), else: attrs
-
-        case Iptv.add_watch_history(user.id, type, content_id, attrs) do
-          {:ok, entry} ->
-            conn
-            |> put_status(:created)
-            |> json(%{
-              id: entry.id,
-              content_type: entry[:content_type],
-              content_id: entry[:content_id],
-              progress_seconds: entry.progress_seconds,
-              duration_seconds: entry.duration_seconds,
-              completed: entry.completed
-            })
-
-          {:error, _changeset} ->
-            conn
-            |> put_status(:unprocessable_entity)
-            |> json(%{error: %{code: "save_failed", message: "Failed to save history"}})
+          :error ->
+            Response.error(
+              conn,
+              :bad_request,
+              "invalid_progress",
+              "Progress, duration, or completed value is invalid"
+            )
         end
 
       {:error, :invalid_content_id} ->
         invalid_id(conn)
 
       {:error, :invalid_content_type} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> json(%{error: %{code: "invalid_content_type", message: "Invalid content type"}})
+        Response.error(
+          conn,
+          :unprocessable_entity,
+          "invalid_content_type",
+          "Invalid content type"
+        )
 
       {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: %{code: "content_not_found", message: "Content not found"}})
+        Response.error(conn, :not_found, "content_not_found", "Content not found")
     end
   end
 
   def upsert(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "missing_params", message: "type and content_id required"}})
+    Response.error(conn, :bad_request, "missing_params", "type and content_id required")
   end
 
   @doc """
@@ -122,37 +111,47 @@ defmodule StreamixWeb.Api.V1.HistoryController do
     end
   end
 
-  # Auth plug
+  defp invalid_id(conn) do
+    Response.error(conn, :bad_request, "invalid_id", "Invalid history id")
+  end
 
-  defp parse_int(nil, default), do: default
-  defp parse_int(val, _default) when is_integer(val), do: val
-
-  defp parse_int(val, default) when is_binary(val) do
-    case Integer.parse(val) do
-      {int, _} -> int
-      :error -> default
+  defp progress_attrs(params) do
+    with {:ok, progress} <-
+           parse_non_negative_integer(Map.get(params, "progress_seconds", 0)),
+         {:ok, duration} <- parse_optional_duration(params["duration_seconds"]),
+         {:ok, completed} <- parse_boolean(params["completed"], false) do
+      attrs = %{progress_seconds: progress, completed: completed}
+      {:ok, if(is_nil(duration), do: attrs, else: Map.put(attrs, :duration_seconds, duration))}
+    else
+      :error -> :error
     end
   end
 
-  defp parse_int(_, default), do: default
+  defp parse_optional_duration(nil), do: {:ok, nil}
+  defp parse_optional_duration(value), do: parse_non_negative_integer(value)
 
-  defp parse_limit(value, default) do
-    value
-    |> parse_int(default)
-    |> min(100)
-    |> max(1)
-  end
+  defp save_history(conn, user_id, type, content_id, attrs) do
+    case Iptv.add_watch_history(user_id, type, content_id, attrs) do
+      {:ok, entry} ->
+        conn
+        |> put_status(:created)
+        |> json(%{
+          id: entry.id,
+          content_type: entry[:content_type],
+          content_id: entry[:content_id],
+          progress_seconds: entry.progress_seconds,
+          duration_seconds: entry.duration_seconds,
+          completed: entry.completed
+        })
 
-  defp parse_offset(value) do
-    value
-    |> parse_int(0)
-    |> max(0)
-  end
-
-  defp invalid_id(conn) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{error: %{code: "invalid_id", message: "Invalid history id"}})
+      {:error, _changeset} ->
+        Response.error(
+          conn,
+          :unprocessable_entity,
+          "save_failed",
+          "Failed to save history"
+        )
+    end
   end
 
   defp playable_history_target(user_id, type, raw_content_id) do

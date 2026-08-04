@@ -114,6 +114,61 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
       assert response == %{"added" => 0, "removed" => 0, "skipped" => 1}
       refute Iptv.favorite?(user.id, "movie", movie.id)
     end
+
+    test "uses the newest timestamp when a batch repeats the same favorite", %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      movie = movie_fixture(provider)
+
+      response =
+        conn
+        |> authenticated(user)
+        |> post(~p"/api/v1/favorites/sync", %{
+          "operations" => [
+            %{
+              "type" => "movie",
+              "content_id" => movie.id,
+              "action" => "add",
+              "at" => "2026-08-04T18:00:00Z"
+            },
+            %{
+              "type" => "movie",
+              "content_id" => movie.id,
+              "action" => "remove",
+              "at" => "2026-08-04T17:00:00Z"
+            }
+          ]
+        })
+        |> json_response(200)
+
+      assert response == %{"added" => 1, "removed" => 0, "skipped" => 1}
+      assert Iptv.favorite?(user.id, "movie", movie.id)
+    end
+
+    test "rejects oversized offline batches", %{conn: conn} do
+      user = user_fixture()
+      operations = List.duplicate(%{"type" => "movie", "content_id" => 1, "action" => "add"}, 501)
+
+      response =
+        conn
+        |> authenticated(user)
+        |> post(~p"/api/v1/favorites/sync", %{"operations" => operations})
+        |> json_response(413)
+
+      assert response["error"]["code"] == "too_many_operations"
+    end
+  end
+
+  test "DELETE rejects unknown content types", %{conn: conn} do
+    user = user_fixture()
+
+    response =
+      conn
+      |> authenticated(user)
+      |> delete(~p"/api/v1/favorites/not-real/1")
+      |> json_response(422)
+
+    assert response["error"]["code"] == "invalid_content_type"
   end
 
   defp authenticated(conn, user) do

@@ -28,7 +28,7 @@ defmodule StreamixWeb.Api.V1.StatusController do
   """
   def index(conn, _params) do
     reports = Iptv.list_provider_health_reports()
-    overall = Iptv.provider_health_summary()
+    overall = Iptv.provider_health_summary(reports)
 
     json(conn, %{
       overall: %{
