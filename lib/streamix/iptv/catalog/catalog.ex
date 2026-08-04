@@ -43,15 +43,16 @@ defmodule Streamix.Iptv.Catalog do
   Uses a daily seed for consistency (same hero all day, changes at midnight).
   Only shows content from public/global providers.
   """
-  @spec get_featured_content() :: {:movie, Movie.t()} | {:series, Series.t()} | nil
-  def get_featured_content do
+  @spec get_featured_content(keyword()) :: {:movie, Movie.t()} | {:series, Series.t()} | nil
+  def get_featured_content(opts \\ []) do
     seed = Date.utc_today() |> Date.to_gregorian_days()
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     pick_featured(seed, [
-      {:movie, &featured_movies_with_backdrop/0},
-      {:series, &featured_series_with_backdrop/0},
-      {:movie, &featured_movies_with_plot/0},
-      {:movie, &featured_movies_any_poster/0}
+      {:movie, fn -> featured_movies_with_backdrop(show_adult) end},
+      {:series, fn -> featured_series_with_backdrop(show_adult) end},
+      {:movie, fn -> featured_movies_with_plot(show_adult) end},
+      {:movie, fn -> featured_movies_any_poster(show_adult) end}
     ])
   rescue
     e ->
@@ -77,57 +78,55 @@ defmodule Streamix.Iptv.Catalog do
     end
   end
 
-  defp featured_movies_with_backdrop do
-    Movie
-    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-    |> join(:inner, [m, _p], a in MovieAsset,
-      on: a.movie_id == m.id and a.asset_type == "backdrop"
+  defp featured_movies_with_backdrop(show_adult) do
+    public_movies_query()
+    |> join(:inner, [movie: movie], asset in MovieAsset,
+      as: :asset,
+      on: asset.movie_id == movie.id and asset.asset_type == "backdrop"
     )
-    |> where([m, p, _a], p.visibility in [:global, :public])
-    |> where([m, _p, _a], not is_nil(m.plot))
-    |> order_by([m], fragment("? DESC NULLS LAST", m.rating))
+    |> maybe_exclude_adult(show_adult, :movie)
+    |> where([movie: movie], not is_nil(movie.plot))
+    |> order_by([movie: movie], fragment("? DESC NULLS LAST", movie.rating))
     |> limit(10)
-    |> distinct([m], m.id)
+    |> distinct([movie: movie], movie.id)
     |> preload(^@featured_preloads)
     |> Repo.all()
   end
 
-  defp featured_series_with_backdrop do
-    Series
-    |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-    |> join(:inner, [s, _p], a in SeriesAsset,
-      on: a.series_id == s.id and a.asset_type == "backdrop"
+  defp featured_series_with_backdrop(show_adult) do
+    public_series_query()
+    |> join(:inner, [series: series], asset in SeriesAsset,
+      as: :asset,
+      on: asset.series_id == series.id and asset.asset_type == "backdrop"
     )
-    |> where([s, p, _a], p.visibility in [:global, :public])
-    |> where([s, _p, _a], not is_nil(s.plot))
-    |> order_by([s], fragment("? DESC NULLS LAST", s.rating))
+    |> maybe_exclude_adult(show_adult, :series)
+    |> where([series: series], not is_nil(series.plot))
+    |> order_by([series: series], fragment("? DESC NULLS LAST", series.rating))
     |> limit(10)
-    |> distinct([s], s.id)
+    |> distinct([series: series], series.id)
     |> preload(^@featured_preloads)
     |> Repo.all()
   end
 
-  defp featured_movies_with_plot do
-    Movie
-    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-    |> where([m, p], p.visibility in [:global, :public])
-    |> where([m, _p], not is_nil(m.stream_icon) and m.stream_icon != "")
-    |> where([m, _p], not is_nil(m.plot) and m.plot != "")
-    |> order_by([m], fragment("? DESC NULLS LAST", m.rating))
+  defp featured_movies_with_plot(show_adult) do
+    public_movies_query()
+    |> maybe_exclude_adult(show_adult, :movie)
+    |> where([movie: movie], not is_nil(movie.stream_icon) and movie.stream_icon != "")
+    |> where([movie: movie], not is_nil(movie.plot) and movie.plot != "")
+    |> order_by([movie: movie], fragment("? DESC NULLS LAST", movie.rating))
     |> limit(10)
-    |> distinct([m], m.id)
+    |> distinct([movie: movie], movie.id)
     |> preload(^@featured_preloads)
     |> Repo.all()
   end
 
-  defp featured_movies_any_poster do
-    Movie
-    |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-    |> where([m, p], p.visibility in [:global, :public])
-    |> where([m, _p], not is_nil(m.stream_icon) and m.stream_icon != "")
-    |> order_by([m], fragment("? DESC NULLS LAST", m.rating))
+  defp featured_movies_any_poster(show_adult) do
+    public_movies_query()
+    |> maybe_exclude_adult(show_adult, :movie)
+    |> where([movie: movie], not is_nil(movie.stream_icon) and movie.stream_icon != "")
+    |> order_by([movie: movie], fragment("? DESC NULLS LAST", movie.rating))
     |> limit(10)
-    |> distinct([m], m.id)
+    |> distinct([movie: movie], movie.id)
     |> preload(^@featured_preloads)
     |> Repo.all()
   end
@@ -159,19 +158,19 @@ defmodule Streamix.Iptv.Catalog do
     channels_count =
       LiveChannel
       |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
-      |> where([c, p], p.visibility in [:global, :public])
+      |> where([_c, p], p.visibility in [:global, :public] and p.is_active == true)
       |> Repo.aggregate(:count)
 
     movies_count =
       Movie
       |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-      |> where([m, p], p.visibility in [:global, :public])
+      |> where([_m, p], p.visibility in [:global, :public] and p.is_active == true)
       |> Repo.aggregate(:count)
 
     series_count =
       Series
       |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-      |> where([s, p], p.visibility in [:global, :public])
+      |> where([_s, p], p.visibility in [:global, :public] and p.is_active == true)
       |> Repo.aggregate(:count)
 
     %{
@@ -214,6 +213,7 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_movies_by_genre(String.t(), keyword()) :: [Movie.t()]
   def list_movies_by_genre(genre, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
     escaped_genre = Helpers.escape_like(genre)
 
     public_movies_query()
@@ -226,6 +226,7 @@ defmodule Streamix.Iptv.Catalog do
       on: genre.id == movie_genre.genre_id
     )
     |> where([genre: genre], ilike(genre.name, ^"%#{escaped_genre}%"))
+    |> maybe_exclude_adult(show_adult, :movie)
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.rating, desc: movie.year)
     |> limit(^limit)
@@ -241,8 +242,10 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_recent_movies(keyword()) :: [Movie.t()]
   def list_recent_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     public_movies_query()
+    |> maybe_exclude_adult(show_adult, :movie)
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.inserted_at)
     |> limit(^limit)
@@ -257,8 +260,10 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_recent_series(keyword()) :: [Series.t()]
   def list_recent_series(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     public_series_query()
+    |> maybe_exclude_adult(show_adult, :series)
     |> with_series_cover()
     |> order_by([series: series], desc: series.inserted_at)
     |> limit(^limit)
@@ -289,9 +294,11 @@ defmodule Streamix.Iptv.Catalog do
   @spec list_recently_added(keyword()) :: [{:movie, Movie.t()} | {:series, Series.t()}]
   def list_recently_added(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     movies =
       public_movies_query()
+      |> maybe_exclude_adult(show_adult, :movie)
       |> with_movie_poster()
       |> order_by([movie: movie], desc: movie.inserted_at)
       |> limit(^limit)
@@ -302,6 +309,7 @@ defmodule Streamix.Iptv.Catalog do
 
     series =
       public_series_query()
+      |> maybe_exclude_adult(show_adult, :series)
       |> with_series_cover()
       |> order_by([series: series], desc: series.inserted_at)
       |> limit(^limit)
@@ -329,7 +337,6 @@ defmodule Streamix.Iptv.Catalog do
     offset = Keyword.get(opts, :offset, 0)
     days = Keyword.get(opts, :days, 7)
     show_adult = Keyword.get(opts, :show_adult, false)
-    since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
 
     # Get movie IDs with watch counts from watch_progress via catalog_items
     trending_ids =
@@ -342,12 +349,12 @@ defmodule Streamix.Iptv.Catalog do
         as: :movie,
         on: movie.catalog_item_id == catalog_item.id,
         where: catalog_item.content_type == "movie",
-        where: progress.last_watched_at >= ^since,
         group_by: movie.id,
         select: {movie.id, count(progress.id)},
         order_by: [desc: count(progress.id)],
         limit: ^((limit + offset) * 2)
       )
+      |> maybe_since(days)
       |> Repo.all()
       |> Enum.map(fn {id, _count} -> id end)
 
@@ -357,7 +364,7 @@ defmodule Streamix.Iptv.Catalog do
     else
       results =
         public_movies_query()
-        |> maybe_exclude_adult(show_adult)
+        |> maybe_exclude_adult(show_adult, :movie)
         |> where([movie: movie], movie.id in ^trending_ids)
         |> select_movie_card_fields()
         |> preload(^@summary_preloads)
@@ -382,7 +389,7 @@ defmodule Streamix.Iptv.Catalog do
     limit = Keyword.get(opts, :limit, 10)
     offset = Keyword.get(opts, :offset, 0)
     days = Keyword.get(opts, :days, 7)
-    since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     # Get series IDs from episode watches via catalog_items.
     trending_series_ids =
@@ -398,17 +405,18 @@ defmodule Streamix.Iptv.Catalog do
         as: :season,
         on: season.id == episode.season_id,
         where: catalog_item.content_type == "episode",
-        where: progress.last_watched_at >= ^since,
         group_by: season.series_id,
         select: {season.series_id, count(progress.id)},
         order_by: [desc: count(progress.id)],
         limit: ^((limit + offset) * 3)
       )
+      |> maybe_since(days)
       |> Repo.all()
 
     if trending_series_ids == [] do
       # Fallback to high-rated series
       public_series_query()
+      |> maybe_exclude_adult(show_adult, :series)
       |> with_series_cover()
       |> order_by([series: series], desc: series.rating)
       |> offset(^offset)
@@ -420,6 +428,7 @@ defmodule Streamix.Iptv.Catalog do
       series_ids = Enum.map(trending_series_ids, fn {id, _count} -> id end)
 
       public_series_query()
+      |> maybe_exclude_adult(show_adult, :series)
       |> where([series: series], series.id in ^series_ids)
       |> select_series_card_fields()
       |> preload(^@summary_preloads)
@@ -441,7 +450,7 @@ defmodule Streamix.Iptv.Catalog do
     current_year = Date.utc_today().year
 
     public_movies_query()
-    |> maybe_exclude_adult(show_adult)
+    |> maybe_exclude_adult(show_adult, :movie)
     |> where([movie: movie], movie.year >= ^(current_year - 2))
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.year, desc: movie.rating)
@@ -460,6 +469,7 @@ defmodule Streamix.Iptv.Catalog do
   def list_top_10_movies(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
     offset = Keyword.get(opts, :offset, 0)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     # We used to require `plot` as well, but the gindex enrichment only
     # writes `stream_icon` + `tmdb_id` today (plot would need a second
@@ -467,6 +477,7 @@ defmodule Streamix.Iptv.Catalog do
     # "returns 1 row" into "returns a proper top 10" — the card
     # component doesn't render plot anyway, it's rank + poster + title.
     public_movies_query()
+    |> maybe_exclude_adult(show_adult, :movie)
     |> where([movie: movie], not is_nil(movie.rating))
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.rating)
@@ -484,8 +495,10 @@ defmodule Streamix.Iptv.Catalog do
   def list_top_10_series(opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
     offset = Keyword.get(opts, :offset, 0)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     public_series_query()
+    |> maybe_exclude_adult(show_adult, :series)
     |> where([series: series], not is_nil(series.rating))
     |> with_series_cover()
     |> order_by([series: series], desc: series.rating)
@@ -510,7 +523,7 @@ defmodule Streamix.Iptv.Catalog do
       join: provider in Provider,
       as: :provider,
       on: movie.provider_id == provider.id,
-      where: provider.visibility in [:global, :public]
+      where: provider.visibility in [:global, :public] and provider.is_active == true
     )
   end
 
@@ -520,17 +533,24 @@ defmodule Streamix.Iptv.Catalog do
       join: provider in Provider,
       as: :provider,
       on: series.provider_id == provider.id,
-      where: provider.visibility in [:global, :public]
+      where: provider.visibility in [:global, :public] and provider.is_active == true
     )
   end
 
   defp with_movie_poster(query), do: where(query, [movie: movie], not is_nil(movie.stream_icon))
   defp with_series_cover(query), do: where(query, [series: series], not is_nil(series.cover))
 
-  defp maybe_exclude_adult(query, true), do: query
+  defp maybe_exclude_adult(query, true, _binding), do: query
 
-  defp maybe_exclude_adult(query, _show_adult),
-    do: AdultFilter.exclude_adult_content(query, :movie)
+  defp maybe_exclude_adult(query, _show_adult, binding),
+    do: AdultFilter.exclude_adult_content(query, binding)
+
+  defp maybe_since(query, nil), do: query
+
+  defp maybe_since(query, days) when is_integer(days) and days > 0 do
+    since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
+    where(query, [progress: progress], progress.last_watched_at >= ^since)
+  end
 
   # =============================================================================
   # Categories

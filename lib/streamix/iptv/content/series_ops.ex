@@ -168,6 +168,22 @@ defmodule Streamix.Iptv.SeriesOps do
   end
 
   @doc """
+  Lists user-visible series for ranked IDs while preserving requested order.
+  """
+  @spec list_visible_by_ids(integer(), [integer()], keyword()) :: [Series.t()]
+  def list_visible_by_ids(user_id, ids, opts \\ []) do
+    Queries.list_visible_by_ids(user_id, ids, opts)
+  end
+
+  @doc """
+  Lists public series for ranked IDs while preserving requested order.
+  """
+  @spec list_public_by_ids([integer()], keyword()) :: [Series.t()]
+  def list_public_by_ids(ids, opts \\ []) do
+    Queries.list_public_by_ids(ids, opts)
+  end
+
+  @doc """
   Gets a series from public providers only (for guests).
   """
   @spec get_public(integer()) :: Series.t() | nil

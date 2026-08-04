@@ -41,7 +41,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   def programs(conn, %{"channel_ids" => channel_ids_str} = params) do
     channel_ids = parse_channel_ids(channel_ids_str)
-    hours = params["hours"] |> parse_int(6) |> min(@max_hours)
+    hours = params["hours"] |> parse_int(6) |> min(@max_hours) |> max(1)
     provider = Iptv.get_global_provider()
 
     if is_nil(provider) or channel_ids == [] do
@@ -185,8 +185,8 @@ defmodule StreamixWeb.Api.V1.EpgController do
 
   defp parse_int(val, default) when is_binary(val) do
     case Integer.parse(val) do
-      {int, _} -> int
-      :error -> default
+      {int, ""} -> int
+      _ -> default
     end
   end
 

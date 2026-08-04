@@ -148,9 +148,11 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @spec list_public(keyword()) :: [Series.t()]
   def list_public(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     Series
     |> Access.public_providers()
+    |> maybe_exclude_adult(show_adult)
     |> where([s, _p], not is_nil(s.cover))
     |> order_by([s], desc: s.rating, desc: s.year, asc: s.name)
     |> limit(^limit)
@@ -176,6 +178,53 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     from(s in Series, where: s.id in ^ids)
     |> preload(^@search_result_preloads)
     |> Repo.all()
+  end
+
+  @spec list_visible_by_ids(integer(), [integer()], keyword()) :: [Series.t()]
+  def list_visible_by_ids(_user_id, [], _opts), do: []
+
+  def list_visible_by_ids(user_id, ids, opts) when is_list(ids) do
+    ranked_ids = Enum.uniq(ids)
+
+    series_by_id =
+      user_id
+      |> build_visible_query(opts)
+      |> where([series], series.id in ^ranked_ids)
+      |> select_card_fields()
+      |> preload(^@summary_preloads)
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    ranked_rows(ranked_ids, series_by_id)
+  end
+
+  @spec list_public_by_ids([integer()], keyword()) :: [Series.t()]
+  def list_public_by_ids(ids, opts \\ [])
+  def list_public_by_ids([], _opts), do: []
+
+  def list_public_by_ids(ids, opts) when is_list(ids) do
+    ranked_ids = Enum.uniq(ids)
+
+    series_by_id =
+      Series
+      |> Access.public_providers()
+      |> where([series], series.id in ^ranked_ids)
+      |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
+      |> select_card_fields()
+      |> preload(^@summary_preloads)
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    ranked_rows(ranked_ids, series_by_id)
+  end
+
+  defp ranked_rows(ids, rows_by_id) do
+    Enum.flat_map(ids, fn id ->
+      case Map.fetch(rows_by_id, id) do
+        {:ok, row} -> [row]
+        :error -> []
+      end
+    end)
   end
 
   @spec get_playable(integer(), integer()) :: Series.t() | nil
@@ -227,6 +276,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> join(:inner, [_e, s], sr in Series, on: s.series_id == sr.id)
     |> join(:inner, [_e, _s, sr], p in Provider, on: sr.provider_id == p.id)
     |> where([e, _s, _sr, p], e.id == ^episode_id and p.user_id == ^user_id)
+    |> where([_e, _s, _sr, p], p.is_active == true)
     |> preload(season: [series: :provider])
     |> Repo.one()
   end
@@ -239,6 +289,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> join(:inner, [_e, _s, sr], p in Provider, on: sr.provider_id == p.id)
     |> where([e, _s, _sr, _p], e.id == ^episode_id)
     |> where([_e, _s, _sr, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([_e, _s, _sr, p], p.is_active == true)
     |> preload(season: [series: :provider])
     |> Repo.one()
   end
@@ -251,6 +302,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
     |> join(:inner, [_e, _s, sr], p in Provider, on: sr.provider_id == p.id)
     |> where([e, _s, _sr, _p], e.id == ^episode_id)
     |> where([_e, _s, _sr, p], p.visibility in [:global, :public])
+    |> where([_e, _s, _sr, p], p.is_active == true)
     |> preload(season: [series: :provider])
     |> Repo.one()
   end
@@ -291,9 +343,11 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   @spec search_public(String.t(), keyword()) :: [Series.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     Series
     |> Access.public_providers()
+    |> maybe_exclude_adult(show_adult)
     |> RankedSearch.build([:name, :title], query, limit: limit)
     |> preload(^@summary_preloads)
     |> Repo.all()

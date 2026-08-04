@@ -18,10 +18,12 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   """
   use StreamixWeb, :controller
 
-  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  import StreamixWeb.Helpers.Params,
+    only: [bounded_integer: 4, parse_positive_integer: 1]
 
   alias Streamix.AI
   alias Streamix.Billing
+  alias Streamix.Cache
   alias Streamix.Helpers
   alias Streamix.Iptv
   alias StreamixWeb.Api.V1.Response
@@ -39,28 +41,26 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get personalized "For You" recommendations based on watch history.
   """
   def index(conn, params) do
-    user_id = conn.assigns.current_user.id
-    collection = Map.get(params, "type", "movies")
+    case parse_content_type(Map.get(params, "type", "movies")) do
+      {:ok, collection} -> personalized_recommendations(conn, params, collection)
+      :invalid_content_type -> invalid_content_type(conn)
+    end
+  end
+
+  defp personalized_recommendations(conn, params, collection) do
+    user = conn.assigns.current_user
     limit = parse_int(params["limit"], 20)
 
-    case AI.get_recommendations(user_id, type: collection, limit: limit) do
+    case AI.get_recommendations(user.id,
+           type: collection,
+           limit: candidate_limit(limit),
+           exclude_watched: true
+         ) do
       recommendations when is_list(recommendations) ->
-        enriched = enrich_results(recommendations, collection)
-
-        json(conn, %{
-          recommendations: enriched,
-          type: collection,
-          personalized: true
-        })
+        render_recommendations(conn, recommendations, collection, user, limit)
 
       {:ok, recommendations} ->
-        enriched = enrich_results(recommendations, collection)
-
-        json(conn, %{
-          recommendations: enriched,
-          type: collection,
-          personalized: true
-        })
+        render_recommendations(conn, recommendations, collection, user, limit)
 
       {:error, reason} ->
         Response.internal_error(
@@ -71,6 +71,16 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
           reason
         )
     end
+  end
+
+  defp render_recommendations(conn, recommendations, collection, user, limit) do
+    enriched = enrich_results(recommendations, collection, user) |> Enum.take(limit)
+
+    json(conn, %{
+      recommendations: enriched,
+      type: collection,
+      personalized: true
+    })
   end
 
   defp require_ai_recommendations(conn, _opts) do
@@ -93,41 +103,52 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get "Because you watched X" recommendations.
   """
   def similar(conn, %{"id" => id} = params) do
-    case parse_positive_integer(id) do
-      {:ok, content_id} ->
-        collection = Map.get(params, "type", "movies")
-        limit = parse_int(params["limit"], 10)
+    with {:ok, content_id} <- parse_positive_integer(id),
+         {:ok, collection} <- parse_content_type(Map.get(params, "type", "movies")) do
+      user = conn.assigns.current_user
+      limit = parse_int(params["limit"], 10)
+      similar_for_source(conn, user, collection, content_id, limit)
+    else
+      :error -> invalid_id(conn)
+      :invalid_content_type -> invalid_content_type(conn)
+    end
+  end
 
-        case AI.get_similar_to(content_id, collection, limit: limit) do
-          {:ok, results} ->
-            enriched = enrich_results(results, collection)
+  defp similar_for_source(conn, user, collection, content_id, limit) do
+    if visible_source?(user, collection, content_id) do
+      fetch_similar(conn, user, collection, content_id, limit)
+    else
+      Response.error(conn, :not_found, "content_not_found", "Content not found")
+    end
+  end
 
-            json(conn, %{
-              similar: enriched,
-              source_id: content_id,
-              type: collection
-            })
+  defp fetch_similar(conn, user, collection, content_id, limit) do
+    case AI.get_similar_to(content_id, collection, limit: candidate_limit(limit)) do
+      {:ok, results} ->
+        enriched = enrich_results(results, collection, user) |> Enum.take(limit)
 
-          {:error, :not_found} ->
-            Response.error(
-              conn,
-              :not_found,
-              "content_not_indexed",
-              "Content not indexed"
-            )
+        json(conn, %{
+          similar: enriched,
+          source_id: content_id,
+          type: collection
+        })
 
-          {:error, reason} ->
-            Response.internal_error(
-              conn,
-              :service_unavailable,
-              "similar_search_failed",
-              "Similar search failed",
-              reason
-            )
-        end
+      {:error, :not_found} ->
+        Response.error(
+          conn,
+          :not_found,
+          "content_not_indexed",
+          "Content not indexed"
+        )
 
-      :error ->
-        invalid_id(conn)
+      {:error, reason} ->
+        Response.internal_error(
+          conn,
+          :service_unavailable,
+          "similar_search_failed",
+          "Similar search failed",
+          reason
+        )
     end
   end
 
@@ -136,10 +157,15 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get recommended live channels based on watch history.
   """
   def channels(conn, params) do
-    user_id = conn.assigns.current_user.id
+    user = conn.assigns.current_user
     limit = parse_int(params["limit"], 10)
 
-    {:ok, channels} = AI.get_channel_recommendations(user_id, limit: limit)
+    {:ok, channels} =
+      AI.get_channel_recommendations(user.id,
+        limit: limit,
+        show_adult: user.show_adult_content
+      )
+
     serialized = Enum.map(channels, &serialize_channel/1)
     json(conn, %{channels: serialized, personalized: true})
   end
@@ -162,6 +188,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   """
   def refresh(conn, _params) do
     user_id = conn.assigns.current_user.id
+    Cache.invalidate_personalization(user_id)
 
     case AI.compute_user_profile(user_id) do
       {:ok, _vector} ->
@@ -183,33 +210,70 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
 
   # Private functions
 
-  defp enrich_results(results, "movies"), do: enrich_movie_results(results)
-  defp enrich_results(results, "series"), do: enrich_series_results(results)
-  defp enrich_results(results, _), do: results
+  defp enrich_results(results, "movies", user), do: enrich_movie_results(results, user)
+  defp enrich_results(results, "series", user), do: enrich_series_results(results, user)
 
-  defp enrich_movie_results(results) do
+  defp enrich_movie_results(results, user) do
+    results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    movies = Iptv.get_movies_by_ids(ids)
+
+    movies =
+      Iptv.list_visible_movies_by_ids(user.id, ids, show_adult: user.show_adult_content)
+
     movies_map = Map.new(movies, &{&1.id, &1})
 
-    Enum.map(results, fn result ->
-      case Map.get(movies_map, result.id) do
-        nil -> result
-        movie -> merge_movie(result, movie)
+    Enum.flat_map(results, fn result ->
+      case Map.fetch(movies_map, result.id) do
+        {:ok, movie} -> [merge_movie(result, movie)]
+        :error -> []
       end
     end)
   end
 
-  defp enrich_series_results(results) do
+  defp enrich_series_results(results, user) do
+    results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    series = Iptv.get_series_by_ids(ids)
+
+    series =
+      Iptv.list_visible_series_by_ids(user.id, ids, show_adult: user.show_adult_content)
+
     series_map = Map.new(series, &{&1.id, &1})
 
-    Enum.map(results, fn result ->
-      case Map.get(series_map, result.id) do
-        nil -> result
-        s -> merge_series(result, s)
+    Enum.flat_map(results, fn result ->
+      case Map.fetch(series_map, result.id) do
+        {:ok, series} -> [merge_series(result, series)]
+        :error -> []
       end
+    end)
+  end
+
+  defp visible_source?(user, "movies", id) do
+    Iptv.list_visible_movies_by_ids(user.id, [id], show_adult: user.show_adult_content) != []
+  end
+
+  defp visible_source?(user, "series", id) do
+    Iptv.list_visible_series_by_ids(user.id, [id], show_adult: user.show_adult_content) != []
+  end
+
+  defp parse_content_type(type) when type in ["movies", "series"], do: {:ok, type}
+  defp parse_content_type(_type), do: :invalid_content_type
+
+  defp invalid_content_type(conn) do
+    Response.error(conn, :bad_request, "invalid_content_type", "Invalid content type")
+  end
+
+  defp candidate_limit(limit), do: min(limit * 4, 200)
+
+  defp normalize_result_ids(results) do
+    Enum.flat_map(results, fn
+      %{id: id} = result ->
+        case parse_positive_integer(id) do
+          {:ok, normalized_id} -> [Map.put(result, :id, normalized_id)]
+          :error -> []
+        end
+
+      _result ->
+        []
     end)
   end
 
@@ -253,18 +317,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     }
   end
 
-  defp parse_int(nil, default), do: default
-  defp parse_int("", default), do: default
-
-  defp parse_int(value, default) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, _} -> int
-      :error -> default
-    end
-  end
-
-  defp parse_int(value, _default) when is_integer(value), do: value
-  defp parse_int(_, default), do: default
+  defp parse_int(value, default), do: bounded_integer(value, default, 1, 50)
 
   defp invalid_id(conn) do
     Response.error(conn, :bad_request, "invalid_id", "Invalid content id")

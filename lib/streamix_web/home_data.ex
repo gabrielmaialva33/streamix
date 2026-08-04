@@ -116,13 +116,13 @@ defmodule StreamixWeb.HomeData do
   def filter_series_genre(socket, genre) do
     socket
     |> assign(series_genre: genre)
-    |> assign(series: load_series(user_id(socket), genre))
+    |> assign(series: load_series(user_id(socket), genre, show_adult_content?(socket)))
   end
 
   def filter_channels_category(socket, category) do
     socket
     |> assign(channels_category: category)
-    |> assign(channels: load_channels(user_id(socket), category))
+    |> assign(channels: load_channels(user_id(socket), category, show_adult_content?(socket)))
   end
 
   def toggle_featured_favorite(%{assigns: %{current_scope: nil}} = socket), do: socket
@@ -167,9 +167,11 @@ defmodule StreamixWeb.HomeData do
   end
 
   defp load_public_catalog(socket) do
+    show_adult = show_adult_content?(socket)
+
     sections =
       HomeCatalogLoader.load(%{
-        featured: fn -> Iptv.get_featured_content() end,
+        featured: fn -> Iptv.get_featured_content(show_adult: show_adult) end,
         stats: fn -> Iptv.get_public_stats() end,
         trending: fn ->
           load_trending(
@@ -179,11 +181,19 @@ defmodule StreamixWeb.HomeData do
             show_adult_content?(socket)
           )
         end,
-        new_releases: fn -> Iptv.list_new_releases(limit: @home_default_limit) end,
-        top_10: fn -> load_top_10() end,
-        movies: fn -> Iptv.list_public_movies(limit: @home_default_limit) end,
-        series: fn -> load_series(user_id(socket), socket.assigns.series_genre) end,
-        channels: fn -> load_channels(user_id(socket), socket.assigns.channels_category) end
+        new_releases: fn ->
+          Iptv.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
+        end,
+        top_10: fn -> load_top_10(show_adult) end,
+        movies: fn ->
+          Iptv.list_public_movies(limit: @home_default_limit, show_adult: show_adult)
+        end,
+        series: fn ->
+          load_series(user_id(socket), socket.assigns.series_genre, show_adult)
+        end,
+        channels: fn ->
+          load_channels(user_id(socket), socket.assigns.channels_category, show_adult)
+        end
       })
 
     stats = public_stats(sections.stats, sections)
@@ -255,7 +265,12 @@ defmodule StreamixWeb.HomeData do
             show_adult: show_adult
           )
         end,
-        history: fn -> Iptv.list_home_history(user_id, limit: @home_history_limit) end,
+        history: fn ->
+          Iptv.list_home_history(user_id,
+            limit: @home_history_limit,
+            show_adult: show_adult
+          )
+        end,
         recommendations: fn -> load_recommendations(user_id, show_adult) end,
         featured_favorite: fn -> check_featured_favorite(socket.assigns.featured, user_id) end,
         movie_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "movie", movie_ids) end,
@@ -296,35 +311,60 @@ defmodule StreamixWeb.HomeData do
     end)
   end
 
-  defp load_top_10 do
-    Cache.fetch("home:top_10", @top_10_ttl, fn ->
-      Iptv.list_top_10_movies(limit: @home_top_10_limit)
+  defp load_top_10(show_adult) do
+    Cache.fetch("home:top_10:adult:#{show_adult}", @top_10_ttl, fn ->
+      Iptv.list_top_10_movies(limit: @home_top_10_limit, show_adult: show_adult)
     end)
   end
 
-  defp load_series(nil, _genre), do: Iptv.list_public_series(limit: @home_default_limit)
-
-  defp load_series(user_id, genre) do
-    AI.get_personalized_series(user_id, limit: @home_default_limit, genre: genre)
+  defp load_series(nil, _genre, _show_adult) do
+    Iptv.list_public_series(limit: @home_default_limit, show_adult: false)
   end
 
-  defp load_channels(nil, _category), do: Iptv.list_public_channels(limit: @home_channels_limit)
+  defp load_series(user_id, genre, show_adult) do
+    AI.get_personalized_series(user_id,
+      limit: @home_default_limit,
+      genre: genre,
+      show_adult: show_adult
+    )
+  end
 
-  defp load_channels(user_id, category) do
+  defp load_channels(nil, _category, _show_adult) do
+    Iptv.list_public_channels(limit: @home_channels_limit, show_adult: false)
+  end
+
+  defp load_channels(user_id, category, show_adult) do
     AI.get_personalized_channels(user_id,
       limit: @home_channels_limit,
-      category: category
+      category: category,
+      show_adult: show_adult
     )
   end
 
   defp load_recommendations(user_id, show_adult) do
     ids = recommendation_ids(user_id)
-    Iptv.list_visible_movies_by_ids(user_id, ids, show_adult: show_adult)
+
+    recommendations =
+      Iptv.list_visible_movies_by_ids(user_id, ids, show_adult: show_adult)
+
+    if length(recommendations) >= @home_default_limit do
+      Enum.take(recommendations, @home_default_limit)
+    else
+      fallback =
+        AI.get_personalized_trending(user_id,
+          limit: @home_default_limit,
+          show_adult: show_adult
+        )
+
+      (recommendations ++ fallback)
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.take(@home_default_limit)
+    end
   end
 
   defp recommendation_ids(user_id) do
     user_id
-    |> AI.get_recommendations(limit: @home_default_limit)
+    |> AI.get_recommendations(limit: @home_default_limit * 4)
     |> normalize_recommendations()
     |> Enum.flat_map(&recommendation_id/1)
   end

@@ -11,7 +11,9 @@ defmodule Streamix.Iptv.Movies do
 
   alias Streamix.Iptv.{
     Access,
+    AdultFilter,
     Content,
+    Genre,
     Movie
   }
 
@@ -158,9 +160,10 @@ defmodule Streamix.Iptv.Movies do
   @spec list_public(keyword()) :: [Movie.t()]
   def list_public(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     limit
-    |> Queries.public_list()
+    |> Queries.public_list(show_adult)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end
@@ -254,6 +257,56 @@ defmodule Streamix.Iptv.Movies do
   end
 
   @doc """
+  Lists public movie cards for ranked IDs while preserving requested order.
+
+  This is the unauthenticated hydration boundary for external rankings:
+  adult, private, inactive-provider and stale IDs are omitted.
+  """
+  @spec list_public_by_ids([integer()], keyword()) :: [Movie.t()]
+  def list_public_by_ids(ids, opts \\ [])
+  def list_public_by_ids([], _opts), do: []
+
+  def list_public_by_ids(ids, opts) when is_list(ids) do
+    ranked_ids = Enum.uniq(ids)
+
+    movies_by_id =
+      Movie
+      |> Access.public_providers()
+      |> where([movie], movie.id in ^ranked_ids)
+      |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
+      |> Queries.select_card_fields()
+      |> preload(^@summary_preloads)
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    ranked_rows(ranked_ids, movies_by_id)
+  end
+
+  @doc "Lists genre names attached to the given movie IDs, retaining frequency."
+  @spec list_genre_names_for_ids([integer()]) :: [String.t()]
+  def list_genre_names_for_ids([]), do: []
+
+  def list_genre_names_for_ids(movie_ids) when is_list(movie_ids) do
+    Genre
+    |> join(:inner, [genre], movie_genre in "movie_genres", on: movie_genre.genre_id == genre.id)
+    |> where([_genre, movie_genre], movie_genre.movie_id in ^movie_ids)
+    |> select([genre], genre.name)
+    |> Repo.all()
+  end
+
+  defp maybe_exclude_adult(query, true), do: query
+  defp maybe_exclude_adult(query, false), do: AdultFilter.exclude_adult_content(query)
+
+  defp ranked_rows(ids, rows_by_id) do
+    Enum.flat_map(ids, fn id ->
+      case Map.fetch(rows_by_id, id) do
+        {:ok, row} -> [row]
+        :error -> []
+      end
+    end)
+  end
+
+  @doc """
   Gets a movie owned by a specific user.
   """
   @spec get_user_movie(integer(), integer()) :: Movie.t() | nil
@@ -332,9 +385,10 @@ defmodule Streamix.Iptv.Movies do
   @spec search_public(String.t(), keyword()) :: [Movie.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     query
-    |> Queries.public_search(limit)
+    |> Queries.public_search(limit, show_adult)
     |> preload(^@summary_preloads)
     |> Repo.all()
   end

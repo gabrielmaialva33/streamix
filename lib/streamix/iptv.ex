@@ -10,7 +10,7 @@ defmodule Streamix.Iptv do
   * **Browse / catalog** — `list_movies/2`, `list_series/2`, `list_live_channels/2`,
     `list_public_*`, `list_new_releases/1`, `list_trending_movies/1`, `search/2`,
     `get_movie/1`, `get_series/1`, `get_episode/1`, `get_live_channel/1`,
-    `get_featured_content/0`, `get_public_stats/1`. Backed by `Streamix.Iptv.Catalog`
+    `get_featured_content/1`, `get_public_stats/1`. Backed by `Streamix.Iptv.Catalog`
     plus the specialised `Movies`/`SeriesOps`/`Channels` modules.
 
   * **User data (favorites & history)** — `list_favorites/2`, `add_favorite/3`,
@@ -33,6 +33,10 @@ defmodule Streamix.Iptv do
   call back into this facade rather than reach into the sub-modules directly.
   """
 
+  require Logger
+
+  alias Streamix.Cache
+
   alias Streamix.Iptv.{
     Assets,
     Catalog,
@@ -51,6 +55,8 @@ defmodule Streamix.Iptv do
     SeriesOps,
     Sync
   }
+
+  alias Streamix.Workers.UpdateUserProfileWorker
 
   alias Streamix.Iptv.Streaming.{
     FailoverPolicy,
@@ -75,13 +81,13 @@ defmodule Streamix.Iptv do
   defdelegate list_favorites(user_id, opts \\ []), to: Favorites, as: :list
   defdelegate list_home_favorites(user_id, opts \\ []), to: Favorites, as: :list_home
   defdelegate favorite?(user_id, content_type, content_id), to: Favorites
-  defdelegate count_favorites_by_type(user_id), to: Favorites, as: :count_by_type
+  defdelegate count_favorites_by_type(user_id, opts \\ []), to: Favorites, as: :count_by_type
 
   defdelegate list_favorite_ids(user_id, content_type, content_ids \\ nil),
     to: Favorites,
     as: :list_ids
 
-  defdelegate count_favorites(user_id), to: Favorites, as: :count
+  defdelegate count_favorites(user_id, opts \\ []), to: Favorites, as: :count
   defdelegate add_favorite(user_id, attrs), to: Favorites, as: :add
 
   defdelegate add_favorite(user_id, content_type, content_id, attrs \\ %{}),
@@ -99,23 +105,82 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate list_watch_history(user_id, opts \\ []), to: History, as: :list
   defdelegate list_home_history(user_id, opts \\ []), to: History, as: :list_home
-  defdelegate count_watch_history_by_type(user_id), to: History, as: :count_by_type
 
-  defdelegate add_watch_history(user_id, content_type, content_id, attrs \\ %{}),
+  defdelegate list_watch_history_for_analytics(user_id, opts \\ []),
     to: History,
-    as: :add
+    as: :list_for_analytics
 
-  defdelegate add_to_watch_history(user_id, attrs), to: History, as: :add
+  defdelegate count_watch_history_by_type(user_id, opts \\ []),
+    to: History,
+    as: :count_by_type
 
-  defdelegate update_progress(user_id, content_type, content_id, progress, duration \\ nil),
-    to: History
+  def add_watch_history(user_id, content_type, content_id, attrs \\ %{}) do
+    user_id
+    |> History.add(content_type, content_id, attrs)
+    |> after_history_write(user_id)
+  end
 
-  defdelegate update_watch_progress(user_id, content_type, content_id, current_time, duration),
-    to: History
+  def add_to_watch_history(user_id, attrs) do
+    user_id
+    |> History.add(attrs)
+    |> after_history_write(user_id)
+  end
 
-  defdelegate update_watch_time(user_id, content_type, content_id, duration_seconds), to: History
-  defdelegate remove_from_watch_history(user_id, entry_id), to: History, as: :remove
-  defdelegate clear_watch_history(user_id), to: History, as: :clear
+  def update_progress(user_id, content_type, content_id, progress, duration \\ nil) do
+    user_id
+    |> History.update_progress(content_type, content_id, progress, duration)
+    |> after_history_write(user_id)
+  end
+
+  def update_watch_progress(user_id, content_type, content_id, current_time, duration) do
+    user_id
+    |> History.update_watch_progress(content_type, content_id, current_time, duration)
+    |> after_history_write(user_id)
+  end
+
+  def update_watch_time(user_id, content_type, content_id, duration_seconds) do
+    user_id
+    |> History.update_watch_time(content_type, content_id, duration_seconds)
+    |> after_history_write(user_id)
+  end
+
+  def remove_from_watch_history(user_id, entry_id) do
+    result = History.remove(user_id, entry_id)
+    if match?({count, _} when count > 0, result), do: queue_personalization_refresh(user_id)
+    result
+  end
+
+  def clear_watch_history(user_id) do
+    result = History.clear(user_id)
+    if match?({:ok, count} when count > 0, result), do: queue_personalization_refresh(user_id)
+    result
+  end
+
+  defp after_history_write({:ok, _entry} = result, user_id) do
+    queue_personalization_refresh(user_id)
+    result
+  end
+
+  defp after_history_write(result, _user_id), do: result
+
+  defp queue_personalization_refresh(user_id) do
+    Cache.fetch_local({__MODULE__, :personalization_refresh, user_id}, :timer.minutes(1), fn ->
+      Cache.invalidate_personalization(user_id)
+
+      case UpdateUserProfileWorker.schedule(user_id) do
+        {:ok, _job} ->
+          :scheduled
+
+        {:error, reason} ->
+          Logger.warning("Failed to schedule user profile refresh",
+            user_id: user_id,
+            reason: inspect(reason)
+          )
+
+          :schedule_failed
+      end
+    end)
+  end
 
   defdelegate get_watch_progress_map(user_id, content_type, content_ids),
     to: History,
@@ -139,6 +204,15 @@ defmodule Streamix.Iptv do
   defdelegate get_live_channel_with_provider!(id), to: Channels, as: :get_with_provider!
   defdelegate search_channels(user_id, query, opts \\ []), to: Channels, as: :search
   defdelegate search_public_channels(query, opts \\ []), to: Channels, as: :search_public
+
+  defdelegate channel_recommendation_category_refs(channel_ids),
+    to: Channels,
+    as: :recommendation_category_refs
+
+  defdelegate list_channel_recommendation_candidates(user_id, opts \\ []),
+    to: Channels,
+    as: :list_recommendation_candidates
+
   defdelegate live_channel_stream_url(channel, provider), to: LiveChannel, as: :stream_url
 
   # =============================================================================
@@ -164,6 +238,9 @@ defmodule Streamix.Iptv do
     to: Movies,
     as: :list_visible_by_ids
 
+  defdelegate list_public_movies_by_ids(ids, opts \\ []), to: Movies, as: :list_public_by_ids
+  defdelegate list_movie_genre_names(ids), to: Movies, as: :list_genre_names_for_ids
+
   defdelegate list_movie_variants(movie, user_id, opts \\ []), to: Movies, as: :list_variants
 
   # GIndex Movies
@@ -188,6 +265,15 @@ defmodule Streamix.Iptv do
   defdelegate search_series(user_id, query, opts \\ []), to: SeriesOps, as: :search
   defdelegate search_public_series(query, opts \\ []), to: SeriesOps, as: :search_public
   defdelegate get_series_by_ids(ids), to: SeriesOps, as: :get_by_ids
+
+  defdelegate list_visible_series_by_ids(user_id, ids, opts \\ []),
+    to: SeriesOps,
+    as: :list_visible_by_ids
+
+  defdelegate list_public_series_by_ids(ids, opts \\ []),
+    to: SeriesOps,
+    as: :list_public_by_ids
+
   defdelegate list_series_variants(series, user_id, opts \\ []), to: SeriesOps, as: :list_variants
 
   # GIndex Series
@@ -244,6 +330,7 @@ defmodule Streamix.Iptv do
   defdelegate create_provider(attrs), to: Providers, as: :create
   defdelegate create_provider(user_id, attrs), to: Providers, as: :create_for_user
   defdelegate update_provider(provider, attrs), to: Providers, as: :update
+  defdelegate update_user_provider(user_id, provider, attrs), to: Providers, as: :update_for_user
   defdelegate delete_provider(provider), to: Providers, as: :delete
   defdelegate change_provider(provider, attrs \\ %{}), to: Providers, as: :change
 
@@ -278,7 +365,7 @@ defmodule Streamix.Iptv do
   # =============================================================================
   # Catalog (Public Content)
   # =============================================================================
-  defdelegate get_featured_content(), to: Catalog
+  defdelegate get_featured_content(opts \\ []), to: Catalog
   defdelegate get_public_stats(opts \\ []), to: Catalog
   defdelegate list_genres_for(kind), to: Catalog
 

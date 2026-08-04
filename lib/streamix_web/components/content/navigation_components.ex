@@ -209,13 +209,49 @@ defmodule StreamixWeb.Content.NavigationComponents do
         </span>
       </div>
 
-      <.link
-        :if={@see_more_path}
-        navigate={@see_more_path}
-        class="inline-flex min-h-11 items-center text-xs sm:min-h-0 sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
-      >
-        Ver mais <span class="hidden sm:inline">→</span>
-      </.link>
+      <div class="flex flex-wrap items-center gap-2">
+        <form :if={@on_genre_change && @genre_filters != []} phx-change={@on_genre_change}>
+          <label class="sr-only" for={"section-genre-#{@on_genre_change}"}>Filtrar por gênero</label>
+          <select
+            id={"section-genre-#{@on_genre_change}"}
+            name="genre"
+            class="min-h-9 rounded-md border border-border bg-surface px-2 text-xs text-text-secondary focus:border-brand focus:outline-none"
+          >
+            <option
+              :for={{value, label} <- @genre_filters}
+              value={value}
+              selected={to_string(value) == to_string(@selected_genre)}
+            >
+              {label}
+            </option>
+          </select>
+        </form>
+
+        <form :if={@on_period_change && @period_filters != []} phx-change={@on_period_change}>
+          <label class="sr-only" for={"section-period-#{@on_period_change}"}>Filtrar período</label>
+          <select
+            id={"section-period-#{@on_period_change}"}
+            name="period"
+            class="min-h-9 rounded-md border border-border bg-surface px-2 text-xs text-text-secondary focus:border-brand focus:outline-none"
+          >
+            <option
+              :for={{value, label} <- @period_filters}
+              value={value || "all"}
+              selected={value == @selected_period}
+            >
+              {label}
+            </option>
+          </select>
+        </form>
+
+        <.link
+          :if={@see_more_path}
+          navigate={@see_more_path}
+          class="inline-flex min-h-11 items-center text-xs sm:min-h-0 sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
+        >
+          Ver mais <span class="hidden sm:inline">→</span>
+        </.link>
+      </div>
     </div>
     """
   end

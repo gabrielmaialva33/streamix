@@ -19,7 +19,8 @@ defmodule StreamixWeb.Api.V1.SearchController do
   """
   use StreamixWeb, :controller
 
-  import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
+  import StreamixWeb.Helpers.Params,
+    only: [bounded_float: 4, bounded_integer: 4, parse_positive_integer: 1]
 
   alias Streamix.AI
   alias Streamix.Helpers
@@ -40,16 +41,29 @@ defmodule StreamixWeb.Api.V1.SearchController do
   GET /api/v1/search/movies?q=query
   Semantic search for movies using natural language.
   """
-  def movies(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
+  def movies(conn, %{"q" => query}) when is_binary(query) do
+    case normalize_query(query) do
+      normalized when byte_size(normalized) >= 2 -> search_movies(conn, normalized)
+      normalized -> json(conn, %{movies: [], query: normalized, semantic: false})
+    end
+  end
+
+  def movies(conn, _params) do
+    json(conn, %{movies: [], query: nil, semantic: false})
+  end
+
+  defp search_movies(conn, query) do
     if AI.semantic_search_available?() do
+      limit = result_limit(conn.params, 20)
+
       opts = [
-        limit: parse_int(conn.params["limit"], 20),
+        limit: candidate_limit(limit),
         min_score: parse_float(conn.params["min_score"], 0.6)
       ]
 
       case AI.semantic_search(query, :movies, opts) do
         {:ok, results} ->
-          movies = enrich_movie_results(results)
+          movies = enrich_movie_results(results) |> Enum.take(limit)
           json(conn, %{movies: movies, query: query, semantic: true})
 
         {:error, reason} ->
@@ -66,24 +80,33 @@ defmodule StreamixWeb.Api.V1.SearchController do
     end
   end
 
-  def movies(conn, _params) do
-    json(conn, %{movies: [], query: nil, semantic: false})
-  end
-
   @doc """
   GET /api/v1/search/series?q=query
   Semantic search for series using natural language.
   """
-  def series(conn, %{"q" => query}) when is_binary(query) and byte_size(query) >= 2 do
+  def series(conn, %{"q" => query}) when is_binary(query) do
+    case normalize_query(query) do
+      normalized when byte_size(normalized) >= 2 -> search_series(conn, normalized)
+      normalized -> json(conn, %{series: [], query: normalized, semantic: false})
+    end
+  end
+
+  def series(conn, _params) do
+    json(conn, %{series: [], query: nil, semantic: false})
+  end
+
+  defp search_series(conn, query) do
     if AI.semantic_search_available?() do
+      limit = result_limit(conn.params, 20)
+
       opts = [
-        limit: parse_int(conn.params["limit"], 20),
+        limit: candidate_limit(limit),
         min_score: parse_float(conn.params["min_score"], 0.6)
       ]
 
       case AI.semantic_search(query, :series, opts) do
         {:ok, results} ->
-          series = enrich_series_results(results)
+          series = enrich_series_results(results) |> Enum.take(limit)
           json(conn, %{series: series, query: query, semantic: true})
 
         {:error, reason} ->
@@ -100,10 +123,6 @@ defmodule StreamixWeb.Api.V1.SearchController do
     end
   end
 
-  def series(conn, _params) do
-    json(conn, %{series: [], query: nil, semantic: false})
-  end
-
   @doc """
   GET /api/v1/search/similar/:collection/:id
   Find content similar to a given item.
@@ -111,7 +130,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   def similar(conn, %{"collection" => collection, "id" => id}) do
     with {:ok, collection_atom} <- parse_collection(collection),
          {:ok, content_id} <- parse_positive_integer(id) do
-      limit = parse_int(conn.params["limit"], 10)
+      limit = result_limit(conn.params, 10)
       similar_results(conn, collection, collection_atom, content_id, limit)
     else
       :invalid_collection ->
@@ -136,10 +155,19 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp search_similar(conn, collection, collection_atom, content_id, limit) do
-    case AI.similar_content(content_id, collection_atom, limit: limit) do
-      {:ok, results} ->
-        items = enrich_results(results, collection_atom)
-        json(conn, %{items: items, source_id: content_id, collection: collection})
+    with true <- public_source?(collection_atom, content_id),
+         {:ok, results} <-
+           AI.similar_content(content_id, collection_atom, limit: candidate_limit(limit)) do
+      items = enrich_results(results, collection_atom) |> Enum.take(limit)
+      json(conn, %{items: items, source_id: content_id, collection: collection})
+    else
+      false ->
+        Response.error(
+          conn,
+          :not_found,
+          "content_not_indexed",
+          "Content not indexed yet"
+        )
 
       {:error, :not_found} ->
         Response.error(
@@ -192,27 +220,29 @@ defmodule StreamixWeb.Api.V1.SearchController do
   # Private functions
 
   defp enrich_movie_results(results) do
+    results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    movies = Iptv.get_movies_by_ids(ids)
+    movies = Iptv.list_public_movies_by_ids(ids, show_adult: false)
     movies_map = Map.new(movies, &{&1.id, &1})
 
-    Enum.map(results, fn result ->
-      case Map.get(movies_map, result.id) do
-        nil -> result
-        movie -> merge_movie(result, movie)
+    Enum.flat_map(results, fn result ->
+      case Map.fetch(movies_map, result.id) do
+        {:ok, movie} -> [merge_movie(result, movie)]
+        :error -> []
       end
     end)
   end
 
   defp enrich_series_results(results) do
+    results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    series = Iptv.get_series_by_ids(ids)
+    series = Iptv.list_public_series_by_ids(ids, show_adult: false)
     series_map = Map.new(series, &{&1.id, &1})
 
-    Enum.map(results, fn result ->
-      case Map.get(series_map, result.id) do
-        nil -> result
-        s -> merge_series(result, s)
+    Enum.flat_map(results, fn result ->
+      case Map.fetch(series_map, result.id) do
+        {:ok, series} -> [merge_series(result, series)]
+        :error -> []
       end
     end)
   end
@@ -223,6 +253,9 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp parse_collection("movies"), do: {:ok, :movies}
   defp parse_collection("series"), do: {:ok, :series}
   defp parse_collection(_), do: :invalid_collection
+
+  defp public_source?(:movies, id), do: Iptv.list_public_movies_by_ids([id]) != []
+  defp public_source?(:series, id), do: Iptv.list_public_series_by_ids([id]) != []
 
   defp merge_movie(result, movie) do
     %{
@@ -264,7 +297,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp fallback_search(conn, query, :movies) do
-    movies = Iptv.search_public_movies(query, limit: 20)
+    movies = Iptv.search_public_movies(query, limit: result_limit(conn.params, 20))
 
     json(conn, %{
       movies: Enum.map(movies, &serialize_movie/1),
@@ -274,7 +307,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp fallback_search(conn, query, :series) do
-    series = Iptv.search_public_series(query, limit: 20)
+    series = Iptv.search_public_series(query, limit: result_limit(conn.params, 20))
 
     json(conn, %{
       series: Enum.map(series, &serialize_series/1),
@@ -309,29 +342,27 @@ defmodule StreamixWeb.Api.V1.SearchController do
 
   # Helpers
 
-  defp parse_int(nil, default), do: default
-  defp parse_int("", default), do: default
+  defp result_limit(params, default), do: bounded_integer(params["limit"], default, 1, 50)
+  defp candidate_limit(limit), do: min(limit * 4, 200)
 
-  defp parse_int(value, default) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, _} -> int
-      :error -> default
-    end
+  defp parse_float(value, default), do: bounded_float(value, default, 0.0, 1.0)
+
+  defp normalize_query(query) do
+    query
+    |> String.trim()
+    |> String.slice(0, 200)
   end
 
-  defp parse_int(value, _default) when is_integer(value), do: value
-  defp parse_int(_, default), do: default
+  defp normalize_result_ids(results) do
+    Enum.flat_map(results, fn
+      %{id: id} = result ->
+        case parse_positive_integer(id) do
+          {:ok, normalized_id} -> [Map.put(result, :id, normalized_id)]
+          :error -> []
+        end
 
-  defp parse_float(nil, default), do: default
-  defp parse_float("", default), do: default
-
-  defp parse_float(value, default) when is_binary(value) do
-    case Float.parse(value) do
-      {float, _} -> float
-      :error -> default
-    end
+      _result ->
+        []
+    end)
   end
-
-  defp parse_float(value, _default) when is_float(value), do: value
-  defp parse_float(_, default), do: default
 end

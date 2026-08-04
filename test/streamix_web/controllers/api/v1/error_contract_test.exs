@@ -1,7 +1,7 @@
 defmodule StreamixWeb.Api.V1.ErrorContractTest do
   use StreamixWeb.ConnCase, async: true
 
-  alias StreamixWeb.Api.V1.{GindexTracksController, SearchController}
+  alias StreamixWeb.Api.V1.{GindexTracksController, RecommendationsController, SearchController}
 
   test "invalid GIndex track params use the stable error envelope", %{conn: conn} do
     conn = GindexTracksController.show(conn, %{"type" => "movie", "id" => "not-an-id"})
@@ -25,6 +25,15 @@ defmodule StreamixWeb.Api.V1.ErrorContractTest do
       SearchController.similar(conn, %{"collection" => "movies", "id" => "not-an-id"})
 
     assert get_in(json_response(invalid_id, 400), ["error", "code"]) == "invalid_id"
+  end
+
+  test "recommendations reject internal and unknown Qdrant collections", %{conn: conn} do
+    for collection <- ["user_profiles", "episodes", "anything"] do
+      response = RecommendationsController.index(conn, %{"type" => collection})
+
+      assert get_in(json_response(response, 400), ["error", "code"]) ==
+               "invalid_content_type"
+    end
   end
 
   test "API source cannot regress to scalar errors or serialize raw reasons" do

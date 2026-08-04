@@ -9,7 +9,17 @@ defmodule Streamix.Iptv.Channels do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
-  alias Streamix.Iptv.{Access, AdultFilter, EpgChannel, EpgProgram, LiveChannel, RankedSearch}
+
+  alias Streamix.Iptv.{
+    Access,
+    AdultFilter,
+    Category,
+    EpgChannel,
+    EpgProgram,
+    LiveChannel,
+    RankedSearch
+  }
+
   alias Streamix.Repo
 
   # How long a channel stays hidden after a 404 before we let it back in
@@ -222,9 +232,11 @@ defmodule Streamix.Iptv.Channels do
   @spec list_public(keyword()) :: [LiveChannel.t()]
   def list_public(opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     LiveChannel
     |> Access.public_providers()
+    |> maybe_exclude_adult(show_adult)
     |> where([c, _p], not is_nil(c.stream_icon))
     |> exclude_dead()
     |> order_by([c], asc: c.name)
@@ -381,10 +393,12 @@ defmodule Streamix.Iptv.Channels do
   def search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
     offset = Keyword.get(opts, :offset, 0)
+    show_adult = Keyword.get(opts, :show_adult, false)
     escaped = Helpers.escape_like(query)
 
     LiveChannel
     |> Access.visible_to_user(user_id)
+    |> maybe_exclude_adult(show_adult)
     |> where([c, _p], ilike(c.name, ^"%#{escaped}%"))
     |> order_by([c], asc: c.name, desc: c.id)
     |> limit(^limit)
@@ -402,10 +416,88 @@ defmodule Streamix.Iptv.Channels do
   @spec search_public(String.t(), keyword()) :: [LiveChannel.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     LiveChannel
     |> Access.public_providers()
+    |> maybe_exclude_adult(show_adult)
     |> RankedSearch.build([:name], query, limit: limit, rating_field: false)
     |> Repo.all()
   end
+
+  @doc "Returns category references for visible channel IDs used by personalization scoring."
+  @spec recommendation_category_refs([integer()]) :: [{integer(), integer()}]
+  def recommendation_category_refs([]), do: []
+
+  def recommendation_category_refs(channel_ids) when is_list(channel_ids) do
+    from(channel in LiveChannel,
+      join: item_category in "item_categories",
+      on: item_category.catalog_item_id == channel.catalog_item_id,
+      where: channel.id in ^channel_ids,
+      select: {channel.id, item_category.category_id}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Lists adult-safe, active-provider channel candidates for AI personalization."
+  @spec list_recommendation_candidates(integer(), keyword()) :: [LiveChannel.t()]
+  def list_recommendation_candidates(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 24)
+    exclude_ids = Keyword.get(opts, :exclude_ids, [])
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    LiveChannel
+    |> Access.visible_to_user(user_id)
+    |> where([_channel, provider], provider.provider_type == :xtream)
+    |> where([channel], not is_nil(channel.stream_icon))
+    |> exclude_dead()
+    |> maybe_filter_recommendation_category(opts)
+    |> maybe_exclude_recommendation_ids(exclude_ids)
+    |> maybe_exclude_adult(show_adult)
+    |> distinct(true)
+    |> order_by([channel], asc: channel.name)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  defp maybe_filter_recommendation_category(query, opts) do
+    cond do
+      category_ids = Keyword.get(opts, :category_ids) ->
+        query
+        |> join(:inner, [channel], item_category in "item_categories",
+          on: item_category.catalog_item_id == channel.catalog_item_id
+        )
+        |> where(
+          [_channel, _provider, item_category],
+          item_category.category_id in ^category_ids
+        )
+
+      category_name = Keyword.get(opts, :category_name) ->
+        escaped_name = Helpers.escape_like(String.downcase(category_name))
+
+        query
+        |> join(:inner, [channel], item_category in "item_categories",
+          on: item_category.catalog_item_id == channel.catalog_item_id
+        )
+        |> join(:inner, [_channel, _provider, item_category], category in Category,
+          on: category.id == item_category.category_id
+        )
+        |> where(
+          [_channel, _provider, _item_category, category],
+          ilike(category.name, ^"%#{escaped_name}%")
+        )
+
+      true ->
+        query
+    end
+  end
+
+  defp maybe_exclude_recommendation_ids(query, []), do: query
+
+  defp maybe_exclude_recommendation_ids(query, ids) do
+    where(query, [channel], channel.id not in ^ids)
+  end
+
+  defp maybe_exclude_adult(query, true), do: query
+  defp maybe_exclude_adult(query, false), do: AdultFilter.exclude_adult_content(query)
 end

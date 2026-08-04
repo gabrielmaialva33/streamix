@@ -38,4 +38,32 @@ defmodule StreamixWeb.Helpers.Params do
   end
 
   def parse_integer(value), do: value
+
+  @doc "Parses and clamps an integer param to an inclusive range."
+  @spec bounded_integer(term(), integer(), integer(), integer()) :: integer()
+  def bounded_integer(value, default, minimum, maximum) do
+    parsed = parse_integer(value)
+    value = if is_integer(parsed), do: parsed, else: default
+    value |> max(minimum) |> min(maximum)
+  end
+
+  @doc "Parses and clamps a numeric param to an inclusive range."
+  @spec bounded_float(term(), float(), number(), number()) :: float()
+  def bounded_float(value, default, minimum, maximum) do
+    parsed = parse_float(value)
+    value = if is_number(parsed), do: parsed * 1.0, else: default
+    value |> max(minimum * 1.0) |> min(maximum * 1.0)
+  end
+
+  defp parse_float(value) when is_float(value), do: value
+  defp parse_float(value) when is_integer(value), do: value * 1.0
+
+  defp parse_float(value) when is_binary(value) do
+    case Float.parse(value) do
+      {float, ""} -> float
+      _ -> nil
+    end
+  end
+
+  defp parse_float(_value), do: nil
 end

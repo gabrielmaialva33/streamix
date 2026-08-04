@@ -361,7 +361,11 @@ defmodule StreamixWeb.Content.Browse do
 
   defp load_items(%{assigns: %{source: "iptv", provider: nil, sort: sort}} = socket, :movies)
        when sort in ["new", "trending", "rating"] do
-    pagination = [limit: @per_page, offset: offset(socket.assigns.page)]
+    pagination = [
+      limit: @per_page,
+      offset: offset(socket.assigns.page),
+      show_adult: socket.assigns.user.show_adult_content
+    ]
 
     items =
       case sort do
@@ -375,7 +379,11 @@ defmodule StreamixWeb.Content.Browse do
 
   defp load_items(%{assigns: %{source: "iptv", provider: nil, sort: sort}} = socket, :series)
        when sort in ["popularity", "rating"] do
-    pagination = [limit: @per_page, offset: offset(socket.assigns.page)]
+    pagination = [
+      limit: @per_page,
+      offset: offset(socket.assigns.page),
+      show_adult: socket.assigns.user.show_adult_content
+    ]
 
     items =
       case sort do

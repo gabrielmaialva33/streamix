@@ -4,12 +4,13 @@ defmodule StreamixWeb.Catalog.Params do
   """
 
   @allowed_sorts ~w(rating_desc created_desc year_desc name_asc)
+  @max_offset 100_000
 
   def movies_opts(params) do
     [
       limit: capped_int(params["limit"], 20, 100),
-      offset: parse_int(params["offset"], 0),
-      category_id: parse_int(params["category_id"], nil),
+      offset: bounded_int(params["offset"], 0, 0, @max_offset),
+      category_id: positive_int(params["category_id"]),
       search: params["search"],
       sort: normalize_sort(params["sort"])
     ]
@@ -22,8 +23,8 @@ defmodule StreamixWeb.Catalog.Params do
 
     [
       limit: capped_int(requested_limit, 30, 100),
-      offset: parse_int(params["offset"], 0),
-      category_id: parse_int(params["category_id"], nil),
+      offset: bounded_int(params["offset"], 0, 0, @max_offset),
+      category_id: positive_int(params["category_id"]),
       search: params["search"]
     ]
   end
@@ -44,15 +45,29 @@ defmodule StreamixWeb.Catalog.Params do
   def category_type(nil), do: "vod"
   def category_type(other), do: other
 
-  defp capped_int(value, default, max), do: min(parse_int(value, default), max)
+  defp capped_int(value, default, maximum), do: bounded_int(value, default, 1, maximum)
+
+  defp bounded_int(value, default, minimum, maximum) do
+    value
+    |> parse_int(default)
+    |> max(minimum)
+    |> min(maximum)
+  end
+
+  defp positive_int(value) do
+    case parse_int(value, nil) do
+      integer when is_integer(integer) and integer > 0 -> integer
+      _ -> nil
+    end
+  end
 
   defp parse_int(nil, default), do: default
   defp parse_int("", default), do: default
 
   defp parse_int(value, default) when is_binary(value) do
     case Integer.parse(value) do
-      {int, _} -> int
-      :error -> default
+      {int, ""} -> int
+      _ -> default
     end
   end
 

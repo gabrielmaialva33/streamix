@@ -1,11 +1,17 @@
 defmodule StreamixWeb.HomeDataTest do
-  use Streamix.DataCase, async: true
+  use Streamix.DataCase, async: false
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Cache
   alias Streamix.Iptv
   alias StreamixWeb.HomeData
+
+  setup do
+    Cache.invalidate_all()
+    :ok
+  end
 
   describe "toggle_content_favorite/3" do
     test "persists movie favorites from home card previews and refreshes home state" do
@@ -75,6 +81,52 @@ defmodule StreamixWeb.HomeDataTest do
         |> HomeData.toggle_content_favorite("movie", regular.id)
 
       assert Enum.map(socket.assigns.favorites, & &1.content_id) == [regular.id]
+    end
+  end
+
+  describe "load/1" do
+    test "fills Para Você from the safe catalog when vector recommendations are empty" do
+      user = user_fixture()
+      provider = global_provider_fixture()
+
+      regular =
+        movie_fixture(provider, %{
+          name: "Fallback recommendation",
+          title: "Fallback recommendation",
+          year: Date.utc_today().year,
+          stream_icon: "https://example.com/fallback.jpg"
+        })
+
+      adult =
+        movie_fixture(provider, %{
+          name: "Adult fallback recommendation",
+          title: "Adult fallback recommendation",
+          year: Date.utc_today().year,
+          stream_icon: "https://example.com/adult-fallback.jpg"
+        })
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Adult recommendation fallback",
+          type: "vod",
+          external_id: "adult-recommendation-fallback",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{__changed__: %{}, current_scope: user_scope_fixture(user)}
+        }
+        |> HomeData.assign_empty()
+        |> HomeData.load()
+
+      assert Enum.map(socket.assigns.recommendations, & &1.id) == [regular.id]
+      assert hd(socket.assigns.recommendations).stream_icon == "https://example.com/fallback.jpg"
     end
   end
 

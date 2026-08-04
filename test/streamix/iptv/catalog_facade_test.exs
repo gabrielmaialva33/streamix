@@ -812,6 +812,79 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
              ) == [adult.id, regular.id]
     end
 
+    test "public ranked movie hydration drops private, inactive, adult and stale ids" do
+      owner = user_fixture()
+      public_provider = provider_fixture(owner, %{visibility: :public})
+      private_provider = provider_fixture(owner, %{visibility: :private})
+      inactive_provider = provider_fixture(owner, %{visibility: :public})
+
+      public_movie = movie_fixture(public_provider, %{name: "Public ranked movie"})
+      adult_movie = movie_fixture(public_provider, %{name: "Adult ranked movie"})
+      private_movie = movie_fixture(private_provider, %{name: "Private ranked movie"})
+      inactive_movie = movie_fixture(inactive_provider, %{name: "Inactive ranked movie"})
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: public_provider.id,
+          name: "Adult ranked",
+          type: "vod",
+          external_id: "adult-public-ranked",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult_movie.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      {:ok, _provider} = Iptv.update_provider(inactive_provider, %{is_active: false})
+
+      ids = [private_movie.id, adult_movie.id, public_movie.id, inactive_movie.id, -1]
+
+      assert Enum.map(Iptv.list_public_movies_by_ids(ids), & &1.id) == [public_movie.id]
+    end
+
+    test "ranked series hydration enforces user visibility, active provider and adult preference" do
+      user = user_fixture()
+      other_user = user_fixture()
+      own_provider = provider_fixture(user)
+      other_provider = provider_fixture(other_user)
+      inactive_provider = provider_fixture(user)
+
+      visible_series = series_content_fixture(own_provider, %{name: "Visible ranked series"})
+      adult_series = series_content_fixture(own_provider, %{name: "Adult ranked series"})
+      private_series = series_content_fixture(other_provider, %{name: "Private ranked series"})
+
+      inactive_series =
+        series_content_fixture(inactive_provider, %{name: "Inactive ranked series"})
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: own_provider.id,
+          name: "Series adultas",
+          type: "series",
+          external_id: "adult-series-ranked",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult_series.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      {:ok, _provider} = Iptv.update_provider(inactive_provider, %{is_active: false})
+
+      ids = [private_series.id, adult_series.id, visible_series.id, inactive_series.id]
+
+      assert Enum.map(
+               Iptv.list_visible_series_by_ids(user.id, ids, show_adult: false),
+               & &1.id
+             ) == [visible_series.id]
+
+      assert Enum.map(
+               Iptv.list_visible_series_by_ids(user.id, ids, show_adult: true),
+               & &1.id
+             ) == [adult_series.id, visible_series.id]
+    end
+
     test "list_new_releases/1 returns lightweight movie cards" do
       user = user_fixture()
 

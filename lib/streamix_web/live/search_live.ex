@@ -427,7 +427,8 @@ defmodule StreamixWeb.SearchLive do
     else
       show_adult = socket.assigns.current_scope.user.show_adult_content
 
-      {channels, more_channels?} = search_channels(user_id, query, 0, page_sizes.channels)
+      {channels, more_channels?} =
+        search_channels(user_id, query, show_adult, 0, page_sizes.channels)
 
       {movies, more_movies?} =
         search_movies(user_id, query, show_adult, 0, page_sizes.movies)
@@ -462,9 +463,13 @@ defmodule StreamixWeb.SearchLive do
     end
   end
 
-  defp search_channels(user_id, query, offset, page_size) do
+  defp search_channels(user_id, query, show_adult, offset, page_size) do
     user_id
-    |> Iptv.search_channels(query, limit: page_size + 1, offset: offset)
+    |> Iptv.search_channels(query,
+      limit: page_size + 1,
+      offset: offset,
+      show_adult: show_adult
+    )
     |> split_page(page_size)
   end
 
@@ -516,7 +521,13 @@ defmodule StreamixWeb.SearchLive do
   end
 
   defp search_page(socket, :channels, offset) do
-    search_channels(socket.assigns.user_id, socket.assigns.query, offset, @page_size)
+    search_channels(
+      socket.assigns.user_id,
+      socket.assigns.query,
+      socket.assigns.current_scope.user.show_adult_content,
+      offset,
+      @page_size
+    )
   end
 
   defp search_page(socket, :movies, offset) do

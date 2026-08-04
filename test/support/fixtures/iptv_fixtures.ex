@@ -7,6 +7,10 @@ defmodule Streamix.IptvFixtures do
   alias Streamix.Iptv.{CatalogItem, LiveChannel}
   alias Streamix.Repo
 
+  @provider_runtime_fields ~w(sync_status live_channels_count movies_count series_count
+                              live_synced_at vod_synced_at series_synced_at epg_synced_at
+                              server_info)a
+
   def unique_provider_name, do: "Provider #{System.unique_integer([:positive])}"
   def unique_provider_url, do: "http://provider#{System.unique_integer([:positive])}.example.com"
 
@@ -24,8 +28,30 @@ defmodule Streamix.IptvFixtures do
       attrs
       |> valid_provider_attrs()
 
-    {:ok, provider} = Iptv.create_provider(user.id, attrs)
-    provider
+    if privileged_provider_fixture?(attrs) do
+      alias Streamix.Iptv.Provider
+
+      %Provider{user_id: user.id}
+      |> Provider.changeset(attrs)
+      |> Repo.insert!()
+    else
+      {:ok, provider} = Iptv.create_provider(user.id, attrs)
+      provider
+    end
+  end
+
+  defp privileged_provider_fixture?(attrs) do
+    provider_type = Map.get(attrs, :provider_type) || Map.get(attrs, "provider_type")
+    visibility = Map.get(attrs, :visibility) || Map.get(attrs, "visibility")
+    is_system = Map.get(attrs, :is_system) || Map.get(attrs, "is_system")
+
+    runtime_state? =
+      Enum.any?(@provider_runtime_fields, fn field ->
+        Map.has_key?(attrs, field) or Map.has_key?(attrs, Atom.to_string(field))
+      end)
+
+    is_system == true or provider_type in [:gindex, :torrent, "gindex", "torrent"] or
+      visibility in [:global, "global"] or runtime_state?
   end
 
   @doc """

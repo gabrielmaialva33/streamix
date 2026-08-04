@@ -86,9 +86,10 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     |> count_query(has_category)
   end
 
-  def public_list(limit) do
+  def public_list(limit, show_adult) do
     Movie
     |> Access.public_providers()
+    |> maybe_exclude_adult(show_adult)
     |> where([m, _p], not is_nil(m.stream_icon))
     |> order_by([m], desc: m.rating, desc: m.year, asc: m.name)
     |> limit(^limit)
@@ -104,9 +105,10 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     |> limit(^limit)
   end
 
-  def public_search(query, limit) do
+  def public_search(query, limit, show_adult) do
     Movie
     |> Access.public_providers()
+    |> maybe_exclude_adult(show_adult)
     |> RankedSearch.build([:name, :title], query, limit: limit)
   end
 
