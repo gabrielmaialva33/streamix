@@ -18,7 +18,13 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   """
   def index(conn, params) do
     user = conn.assigns.current_user
-    opts = [content_type: params["type"], limit: parse_limit(params["limit"], 100)]
+
+    opts = [
+      content_type: params["type"],
+      limit: parse_limit(params["limit"], 100),
+      show_adult: user.show_adult_content
+    ]
+
     favorites = Iptv.list_favorites(user.id, opts)
 
     json(conn, %{

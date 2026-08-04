@@ -22,21 +22,24 @@ defmodule StreamixWeb.HistoryLive do
 
   @doc false
   def mount(_params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+    user = socket.assigns.current_scope.user
+    user_id = user.id
+    show_adult = user.show_adult_content
 
     # Load history for offline sync (limited to recent 100)
-    sync_history = load_history_for_sync(user_id)
+    sync_history = load_history_for_sync(user_id, show_adult)
 
     socket =
       socket
       |> assign(page_title: "Histórico")
       |> assign(current_path: "/history")
       |> assign(user_id: user_id)
+      |> assign(show_adult: show_adult)
       |> assign(filter: "all")
       |> assign(page: 0)
       |> assign(loading: false)
       |> assign(end_of_list: false)
-      |> assign(counts: load_counts(user_id))
+      |> assign(counts: load_counts(user_id, show_adult))
       |> assign(sync_history: sync_history)
       |> stream(:history, [])
       |> load_history()
@@ -294,7 +297,7 @@ defmodule StreamixWeb.HistoryLive do
     page = socket.assigns.page
     offset = page * @per_page
 
-    opts = [limit: @per_page, offset: offset]
+    opts = [limit: @per_page, offset: offset, show_adult: socket.assigns.show_adult]
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
     history = Iptv.list_watch_history(user_id, opts)
@@ -305,13 +308,13 @@ defmodule StreamixWeb.HistoryLive do
     |> stream(:history, history)
   end
 
-  defp load_counts(user_id) do
-    Iptv.count_watch_history_by_type(user_id)
+  defp load_counts(user_id, show_adult) do
+    Iptv.count_watch_history_by_type(user_id, show_adult: show_adult)
   end
 
-  defp load_history_for_sync(user_id) do
+  defp load_history_for_sync(user_id, show_adult) do
     # Load recent history for offline sync
-    Iptv.list_watch_history(user_id, limit: 100)
+    Iptv.list_watch_history(user_id, limit: 100, show_adult: show_adult)
     |> Enum.map(fn h ->
       %{
         id: h.id,

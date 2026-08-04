@@ -22,7 +22,8 @@ defmodule StreamixWeb.Api.V1.HistoryController do
     opts = [
       content_type: params["type"],
       limit: parse_limit(params["limit"], 50),
-      offset: parse_offset(params["offset"])
+      offset: parse_offset(params["offset"]),
+      show_adult: user.show_adult_content
     ]
 
     items = Iptv.list_watch_history(user.id, opts)

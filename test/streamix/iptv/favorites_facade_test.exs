@@ -39,6 +39,40 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       assert MapSet.member?(content_ids, ch1.id)
       assert MapSet.member?(content_ids, ch2.id)
     end
+
+    test "hides adult and inactive-provider entries from lists and counts" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      regular = movie_fixture(provider, %{name: "Visible favorite"})
+      adult = movie_fixture(provider, %{name: "Hidden adult favorite"})
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Adult favorite policy",
+          type: "vod",
+          external_id: "adult-favorite-policy",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", regular.id)
+      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", adult.id)
+
+      assert Enum.map(Iptv.list_favorites(user.id), & &1.content_id) == [regular.id]
+      assert Iptv.count_favorites(user.id) == 1
+      assert Iptv.count_favorites_by_type(user.id) == %{"movie" => 1}
+
+      assert MapSet.new(Iptv.list_favorites(user.id, show_adult: true), & &1.content_id) ==
+               MapSet.new([regular.id, adult.id])
+
+      {:ok, _provider} = Iptv.update_provider(provider, %{is_active: false})
+      assert Iptv.list_favorites(user.id, show_adult: true) == []
+      assert Iptv.count_favorites(user.id, show_adult: true) == 0
+    end
   end
 
   describe "list_home_favorites/2" do
@@ -204,6 +238,15 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       {:ok, _} = Iptv.add_favorite(user.id, "live_channel", channel.id)
       assert {:error, changeset} = Iptv.add_favorite(user.id, "live_channel", channel.id)
       assert "has already been taken" in errors_on(changeset).user_id
+    end
+
+    test "rejects content from another user's private provider" do
+      user = user_fixture()
+      owner = user_fixture()
+      private_movie = owner |> provider_fixture() |> movie_fixture()
+
+      assert {:error, changeset} = Iptv.add_favorite(user.id, "movie", private_movie.id)
+      assert "content not found" in errors_on(changeset).content_id
     end
   end
 

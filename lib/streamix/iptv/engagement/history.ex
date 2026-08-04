@@ -9,6 +9,7 @@ defmodule Streamix.Iptv.History do
   alias Ecto.Changeset
   alias Streamix.Iptv.{CatalogItem, Episode, Season, WatchProgress}
   alias Streamix.Iptv.ContentRef
+  alias Streamix.Iptv.Engagement.ContentPolicy
   alias Streamix.Repo
 
   @catalog_preloads [catalog_item: [:movie, :series, :episode, :live_channel]]
@@ -26,9 +27,12 @@ defmodule Streamix.Iptv.History do
     limit = Keyword.get(opts, :limit, 50)
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     user_progress_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
     |> maybe_filter_by_type(content_type)
+    |> maybe_exclude_adult(show_adult)
     |> order_by([progress: progress], desc: progress.last_watched_at)
     |> preload(^@catalog_preloads)
     |> limit(^limit)
@@ -49,9 +53,12 @@ defmodule Streamix.Iptv.History do
     limit = Keyword.get(opts, :limit, 50)
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     user_progress_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
     |> maybe_filter_by_type(content_type)
+    |> maybe_exclude_adult(show_adult)
     |> join_home_content()
     |> order_by([progress: progress], desc: progress.last_watched_at)
     |> limit(^limit)
@@ -73,13 +80,16 @@ defmodule Streamix.Iptv.History do
     limit = Keyword.get(opts, :limit, 50)
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     # CASE over catalog_item.content_type picks the right subquery for each
     # row instead of running all four — was a 4× scalar subquery per row,
     # which on a 100-row history meant 400 index lookups vs 100 with the
     # CASE form. Same total result, fraction of the planner work.
     user_progress_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
     |> maybe_filter_by_type(content_type)
+    |> maybe_exclude_adult(show_adult)
     |> order_by([progress: progress], desc: progress.last_watched_at)
     |> limit(^limit)
     |> offset(^offset)
@@ -104,6 +114,19 @@ defmodule Streamix.Iptv.History do
           ),
           :content_id
         ),
+      series_id:
+        fragment(
+          """
+          CASE WHEN ? = 'episode' THEN (
+            SELECT history_season.series_id
+            FROM episodes AS history_episode
+            JOIN seasons AS history_season ON history_season.id = history_episode.season_id
+            WHERE history_episode.catalog_item_id = ?
+          ) END
+          """,
+          catalog_item.content_type,
+          progress.catalog_item_id
+        ),
       progress_seconds: progress.progress_seconds,
       duration_seconds: progress.duration_seconds,
       completed: progress.completed,
@@ -121,10 +144,12 @@ defmodule Streamix.Iptv.History do
   Counts watch progress grouped by content type for a user.
   Returns a map like %{"movie" => 10, "episode" => 15, "live_channel" => 3}
   """
-  @spec count_by_type(integer()) :: %{String.t() => integer()}
-  def count_by_type(user_id) do
+  @spec count_by_type(integer(), keyword()) :: %{String.t() => integer()}
+  def count_by_type(user_id, opts \\ []) do
     WatchProgress
     |> user_progress_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
     |> group_by([catalog_item: catalog_item], catalog_item.content_type)
     |> select([catalog_item: catalog_item], {catalog_item.content_type, count()})
     |> Repo.all()
@@ -139,7 +164,8 @@ defmodule Streamix.Iptv.History do
           {:ok, map()} | {:error, Ecto.Changeset.t()}
   def add(user_id, content_type, content_id, attrs \\ %{}) do
     with {:ok, normalized_id} <- ContentRef.normalize_id(content_id),
-         {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(content_type, normalized_id) do
+         {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(content_type, normalized_id),
+         true <- ContentPolicy.visible_catalog_item?(user_id, catalog_item_id) do
       upsert_progress(user_id, catalog_item_id, attrs)
     else
       {:error, :invalid_content_id} ->
@@ -153,6 +179,11 @@ defmodule Streamix.Iptv.History do
          |> Changeset.add_error(:content_type, "is invalid")}
 
       {:error, :not_found} ->
+        {:error,
+         Changeset.change(%WatchProgress{})
+         |> Changeset.add_error(:content_id, "content not found")}
+
+      false ->
         {:error,
          Changeset.change(%WatchProgress{})
          |> Changeset.add_error(:content_id, "content not found")}
@@ -351,6 +382,9 @@ defmodule Streamix.Iptv.History do
   defp maybe_filter_by_type(query, content_type) do
     where(query, [catalog_item: catalog_item], catalog_item.content_type == ^content_type)
   end
+
+  defp maybe_exclude_adult(query, true), do: query
+  defp maybe_exclude_adult(query, false), do: ContentPolicy.exclude_adult(query)
 
   defp maybe_decorate({:ok, entry}) do
     entry

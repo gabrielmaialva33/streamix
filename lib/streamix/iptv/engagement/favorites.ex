@@ -6,8 +6,9 @@ defmodule Streamix.Iptv.Favorites do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias Streamix.Iptv.{AdultFilter, CatalogItem, Favorite}
+  alias Streamix.Iptv.{CatalogItem, Favorite}
   alias Streamix.Iptv.ContentRef
+  alias Streamix.Iptv.Engagement.ContentPolicy
   alias Streamix.Repo
 
   @content_types ContentRef.favorite_types()
@@ -26,9 +27,12 @@ defmodule Streamix.Iptv.Favorites do
     limit = Keyword.get(opts, :limit, 100)
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     user_favorites_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
     |> maybe_filter_by_type(content_type)
+    |> maybe_exclude_adult(show_adult)
     |> order_by([favorite: favorite], desc: favorite.inserted_at)
     |> preload(^@catalog_preloads)
     |> limit(^limit)
@@ -48,6 +52,7 @@ defmodule Streamix.Iptv.Favorites do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     user_favorites_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
     |> maybe_filter_by_type(content_type)
     |> maybe_exclude_adult(show_adult)
     |> join_home_content()
@@ -88,10 +93,12 @@ defmodule Streamix.Iptv.Favorites do
   Counts favorites grouped by content type for a user.
   Returns a map like %{"movie" => 10, "series" => 5, "live_channel" => 3}
   """
-  @spec count_by_type(integer()) :: %{String.t() => integer()}
-  def count_by_type(user_id) do
+  @spec count_by_type(integer(), keyword()) :: %{String.t() => integer()}
+  def count_by_type(user_id, opts \\ []) do
     Favorite
     |> user_favorites_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
     |> group_by([catalog_item: catalog_item], catalog_item.content_type)
     |> select([catalog_item: catalog_item], {catalog_item.content_type, count()})
     |> Repo.all()
@@ -120,10 +127,12 @@ defmodule Streamix.Iptv.Favorites do
   @doc """
   Counts total favorites for a user.
   """
-  @spec count(integer()) :: integer()
-  def count(user_id) do
+  @spec count(integer(), keyword()) :: integer()
+  def count(user_id, opts \\ []) do
     Favorite
-    |> where(user_id: ^user_id)
+    |> user_favorites_query(user_id)
+    |> ContentPolicy.visible_to_user(user_id)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
     |> Repo.aggregate(:count)
   end
 
@@ -149,19 +158,15 @@ defmodule Streamix.Iptv.Favorites do
   @spec add(integer(), String.t(), integer() | String.t(), map()) ::
           {:ok, map()} | {:error, Ecto.Changeset.t()}
   def add(user_id, content_type, content_id, _attrs \\ %{}) do
-    with true <- content_type in @content_types,
+    with :ok <- validate_content_type(content_type),
          {:ok, normalized_id} <- ContentRef.normalize_id(content_id),
-         {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(content_type, normalized_id) do
+         {:ok, catalog_item_id} <- ContentRef.resolve_catalog_item_id(content_type, normalized_id),
+         true <- ContentPolicy.visible_catalog_item?(user_id, catalog_item_id) do
       %Favorite{}
       |> Favorite.changeset(%{user_id: user_id, catalog_item_id: catalog_item_id})
       |> Repo.insert()
       |> maybe_decorate()
     else
-      false ->
-        {:error,
-         Changeset.change(%Favorite{})
-         |> Changeset.add_error(:content_type, "is invalid")}
-
       {:error, :invalid_content_id} ->
         {:error,
          Changeset.change(%Favorite{})
@@ -176,6 +181,11 @@ defmodule Streamix.Iptv.Favorites do
         {:error,
          Changeset.change(%Favorite{})
          |> Changeset.add_error(:content_type, "is invalid")}
+
+      false ->
+        {:error,
+         Changeset.change(%Favorite{})
+         |> Changeset.add_error(:content_id, "content not found")}
     end
   end
 
@@ -227,6 +237,9 @@ defmodule Streamix.Iptv.Favorites do
     )
   end
 
+  defp validate_content_type(content_type) when content_type in @content_types, do: :ok
+  defp validate_content_type(_content_type), do: {:error, :invalid_content_type}
+
   defp favorite_content_ids_query(schema, user_id, content_type) do
     from(content in schema,
       as: :content,
@@ -258,7 +271,7 @@ defmodule Streamix.Iptv.Favorites do
   defp maybe_exclude_adult(query, true), do: query
 
   defp maybe_exclude_adult(query, _show_adult),
-    do: AdultFilter.exclude_adult_content(query, :favorite)
+    do: ContentPolicy.exclude_adult(query)
 
   defp maybe_decorate({:ok, favorite}) do
     favorite
