@@ -132,6 +132,14 @@ defmodule Streamix.CacheTest do
     test "groups_key/1 generates correct key" do
       assert Cache.groups_key(111) == "groups:user:111"
     end
+
+    test "personalization keys share the user namespace" do
+      assert Cache.user_profile_key(123) == "ai:user:123:profile"
+      assert Cache.user_insights_key(123) == "ai:user:123:insights"
+
+      assert Cache.recommendations_key(123, "movies", 20, true) ==
+               "ai:user:123:recommendations:movies:20:exclude:true"
+    end
   end
 
   describe "invalidate_user/1" do
@@ -139,15 +147,42 @@ defmodule Streamix.CacheTest do
       Cache.set("categories:user:1", ["News"])
       Cache.set("groups:user:1", ["Group1"])
       Cache.set("other:user:1", "data")
+      Cache.set(Cache.user_profile_key(1), [0.1, 0.2])
+      Cache.set(Cache.recommendations_key(1, "movies", 20, true), [%{id: 1}])
       Cache.set("categories:user:2", ["Sports"])
 
       {:ok, count} = Cache.invalidate_user(1)
 
-      assert count == 3
+      assert count == 5
       assert is_nil(Cache.get("categories:user:1"))
       assert is_nil(Cache.get("groups:user:1"))
       assert is_nil(Cache.get("other:user:1"))
+      assert is_nil(Cache.get(Cache.user_profile_key(1)))
+      assert is_nil(Cache.get(Cache.recommendations_key(1, "movies", 20, true)))
       assert Cache.get("categories:user:2") == ["Sports"]
+    end
+  end
+
+  describe "invalidate_personalization/1" do
+    test "removes canonical, home and rolling-deploy legacy entries" do
+      Cache.set(Cache.user_profile_key(1), [0.1, 0.2])
+      Cache.set(Cache.user_insights_key(1), %{has_data: true})
+      Cache.set(Cache.recommendations_key(1, "movies", 20, true), [%{id: 1}])
+      Cache.set("home:trending:user:1:all:7", [%{id: 1}])
+      Cache.set("user_profile:1", [9.9])
+      Cache.set("recommendations:1:movies:20", [%{id: 9}])
+      Cache.set(Cache.user_profile_key(2), [0.3, 0.4])
+
+      assert {:ok, deleted} = Cache.invalidate_personalization(1)
+      assert deleted == 5
+
+      assert is_nil(Cache.get(Cache.user_profile_key(1)))
+      assert is_nil(Cache.get(Cache.user_insights_key(1)))
+      assert is_nil(Cache.get(Cache.recommendations_key(1, "movies", 20, true)))
+      assert is_nil(Cache.get("home:trending:user:1:all:7"))
+      assert is_nil(Cache.get("user_profile:1"))
+      assert is_nil(Cache.get("recommendations:1:movies:20"))
+      assert Cache.get(Cache.user_profile_key(2)) == [0.3, 0.4]
     end
   end
 

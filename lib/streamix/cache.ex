@@ -189,6 +189,13 @@ defmodule Streamix.Cache do
   defdelegate provider_categories_key(provider_id), to: Keys, as: :provider_categories
   defdelegate channel_count_key(provider_id), to: Keys, as: :channel_count
   defdelegate groups_key(user_id), to: Keys, as: :groups
+  defdelegate user_profile_key(user_id), to: Keys, as: :user_profile
+  defdelegate user_insights_key(user_id), to: Keys, as: :user_insights
+
+  defdelegate recommendations_key(user_id, type, limit, exclude_watched),
+    to: Keys,
+    as: :recommendations
+
   defdelegate public_stats_key, to: Keys, as: :public_stats
   defdelegate featured_key, to: Keys, as: :featured
   defdelegate epg_now_key(provider_id, epg_channel_id), to: Keys, as: :epg_now
@@ -250,7 +257,38 @@ defmodule Streamix.Cache do
 
   @doc "Invalidates all cache entries for a user."
   @spec invalidate_user(integer()) :: {:ok, non_neg_integer()}
-  def invalidate_user(user_id), do: delete_pattern("*:user:#{user_id}")
+  def invalidate_user(user_id) do
+    {:ok, user_entries} =
+      invalidate_patterns(["*:user:#{user_id}", "*:user:#{user_id}:*"])
+
+    {:ok, personalization_entries} = invalidate_personalization(user_id)
+    {:ok, user_entries + personalization_entries}
+  end
+
+  @doc "Invalidates derived profile, recommendation, insight and home personalization data."
+  @spec invalidate_personalization(integer()) :: {:ok, non_neg_integer()}
+  def invalidate_personalization(user_id) do
+    # Remove legacy exact keys as well so rolling deploys cannot resurrect
+    # personalization written by an older node.
+    delete("user_profile:#{user_id}")
+    delete("user_insights:#{user_id}")
+
+    invalidate_patterns([
+      "ai:user:#{user_id}:*",
+      "home:*:user:#{user_id}:*",
+      "recommendations:#{user_id}:*"
+    ])
+  end
+
+  defp invalidate_patterns(patterns) do
+    count =
+      Enum.reduce(patterns, 0, fn pattern, total ->
+        {:ok, deleted_count} = delete_pattern(pattern)
+        total + deleted_count
+      end)
+
+    {:ok, count}
+  end
 
   @doc "Invalidates all cache entries for a provider."
   @spec invalidate_provider(integer()) :: {:ok, non_neg_integer()}

@@ -17,6 +17,17 @@ defmodule Streamix.Cache.Keys do
   @spec groups(integer()) :: String.t()
   def groups(user_id), do: "groups:user:#{user_id}"
 
+  @spec user_profile(integer()) :: String.t()
+  def user_profile(user_id), do: "ai:user:#{user_id}:profile"
+
+  @spec user_insights(integer()) :: String.t()
+  def user_insights(user_id), do: "ai:user:#{user_id}:insights"
+
+  @spec recommendations(integer(), String.t(), integer(), boolean()) :: String.t()
+  def recommendations(user_id, type, limit, exclude_watched) do
+    "ai:user:#{user_id}:recommendations:#{type}:#{limit}:exclude:#{exclude_watched}"
+  end
+
   @spec public_stats() :: String.t()
   def public_stats, do: "stats:public"
 

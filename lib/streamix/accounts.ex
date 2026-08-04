@@ -363,6 +363,7 @@ defmodule Streamix.Accounts do
     user
     |> User.settings_changeset(attrs)
     |> Repo.update()
+    |> invalidate_user_cache()
   end
 
   ## Admin functions
@@ -437,7 +438,15 @@ defmodule Streamix.Accounts do
     user
     |> User.settings_changeset(attrs)
     |> Repo.update()
+    |> invalidate_user_cache()
   end
+
+  defp invalidate_user_cache({:ok, %User{id: user_id}} = result) do
+    Streamix.Cache.invalidate_user(user_id)
+    result
+  end
+
+  defp invalidate_user_cache(result), do: result
 
   ## Session
 
