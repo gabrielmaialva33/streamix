@@ -28,5 +28,12 @@ defmodule Streamix.Security.UrlValidatorTest do
         assert {:error, :unsafe_url} = UrlValidator.validate_url("http://169.254.169.254/")
       end)
     end
+
+    test "allows a private target only for an explicitly trusted server-side provider" do
+      assert :ok =
+               UrlValidator.validate_url("http://10.8.0.10/player_api.php",
+                 allow_private_network: true
+               )
+    end
   end
 end

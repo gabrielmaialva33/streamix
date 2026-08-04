@@ -24,6 +24,7 @@ defmodule Streamix.Iptv.Streaming.XtreamClientTest do
                "test-user",
                "test-password",
                provider_id: provider_id,
+               allow_private_network: true,
                max_retries: 0
              )
 
@@ -34,6 +35,20 @@ defmodule Streamix.Iptv.Streaming.XtreamClientTest do
              XtreamCircuitBreaker.get_all_status()
 
     assert ProviderRuntime.snapshot(provider_id).dimensions.control.status == :healthy
+  end
+
+  test "blocks private provider URLs before opening a connection" do
+    port = start_api_server()
+
+    assert {:error, :unsafe_url} =
+             XtreamClient.get_account_info(
+               "http://127.0.0.1:#{port}",
+               "test-user",
+               "test-password",
+               max_retries: 0
+             )
+
+    refute_receive {:xtream_request, _headers}
   end
 
   defp start_api_server do

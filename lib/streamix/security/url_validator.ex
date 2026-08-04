@@ -20,18 +20,28 @@ defmodule Streamix.Security.UrlValidator do
   - Blocks 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
     169.254.0.0/16, 0.0.0.0/8, ::1, fc00::/7, fe80::/10
   """
-  @spec validate_url(String.t()) :: :ok | {:error, :unsafe_url}
-  def validate_url(url) when is_binary(url) do
+  @spec validate_url(String.t(), keyword()) :: :ok | {:error, :unsafe_url}
+  def validate_url(url, opts \\ [])
+
+  def validate_url(url, opts) when is_binary(url) do
     uri = URI.parse(url)
+    allow_private_network? = Keyword.get(opts, :allow_private_network, false)
 
     with :ok <- validate_scheme(uri.scheme),
-         :ok <- validate_host_present(uri.host),
-         :ok <- validate_host_not_ip_literal(uri.host) do
-      validate_resolved_ip(uri.host)
+         :ok <- validate_host_present(uri.host) do
+      validate_network_target(uri.host, allow_private_network?)
     end
   end
 
-  def validate_url(_), do: {:error, :unsafe_url}
+  def validate_url(_, _opts), do: {:error, :unsafe_url}
+
+  defp validate_network_target(_host, true), do: :ok
+
+  defp validate_network_target(host, false) do
+    with :ok <- validate_host_not_ip_literal(host) do
+      validate_resolved_ip(host)
+    end
+  end
 
   defp validate_scheme(scheme) when scheme in ["http", "https"], do: :ok
 

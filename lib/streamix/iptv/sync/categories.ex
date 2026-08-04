@@ -18,15 +18,18 @@ defmodule Streamix.Iptv.Sync.Categories do
 
     with {:ok, live_cats} <-
            XtreamClient.get_live_categories(provider.url, provider.username, provider.password,
-             provider_id: provider.id
+             provider_id: provider.id,
+             allow_private_network: provider.is_system
            ),
          {:ok, vod_cats} <-
            XtreamClient.get_vod_categories(provider.url, provider.username, provider.password,
-             provider_id: provider.id
+             provider_id: provider.id,
+             allow_private_network: provider.is_system
            ),
          {:ok, series_cats} <-
            XtreamClient.get_series_categories(provider.url, provider.username, provider.password,
-             provider_id: provider.id
+             provider_id: provider.id,
+             allow_private_network: provider.is_system
            ) do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 

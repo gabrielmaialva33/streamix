@@ -20,7 +20,8 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
            provider.username,
            provider.password,
            movie.stream_id,
-           provider_id: provider.id
+           provider_id: provider.id,
+           allow_private_network: provider.is_system
          ) do
       {:ok, %{"info" => info, "movie_data" => movie_data}} ->
         parse_vod_info(info, movie_data)

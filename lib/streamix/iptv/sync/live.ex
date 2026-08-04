@@ -23,7 +23,8 @@ defmodule Streamix.Iptv.Sync.Live do
     Logger.info("Syncing live channels for provider #{provider.id}")
 
     case XtreamClient.get_live_streams(provider.url, provider.username, provider.password,
-           provider_id: provider.id
+           provider_id: provider.id,
+           allow_private_network: provider.is_system
          ) do
       {:ok, streams} ->
         category_lookup = Helpers.build_category_lookup(provider.id, "live")

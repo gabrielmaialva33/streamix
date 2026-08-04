@@ -100,7 +100,8 @@ defmodule Streamix.Iptv.Sync.Series.Details do
                provider.username,
                provider.password,
                series.series_id,
-               provider_id: provider.id
+               provider_id: provider.id,
+               allow_private_network: provider.is_system
              ) do
           {:ok, info} ->
             SeasonsEpisodes.sync(series, info)

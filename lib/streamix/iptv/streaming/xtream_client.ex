@@ -19,12 +19,15 @@ defmodule Streamix.Iptv.XtreamClient do
   alias Streamix.Iptv.Sync.Telemetry
   alias Streamix.Iptv.XtreamCircuitBreaker
   alias Streamix.SafeLog
+  alias Streamix.Security.UrlValidator
 
   require Logger
 
   @timeout :timer.seconds(30)
   @max_retries 3
   @base_retry_delay 10_000
+  @max_redirects 5
+  @redirect_statuses [301, 302, 303, 307, 308]
 
   # ============================================================================
   # Account
@@ -213,12 +216,16 @@ defmodule Streamix.Iptv.XtreamClient do
   end
 
   defp request_document(target, opts, default_timeout, empty_error) do
-    case Req.get(target,
-           receive_timeout: Keyword.get(opts, :request_timeout, default_timeout),
-           finch: [name: Streamix.Finch],
-           headers: [{"user-agent", UpstreamPolicy.user_agent()}],
-           decode_body: false
-         ) do
+    request_opts = [
+      receive_timeout: Keyword.get(opts, :request_timeout, default_timeout),
+      finch: [name: Streamix.Finch],
+      headers: [{"user-agent", UpstreamPolicy.user_agent()}],
+      decode_body: false,
+      redirect: false,
+      retry: false
+    ]
+
+    case safe_get(target, request_opts, opts) do
       {:ok, %{status: 200, body: body}} when is_binary(body) and byte_size(body) > 0 ->
         {:ok, body}
 
@@ -240,12 +247,18 @@ defmodule Streamix.Iptv.XtreamClient do
     request_timeout = Keyword.get(opts, :request_timeout, @timeout)
     max_retries = Keyword.get(opts, :max_retries, @max_retries)
 
-    # Use dedicated Finch pool for connection reuse during sync
-    case Req.get(url,
-           receive_timeout: request_timeout,
-           finch: [name: Streamix.Finch],
-           headers: [{"user-agent", UpstreamPolicy.user_agent()}]
-         ) do
+    request_opts = [
+      receive_timeout: request_timeout,
+      finch: [name: Streamix.Finch],
+      headers: [{"user-agent", UpstreamPolicy.user_agent()}],
+      redirect: false,
+      retry: false
+    ]
+
+    # Use dedicated Finch pool for connection reuse during sync.
+    # Redirects are followed manually so every hop is checked against
+    # the SSRF policy before the socket is opened.
+    case safe_get(url, request_opts, opts) do
       {:ok, %{status: 200, body: body}} when is_map(body) or is_list(body) ->
         {:ok, body}
 
@@ -368,6 +381,44 @@ defmodule Streamix.Iptv.XtreamClient do
 
   defp maybe_add_action(params, nil), do: params
   defp maybe_add_action(params, action), do: Map.put(params, :action, action)
+
+  defp safe_get(url, request_opts, opts, redirects \\ 0) do
+    validator_opts =
+      if Keyword.get(opts, :allow_private_network, false) do
+        [allow_private_network: true]
+      else
+        []
+      end
+
+    with :ok <- UrlValidator.validate_url(url, validator_opts),
+         {:ok, response} <- Req.get(url, request_opts) do
+      follow_safe_redirect(url, response, request_opts, opts, redirects)
+    end
+  end
+
+  defp follow_safe_redirect(url, %{status: status} = response, request_opts, opts, redirects)
+       when status in @redirect_statuses do
+    max_redirects = Keyword.get(opts, :max_redirects, @max_redirects)
+
+    with true <- redirects < max_redirects,
+         [location | _] <- Req.Response.get_header(response, "location"),
+         {:ok, next_url} <- resolve_redirect(url, location) do
+      safe_get(next_url, request_opts, opts, redirects + 1)
+    else
+      false -> {:error, :too_many_redirects}
+      [] -> {:error, :missing_redirect_location}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp follow_safe_redirect(_url, response, _request_opts, _opts, _redirects),
+    do: {:ok, response}
+
+  defp resolve_redirect(url, location) when is_binary(location) do
+    {:ok, url |> URI.merge(location) |> URI.to_string()}
+  rescue
+    ArgumentError -> {:error, :invalid_redirect_location}
+  end
 
   defp circuit_key(base_url, username, opts) do
     Keyword.get(opts, :provider_id) || :erlang.phash2({base_url, username})

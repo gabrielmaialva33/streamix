@@ -23,7 +23,8 @@ defmodule Streamix.Iptv.Sync.Movies do
     Logger.info("Syncing movies for provider #{provider.id}")
 
     case XtreamClient.get_vod_streams(provider.url, provider.username, provider.password,
-           provider_id: provider.id
+           provider_id: provider.id,
+           allow_private_network: provider.is_system
          ) do
       {:ok, streams} ->
         category_lookup = Helpers.build_category_lookup(provider.id, "vod")
