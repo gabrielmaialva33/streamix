@@ -15,8 +15,11 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     3. the orchestrator checks via `Oban.Job` query whether any
        sibling is still `available | scheduled | executing |
        retryable`, and
-    4. if so, `{:snooze, 30}` — it's cheap, non-blocking, and
-       participates in Oban's scheduler like any other job.
+    4. if so, snoozing until the next scheduled sibling (or for 30
+       seconds while work is active) — it's cheap, non-blocking, and
+       participates in Oban's scheduler like any other job. Oban
+       increases `max_attempts` for every snooze, preserving the real
+       failure budget while a workflow is intentionally paused.
 
   Once every sibling has settled (`completed | cancelled |
   discarded`), the orchestrator consolidates stats (movies / series

@@ -10,7 +10,7 @@ defmodule Streamix.OperationalHealth do
 
   alias Ecto.Adapters.SQL
   alias Streamix.AI.{Embeddings, Qdrant, SemanticSearch}
-  alias Streamix.{BuildInfo, Iptv, Repo, Torrent}
+  alias Streamix.{BuildInfo, Gindex, Iptv, Repo, Torrent}
 
   @check_timeout :timer.seconds(6)
   @required_checks [:database, :redis]
@@ -24,6 +24,7 @@ defmodule Streamix.OperationalHealth do
         database: &check_database/0,
         redis: &check_redis/0,
         providers: &check_providers/0,
+        gindex: &check_gindex/0,
         semantic_search: &check_semantic_search/0,
         torrent: &check_torrent/0
       ]
@@ -95,6 +96,33 @@ defmodule Streamix.OperationalHealth do
   catch
     :exit, _ -> %{status: :unavailable, counts: %{}}
   end
+
+  defp check_gindex do
+    quota = Gindex.quota_status()
+
+    state =
+      cond do
+        quota.remaining == 0 -> :paused
+        quota.percent >= quota.warning_pct -> :warning
+        true -> :available
+      end
+
+    quota
+    |> Map.take([:count, :limit, :remaining, :percent])
+    |> Map.put(:state, state)
+    |> Map.put(:status, if(state == :paused, do: :degraded, else: :ok))
+    |> maybe_put_quota_resume(state)
+  rescue
+    _ -> %{status: :degraded, state: :unknown}
+  catch
+    :exit, _ -> %{status: :degraded, state: :unknown}
+  end
+
+  defp maybe_put_quota_resume(check, :paused) do
+    Map.put(check, :resumes_in_seconds, Gindex.seconds_until_quota_reset())
+  end
+
+  defp maybe_put_quota_resume(check, _state), do: check
 
   defp check_semantic_search do
     if Embeddings.enabled?() do
