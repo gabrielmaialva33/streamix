@@ -57,6 +57,8 @@ defmodule Streamix.Iptv.Provider do
                       epg_synced_at epg_sync_interval_hours server_info
                       provider_type gindex_url)a
 
+  @user_fields ~w(name url urls username password is_active visibility epg_sync_interval_hours)a
+
   @doc """
   Returns the failover-aware URL chain for a provider: the primary `url`
   followed by any registered alternates in `urls`. Duplicates are removed
@@ -76,6 +78,26 @@ defmodule Streamix.Iptv.Provider do
     |> validate_inclusion(:visibility, [:private, :public, :global])
     |> maybe_require_user_id()
     |> maybe_require_credentials()
+    |> unique_constraint([:user_id, :url, :username])
+    |> foreign_key_constraint(:user_id)
+  end
+
+  @doc """
+  Changeset for a provider managed by its owner.
+
+  System identity, adapter type, sync state, counters and server metadata are
+  intentionally not accepted from user-controlled params.
+  """
+  @spec user_changeset(t(), map()) :: Ecto.Changeset.t()
+  def user_changeset(provider, attrs) do
+    provider
+    |> cast(attrs, @user_fields)
+    |> put_change(:is_system, false)
+    |> put_change(:provider_type, :xtream)
+    |> validate_required([:name, :url, :user_id, :username, :password])
+    |> validate_length(:name, min: 1, max: 100)
+    |> validate_url(:url)
+    |> validate_inclusion(:visibility, [:private, :public])
     |> unique_constraint([:user_id, :url, :username])
     |> foreign_key_constraint(:user_id)
   end

@@ -86,7 +86,9 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   end
 
   defp update_provider(socket, provider, params) do
-    case Iptv.update_provider(provider, params) do
+    user_id = socket.assigns.current_scope.user.id
+
+    case Iptv.update_user_provider(user_id, provider, params) do
       {:ok, provider} ->
         notify_parent({:saved, provider})
         {:noreply, socket}

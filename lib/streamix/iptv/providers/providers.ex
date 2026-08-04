@@ -193,7 +193,7 @@ defmodule Streamix.Iptv.Providers do
     case provider_limit_state(user_id) do
       :ok ->
         %Provider{user_id: user_id}
-        |> Provider.changeset(attrs)
+        |> Provider.user_changeset(attrs)
         |> Repo.insert()
 
       {:error, :provider_limit_reached} ->
@@ -238,6 +238,27 @@ defmodule Streamix.Iptv.Providers do
     |> Provider.changeset(attrs)
     |> Repo.update()
     |> invalidate_global_cache()
+  end
+
+  @doc """
+  Updates a personal provider after enforcing ownership server-side.
+  """
+  @spec update_for_user(integer(), Provider.t(), map()) ::
+          {:ok, Provider.t()} | {:error, Ecto.Changeset.t()}
+  def update_for_user(user_id, %Provider{} = provider, attrs) do
+    if provider.user_id == user_id and provider.is_system == false do
+      provider
+      |> Provider.user_changeset(attrs)
+      |> Repo.update()
+    else
+      {:error, ownership_changeset(provider)}
+    end
+  end
+
+  defp ownership_changeset(provider) do
+    provider
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:base, "provider does not belong to current user")
   end
 
   @doc """

@@ -29,6 +29,7 @@ defmodule Streamix.Iptv.Access do
     schema
     |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
     |> where([c, p], c.id == ^content_id and p.user_id == ^user_id)
+    |> where([_c, p], p.is_active == true)
   end
 
   @doc """
@@ -48,6 +49,7 @@ defmodule Streamix.Iptv.Access do
     |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
     |> where([c, _p], c.id == ^content_id)
     |> where([c, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([_c, p], p.is_active == true)
   end
 
   @doc """
@@ -67,6 +69,7 @@ defmodule Streamix.Iptv.Access do
     |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
     |> where([c, _p], c.id == ^content_id)
     |> where([c, p], p.visibility in [:global, :public])
+    |> where([_c, p], p.is_active == true)
   end
 
   @doc """
@@ -101,6 +104,7 @@ defmodule Streamix.Iptv.Access do
     schema
     |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
     |> where([c, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
+    |> where([_c, p], p.is_active == true)
   end
 
   @doc """
@@ -119,5 +123,6 @@ defmodule Streamix.Iptv.Access do
     schema
     |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
     |> where([c, p], p.visibility in [:global, :public])
+    |> where([_c, p], p.is_active == true)
   end
 end

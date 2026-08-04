@@ -175,6 +175,7 @@ defmodule Streamix.Iptv.ProviderHealth do
   defp probe_xtream(%Provider{} = provider) do
     case XtreamClient.get_account_info(provider.url, provider.username, provider.password,
            provider_id: provider.id,
+           allow_private_network: provider.is_system,
            request_timeout: @probe_timeout,
            max_retries: 0
          ) do
