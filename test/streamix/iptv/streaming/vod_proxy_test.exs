@@ -114,6 +114,32 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     assert complete_meta == %{outcome: :ok, retry_count: 1}
   end
 
+  test "resumes an already chunked response without sending headers twice" do
+    port = start_proxy_server(:disconnect_then_resume)
+
+    response =
+      VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream")
+
+    assert response.state == :chunked
+    assert response.resp_body == "abcdefghijkl"
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :upstream_retry], retry,
+                    %{
+                      reason: %Finch.TransportError{
+                        reason: :closed,
+                        source: %Mint.TransportError{reason: :closed}
+                      }
+                    }}
+
+    assert retry.bytes_sent == 6
+    assert retry.retry_count == 1
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :complete], complete,
+                    %{outcome: :ok, retry_count: 1}}
+
+    assert complete.bytes_sent == 12
+  end
+
   test "emits terminal status telemetry without exposing upstream URL" do
     port = start_proxy_server(:terminal)
 
@@ -241,6 +267,31 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     defp handle_request(conn, :retry_once, 1), do: send_resp(conn, 200, "resolver")
     defp handle_request(conn, :retry_once, 2), do: send_resp(conn, 503, "temporary")
     defp handle_request(conn, :retry_once, _request_number), do: send_resp(conn, 200, "abcdef")
+
+    defp handle_request(conn, :disconnect_then_resume, 1), do: send_resp(conn, 200, "resolver")
+
+    defp handle_request(conn, :disconnect_then_resume, 2) do
+      conn =
+        conn
+        |> put_resp_header("content-type", "video/mp4")
+        |> send_chunked(200)
+
+      {:ok, _conn} = chunk(conn, "abcdef")
+      Process.exit(self(), :kill)
+    end
+
+    defp handle_request(conn, :disconnect_then_resume, _request_number) do
+      case get_req_header(conn, "range") do
+        ["bytes=6-"] ->
+          conn
+          |> put_resp_header("content-type", "video/mp4")
+          |> put_resp_header("content-range", "bytes 6-11/12")
+          |> send_resp(206, "ghijkl")
+
+        _other ->
+          send_resp(conn, 400, "missing range")
+      end
+    end
 
     defp handle_request(conn, :terminal, 1), do: send_resp(conn, 200, "resolver")
     defp handle_request(conn, :terminal, _request_number), do: send_resp(conn, 404, "missing")

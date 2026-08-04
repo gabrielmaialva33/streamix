@@ -482,6 +482,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp on_status(status, acc) when status in 200..299, do: %{acc | status: status}
   defp on_status(status, acc), do: throw({:upstream_error, status, acc})
 
+  defp on_headers(_headers, %{attempting_resume?: true, conn: %Conn{state: :chunked}} = acc) do
+    # The downstream response is already committed. The resumed upstream
+    # headers describe only the remaining range and can't be sent again.
+    %{acc | sent_headers?: true}
+  end
+
   defp on_headers(headers, acc) do
     conn = send_response_headers(acc.conn, acc.status || 200, headers, acc.attempting_resume?)
     %{acc | conn: conn, sent_headers?: true}
