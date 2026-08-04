@@ -368,6 +368,42 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
+  defp load_authorized_content(
+         socket,
+         "movie",
+         user_id,
+         content,
+         %{provider_type: :torrent},
+         return_to
+       ) do
+    case Torrent.best_stream_for_movie(content.id) do
+      nil ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Nenhum torrent disponível para este filme")
+         |> redirect(to: ~p"/")}
+
+      stream ->
+        case load_content_preflight("torrent", stream.id, user_id) do
+          {:ok, torrent_content, provider} ->
+            load_authorized_content(
+              socket,
+              "torrent",
+              user_id,
+              torrent_content,
+              provider,
+              return_to
+            )
+
+          {:error, :not_found} ->
+            {:ok,
+             socket
+             |> put_flash(:error, "Conteúdo não encontrado")
+             |> redirect(to: ~p"/")}
+        end
+    end
+  end
+
   defp load_authorized_content(socket, "torrent" = type, user_id, content, provider, return_to) do
     case reserve_playback_session(socket, type, content, user_id) do
       {:ok, playback_session} ->

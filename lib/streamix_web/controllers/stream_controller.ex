@@ -179,6 +179,7 @@ defmodule StreamixWeb.StreamController do
     invalid_token: :invalid_token,
     subscription_required: :subscription_required,
     not_found: :content_not_found,
+    torrent_playback_required: :torrent_playback_required,
     unauthorized: :token_unauthorized,
     unsafe_url: :unsafe_url
   }

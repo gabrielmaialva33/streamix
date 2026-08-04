@@ -83,6 +83,28 @@ defmodule StreamixWeb.StreamTokenTest do
     end
   end
 
+  test "torrent movies cannot enter the Xtream stream-token pipeline" do
+    owner = user_fixture()
+
+    provider =
+      provider_fixture(owner, %{
+        visibility: "private",
+        is_system: false,
+        provider_type: "torrent",
+        url: "torrent://aggregator",
+        username: nil,
+        password: nil
+      })
+
+    movie = movie_fixture(provider)
+    token = StreamToken.sign_movie(movie.id, owner.id)
+
+    assert {:error, :torrent_playback_required} = StreamToken.verify_and_get_url(token)
+
+    assert {:error, :torrent_playback_required} =
+             StreamToken.upstream_url("movie", movie.id, owner.id)
+  end
+
   test "premium url token without entitlement is rejected" do
     user = user_fixture()
 

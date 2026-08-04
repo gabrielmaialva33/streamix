@@ -20,6 +20,7 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
           | :invalid_token
           | :subscription_required
           | :content_not_found
+          | :torrent_playback_required
           | :token_unauthorized
           | :unauthorized
           | :unsafe_url
@@ -59,6 +60,10 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
     token_unauthorized: {:forbidden, "Token not authorized for this content"},
     unsafe_url: {:forbidden, "URL blocked by security policy"},
     content_not_found: {:not_found, "Content not found"},
+    torrent_playback_required: {
+      :conflict,
+      "Torrent content must use the torrent playback flow"
+    },
     unknown: {:bad_request, "Stream proxy error"}
   }
 

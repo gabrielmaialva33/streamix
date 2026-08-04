@@ -65,6 +65,32 @@ defmodule StreamixWeb.StreamControllerTest do
            } = json_response(conn, 403)
   end
 
+  test "torrent movie tokens return the canonical torrent playback error", %{conn: conn} do
+    owner = user_fixture()
+
+    provider =
+      provider_fixture(owner, %{
+        visibility: "private",
+        is_system: false,
+        provider_type: "torrent",
+        url: "torrent://aggregator",
+        username: nil,
+        password: nil
+      })
+
+    movie = movie_fixture(provider)
+    token = StreamToken.sign_movie(movie.id, owner.id)
+
+    conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+    assert %{
+             "error" => %{
+               "code" => "torrent_playback_required",
+               "message" => "Torrent content must use the torrent playback flow"
+             }
+           } = json_response(conn, 409)
+  end
+
   describe "X-API-Key bypasses subscription check" do
     setup do
       original_api_keys = Application.get_env(:streamix, :api_keys, [])

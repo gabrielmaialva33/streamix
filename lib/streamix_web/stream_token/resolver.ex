@@ -346,6 +346,18 @@ defmodule StreamixWeb.StreamToken.Resolver do
     end
   end
 
+  defp build_content_url(
+         %{provider_type: provider_type},
+         _user_id,
+         _content,
+         _content_path,
+         _stream_id,
+         _extension,
+         _bypass
+       )
+       when provider_type in [:torrent, "torrent"],
+       do: {:error, :torrent_playback_required}
+
   defp build_content_url(provider, user_id, content, content_path, stream_id, extension, bypass) do
     cond do
       Access.global_content?(provider) ->

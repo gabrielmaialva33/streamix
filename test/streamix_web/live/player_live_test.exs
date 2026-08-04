@@ -104,6 +104,46 @@ defmodule StreamixWeb.PlayerLiveTest do
       assert loaded_provider.id == provider.id
     end
 
+    test "generic movie route opens torrent content through the swarm gate", %{
+      conn: conn,
+      user: user
+    } do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          is_system: false,
+          provider_type: "torrent",
+          is_active: true
+        })
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Torrent pela rota genérica",
+          title: "Torrent pela rota genérica"
+        })
+
+      info_hash = :crypto.strong_rand_bytes(20) |> Base.encode16(case: :lower)
+
+      _stream =
+        %TorrentStream{}
+        |> TorrentStream.changeset(%{
+          info_hash: info_hash,
+          magnet_uri: "magnet:?xt=urn:btih:#{info_hash}",
+          source_slug: "test",
+          movie_id: movie.id,
+          seeders: 42
+        })
+        |> Repo.insert!()
+
+      html =
+        conn
+        |> get(~p"/watch/movie/#{movie.id}")
+        |> html_response(200)
+
+      assert html =~ ~s(id="torrent-swarm-close-btn")
+      assert html =~ "Torrent pela rota genérica"
+    end
+
     test "customer without subscription is redirected to /plans when opening global content", %{
       conn: conn,
       user: user
