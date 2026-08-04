@@ -15,10 +15,10 @@ defmodule Streamix.AI.UserAnalytics.Filters do
       %{favorite_genres: [_ | _] = genres} ->
         user_genres =
           genres
-          |> Enum.take(3)
+          |> Enum.take(5)
           |> Enum.map(fn genre -> {String.downcase(genre), genre} end)
 
-        [{"all", "Todos"}] ++ user_genres ++ [{"more", "Mais..."}]
+        [{"all", "Todos"}] ++ user_genres
 
       _ ->
         default_genre_filters()

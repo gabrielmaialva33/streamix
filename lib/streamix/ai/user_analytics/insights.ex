@@ -1,12 +1,9 @@
 defmodule Streamix.AI.UserAnalytics.Insights do
   @moduledoc false
 
+  alias Streamix.Accounts
   alias Streamix.Cache
-  alias Streamix.Iptv.Genre
-  alias Streamix.Iptv.History
-  alias Streamix.Repo
-
-  import Ecto.Query
+  alias Streamix.Iptv
 
   @recommendations_ttl 3600
 
@@ -20,10 +17,13 @@ defmodule Streamix.AI.UserAnalytics.Insights do
   - Completion rate
   """
   def get_user_insights(user_id) do
-    cache_key = "user_insights:#{user_id}"
+    cache_key = Cache.user_insights_key(user_id)
 
     Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      history = History.list_for_analytics(user_id, limit: 500)
+      show_adult = show_adult_content?(user_id)
+
+      history =
+        Iptv.list_watch_history_for_analytics(user_id, limit: 500, show_adult: show_adult)
 
       if Enum.empty?(history) do
         %{has_data: false}
@@ -35,7 +35,7 @@ defmodule Streamix.AI.UserAnalytics.Insights do
         %{
           has_data: true,
           total_items: length(history),
-          content_breakdown: History.count_by_type(user_id),
+          content_breakdown: Iptv.count_watch_history_by_type(user_id, show_adult: show_adult),
           completion_rate: calculate_completion_rate(history),
           favorite_genres: extract_favorite_genres(movie_history),
           watch_patterns: analyze_watch_patterns(history),
@@ -65,13 +65,8 @@ defmodule Streamix.AI.UserAnalytics.Insights do
     if Enum.empty?(movie_ids) do
       []
     else
-      Genre
-      |> join(:inner, [genre], movie_genres in "movie_genres",
-        on: movie_genres.genre_id == genre.id
-      )
-      |> where([genre, movie_genres], movie_genres.movie_id in ^movie_ids)
-      |> select([genre, _movie_genres], genre.name)
-      |> Repo.all()
+      movie_ids
+      |> Iptv.list_movie_genre_names()
       |> Enum.frequencies()
       |> Enum.sort_by(fn {_genre, count} -> count end, :desc)
       |> Enum.take(5)
@@ -140,6 +135,13 @@ defmodule Streamix.AI.UserAnalytics.Insights do
     else
       avg = Enum.sum(durations) / length(durations)
       round(avg / 60)
+    end
+  end
+
+  defp show_adult_content?(user_id) do
+    case Accounts.get_user(user_id, preload_role: false) do
+      %{show_adult_content: value} -> value
+      nil -> false
     end
   end
 end

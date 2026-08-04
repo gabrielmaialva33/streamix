@@ -254,14 +254,17 @@ defmodule Streamix.AI.SemanticSearch do
 
     query =
       from(m in Streamix.Iptv.Movie,
+        join: provider in Streamix.Iptv.Provider,
+        on: provider.id == m.provider_id,
         where: not is_nil(m.title) and m.id > ^after_id,
+        where: provider.is_active == true,
         order_by: [asc: m.id],
         preload: [:genres]
       )
 
     query =
       if provider_id,
-        do: where(query, [m], m.provider_id == ^provider_id),
+        do: where(query, [m, _provider], m.provider_id == ^provider_id),
         else: query
 
     movies =
@@ -274,6 +277,7 @@ defmodule Streamix.AI.SemanticSearch do
           plot: m.plot,
           year: m.year,
           genres: Streamix.Helpers.genre_names(m.genres),
+          rating: m.rating,
           provider_id: m.provider_id
         }
       end)
@@ -291,14 +295,17 @@ defmodule Streamix.AI.SemanticSearch do
 
     query =
       from(s in Streamix.Iptv.Series,
+        join: provider in Streamix.Iptv.Provider,
+        on: provider.id == s.provider_id,
         where: not is_nil(s.title) and s.id > ^after_id,
+        where: provider.is_active == true,
         order_by: [asc: s.id],
         preload: [:genres]
       )
 
     query =
       if provider_id,
-        do: where(query, [s], s.provider_id == ^provider_id),
+        do: where(query, [s, _provider], s.provider_id == ^provider_id),
         else: query
 
     series =
@@ -311,6 +318,7 @@ defmodule Streamix.AI.SemanticSearch do
           plot: s.plot,
           year: s.year,
           genres: Streamix.Helpers.genre_names(s.genres),
+          rating: s.rating,
           provider_id: s.provider_id
         }
       end)
@@ -371,7 +379,7 @@ defmodule Streamix.AI.SemanticSearch do
   defp content_to_map(%{__struct__: _} = struct) do
     struct
     |> Map.from_struct()
-    |> Map.take([:id, :title, :description, :plot, :year, :genre, :genres, :provider_id])
+    |> Map.take([:id, :title, :description, :plot, :year, :genre, :genres, :rating, :provider_id])
     |> normalize_genres()
   end
 
@@ -393,6 +401,7 @@ defmodule Streamix.AI.SemanticSearch do
       title: content[:title],
       year: content[:year],
       genres: content[:genres] || [],
+      rating: normalize_rating(content[:rating]),
       provider_id: content[:provider_id]
     }
   end
@@ -422,8 +431,13 @@ defmodule Streamix.AI.SemanticSearch do
         title: payload["title"],
         year: payload["year"],
         genres: payload["genres"] || [],
+        rating: payload["rating"],
         provider_id: payload["provider_id"]
       }
     end)
   end
+
+  defp normalize_rating(%Decimal{} = rating), do: Decimal.to_float(rating)
+  defp normalize_rating(rating) when is_number(rating), do: rating
+  defp normalize_rating(_rating), do: nil
 end

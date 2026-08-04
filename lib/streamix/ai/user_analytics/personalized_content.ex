@@ -3,7 +3,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
 
   alias Streamix.AI.UserAnalytics.Insights
   alias Streamix.AI.UserAnalytics.Profile
-  alias Streamix.Iptv.Catalog
+  alias Streamix.Iptv
 
   @doc """
   Gets personalized trending movies for user.
@@ -20,10 +20,10 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   def get_personalized_trending(user_id, opts \\ []) do
     limit = opts[:limit] || 12
     genre = opts[:genre] || "all"
-    days = opts[:days] || 7
+    days = Keyword.get(opts, :days, 7)
     show_adult = Keyword.get(opts, :show_adult, false)
 
-    Catalog.list_trending_movies(limit: limit * 2, days: days, show_adult: show_adult)
+    Iptv.list_trending_movies(limit: limit * 2, days: days, show_adult: show_adult)
     |> filter_by_genre(genre)
     |> maybe_reorder_by_user_taste(user_id)
     |> Enum.take(limit)
@@ -42,8 +42,9 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   def get_personalized_series(user_id, opts \\ []) do
     limit = opts[:limit] || 12
     genre = opts[:genre] || "all"
+    show_adult = Keyword.get(opts, :show_adult, false)
 
-    Catalog.list_top_10_series(limit: limit * 2)
+    Iptv.list_top_10_series(limit: limit * 2, show_adult: show_adult)
     |> filter_by_genre(genre)
     |> maybe_reorder_by_user_taste(user_id)
     |> Enum.take(limit)

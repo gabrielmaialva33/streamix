@@ -3,9 +3,10 @@ defmodule Streamix.AI.UserAnalytics.Profile do
 
   require Logger
 
+  alias Streamix.Accounts
   alias Streamix.AI.Qdrant
   alias Streamix.Cache
-  alias Streamix.Iptv.History
+  alias Streamix.Iptv
 
   @user_profile_collection "user_profiles"
   @recommendations_ttl 3600
@@ -36,6 +37,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
              payload
            ) do
         {:ok, _} ->
+          Cache.invalidate_personalization(user_id)
           Logger.info("[UserAnalytics] Updated profile for user #{user_id}")
           {:ok, profile_vector}
 
@@ -50,7 +52,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   Gets cached user profile vector, computing if needed.
   """
   def get_user_profile(user_id) do
-    cache_key = "user_profile:#{user_id}"
+    cache_key = Cache.user_profile_key(user_id)
 
     Cache.fetch(cache_key, @recommendations_ttl, fn ->
       fetch_or_compute_profile(user_id)
@@ -60,7 +62,10 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   defp get_watched_content_with_embeddings(user_id) do
     history =
       user_id
-      |> History.list_for_analytics(limit: 100)
+      |> Iptv.list_watch_history_for_analytics(
+        limit: 100,
+        show_adult: show_adult_content?(user_id)
+      )
       |> Enum.reject(&(&1.content_type == "live_channel"))
 
     case history do
@@ -135,7 +140,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   end
 
   defp fetch_embeddings_for_collection(collection, entries) do
-    ids = Enum.map(entries, & &1.content_id)
+    ids = entries |> Enum.map(&embedding_id/1) |> Enum.uniq()
 
     case qdrant_module().get_points(collection, ids) do
       {:ok, points} ->
@@ -159,7 +164,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   end
 
   defp entry_to_weighted_vector(entry, vectors_by_id) do
-    case Map.get(vectors_by_id, entry.content_id) do
+    case Map.get(vectors_by_id, embedding_id(entry)) do
       nil -> nil
       vector -> %{vector: vector, weight: calculate_weight(entry)}
     end
@@ -183,5 +188,18 @@ defmodule Streamix.AI.UserAnalytics.Profile do
 
   defp qdrant_module do
     Application.get_env(:streamix, :user_profile_qdrant_module, Qdrant)
+  end
+
+  defp embedding_id(%{content_type: "episode", series_id: series_id})
+       when is_integer(series_id),
+       do: series_id
+
+  defp embedding_id(entry), do: entry.content_id
+
+  defp show_adult_content?(user_id) do
+    case Accounts.get_user(user_id, preload_role: false) do
+      %{show_adult_content: value} -> value
+      nil -> false
+    end
   end
 end

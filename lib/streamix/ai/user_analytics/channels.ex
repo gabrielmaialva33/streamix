@@ -1,11 +1,7 @@
 defmodule Streamix.AI.UserAnalytics.Channels do
   @moduledoc false
 
-  alias Streamix.Iptv.History
-  alias Streamix.Iptv.LiveChannel
-  alias Streamix.Repo
-
-  import Ecto.Query
+  alias Streamix.Iptv
 
   @doc """
   Gets recommended live channels based on watch history.
@@ -20,14 +16,21 @@ defmodule Streamix.AI.UserAnalytics.Channels do
   """
   def get_channel_recommendations(user_id, opts \\ []) do
     limit = opts[:limit] || 24
-    history = History.list_for_analytics(user_id, content_type: "live_channel", limit: 100)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    history =
+      Iptv.list_watch_history_for_analytics(user_id,
+        content_type: "live_channel",
+        limit: 100,
+        show_adult: show_adult
+      )
 
     case history do
       [] ->
-        {:ok, get_popular_channels(limit)}
+        {:ok, get_popular_channels(user_id, limit, [], show_adult)}
 
       history ->
-        recommend_channels_from_history(history, limit)
+        recommend_channels_from_history(user_id, history, limit, show_adult)
     end
   end
 
@@ -44,34 +47,24 @@ defmodule Streamix.AI.UserAnalytics.Channels do
   def get_personalized_channels(user_id, opts \\ []) do
     limit = opts[:limit] || 24
     category = opts[:category] || "all"
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     if category == "all" do
-      {:ok, channels} = get_channel_recommendations(user_id, limit: limit)
+      {:ok, channels} =
+        get_channel_recommendations(user_id, limit: limit, show_adult: show_adult)
+
       channels
     else
-      get_channels_by_category(user_id, category, limit)
+      get_channels_by_category(user_id, category, limit, show_adult)
     end
   end
 
-  defp get_popular_channels(limit, exclude_ids \\ []) do
-    query =
-      from(c in LiveChannel,
-        join: p in Streamix.Iptv.Provider,
-        on: c.provider_id == p.id,
-        where: p.visibility in [:global, :public],
-        where: not is_nil(c.stream_icon),
-        order_by: c.name,
-        limit: ^limit
-      )
-
-    query =
-      if exclude_ids != [] do
-        where(query, [c], c.id not in ^exclude_ids)
-      else
-        query
-      end
-
-    Repo.all(query)
+  defp get_popular_channels(user_id, limit, exclude_ids, show_adult) do
+    Iptv.list_channel_recommendation_candidates(user_id,
+      limit: limit,
+      exclude_ids: exclude_ids,
+      show_adult: show_adult
+    )
   end
 
   defp compute_channel_category_scores(channel_ids, history) do
@@ -81,18 +74,9 @@ defmodule Streamix.AI.UserAnalytics.Channels do
         Map.update(acc, entry.content_id, weight, &(&1 + weight))
       end)
 
-    channel_categories =
-      from(c in LiveChannel,
-        join: ic in "item_categories",
-        on: ic.catalog_item_id == c.catalog_item_id,
-        join: cat in Streamix.Iptv.Category,
-        on: ic.category_id == cat.id,
-        where: c.id in ^channel_ids,
-        select: {c.id, cat.id, cat.name}
-      )
-      |> Repo.all()
+    channel_categories = Iptv.channel_recommendation_category_refs(channel_ids)
 
-    Enum.reduce(channel_categories, %{}, fn {channel_id, category_id, _name}, acc ->
+    Enum.reduce(channel_categories, %{}, fn {channel_id, category_id}, acc ->
       weight = Map.get(channel_weights, channel_id, 1.0)
       Map.update(acc, category_id, weight, &(&1 + weight))
     end)
@@ -108,46 +92,56 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     base * duration_factor * recency_factor
   end
 
-  defp get_channels_by_category(user_id, category_name, limit) do
-    history = History.list_for_analytics(user_id, content_type: "live_channel", limit: 50)
+  defp get_channels_by_category(user_id, category_name, limit, show_adult) do
+    history =
+      Iptv.list_watch_history_for_analytics(user_id,
+        content_type: "live_channel",
+        limit: 50,
+        show_adult: show_adult
+      )
+
     watched_ids = Enum.map(history, & &1.content_id)
-    category_pattern = "%#{String.downcase(category_name)}%"
 
     channels =
-      from(c in LiveChannel,
-        join: ic in "item_categories",
-        on: ic.catalog_item_id == c.catalog_item_id,
-        join: cat in Streamix.Iptv.Category,
-        on: ic.category_id == cat.id,
-        join: p in Streamix.Iptv.Provider,
-        on: c.provider_id == p.id,
-        where: p.visibility in [:global, :public],
-        where: fragment("LOWER(?)", cat.name) |> like(^category_pattern),
-        where: not is_nil(c.stream_icon),
-        order_by: c.name,
-        limit: ^(limit * 2),
-        distinct: true,
-        select: c
+      Iptv.list_channel_recommendation_candidates(user_id,
+        category_name: category_name,
+        limit: limit * 2,
+        show_adult: show_adult
       )
-      |> Repo.all()
 
     channels
     |> Enum.sort_by(fn channel -> if channel.id in watched_ids, do: 1, else: 0 end)
     |> Enum.take(limit)
   end
 
-  defp recommend_channels_from_history(history, limit) do
+  defp recommend_channels_from_history(user_id, history, limit, show_adult) do
     watched_channel_ids = Enum.map(history, & &1.content_id)
     category_scores = compute_channel_category_scores(watched_channel_ids, history)
 
     case category_scores do
       scores when map_size(scores) == 0 ->
-        {:ok, get_popular_channels(limit)}
+        {:ok, get_popular_channels(user_id, limit, [], show_adult)}
 
       scores ->
         top_category_ids = top_category_ids(scores)
-        recommended = recommended_channels(top_category_ids, watched_channel_ids, limit)
-        {:ok, fill_channel_recommendations(recommended, watched_channel_ids, limit)}
+
+        recommended =
+          recommended_channels(
+            user_id,
+            top_category_ids,
+            watched_channel_ids,
+            limit,
+            show_adult
+          )
+
+        {:ok,
+         fill_channel_recommendations(
+           user_id,
+           recommended,
+           watched_channel_ids,
+           limit,
+           show_adult
+         )}
     end
   end
 
@@ -158,31 +152,29 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     |> Enum.map(fn {id, _score} -> id end)
   end
 
-  defp recommended_channels(top_category_ids, watched_channel_ids, limit) do
-    from(c in LiveChannel,
-      join: ic in "item_categories",
-      on: ic.catalog_item_id == c.catalog_item_id,
-      join: p in Streamix.Iptv.Provider,
-      on: c.provider_id == p.id,
-      where: p.visibility in [:global, :public],
-      where: ic.category_id in ^top_category_ids,
-      where: c.id not in ^watched_channel_ids,
-      where: not is_nil(c.stream_icon),
-      limit: ^(limit * 3),
-      select: c
+  defp recommended_channels(user_id, top_category_ids, watched_channel_ids, limit, show_adult) do
+    Iptv.list_channel_recommendation_candidates(user_id,
+      category_ids: top_category_ids,
+      exclude_ids: watched_channel_ids,
+      limit: limit * 3,
+      show_adult: show_adult
     )
-    |> Repo.all()
-    |> Enum.uniq_by(& &1.id)
     |> Enum.shuffle()
     |> Enum.take(limit)
   end
 
-  defp fill_channel_recommendations(recommended, watched_channel_ids, limit) do
+  defp fill_channel_recommendations(
+         user_id,
+         recommended,
+         watched_channel_ids,
+         limit,
+         show_adult
+       ) do
     case recommended do
       channels when length(channels) < limit ->
         remaining = limit - length(channels)
         exclude_ids = watched_channel_ids ++ Enum.map(channels, & &1.id)
-        channels ++ get_popular_channels(remaining, exclude_ids)
+        channels ++ get_popular_channels(user_id, remaining, exclude_ids, show_adult)
 
       channels ->
         channels

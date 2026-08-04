@@ -7,10 +7,15 @@ defmodule Streamix.AI.UserAnalyticsTest do
 
   alias Streamix.AI.UserAnalytics
   alias Streamix.AI.UserAnalytics.{Filters, Indexing, Insights, Profile, Recommendations}
-  alias Streamix.Iptv.{Category, Genre, History, WatchProgress}
+  alias Streamix.Cache
+  alias Streamix.Iptv.{Category, Episode, Genre, History, Season, WatchProgress}
 
   defmodule ProfileQdrantStub do
-    def get_points(_collection, ids) do
+    def get_points(collection, ids) do
+      if owner = Application.get_env(:streamix, :user_profile_test_owner) do
+        send(owner, {:profile_embedding_ids, collection, ids})
+      end
+
       {:ok, Enum.map(ids, &%{id: &1, vector: [0.25, 0.75], payload: %{}})}
     end
 
@@ -118,8 +123,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
                {"all", "Todos"},
                {"action", "Action"},
                {"drama", "Drama"},
-               {"comedy", "Comedy"},
-               {"more", "Mais..."}
+               {"comedy", "Comedy"}
              ] = UserAnalytics.get_user_genre_filters(user.id)
     end
   end
@@ -204,7 +208,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
       user = user_fixture()
       vector = [0.1, 0.2, 0.7]
 
-      put_l1_cache("user_profile:#{user.id}", vector)
+      put_l1_cache(Cache.user_profile_key(user.id), vector)
 
       assert UserAnalytics.get_user_profile(user.id) == Profile.get_user_profile(user.id)
       assert UserAnalytics.get_user_profile(user.id) == vector
@@ -230,6 +234,49 @@ defmodule Streamix.AI.UserAnalyticsTest do
       assert UserAnalytics.compute_user_profile(user.id) ==
                {:error, {:profile_store_failed, :unavailable}}
     end
+
+    test "uses the parent series id when fetching an episode embedding" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      series = series_content_fixture(provider, %{name: "Episode identity"})
+
+      season =
+        %Season{}
+        |> Season.changeset(%{season_number: 1, name: "Season 1", series_id: series.id})
+        |> Repo.insert!()
+
+      episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: 301,
+          title: "Pilot",
+          episode_num: 1,
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
+      {:ok, _history} = History.add(user.id, "episode", episode.id)
+
+      previous_module = Application.get_env(:streamix, :user_profile_qdrant_module)
+      previous_result = Application.get_env(:streamix, :user_profile_qdrant_result)
+      previous_owner = Application.get_env(:streamix, :user_profile_test_owner)
+
+      Application.put_env(:streamix, :user_profile_qdrant_module, ProfileQdrantStub)
+      Application.put_env(:streamix, :user_profile_qdrant_result, {:ok, %{}})
+      Application.put_env(:streamix, :user_profile_test_owner, self())
+
+      on_exit(fn ->
+        restore_env(:user_profile_qdrant_module, previous_module)
+        restore_env(:user_profile_qdrant_result, previous_result)
+        restore_env(:user_profile_test_owner, previous_owner)
+      end)
+
+      assert {:ok, _profile} = UserAnalytics.compute_user_profile(user.id)
+      assert_received {:profile_embedding_ids, "series", [series_id]}
+      assert series_id == series.id
+      refute series_id == episode.id
+    end
   end
 
   describe "recommendation facade" do
@@ -247,7 +294,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
         }
       ]
 
-      put_l1_cache("recommendations:#{user.id}:movies:1", cached)
+      put_l1_cache(Cache.recommendations_key(user.id, "movies", 1, true), cached)
 
       assert UserAnalytics.get_recommendations(user.id, type: "movies", limit: 1) ==
                Recommendations.get_recommendations(user.id, type: "movies", limit: 1)

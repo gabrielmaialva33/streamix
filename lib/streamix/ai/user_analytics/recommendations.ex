@@ -3,15 +3,17 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
 
   require Logger
 
+  alias Streamix.Accounts
   alias Streamix.AI.Embeddings
   alias Streamix.AI.Qdrant
   alias Streamix.AI.UserAnalytics.Content
   alias Streamix.AI.UserAnalytics.Formatter
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Cache
-  alias Streamix.Iptv.History
+  alias Streamix.Iptv
 
   @recommendations_ttl 3600
+  @content_collections ~w(movies series)
 
   @doc """
   Gets personalized recommendations for a user.
@@ -24,17 +26,27 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   - `:exclude_watched` - Exclude already watched (default: true)
   """
   def get_recommendations(user_id, opts \\ []) do
+    collection = Keyword.get(opts, :type, "movies")
+
+    if collection in @content_collections do
+      fetch_recommendations(user_id, opts)
+    else
+      {:error, :invalid_collection}
+    end
+  end
+
+  defp fetch_recommendations(user_id, opts) do
     cache_key = build_recommendations_key(user_id, opts)
 
     Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      case Profile.get_user_profile(user_id) do
-        nil ->
-          {:ok, []}
-
-        profile_vector ->
-          search_recommendations(user_id, profile_vector, opts)
-      end
+      recommend_for_profile(Profile.get_user_profile(user_id), user_id, opts)
     end)
+  end
+
+  defp recommend_for_profile(nil, _user_id, _opts), do: {:ok, []}
+
+  defp recommend_for_profile(profile_vector, user_id, opts) do
+    search_recommendations(user_id, profile_vector, opts)
   end
 
   @doc """
@@ -45,9 +57,16 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   def get_similar_to(content_id, collection, opts \\ []) do
     limit = opts[:limit] || 10
 
-    case Qdrant.find_similar(collection, content_id, limit: limit, score_threshold: 0.6) do
-      {:ok, results} ->
-        {:ok, Formatter.recommendations(results)}
+    with true <- collection in @content_collections,
+         {:ok, results} <-
+           Qdrant.find_similar(collection, content_id,
+             limit: limit,
+             score_threshold: 0.6
+           ) do
+      {:ok, Formatter.recommendations(results)}
+    else
+      false ->
+        {:error, :invalid_collection}
 
       {:error, reason} ->
         {:error, reason}
@@ -60,6 +79,14 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   Uses the content's embedding to find similar items.
   """
   def get_more_like_this(content, collection) do
+    if collection in @content_collections do
+      do_get_more_like_this(content, collection)
+    else
+      {:error, :invalid_collection}
+    end
+  end
+
+  defp do_get_more_like_this(content, collection) do
     text = Content.text(content)
 
     case Embeddings.embed(text) do
@@ -124,8 +151,14 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   defp get_watched_content_ids(user_id, collection) do
     content_type = collection_to_content_type(collection)
 
-    History.list_for_analytics(user_id, content_type: content_type, limit: 500)
-    |> Enum.map(& &1.content_id)
+    Iptv.list_watch_history_for_analytics(user_id,
+      content_type: content_type,
+      limit: 500,
+      show_adult: show_adult_content?(user_id)
+    )
+    |> Enum.map(&recommendation_content_id/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 
   defp collection_to_content_type("movies"), do: "movie"
@@ -135,6 +168,19 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   defp build_recommendations_key(user_id, opts) do
     type = opts[:type] || "movies"
     limit = opts[:limit] || 20
-    "recommendations:#{user_id}:#{type}:#{limit}"
+    exclude_watched = Keyword.get(opts, :exclude_watched, true)
+    Cache.recommendations_key(user_id, type, limit, exclude_watched)
+  end
+
+  defp recommendation_content_id(%{content_type: "episode", series_id: series_id}),
+    do: series_id
+
+  defp recommendation_content_id(entry), do: entry.content_id
+
+  defp show_adult_content?(user_id) do
+    case Accounts.get_user(user_id, preload_role: false) do
+      %{show_adult_content: value} -> value
+      nil -> false
+    end
   end
 end

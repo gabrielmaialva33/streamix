@@ -11,7 +11,7 @@ defmodule Streamix.AI.UserAnalytics.FormatterTest do
         payload: %{
           "title" => "Arrival",
           "year" => 2016,
-          "genre" => "Ficção científica",
+          "genres" => ["Ficção científica", "Drama"],
           "rating" => 8.1,
           "internal_only" => "not exposed"
         }
@@ -24,7 +24,7 @@ defmodule Streamix.AI.UserAnalytics.FormatterTest do
                score: 0.988,
                title: "Arrival",
                year: 2016,
-               genre: "Ficção científica",
+               genre: "Ficção científica, Drama",
                rating: 8.1
              }
            ]
@@ -40,5 +40,14 @@ defmodule Streamix.AI.UserAnalytics.FormatterTest do
              ]),
              & &1.id
            ) == ["first", "second"]
+  end
+
+  test "keeps compatibility with legacy singular genre payloads" do
+    assert [recommendation] =
+             Formatter.recommendations([
+               %{id: 1, score: 0.5, payload: %{"genre" => "Ação"}}
+             ])
+
+    assert recommendation.genre == "Ação"
   end
 end
