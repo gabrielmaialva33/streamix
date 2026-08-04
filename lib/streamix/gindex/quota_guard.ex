@@ -2,14 +2,11 @@ defmodule Streamix.Gindex.QuotaGuard do
   @moduledoc """
   Daily request budget tracker for the GIndex upstream.
 
-  The Cloudflare Worker free-tier ceiling is ~10K req/day per account
-  (the underlying `*.workers.dev` deployments behind `gindex.mahina.cloud`).
-  Once we hit it, every subsequent request returns 503 until the next
-  UTC midnight — and worse, the worker stops responding fast enough for
-  the Transport to even tell us why. So instead of waiting for the cliff,
-  this module pre-counts our consumption in Redis with a generous safety
-  margin (`@daily_limit`) and lets the Transport short-circuit before
-  burning more budget on a guaranteed failure.
+  The underlying `*.workers.dev` deployments are shared third-party
+  infrastructure: Streamix cannot inspect their account-wide usage or
+  reserve capacity. This module therefore applies a conservative app-local
+  ceiling (`@daily_limit`) and lets the Transport short-circuit before a
+  large sync monopolizes the upstream or enters a retry storm.
 
   Counter shape: `gindex:quota:YYYY-MM-DD` → integer, INCR'd per request,
   EXPIRE'd 36h to survive UTC rollover. Distributed-safe if multiple
@@ -24,10 +21,10 @@ defmodule Streamix.Gindex.QuotaGuard do
 
   require Logger
 
-  # Stay 20% under the 10K/day CF cliff. Buys headroom for ad-hoc IEx
-  # probing, the stream proxy resolving signed URLs on demand, and the
-  # 2-3 retries each Transport call may issue without consuming a fresh
-  # quota slot (we only consume at the public API boundary).
+  # Production safety envelope based on observed upstream stability. Every
+  # outbound attempt, including retries, consumes a slot so this counter
+  # reflects the load Streamix actually contributes. This is intentionally
+  # independent from Cloudflare's published account-plan allowance.
   @daily_limit 8_000
 
   # Warn at 80% of the budget. 6_400 reqs in a single sync would be

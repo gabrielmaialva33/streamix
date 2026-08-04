@@ -11,12 +11,12 @@ defmodule Streamix.Gindex.Pacer do
 
   Buckets:
     * `:gdrive`        - Google Drive Index (Cloudflare Worker + Google Drive API).
-                         Google's per-SA quota is ~10 q/s; we default to 5 q/s to
-                         stay well under and leave headroom for interactive use.
+                         We default to the production-proven 1 q/s because these
+                         shared third-party endpoints degrade under bursts.
     * `:tmdb_gindex`   - TMDB via the GIndex-dedicated token; default 10 q/s.
 
   Rates are overridable in runtime via
-  `config :streamix, Streamix.Gindex.Pacer, gdrive: 5, tmdb_gindex: 10`.
+  `config :streamix, Streamix.Gindex.Pacer, gdrive: 1, tmdb_gindex: 10`.
   """
 
   require Logger
@@ -81,14 +81,11 @@ defmodule Streamix.Gindex.Pacer do
     |> Keyword.get(bucket, default_limit(bucket))
   end
 
-  # Cloudflare Workers free-tier daily ceiling for the upstream
-  # `*.workers.dev` instances we depend on is ~10 000 req/day per
-  # account, shared across every client of that worker. At 5 q/s we
-  # were burning that bucket in roughly half an hour and then spending
-  # the rest of the run absorbing 503 storms. 1 q/s caps us at 60 req/min
-  # (~3 600/h, ~14h before hitting the daily ceiling), which gives the
-  # token bucket time to refill and matches what we observed as the
-  # break-even rate during last night's sync attempts.
+  # These are third-party Workers, so their account usage and effective
+  # capacity are opaque to us. At higher concurrency we observed cascading
+  # 500/503 bursts; 1 q/s leaves recovery headroom and is the production-
+  # proven break-even rate. This is an operational limit, not a claim about
+  # the current Cloudflare plan allowance.
   defp default_limit(:gdrive), do: 1
   defp default_limit(:tmdb_gindex), do: 10
   # AniList's published ceiling is 90 req/min ≈ 1.5 rps. Staying at 1

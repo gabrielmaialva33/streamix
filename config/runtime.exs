@@ -441,11 +441,10 @@ config :streamix, StreamixWeb.Api.V1.ImageResizeController,
 # GIndex pacer budgets (requests-per-second). Tunable from the env
 # without a code change — useful when upstream capacity changes.
 config :streamix, Streamix.Gindex.Pacer,
-  # 1 q/s. The free Cloudflare Workers tier the upstream
-  # `*.workers.dev` instances run on has a daily ceiling of ~10K req
-  # account-wide; at 3 q/s we ate the budget in under an hour and got
-  # rate-limited (503) for the remainder. Override with GINDEX_GDRIVE_RPS
-  # if you control the upstream and want to push it.
+  # The third-party Workers expose neither account usage nor reserved
+  # capacity to us. Production probing found 1 q/s stable while higher
+  # rates caused cascading 500/503 responses. Override GINDEX_GDRIVE_RPS
+  # only when the upstream capacity is known.
   gdrive: RuntimeConfig.integer!("GINDEX_GDRIVE_RPS", get_env.("GINDEX_GDRIVE_RPS"), 1, min: 1),
   tmdb_gindex: RuntimeConfig.integer!("GINDEX_TMDB_RPS", get_env.("GINDEX_TMDB_RPS"), 10, min: 1),
   anilist:

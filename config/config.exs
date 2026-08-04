@@ -180,13 +180,11 @@ config :streamix, Oban,
     # EndpointManager keeps an ordered two-Worker pool for whole-listing
     # failover; it does not split one paginated walk across both hosts.
     gindex_dispatch: 1,
-    # Concurrency 1 (down from 2): the upstream Cloudflare Worker is on
-    # the free `*.workers.dev` plan and rate-limits at ~10K req/day
-    # account-wide. Two parallel scan roots burnt that budget within
-    # 30 minutes and tipped the worker into a 503 storm that took out
-    # the whole sync. Serializing the scan roots costs us nothing on
-    # wall-clock — the Pacer cap of 1 q/s is the actual bottleneck —
-    # while keeping the daily ceiling intact.
+    # Concurrency 1: parallel scan roots previously tipped the shared
+    # third-party Workers into cascading 500/503 responses. Serializing
+    # roots costs nothing on wall-clock because the 1 q/s Pacer is the
+    # actual bottleneck, and it prevents independent walks competing for
+    # opaque upstream capacity.
     gindex_scan: 1,
     # TMDB enrichment for gindex rows. Concurrency of 3 matches the
     # pool of 3 tokens (round-robin) so each worker runs on its own

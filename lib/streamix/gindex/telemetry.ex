@@ -2,13 +2,12 @@ defmodule Streamix.Gindex.Telemetry do
   @moduledoc """
   Aggregated telemetry counters for the GIndex ingestion pipeline.
 
-  The CF Worker free-tier ceiling (~10K req/day, account-wide) is the
-  binding constraint of the whole sync, so visibility into how that
-  budget is being spent is essential. This module attaches handlers to
-  the existing telemetry events and surfaces:
+  GIndex runs behind third-party Workers whose account-wide usage is not
+  observable from Streamix. The application therefore enforces its own
+  conservative daily safety budget and surfaces how it is being spent:
 
-    * total requests since boot (rough quota counter)
-    * 500/TypeError responses that exhausted same-origin retries
+    * total outbound attempts since boot
+    * 500/TypeError responses, including attempts recovered by retry
     * 429 / 503 rate-limit hits
     * fatal transport errors
     * scan-root completions per kind
@@ -84,7 +83,7 @@ defmodule Streamix.Gindex.Telemetry do
 
   @doc false
   # Quota-denied requests don't burn upstream budget, so we don't bump
-  # `:requests` (the rough quota counter) — just track them separately
+  # `:requests` (actual outbound attempts) — just track them separately
   # to flag how often the guard is firing.
   def record_request(:quota_exhausted), do: safe_update_counter(:req_quota_denied, 1)
   def record_request(:ok), do: bump_pair(:requests, :req_ok)
