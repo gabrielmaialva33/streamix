@@ -20,6 +20,27 @@ defmodule StreamixWeb.Helpers.Params do
 
   def parse_positive_integer(_), do: :error
 
+  @doc "Parses a non-negative integer without accepting partial values."
+  @spec parse_non_negative_integer(term()) :: {:ok, non_neg_integer()} | :error
+  def parse_non_negative_integer(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  def parse_non_negative_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer >= 0 -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  def parse_non_negative_integer(_), do: :error
+
+  @doc "Parses JSON/form boolean values, using the supplied boolean for nil."
+  @spec parse_boolean(term(), boolean()) :: {:ok, boolean()} | :error
+  def parse_boolean(nil, default) when is_boolean(default), do: {:ok, default}
+  def parse_boolean(value, _default) when is_boolean(value), do: {:ok, value}
+  def parse_boolean("true", _default), do: {:ok, true}
+  def parse_boolean("false", _default), do: {:ok, false}
+  def parse_boolean(_value, _default), do: :error
+
   @doc """
   Parses an integer from a param value.
 

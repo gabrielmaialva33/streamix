@@ -34,8 +34,13 @@ defmodule StreamixWeb.Catalog.Params do
   def home_limit(params), do: capped_int(params["limit"], 20, 50)
   def shelf_limit(params), do: capped_int(params["limit"], 20, 50)
 
-  def search_query(query, max_bytes) when is_binary(query), do: String.slice(query, 0, max_bytes)
-  def search_query(_query, _max_bytes), do: ""
+  def search_query(query, max_length) when is_binary(query) do
+    query
+    |> String.trim()
+    |> String.slice(0, max_length)
+  end
+
+  def search_query(_query, _max_length), do: ""
 
   def content_type("series"), do: "series"
   def content_type(_), do: "movie"
