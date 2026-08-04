@@ -771,6 +771,47 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       refute Ecto.assoc_loaded?(result.credits)
     end
 
+    test "list_visible_movies_by_ids/3 hydrates ranked recommendation cards safely" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      regular =
+        movie_fixture(provider, %{
+          name: "Visible Recommendation",
+          stream_icon: "http://example.com/visible-recommendation.jpg"
+        })
+
+      adult =
+        movie_fixture(provider, %{
+          name: "Adult Recommendation",
+          stream_icon: "http://example.com/adult-recommendation.jpg"
+        })
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Filmes adultos",
+          type: "vod",
+          external_id: "adult-recommendations",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      assert [hydrated] =
+               Iptv.list_visible_movies_by_ids(user.id, [adult.id, regular.id], show_adult: false)
+
+      assert hydrated.id == regular.id
+      assert hydrated.stream_icon == "http://example.com/visible-recommendation.jpg"
+
+      assert Enum.map(
+               Iptv.list_visible_movies_by_ids(user.id, [adult.id, regular.id], show_adult: true),
+               & &1.id
+             ) == [adult.id, regular.id]
+    end
+
     test "list_new_releases/1 returns lightweight movie cards" do
       user = user_fixture()
 
@@ -797,6 +838,50 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       assert Ecto.assoc_loaded?(result.genres)
       assert result.plot == nil
       assert result.youtube_trailer == nil
+    end
+
+    test "list_trending_movies/1 respects the adult-content preference" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{visibility: "public"})
+      year = Date.utc_today().year
+
+      regular =
+        movie_fixture(provider, %{
+          name: "Regular Trending",
+          stream_icon: "http://example.com/regular-trending.jpg",
+          year: year,
+          rating: Decimal.new("8.0")
+        })
+
+      adult =
+        movie_fixture(provider, %{
+          name: "Adult Trending",
+          stream_icon: "http://example.com/adult-trending.jpg",
+          year: year,
+          rating: Decimal.new("9.0")
+        })
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Adultos",
+          type: "vod",
+          external_id: "adult-trending",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      assert Enum.map(Iptv.list_trending_movies(limit: 10, show_adult: false), & &1.id) == [
+               regular.id
+             ]
+
+      assert Enum.map(Iptv.list_trending_movies(limit: 10, show_adult: true), & &1.id) == [
+               adult.id,
+               regular.id
+             ]
     end
 
     test "ranked catalog queries apply offsets in SQL-sized pages" do

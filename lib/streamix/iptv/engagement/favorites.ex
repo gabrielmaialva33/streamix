@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.Favorites do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias Streamix.Iptv.{CatalogItem, Favorite}
+  alias Streamix.Iptv.{AdultFilter, CatalogItem, Favorite}
   alias Streamix.Iptv.ContentRef
   alias Streamix.Repo
 
@@ -45,9 +45,11 @@ defmodule Streamix.Iptv.Favorites do
     limit = Keyword.get(opts, :limit, 100)
     offset = Keyword.get(opts, :offset, 0)
     content_type = Keyword.get(opts, :content_type)
+    show_adult = Keyword.get(opts, :show_adult, false)
 
     user_favorites_query(user_id)
     |> maybe_filter_by_type(content_type)
+    |> maybe_exclude_adult(show_adult)
     |> join_home_content()
     |> order_by([favorite: favorite], desc: favorite.inserted_at)
     |> limit(^limit)
@@ -252,6 +254,11 @@ defmodule Streamix.Iptv.Favorites do
   defp maybe_filter_by_type(query, content_type) do
     where(query, [catalog_item: catalog_item], catalog_item.content_type == ^content_type)
   end
+
+  defp maybe_exclude_adult(query, true), do: query
+
+  defp maybe_exclude_adult(query, _show_adult),
+    do: AdultFilter.exclude_adult_content(query, :favorite)
 
   defp maybe_decorate({:ok, favorite}) do
     favorite

@@ -225,6 +225,35 @@ defmodule Streamix.Iptv.Movies do
   end
 
   @doc """
+  Lists visible movie cards for ranked IDs while preserving the requested order.
+
+  This is the hydration boundary for external ranking systems such as Qdrant:
+  stale, inaccessible, inactive-provider, and adult-filtered IDs are omitted.
+  """
+  @spec list_visible_by_ids(integer(), [integer()], keyword()) :: [Movie.t()]
+  def list_visible_by_ids(_user_id, [], _opts), do: []
+
+  def list_visible_by_ids(user_id, ids, opts) when is_list(ids) do
+    ranked_ids = Enum.uniq(ids)
+
+    movies_by_id =
+      user_id
+      |> Queries.filtered_visible(opts)
+      |> where([movie], movie.id in ^ranked_ids)
+      |> Queries.select_card_fields()
+      |> preload(^@summary_preloads)
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    Enum.flat_map(ranked_ids, fn id ->
+      case Map.fetch(movies_by_id, id) do
+        {:ok, movie} -> [movie]
+        :error -> []
+      end
+    end)
+  end
+
+  @doc """
   Gets a movie owned by a specific user.
   """
   @spec get_user_movie(integer(), integer()) :: Movie.t() | nil

@@ -70,6 +70,38 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
                :inserted_at
              ]
     end
+
+    test "respects the adult-content preference on home cards" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      regular = movie_fixture(provider, %{name: "Regular Favorite"})
+      adult = movie_fixture(provider, %{name: "Adult Favorite"})
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Adultos",
+          type: "vod",
+          external_id: "adult-home-favorites",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", regular.id)
+      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", adult.id)
+
+      assert Enum.map(Iptv.list_home_favorites(user.id, show_adult: false), & &1.content_id) == [
+               regular.id
+             ]
+
+      assert MapSet.new(
+               Iptv.list_home_favorites(user.id, show_adult: true),
+               & &1.content_id
+             ) == MapSet.new([regular.id, adult.id])
+    end
   end
 
   describe "count_favorites/1" do

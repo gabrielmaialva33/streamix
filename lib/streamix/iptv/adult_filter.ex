@@ -30,20 +30,26 @@ defmodule Streamix.Iptv.AdultFilter do
   helpers above are cheaper when the query already targets one provider.
   """
   def exclude_adult_content(query) do
+    query
+    |> from(as: :adult_filter_item)
+    |> exclude_adult_content(:adult_filter_item)
+  end
+
+  @doc """
+  Filters a catalog-item backed query whose root already has a named binding.
+  """
+  def exclude_adult_content(query, binding_alias) when is_atom(binding_alias) do
     adult_content =
       from(ic in "item_categories",
         join: c in Category,
         on: c.id == ic.category_id,
         where:
-          ic.catalog_item_id == parent_as(:adult_filter_item).catalog_item_id and
+          ic.catalog_item_id == parent_as(^binding_alias).catalog_item_id and
             c.is_adult == true,
         select: 1
       )
 
-    from(item in query,
-      as: :adult_filter_item,
-      where: not exists(subquery(adult_content))
-    )
+    from(item in query, where: not exists(subquery(adult_content)))
   end
 
   @doc """

@@ -159,6 +159,11 @@ defmodule Streamix.Iptv do
   defdelegate search_movies(user_id, query, opts \\ []), to: Movies, as: :search
   defdelegate search_public_movies(query, opts \\ []), to: Movies, as: :search_public
   defdelegate get_movies_by_ids(ids), to: Movies, as: :get_by_ids
+
+  defdelegate list_visible_movies_by_ids(user_id, ids, opts \\ []),
+    to: Movies,
+    as: :list_visible_by_ids
+
   defdelegate list_movie_variants(movie, user_id, opts \\ []), to: Movies, as: :list_variants
 
   # GIndex Movies

@@ -13,6 +13,7 @@ defmodule Streamix.Iptv.Catalog do
   alias Streamix.Helpers
 
   alias Streamix.Iptv.{
+    AdultFilter,
     CatalogItem,
     Category,
     Episode,
@@ -327,6 +328,7 @@ defmodule Streamix.Iptv.Catalog do
     limit = Keyword.get(opts, :limit, 10)
     offset = Keyword.get(opts, :offset, 0)
     days = Keyword.get(opts, :days, 7)
+    show_adult = Keyword.get(opts, :show_adult, false)
     since = DateTime.utc_now() |> DateTime.add(-days * 24 * 3600, :second)
 
     # Get movie IDs with watch counts from watch_progress via catalog_items
@@ -351,16 +353,24 @@ defmodule Streamix.Iptv.Catalog do
 
     if trending_ids == [] do
       # Fallback to high-rated recent movies
-      list_new_releases(limit: limit, offset: offset)
+      list_new_releases(limit: limit, offset: offset, show_adult: show_adult)
     else
-      public_movies_query()
-      |> where([movie: movie], movie.id in ^trending_ids)
-      |> select_movie_card_fields()
-      |> preload(^@summary_preloads)
-      |> Repo.all()
-      |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
-      |> Enum.drop(offset)
-      |> Enum.take(limit)
+      results =
+        public_movies_query()
+        |> maybe_exclude_adult(show_adult)
+        |> where([movie: movie], movie.id in ^trending_ids)
+        |> select_movie_card_fields()
+        |> preload(^@summary_preloads)
+        |> Repo.all()
+        |> Enum.sort_by(fn m -> Enum.find_index(trending_ids, &(&1 == m.id)) end)
+        |> Enum.drop(offset)
+        |> Enum.take(limit)
+
+      if results == [] do
+        list_new_releases(limit: limit, offset: offset, show_adult: show_adult)
+      else
+        results
+      end
     end
   end
 
@@ -427,9 +437,11 @@ defmodule Streamix.Iptv.Catalog do
   def list_new_releases(opts \\ []) do
     limit = Keyword.get(opts, :limit, 12)
     offset = Keyword.get(opts, :offset, 0)
+    show_adult = Keyword.get(opts, :show_adult, false)
     current_year = Date.utc_today().year
 
     public_movies_query()
+    |> maybe_exclude_adult(show_adult)
     |> where([movie: movie], movie.year >= ^(current_year - 2))
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.year, desc: movie.rating)
@@ -514,6 +526,11 @@ defmodule Streamix.Iptv.Catalog do
 
   defp with_movie_poster(query), do: where(query, [movie: movie], not is_nil(movie.stream_icon))
   defp with_series_cover(query), do: where(query, [series: series], not is_nil(series.cover))
+
+  defp maybe_exclude_adult(query, true), do: query
+
+  defp maybe_exclude_adult(query, _show_adult),
+    do: AdultFilter.exclude_adult_content(query, :movie)
 
   # =============================================================================
   # Categories
