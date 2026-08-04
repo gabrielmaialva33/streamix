@@ -80,7 +80,8 @@ defmodule StreamixWeb.Home.Hero do
       :if={@trailer_id}
       id="hero-mute-toggle"
       type="button"
-      class="absolute bottom-20 sm:bottom-24 right-[4%] z-20 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-surface/50 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/70 hover:text-white hover:bg-surface/70 transition-all opacity-0"
+      aria-label="Ativar som do trailer"
+      class="absolute bottom-20 sm:bottom-24 right-[4%] z-20 size-11 rounded-full bg-surface/50 backdrop-blur-sm border border-white/20 hidden md:flex items-center justify-center text-white/70 hover:text-white hover:bg-surface/70 transition-all opacity-0 pointer-events-none"
       data-muted="true"
     >
       <.icon name="hero-speaker-x-mark" class="size-4 sm:size-5 hero-icon-muted" />
@@ -137,11 +138,16 @@ defmodule StreamixWeb.Home.Hero do
 
         onReady(event) {
           event.target.mute()
+          this.muted = true
+          this.syncMuteButton()
           setTimeout(() => {
             this.el.style.opacity = '1'
             this.loaded = true
             const muteBtn = document.getElementById('hero-mute-toggle')
-            if (muteBtn) muteBtn.style.opacity = '1'
+            if (muteBtn) {
+              muteBtn.style.opacity = '1'
+              muteBtn.style.pointerEvents = 'auto'
+            }
           }, 500)
 
           this.timeout = setTimeout(() => this.fadeOut(), 40000)
@@ -156,7 +162,10 @@ defmodule StreamixWeb.Home.Hero do
         fadeOut() {
           this.el.style.opacity = '0'
           const muteBtn = document.getElementById('hero-mute-toggle')
-          if (muteBtn) muteBtn.style.opacity = '0'
+          if (muteBtn) {
+            muteBtn.style.opacity = '0'
+            muteBtn.style.pointerEvents = 'none'
+          }
           if (this.player) {
             setTimeout(() => this.player.pauseVideo(), 1000)
           }
@@ -164,21 +173,31 @@ defmodule StreamixWeb.Home.Hero do
 
         toggleMute() {
           if (!this.player) return
-          const muteBtn = document.getElementById('hero-mute-toggle')
-          const mutedIcon = muteBtn?.querySelector('.hero-icon-muted')
-          const unmutedIcon = muteBtn?.querySelector('.hero-icon-unmuted')
           if (this.muted) {
             this.player.unMute()
             this.player.setVolume(30)
             this.muted = false
-            if (mutedIcon) mutedIcon.classList.add('hidden')
-            if (unmutedIcon) unmutedIcon.classList.remove('hidden')
           } else {
             this.player.mute()
             this.muted = true
-            if (mutedIcon) mutedIcon.classList.remove('hidden')
-            if (unmutedIcon) unmutedIcon.classList.add('hidden')
           }
+          this.syncMuteButton()
+        },
+
+        syncMuteButton() {
+          const muteBtn = document.getElementById('hero-mute-toggle')
+          const mutedIcon = muteBtn?.querySelector('.hero-icon-muted')
+          const unmutedIcon = muteBtn?.querySelector('.hero-icon-unmuted')
+
+          if (!muteBtn) return
+
+          muteBtn.dataset.muted = String(this.muted)
+          muteBtn.setAttribute(
+            'aria-label',
+            this.muted ? 'Ativar som do trailer' : 'Silenciar trailer'
+          )
+          mutedIcon?.classList.toggle('hidden', !this.muted)
+          unmutedIcon?.classList.toggle('hidden', this.muted)
         },
 
         destroyed() {
@@ -243,13 +262,13 @@ defmodule StreamixWeb.Home.Hero do
       <div class="flex gap-2 sm:gap-3">
         <.link
           href={content_path(@type, @content)}
-          class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black text-sm sm:text-base font-semibold rounded-md hover:bg-white/90 transition-colors"
+          class="inline-flex min-h-11 items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black text-sm sm:text-base font-semibold rounded-md hover:bg-white/90 transition-colors"
         >
           <.icon name="hero-play-solid" class="size-4 sm:size-6" /> Assistir
         </.link>
         <.link
           href={content_info_path(@type, @content)}
-          class="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-surface/60 text-text-primary text-sm sm:text-base font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
+          class="inline-flex min-h-11 items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-surface/60 text-text-primary text-sm sm:text-base font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
         >
           <.icon name="hero-information-circle" class="size-4 sm:size-6" /> <span class="hidden sm:inline">Mais </span>Info
         </.link>
@@ -258,7 +277,7 @@ defmodule StreamixWeb.Home.Hero do
             type="button"
             phx-click="toggle_featured_favorite"
             class={[
-              "inline-flex items-center justify-center w-9 h-9 sm:w-12 sm:h-12 rounded-full transition-colors backdrop-blur-sm",
+              "inline-flex size-11 sm:size-12 items-center justify-center rounded-full transition-colors backdrop-blur-sm",
               @featured_favorite && "bg-white text-black hover:bg-white/90",
               !@featured_favorite &&
                 "bg-surface/60 text-text-primary hover:bg-surface/80 border border-border"
