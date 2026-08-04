@@ -47,6 +47,35 @@ defmodule StreamixWeb.HomeDataTest do
       refute MapSet.member?(socket.assigns.series_favorites_map, series.id)
       refute socket.assigns.featured_favorite
     end
+
+    test "keeps adult favorites hidden when refreshing the home rail" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+      regular = movie_fixture(provider, %{title: "Regular Favorite"})
+      adult = movie_fixture(provider, %{title: "Adult Favorite"})
+
+      adult_category =
+        Repo.insert!(%Streamix.Iptv.Category{
+          provider_id: provider.id,
+          name: "Adultos",
+          type: "vod",
+          external_id: "adult-home-refresh",
+          is_adult: true
+        })
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
+      ])
+
+      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", adult.id)
+
+      socket =
+        user
+        |> home_socket(featured: {:movie, regular})
+        |> HomeData.toggle_content_favorite("movie", regular.id)
+
+      assert Enum.map(socket.assigns.favorites, & &1.content_id) == [regular.id]
+    end
   end
 
   defp home_socket(user, attrs) do

@@ -84,7 +84,13 @@ defmodule StreamixWeb.HomeData do
   end
 
   def filter_trending_genre(socket, genre) do
-    trending = load_trending(user_id(socket), genre, socket.assigns.trending_period)
+    trending =
+      load_trending(
+        user_id(socket),
+        genre,
+        socket.assigns.trending_period,
+        show_adult_content?(socket)
+      )
 
     socket
     |> assign(trending_genre: genre)
@@ -93,7 +99,14 @@ defmodule StreamixWeb.HomeData do
 
   def filter_trending_period(socket, period) do
     period_days = parse_period_days(period)
-    trending = load_trending(user_id(socket), socket.assigns.trending_genre, period_days)
+
+    trending =
+      load_trending(
+        user_id(socket),
+        socket.assigns.trending_genre,
+        period_days,
+        show_adult_content?(socket)
+      )
 
     socket
     |> assign(trending_period: period_days)
@@ -162,7 +175,8 @@ defmodule StreamixWeb.HomeData do
           load_trending(
             user_id(socket),
             socket.assigns.trending_genre,
-            socket.assigns.trending_period
+            socket.assigns.trending_period,
+            show_adult_content?(socket)
           )
         end,
         new_releases: fn -> Iptv.list_new_releases(limit: @home_default_limit) end,
@@ -227,15 +241,22 @@ defmodule StreamixWeb.HomeData do
   end
 
   defp load_user_data(socket) do
-    user_id = socket.assigns.current_scope.user.id
+    user = socket.assigns.current_scope.user
+    user_id = user.id
+    show_adult = user.show_adult_content
     movie_ids = collect_content_ids(socket.assigns, [:movies, :trending, :new_releases, :top_10])
     series_ids = collect_content_ids(socket.assigns, [:series])
 
     user_sections =
       HomeCatalogLoader.load(%{
-        favorites: fn -> Iptv.list_home_favorites(user_id, limit: @home_default_limit) end,
+        favorites: fn ->
+          Iptv.list_home_favorites(user_id,
+            limit: @home_default_limit,
+            show_adult: show_adult
+          )
+        end,
         history: fn -> Iptv.list_home_history(user_id, limit: @home_history_limit) end,
-        recommendations: fn -> load_recommendations(user_id) end,
+        recommendations: fn -> load_recommendations(user_id, show_adult) end,
         featured_favorite: fn -> check_featured_favorite(socket.assigns.featured, user_id) end,
         movie_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "movie", movie_ids) end,
         series_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "series", series_ids) end,
@@ -256,18 +277,21 @@ defmodule StreamixWeb.HomeData do
     |> assign(:genre_filters, user_sections.genre_filters)
   end
 
-  defp load_trending(nil, _genre, period) do
+  defp load_trending(nil, _genre, period, _show_adult) do
     Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
-      Iptv.list_trending_movies(limit: @home_default_limit, days: period)
+      Iptv.list_trending_movies(limit: @home_default_limit, days: period, show_adult: false)
     end)
   end
 
-  defp load_trending(user_id, genre, period) do
-    Cache.fetch("home:trending:user:#{user_id}:#{genre}:#{period}", @trending_ttl, fn ->
+  defp load_trending(user_id, genre, period, show_adult) do
+    cache_key = "home:trending:user:#{user_id}:#{genre}:#{period}:adult:#{show_adult}"
+
+    Cache.fetch(cache_key, @trending_ttl, fn ->
       AI.get_personalized_trending(user_id,
         limit: @home_default_limit,
         genre: genre,
-        days: period
+        days: period,
+        show_adult: show_adult
       )
     end)
   end
@@ -293,13 +317,40 @@ defmodule StreamixWeb.HomeData do
     )
   end
 
-  defp load_recommendations(user_id) do
-    case AI.get_recommendations(user_id, limit: @home_default_limit) do
-      recommendations when is_list(recommendations) -> recommendations
-      {:ok, recommendations} -> recommendations
-      _ -> []
+  defp load_recommendations(user_id, show_adult) do
+    ids = recommendation_ids(user_id)
+    Iptv.list_visible_movies_by_ids(user_id, ids, show_adult: show_adult)
+  end
+
+  defp recommendation_ids(user_id) do
+    user_id
+    |> AI.get_recommendations(limit: @home_default_limit)
+    |> normalize_recommendations()
+    |> Enum.flat_map(&recommendation_id/1)
+  end
+
+  defp normalize_recommendations(recommendations) when is_list(recommendations),
+    do: recommendations
+
+  defp normalize_recommendations({:ok, recommendations}) when is_list(recommendations),
+    do: recommendations
+
+  defp normalize_recommendations(_result), do: []
+
+  defp recommendation_id(%{id: id}), do: normalize_recommendation_id(id)
+  defp recommendation_id(%{"id" => id}), do: normalize_recommendation_id(id)
+  defp recommendation_id(_recommendation), do: []
+
+  defp normalize_recommendation_id(id) when is_integer(id) and id > 0, do: [id]
+
+  defp normalize_recommendation_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {parsed, ""} when parsed > 0 -> [parsed]
+      _other -> []
     end
   end
+
+  defp normalize_recommendation_id(_id), do: []
 
   defp load_genre_filters(user_id) do
     Cache.fetch("home:genre_filters:user:#{user_id}", @genre_filters_ttl, fn ->
@@ -358,12 +409,22 @@ defmodule StreamixWeb.HomeData do
   defp update_favorite_map(map, content_id, :removed), do: MapSet.delete(map, content_id)
 
   defp refresh_home_favorites(socket) do
+    user = socket.assigns.current_scope.user
+
     assign(
       socket,
       :favorites,
-      Iptv.list_home_favorites(socket.assigns.current_scope.user.id, limit: @home_default_limit)
+      Iptv.list_home_favorites(user.id,
+        limit: @home_default_limit,
+        show_adult: user.show_adult_content
+      )
     )
   end
+
+  defp show_adult_content?(%{assigns: %{current_scope: %{user: user}}}),
+    do: user.show_adult_content
+
+  defp show_adult_content?(_socket), do: false
 
   defp refresh_featured_favorite(socket) do
     assign(
