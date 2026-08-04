@@ -750,6 +750,10 @@ config :streamix,
 # Comma-separated list of valid API keys
 api_keys = RuntimeConfig.csv(get_env.("API_KEYS"))
 
+if config_env() == :prod and api_keys == [] do
+  raise "API_KEYS must contain at least one key in production"
+end
+
 config :streamix, :api_keys, api_keys
 
 # CORS configuration

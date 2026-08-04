@@ -187,12 +187,18 @@ defmodule StreamixWeb.Router do
     get "/me", AuthController, :me
   end
 
+  # One catch-all route lets the CORS plug answer preflight for every v1
+  # endpoint, including auth and user-scoped resources. Without a matching
+  # OPTIONS route Phoenix returns 404 before a controller can be reached.
+  scope "/api/v1", StreamixWeb.Api.V1 do
+    pipe_through :api
+
+    options "/*path", OptionsController, :preflight
+  end
+
   # Protected catalog API for TV app and other clients
   scope "/api/v1", StreamixWeb.Api.V1 do
     pipe_through :api_v1
-
-    # Handle CORS preflight requests
-    options "/catalog/*path", CatalogController, :options
 
     get "/catalog/featured", CatalogController, :featured
     # One-shot home aggregator: featured + trending + recent + top-rated
@@ -231,7 +237,6 @@ defmodule StreamixWeb.Router do
     get "/catalog/channels/:id/stream", CatalogController, :channel_stream
 
     # Semantic search API
-    options "/search/*path", SearchController, :options
     get "/search/movies", SearchController, :movies
     get "/search/series", SearchController, :series
     get "/search/similar/:collection/:id", SearchController, :similar

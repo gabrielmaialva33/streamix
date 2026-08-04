@@ -19,6 +19,8 @@ defmodule StreamixWeb.Plugs.CORS do
 
     case get_req_header(conn, "origin") do
       [origin] ->
+        conn = put_vary_origin(conn)
+
         if origin_allowed?(origin, origins) do
           conn
           |> put_resp_header("access-control-allow-origin", origin)
@@ -61,4 +63,16 @@ defmodule StreamixWeb.Plugs.CORS do
   end
 
   defp handle_preflight(conn), do: conn
+
+  defp put_vary_origin(conn) do
+    update_resp_header(conn, "vary", "Origin", fn current ->
+      values = current |> String.split(",") |> Enum.map(&String.trim/1)
+
+      if Enum.any?(values, &(String.downcase(&1) == "origin")) do
+        current
+      else
+        current <> ", Origin"
+      end
+    end)
+  end
 end

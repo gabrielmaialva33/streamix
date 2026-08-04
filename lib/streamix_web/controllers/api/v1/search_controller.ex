@@ -28,16 +28,6 @@ defmodule StreamixWeb.Api.V1.SearchController do
   alias StreamixWeb.Api.V1.Response
 
   @doc """
-  Handle CORS preflight OPTIONS requests.
-  """
-  def options(conn, _params) do
-    conn
-    |> put_resp_header("access-control-allow-methods", "GET, OPTIONS")
-    |> put_resp_header("access-control-allow-headers", "content-type, authorization")
-    |> send_resp(204, "")
-  end
-
-  @doc """
   GET /api/v1/search/movies?q=query
   Semantic search for movies using natural language.
   """
@@ -198,7 +188,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
     stats =
       if available do
         {:ok, stats} = AI.semantic_search_stats()
-        stats
+        Map.take(stats, [:movies, :series])
       else
         %{}
       end

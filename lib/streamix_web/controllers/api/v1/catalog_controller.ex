@@ -13,13 +13,6 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   alias StreamixWeb.Api.V1.Response
   alias StreamixWeb.Catalog.Api
 
-  def options(conn, _params) do
-    conn
-    |> put_resp_header("access-control-allow-methods", "GET, OPTIONS")
-    |> put_resp_header("access-control-allow-headers", "content-type, authorization")
-    |> send_resp(204, "")
-  end
-
   def featured(conn, _params), do: json(conn, Api.featured())
   def movies(conn, params), do: json(conn, Api.movies(params))
   def series(conn, params), do: json(conn, Api.series(params))
