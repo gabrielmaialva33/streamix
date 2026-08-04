@@ -25,6 +25,30 @@ defmodule StreamixWeb.Providers.ProviderListLiveTest do
   describe "provider status" do
     setup :register_and_log_in_user
 
+    test "stays mounted while a provider reports sync progress", %{
+      conn: conn,
+      user: user
+    } do
+      provider = provider_fixture(user, %{name: "Provider sincronizando"})
+
+      {:ok, view, _html} = live(conn, ~p"/providers")
+
+      Phoenix.PubSub.broadcast(
+        Streamix.PubSub,
+        "user:#{user.id}:providers",
+        {:sync_progress,
+         %{
+           event: :sync_progress,
+           provider_id: provider.id,
+           phase: :categories,
+           percent: 0,
+           type: nil
+         }}
+      )
+
+      assert has_element?(view, "#providers-#{provider.id}", "Provider sincronizando")
+    end
+
     test "renders pending sync state and touch-safe labelled actions", %{
       conn: conn,
       user: user

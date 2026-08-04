@@ -110,6 +110,8 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     {:noreply, push_patch(socket, to: ~p"/providers")}
   end
 
+  def handle_info({:sync_progress, _payload}, socket), do: {:noreply, socket}
+
   def handle_info({:sync_status, %{provider_id: id, status: status} = payload}, socket) do
     user_id = socket.assigns.current_scope.user.id
 
