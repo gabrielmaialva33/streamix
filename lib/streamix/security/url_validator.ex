@@ -16,19 +16,22 @@ defmodule Streamix.Security.UrlValidator do
 
   Checks:
   - Only http:// and https:// schemes allowed
+  - Embedded credentials are rejected
   - Hostname must not resolve to a private/internal IP
   - Blocks 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16,
-    169.254.0.0/16, 0.0.0.0/8, ::1, fc00::/7, fe80::/10
+    169.254.0.0/16, 100.64.0.0/10, IPv4 multicast/reserved space,
+    ::1, fc00::/7, fe80::/10, and IPv6 multicast
   """
   @spec validate_url(String.t(), keyword()) :: :ok | {:error, :unsafe_url}
   def validate_url(url, opts \\ [])
 
   def validate_url(url, opts) when is_binary(url) do
-    uri = URI.parse(url)
     allow_private_network? = Keyword.get(opts, :allow_private_network, false)
 
-    with :ok <- validate_scheme(uri.scheme),
-         :ok <- validate_host_present(uri.host) do
+    with {:ok, uri} <- parse_uri(url),
+         :ok <- validate_scheme(uri.scheme),
+         :ok <- validate_host_present(uri.host),
+         :ok <- validate_userinfo(uri.userinfo) do
       validate_network_target(uri.host, allow_private_network?)
     end
   end
@@ -50,6 +53,17 @@ defmodule Streamix.Security.UrlValidator do
     {:error, :unsafe_url}
   end
 
+  defp parse_uri(url) do
+    case URI.new(url) do
+      {:ok, uri} ->
+        {:ok, uri}
+
+      {:error, _reason} ->
+        Logger.warning("SSRF blocked: malformed URL")
+        {:error, :unsafe_url}
+    end
+  end
+
   defp validate_host_present(nil) do
     Logger.warning("SSRF blocked: missing host")
     {:error, :unsafe_url}
@@ -61,6 +75,13 @@ defmodule Streamix.Security.UrlValidator do
   end
 
   defp validate_host_present(_), do: :ok
+
+  defp validate_userinfo(nil), do: :ok
+
+  defp validate_userinfo(_userinfo) do
+    Logger.warning("SSRF blocked: URL contains embedded credentials")
+    {:error, :unsafe_url}
+  end
 
   defp validate_host_not_ip_literal(host) do
     case :inet.parse_address(String.to_charlist(host)) do
@@ -78,36 +99,36 @@ defmodule Streamix.Security.UrlValidator do
   end
 
   defp validate_resolved_ip(host) do
-    case resolve_host(host, :inet) do
-      {:ok, ip} ->
-        validate_resolved_address(host, ip)
+    addresses = resolve_all_addresses(host)
 
-      {:error, _} ->
-        validate_ipv6_resolution(host)
-    end
-  end
+    cond do
+      addresses == [] ->
+        Logger.warning("SSRF blocked: hostname could not be resolved")
+        {:error, :unsafe_url}
 
-  defp validate_ipv6_resolution(host) do
-    case resolve_host(host, :inet6) do
-      {:ok, ip6} ->
-        validate_resolved_address(host, ip6)
+      unsafe_address = Enum.find(addresses, &private_ip?/1) ->
+        Logger.warning(
+          "SSRF blocked: #{host} resolves to private IP #{format_ip(unsafe_address)}"
+        )
 
-      {:error, _} ->
+        {:error, :unsafe_url}
+
+      true ->
         :ok
     end
   end
 
-  defp validate_resolved_address(host, ip) do
-    if private_ip?(ip) do
-      Logger.warning("SSRF blocked: #{host} resolves to private IP #{format_ip(ip)}")
-      {:error, :unsafe_url}
-    else
-      :ok
-    end
-  end
+  defp resolve_all_addresses(host) do
+    host = String.to_charlist(host)
 
-  defp resolve_host(host, family) do
-    :inet.getaddr(String.to_charlist(host), family)
+    [:inet, :inet6]
+    |> Enum.flat_map(fn family ->
+      case :inet.getaddrs(host, family) do
+        {:ok, addresses} -> addresses
+        {:error, _reason} -> []
+      end
+    end)
+    |> Enum.uniq()
   end
 
   defp private_ip?({0, _, _, _}), do: true
@@ -116,11 +137,13 @@ defmodule Streamix.Security.UrlValidator do
   defp private_ip?({169, 254, _, _}), do: true
   defp private_ip?({172, b, _, _}) when b >= 16 and b <= 31, do: true
   defp private_ip?({192, 168, _, _}), do: true
-  defp private_ip?({255, 255, 255, 255}), do: true
+  defp private_ip?({100, b, _, _}) when b >= 64 and b <= 127, do: true
+  defp private_ip?({a, _, _, _}) when a >= 224, do: true
   defp private_ip?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
   defp private_ip?({0, 0, 0, 0, 0, 0, 0, 0}), do: true
   defp private_ip?({w, _, _, _, _, _, _, _}) when w >= 0xFC00 and w <= 0xFDFF, do: true
   defp private_ip?({w, _, _, _, _, _, _, _}) when w >= 0xFE80 and w <= 0xFEBF, do: true
+  defp private_ip?({w, _, _, _, _, _, _, _}) when w >= 0xFF00 and w <= 0xFFFF, do: true
 
   defp private_ip?({0, 0, 0, 0, 0, 0xFFFF, hi, lo}) do
     a = hi >>> 8

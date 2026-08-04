@@ -7,12 +7,12 @@ defmodule StreamixWeb.UrlValidatorTest do
 
   describe "validate_url/1" do
     test "allows http URLs with public IPs" do
-      assert :ok = UrlValidator.validate_url("http://example.com/stream.ts")
-      assert :ok = UrlValidator.validate_url("https://cdn.provider.tv/live/123.m3u8")
+      assert :ok = UrlValidator.validate_url("http://93.184.216.34/stream.ts")
+      assert :ok = UrlValidator.validate_url("https://1.1.1.1/live/123.m3u8")
     end
 
     test "allows https URLs" do
-      assert :ok = UrlValidator.validate_url("https://secure.provider.com/video.mp4")
+      assert :ok = UrlValidator.validate_url("https://8.8.8.8/video.mp4")
     end
 
     test "blocks non-http schemes" do

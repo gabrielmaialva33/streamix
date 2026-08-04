@@ -16,6 +16,14 @@ defmodule Streamix.Security.UrlValidatorTest do
         assert {:error, :unsafe_url} = UrlValidator.validate_url("file:///etc/passwd")
         assert {:error, :unsafe_url} = UrlValidator.validate_url("javascript:alert(1)")
         assert {:error, :unsafe_url} = UrlValidator.validate_url("http://")
+        assert {:error, :unsafe_url} = UrlValidator.validate_url("http://example.com:bad/path")
+      end)
+    end
+
+    test "blocks URLs containing embedded credentials" do
+      capture_log(fn ->
+        assert {:error, :unsafe_url} =
+                 UrlValidator.validate_url("https://user:secret@example.com/image.jpg")
       end)
     end
 
@@ -34,6 +42,20 @@ defmodule Streamix.Security.UrlValidatorTest do
                UrlValidator.validate_url("http://10.8.0.10/player_api.php",
                  allow_private_network: true
                )
+    end
+
+    test "fails closed when a hostname cannot be resolved" do
+      capture_log(fn ->
+        assert {:error, :unsafe_url} =
+                 UrlValidator.validate_url("https://host-that-does-not-exist.invalid/image.jpg")
+      end)
+    end
+
+    test "blocks carrier-grade NAT and multicast literals" do
+      capture_log(fn ->
+        assert {:error, :unsafe_url} = UrlValidator.validate_url("http://100.64.0.1/image.jpg")
+        assert {:error, :unsafe_url} = UrlValidator.validate_url("http://224.0.0.1/image.jpg")
+      end)
     end
   end
 end
