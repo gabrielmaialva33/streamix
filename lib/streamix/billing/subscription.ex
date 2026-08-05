@@ -6,10 +6,11 @@ defmodule Streamix.Billing.Subscription do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
   alias Streamix.Billing.Plan
 
   schema "subscriptions" do
+    field :user_id, :id
+    field :user_email, :string, virtual: true
     field :status, :string
     field :starts_at, :utc_datetime
     field :expires_at, :utc_datetime
@@ -17,7 +18,6 @@ defmodule Streamix.Billing.Subscription do
     field :source, :string
     field :external_reference, :string
 
-    belongs_to :user, User
     belongs_to :plan, Plan
 
     timestamps(type: :utc_datetime)
@@ -42,11 +42,12 @@ defmodule Streamix.Billing.Subscription do
     |> foreign_key_constraint(:plan_id)
   end
 
-  def create_changeset(subscription, user, plan, attrs) do
+  def create_changeset(subscription, %{id: user_id}, %Plan{id: plan_id}, attrs)
+      when is_integer(user_id) and is_integer(plan_id) and is_map(attrs) do
     subscription
     |> changeset(attrs)
-    |> put_change(:user_id, user.id)
-    |> put_change(:plan_id, plan.id)
+    |> put_change(:user_id, user_id)
+    |> put_change(:plan_id, plan_id)
     |> validate_required([:user_id, :plan_id, :status])
   end
 

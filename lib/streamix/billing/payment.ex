@@ -6,10 +6,11 @@ defmodule Streamix.Billing.Payment do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
   alias Streamix.Billing.{Plan, Subscription}
 
   schema "payments" do
+    field :user_id, :id
+    field :user_email, :string, virtual: true
     field :provider, :string
     field :status, :string
     field :external_id, :string
@@ -19,7 +20,6 @@ defmodule Streamix.Billing.Payment do
     field :failure_reason, :string
     field :raw_event, :map, default: %{}
 
-    belongs_to :user, User
     belongs_to :plan, Plan
     belongs_to :subscription, Subscription
 

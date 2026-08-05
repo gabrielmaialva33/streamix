@@ -5,27 +5,27 @@ defmodule Streamix.Billing.Payments do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Accounts.User
-
   alias Streamix.Billing.{
     CheckoutSession,
     Invoice,
     Payment,
     Plan,
     Subscription,
-    Subscriptions
+    Subscriptions,
+    UserProjection
   }
 
   alias Streamix.Repo
 
-  def create_checkout_session(%User{} = user, %Plan{} = plan, attrs) do
+  def create_checkout_session(%{id: user_id} = user, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_map(attrs) do
     %CheckoutSession{}
     |> CheckoutSession.create_changeset(user, plan, Map.merge(%{status: "pending"}, attrs))
     |> Repo.insert()
   end
 
-  def activate_subscription_from_payment!(%User{} = user, %Plan{} = plan, attrs)
-      when is_map(attrs) do
+  def activate_subscription_from_payment!(%{id: user_id} = user, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_map(attrs) do
     Repo.transaction(fn ->
       provider = Map.fetch!(attrs, :provider)
       external_id = Map.get(attrs, :external_id)
@@ -35,7 +35,7 @@ defmodule Streamix.Billing.Payments do
         Map.get(attrs, :subscription_external_reference) ||
           payment_subscription_reference(provider, external_id, user, plan)
 
-      Subscriptions.cancel_other_active_subscriptions!(user.id, external_reference, now)
+      Subscriptions.cancel_other_active_subscriptions!(user_id, external_reference, now)
 
       subscription =
         Subscriptions.ensure_manual_subscription!(user, plan, %{
@@ -69,7 +69,7 @@ defmodule Streamix.Billing.Payments do
     end
   end
 
-  def list_invoices(%User{id: user_id}) do
+  def list_invoices(%{id: user_id}) when is_integer(user_id) do
     from(i in Invoice,
       where: i.user_id == ^user_id,
       preload: [:plan, :subscription],
@@ -78,7 +78,7 @@ defmodule Streamix.Billing.Payments do
     |> Repo.all()
   end
 
-  def list_payments(%User{id: user_id}) do
+  def list_payments(%{id: user_id}) when is_integer(user_id) do
     from(p in Payment,
       where: p.user_id == ^user_id,
       preload: [:plan, :subscription],
@@ -89,23 +89,25 @@ defmodule Streamix.Billing.Payments do
 
   def list_recent_payments(limit \\ 20) do
     from(p in Payment,
-      preload: [:user, :plan, :subscription],
+      preload: [:plan, :subscription],
       order_by: [desc: p.inserted_at, desc: p.id],
       limit: ^limit
     )
     |> Repo.all()
+    |> UserProjection.attach_emails()
   end
 
   def list_recent_invoices(limit \\ 20) do
     from(i in Invoice,
-      preload: [:user, :plan, :subscription],
+      preload: [:plan, :subscription],
       order_by: [desc: i.inserted_at, desc: i.id],
       limit: ^limit
     )
     |> Repo.all()
+    |> UserProjection.attach_emails()
   end
 
-  defp payment_subscription_reference(provider, nil, %User{id: user_id}, %Plan{id: plan_id}) do
+  defp payment_subscription_reference(provider, nil, %{id: user_id}, %Plan{id: plan_id}) do
     "billing:#{provider}:#{user_id}:#{plan_id}"
   end
 
@@ -120,10 +122,15 @@ defmodule Streamix.Billing.Payments do
   # the whole event yet again). The partial unique index on
   # (provider, external_id) where external_id IS NOT NULL is the right
   # idempotency key — let Postgres enforce it via ON CONFLICT.
-  defp upsert_payment!(%User{} = user, %Plan{} = plan, %Subscription{} = subscription, attrs) do
+  defp upsert_payment!(
+         %{id: user_id},
+         %Plan{} = plan,
+         %Subscription{} = subscription,
+         attrs
+       ) do
     payment_attrs =
       attrs
-      |> Map.put(:user_id, user.id)
+      |> Map.put(:user_id, user_id)
       |> Map.put(:plan_id, plan.id)
       |> Map.put(:subscription_id, subscription.id)
 
@@ -155,7 +162,7 @@ defmodule Streamix.Billing.Payments do
   defp blank_external_id?(_), do: true
 
   defp maybe_upsert_invoice!(
-         %User{} = user,
+         %{id: user_id},
          %Plan{} = plan,
          %Subscription{} = subscription,
          attrs,
@@ -165,7 +172,7 @@ defmodule Streamix.Billing.Payments do
 
     invoice_attrs =
       %{
-        user_id: user.id,
+        user_id: user_id,
         plan_id: plan.id,
         subscription_id: subscription.id,
         provider: Map.fetch!(attrs, :provider),

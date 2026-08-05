@@ -176,7 +176,7 @@ defmodule StreamixWeb.Admin.DashboardLive do
               </thead>
               <tbody>
                 <tr :for={sub <- @recent_subs} class="border-b border-border/50">
-                  <td class="py-2 text-text-primary">{sub.user.email}</td>
+                  <td class="py-2 text-text-primary">{sub.user_email}</td>
                   <td class="py-2 text-text-secondary">{sub.plan.name}</td>
                   <td class="py-2"><.status_badge status={sub.status} /></td>
                 </tr>

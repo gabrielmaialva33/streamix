@@ -113,6 +113,7 @@ defmodule Streamix.Billing.AdminTest do
       subs = Billing.list_subscriptions(user_id: user.id)
       assert length(subs) == 1
       assert hd(subs).user_id == user.id
+      assert hd(subs).user_email == user.email
     end
   end
 end

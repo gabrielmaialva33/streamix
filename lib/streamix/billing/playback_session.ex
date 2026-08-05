@@ -6,9 +6,8 @@ defmodule Streamix.Billing.PlaybackSession do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
-
   schema "playback_sessions" do
+    field :user_id, :id
     field :session_id, :string
     field :content_type, :string
     field :content_id, :integer
@@ -17,8 +16,6 @@ defmodule Streamix.Billing.PlaybackSession do
     field :last_seen_at, :utc_datetime
     field :ended_at, :utc_datetime
     field :metadata, :map, default: %{}
-
-    belongs_to :user, User
 
     timestamps(type: :utc_datetime)
   end

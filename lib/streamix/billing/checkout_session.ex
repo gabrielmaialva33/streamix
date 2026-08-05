@@ -6,10 +6,10 @@ defmodule Streamix.Billing.CheckoutSession do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
   alias Streamix.Billing.Plan
 
   schema "checkout_sessions" do
+    field :user_id, :id
     field :provider, :string
     field :status, :string, default: "pending"
     field :external_id, :string
@@ -21,7 +21,6 @@ defmodule Streamix.Billing.CheckoutSession do
     field :expires_at, :utc_datetime
     field :metadata, :map, default: %{}
 
-    belongs_to :user, User
     belongs_to :plan, Plan
 
     timestamps(type: :utc_datetime)
@@ -53,11 +52,12 @@ defmodule Streamix.Billing.CheckoutSession do
     |> unique_constraint([:provider, :external_id])
   end
 
-  def create_changeset(checkout_session, %User{} = user, %Plan{} = plan, attrs) do
+  def create_changeset(checkout_session, %{id: user_id}, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_map(attrs) do
     checkout_session
     |> changeset(
       attrs
-      |> Map.put(:user_id, user.id)
+      |> Map.put(:user_id, user_id)
       |> Map.put(:plan_id, plan.id)
       |> Map.put(:amount_cents, plan.price_cents)
       |> Map.put(:currency, plan.currency)

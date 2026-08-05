@@ -3,7 +3,7 @@ defmodule Streamix.Billing.Stripe.Events do
   Applies Stripe webhook and reconciliation payloads to local billing state.
   """
 
-  alias Streamix.Accounts.User
+  alias Streamix.Accounts
   alias Streamix.Billing
   alias Streamix.Billing.Plan
   alias Streamix.Repo
@@ -41,7 +41,8 @@ defmodule Streamix.Billing.Stripe.Events do
   def apply_event(_event), do: {:ok, :ignored}
 
   def sync_subscription_from_object(object, fallback_user \\ nil) do
-    with %User{} = user <- user_from_stripe_object(object, fallback_user),
+    with %{id: user_id} = user when is_integer(user_id) <-
+           user_from_stripe_object(object, fallback_user),
          %Plan{} = plan <- plan_from_stripe_object(object) do
       maybe_upsert_customer!(user, object)
 
@@ -65,7 +66,7 @@ defmodule Streamix.Billing.Stripe.Events do
 
   defp activate_from_stripe_object(object, event) do
     with {:ok, user_id} <- fetch_metadata_id(object, "user_id"),
-         %User{} = user <- Repo.get(User, user_id),
+         %{id: ^user_id} = user <- Accounts.get_user(user_id),
          %Plan{} = plan <- plan_from_stripe_object(object) do
       maybe_upsert_customer!(user, object)
 
@@ -91,7 +92,7 @@ defmodule Streamix.Billing.Stripe.Events do
 
   defp user_from_stripe_object(object, fallback_user) do
     case fetch_metadata_id(object, "user_id") do
-      {:ok, user_id} -> Repo.get(User, user_id) || fallback_user
+      {:ok, user_id} -> Accounts.get_user(user_id) || fallback_user
       {:error, :missing_metadata} -> fallback_user
     end
   end
@@ -99,7 +100,7 @@ defmodule Streamix.Billing.Stripe.Events do
   defp mark_subscription_from_object(object, status) do
     with reference when is_binary(reference) <- stripe_subscription_reference(object),
          {:ok, user_id} <- fetch_metadata_id(object, "user_id"),
-         %User{} = user <- Repo.get(User, user_id),
+         %{id: ^user_id} = user <- Accounts.get_user(user_id),
          %Plan{} = plan <- plan_from_stripe_object(object) do
       subscription =
         Billing.sync_provider_subscription!(user, plan, %{
@@ -241,7 +242,7 @@ defmodule Streamix.Billing.Stripe.Events do
     |> Enum.filter(&is_map/1)
   end
 
-  defp maybe_upsert_customer!(%User{} = user, object) do
+  defp maybe_upsert_customer!(%{id: user_id} = user, object) when is_integer(user_id) do
     case object["customer"] do
       customer_id when is_binary(customer_id) ->
         Billing.upsert_billing_customer!(

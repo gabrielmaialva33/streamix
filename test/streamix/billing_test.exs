@@ -3,7 +3,17 @@ defmodule Streamix.BillingTest do
 
   alias Streamix.AccountsFixtures
   alias Streamix.Billing
-  alias Streamix.Billing.{CheckoutSession, Invoice, Payment, Plan, PlanFeature, Subscription}
+
+  alias Streamix.Billing.{
+    BillingCustomer,
+    CheckoutSession,
+    Invoice,
+    Payment,
+    Plan,
+    PlanFeature,
+    PlaybackSession,
+    Subscription
+  }
 
   defp user_fixture(attrs \\ %{}) do
     AccountsFixtures.user_fixture(attrs)
@@ -53,6 +63,7 @@ defmodule Streamix.BillingTest do
     )
 
     assert Billing.subscribed?(user)
+    assert Billing.subscribed?(%{id: user.id})
   end
 
   test "expired subscriptions do not grant access" do
@@ -171,6 +182,24 @@ defmodule Streamix.BillingTest do
     assert Ecto.Changeset.get_field(changeset, :user_id) == user.id
     assert Ecto.Changeset.get_field(changeset, :plan_id) == plan.id
     assert %{expires_at: ["must be after starts_at"]} = errors_on(changeset)
+  end
+
+  test "account-linked schemas keep foreign keys without cross-context associations" do
+    for schema <- [
+          BillingCustomer,
+          CheckoutSession,
+          Invoice,
+          Payment,
+          PlaybackSession,
+          Subscription
+        ] do
+      assert schema.__schema__(:type, :user_id) == :id
+      refute :user in schema.__schema__(:associations)
+    end
+
+    for schema <- [Invoice, Payment, Subscription] do
+      assert :user_email in schema.__schema__(:virtual_fields)
+    end
   end
 
   test "inactive plans do not grant entitlement" do
@@ -335,6 +364,18 @@ defmodule Streamix.BillingTest do
     assert %Payment{status: "paid", external_id: "pi_test_123"} = result.payment
     assert %Invoice{status: "paid", external_id: "in_test_123"} = result.invoice
     assert Billing.entitled?(user, :global_catalog)
+
+    assert [%Payment{user_email: user_email}] = Billing.list_recent_payments(1)
+    assert user_email == user.email
+
+    assert [%Invoice{user_email: user_email}] = Billing.list_recent_invoices(1)
+    assert user_email == user.email
+
+    assert %Subscription{user_email: user_email} =
+             Billing.list_subscriptions(user_id: user.id)
+             |> Enum.find(&(&1.id == result.subscription.id))
+
+    assert user_email == user.email
 
     again =
       Billing.activate_subscription_from_payment!(user, plan, %{

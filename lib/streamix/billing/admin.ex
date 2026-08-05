@@ -5,7 +5,7 @@ defmodule Streamix.Billing.Admin do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Accounts.User
+  alias Streamix.Accounts
   alias Streamix.Billing.{BillingCustomer, Invoice, Payment, Plan, Subscription}
   alias Streamix.Repo
 
@@ -13,7 +13,7 @@ defmodule Streamix.Billing.Admin do
     now = DateTime.utc_now()
 
     %{
-      total_users: Repo.aggregate(User, :count),
+      total_users: Accounts.count_users(),
       active_subscriptions:
         from(s in Subscription, where: s.status == "active")
         |> Repo.aggregate(:count),

@@ -78,7 +78,7 @@ defmodule StreamixWeb.Admin.BillingLive do
             </thead>
             <tbody>
               <tr :for={payment <- @payments} class="border-t border-border/50">
-                <td class="px-5 py-3 text-text-primary">{payment.user.email}</td>
+                <td class="px-5 py-3 text-text-primary">{payment.user_email}</td>
                 <td class="px-5 py-3 text-text-secondary">{payment.plan.name}</td>
                 <td class="px-5 py-3"><.status_badge status={payment.status} /></td>
                 <td class="px-5 py-3 text-text-primary">
@@ -106,7 +106,7 @@ defmodule StreamixWeb.Admin.BillingLive do
             </thead>
             <tbody>
               <tr :for={invoice <- @invoices} class="border-t border-border/50">
-                <td class="px-5 py-3 text-text-primary">{invoice.user.email}</td>
+                <td class="px-5 py-3 text-text-primary">{invoice.user_email}</td>
                 <td class="px-5 py-3 text-text-secondary">
                   {invoice.number || invoice.external_id || "-"}
                 </td>

@@ -6,14 +6,11 @@ defmodule Streamix.Billing.BillingCustomer do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
-
   schema "billing_customers" do
+    field :user_id, :id
     field :provider, :string
     field :external_id, :string
     field :metadata, :map, default: %{}
-
-    belongs_to :user, User
 
     timestamps(type: :utc_datetime)
   end

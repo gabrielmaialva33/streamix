@@ -5,11 +5,10 @@ defmodule Streamix.Billing.Entitlements do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Accounts.User
   alias Streamix.Billing.{PlanFeature, Subscription}
   alias Streamix.Repo
 
-  def entitled?(%User{id: user_id}, feature) do
+  def entitled?(%{id: user_id}, feature) when is_integer(user_id) do
     entitled_user_id?(user_id, feature)
   end
 
@@ -24,7 +23,7 @@ defmodule Streamix.Billing.Entitlements do
 
   def entitled_user_id?(_user_id, _feature), do: false
 
-  def feature_limit_for(%User{id: user_id}, feature) do
+  def feature_limit_for(%{id: user_id}, feature) when is_integer(user_id) do
     feature_limit_for_user_id(user_id, feature)
   end
 
@@ -46,13 +45,13 @@ defmodule Streamix.Billing.Entitlements do
 
   def feature_limit_for_user_id(_user_id, _feature), do: nil
 
-  def subscribed?(%User{id: user_id}) do
+  def subscribed?(%{id: user_id}) when is_integer(user_id) do
     has_legacy_global_access?(user_id) or has_active_feature?(user_id, "global_catalog")
   end
 
   def subscribed?(_user), do: false
 
-  def active_subscription_for_user(%User{id: user_id}) do
+  def active_subscription_for_user(%{id: user_id}) when is_integer(user_id) do
     query =
       from(s in active_subscription_query(user_id),
         join: p in assoc(s, :plan),

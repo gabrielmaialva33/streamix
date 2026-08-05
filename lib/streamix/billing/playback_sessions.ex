@@ -5,12 +5,12 @@ defmodule Streamix.Billing.PlaybackSessions do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Accounts.User
   alias Streamix.Billing.{Entitlements, PlaybackSession}
   alias Streamix.Repo
 
-  def start_playback_session(%User{} = user, attrs) when is_map(attrs) do
-    cleanup_stale_playback_sessions!(user.id)
+  def start_playback_session(%{id: user_id}, attrs)
+      when is_integer(user_id) and is_map(attrs) do
+    cleanup_stale_playback_sessions!(user_id)
 
     # Serialize with a Postgres advisory lock keyed on user_id so two
     # concurrent player tabs can't both pass the count check before
@@ -18,24 +18,24 @@ defmodule Streamix.Billing.PlaybackSessions do
     # the lock is held for milliseconds. Without this, the previous
     # "count -> compare -> insert" was a textbook TOCTOU and let users
     # punch past their plan's :concurrent_streams limit.
-    Repo.transaction(fn -> do_start_playback(user, attrs) end)
+    Repo.transaction(fn -> do_start_playback(user_id, attrs) end)
   end
 
-  defp do_start_playback(user, attrs) do
-    Repo.query!("SELECT pg_advisory_xact_lock($1)", [advisory_lock_key(user.id)])
+  defp do_start_playback(user_id, attrs) do
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [advisory_lock_key(user_id)])
 
-    case ensure_playback_slot_available(user) do
-      :ok -> do_insert_playback(user, attrs)
+    case ensure_playback_slot_available(user_id) do
+      :ok -> do_insert_playback(user_id, attrs)
       {:error, reason} -> Repo.rollback(reason)
     end
   end
 
-  defp do_insert_playback(user, attrs) do
+  defp do_insert_playback(user_id, attrs) do
     now = DateTime.utc_now(:second)
 
     attrs =
       attrs
-      |> Map.put(:user_id, user.id)
+      |> Map.put(:user_id, user_id)
       |> Map.put_new(:session_id, playback_session_id())
       |> Map.put_new(:status, "active")
       |> Map.put_new(:started_at, now)
@@ -91,22 +91,26 @@ defmodule Streamix.Billing.PlaybackSessions do
     :ok
   end
 
-  def active_playback_count(%User{id: user_id}) do
+  def active_playback_count(%{id: user_id}) when is_integer(user_id) do
     cleanup_stale_playback_sessions!(user_id)
 
+    active_playback_count_for_user_id(user_id)
+  end
+
+  defp active_playback_count_for_user_id(user_id) do
     from(ps in PlaybackSession,
       where: ps.user_id == ^user_id and ps.status == "active"
     )
     |> Repo.aggregate(:count)
   end
 
-  defp ensure_playback_slot_available(%User{} = user) do
-    case Entitlements.feature_limit_for(user, :concurrent_streams) do
+  defp ensure_playback_slot_available(user_id) do
+    case Entitlements.feature_limit_for_user_id(user_id, :concurrent_streams) do
       nil ->
         :ok
 
       limit ->
-        if active_playback_count(user) < limit do
+        if active_playback_count_for_user_id(user_id) < limit do
           :ok
         else
           {:error, :concurrent_stream_limit_reached}

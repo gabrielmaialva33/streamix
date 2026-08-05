@@ -5,8 +5,7 @@ defmodule Streamix.Billing.Subscriptions do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Accounts.User
-  alias Streamix.Billing.{Plan, Subscription}
+  alias Streamix.Billing.{Plan, Subscription, UserProjection}
   alias Streamix.Repo
 
   def cancel_subscription_by_external_reference!(external_reference)
@@ -43,14 +42,15 @@ defmodule Streamix.Billing.Subscriptions do
 
   defp maybe_warn_on_expires_shrink(_subscription, _new), do: :ok
 
-  def sync_provider_subscription!(%User{} = user, %Plan{} = plan, attrs) when is_map(attrs) do
+  def sync_provider_subscription!(%{id: user_id} = user, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_map(attrs) do
     Repo.transaction(fn ->
       now = DateTime.utc_now(:second)
       external_reference = Map.fetch!(attrs, :external_reference)
       status = Map.fetch!(attrs, :status)
 
       if status == "active" do
-        cancel_other_active_subscriptions!(user.id, external_reference, now)
+        cancel_other_active_subscriptions!(user_id, external_reference, now)
       end
 
       subscription_attrs = %{
@@ -82,9 +82,9 @@ defmodule Streamix.Billing.Subscriptions do
     end
   end
 
-  def start_trial_subscription(%User{} = user, %Plan{trial_days: trial_days} = plan)
-      when is_integer(trial_days) and trial_days > 0 do
-    external_reference = "trial:#{user.id}:#{plan.id}"
+  def start_trial_subscription(%{id: user_id} = user, %Plan{trial_days: trial_days} = plan)
+      when is_integer(user_id) and is_integer(trial_days) and trial_days > 0 do
+    external_reference = "trial:#{user_id}:#{plan.id}"
 
     case Repo.get_by(Subscription, external_reference: external_reference) do
       nil ->
@@ -106,7 +106,7 @@ defmodule Streamix.Billing.Subscriptions do
 
   def start_trial_subscription(_user, _plan), do: {:error, :trial_not_available}
 
-  def ensure_default_free_subscription(%User{} = user) do
+  def ensure_default_free_subscription(%{id: user_id} = user) when is_integer(user_id) do
     case Repo.get_by(Plan, slug: default_free_plan_slug(), active: true) do
       %Plan{} = plan ->
         ensure_default_free_subscription(user, plan)
@@ -116,7 +116,8 @@ defmodule Streamix.Billing.Subscriptions do
     end
   end
 
-  defp ensure_default_free_subscription(%User{} = user, %Plan{} = plan) do
+  defp ensure_default_free_subscription(%{id: user_id} = user, %Plan{} = plan)
+       when is_integer(user_id) do
     now = DateTime.utc_now(:second)
     external_reference = default_free_subscription_reference(user)
 
@@ -139,8 +140,8 @@ defmodule Streamix.Billing.Subscriptions do
     end
   end
 
-  def ensure_manual_subscription!(%User{} = user, %Plan{} = plan, attrs)
-      when is_map(attrs) do
+  def ensure_manual_subscription!(%{id: user_id} = user, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_map(attrs) do
     attrs = Map.merge(%{source: "manual", status: "active"}, attrs)
 
     external_reference =
@@ -163,7 +164,8 @@ defmodule Streamix.Billing.Subscriptions do
     end
   end
 
-  def create_manual_subscription(%User{} = user, %Plan{} = plan, attrs) do
+  def create_manual_subscription(%{id: user_id} = user, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_map(attrs) do
     %Subscription{}
     |> Subscription.create_changeset(user, plan, Map.merge(%{source: "manual"}, attrs))
     |> Repo.insert()
@@ -179,7 +181,7 @@ defmodule Streamix.Billing.Subscriptions do
   end
 
   def list_subscriptions(opts \\ []) do
-    query = from(s in Subscription, preload: [:plan, :user], order_by: [desc: s.inserted_at])
+    query = from(s in Subscription, preload: [:plan], order_by: [desc: s.inserted_at])
 
     query =
       case Keyword.get(opts, :user_id) do
@@ -193,7 +195,9 @@ defmodule Streamix.Billing.Subscriptions do
         status -> from(s in query, where: s.status == ^status)
       end
 
-    Repo.all(query)
+    query
+    |> Repo.all()
+    |> UserProjection.attach_emails()
   end
 
   def cancel_other_active_subscriptions!(user_id, external_reference, now) do
@@ -204,13 +208,13 @@ defmodule Streamix.Billing.Subscriptions do
     |> Repo.update_all(set: [status: "canceled", canceled_at: now, updated_at: now])
   end
 
-  defp manual_subscription_reference(%User{id: user_id}, %Plan{id: plan_id}) do
+  defp manual_subscription_reference(%{id: user_id}, %Plan{id: plan_id}) do
     "seed:manual:#{user_id}:#{plan_id}"
   end
 
   defp default_free_plan_slug, do: "free-trial"
 
-  defp default_free_subscription_reference(%User{id: user_id}) do
+  defp default_free_subscription_reference(%{id: user_id}) do
     "trial:signup:#{user_id}"
   end
 

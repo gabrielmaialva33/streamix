@@ -3,14 +3,14 @@ defmodule Streamix.Billing.Stripe do
   Stripe Checkout and webhook boundary for Streamix billing.
   """
 
-  alias Streamix.Accounts.User
   alias Streamix.Billing
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Stripe.Client
   alias Streamix.Billing.Stripe.Events
   alias Streamix.Billing.Stripe.Webhook
 
-  def create_checkout_session(%User{} = user, %Plan{} = plan, attrs) when is_map(attrs) do
+  def create_checkout_session(%{id: user_id, email: email} = user, %Plan{} = plan, attrs)
+      when is_integer(user_id) and is_binary(email) and is_map(attrs) do
     with {:ok, secret_key} <- fetch_secret_key(),
          {:ok, success_url} <- fetch_required(attrs, :success_url),
          {:ok, cancel_url} <- fetch_required(attrs, :cancel_url),
@@ -24,7 +24,8 @@ defmodule Streamix.Billing.Stripe do
     end
   end
 
-  def create_portal_session(%User{} = user, return_url) when is_binary(return_url) do
+  def create_portal_session(%{id: user_id} = user, return_url)
+      when is_integer(user_id) and is_binary(return_url) do
     with {:ok, secret_key} <- fetch_secret_key(),
          %{external_id: customer_id} <- Billing.get_billing_customer(user, :stripe),
          {:ok, stripe_session} <-
@@ -70,22 +71,22 @@ defmodule Streamix.Billing.Stripe do
     with {:ok, subscriptions} <- Client.list_subscriptions(secret_key, customer.external_id) do
       synced =
         Enum.map(subscriptions, fn subscription ->
-          Events.sync_subscription_from_object(subscription, customer.user)
+          Events.sync_subscription_from_object(subscription, %{id: customer.user_id})
         end)
 
       %{customer_id: customer.id, synced: synced}
     end
   end
 
-  defp checkout_form(%User{} = user, %Plan{} = plan, attrs) do
+  defp checkout_form(%{id: user_id, email: email}, %Plan{} = plan, attrs) do
     success_url = Map.fetch!(attrs, :success_url)
     cancel_url = Map.fetch!(attrs, :cancel_url)
 
     metadata = [
-      {"metadata[user_id]", to_string(user.id)},
+      {"metadata[user_id]", to_string(user_id)},
       {"metadata[plan_id]", to_string(plan.id)},
       {"metadata[plan_slug]", plan.slug},
-      {"subscription_data[metadata][user_id]", to_string(user.id)},
+      {"subscription_data[metadata][user_id]", to_string(user_id)},
       {"subscription_data[metadata][plan_id]", to_string(plan.id)},
       {"subscription_data[metadata][plan_slug]", plan.slug}
     ]
@@ -94,8 +95,8 @@ defmodule Streamix.Billing.Stripe do
       {"mode", "subscription"},
       {"success_url", success_url},
       {"cancel_url", cancel_url},
-      {"client_reference_id", to_string(user.id)},
-      {"customer_email", user.email},
+      {"client_reference_id", to_string(user_id)},
+      {"customer_email", email},
       {"line_items[0][quantity]", "1"}
     ] ++ checkout_line_item(plan) ++ trial_fields(plan) ++ metadata
   end
