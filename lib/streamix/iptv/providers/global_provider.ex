@@ -6,7 +6,6 @@ defmodule Streamix.Iptv.GlobalProvider do
   identified by `is_system: true` and `visibility: :global`.
   """
 
-  alias Streamix.Accounts.User
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
 
@@ -113,7 +112,7 @@ defmodule Streamix.Iptv.GlobalProvider do
   defp owner_changed?(_provider, nil), do: false
   defp owner_changed?(provider, owner_user_id), do: provider.user_id != owner_user_id
 
-  defp owner_user_id(%User{id: user_id}), do: user_id
+  defp owner_user_id(%{id: user_id}) when is_integer(user_id), do: user_id
   defp owner_user_id(user_id) when is_integer(user_id), do: user_id
   defp owner_user_id(_owner), do: nil
 end

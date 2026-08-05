@@ -6,18 +6,17 @@ defmodule Streamix.Iptv.WatchProgress do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
   alias Streamix.Iptv.CatalogItem
 
   @type t :: %__MODULE__{}
 
   schema "watch_progress" do
+    field :user_id, :id
     field :progress_seconds, :integer, default: 0
     field :duration_seconds, :integer
     field :completed, :boolean, default: false
     field :last_watched_at, :utc_datetime
 
-    belongs_to :user, User
     belongs_to :catalog_item, CatalogItem
 
     timestamps(type: :utc_datetime)
@@ -29,7 +28,7 @@ defmodule Streamix.Iptv.WatchProgress do
     progress
     |> cast(attrs, @fields)
     |> validate_required([:user_id, :catalog_item_id])
-    |> assoc_constraint(:user)
+    |> foreign_key_constraint(:user_id)
     |> assoc_constraint(:catalog_item)
     |> unique_constraint([:user_id, :catalog_item_id])
   end

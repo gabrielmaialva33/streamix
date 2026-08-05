@@ -5,7 +5,6 @@ defmodule Streamix.Iptv.Provider do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Accounts.User
   alias Streamix.Iptv.{Category, EpgChannel, LiveChannel, Movie, ProviderDrive, Series}
 
   @type t :: %__MODULE__{}
@@ -40,7 +39,7 @@ defmodule Streamix.Iptv.Provider do
     # Server info (JSON)
     field :server_info, :map
 
-    belongs_to :user, User
+    field :user_id, :id
     has_many :categories, Category
     has_many :live_channels, LiveChannel
     has_many :movies, Movie
