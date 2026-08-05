@@ -31,8 +31,20 @@ defmodule Streamix.Iptv.Catalog do
 
   @summary_preloads [:genres]
   @featured_preloads [:assets, :genres]
+  @catalog_item_content_preloads [:movie, :series, :episode, :live_channel]
   @movie_card_fields ~w(id name title year stream_icon rating inserted_at)a
   @series_card_fields ~w(id name title year cover rating inserted_at)a
+
+  @doc """
+  Gets one catalog item with its concrete content association loaded.
+  """
+  @spec get_catalog_item_with_content(integer()) :: CatalogItem.t() | nil
+  def get_catalog_item_with_content(catalog_item_id) when is_integer(catalog_item_id) do
+    case Repo.get(CatalogItem, catalog_item_id) do
+      nil -> nil
+      %CatalogItem{} = catalog_item -> Repo.preload(catalog_item, @catalog_item_content_preloads)
+    end
+  end
 
   # =============================================================================
   # Featured Content

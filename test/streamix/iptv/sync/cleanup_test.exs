@@ -7,6 +7,7 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
   alias Streamix.Iptv.CatalogItem
   alias Streamix.Iptv.Sync.Cleanup
   alias Streamix.Repo
+  alias Streamix.WatchParty.Room
 
   setup do
     user = user_fixture()
@@ -53,6 +54,23 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
 
     assert length(remaining_ids) == 1
     assert remaining_ids -- Enum.map(orphans, & &1.id) == []
+  end
+
+  test "removes watch-party rooms through the WatchParty boundary", %{provider: provider} do
+    orphan = catalog_item_fixture("movie", provider.id)
+
+    room =
+      %Room{}
+      |> Room.create_changeset(%{
+        host_user_id: provider.user_id,
+        catalog_item_id: orphan.id
+      })
+      |> Repo.insert!()
+
+    assert {:ok, %{catalog_items: 1, watch_party_rooms: 1}} =
+             Cleanup.cleanup_orphaned_user_data(provider.id)
+
+    refute Repo.get(Room, room.id)
   end
 
   test "aggregates cleanup counts across transactional chunks", %{provider: provider} do

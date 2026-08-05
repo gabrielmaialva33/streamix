@@ -10,7 +10,7 @@ defmodule Streamix.Iptv.Sync.Cleanup do
 
   alias Streamix.Iptv.{CatalogItem, Favorite, WatchProgress}
   alias Streamix.Repo
-  alias Streamix.WatchParty.Room
+  alias Streamix.WatchParty
 
   @delete_chunk 500
   @query_timeout :timer.seconds(60)
@@ -80,10 +80,8 @@ defmodule Streamix.Iptv.Sync.Cleanup do
       |> where([wp], wp.catalog_item_id in ^chunk)
       |> Repo.delete_all(timeout: @query_timeout)
 
-    {rooms, _} =
-      Room
-      |> where([r], r.catalog_item_id in ^chunk)
-      |> Repo.delete_all(timeout: @query_timeout)
+    rooms =
+      WatchParty.delete_rooms_by_catalog_item_ids(chunk, timeout: @query_timeout)
 
     {ci, _} =
       CatalogItem

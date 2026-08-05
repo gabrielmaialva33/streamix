@@ -180,12 +180,12 @@ defmodule StreamixWeb.WatchPartyComponents do
           <%!-- Text messages render as a compact bubble with avatar initial --%>
           <div :if={message.type == "text"} class="flex items-start gap-2">
             <div class="w-7 h-7 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-              {message.user.email |> String.first() |> String.upcase()}
+              {message.user_email |> String.first() |> String.upcase()}
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-1.5">
                 <span class="font-semibold text-xs text-brand truncate">
-                  {message.user.email |> String.split("@") |> hd()}
+                  {message.user_email |> String.split("@") |> hd()}
                 </span>
               </div>
               <p class="text-sm text-text-primary leading-snug break-words">{message.content}</p>

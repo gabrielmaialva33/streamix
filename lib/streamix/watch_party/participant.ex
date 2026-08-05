@@ -3,12 +3,12 @@ defmodule Streamix.WatchParty.Participant do
   import Ecto.Changeset
 
   schema "watch_party_participants" do
+    field :user_id, :id
     field :role, :string, default: "viewer"
     field :joined_at, :utc_datetime
     field :left_at, :utc_datetime
 
     belongs_to :room, Streamix.WatchParty.Room
-    belongs_to :user, Streamix.Accounts.User
 
     timestamps(type: :utc_datetime)
   end

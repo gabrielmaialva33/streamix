@@ -5,12 +5,13 @@ defmodule Streamix.WatchParty do
 
   import Ecto.Query
 
+  alias Streamix.Accounts
   alias Streamix.Billing
+  alias Streamix.Iptv
   alias Streamix.Repo
   alias Streamix.WatchParty.{Message, Participant, Room, RoomServer}
 
   @topic_prefix "watch_party:room:"
-  @room_content_preloads [catalog_item: [:movie, :series, :episode, :live_channel]]
 
   def topic(room_id), do: @topic_prefix <> to_string(room_id)
 
@@ -57,7 +58,10 @@ defmodule Streamix.WatchParty do
   end
 
   def preload_room_content(nil), do: nil
-  def preload_room_content(%Room{} = room), do: Repo.preload(room, @room_content_preloads)
+
+  def preload_room_content(%Room{} = room) do
+    %{room | catalog_item: Iptv.get_catalog_item_with_content(room.catalog_item_id)}
+  end
 
   def join_room(room_id, user_id, role \\ "viewer") do
     # Advisory-lock the room before counting + inserting. Without this,
@@ -184,7 +188,7 @@ defmodule Streamix.WatchParty do
          |> Message.changeset(%{room_id: room_id, user_id: user_id, content: content, type: type})
          |> Repo.insert() do
       {:ok, message} ->
-        message = Repo.preload(message, :user)
+        message = attach_message_user_email(message)
         broadcast(room_id, {:new_message, message})
         {:ok, message}
 
@@ -203,11 +207,27 @@ defmodule Streamix.WatchParty do
     from(m in Message,
       where: m.room_id == ^room_id,
       order_by: [desc: m.inserted_at],
-      limit: ^limit,
-      preload: [:user]
+      limit: ^limit
     )
     |> Repo.all()
     |> Enum.reverse()
+    |> attach_message_user_emails()
+  end
+
+  @doc """
+  Deletes rooms whose content belongs to one of the given catalog items.
+
+  Used by catalog cleanup while keeping room persistence inside this context.
+  """
+  @spec delete_rooms_by_catalog_item_ids([integer()], keyword()) :: non_neg_integer()
+  def delete_rooms_by_catalog_item_ids(catalog_item_ids, opts \\ [])
+      when is_list(catalog_item_ids) and is_list(opts) do
+    {count, _rooms} =
+      Room
+      |> where([room], room.catalog_item_id in ^catalog_item_ids)
+      |> Repo.delete_all(opts)
+
+    count
   end
 
   # --- Server Management ---
@@ -241,6 +261,23 @@ defmodule Streamix.WatchParty do
         where: p.room_id == ^room_id and p.user_id == ^user_id and is_nil(p.left_at)
       )
     )
+  end
+
+  defp attach_message_user_email(%Message{} = message) do
+    [message]
+    |> attach_message_user_emails()
+    |> hd()
+  end
+
+  defp attach_message_user_emails(messages) do
+    emails =
+      messages
+      |> Enum.map(& &1.user_id)
+      |> Accounts.user_email_map()
+
+    Enum.map(messages, fn message ->
+      %{message | user_email: Map.get(emails, message.user_id)}
+    end)
   end
 
   defp broadcast(room_id, message) do

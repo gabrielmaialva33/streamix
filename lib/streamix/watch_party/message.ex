@@ -5,11 +5,12 @@ defmodule Streamix.WatchParty.Message do
   @timestamps_opts [updated_at: false]
 
   schema "watch_party_messages" do
+    field :user_id, :id
+    field :user_email, :string, virtual: true
     field :content, :string
     field :type, :string, default: "text"
 
     belongs_to :room, Streamix.WatchParty.Room
-    belongs_to :user, Streamix.Accounts.User
 
     timestamps(type: :utc_datetime_usec)
   end

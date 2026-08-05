@@ -2,17 +2,16 @@ defmodule Streamix.WatchParty.Room do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.CatalogItem
-
   schema "watch_party_rooms" do
+    field :host_user_id, :id
+    field :catalog_item_id, :id
+    field :catalog_item, :map, virtual: true
     field :invite_code, :string
     field :status, :string, default: "active"
     field :max_participants, :integer, default: 10
     field :settings, :map, default: %{}
     field :ended_at, :utc_datetime
 
-    belongs_to :host_user, Streamix.Accounts.User, foreign_key: :host_user_id
-    belongs_to :catalog_item, CatalogItem
     has_many :participants, Streamix.WatchParty.Participant
     has_many :messages, Streamix.WatchParty.Message
 
@@ -32,8 +31,8 @@ defmodule Streamix.WatchParty.Room do
     |> put_change(:invite_code, generate_invite_code())
     |> put_change(:status, "active")
     |> unique_constraint(:invite_code)
-    |> assoc_constraint(:host_user)
-    |> assoc_constraint(:catalog_item)
+    |> foreign_key_constraint(:host_user_id)
+    |> foreign_key_constraint(:catalog_item_id)
   end
 
   def end_changeset(room) do
