@@ -252,4 +252,51 @@ defmodule Streamix.Iptv.ProvidersFacadeTest do
                Iptv.update_gindex_sync(gindex_provider.id, %{unknown_count: 99})
     end
   end
+
+  describe "Torrent synchronization boundary" do
+    test "projects only the provider identity required by Torrent" do
+      provider =
+        global_provider_fixture(%{
+          name: "Torrent Boundary",
+          provider_type: :torrent,
+          url: "torrent://boundary"
+        })
+
+      assert {:ok, source} = Iptv.torrent_sync_source(provider)
+      assert source == %{provider_id: provider.id, name: "Torrent Boundary"}
+      assert Iptv.get_torrent_provider_ref() == %{id: provider.id, name: "Torrent Boundary"}
+
+      refute Map.has_key?(source, :password)
+      refute Map.has_key?(source, :username)
+    end
+
+    test "rejects other adapters and scopes runtime updates to Torrent" do
+      user = user_fixture()
+      xtream_provider = provider_fixture(user)
+
+      assert {:error, :not_torrent_provider} = Iptv.torrent_sync_source(xtream_provider)
+
+      assert {:error, :torrent_provider_not_found} =
+               Iptv.update_torrent_sync(xtream_provider.id, %{sync_status: "syncing"})
+
+      torrent_provider =
+        global_provider_fixture(%{
+          provider_type: :torrent,
+          url: "torrent://sync-boundary"
+        })
+
+      assert :ok =
+               Iptv.update_torrent_sync(torrent_provider.id, %{
+                 sync_status: "completed",
+                 movies_count: 42
+               })
+
+      updated = Iptv.get_provider!(torrent_provider.id)
+      assert updated.sync_status == "completed"
+      assert updated.movies_count == 42
+
+      assert {:error, {:invalid_torrent_sync_fields, [:series_count]}} =
+               Iptv.update_torrent_sync(torrent_provider.id, %{series_count: 1})
+    end
+  end
 end

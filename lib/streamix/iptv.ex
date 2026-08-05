@@ -44,6 +44,7 @@ defmodule Streamix.Iptv do
     Channels,
     Content.GindexIngest,
     Content.GindexStream,
+    Content.TorrentMovies,
     Content.TrackMetadata,
     ContentRef,
     Epg,
@@ -251,6 +252,15 @@ defmodule Streamix.Iptv do
   defdelegate list_gindex_movies(opts \\ []), to: Movies, as: :list_gindex
   defdelegate count_gindex_movies, to: Movies, as: :count_gindex
 
+  # Torrent Movies
+  defdelegate upsert_torrent_movie(provider_id, attrs), to: TorrentMovies, as: :upsert
+  defdelegate list_torrent_movies(provider_id, opts \\ []), to: TorrentMovies, as: :list
+  defdelegate count_torrent_movies(provider_id, opts \\ []), to: TorrentMovies, as: :count
+
+  defdelegate get_torrent_movie_for_playback(movie_id),
+    to: TorrentMovies,
+    as: :get_for_playback
+
   # =============================================================================
   # Series
   # =============================================================================
@@ -404,6 +414,23 @@ defmodule Streamix.Iptv do
              | Ecto.Changeset.t()}
   defdelegate update_gindex_sync(provider_id, attrs), to: Providers
 
+  @type torrent_sync_source :: %{
+          provider_id: pos_integer(),
+          name: String.t()
+        }
+
+  @spec torrent_sync_source(term()) ::
+          {:ok, torrent_sync_source()} | {:error, :not_torrent_provider}
+  defdelegate torrent_sync_source(provider), to: Providers
+
+  @spec update_torrent_sync(pos_integer(), map()) ::
+          :ok
+          | {:error,
+             :torrent_provider_not_found
+             | {:invalid_torrent_sync_fields, [term()]}
+             | Ecto.Changeset.t()}
+  defdelegate update_torrent_sync(provider_id, attrs), to: Providers
+
   defdelegate get_user_provider(user_id, provider_id), to: Providers
   defdelegate get_public_provider(provider_id), to: Providers, as: :get_public
   defdelegate get_global_provider(), to: Providers, as: :get_global
@@ -433,6 +460,7 @@ defmodule Streamix.Iptv do
   defdelegate torrent_provider_enabled?(), to: TorrentProvider, as: :enabled?
   defdelegate ensure_torrent_provider(), to: TorrentProvider, as: :ensure_exists!
   defdelegate get_torrent_provider(), to: TorrentProvider, as: :get
+  defdelegate get_torrent_provider_ref(), to: TorrentProvider, as: :get_ref
   defdelegate provider_health_summary(), to: ProviderHealth, as: :overall_status
   defdelegate provider_health_summary(reports), to: ProviderHealth, as: :overall_status
   defdelegate list_provider_health_reports(opts \\ []), to: ProviderHealth, as: :list_reports

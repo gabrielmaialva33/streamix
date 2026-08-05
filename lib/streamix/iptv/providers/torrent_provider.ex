@@ -15,6 +15,7 @@ defmodule Streamix.Iptv.TorrentProvider do
 
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
+  alias Streamix.Torrent
 
   import Ecto.Query
 
@@ -27,17 +28,7 @@ defmodule Streamix.Iptv.TorrentProvider do
   Returns true when the torrent feature is enabled in config.
   """
   def enabled? do
-    config()[:enabled] == true
-  end
-
-  @doc """
-  Runtime configuration. Set in `config/runtime.exs`.
-
-      config :streamix, :torrent_provider,
-        enabled: System.get_env("TORRENT_ENABLED") == "true"
-  """
-  def config do
-    Application.get_env(:streamix, :torrent_provider, enabled: false)
+    Torrent.enabled?()
   end
 
   @doc """
@@ -48,6 +39,15 @@ defmodule Streamix.Iptv.TorrentProvider do
     |> where(is_system: true, visibility: :global, provider_type: :torrent)
     |> order_by(desc: :inserted_at, desc: :id)
     |> Repo.one()
+  end
+
+  @doc "Returns the browser-safe identity of the torrent provider, or `nil`."
+  @spec get_ref() :: %{id: pos_integer(), name: String.t()} | nil
+  def get_ref do
+    case get() do
+      %Provider{} = provider -> %{id: provider.id, name: provider.name}
+      nil -> nil
+    end
   end
 
   @doc """

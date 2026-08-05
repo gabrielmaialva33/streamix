@@ -23,7 +23,7 @@ defmodule Streamix.Iptv.Movie do
     # otherwise an integer where higher = more relevant.
     field :rank_score, :integer, virtual: true
 
-    # Virtual columns populated by `Streamix.Torrent.Catalog` listing
+    # Virtual columns populated by `Streamix.Iptv.Content.TorrentMovies` listing
     # queries — best seeder count and top quality across this movie's
     # `torrent_streams`. `nil` outside the torrent catalog.
     field :torrent_seeders, :integer, virtual: true

@@ -28,7 +28,13 @@ defmodule Streamix.Iptv.Providers do
           drives: [gindex_drive()]
         }
 
+  @type torrent_sync_source :: %{
+          provider_id: pos_integer(),
+          name: String.t()
+        }
+
   @gindex_sync_fields ~w(sync_status movies_count series_count vod_synced_at series_synced_at)a
+  @torrent_sync_fields ~w(sync_status movies_count vod_synced_at)a
 
   # =============================================================================
   # Listing
@@ -147,6 +153,19 @@ defmodule Streamix.Iptv.Providers do
   def gindex_sync_source(_provider), do: {:error, :not_gindex_provider}
 
   @doc """
+  Projects a Torrent provider into the data required by the Torrent context.
+
+  The Ecto schema stays behind the IPTV boundary.
+  """
+  @spec torrent_sync_source(term()) ::
+          {:ok, torrent_sync_source()} | {:error, :not_torrent_provider}
+  def torrent_sync_source(%Provider{provider_type: :torrent} = provider) do
+    {:ok, %{provider_id: provider.id, name: provider.name}}
+  end
+
+  def torrent_sync_source(_provider), do: {:error, :not_torrent_provider}
+
+  @doc """
   Persists the runtime state owned by a GIndex synchronization.
 
   The provider is resolved by ID so callers do not need to retain or mutate an
@@ -168,10 +187,45 @@ defmodule Streamix.Iptv.Providers do
 
   def update_gindex_sync(_provider_id, _attrs), do: {:error, :gindex_provider_not_found}
 
+  @doc """
+  Persists the runtime state owned by a Torrent synchronization.
+  """
+  @spec update_torrent_sync(pos_integer(), map()) ::
+          :ok
+          | {:error,
+             :torrent_provider_not_found
+             | {:invalid_torrent_sync_fields, [term()]}
+             | Ecto.Changeset.t()}
+  def update_torrent_sync(provider_id, attrs)
+      when is_integer(provider_id) and provider_id > 0 and is_map(attrs) do
+    case Map.keys(attrs) -- @torrent_sync_fields do
+      [] -> update_torrent_sync_fields(provider_id, attrs)
+      fields -> {:error, {:invalid_torrent_sync_fields, Enum.sort(fields)}}
+    end
+  end
+
+  def update_torrent_sync(_provider_id, _attrs), do: {:error, :torrent_provider_not_found}
+
   defp update_gindex_sync_fields(provider_id, attrs) do
     case Repo.get_by(Provider, id: provider_id, provider_type: :gindex) do
       nil ->
         {:error, :gindex_provider_not_found}
+
+      provider ->
+        provider
+        |> Provider.sync_changeset(attrs)
+        |> Repo.update()
+        |> case do
+          {:ok, _provider} -> :ok
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  defp update_torrent_sync_fields(provider_id, attrs) do
+    case Repo.get_by(Provider, id: provider_id, provider_type: :torrent) do
+      nil ->
+        {:error, :torrent_provider_not_found}
 
       provider ->
         provider
