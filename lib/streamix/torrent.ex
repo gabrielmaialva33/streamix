@@ -8,9 +8,9 @@ defmodule Streamix.Torrent do
   internal sync modules directly.
   """
 
-  alias Streamix.Iptv.TorrentProvider
+  alias Streamix.Iptv
   alias Streamix.Repo
-  alias Streamix.Torrent.{Catalog, Client, Sources, StreamSession, Sync, TorrentStream}
+  alias Streamix.Torrent.{Catalog, Client, Config, Sources, StreamSession, Sync, TorrentStream}
 
   @ready_bytes 5_000_000
 
@@ -21,9 +21,12 @@ defmodule Streamix.Torrent do
   # Catalog read model (powers the dedicated torrent screen).
   defdelegate provider(), to: Catalog
   defdelegate list_movies(opts \\ []), to: Catalog
-  defdelegate count_movies(), to: Catalog
+  defdelegate count_movies(opts \\ []), to: Catalog
   defdelegate streams_for_movie(movie_id), to: Catalog
   defdelegate best_stream_for_movie(movie_id), to: Catalog
+
+  @doc "Returns whether the torrent engine is enabled in runtime configuration."
+  defdelegate enabled?(), to: Config
 
   @doc """
   Lists the configured torrent sources.
@@ -46,12 +49,12 @@ defmodule Streamix.Torrent do
   Loads a torrent stream together with the movie and provider needed by playback.
   """
   def get_stream_for_playback(id) do
-    case Repo.get(TorrentStream, id) |> Repo.preload(movie: :provider) do
-      %TorrentStream{movie: %{provider: provider} = movie} = stream ->
-        {:ok, stream, movie, provider}
-
-      _ ->
-        :not_found
+    with %TorrentStream{movie_id: movie_id} = stream when is_integer(movie_id) <-
+           Repo.get(TorrentStream, id),
+         {:ok, movie, provider} <- Iptv.get_torrent_movie_for_playback(movie_id) do
+      {:ok, stream, movie, provider}
+    else
+      _ -> :not_found
     end
   end
 
@@ -91,7 +94,7 @@ defmodule Streamix.Torrent do
   @doc "Small rqbit health snapshot for the operations dashboard."
   @spec health() :: map()
   def health do
-    if TorrentProvider.enabled?() do
+    if Config.enabled?() do
       case Client.list() do
         {:ok, torrents} ->
           %{status: :healthy, active_torrents: length(torrents), message: "rqbit respondendo"}

@@ -17,8 +17,6 @@ defmodule Streamix.Torrent.TorrentStream do
 
   import Ecto.Changeset
 
-  alias Streamix.Iptv.{Episode, Movie}
-
   @type t :: %__MODULE__{}
 
   schema "torrent_streams" do
@@ -37,8 +35,10 @@ defmodule Streamix.Torrent.TorrentStream do
 
     field :source_slug, :string
 
-    belongs_to :movie, Movie
-    belongs_to :episode, Episode
+    # Cross-context ownership is represented by foreign-key IDs only. Movie and
+    # episode loading goes through the public IPTV facade.
+    field :movie_id, :id
+    field :episode_id, :id
 
     timestamps(type: :utc_datetime)
   end
@@ -79,10 +79,15 @@ defmodule Streamix.Torrent.TorrentStream do
     movie_id = get_field(changeset, :movie_id)
     episode_id = get_field(changeset, :episode_id)
 
-    if is_nil(movie_id) and is_nil(episode_id) do
-      add_error(changeset, :movie_id, "either movie_id or episode_id is required")
-    else
-      changeset
+    case {movie_id, episode_id} do
+      {nil, nil} ->
+        add_error(changeset, :movie_id, "either movie_id or episode_id is required")
+
+      {movie_id, episode_id} when not is_nil(movie_id) and not is_nil(episode_id) ->
+        add_error(changeset, :episode_id, "cannot be set together with movie_id")
+
+      _ ->
+        changeset
     end
   end
 end

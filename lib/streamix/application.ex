@@ -5,7 +5,7 @@ defmodule Streamix.Application do
 
   use Application
 
-  alias Streamix.Iptv.TorrentProvider
+  alias Streamix.Torrent
   alias Streamix.Torrent.{Reaper, StreamRegistry, StreamSessionSupervisor}
 
   @impl true
@@ -147,7 +147,7 @@ defmodule Streamix.Application do
   end
 
   defp maybe_torrent_children do
-    if TorrentProvider.enabled?() do
+    if Torrent.enabled?() do
       [
         {Registry, keys: :unique, name: StreamRegistry},
         {DynamicSupervisor, name: StreamSessionSupervisor, strategy: :one_for_one},

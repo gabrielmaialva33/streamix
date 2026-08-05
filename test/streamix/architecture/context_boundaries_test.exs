@@ -35,15 +35,6 @@ defmodule Streamix.ContextBoundariesTest do
               "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Live",
               "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Movies",
               "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Series",
-              "lib/streamix/torrent.ex alias Streamix.Iptv.TorrentProvider",
-              "lib/streamix/torrent/catalog.ex alias Streamix.Iptv.Movie",
-              "lib/streamix/torrent/catalog.ex alias Streamix.Iptv.TorrentProvider",
-              "lib/streamix/torrent/client.ex alias Streamix.Iptv.TorrentProvider",
-              "lib/streamix/torrent/sync.ex alias Streamix.Iptv.CatalogItem",
-              "lib/streamix/torrent/sync.ex alias Streamix.Iptv.Movie",
-              "lib/streamix/torrent/sync.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/torrent/torrent_stream.ex alias Streamix.Iptv.Episode",
-              "lib/streamix/torrent/torrent_stream.ex alias Streamix.Iptv.Movie",
               "lib/streamix/watch_party/room.ex alias Streamix.Iptv.CatalogItem"
             ])
 

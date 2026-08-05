@@ -15,15 +15,15 @@ defmodule Streamix.Torrent.Catalog do
   import Ecto.Query
 
   alias Streamix.Cache
-  alias Streamix.Iptv.{Movie, TorrentProvider}
+  alias Streamix.Iptv
   alias Streamix.Repo
   alias Streamix.Torrent.StatsRefresher
   alias Streamix.Torrent.TorrentStream
 
   @default_limit 48
 
-  @doc "The system torrent provider row, or `nil` when the feature is off."
-  def provider, do: TorrentProvider.get()
+  @doc "The browser-safe system torrent provider identity, or `nil` when absent."
+  def provider, do: Iptv.get_torrent_provider_ref()
 
   @doc """
   Lists torrent movies ranked by swarm health (max seeders desc).
@@ -42,46 +42,26 @@ defmodule Streamix.Torrent.Catalog do
   end
 
   defp do_list_movies(provider, opts) do
-    limit = Keyword.get(opts, :limit, @default_limit)
-    offset = Keyword.get(opts, :offset, 0)
-    search = opts[:search]
-
-    query =
-      from m in Movie,
-        join: stats in "torrent_movie_stats",
-        on: stats.movie_id == m.id,
-        where: m.provider_id == ^provider.id,
-        order_by: [desc: stats.max_seeders, desc: m.id],
-        limit: ^limit,
-        offset: ^offset,
-        select: %{
-          m
-          | torrent_seeders: stats.max_seeders,
-            torrent_quality: stats.top_quality
-        }
-
-    query
-    |> maybe_search(search)
-    |> Repo.all()
+    opts = Keyword.put_new(opts, :limit, @default_limit)
+    Iptv.list_torrent_movies(provider.id, opts)
   end
-
-  defp maybe_search(query, search) when is_binary(search) and search != "" do
-    pattern = "%#{search}%"
-    where(query, [m], ilike(m.name, ^pattern) or ilike(m.title, ^pattern))
-  end
-
-  defp maybe_search(query, _), do: query
 
   @doc "Total movie count for the torrent provider (0 when off)."
-  def count_movies do
+  def count_movies(opts \\ []) do
     case provider() do
       nil ->
         0
 
       provider ->
-        Cache.fetch_local({__MODULE__, :movie_count, provider.id}, :timer.minutes(5), fn ->
-          Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
-        end)
+        show_adult = Keyword.get(opts, :show_adult, false)
+
+        Cache.fetch_local(
+          {__MODULE__, :movie_count, provider.id, show_adult},
+          :timer.minutes(5),
+          fn ->
+            Iptv.count_torrent_movies(provider.id, show_adult: show_adult)
+          end
+        )
     end
   end
 
@@ -89,7 +69,8 @@ defmodule Streamix.Torrent.Catalog do
   def refresh_stats(provider_id) when is_integer(provider_id) do
     case StatsRefresher.refresh() do
       :ok ->
-        Cache.delete_local({__MODULE__, :movie_count, provider_id})
+        Cache.delete_local({__MODULE__, :movie_count, provider_id, false})
+        Cache.delete_local({__MODULE__, :movie_count, provider_id, true})
         :ok
 
       {:error, reason} ->

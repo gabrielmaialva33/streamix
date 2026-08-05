@@ -41,6 +41,20 @@ defmodule Streamix.Torrent.TorrentStreamTest do
       assert {"either movie_id or episode_id is required", _} = changeset.errors[:movie_id]
     end
 
+    test "rejects movie_id and episode_id together" do
+      changeset =
+        TorrentStream.changeset(%TorrentStream{}, %{
+          info_hash: String.duplicate("a", 40),
+          magnet_uri: "magnet:?xt=urn:btih:x",
+          source_slug: "yts",
+          movie_id: 1,
+          episode_id: 2
+        })
+
+      refute changeset.valid?
+      assert {"cannot be set together with movie_id", _} = changeset.errors[:episode_id]
+    end
+
     test "rejects unknown quality strings" do
       changeset =
         TorrentStream.changeset(%TorrentStream{}, %{

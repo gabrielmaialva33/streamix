@@ -170,6 +170,20 @@ defmodule Streamix.Torrent.SyncTest do
       assert {:error, :boom} = Sync.sync_source(provider, FailingSource)
     end
 
+    test "fails the page when an item cannot be persisted", %{provider: provider} do
+      seed_pages([
+        {1, [sample_item("orphan", "Orphan Movie", [magnet("orphan")])], %{next_page: nil}}
+      ])
+
+      Repo.delete!(provider)
+
+      assert {:error, {:item_upsert_failed, "orphan", _reason}} =
+               Sync.sync_source(provider, TorrentTestSource)
+
+      assert Repo.aggregate(Movie, :count) == 0
+      assert Repo.aggregate(TorrentStream, :count) == 0
+    end
+
     test "resumes from a persisted page and reports the next checkpoint", %{
       provider: provider
     } do

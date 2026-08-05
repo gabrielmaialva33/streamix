@@ -11,9 +11,7 @@ defmodule Streamix.Torrent.Sync do
   worker layer can stay consistent across catalogs.
   """
 
-  import Ecto.Query, warn: false
-
-  alias Streamix.Iptv.{CatalogItem, Movie, Provider}
+  alias Streamix.Iptv
   alias Streamix.Repo
   alias Streamix.Torrent.{Catalog, Sources, TorrentStream}
 
@@ -33,23 +31,41 @@ defmodule Streamix.Torrent.Sync do
   Returns `{:ok, stats}` with per-source counts on success, or
   `{:error, reason}` when the provider is not a torrent provider.
   """
-  @spec sync_provider(Provider.t()) ::
+  @spec sync_provider(term()) ::
           {:ok, %{movies_count: non_neg_integer(), sources: [map()]}}
           | {:error, term()}
-  def sync_provider(%Provider{provider_type: :torrent} = provider) do
-    Logger.info("[Torrent Sync] Starting sync for provider #{provider.id} (#{provider.name})")
-    update_status(provider, "syncing")
+  def sync_provider(provider) do
+    case Iptv.torrent_sync_source(provider) do
+      {:ok, source} ->
+        start_provider_sync(source)
 
-    results =
-      Sources.list()
-      |> Enum.map(fn source -> {source, sync_source(provider, source)} end)
+      {:error, :not_torrent_provider} = error ->
+        Logger.warning(
+          "[Torrent Sync] Provider #{provider_id(provider)} is not a torrent provider"
+        )
 
-    finalize(provider, results)
+        error
+    end
   end
 
-  def sync_provider(%Provider{} = provider) do
-    Logger.warning("[Torrent Sync] Provider #{provider.id} is not a torrent provider")
-    {:error, :not_torrent_provider}
+  defp start_provider_sync(source) do
+    Logger.info(
+      "[Torrent Sync] Starting sync for provider #{source.provider_id} (#{source.name})"
+    )
+
+    case update_status(source, "syncing") do
+      :ok ->
+        results =
+          Sources.list()
+          |> Enum.map(fn source_module ->
+            {source_module, do_sync_source(source, source_module, [])}
+          end)
+
+        finalize(source, results)
+
+      {:error, reason} ->
+        provider_state_error("start", reason)
+    end
   end
 
   @doc """
@@ -61,24 +77,36 @@ defmodule Streamix.Torrent.Sync do
 
   Returns `{:ok, stats}` with the totals collected for this source.
   """
-  @spec sync_source(Provider.t(), module(), keyword()) ::
+  @spec sync_source(term(), module(), keyword()) ::
           {:ok, %{movies: non_neg_integer(), torrents: non_neg_integer()}}
           | {:error, term()}
   def sync_source(provider, source_module, opts \\ [])
 
-  def sync_source(%Provider{provider_type: :torrent} = provider, source_module, opts)
-      when is_atom(source_module) do
+  def sync_source(provider, source_module, opts) when is_atom(source_module) do
+    with {:ok, source} <- Iptv.torrent_sync_source(provider) do
+      do_sync_source(source, source_module, opts)
+    end
+  end
+
+  def sync_source(provider, _source_module, _opts) do
+    case Iptv.torrent_sync_source(provider) do
+      {:ok, _source} -> {:error, :invalid_source}
+      {:error, :not_torrent_provider} = error -> error
+    end
+  end
+
+  defp do_sync_source(source, source_module, opts) do
     start_page = positive_integer_option(opts, :start_page, 1)
     max_pages = positive_integer_option(opts, :max_pages, @max_pages)
     on_page = Keyword.get(opts, :on_page, fn _progress -> :ok end)
 
     Logger.info(
-      "[Torrent Sync] Source #{source_module.slug()} starting for provider #{provider.id} " <>
+      "[Torrent Sync] Source #{source_module.slug()} starting for provider #{source.provider_id} " <>
         "at page #{start_page}"
     )
 
     sync_pages(
-      provider,
+      source,
       source_module,
       start_page,
       %{movies: 0, torrents: 0},
@@ -87,13 +115,9 @@ defmodule Streamix.Torrent.Sync do
     )
   end
 
-  def sync_source(%Provider{} = _provider, _source_module, _opts) do
-    {:error, :not_torrent_provider}
-  end
-
   # Pagination loop. Stops when the source signals no `next_page`,
   # the page cap is hit, or fetch_listing returns an error.
-  defp sync_pages(_provider, source_module, page, _acc, max_pages, _on_page)
+  defp sync_pages(_source, source_module, page, _acc, max_pages, _on_page)
        when page > max_pages do
     reason = %{
       source: source_module.slug(),
@@ -105,25 +129,34 @@ defmodule Streamix.Torrent.Sync do
     {:error, {:page_limit_exceeded, reason}}
   end
 
-  defp sync_pages(provider, source_module, page, acc, max_pages, on_page) do
+  defp sync_pages(source, source_module, page, acc, max_pages, on_page) do
     case source_module.fetch_listing(page: page) do
       {:ok, items, meta} ->
-        {movies_count, torrents_count} = upsert_items(provider, source_module, items)
+        case upsert_items(source, source_module, items) do
+          {:ok, {movies_count, torrents_count}} ->
+            new_acc = %{
+              movies: acc.movies + movies_count,
+              torrents: acc.torrents + torrents_count
+            }
 
-        new_acc = %{
-          movies: acc.movies + movies_count,
-          torrents: acc.torrents + torrents_count
-        }
+            continue_sync(
+              source,
+              source_module,
+              page,
+              Map.get(meta, :next_page),
+              new_acc,
+              max_pages,
+              on_page
+            )
 
-        continue_sync(
-          provider,
-          source_module,
-          page,
-          Map.get(meta, :next_page),
-          new_acc,
-          max_pages,
-          on_page
-        )
+          {:error, reason} ->
+            Logger.error(
+              "[Torrent Sync] Source #{source_module.slug()} page #{page} persistence failed: " <>
+                inspect(reason)
+            )
+
+            {:error, reason}
+        end
 
       {:error, reason} ->
         Logger.error(
@@ -135,7 +168,7 @@ defmodule Streamix.Torrent.Sync do
   end
 
   defp continue_sync(
-         _provider,
+         _source,
          source_module,
          page,
          nil,
@@ -154,7 +187,7 @@ defmodule Streamix.Torrent.Sync do
   end
 
   defp continue_sync(
-         provider,
+         source,
          source_module,
          page,
          next_page,
@@ -170,12 +203,12 @@ defmodule Streamix.Torrent.Sync do
       # would require restructuring sync_pages as a GenServer for
       # no real win.
       Process.sleep(source_module.rate_limit_ms())
-      sync_pages(provider, source_module, next_page, acc, max_pages, on_page)
+      sync_pages(source, source_module, next_page, acc, max_pages, on_page)
     end
   end
 
   defp continue_sync(
-         _provider,
+         _source,
          source_module,
          page,
          next_page,
@@ -217,27 +250,27 @@ defmodule Streamix.Torrent.Sync do
 
   # Persists one page of listing items.
   #
-  # Returns `{movies_inserted_or_updated, torrents_inserted_or_updated}`.
-  defp upsert_items(provider, source_module, items) when is_list(items) do
+  # Returns `{:ok, {movies_inserted_or_updated, torrents_inserted_or_updated}}`.
+  defp upsert_items(source, source_module, items) when is_list(items) do
     source_slug = source_module.slug()
-    now = DateTime.utc_now(:second)
 
     items
     |> Enum.reject(&blank_title?/1)
-    |> Enum.reduce({0, 0}, fn item, {movies, torrents} ->
-      case upsert_item(provider, source_slug, item, now) do
-        {:ok, torrent_count} -> {movies + 1, torrents + torrent_count}
-        {:error, _} -> {movies, torrents}
+    |> Enum.reduce_while({:ok, {0, 0}}, fn item, {:ok, {movies, torrents}} ->
+      case upsert_item(source, source_slug, item) do
+        {:ok, torrent_count} ->
+          {:cont, {:ok, {movies + 1, torrents + torrent_count}}}
+
+        {:error, reason} ->
+          external_id = Map.get(item, :external_id) || Map.get(item, "external_id")
+          {:halt, {:error, {:item_upsert_failed, external_id, reason}}}
       end
     end)
   end
 
   # Some YTS rows leak through with an empty title (movies in late
-  # scrub state on the upstream). Movie.changeset enforces
-  # validate_required([:name, …]) so the changeset blows up inside
-  # upsert_movie/3, gets caught by the rescue, and the item is
-  # silently dropped. Catching it at the boundary is cheaper than
-  # raising/rescuing per row and keeps the error log clean.
+  # scrub state on the upstream). Catching it at the source boundary is
+  # cheaper than building a changeset for a row we know cannot be stored.
   defp blank_title?(item) do
     case Map.get(item, :title) || Map.get(item, "title") do
       nil -> true
@@ -246,59 +279,32 @@ defmodule Streamix.Torrent.Sync do
     end
   end
 
-  defp upsert_item(provider, source_slug, item, now) do
-    Repo.transaction(fn ->
-      movie = upsert_movie(provider, item, now)
-      torrent_count = upsert_torrents(movie, source_slug, item.torrents || [])
-      torrent_count
+  defp upsert_item(source, source_slug, item) do
+    Repo.transact(fn ->
+      with {:ok, movie_id} <-
+             Iptv.upsert_torrent_movie(
+               source.provider_id,
+               movie_attrs(item, synthesize_stream_id(item.external_id))
+             ) do
+        {:ok, upsert_torrents(movie_id, source_slug, item.torrents || [])}
+      end
     end)
   rescue
-    e ->
+    error ->
       Logger.error(
-        "[Torrent Sync] Failed to upsert item #{inspect(item[:external_id])}: #{inspect(e)}"
+        "[Torrent Sync] Failed to upsert item #{inspect(item[:external_id])}:\n" <>
+          Exception.format(:error, error, __STACKTRACE__)
       )
 
-      {:error, e}
+      {:error, {:persistence_exception, Exception.message(error)}}
   end
 
   # Upserts the parent movie row.
   #
-  # Torrent movies don't carry an Xtream stream_id; we synthesize one
-  # from the source's external_id via `:erlang.phash2/1` so the
-  # `(provider_id, stream_id)` unique constraint stays happy and we
-  # can't collide with xtream-sourced movies on the same provider
-  # (which there shouldn't be, since the torrent provider is its own
-  # row, but belt-and-suspenders).
-  defp upsert_movie(provider, item, now) do
-    stream_id = synthesize_stream_id(item.external_id)
-
-    case Repo.one(
-           from m in Movie,
-             where: m.provider_id == ^provider.id and m.stream_id == ^stream_id
-         ) do
-      nil ->
-        catalog_item =
-          %CatalogItem{}
-          |> CatalogItem.changeset(%{content_type: "movie", provider_id: provider.id})
-          |> Repo.insert!()
-
-        %Movie{}
-        |> Movie.changeset(movie_attrs(item, provider.id, stream_id, catalog_item.id, now))
-        |> Repo.insert!()
-
-      existing ->
-        existing
-        |> Movie.changeset(
-          movie_attrs(item, provider.id, stream_id, existing.catalog_item_id, now)
-        )
-        |> Repo.update!()
-    end
-  end
-
-  defp movie_attrs(item, provider_id, stream_id, catalog_item_id, now) do
+  # Torrent movies don't carry an Xtream stream_id; we preserve the existing
+  # provider-local identifier derived from each source's external_id.
+  defp movie_attrs(item, stream_id) do
     %{
-      provider_id: provider_id,
-      catalog_item_id: catalog_item_id,
       stream_id: stream_id,
       name: item.title,
       title: item.title,
@@ -308,19 +314,18 @@ defmodule Streamix.Torrent.Sync do
       plot: Map.get(item, :plot),
       tmdb_id: Map.get(item, :tmdb_id),
       imdb_id: Map.get(item, :imdb_id),
-      duration_secs: runtime_to_seconds(Map.get(item, :runtime_minutes)),
-      updated_at: now
+      duration_secs: runtime_to_seconds(Map.get(item, :runtime_minutes))
     }
   end
 
-  defp upsert_torrents(_movie, _source_slug, []), do: 0
+  defp upsert_torrents(_movie_id, _source_slug, []), do: 0
 
-  defp upsert_torrents(movie, source_slug, torrents) do
+  defp upsert_torrents(movie_id, source_slug, torrents) do
     now = DateTime.utc_now(:second)
 
     entries =
       torrents
-      |> Enum.map(&torrent_entry(&1, movie.id, source_slug, now))
+      |> Enum.map(&torrent_entry(&1, movie_id, source_slug, now))
       |> Enum.reject(&is_nil/1)
 
     if entries == [] do
@@ -400,7 +405,7 @@ defmodule Streamix.Torrent.Sync do
   defp runtime_to_seconds(minutes) when is_integer(minutes) and minutes > 0, do: minutes * 60
   defp runtime_to_seconds(_), do: nil
 
-  defp finalize(provider, results) do
+  defp finalize(source, results) do
     sources_stats =
       Enum.map(results, fn
         {module, {:ok, stats}} ->
@@ -415,31 +420,32 @@ defmodule Streamix.Torrent.Sync do
 
     has_failures? = Enum.any?(sources_stats, &(&1.status == :error))
 
-    sync_status = if has_failures? and successful == [], do: "failed", else: "completed"
+    sync_status =
+      cond do
+        not has_failures? -> "completed"
+        successful == [] -> "failed"
+        true -> "partial"
+      end
 
     now = DateTime.utc_now(:second)
+    attrs = %{sync_status: sync_status, movies_count: movies_total, vod_synced_at: now}
 
-    provider
-    |> Provider.sync_changeset(%{
-      sync_status: sync_status,
-      movies_count: movies_total,
-      vod_synced_at: now
-    })
-    |> Repo.update()
+    case Iptv.update_torrent_sync(source.provider_id, attrs) do
+      :ok ->
+        Logger.info(
+          "[Torrent Sync] Provider #{source.provider_id} finalized: #{movies_total} movies " <>
+            "across #{length(successful)}/#{length(sources_stats)} sources"
+        )
 
-    Logger.info(
-      "[Torrent Sync] Provider #{provider.id} finalized: #{movies_total} movies " <>
-        "across #{length(successful)}/#{length(sources_stats)} sources"
-    )
+        {:ok, %{movies_count: movies_total, sources: sources_stats}}
 
-    {:ok, %{movies_count: movies_total, sources: sources_stats}}
+      {:error, reason} ->
+        provider_state_error("finish", reason)
+    end
   end
 
-  defp update_status(provider, status) do
-    provider
-    |> Provider.sync_changeset(%{sync_status: status})
-    |> Repo.update()
-  end
+  defp update_status(source, status),
+    do: Iptv.update_torrent_sync(source.provider_id, %{sync_status: status})
 
   @doc """
   Recomputes the provider's catalog counter from the database and marks
@@ -456,27 +462,29 @@ defmodule Streamix.Torrent.Sync do
   Counts from `movies` directly (source of truth) rather than summing
   per-source stats, which can drift across partial/parallel runs.
   """
-  @spec refresh_provider_counts(Provider.t(), keyword()) ::
-          {:ok, Provider.t()} | {:error, term()}
+  @spec refresh_provider_counts(term(), keyword()) :: {:ok, map()} | {:error, term()}
   def refresh_provider_counts(provider, opts \\ [])
 
-  def refresh_provider_counts(%Provider{provider_type: :torrent} = provider, opts) do
-    with :ok <- Catalog.refresh_stats(provider.id) do
-      movies_count =
-        Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
-
+  def refresh_provider_counts(provider, opts) do
+    with {:ok, source} <- Iptv.torrent_sync_source(provider),
+         :ok <- Catalog.refresh_stats(source.provider_id) do
+      movies_count = Iptv.count_torrent_movies(source.provider_id, show_adult: true)
       now = DateTime.utc_now(:second)
       sync_status = Keyword.get(opts, :sync_status, "completed")
+      attrs = %{sync_status: sync_status, movies_count: movies_count, vod_synced_at: now}
 
-      provider
-      |> Provider.sync_changeset(%{
-        sync_status: sync_status,
-        movies_count: movies_count,
-        vod_synced_at: now
-      })
-      |> Repo.update()
+      case Iptv.update_torrent_sync(source.provider_id, attrs) do
+        :ok -> {:ok, Map.put(attrs, :provider_id, source.provider_id)}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
-  def refresh_provider_counts(%Provider{}, _opts), do: {:error, :not_torrent_provider}
+  defp provider_state_error(stage, reason) do
+    Logger.error("[Torrent Sync] Could not #{stage} provider state update: #{inspect(reason)}")
+    {:error, {:provider_state_update_failed, reason}}
+  end
+
+  defp provider_id(%{id: id}), do: id
+  defp provider_id(_provider), do: "unknown"
 end
