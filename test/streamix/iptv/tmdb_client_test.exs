@@ -2,6 +2,7 @@ defmodule Streamix.Iptv.TmdbClientTest do
   use ExUnit.Case, async: false
 
   alias Streamix.Iptv.TmdbClient
+  alias Streamix.Iptv.TmdbClient.Config
 
   setup do
     default = Application.get_env(:streamix, :tmdb)
@@ -63,6 +64,16 @@ defmodule Streamix.Iptv.TmdbClientTest do
 
       refute TmdbClient.enabled?()
       refute TmdbClient.enabled?(:gindex)
+    end
+  end
+
+  describe "profile_from/1" do
+    test "accepts only configured profiles and falls back safely" do
+      assert Config.profile_from(profile: :gindex) == :gindex
+      assert Config.profile_from(%{profile: :gindex}) == :gindex
+      assert Config.profile_from(profile: :unknown) == :default
+      assert Config.profile_from(%{profile: "gindex"}) == :default
+      assert Config.profile_from(:invalid) == :default
     end
   end
 
