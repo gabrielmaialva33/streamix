@@ -24,6 +24,8 @@ defmodule StreamixWeb.E2E.LoginPersistenceTest do
 
   @moduletag :playwright
 
+  setup {StreamixWeb.PlaywrightSupport, :register_context_cleanup}
+
   @mobile_context_opts [
                          viewport: %{width: 390, height: 844},
                          device_scale_factor: 3.0,

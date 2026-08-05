@@ -79,6 +79,9 @@ playwright_browser =
 playwright_options = [
   browser: playwright_browser,
   headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
+  # Closing the browser context is synchronous in StreamixWeb.PlaywrightSupport,
+  # but Bandit still needs a short drain window before the sandbox owner exits.
+  ecto_sandbox_stop_owner_delay: 1_000,
   # Keep browser E2E contexts deterministic. Service-worker activation can
   # reload a page while Playwright is evaluating it, destroying the execution
   # context and turning unrelated player assertions into flakes.
