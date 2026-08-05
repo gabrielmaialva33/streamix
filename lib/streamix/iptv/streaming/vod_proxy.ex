@@ -14,7 +14,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       slot when the stream ends — pooled idle connections trip
       `max_connections=1` quotas and trigger 509s.
     * 4xx is terminal (creds bad, channel gone). 5xx + I/O errors
-      are transient and retried within a 5 s budget, at most 5
+      are transient and retried within a 30 s budget, at most 5
       attempts, 250 ms backoff.
     * A mid-stream retry re-issues the request with
       `Range: bytes=N-`. If the upstream answers 200 instead of 206
@@ -34,7 +34,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
   alias Plug.Conn
 
-  alias Streamix.Iptv.Channels
   alias Streamix.SafeLog
 
   alias Streamix.Iptv.Streaming.{
@@ -42,28 +41,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     FallbackVideo,
     ProviderRuntime,
     RedirectResolver,
-    StreamErrors,
-    UpstreamPolicy,
-    UpstreamPump
+    StreamErrors
   }
 
+  alias Streamix.Iptv.Streaming.VodProxy.{Headers, Observability, Transfer}
+
   require Logger
-
-  # IPTVSmartersPlayer is whitelisted by most IPTV providers' WAFs; the BEAM's default
-  # `Req/...` UA gets bounced. Standardized across every Streamix surface
-  # (catalog, EPG, multiplexer, redirect resolver) so the upstream sees a
-  # single coherent client identity.
-  # Headers we forward verbatim from the player to the upstream so seek,
-  # cache validation and conditional GETs all work end-to-end.
-  @forwardable_request_headers ~w(range if-range if-none-match if-modified-since)
-
-  # Headers we copy from the upstream response back to the player. These
-  # are what hls.js / mpegts.js / mp4box.js need to drive playback,
-  # validate cache and surface seek bars.
-  @forwardable_response_headers ~w(
-    content-type content-length content-range accept-ranges
-    last-modified etag
-  )
 
   # Mid-stream retry budget. After this many attempts (or this many ms
   # since the original request, whichever fires first) we give up and
@@ -78,16 +61,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   @max_mid_stream_retries 5
   @retry_budget_ms 30_000
   @retry_backoff_ms 250
-
-  # Hard ceiling on how long the upstream is allowed to stall after we
-  # already started streaming. Past this we close the upstream socket
-  # and ask the retry loop for a fresh chain.
-  @upstream_idle_timeout_ms 30_000
-
-  # Burst buffer cap (bytes-in-flight) between Finch and Plug.Conn.chunk.
-  # Decouples upstream pace from client pace so a microburst (GC pause,
-  # transient congestion) doesn't stall the upstream socket.
-  @burst_buffer_bytes 5 * 1024 * 1024
 
   # Status codes we treat as terminal — retrying won't help.
   @terminal_statuses [400, 401, 403, 404, 405, 410, 416, 451]
@@ -105,7 +78,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   @spec pipe(Conn.t(), String.t(), keyword()) :: Conn.t()
   def pipe(conn, url, opts \\ []) do
     url_chain = Keyword.get(opts, :url_chain, [url])
-    context = stream_context(opts)
+    context = Observability.context(opts)
 
     conn
     |> Conn.put_private(:streamix_proxy_context, context)
@@ -115,7 +88,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   @spec head(Conn.t(), String.t(), keyword()) :: Conn.t()
   def head(conn, url, opts \\ []) do
     url_chain = Keyword.get(opts, :url_chain, [url])
-    context = stream_context(opts)
+    context = Observability.context(opts)
 
     conn
     |> Conn.put_private(:streamix_proxy_context, context)
@@ -123,7 +96,11 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp head_chain([], conn) do
-    record_failure(proxy_context(conn), :stream_resolution_failed)
+    Observability.record_failure(
+      Observability.context_from_conn(conn),
+      :stream_resolution_failed
+    )
+
     StreamErrors.halt(conn, :stream_resolution_failed)
   end
 
@@ -132,7 +109,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       {:ok, final_url} ->
         case do_head(conn, final_url) do
           {:ok, conn} ->
-            record_success(proxy_context(conn))
+            Observability.record_success(Observability.context_from_conn(conn))
             conn
 
           {:error, reason} ->
@@ -145,27 +122,19 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp rotate_head_or_halt([], conn, reason) do
-    record_failure(proxy_context(conn), reason)
+    Observability.record_failure(Observability.context_from_conn(conn), reason)
     StreamErrors.halt(conn, StreamErrors.code_from_reason(reason))
   end
 
   defp rotate_head_or_halt(rest, conn, _reason), do: head_chain(rest, conn)
 
   defp do_head(conn, final_url) do
-    headers = build_request_headers(conn, 0)
+    headers = Headers.request(conn, 0)
     req = Finch.build(:head, final_url, headers)
 
     case Finch.request(req, Streamix.StreamFinch, receive_timeout: 10_000, pool_timeout: 5_000) do
       {:ok, %{status: status, headers: headers}} when status in 200..299 ->
-        conn =
-          conn
-          |> copy_response_headers(headers, [])
-          |> ensure_accept_ranges()
-          |> Conn.put_resp_header("cache-control", "no-cache, no-store")
-          |> put_cors_headers()
-          |> Conn.send_resp(status, "")
-
-        {:ok, conn}
+        {:ok, Headers.send_head(conn, status, headers)}
 
       {:ok, %{status: status}} ->
         {:error, {:unexpected_status, status}}
@@ -182,20 +151,25 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   # the player's decoder state).
   defp pipe_chain(conn, []) do
     Logger.warning("[VodProxy] empty URL chain")
-    record_failure(proxy_context(conn), :stream_resolution_failed)
+
+    Observability.record_failure(
+      Observability.context_from_conn(conn),
+      :stream_resolution_failed
+    )
+
     StreamErrors.halt(conn, :stream_resolution_failed)
   end
 
   defp pipe_chain(conn, [url | rest]) do
     state =
-      Map.merge(proxy_context(conn), %{
+      Map.merge(Observability.context_from_conn(conn), %{
         original_url: url,
         bytes_sent: 0,
         retry_count: 0,
         started_at: System.monotonic_time(:millisecond)
       })
 
-    emit_telemetry(:start, state)
+    Observability.emit(:start, state)
 
     case resolve_chain(url) do
       {:ok, final_url} ->
@@ -239,7 +213,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp rotate_or_fallback(conn, rest, _reason, _state), do: pipe_chain(conn, rest)
 
   defp serve_fallback_or_halt(conn, reason, state) do
-    record_failure(state, reason)
+    Observability.record_failure(state, reason)
     code = StreamErrors.code_from_reason(reason)
     category = FallbackVideo.category_from_reason(reason)
 
@@ -262,8 +236,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp do_pipe(conn, _final_url, %{retry_count: n} = state)
        when n > @max_mid_stream_retries do
     Logger.warning("[VodProxy] giving up after #{n} retries for #{sanitize(state.original_url)}")
-    record_failure(state, :retry_limit_exceeded)
-    emit_telemetry(:complete, state, outcome: :retry_limit_exceeded)
+    Observability.record_failure(state, :retry_limit_exceeded)
+    Observability.emit(:complete, state, outcome: :retry_limit_exceeded)
 
     conn
   end
@@ -271,8 +245,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp do_pipe(conn, final_url, state) do
     if exceeded_retry_budget?(state) do
       Logger.warning("[VodProxy] retry budget exhausted for #{sanitize(state.original_url)}")
-      record_failure(state, :retry_budget_exhausted)
-      emit_telemetry(:complete, state, outcome: :retry_budget_exhausted)
+      Observability.record_failure(state, :retry_budget_exhausted)
+      Observability.emit(:complete, state, outcome: :retry_budget_exhausted)
       conn
     else
       do_pipe_attempt(conn, final_url, state)
@@ -280,27 +254,32 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp do_pipe_attempt(conn, final_url, state) do
-    headers = build_request_headers(conn, state.bytes_sent)
+    headers = Headers.request(conn, state.bytes_sent)
     req = Finch.build(:get, final_url, headers)
 
-    handle_attempt_result(stream_via_finch(conn, req, state), conn, state)
+    handle_attempt_result(Transfer.stream(conn, req, state), conn, state)
   end
 
   defp handle_attempt_result({:ok, conn, final_state}, _conn, state) do
-    record_success(state)
-    emit_telemetry(:complete, state, outcome: :ok, bytes_sent: final_state.total_sent)
+    Observability.record_success(state)
+    Observability.emit(:complete, state, outcome: :ok, bytes_sent: final_state.total_sent)
     conn
   end
 
   defp handle_attempt_result({:error, :client_closed, chunked_conn, final_state}, _conn, state) do
-    if final_state.total_sent > 0, do: record_success(state)
-    emit_telemetry(:client_closed, state, bytes_sent: final_state.total_sent)
-    emit_telemetry(:complete, state, outcome: :client_closed, bytes_sent: final_state.total_sent)
+    if final_state.total_sent > 0, do: Observability.record_success(state)
+    Observability.emit(:client_closed, state, bytes_sent: final_state.total_sent)
+
+    Observability.emit(:complete, state,
+      outcome: :client_closed,
+      bytes_sent: final_state.total_sent
+    )
+
     chunked_conn
   end
 
   defp handle_attempt_result({:error, :before_first_byte, reason}, conn, state) do
-    emit_telemetry(:upstream_error, state, reason: reason)
+    Observability.emit(:upstream_error, state, reason: reason)
     handle_pre_flight_error(conn, reason, state)
   end
 
@@ -309,21 +288,21 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
          _conn,
          state
        ) do
-    emit_telemetry(:upstream_error, state, reason: reason, bytes_sent: total_sent)
+    Observability.emit(:upstream_error, state, reason: reason, bytes_sent: total_sent)
     handle_mid_stream_error(chunked_conn, total_sent, reason, state)
   end
 
   defp handle_attempt_result({:error, :status_terminal, status}, conn, state) do
     Logger.warning("[VodProxy] terminal upstream status #{status}")
-    emit_telemetry(:terminal_status, state, status: status)
-    emit_telemetry(:complete, state, outcome: :terminal_status, status: status)
+    Observability.emit(:terminal_status, state, status: status)
+    Observability.emit(:complete, state, outcome: :terminal_status, status: status)
     serve_fallback_or_halt(conn, {:unexpected_status, status}, state)
   end
 
   defp handle_attempt_result({:error, :status_no_partial, status}, conn, state) do
     Logger.warning("[VodProxy] reconnect aborted: upstream ignored Range and returned #{status}")
-    record_failure(state, {:unexpected_status, status})
-    emit_telemetry(:complete, state, outcome: :status_no_partial, status: status)
+    Observability.record_failure(state, {:unexpected_status, status})
+    Observability.emit(:complete, state, outcome: :status_no_partial, status: status)
 
     conn
   end
@@ -336,12 +315,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       )
 
       next_state = %{state | retry_count: state.retry_count + 1}
-      emit_telemetry(:upstream_retry, next_state, reason: reason)
+      Observability.emit(:upstream_retry, next_state, reason: reason)
       retry_with_fresh_chain(conn, next_state)
     else
       Logger.warning("[VodProxy] upstream pre-flight failed: #{SafeLog.redact_inspect(reason)}")
 
-      emit_telemetry(:complete, state, outcome: :pre_flight_failed, reason: reason)
+      Observability.emit(:complete, state, outcome: :pre_flight_failed, reason: reason)
       serve_fallback_or_halt(conn, reason, state)
     end
   end
@@ -354,12 +333,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       )
 
       state = %{state | bytes_sent: total_sent, retry_count: state.retry_count + 1}
-      emit_telemetry(:upstream_retry, state, reason: reason, bytes_sent: total_sent)
+      Observability.emit(:upstream_retry, state, reason: reason, bytes_sent: total_sent)
       retry_with_fresh_chain(chunked_conn, state)
     else
-      record_failure(state, reason)
+      Observability.record_failure(state, reason)
 
-      emit_telemetry(:complete, state,
+      Observability.emit(:complete, state,
         outcome: :mid_stream_retry_limit_exceeded,
         bytes_sent: total_sent
       )
@@ -378,7 +357,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         do_pipe(conn, fresh_url, state)
 
       {:error, reason} ->
-        record_failure(state, reason)
+        Observability.record_failure(state, reason)
         conn
     end
   end
@@ -398,218 +377,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       state.retry_count > 0
   end
 
-  # Drains upstream into the conn through `UpstreamPump`. The pump runs in
-  # its own Task so a slow client can't stall Finch packet-by-packet —
-  # bytes-in-flight is bounded by `@burst_buffer_bytes` and the pump
-  # waits for `{:ack, size}` from us once that window fills.
-  defp stream_via_finch(conn, req, state) do
-    acc = %{
-      conn: conn,
-      status: nil,
-      sent_headers?: false,
-      bytes_sent: state.bytes_sent,
-      total_sent: state.bytes_sent,
-      attempting_resume?: state.bytes_sent > 0
-    }
-
-    pump =
-      UpstreamPump.start(req, Streamix.StreamFinch, self(),
-        cap_bytes: @burst_buffer_bytes,
-        receive_timeout: @upstream_idle_timeout_ms,
-        pool_timeout: 5_000
-      )
-
-    try do
-      consume_pump(pump, acc)
-    after
-      Task.shutdown(pump, :brutal_kill)
-    end
-  end
-
-  defp consume_pump(pump, acc) do
-    pump_pid = pump.pid
-    pump_ref = pump.ref
-
-    receive do
-      {^pump_pid, {:status, status}} ->
-        consume_pump(pump, on_status(status, acc))
-
-      {^pump_pid, {:headers, headers}} ->
-        consume_pump(pump, on_headers(headers, acc))
-
-      {^pump_pid, {:data, chunk, size}} ->
-        consume_pump(pump, on_data(chunk, size, acc, pump_pid))
-
-      {^pump_pid, {:trailers, _trailers}} ->
-        consume_pump(pump, acc)
-
-      {^pump_pid, :done} ->
-        on_pump_done(acc)
-
-      {^pump_pid, {:error, reason}} ->
-        on_pump_error(reason, acc)
-
-      {:DOWN, ^pump_ref, :process, ^pump_pid, reason} ->
-        # Task crashed (e.g. pump idle exit). Surface it as a transient
-        # upstream error so the retry loop can attempt a fresh chain.
-        on_pump_error({:pump_down, reason}, acc)
-    end
-  catch
-    {:client_closed, %{conn: conn} = acc} ->
-      {:error, :client_closed, conn, acc}
-
-    {:upstream_error, status, %{sent_headers?: false}} ->
-      if status in @terminal_statuses do
-        {:error, :status_terminal, status}
-      else
-        {:error, :before_first_byte, {:unexpected_status, status}}
-      end
-
-    {:upstream_error, status, %{conn: conn, total_sent: total_sent}} ->
-      {:error, {:after_chunk, conn, total_sent}, {:unexpected_status, status}}
-
-    {:no_partial_on_resume, status, _acc} ->
-      {:error, :status_no_partial, status}
-  end
-
-  defp on_status(status, %{attempting_resume?: true} = acc) when status not in [206, 416] do
-    # We requested a Range resume but the provider answered 200 (or some
-    # other non-206 success). Bail out — restarting bytes from offset 0
-    # would corrupt the player's decoder state.
-    throw({:no_partial_on_resume, status, acc})
-  end
-
-  defp on_status(status, acc) when status in 200..299, do: %{acc | status: status}
-  defp on_status(status, acc), do: throw({:upstream_error, status, acc})
-
-  defp on_headers(_headers, %{attempting_resume?: true, conn: %Conn{state: :chunked}} = acc) do
-    # The downstream response is already committed. The resumed upstream
-    # headers describe only the remaining range and can't be sent again.
-    %{acc | sent_headers?: true}
-  end
-
-  defp on_headers(headers, acc) do
-    conn = send_response_headers(acc.conn, acc.status || 200, headers, acc.attempting_resume?)
-    %{acc | conn: conn, sent_headers?: true}
-  end
-
-  defp on_data(chunk, size, acc, pump_pid) do
-    case Conn.chunk(acc.conn, chunk) do
-      {:ok, conn} ->
-        send(pump_pid, {:ack, size})
-        %{acc | conn: conn, total_sent: acc.total_sent + size, bytes_sent: acc.bytes_sent + size}
-
-      {:error, :closed} ->
-        throw({:client_closed, acc})
-
-      {:error, _reason} ->
-        throw({:client_closed, acc})
-    end
-  end
-
-  defp on_pump_done(%{sent_headers?: true} = acc), do: {:ok, acc.conn, acc}
-  defp on_pump_done(_acc), do: {:error, :before_first_byte, :empty_upstream}
-
-  defp on_pump_error(reason, %{sent_headers?: true, conn: conn, total_sent: total_sent}) do
-    {:error, {:after_chunk, conn, total_sent}, reason}
-  end
-
-  defp on_pump_error(reason, _acc), do: {:error, :before_first_byte, reason}
-
-  defp send_response_headers(conn, status, upstream_headers, attempting_resume?) do
-    # When we resumed mid-stream the upstream only knows the remaining
-    # byte range, so its `Content-Length` is the *tail* and its
-    # `Content-Range` reflects the resumed window. The player has
-    # already received the first portion via send_chunked, so we'd
-    # rather not advertise a fresh length anyway.
-    skip = if attempting_resume?, do: ["content-length", "content-range"], else: []
-
-    conn
-    |> copy_response_headers(upstream_headers, skip)
-    |> ensure_accept_ranges()
-    |> Conn.put_resp_header("cache-control", "no-cache, no-store")
-    |> put_cors_headers()
-    |> Conn.send_chunked(status)
-  end
-
-  defp copy_response_headers(conn, upstream_headers, skip) do
-    Enum.reduce(@forwardable_response_headers -- skip, conn, fn name, acc ->
-      case List.keyfind(upstream_headers, name, 0) do
-        {^name, value} -> Conn.put_resp_header(acc, name, value)
-        _ -> acc
-      end
-    end)
-  end
-
-  defp ensure_accept_ranges(conn) do
-    if Conn.get_resp_header(conn, "accept-ranges") == [] do
-      Conn.put_resp_header(conn, "accept-ranges", "bytes")
-    else
-      conn
-    end
-  end
-
-  defp put_cors_headers(conn) do
-    conn
-    |> Conn.put_resp_header("access-control-allow-origin", "*")
-    |> Conn.put_resp_header("access-control-allow-methods", "GET, HEAD, OPTIONS")
-    |> Conn.put_resp_header("access-control-allow-headers", "Range, Accept-Encoding")
-    |> Conn.put_resp_header(
-      "access-control-expose-headers",
-      "Content-Length, Content-Range, Accept-Ranges"
-    )
-  end
-
-  defp build_request_headers(conn, bytes_sent) do
-    base = [
-      {"user-agent", UpstreamPolicy.user_agent()},
-      {"accept", "*/*"},
-      # `Connection: close` — pooled idle connections trip
-      # `max_connections=1` quotas and trigger 509 storms.
-      {"connection", "close"}
-    ]
-
-    range_override = bytes_sent > 0
-
-    forwardable =
-      if range_override,
-        do: @forwardable_request_headers -- ["range"],
-        else: @forwardable_request_headers
-
-    forwarded =
-      Enum.reduce(forwardable, base, fn name, acc ->
-        case Conn.get_req_header(conn, name) do
-          [value | _] -> [{name, value} | acc]
-          [] -> acc
-        end
-      end)
-
-    if range_override do
-      # Mid-stream resume — request the suffix the player still needs.
-      [{"range", "bytes=#{bytes_sent}-"} | forwarded]
-    else
-      forwarded
-    end
-  end
-
   defp sanitize(url) do
     SafeLog.redact_url(url)
-  end
-
-  defp stream_context(opts) do
-    media_type = opts |> Keyword.get(:media_type) |> normalize_media_type()
-
-    %{
-      provider_id: Keyword.get(opts, :provider_id),
-      content_id: Keyword.get(opts, :content_id),
-      media_type: media_type,
-      dimension: if(media_type == "channel", do: :live, else: :vod),
-      started_at: System.monotonic_time(:millisecond)
-    }
-  end
-
-  defp proxy_context(conn) do
-    Map.get(conn.private, :streamix_proxy_context) || stream_context([])
   end
 
   defp with_provider_lease(conn, context, fun) do
@@ -623,83 +392,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
       {:error, :capacity_exhausted} ->
         state = Map.merge(context, %{bytes_sent: 0, retry_count: 0})
-        emit_telemetry(:capacity_exhausted, state)
+        Observability.emit(:capacity_exhausted, state)
         StreamErrors.halt(conn, :provider_capacity_exhausted)
     end
   end
-
-  defp record_success(%{provider_id: provider_id, dimension: dimension} = state)
-       when is_integer(provider_id) do
-    latency_ms = System.monotonic_time(:millisecond) - state.started_at
-    ProviderRuntime.record_success(provider_id, dimension, latency_ms)
-    maybe_mark_channel_alive(state)
-  end
-
-  defp record_success(_state), do: :ok
-
-  defp record_failure(%{provider_id: provider_id, dimension: dimension} = state, reason)
-       when is_integer(provider_id) do
-    if content_missing?(reason) do
-      maybe_mark_channel_dead(state)
-    else
-      ProviderRuntime.record_failure(provider_id, dimension, reason)
-    end
-  end
-
-  defp record_failure(_state, _reason), do: :ok
-
-  defp content_missing?({:unexpected_status, status}) when status in [404, 410], do: true
-  defp content_missing?(_), do: false
-
-  defp maybe_mark_channel_alive(%{media_type: "channel", content_id: content_id})
-       when is_integer(content_id),
-       do: safe_channel_update(fn -> Channels.mark_alive(content_id) end)
-
-  defp maybe_mark_channel_alive(_state), do: :ok
-
-  defp maybe_mark_channel_dead(%{media_type: "channel", content_id: content_id})
-       when is_integer(content_id),
-       do: safe_channel_update(fn -> Channels.mark_dead(content_id) end)
-
-  defp maybe_mark_channel_dead(_state), do: :ok
-
-  defp safe_channel_update(fun) do
-    fun.()
-  rescue
-    error ->
-      Logger.warning("[VodProxy] channel liveness update failed: #{Exception.message(error)}")
-      :ok
-  end
-
-  defp normalize_media_type(nil), do: nil
-  defp normalize_media_type(value) when is_atom(value), do: Atom.to_string(value)
-  defp normalize_media_type(value) when is_binary(value), do: value
-  defp normalize_media_type(_), do: nil
-
-  defp emit_telemetry(event, state, metadata \\ []) do
-    metadata =
-      metadata
-      |> Keyword.put(:retry_count, state.retry_count)
-      |> Keyword.put(:duration_ms, System.monotonic_time(:millisecond) - state.started_at)
-      |> maybe_put_metadata(:provider_id, Map.get(state, :provider_id))
-      |> maybe_put_metadata(:content_id, Map.get(state, :content_id))
-      |> maybe_put_metadata(:media_type, Map.get(state, :media_type))
-
-    measurements = %{
-      bytes_sent: Keyword.get(metadata, :bytes_sent, state.bytes_sent),
-      retry_count: state.retry_count,
-      duration_ms: Keyword.fetch!(metadata, :duration_ms)
-    }
-
-    metadata =
-      metadata
-      |> Keyword.delete(:bytes_sent)
-      |> Keyword.delete(:duration_ms)
-      |> Map.new()
-
-    :telemetry.execute([:streamix, :stream_proxy, event], measurements, metadata)
-  end
-
-  defp maybe_put_metadata(metadata, _key, nil), do: metadata
-  defp maybe_put_metadata(metadata, key, value), do: Keyword.put(metadata, key, value)
 end
