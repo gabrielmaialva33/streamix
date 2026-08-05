@@ -23,12 +23,14 @@ defmodule StreamixWeb.TorrentLive do
   @per_page 48
 
   def mount(_params, _session, socket) do
-    user_id = socket.assigns.current_scope.user.id
+    user = socket.assigns.current_scope.user
+    user_id = user.id
     provider = Torrent.provider()
 
     socket =
       socket
       |> assign(user_id: user_id)
+      |> assign(show_adult: user.show_adult_content)
       |> assign(search: "")
       |> assign(page: 1)
       |> assign(has_more: provider != nil)
@@ -36,7 +38,7 @@ defmodule StreamixWeb.TorrentLive do
       |> assign(favorites_map: MapSet.new())
       |> assign(empty_results: false)
       |> assign(provider: provider)
-      |> assign(total_count: Torrent.count_movies())
+      |> assign(total_count: Torrent.count_movies(show_adult: user.show_adult_content))
       |> assign(page_title: "Torrents")
       |> assign(current_path: "/torrent")
       |> stream(:movies, [])
@@ -245,7 +247,8 @@ defmodule StreamixWeb.TorrentLive do
         Torrent.list_movies(
           search: socket.assigns.search,
           limit: @per_page,
-          offset: (socket.assigns.page - 1) * @per_page
+          offset: (socket.assigns.page - 1) * @per_page,
+          show_adult: socket.assigns.show_adult
         )
 
       has_more = length(movies) >= @per_page

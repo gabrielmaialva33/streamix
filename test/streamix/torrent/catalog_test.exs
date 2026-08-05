@@ -1,7 +1,7 @@
 defmodule Streamix.Torrent.CatalogTest do
   use Streamix.DataCase, async: false
 
-  alias Streamix.Iptv.{CatalogItem, Movie, Provider}
+  alias Streamix.Iptv.{CatalogItem, Category, Movie, Provider}
   alias Streamix.Repo
   alias Streamix.Torrent.{Catalog, TorrentStream}
 
@@ -47,6 +47,7 @@ defmodule Streamix.Torrent.CatalogTest do
 
       assert [only] = Catalog.list_movies()
       assert only.id == seeded.id
+      assert Catalog.count_movies() == 1
     end
 
     test "keeps movies whose current swarm has zero seeders", %{provider: provider} do
@@ -67,6 +68,35 @@ defmodule Streamix.Torrent.CatalogTest do
 
       assert [only] = Catalog.list_movies(search: "inter")
       assert only.id == a.id
+    end
+
+    test "hides adult-category movies unless explicitly enabled", %{provider: provider} do
+      safe = movie_fixture(provider, "Family Movie")
+      adult = movie_fixture(provider, "Adult Movie")
+      stream_fixture(safe, seeders: 5, quality: "1080p")
+      stream_fixture(adult, seeders: 10, quality: "1080p")
+
+      {:ok, category} =
+        %Category{}
+        |> Category.changeset(%{
+          external_id: "adult",
+          name: "Adult",
+          type: "vod",
+          provider_id: provider.id,
+          is_adult: true
+        })
+        |> Repo.insert()
+
+      Repo.insert_all("item_categories", [
+        %{catalog_item_id: adult.catalog_item_id, category_id: category.id}
+      ])
+
+      refresh_stats(provider)
+
+      assert Enum.map(Catalog.list_movies(), & &1.id) == [safe.id]
+      assert Enum.map(Catalog.list_movies(show_adult: true), & &1.id) == [adult.id, safe.id]
+      assert Catalog.count_movies() == 1
+      assert Catalog.count_movies(show_adult: true) == 2
     end
 
     test "returns [] when the provider is absent" do
