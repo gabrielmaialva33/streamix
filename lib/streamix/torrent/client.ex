@@ -25,7 +25,7 @@ defmodule Streamix.Torrent.Client do
 
   require Logger
 
-  alias Streamix.Iptv.TorrentProvider
+  alias Streamix.Torrent.Config
 
   @default_timeout :timer.seconds(10)
 
@@ -163,7 +163,7 @@ defmodule Streamix.Torrent.Client do
   reload reaches us without an app restart.
   """
   def base_url do
-    Keyword.fetch!(TorrentProvider.config(), :rqbit_url)
+    Config.rqbit_url!()
   end
 
   @doc """
@@ -178,9 +178,9 @@ defmodule Streamix.Torrent.Client do
   """
   @spec auth_headers() :: [{String.t(), String.t()}]
   def auth_headers do
-    case TorrentProvider.config()[:rqbit_auth_secret] do
-      secret when is_binary(secret) and secret != "" -> [{"x-internal-auth", secret}]
-      _ -> []
+    case Config.rqbit_auth_secret() do
+      nil -> []
+      secret -> [{"x-internal-auth", secret}]
     end
   end
 
