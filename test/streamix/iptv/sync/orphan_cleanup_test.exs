@@ -1,5 +1,7 @@
 defmodule Streamix.Iptv.Sync.OrphanCleanupTest do
-  use Streamix.DataCase, async: true
+  # The cleanup transaction locks content, join, and catalog tables in sequence.
+  # Running it beside other sandboxed sync tests can create a PostgreSQL lock cycle.
+  use Streamix.DataCase, async: false
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
