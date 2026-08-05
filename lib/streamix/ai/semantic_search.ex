@@ -22,9 +22,7 @@ defmodule Streamix.AI.SemanticSearch do
   require Logger
 
   alias Streamix.AI.{Embeddings, Qdrant}
-  alias Streamix.Repo
-
-  import Ecto.Query
+  alias Streamix.Iptv
 
   # The NVIDIA endpoint accepts 64 E5 inputs in one request (also within
   # Gemini's batch API envelope). Sending 10 made a full production backfill
@@ -252,35 +250,7 @@ defmodule Streamix.AI.SemanticSearch do
   def index_all_movies(provider_id \\ nil, opts \\ []) do
     after_id = Keyword.get(opts, :after_id, 0)
 
-    query =
-      from(m in Streamix.Iptv.Movie,
-        join: provider in Streamix.Iptv.Provider,
-        on: provider.id == m.provider_id,
-        where: not is_nil(m.title) and m.id > ^after_id,
-        where: provider.is_active == true,
-        order_by: [asc: m.id],
-        preload: [:genres]
-      )
-
-    query =
-      if provider_id,
-        do: where(query, [m, _provider], m.provider_id == ^provider_id),
-        else: query
-
-    movies =
-      query
-      |> Repo.all()
-      |> Enum.map(fn m ->
-        %{
-          id: m.id,
-          title: m.title,
-          plot: m.plot,
-          year: m.year,
-          genres: Streamix.Helpers.genre_names(m.genres),
-          rating: m.rating,
-          provider_id: m.provider_id
-        }
-      end)
+    movies = Iptv.list_search_documents(:movies, provider_id, after_id: after_id)
 
     Logger.info("[SemanticSearch] Indexing #{length(movies)} movies after id #{after_id}")
 
@@ -293,35 +263,7 @@ defmodule Streamix.AI.SemanticSearch do
   def index_all_series(provider_id \\ nil, opts \\ []) do
     after_id = Keyword.get(opts, :after_id, 0)
 
-    query =
-      from(s in Streamix.Iptv.Series,
-        join: provider in Streamix.Iptv.Provider,
-        on: provider.id == s.provider_id,
-        where: not is_nil(s.title) and s.id > ^after_id,
-        where: provider.is_active == true,
-        order_by: [asc: s.id],
-        preload: [:genres]
-      )
-
-    query =
-      if provider_id,
-        do: where(query, [s, _provider], s.provider_id == ^provider_id),
-        else: query
-
-    series =
-      query
-      |> Repo.all()
-      |> Enum.map(fn s ->
-        %{
-          id: s.id,
-          title: s.title,
-          plot: s.plot,
-          year: s.year,
-          genres: Streamix.Helpers.genre_names(s.genres),
-          rating: s.rating,
-          provider_id: s.provider_id
-        }
-      end)
+    series = Iptv.list_search_documents(:series, provider_id, after_id: after_id)
 
     Logger.info("[SemanticSearch] Indexing #{length(series)} series after id #{after_id}")
 

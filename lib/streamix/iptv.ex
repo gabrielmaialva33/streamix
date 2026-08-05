@@ -56,6 +56,7 @@ defmodule Streamix.Iptv do
     Movies,
     Provider,
     Providers,
+    SearchDocuments,
     SeriesOps,
     Sync,
     TmdbClient
@@ -485,6 +486,11 @@ defmodule Streamix.Iptv do
   # =============================================================================
   defdelegate get_featured_content(opts \\ []), to: Catalog
   defdelegate get_public_stats(opts \\ []), to: Catalog
+
+  defdelegate list_search_documents(kind, provider_id \\ nil, opts \\ []),
+    to: SearchDocuments,
+    as: :list
+
   defdelegate list_genres_for(kind), to: Catalog
 
   defdelegate list_public_movies_by_genre(genre, opts \\ []),
@@ -504,6 +510,7 @@ defmodule Streamix.Iptv do
   defdelegate list_top_rated(type, opts \\ []), to: Catalog
   defdelegate list_categories(provider_id, type \\ nil), to: Catalog
   defdelegate get_category!(id), to: Catalog
+  defdelegate get_catalog_item_with_content(catalog_item_id), to: Catalog
 
   # =============================================================================
   # Content assets
