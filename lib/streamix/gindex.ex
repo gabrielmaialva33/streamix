@@ -26,6 +26,7 @@ defmodule Streamix.Gindex do
   defdelegate list_categories(provider), to: Sync
   defdelegate list_categories(provider, movies_path), to: Sync
   defdelegate sync_kind(provider, base_url, path, kind, opts \\ []), to: Sync
+  defdelegate sync_path(provider, path, kind, opts \\ []), to: Sync
   defdelegate sync_roots_for(provider, date \\ Date.utc_today()), to: SyncPlanner, as: :roots_for
   defdelegate quota_status(), to: QuotaGuard, as: :status
   defdelegate seconds_until_quota_reset(), to: QuotaGuard, as: :seconds_until_reset

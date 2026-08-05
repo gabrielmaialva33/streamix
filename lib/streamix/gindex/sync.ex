@@ -80,6 +80,22 @@ defmodule Streamix.Gindex.Sync do
     end
   end
 
+  @doc """
+  Syncs one provider path using the provider's configured GIndex endpoint.
+
+  Queue consumers should prefer this entrypoint over carrying provider endpoint
+  details in their messages.
+  """
+  @spec sync_path(term(), String.t(), kind(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def sync_path(provider, path, kind, opts \\ []) do
+    with :ok <- validate_path(path),
+         :ok <- validate_kind(kind),
+         {:ok, source} <- Iptv.gindex_sync_source(provider) do
+      do_sync_kind(source, source.base_url, path, kind, opts)
+    end
+  end
+
   defp do_sync_kind(source, base_url, path, :movies, _opts) do
     case Movies.sync(source, base_url, path) do
       {:ok, count} -> {:ok, %{movies_count: count}}
@@ -94,6 +110,15 @@ defmodule Streamix.Gindex.Sync do
   defp do_sync_kind(source, base_url, path, :animes, _opts) do
     Animes.sync(source, base_url, path)
   end
+
+  defp validate_path(path) when is_binary(path) do
+    if String.trim(path) == "", do: {:error, :invalid_sync_path}, else: :ok
+  end
+
+  defp validate_path(_path), do: {:error, :invalid_sync_path}
+
+  defp validate_kind(kind) when kind in [:movies, :series, :animes], do: :ok
+  defp validate_kind(kind), do: {:error, {:unsupported_kind, kind}}
 
   @doc """
   Syncs a batch of movies to the database.
