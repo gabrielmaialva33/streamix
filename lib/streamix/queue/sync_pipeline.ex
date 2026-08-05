@@ -220,9 +220,11 @@ defmodule Streamix.Queue.SyncPipeline do
     {:error, :invalid_task}
   end
 
+  defp broadway_name("streamix.sync.high"), do: Streamix.Queue.SyncPipeline.High
+  defp broadway_name("streamix.sync.normal"), do: Streamix.Queue.SyncPipeline.Normal
+  defp broadway_name("streamix.sync.low"), do: Streamix.Queue.SyncPipeline.Low
+
   defp broadway_name(queue) do
-    # Create a unique atom name based on queue
-    queue_suffix = queue |> String.replace(".", "_")
-    :"Streamix.Queue.SyncPipeline.#{queue_suffix}"
+    raise ArgumentError, "unsupported RabbitMQ sync queue: #{inspect(queue)}"
   end
 end

@@ -11,6 +11,11 @@ defmodule Streamix.Queue.Publisher do
   alias Streamix.Queue.Connection
 
   @exchange "streamix.sync"
+  @gindex_task_types %{
+    movies: :gindex_movies,
+    series: :gindex_series,
+    animes: :gindex_animes
+  }
 
   @doc """
   Publishes a sync task to the queue.
@@ -116,7 +121,7 @@ defmodule Streamix.Queue.Publisher do
   end
 
   defp build_task(provider_id, type, path) do
-    %{type: :"gindex_#{type}", provider_id: provider_id, path: path}
+    %{type: Map.fetch!(@gindex_task_types, type), provider_id: provider_id, path: path}
   end
 
   @doc """
