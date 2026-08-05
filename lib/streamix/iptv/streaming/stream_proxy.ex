@@ -13,7 +13,7 @@ defmodule Streamix.Iptv.StreamProxy do
   use GenServer
   require Logger
 
-  alias Streamix.Gindex.UrlCache
+  alias Streamix.Gindex
   alias Streamix.Iptv.Streaming.UpstreamPolicy
   alias Streamix.SafeLog
 
@@ -62,7 +62,7 @@ defmodule Streamix.Iptv.StreamProxy do
   The URL is cached for 30 minutes and refreshed when needed.
   """
   def stream_gindex(movie_id) when is_integer(movie_id) do
-    case UrlCache.get_movie_url(movie_id) do
+    case Gindex.get_movie_url(movie_id) do
       {:ok, url} ->
         Logger.debug("StreamProxy: Got GIndex URL for movie #{movie_id}")
         stream(url)

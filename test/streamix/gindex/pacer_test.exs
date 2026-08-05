@@ -5,6 +5,7 @@ defmodule Streamix.Gindex.PacerTest do
 
   import ExUnit.CaptureLog
 
+  alias Streamix.Gindex
   alias Streamix.Gindex.Pacer
 
   setup do
@@ -51,5 +52,11 @@ defmodule Streamix.Gindex.PacerTest do
         assert Pacer.acquire(:gdrive, 0) == {:error, :timeout}
       end)
     end
+  end
+
+  test "public facade exposes pacing without leaking the Pacer module" do
+    Application.put_env(:streamix, Pacer, gdrive: 1_000)
+
+    assert Gindex.acquire_pacing_slot(:gdrive) == :ok
   end
 end

@@ -12,6 +12,7 @@ defmodule Streamix.Gindex do
     EndpointManager,
     EndpointPolicy,
     MetadataProbe,
+    Pacer,
     Parser,
     QuotaGuard,
     Sync,
@@ -31,6 +32,7 @@ defmodule Streamix.Gindex do
   defdelegate quota_status(), to: QuotaGuard, as: :status
   defdelegate seconds_until_quota_reset(), to: QuotaGuard, as: :seconds_until_reset
   defdelegate sync_url(config), to: EndpointPolicy
+  defdelegate acquire_pacing_slot(bucket), to: Pacer, as: :acquire
 
   # Delegate URL cache functions
   defdelegate get_movie_url(movie_id), to: UrlCache

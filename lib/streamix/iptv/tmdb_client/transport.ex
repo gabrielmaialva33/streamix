@@ -1,7 +1,7 @@
 defmodule Streamix.Iptv.TmdbClient.Transport do
   @moduledoc false
 
-  alias Streamix.Gindex.Pacer
+  alias Streamix.Gindex
   alias Streamix.Iptv.TmdbClient.Config
   alias Streamix.Iptv.TmdbTokenPool
 
@@ -90,7 +90,7 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
   defp pick_token(profile, nil), do: TmdbTokenPool.next(profile)
   defp pick_token(profile, previous), do: TmdbTokenPool.next_after(profile, previous)
 
-  defp maybe_pace(:gindex), do: Pacer.acquire(:tmdb_gindex)
+  defp maybe_pace(:gindex), do: Gindex.acquire_pacing_slot(:tmdb_gindex)
   defp maybe_pace(_), do: :ok
 
   defp handle_response({:ok, %{status: 200, body: body}}, _url, _profile, _retries, _token)
