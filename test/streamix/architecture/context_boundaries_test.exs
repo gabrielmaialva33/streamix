@@ -31,10 +31,6 @@ defmodule Streamix.ContextBoundariesTest do
               "lib/streamix/iptv/streaming/stream_proxy.ex alias Streamix.Gindex.UrlCache",
               "lib/streamix/iptv/sync/cleanup.ex alias Streamix.WatchParty.Room",
               "lib/streamix/iptv/tmdb_client/transport.ex alias Streamix.Gindex.Pacer",
-              "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Categories",
-              "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Live",
-              "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Movies",
-              "lib/streamix/queue/sync_pipeline.ex alias Streamix.Iptv.Sync.Series",
               "lib/streamix/watch_party/room.ex alias Streamix.Iptv.CatalogItem"
             ])
 

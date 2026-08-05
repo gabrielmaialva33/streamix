@@ -3,8 +3,8 @@ defmodule Streamix.Queue do
   Queue system for distributed sync workers using RabbitMQ and Broadway.
 
   This module provides a facade for enqueueing sync tasks that are processed
-  by distributed workers. When RabbitMQ is not enabled, tasks fall back to
-  direct execution (Oban).
+  by distributed workers. The typed provider entrypoints fall back to Oban
+  when RabbitMQ is disabled.
 
   ## Architecture
 
@@ -35,15 +35,19 @@ defmodule Streamix.Queue do
   ## Usage
 
       # Enqueue a GIndex sync
-      Queue.enqueue_gindex_sync(provider_id)
+      Queue.enqueue_gindex_sync(provider)
 
-      # Enqueue with high priority
-      Queue.enqueue(:sync_folder, %{path: "/1:/Filmes/"}, priority: :high)
+      # Publish a RabbitMQ-only path task with high priority
+      Queue.enqueue(
+        :gindex_movies,
+        %{provider_id: provider.id, path: "/1:/Filmes/"},
+        priority: :high
+      )
   """
 
   require Logger
 
-  alias Streamix.Iptv
+  alias Streamix.Gindex
   alias Streamix.Queue.Publisher
   alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
 
@@ -72,28 +76,27 @@ defmodule Streamix.Queue do
   end
 
   @doc """
-  Enqueues a generic sync task.
+  Publishes a generic RabbitMQ sync task.
+
+  Generic tasks have no safe one-to-one Oban fallback. When RabbitMQ is
+  disabled this returns `{:error, :rabbitmq_disabled}`; use
+  `enqueue_gindex_sync/1` or `enqueue_iptv_sync/1` when backend fallback is
+  required.
 
   ## Options
 
     * `:priority` - Task priority: `:high`, `:normal`, `:low`
   """
   def enqueue(type, payload, opts \\ []) do
-    if enabled?() do
-      task = Map.put(payload, :type, type)
-      Publisher.publish_sync_task(task, opts)
-    else
-      # Fall back to Oban
-      Logger.debug("[Queue] RabbitMQ disabled, using Oban for #{type}")
-
-      %{type: type, payload: payload}
-      |> SyncGindexProviderWorker.new()
-      |> Oban.insert()
-    end
+    task = payload |> Map.delete("type") |> Map.put(:type, type)
+    enqueue_sync(task, opts)
   end
 
   @doc """
-  Enqueues a sync task with the task map directly.
+  Publishes a RabbitMQ sync task with the task map directly.
+
+  Returns `{:error, :rabbitmq_disabled}` instead of silently mapping an
+  unsupported generic task onto an unrelated Oban worker.
 
   ## Examples
 
@@ -103,11 +106,7 @@ defmodule Streamix.Queue do
     if enabled?() do
       Publisher.publish_sync_task(task, opts)
     else
-      Logger.debug("[Queue] RabbitMQ disabled, using Oban")
-
-      task
-      |> SyncGindexProviderWorker.new()
-      |> Oban.insert()
+      {:error, :rabbitmq_disabled}
     end
   end
 
@@ -128,23 +127,10 @@ defmodule Streamix.Queue do
   # Private functions
 
   defp enqueue_gindex_via_rabbitmq(provider) do
-    provider = Iptv.preload_provider_drives(provider)
-
-    paths =
-      provider.drives
-      |> Enum.reduce(%{}, fn drive, acc ->
-        case drive.drive_type do
-          "movies" -> Map.put(acc, :movies, drive.metadata["path"])
-          "series" -> Map.put(acc, :series, drive.metadata["paths"] || [drive.metadata["path"]])
-          "animes" -> Map.put(acc, :animes, drive.metadata["path"])
-          _ -> acc
-        end
-      end)
-      |> Enum.reject(fn {_k, v} -> is_nil(v) or v == [] end)
-      |> Map.new()
+    roots = Gindex.sync_roots_for(provider)
 
     Logger.info("[Queue] Enqueueing GIndex sync for provider #{provider.id} via RabbitMQ")
-    Publisher.enqueue_gindex_sync(provider.id, paths)
+    Publisher.enqueue_gindex_sync(provider.id, roots)
   end
 
   defp enqueue_gindex_via_oban(provider) do
@@ -166,12 +152,10 @@ defmodule Streamix.Queue do
       %{type: "iptv_series", provider_id: provider.id}
     ]
 
-    # Enqueue all tasks with normal priority
-    Enum.each(tasks, fn task ->
-      Publisher.publish_sync_task(task, priority: :normal)
-    end)
-
-    {:ok, length(tasks)}
+    case Publisher.publish_batch(tasks, priority: :normal) do
+      {:ok, %{success: count}} -> {:ok, count}
+      {:error, _reason} = error -> error
+    end
   end
 
   defp enqueue_iptv_via_oban(provider) do

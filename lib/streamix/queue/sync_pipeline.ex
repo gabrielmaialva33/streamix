@@ -25,10 +25,7 @@ defmodule Streamix.Queue.SyncPipeline do
   require Logger
 
   alias Broadway.Message
-  alias Streamix.Gindex
-  alias Streamix.Iptv
-  alias Streamix.Iptv.Sync.{Categories, Live, Movies, Series}
-  alias Streamix.Queue.Connection
+  alias Streamix.Queue.{Connection, SyncTask}
 
   @doc """
   Starts the Broadway pipeline.
@@ -67,23 +64,20 @@ defmodule Streamix.Queue.SyncPipeline do
 
   @impl true
   def handle_message(_processor, %Message{data: data} = message, _context) do
-    case Jason.decode(data) do
-      {:ok, task} ->
-        Logger.info("[SyncPipeline] Processing task: #{task["type"]}")
+    case SyncTask.execute(data) do
+      {:ok, type, result} ->
+        Logger.info(
+          "[SyncPipeline] Task completed type=#{inspect(type)} result=#{inspect(result)}"
+        )
 
-        case process_task(task) do
-          {:ok, result} ->
-            Logger.info("[SyncPipeline] Task completed: #{task["type"]} - #{inspect(result)}")
-            message
+        message
 
-          {:error, reason} ->
-            Logger.error("[SyncPipeline] Task failed: #{task["type"]} - #{inspect(reason)}")
-            Message.failed(message, inspect(reason))
-        end
+      {:error, type, reason, action} ->
+        log_failure(type, reason, action)
 
-      {:error, reason} ->
-        Logger.error("[SyncPipeline] Failed to decode message: #{inspect(reason)}")
-        Message.failed(message, "Invalid JSON: #{inspect(reason)}")
+        message
+        |> configure_failure(action)
+        |> Message.failed(reason)
     end
   end
 
@@ -96,128 +90,19 @@ defmodule Streamix.Queue.SyncPipeline do
     messages
   end
 
-  # Task processors
+  defp configure_failure(message, :discard),
+    do: Message.configure_ack(message, on_failure: :reject)
 
-  defp process_task(%{"type" => "gindex_full_sync", "provider_id" => provider_id}) do
-    provider = Iptv.get_provider!(provider_id)
-    Gindex.Sync.sync_provider(provider)
+  defp configure_failure(message, :retry), do: message
+
+  defp log_failure(type, reason, :discard) do
+    Logger.warning(
+      "[SyncPipeline] Discarding task type=#{inspect(type)} reason=#{inspect(reason)}"
+    )
   end
 
-  defp process_task(%{"type" => "gindex_movies", "provider_id" => provider_id, "path" => path}) do
-    provider = Iptv.get_provider!(provider_id)
-    base_url = provider.gindex_url
-
-    Logger.info("[SyncPipeline] Syncing movies from: #{path}")
-
-    # Use existing sync_category function
-    case Gindex.Scraper.scrape_category(base_url, path) do
-      {:ok, movies} when is_list(movies) ->
-        Logger.info("[SyncPipeline] Scraped #{length(movies)} movies from #{path}")
-        # Upsert movies to database
-        Gindex.Sync.sync_movies_batch(provider, movies)
-
-      {:error, reason} ->
-        {:error, {:scrape_failed, reason}}
-    end
-  end
-
-  defp process_task(%{"type" => "gindex_series", "provider_id" => provider_id, "path" => path}) do
-    provider = Iptv.get_provider!(provider_id)
-    base_url = provider.gindex_url
-
-    Logger.info("[SyncPipeline] Syncing series from: #{path}")
-
-    case Gindex.Scraper.scrape_series_folder(base_url, path) do
-      {:ok, series_list} when is_list(series_list) ->
-        Logger.info("[SyncPipeline] Scraped #{length(series_list)} series from #{path}")
-        Gindex.Sync.sync_series_batch(provider, series_list)
-
-      {:error, reason} ->
-        {:error, {:scrape_failed, reason}}
-    end
-  end
-
-  defp process_task(%{"type" => "gindex_animes", "provider_id" => provider_id, "path" => path}) do
-    provider = Iptv.get_provider!(provider_id)
-    base_url = provider.gindex_url
-
-    Logger.info("[SyncPipeline] Syncing animes from: #{path}")
-
-    case Gindex.Scraper.scrape_animes(base_url, path) do
-      {:ok, animes} when is_list(animes) ->
-        Logger.info("[SyncPipeline] Scraped #{length(animes)} animes from #{path}")
-        Gindex.Sync.sync_animes_batch(provider, animes)
-
-      {:error, reason} ->
-        {:error, {:scrape_failed, reason}}
-    end
-  end
-
-  # IPTV (Xtream) task processors
-
-  defp process_task(%{"type" => "iptv_categories", "provider_id" => provider_id}) do
-    provider = Iptv.get_provider!(provider_id)
-    Logger.info("[SyncPipeline] Syncing IPTV categories for provider #{provider_id}")
-
-    case Categories.sync_categories(provider) do
-      {:ok, count} ->
-        Logger.info("[SyncPipeline] Synced #{count} categories")
-        {:ok, %{categories: count}}
-
-      {:error, reason} ->
-        {:error, {:sync_failed, reason}}
-    end
-  end
-
-  defp process_task(%{"type" => "iptv_live", "provider_id" => provider_id}) do
-    provider = Iptv.get_provider!(provider_id)
-    Logger.info("[SyncPipeline] Syncing IPTV live channels for provider #{provider_id}")
-
-    case Live.sync_live_channels(provider) do
-      {:ok, count} ->
-        Logger.info("[SyncPipeline] Synced #{count} live channels")
-        {:ok, %{live_channels: count}}
-
-      {:error, reason} ->
-        {:error, {:sync_failed, reason}}
-    end
-  end
-
-  defp process_task(%{"type" => "iptv_movies", "provider_id" => provider_id}) do
-    provider = Iptv.get_provider!(provider_id)
-    Logger.info("[SyncPipeline] Syncing IPTV movies for provider #{provider_id}")
-
-    case Movies.sync_movies(provider) do
-      {:ok, count} ->
-        Logger.info("[SyncPipeline] Synced #{count} movies")
-        {:ok, %{movies: count}}
-
-      {:error, reason} ->
-        {:error, {:sync_failed, reason}}
-    end
-  end
-
-  defp process_task(%{"type" => "iptv_series", "provider_id" => provider_id}) do
-    provider = Iptv.get_provider!(provider_id)
-    Logger.info("[SyncPipeline] Syncing IPTV series for provider #{provider_id}")
-
-    case Series.sync_series(provider) do
-      {:ok, count} ->
-        Logger.info("[SyncPipeline] Synced #{count} series")
-        {:ok, %{series: count}}
-
-      {:error, reason} ->
-        {:error, {:sync_failed, reason}}
-    end
-  end
-
-  defp process_task(%{"type" => type}) do
-    Logger.warning("[SyncPipeline] Unknown task type: #{type}")
-    {:error, :unknown_task_type}
-  end
-
-  defp process_task(_task) do
-    {:error, :invalid_task}
+  defp log_failure(type, reason, :retry) do
+    Logger.error("[SyncPipeline] Task failed type=#{inspect(type)} reason=#{inspect(reason)}")
   end
 
   defp broadway_name("streamix.sync.high"), do: Streamix.Queue.SyncPipeline.High

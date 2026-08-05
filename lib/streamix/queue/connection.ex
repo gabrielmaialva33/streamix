@@ -43,6 +43,9 @@ defmodule Streamix.Queue.Connection do
     password = Keyword.get(conn, :password, "guest")
     vhost = Keyword.get(conn, :virtual_host, "/") |> URI.encode_www_form()
 
+    username = URI.encode_www_form(to_string(username))
+    password = URI.encode_www_form(to_string(password))
+
     "amqp://#{username}:#{password}@#{host}:#{port}/#{vhost}"
   end
 
