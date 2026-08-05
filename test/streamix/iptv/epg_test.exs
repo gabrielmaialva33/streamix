@@ -14,7 +14,7 @@ defmodule Streamix.Iptv.EpgTest do
     end
 
     test "returns current and next program", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
       epg_channel_id = "test_channel"
 
       # Current program (started 30 min ago, ends in 30 min)
@@ -58,7 +58,7 @@ defmodule Streamix.Iptv.EpgTest do
     end
 
     test "handles program that already ended", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
       epg_channel_id = "test_channel"
 
       # Past program (ended 1 hour ago)
@@ -94,7 +94,7 @@ defmodule Streamix.Iptv.EpgTest do
     end
 
     test "returns current programs for multiple channels", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       # Create programs for 3 channels
       prog1 =
@@ -137,7 +137,7 @@ defmodule Streamix.Iptv.EpgTest do
     end
 
     test "filters out nil channel ids", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       prog =
         epg_program_fixture(provider, %{
@@ -161,7 +161,7 @@ defmodule Streamix.Iptv.EpgTest do
     end
 
     test "adds current_program to channels", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       channel1 = channel_fixture(provider, %{epg_channel_id: "epg1"})
       channel2 = channel_fixture(provider, %{epg_channel_id: "epg2"})

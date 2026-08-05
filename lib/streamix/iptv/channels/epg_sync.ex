@@ -152,7 +152,7 @@ defmodule Streamix.Iptv.EpgSync do
   # the provider's live_streams list (e.g. removed but EPG still kept), and
   # we still want to store the EPG for them.
   defp upsert_epg_channels(provider_id, external_ids) when is_list(external_ids) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     # Map external_id → live_channel_id when there is one
     live_channel_lookup =
@@ -209,7 +209,7 @@ defmodule Streamix.Iptv.EpgSync do
   Updates the provider's EPG sync timestamp.
   """
   def update_epg_synced_at(%Provider{} = provider) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     provider
     |> Provider.sync_changeset(%{epg_synced_at: now})
@@ -223,7 +223,7 @@ defmodule Streamix.Iptv.EpgSync do
   defp upsert_programs([]), do: 0
 
   defp upsert_programs(programs) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     programs
     |> Enum.map(&program_attrs(&1, now))
@@ -279,7 +279,7 @@ defmodule Streamix.Iptv.EpgSync do
 
   # Upserts an epg_channel record and returns its integer ID
   defp upsert_epg_channel(provider_id, external_id, stream_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     # Find the live_channel by provider_id + stream_id to link
     live_channel_id =

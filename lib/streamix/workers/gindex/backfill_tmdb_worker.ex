@@ -135,7 +135,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
          {:anilist_miss, reasons} <- try_anilist(schema, row, title, year, reasons),
          {:tmdb_miss, reasons} <- try_tmdb(schema, :series, row, title, year, reasons) do
       update_row(schema, row.id, %{
-        tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        tmdb_searched_at: DateTime.utc_now(:second),
         tmdb_miss_reason: Enum.join(reasons, "|")
       })
 
@@ -152,7 +152,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
           tomato_id: match.tomato_id,
           cover: match.cover_url,
           dub_available: match.dubbed,
-          tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          tmdb_searched_at: DateTime.utc_now(:second),
           tmdb_miss_reason: nil
         }
 
@@ -171,7 +171,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
         attrs = %{
           anilist_id: match.anilist_id,
           cover: match.cover_url,
-          tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          tmdb_searched_at: DateTime.utc_now(:second),
           tmdb_miss_reason: nil
         }
 
@@ -208,7 +208,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
 
   defp mark_miss(schema, id, reason) do
     update_row(schema, id, %{
-      tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      tmdb_searched_at: DateTime.utc_now(:second),
       tmdb_miss_reason: format_miss_reason(reason)
     })
 
@@ -249,7 +249,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     %{
       tmdb_id: match.tmdb_id,
       stream_icon: TmdbClient.image_url(match.poster_path, @poster_size),
-      tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      tmdb_searched_at: DateTime.utc_now(:second),
       tmdb_miss_reason: nil
     }
     |> drop_nil_poster()
@@ -259,7 +259,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     %{
       tmdb_id: match.tmdb_id,
       cover: TmdbClient.image_url(match.poster_path, @poster_size),
-      tmdb_searched_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      tmdb_searched_at: DateTime.utc_now(:second),
       tmdb_miss_reason: nil
     }
     |> drop_nil_poster()

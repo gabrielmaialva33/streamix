@@ -391,7 +391,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
   end
 
   defp watched_movie(user, movie, attrs \\ %{}) do
-    watched_at = Map.get(attrs, :watched_at, DateTime.utc_now() |> DateTime.truncate(:second))
+    watched_at = Map.get(attrs, :watched_at, DateTime.utc_now(:second))
 
     {:ok, _history} =
       History.add(user.id, "movie", movie.id, Map.drop(attrs, [:watched_at]))

@@ -15,7 +15,7 @@ defmodule Streamix.Iptv.EpgSyncTest do
     end
 
     test "deletes programs older than specified hours", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       # Create an old program (ended 8 hours ago)
       old_end = DateTime.add(now, -8, :hour)
@@ -43,7 +43,7 @@ defmodule Streamix.Iptv.EpgSyncTest do
     end
 
     test "returns 0 when no old programs exist", %{provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       # Create only recent program
       _recent =
@@ -57,7 +57,7 @@ defmodule Streamix.Iptv.EpgSyncTest do
 
     test "only deletes programs from specified provider", %{user: user, provider: provider1} do
       provider2 = provider_fixture(user)
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       old_end = DateTime.add(now, -8, :hour)
       old_start = DateTime.add(old_end, -1, :hour)

@@ -73,7 +73,7 @@ defmodule Streamix.Iptv.Content.SourceEquivalence do
         {:ok, 0}
 
       links ->
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        now = DateTime.utc_now(:second)
         ensure_groups(links, now)
         group_ids = fetch_group_ids(links)
         bulk_link_catalog_items(links, group_ids, now)
@@ -121,7 +121,7 @@ defmodule Streamix.Iptv.Content.SourceEquivalence do
   end
 
   defp create_manual_link!(ids, items, opts) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
     content_type = items |> hd() |> Map.fetch!(:content_type)
 
     group =

@@ -147,7 +147,7 @@ defmodule Streamix.WatchParty do
 
       # Mark all active participants as left
       from(p in Participant, where: p.room_id == ^room_id and is_nil(p.left_at))
-      |> Repo.update_all(set: [left_at: DateTime.truncate(DateTime.utc_now(), :second)])
+      |> Repo.update_all(set: [left_at: DateTime.utc_now(:second)])
 
       broadcast(room_id, :room_ended)
 

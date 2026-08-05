@@ -341,7 +341,7 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
     } do
       # 2 healthy channels, 1 dead. list() returns 2, count() must also 2 —
       # otherwise has_more would stay true forever.
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       _alive_a = channel_fixture(provider, %{name: "Alive A"})
       _alive_b = channel_fixture(provider, %{name: "Alive B"})

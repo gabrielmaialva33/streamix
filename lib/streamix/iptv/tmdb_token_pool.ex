@@ -9,9 +9,11 @@ defmodule Streamix.Iptv.TmdbTokenPool do
   `:persistent_term` — crash-safe, GC-free, no GenServer in the hot path.
   """
 
+  alias Streamix.Iptv.TmdbClient.Config
+
   @counter_key {__MODULE__, :counter}
 
-  @spec next(atom()) :: String.t() | nil
+  @spec next(Config.profile()) :: String.t() | nil
   def next(profile) do
     case tokens(profile) do
       [] -> nil
@@ -24,7 +26,7 @@ defmodule Streamix.Iptv.TmdbTokenPool do
   Pick a token different from `skip` when possible. Falls back to the
   regular rotation if `skip` is the only token configured.
   """
-  @spec next_after(atom(), String.t() | nil) :: String.t() | nil
+  @spec next_after(Config.profile(), String.t() | nil) :: String.t() | nil
   def next_after(profile, nil), do: next(profile)
 
   def next_after(profile, skip) do
@@ -44,11 +46,9 @@ defmodule Streamix.Iptv.TmdbTokenPool do
   end
 
   @doc false
-  @spec tokens(atom()) :: [String.t()]
+  @spec tokens(Config.profile()) :: [String.t()]
   def tokens(profile) do
-    default = Application.get_env(:streamix, :tmdb, [])
-    override = Application.get_env(:streamix, :"tmdb_#{profile}", [])
-    cfg = Keyword.merge(default, override)
+    cfg = Config.config(profile)
 
     configured =
       case cfg[:api_tokens] do

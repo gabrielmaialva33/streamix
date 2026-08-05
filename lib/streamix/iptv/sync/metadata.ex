@@ -124,7 +124,7 @@ defmodule Streamix.Iptv.Sync.Metadata do
   end
 
   defp upsert_genres(names) when is_struct(names, MapSet) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
     entries = Enum.map(names, fn name -> %{name: name, inserted_at: now, updated_at: now} end)
 
     if entries != [] do
@@ -140,7 +140,7 @@ defmodule Streamix.Iptv.Sync.Metadata do
   end
 
   defp upsert_people(names) when is_struct(names, MapSet) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
     entries = Enum.map(names, fn name -> %{name: name, inserted_at: now, updated_at: now} end)
 
     if entries != [] do

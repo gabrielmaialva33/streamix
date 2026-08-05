@@ -38,7 +38,7 @@ defmodule Streamix.WatchParty.Room do
 
   def end_changeset(room) do
     room
-    |> change(status: "ended", ended_at: DateTime.truncate(DateTime.utc_now(), :second))
+    |> change(status: "ended", ended_at: DateTime.utc_now(:second))
   end
 
   # 8 random bytes → 13 base32 chars, truncated to 12 → ~60 bits of entropy.

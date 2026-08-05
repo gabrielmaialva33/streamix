@@ -20,7 +20,7 @@ defmodule Streamix.WatchParty.Participant do
     |> cast(attrs, [:room_id, :user_id, :role])
     |> validate_required([:room_id, :user_id])
     |> validate_inclusion(:role, @valid_roles)
-    |> put_change(:joined_at, DateTime.truncate(DateTime.utc_now(), :second))
+    |> put_change(:joined_at, DateTime.utc_now(:second))
     |> foreign_key_constraint(:room_id)
     |> foreign_key_constraint(:user_id)
     |> unique_constraint([:room_id, :user_id], name: :watch_party_participants_active_unique)
@@ -28,6 +28,6 @@ defmodule Streamix.WatchParty.Participant do
 
   def leave_changeset(participant) do
     participant
-    |> change(left_at: DateTime.truncate(DateTime.utc_now(), :second))
+    |> change(left_at: DateTime.utc_now(:second))
   end
 end

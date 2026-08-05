@@ -90,9 +90,10 @@ defmodule Streamix.Access do
 
   def ensure_role_permissions!(role_id, permissions)
       when is_integer(role_id) and is_list(permissions) do
-    permissions
-    |> Enum.map(&ensure_permission_reference!/1)
-    |> Enum.map(&ensure_role_permission_for_permission!(role_id, &1))
+    Enum.map(permissions, fn permission ->
+      permission = ensure_permission_reference!(permission)
+      ensure_role_permission_for_permission!(role_id, permission)
+    end)
   end
 
   defp permission_exists_for_user?(user_id, permission_name) do

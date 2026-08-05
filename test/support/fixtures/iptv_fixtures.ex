@@ -134,7 +134,7 @@ defmodule Streamix.IptvFixtures do
   def valid_epg_program_attrs(provider, attrs \\ %{}) do
     alias Streamix.Iptv.EpgChannel
 
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
     start_time = Map.get(attrs, :start_time, DateTime.add(now, -30, :minute))
     end_time = Map.get(attrs, :end_time, DateTime.add(now, 30, :minute))
     external_id = Map.get(attrs, :epg_channel_id, "ch#{System.unique_integer([:positive])}")

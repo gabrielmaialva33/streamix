@@ -6,8 +6,7 @@ defmodule Streamix.ConfigContractTest do
       :streamix
       |> Application.get_all_env()
       |> Keyword.keys()
-      |> Enum.filter(&streamix_module?/1)
-      |> Enum.reject(&Code.ensure_loaded?/1)
+      |> Enum.filter(&(streamix_module?(&1) and not Code.ensure_loaded?(&1)))
 
     assert missing_modules == []
   end

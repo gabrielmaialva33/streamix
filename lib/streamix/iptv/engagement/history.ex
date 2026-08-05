@@ -338,7 +338,7 @@ defmodule Streamix.Iptv.History do
   # --- Private ---
 
   defp upsert_progress(user_id, catalog_item_id, attrs) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     attrs =
       attrs

@@ -28,7 +28,7 @@ defmodule Streamix.Iptv.Sync.Movies do
          ) do
       {:ok, streams} ->
         category_lookup = Helpers.build_category_lookup(provider.id, "vod")
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        now = DateTime.utc_now(:second)
 
         upsert_opts =
           @sync_opts
@@ -47,7 +47,7 @@ defmodule Streamix.Iptv.Sync.Movies do
 
         deleted_count = Helpers.delete_orphaned_content(provider.id, all_stream_ids, @sync_opts)
 
-        now_utc = DateTime.utc_now() |> DateTime.truncate(:second)
+        now_utc = DateTime.utc_now(:second)
 
         provider
         |> Provider.sync_changeset(%{movies_count: count, vod_synced_at: now_utc})

@@ -36,7 +36,7 @@ defmodule Streamix.Iptv.Sync.Series.Upsert do
 
   defp sync_series_list(provider, series_list) do
     category_lookup = Helpers.build_category_lookup(provider.id, "series")
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     upsert_opts =
       @sync_opts
@@ -67,7 +67,7 @@ defmodule Streamix.Iptv.Sync.Series.Upsert do
     deleted_count =
       Helpers.delete_orphaned_content(provider.id, all_series_ids, @sync_opts)
 
-    now_utc = DateTime.utc_now() |> DateTime.truncate(:second)
+    now_utc = DateTime.utc_now(:second)
 
     provider
     |> Provider.sync_changeset(%{series_count: count, series_synced_at: now_utc})

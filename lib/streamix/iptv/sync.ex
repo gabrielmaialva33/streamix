@@ -189,7 +189,7 @@ defmodule Streamix.Iptv.Sync do
 
   defp finalize_partial_sync(provider, live_count, vod_count, series_count, failures, opts) do
     with {:ok, details} <- handle_series_details(provider, opts) do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       # Build update attrs only for successful syncs
       attrs =
@@ -231,7 +231,7 @@ defmodule Streamix.Iptv.Sync do
 
   defp finalize_sync(provider, live_count, vod_count, series_count, opts) do
     with {:ok, details} <- handle_series_details(provider, opts) do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       update_sync_state(provider, %{
         sync_status: "completed",

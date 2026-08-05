@@ -254,7 +254,7 @@ defmodule Streamix.Iptv.Channels do
   def mark_dead(nil), do: :ok
 
   def mark_dead(channel_id) when is_integer(channel_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     {_count, _} =
       LiveChannel
@@ -270,7 +270,7 @@ defmodule Streamix.Iptv.Channels do
   """
   @spec mark_alive(integer()) :: :ok
   def mark_alive(channel_id) when is_integer(channel_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     {_count, _} =
       LiveChannel

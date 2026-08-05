@@ -18,7 +18,7 @@ defmodule StreamixWeb.Api.V1.EpgControllerTest do
   # Wires up: LiveChannel -> EpgChannel (by external_id) -> EpgProgram.
   # Returns {live_channel, current_program}.
   defp seed_channel_with_program(provider, external_id, opts \\ []) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
     start_time = Keyword.get(opts, :start, DateTime.add(now, -30, :minute))
     end_time = Keyword.get(opts, :end, DateTime.add(now, 30, :minute))
     title = Keyword.get(opts, :title, "Now Playing")
@@ -134,7 +134,7 @@ defmodule StreamixWeb.Api.V1.EpgControllerTest do
 
   describe "GET /api/v1/epg/programs" do
     test "returns programs grouped by channel_id", %{conn: conn, provider: provider} do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       {live, _now_prog} =
         seed_channel_with_program(provider, "ch.sched",

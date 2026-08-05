@@ -705,10 +705,13 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   defp safe_reason(%{__struct__: module}), do: module
   defp safe_reason(_reason), do: :upstream_error
 
+  defp normalize_urls(""), do: []
   defp normalize_urls(url) when is_binary(url), do: [url]
 
   defp normalize_urls(urls) when is_list(urls) do
-    urls |> Enum.filter(&is_binary/1) |> Enum.reject(&(&1 == "")) |> Enum.uniq()
+    urls
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> Enum.uniq()
   end
 
   defp normalize_urls(_urls), do: []

@@ -31,7 +31,7 @@ defmodule Streamix.Iptv.Sync.Categories do
              provider_id: provider.id,
              allow_private_network: provider.is_system
            ) do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       all_categories =
         Enum.map(live_cats, &category_attrs(&1, "live", provider.id, now)) ++

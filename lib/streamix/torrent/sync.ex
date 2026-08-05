@@ -220,7 +220,7 @@ defmodule Streamix.Torrent.Sync do
   # Returns `{movies_inserted_or_updated, torrents_inserted_or_updated}`.
   defp upsert_items(provider, source_module, items) when is_list(items) do
     source_slug = source_module.slug()
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     items
     |> Enum.reject(&blank_title?/1)
@@ -316,7 +316,7 @@ defmodule Streamix.Torrent.Sync do
   defp upsert_torrents(_movie, _source_slug, []), do: 0
 
   defp upsert_torrents(movie, source_slug, torrents) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     entries =
       torrents
@@ -417,7 +417,7 @@ defmodule Streamix.Torrent.Sync do
 
     sync_status = if has_failures? and successful == [], do: "failed", else: "completed"
 
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     provider
     |> Provider.sync_changeset(%{
@@ -465,7 +465,7 @@ defmodule Streamix.Torrent.Sync do
       movies_count =
         Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider.id), :count)
 
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
       sync_status = Keyword.get(opts, :sync_status, "completed")
 
       provider

@@ -173,7 +173,7 @@ defmodule Streamix.Billing.Subscriptions do
     subscription
     |> Ecto.Changeset.change(%{
       status: "canceled",
-      canceled_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      canceled_at: DateTime.utc_now(:second)
     })
     |> Repo.update!()
   end

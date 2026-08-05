@@ -96,7 +96,7 @@ defmodule StreamixWeb.Admin.UsersLiveTest do
       {:ok, _sub} =
         Billing.create_manual_subscription(user, plan, %{
           status: "active",
-          starts_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          starts_at: DateTime.utc_now(:second)
         })
 
       {:ok, lv, _html} = live(conn, ~p"/admin/users/#{user.id}")

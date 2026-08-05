@@ -406,8 +406,8 @@ end
 # TMDB API configuration (optional, for enriched movie metadata).
 #
 # The default profile (`:streamix, :tmdb`) is used for Xtream ingestion.
-# Additional profiles may override the api_token to isolate quotas per
-# ingestion source. `GINDEX_TMDB_API_TOKEN` feeds profile `:gindex`.
+# The `:gindex` profile can override the api_token to isolate its quota.
+# `GINDEX_TMDB_API_TOKEN` feeds that profile.
 if tmdb_token = get_env.("TMDB_API_TOKEN") do
   config :streamix, :tmdb,
     enabled: true,

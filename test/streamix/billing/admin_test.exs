@@ -79,7 +79,7 @@ defmodule Streamix.Billing.AdminTest do
       {:ok, sub} =
         Billing.create_manual_subscription(user, plan, %{
           status: "active",
-          starts_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          starts_at: DateTime.utc_now(:second)
         })
 
       canceled = Billing.cancel_subscription!(sub)
@@ -107,7 +107,7 @@ defmodule Streamix.Billing.AdminTest do
       {:ok, _sub} =
         Billing.create_manual_subscription(user, plan, %{
           status: "active",
-          starts_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          starts_at: DateTime.utc_now(:second)
         })
 
       subs = Billing.list_subscriptions(user_id: user.id)

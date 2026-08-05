@@ -14,7 +14,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
   Upserts seasons and episodes for a series from a detailed Xtream response.
   """
   def sync(%Series{} = series, info) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     episodes_map = info["episodes"] || %{}
 

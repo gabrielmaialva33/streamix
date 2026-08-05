@@ -56,7 +56,7 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
   end
 
   test "aggregates cleanup counts across transactional chunks", %{provider: provider} do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     rows =
       for _ <- 1..501 do

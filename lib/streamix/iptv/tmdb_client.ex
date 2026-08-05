@@ -21,7 +21,7 @@ defmodule Streamix.Iptv.TmdbClient do
   alias Streamix.Cache
   alias Streamix.Iptv.TmdbClient.{Config, Parser, Search, Transport}
 
-  @type profile :: :default | :gindex | atom()
+  @type profile :: Config.profile()
 
   @doc """
   Checks if TMDB integration is enabled and configured for the given profile.

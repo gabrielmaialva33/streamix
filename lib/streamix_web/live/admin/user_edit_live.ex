@@ -63,7 +63,7 @@ defmodule StreamixWeb.Admin.UserEditLive do
   def handle_event("create_subscription", %{"subscription" => params}, socket) do
     user = socket.assigns.user
     plan = Billing.get_plan!(params["plan_id"])
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     expires_at =
       case params["expires_at"] do

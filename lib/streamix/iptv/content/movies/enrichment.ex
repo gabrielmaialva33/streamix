@@ -97,7 +97,7 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
   def persist_movie_assets(_movie_id, _type, []), do: :ok
 
   def persist_movie_assets(movie_id, type, urls) when is_list(urls) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     entries =
       urls

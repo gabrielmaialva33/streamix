@@ -55,7 +55,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Enrichment do
   def persist_series_assets(_series_id, _type, []), do: :ok
 
   def persist_series_assets(series_id, type, urls) when is_list(urls) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now(:second)
 
     entries =
       urls

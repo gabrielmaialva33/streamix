@@ -29,7 +29,7 @@ defmodule Streamix.Billing.Payments do
     Repo.transaction(fn ->
       provider = Map.fetch!(attrs, :provider)
       external_id = Map.get(attrs, :external_id)
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      now = DateTime.utc_now(:second)
 
       external_reference =
         Map.get(attrs, :subscription_external_reference) ||

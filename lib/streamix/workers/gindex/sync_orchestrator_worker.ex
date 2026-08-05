@@ -189,7 +189,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
         attrs =
           %{
             sync_status: final_status,
-            vod_synced_at: DateTime.utc_now() |> DateTime.truncate(:second)
+            vod_synced_at: DateTime.utc_now(:second)
           }
           |> Map.merge(counts)
 
@@ -250,7 +250,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
 
     series_synced_at =
       case has_episodes?(provider_id) do
-        true -> DateTime.utc_now() |> DateTime.truncate(:second)
+        true -> DateTime.utc_now(:second)
         false -> nil
       end
 

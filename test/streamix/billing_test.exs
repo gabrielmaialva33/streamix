@@ -394,7 +394,7 @@ defmodule Streamix.BillingTest do
         grants_global_access: true
       })
 
-    first_starts_at = DateTime.utc_now() |> DateTime.truncate(:second)
+    first_starts_at = DateTime.utc_now(:second)
     second_starts_at = DateTime.add(first_starts_at, 1, :day)
     first_expires_at = DateTime.add(first_starts_at, 30, :day)
     second_expires_at = DateTime.add(second_starts_at, 60, :day)
