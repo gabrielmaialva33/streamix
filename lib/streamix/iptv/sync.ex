@@ -21,6 +21,10 @@ defmodule Streamix.Iptv.Sync do
 
   require Logger
 
+  @sync_sections [:categories, :live, :movies, :series]
+
+  @type section :: :categories | :live | :movies | :series
+
   # Delegate to sub-modules
   defdelegate sync_categories(provider), to: Categories
   defdelegate sync_live_channels(provider), to: Live
@@ -33,6 +37,33 @@ defmodule Streamix.Iptv.Sync do
   defdelegate cleanup_orphaned_user_data(provider_id, opts), to: Cleanup
 
   @post_sync_cleanup_limit 500
+
+  @doc """
+  Syncs one Xtream provider section.
+
+  This is the stable boundary used by distributed queue consumers. It keeps
+  the specialized sync modules private to the IPTV context while preserving
+  their `{:ok, count} | {:error, reason}` contract.
+  """
+  @spec sync_section(Provider.t(), section()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def sync_section(%Provider{provider_type: :xtream} = provider, :categories),
+    do: sync_categories(provider)
+
+  def sync_section(%Provider{provider_type: :xtream} = provider, :live),
+    do: sync_live_channels(provider)
+
+  def sync_section(%Provider{provider_type: :xtream} = provider, :movies),
+    do: sync_movies(provider)
+
+  def sync_section(%Provider{provider_type: :xtream} = provider, :series),
+    do: sync_series(provider)
+
+  def sync_section(%Provider{}, section) when section in @sync_sections,
+    do: {:error, :not_xtream_provider}
+
+  def sync_section(%Provider{}, section),
+    do: {:error, {:unsupported_sync_section, section}}
 
   @doc """
   Syncs all content from a provider (categories, live, vod, series).
@@ -56,7 +87,7 @@ defmodule Streamix.Iptv.Sync do
   """
   def sync_all(%Provider{provider_type: :gindex} = provider, _opts) do
     # Route GIndex providers to specialized sync module
-    Gindex.Sync.sync_provider(provider)
+    Gindex.sync_provider(provider)
   end
 
   def sync_all(%Provider{} = provider, opts) do

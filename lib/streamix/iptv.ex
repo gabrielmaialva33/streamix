@@ -449,6 +449,13 @@ defmodule Streamix.Iptv do
   defdelegate test_connection(url, username, password), to: Providers
   defdelegate sync_provider(provider, opts \\ []), to: Providers, as: :sync
   defdelegate async_sync_provider(provider), to: Providers, as: :async_sync
+
+  @type provider_sync_section :: Sync.section()
+
+  @spec sync_provider_section(Provider.t(), provider_sync_section()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  defdelegate sync_provider_section(provider, section), to: Sync, as: :sync_section
+
   defdelegate global_provider_enabled?(), to: GlobalProvider, as: :enabled?
 
   defdelegate ensure_global_provider(owner \\ nil),
