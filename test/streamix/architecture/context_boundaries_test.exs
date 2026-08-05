@@ -6,20 +6,6 @@ defmodule Streamix.ContextBoundariesTest do
   # Existing violations are an explicit debt ledger. New entries fail CI, and
   # removing an old violation also fails until this list is ratcheted down.
   @baseline MapSet.new([
-              "lib/streamix/billing/admin.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/billing_customer.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/checkout_session.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/customers.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/entitlements.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/invoice.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/payment.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/payments.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/playback_session.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/playback_sessions.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/stripe.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/stripe/events.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/subscription.ex alias Streamix.Accounts.User",
-              "lib/streamix/billing/subscriptions.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/favorite.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/watch_event.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/watch_progress.ex alias Streamix.Accounts.User",
