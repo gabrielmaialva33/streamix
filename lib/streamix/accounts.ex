@@ -218,6 +218,14 @@ defmodule Streamix.Accounts do
   end
 
   @doc """
+  Gets a role id by name without exposing the role schema across context boundaries.
+  """
+  def role_id_by_name!(name) when is_binary(name) do
+    from(role in Role, where: role.name == ^name, select: role.id)
+    |> Repo.one!()
+  end
+
+  @doc """
   Returns an `%Ecto.Changeset{}` for tracking user registration changes.
 
   ## Examples
