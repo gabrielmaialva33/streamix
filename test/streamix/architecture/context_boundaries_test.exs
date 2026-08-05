@@ -23,28 +23,6 @@ defmodule Streamix.ContextBoundariesTest do
               "lib/streamix/billing/stripe/events.ex alias Streamix.Accounts.User",
               "lib/streamix/billing/subscription.ex alias Streamix.Accounts.User",
               "lib/streamix/billing/subscriptions.ex alias Streamix.Accounts.User",
-              "lib/streamix/gindex/metadata_probe.ex alias Streamix.Iptv.Episode",
-              "lib/streamix/gindex/metadata_probe.ex alias Streamix.Iptv.Movie",
-              "lib/streamix/gindex/sync.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync.ex alias Streamix.Iptv.Providers",
-              "lib/streamix/gindex/sync/animes.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync/movies.ex alias Streamix.Iptv.Movie",
-              "lib/streamix/gindex/sync/movies.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync/movies.ex alias Streamix.Iptv.Sync.Helpers",
-              "lib/streamix/gindex/sync/paths.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync/paths.ex alias Streamix.Iptv.Providers",
-              "lib/streamix/gindex/sync/persistence.ex alias Streamix.Iptv.CatalogItem",
-              "lib/streamix/gindex/sync/persistence.ex alias Streamix.Iptv.Episode",
-              "lib/streamix/gindex/sync/persistence.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync/persistence.ex alias Streamix.Iptv.Season",
-              "lib/streamix/gindex/sync/persistence.ex alias Streamix.Iptv.Series",
-              "lib/streamix/gindex/sync/persistence.ex alias Streamix.Iptv.Sync.Helpers",
-              "lib/streamix/gindex/sync/series.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync_planner.ex alias Streamix.Iptv.Provider",
-              "lib/streamix/gindex/sync_planner.ex alias Streamix.Iptv.Providers",
-              "lib/streamix/gindex/tmdb_matcher.ex alias Streamix.Iptv.TmdbClient",
-              "lib/streamix/gindex/url_cache.ex alias Streamix.Iptv.Episode",
-              "lib/streamix/gindex/url_cache.ex alias Streamix.Iptv.Movie",
               "lib/streamix/iptv/engagement/favorite.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/watch_event.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/engagement/watch_progress.ex alias Streamix.Accounts.User",
@@ -140,9 +118,8 @@ defmodule Streamix.ContextBoundariesTest do
     target_context = target |> Atom.to_string() |> Macro.underscore()
 
     if target_context in @contexts and target_context != source do
-      [Streamix, target | nested]
-      |> Module.concat()
-      |> inspect()
+      ["Streamix", Atom.to_string(target) | Enum.map(nested, &Atom.to_string/1)]
+      |> Enum.join(".")
     end
   end
 

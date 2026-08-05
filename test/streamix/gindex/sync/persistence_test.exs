@@ -51,7 +51,7 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
 
     assert {:ok, 1} =
              Persistence.upsert_series_content(
-               provider,
+               %{provider_id: provider.id},
                series_data(111, "/1:/Series/Example/S01/old.mkv"),
                now
              )
@@ -60,7 +60,7 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
 
     assert {:ok, 1} =
              Persistence.upsert_series_content(
-               provider,
+               %{provider_id: provider.id},
                series_data(222, "/1:/Series/Example/S01/new.mkv"),
                DateTime.add(now, 60)
              )
@@ -77,5 +77,19 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
              from(c in CatalogItem, where: c.content_type == "episode"),
              :count
            ) == 1
+  end
+
+  test "rolls back the catalog item when the series cannot be inserted" do
+    provider = gindex_provider()
+    invalid_data = %{series_data(111, "/1:/Series/Example/S01/pilot.mkv") | name: nil}
+
+    assert {:error, %Ecto.InvalidChangesetError{}} =
+             Persistence.upsert_series_content(
+               %{provider_id: provider.id},
+               invalid_data,
+               ~U[2026-07-24 12:00:00Z]
+             )
+
+    assert Repo.aggregate(CatalogItem, :count) == 0
   end
 end

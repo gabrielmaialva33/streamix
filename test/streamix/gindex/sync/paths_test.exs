@@ -2,60 +2,53 @@ defmodule Streamix.Gindex.Sync.PathsTest do
   use ExUnit.Case, async: true
 
   alias Streamix.Gindex.Sync.Paths
-  alias Streamix.Iptv.{Provider, ProviderDrive}
 
   test "uses stable catalog defaults when no drive override exists" do
-    provider = %Provider{id: 1, drives: []}
+    source = %{drives: []}
 
-    assert Paths.movies_path(provider) == "/1:/Filmes/"
+    assert Paths.movies_path(source) == "/1:/Filmes/"
 
-    assert Paths.series_paths(provider) == [
+    assert Paths.series_paths(source) == [
              "/1:/Séries/Séries WEB-DL/",
              "/1:/Séries/Séries Misturado/"
            ]
 
-    assert Paths.animes_path(provider) == "/0:/Animes/"
+    assert Paths.animes_path(source) == "/0:/Animes/"
   end
 
   test "reads single path overrides from provider drives" do
-    provider = %Provider{
-      id: 1,
+    source = %{
       drives: [
-        %ProviderDrive{
-          provider_id: 1,
-          drive_type: "movies",
+        %{
+          kind: "movies",
           metadata: %{"path" => "/movies/"}
         },
-        %ProviderDrive{
-          provider_id: 1,
-          drive_type: "series",
+        %{
+          kind: "series",
           metadata: %{"path" => "/series/"}
         },
-        %ProviderDrive{
-          provider_id: 1,
-          drive_type: "animes",
+        %{
+          kind: "animes",
           metadata: %{"path" => "/animes/"}
         }
       ]
     }
 
-    assert Paths.movies_path(provider) == "/movies/"
-    assert Paths.series_paths(provider) == ["/series/"]
-    assert Paths.animes_path(provider) == "/animes/"
+    assert Paths.movies_path(source) == "/movies/"
+    assert Paths.series_paths(source) == ["/series/"]
+    assert Paths.animes_path(source) == "/animes/"
   end
 
   test "preserves multiple configured series roots" do
-    provider = %Provider{
-      id: 1,
+    source = %{
       drives: [
-        %ProviderDrive{
-          provider_id: 1,
-          drive_type: "series",
+        %{
+          kind: "series",
           metadata: %{"paths" => ["/series/a/", "/series/b/"]}
         }
       ]
     }
 
-    assert Paths.series_paths(provider) == ["/series/a/", "/series/b/"]
+    assert Paths.series_paths(source) == ["/series/a/", "/series/b/"]
   end
 end

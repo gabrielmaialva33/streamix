@@ -1,11 +1,10 @@
 defmodule Streamix.Gindex.Sync.Normalizers.Series do
   @moduledoc """
-  Normalizes parsed GIndex series/anime entries into schema attrs.
+  Normalizes parsed GIndex series/anime entries into the IPTV ingest contract.
   """
 
-  def attrs(data, provider) do
+  def attrs(data) do
     %{
-      provider_id: provider.id,
       series_id: data.series_id,
       name: data.name,
       title: data.title,

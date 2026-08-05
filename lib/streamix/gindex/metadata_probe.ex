@@ -20,9 +20,7 @@ defmodule Streamix.Gindex.MetadataProbe do
 
   require Logger
 
-  alias Streamix.Gindex
-  alias Streamix.Iptv.{Episode, Movie}
-  alias Streamix.Repo
+  alias Streamix.{Gindex, Iptv}
 
   # Cap how much of the file we feed to ffprobe. For MP4 the moov box
   # is at the start in 99 % of web-optimized files; for MKV the seek
@@ -41,6 +39,8 @@ defmodule Streamix.Gindex.MetadataProbe do
     "-i"
   ]
 
+  @ffprobe_environment_variables ~w(LANG LC_ALL LC_CTYPE LD_LIBRARY_PATH PATH TMPDIR TZ)
+
   @doc """
   Returns cached `track_metadata` immediately if present.
 
@@ -55,58 +55,50 @@ defmodule Streamix.Gindex.MetadataProbe do
   """
   @spec fetch(:movie | :episode, integer()) ::
           {:ok, map()} | {:error, term()}
-  def fetch(:movie, id), do: do_fetch(Movie, id, &Gindex.get_movie_url/1)
-  def fetch(:episode, id), do: do_fetch(Episode, id, &Gindex.get_episode_url/1)
+  def fetch(:movie, id), do: do_fetch(:movie, id, &Gindex.get_movie_url/1)
+  def fetch(:episode, id), do: do_fetch(:episode, id, &Gindex.get_episode_url/1)
   def fetch(_, _), do: {:error, :unsupported_type}
 
-  defp do_fetch(schema, id, url_fn) do
-    with {:ok, row} <- load_row(schema, id) do
-      cached_or_schedule(row, url_fn)
+  defp do_fetch(type, id, url_fn) do
+    with {:ok, source} <- Iptv.get_media_track_source(type, id) do
+      cached_or_schedule(type, source, url_fn)
     end
   end
 
-  defp cached_or_schedule(row, url_fn) do
-    case row.track_metadata do
+  defp cached_or_schedule(type, source, url_fn) do
+    case source.track_metadata do
       %{} = cached when map_size(cached) > 0 -> {:ok, normalize(cached)}
-      _ -> kick_off_probe(row, url_fn)
+      _empty -> kick_off_probe(type, source, url_fn)
     end
   end
 
-  defp kick_off_probe(row, url_fn) do
-    if gindex?(row) do
-      schedule_probe(row, url_fn)
+  defp kick_off_probe(type, source, url_fn) do
+    if gindex?(source) do
+      schedule_probe(type, source, url_fn)
       {:error, :probing}
     else
       {:error, :not_gindex}
     end
   end
 
-  defp schedule_probe(row, url_fn) do
+  defp schedule_probe(type, source, url_fn) do
     # Fire-and-forget — the request returns immediately, the probe
     # runs in a detached Task and persists when (if) it finishes.
     Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
-      with {:ok, url} <- resolve_url(row, url_fn),
+      with {:ok, url} <- resolve_url(source, url_fn),
            {:ok, json} <- run_probe(url),
            {:ok, tracks} <- parse_tracks(json) do
-        persist(row, tracks)
+        persist(type, source.id, tracks)
       else
         err -> Logger.warning("MetadataProbe background failed: #{inspect(err)}")
       end
     end)
   end
 
-  defp load_row(schema, id) do
-    case Repo.get(schema, id) do
-      nil -> {:error, :not_found}
-      row -> {:ok, row}
-    end
-  end
-
   defp gindex?(%{gindex_path: path}) when is_binary(path) and path != "", do: true
   defp gindex?(_), do: false
 
-  defp resolve_url(%Movie{id: id}, url_fn), do: invoke_url_fn(url_fn, id)
-  defp resolve_url(%Episode{id: id}, url_fn), do: invoke_url_fn(url_fn, id)
+  defp resolve_url(%{id: id}, url_fn), do: invoke_url_fn(url_fn, id)
 
   defp invoke_url_fn(url_fn, id) do
     case url_fn.(id) do
@@ -153,7 +145,10 @@ defmodule Streamix.Gindex.MetadataProbe do
     try do
       :ok = File.write(tmp, body)
 
-      case System.cmd(ffprobe_path(), @ffprobe_base_args ++ [tmp], stderr_to_stdout: true) do
+      case System.cmd(ffprobe_path(), @ffprobe_base_args ++ [tmp],
+             env: ffprobe_environment(),
+             stderr_to_stdout: true
+           ) do
         {output, 0} ->
           {:ok, output}
 
@@ -172,6 +167,13 @@ defmodule Streamix.Gindex.MetadataProbe do
     end
   end
 
+  defp ffprobe_environment do
+    System.get_env()
+    |> Map.new(fn {name, value} ->
+      {name, if(name in @ffprobe_environment_variables, do: value, else: nil)}
+    end)
+  end
+
   defp parse_tracks(%{"streams" => streams}) when is_list(streams) do
     audio = streams |> Enum.filter(&(&1["codec_type"] == "audio")) |> Enum.map(&track_summary/1)
 
@@ -186,6 +188,7 @@ defmodule Streamix.Gindex.MetadataProbe do
 
   defp track_summary(stream) do
     tags = stream["tags"] || %{}
+    disposition = stream["disposition"] || %{}
 
     %{
       index: stream["index"],
@@ -193,18 +196,15 @@ defmodule Streamix.Gindex.MetadataProbe do
       language: tags["language"] || tags["LANGUAGE"] || "und",
       title: tags["title"] || tags["TITLE"],
       channels: stream["channels"],
-      default: stream["disposition"]["default"] == 1,
-      forced: stream["disposition"]["forced"] == 1
+      default: disposition["default"] == 1,
+      forced: disposition["forced"] == 1
     }
   end
 
-  defp persist(row, tracks) do
-    row
-    |> Ecto.Changeset.change(track_metadata: tracks)
-    |> Repo.update()
-    |> case do
-      {:ok, _} -> :ok
-      {:error, changeset} -> Logger.warning("MetadataProbe persist failed: #{inspect(changeset)}")
+  defp persist(type, id, tracks) do
+    case Iptv.put_media_track_metadata(type, id, tracks) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("MetadataProbe persist failed: #{inspect(reason)}")
     end
   end
 

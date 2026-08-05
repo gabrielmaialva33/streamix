@@ -11,7 +11,7 @@ defmodule Streamix.Gindex.SyncPlanner do
   can evolve without dragging the legacy monolithic syncer with it.
   """
 
-  alias Streamix.Iptv.{Provider, Providers}
+  alias Streamix.Iptv
 
   @type kind :: :movies | :series | :animes
   @type root :: %{base_url: String.t(), path: String.t(), kind: kind()}
@@ -31,13 +31,17 @@ defmodule Streamix.Gindex.SyncPlanner do
   @doc """
   Returns the list of scan roots for a provider. Preloads `:drives` if needed.
   """
-  @spec roots_for(Provider.t(), Date.t()) :: [root()]
-  def roots_for(%Provider{} = provider, date \\ Date.utc_today()) do
-    provider = Providers.preload_drives(provider)
-    base_url = provider.gindex_url || provider.url
+  @spec roots_for(term(), Date.t()) :: [root()]
+  def roots_for(provider, date \\ Date.utc_today()) do
+    case Iptv.gindex_sync_source(provider) do
+      {:ok, source} -> roots_for_source(source, date)
+      {:error, :not_gindex_provider} -> raise ArgumentError, "expected a GIndex provider"
+    end
+  end
 
+  defp roots_for_source(source, date) do
     configured =
-      provider.drives
+      source.drives
       |> Enum.flat_map(&drive_to_roots/1)
 
     roots =
@@ -48,7 +52,7 @@ defmodule Streamix.Gindex.SyncPlanner do
 
     roots
     |> rotate_for_date(date)
-    |> Enum.map(&Map.put(&1, :base_url, base_url))
+    |> Enum.map(&Map.put(&1, :base_url, source.base_url))
   end
 
   defp rotate_for_date(roots, %Date{} = date) do
@@ -57,7 +61,7 @@ defmodule Streamix.Gindex.SyncPlanner do
     after_offset ++ before
   end
 
-  defp drive_to_roots(%{drive_type: kind_str, metadata: %{"paths" => paths}})
+  defp drive_to_roots(%{kind: kind_str, metadata: %{"paths" => paths}})
        when is_binary(kind_str) and is_list(paths) do
     case kind_atom(kind_str) do
       nil ->
@@ -71,7 +75,7 @@ defmodule Streamix.Gindex.SyncPlanner do
     end
   end
 
-  defp drive_to_roots(%{drive_type: kind_str, metadata: %{"path" => path}})
+  defp drive_to_roots(%{kind: kind_str, metadata: %{"path" => path}})
        when is_binary(kind_str) and is_binary(path) and path != "" do
     case kind_atom(kind_str) do
       nil -> []

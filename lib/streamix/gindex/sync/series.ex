@@ -5,13 +5,12 @@ defmodule Streamix.Gindex.Sync.Series do
 
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.Persistence
-  alias Streamix.Iptv.Provider
 
   require Logger
 
   @default_batch_size 5
 
-  def sync(%Provider{} = provider, base_url, series_paths, opts \\ []) do
+  def sync(%{provider_id: _provider_id} = source, base_url, series_paths, opts \\ []) do
     Logger.info("[GIndex Sync] Starting series sync from #{length(series_paths)} paths")
 
     checkpoint = Keyword.get(opts, :checkpoint)
@@ -19,7 +18,7 @@ defmodule Streamix.Gindex.Sync.Series do
 
     Enum.reduce_while(series_paths, {:ok, %{series_count: 0, episodes_count: 0}}, fn path,
                                                                                      {:ok, acc} ->
-      case sync_path(provider, base_url, path, checkpoint, runtime) do
+      case sync_path(source, base_url, path, checkpoint, runtime) do
         {:ok, stats} ->
           {:cont,
            {:ok,
@@ -39,12 +38,13 @@ defmodule Streamix.Gindex.Sync.Series do
       {:error, e}
   end
 
-  def upsert_batch(%Provider{} = provider, series_list) when is_list(series_list) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+  def upsert_batch(%{provider_id: _provider_id} = source, series_list)
+      when is_list(series_list) do
+    now = DateTime.utc_now(:second)
 
     Enum.reduce_while(series_list, {:ok, %{series_count: 0, episodes_count: 0}}, fn
       series_data, {:ok, acc} ->
-        case Persistence.upsert_series_content(provider, series_data, now) do
+        case Persistence.upsert_series_content(source, series_data, now) do
           {:ok, episode_count} ->
             {:cont,
              {:ok,
@@ -73,7 +73,7 @@ defmodule Streamix.Gindex.Sync.Series do
     }
   end
 
-  defp sync_path(provider, base_url, path, checkpoint, runtime) do
+  defp sync_path(source, base_url, path, checkpoint, runtime) do
     with {:ok, folders} <- runtime.list_fun.(base_url, path) do
       # GIndex doesn't promise listing order. A stable path sort keeps the
       # cursor deterministic across quota windows even when an endpoint
@@ -86,40 +86,40 @@ defmodule Streamix.Gindex.Sync.Series do
           "#{length(pending_folders)} pending"
       )
 
-      sync_folders(provider, base_url, path, pending_folders, runtime)
+      sync_folders(source, base_url, path, pending_folders, runtime)
     end
   end
 
-  defp sync_folders(provider, base_url, path, folders, runtime) do
+  defp sync_folders(source, base_url, path, folders, runtime) do
     folders
     |> Enum.reduce_while({:ok, empty_state()}, fn folder, state ->
-      process_folder(provider, base_url, path, folder, state, runtime)
+      process_folder(source, base_url, path, folder, state, runtime)
     end)
-    |> finalize_path(provider, path, runtime)
+    |> finalize_path(source, path, runtime)
   end
 
-  defp process_folder(provider, base_url, path, folder, {:ok, state}, runtime) do
+  defp process_folder(source, base_url, path, folder, {:ok, state}, runtime) do
     case runtime.scrape_fun.(base_url, folder) do
       {:ok, series} ->
-        continue_or_flush(provider, path, folder, series, state, runtime)
+        continue_or_flush(source, path, folder, series, state, runtime)
 
       :empty ->
-        continue_or_flush(provider, path, folder, nil, state, runtime)
+        continue_or_flush(source, path, folder, nil, state, runtime)
 
       {:error, reason} ->
-        halt_after_flush(provider, path, state, reason, runtime)
+        halt_after_flush(source, path, state, reason, runtime)
     end
   end
 
-  defp halt_after_flush(provider, path, state, reason, runtime) do
-    case flush_pending(provider, path, state, runtime) do
+  defp halt_after_flush(source, path, state, reason, runtime) do
+    case flush_pending(source, path, state, runtime) do
       {:ok, _state} -> {:halt, {:error, reason}}
       {:error, _reason} = error -> {:halt, error}
     end
   end
 
-  defp finalize_path({:ok, state}, provider, path, runtime) do
-    case flush_pending(provider, path, state, runtime) do
+  defp finalize_path({:ok, state}, source, path, runtime) do
+    case flush_pending(source, path, state, runtime) do
       {:ok, flushed} ->
         {:ok,
          %{
@@ -132,17 +132,17 @@ defmodule Streamix.Gindex.Sync.Series do
     end
   end
 
-  defp finalize_path({:error, _reason} = error, _provider, _path, _runtime), do: error
+  defp finalize_path({:error, _reason} = error, _source, _path, _runtime), do: error
 
   defp empty_state do
     %{pending: [], series_count: 0, episodes_count: 0}
   end
 
-  defp continue_or_flush(provider, path, folder, series, state, runtime) do
+  defp continue_or_flush(source, path, folder, series, state, runtime) do
     state = %{state | pending: state.pending ++ [{folder_path(folder), series}]}
 
     if length(state.pending) >= runtime.batch_size do
-      case flush_pending(provider, path, state, runtime) do
+      case flush_pending(source, path, state, runtime) do
         {:ok, flushed} -> {:cont, {:ok, flushed}}
         {:error, _reason} = error -> {:halt, error}
       end
@@ -151,16 +151,16 @@ defmodule Streamix.Gindex.Sync.Series do
     end
   end
 
-  defp flush_pending(_provider, _path, %{pending: []} = state, _runtime),
+  defp flush_pending(_source, _path, %{pending: []} = state, _runtime),
     do: {:ok, state}
 
-  defp flush_pending(provider, path, state, runtime) do
+  defp flush_pending(source, path, state, runtime) do
     series_list =
       state.pending
       |> Enum.map(&elem(&1, 1))
       |> Enum.reject(&is_nil/1)
 
-    with {:ok, stats} <- persist_series(provider, series_list, runtime.persist_fun),
+    with {:ok, stats} <- persist_series(source, series_list, runtime.persist_fun),
          checkpoint = %{
            "root_path" => path,
            "folder_path" => state.pending |> List.last() |> elem(0)
@@ -176,11 +176,11 @@ defmodule Streamix.Gindex.Sync.Series do
     end
   end
 
-  defp persist_series(_provider, [], _persist_fun),
+  defp persist_series(_source, [], _persist_fun),
     do: {:ok, %{series_count: 0, episodes_count: 0}}
 
-  defp persist_series(provider, series_list, persist_fun) do
-    persist_fun.(provider, series_list)
+  defp persist_series(source, series_list, persist_fun) do
+    persist_fun.(source, series_list)
   end
 
   defp persist_checkpoint(checkpoint_fun, checkpoint) do

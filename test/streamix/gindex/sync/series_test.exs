@@ -2,9 +2,7 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
   use ExUnit.Case, async: true
 
   alias Streamix.Gindex.Sync.Series
-  alias Streamix.Iptv.Provider
-
-  @provider %Provider{id: 42}
+  @source %{provider_id: 42}
   @base_url "https://gindex.example"
   @root_path "/1:/Series/"
 
@@ -22,7 +20,7 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     end
 
     assert {:error, {:quota_exhausted, 8_000}} =
-             Series.sync(@provider, @base_url, [@root_path],
+             Series.sync(@source, @base_url, [@root_path],
                list_fun: fn _base_url, @root_path -> {:ok, folders} end,
                scrape_fun: scrape_fun,
                persist_fun: persist_fun(parent),
@@ -53,7 +51,7 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     checkpoint = %{"root_path" => @root_path, "folder_path" => "/a/"}
 
     assert {:ok, %{series_count: 1, episodes_count: 3}} =
-             Series.sync(@provider, @base_url, [@root_path],
+             Series.sync(@source, @base_url, [@root_path],
                checkpoint: checkpoint,
                batch_size: 2,
                list_fun: fn _base_url, @root_path -> {:ok, folders} end,
@@ -74,7 +72,7 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     parent = self()
 
     assert {:error, :database_unavailable} =
-             Series.sync(@provider, @base_url, [@root_path],
+             Series.sync(@source, @base_url, [@root_path],
                list_fun: fn _base_url, @root_path -> {:ok, folders(["a"])} end,
                scrape_fun: fn _base_url, _folder ->
                  {:ok, %{name: "A", episode_count: 1}}

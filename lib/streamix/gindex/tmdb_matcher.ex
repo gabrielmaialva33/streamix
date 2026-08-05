@@ -21,7 +21,7 @@ defmodule Streamix.Gindex.TmdbMatcher do
   wildly unrelated posters.
   """
 
-  alias Streamix.Iptv.TmdbClient
+  alias Streamix.Iptv
 
   @min_score 500
 
@@ -51,7 +51,6 @@ defmodule Streamix.Gindex.TmdbMatcher do
         {:miss, :low_score}
       end
     else
-      {:ok, []} -> {:miss, :no_results}
       [] -> {:miss, :no_results}
       {:error, reason} -> {:miss, reason}
     end
@@ -84,8 +83,7 @@ defmodule Streamix.Gindex.TmdbMatcher do
     end
   end
 
-  defp do_search(:movie, query, opts), do: TmdbClient.search_movie(query, opts)
-  defp do_search(:series, query, opts), do: TmdbClient.search_series(query, opts)
+  defp do_search(kind, query, opts), do: Iptv.search_tmdb(kind, query, opts)
 
   # Normalize the two TMDB endpoints into a common candidate shape.
   # `movie` uses title/release_date, `tv` uses name/first_air_date.

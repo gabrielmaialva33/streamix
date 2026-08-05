@@ -3,23 +3,19 @@ defmodule Streamix.Gindex.Sync.Movies do
   Movie synchronization for GIndex providers.
   """
 
-  import Ecto.Query, warn: false
-
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.Normalizers.Movie, as: MovieNormalizer
-  alias Streamix.Iptv.{Movie, Provider}
-  alias Streamix.Iptv.Sync.Helpers
-  alias Streamix.Repo
+  alias Streamix.Iptv
 
   require Logger
 
   @batch_size 25
 
-  def sync(%Provider{} = provider, base_url, movies_path) do
+  def sync(%{provider_id: _provider_id} = source, base_url, movies_path) do
     result =
       base_url
       |> Scraper.scrape_movies(movies_path)
-      |> consume_stream(provider)
+      |> consume_stream(source)
 
     case result do
       {:error, reason} ->
@@ -51,7 +47,7 @@ defmodule Streamix.Gindex.Sync.Movies do
       {:error, e}
   end
 
-  defp consume_stream(stream, provider) do
+  defp consume_stream(stream, source) do
     stream
     |> Enum.reduce_while({[], 0, 0, 0}, fn
       {:gindex_error, reason}, _acc ->
@@ -62,7 +58,7 @@ defmodule Streamix.Gindex.Sync.Movies do
 
         if length(batch) == @batch_size do
           {count, batches, failures} =
-            persist_batch(provider, Enum.reverse(batch), count, batches, failures)
+            persist_batch(source, Enum.reverse(batch), count, batches, failures)
 
           {:cont, {[], count, batches, failures}}
         else
@@ -78,65 +74,43 @@ defmodule Streamix.Gindex.Sync.Movies do
 
       {batch, count, batches, failures} ->
         {count, batches, failures} =
-          persist_batch(provider, Enum.reverse(batch), count, batches, failures)
+          persist_batch(source, Enum.reverse(batch), count, batches, failures)
 
         {:ok, count, batches, failures}
     end
   end
 
-  defp persist_batch(provider, batch, count, batches, failures) do
-    case upsert_batch(provider, batch) do
+  defp persist_batch(source, batch, count, batches, failures) do
+    case upsert_batch(source, batch) do
       {:ok, inserted} -> {count + inserted, batches + 1, failures}
       {:error, _reason} -> {count, batches + 1, failures + 1}
     end
   end
 
-  def sync_category(%Provider{} = provider, base_url, category_path) do
+  def sync_category(%{provider_id: _provider_id} = source, base_url, category_path) do
     case Scraper.scrape_category(base_url, category_path) do
-      {:ok, movies} -> upsert_batch(provider, movies)
+      {:ok, movies} -> upsert_batch(source, movies)
       {:error, reason} -> {:error, reason}
     end
   end
 
-  def upsert_batch(%Provider{} = provider, movies) when is_list(movies) do
+  def upsert_batch(%{provider_id: provider_id}, movies) when is_list(movies) do
     movies = Enum.uniq_by(movies, & &1.stream_id)
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-    stream_ids = Enum.map(movies, & &1.stream_id)
-    existing_ci_map = existing_catalog_items(provider.id, stream_ids)
-    new_sids = Enum.reject(stream_ids, &Map.has_key?(existing_ci_map, &1))
-    new_ci_ids = Helpers.pre_create_catalog_items(length(new_sids), "movie", provider.id, now)
-    ci_map = Map.merge(existing_ci_map, Enum.zip(new_sids, new_ci_ids) |> Map.new())
+    now = DateTime.utc_now(:second)
+    entries = Enum.map(movies, &MovieNormalizer.attrs/1)
 
-    entries =
-      Enum.map(movies, fn movie ->
-        MovieNormalizer.attrs(movie, provider, ci_map[movie.stream_id], now)
-      end)
-
-    conflict_opts = [
-      on_conflict:
-        {:replace, [:name, :title, :year, :container_extension, :gindex_path, :updated_at]},
-      conflict_target: [:provider_id, :stream_id]
-    ]
-
-    case Repo.insert_all(Movie, entries, conflict_opts) do
-      {count, _} ->
+    case Iptv.upsert_gindex_movies(provider_id, entries, now) do
+      {:ok, count} ->
         Logger.debug("[GIndex Sync] Upserted #{count} movies")
         {:ok, count}
+
+      {:error, reason} ->
+        Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(reason)}")
+        {:error, reason}
     end
   rescue
     e ->
       Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(e)}")
       {:error, e}
-  end
-
-  defp existing_catalog_items(_provider_id, []), do: %{}
-
-  defp existing_catalog_items(provider_id, stream_ids) do
-    Movie
-    |> where(provider_id: ^provider_id)
-    |> where([m], m.stream_id in ^stream_ids)
-    |> select([m], {m.stream_id, m.catalog_item_id})
-    |> Repo.all()
-    |> Map.new()
   end
 end

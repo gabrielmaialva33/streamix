@@ -5,19 +5,18 @@ defmodule Streamix.Gindex.Sync.Animes do
 
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.Persistence
-  alias Streamix.Iptv.Provider
 
   require Logger
 
   @series_batch_size 5
 
-  def sync(%Provider{} = provider, base_url, animes_path) do
+  def sync(%{provider_id: _provider_id} = source, base_url, animes_path) do
     Logger.info("[GIndex Sync] Starting anime sync from: #{animes_path}")
 
     case Scraper.scrape_animes(base_url, animes_path) do
       {:ok, animes_list} ->
         Logger.info("[GIndex Sync] Found #{length(animes_list)} animes to sync")
-        process_batches(provider, animes_list)
+        process_batches(source, animes_list)
 
       {:error, reason} ->
         # Propagate. Old path returned {:ok, count: 0} which made the
@@ -28,45 +27,58 @@ defmodule Streamix.Gindex.Sync.Animes do
         {:error, reason}
     end
   rescue
-    e ->
-      Logger.error("[GIndex Sync] Error during anime sync: #{inspect(e)}")
-      {:ok, %{animes_count: 0, episodes_count: 0}}
+    error ->
+      Logger.error("[GIndex Sync] Error during anime sync: #{inspect(error)}")
+      {:error, error}
   end
 
-  def upsert_batch(%Provider{} = provider, animes_list) when is_list(animes_list) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+  def upsert_batch(%{provider_id: _provider_id} = source, animes_list)
+      when is_list(animes_list) do
+    now = DateTime.utc_now(:second)
 
-    total_episodes =
-      Enum.reduce(animes_list, 0, fn anime_data, acc ->
-        case Persistence.upsert_series_content(provider, anime_data, now, type_label: "anime") do
-          {:ok, episode_count} -> acc + episode_count
-          {:error, _} -> acc
+    Enum.reduce_while(
+      animes_list,
+      {:ok, %{animes_count: 0, episodes_count: 0}},
+      fn anime_data, {:ok, stats} ->
+        case Persistence.upsert_series_content(source, anime_data, now, type_label: "anime") do
+          {:ok, episode_count} ->
+            {:cont,
+             {:ok,
+              %{
+                animes_count: stats.animes_count + 1,
+                episodes_count: stats.episodes_count + episode_count
+              }}}
+
+          {:error, reason} ->
+            {:halt, {:error, reason}}
         end
-      end)
-
-    {:ok, %{animes_count: length(animes_list), episodes_count: total_episodes}}
+      end
+    )
   rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert anime batch: #{inspect(e)}")
-      {:error, e}
+    error ->
+      Logger.error("[GIndex Sync] Failed to upsert anime batch: #{inspect(error)}")
+      {:error, error}
   end
 
-  defp process_batches(provider, animes_list) do
-    {total_animes, total_episodes} =
-      animes_list
-      |> Enum.chunk_every(@series_batch_size)
-      |> Enum.reduce({0, 0}, &process_batch(provider, &1, &2))
+  defp process_batches(source, animes_list) do
+    animes_list
+    |> Enum.chunk_every(@series_batch_size)
+    |> Enum.reduce_while(
+      {:ok, %{animes_count: 0, episodes_count: 0}},
+      fn batch, {:ok, totals} ->
+        case upsert_batch(source, batch) do
+          {:ok, stats} ->
+            {:cont,
+             {:ok,
+              %{
+                animes_count: totals.animes_count + stats.animes_count,
+                episodes_count: totals.episodes_count + stats.episodes_count
+              }}}
 
-    {:ok, %{animes_count: total_animes, episodes_count: total_episodes}}
-  end
-
-  defp process_batch(provider, batch, {animes_acc, episodes_acc}) do
-    case upsert_batch(provider, batch) do
-      {:ok, %{animes_count: count, episodes_count: episode_count}} ->
-        {animes_acc + count, episodes_acc + episode_count}
-
-      {:error, _} ->
-        {animes_acc, episodes_acc}
-    end
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+      end
+    )
   end
 end

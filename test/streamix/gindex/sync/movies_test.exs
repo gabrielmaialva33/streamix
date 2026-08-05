@@ -9,7 +9,7 @@ defmodule Streamix.Gindex.Sync.MoviesTest do
     provider = gindex_provider()
     movie = movie_data(42)
 
-    assert {:ok, 1} = Movies.upsert_batch(provider, [movie, movie])
+    assert {:ok, 1} = Movies.upsert_batch(%{provider_id: provider.id}, [movie, movie])
 
     assert Repo.aggregate(Movie, :count) == 1
 
