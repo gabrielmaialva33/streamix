@@ -5,23 +5,11 @@ defmodule Streamix.ContextBoundariesTest do
 
   # Existing violations are an explicit debt ledger. New entries fail CI, and
   # removing an old violation also fails until this list is ratcheted down.
-  @baseline MapSet.new([
-              "lib/streamix/iptv/streaming/stream_proxy.ex alias Streamix.Gindex.UrlCache",
-              "lib/streamix/iptv/sync/cleanup.ex alias Streamix.WatchParty.Room",
-              "lib/streamix/iptv/tmdb_client/transport.ex alias Streamix.Gindex.Pacer",
-              "lib/streamix/watch_party/room.ex alias Streamix.Iptv.CatalogItem"
-            ])
+  @baseline MapSet.new()
 
   # Fully-qualified references bypass `alias` declarations, so keep their debt
   # separate and ratcheted with the same rules.
-  @direct_reference_baseline MapSet.new([
-                               "lib/streamix/ai/semantic_search.ex reference Streamix.Iptv.Movie",
-                               "lib/streamix/ai/semantic_search.ex reference Streamix.Iptv.Provider",
-                               "lib/streamix/ai/semantic_search.ex reference Streamix.Iptv.Series",
-                               "lib/streamix/watch_party/message.ex reference Streamix.Accounts.User",
-                               "lib/streamix/watch_party/participant.ex reference Streamix.Accounts.User",
-                               "lib/streamix/watch_party/room.ex reference Streamix.Accounts.User"
-                             ])
+  @direct_reference_baseline MapSet.new()
 
   test "web and contexts only alias another context through its public facade" do
     observed = observed_violations()
