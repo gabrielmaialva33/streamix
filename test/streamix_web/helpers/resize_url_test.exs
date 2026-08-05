@@ -11,12 +11,12 @@ defmodule StreamixWeb.Helpers.ResizeUrlTest do
       url = "https://tmdb.mahina.cloud/t/p/w780/foo bar.jpg"
       out = ResizeUrl.flatten("poster", url, [240, 480, 720])
 
-      assert Map.keys(out) |> Enum.sort() == [:poster_w240, :poster_w480, :poster_w720]
-      assert out.poster_w240 =~ "/api/v1/catalog/images/resize?"
-      assert out.poster_w240 =~ "w=240"
+      assert Map.keys(out) |> Enum.sort() == ["poster_w240", "poster_w480", "poster_w720"]
+      assert out["poster_w240"] =~ "/api/v1/catalog/images/resize?"
+      assert out["poster_w240"] =~ "w=240"
       # `URI.encode_www_form/1` encodes space as `+` and `/` as %2F — the
       # important thing is that raw `/` doesn't leak through.
-      refute String.contains?(out.poster_w720, "/foo bar")
+      refute String.contains?(out["poster_w720"], "/foo bar")
     end
 
     test "returns an empty map for nil/empty urls" do
@@ -29,9 +29,9 @@ defmodule StreamixWeb.Helpers.ResizeUrlTest do
     test "keeps the raw url alongside the sized variants" do
       out = ResizeUrl.variants("https://example.test/a.jpg", [480, 720])
 
-      assert out.raw == "https://example.test/a.jpg"
-      assert out.w480 =~ "w=480"
-      assert out.w720 =~ "w=720"
+      assert out["raw"] == "https://example.test/a.jpg"
+      assert out["w480"] =~ "w=480"
+      assert out["w720"] =~ "w=720"
     end
   end
 end

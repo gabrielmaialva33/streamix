@@ -106,13 +106,9 @@ defmodule StreamixWeb.Catalog.StreamUrls do
 
   defp endpoint_url do
     :streamix
-    |> Application.get_env(endpoint_module(), [])
+    |> Application.get_env(StreamixWeb.Endpoint, [])
     |> Keyword.get(:url, [])
     |> url_from_endpoint_config()
-  end
-
-  defp endpoint_module do
-    Module.concat(["StreamixWeb", "Endpoint"])
   end
 
   defp url_from_endpoint_config(config) do
