@@ -10,6 +10,8 @@ defmodule Streamix.Iptv.EpgParser do
     full catalog. Used by `SyncEpgWorker`.
   """
 
+  alias Streamix.Iptv.EpgXmltvHandler
+
   @doc """
   Parses the short EPG API response (get_short_epg action).
   Returns a list of program maps ready for database insertion.
@@ -74,7 +76,7 @@ defmodule Streamix.Iptv.EpgParser do
     # with ~10x less memory, and is a pure-Elixir streaming parser.
     initial = %{programmes: [], current: nil, char_buf: nil}
 
-    case Saxy.parse_string(xml, __MODULE__.XmltvHandler, initial) do
+    case Saxy.parse_string(xml, EpgXmltvHandler, initial) do
       {:ok, %{programmes: list}} ->
         grouped =
           list
@@ -92,159 +94,6 @@ defmodule Streamix.Iptv.EpgParser do
   catch
     :exit, reason -> {:error, {:xmltv_parse_failed, reason}}
   end
-
-  defmodule XmltvHandler do
-    @moduledoc false
-    @behaviour Saxy.Handler
-
-    alias Streamix.Iptv.EpgParser
-
-    @impl true
-    def handle_event(:start_document, _prolog, state), do: {:ok, state}
-
-    @impl true
-    def handle_event(:end_document, _data, state), do: {:ok, state}
-
-    @impl true
-    def handle_event(:start_element, {"programme", attrs}, state) do
-      programme = %{
-        channel_external_id: attr(attrs, "channel"),
-        start_time: attrs |> attr("start") |> EpgParser.public_parse_xmltv_datetime(),
-        end_time: attrs |> attr("stop") |> EpgParser.public_parse_xmltv_datetime()
-      }
-
-      {:ok, %{state | current: programme, char_buf: nil}}
-    end
-
-    def handle_event(:start_element, {name, attrs}, %{current: cur} = state)
-        when not is_nil(cur) do
-      case name do
-        "icon" ->
-          {:ok, %{state | current: Map.put(cur, :icon, attr(attrs, "src")), char_buf: nil}}
-
-        "title" ->
-          # XMLTV often has <title> and <sub-title>; keep only the first.
-          cur =
-            if Map.has_key?(cur, :lang), do: cur, else: Map.put(cur, :lang, attr(attrs, "lang"))
-
-          {:ok, %{state | current: cur, char_buf: []}}
-
-        n when n in ["desc", "category", "sub-title", "episode-num"] ->
-          {:ok, %{state | char_buf: []}}
-
-        _ ->
-          {:ok, %{state | char_buf: nil}}
-      end
-    end
-
-    def handle_event(:start_element, _, state), do: {:ok, state}
-
-    @impl true
-    def handle_event(:characters, chars, %{char_buf: buf} = state) when is_list(buf) do
-      {:ok, %{state | char_buf: [chars | buf]}}
-    end
-
-    def handle_event(:characters, _chars, state), do: {:ok, state}
-
-    @impl true
-    def handle_event(:end_element, "programme", %{current: cur} = state) when not is_nil(cur) do
-      {:ok, %{state | programmes: [cur | state.programmes], current: nil, char_buf: nil}}
-    end
-
-    def handle_event(:end_element, name, %{current: cur, char_buf: buf} = state)
-        when not is_nil(cur) and is_list(buf) do
-      key =
-        case name do
-          "title" -> :title
-          "sub-title" -> :sub_title
-          "desc" -> :description
-          "category" -> :category
-          "episode-num" -> :episode_num
-          _ -> nil
-        end
-
-      cur = if key, do: Map.put_new(cur, key, flush_buf(buf)), else: cur
-      {:ok, %{state | current: cur, char_buf: nil}}
-    end
-
-    def handle_event(:end_element, _name, state), do: {:ok, %{state | char_buf: nil}}
-
-    @impl true
-    def handle_event(:cdata, chars, %{char_buf: buf} = state) when is_list(buf) do
-      {:ok, %{state | char_buf: [chars | buf]}}
-    end
-
-    def handle_event(:cdata, _chars, state), do: {:ok, state}
-
-    defp attr(attrs, key) do
-      case Enum.find(attrs, fn {k, _v} -> k == key end) do
-        {_, v} -> v
-        _ -> nil
-      end
-    end
-
-    defp flush_buf(buf) do
-      buf
-      |> Enum.reverse()
-      |> IO.iodata_to_binary()
-      |> String.trim()
-      |> case do
-        "" -> nil
-        s -> s
-      end
-    end
-  end
-
-  # Public wrapper so the SAX handler module (which can't import private
-  # functions) can hit the datetime parser.
-  @doc false
-  def public_parse_xmltv_datetime(s), do: parse_xmltv_datetime(s)
-
-  # XMLTV datetime: "20260503040000 -0300" or "20260503040000"
-  defp parse_xmltv_datetime(nil), do: nil
-  defp parse_xmltv_datetime(""), do: nil
-
-  defp parse_xmltv_datetime(str) when is_binary(str) do
-    case Regex.run(
-           ~r/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-])(\d{2})(\d{2}))?$/,
-           String.trim(str)
-         ) do
-      [_, y, mo, d, h, mi, s] ->
-        build_dt(%{y: y, mo: mo, d: d, h: h, mi: mi, s: s, sign: "+", oh: "00", om: "00"})
-
-      [_, y, mo, d, h, mi, s, sign, oh, om] ->
-        build_dt(%{y: y, mo: mo, d: d, h: h, mi: mi, s: s, sign: sign, oh: oh, om: om})
-
-      _ ->
-        nil
-    end
-  end
-
-  defp build_dt(%{y: y, mo: mo, d: d, h: h, mi: mi, s: s, sign: sign, oh: oh, om: om}) do
-    case NaiveDateTime.new(
-           String.to_integer(y),
-           String.to_integer(mo),
-           String.to_integer(d),
-           String.to_integer(h),
-           String.to_integer(mi),
-           String.to_integer(s)
-         ) do
-      {:ok, naive} ->
-        offset_seconds =
-          (String.to_integer(oh) * 3600 + String.to_integer(om) * 60) * sign_multiplier(sign)
-
-        # Local time in XMLTV → convert to UTC by subtracting the offset.
-        naive
-        |> DateTime.from_naive!("Etc/UTC")
-        |> DateTime.add(-offset_seconds, :second)
-
-      _ ->
-        nil
-    end
-  end
-
-  defp sign_multiplier("-"), do: -1
-  defp sign_multiplier(_), do: 1
 
   defp parse_listing(item) when is_map(item) do
     %{

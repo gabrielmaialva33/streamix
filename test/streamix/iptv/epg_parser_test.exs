@@ -91,6 +91,45 @@ defmodule Streamix.Iptv.EpgParserTest do
     end
   end
 
+  describe "parse_xmltv/1" do
+    test "streams programmes, preserves metadata and applies the XMLTV timezone offset" do
+      xml = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <tv>
+        <programme channel="globortv.br"
+                   start="20260503040000 -0300"
+                   stop="20260503050000 -0300">
+          <title lang="pt-BR"><![CDATA[Jornal Hoje]]></title>
+          <sub-title>Edição de domingo</sub-title>
+          <desc>Resumo do dia</desc>
+          <category>Notícias</category>
+          <episode-num system="onscreen">12</episode-num>
+          <icon src="https://example.test/programme.jpg" />
+        </programme>
+        <programme channel="ignored" start="invalid" stop="invalid">
+          <title>Sem horário</title>
+        </programme>
+      </tv>
+      """
+
+      assert {:ok, %{"globortv.br" => [programme]}} = EpgParser.parse_xmltv(xml)
+      assert programme.title == "Jornal Hoje"
+      assert programme.sub_title == "Edição de domingo"
+      assert programme.description == "Resumo do dia"
+      assert programme.category == "Notícias"
+      assert programme.episode_num == "12"
+      assert programme.lang == "pt-BR"
+      assert programme.icon == "https://example.test/programme.jpg"
+      assert programme.start_time == ~U[2026-05-03 07:00:00Z]
+      assert programme.end_time == ~U[2026-05-03 08:00:00Z]
+    end
+
+    test "returns a tagged error for malformed XML" do
+      assert {:error, {:xmltv_parse_failed, _reason}} =
+               EpgParser.parse_xmltv("<tv><programme></tv>")
+    end
+  end
+
   describe "decode_base64_field/1" do
     test "decodes valid base64 string" do
       encoded = Base.encode64("Hello World")
