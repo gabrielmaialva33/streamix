@@ -6,11 +6,6 @@ defmodule Streamix.ContextBoundariesTest do
   # Existing violations are an explicit debt ledger. New entries fail CI, and
   # removing an old violation also fails until this list is ratcheted down.
   @baseline MapSet.new([
-              "lib/streamix/iptv/engagement/favorite.ex alias Streamix.Accounts.User",
-              "lib/streamix/iptv/engagement/watch_event.ex alias Streamix.Accounts.User",
-              "lib/streamix/iptv/engagement/watch_progress.ex alias Streamix.Accounts.User",
-              "lib/streamix/iptv/providers/global_provider.ex alias Streamix.Accounts.User",
-              "lib/streamix/iptv/providers/provider.ex alias Streamix.Accounts.User",
               "lib/streamix/iptv/streaming/stream_proxy.ex alias Streamix.Gindex.UrlCache",
               "lib/streamix/iptv/sync/cleanup.ex alias Streamix.WatchParty.Room",
               "lib/streamix/iptv/tmdb_client/transport.ex alias Streamix.Gindex.Pacer",
