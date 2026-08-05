@@ -3,6 +3,7 @@ defmodule Streamix.AccessTest do
 
   alias Streamix.Access
   alias Streamix.Access.{Permission, RolePermission, UserPermission}
+  alias Streamix.Accounts.Role
   alias Streamix.AccountsFixtures
   alias Streamix.Iptv.LiveChannel
   alias Streamix.IptvFixtures
@@ -61,6 +62,20 @@ defmodule Streamix.AccessTest do
     |> Repo.insert!()
 
     assert Access.plays_global_content?(user, provider)
+  end
+
+  test "explicit permissions accept an account projection instead of depending on its schema" do
+    user = user_fixture()
+    permission = permission_fixture()
+
+    %UserPermission{}
+    |> UserPermission.changeset(%{user_id: user.id, permission_id: permission.id})
+    |> Repo.insert!()
+
+    assert Access.explicitly_permitted?(
+             %{id: user.id, role_id: user.role_id},
+             permission.name
+           )
   end
 
   test "explicit role permission grants play_global_content" do
@@ -146,5 +161,32 @@ defmodule Streamix.AccessTest do
              :count,
              :id
            ) == 1
+  end
+
+  test "permission schemas keep foreign keys without cross-context associations" do
+    assert UserPermission.__schema__(:type, :user_id) == :id
+    refute :user in UserPermission.__schema__(:associations)
+
+    assert RolePermission.__schema__(:type, :role_id) == :id
+    refute :role in RolePermission.__schema__(:associations)
+    refute :role_permissions in Role.__schema__(:associations)
+  end
+
+  test "permission changesets surface account foreign key violations" do
+    permission = permission_fixture()
+
+    assert {:error, user_changeset} =
+             %UserPermission{}
+             |> UserPermission.changeset(%{user_id: 0, permission_id: permission.id})
+             |> Repo.insert()
+
+    assert "does not exist" in errors_on(user_changeset).user_id
+
+    assert {:error, role_changeset} =
+             %RolePermission{}
+             |> RolePermission.changeset(%{role_id: 0, permission_id: permission.id})
+             |> Repo.insert()
+
+    assert "does not exist" in errors_on(role_changeset).role_id
   end
 end

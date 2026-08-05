@@ -7,10 +7,9 @@ defmodule Streamix.Access.RolePermission do
   import Ecto.Changeset
 
   alias Streamix.Access.Permission
-  alias Streamix.Accounts.Role
 
   schema "role_permissions" do
-    belongs_to :role, Role
+    field :role_id, :id
     belongs_to :permission, Permission
   end
 
@@ -19,7 +18,7 @@ defmodule Streamix.Access.RolePermission do
     |> cast(attrs, [:role_id, :permission_id])
     |> validate_required([:role_id, :permission_id])
     |> unique_constraint([:role_id, :permission_id])
-    |> assoc_constraint(:role)
+    |> foreign_key_constraint(:role_id)
     |> assoc_constraint(:permission)
   end
 end

@@ -7,7 +7,6 @@ defmodule Streamix.Access do
 
   alias Streamix.Access.{Permission, RolePermission, UserPermission}
   alias Streamix.Accounts
-  alias Streamix.Accounts.User
   alias Streamix.Billing
   alias Streamix.Iptv
   alias Streamix.Repo
@@ -41,14 +40,12 @@ defmodule Streamix.Access do
 
   def global_content?(_resource), do: false
 
-  def admin?(%User{} = user), do: Accounts.admin?(user)
-  def admin?(_user), do: false
+  def admin?(user), do: Accounts.admin?(user)
 
-  def subscribed?(%User{} = user), do: Billing.subscribed?(user)
-  def subscribed?(_user), do: false
+  def subscribed?(user), do: Billing.subscribed?(user)
 
-  def explicitly_permitted?(%User{id: user_id, role_id: role_id}, permission_name)
-      when is_binary(permission_name) do
+  def explicitly_permitted?(%{id: user_id, role_id: role_id}, permission_name)
+      when is_integer(user_id) and is_binary(permission_name) do
     permission_exists_for_user?(user_id, permission_name) or
       permission_exists_for_role?(role_id, permission_name)
   end
@@ -84,8 +81,9 @@ defmodule Streamix.Access do
   """
   def ensure_role_permissions!(role_name, permissions)
       when is_binary(role_name) and is_list(permissions) do
-    role = Accounts.get_role_by_name!(role_name)
-    ensure_role_permissions!(role.id, permissions)
+    role_name
+    |> Accounts.role_id_by_name!()
+    |> ensure_role_permissions!(permissions)
   end
 
   def ensure_role_permissions!(role_id, permissions)

@@ -7,10 +7,9 @@ defmodule Streamix.Access.UserPermission do
   import Ecto.Changeset
 
   alias Streamix.Access.Permission
-  alias Streamix.Accounts.User
 
   schema "user_permissions" do
-    belongs_to :user, User
+    field :user_id, :id
     belongs_to :permission, Permission
   end
 

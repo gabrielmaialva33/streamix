@@ -12,7 +12,6 @@ defmodule Streamix.Accounts.Role do
     field :description, :string
 
     has_many :users, Streamix.Accounts.User
-    has_many :role_permissions, Streamix.Access.RolePermission
 
     timestamps(type: :utc_datetime)
   end
