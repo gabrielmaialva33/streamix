@@ -6,9 +6,6 @@ defmodule Streamix.ContextBoundariesTest do
   # Existing violations are an explicit debt ledger. New entries fail CI, and
   # removing an old violation also fails until this list is ratcheted down.
   @baseline MapSet.new([
-              "lib/streamix/access.ex alias Streamix.Accounts.User",
-              "lib/streamix/access/role_permission.ex alias Streamix.Accounts.Role",
-              "lib/streamix/access/user_permission.ex alias Streamix.Accounts.User",
               "lib/streamix/billing/admin.ex alias Streamix.Accounts.User",
               "lib/streamix/billing/billing_customer.ex alias Streamix.Accounts.User",
               "lib/streamix/billing/checkout_session.ex alias Streamix.Accounts.User",
@@ -34,6 +31,17 @@ defmodule Streamix.ContextBoundariesTest do
               "lib/streamix/watch_party/room.ex alias Streamix.Iptv.CatalogItem"
             ])
 
+  # Fully-qualified references bypass `alias` declarations, so keep their debt
+  # separate and ratcheted with the same rules.
+  @direct_reference_baseline MapSet.new([
+                               "lib/streamix/ai/semantic_search.ex reference Streamix.Iptv.Movie",
+                               "lib/streamix/ai/semantic_search.ex reference Streamix.Iptv.Provider",
+                               "lib/streamix/ai/semantic_search.ex reference Streamix.Iptv.Series",
+                               "lib/streamix/watch_party/message.ex reference Streamix.Accounts.User",
+                               "lib/streamix/watch_party/participant.ex reference Streamix.Accounts.User",
+                               "lib/streamix/watch_party/room.ex reference Streamix.Accounts.User"
+                             ])
+
   test "web and contexts only alias another context through its public facade" do
     observed = observed_violations()
     observed_ids = observed |> Map.keys() |> MapSet.new()
@@ -50,6 +58,27 @@ defmodule Streamix.ContextBoundariesTest do
     assert MapSet.size(stale) == 0,
            """
            Context boundary debt was removed. Ratchet @baseline down:
+           #{stale |> Enum.sort() |> Enum.join("\n")}
+           """
+  end
+
+  test "web and contexts do not bypass facades with fully-qualified references" do
+    aliases = observed_violations()
+    observed = observed_direct_reference_violations(aliases)
+    observed_ids = observed |> Map.keys() |> MapSet.new()
+
+    unexpected = MapSet.difference(observed_ids, @direct_reference_baseline)
+    stale = MapSet.difference(@direct_reference_baseline, observed_ids)
+
+    assert MapSet.size(unexpected) == 0,
+           """
+           New fully-qualified cross-context references bypass public facades:
+           #{format_violations(unexpected, observed)}
+           """
+
+    assert MapSet.size(stale) == 0,
+           """
+           Fully-qualified context boundary debt was removed. Ratchet @direct_reference_baseline down:
            #{stale |> Enum.sort() |> Enum.join("\n")}
            """
   end
@@ -86,6 +115,40 @@ defmodule Streamix.ContextBoundariesTest do
         module ->
           id = "#{file} alias #{module}"
           Map.update(acc, id, [line], &[line | &1])
+      end
+    end)
+  end
+
+  defp observed_direct_reference_violations(aliases) do
+    "lib/**/*.ex"
+    |> Path.wildcard()
+    |> Enum.reduce(%{}, fn file, violations ->
+      case source_context(file) do
+        nil -> violations
+        source -> collect_direct_reference_violations(file, source, aliases, violations)
+      end
+    end)
+  end
+
+  defp collect_direct_reference_violations(file, source, aliases, violations) do
+    ast = file |> File.read!() |> Code.string_to_quoted!()
+
+    {_ast, references} =
+      Macro.prewalk(ast, [], fn
+        {:__aliases__, metadata, parts} = node, references ->
+          {node, [{metadata[:line], parts} | references]}
+
+        node, references ->
+          {node, references}
+      end)
+
+    Enum.reduce(references, violations, fn {line, parts}, acc ->
+      with module when not is_nil(module) <- forbidden_alias(source, parts),
+           false <- Map.has_key?(aliases, "#{file} alias #{module}") do
+        id = "#{file} reference #{module}"
+        Map.update(acc, id, [line], &[line | &1])
+      else
+        _ -> acc
       end
     end)
   end
