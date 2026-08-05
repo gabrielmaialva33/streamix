@@ -20,6 +20,16 @@ defmodule Streamix.Iptv.Providers do
   @global_provider_cache_key {:providers, :global}
   @global_provider_cache_ttl :timer.seconds(60)
 
+  @type gindex_drive :: %{kind: String.t(), metadata: map()}
+  @type gindex_sync_source :: %{
+          provider_id: pos_integer(),
+          name: String.t(),
+          base_url: String.t(),
+          drives: [gindex_drive()]
+        }
+
+  @gindex_sync_fields ~w(sync_status movies_count series_count vod_synced_at series_synced_at)a
+
   # =============================================================================
   # Listing
   # =============================================================================
@@ -113,6 +123,70 @@ defmodule Streamix.Iptv.Providers do
   """
   @spec preload_drives(Provider.t()) :: Provider.t()
   def preload_drives(%Provider{} = provider), do: Repo.preload(provider, :drives)
+
+  @doc """
+  Projects a GIndex provider into the data required by the GIndex context.
+
+  Credentials and the Ecto schema stay behind the IPTV boundary.
+  """
+  @spec gindex_sync_source(term()) ::
+          {:ok, gindex_sync_source()} | {:error, :not_gindex_provider}
+  def gindex_sync_source(%Provider{provider_type: :gindex} = provider) do
+    provider = preload_drives(provider)
+
+    source = %{
+      provider_id: provider.id,
+      name: provider.name,
+      base_url: provider.gindex_url || provider.url,
+      drives: Enum.map(provider.drives, &gindex_drive/1)
+    }
+
+    {:ok, source}
+  end
+
+  def gindex_sync_source(_provider), do: {:error, :not_gindex_provider}
+
+  @doc """
+  Persists the runtime state owned by a GIndex synchronization.
+
+  The provider is resolved by ID so callers do not need to retain or mutate an
+  IPTV schema struct.
+  """
+  @spec update_gindex_sync(pos_integer(), map()) ::
+          :ok
+          | {:error,
+             :gindex_provider_not_found
+             | {:invalid_gindex_sync_fields, [term()]}
+             | Ecto.Changeset.t()}
+  def update_gindex_sync(provider_id, attrs)
+      when is_integer(provider_id) and provider_id > 0 and is_map(attrs) do
+    case Map.keys(attrs) -- @gindex_sync_fields do
+      [] -> update_gindex_sync_fields(provider_id, attrs)
+      fields -> {:error, {:invalid_gindex_sync_fields, Enum.sort(fields)}}
+    end
+  end
+
+  def update_gindex_sync(_provider_id, _attrs), do: {:error, :gindex_provider_not_found}
+
+  defp update_gindex_sync_fields(provider_id, attrs) do
+    case Repo.get_by(Provider, id: provider_id, provider_type: :gindex) do
+      nil ->
+        {:error, :gindex_provider_not_found}
+
+      provider ->
+        provider
+        |> Provider.sync_changeset(attrs)
+        |> Repo.update()
+        |> case do
+          {:ok, _provider} -> :ok
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  defp gindex_drive(drive) do
+    %{kind: drive.drive_type, metadata: drive.metadata || %{}}
+  end
 
   @doc """
   Gets a provider owned by a specific user.

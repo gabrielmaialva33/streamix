@@ -2,7 +2,7 @@ defmodule Streamix.Iptv.ProvidersFacadeTest do
   use Streamix.DataCase, async: true
 
   alias Streamix.Iptv
-  alias Streamix.Iptv.Provider
+  alias Streamix.Iptv.{Provider, ProviderDrive}
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -191,6 +191,65 @@ defmodule Streamix.Iptv.ProvidersFacadeTest do
 
       assert {:ok, %Provider{}} = Iptv.delete_provider(provider)
       assert is_nil(Iptv.get_provider(provider.id))
+    end
+  end
+
+  describe "GIndex synchronization boundary" do
+    test "projects only the provider data required by GIndex" do
+      provider =
+        global_provider_fixture(%{
+          name: "GIndex Boundary",
+          provider_type: :gindex,
+          gindex_url: "https://sync.gindex.example"
+        })
+
+      %ProviderDrive{}
+      |> ProviderDrive.changeset(%{
+        provider_id: provider.id,
+        name: "Movies",
+        drive_type: "movies",
+        metadata: %{"path" => "/1:/Movies/"}
+      })
+      |> Repo.insert!()
+
+      assert {:ok, source} = Iptv.gindex_sync_source(provider)
+
+      assert source == %{
+               provider_id: provider.id,
+               name: "GIndex Boundary",
+               base_url: "https://sync.gindex.example",
+               drives: [%{kind: "movies", metadata: %{"path" => "/1:/Movies/"}}]
+             }
+
+      refute Map.has_key?(source, :password)
+      refute Map.has_key?(source, :username)
+    end
+
+    test "rejects non-GIndex providers and scopes runtime updates by adapter" do
+      user = user_fixture()
+      xtream_provider = provider_fixture(user)
+
+      assert {:error, :not_gindex_provider} = Iptv.gindex_sync_source(xtream_provider)
+
+      assert {:error, :gindex_provider_not_found} =
+               Iptv.update_gindex_sync(xtream_provider.id, %{sync_status: "syncing"})
+
+      gindex_provider = global_provider_fixture(%{provider_type: :gindex})
+
+      assert :ok =
+               Iptv.update_gindex_sync(gindex_provider.id, %{
+                 sync_status: "completed",
+                 movies_count: 12,
+                 series_count: 7
+               })
+
+      updated = Iptv.get_provider!(gindex_provider.id)
+      assert updated.sync_status == "completed"
+      assert updated.movies_count == 12
+      assert updated.series_count == 7
+
+      assert {:error, {:invalid_gindex_sync_fields, [:unknown_count]}} =
+               Iptv.update_gindex_sync(gindex_provider.id, %{unknown_count: 99})
     end
   end
 end

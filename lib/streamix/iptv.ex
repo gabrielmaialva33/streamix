@@ -42,6 +42,9 @@ defmodule Streamix.Iptv do
     Catalog,
     CatalogItem,
     Channels,
+    Content.GindexIngest,
+    Content.GindexStream,
+    Content.TrackMetadata,
     ContentRef,
     Epg,
     EpgProgram,
@@ -53,7 +56,8 @@ defmodule Streamix.Iptv do
     Provider,
     Providers,
     SeriesOps,
-    Sync
+    Sync,
+    TmdbClient
   }
 
   alias Streamix.Workers.UpdateUserProfileWorker
@@ -298,6 +302,24 @@ defmodule Streamix.Iptv do
     }
   end
 
+  @doc """
+  Persists normalized GIndex movie records without exposing IPTV schemas.
+  """
+  @spec upsert_gindex_movies(pos_integer(), [map()], DateTime.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  defdelegate upsert_gindex_movies(provider_id, movies, now),
+    to: GindexIngest,
+    as: :upsert_movies
+
+  @doc """
+  Persists one normalized GIndex series tree atomically.
+  """
+  @spec upsert_gindex_series(pos_integer(), map(), DateTime.t()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  defdelegate upsert_gindex_series(provider_id, content, now),
+    to: GindexIngest,
+    as: :upsert_series
+
   # =============================================================================
   # Episodes
   # =============================================================================
@@ -312,6 +334,45 @@ defmodule Streamix.Iptv do
   defdelegate fetch_episode_info(episode), to: SeriesOps
   defdelegate get_next_episode(episode_id), to: SeriesOps
 
+  # GIndex media-track probe boundary. Callers outside IPTV receive a small
+  # projection instead of depending on Movie/Episode schemas or Repo directly.
+  @spec get_media_track_source(:movie | :episode, pos_integer()) ::
+          {:ok,
+           %{
+             id: pos_integer(),
+             gindex_path: String.t() | nil,
+             track_metadata: map() | nil
+           }}
+          | {:error, :not_found | :unsupported_type}
+  defdelegate get_media_track_source(type, id), to: TrackMetadata, as: :get_source
+
+  @spec put_media_track_metadata(:movie | :episode, pos_integer(), term()) ::
+          :ok | {:error, :invalid_metadata | :not_found | :unsupported_type}
+  defdelegate put_media_track_metadata(type, id, metadata), to: TrackMetadata, as: :put
+
+  @type gindex_stream_source :: %{
+          base_url: String.t(),
+          path: String.t(),
+          cached_url: String.t() | nil,
+          cached_until: DateTime.t() | nil
+        }
+  @type gindex_stream_source_error ::
+          :movie_not_found
+          | :episode_not_found
+          | :not_gindex_movie
+          | :not_gindex_episode
+          | :unsupported_type
+
+  @spec get_gindex_stream_source(:movie | :episode, pos_integer()) ::
+          {:ok, gindex_stream_source()} | {:error, gindex_stream_source_error()}
+  defdelegate get_gindex_stream_source(type, id), to: GindexStream, as: :get_source
+
+  @spec put_gindex_stream_cache(:movie | :episode, pos_integer(), String.t(), DateTime.t()) ::
+          :ok | {:error, :invalid_cache | :not_found | :unsupported_type}
+  defdelegate put_gindex_stream_cache(type, id, url, expires_at),
+    to: GindexStream,
+    as: :put_cache
+
   # =============================================================================
   # Providers
   # =============================================================================
@@ -322,6 +383,27 @@ defmodule Streamix.Iptv do
   defdelegate get_provider!(id), to: Providers, as: :get!
   defdelegate get_provider(id), to: Providers, as: :get
   defdelegate preload_provider_drives(provider), to: Providers, as: :preload_drives
+
+  @type gindex_sync_drive :: %{kind: String.t(), metadata: map()}
+  @type gindex_sync_source :: %{
+          provider_id: pos_integer(),
+          name: String.t(),
+          base_url: String.t(),
+          drives: [gindex_sync_drive()]
+        }
+
+  @spec gindex_sync_source(term()) ::
+          {:ok, gindex_sync_source()} | {:error, :not_gindex_provider}
+  defdelegate gindex_sync_source(provider), to: Providers
+
+  @spec update_gindex_sync(pos_integer(), map()) ::
+          :ok
+          | {:error,
+             :gindex_provider_not_found
+             | {:invalid_gindex_sync_fields, [term()]}
+             | Ecto.Changeset.t()}
+  defdelegate update_gindex_sync(provider_id, attrs), to: Providers
+
   defdelegate get_user_provider(user_id, provider_id), to: Providers
   defdelegate get_public_provider(provider_id), to: Providers, as: :get_public
   defdelegate get_global_provider(), to: Providers, as: :get_global
@@ -394,6 +476,14 @@ defmodule Streamix.Iptv do
   defdelegate backdrop_urls(content), to: Assets
   defdelegate image_urls(content), to: Assets
   defdelegate has_images?(content), to: Assets
+
+  @type tmdb_kind :: :movie | :series
+
+  @spec search_tmdb(tmdb_kind(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def search_tmdb(kind, query, opts \\ [])
+
+  def search_tmdb(:movie, query, opts), do: TmdbClient.search_movie(query, opts)
+  def search_tmdb(:series, query, opts), do: TmdbClient.search_series(query, opts)
 
   defdelegate catalog_item_content(catalog_item), to: CatalogItem, as: :content
   defdelegate catalog_item_content_name(catalog_item), to: CatalogItem, as: :content_name
