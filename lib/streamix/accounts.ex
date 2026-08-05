@@ -74,6 +74,27 @@ defmodule Streamix.Accounts do
   end
 
   @doc """
+  Returns an id-to-email projection for the requested users.
+
+  Contexts that only need display data can use this projection without
+  importing the Accounts user schema or issuing one query per user.
+  """
+  @spec user_email_map([integer()]) :: %{optional(integer()) => String.t()}
+  def user_email_map(user_ids) when is_list(user_ids) do
+    user_ids = user_ids |> Enum.filter(&is_integer/1) |> Enum.uniq()
+
+    case user_ids do
+      [] ->
+        %{}
+
+      user_ids ->
+        from(user in User, where: user.id in ^user_ids, select: {user.id, user.email})
+        |> Repo.all()
+        |> Map.new()
+    end
+  end
+
+  @doc """
   Ensures a user has its role association loaded.
   """
   def preload_role(%User{} = user, opts \\ []) do
