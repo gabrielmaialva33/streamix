@@ -12,8 +12,8 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   require Logger
 
-  alias Streamix.Iptv.Channels
-  alias Streamix.Iptv.Streaming.{ProviderRuntime, UpstreamPolicy}
+  alias Streamix.Iptv.Streaming.ProviderRuntime
+  alias Streamix.Iptv.Streaming.StreamMultiplexer.{Health, Subscribers, Upstream}
   alias Streamix.Iptv.StreamMultiplexerSupervisor
   alias Streamix.SafeLog
   alias Streamix.Security.UrlValidator
@@ -21,11 +21,9 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   @connect_timeout 10_000
   @default_idle_timeout 2_000
   @default_buffer_size 30
-  @max_buffer_bytes 5 * 1_024 * 1_024
   @default_subscriber_buffer_bytes 5 * 1_024 * 1_024
   @max_redirects 5
   @redirect_statuses [301, 302, 303, 307, 308]
-  @forwardable_headers ~w(content-type accept-ranges etag last-modified)
 
   @type subscription :: %{
           pid: pid(),
@@ -42,7 +40,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     args =
       opts
       |> Keyword.put(:stream_key, stream_key)
-      |> Keyword.put(:urls, normalize_urls(urls))
+      |> Keyword.put(:urls, Upstream.normalize_urls(urls))
 
     with {:ok, pid} <- start_or_lookup(args) do
       GenServer.call(pid, {:subscribe, self()}, @connect_timeout + 1_000)
@@ -125,29 +123,26 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   def handle_call({:subscribe, pid}, _from, state) do
-    {state, _subscriber} = put_subscriber(state, pid)
-    state = cancel_idle_timer(state)
+    {state, _subscriber} = Subscribers.put(state, pid)
+    state = Subscribers.cancel_idle_timer(state)
 
     case ensure_upstream_started(state) do
       {:ok, state} ->
         {:reply, {:ok, subscription(state)}, state}
 
       {:error, reason, state} ->
-        state = remove_subscriber(state, pid)
-        {:reply, {:error, reason}, maybe_start_idle_timer(state)}
+        state = Subscribers.remove(state, pid)
+        {:reply, {:error, reason}, Subscribers.maybe_start_idle_timer(state)}
     end
   end
 
   @impl true
   def handle_cast({:demand, pid}, state) do
-    {:noreply,
-     update_subscriber(state, pid, fn subscriber ->
-       deliver_with_demand(pid, subscriber, 1, state)
-     end)}
+    {:noreply, Subscribers.demand(state, pid)}
   end
 
   def handle_cast({:unsubscribe, pid}, state) do
-    state = state |> remove_subscriber(pid) |> maybe_start_idle_timer()
+    state = state |> Subscribers.remove(pid) |> Subscribers.maybe_start_idle_timer()
     {:noreply, state}
   end
 
@@ -180,7 +175,11 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   def handle_info({:DOWN, monitor_ref, :process, pid, _reason}, state) do
     case Map.get(state.subscribers, pid) do
       %{monitor_ref: ^monitor_ref} ->
-        state = state |> remove_subscriber(pid, false) |> maybe_start_idle_timer()
+        state =
+          state
+          |> Subscribers.remove(pid, false)
+          |> Subscribers.maybe_start_idle_timer()
+
         {:noreply, state}
 
       _ ->
@@ -201,7 +200,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   @impl true
   def terminate(_reason, state) do
-    close_upstream(state)
+    Upstream.close(state.mint_conn)
     ProviderRuntime.release(state.lease)
     :ok
   end
@@ -256,81 +255,6 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   defp subscription(_state) do
     %{pid: self(), status: :connecting, response_status: nil, headers: [], backlog: []}
-  end
-
-  defp put_subscriber(state, pid) do
-    case Map.get(state.subscribers, pid) do
-      nil ->
-        subscriber = %{
-          monitor_ref: Process.monitor(pid),
-          demand: 0,
-          queue: :queue.new(),
-          queued_bytes: 0
-        }
-
-        {%{state | subscribers: Map.put(state.subscribers, pid, subscriber)}, subscriber}
-
-      subscriber ->
-        {state, subscriber}
-    end
-  end
-
-  defp update_subscriber(state, pid, fun) do
-    case Map.fetch(state.subscribers, pid) do
-      {:ok, subscriber} ->
-        case fun.(subscriber) do
-          {:keep, subscriber} ->
-            %{state | subscribers: Map.put(state.subscribers, pid, subscriber)}
-
-          :drop ->
-            remove_subscriber(state, pid)
-        end
-
-      :error ->
-        state
-    end
-  end
-
-  defp remove_subscriber(state, pid, demonitor? \\ true) do
-    case Map.pop(state.subscribers, pid) do
-      {nil, _subscribers} ->
-        state
-
-      {%{monitor_ref: monitor_ref}, subscribers} ->
-        if demonitor?, do: Process.demonitor(monitor_ref, [:flush])
-        %{state | subscribers: subscribers}
-    end
-  end
-
-  defp deliver_with_demand(pid, subscriber, increment, state) do
-    subscriber
-    |> Map.update!(:demand, &min(&1 + increment, 1))
-    |> deliver_pending(pid, state)
-  end
-
-  defp deliver_pending(%{demand: demand} = subscriber, _pid, _state) when demand <= 0,
-    do: {:keep, subscriber}
-
-  defp deliver_pending(subscriber, pid, _state) do
-    case :queue.out(subscriber.queue) do
-      {:empty, _queue} ->
-        {:keep, subscriber}
-
-      {{:value, {:chunk, chunk, size}}, queue} ->
-        send(pid, {:stream_mux, self(), {:chunk, chunk}})
-
-        {:keep,
-         %{
-           subscriber
-           | demand: subscriber.demand - 1,
-             queue: queue,
-             queued_bytes: subscriber.queued_bytes - size
-         }}
-
-      {{:value, {:terminal, event}}, _queue} ->
-        send(pid, {:stream_mux, self(), event})
-        :drop
-    end
   end
 
   defp handle_mint_message(_message, %{mint_conn: nil} = state), do: {:noreply, state}
@@ -394,21 +318,21 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp process_response({:headers, _ref, headers}, state) do
-    response_headers = filter_response_headers(headers)
+    response_headers = Upstream.filter_response_headers(headers)
 
     state = %{state | response_headers: response_headers, status: :streaming}
-    notify_ready(state)
+    Subscribers.notify_ready(state)
     {:ok, state}
   end
 
   defp process_response({:data, _ref, chunk}, state) when is_binary(chunk) do
-    state = state |> record_first_success() |> push_chunk(chunk)
+    state = state |> Health.record_first_success() |> Subscribers.push_chunk(chunk)
     {:ok, state}
   end
 
   defp process_response({:done, _ref}, state) do
-    state = enqueue_terminal(state, :done)
-    close_upstream(state)
+    state = Subscribers.enqueue_terminal(state, :done)
+    Upstream.close(state.mint_conn)
     ProviderRuntime.release(state.lease)
 
     {:ok, %{state | status: :done, mint_conn: nil, request_ref: nil, lease: :untracked}}
@@ -423,12 +347,12 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp follow_redirect(headers, state) do
-    with location when is_binary(location) <- header_value(headers, "location"),
-         redirect_url <- resolve_url(state.current_url, location),
+    with location when is_binary(location) <- Upstream.header_value(headers, "location"),
+         redirect_url <- Upstream.resolve_url(state.current_url, location),
          :ok <- state.url_validator.(redirect_url) do
-      close_upstream(state)
+      Upstream.close(state.mint_conn)
 
-      case connect_upstream(redirect_url, state.url_validator) do
+      case Upstream.connect(redirect_url, state.url_validator, @connect_timeout) do
         {:ok, mint_conn, request_ref} ->
           {:reconnect,
            %{
@@ -453,7 +377,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   defp handle_connection_failure(reason, state) do
     if state.buffer_count == 0 and state.url_index + 1 < length(state.urls) do
-      close_upstream(state)
+      Upstream.close(state.mint_conn)
       send(self(), :connect)
 
       {:noreply,
@@ -474,17 +398,17 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   end
 
   defp stop_after_error(reason, state) do
-    record_failure(state, reason)
-    safe_reason = safe_reason(reason)
+    Health.record_failure(state, reason)
+    safe_reason = Upstream.safe_reason(reason)
     Logger.warning("[StreamMux] upstream failed: #{SafeLog.redact_inspect(safe_reason)}")
-    notify_error(state, safe_reason)
+    Subscribers.notify_error(state, safe_reason)
     {:stop, {:shutdown, :upstream_error}, %{state | status: :error}}
   end
 
   defp connect_current_url(state) do
     url = Enum.at(state.urls, state.url_index)
 
-    case connect_upstream(url, state.url_validator) do
+    case Upstream.connect(url, state.url_validator, @connect_timeout) do
       {:ok, mint_conn, request_ref} ->
         {:ok,
          %{
@@ -498,233 +422,5 @@ defmodule Streamix.Iptv.StreamMultiplexer do
       {:error, reason} ->
         {:error, reason, state}
     end
-  end
-
-  defp connect_upstream(nil, _validator), do: {:error, :missing_upstream_url}
-
-  defp connect_upstream(url, validator) do
-    with :ok <- validator.(url),
-         %URI{host: host} = uri when is_binary(host) <- URI.parse(url) do
-      scheme = if uri.scheme == "https", do: :https, else: :http
-      port = uri.port || default_port(scheme)
-
-      transport_opts =
-        if scheme == :https,
-          do: [cacerts: :public_key.cacerts_get(), timeout: @connect_timeout],
-          else: [timeout: @connect_timeout]
-
-      headers = [
-        {"host", host},
-        {"user-agent", UpstreamPolicy.user_agent()},
-        {"accept", "*/*"},
-        {"connection", "keep-alive"}
-      ]
-
-      with {:ok, mint_conn} <-
-             Mint.HTTP.connect(scheme, host, port, transport_opts: transport_opts),
-           {:ok, mint_conn, request_ref} <-
-             Mint.HTTP.request(mint_conn, "GET", request_path(uri), headers, nil) do
-        {:ok, mint_conn, request_ref}
-      else
-        {:error, mint_conn, reason} ->
-          close_mint_conn(mint_conn)
-          {:error, reason}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, :invalid_upstream_url}
-    end
-  end
-
-  defp notify_ready(state) do
-    backlog = :queue.to_list(state.buffer)
-
-    Enum.each(state.subscribers, fn {pid, _subscriber} ->
-      send(pid, {
-        :stream_mux,
-        self(),
-        {:ready, state.response_status || 200, state.response_headers, backlog}
-      })
-    end)
-  end
-
-  defp notify_error(state, reason) do
-    Enum.each(state.subscribers, fn {pid, _subscriber} ->
-      send(pid, {:stream_mux, self(), {:error, reason}})
-    end)
-  end
-
-  defp push_chunk(state, chunk) do
-    state = put_ring_buffer(state, chunk)
-
-    subscribers =
-      Enum.reduce(state.subscribers, %{}, fn {pid, subscriber}, subscribers ->
-        case enqueue_subscriber(pid, subscriber, chunk, state) do
-          {:keep, subscriber} -> Map.put(subscribers, pid, subscriber)
-          :drop -> subscribers
-        end
-      end)
-
-    %{state | subscribers: subscribers}
-    |> maybe_start_idle_timer()
-  end
-
-  defp enqueue_subscriber(pid, subscriber, chunk, state) do
-    size = byte_size(chunk)
-    queued_bytes = subscriber.queued_bytes + size
-
-    if queued_bytes > state.subscriber_buffer_bytes do
-      send(pid, {:stream_mux, self(), {:error, :slow_consumer}})
-      Process.demonitor(subscriber.monitor_ref, [:flush])
-      :drop
-    else
-      subscriber = %{
-        subscriber
-        | queue: :queue.in({:chunk, chunk, size}, subscriber.queue),
-          queued_bytes: queued_bytes
-      }
-
-      deliver_pending(subscriber, pid, state)
-    end
-  end
-
-  defp enqueue_terminal(state, event) do
-    subscribers =
-      Enum.reduce(state.subscribers, %{}, fn {pid, subscriber}, subscribers ->
-        subscriber = %{subscriber | queue: :queue.in({:terminal, event}, subscriber.queue)}
-
-        case deliver_pending(subscriber, pid, state) do
-          {:keep, subscriber} ->
-            Map.put(subscribers, pid, subscriber)
-
-          :drop ->
-            Process.demonitor(subscriber.monitor_ref, [:flush])
-            subscribers
-        end
-      end)
-
-    %{state | subscribers: subscribers}
-    |> maybe_start_idle_timer()
-  end
-
-  defp put_ring_buffer(state, chunk) do
-    buffer = :queue.in(chunk, state.buffer)
-    count = state.buffer_count + 1
-    bytes = state.buffer_bytes + byte_size(chunk)
-
-    {buffer, count, bytes} = trim_buffer(buffer, count, bytes, state.buffer_size)
-
-    %{state | buffer: buffer, buffer_count: count, buffer_bytes: bytes}
-  end
-
-  defp trim_buffer(buffer, count, bytes, max_count)
-       when count > max_count or (count > 1 and bytes > @max_buffer_bytes) do
-    {{:value, old_chunk}, buffer} = :queue.out(buffer)
-    trim_buffer(buffer, count - 1, bytes - byte_size(old_chunk), max_count)
-  end
-
-  defp trim_buffer(buffer, count, bytes, _max_count), do: {buffer, count, bytes}
-
-  defp record_first_success(%{health_recorded?: true} = state), do: state
-
-  defp record_first_success(state) do
-    latency = System.monotonic_time(:millisecond) - state.started_at
-    ProviderRuntime.record_success(state.provider_id, :live, latency)
-    maybe_mark_channel_alive(state.content_id)
-    %{state | health_recorded?: true}
-  end
-
-  defp record_failure(state, {:unexpected_status, status}) when status in [404, 410] do
-    maybe_mark_channel_dead(state.content_id)
-  end
-
-  defp record_failure(state, reason) do
-    ProviderRuntime.record_failure(state.provider_id, :live, reason)
-  end
-
-  defp maybe_mark_channel_alive(content_id) when is_integer(content_id),
-    do: safe_channel_update(fn -> Channels.mark_alive(content_id) end)
-
-  defp maybe_mark_channel_alive(_content_id), do: :ok
-
-  defp maybe_mark_channel_dead(content_id) when is_integer(content_id),
-    do: safe_channel_update(fn -> Channels.mark_dead(content_id) end)
-
-  defp maybe_mark_channel_dead(_content_id), do: :ok
-
-  defp safe_channel_update(fun) do
-    fun.()
-  rescue
-    error ->
-      Logger.warning("[StreamMux] channel liveness update failed: #{Exception.message(error)}")
-      :ok
-  end
-
-  defp filter_response_headers(headers) do
-    Enum.filter(headers, fn {name, _value} -> String.downcase(name) in @forwardable_headers end)
-  end
-
-  defp header_value(headers, target) do
-    Enum.find_value(headers, fn {name, value} ->
-      if String.downcase(name) == target, do: value
-    end)
-  end
-
-  defp close_upstream(%{mint_conn: nil}), do: :ok
-  defp close_upstream(%{mint_conn: mint_conn}), do: close_mint_conn(mint_conn)
-
-  defp close_mint_conn(nil), do: :ok
-
-  defp close_mint_conn(mint_conn) do
-    Mint.HTTP.close(mint_conn)
-    :ok
-  rescue
-    _ -> :ok
-  end
-
-  defp cancel_idle_timer(%{idle_timer: nil} = state), do: state
-
-  defp cancel_idle_timer(%{idle_timer: timer} = state) do
-    Process.cancel_timer(timer)
-    %{state | idle_timer: nil}
-  end
-
-  defp maybe_start_idle_timer(state) do
-    if map_size(state.subscribers) == 0 and is_nil(state.idle_timer) do
-      %{state | idle_timer: Process.send_after(self(), :idle_timeout, state.idle_timeout)}
-    else
-      state
-    end
-  end
-
-  defp safe_reason({:unexpected_status, status}), do: {:unexpected_status, status}
-  defp safe_reason(reason) when is_atom(reason), do: reason
-  defp safe_reason(%{__struct__: module}), do: module
-  defp safe_reason(_reason), do: :upstream_error
-
-  defp normalize_urls(""), do: []
-  defp normalize_urls(url) when is_binary(url), do: [url]
-
-  defp normalize_urls(urls) when is_list(urls) do
-    urls
-    |> Enum.filter(&(is_binary(&1) and &1 != ""))
-    |> Enum.uniq()
-  end
-
-  defp normalize_urls(_urls), do: []
-
-  defp default_port(:https), do: 443
-  defp default_port(:http), do: 80
-
-  defp request_path(uri) do
-    path = uri.path || "/"
-    if uri.query, do: "#{path}?#{uri.query}", else: path
-  end
-
-  defp resolve_url(base_url, location) do
-    base_url |> URI.parse() |> URI.merge(location) |> URI.to_string()
   end
 end
