@@ -5,6 +5,29 @@ All notable changes to Streamix are documented here.
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Provider-aware public catalog discovery through `GET /api/v1/catalog/providers`, including safe capabilities and
+  synchronized counts without upstream URLs or credentials.
+- `provider_id` and `provider_type` filters across public listings, categories, featured, home, curated shelves,
+  ranked search, and suggestions.
+- An executable OpenAPI 3 contract for all 19 catalog operations, served as JSON at `/api/v1/openapi.json` with an
+  interactive UI at `/api/v1/docs`.
+- Response-contract tests covering success, validation, not-found, and authentication responses against the published
+  schemas.
+
+### Changed
+
+- **Breaking:** catalog success responses now use a consistent `data` envelope and put pagination, applied filters,
+  totals, and section metadata under `meta`. Error responses retain the stable `error.code` / `error.message` shape.
+- Catalog path and query parameters are now cast and validated from the executable schema before controller code runs;
+  malformed values return `400`, while missing well-formed resource identifiers return `404`.
+- Public movie and series listings now aggregate active global/public providers, collapse canonical duplicates, and
+  include a safe `provider` reference on every serialized catalog resource.
+- Ranked movie and series search now applies the same canonicalization after relevance scoring.
+
 ## [v0.0.1] - 2026-04-13
 
 Initial pre-release. Everything built so far is bundled into a single baseline tag.

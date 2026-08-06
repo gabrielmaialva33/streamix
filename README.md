@@ -237,8 +237,14 @@ sequenceDiagram
 The main integration surface lives under `/api/v1`. Production clients should send a configured `X-API-Key`; user
 resources additionally validate the relevant user token in their controllers.
 
+At runtime, the provider-aware catalog contract is available as OpenAPI JSON at `/api/v1/openapi.json` and through the
+interactive UI at `/api/v1/docs`. Catalog successes consistently return `data` plus optional `meta`; errors return
+stable `error.code` and `error.message` fields. See [`docs/api-v1.md`](docs/api-v1.md) for filters, pagination, examples,
+and the current breaking-change note.
+
 - `auth` — register, login, logout, and current user
-- `catalog` — home, featured, movies, series, episodes, channels, categories, search, and signed stream URLs
+- `catalog` — provider discovery; aggregated and filterable movies, series, channels, and categories; home, search,
+  details, and signed stream URLs
 - `search` — semantic search, similarity, and capability status
 - `recommendations` — personalized items, channels, insights, and profile refresh
 - `favorites`, `history`, `epg`, and `telemetry/playback`

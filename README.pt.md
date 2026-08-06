@@ -237,8 +237,14 @@ sequenceDiagram
 A principal superfície de integração fica em `/api/v1`. Em produção, os clientes devem enviar um `X-API-Key`
 configurado; recursos do usuário também validam o token correspondente em seus controllers.
 
+Em runtime, o contrato do catálogo com suporte a múltiplos provedores fica disponível como OpenAPI JSON em
+`/api/v1/openapi.json` e na interface interativa em `/api/v1/docs`. Respostas de sucesso do catálogo usam `data` e, quando
+necessário, `meta`; erros mantêm os campos estáveis `error.code` e `error.message`. Consulte
+[`docs/api-v1.md`](docs/api-v1.md) para filtros, paginação, exemplos e a nota de quebra de compatibilidade atual.
+
 - `auth` — cadastro, login, logout e usuário atual
-- `catalog` — home, destaques, filmes, séries, episódios, canais, categorias, busca e URLs de stream assinadas
+- `catalog` — descoberta de provedores; filmes, séries, canais e categorias agregados e filtráveis; home, busca,
+  detalhes e URLs de stream assinadas
 - `search` — busca semântica, similaridade e status das capacidades
 - `recommendations` — itens personalizados, canais, insights e atualização de perfil
 - `favorites`, `history`, `epg` e `telemetry/playback`
@@ -256,15 +262,15 @@ configurado; recursos do usuário também validam o token correspondente em seus
 
 ### Backend
 
-| Tecnologia | Versão declarada | Papel |
-|------------|------------------|-------|
-| Elixir | `~> 1.20` | Runtime da aplicação |
-| Erlang/OTP | 29 na CI | Supervisão e concorrência |
-| Phoenix | `~> 1.8.2` | HTTP, rotas e shell da aplicação |
-| Phoenix LiveView | `~> 1.2` | UI interativa renderizada no servidor |
-| Ecto SQL | `~> 3.13` | Persistência relacional |
-| Req + Finch | lockfile do repositório | Clientes HTTP e pools limitados de conexão |
-| Oban | `~> 2.18` | Jobs em background apoiados pelo banco |
+| Tecnologia       | Versão declarada        | Papel                                      |
+|------------------|-------------------------|--------------------------------------------|
+| Elixir           | `~> 1.20`               | Runtime da aplicação                       |
+| Erlang/OTP       | 29 na CI                | Supervisão e concorrência                  |
+| Phoenix          | `~> 1.8.2`              | HTTP, rotas e shell da aplicação           |
+| Phoenix LiveView | `~> 1.2`                | UI interativa renderizada no servidor      |
+| Ecto SQL         | `~> 3.13`               | Persistência relacional                    |
+| Req + Finch      | lockfile do repositório | Clientes HTTP e pools limitados de conexão |
+| Oban             | `~> 2.18`               | Jobs em background apoiados pelo banco     |
 
 ### Dados e Integrações
 
@@ -279,13 +285,13 @@ configurado; recursos do usuário também validam o token correspondente em seus
 
 ### Frontend
 
-| Tecnologia | Papel |
-|------------|-------|
-| Tailwind CSS v4 | Design system e estilos responsivos |
-| esbuild | Bundling e code splitting de JavaScript |
-| Pacotes npm em `assets/` | Engines do player e dependências do runtime do navegador |
+| Tecnologia                    | Papel                                                               |
+|-------------------------------|---------------------------------------------------------------------|
+| Tailwind CSS v4               | Design system e estilos responsivos                                 |
+| esbuild                       | Bundling e code splitting de JavaScript                             |
+| Pacotes npm em `assets/`      | Engines do player e dependências do runtime do navegador            |
 | Manifest PWA + service worker | Instalação, ciclo de atualização e cache offline de shell/metadados |
-| Playwright | Regressão em Chromium, Firefox, WebKit, mobile e PWA |
+| Playwright                    | Regressão em Chromium, Firefox, WebKit, mobile e PWA                |
 
 <a id="inicio-rapido"></a>
 
@@ -348,16 +354,16 @@ autorizado ou habilite uma das fontes de catálogo do sistema.
 <details>
 <summary><strong>Perfis de integração</strong></summary>
 
-| Objetivo | Variáveis principais |
-|----------|----------------------|
+| Objetivo               | Variáveis principais                                                                                     |
+|------------------------|----------------------------------------------------------------------------------------------------------|
 | Catálogo Xtream global | `GLOBAL_PROVIDER_ENABLED`, `GLOBAL_PROVIDER_URL`, `GLOBAL_PROVIDER_USERNAME`, `GLOBAL_PROVIDER_PASSWORD` |
-| Catálogo GIndex | `GINDEX_ENABLED`, `GINDEX_ENDPOINTS`, `GINDEX_SYNC_URL`, `GINDEX_STREAM_URL` |
-| Catálogo torrent | `TORRENT_ENABLED`, `RQBIT_URL`, variáveis dos endpoints das fontes |
-| Metadados e legendas | `TMDB_API_TOKEN`, `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY` |
-| Descoberta semântica | `QDRANT_ENABLED`, `QDRANT_URL`, `GEMINI_API_KEY` ou `NVIDIA_API_KEY` |
-| Billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, variáveis de preço do Stripe |
-| Clientes externos | `API_KEYS`, `CORS_ORIGINS` |
-| Runtime de produção | `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT`, `PHX_HOST` |
+| Catálogo GIndex        | `GINDEX_ENABLED`, `GINDEX_ENDPOINTS`, `GINDEX_SYNC_URL`, `GINDEX_STREAM_URL`                             |
+| Catálogo torrent       | `TORRENT_ENABLED`, `RQBIT_URL`, variáveis dos endpoints das fontes                                       |
+| Metadados e legendas   | `TMDB_API_TOKEN`, `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY`                                               |
+| Descoberta semântica   | `QDRANT_ENABLED`, `QDRANT_URL`, `GEMINI_API_KEY` ou `NVIDIA_API_KEY`                                     |
+| Billing                | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, variáveis de preço do Stripe                               |
+| Clientes externos      | `API_KEYS`, `CORS_ORIGINS`                                                                               |
+| Runtime de produção    | `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT`, `PHX_HOST`                                                  |
 
 Veja o contrato completo e comentado em [`.env.example`](.env.example).
 
