@@ -65,7 +65,7 @@ defmodule StreamixWeb.Plugs.CSPNonce do
       |> String.trim_trailing(),
 
       # Styles: unsafe-inline still needed for Tailwind dynamic classes and LiveView
-      "style-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
 
       # Images: allow data URIs, HTTPS, and blobs for thumbnails
       "img-src 'self' data: https: blob:",
