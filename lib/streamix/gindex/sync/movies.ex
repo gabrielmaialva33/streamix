@@ -1,91 +1,385 @@
 defmodule Streamix.Gindex.Sync.Movies do
   @moduledoc """
-  Movie synchronization for GIndex providers.
+  Resumable movie synchronization for GIndex providers.
+
+  The cursor has two levels because movie roots contain category folders and
+  each category contains movie folders or direct files. A cursor only advances
+  after the matching database batch and checkpoint callback both succeed.
   """
 
+  alias Streamix.Gindex.Client
+  alias Streamix.Gindex.Parser
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.Normalizers.Movie, as: MovieNormalizer
   alias Streamix.Iptv
 
   require Logger
 
-  @batch_size 25
+  @default_batch_size 25
 
-  def sync(%{provider_id: _provider_id} = source, base_url, movies_path) do
-    result =
-      base_url
-      |> Scraper.scrape_movies(movies_path)
-      |> consume_stream(source)
+  @type stats :: %{movies_count: non_neg_integer(), skipped_count: non_neg_integer()}
 
-    case result do
-      {:error, reason} ->
-        {:error, reason}
+  @spec sync(map(), String.t(), String.t(), keyword()) ::
+          {:ok, stats()} | {:error, term()}
+  def sync(%{provider_id: _provider_id} = source, base_url, movies_path, opts \\ []) do
+    checkpoint = Keyword.get(opts, :checkpoint)
+    runtime = build_runtime(opts)
 
-      {:ok, count, batches, failures} ->
-        # If more than half the batches failed to upsert, treat the whole
-        # run as a failure so ScanRootWorker retries instead of pinning the
-        # provider to sync_status=completed with a partial catalog.
-        cond do
-          batches == 0 ->
-            Logger.warning("[GIndex Sync] No movie batches produced for #{movies_path}")
-            {:error, :empty_scrape}
+    with {:ok, categories} <- runtime.list_categories_fun.(base_url, movies_path),
+         :ok <- ensure_categories(categories, movies_path) do
+      categories = Enum.sort_by(categories, &item_path/1)
+      pending = resume_categories(categories, movies_path, checkpoint)
 
-          failures * 2 > batches ->
-            Logger.error(
-              "[GIndex Sync] #{failures}/#{batches} movie batches failed for #{movies_path}"
-            )
+      Logger.info(
+        "[GIndex Sync] Found #{length(categories)} movie categories in #{movies_path}; " <>
+          "#{length(pending)} pending"
+      )
 
-            {:error, {:batch_failures, failures, batches}}
-
-          true ->
-            {:ok, count}
-        end
+      sync_categories(source, base_url, movies_path, pending, checkpoint, runtime)
     end
   rescue
-    e ->
-      Logger.error("[GIndex Sync] Error during sync: #{inspect(e)}")
-      {:error, e}
+    error ->
+      Logger.error("[GIndex Sync] Error during movie sync: #{inspect(error)}")
+      {:error, error}
   end
 
-  defp consume_stream(stream, source) do
-    stream
-    |> Enum.reduce_while({[], 0, 0, 0}, fn
-      {:gindex_error, reason}, _acc ->
-        {:halt, {:error, reason}}
+  defp build_runtime(opts) do
+    %{
+      batch_size: Keyword.get(opts, :batch_size, @default_batch_size),
+      checkpoint_fun: Keyword.get(opts, :on_checkpoint, fn _checkpoint -> :ok end),
+      list_categories_fun: Keyword.get(opts, :list_categories_fun, &Scraper.list_categories/2),
+      list_items_fun: Keyword.get(opts, :list_items_fun, &Client.list_folder_all/2),
+      persist_fun: Keyword.get(opts, :persist_fun, &upsert_batch/2),
+      scrape_folder_fun:
+        Keyword.get(opts, :scrape_folder_fun, &Scraper.scrape_movie_folder_result/2)
+    }
+  end
 
-      movie, {batch, count, batches, failures} ->
-        batch = [movie | batch]
+  defp ensure_categories([], path) do
+    Logger.warning("[GIndex Sync] No movie categories found in #{path}")
+    {:error, :empty_scrape}
+  end
 
-        if length(batch) == @batch_size do
-          {count, batches, failures} =
-            persist_batch(source, Enum.reverse(batch), count, batches, failures)
+  defp ensure_categories([_ | _], _path), do: :ok
 
-          {:cont, {[], count, batches, failures}}
-        else
-          {:cont, {batch, count, batches, failures}}
-        end
+  defp sync_categories(source, base_url, root_path, categories, checkpoint, runtime) do
+    initial = %{movies_count: 0, skipped_count: checkpoint_skipped_count(checkpoint)}
+
+    Enum.reduce_while(categories, {:ok, initial}, fn category, {:ok, totals} ->
+      case sync_category_items(
+             source,
+             base_url,
+             root_path,
+             category,
+             checkpoint,
+             totals.skipped_count,
+             runtime
+           ) do
+        {:ok, stats} ->
+          {:cont,
+           {:ok,
+            %{
+              movies_count: totals.movies_count + stats.movies_count,
+              skipped_count: stats.skipped_count
+            }}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
     end)
-    |> case do
-      {:error, _reason} = error ->
-        error
+  end
 
-      {[], count, batches, failures} ->
-        {:ok, count, batches, failures}
+  defp sync_category_items(
+         source,
+         base_url,
+         root_path,
+         category,
+         checkpoint,
+         skipped_count,
+         runtime
+       ) do
+    case runtime.list_items_fun.(base_url, category.path) do
+      {:ok, items} ->
+        process_category_listing(
+          source,
+          base_url,
+          root_path,
+          category,
+          %{items: items, complete?: true, error: nil},
+          checkpoint,
+          skipped_count,
+          runtime
+        )
 
-      {batch, count, batches, failures} ->
-        {count, batches, failures} =
-          persist_batch(source, Enum.reverse(batch), count, batches, failures)
+      {:error, {:partial_listing, %{items: items}} = reason} when items != [] ->
+        process_category_listing(
+          source,
+          base_url,
+          root_path,
+          category,
+          %{items: items, complete?: false, error: reason},
+          checkpoint,
+          skipped_count,
+          runtime
+        )
 
-        {:ok, count, batches, failures}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp persist_batch(source, batch, count, batches, failures) do
-    case upsert_batch(source, batch) do
-      {:ok, inserted} -> {count + inserted, batches + 1, failures}
-      {:error, _reason} -> {count, batches + 1, failures + 1}
+  defp process_category_listing(
+         source,
+         base_url,
+         root_path,
+         category,
+         listing,
+         checkpoint,
+         skipped_count,
+         runtime
+       ) do
+    items =
+      listing.items
+      |> Enum.filter(&movie_item?/1)
+      |> Enum.sort_by(&item_path/1)
+
+    pending = resume_category_items(items, category.path, checkpoint, listing.complete?)
+
+    Logger.info(
+      "[GIndex Sync] Movie category #{category.path}: #{length(items)} discovered, " <>
+        "#{length(pending)} pending, complete_listing=#{listing.complete?}"
+    )
+
+    result =
+      pending
+      |> Enum.reduce_while({:ok, empty_category_state(skipped_count)}, fn item, state ->
+        process_movie_item(source, base_url, root_path, category.path, item, state, runtime)
+      end)
+      |> finalize_category(source, root_path, category.path, listing.complete?, runtime)
+
+    case {result, listing.error} do
+      {{:ok, stats}, nil} -> {:ok, stats}
+      {{:ok, _stats}, error} -> {:error, compact_listing_error(error)}
+      {{:error, _reason} = error, _listing_error} -> error
     end
   end
+
+  defp compact_listing_error({:partial_listing, details}) when is_map(details) do
+    {:partial_listing, Map.drop(details, [:items, "items"])}
+  end
+
+  defp compact_listing_error(error), do: error
+
+  defp process_movie_item(
+         source,
+         base_url,
+         root_path,
+         category_path,
+         item,
+         {:ok, state},
+         runtime
+       ) do
+    case scrape_item(base_url, category_path, item, runtime) do
+      {:ok, movie} ->
+        continue_or_flush(source, root_path, category_path, item, movie, state, runtime)
+
+      {:skip, reason} ->
+        Logger.warning(
+          "[GIndex Sync] Skipping movie item #{item_path(item)} for this cycle: " <>
+            inspect(reason)
+        )
+
+        state = %{state | skipped_count: state.skipped_count + 1}
+        continue_or_flush(source, root_path, category_path, item, nil, state, runtime)
+
+      {:error, reason} ->
+        halt_after_flush(source, root_path, category_path, state, reason, runtime)
+    end
+  end
+
+  defp scrape_item(_base_url, category_path, %{type: :file} = item, _runtime) do
+    if Parser.video_file?(item.name) do
+      {:ok, Scraper.movie_from_direct_file(item, category_path)}
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp scrape_item(base_url, _category_path, %{type: :folder} = item, runtime) do
+    case runtime.scrape_folder_fun.(base_url, item) do
+      {:ok, movie} -> {:ok, movie}
+      {:error, {:quota_exhausted, _} = reason} -> {:error, reason}
+      {:error, {:slice_exhausted, _} = reason} -> {:error, reason}
+      {:error, reason} -> {:skip, reason}
+    end
+  end
+
+  defp scrape_item(_base_url, _category_path, _item, _runtime), do: {:ok, nil}
+
+  defp continue_or_flush(source, root_path, category_path, item, movie, state, runtime) do
+    pending = state.pending ++ [{item_path(item), movie}]
+    state = %{state | pending: pending}
+
+    if length(pending) >= runtime.batch_size do
+      case flush_pending(source, root_path, category_path, state, runtime) do
+        {:ok, flushed} -> {:cont, {:ok, flushed}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    else
+      {:cont, {:ok, state}}
+    end
+  end
+
+  defp halt_after_flush(source, root_path, category_path, state, reason, runtime) do
+    case flush_pending(source, root_path, category_path, state, runtime) do
+      {:ok, _state} -> {:halt, {:error, reason}}
+      {:error, _reason} = error -> {:halt, error}
+    end
+  end
+
+  defp finalize_category(
+         {:ok, state},
+         source,
+         root_path,
+         category_path,
+         complete_listing?,
+         runtime
+       ) do
+    with {:ok, flushed} <- flush_pending(source, root_path, category_path, state, runtime),
+         :ok <-
+           maybe_complete_category(
+             root_path,
+             category_path,
+             complete_listing?,
+             flushed.skipped_count,
+             runtime
+           ) do
+      {:ok, %{movies_count: flushed.movies_count, skipped_count: flushed.skipped_count}}
+    end
+  end
+
+  defp finalize_category(
+         {:error, _reason} = error,
+         _source,
+         _root_path,
+         _category_path,
+         _complete_listing?,
+         _runtime
+       ),
+       do: error
+
+  defp flush_pending(_source, _root_path, _category_path, %{pending: []} = state, _runtime),
+    do: {:ok, state}
+
+  defp flush_pending(source, root_path, category_path, state, runtime) do
+    movies = state.pending |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1)
+
+    with {:ok, inserted} <- persist_movies(source, movies, runtime.persist_fun),
+         checkpoint = %{
+           "root_path" => root_path,
+           "category_path" => category_path,
+           "item_path" => state.pending |> List.last() |> elem(0),
+           "category_complete" => false,
+           "skipped_count" => state.skipped_count
+         },
+         :ok <- persist_checkpoint(runtime.checkpoint_fun, checkpoint) do
+      {:ok, %{state | pending: [], movies_count: state.movies_count + inserted}}
+    end
+  end
+
+  defp persist_movies(_source, [], _persist_fun), do: {:ok, 0}
+  defp persist_movies(source, movies, persist_fun), do: persist_fun.(source, movies)
+
+  defp maybe_complete_category(_root_path, _category_path, false, _skipped_count, _runtime),
+    do: :ok
+
+  defp maybe_complete_category(root_path, category_path, true, skipped_count, runtime) do
+    persist_checkpoint(runtime.checkpoint_fun, %{
+      "root_path" => root_path,
+      "category_path" => category_path,
+      "item_path" => nil,
+      "category_complete" => true,
+      "skipped_count" => skipped_count
+    })
+  end
+
+  defp persist_checkpoint(checkpoint_fun, checkpoint) do
+    case checkpoint_fun.(checkpoint) do
+      :ok -> :ok
+      {:ok, _root} -> :ok
+      {:error, reason} -> {:error, {:checkpoint_failed, reason}}
+      other -> {:error, {:checkpoint_failed, other}}
+    end
+  end
+
+  defp resume_categories(categories, root_path, checkpoint) when is_map(checkpoint) do
+    checkpoint_root = value(checkpoint, "root_path")
+    category_path = value(checkpoint, "category_path")
+    category_complete? = value(checkpoint, "category_complete") == true
+
+    if checkpoint_root == root_path and is_binary(category_path) do
+      case Enum.split_while(categories, &(item_path(&1) != category_path)) do
+        {_before, [_current | pending]} when category_complete? -> pending
+        {_before, [current | pending]} -> [current | pending]
+        {_before, []} -> categories
+      end
+    else
+      categories
+    end
+  end
+
+  defp resume_categories(categories, _root_path, _checkpoint), do: categories
+
+  defp resume_category_items(items, category_path, checkpoint, complete_listing?)
+       when is_map(checkpoint) do
+    checkpoint_category = value(checkpoint, "category_path")
+    completed_path = value(checkpoint, "item_path")
+    category_complete? = value(checkpoint, "category_complete") == true
+
+    if checkpoint_category != category_path or category_complete? or
+         not is_binary(completed_path) do
+      items
+    else
+      case Enum.split_while(items, &(item_path(&1) != completed_path)) do
+        {_before, [_completed | pending]} -> pending
+        {_before, []} when complete_listing? -> items
+        {_before, []} -> []
+      end
+    end
+  end
+
+  defp resume_category_items(items, _category_path, _checkpoint, _complete_listing?), do: items
+
+  defp movie_item?(%{type: :folder}), do: true
+  defp movie_item?(%{type: :file, name: name}), do: Parser.video_file?(name)
+  defp movie_item?(_item), do: false
+
+  defp item_path(item), do: Map.fetch!(item, :path)
+  defp value(map, "root_path"), do: Map.get(map, "root_path") || Map.get(map, :root_path)
+
+  defp value(map, "category_path"),
+    do: Map.get(map, "category_path") || Map.get(map, :category_path)
+
+  defp value(map, "item_path"), do: Map.get(map, "item_path") || Map.get(map, :item_path)
+
+  defp value(map, "category_complete") do
+    case Map.fetch(map, "category_complete") do
+      {:ok, value} -> value
+      :error -> Map.get(map, :category_complete)
+    end
+  end
+
+  defp checkpoint_skipped_count(checkpoint) when is_map(checkpoint) do
+    case Map.get(checkpoint, "skipped_count") || Map.get(checkpoint, :skipped_count) do
+      count when is_integer(count) and count >= 0 -> count
+      _other -> 0
+    end
+  end
+
+  defp checkpoint_skipped_count(_checkpoint), do: 0
+
+  defp empty_category_state(skipped_count),
+    do: %{pending: [], movies_count: 0, skipped_count: skipped_count}
 
   def sync_category(%{provider_id: _provider_id} = source, base_url, category_path) do
     case Scraper.scrape_category(base_url, category_path) do
@@ -109,8 +403,8 @@ defmodule Streamix.Gindex.Sync.Movies do
         {:error, reason}
     end
   rescue
-    e ->
-      Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(e)}")
-      {:error, e}
+    error ->
+      Logger.error("[GIndex Sync] Failed to upsert movies: #{inspect(error)}")
+      {:error, error}
   end
 end

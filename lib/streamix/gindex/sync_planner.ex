@@ -3,7 +3,7 @@ defmodule Streamix.Gindex.SyncPlanner do
   Pure module that turns a GIndex provider into a flat list of scan roots.
 
   A scan root is a `{base_url, path, kind}` tuple that the dispatcher hands to
-  `Streamix.Workers.Gindex.ScanFolder`. `kind` is the semantic classification
+  `Streamix.Workers.Gindex.ScanRootWorker`. `kind` is the semantic classification
   (`:movies | :series | :animes`) so downstream workers know which schema to
   write into.
 

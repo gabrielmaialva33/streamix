@@ -96,20 +96,15 @@ defmodule Streamix.Gindex.Sync do
     end
   end
 
-  defp do_sync_kind(source, base_url, path, :movies, _opts) do
-    case Movies.sync(source, base_url, path) do
-      {:ok, count} -> {:ok, %{movies_count: count}}
-      {:error, _reason} = error -> error
-    end
-  end
+  defp do_sync_kind(source, base_url, path, :movies, opts),
+    do: Movies.sync(source, base_url, path, opts)
 
   defp do_sync_kind(source, base_url, path, :series, opts) do
     Series.sync(source, base_url, [path], opts)
   end
 
-  defp do_sync_kind(source, base_url, path, :animes, _opts) do
-    Animes.sync(source, base_url, path)
-  end
+  defp do_sync_kind(source, base_url, path, :animes, opts),
+    do: Animes.sync(source, base_url, path, opts)
 
   defp validate_path(path) when is_binary(path) do
     if String.trim(path) == "", do: {:error, :invalid_sync_path}, else: :ok
@@ -169,7 +164,7 @@ defmodule Streamix.Gindex.Sync do
 
   defp finalize_provider_sync(
          source,
-         {:ok, movies_count},
+         {:ok, %{movies_count: movies_count}},
          {:ok, series_stats},
          {:ok, animes_stats}
        ) do

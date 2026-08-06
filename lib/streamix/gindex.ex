@@ -15,6 +15,8 @@ defmodule Streamix.Gindex do
     Pacer,
     Parser,
     QuotaGuard,
+    RequestBudget,
+    ScanRoots,
     Sync,
     SyncPlanner,
     Telemetry,
@@ -33,6 +35,21 @@ defmodule Streamix.Gindex do
   defdelegate seconds_until_quota_reset(), to: QuotaGuard, as: :seconds_until_reset
   defdelegate sync_url(config), to: EndpointPolicy
   defdelegate acquire_pacing_slot(bucket), to: Pacer, as: :acquire
+  defdelegate run_with_request_budget(limit, fun), to: RequestBudget, as: :run
+
+  # Durable scan-root state. Oban executes work; it isn't the source of truth
+  # for progress because completed jobs are intentionally pruned.
+  defdelegate ensure_scan_cycle(provider_id, roots, opts \\ []), to: ScanRoots, as: :ensure_cycle
+  defdelegate get_scan_root(provider_id, path, kind), to: ScanRoots, as: :get
+  defdelegate list_scan_cycle(provider_id, cycle_id), to: ScanRoots, as: :list_cycle
+  defdelegate active_scan_cycle_id(provider_id), to: ScanRoots, as: :active_cycle_id
+  defdelegate latest_scan_cycle_id(provider_id), to: ScanRoots, as: :latest_cycle_id
+  defdelegate mark_scan_root_running(root), to: ScanRoots, as: :mark_running
+  defdelegate checkpoint_scan_root(root, cursor), to: ScanRoots, as: :checkpoint
+  defdelegate pause_scan_root(root, reason, opts \\ []), to: ScanRoots, as: :mark_paused
+  defdelegate complete_scan_root(root, stats), to: ScanRoots, as: :mark_completed
+  defdelegate fail_scan_root(root, reason), to: ScanRoots, as: :mark_failed
+  defdelegate scan_cycle_summary(provider_id, cycle_id), to: ScanRoots, as: :cycle_summary
 
   # Delegate URL cache functions
   defdelegate get_movie_url(movie_id), to: UrlCache
