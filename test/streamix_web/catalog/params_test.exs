@@ -18,4 +18,10 @@ defmodule StreamixWeb.Catalog.ParamsTest do
     assert Params.movies_opts(%{"category_id" => "0"})[:category_id] == nil
     assert Params.movies_opts(%{"category_id" => "42"})[:category_id] == 42
   end
+
+  test "normalizes provider filters without creating atoms" do
+    assert Params.movies_opts(%{"provider_id" => "42", "provider_type" => " GINDEX "})
+           |> Keyword.take([:provider_id, :provider_type]) ==
+             [provider_id: 42, provider_type: :gindex]
+  end
 end

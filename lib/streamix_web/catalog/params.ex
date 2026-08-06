@@ -4,15 +4,19 @@ defmodule StreamixWeb.Catalog.Params do
   """
 
   @allowed_sorts ~w(rating_desc created_desc year_desc name_asc)
-  @max_offset 100_000
+  @provider_types %{"gindex" => :gindex, "torrent" => :torrent, "xtream" => :xtream}
+
+  alias StreamixWeb.Catalog.Pagination
 
   def movies_opts(params) do
     [
       limit: capped_int(params["limit"], 20, 100),
-      offset: bounded_int(params["offset"], 0, 0, @max_offset),
+      offset: bounded_int(params["offset"], 0, 0, Pagination.max_offset()),
       category_id: positive_int(params["category_id"]),
       search: params["search"],
-      sort: normalize_sort(params["sort"])
+      sort: normalize_sort(params["sort"]),
+      provider_id: positive_int(params["provider_id"]),
+      provider_type: normalize_provider_type(params["provider_type"])
     ]
   end
 
@@ -23,9 +27,24 @@ defmodule StreamixWeb.Catalog.Params do
 
     [
       limit: capped_int(requested_limit, 30, 100),
-      offset: bounded_int(params["offset"], 0, 0, @max_offset),
+      offset: bounded_int(params["offset"], 0, 0, Pagination.max_offset()),
       category_id: positive_int(params["category_id"]),
-      search: params["search"]
+      search: params["search"],
+      provider_id: positive_int(params["provider_id"]),
+      provider_type: normalize_provider_type(params["provider_type"])
+    ]
+  end
+
+  def categories_opts(params) do
+    [type: category_type(params["type"])] ++ provider_opts(params)
+  end
+
+  @doc "Normalizes the public-provider scope shared by catalog resources and search."
+  @spec provider_opts(map()) :: keyword()
+  def provider_opts(params) when is_map(params) do
+    [
+      provider_id: positive_int(params["provider_id"]),
+      provider_type: normalize_provider_type(params["provider_type"])
     ]
   end
 
@@ -81,4 +100,13 @@ defmodule StreamixWeb.Catalog.Params do
 
   defp normalize_sort(value) when value in @allowed_sorts, do: value
   defp normalize_sort(_), do: nil
+
+  defp normalize_provider_type(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.downcase()
+    |> then(&Map.get(@provider_types, &1))
+  end
+
+  defp normalize_provider_type(_value), do: nil
 end

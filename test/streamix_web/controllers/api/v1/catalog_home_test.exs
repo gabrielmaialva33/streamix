@@ -20,7 +20,7 @@ defmodule StreamixWeb.Api.V1.CatalogHomeTest do
     test "returns the full home payload with every expected section key" do
       # The TV app depends on these five keys being present on every
       # response — even when the underlying query returns an empty list.
-      # That way the client renderer can always iterate `payload[key]`
+      # That way the client renderer can always iterate `payload.data[key]`
       # without a nil-check and the absence of content is just an empty
       # array, not a 404 section.
       conn =
@@ -29,6 +29,7 @@ defmodule StreamixWeb.Api.V1.CatalogHomeTest do
         |> get("/api/v1/catalog/home?limit=5")
 
       body = json_response(conn, 200)
+      data = body["data"]
 
       for key <- [
             "featured",
@@ -37,13 +38,18 @@ defmodule StreamixWeb.Api.V1.CatalogHomeTest do
             "top_rated_movies",
             "trending_series"
           ] do
-        assert Map.has_key?(body, key), "missing section key: #{key}"
+        assert Map.has_key?(data, key), "missing section key: #{key}"
       end
 
       # Four of the five are lists; `featured` is a map-or-nil.
       for key <- ["trending_movies", "recent_movies", "top_rated_movies", "trending_series"] do
-        assert is_list(body[key]), "#{key} must be a list, got #{inspect(body[key])}"
+        assert is_list(data[key]), "#{key} must be a list, got #{inspect(data[key])}"
       end
+
+      assert body["meta"] == %{
+               "limit_per_section" => 5,
+               "filters" => %{"provider_id" => nil, "provider_type" => nil}
+             }
     end
 
     test "rejects unauthenticated requests" do

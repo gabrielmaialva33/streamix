@@ -95,6 +95,7 @@ defmodule StreamixWeb.Router do
   pipeline :api_v1 do
     plug :accepts, ["json"]
     plug StreamixWeb.Plugs.CORS
+    plug OpenApiSpex.Plug.PutApiSpec, module: StreamixWeb.Api.V1.OpenApi
     # 360 requests per minute per IP. The TV app fires dozens of catalog
     # calls per screen (categories + grids + EPG), so 120/min tripped on
     # ordinary navigation; 360 covers ~12 screen changes a minute while
@@ -102,6 +103,18 @@ defmodule StreamixWeb.Router do
     # don't tighten this without per-user keying.
     plug StreamixWeb.Plugs.RateLimit, limit: 360, period: 60_000
     plug StreamixWeb.Plugs.ApiKeyAuth
+  end
+
+  pipeline :api_docs do
+    plug :accepts, ["json"]
+    plug StreamixWeb.Plugs.CORS
+    plug OpenApiSpex.Plug.PutApiSpec, module: StreamixWeb.Api.V1.OpenApi
+  end
+
+  pipeline :api_docs_ui do
+    plug :accepts, ["html"]
+    plug :put_secure_browser_headers
+    plug OpenApiSpex.Plug.PutApiSpec, module: StreamixWeb.Api.V1.OpenApi
   end
 
   # Health check endpoint
@@ -196,6 +209,18 @@ defmodule StreamixWeb.Router do
     options "/*path", OptionsController, :preflight
   end
 
+  scope "/api/v1" do
+    pipe_through :api_docs
+
+    get "/openapi.json", OpenApiSpex.Plug.RenderSpec, []
+  end
+
+  scope "/api/v1" do
+    pipe_through :api_docs_ui
+
+    get "/docs", OpenApiSpex.Plug.SwaggerUI, path: "/api/v1/openapi.json"
+  end
+
   # Protected catalog API for TV app and other clients
   scope "/api/v1", StreamixWeb.Api.V1 do
     pipe_through :api_v1
@@ -209,11 +234,11 @@ defmodule StreamixWeb.Router do
     get "/catalog/trending", CatalogController, :trending
     get "/catalog/recent", CatalogController, :recent
     get "/catalog/top-rated", CatalogController, :top_rated
+    get "/catalog/providers", CatalogController, :providers
     get "/catalog/movies", CatalogController, :movies
     get "/catalog/movies/:id", CatalogController, :show_movie
     get "/catalog/series", CatalogController, :series
     get "/catalog/series/:id", CatalogController, :show_series
-    get "/catalog/series/:series_id/episodes/:id", CatalogController, :show_episode
     get "/catalog/episodes/:id", CatalogController, :show_episode
     get "/catalog/channels", CatalogController, :channels
     get "/catalog/channels/:id", CatalogController, :show_channel

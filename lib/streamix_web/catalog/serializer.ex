@@ -23,6 +23,30 @@ defmodule StreamixWeb.Catalog.Serializer do
   @backdrop_widths [720, 1280]
 
   # ---------------------------------------------------------------------
+  # Providers
+  # ---------------------------------------------------------------------
+
+  def serialize_provider(provider) do
+    provider
+    |> serialize_provider_ref()
+    |> Map.merge(%{
+      content_types: provider_content_types(provider.provider_type),
+      catalog_counts: %{
+        channels: safe_count(provider.live_channels_count),
+        movies: safe_count(provider.movies_count),
+        series: safe_count(provider.series_count)
+      }
+    })
+  end
+
+  def serialize_provider_ref(%{id: id, name: name, provider_type: provider_type}) do
+    %{id: id, name: name, type: provider_type_name(provider_type)}
+  end
+
+  defp safe_count(count) when is_integer(count) and count >= 0, do: count
+  defp safe_count(_count), do: 0
+
+  # ---------------------------------------------------------------------
   # Featured
   # ---------------------------------------------------------------------
 
@@ -49,7 +73,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       genre: Helpers.genre_names(movie.genres),
       plot: movie.plot,
       poster: poster,
-      backdrop: featured_backdrop(backdrops, poster)
+      backdrop: featured_backdrop(backdrops, poster),
+      provider: serialize_provider_ref(movie.provider)
     }
     |> with_image_variants(movie.stream_icon, hero_backdrop)
   end
@@ -69,7 +94,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       genre: Helpers.genre_names(series.genres),
       plot: series.plot,
       poster: poster,
-      backdrop: featured_backdrop(backdrops, poster)
+      backdrop: featured_backdrop(backdrops, poster),
+      provider: serialize_provider_ref(series.provider)
     }
     |> with_image_variants(series.cover, hero_backdrop)
   end
@@ -103,7 +129,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
       poster: ImageProxy.proxy(movie.stream_icon),
-      duration: format_duration(movie.duration_secs)
+      duration: format_duration(movie.duration_secs),
+      provider: serialize_provider_ref(movie.provider)
     }
   end
 
@@ -125,7 +152,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       backdrop: ImageProxy.proxy(Iptv.backdrop_urls(movie)),
       youtube_trailer: movie.youtube_trailer,
       stream_url: StreamUrls.signed_movie_url(movie),
-      browser_stream_url: StreamUrls.browser_movie_url(movie)
+      browser_stream_url: StreamUrls.browser_movie_url(movie),
+      provider: serialize_provider_ref(movie.provider)
     }
     |> with_image_variants(movie.stream_icon, List.first(Iptv.backdrop_urls(movie)))
   end
@@ -142,7 +170,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
-      poster: ImageProxy.proxy(series.cover)
+      poster: ImageProxy.proxy(series.cover),
+      provider: serialize_provider_ref(series.provider)
     }
   end
 
@@ -163,7 +192,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       backdrop: ImageProxy.proxy(Iptv.backdrop_urls(series)),
       season_count: length(seasons),
       episode_count: Enum.sum(Enum.map(seasons, fn s -> length(s.episodes || []) end)),
-      seasons: Enum.map(seasons, &serialize_season/1)
+      seasons: Enum.map(seasons, &serialize_season/1),
+      provider: serialize_provider_ref(series.provider)
     }
     |> with_image_variants(series.cover, List.first(Iptv.backdrop_urls(series)))
   end
@@ -205,7 +235,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       series_id: series.id,
       series_name: series.name,
       stream_url: StreamUrls.signed_episode_url(episode),
-      browser_stream_url: StreamUrls.browser_episode_url(episode)
+      browser_stream_url: StreamUrls.browser_episode_url(episode),
+      provider: serialize_provider_ref(series.provider)
     }
   end
 
@@ -217,7 +248,8 @@ defmodule StreamixWeb.Catalog.Serializer do
     %{
       id: channel.id,
       name: channel.name,
-      icon: ImageProxy.proxy(channel.stream_icon)
+      icon: ImageProxy.proxy(channel.stream_icon),
+      provider: serialize_provider_ref(channel.provider)
     }
   end
 
@@ -227,7 +259,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       name: channel.name,
       icon: ImageProxy.proxy(channel.stream_icon),
       stream_url: StreamUrls.signed_channel_url(channel),
-      browser_stream_url: StreamUrls.browser_channel_url(channel)
+      browser_stream_url: StreamUrls.browser_channel_url(channel),
+      provider: serialize_provider_ref(channel.provider)
     }
   end
 
@@ -254,7 +287,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       title: m.title || m.name,
       year: m.year,
       poster: ImageProxy.proxy(m.stream_icon),
-      score: rank_score(m)
+      score: rank_score(m),
+      provider: serialize_provider_ref(m.provider)
     }
   end
 
@@ -265,7 +299,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       title: s.title || s.name,
       year: s.year,
       poster: ImageProxy.proxy(s.cover),
-      score: rank_score(s)
+      score: rank_score(s),
+      provider: serialize_provider_ref(s.provider)
     }
   end
 
@@ -275,7 +310,8 @@ defmodule StreamixWeb.Catalog.Serializer do
       type: "channel",
       title: c.name,
       poster: ImageProxy.proxy(c.stream_icon),
-      score: rank_score(c)
+      score: rank_score(c),
+      provider: serialize_provider_ref(c.provider)
     }
   end
 
@@ -292,6 +328,16 @@ defmodule StreamixWeb.Catalog.Serializer do
 
   def serialize_items("series", items), do: Enum.map(items, &serialize_series/1)
   def serialize_items(_, items), do: Enum.map(items, &serialize_movie/1)
+
+  defp provider_content_types(:xtream), do: ["channels", "movies", "series"]
+  defp provider_content_types(:gindex), do: ["movies", "series"]
+  defp provider_content_types(:torrent), do: ["movies"]
+  defp provider_content_types(_provider_type), do: []
+
+  defp provider_type_name(provider_type) when is_atom(provider_type),
+    do: Atom.to_string(provider_type)
+
+  defp provider_type_name(provider_type) when is_binary(provider_type), do: provider_type
 
   # ---------------------------------------------------------------------
   # Shared formatting

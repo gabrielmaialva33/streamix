@@ -36,7 +36,8 @@ defmodule StreamixWeb.Plugs.CORS do
           |> put_resp_header("access-control-max-age", "86400")
           |> put_resp_header(
             "access-control-expose-headers",
-            "content-length, content-range, accept-ranges"
+            "content-length, content-range, accept-ranges, retry-after, " <>
+              "x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset"
           )
           |> handle_preflight()
         else

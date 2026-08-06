@@ -27,6 +27,10 @@ defmodule StreamixWeb.Api.V1.CorsTest do
     assert response(conn, 204) == ""
     assert get_resp_header(conn, "access-control-allow-origin") == ["https://client.example"]
     assert get_resp_header(conn, "vary") == ["Origin"]
+
+    assert [exposed_headers] = get_resp_header(conn, "access-control-expose-headers")
+    assert exposed_headers =~ "x-ratelimit-remaining"
+    assert exposed_headers =~ "retry-after"
   end
 
   test "catch-all preflight also covers auth routes", %{conn: conn} do
