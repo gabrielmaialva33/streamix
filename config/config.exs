@@ -218,6 +218,8 @@ config :streamix, Oban,
        {"10 */4 * * *", Streamix.Workers.SyncGlobalProviderWorker},
        # Sync GIndex providers daily at 3 AM
        {"0 3 * * *", Streamix.Workers.SyncGindexProviderWorker},
+       # Reconcile durable GIndex cursors after a release/container replacement.
+       {"@reboot", Streamix.Workers.SyncGindexProviderWorker},
        # TMDB lookup for freshly-ingested gindex rows (poster + tmdb_id).
        # 30min after the sync gives the orchestrator time to finalize.
        # The orchestrator also auto-triggers this worker on

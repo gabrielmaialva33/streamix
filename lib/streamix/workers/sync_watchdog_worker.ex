@@ -22,19 +22,14 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
 
   import Ecto.Query
 
+  alias Streamix.Gindex
   alias Streamix.Iptv
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
+  alias Streamix.Workers.Gindex.SyncOrchestratorWorker
+  alias Streamix.Workers.SyncGindexProviderWorker
 
   require Logger
-
-  # Workers that can hold the GIndex sync state. The watchdog only
-  # resets a provider if NONE of these are in-flight for it.
-  @gindex_workers [
-    "Streamix.Workers.SyncGindexProviderWorker",
-    "Streamix.Workers.Gindex.ScanRootWorker",
-    "Streamix.Workers.Gindex.SyncOrchestratorWorker"
-  ]
 
   # Xtream / global providers ride on this single worker.
   @xtream_worker "Streamix.Workers.SyncProviderWorker"
@@ -56,16 +51,25 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
       |> DateTime.truncate(:second)
       |> DateTime.to_naive()
 
-    stuck =
+    stale_candidates =
       from(p in Provider,
-        where: p.sync_status == "syncing",
+        where:
+          p.sync_status == "syncing" or
+            (p.provider_type == :gindex and p.sync_status == "paused_quota"),
         where: p.updated_at < ^threshold
       )
       |> Repo.all()
 
-    Enum.each(stuck, &maybe_reset/1)
+    Enum.each(stale_candidates, &maybe_reset/1)
 
     :ok
+  end
+
+  defp maybe_reset(%Provider{provider_type: :gindex} = provider) do
+    case Gindex.active_scan_cycle_id(provider.id) do
+      nil -> reconcile_settled_gindex(provider)
+      cycle_id -> reconcile_active_gindex(provider, cycle_id)
+    end
   end
 
   defp maybe_reset(%Provider{} = provider) do
@@ -96,7 +100,81 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
     end
   end
 
-  defp workers_for(%Provider{provider_type: :gindex}), do: @gindex_workers
+  defp reconcile_active_gindex(provider, cycle_id) do
+    summary = Gindex.scan_cycle_summary(provider.id, cycle_id)
+
+    cond do
+      quota_pause_active?(summary) ->
+        Iptv.update_gindex_sync(provider.id, %{sync_status: "paused_quota"})
+
+      stale_heartbeat?(summary.heartbeat_at) ->
+        Logger.warning(
+          "[SyncWatchdog] GIndex provider #{provider.id} cycle=#{cycle_id} has no recent " <>
+            "durable progress; reconciling missing jobs"
+        )
+
+        SyncGindexProviderWorker.dispatch(provider)
+
+      true ->
+        :ok
+    end
+  end
+
+  defp reconcile_settled_gindex(provider) do
+    case Gindex.latest_scan_cycle_id(provider.id) do
+      nil ->
+        reset_provider(provider, "no durable scan cycle")
+
+      cycle_id ->
+        summary = Gindex.scan_cycle_summary(provider.id, cycle_id)
+        reconcile_settled_cycle(provider, cycle_id, summary)
+    end
+  end
+
+  defp reconcile_settled_cycle(provider, cycle_id, %{settled?: true} = summary) do
+    %{
+      "provider_id" => provider.id,
+      "workflow_id" => cycle_id,
+      "total_roots" => summary.roots_total
+    }
+    |> SyncOrchestratorWorker.new()
+    |> Oban.insert()
+    |> handle_finalizer_enqueue(provider)
+  end
+
+  defp reconcile_settled_cycle(provider, _cycle_id, _summary) do
+    reset_provider(provider, "latest durable cycle has no active or terminal roots")
+  end
+
+  defp handle_finalizer_enqueue({:ok, _job}, _provider), do: :ok
+
+  defp handle_finalizer_enqueue({:error, reason}, provider) do
+    reset_provider(provider, "finalizer enqueue failed: #{inspect(reason)}")
+  end
+
+  defp quota_pause_active?(summary) do
+    summary.roots_unfinished > 0 and
+      summary.roots_unfinished == summary.roots_paused_quota and
+      match?(%DateTime{}, summary.next_resume_at) and
+      DateTime.compare(summary.next_resume_at, DateTime.utc_now()) == :gt
+  end
+
+  defp stale_heartbeat?(nil), do: true
+
+  defp stale_heartbeat?(heartbeat) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@stuck_threshold_minutes, :minute)
+    DateTime.compare(heartbeat, cutoff) == :lt
+  end
+
+  defp reset_provider(provider, reason) do
+    Logger.warning(
+      "[SyncWatchdog] GIndex provider #{provider.id} stuck in syncing: #{reason}; " <>
+        "resetting to failed"
+    )
+
+    Iptv.update_gindex_sync(provider.id, %{sync_status: "failed"})
+  end
+
   defp workers_for(%Provider{provider_type: :torrent}), do: @torrent_workers
   defp workers_for(_), do: [@xtream_worker]
 end

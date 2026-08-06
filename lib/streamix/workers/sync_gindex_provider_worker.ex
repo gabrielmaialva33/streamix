@@ -1,19 +1,15 @@
 defmodule Streamix.Workers.SyncGindexProviderWorker do
   @moduledoc """
-  Dispatcher for GIndex ingestion.
+  Reconciles the configured GIndex roots with durable scan state and Oban.
 
-  This worker used to run the whole sync in one process, which routinely
-  exceeded Oban's default timeout when the catalog had 10k+ titles and left
-  the job stuck as `executing` forever. It now resolves the provider's scan
-  roots (one per `{drive, path, kind}`) and enqueues a
-  `Streamix.Workers.Gindex.ScanRootWorker` per root. Each child job carries
-  its own timeout, retries, and rate-limited HTTP budget — so one bad path
-  can't sabotage the rest of the catalog.
-
-  Queue: `:gindex_dispatch`. Triggered nightly by the Oban cron plugin.
+  Re-running this worker is safe: missing jobs are recreated, active jobs keep
+  their cursor, and a new cycle starts only after the previous cycle settles.
   """
 
-  use Oban.Worker, queue: :gindex_dispatch, max_attempts: 3
+  use Oban.Worker,
+    queue: :gindex_dispatch,
+    max_attempts: 3,
+    unique: [period: 30, fields: [:worker, :args], states: :incomplete]
 
   import Ecto.Query
 
@@ -24,6 +20,9 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   alias Streamix.Workers.Gindex.SyncOrchestratorWorker
 
   require Logger
+
+  @scan_worker "Streamix.Workers.Gindex.ScanRootWorker"
+  @in_flight_states ~w(available scheduled executing retryable)
 
   @impl Oban.Worker
   def perform(_job) do
@@ -37,110 +36,173 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
         {:ok, :disabled} ->
           :ok
 
-        {:error, reason} = err ->
+        {:error, reason} = error ->
           Logger.error("[GIndex Dispatcher] provider ensure failed: #{inspect(reason)}")
-          err
+          error
       end
     else
       :ok
     end
   end
 
-  defp dispatch(provider) do
-    case active_workflow(provider.id) do
-      nil ->
-        start_workflow(provider)
+  @doc false
+  def dispatch(provider, opts \\ []) do
+    with {:ok, cycle} <- resolve_cycle(provider, opts),
+         :ok <- mark_cycle_status(provider.id, cycle.cycle_id),
+         :ok <- enqueue_scan_roots(cycle.roots),
+         :ok <- enqueue_orchestrator(provider.id, cycle.cycle_id, length(cycle.roots)) do
+      action = if cycle.new_cycle?, do: "started", else: "reconciled"
 
-      workflow_id ->
-        Logger.info(
-          "[GIndex Dispatcher] provider #{provider.id} already has active workflow=" <>
-            "#{workflow_id}; skipping duplicate dispatch"
-        )
+      Logger.info(
+        "[GIndex Dispatcher] #{action} cycle=#{cycle.cycle_id} " <>
+          "provider=#{provider.id} roots=#{length(cycle.roots)}"
+      )
 
-        :ok
+      :ok
     end
   end
 
-  defp start_workflow(provider) do
-    roots = Gindex.sync_roots_for(provider)
-    # UUID tag that links every job in this dispatch together — the
-    # orchestrator uses it to know which ScanRoot siblings belong to
-    # the same sync run when it decides whether finalization is due.
-    workflow_id = Ecto.UUID.generate()
-    total_roots = length(roots)
+  defp resolve_cycle(provider, opts) do
+    case Keyword.fetch(opts, :cycle_id) do
+      {:ok, cycle_id} when is_binary(cycle_id) ->
+        roots = Gindex.list_scan_cycle(provider.id, cycle_id)
 
-    Logger.info(
-      "[GIndex Dispatcher] workflow=#{workflow_id} enqueuing #{total_roots} scan roots " <>
-        "for provider #{provider.id}"
-    )
+        with :ok <- ensure_roots_present(roots) do
+          {:ok, %{cycle_id: cycle_id, new_cycle?: false, roots: roots}}
+        end
 
-    mark_status(provider, "syncing")
+      {:ok, _invalid_cycle_id} ->
+        {:error, :invalid_gindex_scan_cycle}
 
-    scan_results =
-      Enum.map(roots, fn %{base_url: base_url, path: path, kind: kind} ->
-        %{
-          "provider_id" => provider.id,
-          "base_url" => base_url,
-          "path" => path,
-          "kind" => Atom.to_string(kind),
-          "workflow_id" => workflow_id
-        }
-        |> ScanRootWorker.new()
-        |> Oban.insert()
-      end)
-
-    errors = Enum.filter(scan_results, &match?({:error, _}, &1))
-
-    if errors != [] do
-      Logger.warning("[GIndex Dispatcher] some roots failed to enqueue: #{inspect(errors)}")
+      :error ->
+        ensure_configured_cycle(provider)
     end
+  end
 
-    # Fan-in job — open-source equivalent of Workflow.add_cascade(:finalize,
-    # ..., deps: [:scan_root_1, ..., :scan_root_N]). Scheduled a few
-    # seconds out so the ScanRoots have time to be picked up first;
-    # otherwise the orchestrator's first poll would see 0 siblings
-    # in-flight only because they haven't been fetched yet.
-    orchestrator_args = %{
-      "provider_id" => provider.id,
-      "workflow_id" => workflow_id,
+  defp ensure_configured_cycle(provider) do
+    roots = Gindex.sync_roots_for(provider)
+
+    with :ok <- ensure_roots_present(roots) do
+      cycle_opts =
+        cond do
+          Gindex.active_scan_cycle_id(provider.id) ->
+            []
+
+          legacy = legacy_workflow(provider.id) ->
+            [cycle_id: legacy.cycle_id, legacy_checkpoints: legacy.checkpoints]
+
+          true ->
+            []
+        end
+
+      Gindex.ensure_scan_cycle(provider.id, roots, cycle_opts)
+    end
+  end
+
+  defp ensure_roots_present([]), do: {:error, :no_gindex_scan_roots}
+  defp ensure_roots_present([_root | _roots]), do: :ok
+
+  defp enqueue_scan_roots(roots) do
+    roots
+    |> Enum.filter(&(&1.status in ~w(pending running paused)))
+    |> Enum.reduce_while(:ok, fn root, :ok ->
+      args = %{
+        "provider_id" => root.provider_id,
+        "base_url" => root.base_url,
+        "path" => root.root_path,
+        "kind" => root.kind,
+        "workflow_id" => root.cycle_id
+      }
+
+      case args
+           |> ScanRootWorker.new(schedule_in: schedule_in(root.next_resume_at))
+           |> Oban.insert() do
+        {:ok, %Oban.Job{conflict?: conflict}} ->
+          Logger.debug(
+            "[GIndex Dispatcher] cycle=#{root.cycle_id} root=#{root.kind}:#{root.root_path} " <>
+              "conflict=#{conflict}"
+          )
+
+          {:cont, :ok}
+
+        {:error, reason} ->
+          {:halt, {:error, {:scan_root_enqueue_failed, root.id, reason}}}
+      end
+    end)
+  end
+
+  defp enqueue_orchestrator(provider_id, cycle_id, total_roots) do
+    args = %{
+      "provider_id" => provider_id,
+      "workflow_id" => cycle_id,
       "total_roots" => total_roots
     }
 
-    case orchestrator_args
+    case args
          |> SyncOrchestratorWorker.new(schedule_in: 15)
          |> Oban.insert() do
       {:ok, %Oban.Job{id: id, conflict?: conflict}} ->
-        Logger.info(
-          "[GIndex Dispatcher] workflow=#{workflow_id} orchestrator job=#{id} conflict=#{conflict}"
+        Logger.debug(
+          "[GIndex Dispatcher] cycle=#{cycle_id} orchestrator=#{id} conflict=#{conflict}"
         )
+
+        :ok
 
       {:error, reason} ->
-        Logger.error(
-          "[GIndex Dispatcher] workflow=#{workflow_id} failed to enqueue orchestrator: #{inspect(reason)}"
-        )
+        {:error, {:orchestrator_enqueue_failed, reason}}
     end
-
-    :ok
   end
 
-  defp active_workflow(provider_id) do
+  defp mark_cycle_status(provider_id, cycle_id) do
+    summary = Gindex.scan_cycle_summary(provider_id, cycle_id)
+
+    status =
+      if summary.roots_unfinished > 0 and
+           summary.roots_unfinished == summary.roots_paused_quota do
+        "paused_quota"
+      else
+        "syncing"
+      end
+
+    Iptv.update_gindex_sync(provider_id, %{sync_status: status})
+  end
+
+  defp legacy_workflow(provider_id) do
     provider_id = Integer.to_string(provider_id)
 
-    from(j in Oban.Job,
-      where:
-        j.worker in [
-          "Streamix.Workers.Gindex.ScanRootWorker",
-          "Streamix.Workers.Gindex.SyncOrchestratorWorker"
-        ],
-      where: j.state in ~w(available scheduled executing retryable),
-      where: fragment("?->>'provider_id' = ?", j.args, ^provider_id),
-      select: fragment("?->>'workflow_id'", j.args),
-      limit: 1
-    )
-    |> Repo.one()
+    jobs =
+      from(job in Oban.Job,
+        where: job.worker == ^@scan_worker,
+        where: job.state in ^@in_flight_states,
+        where: fragment("?->>'provider_id' = ?", job.args, ^provider_id),
+        order_by: [desc: job.updated_at],
+        select: %{args: job.args, meta: job.meta}
+      )
+      |> Repo.all()
+
+    case Enum.find_value(jobs, & &1.args["workflow_id"]) do
+      nil ->
+        nil
+
+      cycle_id ->
+        checkpoints =
+          jobs
+          |> Enum.filter(&(&1.args["workflow_id"] == cycle_id))
+          |> Map.new(fn job ->
+            key = {job.args["path"], job.args["kind"]}
+            meta = job.meta || %{}
+            checkpoint = meta["checkpoint"] || meta["series_checkpoint"]
+            {key, checkpoint}
+          end)
+          |> Map.reject(fn {_key, checkpoint} -> not is_map(checkpoint) end)
+
+        %{cycle_id: cycle_id, checkpoints: checkpoints}
+    end
   end
 
-  defp mark_status(provider, status) do
-    Iptv.update_provider(provider, %{sync_status: status})
+  defp schedule_in(nil), do: 0
+
+  defp schedule_in(next_resume_at) do
+    max(0, DateTime.diff(next_resume_at, DateTime.utc_now(), :second))
   end
 end

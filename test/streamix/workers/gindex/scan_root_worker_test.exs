@@ -1,6 +1,7 @@
 defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
   use Streamix.DataCase, async: true
 
+  alias Streamix.Gindex
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.ScanRootWorker
@@ -21,6 +22,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
 
     duplicate =
       base_args
+      |> Map.put("base_url", "https://new-gindex.example/")
       |> Map.put("workflow_id", Ecto.UUID.generate())
       |> ScanRootWorker.new()
       |> Oban.insert!()
@@ -60,6 +62,11 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
     assert meta["checkpoint_path"] == path
     assert meta["paused_reason"] == "quota_exhausted"
     assert meta["quota_count"] == 8_000
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    assert root.status == "paused"
+    assert root.paused_reason == "quota_exhausted"
+    assert root.cursor["folder_path"] == "/1:/Series/B/"
   end
 
   test "preserves checkpoint writes during the run and clears them after success" do
@@ -85,6 +92,11 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
     assert meta["checkpoint_path"] == nil
     assert meta["paused_reason"] == nil
     assert meta["quota_count"] == nil
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    assert root.status == "completed"
+    assert root.cursor == %{}
+    assert root.stats == %{"series_count" => 4, "episodes_count" => 20}
   end
 
   defp gindex_provider do
