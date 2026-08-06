@@ -171,7 +171,7 @@ defmodule StreamixWeb.App.Media do
           type="button"
           phx-click={@on_sync}
           phx-value-id={@provider.id}
-          disabled={@provider.sync_status in ["pending", "syncing"]}
+          disabled={@provider.sync_status in ["pending", "syncing", "paused_quota"]}
           class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-50"
         >
           <.icon
@@ -212,6 +212,13 @@ defmodule StreamixWeb.App.Media do
 
   defp sync_status_message("pending"), do: "Sincronização aguardando processamento."
   defp sync_status_message("syncing"), do: "Sincronizando o catálogo deste provedor."
+
+  defp sync_status_message("paused_quota"),
+    do: "Sincronização pausada até a renovação da cota diária."
+
+  defp sync_status_message("partial"),
+    do: "Sincronização concluída parcialmente; algumas origens serão tentadas novamente."
+
   defp sync_status_message("failed"), do: "A última sincronização falhou. Tente novamente."
   defp sync_status_message(_status), do: nil
 
@@ -221,7 +228,9 @@ defmodule StreamixWeb.App.Media do
         "idle" -> {"bg-text-muted/10", "text-text-muted", "Inativo"}
         "pending" -> {"bg-warning/10", "text-warning", "Pendente"}
         "syncing" -> {"bg-info/10", "text-info", "Sincronizando"}
+        "paused_quota" -> {"bg-warning/10", "text-warning", "Pausado pela cota"}
         "completed" -> {"bg-success/10", "text-success", "Sincronizado"}
+        "partial" -> {"bg-warning/10", "text-warning", "Parcial"}
         "failed" -> {"bg-error/10", "text-error", "Falhou"}
         _ -> {"bg-text-muted/10", "text-text-muted", "Desconhecido"}
       end
