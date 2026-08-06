@@ -10,7 +10,7 @@ defmodule Streamix.Iptv.Providers do
 
   alias Streamix.Billing
   alias Streamix.Cache
-  alias Streamix.Iptv.{Provider, Sync, XtreamClient}
+  alias Streamix.Iptv.{Movie, Provider, Series, Sync, XtreamClient}
   alias Streamix.Repo
   alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
 
@@ -187,6 +187,30 @@ defmodule Streamix.Iptv.Providers do
 
   def update_gindex_sync(_provider_id, _attrs), do: {:error, :gindex_provider_not_found}
 
+  @doc "Recounts the persisted GIndex catalog and updates the provider atomically."
+  @spec refresh_gindex_counts(pos_integer(), map()) ::
+          {:ok, Provider.t()} | {:error, :gindex_provider_not_found | Ecto.Changeset.t()}
+  def refresh_gindex_counts(provider_id, attrs \\ %{})
+      when is_integer(provider_id) and provider_id > 0 and is_map(attrs) do
+    case Repo.get_by(Provider, id: provider_id, provider_type: :gindex) do
+      nil ->
+        {:error, :gindex_provider_not_found}
+
+      provider ->
+        counts = %{
+          movies_count:
+            Repo.aggregate(from(m in Movie, where: m.provider_id == ^provider_id), :count),
+          series_count:
+            Repo.aggregate(from(s in Series, where: s.provider_id == ^provider_id), :count)
+        }
+
+        provider
+        |> Provider.sync_changeset(Map.merge(counts, attrs))
+        |> Repo.update()
+        |> invalidate_global_cache()
+    end
+  end
+
   @doc """
   Persists the runtime state owned by a Torrent synchronization.
   """
@@ -219,6 +243,7 @@ defmodule Streamix.Iptv.Providers do
           {:ok, _provider} -> :ok
           {:error, changeset} -> {:error, changeset}
         end
+        |> tap(fn _result -> Cache.delete_local(@global_provider_cache_key) end)
     end
   end
 

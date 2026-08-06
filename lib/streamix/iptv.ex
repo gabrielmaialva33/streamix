@@ -425,6 +425,10 @@ defmodule Streamix.Iptv do
              | Ecto.Changeset.t()}
   defdelegate update_gindex_sync(provider_id, attrs), to: Providers
 
+  @spec refresh_gindex_counts(pos_integer(), map()) ::
+          {:ok, Provider.t()} | {:error, :gindex_provider_not_found | Ecto.Changeset.t()}
+  defdelegate refresh_gindex_counts(provider_id, attrs \\ %{}), to: Providers
+
   @type torrent_sync_source :: %{
           provider_id: pos_integer(),
           name: String.t()
