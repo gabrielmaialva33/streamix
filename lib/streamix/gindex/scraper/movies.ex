@@ -85,7 +85,8 @@ defmodule Streamix.Gindex.Scraper.Movies do
     end
   end
 
-  defp scrape_movie_folder_result(base_url, folder) do
+  @doc false
+  def scrape_movie_folder_result(base_url, folder) do
     Logger.debug("[GIndex Scraper] Scraping movie folder: #{folder.name}")
 
     folder_meta = Parser.parse_movie_folder(folder.name)
@@ -146,6 +147,9 @@ defmodule Streamix.Gindex.Scraper.Movies do
       {:error, {:quota_exhausted, _} = reason} ->
         {[{:gindex_error, reason}], %{state | current_folders: [], categories: [], done: true}}
 
+      {:error, {:slice_exhausted, _} = reason} ->
+        {[{:gindex_error, reason}], %{state | current_folders: [], categories: [], done: true}}
+
       {:error, _reason} ->
         scrape_next_movie(%{state | current_folders: rest})
     end
@@ -194,6 +198,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
         {:ok, nil} -> {:cont, {:ok, nil}}
         {:ok, movie} -> {:halt, {:ok, movie}}
         {:error, {:quota_exhausted, _}} = error -> {:halt, error}
+        {:error, {:slice_exhausted, _}} = error -> {:halt, error}
         {:error, _reason} -> {:cont, {:ok, nil}}
       end
     end)

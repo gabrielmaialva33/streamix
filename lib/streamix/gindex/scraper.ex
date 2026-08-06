@@ -18,11 +18,23 @@ defmodule Streamix.Gindex.Scraper do
 
   def scrape_movie_folder(base_url, folder), do: Movies.scrape_movie_folder(base_url, folder)
 
+  def scrape_movie_folder_result(base_url, folder),
+    do: Movies.scrape_movie_folder_result(base_url, folder)
+
+  def movie_from_direct_file(video_file, category_path),
+    do: Movies.movie_from_direct_file(video_file, category_path)
+
   def scrape_animes(base_url, anime_path \\ "/0:/Animes/") do
     Animes.scrape_animes(base_url, anime_path)
   end
 
+  def list_anime_folders(base_url, anime_path),
+    do: Animes.list_anime_folders(base_url, anime_path)
+
   def scrape_single_anime(base_url, folder), do: Animes.scrape_single_anime(base_url, folder)
+
+  def scrape_single_anime_result(base_url, folder),
+    do: Animes.scrape_single_anime_result(base_url, folder)
 
   def scrape_anime_releases(base_url, release_folders),
     do: Animes.scrape_anime_releases(base_url, release_folders)
