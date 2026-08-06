@@ -78,6 +78,14 @@ defmodule Streamix.WatchParty.RoomServerTest do
 
     assert :ok = RoomServer.sync_beacon(room_id, viewer_id, 20.0, "playing", false, 123)
 
+    # sync_beacon/6 is a cast. A state read from the same caller is the
+    # deterministic barrier proving that the room processed the beacon and
+    # issued its PubSub broadcast before we inspect the test mailbox.
+    room_state = :sys.get_state(pid)
+
+    assert %{position: 20.0, state: "playing", buffering: false} =
+             room_state.participant_states[viewer_id]
+
     assert_receive {:resync_user,
                     %{
                       user_id: ^viewer_id,
@@ -90,9 +98,6 @@ defmodule Streamix.WatchParty.RoomServerTest do
     assert is_integer(server_time)
 
     assert {:ok, _playback, ^host_user_id} = RoomServer.get_state(room_id)
-
-    assert %{position: 20.0, state: "playing", buffering: false} =
-             :sys.get_state(pid).participant_states[viewer_id]
   end
 
   test "periodic sync broadcasts only after another participant joins" do
