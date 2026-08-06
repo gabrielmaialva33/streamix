@@ -23,6 +23,7 @@ defmodule Streamix.Iptv.Movies do
   alias Streamix.Repo
 
   @summary_preloads [:genres]
+  @public_summary_preloads [:provider, :genres]
   @search_result_preloads [:assets, :genres]
   @detail_preloads [:assets, :genres, credits: :person]
   @variant_preloads [:provider, :categories]
@@ -164,8 +165,42 @@ defmodule Streamix.Iptv.Movies do
 
     limit
     |> Queries.public_list(show_adult)
-    |> preload(^@summary_preloads)
+    |> preload(^@public_summary_preloads)
     |> Repo.all()
+  end
+
+  @doc """
+  Lists canonical movie cards across public/global providers.
+
+  Unlike `list_public/1`, which is a small featured-content query, this is the
+  paginated public catalog boundary. It accepts `:provider_id` and
+  `:provider_type` filters and preloads the safe provider association used by
+  API serializers.
+  """
+  @spec list_public_catalog(keyword()) :: [Movie.t()]
+  def list_public_catalog(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    sort = Keyword.get(opts, :sort)
+
+    opts
+    |> Queries.filtered_public()
+    |> Queries.dedupe_variants()
+    |> Queries.sorted(sort)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Queries.select_card_fields()
+    |> preload(^@public_summary_preloads)
+    |> Repo.all()
+  end
+
+  @doc "Counts the canonical movie cards returned by `list_public_catalog/1`."
+  @spec count_public_catalog(keyword()) :: non_neg_integer()
+  def count_public_catalog(opts \\ []) do
+    opts
+    |> Queries.filtered_public()
+    |> Queries.dedupe_variants()
+    |> Repo.aggregate(:count, :id)
   end
 
   @doc """
@@ -275,7 +310,7 @@ defmodule Streamix.Iptv.Movies do
       |> where([movie], movie.id in ^ranked_ids)
       |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false))
       |> Queries.select_card_fields()
-      |> preload(^@summary_preloads)
+      |> preload(^@public_summary_preloads)
       |> Repo.all()
       |> Map.new(&{&1.id, &1})
 
@@ -385,12 +420,14 @@ defmodule Streamix.Iptv.Movies do
   @spec search_public(String.t(), keyword()) :: [Movie.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    candidate_limit = max(limit * 4, 48)
     show_adult = Keyword.get(opts, :show_adult, false)
 
     query
-    |> Queries.public_search(limit, show_adult)
-    |> preload(^@summary_preloads)
+    |> Queries.public_search(candidate_limit, show_adult, opts)
+    |> preload(^@public_summary_preloads)
     |> Repo.all()
+    |> canonical_ranked_results(limit)
   end
 
   @doc """
@@ -508,6 +545,19 @@ defmodule Streamix.Iptv.Movies do
   end
 
   defp blank_to_nil(value), do: value
+
+  defp canonical_ranked_results(movies, limit) do
+    movies
+    |> Enum.reduce(VariantCards.new(), &VariantCards.add(&2, &1))
+    |> VariantCards.cards()
+    |> Enum.sort_by(fn movie ->
+      {-rank_score(movie), desc_numeric(movie.rating), movie.name || "", -movie.id}
+    end)
+    |> Enum.take(limit)
+  end
+
+  defp rank_score(%{rank_score: score}) when is_integer(score), do: score
+  defp rank_score(_movie), do: 0
 
   defp sort_visible_cards(movies, "rating_desc") do
     Enum.sort_by(movies, fn movie ->

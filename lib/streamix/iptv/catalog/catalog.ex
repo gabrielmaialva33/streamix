@@ -29,11 +29,11 @@ defmodule Streamix.Iptv.Catalog do
 
   alias Streamix.Repo
 
-  @summary_preloads [:genres]
-  @featured_preloads [:assets, :genres]
+  @summary_preloads [:provider, :genres]
+  @featured_preloads [:provider, :assets, :genres]
   @catalog_item_content_preloads [:movie, :series, :episode, :live_channel]
-  @movie_card_fields ~w(id name title year stream_icon rating inserted_at)a
-  @series_card_fields ~w(id name title year cover rating inserted_at)a
+  @movie_card_fields ~w(id provider_id name title year stream_icon rating inserted_at)a
+  @series_card_fields ~w(id provider_id name title year cover rating inserted_at)a
 
   @doc """
   Gets one catalog item with its concrete content association loaded.
@@ -58,13 +58,12 @@ defmodule Streamix.Iptv.Catalog do
   @spec get_featured_content(keyword()) :: {:movie, Movie.t()} | {:series, Series.t()} | nil
   def get_featured_content(opts \\ []) do
     seed = Date.utc_today() |> Date.to_gregorian_days()
-    show_adult = Keyword.get(opts, :show_adult, false)
 
     pick_featured(seed, [
-      {:movie, fn -> featured_movies_with_backdrop(show_adult) end},
-      {:series, fn -> featured_series_with_backdrop(show_adult) end},
-      {:movie, fn -> featured_movies_with_plot(show_adult) end},
-      {:movie, fn -> featured_movies_any_poster(show_adult) end}
+      {:movie, fn -> featured_movies_with_backdrop(opts) end},
+      {:series, fn -> featured_series_with_backdrop(opts) end},
+      {:movie, fn -> featured_movies_with_plot(opts) end},
+      {:movie, fn -> featured_movies_any_poster(opts) end}
     ])
   rescue
     e ->
@@ -90,13 +89,14 @@ defmodule Streamix.Iptv.Catalog do
     end
   end
 
-  defp featured_movies_with_backdrop(show_adult) do
+  defp featured_movies_with_backdrop(opts) do
     public_movies_query()
+    |> with_provider_filters(opts)
     |> join(:inner, [movie: movie], asset in MovieAsset,
       as: :asset,
       on: asset.movie_id == movie.id and asset.asset_type == "backdrop"
     )
-    |> maybe_exclude_adult(show_adult, :movie)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false), :movie)
     |> where([movie: movie], not is_nil(movie.plot))
     |> order_by([movie: movie], fragment("? DESC NULLS LAST", movie.rating))
     |> limit(10)
@@ -105,13 +105,14 @@ defmodule Streamix.Iptv.Catalog do
     |> Repo.all()
   end
 
-  defp featured_series_with_backdrop(show_adult) do
+  defp featured_series_with_backdrop(opts) do
     public_series_query()
+    |> with_provider_filters(opts)
     |> join(:inner, [series: series], asset in SeriesAsset,
       as: :asset,
       on: asset.series_id == series.id and asset.asset_type == "backdrop"
     )
-    |> maybe_exclude_adult(show_adult, :series)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false), :series)
     |> where([series: series], not is_nil(series.plot))
     |> order_by([series: series], fragment("? DESC NULLS LAST", series.rating))
     |> limit(10)
@@ -120,9 +121,10 @@ defmodule Streamix.Iptv.Catalog do
     |> Repo.all()
   end
 
-  defp featured_movies_with_plot(show_adult) do
+  defp featured_movies_with_plot(opts) do
     public_movies_query()
-    |> maybe_exclude_adult(show_adult, :movie)
+    |> with_provider_filters(opts)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false), :movie)
     |> where([movie: movie], not is_nil(movie.stream_icon) and movie.stream_icon != "")
     |> where([movie: movie], not is_nil(movie.plot) and movie.plot != "")
     |> order_by([movie: movie], fragment("? DESC NULLS LAST", movie.rating))
@@ -132,9 +134,10 @@ defmodule Streamix.Iptv.Catalog do
     |> Repo.all()
   end
 
-  defp featured_movies_any_poster(show_adult) do
+  defp featured_movies_any_poster(opts) do
     public_movies_query()
-    |> maybe_exclude_adult(show_adult, :movie)
+    |> with_provider_filters(opts)
+    |> maybe_exclude_adult(Keyword.get(opts, :show_adult, false), :movie)
     |> where([movie: movie], not is_nil(movie.stream_icon) and movie.stream_icon != "")
     |> order_by([movie: movie], fragment("? DESC NULLS LAST", movie.rating))
     |> limit(10)
@@ -154,10 +157,10 @@ defmodule Streamix.Iptv.Catalog do
   """
   @spec get_public_stats(keyword()) :: %{String.t() => integer()}
   def get_public_stats(opts \\ []) do
-    if Keyword.get(opts, :refresh, false) do
-      refresh_public_stats()
-    else
-      Cache.fetch_public_stats(&compute_public_stats/0)
+    cond do
+      provider_filtered?(opts) -> compute_public_stats(opts)
+      Keyword.get(opts, :refresh, false) -> refresh_public_stats()
+      true -> Cache.fetch_public_stats(&compute_public_stats/0)
     end
   end
 
@@ -166,23 +169,44 @@ defmodule Streamix.Iptv.Catalog do
     Cache.fetch_public_stats(&compute_public_stats/0)
   end
 
-  defp compute_public_stats do
+  defp compute_public_stats(opts \\ []) do
     channels_count =
       LiveChannel
-      |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
-      |> where([_c, p], p.visibility in [:global, :public] and p.is_active == true)
+      |> join(:inner, [channel], provider in Provider,
+        as: :provider,
+        on: channel.provider_id == provider.id
+      )
+      |> where(
+        [provider: provider],
+        provider.visibility in [:global, :public] and provider.is_active == true
+      )
+      |> with_provider_filters(opts)
       |> Repo.aggregate(:count)
 
     movies_count =
       Movie
-      |> join(:inner, [m], p in Provider, on: m.provider_id == p.id)
-      |> where([_m, p], p.visibility in [:global, :public] and p.is_active == true)
+      |> join(:inner, [movie], provider in Provider,
+        as: :provider,
+        on: movie.provider_id == provider.id
+      )
+      |> where(
+        [provider: provider],
+        provider.visibility in [:global, :public] and provider.is_active == true
+      )
+      |> with_provider_filters(opts)
       |> Repo.aggregate(:count)
 
     series_count =
       Series
-      |> join(:inner, [s], p in Provider, on: s.provider_id == p.id)
-      |> where([_s, p], p.visibility in [:global, :public] and p.is_active == true)
+      |> join(:inner, [series], provider in Provider,
+        as: :provider,
+        on: series.provider_id == provider.id
+      )
+      |> where(
+        [provider: provider],
+        provider.visibility in [:global, :public] and provider.is_active == true
+      )
+      |> with_provider_filters(opts)
       |> Repo.aggregate(:count)
 
     %{
@@ -229,6 +253,7 @@ defmodule Streamix.Iptv.Catalog do
     escaped_genre = Helpers.escape_like(genre)
 
     public_movies_query()
+    |> with_provider_filters(opts)
     |> join(:inner, [movie: movie], movie_genre in "movie_genres",
       as: :movie_genre,
       on: movie_genre.movie_id == movie.id
@@ -257,6 +282,7 @@ defmodule Streamix.Iptv.Catalog do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     public_movies_query()
+    |> with_provider_filters(opts)
     |> maybe_exclude_adult(show_adult, :movie)
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.inserted_at)
@@ -275,6 +301,7 @@ defmodule Streamix.Iptv.Catalog do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     public_series_query()
+    |> with_provider_filters(opts)
     |> maybe_exclude_adult(show_adult, :series)
     |> with_series_cover()
     |> order_by([series: series], desc: series.inserted_at)
@@ -310,6 +337,7 @@ defmodule Streamix.Iptv.Catalog do
 
     movies =
       public_movies_query()
+      |> with_provider_filters(opts)
       |> maybe_exclude_adult(show_adult, :movie)
       |> with_movie_poster()
       |> order_by([movie: movie], desc: movie.inserted_at)
@@ -321,6 +349,7 @@ defmodule Streamix.Iptv.Catalog do
 
     series =
       public_series_query()
+      |> with_provider_filters(opts)
       |> maybe_exclude_adult(show_adult, :series)
       |> with_series_cover()
       |> order_by([series: series], desc: series.inserted_at)
@@ -372,10 +401,11 @@ defmodule Streamix.Iptv.Catalog do
 
     if trending_ids == [] do
       # Fallback to high-rated recent movies
-      list_new_releases(limit: limit, offset: offset, show_adult: show_adult)
+      list_new_releases(shelf_opts(opts, limit, offset, show_adult))
     else
       results =
         public_movies_query()
+        |> with_provider_filters(opts)
         |> maybe_exclude_adult(show_adult, :movie)
         |> where([movie: movie], movie.id in ^trending_ids)
         |> select_movie_card_fields()
@@ -386,7 +416,7 @@ defmodule Streamix.Iptv.Catalog do
         |> Enum.take(limit)
 
       if results == [] do
-        list_new_releases(limit: limit, offset: offset, show_adult: show_adult)
+        list_new_releases(shelf_opts(opts, limit, offset, show_adult))
       else
         results
       end
@@ -428,6 +458,7 @@ defmodule Streamix.Iptv.Catalog do
     if trending_series_ids == [] do
       # Fallback to high-rated series
       public_series_query()
+      |> with_provider_filters(opts)
       |> maybe_exclude_adult(show_adult, :series)
       |> with_series_cover()
       |> order_by([series: series], desc: series.rating)
@@ -440,6 +471,7 @@ defmodule Streamix.Iptv.Catalog do
       series_ids = Enum.map(trending_series_ids, fn {id, _count} -> id end)
 
       public_series_query()
+      |> with_provider_filters(opts)
       |> maybe_exclude_adult(show_adult, :series)
       |> where([series: series], series.id in ^series_ids)
       |> select_series_card_fields()
@@ -462,6 +494,7 @@ defmodule Streamix.Iptv.Catalog do
     current_year = Date.utc_today().year
 
     public_movies_query()
+    |> with_provider_filters(opts)
     |> maybe_exclude_adult(show_adult, :movie)
     |> where([movie: movie], movie.year >= ^(current_year - 2))
     |> with_movie_poster()
@@ -489,6 +522,7 @@ defmodule Streamix.Iptv.Catalog do
     # "returns 1 row" into "returns a proper top 10" — the card
     # component doesn't render plot anyway, it's rank + poster + title.
     public_movies_query()
+    |> with_provider_filters(opts)
     |> maybe_exclude_adult(show_adult, :movie)
     |> where([movie: movie], not is_nil(movie.rating))
     |> with_movie_poster()
@@ -510,6 +544,7 @@ defmodule Streamix.Iptv.Catalog do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     public_series_query()
+    |> with_provider_filters(opts)
     |> maybe_exclude_adult(show_adult, :series)
     |> where([series: series], not is_nil(series.rating))
     |> with_series_cover()
@@ -549,6 +584,24 @@ defmodule Streamix.Iptv.Catalog do
     )
   end
 
+  defp with_provider_filters(query, opts) do
+    query
+    |> maybe_filter_provider(Keyword.get(opts, :provider_id))
+    |> maybe_filter_provider_type(Keyword.get(opts, :provider_type))
+  end
+
+  defp provider_filtered?(opts) do
+    not is_nil(Keyword.get(opts, :provider_id)) or
+      not is_nil(Keyword.get(opts, :provider_type))
+  end
+
+  defp shelf_opts(opts, limit, offset, show_adult) do
+    opts
+    |> Keyword.put(:limit, limit)
+    |> Keyword.put(:offset, offset)
+    |> Keyword.put(:show_adult, show_adult)
+  end
+
   defp with_movie_poster(query), do: where(query, [movie: movie], not is_nil(movie.stream_icon))
   defp with_series_cover(query), do: where(query, [series: series], not is_nil(series.cover))
 
@@ -577,6 +630,51 @@ defmodule Streamix.Iptv.Catalog do
     query = if type, do: where(query, type: ^type), else: query
     query |> order_by(:name) |> Repo.all()
   end
+
+  @doc """
+  Lists non-adult categories across active public/global providers.
+
+  `:provider_id` and `:provider_type` narrow the source without ever making a
+  private or inactive provider visible.
+  """
+  @spec list_public_categories(keyword()) :: [Category.t()]
+  def list_public_categories(opts \\ []) do
+    Category
+    |> join(:inner, [category], provider in Provider,
+      as: :provider,
+      on: category.provider_id == provider.id
+    )
+    |> where(
+      [category, provider: provider],
+      provider.visibility in [:global, :public] and provider.is_active == true and
+        category.is_adult == false
+    )
+    |> maybe_filter_provider(Keyword.get(opts, :provider_id))
+    |> maybe_filter_provider_type(Keyword.get(opts, :provider_type))
+    |> maybe_filter_category_type(Keyword.get(opts, :type))
+    |> order_by([category, provider: provider],
+      asc: provider.name,
+      asc: category.name,
+      asc: category.id
+    )
+    |> preload(:provider)
+    |> Repo.all()
+  end
+
+  defp maybe_filter_provider(query, nil), do: query
+
+  defp maybe_filter_provider(query, provider_id),
+    do: where(query, [provider: provider], provider.id == ^provider_id)
+
+  defp maybe_filter_provider_type(query, nil), do: query
+
+  defp maybe_filter_provider_type(query, provider_type),
+    do: where(query, [provider: provider], provider.provider_type == ^provider_type)
+
+  defp maybe_filter_category_type(query, nil), do: query
+
+  defp maybe_filter_category_type(query, type),
+    do: where(query, [category], category.type == ^type)
 
   @doc """
   Gets a category by ID. Raises if not found.

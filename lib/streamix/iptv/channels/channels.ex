@@ -111,14 +111,28 @@ defmodule Streamix.Iptv.Channels do
   end
 
   defp build_visible_query(user_id, opts) do
+    LiveChannel
+    |> Access.visible_to_user(user_id)
+    |> where([_channel, provider], provider.provider_type == :xtream)
+    |> build_aggregate_query(opts)
+  end
+
+  defp build_public_query(opts) do
+    LiveChannel
+    |> Access.public_providers()
+    |> where([_channel, provider], provider.provider_type == :xtream)
+    |> build_aggregate_query(opts)
+  end
+
+  defp build_aggregate_query(query, opts) do
     search = Keyword.get(opts, :search)
     category_id = Keyword.get(opts, :category_id)
     show_adult = Keyword.get(opts, :show_adult, false)
 
     query =
-      LiveChannel
-      |> Access.visible_to_user(user_id)
-      |> where([_c, p], p.provider_type == :xtream and p.is_active == true)
+      query
+      |> maybe_where_provider(Keyword.get(opts, :provider_id))
+      |> maybe_where_provider_type(Keyword.get(opts, :provider_type))
       |> exclude_dead()
 
     query =
@@ -144,6 +158,16 @@ defmodule Streamix.Iptv.Channels do
       AdultFilter.exclude_adult_content(query)
     end
   end
+
+  defp maybe_where_provider(query, nil), do: query
+
+  defp maybe_where_provider(query, provider_id),
+    do: where(query, [_channel, provider], provider.id == ^provider_id)
+
+  defp maybe_where_provider_type(query, nil), do: query
+
+  defp maybe_where_provider_type(query, provider_type),
+    do: where(query, [_channel, provider], provider.provider_type == ^provider_type)
 
   @doc """
   Lists live channels with current EPG program in a single query.
@@ -241,7 +265,31 @@ defmodule Streamix.Iptv.Channels do
     |> exclude_dead()
     |> order_by([c], asc: c.name)
     |> limit(^limit)
+    |> preload(:provider)
     |> Repo.all()
+  end
+
+  @doc "Lists live channels across public/global Xtream providers."
+  @spec list_public_catalog(keyword()) :: [LiveChannel.t()]
+  def list_public_catalog(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+
+    opts
+    |> build_public_query()
+    |> order_by([channel], asc: channel.name, desc: channel.id)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> preload(:provider)
+    |> Repo.all()
+  end
+
+  @doc "Counts the live channels returned by `list_public_catalog/1`."
+  @spec count_public_catalog(keyword()) :: non_neg_integer()
+  def count_public_catalog(opts \\ []) do
+    opts
+    |> build_public_query()
+    |> Repo.aggregate(:count, :id)
   end
 
   @doc """
@@ -416,12 +464,12 @@ defmodule Streamix.Iptv.Channels do
   @spec search_public(String.t(), keyword()) :: [LiveChannel.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
-    show_adult = Keyword.get(opts, :show_adult, false)
 
-    LiveChannel
-    |> Access.public_providers()
-    |> maybe_exclude_adult(show_adult)
+    opts
+    |> Keyword.delete(:search)
+    |> build_public_query()
     |> RankedSearch.build([:name], query, limit: limit, rating_field: false)
+    |> preload(:provider)
     |> Repo.all()
   end
 

@@ -63,6 +63,38 @@ defmodule Streamix.Iptv.RankedSearchTest do
 
       assert Iptv.search_public_movies("qzqzqz", limit: 10) == []
     end
+
+    test "collapses provider variants and honors provider filters", %{provider: provider} do
+      gindex = global_provider_fixture(%{name: "Drive", provider_type: :gindex})
+
+      xtream =
+        movie_fixture(provider, %{
+          name: "Canonical Search Movie",
+          title: "Canonical Search Movie",
+          tmdb_id: "search-9001",
+          stream_id: 1008
+        })
+
+      drive =
+        movie_fixture(gindex, %{
+          name: "Canonical Search Movie 4K",
+          title: "Canonical Search Movie 4K",
+          tmdb_id: "search-9001",
+          stream_id: 1009
+        })
+
+      assert [_canonical] = Iptv.search_public_movies("Canonical Search", limit: 10)
+
+      assert Enum.map(
+               Iptv.search_public_movies("Canonical Search", provider_id: provider.id),
+               & &1.id
+             ) == [xtream.id]
+
+      assert Enum.map(
+               Iptv.search_public_movies("Canonical Search", provider_type: :gindex),
+               & &1.id
+             ) == [drive.id]
+    end
   end
 
   describe "normalize_query/1" do

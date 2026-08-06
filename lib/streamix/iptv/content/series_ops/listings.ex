@@ -10,6 +10,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
   alias Streamix.Repo
 
   @summary_preloads [:genres]
+  @public_summary_preloads [:provider, :genres]
   @search_result_preloads [:assets, :genres]
   @visible_dedupe_min_window 120
   @visible_candidates_cache_ttl :timer.seconds(45)
@@ -56,8 +57,33 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
     |> where([series, _provider], not is_nil(series.cover))
     |> order_by([series], desc: series.rating, desc: series.year, asc: series.name)
     |> limit(^limit)
-    |> preload(^@summary_preloads)
+    |> preload(^@public_summary_preloads)
     |> Repo.all()
+  end
+
+  @spec list_public_catalog(keyword()) :: [Series.t()]
+  def list_public_catalog(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
+    sort = Keyword.get(opts, :sort)
+
+    opts
+    |> ListingQuery.filtered_public()
+    |> ListingQuery.dedupe_variants()
+    |> ListingQuery.sorted(sort)
+    |> limit(^limit)
+    |> offset(^offset)
+    |> ListingQuery.select_card_fields()
+    |> preload(^@public_summary_preloads)
+    |> Repo.all()
+  end
+
+  @spec count_public_catalog(keyword()) :: non_neg_integer()
+  def count_public_catalog(opts \\ []) do
+    opts
+    |> ListingQuery.filtered_public()
+    |> ListingQuery.dedupe_variants()
+    |> Repo.aggregate(:count, :id)
   end
 
   @spec count(integer(), keyword()) :: integer()
@@ -111,7 +137,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
       |> ListingQuery.public()
       |> where([series], series.id in ^ranked_ids)
       |> ListingQuery.select_card_fields()
-      |> preload(^@summary_preloads)
+      |> preload(^@public_summary_preloads)
       |> Repo.all()
       |> Map.new(&{&1.id, &1})
 
@@ -132,13 +158,16 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
   @spec search_public(String.t(), keyword()) :: [Series.t()]
   def search_public(query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
+    candidate_limit = max(limit * 4, 48)
     show_adult = Keyword.get(opts, :show_adult, false)
 
     show_adult
     |> ListingQuery.public()
-    |> RankedSearch.build([:name, :title], query, limit: limit)
-    |> preload(^@summary_preloads)
+    |> ListingQuery.with_provider_filters(opts)
+    |> RankedSearch.build([:name, :title], query, limit: candidate_limit)
+    |> preload(^@public_summary_preloads)
     |> Repo.all()
+    |> canonical_ranked_results(limit)
   end
 
   defp list_visible_deduped(user_id, opts, limit, offset, sort) do
@@ -221,6 +250,19 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
       end
     end)
   end
+
+  defp canonical_ranked_results(series, limit) do
+    series
+    |> Enum.reduce(VariantCards.new(), &VariantCards.add(&2, &1))
+    |> VariantCards.cards()
+    |> Enum.sort_by(fn item ->
+      {-rank_score(item), desc_numeric(item.rating), item.name || "", -item.id}
+    end)
+    |> Enum.take(limit)
+  end
+
+  defp rank_score(%{rank_score: score}) when is_integer(score), do: score
+  defp rank_score(_series), do: 0
 
   defp sort_visible_cards(series, "rating_desc") do
     Enum.sort_by(series, fn item ->

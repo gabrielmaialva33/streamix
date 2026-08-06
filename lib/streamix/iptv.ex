@@ -200,6 +200,8 @@ defmodule Streamix.Iptv do
   defdelegate list_live_channels(provider_id, opts \\ []), to: Channels, as: :list
   defdelegate list_visible_live_channels(user_id, opts \\ []), to: Channels, as: :list_visible
   defdelegate list_public_channels(opts \\ []), to: Channels, as: :list_public
+  defdelegate list_public_catalog_channels(opts \\ []), to: Channels, as: :list_public_catalog
+  defdelegate count_public_catalog_channels(opts \\ []), to: Channels, as: :count_public_catalog
   defdelegate count_live_channels(provider_id, opts \\ []), to: Channels, as: :count
   defdelegate get_live_channel!(id), to: Channels, as: :get!
   defdelegate get_live_channel(id), to: Channels, as: :get
@@ -227,6 +229,8 @@ defmodule Streamix.Iptv do
   defdelegate list_movies(provider_id, opts \\ []), to: Movies, as: :list
   defdelegate list_visible_movies(user_id, opts \\ []), to: Movies, as: :list_visible
   defdelegate list_public_movies(opts \\ []), to: Movies, as: :list_public
+  defdelegate list_public_catalog_movies(opts \\ []), to: Movies, as: :list_public_catalog
+  defdelegate count_public_catalog_movies(opts \\ []), to: Movies, as: :count_public_catalog
   defdelegate count_movies(provider_id, opts \\ []), to: Movies, as: :count
   defdelegate get_movie!(id), to: Movies, as: :get!
   defdelegate get_movie(id), to: Movies, as: :get
@@ -268,6 +272,12 @@ defmodule Streamix.Iptv do
   defdelegate list_series(provider_id, opts \\ []), to: SeriesOps, as: :list
   defdelegate list_visible_series(user_id, opts \\ []), to: SeriesOps, as: :list_visible
   defdelegate list_public_series(opts \\ []), to: SeriesOps, as: :list_public
+  defdelegate list_public_catalog_series(opts \\ []), to: SeriesOps, as: :list_public_catalog
+
+  defdelegate count_public_catalog_series(opts \\ []),
+    to: SeriesOps,
+    as: :count_public_catalog
+
   defdelegate count_series(provider_id, opts \\ []), to: SeriesOps, as: :count
   defdelegate get_series!(id), to: SeriesOps, as: :get!
   defdelegate get_series(id), to: SeriesOps, as: :get
@@ -509,6 +519,7 @@ defmodule Streamix.Iptv do
   defdelegate list_recent(type, opts \\ []), to: Catalog
   defdelegate list_top_rated(type, opts \\ []), to: Catalog
   defdelegate list_categories(provider_id, type \\ nil), to: Catalog
+  defdelegate list_public_categories(opts \\ []), to: Catalog
   defdelegate get_category!(id), to: Catalog
   defdelegate get_catalog_item_with_content(catalog_item_id), to: Catalog
 

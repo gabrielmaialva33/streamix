@@ -41,6 +41,20 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     |> maybe_exclude_adult(show_adult)
   end
 
+  def filtered_public(opts) do
+    search = Keyword.get(opts, :search)
+    category_id = Keyword.get(opts, :category_id)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    Movie
+    |> Access.public_providers()
+    |> maybe_where_provider(Keyword.get(opts, :provider_id))
+    |> maybe_where_provider_type(Keyword.get(opts, :provider_type))
+    |> maybe_where_search(search)
+    |> maybe_join_category(category_id)
+    |> maybe_exclude_adult(show_adult)
+  end
+
   def sorted(query, "rating_desc"),
     do:
       order_by(query, [m], [
@@ -105,9 +119,11 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     |> limit(^limit)
   end
 
-  def public_search(query, limit, show_adult) do
+  def public_search(query, limit, show_adult, opts) do
     Movie
     |> Access.public_providers()
+    |> maybe_where_provider(Keyword.get(opts, :provider_id))
+    |> maybe_where_provider_type(Keyword.get(opts, :provider_type))
     |> maybe_exclude_adult(show_adult)
     |> RankedSearch.build([:name, :title], query, limit: limit)
   end
@@ -142,6 +158,16 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
 
   defp maybe_where_year(query, nil), do: query
   defp maybe_where_year(query, year), do: where(query, year: ^year)
+
+  defp maybe_where_provider(query, nil), do: query
+
+  defp maybe_where_provider(query, provider_id),
+    do: where(query, [_movie, p], p.id == ^provider_id)
+
+  defp maybe_where_provider_type(query, nil), do: query
+
+  defp maybe_where_provider_type(query, provider_type),
+    do: where(query, [_movie, p], p.provider_type == ^provider_type)
 
   defp maybe_exclude_adult(query, _provider_id, true), do: query
 

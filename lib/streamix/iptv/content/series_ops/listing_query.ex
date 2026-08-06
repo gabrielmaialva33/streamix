@@ -37,6 +37,25 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
     |> exclude_adult(show_adult)
   end
 
+  def filtered_public(opts) do
+    search = Keyword.get(opts, :search)
+    category_id = Keyword.get(opts, :category_id)
+    show_adult = Keyword.get(opts, :show_adult, false)
+
+    Series
+    |> Access.public_providers()
+    |> with_provider_filters(opts)
+    |> maybe_where_search(search)
+    |> maybe_join_category(category_id)
+    |> exclude_adult(show_adult)
+  end
+
+  def with_provider_filters(query, opts) do
+    query
+    |> maybe_where_provider(Keyword.get(opts, :provider_id))
+    |> maybe_where_provider_type(Keyword.get(opts, :provider_type))
+  end
+
   def public(show_adult) do
     Series
     |> Access.public_providers()
@@ -151,6 +170,16 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
     |> String.replace(~r/[^[:alnum:]]+/u, "")
     |> Helpers.escape_like()
   end
+
+  defp maybe_where_provider(query, nil), do: query
+
+  defp maybe_where_provider(query, provider_id),
+    do: where(query, [_series, provider], provider.id == ^provider_id)
+
+  defp maybe_where_provider_type(query, nil), do: query
+
+  defp maybe_where_provider_type(query, provider_type),
+    do: where(query, [_series, provider], provider.provider_type == ^provider_type)
 
   defp canonical_key do
     dynamic(

@@ -11,6 +11,8 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   defdelegate list(provider_id, opts \\ []), to: Listings
   defdelegate list_visible(user_id, opts \\ []), to: Listings
   defdelegate list_public(opts \\ []), to: Listings
+  defdelegate list_public_catalog(opts \\ []), to: Listings
+  defdelegate count_public_catalog(opts \\ []), to: Listings
   defdelegate count(provider_id, opts \\ []), to: Listings
   defdelegate get_by_ids(ids), to: Listings
   defdelegate list_visible_by_ids(user_id, ids, opts), to: Listings

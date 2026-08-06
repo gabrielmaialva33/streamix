@@ -121,6 +121,18 @@ defmodule Streamix.Iptv.SeriesOps do
     Queries.list_public(opts)
   end
 
+  @doc "Lists canonical series cards across public/global providers."
+  @spec list_public_catalog(keyword()) :: [Series.t()]
+  def list_public_catalog(opts \\ []) do
+    Queries.list_public_catalog(opts)
+  end
+
+  @doc "Counts the canonical series cards returned by `list_public_catalog/1`."
+  @spec count_public_catalog(keyword()) :: non_neg_integer()
+  def count_public_catalog(opts \\ []) do
+    Queries.count_public_catalog(opts)
+  end
+
   @doc """
   Counts series for a provider. Accepts the same `opts` as `list/2`
   (`:category_id`, `:search`, `:show_adult`) so paginated endpoints
