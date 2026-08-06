@@ -1,5 +1,7 @@
 import Config
 
+config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
+
 # Database connection details are loaded from DATABASE_URL in config/runtime.exs
 # (see .env / .env.example). This block only tunes dev-specific debug options.
 config :streamix, Streamix.Repo,

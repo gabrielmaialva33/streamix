@@ -266,6 +266,12 @@ jobs:
           mix deps.get --only test
           npm ci --prefix assets --no-audit --no-fund
 
+      - name: Validate OpenAPI contract
+        if: matrix.browser == 'chromium'
+        run: |
+          mix openapi.spec.json --spec StreamixWeb.Api.V1.OpenApi --start-app=false --vendor-extensions=false /tmp/streamix-openapi.json
+          npm --prefix assets run lint:openapi -- /tmp/streamix-openapi.json
+
       - name: Run ${{ matrix.browser }} journeys
         run: bash scripts/test-playwright-docker.sh
 

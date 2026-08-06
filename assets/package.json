@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "biome check js/",
     "lint:fix": "biome check --fix js/",
+    "lint:openapi": "redocly lint",
     "format": "biome format --write js/",
     "test": "node --test js/test/*.test.js",
     "budget:assets": "cd .. && mix assets.deploy && cd assets && node js/smoke/asset_budget.cjs",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
+    "@redocly/cli": "2.44.2",
     "playwright": "^1.62.0"
   },
   "patchedDependencies": {
