@@ -42,7 +42,13 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     refute Enum.any?(provider_fields, &(&1 in ["url", "username", "password"]))
 
     docs_conn = get(build_conn(), ~p"/api/v1/docs")
-    assert html_response(docs_conn, 200) =~ "/api/v1/openapi.json"
+    docs_html = html_response(docs_conn, 200)
+    assert docs_html =~ "/api/v1/openapi.json"
+
+    assert [csp] = get_resp_header(docs_conn, "content-security-policy")
+    assert csp =~ "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com"
+    assert [_, nonce] = Regex.run(~r/<script nonce="([^"]+)">/, docs_html)
+    assert csp =~ "'nonce-#{nonce}'"
   end
 
   test "successful catalog responses conform to their declared schemas" do

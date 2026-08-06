@@ -113,7 +113,16 @@ defmodule StreamixWeb.Router do
 
   pipeline :api_docs_ui do
     plug :accepts, ["html"]
-    plug :put_secure_browser_headers
+
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" => "default-src 'self'",
+      "x-frame-options" => "SAMEORIGIN",
+      "x-content-type-options" => "nosniff",
+      "x-permitted-cross-domain-policies" => "none",
+      "referrer-policy" => "strict-origin-when-cross-origin"
+    }
+
+    plug StreamixWeb.Plugs.CSPNonce
     plug OpenApiSpex.Plug.PutApiSpec, module: StreamixWeb.Api.V1.OpenApi
   end
 
@@ -218,7 +227,9 @@ defmodule StreamixWeb.Router do
   scope "/api/v1" do
     pipe_through :api_docs_ui
 
-    get "/docs", OpenApiSpex.Plug.SwaggerUI, path: "/api/v1/openapi.json"
+    get "/docs", OpenApiSpex.Plug.SwaggerUI,
+      path: "/api/v1/openapi.json",
+      csp_nonce_assign_key: :csp_nonce
   end
 
   # Protected catalog API for TV app and other clients
