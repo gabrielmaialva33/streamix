@@ -9,6 +9,7 @@ defmodule Streamix.Gindex.Transport do
   alias Streamix.Gindex.HealthTracker
   alias Streamix.Gindex.Pacer
   alias Streamix.Gindex.QuotaGuard
+  alias Streamix.Gindex.RequestBudget
 
   @default_timeout :timer.seconds(30)
   @retry_delay :timer.seconds(2)
@@ -55,8 +56,12 @@ defmodule Streamix.Gindex.Transport do
   defp request_with_retry(state) do
     %{base_url: base_url, body: body, opts: opts, url: url} = state
 
-    case consume_quota(opts) do
-      {:error, :exhausted, count} ->
+    case reserve_request(opts) do
+      {:error, {:slice_exhausted, count}} ->
+        emit_request_stop(:slice_exhausted, base_url, detect_operation(url, body))
+        {:error, {:slice_exhausted, count}}
+
+      {:error, {:quota_exhausted, count}} ->
         :telemetry.execute(
           [:streamix, :gindex, :request, :stop],
           %{count: 1},
@@ -69,8 +74,17 @@ defmodule Streamix.Gindex.Transport do
 
         {:error, {:quota_exhausted, count}}
 
-      _ ->
+      :ok ->
         request_after_quota(state)
+    end
+  end
+
+  defp reserve_request(opts) do
+    with :ok <- RequestBudget.consume() do
+      case consume_quota(opts) do
+        {:error, :exhausted, count} -> {:error, {:quota_exhausted, count}}
+        _ -> :ok
+      end
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule Streamix.Gindex.TransportTest do
   use ExUnit.Case, async: false
 
-  alias Streamix.Gindex.Transport
+  alias Streamix.Gindex.{RequestBudget, Transport}
 
   setup {Req.Test, :verify_on_exit!}
 
@@ -98,5 +98,29 @@ defmodule Streamix.Gindex.TransportTest do
     assert_receive {:request_outcome, :typeerror_skip}
     assert_receive {:request_outcome, :ok}
     refute_receive {:request_outcome, _outcome}
+  end
+
+  test "stops a scan slice before consuming another global quota slot" do
+    Req.Test.expect(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 200, "ok") end)
+    quota_counter = start_supervised!({Agent, fn -> 0 end})
+
+    quota_fun = fn ->
+      Agent.update(quota_counter, &(&1 + 1))
+      {:ok, :ok, Agent.get(quota_counter, & &1)}
+    end
+
+    request = fn ->
+      Transport.request(:get, "https://sync.example.com/file", nil, "https://sync.example.com",
+        plug: {Req.Test, __MODULE__},
+        quota_fun: quota_fun
+      )
+    end
+
+    RequestBudget.run(1, fn ->
+      assert {:ok, %{status: 200}} = request.()
+      assert {:error, {:slice_exhausted, 1}} = request.()
+    end)
+
+    assert Agent.get(quota_counter, & &1) == 1
   end
 end

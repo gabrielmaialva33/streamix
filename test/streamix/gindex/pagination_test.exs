@@ -73,6 +73,7 @@ defmodule Streamix.Gindex.PaginationTest do
              %{
                path: "/1:/Filmes/2026/",
                page: 1,
+               items: partial_items,
                items_collected: 1,
                reason: {:all_endpoints_failed, failures}
              }}} =
@@ -81,6 +82,8 @@ defmodule Streamix.Gindex.PaginationTest do
                "/1:/Filmes/2026/",
                request_fun: request_fun
              )
+
+    assert Enum.map(partial_items, & &1.name) == ["Filme A"]
 
     assert [
              %{

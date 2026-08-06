@@ -34,6 +34,9 @@ defmodule Streamix.Gindex.Pagination do
       {:error, {:quota_exhausted, _count} = reason} ->
         {:error, reason}
 
+      {:error, {:slice_exhausted, _count} = reason} ->
+        {:error, reason}
+
       {:error, failure} ->
         retry_from_next_endpoint(remaining, path, request_fun, [failure | failures])
     end
@@ -75,6 +78,9 @@ defmodule Streamix.Gindex.Pagination do
         )
 
       {:error, {:quota_exhausted, _count} = reason} ->
+        {:error, reason}
+
+      {:error, {:slice_exhausted, _count} = reason} ->
         {:error, reason}
 
       {:error, reason} ->
@@ -132,6 +138,7 @@ defmodule Streamix.Gindex.Pagination do
      %{
        endpoint: base_url,
        page: page,
+       items: acc,
        items_collected: length(acc),
        reason: reason
      }}
@@ -140,11 +147,12 @@ defmodule Streamix.Gindex.Pagination do
   defp partial_error(path, failures) do
     failures = Enum.reverse(failures)
     best = Enum.max_by(failures, & &1.items_collected)
+    failure_summaries = Enum.map(failures, &Map.delete(&1, :items))
 
     Logger.warning(
       "[GIndex Pagination] incomplete result for #{path}: " <>
         "best attempt stopped after page #{best.page} with #{best.items_collected} items, " <>
-        "reason=#{inspect({:all_endpoints_failed, failures})}"
+        "reason=#{inspect({:all_endpoints_failed, failure_summaries})}"
     )
 
     {:error,
@@ -152,8 +160,9 @@ defmodule Streamix.Gindex.Pagination do
       %{
         path: path,
         page: best.page,
+        items: best.items,
         items_collected: best.items_collected,
-        reason: {:all_endpoints_failed, failures}
+        reason: {:all_endpoints_failed, failure_summaries}
       }}}
   end
 
