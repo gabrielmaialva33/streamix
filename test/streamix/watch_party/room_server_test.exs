@@ -131,7 +131,14 @@ defmodule Streamix.WatchParty.RoomServerTest do
     send(pid, :idle_check)
 
     assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}
-    assert RoomServer.whereis(room_id) == nil
+
+    # Registry removes dead entries asynchronously. The process monitor is the
+    # authoritative shutdown signal; a briefly stale lookup must never resolve
+    # to another live room process.
+    case RoomServer.whereis(room_id) do
+      nil -> :ok
+      registered_pid -> refute Process.alive?(registered_pid)
+    end
   end
 
   defp start_room_server do
