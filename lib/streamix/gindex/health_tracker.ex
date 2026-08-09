@@ -15,8 +15,9 @@ defmodule Streamix.Gindex.HealthTracker do
   require Logger
 
   @redis_prefix "gindex:health:"
-  # 5 minutes
-  @error_ttl 300
+  # Keep a rate-limited endpoint degraded until the 15-minute background
+  # canary window, unless a successful interactive request clears it first.
+  @error_ttl 15 * 60
   @error_threshold 3
 
   @operations [:list, :stream, :file_info]

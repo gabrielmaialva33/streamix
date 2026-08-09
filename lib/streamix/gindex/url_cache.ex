@@ -1,6 +1,6 @@
 defmodule Streamix.Gindex.UrlCache do
   @moduledoc """
-  GenServer for caching GIndex download URLs.
+  Cache owner and resolver for GIndex download URLs.
 
   GIndex generates signed URLs with expiration. This cache stores the URLs
   and refreshes them before they expire.
@@ -14,7 +14,8 @@ defmodule Streamix.Gindex.UrlCache do
 
   use GenServer
 
-  alias Streamix.Gindex.{Client, EndpointPolicy}
+  alias Streamix.Gindex.Client
+  alias Streamix.Gindex.SingleFlight
   alias Streamix.Iptv
 
   require Logger
@@ -23,6 +24,7 @@ defmodule Streamix.Gindex.UrlCache do
   @default_ttl :timer.minutes(30)
   @refresh_margin :timer.minutes(5)
   @cleanup_interval :timer.minutes(10)
+  @resolve_timeout :timer.seconds(40)
 
   @type content_type :: :movie | :episode
 
@@ -39,7 +41,7 @@ defmodule Streamix.Gindex.UrlCache do
   """
   @spec get_movie_url(pos_integer()) :: {:ok, String.t()} | {:error, term()}
   def get_movie_url(movie_id) do
-    GenServer.call(__MODULE__, {:get_url, :movie, movie_id}, :timer.seconds(30))
+    fetch_or_refresh_url(:movie, movie_id)
   end
 
   @doc """
@@ -49,7 +51,7 @@ defmodule Streamix.Gindex.UrlCache do
   """
   @spec get_episode_url(pos_integer()) :: {:ok, String.t()} | {:error, term()}
   def get_episode_url(episode_id) do
-    GenServer.call(__MODULE__, {:get_url, :episode, episode_id}, :timer.seconds(30))
+    fetch_or_refresh_url(:episode, episode_id)
   end
 
   @doc """
@@ -84,11 +86,6 @@ defmodule Streamix.Gindex.UrlCache do
   end
 
   @impl true
-  def handle_call({:get_url, type, id}, _from, state) do
-    {:reply, fetch_or_refresh_url(type, id), state}
-  end
-
-  @impl true
   def handle_cast({:invalidate, cache_key}, state) do
     :ets.delete(@table_name, cache_key)
     {:noreply, state}
@@ -116,6 +113,24 @@ defmodule Streamix.Gindex.UrlCache do
         {:ok, url}
 
       _other ->
+        SingleFlight.execute(
+          {__MODULE__, cache_key},
+          fn -> fetch_or_refresh_after_claim(type, id, cache_key) end,
+          @resolve_timeout
+        )
+    end
+  end
+
+  # A follower may have filled the cache while this caller was claiming the
+  # single-flight key, so check once more before touching the upstream.
+  defp fetch_or_refresh_after_claim(type, id, cache_key) do
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@table_name, cache_key) do
+      [{^cache_key, url, expires_at}] when expires_at > now + @refresh_margin ->
+        {:ok, url}
+
+      _other ->
         refresh_url(type, id)
     end
   end
@@ -127,9 +142,7 @@ defmodule Streamix.Gindex.UrlCache do
   end
 
   defp fetch_and_cache_url(type, id, source) do
-    base_url = EndpointPolicy.stream_url(source.base_url)
-
-    case Client.get_download_url(base_url, source.path) do
+    case Client.get_download_url_with_failover(source.path, source.base_url) do
       {:ok, url} ->
         cache_url({type, id}, url)
         persist_url(type, id, url)
@@ -140,7 +153,7 @@ defmodule Streamix.Gindex.UrlCache do
           "[GIndex UrlCache] Failed to get URL for #{type} #{id}: #{inspect(reason)}"
         )
 
-        fallback_to_db_cache(type, id, source)
+        fallback_to_db_cache(type, id, source, reason)
     end
   end
 
@@ -158,7 +171,7 @@ defmodule Streamix.Gindex.UrlCache do
     end
   end
 
-  defp fallback_to_db_cache(type, id, source) do
+  defp fallback_to_db_cache(type, id, source, upstream_error) do
     case source do
       %{cached_url: url, cached_until: %DateTime{} = expires_at}
       when is_binary(url) and url != "" ->
@@ -167,11 +180,11 @@ defmodule Streamix.Gindex.UrlCache do
           {:ok, url}
         else
           Logger.warning("[GIndex UrlCache] DB cache expired for #{type} #{id}")
-          {:error, :url_expired}
+          {:error, upstream_error}
         end
 
       _source ->
-        {:error, :url_not_available}
+        {:error, upstream_error}
     end
   end
 

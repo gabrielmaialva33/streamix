@@ -68,7 +68,10 @@ defmodule Streamix.Gindex.Client do
 
     url = Url.join(base_url, path)
 
-    case Transport.request(:post, url, body, base_url) do
+    case Transport.request(:post, url, body, base_url,
+           operation: :list,
+           workload: :background
+         ) do
       {:ok, %{status: 200, body: response_body}} ->
         Response.parse_folder(response_body, base_url, path)
 
@@ -128,14 +131,34 @@ defmodule Streamix.Gindex.Client do
       {:ok, "https://example.workers.dev/download.aspx?file=TOKEN&expiry=...&mac=..."}
   """
   def get_download_url(file_path) do
-    EndpointPolicy.stream_url()
-    |> get_download_url(file_path)
+    get_download_url_with_failover(file_path)
+  end
+
+  @doc """
+  Resolves a download URL across the byte-range-capable mirror pool.
+
+  A token is always minted and served by the same Worker. Failover repeats the
+  file request from scratch on another verified mirror; it never reuses a
+  signed link across hosts.
+  """
+  def get_download_url_with_failover(file_path, provider_url \\ nil, opts \\ [])
+      when is_binary(file_path) and is_list(opts) do
+    Application.get_env(:streamix, :gindex_provider, [])
+    |> EndpointPolicy.stream_urls(provider_url)
+    |> prioritize_healthy(:stream)
+    |> request_download_url(file_path, opts, [])
   end
 
   @doc """
   Gets the download URL for a file using a specific base URL.
   """
   def get_download_url(base_url, file_path) when is_binary(base_url) do
+    get_download_url(base_url, file_path, [])
+  end
+
+  @doc false
+  def get_download_url(base_url, file_path, opts)
+      when is_binary(base_url) and is_binary(file_path) and is_list(opts) do
     url = Url.join(base_url, file_path)
 
     body =
@@ -145,7 +168,16 @@ defmodule Streamix.Gindex.Client do
         password: ""
       })
 
-    case Transport.request(:post, url, body, base_url) do
+    case Transport.request(
+           :post,
+           url,
+           body,
+           base_url,
+           Keyword.merge(opts,
+             operation: :stream,
+             workload: :playback
+           )
+         ) do
       {:ok, %{status: 200, body: response_body}} ->
         Response.extract_download_link(response_body, base_url)
 
@@ -171,7 +203,10 @@ defmodule Streamix.Gindex.Client do
   def get_file_info(base_url, file_path) when is_binary(base_url) do
     url = Url.join(base_url, file_path)
 
-    case Transport.request(:head, url, nil, base_url) do
+    case Transport.request(:head, url, nil, base_url,
+           operation: :file_info,
+           workload: :playback
+         ) do
       {:ok, %{status: 200, headers: headers}} ->
         {:ok, Response.file_info(headers)}
 
@@ -234,9 +269,54 @@ defmodule Streamix.Gindex.Client do
           end
       end
 
-    [preferred_url | fallbacks]
+    policy_urls =
+      Application.get_env(:streamix, :gindex_provider, [])
+      |> EndpointPolicy.listing_urls(preferred_url)
+
+    [preferred_url | fallbacks ++ policy_urls]
     |> Enum.map(&String.trim_trailing(&1, "/"))
     |> Enum.reject(&(&1 == ""))
     |> Enum.uniq()
+    |> prioritize_healthy(:list)
+  end
+
+  defp request_download_url([], _file_path, _opts, errors) do
+    rate_limits =
+      Enum.filter(errors, fn
+        {:rate_limited, status, retry_after}
+        when status in [429, 503] and is_integer(retry_after) ->
+          true
+
+        _reason ->
+          false
+      end)
+
+    reason =
+      case rate_limits do
+        [] -> List.first(errors) || :no_stream_endpoints
+        limits -> Enum.max_by(limits, fn {:rate_limited, _status, seconds} -> seconds end)
+      end
+
+    {:error, reason}
+  end
+
+  defp request_download_url([base_url | rest], file_path, opts, errors) do
+    case get_download_url(base_url, file_path, opts) do
+      {:ok, _url} = success ->
+        success
+
+      {:error, {kind, _count}} = error when kind in [:quota_exhausted, :slice_exhausted] ->
+        error
+
+      {:error, reason} ->
+        request_download_url(rest, file_path, opts, errors ++ [reason])
+    end
+  end
+
+  defp prioritize_healthy(urls, operation) do
+    urls
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {url, index} -> {not HealthTracker.healthy?(url, operation), index} end)
+    |> Enum.map(&elem(&1, 0))
   end
 end

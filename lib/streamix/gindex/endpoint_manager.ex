@@ -24,12 +24,11 @@ defmodule Streamix.Gindex.EndpointManager do
   # page zero on the next Worker. Cloudflare cursors are bound to the Worker
   # that issued them and must never be replayed against another host.
   #
-  # Live canary on 2026-07-29:
-  #   * animezey23112022 traversed nested catalog folders reliably but returned
-  #     HTML instead of MKV bytes for signed downloads;
-  #   * animezeydl completed the large paginated listings and served byte-range
-  #     downloads as 206 video/x-matroska, but intermittently failed on nested
-  #     listings. It is therefore the sync fallback and stream authority.
+  # Live canary on 2026-08-09:
+  #   * animezey16082023 traversed every configured root and served a signed
+  #     download as 206 video/x-matroska;
+  #   * the two legacy Workers were returning Cloudflare Error 1027. They stay
+  #     in the pool as role-specific fallbacks for recovery windows.
   @default_endpoints EndpointPolicy.default_endpoints()
 
   # Circuit breaker settings
@@ -283,7 +282,7 @@ defmodule Streamix.Gindex.EndpointManager do
     case Keyword.get(config, :url) do
       url when is_binary(url) ->
         # Respect the operator's chosen primary, but still benefit from
-        # the live-mirror pool in `@default_endpoints`. Deduplicate on
+        # the known-mirror pool in `@default_endpoints`. Deduplicate on
         # host+path so we don't register the same Worker twice when the
         # env URL happens to match one of the defaults.
         primary = %{name: :primary, url: url, priority: 1}

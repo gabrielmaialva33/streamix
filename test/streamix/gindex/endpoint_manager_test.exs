@@ -63,14 +63,19 @@ defmodule Streamix.Gindex.EndpointManagerTest do
                priority: 1
              },
              %{
-               name: :sync_primary,
-               url: "https://1.animezey23112022.workers.dev",
+               name: :unified_primary,
+               url: "https://animezey16082023.animezey16082023.workers.dev",
                priority: 2
+             },
+             %{
+               name: :sync_fallback,
+               url: "https://1.animezey23112022.workers.dev",
+               priority: 3
              }
            ] = configured_endpoints
   end
 
-  test "uses the verified two-Worker pool by default" do
+  test "uses the verified unified Worker with both legacy fallbacks by default" do
     Application.put_env(:streamix, :gindex_provider, enabled: true)
 
     pid =
@@ -83,14 +88,19 @@ defmodule Streamix.Gindex.EndpointManagerTest do
 
     assert [
              %{
-               name: :sync_primary,
-               url: "https://1.animezey23112022.workers.dev",
+               name: :unified_primary,
+               url: "https://animezey16082023.animezey16082023.workers.dev",
                priority: 1
              },
              %{
-               name: :stream_primary,
-               url: "https://1.animezeydl.workers.dev",
+               name: :sync_fallback,
+               url: "https://1.animezey23112022.workers.dev",
                priority: 2
+             },
+             %{
+               name: :stream_fallback,
+               url: "https://1.animezeydl.workers.dev",
+               priority: 3
              }
            ] = configured_endpoints
   end
