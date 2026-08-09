@@ -183,7 +183,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
         where: job.worker == ^@scan_worker,
         where: job.state in ^@in_flight_states,
         where: fragment("?->>'provider_id' = ?", job.args, ^provider_id),
-        order_by: [desc: job.updated_at],
+        order_by: [desc: job.inserted_at, desc: job.id],
         select: %{args: job.args, meta: job.meta}
       )
       |> Repo.all()

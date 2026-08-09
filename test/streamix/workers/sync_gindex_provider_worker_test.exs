@@ -4,6 +4,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorkerTest do
   alias Streamix.Gindex
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
+  alias Streamix.Workers.Gindex.ScanRootWorker
   alias Streamix.Workers.SyncGindexProviderWorker
 
   test "reconciles a requested cycle from its durable roots, not current configuration" do
@@ -38,6 +39,49 @@ defmodule Streamix.Workers.SyncGindexProviderWorkerTest do
 
     assert args["workflow_id"] == old_cycle.cycle_id
     assert args["path"] == "/legacy/"
+  end
+
+  test "migrates the newest in-flight legacy workflow into durable scan state" do
+    provider = gindex_provider()
+    old_cycle_id = Ecto.UUID.generate()
+    cycle_id = Ecto.UUID.generate()
+    checkpoint = %{"category_index" => 3, "page_token" => "next-page"}
+    now = DateTime.utc_now()
+
+    insert_legacy_job(
+      provider,
+      "/0:/Filmes/",
+      old_cycle_id,
+      DateTime.add(now, -60, :second),
+      %{"page_token" => "stale-page"}
+    )
+
+    insert_legacy_job(provider, "/1:/Filmes/", cycle_id, now, checkpoint)
+
+    assert :ok = SyncGindexProviderWorker.dispatch(provider)
+    assert Gindex.active_scan_cycle_id(provider.id) == cycle_id
+
+    assert %{cycle_id: ^cycle_id, cursor: ^checkpoint} =
+             Gindex.get_scan_root(provider.id, "/1:/Filmes/", :movies)
+  end
+
+  defp insert_legacy_job(provider, path, cycle_id, inserted_at, checkpoint) do
+    args = %{
+      "provider_id" => provider.id,
+      "base_url" => provider.gindex_url,
+      "path" => path,
+      "kind" => "movies",
+      "workflow_id" => cycle_id
+    }
+
+    {:ok, job} =
+      args
+      |> ScanRootWorker.new(meta: %{"checkpoint" => checkpoint})
+      |> Oban.insert()
+
+    job
+    |> Ecto.Changeset.change(inserted_at: inserted_at)
+    |> Repo.update!()
   end
 
   defp gindex_provider do
