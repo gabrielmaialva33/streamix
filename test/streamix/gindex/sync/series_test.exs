@@ -84,6 +84,37 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     refute_received {:checkpoint, _checkpoint}
   end
 
+  test "persists folders from an incomplete listing without settling the root" do
+    parent = self()
+    folders = folders(~w(a b))
+    partial_items = folders ++ [%{name: "README", path: "/README.txt", type: :file}]
+
+    listing_error =
+      {:partial_listing,
+       %{
+         items: partial_items,
+         items_collected: 3,
+         page: 1,
+         reason: {:all_endpoints_failed, [%{reason: {:http_error, 500}}]}
+       }}
+
+    assert {:error, {:partial_listing, details}} =
+             Series.sync(@source, @base_url, [@root_path],
+               batch_size: 2,
+               list_fun: fn _base_url, @root_path -> {:error, listing_error} end,
+               scrape_fun: fn _base_url, folder ->
+                 {:ok, %{name: folder.name, episode_count: 1}}
+               end,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    refute Map.has_key?(details, :items)
+    assert details.items_collected == 3
+    assert_received {:persisted, ["A", "B"]}
+    assert_received {:checkpoint, %{"root_path" => @root_path, "folder_path" => "/b/"}}
+  end
+
   defp folders(names) do
     Enum.map(names, fn name -> %{name: String.upcase(name), path: "/#{name}/"} end)
   end

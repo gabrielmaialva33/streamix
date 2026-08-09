@@ -283,6 +283,13 @@ defmodule Streamix.Gindex.ScanRoots do
 
   defp stringify_value(value) when is_map(value), do: stringify_map(value)
   defp stringify_value(value) when is_list(value), do: Enum.map(value, &stringify_value/1)
+
+  defp stringify_value(value) when is_tuple(value) do
+    value
+    |> Tuple.to_list()
+    |> Enum.map(&stringify_value/1)
+  end
+
   defp stringify_value(value) when is_atom(value), do: Atom.to_string(value)
   defp stringify_value(value), do: value
 

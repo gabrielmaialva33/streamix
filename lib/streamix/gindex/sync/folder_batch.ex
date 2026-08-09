@@ -11,20 +11,55 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
     runtime = build_runtime(opts)
     checkpoint = Keyword.get(opts, :checkpoint)
 
-    with {:ok, folders} <- runtime.list_fun.(base_url, root_path) do
-      folders = Enum.sort_by(folders, &folder_path/1)
-      pending = resume_after_checkpoint(folders, root_path, checkpoint)
+    case runtime.list_fun.(base_url, root_path) do
+      {:ok, folders} ->
+        process_listing(source, base_url, root_path, folders, checkpoint, runtime, nil)
 
-      Logger.info(
-        "[GIndex Sync] Found #{length(folders)} folders in #{root_path}; " <>
-          "#{length(pending)} pending"
-      )
+      {:error, {:partial_listing, %{items: folders}} = error}
+      when is_list(folders) and folders != [] ->
+        process_listing(
+          source,
+          base_url,
+          root_path,
+          folders,
+          checkpoint,
+          runtime,
+          compact_listing_error(error)
+        )
 
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp process_listing(
+         source,
+         base_url,
+         root_path,
+         folders,
+         checkpoint,
+         runtime,
+         listing_error
+       ) do
+    folders = folders |> Enum.filter(&folder?/1) |> Enum.sort_by(&folder_path/1)
+    pending = resume_after_checkpoint(folders, root_path, checkpoint)
+
+    Logger.info(
+      "[GIndex Sync] Found #{length(folders)} folders in #{root_path}; " <>
+        "#{length(pending)} pending complete_listing=#{is_nil(listing_error)}"
+    )
+
+    result =
       pending
       |> Enum.reduce_while({:ok, empty_state(runtime)}, fn folder, state ->
         process_folder(source, base_url, root_path, folder, state, runtime)
       end)
       |> finalize(source, root_path, runtime)
+
+    case {result, listing_error} do
+      {{:ok, _stats} = success, nil} -> success
+      {{:ok, _stats}, error} -> {:error, error}
+      {{:error, _reason} = error, _listing_error} -> error
     end
   end
 
@@ -142,5 +177,15 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
 
   defp value(map, "root_path"), do: Map.get(map, "root_path") || Map.get(map, :root_path)
   defp value(map, "folder_path"), do: Map.get(map, "folder_path") || Map.get(map, :folder_path)
+
+  defp folder?(%{type: type}) when type in [:folder, "folder"], do: true
+  defp folder?(%{type: _type}), do: false
+  defp folder?(%{path: path}) when is_binary(path), do: true
+  defp folder?(_item), do: false
+
+  defp compact_listing_error({:partial_listing, details}) do
+    {:partial_listing, Map.drop(details, [:items, "items"])}
+  end
+
   defp folder_path(folder), do: Map.fetch!(folder, :path)
 end

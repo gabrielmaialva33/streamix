@@ -153,6 +153,53 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
     assert retry_delay in 270..300
   end
 
+  test "persists nested partial-listing failures as JSON-safe retry state" do
+    provider = gindex_provider()
+    path = "/1:/Series/"
+    job = insert_scan_job(provider, path)
+
+    reason =
+      {:partial_listing,
+       %{
+         path: path,
+         page: 4,
+         items: [%{name: "partial item"}],
+         items_collected: 400,
+         reason:
+           {:all_endpoints_failed,
+            [
+              %{endpoint: "https://gindex.example", reason: {:rate_limited, 429, 7_200}},
+              %{endpoint: "https://fallback.example", reason: {:http_error, 500}}
+            ]}
+       }}
+
+    sync_fun = fn _provider, _base_url, ^path, :series, _opts ->
+      {:error, reason}
+    end
+
+    assert {:error, ^reason} =
+             ScanRootWorker.perform_with(job, sync_fun, fn -> 123 end)
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    assert root.status == "paused"
+    assert root.paused_reason == "retryable_error"
+    refute Map.has_key?(root.last_error["details"], "items")
+
+    assert root.last_error["details"]["reason"] == [
+             "all_endpoints_failed",
+             [
+               %{
+                 "endpoint" => "https://gindex.example",
+                 "reason" => ["rate_limited", 429, 7_200]
+               },
+               %{
+                 "endpoint" => "https://fallback.example",
+                 "reason" => ["http_error", 500]
+               }
+             ]
+           ]
+  end
+
   test "pulls a legacy retryable job forward when durable state says it is ready" do
     provider = gindex_provider()
     path = "/1:/Series/"
