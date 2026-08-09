@@ -11,6 +11,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     queue: :gindex_scan,
     max_attempts: 12,
     priority: 1,
+    replace: [scheduled: [:scheduled_at], retryable: [:scheduled_at]],
     unique: [
       period: :timer.hours(48),
       fields: [:worker, :args],
@@ -26,6 +27,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
   @timeout :timer.hours(2)
   @slice_resume_seconds 5
+  @minimum_upstream_pause_seconds 60
   @max_slice_requests 1_500
 
   @impl Oban.Worker
@@ -55,23 +57,15 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
          {:ok, scan_root} <- Gindex.mark_scan_root_running(scan_root) do
       mark_provider_status(provider_id, "syncing")
       started_at = System.monotonic_time(:millisecond)
-      request_budget = request_budget(provider_id, scan_root.cycle_id)
+      quota = Gindex.quota_status()
+      request_budget = request_budget(quota, provider_id, scan_root.cycle_id)
 
       Logger.info(
         "[GIndex ScanRoot] start cycle=#{scan_root.cycle_id} provider=#{provider_id} " <>
           "kind=#{kind} path=#{path} budget=#{request_budget}"
       )
 
-      result =
-        Gindex.run_with_request_budget(request_budget, fn ->
-          sync_fun.(
-            provider,
-            scan_root.base_url,
-            scan_root.root_path,
-            kind_atom,
-            sync_opts(scan_root, job, scan_root.root_path)
-          )
-        end)
+      result = run_sync(scan_root, job, provider, kind_atom, request_budget, quota, sync_fun)
 
       handle_result(
         result,
@@ -207,6 +201,41 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   end
 
   defp handle_result(
+         {:error, {:rate_limited, status, retry_after} = reason},
+         job,
+         scan_root,
+         provider_id,
+         kind,
+         path,
+         _started_at,
+         _reset_delay_fun
+       ) do
+    delay = max(retry_after, @minimum_upstream_pause_seconds)
+    next_resume_at = DateTime.add(DateTime.utc_now(), delay, :second)
+
+    with {:ok, _root} <-
+           Gindex.pause_scan_root(scan_root, :upstream_rate_limited,
+             error: reason,
+             next_resume_at: next_resume_at
+           ) do
+      write_meta(job, %{
+        "paused_reason" => "upstream_rate_limited",
+        "upstream_status" => status,
+        "retry_after" => delay
+      })
+
+      mark_provider_status(provider_id, "paused_upstream")
+
+      Logger.warning(
+        "[GIndex ScanRoot] upstream rate limited status=#{status}; pausing " <>
+          "provider=#{provider_id} kind=#{kind} path=#{path} for #{delay}s"
+      )
+
+      {:snooze, delay}
+    end
+  end
+
+  defp handle_result(
          {:error, reason} = error,
          job,
          scan_root,
@@ -222,7 +251,10 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
       if final_attempt? do
         Gindex.fail_scan_root(scan_root, reason)
       else
-        Gindex.pause_scan_root(scan_root, :retryable_error, error: reason)
+        Gindex.pause_scan_root(scan_root, :retryable_error,
+          error: reason,
+          next_resume_at: retry_at(job)
+        )
       end
 
     case state_result do
@@ -310,15 +342,39 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     Map.get(meta, "checkpoint") || Map.get(meta, "series_checkpoint")
   end
 
-  defp request_budget(provider_id, cycle_id) do
-    %{remaining: remaining} = Gindex.quota_status()
+  defp run_sync(_scan_root, _job, _provider, _kind, 0, quota, _sync_fun) do
+    {:error, {:quota_exhausted, quota.count}}
+  end
+
+  defp run_sync(scan_root, job, provider, kind, request_budget, _quota, sync_fun) do
+    Gindex.run_with_request_budget(request_budget, fn ->
+      sync_fun.(
+        provider,
+        scan_root.base_url,
+        scan_root.root_path,
+        kind,
+        sync_opts(scan_root, job, scan_root.root_path)
+      )
+    end)
+  end
+
+  defp request_budget(%{background_remaining: 0}, _provider_id, _cycle_id), do: 0
+
+  defp request_budget(%{background_remaining: remaining}, provider_id, cycle_id)
+       when remaining > 0 do
     %{roots_unfinished: unfinished} = Gindex.scan_cycle_summary(provider_id, cycle_id)
 
     remaining
-    |> max(1)
     |> div(max(unfinished, 1))
     |> max(1)
     |> min(@max_slice_requests)
+  end
+
+  # Mirror Oban's retry window into durable scan state. The orchestrator can
+  # then sleep until the root is actually eligible instead of polling every
+  # 30 seconds throughout a long exponential backoff.
+  defp retry_at(job) do
+    DateTime.add(DateTime.utc_now(), __MODULE__.backoff(job), :second)
   end
 
   defp parse_kind("movies"), do: {:ok, :movies}

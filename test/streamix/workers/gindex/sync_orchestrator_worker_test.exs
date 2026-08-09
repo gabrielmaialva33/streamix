@@ -59,6 +59,27 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorkerTest do
     assert Repo.reload!(provider).sync_status == "paused_quota"
   end
 
+  test "keeps upstream-limited roots honest and sleeps until their canary window" do
+    provider = gindex_provider()
+    cycle = create_cycle(provider)
+    next_resume_at = DateTime.add(DateTime.utc_now(), 900, :second)
+
+    Enum.each(cycle.roots, fn root ->
+      assert {:ok, _root} =
+               Gindex.pause_scan_root(root, :upstream_rate_limited,
+                 error: {:rate_limited, 429, 900},
+                 next_resume_at: next_resume_at
+               )
+    end)
+
+    assert {:snooze, delay} =
+             SyncOrchestratorWorker.perform(orchestrator_job(provider, cycle.cycle_id, 281))
+
+    assert delay > 800
+    assert delay <= 905
+    assert Repo.reload!(provider).sync_status == "paused_upstream"
+  end
+
   test "finalizes as partial when a completed root skipped upstream folders" do
     provider = gindex_provider()
     cycle = create_cycle(provider)

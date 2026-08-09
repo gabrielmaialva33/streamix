@@ -186,6 +186,7 @@ defmodule Streamix.Gindex.ScanRoots do
       roots_running: Map.get(status_counts, "running", 0),
       roots_paused: Map.get(status_counts, "paused", 0),
       roots_paused_quota: Enum.count(roots, &(&1.paused_reason == "quota_exhausted")),
+      roots_paused_upstream: Enum.count(roots, &(&1.paused_reason == "upstream_rate_limited")),
       roots_with_skips: Enum.count(roots, &positive_stat?(&1.stats, "skipped_count")),
       roots_unfinished: Enum.count(roots, &(&1.status in @active_statuses)),
       settled?: roots != [] and Enum.all?(roots, &(&1.status in @terminal_statuses)),

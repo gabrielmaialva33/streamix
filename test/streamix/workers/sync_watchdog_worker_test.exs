@@ -64,6 +64,33 @@ defmodule Streamix.Workers.SyncWatchdogWorkerTest do
     assert Repo.reload!(provider).sync_status == "paused_quota"
   end
 
+  test "does not fail a GIndex cycle intentionally paused by upstream rate limiting" do
+    provider = gindex_provider()
+    cycle_id = Ecto.UUID.generate()
+    roots = Gindex.sync_roots_for(provider, ~D[2026-08-06])
+
+    assert {:ok, cycle} =
+             Gindex.ensure_scan_cycle(provider.id, roots, cycle_id: cycle_id)
+
+    next_resume_at = DateTime.add(DateTime.utc_now(), 3_600, :second)
+
+    Enum.each(cycle.roots, fn root ->
+      assert {:ok, _root} =
+               Gindex.pause_scan_root(root, :upstream_rate_limited,
+                 error: {:rate_limited, 429, 3_600},
+                 next_resume_at: next_resume_at
+               )
+    end)
+
+    provider
+    |> Provider.sync_changeset(%{sync_status: "paused_upstream"})
+    |> Ecto.Changeset.force_change(:updated_at, stale_timestamp())
+    |> Repo.update!()
+
+    assert :ok = SyncWatchdogWorker.perform(%Oban.Job{})
+    assert Repo.reload!(provider).sync_status == "paused_upstream"
+  end
+
   defp torrent_provider do
     %Provider{}
     |> Provider.changeset(%{

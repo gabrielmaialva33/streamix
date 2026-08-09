@@ -156,16 +156,24 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   defp mark_cycle_status(provider_id, cycle_id) do
     summary = Gindex.scan_cycle_summary(provider_id, cycle_id)
 
-    status =
-      if summary.roots_unfinished > 0 and
-           summary.roots_unfinished == summary.roots_paused_quota do
-        "paused_quota"
-      else
-        "syncing"
-      end
+    status = cycle_status(summary)
 
     Iptv.update_gindex_sync(provider_id, %{sync_status: status})
   end
+
+  defp cycle_status(%{roots_unfinished: unfinished, roots_paused_quota: quota})
+       when unfinished > 0 and unfinished == quota,
+       do: "paused_quota"
+
+  defp cycle_status(%{
+         roots_unfinished: unfinished,
+         roots_paused_quota: quota,
+         roots_paused_upstream: upstream
+       })
+       when unfinished > 0 and unfinished == quota + upstream,
+       do: "paused_upstream"
+
+  defp cycle_status(_summary), do: "syncing"
 
   defp legacy_workflow(provider_id) do
     provider_id = Integer.to_string(provider_id)

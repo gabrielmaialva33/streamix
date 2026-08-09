@@ -1,10 +1,34 @@
 defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
-  use Streamix.DataCase, async: true
+  use Streamix.DataCase, async: false
 
   alias Streamix.Gindex
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.ScanRootWorker
+
+  setup do
+    original = Application.get_env(:streamix, Streamix.Gindex.QuotaGuard)
+    quota_key = "gindex:quota:#{Date.utc_today()}"
+
+    Application.put_env(:streamix, Streamix.Gindex.QuotaGuard,
+      daily_limit: 10,
+      playback_reserve: 2
+    )
+
+    Redix.command!(:streamix_redis, ["DEL", quota_key])
+
+    on_exit(fn ->
+      Redix.command!(:streamix_redis, ["DEL", quota_key])
+
+      if original do
+        Application.put_env(:streamix, Streamix.Gindex.QuotaGuard, original)
+      else
+        Application.delete_env(:streamix, Streamix.Gindex.QuotaGuard)
+      end
+    end)
+
+    %{quota_key: quota_key}
+  end
 
   test "keeps a root unique across workflow ids while it is active" do
     base_args = %{
@@ -67,6 +91,86 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
     assert root.status == "paused"
     assert root.paused_reason == "quota_exhausted"
     assert root.cursor["folder_path"] == "/1:/Series/B/"
+  end
+
+  test "pauses before starting a scan when only the playback reserve remains", %{
+    quota_key: quota_key
+  } do
+    provider = gindex_provider()
+    path = "/1:/Series/"
+    job = insert_scan_job(provider, path)
+    Redix.command!(:streamix_redis, ["SET", quota_key, "8", "EX", "60"])
+
+    sync_fun = fn _provider, _base_url, _path, _kind, _opts ->
+      flunk("background sync must not enter the playback reserve")
+    end
+
+    assert {:snooze, 123} = ScanRootWorker.perform_with(job, sync_fun, fn -> 123 end)
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    assert root.status == "paused"
+    assert root.paused_reason == "quota_exhausted"
+    assert root.quota_count == 8
+  end
+
+  test "turns an upstream 429 into a durable pause instead of an inline retry" do
+    provider = gindex_provider()
+    path = "/1:/Series/"
+    job = insert_scan_job(provider, path)
+
+    sync_fun = fn _provider, _base_url, ^path, :series, _opts ->
+      {:error, {:rate_limited, 429, 90}}
+    end
+
+    assert {:snooze, 90} = ScanRootWorker.perform_with(job, sync_fun, fn -> 123 end)
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    assert root.status == "paused"
+    assert root.paused_reason == "upstream_rate_limited"
+    assert DateTime.diff(root.next_resume_at, DateTime.utc_now(), :second) in 85..90
+    assert Repo.reload!(provider).sync_status == "paused_upstream"
+  end
+
+  test "persists ordinary retry timing so the orchestrator does not busy-poll" do
+    provider = gindex_provider()
+    path = "/1:/Series/"
+    job = %{insert_scan_job(provider, path) | attempt: 8}
+
+    sync_fun = fn _provider, _base_url, ^path, :series, _opts ->
+      {:error, :upstream_unavailable}
+    end
+
+    before_retry = DateTime.utc_now()
+
+    assert {:error, :upstream_unavailable} =
+             ScanRootWorker.perform_with(job, sync_fun, fn -> 123 end)
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    retry_delay = DateTime.diff(root.next_resume_at, before_retry, :second)
+
+    assert root.status == "paused"
+    assert root.paused_reason == "retryable_error"
+    assert retry_delay in 270..300
+  end
+
+  test "pulls a legacy retryable job forward when durable state says it is ready" do
+    provider = gindex_provider()
+    path = "/1:/Series/"
+    original = insert_scan_job(provider, path)
+    tomorrow = DateTime.add(DateTime.utc_now(), 86_400, :second)
+
+    original
+    |> Ecto.Changeset.change(state: "retryable", scheduled_at: tomorrow)
+    |> Repo.update!()
+
+    replacement =
+      original.args
+      |> ScanRootWorker.new(schedule_in: 0)
+      |> Oban.insert!()
+
+    assert replacement.conflict?
+    assert replacement.id == original.id
+    assert DateTime.diff(replacement.scheduled_at, DateTime.utc_now(), :second) in -1..1
   end
 
   test "preserves checkpoint writes during the run and clears them after success" do

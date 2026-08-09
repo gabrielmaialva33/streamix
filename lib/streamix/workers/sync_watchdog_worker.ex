@@ -55,7 +55,8 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
       from(p in Provider,
         where:
           p.sync_status == "syncing" or
-            (p.provider_type == :gindex and p.sync_status == "paused_quota"),
+            (p.provider_type == :gindex and
+               p.sync_status in ["paused_quota", "paused_upstream"]),
         where: p.updated_at < ^threshold
       )
       |> Repo.all()
@@ -104,8 +105,8 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
     summary = Gindex.scan_cycle_summary(provider.id, cycle_id)
 
     cond do
-      quota_pause_active?(summary) ->
-        Iptv.update_gindex_sync(provider.id, %{sync_status: "paused_quota"})
+      status = intentional_pause_status(summary) ->
+        Iptv.update_gindex_sync(provider.id, %{sync_status: status})
 
       stale_heartbeat?(summary.heartbeat_at) ->
         Logger.warning(
@@ -152,11 +153,25 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
     reset_provider(provider, "finalizer enqueue failed: #{inspect(reason)}")
   end
 
-  defp quota_pause_active?(summary) do
-    summary.roots_unfinished > 0 and
-      summary.roots_unfinished == summary.roots_paused_quota and
+  defp intentional_pause_status(summary) do
+    future_resume? =
       match?(%DateTime{}, summary.next_resume_at) and
-      DateTime.compare(summary.next_resume_at, DateTime.utc_now()) == :gt
+        DateTime.compare(summary.next_resume_at, DateTime.utc_now()) == :gt
+
+    cond do
+      not future_resume? or summary.roots_unfinished == 0 ->
+        nil
+
+      summary.roots_unfinished == summary.roots_paused_quota ->
+        "paused_quota"
+
+      summary.roots_unfinished ==
+          summary.roots_paused_quota + summary.roots_paused_upstream ->
+        "paused_upstream"
+
+      true ->
+        nil
+    end
   end
 
   defp stale_heartbeat?(nil), do: true
