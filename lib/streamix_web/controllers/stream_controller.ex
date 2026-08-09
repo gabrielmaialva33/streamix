@@ -12,6 +12,7 @@ defmodule StreamixWeb.StreamController do
 
   require Logger
 
+  alias Streamix.Gindex
   alias Streamix.Iptv
   alias Streamix.SafeLog
   alias StreamixWeb.Plugs.ApiKeyAuth
@@ -184,8 +185,19 @@ defmodule StreamixWeb.StreamController do
     unsafe_url: :unsafe_url
   }
 
+  defp token_error(conn, {:quota_exhausted, _count}) do
+    StreamErrors.halt(conn, :provider_capacity_exhausted,
+      retry_after: Gindex.seconds_until_quota_reset()
+    )
+  end
+
+  defp token_error(conn, {:rate_limited, status, retry_after})
+       when status in [429, 503] and is_integer(retry_after) do
+    StreamErrors.halt(conn, :provider_capacity_exhausted, retry_after: retry_after)
+  end
+
   defp token_error(conn, reason) do
-    code = Map.get(@token_errors, reason, :unknown)
+    code = Map.get_lazy(@token_errors, reason, fn -> StreamErrors.code_from_reason(reason) end)
     StreamErrors.halt(conn, code)
   end
 

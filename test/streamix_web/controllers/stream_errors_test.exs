@@ -29,6 +29,18 @@ defmodule StreamixWeb.StreamErrorsTest do
       body = Phoenix.ConnTest.json_response(conn, 502)
       assert body["error"]["code"] == "upstream_unavailable"
       assert body["error"]["retry_after"] == 120
+      assert get_resp_header(conn, "retry-after") == ["120"]
+    end
+
+    test "allows a caller to override retry guidance for a capacity window" do
+      conn =
+        build_conn(:get, "/any")
+        |> StreamErrors.halt(:provider_capacity_exhausted, retry_after: 321)
+
+      body = Phoenix.ConnTest.json_response(conn, 503)
+      assert body["error"]["code"] == "provider_capacity_exhausted"
+      assert body["error"]["retry_after"] == 321
+      assert get_resp_header(conn, "retry-after") == ["321"]
     end
 
     test "lets the caller override the human message without touching the code/retry" do
@@ -88,9 +100,16 @@ defmodule StreamixWeb.StreamErrorsTest do
 
     test "maps transport timeouts explicitly" do
       assert StreamErrors.code_from_reason(:timeout) == :upstream_timeout
+      assert StreamErrors.code_from_reason(:single_flight_timeout) == :upstream_timeout
 
       assert StreamErrors.code_from_reason(%Req.TransportError{reason: :timeout}) ==
                :upstream_timeout
+    end
+
+    test "maps GIndex HTTP errors without dropping the upstream status" do
+      assert StreamErrors.code_from_reason({:http_error, 404}) == :upstream_not_found
+      assert StreamErrors.code_from_reason({:http_error, 500}) == :upstream_unavailable
+      assert StreamErrors.code_from_reason({:http_error, 403}) == :stream_resolution_failed
     end
 
     test "any other transport error goes to :upstream_unavailable" do
@@ -103,6 +122,14 @@ defmodule StreamixWeb.StreamErrorsTest do
 
     test "falls back to :stream_resolution_failed for unknown shapes" do
       assert StreamErrors.code_from_reason(:something_weird) == :stream_resolution_failed
+    end
+
+    test "maps local and upstream GIndex capacity failures to retryable capacity" do
+      assert StreamErrors.code_from_reason({:quota_exhausted, 8_000}) ==
+               :provider_capacity_exhausted
+
+      assert StreamErrors.code_from_reason({:rate_limited, 429, 60}) ==
+               :provider_capacity_exhausted
     end
   end
 end

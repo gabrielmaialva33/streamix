@@ -42,6 +42,46 @@ defmodule StreamixWeb.StreamControllerTest do
     end
   end
 
+  test "GIndex hard quota exhaustion stays causal and returns a retryable 503", %{conn: conn} do
+    owner = user_fixture()
+
+    provider =
+      provider_fixture(owner, %{
+        provider_type: :gindex,
+        url: "https://gindex.example.com",
+        gindex_url: "https://gindex.example.com",
+        username: nil,
+        password: nil
+      })
+
+    movie =
+      movie_fixture(provider, %{
+        gindex_path: "/1:/Filmes/quota-test.mkv"
+      })
+
+    quota_key = "gindex:quota:#{Date.utc_today()}"
+    {:ok, "OK"} = Redix.command(:streamix_redis, ["SET", quota_key, "8000", "EX", "60"])
+    :ets.delete(:gindex_url_cache, {:movie, movie.id})
+
+    on_exit(fn ->
+      Redix.command(:streamix_redis, ["DEL", quota_key])
+      :ets.delete(:gindex_url_cache, {:movie, movie.id})
+    end)
+
+    token = StreamToken.sign_movie(movie.id, owner.id)
+    conn = get(conn, "/api/stream/proxy?token=#{URI.encode_www_form(token)}")
+
+    assert %{
+             "error" => %{
+               "code" => "provider_capacity_exhausted",
+               "retry_after" => retry_after
+             }
+           } = json_response(conn, 503)
+
+    assert retry_after in 1..86_405
+    assert get_resp_header(conn, "retry-after") == [Integer.to_string(retry_after)]
+  end
+
   test "global token with user but without subscription returns forbidden subscription error", %{
     conn: conn
   } do

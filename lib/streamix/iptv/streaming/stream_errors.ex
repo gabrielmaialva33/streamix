@@ -74,12 +74,14 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
   def halt(conn, code, opts \\ []) do
     {status, message, extras} = resolve(code)
     final_message = Keyword.get(opts, :override_message, message)
+    retry_after = Keyword.get(opts, :retry_after, extras[:retry_after])
 
     body =
       %{code: code, message: final_message}
-      |> maybe_merge(:retry_after, extras[:retry_after])
+      |> maybe_merge(:retry_after, retry_after)
 
     conn
+    |> maybe_put_retry_after(retry_after)
     |> put_status(status)
     |> put_resp_content_type("application/json")
     |> send_resp(conn_status(status), Jason.encode!(%{error: body}))
@@ -92,11 +94,25 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
   @spec code_from_reason(term()) :: code()
   def code_from_reason({:unexpected_status, 404}), do: :upstream_not_found
 
+  def code_from_reason({:quota_exhausted, count}) when is_integer(count),
+    do: :provider_capacity_exhausted
+
+  def code_from_reason({:rate_limited, status, retry_after})
+      when status in [429, 503] and is_integer(retry_after),
+      do: :provider_capacity_exhausted
+
   def code_from_reason({:unexpected_status, status}) when status in 500..599,
     do: :upstream_unavailable
 
   def code_from_reason({:unexpected_status, _}), do: :stream_resolution_failed
+  def code_from_reason({:http_error, 404}), do: :upstream_not_found
+
+  def code_from_reason({:http_error, status}) when status in 500..599,
+    do: :upstream_unavailable
+
+  def code_from_reason({:http_error, _status}), do: :stream_resolution_failed
   def code_from_reason(:timeout), do: :upstream_timeout
+  def code_from_reason(:single_flight_timeout), do: :upstream_timeout
 
   def code_from_reason(%{__struct__: mod, reason: :timeout})
       when mod in [Req.TransportError, Mint.TransportError],
@@ -123,4 +139,11 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
 
   defp maybe_merge(map, _key, nil), do: map
   defp maybe_merge(map, key, value), do: Map.put(map, key, value)
+
+  defp maybe_put_retry_after(conn, retry_after)
+       when is_integer(retry_after) and retry_after >= 0 do
+    put_resp_header(conn, "retry-after", Integer.to_string(retry_after))
+  end
+
+  defp maybe_put_retry_after(conn, _retry_after), do: conn
 end
