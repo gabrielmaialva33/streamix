@@ -5,8 +5,10 @@ defmodule Streamix.Gindex.QuotaGuard do
   The underlying `*.workers.dev` deployments are shared third-party
   infrastructure: Streamix cannot inspect their account-wide usage or
   reserve capacity. This module therefore applies a conservative app-local
-  ceiling (`@daily_limit`) and lets the Transport short-circuit before a
-  large sync monopolizes the upstream or enters a retry storm.
+  ceiling and lets the Transport short-circuit before a large sync monopolizes
+  the upstream or enters a retry storm. Background ingestion stops at a lower
+  soft ceiling, leaving the tail of the same atomic counter reserved for
+  interactive playback.
 
   Counter shape: `gindex:quota:YYYY-MM-DD` → integer, INCR'd per request,
   EXPIRE'd 36h to survive UTC rollover. Distributed-safe if multiple
@@ -25,11 +27,11 @@ defmodule Streamix.Gindex.QuotaGuard do
   # outbound attempt, including retries, consumes a slot so this counter
   # reflects the load Streamix actually contributes. This is intentionally
   # independent from Cloudflare's published account-plan allowance.
-  @daily_limit 8_000
+  @default_daily_limit 8_000
+  @default_playback_reserve 1_000
 
-  # Warn at 80% of the budget. 6_400 reqs in a single sync would be
-  # exceptional but not impossible — better an early alert than a
-  # silent crash near the ceiling.
+  # Warn at 80% of the applicable workload ceiling. Better an early alert
+  # than a silent stop near either the background or hard boundary.
   @warning_pct 80
 
   @key_prefix "gindex:quota:"
@@ -55,17 +57,35 @@ defmodule Streamix.Gindex.QuotaGuard do
   return {count, 1}
   """
 
+  @type workload :: :background | :playback
+
   @doc """
-  Atomically reserves one slot in today's counter and classifies the result.
-  Once exhausted, denied calls return the current count without incrementing it.
+  Atomically reserves one slot in today's shared counter.
+
+  Background requests stop before the playback reserve. Playback requests may
+  consume that reserve, but never cross the hard daily limit. Denied calls
+  return the current count without incrementing it.
 
   Returns:
     * `{:ok, :ok, count}`           — under threshold
     * `{:ok, :warning, count}`      — at/above warning %
-    * `{:error, :exhausted, count}` — over `@daily_limit`, deny request
+    * `{:error, :exhausted, count}` — workload ceiling reached, deny request
     * `{:ok, :ok, 0}`               — Redis unreachable, optimistic allow
   """
-  def consume do
+  @spec consume() ::
+          {:ok, :ok | :warning, non_neg_integer()}
+          | {:error, :exhausted, non_neg_integer()}
+  def consume, do: consume(:background)
+
+  @spec consume(workload()) ::
+          {:ok, :ok | :warning, non_neg_integer()}
+          | {:error, :exhausted, non_neg_integer()}
+  def consume(workload) when workload in [:background, :playback] do
+    policy = policy()
+    reserve(workload, limit_for(workload, policy))
+  end
+
+  defp reserve(workload, limit) do
     key = key_for_today()
 
     case Redix.command(:streamix_redis, [
@@ -73,14 +93,14 @@ defmodule Streamix.Gindex.QuotaGuard do
            @consume_script,
            "1",
            key,
-           Integer.to_string(@daily_limit),
+           Integer.to_string(limit),
            Integer.to_string(@key_ttl)
          ]) do
       {:ok, [count, 1]} when is_integer(count) ->
-        classify_allowed(count)
+        classify_allowed(count, workload, limit)
 
       {:ok, [count, 0]} when is_integer(count) ->
-        deny(count)
+        deny(count, workload, limit)
 
       _ ->
         {:ok, :ok, 0}
@@ -107,13 +127,46 @@ defmodule Streamix.Gindex.QuotaGuard do
   """
   def status do
     count = current_count()
+    policy = policy()
 
     %{
       count: count,
-      limit: @daily_limit,
-      remaining: max(0, @daily_limit - count),
-      percent: percent(count),
+      limit: policy.daily_limit,
+      remaining: max(0, policy.daily_limit - count),
+      percent: percent(count, policy.daily_limit),
+      background_limit: policy.background_limit,
+      background_remaining: max(0, policy.background_limit - count),
+      background_percent: percent(count, policy.background_limit),
+      playback_reserve: policy.playback_reserve,
       warning_pct: @warning_pct
+    }
+  end
+
+  @doc "Effective workload ceilings used by quota, workers and health checks."
+  @spec policy() :: %{
+          daily_limit: pos_integer(),
+          background_limit: pos_integer(),
+          playback_reserve: non_neg_integer()
+        }
+  def policy do
+    config = Application.get_env(:streamix, __MODULE__, [])
+    daily_limit = Keyword.get(config, :daily_limit, @default_daily_limit)
+    playback_reserve = Keyword.get(config, :playback_reserve, @default_playback_reserve)
+
+    if not is_integer(daily_limit) or daily_limit < 1 do
+      raise ArgumentError, "GIndex daily_limit must be a positive integer"
+    end
+
+    if not is_integer(playback_reserve) or playback_reserve < 0 or
+         playback_reserve >= daily_limit do
+      raise ArgumentError,
+            "GIndex playback_reserve must be a non-negative integer below daily_limit"
+    end
+
+    %{
+      daily_limit: daily_limit,
+      background_limit: daily_limit - playback_reserve,
+      playback_reserve: playback_reserve
     }
   end
 
@@ -139,12 +192,12 @@ defmodule Streamix.Gindex.QuotaGuard do
     max(1, DateTime.diff(next_midnight, now, :second) + @reset_buffer_seconds)
   end
 
-  defp classify_allowed(count) do
-    percent = percent(count)
+  defp classify_allowed(count, workload, limit) do
+    percent = percent(count, limit)
 
     if percent >= @warning_pct do
       if rem(count, 100) == 0 do
-        Logger.warning("[GIndex Quota] WARN #{count}/#{@daily_limit} (#{percent}%)")
+        Logger.warning("[GIndex Quota] WARN workload=#{workload} #{count}/#{limit} (#{percent}%)")
       end
 
       {:ok, :warning, count}
@@ -153,17 +206,22 @@ defmodule Streamix.Gindex.QuotaGuard do
     end
   end
 
-  defp deny(count) do
+  defp deny(count, workload, limit) do
     Logger.error(
-      "[GIndex Quota] EXHAUSTED #{count}/#{@daily_limit} (#{percent(count)}%) — denying request"
+      "[GIndex Quota] EXHAUSTED workload=#{workload} #{count}/#{limit} " <>
+        "(#{percent(count, limit)}%) — denying request"
     )
 
     {:error, :exhausted, count}
   end
 
-  defp percent(count) when is_integer(count) and count >= 0 do
-    round(count / @daily_limit * 100)
+  defp percent(count, limit)
+       when is_integer(count) and count >= 0 and is_integer(limit) and limit > 0 do
+    round(count / limit * 100)
   end
+
+  defp limit_for(:background, policy), do: policy.background_limit
+  defp limit_for(:playback, policy), do: policy.daily_limit
 
   defp key_for_today do
     date =

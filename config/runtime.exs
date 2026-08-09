@@ -438,6 +438,27 @@ end
 config :streamix, StreamixWeb.Api.V1.ImageResizeController,
   cache_dir: get_env.("IMAGE_CACHE_DIR") || "/app/data/image_cache"
 
+# GIndex daily safety budget. Background ingestion stops before the hard limit
+# so interactive download-link resolution retains guaranteed capacity.
+gindex_daily_limit =
+  RuntimeConfig.integer!("GINDEX_DAILY_LIMIT", get_env.("GINDEX_DAILY_LIMIT"), 8_000, min: 1)
+
+gindex_playback_reserve =
+  RuntimeConfig.integer!(
+    "GINDEX_PLAYBACK_RESERVE",
+    get_env.("GINDEX_PLAYBACK_RESERVE"),
+    1_000,
+    min: 0
+  )
+
+if gindex_playback_reserve >= gindex_daily_limit do
+  raise ArgumentError, "GINDEX_PLAYBACK_RESERVE must be lower than GINDEX_DAILY_LIMIT"
+end
+
+config :streamix, Streamix.Gindex.QuotaGuard,
+  daily_limit: gindex_daily_limit,
+  playback_reserve: gindex_playback_reserve
+
 # GIndex pacer budgets (requests-per-second). Tunable from the env
 # without a code change — useful when upstream capacity changes.
 config :streamix, Streamix.Gindex.Pacer,
