@@ -83,7 +83,7 @@ defmodule Streamix.Gindex.Scraper.Animes do
     folder_meta = Parser.parse_anime_folder(folder.name)
     anime_id = Parser.path_to_stream_id(folder.path)
 
-    with {:ok, items} <- Client.list_folder(base_url, folder.path),
+    with {:ok, items} <- Client.list_folder_with_failover(folder.path, base_url),
          release_folders = Enum.filter(items, &(&1.type == :folder)),
          {:ok, releases} <- scrape_anime_releases_result(base_url, release_folders) do
       if releases == [] do
@@ -155,7 +155,7 @@ defmodule Streamix.Gindex.Scraper.Animes do
 
     release_meta = Parser.parse_release_folder(folder.name)
 
-    case Client.list_folder(base_url, folder.path) do
+    case Client.list_folder_with_failover(folder.path, base_url) do
       {:ok, items} ->
         episodes =
           items

@@ -104,7 +104,7 @@ defmodule Streamix.Gindex.Scraper.Series do
     folder_meta = Parser.parse_series_folder(folder.name)
     series_id = Parser.path_to_stream_id(folder.path)
 
-    case Client.list_folder(base_url, folder.path) do
+    case Client.list_folder_with_failover(folder.path, base_url) do
       {:ok, items} ->
         season_folders =
           Enum.filter(items, fn item -> item.type == :folder and season_folder?(item) end)
@@ -177,7 +177,7 @@ defmodule Streamix.Gindex.Scraper.Series do
 
     season_number = Parser.parse_season_folder(folder.name).season_number
 
-    case Client.list_folder(base_url, folder.path) do
+    case Client.list_folder_with_failover(folder.path, base_url) do
       {:ok, items} ->
         episodes =
           items
@@ -271,7 +271,7 @@ defmodule Streamix.Gindex.Scraper.Series do
   end
 
   defp scrape_subfolder_episodes_result(base_url, subfolder, season_number) do
-    case Client.list_folder(base_url, subfolder.path) do
+    case Client.list_folder_with_failover(subfolder.path, base_url) do
       {:ok, sub_items} ->
         episodes =
           sub_items

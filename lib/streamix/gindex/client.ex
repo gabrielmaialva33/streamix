@@ -12,6 +12,8 @@ defmodule Streamix.Gindex.Client do
   routed to healthy fallback endpoints.
   """
 
+  require Logger
+
   alias Streamix.Gindex.EndpointManager
   alias Streamix.Gindex.EndpointPolicy
   alias Streamix.Gindex.HealthTracker
@@ -68,10 +70,9 @@ defmodule Streamix.Gindex.Client do
 
     url = Url.join(base_url, path)
 
-    case Transport.request(:post, url, body, base_url,
-           operation: :list,
-           workload: :background
-         ) do
+    request_opts = Keyword.merge(opts, operation: :list, workload: :background)
+
+    case Transport.request(:post, url, body, base_url, request_opts) do
       {:ok, %{status: 200, body: response_body}} ->
         Response.parse_folder(response_body, base_url, path)
 
@@ -81,6 +82,23 @@ defmodule Streamix.Gindex.Client do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Lists one folder page across the safe listing endpoint pool.
+
+  Each fallback starts the request from page zero. Local quota and request-slice
+  exhaustion are terminal for the whole pool and never fan out to another
+  Worker.
+  """
+  def list_folder_with_failover(path, preferred_url \\ nil, opts \\ [])
+      when is_binary(path) and (is_binary(preferred_url) or is_nil(preferred_url)) and
+             is_list(opts) do
+    preferred_url = preferred_url || EndpointPolicy.sync_url()
+
+    preferred_url
+    |> listing_endpoints()
+    |> request_folder_page(path, opts, [])
   end
 
   @doc """
@@ -280,24 +298,26 @@ defmodule Streamix.Gindex.Client do
     |> prioritize_healthy(:list)
   end
 
+  defp request_folder_page([], _path, _opts, errors) do
+    {:error, failover_reason(Enum.reverse(errors), :no_listing_endpoints)}
+  end
+
+  defp request_folder_page([base_url | rest], path, opts, errors) do
+    case list_folder(base_url, path, opts) do
+      {:ok, _items} = success ->
+        success
+
+      {:error, {kind, _count}} = error when kind in [:quota_exhausted, :slice_exhausted] ->
+        error
+
+      {:error, reason} ->
+        log_listing_fallback(rest, base_url, path, reason)
+        request_folder_page(rest, path, opts, [reason | errors])
+    end
+  end
+
   defp request_download_url([], _file_path, _opts, errors) do
-    rate_limits =
-      Enum.filter(errors, fn
-        {:rate_limited, status, retry_after}
-        when status in [429, 503] and is_integer(retry_after) ->
-          true
-
-        _reason ->
-          false
-      end)
-
-    reason =
-      case rate_limits do
-        [] -> List.first(errors) || :no_stream_endpoints
-        limits -> Enum.max_by(limits, fn {:rate_limited, _status, seconds} -> seconds end)
-      end
-
-    {:error, reason}
+    {:error, failover_reason(Enum.reverse(errors), :no_stream_endpoints)}
   end
 
   defp request_download_url([base_url | rest], file_path, opts, errors) do
@@ -309,9 +329,31 @@ defmodule Streamix.Gindex.Client do
         error
 
       {:error, reason} ->
-        request_download_url(rest, file_path, opts, errors ++ [reason])
+        request_download_url(rest, file_path, opts, [reason | errors])
     end
   end
+
+  defp failover_reason(errors, empty_reason) do
+    case Enum.filter(errors, &rate_limited?/1) do
+      [] -> List.first(errors) || empty_reason
+      limits -> Enum.max_by(limits, fn {:rate_limited, _status, seconds} -> seconds end)
+    end
+  end
+
+  defp rate_limited?({:rate_limited, status, retry_after})
+       when status in [429, 503] and is_integer(retry_after),
+       do: true
+
+  defp rate_limited?(_reason), do: false
+
+  defp log_listing_fallback([next | _], base_url, path, reason) do
+    Logger.info(
+      "[GIndex Client] listing failed on #{base_url}; retrying #{path} via #{next}: " <>
+        inspect(reason)
+    )
+  end
+
+  defp log_listing_fallback([], _base_url, _path, _reason), do: :ok
 
   defp prioritize_healthy(urls, operation) do
     urls

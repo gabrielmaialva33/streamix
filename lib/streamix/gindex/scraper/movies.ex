@@ -91,7 +91,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
 
     folder_meta = Parser.parse_movie_folder(folder.name)
 
-    case Client.list_folder(base_url, folder.path) do
+    case Client.list_folder_with_failover(folder.path, base_url) do
       {:ok, files} ->
         files
         |> Enum.filter(fn file -> file.type == :file and Parser.video_file?(file.name) end)
@@ -205,7 +205,7 @@ defmodule Streamix.Gindex.Scraper.Movies do
   end
 
   defp check_subfolder_for_video(base_url, subfolder, parent_path) do
-    case Client.list_folder(base_url, subfolder.path) do
+    case Client.list_folder_with_failover(subfolder.path, base_url) do
       {:ok, files} ->
         video =
           Enum.find(files, fn file -> file.type == :file and Parser.video_file?(file.name) end)
