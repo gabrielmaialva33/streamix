@@ -15,10 +15,11 @@ defmodule Streamix.Gindex.Transport do
   @retry_delay :timer.seconds(2)
   @max_retries 3
 
-  # 503/429 means the upstream is rate-limiting us, so a long
-  # exponential backoff gives the token bucket time to refill.
-  @rate_limit_base_delay :timer.seconds(30)
-  @max_rate_limit_retries 4
+  # Inline sleeps pin callers and used to block the global URL-cache process.
+  # Propagate rate limits immediately; playback returns retry guidance and
+  # background workers persist a durable pause before Oban reschedules them.
+  @default_playback_retry_after 60
+  @default_background_retry_after 15 * 60
 
   # Worker 500s, including the common JavaScript TypeError, are intermittent
   # across Cloudflare requests. Give the same origin two retries before
@@ -35,11 +36,14 @@ defmodule Streamix.Gindex.Transport do
            base_url: String.t(),
            opts: keyword(),
            transport_attempt: non_neg_integer(),
-           rate_limit_attempt: non_neg_integer(),
-           server_error_attempt: non_neg_integer()
+           server_error_attempt: non_neg_integer(),
+           max_transport_retries: non_neg_integer(),
+           max_server_error_retries: non_neg_integer()
          }
 
   def request(method, url, body, base_url, opts \\ []) do
+    workload = Keyword.get(opts, :workload, :background)
+
     request_with_retry(%{
       method: method,
       url: url,
@@ -47,18 +51,22 @@ defmodule Streamix.Gindex.Transport do
       base_url: base_url,
       opts: opts,
       transport_attempt: 0,
-      rate_limit_attempt: 0,
-      server_error_attempt: 0
+      server_error_attempt: 0,
+      max_transport_retries:
+        Keyword.get(opts, :max_transport_retries, default_transport_retries(workload)),
+      max_server_error_retries:
+        Keyword.get(opts, :max_server_error_retries, default_server_error_retries(workload))
     })
   end
 
   @spec request_with_retry(request_state()) :: {:ok, Req.Response.t()} | {:error, term()}
   defp request_with_retry(state) do
-    %{base_url: base_url, body: body, opts: opts, url: url} = state
+    %{base_url: base_url, opts: opts} = state
+    operation = request_operation(state)
 
     case reserve_request(opts) do
       {:error, {:slice_exhausted, count}} ->
-        emit_request_stop(:slice_exhausted, base_url, detect_operation(url, body))
+        emit_request_stop(:slice_exhausted, base_url, operation)
         {:error, {:slice_exhausted, count}}
 
       {:error, {:quota_exhausted, count}} ->
@@ -68,7 +76,7 @@ defmodule Streamix.Gindex.Transport do
           %{
             outcome: :quota_exhausted,
             base_url: base_url,
-            operation: detect_operation(url, body)
+            operation: operation
           }
         )
 
@@ -93,13 +101,16 @@ defmodule Streamix.Gindex.Transport do
     %{
       base_url: base_url,
       body: body,
+      max_transport_retries: max_transport_retries,
       method: method,
       opts: opts,
       transport_attempt: transport_attempt,
       url: url
     } = state
 
-    case Pacer.acquire(:gdrive) do
+    operation = request_operation(state)
+
+    case Pacer.acquire(:gdrive, pacing_timeout(state)) do
       :ok -> :ok
       {:error, :timeout} -> Logger.warning("[GIndex Client] pacer timeout, proceeding anyway")
     end
@@ -109,21 +120,25 @@ defmodule Streamix.Gindex.Transport do
         handle_request_response(response, state)
 
       {:error, %Req.TransportError{reason: reason} = error}
-      when transport_attempt < @max_retries ->
-        report_request_result(base_url, detect_operation(url, body), {:error, error})
+      when transport_attempt < max_transport_retries ->
+        report_request_result(base_url, operation, {:error, error})
 
         retry_transport_error(reason, state)
 
       {:error, reason} ->
-        report_request_result(base_url, detect_operation(url, body), {:error, reason})
+        report_request_result(base_url, operation, {:error, reason})
         {:error, reason}
     end
   end
 
   defp consume_quota(opts) do
-    opts
-    |> Keyword.get(:quota_fun, &QuotaGuard.consume/0)
-    |> then(& &1.())
+    workload = Keyword.get(opts, :workload, :background)
+
+    case Keyword.get(opts, :quota_fun) do
+      fun when is_function(fun, 1) -> fun.(workload)
+      fun when is_function(fun, 0) -> fun.()
+      nil -> QuotaGuard.consume(workload)
+    end
   end
 
   defp build_request_opts(method, url, body, opts) do
@@ -143,9 +158,10 @@ defmodule Streamix.Gindex.Transport do
   end
 
   defp handle_request_response(response, state) do
-    %{base_url: base_url, body: body, url: url} = state
+    %{base_url: base_url} = state
+    operation = request_operation(state)
 
-    report_request_result(base_url, detect_operation(url, body), {:ok, response})
+    report_request_result(base_url, operation, {:ok, response})
     handle_response(response, state)
   end
 
@@ -166,6 +182,8 @@ defmodule Streamix.Gindex.Transport do
 
   defp report_request_result(base_url, operation, {:ok, %{status: status}})
        when status in [429, 503] do
+    EndpointManager.report_error(base_url)
+    HealthTracker.record_error(base_url, operation, :rate_limited)
     emit_request_stop(:rate_limited, base_url, operation)
   end
 
@@ -208,28 +226,25 @@ defmodule Streamix.Gindex.Transport do
     request_with_retry(%{state | transport_attempt: transport_attempt + 1})
   end
 
-  defp handle_response(
-         %{status: status},
-         %{rate_limit_attempt: rate_limit_attempt} = state
-       )
-       when status in [429, 503] and rate_limit_attempt < @max_rate_limit_retries do
-    %{opts: opts} = state
-    delay = rate_limit_delay(rate_limit_attempt, opts)
+  defp handle_response(%{status: status} = response, state) when status in [429, 503] do
+    retry_after = retry_after_seconds(response, request_workload(state))
 
     Logger.warning(
-      "[GIndex] Rate limited (#{status}), waiting #{div(delay, 1000)}s before retry " <>
-        "(attempt #{rate_limit_attempt + 1}/#{@max_rate_limit_retries})"
+      "[GIndex] Rate limited (#{status}) operation=#{request_operation(state)} " <>
+        "workload=#{request_workload(state)} retry_after=#{retry_after}s"
     )
 
-    Process.sleep(delay)
-    request_with_retry(%{state | rate_limit_attempt: rate_limit_attempt + 1})
+    {:error, {:rate_limited, status, retry_after}}
   end
 
   defp handle_response(
          %{status: 500, body: resp_body} = response,
-         %{server_error_attempt: server_error_attempt} = state
+         %{
+           server_error_attempt: server_error_attempt,
+           max_server_error_retries: max_server_error_retries
+         } = state
        )
-       when server_error_attempt < @max_server_error_retries do
+       when server_error_attempt < max_server_error_retries do
     body_str = if is_binary(resp_body), do: resp_body, else: inspect(resp_body)
 
     if auth_error?(body_str) do
@@ -277,16 +292,6 @@ defmodule Streamix.Gindex.Transport do
     end
   end
 
-  defp rate_limit_delay(rate_limit_attempt, opts) do
-    case Keyword.get(opts, :rate_limit_delay_ms) do
-      delay when is_integer(delay) and delay >= 0 ->
-        delay
-
-      _ ->
-        backoff_delay(rate_limit_attempt)
-    end
-  end
-
   defp summarize_retry_body(nil), do: "nil"
 
   defp summarize_retry_body(body) when is_binary(body) do
@@ -304,10 +309,22 @@ defmodule Streamix.Gindex.Transport do
   defp page_token_marker(page_token) when page_token in [nil, ""], do: "nil"
   defp page_token_marker(page_token), do: "TOKEN(#{byte_size(page_token)}B)"
 
-  defp backoff_delay(rate_limit_attempt) do
-    base_delay = (@rate_limit_base_delay * :math.pow(2, rate_limit_attempt)) |> round()
-    base_delay + :rand.uniform(2000)
+  defp retry_after_seconds(response, workload) do
+    case Req.Response.get_retry_after(response) do
+      milliseconds when is_integer(milliseconds) and milliseconds >= 0 ->
+        milliseconds
+        |> ceil_div(1_000)
+        |> max(1)
+        |> min(3_600)
+
+      _ ->
+        fallback_retry_after(response, workload)
+    end
+  rescue
+    _ -> fallback_retry_after(response, workload)
   end
+
+  defp ceil_div(value, divisor), do: div(value + divisor - 1, divisor)
 
   defp maybe_put(options, _key, nil), do: options
   defp maybe_put(options, key, value), do: Keyword.put(options, key, value)
@@ -353,6 +370,41 @@ defmodule Streamix.Gindex.Transport do
         :list
     end
   end
+
+  defp request_operation(%{opts: opts, url: url, body: body}) do
+    Keyword.get_lazy(opts, :operation, fn -> detect_operation(url, body) end)
+  end
+
+  defp request_workload(%{opts: opts}), do: Keyword.get(opts, :workload, :background)
+
+  defp default_transport_retries(:playback), do: 0
+  defp default_transport_retries(_workload), do: @max_retries
+
+  defp default_server_error_retries(:playback), do: 0
+  defp default_server_error_retries(_workload), do: @max_server_error_retries
+
+  defp pacing_timeout(%{opts: opts}) do
+    case Keyword.get(opts, :workload, :background) do
+      :playback -> :timer.seconds(2)
+      _workload -> :timer.seconds(60)
+    end
+  end
+
+  defp default_retry_after(:playback), do: @default_playback_retry_after
+  defp default_retry_after(_workload), do: @default_background_retry_after
+
+  # Cloudflare Error 1027 is the Workers Free daily request ceiling. It resets
+  # at midnight UTC, so short canary retries only burn more requests and keep
+  # the sync workflow awake without any chance of recovery.
+  defp fallback_retry_after(%{status: 429, body: body}, workload) when is_binary(body) do
+    if String.contains?(String.downcase(body), "error code: 1027") do
+      QuotaGuard.seconds_until_reset()
+    else
+      default_retry_after(workload)
+    end
+  end
+
+  defp fallback_retry_after(_response, workload), do: default_retry_after(workload)
 
   defp detect_error_type(body) when is_binary(body) do
     cond do

@@ -16,7 +16,14 @@ defmodule Streamix.Gindex.Pagination do
   end
 
   def list_folder_all([_ | _] = base_urls, path, opts) do
-    request_fun = Keyword.get(opts, :request_fun, &Transport.request/4)
+    request_fun =
+      Keyword.get(opts, :request_fun, fn method, url, body, base_url ->
+        Transport.request(method, url, body, base_url,
+          operation: :list,
+          workload: :background
+        )
+      end)
+
     list_from_endpoints(Enum.uniq(base_urls), path, request_fun, [])
   end
 
@@ -146,25 +153,39 @@ defmodule Streamix.Gindex.Pagination do
 
   defp partial_error(path, failures) do
     failures = Enum.reverse(failures)
-    best = Enum.max_by(failures, & &1.items_collected)
-    failure_summaries = Enum.map(failures, &Map.delete(&1, :items))
 
-    Logger.warning(
-      "[GIndex Pagination] incomplete result for #{path}: " <>
-        "best attempt stopped after page #{best.page} with #{best.items_collected} items, " <>
-        "reason=#{inspect({:all_endpoints_failed, failure_summaries})}"
-    )
+    if Enum.all?(failures, &rate_limited?/1) do
+      %{reason: {:rate_limited, status, retry_after}} =
+        Enum.max_by(failures, fn %{reason: {:rate_limited, _status, seconds}} -> seconds end)
 
-    {:error,
-     {:partial_listing,
-      %{
-        path: path,
-        page: best.page,
-        items: best.items,
-        items_collected: best.items_collected,
-        reason: {:all_endpoints_failed, failure_summaries}
-      }}}
+      {:error, {:rate_limited, status, retry_after}}
+    else
+      best = Enum.max_by(failures, & &1.items_collected)
+      failure_summaries = Enum.map(failures, &Map.delete(&1, :items))
+
+      Logger.warning(
+        "[GIndex Pagination] incomplete result for #{path}: " <>
+          "best attempt stopped after page #{best.page} with #{best.items_collected} items, " <>
+          "reason=#{inspect({:all_endpoints_failed, failure_summaries})}"
+      )
+
+      {:error,
+       {:partial_listing,
+        %{
+          path: path,
+          page: best.page,
+          items: best.items,
+          items_collected: best.items_collected,
+          reason: {:all_endpoints_failed, failure_summaries}
+        }}}
+    end
   end
+
+  defp rate_limited?(%{reason: {:rate_limited, status, retry_after}})
+       when status in [429, 503] and is_integer(retry_after),
+       do: true
+
+  defp rate_limited?(_failure), do: false
 
   defp page_delay do
     config = Application.get_env(:streamix, __MODULE__, [])

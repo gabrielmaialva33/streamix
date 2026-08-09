@@ -120,6 +120,20 @@ defmodule Streamix.Gindex.PaginationTest do
     refute_receive {:request, "https://two.example"}
   end
 
+  test "preserves a shared upstream rate limit after checking the endpoint pool" do
+    request_fun = fn :post, _url, _body, base_url ->
+      retry_after = if base_url == "https://one.example", do: 30, else: 90
+      {:error, {:rate_limited, 429, retry_after}}
+    end
+
+    assert {:error, {:rate_limited, 429, 90}} =
+             Pagination.list_folder_all(
+               ["https://one.example", "https://two.example"],
+               "/1:/Filmes/",
+               request_fun: request_fun
+             )
+  end
+
   defp folder_response(names, next_page_token) do
     files =
       Enum.map(names, fn name ->
