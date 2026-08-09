@@ -41,6 +41,26 @@ cleanup() {
   docker rm -f "${container_name}" >/dev/null 2>&1 || true
 }
 
+pull_image() {
+  local attempt
+  local backoff
+
+  for attempt in 1 2 3; do
+    if docker pull "${image}"; then
+      return 0
+    fi
+
+    if [ "${attempt}" -lt 3 ]; then
+      backoff=$((attempt * 5))
+      echo "[playwright] pull attempt ${attempt}/3 failed; retrying in ${backoff}s" >&2
+      sleep "${backoff}"
+    fi
+  done
+
+  echo "[playwright] failed to pull ${image} after 3 attempts" >&2
+  return 1
+}
+
 trap cleanup EXIT INT TERM
 
 if [ "$(uname -s)" != "Linux" ]; then
@@ -55,7 +75,7 @@ fi
 
 if ! docker image inspect "${image}" >/dev/null 2>&1; then
   echo "[playwright] pulling ${image}"
-  docker pull "${image}"
+  pull_image
 fi
 
 echo "[playwright] starting ${browser} via Playwright ${playwright_version}"
