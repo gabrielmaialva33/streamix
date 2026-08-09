@@ -184,7 +184,9 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             <button
               type="button"
               phx-click="sync_provider"
-              disabled={@provider.sync_status in ["pending", "syncing", "paused_quota"]}
+              disabled={
+                @provider.sync_status in ["pending", "syncing", "paused_quota", "paused_upstream"]
+              }
               class="segmented-control__item flex-shrink-0"
               title={"Última sinc: #{format_relative_time(@provider.live_synced_at)}"}
             >

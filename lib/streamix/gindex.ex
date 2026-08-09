@@ -11,6 +11,7 @@ defmodule Streamix.Gindex do
     DisplayName,
     EndpointManager,
     EndpointPolicy,
+    HealthTracker,
     MetadataProbe,
     Pacer,
     Parser,
@@ -81,5 +82,36 @@ defmodule Streamix.Gindex do
     }
   rescue
     _ -> %{quota: %{count: 0, limit: 0, percent: 0}, telemetry: %{}, endpoints: []}
+  end
+
+  @doc "Credential-free upstream availability by GIndex workload."
+  def upstream_status do
+    config = Application.get_env(:streamix, :gindex_provider, [])
+
+    %{
+      sync: operation_status(EndpointPolicy.listing_urls(config), :list),
+      playback: operation_status(EndpointPolicy.stream_urls(config, nil), :stream)
+    }
+  rescue
+    _ ->
+      %{
+        sync: %{state: :unknown, errors: 0},
+        playback: %{state: :unknown, errors: 0}
+      }
+  end
+
+  defp operation_status(urls, operation) do
+    statuses =
+      urls
+      |> Enum.with_index(1)
+      |> Enum.map(fn {url, priority} -> {:endpoint, url, priority} end)
+      |> HealthTracker.get_status()
+      |> Enum.map(&get_in(&1, [:operations, operation]))
+
+    %{
+      state: if(Enum.any?(statuses, & &1.healthy), do: :available, else: :unavailable),
+      errors: Enum.sum(Enum.map(statuses, & &1.errors)),
+      candidates: length(statuses)
+    }
   end
 end

@@ -11,6 +11,18 @@ defmodule StreamixWeb.App.Media do
   alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
+  @sync_status_badges %{
+    "idle" => {"bg-text-muted/10", "text-text-muted", "Inativo"},
+    "pending" => {"bg-warning/10", "text-warning", "Pendente"},
+    "syncing" => {"bg-info/10", "text-info", "Sincronizando"},
+    "paused_quota" => {"bg-warning/10", "text-warning", "Pausado pela cota"},
+    "paused_upstream" => {"bg-warning/10", "text-warning", "Origem limitada"},
+    "completed" => {"bg-success/10", "text-success", "Sincronizado"},
+    "partial" => {"bg-warning/10", "text-warning", "Parcial"},
+    "failed" => {"bg-error/10", "text-error", "Falhou"}
+  }
+  @unknown_sync_badge {"bg-text-muted/10", "text-text-muted", "Desconhecido"}
+
   attr :channel, :map, required: true
   attr :current_program, :any, default: nil
   attr :is_favorite, :boolean, default: false
@@ -171,7 +183,9 @@ defmodule StreamixWeb.App.Media do
           type="button"
           phx-click={@on_sync}
           phx-value-id={@provider.id}
-          disabled={@provider.sync_status in ["pending", "syncing", "paused_quota"]}
+          disabled={
+            @provider.sync_status in ["pending", "syncing", "paused_quota", "paused_upstream"]
+          }
           class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-50"
         >
           <.icon
@@ -216,6 +230,9 @@ defmodule StreamixWeb.App.Media do
   defp sync_status_message("paused_quota"),
     do: "Sincronização pausada até a renovação da cota diária."
 
+  defp sync_status_message("paused_upstream"),
+    do: "Sincronização pausada enquanto a origem limita novas requisições."
+
   defp sync_status_message("partial"),
     do: "Sincronização concluída parcialmente; algumas origens serão tentadas novamente."
 
@@ -223,17 +240,7 @@ defmodule StreamixWeb.App.Media do
   defp sync_status_message(_status), do: nil
 
   defp sync_status_badge(assigns) do
-    {bg, text, label} =
-      case assigns.status do
-        "idle" -> {"bg-text-muted/10", "text-text-muted", "Inativo"}
-        "pending" -> {"bg-warning/10", "text-warning", "Pendente"}
-        "syncing" -> {"bg-info/10", "text-info", "Sincronizando"}
-        "paused_quota" -> {"bg-warning/10", "text-warning", "Pausado pela cota"}
-        "completed" -> {"bg-success/10", "text-success", "Sincronizado"}
-        "partial" -> {"bg-warning/10", "text-warning", "Parcial"}
-        "failed" -> {"bg-error/10", "text-error", "Falhou"}
-        _ -> {"bg-text-muted/10", "text-text-muted", "Desconhecido"}
-      end
+    {bg, text, label} = Map.get(@sync_status_badges, assigns.status, @unknown_sync_badge)
 
     assigns = assign(assigns, bg: bg, text: text, label: label)
 

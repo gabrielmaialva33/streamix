@@ -87,7 +87,12 @@ defmodule Streamix.OperationalHealth do
       Iptv.list_public_providers()
       |> Enum.frequencies_by(&(&1.sync_status || "unknown"))
 
-    degraded_count = Map.get(counts, "failed", 0) + Map.get(counts, "partial", 0)
+    degraded_count =
+      Enum.sum(
+        for status <- ~w(failed partial paused_quota paused_upstream),
+            do: Map.get(counts, status, 0)
+      )
+
     status = if degraded_count > 0, do: :degraded, else: :ok
 
     %{status: status, counts: counts}
@@ -99,30 +104,57 @@ defmodule Streamix.OperationalHealth do
 
   defp check_gindex do
     quota = Gindex.quota_status()
-
-    state =
-      cond do
-        quota.remaining == 0 -> :paused
-        quota.percent >= quota.warning_pct -> :warning
-        true -> :available
-      end
+    upstream = Gindex.upstream_status()
+    sync_state = gindex_sync_state(quota, upstream.sync)
+    playback_state = gindex_playback_state(quota, upstream.playback)
+    state = gindex_state(sync_state, playback_state, quota)
 
     quota
-    |> Map.take([:count, :limit, :remaining, :percent])
+    |> Map.take([
+      :count,
+      :limit,
+      :remaining,
+      :percent,
+      :background_limit,
+      :background_remaining,
+      :background_percent,
+      :playback_reserve
+    ])
     |> Map.put(:state, state)
-    |> Map.put(:status, if(state == :paused, do: :degraded, else: :ok))
-    |> maybe_put_quota_resume(state)
+    |> Map.put(:sync_state, sync_state)
+    |> Map.put(:playback_state, playback_state)
+    |> Map.put(:upstream, upstream)
+    |> Map.put(:status, if(state == :available, do: :ok, else: :degraded))
+    |> maybe_put_quota_resume(quota)
   rescue
     _ -> %{status: :degraded, state: :unknown}
   catch
     :exit, _ -> %{status: :degraded, state: :unknown}
   end
 
-  defp maybe_put_quota_resume(check, :paused) do
+  defp gindex_sync_state(%{background_remaining: 0}, _upstream), do: :paused
+  defp gindex_sync_state(_quota, %{state: :available}), do: :available
+  defp gindex_sync_state(_quota, _upstream), do: :unavailable
+
+  defp gindex_playback_state(%{remaining: 0}, _upstream), do: :unavailable
+  defp gindex_playback_state(_quota, %{state: :available}), do: :available
+  defp gindex_playback_state(_quota, _upstream), do: :unavailable
+
+  defp gindex_state(_sync_state, :unavailable, _quota), do: :playback_unavailable
+  defp gindex_state(:paused, :available, _quota), do: :background_paused
+  defp gindex_state(:unavailable, :available, _quota), do: :background_unavailable
+
+  defp gindex_state(:available, :available, quota) do
+    if quota.percent >= quota.warning_pct or quota.background_percent >= quota.warning_pct,
+      do: :warning,
+      else: :available
+  end
+
+  defp maybe_put_quota_resume(check, %{background_remaining: 0}) do
     Map.put(check, :resumes_in_seconds, Gindex.seconds_until_quota_reset())
   end
 
-  defp maybe_put_quota_resume(check, _state), do: check
+  defp maybe_put_quota_resume(check, _quota), do: check
 
   defp check_semantic_search do
     if Embeddings.enabled?() do
