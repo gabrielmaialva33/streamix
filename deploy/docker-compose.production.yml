@@ -2,7 +2,7 @@ name: streamix
 
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-timescale/timescaledb:latest-pg17}
+    image: ${POSTGRES_IMAGE:-timescale/timescaledb:2.29.1-pg17}
     container_name: streamix-postgres
     command:
       [
@@ -36,7 +36,7 @@ services:
       - shared_network
 
   redis:
-    image: ${REDIS_IMAGE:-redis:8-alpine}
+    image: ${REDIS_IMAGE:-redis:8.10.0-alpine}
     container_name: streamix-redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
@@ -53,7 +53,7 @@ services:
       - shared_network
 
   rabbitmq:
-    image: ${RABBITMQ_IMAGE:-rabbitmq:4-management-alpine}
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.3.4-management-alpine}
     container_name: streamix-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
@@ -71,7 +71,7 @@ services:
       - shared_network
 
   qdrant:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.19.0}
     container_name: streamix-qdrant
     volumes:
       - streamix_qdrant_data:/qdrant/storage
