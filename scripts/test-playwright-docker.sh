@@ -5,6 +5,8 @@ project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 browser="${PLAYWRIGHT_BROWSER:-webkit}"
 container_name="streamix-playwright-${browser}-$$"
 
+cd "${project_root}"
+
 case "${browser}" in
 chromium | firefox | webkit) ;;
 *)
@@ -41,23 +43,26 @@ cleanup() {
   docker rm -f "${container_name}" >/dev/null 2>&1 || true
 }
 
-pull_image() {
+retry_command() {
+  local label="$1"
+  shift
+
   local attempt
   local backoff
 
   for attempt in 1 2 3; do
-    if docker pull "${image}"; then
+    if "$@"; then
       return 0
     fi
 
     if [ "${attempt}" -lt 3 ]; then
       backoff=$((attempt * 5))
-      echo "[playwright] pull attempt ${attempt}/3 failed; retrying in ${backoff}s" >&2
+      echo "[playwright] ${label} attempt ${attempt}/3 failed; retrying in ${backoff}s" >&2
       sleep "${backoff}"
     fi
   done
 
-  echo "[playwright] failed to pull ${image} after 3 attempts" >&2
+  echo "[playwright] ${label} failed after 3 attempts" >&2
   return 1
 }
 
@@ -73,9 +78,15 @@ if ss -H -ltn "sport = :${playwright_port}" | grep -q .; then
   exit 2
 fi
 
+echo "[playwright] installing frontend asset binaries"
+retry_command "asset setup" env MIX_ENV=test mix assets.setup
+
+echo "[playwright] building current frontend assets"
+env MIX_ENV=test mix assets.build
+
 if ! docker image inspect "${image}" >/dev/null 2>&1; then
   echo "[playwright] pulling ${image}"
-  pull_image
+  retry_command "image pull" docker pull "${image}"
 fi
 
 echo "[playwright] starting ${browser} via Playwright ${playwright_version}"
@@ -122,10 +133,6 @@ if [ "$#" -eq 0 ]; then
     set -- "$@" test/streamix_web/e2e/torrent_subtitle_tracer_test.exs
   fi
 fi
-
-echo "[playwright] building current frontend assets"
-cd "${project_root}"
-env MIX_ENV=test mix assets.build
 
 echo "[playwright] running ${browser}: $*"
 if ! PLAYWRIGHT_BROWSER="${browser}" \
