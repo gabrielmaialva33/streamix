@@ -92,6 +92,63 @@ defmodule Streamix.Gindex.ScanRoots do
     |> Repo.one()
   end
 
+  @doc "Reopens failed roots in an active cycle while preserving durable cursors."
+  @spec reopen_failed(pos_integer(), Ecto.UUID.t()) :: {:ok, [ScanRoot.t()]}
+  def reopen_failed(provider_id, cycle_id) do
+    Repo.transaction(fn ->
+      now = DateTime.utc_now()
+
+      ScanRoot
+      |> where(
+        [root],
+        root.provider_id == ^provider_id and root.cycle_id == ^cycle_id and
+          root.status == "failed"
+      )
+      |> Repo.update_all(
+        set: [
+          status: "pending",
+          paused_reason: nil,
+          quota_count: nil,
+          next_resume_at: nil,
+          last_error: nil,
+          completed_at: nil,
+          last_progress_at: now,
+          attempt_count: 0,
+          updated_at: now
+        ]
+      )
+
+      list_cycle(provider_id, cycle_id)
+    end)
+  end
+
+  @doc "Makes retryable roots eligible on a new explicit reconciliation."
+  @spec resume_retryable(pos_integer(), Ecto.UUID.t()) :: {:ok, [ScanRoot.t()]}
+  def resume_retryable(provider_id, cycle_id) do
+    Repo.transaction(fn ->
+      now = DateTime.utc_now()
+
+      ScanRoot
+      |> where(
+        [root],
+        root.provider_id == ^provider_id and root.cycle_id == ^cycle_id and
+          root.status == "paused" and root.paused_reason == "retryable_error"
+      )
+      |> Repo.update_all(
+        set: [
+          status: "pending",
+          paused_reason: nil,
+          next_resume_at: nil,
+          last_error: nil,
+          last_progress_at: now,
+          updated_at: now
+        ]
+      )
+
+      list_cycle(provider_id, cycle_id)
+    end)
+  end
+
   @doc "Marks a root as executing and advances its durable heartbeat."
   @spec mark_running(ScanRoot.t()) :: {:ok, ScanRoot.t()} | {:error, Ecto.Changeset.t()}
   def mark_running(%ScanRoot{} = root) do
@@ -185,7 +242,8 @@ defmodule Streamix.Gindex.ScanRoots do
       roots_pending: Map.get(status_counts, "pending", 0),
       roots_running: Map.get(status_counts, "running", 0),
       roots_paused: Map.get(status_counts, "paused", 0),
-      roots_paused_quota: Enum.count(roots, &(&1.paused_reason == "quota_exhausted")),
+      roots_paused_quota:
+        Enum.count(roots, &(&1.paused_reason in ~w(quota_exhausted insufficient_budget))),
       roots_paused_upstream: Enum.count(roots, &(&1.paused_reason == "upstream_rate_limited")),
       roots_with_skips: Enum.count(roots, &positive_stat?(&1.stats, "skipped_count")),
       roots_unfinished: Enum.count(roots, &(&1.status in @active_statuses)),

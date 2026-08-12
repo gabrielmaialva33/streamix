@@ -75,11 +75,11 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
         {:error, :invalid_gindex_scan_cycle}
 
       :error ->
-        ensure_configured_cycle(provider)
+        ensure_configured_cycle(provider, opts)
     end
   end
 
-  defp ensure_configured_cycle(provider) do
+  defp ensure_configured_cycle(provider, opts) do
     roots = Gindex.sync_roots_for(provider)
 
     with :ok <- ensure_roots_present(roots) do
@@ -95,7 +95,26 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
             []
         end
 
-      Gindex.ensure_scan_cycle(provider.id, roots, cycle_opts)
+      with {:ok, cycle} <- Gindex.ensure_scan_cycle(provider.id, roots, cycle_opts) do
+        maybe_reactivate_stalled_roots(provider.id, cycle, opts)
+      end
+    end
+  end
+
+  defp maybe_reactivate_stalled_roots(provider_id, cycle, opts) do
+    reactivate? = Keyword.get(opts, :reactivate_stalled?, true)
+    failed? = Enum.any?(cycle.roots, &(&1.status == "failed"))
+    retryable? = Enum.any?(cycle.roots, &(&1.paused_reason == "retryable_error"))
+
+    if reactivate? and not cycle.new_cycle? and (failed? or retryable?) do
+      with {:ok, _roots} <- Gindex.reopen_failed_scan_roots(provider_id, cycle.cycle_id),
+           {:ok, roots} <- Gindex.resume_retryable_scan_roots(provider_id, cycle.cycle_id) do
+        {:ok, %{cycle | roots: roots}}
+      else
+        {:error, reason} -> {:error, {:stalled_scan_roots_reactivation_failed, reason}}
+      end
+    else
+      {:ok, cycle}
     end
   end
 

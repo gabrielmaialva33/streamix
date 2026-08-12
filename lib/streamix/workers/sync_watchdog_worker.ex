@@ -114,7 +114,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
             "durable progress; reconciling missing jobs"
         )
 
-        SyncGindexProviderWorker.dispatch(provider)
+        SyncGindexProviderWorker.dispatch(provider, reactivate_stalled?: false)
 
       true ->
         :ok

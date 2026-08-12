@@ -100,6 +100,39 @@ defmodule Streamix.Workers.SyncGindexProviderWorkerTest do
            )
   end
 
+  test "pulls a retryable root forward on the next explicit reconciliation" do
+    provider = gindex_provider()
+    roots = Gindex.sync_roots_for(provider)
+    assert {:ok, cycle} = Gindex.ensure_scan_cycle(provider.id, roots)
+    [root | _rest] = cycle.roots
+    tomorrow = DateTime.add(DateTime.utc_now(), 86_400, :second)
+
+    assert {:ok, _root} =
+             Gindex.pause_scan_root(root, :retryable_error, next_resume_at: tomorrow)
+
+    job =
+      %{
+        "provider_id" => root.provider_id,
+        "base_url" => root.base_url,
+        "path" => root.root_path,
+        "kind" => root.kind,
+        "workflow_id" => root.cycle_id
+      }
+      |> ScanRootWorker.new(schedule_in: 86_400)
+      |> Oban.insert!()
+      |> Ecto.Changeset.change(state: "retryable", scheduled_at: tomorrow)
+      |> Repo.update!()
+
+    assert :ok = SyncGindexProviderWorker.dispatch(provider)
+
+    resumed = Gindex.get_scan_root(provider.id, root.root_path, root.kind)
+    assert resumed.status == "pending"
+    assert resumed.next_resume_at == nil
+
+    rescheduled_job = Repo.get!(Oban.Job, job.id)
+    assert DateTime.diff(rescheduled_job.scheduled_at, DateTime.utc_now(), :second) in -1..1
+  end
+
   defp insert_legacy_job(provider, path, cycle_id, inserted_at, checkpoint) do
     args = %{
       "provider_id" => provider.id,

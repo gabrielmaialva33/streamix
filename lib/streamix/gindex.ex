@@ -45,6 +45,15 @@ defmodule Streamix.Gindex do
   defdelegate list_scan_cycle(provider_id, cycle_id), to: ScanRoots, as: :list_cycle
   defdelegate active_scan_cycle_id(provider_id), to: ScanRoots, as: :active_cycle_id
   defdelegate latest_scan_cycle_id(provider_id), to: ScanRoots, as: :latest_cycle_id
+
+  defdelegate reopen_failed_scan_roots(provider_id, cycle_id),
+    to: ScanRoots,
+    as: :reopen_failed
+
+  defdelegate resume_retryable_scan_roots(provider_id, cycle_id),
+    to: ScanRoots,
+    as: :resume_retryable
+
   defdelegate mark_scan_root_running(root), to: ScanRoots, as: :mark_running
   defdelegate checkpoint_scan_root(root, cursor), to: ScanRoots, as: :checkpoint
   defdelegate pause_scan_root(root, reason, opts \\ []), to: ScanRoots, as: :mark_paused
