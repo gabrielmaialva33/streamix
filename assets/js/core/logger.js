@@ -5,20 +5,24 @@
  * Disables verbose logs in production to improve performance.
  */
 
-// Detect environment and debug mode
-const urlParams = new URLSearchParams(window.location.search);
+// Detect environment and debug mode without requiring a browser global at
+// module-load time. This keeps shared player modules importable by Node tests
+// and server-side tooling while preserving the browser behavior.
+const windowRef = globalThis.window;
+const locationRef = windowRef?.location;
+const urlParams = new URLSearchParams(locationRef?.search || "");
 const debugFromUrl = urlParams.get("debug") === "1" || urlParams.get("debug") === "true";
 
 const isDev =
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1" ||
-  window.location.hostname.includes(".local") ||
-  window.__STREAMIX_DEBUG__ === true ||
+  locationRef?.hostname === "localhost" ||
+  locationRef?.hostname === "127.0.0.1" ||
+  locationRef?.hostname?.includes(".local") ||
+  windowRef?.__STREAMIX_DEBUG__ === true ||
   debugFromUrl;
 
 // Persist debug mode if set via URL
-if (debugFromUrl) {
-  window.__STREAMIX_DEBUG__ = true;
+if (debugFromUrl && windowRef) {
+  windowRef.__STREAMIX_DEBUG__ = true;
 }
 
 // Log levels
@@ -109,8 +113,8 @@ function createLogger(prefix) {
               stack: context.error?.stack,
             },
             timestamp: Date.now(),
-            userAgent: navigator.userAgent,
-            url: window.location.href,
+            userAgent: globalThis.navigator?.userAgent || "unknown",
+            url: locationRef?.href || "unknown",
           });
         } catch (e) {
           console.warn("[Logger] Failed to report error:", e);
@@ -166,7 +170,7 @@ export function setLogLevel(level) {
  * Enable debug mode (even in production)
  */
 export function enableDebug() {
-  window.__STREAMIX_DEBUG__ = true;
+  if (windowRef) windowRef.__STREAMIX_DEBUG__ = true;
   currentLevel = LogLevel.DEBUG;
 }
 

@@ -9,9 +9,9 @@
  * to keep the main bundle small for non-player pages.
  */
 
-import { streamLogger as log } from "../core/logger";
-import { getHls, getMpegts } from "./player_libs";
-import { getStreamingConfig, StreamingMode } from "./streaming_config";
+import { streamLogger as log } from "../core/logger.js";
+import { getHls, getMpegts } from "./player_libs.js";
+import { getStreamingConfig, StreamingMode } from "./streaming_config.js";
 
 /**
  * Stream type detection from URL

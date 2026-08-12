@@ -12,8 +12,8 @@
  * - Provides manual diagnostics for users
  */
 
-import { detectAudioCodecs, detectMSESupport, detectVideoCodecs } from "../media/codec_detector";
-import { getRecommendedPlayer } from "./player_preferences";
+import { detectAudioCodecs, detectMSESupport, detectVideoCodecs } from "../media/codec_detector.js";
+import { getRecommendedPlayer } from "./player_preferences.js";
 
 // Diagnostic test types
 const DiagnosticTest = {

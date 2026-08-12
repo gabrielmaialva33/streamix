@@ -11,9 +11,13 @@
  * - Device capability matching
  */
 
-import { playerLogger as log } from "../core/logger";
-import { detectVideoCodecs } from "./codec_detector";
-import { checkHardwareSupport, isWebCodecsSupported, WEBCODECS_CONFIGS } from "./webcodecs_decoder";
+import { playerLogger as log } from "../core/logger.js";
+import { detectVideoCodecs } from "./codec_detector.js";
+import {
+  checkHardwareSupport,
+  isWebCodecsSupported,
+  WEBCODECS_CONFIGS,
+} from "./webcodecs_decoder.js";
 
 const codecRecommendationCache = new Map();
 
