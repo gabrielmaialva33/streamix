@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/Phoenix-1.8.2+-f97316?style=flat&logo=phoenix-framework" alt="Phoenix" />
   <img src="https://img.shields.io/badge/LiveView-1.2+-0ea5e9?style=flat&logo=phoenix-framework" alt="LiveView" />
   <img src="https://img.shields.io/badge/TimescaleDB-pg17-1d4ed8?style=flat&logo=postgresql" alt="TimescaleDB" />
-  <img src="https://img.shields.io/badge/Redis-7+-dc2626?style=flat&logo=redis" alt="Redis" />
+  <img src="https://img.shields.io/badge/Redis-8-dc2626?style=flat&logo=redis" alt="Redis" />
   <img src="https://img.shields.io/badge/Qdrant-Optional-111827?style=flat" alt="Qdrant" />
   <img src="https://img.shields.io/badge/RabbitMQ-Optional-f59e0b?style=flat&logo=rabbitmq" alt="RabbitMQ" />
   <img src="https://img.shields.io/badge/Tailwind-v4-06b6d4?style=flat&logo=tailwindcss" alt="Tailwind CSS" />
