@@ -23,8 +23,8 @@ defmodule Streamix.Iptv do
     `sync_provider/2`, `async_sync_epg/1`, `list_providers/1`. Backed by
     `Streamix.Iptv.Providers`.
 
-  * **EPG** — `list_epg_programs/2`, `sync_channel_epg/1`. Backed by
-    `Streamix.Iptv.Epg`.
+  * **EPG** — `get_now_and_next/2`, `sync_channel_epg/3`, `sync_channels_epg/2`.
+    Backed by `Streamix.Iptv.Epg`.
 
   * **GIndex** — `gindex_counts/0`. Internals live under `Streamix.Gindex.*`.
 
@@ -407,6 +407,7 @@ defmodule Streamix.Iptv do
   defdelegate list_providers(user_id, opts), to: Providers, as: :list
   defdelegate list_visible_providers(user_id \\ nil), to: Providers, as: :list_visible
   defdelegate list_public_providers(), to: Providers, as: :list_public
+  defdelegate list_stale_sync_candidates(threshold), to: Providers
   defdelegate get_provider!(id), to: Providers, as: :get!
   defdelegate get_provider(id), to: Providers, as: :get
   defdelegate preload_provider_drives(provider), to: Providers, as: :preload_drives

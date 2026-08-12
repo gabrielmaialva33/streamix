@@ -24,7 +24,6 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
 
   alias Streamix.Gindex
   alias Streamix.Iptv
-  alias Streamix.Iptv.Provider
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.SyncOrchestratorWorker
   alias Streamix.Workers.SyncGindexProviderWorker
@@ -51,29 +50,21 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
       |> DateTime.truncate(:second)
       |> DateTime.to_naive()
 
-    stale_candidates =
-      from(p in Provider,
-        where:
-          p.sync_status == "syncing" or
-            (p.provider_type == :gindex and
-               p.sync_status in ["paused_quota", "paused_upstream"]),
-        where: p.updated_at < ^threshold
-      )
-      |> Repo.all()
+    stale_candidates = Iptv.list_stale_sync_candidates(threshold)
 
     Enum.each(stale_candidates, &maybe_reset/1)
 
     :ok
   end
 
-  defp maybe_reset(%Provider{provider_type: :gindex} = provider) do
+  defp maybe_reset(%{provider_type: :gindex} = provider) do
     case Gindex.active_scan_cycle_id(provider.id) do
       nil -> reconcile_settled_gindex(provider)
       cycle_id -> reconcile_active_gindex(provider, cycle_id)
     end
   end
 
-  defp maybe_reset(%Provider{} = provider) do
+  defp maybe_reset(provider) do
     workers = workers_for(provider)
 
     in_flight =
@@ -190,6 +181,6 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
     Iptv.update_gindex_sync(provider.id, %{sync_status: "failed"})
   end
 
-  defp workers_for(%Provider{provider_type: :torrent}), do: @torrent_workers
+  defp workers_for(%{provider_type: :torrent}), do: @torrent_workers
   defp workers_for(_), do: [@xtream_worker]
 end

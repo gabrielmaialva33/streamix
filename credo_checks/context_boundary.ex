@@ -19,7 +19,7 @@ defmodule Streamix.CredoChecks.ContextBoundary do
 
   alias Credo.IssueMeta
 
-  @contexts ~w(Access Accounts AI Billing Gindex Iptv Queue Subtitles Torrent WatchParty)a
+  @contexts ~w(Access Accounts AI Billing Gindex Iptv Qoe Queue Subtitles Torrent WatchParty)a
 
   # Temporary debt register. Schema access remains necessary in workers that
   # own Ecto queries; move those queries behind context entrypoints before
@@ -28,7 +28,6 @@ defmodule Streamix.CredoChecks.ContextBoundary do
     Streamix.Iptv.Episode
     Streamix.Iptv.Movie
     Streamix.Iptv.MovieAsset
-    Streamix.Iptv.Provider
     Streamix.Iptv.Season
     Streamix.Iptv.Series
     Streamix.Iptv.SeriesAsset

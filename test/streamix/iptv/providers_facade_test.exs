@@ -47,6 +47,48 @@ defmodule Streamix.Iptv.ProvidersFacadeTest do
     end
   end
 
+  describe "list_stale_sync_candidates/1" do
+    test "returns stale active syncs and GIndex pauses without leaking adapter policy" do
+      user = user_fixture()
+      stale_sync = provider_fixture(user, %{sync_status: "syncing"})
+
+      stale_gindex =
+        global_provider_fixture(%{provider_type: :gindex, sync_status: "paused_quota"})
+
+      ignored_torrent =
+        global_provider_fixture(%{
+          provider_type: :torrent,
+          url: "torrent://stale-provider-boundary",
+          sync_status: "paused_quota"
+        })
+
+      _fresh_sync = provider_fixture(user, %{sync_status: "syncing"})
+
+      stale_at =
+        DateTime.utc_now()
+        |> DateTime.add(-2, :hour)
+        |> DateTime.truncate(:second)
+
+      Enum.each([stale_sync, stale_gindex, ignored_torrent], fn provider ->
+        provider
+        |> Ecto.Changeset.change(updated_at: stale_at)
+        |> Repo.update!()
+      end)
+
+      threshold =
+        DateTime.utc_now()
+        |> DateTime.add(-1, :hour)
+        |> DateTime.to_naive()
+
+      candidate_ids =
+        threshold
+        |> Iptv.list_stale_sync_candidates()
+        |> Enum.map(& &1.id)
+
+      assert candidate_ids == Enum.sort([stale_sync.id, stale_gindex.id])
+    end
+  end
+
   describe "get_provider!/1" do
     test "returns the provider with given id" do
       user = user_fixture()

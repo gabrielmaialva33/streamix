@@ -108,6 +108,28 @@ defmodule Streamix.Iptv.Providers do
     |> Repo.all()
   end
 
+  @doc """
+  Lists providers whose persisted synchronization state may need operational
+  reconciliation.
+
+  GIndex pause states are intentional candidates because their durable scan
+  cycle decides whether the pause is still valid. Other adapters are only
+  candidates while marked as actively syncing.
+  """
+  @spec list_stale_sync_candidates(NaiveDateTime.t()) :: [Provider.t()]
+  def list_stale_sync_candidates(%NaiveDateTime{} = threshold) do
+    Provider
+    |> where(
+      [p],
+      p.sync_status == "syncing" or
+        (p.provider_type == :gindex and
+           p.sync_status in ["paused_quota", "paused_upstream"])
+    )
+    |> where([p], p.updated_at < ^threshold)
+    |> order_by(asc: :id)
+    |> Repo.all()
+  end
+
   # =============================================================================
   # Retrieval
   # =============================================================================
