@@ -145,12 +145,20 @@ defmodule Streamix.MixProject do
     [
       ignore_warnings: ".dialyzer_ignore.exs",
       plt_local_path: "priv/plts",
-      plt_add_apps: [:ex_unit, :mix],
+      plt_add_apps: [:ex_unit, :mix] ++ dialyzer_test_apps(),
       # Dialyzer reports false opaque violations for regular MapSet usage because
       # MapSet delegates to the opaque :sets type. Elixir core recommends
       # disabling only this warning family until the toolchains converge:
       # https://github.com/elixir-lang/elixir/issues/15673
       flags: [:no_opaque]
     ]
+  end
+
+  defp dialyzer_test_apps do
+    if Mix.env() == :test do
+      [:phoenix_test, :phoenix_test_playwright, :playwright_ex]
+    else
+      []
+    end
   end
 end
