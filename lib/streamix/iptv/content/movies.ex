@@ -52,12 +52,14 @@ defmodule Streamix.Iptv.Movies do
     sort = Keyword.get(opts, :sort)
     dedupe? = Keyword.get(opts, :dedupe, false)
 
-    provider_id
-    |> Queries.filtered_provider(opts)
-    |> maybe_dedupe_variants(dedupe?)
-    |> Queries.sorted(sort)
-    |> limit(^limit)
-    |> offset(^offset)
+    query = Queries.filtered_provider(provider_id, opts)
+
+    query =
+      if dedupe?,
+        do: Queries.variant_page(query, sort, limit, offset),
+        else: query |> Queries.sorted(sort) |> limit(^limit) |> offset(^offset)
+
+    query
     |> Queries.select_card_fields()
     |> preload(^@summary_preloads)
     |> Repo.all()
@@ -185,10 +187,7 @@ defmodule Streamix.Iptv.Movies do
 
     opts
     |> Queries.filtered_public()
-    |> Queries.dedupe_variants()
-    |> Queries.sorted(sort)
-    |> limit(^limit)
-    |> offset(^offset)
+    |> Queries.variant_page(sort, limit, offset)
     |> Queries.select_card_fields()
     |> preload(^@public_summary_preloads)
     |> Repo.all()
@@ -199,8 +198,8 @@ defmodule Streamix.Iptv.Movies do
   def count_public_catalog(opts \\ []) do
     opts
     |> Queries.filtered_public()
-    |> Queries.dedupe_variants()
-    |> Repo.aggregate(:count, :id)
+    |> Queries.count_variants()
+    |> Repo.one()
   end
 
   @doc """
@@ -529,9 +528,6 @@ defmodule Streamix.Iptv.Movies do
 
   defp provider_sort_name(%{provider: %{name: name}}) when is_binary(name), do: name
   defp provider_sort_name(_), do: ""
-
-  defp maybe_dedupe_variants(query, true), do: Queries.dedupe_variants(query)
-  defp maybe_dedupe_variants(query, _dedupe), do: query
 
   defp variant_search_title(%Movie{} = movie) do
     movie.title

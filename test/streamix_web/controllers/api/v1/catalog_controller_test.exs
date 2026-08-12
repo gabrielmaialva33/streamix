@@ -173,6 +173,44 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
       assert id == fallback_series.id
       assert provider == %{"id" => fallback.id, "name" => "Fallback", "type" => "xtream"}
     end
+
+    test "deduplicates provider variants before applying the page offset", %{
+      conn: conn,
+      provider: global
+    } do
+      owner = user_fixture()
+      fallback = provider_fixture(owner, %{name: "Fallback", visibility: :public})
+
+      _replaced =
+        public_series!(global, %{name: "Shared Show", tmdb_id: "series-9001", year: 2025})
+
+      winner =
+        public_series!(fallback, %{
+          name: "Shared Show 4K",
+          tmdb_id: "series-9001",
+          year: 2025
+        })
+
+      remaining = public_series!(global, %{name: "Remaining Show", year: 2024})
+
+      first_page =
+        conn
+        |> get(~p"/api/v1/catalog/series?limit=1")
+        |> json_response(200)
+
+      assert first_page["meta"]["pagination"]["total"] == 2
+      assert first_page["meta"]["pagination"]["has_more"] == true
+      assert Enum.map(first_page["data"], & &1["id"]) == [winner.id]
+
+      second_page =
+        conn
+        |> get(~p"/api/v1/catalog/series?limit=1&offset=1")
+        |> json_response(200)
+
+      assert second_page["meta"]["pagination"]["total"] == 2
+      assert second_page["meta"]["pagination"]["has_more"] == false
+      assert Enum.map(second_page["data"], & &1["id"]) == [remaining.id]
+    end
   end
 
   describe "GET /api/v1/catalog/providers" do
@@ -379,6 +417,15 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
 
       assert ids == MapSet.new([winner.id, global_only.id, fallback_only.id])
       refute MapSet.member?(ids, replaced.id)
+
+      second_page =
+        conn
+        |> get(~p"/api/v1/catalog/movies?limit=2&offset=2")
+        |> json_response(200)
+
+      assert second_page["meta"]["pagination"]["total"] == 3
+      assert second_page["meta"]["pagination"]["has_more"] == false
+      assert Enum.map(second_page["data"], & &1["id"]) == [fallback_only.id]
 
       Enum.each(all["data"], fn movie ->
         assert Map.keys(movie["provider"]) |> Enum.sort() == ["id", "name", "type"]

@@ -66,18 +66,27 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
     select(query, [series], struct(series, ^@card_fields))
   end
 
-  def dedupe_variants(query) do
-    key = canonical_key()
-
-    representative_ids =
+  def variant_page(query, sort, limit, offset) do
+    page_ids =
       query
-      |> exclude(:order_by)
-      |> exclude(:distinct)
-      |> distinct(^[key])
-      |> order_by(^[asc: key, desc: :id])
-      |> select([series], series.id)
+      |> representative_rows()
+      |> subquery()
+      |> sorted(sort)
+      |> limit(^limit)
+      |> offset(^offset)
+      |> select([representative], representative.id)
 
-    from(series in Series, where: series.id in subquery(representative_ids))
+    Series
+    |> where([series], series.id in subquery(page_ids))
+    |> sorted(sort)
+  end
+
+  def count_variants(query) do
+    query
+    |> distinct_representatives(false)
+    |> select([series], series.id)
+    |> subquery()
+    |> select([_representative], count())
   end
 
   def sorted(query, "rating_desc") do
@@ -182,46 +191,30 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
     do: where(query, [_series, provider], provider.provider_type == ^provider_type)
 
   defp canonical_key do
-    dynamic(
-      [series],
-      fragment(
-        """
-        CASE
-          WHEN nullif(?, '') IS NOT NULL THEN 'tmdb:' || ?
-          ELSE 'title:' ||
-            lower(
-              btrim(
-                regexp_replace(
-                  regexp_replace(
-                    regexp_replace(
-                      regexp_replace(
-                        coalesce(?, ?),
-                        '\\s*\\[[^\\]]+\\]',
-                        ' ',
-                        'g'
-                      ),
-                      '\\m(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\\M',
-                      ' ',
-                      'gi'
-                    ),
-                    '[[:punct:]]+',
-                    ' ',
-                    'g'
-                  ),
-                  '\\s+',
-                  ' ',
-                  'g'
-                )
-              )
-            ) || ':' || coalesce(?::text, '')
-        END
-        """,
-        series.tmdb_id,
-        series.tmdb_id,
-        series.title,
-        series.name,
-        series.year
-      )
-    )
+    dynamic([series], series.variant_key)
+  end
+
+  defp representative_rows(query) do
+    query
+    |> distinct_representatives(true)
+    |> select([series], %{
+      id: series.id,
+      inserted_at: series.inserted_at,
+      name: series.name,
+      rating: series.rating,
+      year: series.year
+    })
+  end
+
+  defp distinct_representatives(query, ordered?) do
+    key = canonical_key()
+
+    query =
+      query
+      |> exclude(:order_by)
+      |> exclude(:distinct)
+      |> distinct(^[key])
+
+    if ordered?, do: order_by(query, ^[asc: key, desc: :id]), else: query
   end
 end

@@ -22,12 +22,14 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
     sort = Keyword.get(opts, :sort)
     dedupe? = Keyword.get(opts, :dedupe, false)
 
-    provider_id
-    |> ListingQuery.filtered_provider(opts)
-    |> maybe_dedupe_variants(dedupe?)
-    |> ListingQuery.sorted(sort)
-    |> limit(^limit)
-    |> offset(^offset)
+    query = ListingQuery.filtered_provider(provider_id, opts)
+
+    query =
+      if dedupe?,
+        do: ListingQuery.variant_page(query, sort, limit, offset),
+        else: query |> ListingQuery.sorted(sort) |> limit(^limit) |> offset(^offset)
+
+    query
     |> ListingQuery.select_card_fields()
     |> preload(^@summary_preloads)
     |> Repo.all()
@@ -69,10 +71,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
 
     opts
     |> ListingQuery.filtered_public()
-    |> ListingQuery.dedupe_variants()
-    |> ListingQuery.sorted(sort)
-    |> limit(^limit)
-    |> offset(^offset)
+    |> ListingQuery.variant_page(sort, limit, offset)
     |> ListingQuery.select_card_fields()
     |> preload(^@public_summary_preloads)
     |> Repo.all()
@@ -82,8 +81,8 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
   def count_public_catalog(opts \\ []) do
     opts
     |> ListingQuery.filtered_public()
-    |> ListingQuery.dedupe_variants()
-    |> Repo.aggregate(:count, :id)
+    |> ListingQuery.count_variants()
+    |> Repo.one()
   end
 
   @spec count(integer(), keyword()) :: integer()
@@ -238,9 +237,6 @@ defmodule Streamix.Iptv.Content.SeriesOps.Listings do
     |> Keyword.drop([:dedupe, :limit, :offset])
     |> Enum.sort()
   end
-
-  defp maybe_dedupe_variants(query, true), do: ListingQuery.dedupe_variants(query)
-  defp maybe_dedupe_variants(query, _dedupe?), do: query
 
   defp ranked_rows(ids, rows_by_id) do
     Enum.flat_map(ids, fn id ->

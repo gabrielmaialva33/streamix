@@ -73,18 +73,27 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
   def sorted(query, "name_asc"), do: order_by(query, [m], asc: m.name, desc: m.id)
   def sorted(query, _sort), do: order_by(query, [m], desc: m.year, asc: m.name, desc: m.id)
 
-  def dedupe_variants(query) do
-    key = canonical_key()
-
-    representative_ids =
+  def variant_page(query, sort, limit, offset) do
+    page_ids =
       query
-      |> exclude(:order_by)
-      |> exclude(:distinct)
-      |> distinct(^[key])
-      |> order_by(^[asc: key, desc: :id])
-      |> select([m], m.id)
+      |> representative_rows()
+      |> subquery()
+      |> sorted(sort)
+      |> limit(^limit)
+      |> offset(^offset)
+      |> select([representative], representative.id)
 
-    from(m in Movie, where: m.id in subquery(representative_ids))
+    Movie
+    |> where([movie], movie.id in subquery(page_ids))
+    |> sorted(sort)
+  end
+
+  def count_variants(query) do
+    query
+    |> distinct_representatives(false)
+    |> select([movie], movie.id)
+    |> subquery()
+    |> select([_representative], count())
   end
 
   def select_card_fields(query) do
@@ -177,90 +186,32 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
   defp maybe_exclude_adult(query, true), do: query
   defp maybe_exclude_adult(query, _show_adult), do: AdultFilter.exclude_adult_content(query)
 
-  def canonical_key do
-    dynamic(
-      [m],
-      fragment(
-        """
-        CASE
-          WHEN nullif(?, '') IS NOT NULL THEN 'tmdb:' || ?
-          WHEN regexp_replace(lower(coalesce(?, ?)), '[^[:alnum:]]+', '', 'g') = '18xxx'
-            THEN 'item:' || ?::text
-          ELSE 'title:' ||
-            lower(
-              btrim(
-                regexp_replace(
-                  regexp_replace(
-                    regexp_replace(
-                      regexp_replace(
-                        coalesce(?, ?),
-                        '\\s*\\[[^\\]]+\\]',
-                        ' ',
-                        'g'
-                      ),
-                      '\\m(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\\M',
-                      ' ',
-                      'gi'
-                    ),
-                    '[[:punct:]]+',
-                    ' ',
-                    'g'
-                  ),
-                  '\\s+',
-                  ' ',
-                  'g'
-                )
-              )
-            ) || ':' || coalesce(?::text, '')
-        END
-        """,
-        m.tmdb_id,
-        m.tmdb_id,
-        m.title,
-        m.name,
-        m.id,
-        m.title,
-        m.name,
-        m.year
-      )
-    )
+  defp canonical_key do
+    dynamic([movie], movie.variant_key)
   end
 
-  def normalized_title do
-    dynamic(
-      [m],
-      fragment(
-        """
-        lower(
-          btrim(
-            regexp_replace(
-              regexp_replace(
-                regexp_replace(
-                  regexp_replace(
-                    coalesce(?, ?),
-                    '\\s*\\[[^\\]]+\\]',
-                    ' ',
-                    'g'
-                  ),
-                  '\\m(4k|2160p|1080p|720p|hdr10|hdr|dublado|legendado|dual audio|dual-audio|dub|leg|x264|x265|h264|h265|hevc|web-dl|webrip|bluray|blu-ray)\\M',
-                  ' ',
-                  'gi'
-                ),
-                '[[:punct:]]+',
-                ' ',
-                'g'
-              ),
-              '\\s+',
-              ' ',
-              'g'
-            )
-          )
-        )
-        """,
-        m.title,
-        m.name
-      )
-    )
+  defp representative_rows(query) do
+    query
+    |> distinct_representatives(true)
+    |> select([movie], %{
+      id: movie.id,
+      inserted_at: movie.inserted_at,
+      name: movie.name,
+      rating: movie.rating,
+      year: movie.year
+    })
+  end
+
+  defp distinct_representatives(query, ordered?) do
+    key = canonical_key()
+
+    query =
+      query
+      |> exclude(:order_by)
+      |> exclude(:distinct)
+      |> distinct(^[key])
+
+    if ordered?, do: order_by(query, ^[asc: key, desc: :id]), else: query
   end
 
   defp count_query(query, true), do: select(query, [m], count(m.id, :distinct))

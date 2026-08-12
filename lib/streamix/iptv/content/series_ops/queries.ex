@@ -21,7 +21,6 @@ defmodule Streamix.Iptv.Content.SeriesOps.Queries do
   defdelegate search_public(query, opts \\ []), to: Listings
 
   defdelegate select_card_fields(query), to: ListingQuery
-  defdelegate dedupe_variants(query), to: ListingQuery
 
   defdelegate get_playable(user_id, series_id), to: Details
   defdelegate get_public(series_id), to: Details
