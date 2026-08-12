@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   configureNativePlaybackElement,
+  nativePreloadMode,
   waitForNativeReady,
   waitForNativeSeek,
 } from "../player/native_playback_controller.js";
@@ -49,8 +50,18 @@ test("configures native playback without autoplay before a source is attached", 
   configureNativePlaybackElement(video);
 
   assert.equal(video.autoplay, false);
-  assert.equal(video.preload, "metadata");
+  assert.equal(video.preload, "none");
   assert.deepEqual(video.removedAttributes, ["autoplay"]);
+});
+
+test("preloads metadata only when playback must resume before play", () => {
+  const video = new FakeVideo();
+
+  configureNativePlaybackElement(video, { resumeTime: 84 });
+
+  assert.equal(nativePreloadMode(0), "none");
+  assert.equal(nativePreloadMode(84), "metadata");
+  assert.equal(video.preload, "metadata");
 });
 
 test("metadata readiness resolves on the first media signal and clears its timeout", async () => {

@@ -1,12 +1,16 @@
 const READY_EVENTS = ["loadedmetadata", "canplay", "error"];
 const SEEK_EVENTS = ["seeked", "timeupdate", "canplay", "error"];
 
-export function configureNativePlaybackElement(video) {
+export function nativePreloadMode(resumeTime = 0) {
+  return resumeTime > 0 ? "metadata" : "none";
+}
+
+export function configureNativePlaybackElement(video, { resumeTime = 0 } = {}) {
   if (!video) return;
 
   video.autoplay = false;
   video.removeAttribute("autoplay");
-  video.preload = "metadata";
+  video.preload = nativePreloadMode(resumeTime);
 }
 
 function waitForMediaSignal({ video, eventNames, timerApi, timeoutMs }) {

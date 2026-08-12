@@ -869,6 +869,8 @@ const VideoPlayer = {
   // ============================================
 
   async togglePiP() {
+    if (!this.isPiPSupported()) return;
+
     try {
       if (document.pictureInPictureElement) {
         await document.exitPictureInPicture();
@@ -1980,8 +1982,8 @@ const VideoPlayer = {
     return !this._destroyed && sessionId === this.playbackSessionId;
   },
 
-  configureNativePlaybackElement() {
-    configureNativeElement(this.video);
+  configureNativePlaybackElement(options = {}) {
+    configureNativeElement(this.video, options);
   },
 
   shouldCheckNativeAudio() {
@@ -2048,10 +2050,8 @@ const VideoPlayer = {
     });
   },
 
-  async playNativeAfterResume(sessionId) {
+  async playNativeAfterResume(sessionId, resumeTime = this.takeResumeTime()) {
     if (!this.video || !this.isCurrentPlaybackSession(sessionId)) return;
-
-    const resumeTime = this.takeResumeTime();
 
     if (resumeTime > 0) {
       log.debug("Resuming from saved position before play:", resumeTime);
@@ -2647,9 +2647,10 @@ const VideoPlayer = {
 
   playNative() {
     const sessionId = this.playbackSessionId;
+    const resumeTime = this.takeResumeTime();
     log.info("Playing with native video element, url:", this.currentUrl);
     this.setNativeTouchControls(isAppleTouchDevice());
-    this.configureNativePlaybackElement();
+    this.configureNativePlaybackElement({ resumeTime });
     this.reportPlayerLifecycle("player_engine_selected", {
       engine: "native",
       session_id: sessionId,
@@ -2795,7 +2796,7 @@ const VideoPlayer = {
       { once: true },
     );
 
-    this.playNativeAfterResume(sessionId).catch((e) => {
+    this.playNativeAfterResume(sessionId, resumeTime).catch((e) => {
       if (e.name === "AbortError") return;
       log.debug("Native playback start failed:", e);
     });
