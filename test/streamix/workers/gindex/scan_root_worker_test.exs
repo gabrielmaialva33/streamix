@@ -137,6 +137,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
     assert root.status == "paused"
     assert root.paused_reason == "insufficient_budget"
     assert root.quota_count == 8_501
+    assert Gindex.scan_cycle_summary(provider.id, root.cycle_id).roots_paused_quota == 1
     assert Repo.reload!(provider).sync_status == "paused_quota"
   end
 

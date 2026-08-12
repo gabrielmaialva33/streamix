@@ -29,6 +29,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   @slice_resume_seconds 5
   @minimum_upstream_pause_seconds 60
   @max_slice_requests 1_500
+  @minimum_slice_requests %{movies: 100, series: 500, animes: 750}
 
   @impl Oban.Worker
   def timeout(_job), do: @timeout
@@ -58,11 +59,11 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
       mark_provider_status(provider_id, "syncing")
       started_at = System.monotonic_time(:millisecond)
       quota = Gindex.quota_status()
-      request_budget = request_budget(quota, provider_id, scan_root.cycle_id)
+      request_budget = request_budget(quota, provider_id, scan_root.cycle_id, kind_atom)
 
       Logger.info(
         "[GIndex ScanRoot] start cycle=#{scan_root.cycle_id} provider=#{provider_id} " <>
-          "kind=#{kind} path=#{path} budget=#{request_budget}"
+          "kind=#{kind} path=#{path} budget=#{inspect(request_budget)}"
       )
 
       result = run_sync(scan_root, job, provider, kind_atom, request_budget, quota, sync_fun)
@@ -169,6 +170,41 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
       Logger.warning(
         "[GIndex ScanRoot] quota exhausted at #{count}; pausing provider=#{provider_id} " <>
           "kind=#{kind} path=#{path} for #{delay}s until the next UTC window"
+      )
+
+      {:snooze, delay}
+    end
+  end
+
+  defp handle_result(
+         {:error, {:insufficient_budget, count, remaining}},
+         job,
+         scan_root,
+         provider_id,
+         kind,
+         path,
+         _started_at,
+         reset_delay_fun
+       ) do
+    delay = reset_delay_fun.()
+    next_resume_at = DateTime.add(DateTime.utc_now(), delay, :second)
+
+    with {:ok, _root} <-
+           Gindex.pause_scan_root(scan_root, :insufficient_budget,
+             quota_count: count,
+             next_resume_at: next_resume_at
+           ) do
+      write_meta(job, %{
+        "paused_reason" => "insufficient_budget",
+        "quota_count" => count,
+        "background_remaining" => remaining
+      })
+
+      mark_provider_status(provider_id, "paused_quota")
+
+      Logger.info(
+        "[GIndex ScanRoot] deferring an unproductive slice with #{remaining} requests " <>
+          "remaining provider=#{provider_id} kind=#{kind} path=#{path}"
       )
 
       {:snooze, delay}
@@ -311,6 +347,8 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
 
     [
       checkpoint: checkpoint,
+      strategy: :discovery_first,
+      discovery_window: Date.utc_today(),
       on_checkpoint: fn checkpoint ->
         case Gindex.checkpoint_scan_root(scan_root, checkpoint) do
           {:ok, _root} ->
@@ -346,6 +384,18 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     {:error, {:quota_exhausted, quota.count}}
   end
 
+  defp run_sync(
+         _scan_root,
+         _job,
+         _provider,
+         _kind,
+         {:defer, remaining},
+         quota,
+         _sync_fun
+       ) do
+    {:error, {:insufficient_budget, quota.count, remaining}}
+  end
+
   defp run_sync(scan_root, job, provider, kind, request_budget, _quota, sync_fun) do
     Gindex.run_with_request_budget(request_budget, fn ->
       sync_fun.(
@@ -358,16 +408,27 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     end)
   end
 
-  defp request_budget(%{background_remaining: 0}, _provider_id, _cycle_id), do: 0
+  defp request_budget(%{background_remaining: 0}, _provider_id, _cycle_id, _kind), do: 0
 
-  defp request_budget(%{background_remaining: remaining}, provider_id, cycle_id)
+  defp request_budget(
+         %{background_remaining: remaining, background_limit: background_limit},
+         provider_id,
+         cycle_id,
+         kind
+       )
        when remaining > 0 do
     %{roots_unfinished: unfinished} = Gindex.scan_cycle_summary(provider_id, cycle_id)
+    minimum = min(Map.fetch!(@minimum_slice_requests, kind), background_limit)
 
-    remaining
-    |> div(max(unfinished, 1))
-    |> max(1)
-    |> min(@max_slice_requests)
+    if remaining < minimum do
+      {:defer, remaining}
+    else
+      remaining
+      |> div(max(unfinished, 1))
+      |> max(minimum)
+      |> min(remaining)
+      |> min(@max_slice_requests)
+    end
   end
 
   # Mirror Oban's retry window into durable scan state. The orchestrator can
