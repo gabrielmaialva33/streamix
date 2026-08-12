@@ -4,7 +4,7 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.CatalogItem
+  alias Streamix.Iptv.{CatalogItem, Episode, Season}
   alias Streamix.Iptv.Sync.Cleanup
   alias Streamix.Repo
   alias Streamix.WatchParty.Room
@@ -54,6 +54,42 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
 
     assert length(remaining_ids) == 1
     assert remaining_ids -- Enum.map(orphans, & &1.id) == []
+  end
+
+  test "checks only the content table declared by each catalog item", %{provider: provider} do
+    channel = channel_fixture(provider)
+    movie = movie_fixture(provider)
+    series = series_content_fixture(provider)
+
+    season =
+      %Season{}
+      |> Season.changeset(%{season_number: 1, series_id: series.id})
+      |> Repo.insert!()
+
+    episode_item = catalog_item_fixture("episode", provider.id)
+
+    episode =
+      %Episode{}
+      |> Episode.changeset(%{
+        episode_id: 1,
+        episode_num: 1,
+        season_id: season.id,
+        catalog_item_id: episode_item.id
+      })
+      |> Repo.insert!()
+
+    orphan_ids =
+      for content_type <- ~w(live_channel movie series episode) do
+        catalog_item_fixture(content_type, provider.id).id
+      end
+
+    assert {:ok, %{catalog_items: 4}} = Cleanup.cleanup_orphaned_user_data(provider.id)
+
+    assert Repo.get(CatalogItem, channel.catalog_item_id)
+    assert Repo.get(CatalogItem, movie.catalog_item_id)
+    assert Repo.get(CatalogItem, series.catalog_item_id)
+    assert Repo.get(CatalogItem, episode.catalog_item_id)
+    refute Repo.exists?(from item in CatalogItem, where: item.id in ^orphan_ids)
   end
 
   test "removes watch-party rooms through the WatchParty boundary", %{provider: provider} do

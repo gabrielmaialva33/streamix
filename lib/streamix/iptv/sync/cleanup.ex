@@ -125,22 +125,28 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     )
   end
 
-  # Single NOT EXISTS query. The previous implementation materialised every
-  # catalog_items id + every content-table catalog_item_id (5 separate
-  # Repo.all calls) just to compute set-difference in Elixir. With 1M+
-  # rows that was a multi-hundred-MB spike during cleanup; Postgres can
-  # answer the same question with one semi-join per content table.
+  # A catalog item can belong to exactly one content table. CASE is important:
+  # PostgreSQL evaluates only the matching branch, so each row performs one
+  # indexed existence check instead of probing all four content tables.
   defp find_orphaned_catalog_item_ids(provider_id, limit) do
     CatalogItem
     |> where(
       [ci],
       fragment(
         """
-        NOT EXISTS (SELECT 1 FROM live_channels lc WHERE lc.catalog_item_id = ?)
-          AND NOT EXISTS (SELECT 1 FROM movies m WHERE m.catalog_item_id = ?)
-          AND NOT EXISTS (SELECT 1 FROM series s WHERE s.catalog_item_id = ?)
-          AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.catalog_item_id = ?)
+        CASE ?
+          WHEN 'live_channel' THEN
+            NOT EXISTS (SELECT 1 FROM live_channels lc WHERE lc.catalog_item_id = ?)
+          WHEN 'movie' THEN
+            NOT EXISTS (SELECT 1 FROM movies m WHERE m.catalog_item_id = ?)
+          WHEN 'series' THEN
+            NOT EXISTS (SELECT 1 FROM series s WHERE s.catalog_item_id = ?)
+          WHEN 'episode' THEN
+            NOT EXISTS (SELECT 1 FROM episodes e WHERE e.catalog_item_id = ?)
+          ELSE TRUE
+        END
         """,
+        ci.content_type,
         ci.id,
         ci.id,
         ci.id,
