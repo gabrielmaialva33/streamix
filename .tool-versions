@@ -1,4 +1,4 @@
-erlang 29.0.4
+erlang 29.0.5
 elixir 1.20.2-otp-29
 npm:npm 12.0.2
-nodejs 26.5.1
+nodejs 26.7.0
