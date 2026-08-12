@@ -3,6 +3,26 @@ defmodule Streamix.Architecture.TestLayoutTest do
 
   @moduledoc false
 
+  test "production source files define exactly one top-level module" do
+    violations =
+      "lib/**/*.ex"
+      |> Path.wildcard()
+      |> Enum.sort()
+      |> Enum.flat_map(fn path ->
+        case top_level_modules(path) do
+          [_module] -> []
+          modules -> [{path, modules}]
+        end
+      end)
+
+    assert violations == [],
+           """
+           Every production source file must define exactly one top-level module.
+
+           #{Enum.map_join(violations, "\n", fn {path, modules} -> "#{path}: #{inspect(modules)}" end)}
+           """
+  end
+
   test "direct module tests mirror their source paths" do
     source_paths =
       "lib/**/*.ex"
@@ -35,19 +55,21 @@ defmodule Streamix.Architecture.TestLayoutTest do
 
   defp top_level_module(path) do
     path
+    |> top_level_modules()
+    |> List.first()
+  end
+
+  defp top_level_modules(path) do
+    path
     |> File.read!()
     |> Code.string_to_quoted!()
-    |> case do
-      {:defmodule, _metadata, [{:__aliases__, _alias_metadata, parts}, _body]} ->
-        module_name(parts)
-
-      {:__block__, _metadata, forms} ->
-        Enum.find_value(forms, &module_name/1)
-
-      _other ->
-        nil
-    end
+    |> top_level_forms()
+    |> Enum.map(&module_name/1)
+    |> Enum.reject(&is_nil/1)
   end
+
+  defp top_level_forms({:__block__, _metadata, forms}), do: forms
+  defp top_level_forms(form), do: [form]
 
   defp module_name({:defmodule, _metadata, [{:__aliases__, _alias_metadata, parts}, _body]}) do
     module_name(parts)
