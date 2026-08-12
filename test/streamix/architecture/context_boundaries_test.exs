@@ -1,7 +1,7 @@
 defmodule Streamix.ContextBoundariesTest do
   use ExUnit.Case, async: true
 
-  @contexts ~w(access accounts ai billing gindex iptv library qoe queue torrent watch_party)
+  @contexts ~w(access accounts ai billing gindex iptv qoe queue subtitles torrent watch_party)
 
   # Existing violations are an explicit debt ledger. New entries fail CI, and
   # removing an old violation also fails until this list is ratcheted down.

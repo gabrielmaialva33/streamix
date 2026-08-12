@@ -39,6 +39,20 @@ defmodule Streamix.CredoChecks.ContextBoundaryTest do
     end)
   end
 
+  test "rejects QoE internals from delivery modules" do
+    """
+    defmodule StreamixWeb.Example do
+      alias Streamix.Qoe.Event
+    end
+    """
+    |> to_source_file("lib/streamix_web/example.ex")
+    |> run_check(ContextBoundary)
+    |> assert_issue(fn issue ->
+      assert issue.trigger == "Streamix.Qoe.Event"
+      assert issue.line_no == 2
+    end)
+  end
+
   test "rejects grouped nested context aliases" do
     """
     defmodule StreamixWeb.Example do

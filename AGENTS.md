@@ -97,23 +97,33 @@ lib/streamix/
 ├── accounts/                 # Users, roles, auth tokens, IP tracking
 ├── ai/                       # Embeddings, Gemini, NVIDIA, Qdrant, recommendations
 ├── billing/                  # Plans, subscriptions, premium access rules
-├── iptv/                     # Providers, catalog, sync, stream proxy, EPG, GIndex
-├── library/                  # Shared content references for progress/favorites/history
+├── cache/                    # L1 ConCache and L2 Redis implementations
+├── ecto/                     # Shared Ecto types
+├── gindex/                   # GIndex transport, parsing, matching, quota, and sync
+├── iptv/                     # Canonical catalog, providers, EPG, engagement, and streaming
+├── qoe/                      # Privacy-bounded playback quality events
 ├── queue/                    # RabbitMQ/Broadway integration (optional)
+├── security/                 # Shared URL and network-boundary validation
+├── subtitles/                # Subtitle providers, normalization, and VTT conversion
+├── torrent/                  # Torrent catalog, sources, sync, and stream sessions
 ├── watch_party/              # Rooms, participants, messages, room server
 ├── workers/                  # Oban workers
 ├── application.ex            # Supervision tree
-├── cache.ex                  # L1 ConCache + L2 Redis
-├── crypto.ex                 # AES helpers
-├── helpers.ex                # Shared helpers
+├── runtime_*.ex              # Parsed runtime settings and test-service safety guards
 └── rate_limit.ex             # Hammer-backed limiter
 
 lib/streamix_web/
+├── api/                      # OpenAPI document and reusable API schemas
+├── catalog/                  # Web/API catalog serialization and stream URLs
 ├── components/               # Layouts and function components
+├── content/                  # Shared content-loading presentation services
 ├── controllers/              # HTML, health, stream proxy, API v1
 ├── helpers/                  # Image proxy helpers
 ├── live/                     # Home, catalog, admin, auth, watch party, providers
+├── on_mount/                 # Reusable LiveView lifecycle hooks
 ├── plugs/                    # API key auth, CORS, CSP nonce, rate limiting
+├── stream_token/             # Signed stream-token resolution and signing internals
+├── telemetry/                # Web telemetry and request measurements
 ├── presence.ex               # Watch party presence
 ├── router.ex                 # Browser + API routes
 ├── stream_token.ex           # Signed URLs for stream access
@@ -130,6 +140,7 @@ assets/
 ├── js/player/                # Playback state, policy, controls, and UI
 ├── js/pwa/                   # Install, cache, offline, and service-worker integration
 ├── js/telemetry/             # Privacy-bounded browser diagnostics
+├── js/test/                  # Node tests for extracted browser modules
 └── package.json              # npm dependencies for frontend runtime
 ```
 
@@ -140,8 +151,12 @@ assets/
 | Accounts    | `Streamix.Accounts`   | Users, password auth, roles, session tokens, settings           |
 | Access      | `Streamix.Access`     | Permissions and role/user grants                                |
 | IPTV        | `Streamix.Iptv`       | Providers, sync, catalog access, EPG, favorites, history        |
-| AI          | `Streamix.AI.*`       | Embeddings, semantic search, user analytics, Qdrant integration |
+| GIndex      | `Streamix.Gindex`     | Drive discovery, quota-aware ingestion, and URL resolution      |
+| Torrent     | `Streamix.Torrent`    | Torrent sources, catalog synchronization, and stream lifecycle  |
+| AI          | `Streamix.AI`         | Embeddings, semantic search, user analytics, Qdrant integration |
 | Billing     | `Streamix.Billing`    | Plans, subscriptions, premium access                            |
+| QoE         | `Streamix.Qoe`        | Playback quality telemetry and retention                        |
+| Subtitles   | `Streamix.Subtitles`  | Subtitle discovery, normalization, and conversion               |
 | Watch Party | `Streamix.WatchParty` | Rooms, playback sync, chat, presence                            |
 | Queue       | `Streamix.Queue`      | Optional RabbitMQ + Broadway execution path                     |
 
@@ -240,8 +255,9 @@ API surfaces under `/api/v1`:
 - All Xtream calls go through `Streamix.Iptv.XtreamClient`; all GIndex HTTP calls go through
   `Streamix.Gindex.Client`.
 - **Context boundaries**: `Streamix.Iptv`, `Streamix.Gindex`, `Streamix.Torrent`, `Streamix.AI`,
-  `Streamix.Billing`, `Streamix.WatchParty`, `Streamix.Accounts`, `Streamix.Access` are the
-  public entry points. **Never** `alias` a schema or sub-module of another context from web /
+  `Streamix.Billing`, `Streamix.Qoe`, `Streamix.Subtitles`, `Streamix.WatchParty`, `Streamix.Queue`,
+  `Streamix.Accounts`, and `Streamix.Access` are the public entry points. **Never** `alias` a schema
+  or sub-module of another context from web /
   LiveView / controller code (e.g. `alias Streamix.Iptv.Movie` is wrong — call
   `Streamix.Iptv.get_movie!/1` instead). Same rule applies between contexts: `Access` does
   not `alias Streamix.Iptv.Provider` — it goes through `Streamix.Iptv.get_provider/1`.
