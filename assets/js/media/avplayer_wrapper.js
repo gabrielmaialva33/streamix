@@ -7,6 +7,7 @@
 
 import { getEnvInfo, avplayerLogger as log } from "../core/logger";
 import { stopThenDestroyPlaybackEngine } from "../player/playback_engine_lifecycle";
+import { hasPlayableSubtitleTimeBase, initialAVPlayerPlayOptions } from "../player/subtitle_policy";
 import { detectWebCodecsSupport } from "./codec_detector";
 import {
   AVPLAYER_CONFIG,
@@ -763,10 +764,10 @@ export class AVPlayerWrapper {
         log.debug("AudioContext resumed, new state:", window.AVPlayer?.audioContext?.state);
       }
       log.debug("Calling player.play()...");
-      // `subtitle: true` belongs here, not on the constructor (libmedia
-      // 1.3 typings put it on AVPlayerPlayOptions). Audio + video are
-      // on by default.
-      const playResult = this.player.play({ video: true, audio: true, subtitle: true });
+      // Embedded subtitles are opt-in. Some otherwise playable files expose
+      // subtitle packets with a zero time-base; starting their renderer here
+      // crashes libmedia's async loop with a BigInt division-by-zero.
+      const playResult = this.player.play(initialAVPlayerPlayOptions());
       log.debug("player.play() returned:", playResult);
       if (playResult && typeof playResult.then === "function") {
         await playResult;
@@ -1034,7 +1035,10 @@ export class AVPlayerWrapper {
       if (typeof this.player.getStreams === "function") {
         const selectedId = this.player.getSelectedSubtitleStreamId?.() ?? -1;
         const streams = this.player.getStreams();
-        const subtitleStreams = streams?.filter((stream) => stream.mediaType === "Subtitle") || [];
+        const subtitleStreams =
+          streams?.filter(
+            (stream) => stream.mediaType === "Subtitle" && hasPlayableSubtitleTimeBase(stream),
+          ) || [];
 
         if (subtitleStreams.length > 0) {
           return subtitleStreams.map((stream, index) => {
@@ -1083,7 +1087,7 @@ export class AVPlayerWrapper {
           const isLikelySubtitle = bps === 0 || bps < 50000;
           const isSelectedSub = selectedSub && selectedSub.id === stream.id;
 
-          if (isSelectedSub || isLikelySubtitle) {
+          if ((isSelectedSub || isLikelySubtitle) && hasPlayableSubtitleTimeBase(stream)) {
             subtitleTracks.push({
               id: stream.id,
               index: subtitleTracks.length,
@@ -1177,15 +1181,16 @@ export class AVPlayerWrapper {
     try {
       log.debug(`Selecting subtitle track: ${trackId}`);
       if (trackId === -1) {
-        // Disable subtitles - libmedia may have a specific method for this
-        // For now, we'll try selectSubtitle with -1 or a special value
-        if (typeof this.player.hideSubtitle === "function") {
+        if (typeof this.player.setSubtitleEnable === "function") {
+          this.player.setSubtitleEnable(false);
+        } else if (typeof this.player.hideSubtitle === "function") {
           await this.player.hideSubtitle();
         } else {
           await this.player.selectSubtitle(-1);
         }
       } else {
         await this.player.selectSubtitle(trackId);
+        this.player.setSubtitleEnable?.(true);
       }
       log.debug(`Subtitle track ${trackId} selected`);
     } catch (e) {
