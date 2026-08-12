@@ -34,7 +34,7 @@ defmodule Streamix.Gindex.Sync.DiscoveryCursor do
   def checkpoint(cursor, phase, position) when phase in [:discover, :refresh] do
     cursor
     |> Map.put(:phase, phase)
-    |> Map.put(phase, non_empty(position))
+    |> Map.put(position_key(phase), non_empty(position))
     |> serialize()
   end
 
@@ -76,6 +76,9 @@ defmodule Streamix.Gindex.Sync.DiscoveryCursor do
   defp parse_phase("refresh"), do: :refresh
   defp parse_phase(:refresh), do: :refresh
   defp parse_phase(_phase), do: :discover
+
+  defp position_key(:discover), do: :discovery
+  defp position_key(:refresh), do: :refresh
 
   defp value(map, key), do: Map.get(map, key) || Map.get(map, String.to_existing_atom(key))
 
