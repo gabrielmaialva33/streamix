@@ -251,7 +251,9 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             currentTime: video ? video.currentTime : 0,
             autoplay: video ? video.autoplay : true,
             preload: video ? video.getAttribute("preload") : null,
-            pictureInPictureDisabled: video ? video.disablePictureInPicture : false,
+            pictureInPictureDisabled: video
+              ? video.hasAttribute("disablepictureinpicture")
+              : false,
             nativeControls: video ? video.controls : false,
             lifecycleLogs: container ? container.dataset.playerLifecycleLogs : null,
             bottomControlsHidden: bottomControls ? bottomControls.classList.contains("hidden") : false,
