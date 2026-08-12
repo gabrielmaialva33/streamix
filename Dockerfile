@@ -50,7 +50,6 @@ RUN mix deps.compile
 
 # Install npm dependencies
 COPY assets/package.json assets/package-lock.json assets/
-COPY assets/patches assets/patches
 RUN cd assets && npm ci --omit=dev --no-audit --no-fund
 
 # Copy application files
