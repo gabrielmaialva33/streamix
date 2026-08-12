@@ -97,14 +97,23 @@ defmodule Streamix.Gindex.Sync do
   end
 
   defp do_sync_kind(source, base_url, path, :movies, opts),
-    do: Movies.sync(source, base_url, path, opts)
+    do: Movies.sync(source, base_url, path, with_known_paths(source, :movies, opts))
 
   defp do_sync_kind(source, base_url, path, :series, opts) do
-    Series.sync(source, base_url, [path], opts)
+    Series.sync(source, base_url, [path], with_known_paths(source, :series, opts))
   end
 
   defp do_sync_kind(source, base_url, path, :animes, opts),
-    do: Animes.sync(source, base_url, path, opts)
+    do: Animes.sync(source, base_url, path, with_known_paths(source, :animes, opts))
+
+  defp with_known_paths(source, kind, opts) do
+    if Keyword.get(opts, :strategy) == :discovery_first and
+         not Keyword.has_key?(opts, :known_paths) do
+      Keyword.put(opts, :known_paths, Iptv.gindex_known_paths(source.provider_id, kind))
+    else
+      opts
+    end
+  end
 
   defp validate_path(path) when is_binary(path) do
     if String.trim(path) == "", do: {:error, :invalid_sync_path}, else: :ok

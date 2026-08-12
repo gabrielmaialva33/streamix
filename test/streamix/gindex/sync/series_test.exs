@@ -115,6 +115,57 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     assert_received {:checkpoint, %{"root_path" => @root_path, "folder_path" => "/b/"}}
   end
 
+  test "discovers missing folders before resuming the legacy refresh cursor" do
+    parent = self()
+    folders = folders(~w(a b c d))
+    known_paths = MapSet.new(["/a/", "/c/"])
+
+    scrape_fun = fn _base_url, folder ->
+      send(parent, {:scraped, folder.path})
+      {:ok, %{name: folder.name, episode_count: 1}}
+    end
+
+    legacy_refresh_cursor = %{"root_path" => @root_path, "folder_path" => "/b/"}
+
+    assert {:ok, %{series_count: 3, episodes_count: 3}} =
+             Series.sync(@source, @base_url, [@root_path],
+               checkpoint: legacy_refresh_cursor,
+               strategy: :discovery_first,
+               discovery_window: ~D[2026-08-10],
+               known_paths: known_paths,
+               batch_size: 1,
+               list_fun: fn _base_url, @root_path -> {:ok, folders} end,
+               scrape_fun: scrape_fun,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    assert_received {:scraped, "/b/"}
+    assert_received {:scraped, "/d/"}
+    assert_received {:scraped, "/c/"}
+    refute_received {:scraped, "/a/"}
+
+    assert_received {:persisted, ["B"]}
+    assert_received {:persisted, ["D"]}
+    assert_received {:persisted, ["C"]}
+
+    assert_received {:checkpoint,
+                     %{
+                       "strategy" => "discovery_first_v1",
+                       "phase" => "discover",
+                       "discovery_window" => "2026-08-10",
+                       "discovery" => %{"folder_path" => "/b/"},
+                       "refresh" => ^legacy_refresh_cursor
+                     }}
+
+    assert_received {:checkpoint,
+                     %{
+                       "strategy" => "discovery_first_v1",
+                       "phase" => "refresh",
+                       "refresh" => %{"folder_path" => "/c/"}
+                     }}
+  end
+
   defp folders(names) do
     Enum.map(names, fn name -> %{name: String.upcase(name), path: "/#{name}/"} end)
   end

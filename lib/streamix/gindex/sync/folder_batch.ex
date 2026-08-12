@@ -1,6 +1,8 @@
 defmodule Streamix.Gindex.Sync.FolderBatch do
   @moduledoc false
 
+  alias Streamix.Gindex.Sync.DiscoveryCursor
+
   require Logger
 
   @type sync_result :: {:ok, map()} | {:error, term()}
@@ -42,25 +44,16 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
          listing_error
        ) do
     folders = folders |> Enum.filter(&folder?/1) |> Enum.sort_by(&folder_path/1)
-    pending = resume_after_checkpoint(folders, root_path, checkpoint)
 
-    Logger.info(
-      "[GIndex Sync] Found #{length(folders)} folders in #{root_path}; " <>
-        "#{length(pending)} pending complete_listing=#{is_nil(listing_error)}"
+    run_strategy(
+      source,
+      base_url,
+      root_path,
+      folders,
+      checkpoint,
+      runtime,
+      listing_error
     )
-
-    result =
-      pending
-      |> Enum.reduce_while({:ok, empty_state(runtime)}, fn folder, state ->
-        process_folder(source, base_url, root_path, folder, state, runtime)
-      end)
-      |> finalize(source, root_path, runtime)
-
-    case {result, listing_error} do
-      {{:ok, _stats} = success, nil} -> success
-      {{:ok, _stats}, error} -> {:error, error}
-      {{:error, _reason} = error, _listing_error} -> error
-    end
   end
 
   defp build_runtime(opts) do
@@ -70,15 +63,167 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
       empty_stats: Keyword.fetch!(opts, :empty_stats),
       list_fun: Keyword.fetch!(opts, :list_fun),
       persist_fun: Keyword.fetch!(opts, :persist_fun),
-      scrape_fun: Keyword.fetch!(opts, :scrape_fun)
+      scrape_fun: Keyword.fetch!(opts, :scrape_fun),
+      strategy: Keyword.get(opts, :strategy, :full_refresh),
+      discovery_window: Keyword.get(opts, :discovery_window, Date.utc_today()),
+      known_paths: Keyword.get(opts, :known_paths, MapSet.new()),
+      process_path?: fn _path -> true end
     }
   end
 
+  defp run_strategy(
+         source,
+         base_url,
+         root_path,
+         folders,
+         checkpoint,
+         %{strategy: :discovery_first} = runtime,
+         listing_error
+       ) do
+    cursor = DiscoveryCursor.load(checkpoint, runtime.discovery_window)
+
+    case DiscoveryCursor.phase(cursor) do
+      :discover ->
+        run_discovery(
+          source,
+          base_url,
+          root_path,
+          folders,
+          cursor,
+          runtime,
+          listing_error
+        )
+
+      :refresh ->
+        cursor
+        |> phase_runtime(:refresh, runtime)
+        |> run_phase(source, base_url, root_path, folders, DiscoveryCursor.position(cursor))
+        |> apply_listing_error(listing_error)
+    end
+  end
+
+  defp run_strategy(
+         source,
+         base_url,
+         root_path,
+         folders,
+         checkpoint,
+         runtime,
+         listing_error
+       ) do
+    runtime
+    |> run_phase(source, base_url, root_path, folders, checkpoint)
+    |> apply_listing_error(listing_error)
+  end
+
+  defp run_discovery(
+         source,
+         base_url,
+         root_path,
+         folders,
+         cursor,
+         runtime,
+         listing_error
+       ) do
+    result =
+      cursor
+      |> phase_runtime(:discover, runtime)
+      |> run_phase(source, base_url, root_path, folders, DiscoveryCursor.position(cursor))
+      |> apply_listing_error(listing_error)
+
+    case result do
+      {:ok, discovery_stats} ->
+        continue_with_refresh(
+          source,
+          base_url,
+          root_path,
+          folders,
+          cursor,
+          runtime,
+          listing_error,
+          discovery_stats
+        )
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp continue_with_refresh(
+         source,
+         base_url,
+         root_path,
+         folders,
+         cursor,
+         runtime,
+         listing_error,
+         discovery_stats
+       ) do
+    {refresh_cursor, transition_checkpoint} = DiscoveryCursor.begin_refresh(cursor)
+
+    with :ok <- persist_checkpoint(runtime.checkpoint_fun, transition_checkpoint),
+         {:ok, refresh_stats} <-
+           refresh_cursor
+           |> phase_runtime(:refresh, runtime)
+           |> run_phase(
+             source,
+             base_url,
+             root_path,
+             folders,
+             DiscoveryCursor.position(refresh_cursor)
+           )
+           |> apply_listing_error(listing_error) do
+      {:ok, merge_stats(discovery_stats, refresh_stats)}
+    end
+  end
+
+  defp phase_runtime(cursor, phase, runtime) do
+    checkpoint_fun = runtime.checkpoint_fun
+    known_paths = runtime.known_paths
+
+    process_path? =
+      case phase do
+        :discover -> &(!MapSet.member?(known_paths, &1))
+        :refresh -> &MapSet.member?(known_paths, &1)
+      end
+
+    %{
+      runtime
+      | checkpoint_fun: fn checkpoint ->
+          checkpoint_fun.(DiscoveryCursor.checkpoint(cursor, phase, checkpoint))
+        end,
+        process_path?: process_path?
+    }
+  end
+
+  defp run_phase(runtime, source, base_url, root_path, folders, checkpoint) do
+    pending = resume_after_checkpoint(folders, root_path, checkpoint)
+
+    Logger.info(
+      "[GIndex Sync] Found #{length(folders)} folders in #{root_path}; " <>
+        "#{length(pending)} pending"
+    )
+
+    pending
+    |> Enum.reduce_while({:ok, empty_state(runtime)}, fn folder, state ->
+      process_folder(source, base_url, root_path, folder, state, runtime)
+    end)
+    |> finalize(source, root_path, runtime)
+  end
+
+  defp apply_listing_error({:ok, _stats} = success, nil), do: success
+  defp apply_listing_error({:ok, _stats}, error), do: {:error, error}
+  defp apply_listing_error({:error, _reason} = error, _listing_error), do: error
+
   defp process_folder(source, base_url, root_path, folder, {:ok, state}, runtime) do
-    case runtime.scrape_fun.(base_url, folder) do
-      {:ok, item} -> continue_or_flush(source, root_path, folder, item, state, runtime)
-      :empty -> continue_or_flush(source, root_path, folder, nil, state, runtime)
-      {:error, reason} -> halt_after_flush(source, root_path, state, reason, runtime)
+    if runtime.process_path?.(folder_path(folder)) do
+      case runtime.scrape_fun.(base_url, folder) do
+        {:ok, item} -> continue_or_flush(source, root_path, folder, item, state, runtime)
+        :empty -> continue_or_flush(source, root_path, folder, nil, state, runtime)
+        {:error, reason} -> halt_after_flush(source, root_path, state, reason, runtime)
+      end
+    else
+      continue_or_flush(source, root_path, folder, nil, state, runtime)
     end
   end
 

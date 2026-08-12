@@ -106,6 +106,40 @@ defmodule Streamix.Gindex.Sync.MoviesTest do
     assert_received {:checkpoint, %{"category_complete" => true, "skipped_count" => 1}}
   end
 
+  test "ingests missing movie paths before refreshing known ones" do
+    parent = self()
+    items = Enum.map(~w(A B), &direct_movie/1)
+
+    assert {:ok, %{movies_count: 2, skipped_count: 0}} =
+             Movies.sync(@source, @base_url, @root_path,
+               strategy: :discovery_first,
+               discovery_window: ~D[2026-08-10],
+               known_paths: MapSet.new(["/1:/Filmes/2026/A.mkv"]),
+               batch_size: 1,
+               list_categories_fun: fn @base_url, @root_path -> {:ok, [@category]} end,
+               list_items_fun: fn @base_url, @category_path -> {:ok, items} end,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    assert_received {:persisted, ["B"]}
+    assert_received {:persisted, ["A"]}
+
+    assert_received {:checkpoint,
+                     %{
+                       "strategy" => "discovery_first_v1",
+                       "phase" => "discover",
+                       "discovery_window" => "2026-08-10"
+                     }}
+
+    assert_received {:checkpoint,
+                     %{
+                       "strategy" => "discovery_first_v1",
+                       "phase" => "refresh",
+                       "discovery_window" => "2026-08-10"
+                     }}
+  end
+
   defp gindex_provider do
     %Provider{}
     |> Provider.changeset(%{
