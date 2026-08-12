@@ -113,6 +113,33 @@ defmodule Streamix.Workers.Gindex.ScanRootWorkerTest do
     assert root.quota_count == 8
   end
 
+  test "defers a scan when the remaining background budget cannot make durable progress", %{
+    quota_key: quota_key
+  } do
+    provider = gindex_provider()
+    path = "/1:/Series/"
+    job = insert_scan_job(provider, path)
+
+    Application.put_env(:streamix, Streamix.Gindex.QuotaGuard,
+      daily_limit: 10_000,
+      playback_reserve: 1_000
+    )
+
+    Redix.command!(:streamix_redis, ["SET", quota_key, "8501", "EX", "60"])
+
+    sync_fun = fn _provider, _base_url, _path, _kind, _opts ->
+      flunk("an unproductive slice must wait for the next quota window")
+    end
+
+    assert {:snooze, 123} = ScanRootWorker.perform_with(job, sync_fun, fn -> 123 end)
+
+    root = Gindex.get_scan_root(provider.id, path, :series)
+    assert root.status == "paused"
+    assert root.paused_reason == "insufficient_budget"
+    assert root.quota_count == 8_501
+    assert Repo.reload!(provider).sync_status == "paused_quota"
+  end
+
   test "turns an upstream 429 into a durable pause instead of an inline retry" do
     provider = gindex_provider()
     path = "/1:/Series/"
