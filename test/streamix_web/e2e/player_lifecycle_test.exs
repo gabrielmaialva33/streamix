@@ -251,6 +251,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             currentTime: video ? video.currentTime : 0,
             autoplay: video ? video.autoplay : true,
             preload: video ? video.getAttribute("preload") : null,
+            pictureInPictureDisabled: video ? video.disablePictureInPicture : false,
             nativeControls: video ? video.controls : false,
             lifecycleLogs: container ? container.dataset.playerLifecycleLogs : null,
             bottomControlsHidden: bottomControls ? bottomControls.classList.contains("hidden") : false,
@@ -276,6 +277,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             seekIndex < playIndex &&
             !state.autoplay &&
             state.preload === "metadata" &&
+            state.pictureInPictureDisabled &&
             state.nativeControls &&
             state.lifecycleLogs === "false" &&
             state.nativeTouchControls &&
@@ -334,7 +336,6 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         const bottomRect = bottomControls.getBoundingClientRect();
         const ids = [
           "player-close-btn",
-          "pip-btn",
           "play-pause-btn",
           "mute-btn",
           "speed-btn",
@@ -403,6 +404,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             container.querySelectorAll("#center-play, .play-overlay, .shortcut-feedback").length,
           seekButtonCount:
             container.querySelectorAll("#seek-backward-btn, #seek-forward-btn").length,
+          pipButtonCount: container.querySelectorAll("#pip-btn").length,
           hiddenState,
           revealedAfterTap: hook.playerUI.controlsVisible
         };
@@ -434,6 +436,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
         assert state["centerOverlayCount"] == 0
         assert state["seekButtonCount"] == 0
+        assert state["pipButtonCount"] == 0
         assert state["hiddenState"]["controlsVisible"] == false
         assert state["hiddenState"]["closeOpacity"] > 0
         assert state["hiddenState"]["closePointerEvents"] == "auto"

@@ -152,7 +152,8 @@ defmodule StreamixWeb.PlayerComponents do
         id="video-element"
         phx-update="ignore"
         class="absolute inset-0 w-full h-full object-contain"
-        preload="metadata"
+        preload="none"
+        disablepictureinpicture
         playsinline
         webkit-playsinline
         x-webkit-airplay="allow"
@@ -191,17 +192,6 @@ defmodule StreamixWeb.PlayerComponents do
                 </p>
               </div>
             </div>
-
-            <button
-              type="button"
-              id="pip-btn"
-              phx-click={JS.dispatch("player:toggle-pip")}
-              aria-label="Modo Picture-in-Picture"
-              class="player-secondary-control flex size-12 shrink-0 touch-manipulation items-center justify-center rounded-full text-white/90 transition-all hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
-              title="Modo Picture-in-Picture"
-            >
-              <.icon name="hero-rectangle-stack" class="size-5" aria-hidden="true" />
-            </button>
           </div>
         </div>
 
