@@ -16,6 +16,8 @@ env:
   OTP_VERSION: 29.0.5
   NODE_VERSION: 26.7.0
   NPM_VERSION: 12.0.2
+  TRIVY_VERSION: 0.73.0
+  TRIVY_LINUX_AMD64_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b
 
 jobs:
   backend:
@@ -349,6 +351,43 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Install verified Trivy binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive_name="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          archive="${RUNNER_TEMP}/${archive_name}"
+          install_dir="${RUNNER_TEMP}/trivy-bin"
+          downloaded=false
+
+          for attempt in 1 2 3; do
+            if gh release download "v${TRIVY_VERSION}" \
+              --repo aquasecurity/trivy \
+              --pattern "${archive_name}" \
+              --output "${archive}" \
+              --clobber; then
+              downloaded=true
+              break
+            fi
+
+            if [ "${attempt}" -lt 3 ]; then
+              backoff=$((attempt * 5))
+              echo "Trivy download attempt ${attempt}/3 failed; retrying in ${backoff}s" >&2
+              sleep "${backoff}"
+            fi
+          done
+
+          if [ "${downloaded}" != true ]; then
+            echo "Unable to download Trivy v${TRIVY_VERSION} after 3 attempts" >&2
+            exit 1
+          fi
+
+          printf '%s  %s\n' "${TRIVY_LINUX_AMD64_SHA256}" "${archive}" | sha256sum --check --status
+          install -d "${install_dir}"
+          tar -xzf "${archive}" -C "${install_dir}" trivy
+          echo "${install_dir}" >> "${GITHUB_PATH}"
+          "${install_dir}/trivy" --version
+
       - name: Scan candidate image for fixable critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -357,7 +396,7 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-          version: v0.73.0
+          skip-setup-trivy: true
 
       - name: Generate SPDX SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -365,7 +404,7 @@ jobs:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output: streamix.spdx.json
-          version: v0.73.0
+          skip-setup-trivy: true
 
       - name: Attest image provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
