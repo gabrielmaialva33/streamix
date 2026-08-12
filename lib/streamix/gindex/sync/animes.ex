@@ -10,7 +10,7 @@ defmodule Streamix.Gindex.Sync.Animes do
   require Logger
 
   @default_batch_size 5
-  @empty_stats %{animes_count: 0, episodes_count: 0}
+  @empty_stats %{animes_count: 0, episodes_count: 0, skipped_count: 0}
 
   def sync(%{provider_id: _provider_id} = source, base_url, animes_path, opts \\ []) do
     Logger.info("[GIndex Sync] Starting anime sync from: #{animes_path}")
@@ -52,7 +52,8 @@ defmodule Streamix.Gindex.Sync.Animes do
            {:ok,
             %{
               animes_count: stats.animes_count + 1,
-              episodes_count: stats.episodes_count + episode_count
+              episodes_count: stats.episodes_count + episode_count,
+              skipped_count: stats.skipped_count
             }}}
 
         {:error, reason} ->

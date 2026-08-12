@@ -115,6 +115,30 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     assert_received {:checkpoint, %{"root_path" => @root_path, "folder_path" => "/b/"}}
   end
 
+  test "skips one broken folder without blocking the remaining catalog" do
+    parent = self()
+
+    scrape_fun = fn _base_url, folder ->
+      case folder.path do
+        "/b/" -> {:error, {:http_error, 500}}
+        _path -> {:ok, %{name: folder.name, episode_count: 1}}
+      end
+    end
+
+    assert {:ok, %{series_count: 2, episodes_count: 2, skipped_count: 1}} =
+             Series.sync(@source, @base_url, [@root_path],
+               batch_size: 1,
+               list_fun: fn _base_url, @root_path -> {:ok, folders(~w(a b c))} end,
+               scrape_fun: scrape_fun,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    assert_received {:persisted, ["A"]}
+    assert_received {:checkpoint, %{"folder_path" => "/b/"}}
+    assert_received {:persisted, ["C"]}
+  end
+
   test "discovers missing folders before resuming the legacy refresh cursor" do
     parent = self()
     folders = folders(~w(a b c d))

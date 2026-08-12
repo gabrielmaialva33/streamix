@@ -218,14 +218,38 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
   defp process_folder(source, base_url, root_path, folder, {:ok, state}, runtime) do
     if runtime.process_path?.(folder_path(folder)) do
       case runtime.scrape_fun.(base_url, folder) do
-        {:ok, item} -> continue_or_flush(source, root_path, folder, item, state, runtime)
-        :empty -> continue_or_flush(source, root_path, folder, nil, state, runtime)
-        {:error, reason} -> halt_after_flush(source, root_path, state, reason, runtime)
+        {:ok, item} ->
+          continue_or_flush(source, root_path, folder, item, state, runtime)
+
+        :empty ->
+          continue_or_flush(source, root_path, folder, nil, state, runtime)
+
+        {:error, reason} ->
+          handle_folder_error(source, root_path, folder, state, reason, runtime)
       end
     else
       continue_or_flush(source, root_path, folder, nil, state, runtime)
     end
   end
+
+  defp handle_folder_error(source, root_path, folder, state, reason, runtime) do
+    if pausing_error?(reason) do
+      halt_after_flush(source, root_path, state, reason, runtime)
+    else
+      Logger.warning(
+        "[GIndex Sync] Skipping folder #{folder_path(folder)} for this cycle: " <>
+          inspect(reason)
+      )
+
+      state = update_in(state, [:stats, :skipped_count], &((&1 || 0) + 1))
+      continue_or_flush(source, root_path, folder, nil, state, runtime)
+    end
+  end
+
+  defp pausing_error?({:quota_exhausted, _count}), do: true
+  defp pausing_error?({:slice_exhausted, _count}), do: true
+  defp pausing_error?({:rate_limited, _status, _retry_after}), do: true
+  defp pausing_error?(_reason), do: false
 
   defp continue_or_flush(source, root_path, folder, item, state, runtime) do
     state = %{state | pending: state.pending ++ [{folder_path(folder), item}]}

@@ -10,7 +10,7 @@ defmodule Streamix.Gindex.Sync.Series do
   require Logger
 
   @default_batch_size 5
-  @empty_stats %{series_count: 0, episodes_count: 0}
+  @empty_stats %{series_count: 0, episodes_count: 0, skipped_count: 0}
 
   def sync(%{provider_id: _provider_id} = source, base_url, series_paths, opts \\ []) do
     Logger.info("[GIndex Sync] Starting series sync from #{length(series_paths)} paths")
@@ -54,7 +54,8 @@ defmodule Streamix.Gindex.Sync.Series do
            {:ok,
             %{
               series_count: acc.series_count + 1,
-              episodes_count: acc.episodes_count + episode_count
+              episodes_count: acc.episodes_count + episode_count,
+              skipped_count: acc.skipped_count
             }}}
 
         {:error, reason} ->
@@ -70,7 +71,8 @@ defmodule Streamix.Gindex.Sync.Series do
   defp merge_stats(left, right) do
     %{
       series_count: left.series_count + right.series_count,
-      episodes_count: left.episodes_count + right.episodes_count
+      episodes_count: left.episodes_count + right.episodes_count,
+      skipped_count: left.skipped_count + right.skipped_count
     }
   end
 end
