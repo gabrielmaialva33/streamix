@@ -65,6 +65,41 @@ defmodule Streamix.Workers.SyncGindexProviderWorkerTest do
              Gindex.get_scan_root(provider.id, "/1:/Filmes/", :movies)
   end
 
+  test "reopens failed roots on an explicit dispatch without losing their cursor" do
+    provider = gindex_provider()
+    roots = Gindex.sync_roots_for(provider)
+
+    assert {:ok, cycle} = Gindex.ensure_scan_cycle(provider.id, roots)
+    [failed_root, active_root | _rest] = cycle.roots
+
+    checkpoint = %{
+      "root_path" => failed_root.root_path,
+      "category_path" => "/1:/Filmes/2026/",
+      "item_path" => "/1:/Filmes/2026/B.mkv"
+    }
+
+    assert {:ok, failed_root} = Gindex.checkpoint_scan_root(failed_root, checkpoint)
+    assert {:ok, _failed_root} = Gindex.fail_scan_root(failed_root, :upstream_unavailable)
+    assert {:ok, _active_root} = Gindex.pause_scan_root(active_root, :slice_exhausted)
+
+    assert :ok = SyncGindexProviderWorker.dispatch(provider)
+
+    reopened = Gindex.get_scan_root(provider.id, failed_root.root_path, failed_root.kind)
+    assert reopened.status == "pending"
+    assert reopened.cursor == checkpoint
+    assert reopened.attempt_count == 0
+    assert reopened.last_error == nil
+    assert reopened.completed_at == nil
+
+    assert Repo.exists?(
+             from(job in Oban.Job,
+               where: job.worker == "Streamix.Workers.Gindex.ScanRootWorker",
+               where: fragment("?->>'path' = ?", job.args, ^failed_root.root_path),
+               where: fragment("?->>'workflow_id' = ?", job.args, ^cycle.cycle_id)
+             )
+           )
+  end
+
   defp insert_legacy_job(provider, path, cycle_id, inserted_at, checkpoint) do
     args = %{
       "provider_id" => provider.id,
