@@ -277,7 +277,7 @@ necessário, `meta`; erros mantêm os campos estáveis `error.code` e `error.mes
 | Tecnologia | Requisito | Papel |
 |------------|-----------|-------|
 | TimescaleDB / PostgreSQL 17 | obrigatório | Banco relacional, eventos e dados operacionais |
-| Redis 7 | obrigatório | Cache compartilhado e coordenação de hot paths |
+| Redis 8 | obrigatório | Cache compartilhado e coordenação de hot paths |
 | Qdrant | opcional | Busca vetorial e dados de recomendação |
 | RabbitMQ 4 | opcional | Processamento de filas com Broadway |
 | rqbit | opcional | Motor de sessões torrent e entrega de bytes |

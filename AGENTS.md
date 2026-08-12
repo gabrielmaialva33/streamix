@@ -36,7 +36,7 @@ do not document or modify an in-tree Tizen app here.
 - Phoenix LiveView `~> 1.2.0`
 - Ecto SQL `~> 3.14`
 - TimescaleDB on PostgreSQL 17 with `pg_trgm`
-- Redis 7
+- Redis 8
 - Qdrant (optional, for semantic search)
 - RabbitMQ 4 + Broadway (optional)
 - Oban 2.23

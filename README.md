@@ -277,7 +277,7 @@ and the current breaking-change note.
 | Technology | Requirement | Role |
 |------------|-------------|------|
 | TimescaleDB / PostgreSQL 17 | required | Primary relational store, events, and operational data |
-| Redis 7 | required | Shared cache and hot-path coordination |
+| Redis 8 | required | Shared cache and hot-path coordination |
 | Qdrant | optional | Vector search and recommendation data |
 | RabbitMQ 4 | optional | Broadway-based queue processing |
 | rqbit | optional | Torrent session and byte delivery engine |
