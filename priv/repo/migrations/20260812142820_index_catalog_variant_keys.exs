@@ -22,6 +22,8 @@ defmodule Streamix.Repo.Migrations.IndexCatalogVariantKeys do
     execute("ANALYZE series")
   end
 
+  # migration-safety: reviewed — rollback concurrently removes only non-unique
+  # read-optimization indexes; it removes no catalog data, columns, or constraints.
   def down do
     drop index(:series, [], name: :series_variant_key_id_idx, concurrently: true)
     drop index(:movies, [], name: :movies_variant_key_id_idx, concurrently: true)
