@@ -35,19 +35,11 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
     streams = Enum.uniq_by(streams, & &1[stream_id_key])
     total_batches = ceil(length(streams) / @batch_size)
 
-    existing_stream_ids =
-      schema
-      |> where(provider_id: ^provider_id)
-      |> select([c], field(c, ^stream_id_field))
-      |> Repo.all()
-      |> MapSet.new()
-
     batch_context = %{
       attrs_fn: attrs_fn,
       catalog_content_type: catalog_content_type,
       category_fn: category_fn,
       category_lookup: category_lookup,
-      existing_stream_ids: existing_stream_ids,
       now: now,
       provider_id: provider_id,
       schema: schema,
@@ -88,7 +80,6 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
         context.provider_id,
         context.stream_id_field,
         batch_stream_ids,
-        context.existing_stream_ids,
         context.catalog_content_type,
         context.now
       )
@@ -134,19 +125,18 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
          provider_id,
          stream_id_field,
          batch_stream_ids,
-         existing_stream_ids,
          content_type,
          now
        ) do
-    new_stream_ids = Enum.reject(batch_stream_ids, &MapSet.member?(existing_stream_ids, &1))
+    existing_ci_map =
+      fetch_existing_ci_map(schema, provider_id, stream_id_field, batch_stream_ids)
+
+    new_stream_ids = Enum.reject(batch_stream_ids, &Map.has_key?(existing_ci_map, &1))
 
     new_catalog_item_ids =
       pre_create_catalog_items(length(new_stream_ids), content_type, provider_id, now)
 
     new_ci_map = Enum.zip(new_stream_ids, new_catalog_item_ids) |> Map.new()
-
-    existing_sids = Enum.filter(batch_stream_ids, &MapSet.member?(existing_stream_ids, &1))
-    existing_ci_map = fetch_existing_ci_map(schema, provider_id, stream_id_field, existing_sids)
 
     Map.merge(existing_ci_map, new_ci_map)
   end
