@@ -205,7 +205,7 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
     )
 
     pending
-    |> Enum.reduce_while({:ok, empty_state(runtime)}, fn folder, state ->
+    |> Enum.reduce_while({:ok, empty_state(runtime, checkpoint)}, fn folder, state ->
       process_folder(source, base_url, root_path, folder, state, runtime)
     end)
     |> finalize(source, root_path, runtime)
@@ -280,7 +280,11 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
 
   defp finalize({:error, _reason} = error, _source, _root_path, _runtime), do: error
 
-  defp empty_state(runtime), do: %{pending: [], stats: runtime.empty_stats}
+  defp empty_state(runtime, checkpoint) do
+    skipped_count = checkpoint_skipped_count(checkpoint)
+    stats = Map.put(runtime.empty_stats, :skipped_count, skipped_count)
+    %{pending: [], stats: stats}
+  end
 
   defp flush_pending(_source, _root_path, %{pending: []} = state, _runtime),
     do: {:ok, state}
@@ -289,10 +293,12 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
     items = state.pending |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1)
 
     with {:ok, stats} <- persist_items(source, items, runtime),
-         checkpoint = %{
-           "root_path" => root_path,
-           "folder_path" => state.pending |> List.last() |> elem(0)
-         },
+         checkpoint =
+           checkpoint_with_stats(
+             root_path,
+             state.pending |> List.last() |> elem(0),
+             state.stats
+           ),
          :ok <- persist_checkpoint(runtime.checkpoint_fun, checkpoint) do
       {:ok, %{state | pending: [], stats: merge_stats(state.stats, stats)}}
     end
@@ -346,6 +352,24 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
 
   defp value(map, "root_path"), do: Map.get(map, "root_path") || Map.get(map, :root_path)
   defp value(map, "folder_path"), do: Map.get(map, "folder_path") || Map.get(map, :folder_path)
+
+  defp checkpoint_with_stats(root_path, folder_path, stats) do
+    checkpoint = %{"root_path" => root_path, "folder_path" => folder_path}
+
+    case Map.get(stats, :skipped_count, 0) do
+      count when count > 0 -> Map.put(checkpoint, "skipped_count", count)
+      _count -> checkpoint
+    end
+  end
+
+  defp checkpoint_skipped_count(checkpoint) when is_map(checkpoint) do
+    case Map.get(checkpoint, "skipped_count") || Map.get(checkpoint, :skipped_count) do
+      count when is_integer(count) and count >= 0 -> count
+      _count -> 0
+    end
+  end
+
+  defp checkpoint_skipped_count(_checkpoint), do: 0
 
   defp folder?(%{type: type}) when type in [:folder, "folder"], do: true
   defp folder?(%{type: _type}), do: false

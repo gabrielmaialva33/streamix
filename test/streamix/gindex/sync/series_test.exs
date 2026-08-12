@@ -135,8 +135,29 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
              )
 
     assert_received {:persisted, ["A"]}
-    assert_received {:checkpoint, %{"folder_path" => "/b/"}}
+    assert_received {:checkpoint, %{"folder_path" => "/b/", "skipped_count" => 1}}
     assert_received {:persisted, ["C"]}
+  end
+
+  test "pauses instead of skipping a rate-limited folder" do
+    parent = self()
+
+    assert {:error, {:rate_limited, 429, 90}} =
+             Series.sync(@source, @base_url, [@root_path],
+               batch_size: 1,
+               list_fun: fn _base_url, @root_path -> {:ok, folders(~w(a b c))} end,
+               scrape_fun: fn _base_url, folder ->
+                 if folder.path == "/b/",
+                   do: {:error, {:rate_limited, 429, 90}},
+                   else: {:ok, %{name: folder.name, episode_count: 1}}
+               end,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    assert_received {:persisted, ["A"]}
+    refute_received {:checkpoint, %{"folder_path" => "/b/"}}
+    refute_received {:persisted, ["C"]}
   end
 
   test "discovers missing folders before resuming the legacy refresh cursor" do
