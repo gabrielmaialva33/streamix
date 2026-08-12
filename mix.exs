@@ -1,3 +1,5 @@
+Code.require_file("rel/release_builder.ex", __DIR__)
+
 defmodule Streamix.MixProject do
   use Mix.Project
 
@@ -16,7 +18,8 @@ defmodule Streamix.MixProject do
       dialyzer: dialyzer(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: releases()
     ]
   end
 
@@ -152,6 +155,10 @@ defmodule Streamix.MixProject do
       # https://github.com/elixir-lang/elixir/issues/15673
       flags: [:no_opaque]
     ]
+  end
+
+  defp releases do
+    [streamix: [steps: [&Streamix.ReleaseBuilder.prepare/1, :assemble]]]
   end
 
   defp dialyzer_test_apps do

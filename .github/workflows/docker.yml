@@ -109,6 +109,13 @@ jobs:
           mix test --cover
           mix test --only slow
 
+      - name: Assemble production release
+        env:
+          MIX_ENV: prod
+        run: |
+          mix deps.get --only prod
+          mix release --overwrite --path "${RUNNER_TEMP}/streamix-release"
+
   dialyzer:
     name: Dialyzer
     runs-on: ubuntu-latest
