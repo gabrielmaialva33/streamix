@@ -40,6 +40,7 @@ defmodule Streamix.Iptv.Movie do
     field :duration_secs, :integer
     field :tmdb_id, :string
     field :imdb_id, :string
+    field :variant_key, :string, writable: :never, load_in_query: false
     field :youtube_trailer, :string
     field :tagline, :string
     field :content_rating, :string

@@ -24,6 +24,7 @@ defmodule Streamix.Iptv.Series do
     field :plot, :string
     field :youtube_trailer, :string
     field :tmdb_id, :string
+    field :variant_key, :string, writable: :never, load_in_query: false
     field :tagline, :string
     field :content_rating, :string
 
