@@ -1,14 +1,10 @@
 import { KeyboardManager } from "../core/keyboard_manager";
 import { playerLogger as log, setErrorReporter } from "../core/logger";
-import {
-  getCapabilitySummary,
-  getCodecCapabilityReport,
-  getMediaDecodingInfo,
-} from "../media/codec_detector";
-import { CodecAwareABR, getCodecRecommendation } from "../media/codec_priority";
+import { getCapabilitySummary, getMediaDecodingInfo } from "../media/codec_detector";
+import { CodecAwareABR } from "../media/codec_priority";
 import { NativeBufferManager } from "../media/native_buffer";
 import { NetworkMonitor } from "../media/network_monitor";
-import { getHls, isHlsJsSupported, isMpegtsSupported } from "../media/player_libs";
+import { isHlsJsSupported, isMpegtsSupported } from "../media/player_libs";
 import {
   buildQualityProbeCandidates,
   detectQualityCodec,
@@ -18,12 +14,11 @@ import { getFileExtension, getStreamType, StreamLoader } from "../media/stream_l
 import {
   ContentType,
   FeatureFlags,
-  getFeatureRecommendations,
   getStreamingConfig,
   selectStreamingMode,
 } from "../media/streaming_config";
-import { getWebCodecsCapabilityReport, isWebCodecsSupported } from "../media/webcodecs_decoder";
-import { getMSEWorkerCapabilityReport, isMSEInWorkersSupported } from "../media/worker_mse";
+import { isWebCodecsSupported } from "../media/webcodecs_decoder";
+import { isMSEInWorkersSupported } from "../media/worker_mse";
 import { createAspectRatioController } from "../player/aspect_ratio_controller";
 import { createAudioController } from "../player/audio_controller";
 import { audioOutputVolume } from "../player/audio_state";
@@ -41,31 +36,25 @@ import {
 } from "../player/ios_playback_state";
 import { LifecycleScope } from "../player/lifecycle_scope";
 import { createMobileControls } from "../player/mobile_controls";
+import { NativeBufferingController } from "../player/native_buffering_controller";
 import {
   waitForNativeReady as awaitNativeReady,
   waitForNativeSeek as awaitNativeSeek,
   configureNativePlaybackElement as configureNativeElement,
 } from "../player/native_playback_controller";
 import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
-import {
-  nextEpisodeCountdownWidth,
-  nextEpisodePath,
-  parseNextEpisode,
-  shouldTriggerNextEpisode,
-} from "../player/next_episode";
+import { NextEpisodeController } from "../player/next_episode_controller";
 import {
   getPlaybackResourcePolicy,
   hasWebCodecsHevcSupport,
   isAppleTouchDevice,
   isFirefoxBrowser,
-  isIosPwaMode,
   isStandalonePwa,
-  readEngineFlag,
   scheduleLowPriority,
 } from "../player/playback_environment";
-import { PlaybackSession } from "../player/playback_session";
+import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
 import { clampSeekTime, relativeSeekTarget } from "../player/playback_time";
-import { diagnoseError, runQuickDiagnostics } from "../player/player_diagnostics";
+import { diagnoseError } from "../player/player_diagnostics";
 import {
   forgetRecommendedPlayer,
   getPlaybackPosition,
@@ -80,77 +69,14 @@ import {
   saveSubtitleTrack,
   saveVolume,
 } from "../player/player_preferences";
+import { createInitialPlayerState } from "../player/player_state";
 import { PlayerUI } from "../player/player_ui";
+import { collectStartupDiagnostics } from "../player/startup_diagnostics";
 import {
   findPortugueseTrack,
   formatTrackLabel,
   hasSubtitleInLanguage,
 } from "../player/track_metadata";
-
-// Lazy load AVPlayer only when needed
-let AVPlayerWrapper = null;
-let detectAudioIssue = null;
-let avPlayerModulePromise = null;
-
-async function loadAVPlayer() {
-  if (!AVPlayerWrapper) {
-    log.debug("Lazy loading AVPlayer module...");
-    avPlayerModulePromise ||= import("../media/avplayer_wrapper").catch((error) => {
-      avPlayerModulePromise = null;
-      throw error;
-    });
-    const module = await avPlayerModulePromise;
-    AVPlayerWrapper = module.AVPlayerWrapper;
-    detectAudioIssue = module.detectAudioIssue;
-    log.debug("AVPlayer module loaded");
-  }
-  return { AVPlayerWrapper, detectAudioIssue };
-}
-
-// Lazy load avbridge only when GIndex MKV/HEVC is selected. The
-// avbridge bundle pulls in libavjs-webcodecs-bridge + mediabunny and
-// crosses the 1 MB threshold once gzipped, so we keep it off the
-// critical path.
-let AvbridgeWrapper = null;
-let avbridgeModulePromise = null;
-
-async function loadAvbridge() {
-  if (!AvbridgeWrapper) {
-    log.debug("Lazy loading avbridge module...");
-    avbridgeModulePromise ||= import("../media/avbridge_wrapper").catch((error) => {
-      avbridgeModulePromise = null;
-      throw error;
-    });
-    const module = await avbridgeModulePromise;
-    AvbridgeWrapper = module.AvbridgeWrapper;
-    log.debug("avbridge module loaded");
-  }
-  return { AvbridgeWrapper };
-}
-
-// Lazy load h265web only when explicitly opted in. h265web ships a
-// 415 KB SDK wrapper that then fetches ~7 MB of WASM from
-// `priv/static/vendor/h265web/` only after the engine_selector picks
-// it. Keep that off the critical path.
-let H265webWrapper = null;
-let h265webModulePromise = null;
-
-async function loadH265web() {
-  if (!H265webWrapper) {
-    log.debug("Lazy loading h265web module...");
-    h265webModulePromise ||= import("../media/h265web_wrapper").catch((error) => {
-      h265webModulePromise = null;
-      throw error;
-    });
-    const module = await h265webModulePromise;
-    H265webWrapper = module.H265webWrapper;
-    log.debug("h265web module loaded");
-  }
-  return { H265webWrapper };
-}
-
-const readAvbridgeFlag = (el) => readEngineFlag(el, "avbridge");
-const readH265webFlag = (el) => readEngineFlag(el, "h265web");
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -208,128 +134,15 @@ const VideoPlayer = {
   async runStartupDiagnostics() {
     try {
       const policy = this.getPlaybackResourcePolicy();
-      const quickDiag = await runQuickDiagnostics();
-
-      if (!quickDiag.allPassed) {
-        log.warn(
-          "[VideoPlayer] Some startup diagnostics failed:",
-          quickDiag.results.filter((r) => !r.passed),
-        );
-      }
-
-      // Detect advanced capabilities
-      const advancedCapabilities = policy.shouldRunAdvancedDiagnostics
-        ? await this.detectAdvancedCapabilities()
-        : {
-            skipped: true,
-            reason: policy.reason,
-            webCodecs: { supported: isWebCodecsSupported(), report: null },
-            mseWorkers: {
-              supported: isMSEInWorkersSupported(),
-              report: getMSEWorkerCapabilityReport(),
-            },
-            codecRecommendation: null,
-            featureRecommendations: null,
-          };
-
-      // Send capabilities to backend for analytics
-      this.pushEventSafe("device_diagnostics", {
-        quick: quickDiag,
-        capabilities: getCapabilitySummary(),
-        advanced: advancedCapabilities,
-        resource_policy: policy,
-      });
+      const diagnostics = await collectStartupDiagnostics({ policy });
+      this.pushEventSafe("device_diagnostics", diagnostics);
 
       // Initialize codec-aware ABR if supported
-      if (advancedCapabilities.codecRecommendation) {
-        this.initCodecAwareABR(advancedCapabilities.codecRecommendation);
+      if (diagnostics.advanced.codecRecommendation) {
+        this.initCodecAwareABR(diagnostics.advanced.codecRecommendation);
       }
     } catch (e) {
       log.debug("[VideoPlayer] Startup diagnostics failed (non-critical):", e);
-    }
-  },
-
-  /**
-   * Detect advanced streaming capabilities
-   * WebCodecs, MSE Workers, codec priority
-   */
-  async detectAdvancedCapabilities() {
-    const capabilities = {
-      webCodecs: {
-        supported: isWebCodecsSupported(),
-        report: null,
-      },
-      mseWorkers: {
-        supported: isMSEInWorkersSupported(),
-        report: getMSEWorkerCapabilityReport(),
-      },
-      codecRecommendation: null,
-      featureRecommendations: null,
-    };
-
-    // Get detailed WebCodecs report if supported
-    if (capabilities.webCodecs.supported) {
-      try {
-        capabilities.webCodecs.report = await getWebCodecsCapabilityReport();
-        log.debug("[VideoPlayer] WebCodecs available:", capabilities.webCodecs.report);
-      } catch (e) {
-        log.debug("[VideoPlayer] WebCodecs report failed:", e.message);
-      }
-    }
-
-    // Get codec recommendation
-    try {
-      const networkInfo = navigator.connection;
-      capabilities.codecRecommendation = await getCodecRecommendation({
-        networkQuality: this.getNetworkQualityFromInfo(networkInfo),
-        deviceMemory: navigator.deviceMemory || 4,
-        cpuCores: navigator.hardwareConcurrency || 4,
-      });
-      log.debug("[VideoPlayer] Codec recommendation:", capabilities.codecRecommendation);
-    } catch (e) {
-      log.debug("[VideoPlayer] Codec recommendation failed:", e.message);
-    }
-
-    // Get feature recommendations
-    try {
-      const fullReport = await getCodecCapabilityReport();
-      capabilities.featureRecommendations = getFeatureRecommendations(fullReport);
-      log.debug("[VideoPlayer] Feature recommendations:", capabilities.featureRecommendations);
-
-      // Log experimental feature availability
-      if (capabilities.featureRecommendations.useWebCodecs) {
-        log.debug("[VideoPlayer] WebCodecs hardware acceleration available");
-      }
-      if (capabilities.featureRecommendations.useMSEWorkers) {
-        log.debug("[VideoPlayer] MSE in Workers available - smoother UI during buffering");
-      }
-      if (capabilities.featureRecommendations.preferAV1) {
-        log.debug("[VideoPlayer] AV1 codec available - 30% bandwidth savings possible");
-      }
-    } catch (e) {
-      log.debug("[VideoPlayer] Feature recommendations failed:", e.message);
-    }
-
-    return capabilities;
-  },
-
-  /**
-   * Convert Network Information API data to quality string
-   */
-  getNetworkQualityFromInfo(networkInfo) {
-    if (!networkInfo) return "good";
-
-    const effectiveType = networkInfo.effectiveType;
-    switch (effectiveType) {
-      case "slow-2g":
-      case "2g":
-        return "poor";
-      case "3g":
-        return "good";
-      case "4g":
-        return "excellent";
-      default:
-        return "good";
     }
   },
 
@@ -352,84 +165,10 @@ const VideoPlayer = {
       onDisposeError: (error) => log.warn("[VideoPlayer] Lifecycle cleanup failed:", error),
     });
 
-    // DOM elements
     this.video = this.el.querySelector("video");
     this.configureNativePlaybackElement();
+    Object.assign(this, createInitialPlayerState(this.el));
 
-    // Stream configuration
-    this.streamUrl = this.el.dataset.streamUrl;
-    this.proxyUrl = this.el.dataset.proxyUrl;
-    this.contentType = this.el.dataset.contentType || "live";
-    this.sourceType = this.el.dataset.sourceType || null;
-    this.contentId = this.el.dataset.contentId;
-    this.imdbId = this.el.dataset.imdbId || null;
-    this.subtitlesEnabled = this.el.dataset.subtitlesEnabled !== "false";
-    this.subtitleLang = this.el.dataset.subtitleLang || "pt-BR";
-    this.subtitleOffsetMs = Number(this.el.dataset.subtitleOffsetMs || 0);
-    this.mediaTitle = this.el.dataset.mediaTitle || document.title || "Streamix";
-    this.mediaSubtitle = this.el.dataset.mediaSubtitle || "Streamix";
-    this.initialMode = this.el.dataset.streamingMode || null;
-    this.expectedDuration = parseInt(this.el.dataset.expectedDuration, 10) || 0;
-    this.playerLifecycleLogs = this.el.dataset.playerLifecycleLogs === "true";
-
-    // Player instances
-    this.streamLoader = null;
-    this.hls = null;
-    this.mpegtsPlayer = null;
-
-    // Streaming state
-    this.streamingMode =
-      this.initialMode ||
-      selectStreamingMode(this.contentType === "live" ? ContentType.LIVE : ContentType.VOD, "good");
-    this.currentStreamType = null;
-    this.currentUrl = null;
-
-    // Quality state
-    this.manualQuality = null;
-    this.availableQualities = [];
-
-    // Track state
-    this.audioTracks = [];
-    this.subtitleTracks = [];
-    this._nativeExternalSubtitleTrack = null;
-    this._nativeExternalSubtitleReloading = false;
-    this._subtitleOffsetReloadTimer = null;
-    this._externalSubtitleBlobUrl = null;
-    this._externalSubtitleLoadedFor = null;
-    this.selectedAudioTrack = 0;
-    this.selectedSubtitleTrack = -1;
-
-    // Retry/fallback state with circuit breaker (exponential backoff)
-    this.retryCount = 0;
-    this.maxRetries = 3;
-    this.useProxy = true;
-    this.fallbackAttempts = 0;
-    this.maxFallbackAttempts = 5; // Circuit breaker limit
-    this.lastFallbackTime = 0;
-    this.fallbackCooldowns = [2000, 5000, 10000, 20000, 30000]; // Exponential backoff delays
-
-    // Timing
-    this.startTime = Date.now();
-    this.lastProgressReport = 0;
-    this.playbackSessionId = 0;
-    this.playbackMetrics = new PlaybackSession();
-
-    // PiP state
-    this.pipActive = false;
-
-    // Network monitor
-    this.networkMonitor = null;
-
-    // Keyboard manager
-    this.keyboardManager = null;
-    this.aspectRatioController = null;
-    this.mobileControls = null;
-
-    // AVPlayer fallback state
-    this.avPlayer = null;
-    this.usingAVPlayer = false;
-    this.audioCheckTimeout = null;
-    this.avPlayerAttempted = false;
     // One canonical audio state feeds every playback engine and the UI. It
     // remains independent from temporary native <video> resets during engine
     // switches, so muted/output state cannot drift across fallbacks.
@@ -439,56 +178,14 @@ const VideoPlayer = {
       saveVolume,
       saveMuted,
     });
-    this.avPlayerTimeInterval = null;
-    this.preferAVPlayer = false; // Manual audio compatibility mode
 
-    // Avbridge (preferred GPU HEVC) state — engine_selector hands
-    // work here for GIndex MKV when the runtime exposes WebCodecs
-    // and the feature flag is on. We track `attempted` so a
-    // fallback to AVPlayer does not immediately bounce back here on
-    // re-init.
-    this.avbridge = null;
-    this.usingAvbridge = false;
-    this.avbridgeAttempted = false;
-    // Toggle via `data-feature-avbridge` on the container or
-    // `localStorage["streamix:avbridge"]` for ad-hoc opt-in.
-    this.featureFlagAvbridge = readAvbridgeFlag(this.el);
-
-    // H265web (alt GPU HEVC; needs SAB + COOP+COEP) state — kept as
-    // a separate engine so the operator can flip between strategies
-    // without redeploying. Off by default; turn on via
-    // `data-feature-h265web` once the headers are wired.
-    this.h265web = null;
-    this.usingH265web = false;
-    this.h265webAttempted = false;
-    this.h265webTimeInterval = null;
-    this.featureFlagH265web = readH265webFlag(this.el);
-
-    // Next episode state (for pre-fetch)
-    const serializedNextEpisode = this.el.dataset.nextEpisode;
-    this.nextEpisode = parseNextEpisode(serializedNextEpisode);
-    if (serializedNextEpisode && !this.nextEpisode) {
+    if (this.nextEpisodeParseFailed) {
       log.warn("[VideoPlayer] Failed to parse next episode data");
     }
-    this.nextEpisodeShown = false;
-    this.nextEpisodeCountdown = null;
-    this.nextEpisodePreloader = null;
-
-    // Advanced features state
-    this.codecABR = null; // Codec-aware ABR controller
-    this.advancedCapabilities = null; // Cached advanced capabilities
-    this.preferredCodec = null; // User/auto selected codec preference
-
-    // Native buffer manager (for MP4/MKV streams)
-    this.nativeBufferManager = null;
-    this.nativeTouchControls = false;
-    this.lastTimelineSeekAt = 0;
-    this._emergencyStopDone = false;
-    this.iosPwaMode = isIosPwaMode();
-    this._suspendingForIos = false;
-    this._wasPlayingBeforeHidden = false;
-    this._lastIosPwaTapAt = 0;
-    this._resumeAfterNativeSeek = false;
+    this.nextEpisodeController = new NextEpisodeController({
+      episode: this.nextEpisode,
+      root: this.el,
+    });
   },
 
   loadPreferences() {
@@ -521,6 +218,14 @@ const VideoPlayer = {
 
   initUI() {
     this.playerUI = new PlayerUI(this.el);
+    this.nativeBufferingController = new NativeBufferingController({
+      contentType: this.contentType,
+      emit: (event, payload) => this.pushEventSafe(event, payload),
+      metrics: this.playbackMetrics,
+      playerUI: this.playerUI,
+      video: this.video,
+    });
+
     // Auto-hide controls needs the *real* playing state — when
     // AVPlayer is the active player the native <video> stays
     // paused, so without this override the control bar never
@@ -1052,7 +757,7 @@ const VideoPlayer = {
     });
     this.lifecycle.listenOptional(this.video, "pause", () => {
       this.playerUI.updatePlayPauseUI(true);
-      this.clearNativeBufferingState();
+      this.nativeBufferingController.handlePause();
       this.persistIosPlaybackState({
         userPaused: !this._suspendingForIos && document.visibilityState !== "hidden",
         wasPlaying: false,
@@ -1072,13 +777,7 @@ const VideoPlayer = {
     );
     this.lifecycle.listenOptional(this.video, "timeupdate", () => {
       this.updateTimeUI();
-
-      // Safety net: if video time is advancing, loading should be hidden
-      // Fixes "infinite loading" on live streams where playing/canplaythrough don't re-fire
-      if (this.video && !this.video.paused && this.video.readyState >= 3) {
-        this.playerUI.hideLoading();
-        this.playbackMetrics?.markPlaying();
-      }
+      this.nativeBufferingController.handleTimeUpdate();
     });
     this.lifecycle.listenOptional(this.video, "loadedmetadata", () => this.updateTimeUI());
     this.lifecycle.listenOptional(this.video, "ratechange", () =>
@@ -1086,16 +785,7 @@ const VideoPlayer = {
     );
     this.lifecycle.listenOptional(this.video, "progress", () => {
       this.updateBufferBar();
-
-      // For live streams: if buffer is filling, stream is healthy → hide loading
-      if (this.video && !this.video.paused && this.video.buffered.length > 0) {
-        const bufferedEnd = this.video.buffered.end(this.video.buffered.length - 1);
-        const bufferAhead = bufferedEnd - this.video.currentTime;
-        if (bufferAhead > 1) {
-          this.playerUI.hideLoading();
-          this.playbackMetrics?.setBuffering(false);
-        }
-      }
+      this.nativeBufferingController.handleProgress();
     });
 
     // Fullscreen events. Stash the handler so `destroyed()` can
@@ -1163,73 +853,26 @@ const VideoPlayer = {
       });
     }
 
-    this.lifecycle.listenOptional(this.video, "seeking", () => {
-      this.lastTimelineSeekAt = Date.now();
-      if (this._bufferingDebounce) {
-        clearTimeout(this._bufferingDebounce);
-        this._bufferingDebounce = null;
-      }
-    });
-
-    this.lifecycle.listenOptional(this.video, "seeked", () => {
-      if (!this._resumeAfterNativeSeek) return;
-
-      this._resumeAfterNativeSeek = false;
-      this.video.play().catch((error) => {
-        if (error.name === "AbortError") return;
-        log.debug("[VideoPlayer] native post-seek play() skipped:", error.message);
-      });
-    });
+    this.lifecycle.listenOptional(this.video, "seeking", () =>
+      this.nativeBufferingController.handleSeeking(),
+    );
+    this.lifecycle.listenOptional(this.video, "seeked", () =>
+      this.nativeBufferingController.handleSeeked(),
+    );
 
     // Buffer health monitoring with debounce to prevent flickering
-    this.lifecycle.listenOptional(this.video, "waiting", () => {
-      // Debounce live buffering more aggressively; live TS/MSE often emits
-      // sub-second waiting pulses while the next chunk is already arriving.
-      if (this._bufferingDebounce) {
-        clearTimeout(this._bufferingDebounce);
-      }
-      const seekGraceMs = this.contentType === "vod" ? 1600 : 0;
-      const isRecentTimelineSeek = Date.now() - this.lastTimelineSeekAt < seekGraceMs;
-      const bufferingDelay =
-        this.contentType === "live" ? 650 : isRecentTimelineSeek ? seekGraceMs : 200;
-      this._bufferingDebounce = setTimeout(() => {
-        // Only show if still buffering
-        if (
-          this.video &&
-          !this.video.paused &&
-          this.video.readyState < 3 &&
-          Date.now() - this.lastTimelineSeekAt >= seekGraceMs
-        ) {
-          this.playerUI.showLoading();
-          this.pushEventSafe("buffering", { buffering: true });
-          this.playbackMetrics?.setBuffering(true);
-        }
-      }, bufferingDelay);
-    });
-
-    this.lifecycle.listenOptional(this.video, "playing", () => {
-      // Cancel any pending buffering indicator
-      if (this._bufferingDebounce) {
-        clearTimeout(this._bufferingDebounce);
-        this._bufferingDebounce = null;
-      }
-      this.pushEventSafe("buffering", { buffering: false });
-      this.playbackMetrics?.markPlaying();
-      this.playerUI.hideLoading();
-      this.playerUI.hideError();
-    });
+    this.lifecycle.listenOptional(this.video, "waiting", () =>
+      this.nativeBufferingController.handleWaiting(),
+    );
+    this.lifecycle.listenOptional(this.video, "playing", () =>
+      this.nativeBufferingController.handlePlaying(),
+    );
 
     // Also hide loading on canplaythrough (video exits buffering during playback)
     // The "playing" event doesn't fire when video exits buffering if already playing
-    this.lifecycle.listenOptional(this.video, "canplaythrough", () => {
-      if (this._bufferingDebounce) {
-        clearTimeout(this._bufferingDebounce);
-        this._bufferingDebounce = null;
-      }
-      this.pushEventSafe("buffering", { buffering: false });
-      this.playbackMetrics?.setBuffering(false);
-      this.playerUI.hideLoading();
-    });
+    this.lifecycle.listenOptional(this.video, "canplaythrough", () =>
+      this.nativeBufferingController.handleCanPlayThrough(),
+    );
   },
 
   // ============================================
@@ -1375,7 +1018,7 @@ const VideoPlayer = {
     if (!duration || duration <= 0) return;
 
     // Check for next episode trigger (30s before end or 90% progress)
-    this.checkNextEpisodeTrigger(currentTime, duration);
+    this.nextEpisodeController.check(currentTime, duration);
 
     if (Math.abs(currentTime - this.lastProgressReport) >= 10) {
       this.lastProgressReport = currentTime;
@@ -1492,183 +1135,6 @@ const VideoPlayer = {
   },
 
   // ============================================
-  // Next Episode Pre-fetch (Netflix-style)
-  // ============================================
-
-  /**
-   * Check if we should show the next episode overlay
-   * Triggers at 30 seconds before end OR 90% progress (whichever comes first)
-   */
-  checkNextEpisodeTrigger(currentTime, duration) {
-    if (!this.nextEpisode || this.nextEpisodeShown) return;
-
-    if (shouldTriggerNextEpisode(currentTime, duration)) {
-      this.showNextEpisodeOverlay();
-      try {
-        this.preloadNextEpisode();
-      } catch (e) {
-        log.debug("[VideoPlayer] Next episode preload error:", e.message);
-      }
-    }
-  },
-
-  /**
-   * Show the next episode overlay with countdown
-   */
-  showNextEpisodeOverlay() {
-    if (this.nextEpisodeShown) return;
-    this.nextEpisodeShown = true;
-
-    const overlay = this.el.querySelector("#next-episode-overlay");
-    if (!overlay) return;
-
-    // Show overlay with animation
-    overlay.classList.remove("hidden");
-    requestAnimationFrame(() => {
-      overlay.classList.add("opacity-100");
-      overlay.classList.remove("translate-x-4");
-    });
-
-    // Setup button handlers
-    const playBtn = overlay.querySelector("#play-next-btn");
-    const cancelBtn = overlay.querySelector("#cancel-next-btn");
-    const countdownBar = overlay.querySelector("#next-countdown-bar");
-
-    if (playBtn) {
-      playBtn.onclick = () => {
-        try {
-          this.playNextEpisode();
-        } catch (e) {
-          log.debug("[VideoPlayer] playNextEpisode error:", e.message);
-        }
-      };
-    }
-
-    if (cancelBtn) {
-      cancelBtn.onclick = () => this.hideNextEpisodeOverlay();
-    }
-
-    // Start 10-second countdown
-    let countdown = 10;
-    this.nextEpisodeCountdown = setInterval(() => {
-      countdown--;
-      if (countdownBar) {
-        countdownBar.style.width = `${nextEpisodeCountdownWidth(countdown)}%`;
-      }
-      if (countdown <= 0) {
-        try {
-          this.playNextEpisode();
-        } catch (e) {
-          log.debug("[VideoPlayer] playNextEpisode countdown error:", e.message);
-        }
-      }
-    }, 1000);
-
-    log.debug("[VideoPlayer] Showing next episode overlay:", this.nextEpisode.title);
-  },
-
-  /**
-   * Hide the next episode overlay
-   */
-  hideNextEpisodeOverlay() {
-    if (this.nextEpisodeCountdown) {
-      clearInterval(this.nextEpisodeCountdown);
-      this.nextEpisodeCountdown = null;
-    }
-
-    const overlay = this.el.querySelector("#next-episode-overlay");
-    if (overlay) {
-      overlay.classList.remove("opacity-100");
-      overlay.classList.add("translate-x-4");
-      setTimeout(() => overlay.classList.add("hidden"), 300);
-    }
-
-    // Cleanup preloader
-    if (this.nextEpisodePreloader) {
-      this.nextEpisodePreloader.destroy?.();
-      this.nextEpisodePreloader = null;
-    }
-  },
-
-  /**
-   * Navigate to next episode
-   */
-  playNextEpisode() {
-    if (!this.nextEpisode) return;
-
-    this.hideNextEpisodeOverlay();
-
-    const path = nextEpisodePath(this.nextEpisode);
-    if (!path) {
-      log.warn("[VideoPlayer] Invalid next episode ID:", this.nextEpisode.id);
-      return;
-    }
-
-    log.debug("[VideoPlayer] Navigating to next episode:", path);
-
-    // Navigate via direct URL (pushEvent is for server events, not navigation)
-    window.location.href = path;
-  },
-
-  /**
-   * Pre-load next episode stream for instant playback
-   * Uses HLS.js to pre-fetch manifest and first segments
-   */
-  preloadNextEpisode() {
-    if (!this.nextEpisode?.stream_url || this.nextEpisodePreloader) return;
-
-    const url = this.nextEpisode.stream_url;
-    log.debug("[VideoPlayer] Pre-loading next episode:", url);
-
-    // Add preconnect hint for the stream domain
-    try {
-      const streamDomain = new URL(url).origin;
-      const preconnect = document.createElement("link");
-      preconnect.rel = "preconnect";
-      preconnect.href = streamDomain;
-      preconnect.crossOrigin = "anonymous";
-      document.head.appendChild(preconnect);
-    } catch (_e) {
-      // Ignore URL parsing errors
-    }
-
-    // Pre-load with HLS.js if it's an HLS stream
-    const streamType = getStreamType(url, this.nextEpisode.type);
-    if (streamType === "hls" && isHlsJsSupported()) {
-      getHls()
-        .then((Hls) => {
-          this.nextEpisodePreloader = new Hls({
-            // Minimal config for preloading only manifest + first segment
-            maxBufferLength: 5,
-            maxBufferSize: 1 * 1024 * 1024, // 1MB max
-            maxMaxBufferLength: 5,
-            startLevel: -1, // Auto quality
-            enableWorker: true,
-            lowLatencyMode: false,
-          });
-
-          // Don't attach to video element, just load manifest
-          this.nextEpisodePreloader.loadSource(url);
-
-          this.nextEpisodePreloader.on(Hls.Events.MANIFEST_PARSED, () => {
-            log.debug("[VideoPlayer] Next episode manifest pre-loaded");
-          });
-
-          this.nextEpisodePreloader.on(Hls.Events.ERROR, (_, data) => {
-            if (data.fatal) {
-              log.warn("[VideoPlayer] Next episode preload failed:", data.type);
-              this.nextEpisodePreloader?.destroy();
-              this.nextEpisodePreloader = null;
-            }
-          });
-        })
-        .catch((e) => {
-          log.debug("[VideoPlayer] Failed to preload next episode:", e.message);
-        });
-    }
-  },
-
-  // ============================================
   // URL Handling
   // ============================================
 
@@ -1720,16 +1186,6 @@ const VideoPlayer = {
     this.video.setAttribute("playsinline", "");
     this.video.setAttribute("webkit-playsinline", "");
     this.video.setAttribute("x-webkit-airplay", "allow");
-  },
-
-  clearNativeBufferingState() {
-    if (this._bufferingDebounce) {
-      clearTimeout(this._bufferingDebounce);
-      this._bufferingDebounce = null;
-    }
-    this.playerUI?.hideLoading();
-    this.pushEventSafe("buffering", { buffering: false });
-    this.playbackMetrics?.setBuffering(false);
   },
 
   buildEngineContext(recommendedPlayer) {
@@ -3871,8 +3327,7 @@ const VideoPlayer = {
   seekNativeTo(time) {
     if (!this.video || this.contentType === "live") return;
 
-    this.lastTimelineSeekAt = Date.now();
-    this._resumeAfterNativeSeek = !this.video.paused;
+    this.nativeBufferingController.prepareSeek();
     this.video.currentTime = time;
   },
 
@@ -3962,21 +3417,10 @@ const VideoPlayer = {
       this.audioCheckTimeout = null;
     }
 
-    // Clear next episode resources
-    if (this.nextEpisodeCountdown) {
-      clearInterval(this.nextEpisodeCountdown);
-      this.nextEpisodeCountdown = null;
-    }
-    if (this.nextEpisodePreloader) {
-      this.nextEpisodePreloader.destroy?.();
-      this.nextEpisodePreloader = null;
-    }
-
-    // Clear buffering debounce
-    if (this._bufferingDebounce) {
-      clearTimeout(this._bufferingDebounce);
-      this._bufferingDebounce = null;
-    }
+    this.nextEpisodeController?.destroy();
+    this.nextEpisodeController = null;
+    this.nativeBufferingController?.destroy();
+    this.nativeBufferingController = null;
 
     if (this.keyboardManager) {
       this.keyboardManager.destroy();
