@@ -1,6 +1,6 @@
 # Build stage
 # Keep these pins aligned with `.tool-versions` and the CI workflow.
-ARG ELIXIR_VERSION=1.20.2
+ARG ELIXIR_VERSION=1.20.3
 ARG OTP_VERSION=29.0.5
 ARG DEBIAN_VERSION=bookworm-20260713-slim
 ARG NODE_VERSION=26.7.0
