@@ -6,6 +6,7 @@
  */
 
 import { getEnvInfo, avplayerLogger as log } from "../core/logger";
+import { stopThenDestroyPlaybackEngine } from "../player/playback_engine_lifecycle";
 import { detectWebCodecsSupport } from "./codec_detector";
 import {
   AVPLAYER_CONFIG,
@@ -1235,23 +1236,9 @@ export class AVPlayerWrapper {
       const player = this.player;
       this.player = null;
 
-      try {
-        await player.pause?.();
-      } catch (e) {
-        log.warn("Error during pause before destroy:", e);
-      }
-
-      try {
-        await player.stop?.();
-      } catch (e) {
-        log.warn("Error during stop before destroy:", e);
-      }
-
-      try {
-        await player.destroy();
-      } catch (e) {
-        log.warn("Error during destroy:", e);
-      }
+      await stopThenDestroyPlaybackEngine(player, {
+        onError: (operation, error) => log.warn(`Error during AVPlayer ${operation}:`, error),
+      });
     }
 
     // Decrement live-instance counter and only close the shared
