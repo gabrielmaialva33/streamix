@@ -268,6 +268,14 @@ jobs:
           restore-keys: |
             e2e-beam-deps-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
 
+      - name: Cache asset binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            _build/tailwind-*
+            _build/esbuild-*
+          key: e2e-assets-${{ runner.os }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock', 'config/config.exs') }}
+
       - name: Install dependencies
         run: |
           mix deps.get --only test
