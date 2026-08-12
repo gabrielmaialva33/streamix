@@ -91,14 +91,14 @@ only appears after an authorized Xtream, GIndex, or torrent source is configured
 
 ### Scope at a Glance
 
-| Area | Current contract |
-|------|------------------|
-| Core runtime | TimescaleDB/PostgreSQL and Redis |
-| Included local stack | PostgreSQL, Redis, RabbitMQ, Qdrant, and rqbit through Docker Compose |
-| Optional integrations | GIndex, torrent sources, TMDB, subtitles, Stripe, embeddings, Qdrant, RabbitMQ |
-| Content | Never bundled; every source and credential is operator- or user-supplied |
-| Web experience | Public catalog entry, authenticated library, player, settings, billing, and admin surfaces |
-| External clients | REST API for mobile/TV clients; those client applications live in separate repositories |
+| Area                  | Current contract                                                                           |
+|-----------------------|--------------------------------------------------------------------------------------------|
+| Core runtime          | TimescaleDB/PostgreSQL and Redis                                                           |
+| Included local stack  | PostgreSQL, Redis, RabbitMQ, Qdrant, and rqbit through Docker Compose                      |
+| Optional integrations | GIndex, torrent sources, TMDB, subtitles, Stripe, embeddings, Qdrant, RabbitMQ             |
+| Content               | Never bundled; every source and credential is operator- or user-supplied                   |
+| Web experience        | Public catalog entry, authenticated library, player, settings, billing, and admin surfaces |
+| External clients      | REST API for mobile/TV clients; those client applications live in separate repositories    |
 
 ## :fire: More Than a Provider Listing
 
@@ -202,17 +202,17 @@ sequenceDiagram
 <details>
 <summary><strong>Core modules worth knowing</strong></summary>
 
-| Area | Public entry points |
-|------|---------------------|
-| Accounts and authorization | `Streamix.Accounts`, `Streamix.Access` |
-| Xtream catalog and delivery | `Streamix.Iptv` |
-| GIndex catalog | `Streamix.Gindex` |
-| Torrent catalog and playback | `Streamix.Torrent` |
-| Billing and entitlements | `Streamix.Billing` |
-| Search and recommendations | `Streamix.AI` |
-| Realtime rooms | `Streamix.WatchParty` |
-| Signed playback | `StreamixWeb.StreamToken`, `StreamixWeb.StreamController` |
-| Background work | `Streamix.Workers.*`, `Oban` |
+| Area                         | Public entry points                                       |
+|------------------------------|-----------------------------------------------------------|
+| Accounts and authorization   | `Streamix.Accounts`, `Streamix.Access`                    |
+| Xtream catalog and delivery  | `Streamix.Iptv`                                           |
+| GIndex catalog               | `Streamix.Gindex`                                         |
+| Torrent catalog and playback | `Streamix.Torrent`                                        |
+| Billing and entitlements     | `Streamix.Billing`                                        |
+| Search and recommendations   | `Streamix.AI`                                             |
+| Realtime rooms               | `Streamix.WatchParty`                                     |
+| Signed playback              | `StreamixWeb.StreamToken`, `StreamixWeb.StreamController` |
+| Background work              | `Streamix.Workers.*`, `Oban`                              |
 
 </details>
 
@@ -262,36 +262,36 @@ and the current breaking-change note.
 
 ### Backend
 
-| Technology | Declared version | Role |
-|------------|------------------|------|
-| Elixir | `~> 1.20` | Application runtime |
-| Erlang/OTP | 29 in CI | Supervision and concurrency |
-| Phoenix | `~> 1.8.2` | HTTP, routing, and application shell |
-| Phoenix LiveView | `~> 1.2` | Server-rendered interactive UI |
-| Ecto SQL | `~> 3.13` | Relational persistence |
-| Req + Finch | repository lockfile | HTTP clients and bounded connection pools |
-| Oban | `~> 2.18` | Database-backed background jobs |
+| Technology       | Declared version    | Role                                      |
+|------------------|---------------------|-------------------------------------------|
+| Elixir           | `~> 1.20`           | Application runtime                       |
+| Erlang/OTP       | 29 in CI            | Supervision and concurrency               |
+| Phoenix          | `~> 1.8.2`          | HTTP, routing, and application shell      |
+| Phoenix LiveView | `~> 1.2`            | Server-rendered interactive UI            |
+| Ecto SQL         | `~> 3.13`           | Relational persistence                    |
+| Req + Finch      | repository lockfile | HTTP clients and bounded connection pools |
+| Oban             | `~> 2.18`           | Database-backed background jobs           |
 
 ### Data and Integrations
 
-| Technology | Requirement | Role |
-|------------|-------------|------|
-| TimescaleDB / PostgreSQL 17 | required | Primary relational store, events, and operational data |
-| Redis 8 | required | Shared cache and hot-path coordination |
-| Qdrant | optional | Vector search and recommendation data |
-| RabbitMQ 4 | optional | Broadway-based queue processing |
-| rqbit | optional | Torrent session and byte delivery engine |
-| Stripe | optional | Self-service checkout and billing webhooks |
+| Technology                  | Requirement | Role                                                   |
+|-----------------------------|-------------|--------------------------------------------------------|
+| TimescaleDB / PostgreSQL 17 | required    | Primary relational store, events, and operational data |
+| Redis 8                     | required    | Shared cache and hot-path coordination                 |
+| Qdrant                      | optional    | Vector search and recommendation data                  |
+| RabbitMQ 4                  | optional    | Broadway-based queue processing                        |
+| rqbit                       | optional    | Torrent session and byte delivery engine               |
+| Stripe                      | optional    | Self-service checkout and billing webhooks             |
 
 ### Frontend
 
-| Technology | Role |
-|------------|------|
-| Tailwind CSS v4 | Design system and responsive styling |
-| esbuild | JavaScript bundling and code splitting |
-| npm packages in `assets/` | Player engines and browser runtime dependencies |
+| Technology                    | Role                                                                 |
+|-------------------------------|----------------------------------------------------------------------|
+| Tailwind CSS v4               | Design system and responsive styling                                 |
+| esbuild                       | JavaScript bundling and code splitting                               |
+| npm packages in `assets/`     | Player engines and browser runtime dependencies                      |
 | PWA manifest + service worker | Installability, update lifecycle, and offline shell/metadata caching |
-| Playwright | Chromium, Firefox, WebKit, mobile, and PWA regression coverage |
+| Playwright                    | Chromium, Firefox, WebKit, mobile, and PWA regression coverage       |
 
 <a id="quick-start"></a>
 
@@ -354,16 +354,16 @@ provider or enable one of the system catalog sources.
 <details>
 <summary><strong>Integration profiles</strong></summary>
 
-| Goal | Main variables |
-|------|----------------|
-| Global Xtream catalog | `GLOBAL_PROVIDER_ENABLED`, `GLOBAL_PROVIDER_URL`, `GLOBAL_PROVIDER_USERNAME`, `GLOBAL_PROVIDER_PASSWORD` |
-| GIndex catalog | `GINDEX_ENABLED`, `GINDEX_ENDPOINTS`, `GINDEX_SYNC_URL`, `GINDEX_STREAM_URL` |
-| Torrent catalog | `TORRENT_ENABLED`, `RQBIT_URL`, source endpoint variables |
-| Metadata and subtitles | `TMDB_API_TOKEN`, `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY` |
-| Semantic discovery | `QDRANT_ENABLED`, `QDRANT_URL`, `GEMINI_API_KEY` or `NVIDIA_API_KEY` |
-| Billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, Stripe price variables |
-| External clients | `API_KEYS`, `CORS_ORIGINS` |
-| Production runtime | `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT`, `PHX_HOST` |
+| Goal                   | Main variables                                                                                           |
+|------------------------|----------------------------------------------------------------------------------------------------------|
+| Global Xtream catalog  | `GLOBAL_PROVIDER_ENABLED`, `GLOBAL_PROVIDER_URL`, `GLOBAL_PROVIDER_USERNAME`, `GLOBAL_PROVIDER_PASSWORD` |
+| GIndex catalog         | `GINDEX_ENABLED`, `GINDEX_ENDPOINTS`, `GINDEX_SYNC_URL`, `GINDEX_STREAM_URL`                             |
+| Torrent catalog        | `TORRENT_ENABLED`, `RQBIT_URL`, source endpoint variables                                                |
+| Metadata and subtitles | `TMDB_API_TOKEN`, `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY`                                               |
+| Semantic discovery     | `QDRANT_ENABLED`, `QDRANT_URL`, `GEMINI_API_KEY` or `NVIDIA_API_KEY`                                     |
+| Billing                | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, Stripe price variables                                     |
+| External clients       | `API_KEYS`, `CORS_ORIGINS`                                                                               |
+| Production runtime     | `SECRET_KEY_BASE`, `LIVE_VIEW_SIGNING_SALT`, `PHX_HOST`                                                  |
 
 See [`.env.example`](.env.example) for the complete, commented contract.
 
