@@ -98,6 +98,45 @@ defmodule Streamix.Iptv.StreamMultiplexerTest do
     send(handler_pid, :done)
   end
 
+  test "keeps a slow subscriber on the newest bounded live data" do
+    counter = start_supervised!({Agent, fn -> 0 end})
+    port = start_live_server(counter)
+    provider_id = 7_003
+    stream_key = {:catch_up_mux_test, System.unique_integer([:positive])}
+
+    assert {:ok, subscription} =
+             StreamMultiplexer.subscribe(
+               stream_key,
+               "http://127.0.0.1:#{port}/live",
+               provider_id: provider_id,
+               subscriber_buffer_bytes: 4,
+               idle_timeout: 0,
+               url_validator: &allow_test_url/1
+             )
+
+    mux_pid = subscription.pid
+    mux_monitor = Process.monitor(mux_pid)
+    assert_receive {:upstream_ready, handler_pid}
+    assert {:ok, 200, _headers, []} = await_ready(subscription)
+
+    send(handler_pid, {:chunk, "old"})
+    assert_receive {:upstream_chunked, "old"}
+    send(handler_pid, {:chunk, "new"})
+    assert_receive {:upstream_chunked, "new"}
+
+    refute_receive {:stream_mux, ^mux_pid, {:error, :slow_consumer}}
+    assert Process.alive?(mux_pid)
+
+    StreamMultiplexer.demand(mux_pid)
+    assert_receive {:stream_mux, ^mux_pid, {:chunk, "new"}}
+
+    StreamMultiplexer.demand(mux_pid)
+    send(handler_pid, :done)
+    assert_receive {:stream_mux, ^mux_pid, :done}
+    assert_receive {:DOWN, ^mux_monitor, :process, ^mux_pid, :normal}
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 0
+  end
+
   test "LiveProxy drains the shared stream into a chunked Plug response" do
     counter = start_supervised!({Agent, fn -> 0 end})
     port = start_live_server(counter)

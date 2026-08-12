@@ -3,9 +3,10 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   Fans one live upstream connection out to multiple downstream processes.
 
   Subscribers use explicit demand. Every subscriber has a bounded private
-  queue, so one slow client cannot grow the multiplexer mailbox indefinitely
-  or stall other viewers. The upstream connection owns exactly one
-  `ProviderRuntime` lease regardless of subscriber count.
+  queue that retains the newest live chunks, so a temporarily slow client
+  catches up instead of growing memory indefinitely or being disconnected.
+  The upstream connection owns exactly one `ProviderRuntime` lease regardless
+  of subscriber count.
   """
 
   use GenServer, restart: :transient

@@ -150,22 +150,37 @@ defmodule Streamix.Iptv.Streaming.StreamMultiplexer.Subscribers do
 
   defp enqueue(pid, subscriber, chunk, max_buffer_bytes) do
     size = byte_size(chunk)
-    queued_bytes = subscriber.queued_bytes + size
 
-    if queued_bytes > max_buffer_bytes do
+    if size > max_buffer_bytes do
       send(pid, {:stream_mux, self(), {:error, :slow_consumer}})
       Process.demonitor(subscriber.monitor_ref, [:flush])
       :drop
     else
+      subscriber = discard_stale_chunks(subscriber, size, max_buffer_bytes)
+
       subscriber = %{
         subscriber
         | queue: :queue.in({:chunk, chunk, size}, subscriber.queue),
-          queued_bytes: queued_bytes
+          queued_bytes: subscriber.queued_bytes + size
       }
 
       deliver_pending(subscriber, pid)
     end
   end
+
+  defp discard_stale_chunks(subscriber, incoming_size, max_buffer_bytes)
+       when subscriber.queued_bytes + incoming_size > max_buffer_bytes do
+    case :queue.out(subscriber.queue) do
+      {{:value, {:chunk, _chunk, size}}, queue} ->
+        %{subscriber | queue: queue, queued_bytes: subscriber.queued_bytes - size}
+        |> discard_stale_chunks(incoming_size, max_buffer_bytes)
+
+      _ ->
+        subscriber
+    end
+  end
+
+  defp discard_stale_chunks(subscriber, _incoming_size, _max_buffer_bytes), do: subscriber
 
   defp put_ring_buffer(state, chunk) do
     buffer = :queue.in(chunk, state.buffer)
