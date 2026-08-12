@@ -10,6 +10,7 @@ defmodule Streamix.Gindex.Sync.Movies do
   alias Streamix.Gindex.Client
   alias Streamix.Gindex.Parser
   alias Streamix.Gindex.Scraper
+  alias Streamix.Gindex.Sync.DiscoveryCursor
   alias Streamix.Gindex.Sync.Normalizers.Movie, as: MovieNormalizer
   alias Streamix.Iptv
 
@@ -28,14 +29,8 @@ defmodule Streamix.Gindex.Sync.Movies do
     with {:ok, categories} <- runtime.list_categories_fun.(base_url, movies_path),
          :ok <- ensure_categories(categories, movies_path) do
       categories = Enum.sort_by(categories, &item_path/1)
-      pending = resume_categories(categories, movies_path, checkpoint)
 
-      Logger.info(
-        "[GIndex Sync] Found #{length(categories)} movie categories in #{movies_path}; " <>
-          "#{length(pending)} pending"
-      )
-
-      sync_categories(source, base_url, movies_path, pending, checkpoint, runtime)
+      run_strategy(source, base_url, movies_path, categories, checkpoint, runtime)
     end
   rescue
     error ->
@@ -50,6 +45,10 @@ defmodule Streamix.Gindex.Sync.Movies do
       list_categories_fun: Keyword.get(opts, :list_categories_fun, &Scraper.list_categories/2),
       list_items_fun: Keyword.get(opts, :list_items_fun, &Client.list_folder_all/2),
       persist_fun: Keyword.get(opts, :persist_fun, &upsert_batch/2),
+      strategy: Keyword.get(opts, :strategy, :full_refresh),
+      discovery_window: Keyword.get(opts, :discovery_window, Date.utc_today()),
+      known_paths: Keyword.get(opts, :known_paths, MapSet.new()),
+      process_path?: fn _path -> true end,
       scrape_folder_fun:
         Keyword.get(opts, :scrape_folder_fun, &Scraper.scrape_movie_folder_result/2)
     }
@@ -61,6 +60,94 @@ defmodule Streamix.Gindex.Sync.Movies do
   end
 
   defp ensure_categories([_ | _], _path), do: :ok
+
+  defp run_strategy(
+         source,
+         base_url,
+         root_path,
+         categories,
+         checkpoint,
+         %{strategy: :discovery_first} = runtime
+       ) do
+    cursor = DiscoveryCursor.load(checkpoint, runtime.discovery_window)
+
+    case DiscoveryCursor.phase(cursor) do
+      :discover ->
+        with {:ok, discovery_stats} <-
+               run_phase(
+                 source,
+                 base_url,
+                 root_path,
+                 categories,
+                 DiscoveryCursor.position(cursor),
+                 phase_runtime(cursor, :discover, runtime)
+               ),
+             {refresh_cursor, transition_checkpoint} = DiscoveryCursor.begin_refresh(cursor),
+             :ok <- persist_checkpoint(runtime.checkpoint_fun, transition_checkpoint),
+             {:ok, refresh_stats} <-
+               run_phase(
+                 source,
+                 base_url,
+                 root_path,
+                 categories,
+                 DiscoveryCursor.position(refresh_cursor),
+                 phase_runtime(refresh_cursor, :refresh, runtime)
+               ) do
+          {:ok, merge_phase_stats(discovery_stats, refresh_stats)}
+        end
+
+      :refresh ->
+        run_phase(
+          source,
+          base_url,
+          root_path,
+          categories,
+          DiscoveryCursor.position(cursor),
+          phase_runtime(cursor, :refresh, runtime)
+        )
+    end
+  end
+
+  defp run_strategy(source, base_url, root_path, categories, checkpoint, runtime) do
+    run_phase(source, base_url, root_path, categories, checkpoint, runtime)
+  end
+
+  defp run_phase(source, base_url, root_path, categories, checkpoint, runtime) do
+    pending = resume_categories(categories, root_path, checkpoint)
+
+    Logger.info(
+      "[GIndex Sync] Found #{length(categories)} movie categories in #{root_path}; " <>
+        "#{length(pending)} pending"
+    )
+
+    sync_categories(source, base_url, root_path, pending, checkpoint, runtime)
+  end
+
+  defp phase_runtime(cursor, phase, runtime) do
+    checkpoint_fun = runtime.checkpoint_fun
+    known_paths = runtime.known_paths
+
+    process_path? =
+      case phase do
+        :discover -> &(!MapSet.member?(known_paths, &1))
+        :refresh -> &MapSet.member?(known_paths, &1)
+      end
+
+    %{
+      runtime
+      | checkpoint_fun: fn checkpoint ->
+          checkpoint_fun.(DiscoveryCursor.checkpoint(cursor, phase, checkpoint))
+        end,
+        process_path?: process_path?
+    }
+  end
+
+  defp merge_phase_stats(discovery, refresh) do
+    %{
+      movies_count: discovery.movies_count + refresh.movies_count,
+      skipped_count: discovery.skipped_count + refresh.skipped_count
+    }
+  end
 
   defp sync_categories(source, base_url, root_path, categories, checkpoint, runtime) do
     initial = %{movies_count: 0, skipped_count: checkpoint_skipped_count(checkpoint)}
@@ -179,21 +266,25 @@ defmodule Streamix.Gindex.Sync.Movies do
          {:ok, state},
          runtime
        ) do
-    case scrape_item(base_url, category_path, item, runtime) do
-      {:ok, movie} ->
-        continue_or_flush(source, root_path, category_path, item, movie, state, runtime)
+    if runtime.process_path?.(item_path(item)) do
+      case scrape_item(base_url, category_path, item, runtime) do
+        {:ok, movie} ->
+          continue_or_flush(source, root_path, category_path, item, movie, state, runtime)
 
-      {:skip, reason} ->
-        Logger.warning(
-          "[GIndex Sync] Skipping movie item #{item_path(item)} for this cycle: " <>
-            inspect(reason)
-        )
+        {:skip, reason} ->
+          Logger.warning(
+            "[GIndex Sync] Skipping movie item #{item_path(item)} for this cycle: " <>
+              inspect(reason)
+          )
 
-        state = %{state | skipped_count: state.skipped_count + 1}
-        continue_or_flush(source, root_path, category_path, item, nil, state, runtime)
+          state = %{state | skipped_count: state.skipped_count + 1}
+          continue_or_flush(source, root_path, category_path, item, nil, state, runtime)
 
-      {:error, reason} ->
-        halt_after_flush(source, root_path, category_path, state, reason, runtime)
+        {:error, reason} ->
+          halt_after_flush(source, root_path, category_path, state, reason, runtime)
+      end
+    else
+      continue_or_flush(source, root_path, category_path, item, nil, state, runtime)
     end
   end
 

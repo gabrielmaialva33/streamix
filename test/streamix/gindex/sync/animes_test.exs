@@ -18,6 +18,11 @@ defmodule Streamix.Gindex.Sync.AnimesTest do
              Animes.upsert_batch(source, [anime])
 
     assert Repo.aggregate(Series, :count) == 1
+
+    assert MapSet.member?(
+             Streamix.Iptv.gindex_known_paths(source.provider_id, :animes),
+             anime.gindex_path
+           )
   end
 
   test "propagates persistence failures instead of reporting partial success", %{source: source} do
