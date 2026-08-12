@@ -130,6 +130,9 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
         watch_history_fixture(user, ch)
       end
 
+      Repo.delete_all(Oban.Job)
+      refute_enqueued(worker: UpdateUserProfileWorker)
+
       assert {:ok, 5} = Iptv.clear_watch_history(user.id)
       assert Iptv.list_watch_history(user.id) == []
 

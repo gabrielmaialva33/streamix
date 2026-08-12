@@ -1,6 +1,9 @@
 defmodule Streamix.Iptv.WatchEvent do
   @moduledoc """
-  Historical watch events — immutable log of viewing sessions.
+  Schema retained for immutable, session-level watch events.
+
+  Current playback progress writes use `Streamix.Iptv.WatchProgress`; callers
+  must not assume that every progress update creates a historical event.
   """
   use Ecto.Schema
   import Ecto.Changeset
