@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import ClientTelemetry from "../hooks/client_telemetry.js";
 import {
   classifyDeviceClass,
   surfaceForPath,
@@ -50,4 +51,22 @@ test("classifies device segments without retaining the user agent", () => {
     "mobile",
   );
   assert.equal(classifyDeviceClass({ maxTouchPoints: 0, viewportWidth: 390 }), "desktop");
+});
+
+test("does not push telemetry after the hook is disconnected", () => {
+  let pushes = 0;
+  const hook = {
+    ...ClientTelemetry,
+    reported: false,
+    destroying: false,
+    el: { isConnected: false },
+    pushEvent() {
+      pushes += 1;
+    },
+  };
+
+  hook.report();
+
+  assert.equal(pushes, 0);
+  assert.equal(hook.reported, false);
 });

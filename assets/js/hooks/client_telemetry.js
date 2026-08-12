@@ -1,4 +1,4 @@
-import { classifyDeviceClass, webVitalPayload } from "../telemetry/client_telemetry";
+import { classifyDeviceClass, webVitalPayload } from "../telemetry/client_telemetry.js";
 
 const newBatchId = () =>
   globalThis.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -8,6 +8,7 @@ const ClientTelemetry = {
     this.vitals = { lcp: undefined, inp: undefined, cls: 0 };
     this.observers = [];
     this.reported = false;
+    this.destroying = false;
 
     this.observe("largest-contentful-paint", (entries) => {
       const last = entries.at(-1);
@@ -36,11 +37,11 @@ const ClientTelemetry = {
   },
 
   destroyed() {
+    this.destroying = true;
     window.clearTimeout(this.reportTimer);
     document.removeEventListener("visibilitychange", this.handleVisibility);
     window.removeEventListener("pagehide", this.report);
     for (const observer of this.observers) observer.disconnect();
-    this.report();
   },
 
   observe(type, consume) {
@@ -64,24 +65,35 @@ const ClientTelemetry = {
   },
 
   report() {
-    if (this.reported) return;
+    if (
+      this.reported ||
+      this.destroying ||
+      !this.el?.isConnected ||
+      this.liveSocket?.isConnected?.() === false
+    ) {
+      return;
+    }
     this.reported = true;
 
-    this.pushEvent(
-      "client_telemetry",
-      webVitalPayload({
-        batchId: newBatchId(),
-        path: window.location.pathname,
-        displayMode: document.documentElement.dataset.displayMode,
-        deviceClass: classifyDeviceClass({
-          mobileHint: navigator.userAgentData?.mobile,
-          coarsePointer: window.matchMedia?.("(pointer: coarse)")?.matches === true,
-          maxTouchPoints: navigator.maxTouchPoints,
-          viewportWidth: window.innerWidth,
+    try {
+      this.pushEvent(
+        "client_telemetry",
+        webVitalPayload({
+          batchId: newBatchId(),
+          path: window.location.pathname,
+          displayMode: document.documentElement.dataset.displayMode,
+          deviceClass: classifyDeviceClass({
+            mobileHint: navigator.userAgentData?.mobile,
+            coarsePointer: window.matchMedia?.("(pointer: coarse)")?.matches === true,
+            maxTouchPoints: navigator.maxTouchPoints,
+            viewportWidth: window.innerWidth,
+          }),
+          ...this.vitals,
         }),
-        ...this.vitals,
-      }),
-    );
+      );
+    } catch {
+      // Navigation can close the LiveView between the connectivity check and push.
+    }
   },
 };
 
