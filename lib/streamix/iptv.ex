@@ -43,6 +43,7 @@ defmodule Streamix.Iptv do
     CatalogItem,
     Channels,
     Content.GindexIngest,
+    Content.GindexInventory,
     Content.GindexStream,
     Content.TorrentMovies,
     Content.TrackMetadata,
@@ -340,6 +341,11 @@ defmodule Streamix.Iptv do
   defdelegate upsert_gindex_series(provider_id, content, now),
     to: GindexIngest,
     as: :upsert_series
+
+  @doc "Returns GIndex paths already represented in one provider's catalog."
+  @spec gindex_known_paths(pos_integer(), :movies | :series | :animes) ::
+          MapSet.t(String.t())
+  defdelegate gindex_known_paths(provider_id, kind), to: GindexInventory, as: :known_paths
 
   # =============================================================================
   # Episodes
