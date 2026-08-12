@@ -1,7 +1,6 @@
 defmodule Streamix.Iptv.History do
   @moduledoc """
-  Watch history management backed by WatchProgress (upsert-style)
-  and WatchEvent (append-only log).
+  Watch history management backed by upserted WatchProgress records.
   """
 
   import Ecto.Query, warn: false

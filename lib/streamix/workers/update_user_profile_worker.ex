@@ -23,7 +23,6 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
   require Logger
 
   alias Streamix.AI
-  alias Streamix.Iptv
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"user_id" => user_id}}) do
@@ -77,15 +76,5 @@ defmodule Streamix.Workers.UpdateUserProfileWorker do
       # New users - default priority
       true -> 3
     end
-  end
-
-  @doc """
-  Schedules profile update with automatic activity detection.
-  """
-  def schedule_with_activity(user_id) do
-    activity = Iptv.count_watch_history_by_type(user_id)
-    total = Enum.reduce(activity, 0, fn {_, count}, acc -> acc + count end)
-
-    schedule(user_id, activity_score: total)
   end
 end

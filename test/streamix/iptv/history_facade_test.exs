@@ -1,8 +1,10 @@
 defmodule Streamix.Iptv.HistoryFacadeTest do
   use Streamix.DataCase, async: true
+  use Oban.Testing, repo: Streamix.Repo
 
   alias Streamix.Iptv
   alias Streamix.Iptv.{Episode, Season}
+  alias Streamix.Workers.UpdateUserProfileWorker
 
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
@@ -98,6 +100,23 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
       assert entry.duration_seconds == 300
       assert entry.user_id == user.id
       assert entry.catalog_item_id == channel.catalog_item_id
+
+      assert_enqueued(
+        worker: UpdateUserProfileWorker,
+        args: %{user_id: user.id}
+      )
+    end
+
+    test "does not enqueue profile refresh after a rejected write" do
+      user = user_fixture()
+
+      assert {:error, _changeset} =
+               Iptv.add_watch_history(user.id, "movie", -1, %{duration_seconds: 300})
+
+      refute_enqueued(
+        worker: UpdateUserProfileWorker,
+        args: %{user_id: user.id}
+      )
     end
   end
 
@@ -113,6 +132,11 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
 
       assert {:ok, 5} = Iptv.clear_watch_history(user.id)
       assert Iptv.list_watch_history(user.id) == []
+
+      assert_enqueued(
+        worker: UpdateUserProfileWorker,
+        args: %{user_id: user.id}
+      )
     end
   end
 

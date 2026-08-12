@@ -15,7 +15,7 @@ defmodule Streamix.AI.UserAnalytics do
 
   ## Architecture
 
-  1. User watches content -> WatchHistory saved
+  1. User watches content -> WatchProgress saved
   2. Background job generates embedding for content
   3. User profile vector = weighted average of watched content vectors
   4. Recommendations = Qdrant search using profile vector
