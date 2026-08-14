@@ -1,5 +1,3 @@
-Code.require_file("rel/release_builder.ex", __DIR__)
-
 defmodule Streamix.MixProject do
   use Mix.Project
 

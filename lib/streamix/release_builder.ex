@@ -23,29 +23,7 @@ defmodule Streamix.ReleaseBuilder do
   defp normalize_color_description!(path) do
     case :file.consult(path) do
       {:ok, [{:application, @color_app, properties}]} ->
-        case Keyword.fetch(properties, :description) do
-          {:ok, description} when is_list(description) ->
-            if byte_charlist?(description) do
-              :ok
-            else
-              # color 0.13.0 emits a Unicode charlist containing Δ. Mix.Release
-              # passes application specs directly to File.write!/2, whose iodata
-              # contract only accepts integer bytes. Keep the latest dependency and
-              # normalize only its build metadata until upstream ships a byte-safe spec.
-              properties
-              |> Keyword.put(:description, ascii_description(description))
-              |> then(&{:application, @color_app, &1})
-              |> write_application_spec!(path)
-
-              Mix.shell().info("* normalized color application metadata for release assembly")
-            end
-
-          {:ok, _description} ->
-            :ok
-
-          :error ->
-            :ok
-        end
+        normalize_properties!(properties, path)
 
       {:ok, terms} ->
         Mix.raise("invalid color application spec at #{path}: #{inspect(terms)}")
@@ -54,6 +32,36 @@ defmodule Streamix.ReleaseBuilder do
         Mix.raise(
           "could not read color application spec at #{path}: #{:file.format_error(reason)}"
         )
+    end
+  end
+
+  defp normalize_properties!(properties, path) do
+    case Keyword.fetch(properties, :description) do
+      {:ok, description} when is_list(description) ->
+        normalize_description!(properties, description, path)
+
+      {:ok, _description} ->
+        :ok
+
+      :error ->
+        :ok
+    end
+  end
+
+  defp normalize_description!(properties, description, path) do
+    if byte_charlist?(description) do
+      :ok
+    else
+      # color 0.13.0 emits a Unicode charlist containing Δ. Mix.Release
+      # passes application specs directly to File.write!/2, whose iodata
+      # contract only accepts integer bytes. Keep the latest dependency and
+      # normalize only its build metadata until upstream ships a byte-safe spec.
+      properties
+      |> Keyword.put(:description, ascii_description(description))
+      |> then(&{:application, @color_app, &1})
+      |> write_application_spec!(path)
+
+      Mix.shell().info("* normalized color application metadata for release assembly")
     end
   end
 
