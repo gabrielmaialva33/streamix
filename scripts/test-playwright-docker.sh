@@ -79,7 +79,7 @@ if ss -H -ltn "sport = :${playwright_port}" | grep -q .; then
 fi
 
 echo "[playwright] installing frontend asset binaries"
-retry_command "asset setup" env MIX_ENV=test mix assets.setup
+env MIX_ENV=test bash scripts/install-asset-binaries.sh
 
 echo "[playwright] building current frontend assets"
 env MIX_ENV=test mix assets.build
