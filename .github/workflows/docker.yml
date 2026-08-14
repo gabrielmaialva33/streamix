@@ -270,18 +270,35 @@ jobs:
           restore-keys: |
             e2e-beam-deps-${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-
 
-      - name: Cache asset binaries
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Restore asset binaries
+        id: asset-binaries
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             _build/tailwind-*
             _build/esbuild-*
           key: e2e-assets-${{ runner.os }}-${{ env.ELIXIR_VERSION }}-${{ hashFiles('mix.lock', 'config/config.exs') }}
+          restore-keys: |
+            e2e-assets-${{ runner.os }}-${{ env.ELIXIR_VERSION }}-
 
       - name: Install dependencies
         run: |
           mix deps.get --only test
           npm ci --prefix assets --no-audit --no-fund
+
+      - name: Install asset binaries
+        run: bash scripts/install-asset-binaries.sh
+
+      # Saved outside actions/cache so a failing test step still persists the
+      # downloaded binaries; GitHub release downloads are the flakiest hop here.
+      - name: Save asset binaries
+        if: steps.asset-binaries.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            _build/tailwind-*
+            _build/esbuild-*
+          key: ${{ steps.asset-binaries.outputs.cache-primary-key }}
 
       - name: Validate OpenAPI contract
         if: matrix.browser == 'chromium'
