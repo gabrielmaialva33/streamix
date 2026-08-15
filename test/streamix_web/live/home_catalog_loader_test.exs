@@ -39,9 +39,15 @@ defmodule StreamixWeb.HomeCatalogLoaderTest do
         })
       end)
 
+    # Waiting on three freshly spawned tasks is exactly the kind of assertion
+    # the default 100 ms is too tight for: with the whole suite running at
+    # `max_cases: System.schedulers_online()`, the loaders can be queued behind
+    # other tests and none of them has even started yet. The timeout is only
+    # ever reached when the concurrency is genuinely broken, so a generous one
+    # costs nothing on the happy path.
     loader_pids =
       for expected_key <- [:featured, :stats, :movies], into: %{} do
-        assert_receive {:loader_started, ^expected_key, loader_pid}
+        assert_receive {:loader_started, ^expected_key, loader_pid}, 5_000
         {expected_key, loader_pid}
       end
 
