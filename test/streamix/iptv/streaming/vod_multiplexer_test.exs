@@ -223,7 +223,12 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     def init(opts), do: opts
 
     def call(conn, opts) do
-      :counters.add(Keyword.fetch!(opts, :counter), 1, 1)
+      # Only range requests are counted: those are the block fetches the
+      # multiplexer is meant to share. The redirect resolver also hits this
+      # plug once per URL to walk the chain, which is not per-viewer work.
+      if get_req_header(conn, "range") != [] do
+        :counters.add(Keyword.fetch!(opts, :counter), 1, 1)
+      end
 
       body = for index <- 0..(@body_size - 1), into: <<>>, do: <<rem(index, 256)>>
 

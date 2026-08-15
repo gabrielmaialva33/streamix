@@ -16,6 +16,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   require Logger
 
   alias Streamix.Iptv.Streaming.ProviderRuntime
+  alias Streamix.Iptv.Streaming.RedirectResolver
   alias Streamix.Iptv.Streaming.VodMultiplexer.BlockStore
   alias Streamix.SafeLog
 
@@ -134,8 +135,23 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   end
 
   defp request(state) do
+    case resolve(state.url) do
+      {:ok, final_url} -> fetch_range(state, final_url)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Xtream hands out a 302 chain (vauth → … → deliver) and Finch does not
+  # follow redirects, so the chain has to be walked first — exactly like
+  # `VodProxy` does. `RedirectResolver` caches the outcome, so this is cheap
+  # for the blocks that follow.
+  defp resolve(url) do
+    RedirectResolver.resolve(url, stop_fn: fn _ -> false end)
+  end
+
+  defp fetch_range(state, final_url) do
     range = "bytes=#{state.range_start}-#{state.range_end}"
-    request = Finch.build(:get, state.url, [{"range", range}, {"connection", "close"}])
+    request = Finch.build(:get, final_url, [{"range", range}, {"connection", "close"}])
 
     case Finch.request(request, Streamix.StreamFinch,
            receive_timeout: @receive_timeout,
