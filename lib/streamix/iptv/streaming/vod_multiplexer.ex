@@ -25,6 +25,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   require Logger
 
   @default_block_size 4 * 1_024 * 1_024
+  @default_readahead_blocks 1
 
   @doc "Size of one cache block, in bytes."
   @spec block_size() :: pos_integer()
@@ -171,10 +172,15 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
       conn = send_range_headers(conn, range_start, range_end, total_size)
       blocks = blocks_for(range_start, range_end, size)
 
+      # Readahead is bounded by the resource, not by this request: players ask
+      # for a bounded range and immediately come back for the next one, which
+      # is exactly the block worth warming.
+      last_index = div(total_size - 1, size)
+
       Enum.reduce_while(
         blocks,
         conn,
-        &write_next_block(&1, &2, {key, url, opts}, {first_index, first_body})
+        &write_next_block(&1, &2, {key, url, opts, last_index}, {first_index, first_body})
       )
     end
   end
@@ -189,7 +195,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   defp write_next_block(
          {index, offset, length},
          conn,
-         {key, url, opts},
+         {key, url, opts, last_index},
          {first_index, first_body}
        ) do
     body =
@@ -199,7 +205,36 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
         fetch_block(key, index, url, opts)
       end
 
+    # Warm the next block while this one is still being written to the socket,
+    # so the viewer does not stall for a full round trip at every block
+    # boundary.
+    prefetch_next(key, index, url, opts, last_index)
+
     write_block(conn, body, offset, length)
+  end
+
+  defp prefetch_next(key, index, url, opts, last_index) do
+    Enum.each(1..readahead_blocks()//1, fn ahead ->
+      next_index = index + ahead
+
+      if next_index <= last_index do
+        size = block_size()
+        range_start = next_index * size
+
+        BlockFetcher.prefetch({key, next_index},
+          url: url,
+          provider_id: Keyword.get(opts, :provider_id),
+          range_start: range_start,
+          range_end: range_start + size - 1
+        )
+      end
+    end)
+  end
+
+  @doc "How many blocks ahead of the current one to warm."
+  @spec readahead_blocks() :: non_neg_integer()
+  def readahead_blocks do
+    Application.get_env(:streamix, :vod_readahead_blocks, @default_readahead_blocks)
   end
 
   defp write_block(conn, {:ok, %{body: body}}, offset, length) do

@@ -187,6 +187,18 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
 
   @tag timeout: 60_000
   test "resets the retry budget after a failed burst resumes transferring bytes" do
+    # The point of the test is that the window restarts once bytes flow again,
+    # not how long the window is — so shrink it instead of stalling for 30 s.
+    previous_budget = Application.get_env(:streamix, :vod_retry_budget_ms)
+    Application.put_env(:streamix, :vod_retry_budget_ms, 1_000)
+
+    on_exit(fn ->
+      case previous_budget do
+        nil -> Application.delete_env(:streamix, :vod_retry_budget_ms)
+        value -> Application.put_env(:streamix, :vod_retry_budget_ms, value)
+      end
+    end)
+
     port = start_proxy_server(:failure_burst_then_progress)
 
     response =
@@ -387,9 +399,11 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
 
       {:ok, _conn} = chunk(conn, "abcdef")
 
+      # Outlast the (shrunken) retry window so the resume proves the window
+      # restarted rather than never having been exceeded.
       receive do
       after
-        30_100 -> Process.exit(self(), :kill)
+        1_200 -> Process.exit(self(), :kill)
       end
     end
 

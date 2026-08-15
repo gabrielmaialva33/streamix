@@ -174,6 +174,29 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
              ]
     end
 
+    test "warms the following block while the current one is being written", %{url: url} do
+      opts = [provider_id: 7_013, content_id: 13]
+      key = VodMultiplexer.content_key(opts ++ [url: url])
+
+      # Only the first block is asked for, so without readahead nothing else
+      # would ever be fetched.
+      conn(:get, "/proxy")
+      |> Plug.Conn.put_req_header("range", "bytes=0-1023")
+      |> pipe(url, opts)
+
+      assert warmed?(key, 1), "expected block 1 to have been prefetched"
+    end
+
+    test "does not warm past the end of the resource", %{url: url} do
+      opts = [provider_id: 7_014, content_id: 14]
+      key = VodMultiplexer.content_key(opts ++ [url: url])
+
+      pipe(conn(:get, "/proxy"), url, opts)
+
+      # The resource is four blocks long, so there is no block 4 to warm.
+      refute warmed?(key, 4)
+    end
+
     test "a second viewer is served entirely from cache", %{url: url, counter: counter} do
       opts = [provider_id: 7_003, content_id: 3]
 
@@ -254,6 +277,15 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     VodMultiplexer.pipe(conn, url, opts, fn conn ->
       Plug.Conn.send_resp(conn, 555, "fallback")
     end)
+  end
+
+  # Readahead is dispatched synchronously while the current block is written,
+  # so by the time `pipe/3` returns the fetcher either exists or has already
+  # stored the block. No waiting required.
+  defp warmed?(key, index) do
+    fetching? = Registry.lookup(Streamix.StreamRegistry, {:vod_block, key, index}) != []
+
+    fetching? or BlockStore.lookup({key, index}) != :miss
   end
 
   defp expected_body do

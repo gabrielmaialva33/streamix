@@ -58,6 +58,9 @@ config :streamix,
   vod_multiplexer_enabled: false,
   vod_connection_ceiling: 4,
   vod_block_size_bytes: 4 * 1_024 * 1_024,
+  # Blocks warmed ahead of the one being written, so a viewer does not stall
+  # for a round trip at every block boundary.
+  vod_readahead_blocks: 1,
   vod_cache_max_bytes: 20 * 1_024 * 1_024 * 1_024,
   player_lifecycle_logs: false,
   # Regex patterns matched against the *final* URL after the redirect

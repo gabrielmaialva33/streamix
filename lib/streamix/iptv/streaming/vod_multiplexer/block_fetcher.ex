@@ -26,6 +26,10 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   # How long a finished fetcher stays around to answer late subscribers
   # before the block store takes over.
   @linger_ms 5_000
+  # A failed fetch lingers only long enough to drain the subscribers already
+  # queued in the mailbox. Holding the failure any longer would make every
+  # later reader inherit it instead of getting a fresh attempt.
+  @error_linger_ms 50
 
   @type key :: BlockStore.key()
 
@@ -49,6 +53,27 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     # The fetcher stops as soon as it has answered everyone, so a caller can
     # legitimately find a dead process between lookup and call.
     :exit, {:noproc, _} -> {:error, :fetcher_gone}
+  end
+
+  @doc """
+  Starts a block download without waiting for it.
+
+  The fetcher begins downloading from `handle_continue/2`, so simply starting
+  it is enough to warm the next block while the current one is still being
+  written to the viewer. Best-effort by design: a block that is already
+  cached, already in flight, or that cannot get a lease right now is simply
+  not prefetched.
+  """
+  @spec prefetch(key(), keyword()) :: :ok
+  def prefetch(key, opts) do
+    case BlockStore.lookup(key) do
+      {:ok, _path} ->
+        :ok
+
+      :miss ->
+        _ = start_or_lookup(key, opts)
+        :ok
+    end
   end
 
   @doc false
@@ -106,15 +131,19 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     # mailbox. Linger instead of stopping, otherwise they would all exit with
     # `:normal` on a call to a dead process. The idle timeout reaps us once
     # the last late subscriber has been answered.
-    {:noreply, %{state | result: result, pending: []}, @linger_ms}
+    {:noreply, %{state | result: result, pending: []}, linger_for(result)}
   end
+
+  defp linger_for({:ok, _payload}), do: @linger_ms
+  defp linger_for(_error), do: @error_linger_ms
 
   @impl true
   def handle_call(:await, from, %{result: nil} = state) do
     {:noreply, %{state | pending: [from | state.pending]}}
   end
 
-  def handle_call(:await, _from, state), do: {:reply, state.result, state, @linger_ms}
+  def handle_call(:await, _from, state),
+    do: {:reply, state.result, state, linger_for(state.result)}
 
   @impl true
   def handle_info(:timeout, state), do: {:stop, :normal, state}

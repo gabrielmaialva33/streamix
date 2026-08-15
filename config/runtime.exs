@@ -495,6 +495,14 @@ config :streamix,
       min: 256 * 1_024,
       max: 64 * 1_024 * 1_024
     ),
+  vod_readahead_blocks:
+    RuntimeConfig.integer!(
+      "VOD_READAHEAD_BLOCKS",
+      get_env.("VOD_READAHEAD_BLOCKS"),
+      1,
+      min: 0,
+      max: 8
+    ),
   vod_cache_dir: get_env.("VOD_CACHE_DIR"),
   vod_cache_max_bytes:
     RuntimeConfig.integer!(

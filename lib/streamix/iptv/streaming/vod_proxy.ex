@@ -59,7 +59,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   # client-side even when a one-second wait was all the upstream
   # needed.
   @max_mid_stream_retries 5
-  @retry_budget_ms 30_000
+  @default_retry_budget_ms 30_000
   @retry_backoff_ms 250
 
   # Status codes we treat as terminal — retrying won't help.
@@ -381,7 +381,13 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp exceeded_retry_budget?(%{retry_window_started_at: nil}), do: false
 
   defp exceeded_retry_budget?(state) do
-    monotonic_now() - state.retry_window_started_at > @retry_budget_ms
+    monotonic_now() - state.retry_window_started_at > retry_budget_ms()
+  end
+
+  # Configurable so tests can exercise an exhausted window without burning the
+  # full 30 s of wall clock.
+  defp retry_budget_ms do
+    Application.get_env(:streamix, :vod_retry_budget_ms, @default_retry_budget_ms)
   end
 
   defp mark_retry(state, bytes_sent) do
