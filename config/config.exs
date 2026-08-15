@@ -51,6 +51,13 @@ config :streamix,
   live_multiplexer_enabled: true,
   live_mux_idle_timeout_ms: 2_000,
   live_mux_stream_idle_timeout_ms: 45_000,
+  # VOD block multiplexer. Viewers seek independently, so sharing happens per
+  # fixed-size block: a block already fetched (or being fetched) is reused
+  # instead of opening another upstream connection. Off by default because it
+  # changes how every VOD byte reaches the player.
+  vod_multiplexer_enabled: false,
+  vod_block_size_bytes: 4 * 1_024 * 1_024,
+  vod_cache_max_bytes: 20 * 1_024 * 1_024 * 1_024,
   player_lifecycle_logs: false,
   # Regex patterns matched against the *final* URL after the redirect
   # chain resolves. A hit is treated as an upstream failure even when

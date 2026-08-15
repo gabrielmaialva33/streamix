@@ -71,6 +71,7 @@ defmodule Streamix.Iptv do
     RedirectResolver,
     SourceSelector,
     StreamErrors,
+    VodMultiplexer,
     VodProxy
   }
 
@@ -600,6 +601,24 @@ defmodule Streamix.Iptv do
   defdelegate prewarm_stream_url(url, opts \\ []), to: RedirectResolver, as: :prewarm_async
   defdelegate pipe_stream(conn, url, opts \\ []), to: VodProxy, as: :pipe
   defdelegate pipe_live_stream(conn, url, opts \\ []), to: LiveProxy, as: :pipe
+
+  @doc """
+  Streams VOD through the block multiplexer, so concurrent viewers of one
+  title share upstream connections instead of each holding their own.
+
+  Falls back to the direct proxy when the multiplexer is disabled or cannot
+  serve the request, which keeps playback working against upstreams that
+  ignore `Range`.
+  """
+  @spec pipe_vod_stream(Plug.Conn.t(), String.t(), keyword()) :: Plug.Conn.t()
+  def pipe_vod_stream(conn, url, opts \\ []) do
+    if Application.get_env(:streamix, :vod_multiplexer_enabled, false) do
+      VodMultiplexer.pipe(conn, url, opts, &VodProxy.pipe(&1, url, opts))
+    else
+      VodProxy.pipe(conn, url, opts)
+    end
+  end
+
   defdelegate head_stream(conn, url, opts \\ []), to: VodProxy, as: :head
   defdelegate sort_stream_sources(sources, opts \\ []), to: SourceSelector, as: :sort
 end

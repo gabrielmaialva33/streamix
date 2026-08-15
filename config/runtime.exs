@@ -478,6 +478,24 @@ config :streamix,
       min: 5_000,
       max: 300_000
     ),
+  vod_multiplexer_enabled:
+    RuntimeConfig.boolean!("VOD_MULTIPLEXER_ENABLED", get_env.("VOD_MULTIPLEXER_ENABLED"), false),
+  vod_block_size_bytes:
+    RuntimeConfig.integer!(
+      "VOD_BLOCK_SIZE_BYTES",
+      get_env.("VOD_BLOCK_SIZE_BYTES"),
+      4 * 1_024 * 1_024,
+      min: 256 * 1_024,
+      max: 64 * 1_024 * 1_024
+    ),
+  vod_cache_dir: get_env.("VOD_CACHE_DIR"),
+  vod_cache_max_bytes:
+    RuntimeConfig.integer!(
+      "VOD_CACHE_MAX_BYTES",
+      get_env.("VOD_CACHE_MAX_BYTES"),
+      20 * 1_024 * 1_024 * 1_024,
+      min: 256 * 1_024 * 1_024
+    ),
   stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
   stream_proxy_urls: stream_proxy_urls,
   tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",

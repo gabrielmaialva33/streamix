@@ -145,7 +145,7 @@ defmodule StreamixWeb.StreamController do
   end
 
   defp pipe_from_beam(conn, url, type, meta) do
-    Iptv.pipe_stream(conn, url, stream_options(url, type, meta))
+    Iptv.pipe_vod_stream(conn, url, stream_options(url, type, meta))
   end
 
   defp stream_options(url, type, meta) do

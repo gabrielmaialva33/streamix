@@ -92,6 +92,10 @@ defmodule Streamix.Application do
         # Stream multiplexer infrastructure (1 upstream → N downstream)
         {Registry, keys: :unique, name: Streamix.StreamRegistry},
         {Streamix.Iptv.StreamMultiplexerSupervisor, []},
+        # VOD block multiplexer: viewers seek independently, so sharing
+        # happens per block instead of per connection.
+        Streamix.Iptv.Streaming.VodMultiplexer.BlockStore,
+        {Streamix.Iptv.Streaming.VodMultiplexer.Supervisor, []},
         # Watch Party infrastructure
         {Registry, keys: :unique, name: Streamix.WatchParty.Registry},
         {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one}
