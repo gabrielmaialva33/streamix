@@ -22,12 +22,49 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
     :ok
   end
 
-  test "sets up collections before indexing movies and series" do
+  test "sets up collections before indexing movies, series and animes" do
     assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{}}) == :ok
 
     assert_receive :setup
     assert_receive {:movies, nil}
     assert_receive {:series, nil}
+    assert_receive {:animes, nil}
+  end
+
+  test "indexes only animes when the job asks for that collection" do
+    assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{"collection" => "animes"}}) == :ok
+
+    assert_receive :setup
+    assert_receive {:animes, nil}
+    refute_receive {:movies, _}
+    refute_receive {:series, _}
+  end
+
+  test "resumes directly from a persisted anime checkpoint" do
+    job = %Oban.Job{
+      args: %{},
+      meta: %{
+        "checkpoint_collection" => "animes",
+        "checkpoint_after_id" => 77
+      }
+    }
+
+    assert :ok = IndexEmbeddingsWorker.perform(job)
+
+    assert_receive :setup
+    assert_receive {:animes_after_id, 77}
+    refute_receive {:movies, _}
+    refute_receive {:series, _}
+  end
+
+  test "stops before animes when series indexing fails" do
+    set_results(%{series: {:error, :embedding_provider_unavailable}})
+
+    assert IndexEmbeddingsWorker.perform(%Oban.Job{args: %{}}) ==
+             {:error, :embedding_provider_unavailable}
+
+    assert_receive {:series, nil}
+    refute_receive {:animes, _}
   end
 
   test "returns setup errors without attempting to index" do
@@ -71,6 +108,8 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
     refute_receive {:movies, _}
     assert_receive {:series, nil}
     assert_receive {:series_after_id, 42}
+    # Resuming mid-run still carries on into the collections that follow.
+    assert_receive {:animes, nil}
   end
 
   test "persists the last successful content id in Oban metadata" do
@@ -113,9 +152,16 @@ defmodule Streamix.Workers.IndexEmbeddingsWorkerTest do
       maybe_checkpoint(:series, opts, result(:series, {:ok, 3}))
     end
 
+    def index_all_animes(provider_id, opts) do
+      report({:animes, provider_id})
+      report({:animes_after_id, Keyword.fetch!(opts, :after_id)})
+      maybe_checkpoint(:animes, opts, result(:animes, {:ok, 4}))
+    end
+
+    @checkpoint_ids %{movies: 101, series: 202, animes: 303}
+
     defp maybe_checkpoint(collection, opts, {:ok, _count} = result) do
-      checkpoint_id = if collection == :movies, do: 101, else: 202
-      :ok = Keyword.fetch!(opts, :on_batch).(checkpoint_id, 1)
+      :ok = Keyword.fetch!(opts, :on_batch).(@checkpoint_ids[collection], 1)
       result
     end
 

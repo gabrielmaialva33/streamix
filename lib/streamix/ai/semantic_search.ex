@@ -271,6 +271,23 @@ defmodule Streamix.AI.SemanticSearch do
   end
 
   @doc """
+  Indexes anime into its own collection.
+
+  GIndex keeps anime in a separate folder and the catalog treats it as a
+  separate section, so it gets its own collection rather than being mixed
+  into `series`.
+  """
+  def index_all_animes(provider_id \\ nil, opts \\ []) do
+    after_id = Keyword.get(opts, :after_id, 0)
+
+    animes = Iptv.list_search_documents(:animes, provider_id, after_id: after_id)
+
+    Logger.info("[SemanticSearch] Indexing #{length(animes)} animes after id #{after_id}")
+
+    index_contents(animes, :animes, opts)
+  end
+
+  @doc """
   Returns stats about indexed content.
   """
   def stats do

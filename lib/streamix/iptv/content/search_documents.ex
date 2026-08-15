@@ -9,14 +9,16 @@ defmodule Streamix.Iptv.SearchDocuments do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
+  alias Streamix.Iptv.Content.GindexSeries
   alias Streamix.Iptv.{Movie, Provider, Series}
   alias Streamix.Repo
 
-  @type kind :: :movies | :series
+  @type kind :: :movies | :series | :animes
 
   @spec list(kind(), integer() | nil, keyword()) :: [map()]
   def list(kind, provider_id \\ nil, opts \\ [])
-      when kind in [:movies, :series] and (is_nil(provider_id) or is_integer(provider_id)) and
+      when kind in [:movies, :series, :animes] and
+             (is_nil(provider_id) or is_integer(provider_id)) and
              is_list(opts) do
     after_id = Keyword.get(opts, :after_id, 0)
 
@@ -27,6 +29,7 @@ defmodule Streamix.Iptv.SearchDocuments do
     kind
     |> schema_for()
     |> base_query(after_id)
+    |> scope_to_kind(kind)
     |> maybe_filter_provider(provider_id)
     |> Repo.all()
     |> Enum.map(&to_document/1)
@@ -34,6 +37,14 @@ defmodule Streamix.Iptv.SearchDocuments do
 
   defp schema_for(:movies), do: Movie
   defp schema_for(:series), do: Series
+  defp schema_for(:animes), do: Series
+
+  # Anime and series share a table but are separate collections, exactly as
+  # the catalog presents them. Without the exclusion anime would be indexed
+  # twice and turn up in series searches.
+  defp scope_to_kind(query, :animes), do: GindexSeries.only_animes(query)
+  defp scope_to_kind(query, :series), do: GindexSeries.exclude_animes(query)
+  defp scope_to_kind(query, :movies), do: query
 
   defp base_query(schema, after_id) do
     from(content in schema,

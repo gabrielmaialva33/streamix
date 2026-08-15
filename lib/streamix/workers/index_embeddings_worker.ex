@@ -60,19 +60,41 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
       "series" ->
         index_series(semantic_search, provider_id, job)
 
+      "animes" ->
+        index_animes(semantic_search, provider_id, job)
+
       _ ->
         index_all(semantic_search, provider_id, job, checkpoint_collection(meta))
     end
   end
 
+  # Resuming picks up at the collection the checkpoint stopped on and carries
+  # on through the ones that follow it.
+  defp index_all(semantic_search, provider_id, job, "animes") do
+    index_animes(semantic_search, provider_id, job)
+  end
+
   defp index_all(semantic_search, provider_id, job, "series") do
-    index_series(semantic_search, provider_id, job)
+    with :ok <- index_series(semantic_search, provider_id, job) do
+      continue_with(semantic_search, provider_id, job, "animes", &index_animes/3)
+    end
   end
 
   defp index_all(semantic_search, provider_id, job, _checkpoint_collection) do
     with :ok <- index_movies(semantic_search, provider_id, job),
-         :ok <- persist_checkpoint(job.id, "series", 0) do
-      index_series(semantic_search, provider_id, %{job | meta: series_checkpoint()})
+         :ok <- persist_checkpoint(job.id, "series", 0),
+         :ok <-
+           index_series(semantic_search, provider_id, %{
+             job
+             | meta: collection_checkpoint("series")
+           }) do
+      continue_with(semantic_search, provider_id, job, "animes", &index_animes/3)
+    end
+  end
+
+  defp continue_with(semantic_search, provider_id, job, collection, indexer) do
+    with :ok <- persist_checkpoint(job.id, collection, 0) do
+      indexer.(semantic_search, provider_id, %{job | meta: collection_checkpoint(collection)})
     end
   end
 
@@ -108,6 +130,24 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
 
       {:error, reason} ->
         Logger.error("[IndexEmbeddings] Failed to index series: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp index_animes(semantic_search, provider_id, job) do
+    after_id = checkpoint_after_id(job.meta, "animes")
+    Logger.info("[IndexEmbeddings] Starting animes indexing after id #{after_id}...")
+
+    case semantic_search.index_all_animes(
+           provider_id,
+           checkpoint_opts(job.id, "animes", after_id)
+         ) do
+      {:ok, count} ->
+        Logger.info("[IndexEmbeddings] Indexed #{count} animes this attempt")
+        :ok
+
+      {:error, reason} ->
+        Logger.error("[IndexEmbeddings] Failed to index animes: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -153,9 +193,9 @@ defmodule Streamix.Workers.IndexEmbeddingsWorker do
     end
   end
 
-  defp series_checkpoint do
+  defp collection_checkpoint(collection) do
     %{
-      "checkpoint_collection" => "series",
+      "checkpoint_collection" => collection,
       "checkpoint_after_id" => 0
     }
   end

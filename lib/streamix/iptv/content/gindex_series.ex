@@ -10,6 +10,27 @@ defmodule Streamix.Iptv.Content.GindexSeries do
   alias Streamix.Repo
 
   @doc """
+  Restricts a `Series` query to anime, which GIndex separates by folder.
+
+  Exposed so indexers apply the same rule the catalog does instead of
+  re-deriving it — the two drifting apart is what left the `animes` vector
+  collection empty while anime was being indexed as ordinary series.
+  """
+  def only_animes(query) do
+    where(query, [s], not is_nil(s.gindex_path) and ilike(s.gindex_path, "%anime%"))
+  end
+
+  @doc """
+  Excludes anime from a `Series` query.
+
+  Series without a `gindex_path` (Xtream providers) are kept: they are series
+  by definition.
+  """
+  def exclude_animes(query) do
+    where(query, [s], is_nil(s.gindex_path) or not ilike(s.gindex_path, "%anime%"))
+  end
+
+  @doc """
   Lists GIndex animes.
   """
   def list_animes(opts \\ []) do

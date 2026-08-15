@@ -32,6 +32,41 @@ defmodule Streamix.Iptv.SearchDocumentsTest do
     assert Iptv.list_search_documents(:series, provider.id) == []
   end
 
+  test "splits anime out of series the same way the catalog does" do
+    user = user_fixture()
+    provider = provider_fixture(user)
+
+    anime =
+      series_content_fixture(provider, %{
+        title: "Anime Title",
+        gindex_path: "/1:/Animes/Anime Title/"
+      })
+
+    series =
+      series_content_fixture(provider, %{
+        title: "Series Title",
+        gindex_path: "/1:/Séries/Series Title/"
+      })
+
+    assert [anime_document] = Iptv.list_search_documents(:animes, provider.id)
+    assert anime_document.id == anime.id
+
+    series_ids = Iptv.list_search_documents(:series, provider.id) |> Enum.map(& &1.id)
+    assert series.id in series_ids
+    refute anime.id in series_ids
+  end
+
+  test "keeps series without a gindex path in the series collection" do
+    user = user_fixture()
+    provider = provider_fixture(user)
+
+    series = series_content_fixture(provider, %{title: "Xtream Series"})
+
+    assert [document] = Iptv.list_search_documents(:series, provider.id)
+    assert document.id == series.id
+    assert Iptv.list_search_documents(:animes, provider.id) == []
+  end
+
   test "validates the indexing cursor at the context boundary" do
     assert_raise ArgumentError, fn ->
       Iptv.list_search_documents(:movies, nil, after_id: -1)
