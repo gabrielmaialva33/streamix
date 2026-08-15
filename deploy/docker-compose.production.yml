@@ -89,6 +89,10 @@ services:
     container_name: streamix
     env_file:
       - ${STREAMIX_ENV_FILE:-.env}
+    # Caches that are expensive to rebuild and worthless to lose on deploy:
+    # resized images and VOD blocks already pulled from the provider.
+    volumes:
+      - streamix_data:/app/data
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -105,6 +109,7 @@ services:
       - shared_network
 
 volumes:
+  streamix_data:
   streamix_postgres_data:
   streamix_redis_data:
   streamix_rabbitmq_data:
