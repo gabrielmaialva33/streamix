@@ -480,6 +480,13 @@ config :streamix,
     ),
   vod_multiplexer_enabled:
     RuntimeConfig.boolean!("VOD_MULTIPLEXER_ENABLED", get_env.("VOD_MULTIPLEXER_ENABLED"), false),
+  vod_connection_ceiling:
+    RuntimeConfig.integer!(
+      "VOD_CONNECTION_CEILING",
+      get_env.("VOD_CONNECTION_CEILING"),
+      4,
+      min: 1
+    ),
   vod_block_size_bytes:
     RuntimeConfig.integer!(
       "VOD_BLOCK_SIZE_BYTES",

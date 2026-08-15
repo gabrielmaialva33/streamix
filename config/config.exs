@@ -56,6 +56,7 @@ config :streamix,
   # instead of opening another upstream connection. Off by default because it
   # changes how every VOD byte reaches the player.
   vod_multiplexer_enabled: false,
+  vod_connection_ceiling: 4,
   vod_block_size_bytes: 4 * 1_024 * 1_024,
   vod_cache_max_bytes: 20 * 1_024 * 1_024 * 1_024,
   player_lifecycle_logs: false,

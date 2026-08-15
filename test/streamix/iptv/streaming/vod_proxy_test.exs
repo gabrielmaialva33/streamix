@@ -23,7 +23,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
       max_connections: 1
     })
 
-    assert {:ok, held_lease} = ProviderRuntime.acquire(provider_id, :vod)
+    held_leases = acquire_leases(provider_id, :vod, 4)
 
     response =
       VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:1/never-opened",
@@ -36,6 +36,51 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     assert %{"error" => %{"code" => "provider_capacity_exhausted", "retry_after" => 5}} =
              Jason.decode!(response.resp_body)
 
+    Enum.each(held_leases, &ProviderRuntime.release/1)
+  end
+
+  test "serves a VOD HEAD probe without acquiring a provider lease" do
+    port = start_proxy_server(:ok)
+    provider_id = 9003
+
+    ProviderRuntime.put_capabilities(provider_id, %ProviderCapabilities{
+      authenticated?: true,
+      active?: true,
+      max_connections: 1
+    })
+
+    held_leases = acquire_leases(provider_id, :vod, 4)
+
+    response =
+      VodProxy.head(conn(:head, "/proxy"), "http://127.0.0.1:#{port}/stream",
+        provider_id: provider_id,
+        media_type: "movie"
+      )
+
+    assert response.status == 200
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 4
+
+    Enum.each(held_leases, &ProviderRuntime.release/1)
+  end
+
+  test "keeps provider lease admission for live HEAD probes" do
+    provider_id = 9004
+
+    ProviderRuntime.put_capabilities(provider_id, %ProviderCapabilities{
+      authenticated?: true,
+      active?: true,
+      max_connections: 1
+    })
+
+    assert {:ok, held_lease} = ProviderRuntime.acquire(provider_id, :live)
+
+    response =
+      VodProxy.head(conn(:head, "/proxy"), "http://127.0.0.1:1/never-opened",
+        provider_id: provider_id,
+        media_type: "channel"
+      )
+
+    assert response.status == 503
     ProviderRuntime.release(held_lease)
   end
 
@@ -136,6 +181,34 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
 
     assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :complete], complete,
                     %{outcome: :ok, retry_count: 1}}
+
+    assert complete.bytes_sent == 12
+  end
+
+  @tag timeout: 60_000
+  test "resets the retry budget after a failed burst resumes transferring bytes" do
+    port = start_proxy_server(:failure_burst_then_progress)
+
+    response =
+      VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream")
+
+    assert response.state == :chunked
+    assert response.resp_body == "abcdefghijkl"
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :upstream_retry], first,
+                    %{reason: {:unexpected_status, 503}}}
+
+    assert first.bytes_sent == 0
+    assert first.retry_count == 1
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :upstream_retry], second,
+                    _metadata}
+
+    assert second.bytes_sent == 6
+    assert second.retry_count == 2
+
+    assert_receive {:stream_proxy_telemetry, [:streamix, :stream_proxy, :complete], complete,
+                    %{outcome: :ok, retry_count: 2}}
 
     assert complete.bytes_sent == 12
   end
@@ -247,6 +320,13 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     port
   end
 
+  defp acquire_leases(provider_id, traffic_class, count) do
+    for _index <- 1..count do
+      assert {:ok, lease} = ProviderRuntime.acquire(provider_id, traffic_class)
+      lease
+    end
+  end
+
   defmodule StubPlug do
     @moduledoc false
 
@@ -281,6 +361,39 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     end
 
     defp handle_request(conn, :disconnect_then_resume, _request_number) do
+      case get_req_header(conn, "range") do
+        ["bytes=6-"] ->
+          conn
+          |> put_resp_header("content-type", "video/mp4")
+          |> put_resp_header("content-range", "bytes 6-11/12")
+          |> send_resp(206, "ghijkl")
+
+        _other ->
+          send_resp(conn, 400, "missing range")
+      end
+    end
+
+    defp handle_request(conn, :failure_burst_then_progress, 1),
+      do: send_resp(conn, 200, "resolver")
+
+    defp handle_request(conn, :failure_burst_then_progress, 2),
+      do: send_resp(conn, 503, "temporary")
+
+    defp handle_request(conn, :failure_burst_then_progress, 3) do
+      conn =
+        conn
+        |> put_resp_header("content-type", "video/mp4")
+        |> send_chunked(200)
+
+      {:ok, _conn} = chunk(conn, "abcdef")
+
+      receive do
+      after
+        30_100 -> Process.exit(self(), :kill)
+      end
+    end
+
+    defp handle_request(conn, :failure_burst_then_progress, _request_number) do
       case get_req_header(conn, "range") do
         ["bytes=6-"] ->
           conn

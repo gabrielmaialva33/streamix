@@ -3,9 +3,10 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntime do
   Node-local runtime state for provider health and connection capacity.
 
   Xtream's `max_connections` is an upstream account limit, not an HTTP pool
-  setting. Every live/VOD stream therefore acquires a lease before opening the
-  upstream socket. Leases are tied to the caller process and are automatically
-  reclaimed on `:DOWN`, including abrupt client disconnects.
+  setting. Live streams honor that reported limit, while VOD streams use a
+  separately configured ceiling. Every live/VOD stream acquires a lease before
+  opening the upstream socket. Leases are tied to the caller process and are
+  automatically reclaimed on `:DOWN`, including abrupt client disconnects.
 
   This process is intentionally node-local. A multi-node deployment must put a
   distributed admission layer in front of it before sharing one Xtream account.
@@ -18,6 +19,7 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntime do
   @dimensions [:control, :live, :vod]
   @terminal_failures [:authentication_failed, :account_expired, :account_disabled]
   @ewma_alpha 0.3
+  @default_vod_connection_ceiling 4
 
   @type dimension :: :control | :live | :vod
   @type status :: :healthy | :degraded | :unhealthy | :unknown
@@ -118,7 +120,7 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntime do
 
   def handle_call({:acquire, provider_id, traffic_class, owner}, _from, state) do
     provider = Map.get(state.providers, provider_id, new_provider())
-    capacity = capacity(provider, lease_count(state, provider_id))
+    capacity = capacity(provider, lease_count(state, provider_id), traffic_class)
 
     if capacity.available > 0 do
       lease = make_ref()
@@ -249,8 +251,13 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntime do
   defp update_ewma(current, _), do: current
 
   defp capacity(provider, leases) do
+    capacity(provider, leases, :live)
+  end
+
+  defp capacity(provider, leases, traffic_class) do
     capabilities = provider.capabilities
-    max_connections = if capabilities, do: capabilities.max_connections, else: 1
+    reported_max_connections = if capabilities, do: capabilities.max_connections, else: 1
+    max_connections = connection_ceiling(reported_max_connections, traffic_class)
     observed = if capabilities, do: capabilities.active_connections, else: 0
     external = provider.external_connections
     used = external + leases
@@ -263,6 +270,16 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntime do
       available: max(max_connections - used, 0)
     }
   end
+
+  defp connection_ceiling(_reported_max_connections, :vod) do
+    Application.get_env(
+      :streamix,
+      :vod_connection_ceiling,
+      @default_vod_connection_ceiling
+    )
+  end
+
+  defp connection_ceiling(reported_max_connections, :live), do: reported_max_connections
 
   defp provider_snapshot(provider, leases) do
     %{

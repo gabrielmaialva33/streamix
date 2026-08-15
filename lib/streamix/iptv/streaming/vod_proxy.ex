@@ -14,8 +14,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
       slot when the stream ends — pooled idle connections trip
       `max_connections=1` quotas and trigger 509s.
     * 4xx is terminal (creds bad, channel gone). 5xx + I/O errors
-      are transient and retried within a 30 s budget, at most 5
-      attempts, 250 ms backoff.
+      are transient and retried within a 30 s failure-burst budget,
+      at most 5 attempts, 250 ms backoff.
     * A mid-stream retry re-issues the request with
       `Range: bytes=N-`. If the upstream answers 200 instead of 206
       we abort — restarted bytes from offset 0 would corrupt the
@@ -49,8 +49,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   require Logger
 
   # Mid-stream retry budget. After this many attempts (or this many ms
-  # since the original request, whichever fires first) we give up and
-  # let the player surface the error itself.
+  # in one uninterrupted failure sequence, whichever fires first) we
+  # give up and let the player surface the error itself.
   #
   # 30 s matches the longest stall we have seen on the X99 edge
   # (`209.14.85.202`) before its WAF/throttle releases the socket.
@@ -90,10 +90,15 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     url_chain = Keyword.get(opts, :url_chain, [url])
     context = Observability.context(opts)
 
-    conn
-    |> Conn.put_private(:streamix_proxy_context, context)
-    |> with_provider_lease(context, &head_chain(url_chain, &1))
+    conn = Conn.put_private(conn, :streamix_proxy_context, context)
+    head_with_optional_lease(conn, url_chain, context)
   end
+
+  defp head_with_optional_lease(conn, url_chain, %{dimension: :vod}),
+    do: head_chain(url_chain, conn)
+
+  defp head_with_optional_lease(conn, url_chain, context),
+    do: with_provider_lease(conn, context, &head_chain(url_chain, &1))
 
   defp head_chain([], conn) do
     Observability.record_failure(
@@ -166,6 +171,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         original_url: url,
         bytes_sent: 0,
         retry_count: 0,
+        retry_window_started_at: nil,
         started_at: System.monotonic_time(:millisecond)
       })
 
@@ -314,7 +320,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
           "retry #{state.retry_count + 1}"
       )
 
-      next_state = %{state | retry_count: state.retry_count + 1}
+      next_state = mark_retry(state, state.bytes_sent)
       Observability.emit(:upstream_retry, next_state, reason: reason)
       retry_with_fresh_chain(conn, next_state)
     else
@@ -332,7 +338,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
           "resume @ byte #{total_sent}; retry #{state.retry_count + 1}"
       )
 
-      state = %{state | bytes_sent: total_sent, retry_count: state.retry_count + 1}
+      state = mark_retry(state, total_sent)
       Observability.emit(:upstream_retry, state, reason: reason, bytes_sent: total_sent)
       retry_with_fresh_chain(chunked_conn, state)
     else
@@ -372,10 +378,31 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp retryable_pre_flight_error?(:idle_timeout), do: true
   defp retryable_pre_flight_error?(_), do: false
 
+  defp exceeded_retry_budget?(%{retry_window_started_at: nil}), do: false
+
   defp exceeded_retry_budget?(state) do
-    System.monotonic_time(:millisecond) - state.started_at > @retry_budget_ms and
-      state.retry_count > 0
+    monotonic_now() - state.retry_window_started_at > @retry_budget_ms
   end
+
+  defp mark_retry(state, bytes_sent) do
+    %{
+      state
+      | bytes_sent: bytes_sent,
+        retry_count: state.retry_count + 1,
+        retry_window_started_at: retry_window_started_at(state, bytes_sent)
+    }
+  end
+
+  defp retry_window_started_at(%{retry_window_started_at: nil}, _bytes_sent),
+    do: monotonic_now()
+
+  defp retry_window_started_at(%{bytes_sent: previous_bytes}, bytes_sent)
+       when bytes_sent > previous_bytes,
+       do: monotonic_now()
+
+  defp retry_window_started_at(state, _bytes_sent), do: state.retry_window_started_at
+
+  defp monotonic_now, do: System.monotonic_time(:millisecond)
 
   defp sanitize(url) do
     SafeLog.redact_url(url)

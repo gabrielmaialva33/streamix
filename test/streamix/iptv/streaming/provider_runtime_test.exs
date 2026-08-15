@@ -9,13 +9,13 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
     on_exit(&ProviderRuntime.reset/0)
   end
 
-  test "budgets leases against the account max_connections" do
+  test "budgets live leases against the account max_connections" do
     provider_id = 101
     ProviderRuntime.put_capabilities(provider_id, capabilities(max_connections: 2))
 
-    assert {:ok, first} = ProviderRuntime.acquire(provider_id, :vod)
+    assert {:ok, first} = ProviderRuntime.acquire(provider_id, :live)
     assert {:ok, second} = ProviderRuntime.acquire(provider_id, :live)
-    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :vod)
+    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :live)
 
     assert %{capacity: %{available: 0, leased_connections: 2}} =
              ProviderRuntime.snapshot(provider_id)
@@ -28,6 +28,16 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
     ProviderRuntime.release(second)
   end
 
+  test "allows VOD leases up to the configured ceiling above max_connections" do
+    provider_id = 106
+    ProviderRuntime.put_capabilities(provider_id, capabilities(max_connections: 2))
+
+    leases = acquire_leases(provider_id, :vod, 4)
+
+    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :vod)
+    Enum.each(leases, &ProviderRuntime.release/1)
+  end
+
   test "reserves observed external connections without double counting owned leases" do
     provider_id = 102
 
@@ -36,8 +46,8 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
       capabilities(max_connections: 2, active_connections: 1)
     )
 
-    assert {:ok, lease} = ProviderRuntime.acquire(provider_id, :vod)
-    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :vod)
+    assert {:ok, lease} = ProviderRuntime.acquire(provider_id, :live)
+    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :live)
 
     assert %{
              capacity: %{
@@ -54,7 +64,7 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
   test "subtracts owned leases from a fresh upstream active connection sample" do
     provider_id = 105
 
-    assert {:ok, first_lease} = ProviderRuntime.acquire(provider_id, :vod)
+    assert {:ok, first_lease} = ProviderRuntime.acquire(provider_id, :live)
 
     ProviderRuntime.put_capabilities(
       provider_id,
@@ -64,7 +74,7 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
     assert %{capacity: %{external_active_connections: 0, available: 1}} =
              ProviderRuntime.snapshot(provider_id)
 
-    assert {:ok, second_lease} = ProviderRuntime.acquire(provider_id, :vod)
+    assert {:ok, second_lease} = ProviderRuntime.acquire(provider_id, :live)
     ProviderRuntime.release(first_lease)
     ProviderRuntime.release(second_lease)
   end
@@ -114,6 +124,13 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
 
   defp capabilities(overrides) do
     struct!(ProviderCapabilities, [authenticated?: true, active?: true] ++ overrides)
+  end
+
+  defp acquire_leases(provider_id, traffic_class, count) do
+    for _index <- 1..count do
+      assert {:ok, lease} = ProviderRuntime.acquire(provider_id, traffic_class)
+      lease
+    end
   end
 
   defp assert_eventually_available(provider_id, attempts \\ 20)
