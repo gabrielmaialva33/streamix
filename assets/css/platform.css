@@ -50,15 +50,24 @@ label {
     }
 }
 
-/* AVPlayer (libmedia) renders into #avplayer-mount. The lib stretches its
-   <canvas>/<video> to fill the container, which on widescreen monitors
-   produces a horizontally stretched image when fullscreening a 16:9
-   movie on a 21:9 panel. Force aspect-preserving fit. */
+/* AVPlayer (libmedia) renders into #avplayer-mount, h265web into
+   #h265web-mount. Both libs stretch their <canvas>/<video> to fill the
+   container, which on widescreen monitors produces a horizontally
+   stretched image when fullscreening a 16:9 movie on a 21:9 panel.
+   Force aspect-preserving fit by default.
+
+   The values go through custom properties because these declarations
+   need !important to beat the libs' own inline sizing — and a plain
+   inline style from the aspect-ratio controller would lose to it. The
+   controller sets the properties instead, so the player's "Proporção"
+   menu keeps working on canvas-backed playback. */
 #avplayer-mount canvas,
-#avplayer-mount video {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: contain !important;
+#avplayer-mount video,
+#h265web-mount canvas,
+#h265web-mount video {
+    width: var(--streamix-player-width, 100%) !important;
+    height: var(--streamix-player-height, 100%) !important;
+    object-fit: var(--streamix-player-fit, contain) !important;
 }
 
 /* Heroicons plugin */
