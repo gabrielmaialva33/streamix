@@ -57,16 +57,21 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
-  describe "parse_range_start/1" do
+  describe "parse_range/1" do
     test "reads open-ended and closed ranges" do
-      assert VodMultiplexer.parse_range_start("bytes=1500-") == 1_500
-      assert VodMultiplexer.parse_range_start("bytes=0-1023") == 0
+      assert VodMultiplexer.parse_range("bytes=1500-") == {1_500, :eof}
+      assert VodMultiplexer.parse_range("bytes=0-1023") == {0, 1_023}
     end
 
-    test "falls back to the start of the file" do
-      assert VodMultiplexer.parse_range_start(nil) == 0
-      assert VodMultiplexer.parse_range_start("garbage") == 0
-      assert VodMultiplexer.parse_range_start("bytes=-500") == 0
+    test "falls back to the whole resource" do
+      assert VodMultiplexer.parse_range(nil) == {0, :eof}
+      assert VodMultiplexer.parse_range("garbage") == {0, :eof}
+      assert VodMultiplexer.parse_range("bytes=-500") == {0, :eof}
+    end
+
+    test "parse_range_start/1 still reports where playback resumes" do
+      assert VodMultiplexer.parse_range_start("bytes=1500-") == 1_500
+      assert VodMultiplexer.parse_range_start("bytes=0-1023") == 0
     end
   end
 
@@ -128,6 +133,47 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
              ]
     end
 
+    test "answers a closed Range with exactly the bytes requested", %{url: url} do
+      # Players probe with a bounded range. Promising the whole file in
+      # Content-Range when 1 KiB was asked for breaks the HTTP contract, and
+      # the player reacts by dropping the response — a black screen.
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-1023")
+        |> pipe(url, provider_id: 7_010, content_id: 10)
+
+      assert conn.status == 206
+      assert byte_size(conn.resp_body) == 1_024
+      assert conn.resp_body == binary_slice(expected_body(), 0, 1_024)
+      assert Plug.Conn.get_resp_header(conn, "content-range") == ["bytes 0-1023/#{@body_size}"]
+    end
+
+    test "answers a closed Range that spans several blocks", %{url: url} do
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=1500-3000")
+        |> pipe(url, provider_id: 7_011, content_id: 11)
+
+      assert conn.status == 206
+      assert byte_size(conn.resp_body) == 1_501
+      assert conn.resp_body == binary_slice(expected_body(), 1_500, 1_501)
+      assert Plug.Conn.get_resp_header(conn, "content-range") == ["bytes 1500-3000/#{@body_size}"]
+    end
+
+    test "clamps a Range that runs past the end of the resource", %{url: url} do
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-999999")
+        |> pipe(url, provider_id: 7_012, content_id: 12)
+
+      assert conn.status == 206
+      assert byte_size(conn.resp_body) == @body_size
+
+      assert Plug.Conn.get_resp_header(conn, "content-range") == [
+               "bytes 0-#{@body_size - 1}/#{@body_size}"
+             ]
+    end
+
     test "a second viewer is served entirely from cache", %{url: url, counter: counter} do
       opts = [provider_id: 7_003, content_id: 3]
 
@@ -144,8 +190,13 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
          %{url: url, counter: counter} do
       opts = [provider_id: 7_004, content_id: 4]
 
-      # One connection is all the provider allows. Without block sharing this
-      # is exactly the situation that answers everyone but the first with 503.
+      # One upstream connection is all that is allowed. Without block sharing
+      # this is exactly the situation that answers everyone but the first
+      # viewer with a 503.
+      previous_ceiling = Application.get_env(:streamix, :vod_connection_ceiling)
+      Application.put_env(:streamix, :vod_connection_ceiling, 1)
+      on_exit(fn -> restore(:vod_connection_ceiling, previous_ceiling) end)
+
       ProviderRuntime.put_capabilities(7_004, %ProviderCapabilities{
         authenticated?: true,
         active?: true,
@@ -169,6 +220,12 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
 
     test "falls back to the direct proxy when the provider has no free slot", %{url: url} do
       provider_id = 7_005
+
+      # VOD capacity is governed by :vod_connection_ceiling, not by the limit
+      # the provider reports, so exhausting it means pinning the ceiling.
+      previous_ceiling = Application.get_env(:streamix, :vod_connection_ceiling)
+      Application.put_env(:streamix, :vod_connection_ceiling, 1)
+      on_exit(fn -> restore(:vod_connection_ceiling, previous_ceiling) end)
 
       ProviderRuntime.put_capabilities(provider_id, %ProviderCapabilities{
         authenticated?: true,

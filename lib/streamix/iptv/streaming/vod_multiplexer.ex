@@ -59,20 +59,34 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   end
 
   @doc """
-  Parses a `Range` request header into an absolute start offset.
+  Parses a `Range` request header into `{start, end}`.
 
-  Only the open-ended and closed single-range forms players actually send
-  are honoured; anything else streams from the beginning.
+  `end` is `:eof` for the open-ended form. Honouring the requested end is not
+  optional: answering `bytes 0-1813051485/1813051486` to a client that asked
+  for `bytes=0-1048575` breaks the HTTP contract, and players respond by
+  discarding the response and showing a black screen.
+
+  Only the single-range forms players actually send are understood; anything
+  else is treated as a request for the whole resource.
   """
-  @spec parse_range_start(String.t() | nil) :: non_neg_integer()
-  def parse_range_start(nil), do: 0
+  @spec parse_range(String.t() | nil) :: {non_neg_integer(), non_neg_integer() | :eof}
+  def parse_range(nil), do: {0, :eof}
 
-  def parse_range_start(header) when is_binary(header) do
-    case Regex.run(~r/^bytes=(\d+)-/, String.trim(header)) do
-      [_, start] -> String.to_integer(start)
-      _ -> 0
+  def parse_range(header) when is_binary(header) do
+    case Regex.run(~r/^bytes=(\d+)-(\d*)$/, String.trim(header)) do
+      [_, start, ""] -> {String.to_integer(start), :eof}
+      [_, start, finish] -> {String.to_integer(start), String.to_integer(finish)}
+      _ -> {0, :eof}
     end
   end
+
+  @doc """
+  Start offset of a `Range` header.
+
+  Kept for callers that only care where playback resumes.
+  """
+  @spec parse_range_start(String.t() | nil) :: non_neg_integer()
+  def parse_range_start(header), do: header |> parse_range() |> elem(0)
 
   @doc """
   Maps a byte span onto the blocks covering it.
@@ -110,13 +124,24 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
   @spec pipe(Conn.t(), String.t(), keyword(), (Conn.t() -> Conn.t())) :: Conn.t()
   def pipe(conn, url, opts, on_miss) do
     key = content_key(Keyword.put(opts, :url, url))
-    range_start = conn |> Conn.get_req_header("range") |> List.first() |> parse_range_start()
+
+    {range_start, requested_end} =
+      conn |> Conn.get_req_header("range") |> List.first() |> parse_range()
+
     size = block_size()
     first_index = div(range_start, size)
 
     case fetch_block(key, first_index, url, opts) do
       {:ok, %{body: body, total_size: total_size}} when is_integer(total_size) ->
-        deliver(conn, key, url, opts, range_start, total_size, {first_index, body})
+        deliver(
+          conn,
+          key,
+          url,
+          opts,
+          {range_start, requested_end},
+          total_size,
+          {first_index, body}
+        )
 
       {:ok, _incomplete} ->
         Logger.warning("[VodMux] upstream did not report a length; using the direct proxy")
@@ -128,11 +153,19 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     end
   end
 
-  defp deliver(conn, key, url, opts, range_start, total_size, {first_index, first_body}) do
+  defp deliver(
+         conn,
+         key,
+         url,
+         opts,
+         {range_start, requested_end},
+         total_size,
+         {first_index, first_body}
+       ) do
     if range_start >= total_size do
       StreamErrors.halt(conn, :upstream_not_found)
     else
-      range_end = total_size - 1
+      range_end = resolve_range_end(requested_end, total_size)
       size = block_size()
 
       conn = send_range_headers(conn, range_start, range_end, total_size)
@@ -145,6 +178,11 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
       )
     end
   end
+
+  # A client asking past the end still gets a valid response bounded by the
+  # resource, which is what `Content-Range` has to advertise.
+  defp resolve_range_end(:eof, total_size), do: total_size - 1
+  defp resolve_range_end(requested_end, total_size), do: min(requested_end, total_size - 1)
 
   # The first block was already fetched to learn the resource length, so it is
   # threaded through instead of being read twice.
