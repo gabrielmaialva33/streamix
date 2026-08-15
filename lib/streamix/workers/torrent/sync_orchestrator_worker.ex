@@ -43,7 +43,12 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorker do
     if in_flight_count(workflow_id) > 0 do
       {:snooze, @poll_interval}
     else
-      finalize(provider_id, workflow_id, Map.get(args, "dispatch_failures", 0))
+      finalize(
+        provider_id,
+        workflow_id,
+        Map.get(args, "dispatch_failures", 0),
+        Map.get(args, "total_sources", 0)
+      )
     end
   end
 
@@ -57,7 +62,7 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorker do
     |> Repo.one()
   end
 
-  defp finalize(provider_id, workflow_id, dispatch_failures) do
+  defp finalize(provider_id, workflow_id, dispatch_failures, total_sources) do
     states =
       from(j in Oban.Job,
         where: j.worker == ^@source_worker,
@@ -66,11 +71,14 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorker do
       )
       |> Repo.all()
 
-    completed = Enum.count(states, &(&1 == "completed"))
-
     failed =
       dispatch_failures +
         Enum.count(states, &(&1 in ["cancelled", "discarded"]))
+
+    completed =
+      states
+      |> Enum.count(&(&1 == "completed"))
+      |> account_for_pruned(states, failed, dispatch_failures, total_sources, workflow_id)
 
     status = terminal_status(completed, failed)
 
@@ -90,6 +98,34 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorker do
           {:error, reason} -> {:error, {:provider_finalize_failed, reason}}
         end
     end
+  end
+
+  # A sibling that is no longer in the table was pruned, and the pruner only
+  # removes jobs that already reached a terminal state. Counting those as
+  # failures reported a healthy sync as `failed`, which then kept the whole
+  # deployment's readiness in `degraded`. Assume they succeeded — a missed
+  # failure is far cheaper than a permanent false alarm — and say so in the
+  # log rather than swallowing it.
+  defp account_for_pruned(
+         completed,
+         states,
+         failed,
+         dispatch_failures,
+         total_sources,
+         workflow_id
+       ) do
+    dispatched = max(total_sources - dispatch_failures, 0)
+    pruned = max(dispatched - length(states), 0)
+
+    if pruned > 0 do
+      Logger.warning(
+        "[Torrent Orchestrator] workflow=#{workflow_id} #{pruned} sibling job(s) were pruned " <>
+          "before finalizing; counting them as completed " <>
+          "(dispatched=#{dispatched} present=#{length(states)} failed=#{failed})"
+      )
+    end
+
+    completed + pruned
   end
 
   defp terminal_status(_completed, 0), do: "completed"

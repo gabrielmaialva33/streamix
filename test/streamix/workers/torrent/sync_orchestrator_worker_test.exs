@@ -44,7 +44,44 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorkerTest do
     |> settle("discarded")
 
     assert :ok =
-             SyncOrchestratorWorker.perform(orchestrator_job(provider, workflow_id))
+             SyncOrchestratorWorker.perform(
+               orchestrator_job(provider, workflow_id, total_sources: 1)
+             )
+
+    assert Repo.reload!(provider).sync_status == "failed"
+  end
+
+  test "does not report a successful sync as failed when siblings were pruned" do
+    provider = torrent_provider()
+    workflow_id = Ecto.UUID.generate()
+
+    # Reproduces production: four sources ran, the pruner removed the three
+    # that had already completed, and the last one settled afterwards.
+    source_job(provider, workflow_id, "slow-source")
+    |> settle("completed")
+
+    assert :ok =
+             SyncOrchestratorWorker.perform(
+               orchestrator_job(provider, workflow_id, total_sources: 4)
+             )
+
+    assert Repo.reload!(provider).sync_status == "completed"
+  end
+
+  test "still reports failure when the only surviving sibling was discarded" do
+    provider = torrent_provider()
+    workflow_id = Ecto.UUID.generate()
+
+    source_job(provider, workflow_id, "source-a")
+    |> settle("discarded")
+
+    assert :ok =
+             SyncOrchestratorWorker.perform(
+               orchestrator_job(provider, workflow_id,
+                 total_sources: 1,
+                 dispatch_failures: 0
+               )
+             )
 
     assert Repo.reload!(provider).sync_status == "failed"
   end
@@ -76,13 +113,13 @@ defmodule Streamix.Workers.Torrent.SyncOrchestratorWorkerTest do
     |> Repo.update!()
   end
 
-  defp orchestrator_job(provider, workflow_id) do
+  defp orchestrator_job(provider, workflow_id, opts \\ []) do
     %Oban.Job{
       args: %{
         "provider_id" => provider.id,
         "workflow_id" => workflow_id,
-        "total_sources" => 2,
-        "dispatch_failures" => 0
+        "total_sources" => Keyword.get(opts, :total_sources, 2),
+        "dispatch_failures" => Keyword.get(opts, :dispatch_failures, 0)
       }
     }
   end

@@ -207,7 +207,13 @@ config :streamix, Oban,
     torrent_sync: 2
   ],
   plugins: [
-    Oban.Plugins.Pruner,
+    # The default 60 s is shorter than our fan-out workflows take. The torrent
+    # orchestrator settles a workflow by counting the terminal states of its
+    # sibling jobs, so pruning them mid-flight made a successful sync report
+    # `failed`: the jobs that had completed were already gone by the time the
+    # slowest source finished. Outlive any workflow, and keep a day of history
+    # for debugging a failed run.
+    {Oban.Plugins.Pruner, max_age: 86_400},
     # Lifeline is the last-resort guard for a genuinely wedged node. Keep
     # this above the longest legitimate worker timeout (GIndex/AI/torrent
     # are capped at 2h30) so a live job is never made available a second
