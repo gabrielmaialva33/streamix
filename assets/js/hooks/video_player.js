@@ -44,6 +44,7 @@ import {
 } from "../player/native_playback_controller";
 import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
 import { NextEpisodeController } from "../player/next_episode_controller";
+import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
 import {
   getPlaybackResourcePolicy,
   hasWebCodecsHevcSupport,
@@ -115,6 +116,11 @@ const VideoPlayer = {
 
     // Expose hook instance on element for child hooks (like ProgressBar) to access
     this.el.__videoPlayerHook = this;
+
+    // Engine-agnostic remote control for sibling hooks (watch party sync).
+    // Without it they would poke the native <video>, which is idle whenever
+    // AVPlayer is the active engine.
+    this._disposePlaybackBridge = installPlaybackBridge(this.el, this);
 
     // Run diagnostics as low-priority work so startup playback and user
     // gestures are not competing with WebCodecs/codec probes on the main thread.
@@ -754,6 +760,7 @@ const VideoPlayer = {
     this.lifecycle.listenOptional(this.video, "play", () => {
       this.playerUI.updatePlayPauseUI(false);
       this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
+      if (!this.usingAVPlayer) emitPlaybackEvent(this.el, "play");
     });
     this.lifecycle.listenOptional(this.video, "pause", () => {
       this.playerUI.updatePlayPauseUI(true);
@@ -763,6 +770,7 @@ const VideoPlayer = {
         wasPlaying: false,
         reason: "pause",
       });
+      if (!this.usingAVPlayer) emitPlaybackEvent(this.el, "pause");
     });
     this.lifecycle.listenOptional(this.video, "play", () => this.updateMediaSessionPlaybackState());
     this.lifecycle.listenOptional(this.video, "pause", () =>
@@ -856,9 +864,10 @@ const VideoPlayer = {
     this.lifecycle.listenOptional(this.video, "seeking", () =>
       this.nativeBufferingController.handleSeeking(),
     );
-    this.lifecycle.listenOptional(this.video, "seeked", () =>
-      this.nativeBufferingController.handleSeeked(),
-    );
+    this.lifecycle.listenOptional(this.video, "seeked", () => {
+      this.nativeBufferingController.handleSeeked();
+      if (!this.usingAVPlayer) emitPlaybackEvent(this.el, "seeked");
+    });
 
     // Buffer health monitoring with debounce to prevent flickering
     this.lifecycle.listenOptional(this.video, "waiting", () =>
@@ -2417,6 +2426,7 @@ const VideoPlayer = {
           this.playerUI.updatePlayPauseUI(false);
           this.startAVPlayerTimeUpdates();
           this.playbackMetrics?.markPlaying();
+          emitPlaybackEvent(this.el, "play");
 
           // Record successful AVPlayer playback for Device Codec Memory
           const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
@@ -2429,6 +2439,7 @@ const VideoPlayer = {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.debug("[VideoPlayer] AVPlayer paused");
           this.playerUI.updatePlayPauseUI(true);
+          emitPlaybackEvent(this.el, "pause");
         },
         onError: (error) => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
@@ -3316,9 +3327,12 @@ const VideoPlayer = {
     if (target === null) return;
 
     if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayer.seek(target).catch((e) => {
-        log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
-      });
+      this.avPlayer
+        .seek(target)
+        .then(() => emitPlaybackEvent(this.el, "seeked"))
+        .catch((e) => {
+          log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
+        });
     } else if (this.video) {
       this.seekNativeTo(target);
     }
@@ -3386,6 +3400,8 @@ const VideoPlayer = {
   destroyed() {
     this.flushPlaybackMetrics("cancelled");
     this._destroyed = true;
+    this._disposePlaybackBridge?.();
+    this._disposePlaybackBridge = null;
     this.lifecycle?.dispose();
     this.lifecycle = null;
     this._startupDiagnosticsCancel?.();
