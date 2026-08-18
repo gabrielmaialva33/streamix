@@ -1,3 +1,5 @@
+import { PLAYBACK_BRIDGE_EVENT } from "../player/playback_bridge";
+
 /**
  * WatchPartySync v2 — Enhanced synchronized group viewing.
  *
@@ -18,6 +20,8 @@ const WatchPartySync = {
     this.syncLockTimeout = null;
     this.beaconInterval = null;
     this.videoEl = null;
+    this.playerEl = null;
+    this.playback = null;
     this.isBuffering = false;
     this.lastCorrectionTime = 0;
     this.currentBeaconMs = 5000;
@@ -71,8 +75,17 @@ const WatchPartySync = {
   },
 
   _waitForPlayer(attempts = 0) {
+    // The bridge is the source of truth for playback: it follows whichever
+    // engine the VideoPlayer hook picked. `videoEl` is still tracked for
+    // buffering events and native-HLS detection, but reads and writes go
+    // through the bridge — poking `<video>` directly is a no-op while
+    // AVPlayer (canvas) is driving.
+    const playerEl = document.getElementById("video-player-container");
     const videoEl = document.querySelector("video");
-    if (videoEl) {
+
+    if (playerEl?.streamixPlayback && videoEl) {
+      this.playerEl = playerEl;
+      this.playback = playerEl.streamixPlayback;
       this.videoEl = videoEl;
       // Detect native HLS playback (iOS Safari + macOS Safari).
       // When the platform decodes the stream natively, every
@@ -87,7 +100,7 @@ const WatchPartySync = {
       const nativeHls =
         videoEl.canPlayType("application/vnd.apple.mpegurl") ||
         videoEl.canPlayType("application/x-mpegURL");
-      this.useConservativeSync = !!nativeHls;
+      this.nativeHlsPlayback = !!nativeHls;
       this._setupBufferingDetection();
       this._wrapPlayerEvents();
       this._estimateClockOffset();
@@ -100,6 +113,13 @@ const WatchPartySync = {
     if (attempts < 50) {
       setTimeout(() => this._waitForPlayer(attempts + 1), 200);
     }
+  },
+
+  // AVPlayer seeks re-open the demuxer, so they are as disruptive as a
+  // native-HLS decoder flush. Both engines get the relaxed drift profile;
+  // hls.js / mpegts keep the aggressive one.
+  get useConservativeSync() {
+    return this.nativeHlsPlayback || this.playback?.engine === "avplayer";
   },
 
   // ==========================================
@@ -186,6 +206,9 @@ const WatchPartySync = {
   // Buffering detection
   // ==========================================
 
+  // Buffering suppression is native-element only: AVPlayer exposes no
+  // equivalent event, so `isBuffering` stays false there and corrections
+  // are applied unconditionally — safe, just slightly less polite.
   _setupBufferingDetection() {
     if (!this.videoEl) return;
 
@@ -209,36 +232,43 @@ const WatchPartySync = {
   // ==========================================
 
   _wrapPlayerEvents() {
-    if (!this.videoEl || !this.isHost) return;
+    if (!this.playerEl || !this.isHost) return;
 
-    // Host: intercept play/pause/seek and notify server
-    this._onPlay = () => {
+    // Host: the bridge reports play/pause/seek for whichever engine is
+    // running, so a host on AVPlayer broadcasts commands just like a host
+    // on the native element.
+    const EVENT_TO_PUSH = { play: "wp_play", pause: "wp_pause", seeked: "wp_seek" };
+
+    this._onPlaybackEvent = (event) => {
       if (this.syncLock) return;
-      this.pushEvent("wp_play", { position: this.videoEl.currentTime });
-    };
-    this._onPause = () => {
-      if (this.syncLock) return;
-      this.pushEvent("wp_pause", { position: this.videoEl.currentTime });
-    };
-    this._onSeeked = () => {
-      if (this.syncLock) return;
-      this.pushEvent("wp_seek", { position: this.videoEl.currentTime });
+
+      const push = EVENT_TO_PUSH[event.detail?.type];
+      if (!push) return;
+
+      this.pushEvent(push, { position: this._position() });
     };
 
-    this.videoEl.addEventListener("play", this._onPlay);
-    this.videoEl.addEventListener("pause", this._onPause);
-    this.videoEl.addEventListener("seeked", this._onSeeked);
+    this.playerEl.addEventListener(PLAYBACK_BRIDGE_EVENT, this._onPlaybackEvent);
   },
 
   _unwrapPlayerEvents() {
+    if (this.playerEl && this._onPlaybackEvent) {
+      this.playerEl.removeEventListener(PLAYBACK_BRIDGE_EVENT, this._onPlaybackEvent);
+    }
+
     if (!this.videoEl) return;
 
-    if (this._onPlay) this.videoEl.removeEventListener("play", this._onPlay);
-    if (this._onPause) this.videoEl.removeEventListener("pause", this._onPause);
-    if (this._onSeeked) this.videoEl.removeEventListener("seeked", this._onSeeked);
     if (this._onWaiting) this.videoEl.removeEventListener("waiting", this._onWaiting);
     if (this._onCanPlay) this.videoEl.removeEventListener("canplay", this._onCanPlay);
     if (this._onPlaying) this.videoEl.removeEventListener("playing", this._onPlaying);
+  },
+
+  _position() {
+    return this.playback ? this.playback.getCurrentTime() : 0;
+  },
+
+  _isPaused() {
+    return this.playback ? this.playback.isPaused() : true;
   },
 
   // ==========================================
@@ -246,7 +276,7 @@ const WatchPartySync = {
   // ==========================================
 
   _handleSyncCommand(cmd) {
-    if (!this.videoEl) return;
+    if (!this.playback) return;
 
     // Host ignores sync commands (they are the source of truth)
     if (this.isHost) return;
@@ -272,44 +302,30 @@ const WatchPartySync = {
             // iOS Safari with native HLS: writing `currentTime`
             // immediately before `.play()` aborts the play
             // promise (`AbortError: interrupted by new load`),
-            // and the guest stays stuck paused. Trigger play()
-            // first so the user-gesture chain stays intact,
-            // then nudge position INSIDE the playPromise.then
-            // callback — applying the seek synchronously after
-            // play() previously raced the AbortError and left
-            // the guest paused mid-catchup.
+            // and the guest stays stuck paused. Start playback
+            // first so the user-gesture chain stays intact, then
+            // nudge the position once it is actually running.
             const targetPosition = cmd.position;
             const driftThreshold = this.useConservativeSync ? 1.0 : 0.3;
-            const playPromise = this.videoEl.play();
 
-            if (playPromise && typeof playPromise.then === "function") {
-              playPromise
-                .then(() => {
-                  const drift = Math.abs(this.videoEl.currentTime - targetPosition);
-                  if (drift > driftThreshold) {
-                    this.videoEl.currentTime = targetPosition;
-                  }
-                })
-                .catch((err) => {
-                  console.warn("[WatchPartySync] play() rejected:", err?.message);
-                });
-            } else {
-              // Older browsers without play() returning a Promise.
-              const drift = Math.abs(this.videoEl.currentTime - targetPosition);
-              if (drift > driftThreshold) {
-                this.videoEl.currentTime = targetPosition;
+            this.playback.play();
+
+            setTimeout(() => {
+              if (!this.playback) return;
+              if (Math.abs(this._position() - targetPosition) > driftThreshold) {
+                this.playback.seekTo(targetPosition);
               }
-            }
+            }, 150);
             break;
           }
 
           case "pause":
-            this.videoEl.pause();
-            this.videoEl.currentTime = cmd.position;
+            this.playback.pause();
+            this.playback.seekTo(cmd.position);
             break;
 
           case "seek":
-            this.videoEl.currentTime = cmd.position;
+            this.playback.seekTo(cmd.position);
             break;
         }
       }, delay);
@@ -317,7 +333,7 @@ const WatchPartySync = {
   },
 
   _correctDrift(serverPosition, serverState, serverTime) {
-    if (!this.videoEl) return;
+    if (!this.playback) return;
 
     // Compensate for time elapsed since server sent the sync
     const timeSinceSync = (this._serverNow() - serverTime) / 1000;
@@ -326,31 +342,26 @@ const WatchPartySync = {
       targetPosition += Math.max(0, timeSinceSync);
     }
 
-    const currentPos = this.videoEl.currentTime;
+    const currentPos = this._position();
     const drift = currentPos - targetPosition; // positive = ahead, negative = behind
     const absDrift = Math.abs(drift);
 
     // Handle play/pause state mismatch first
-    if (serverState === "playing" && this.videoEl.paused) {
+    if (serverState === "playing" && this._isPaused()) {
       this._setSyncLock();
       // Play first, seek after (iOS native-HLS aborts the play
       // promise if currentTime is written immediately before).
-      const playPromise = this.videoEl.play();
+      this.playback.play();
       if (absDrift > (this.useConservativeSync ? 1.0 : 0.3)) {
-        this.videoEl.currentTime = targetPosition;
-      }
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch((err) => {
-          console.warn("[WatchPartySync] catchup play() rejected:", err?.message);
-        });
+        this.playback.seekTo(targetPosition);
       }
       this._setAdaptiveBeacon("catchup");
       return;
     }
-    if (serverState === "paused" && !this.videoEl.paused) {
+    if (serverState === "paused" && !this._isPaused()) {
       this._setSyncLock();
-      this.videoEl.pause();
-      this.videoEl.currentTime = targetPosition;
+      this.playback.pause();
+      this.playback.seekTo(targetPosition);
       this._setAdaptiveBeacon("synced");
       return;
     }
@@ -376,7 +387,7 @@ const WatchPartySync = {
       // Hard catchup — single seek + sync lock so the seeked event
       // doesn't bounce back as a wp_seek to the server.
       this._setSyncLock();
-      this.videoEl.currentTime = targetPosition;
+      this.playback.seekTo(targetPosition);
       this._resetPlaybackRate();
       this._setAdaptiveBeacon("catchup");
       return;
@@ -401,7 +412,7 @@ const WatchPartySync = {
     const adjustment = normalized * normalized * 0.15; // quadratic, max ±15%
     const newRate = 1.0 + direction * adjustment;
 
-    this.videoEl.playbackRate = Math.max(0.8, Math.min(1.2, newRate));
+    this.playback.setPlaybackRate(Math.max(0.8, Math.min(1.2, newRate)));
     this._setAdaptiveBeacon("correcting");
 
     // Gradual reset: check again in 1s
@@ -409,14 +420,14 @@ const WatchPartySync = {
     this.rateResetTimer = setTimeout(() => {
       // Don't reset if still correcting
       if (this.videoEl && Math.abs(this.videoEl.playbackRate - 1.0) > 0.01) {
-        this.videoEl.playbackRate = 1.0;
+        this.playback?.setPlaybackRate(1.0);
       }
     }, 3000);
   },
 
   _resetPlaybackRate() {
     if (this.videoEl && this.videoEl.playbackRate !== 1.0) {
-      this.videoEl.playbackRate = 1.0;
+      this.playback?.setPlaybackRate(1.0);
     }
     if (this.rateResetTimer) {
       clearTimeout(this.rateResetTimer);
@@ -447,10 +458,10 @@ const WatchPartySync = {
 
     if (this.beaconInterval) clearInterval(this.beaconInterval);
     this.beaconInterval = setInterval(() => {
-      if (!this.videoEl) return;
+      if (!this.playback) return;
       this.pushEvent("wp_sync_beacon", {
-        position: this.videoEl.currentTime,
-        state: this.videoEl.paused ? "paused" : "playing",
+        position: this._position(),
+        state: this._isPaused() ? "paused" : "playing",
         buffering: this.isBuffering,
         client_time: Date.now(),
       });
