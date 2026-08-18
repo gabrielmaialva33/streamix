@@ -234,7 +234,12 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     {:noreply, redirect(socket, to: ~p"/")}
   end
 
-  # Acknowledge player events we don't handle in party mode
+  # Acknowledge player events we don't handle in party mode.
+  # An unmatched clause here crashes the LiveView, which remounts the
+  # VideoPlayer hook and restarts playback from zero — so every event the
+  # shared hook can push must be listed, even when party mode ignores it.
+  def handle_event("player_lifecycle", _params, socket), do: {:noreply, socket}
+  def handle_event("ios_pwa_player_event", _params, socket), do: {:noreply, socket}
   def handle_event("progress_update", _params, socket), do: {:noreply, socket}
   def handle_event("streaming_mode_changed", _params, socket), do: {:noreply, socket}
   def handle_event("qualities_available", _params, socket), do: {:noreply, socket}
