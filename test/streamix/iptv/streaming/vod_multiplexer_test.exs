@@ -97,6 +97,46 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "a provider that stops sending bytes" do
+    setup do
+      previous = Application.get_env(:streamix, :vod_block_deadline_ms)
+      Application.put_env(:streamix, :vod_block_deadline_ms, 300)
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:streamix, :vod_block_deadline_ms, previous)
+        else
+          Application.delete_env(:streamix, :vod_block_deadline_ms)
+        end
+      end)
+
+      :ok
+    end
+
+    test "gives the provider slot back instead of holding it forever" do
+      {:ok, port} = start_stalling_stub()
+      url = "http://127.0.0.1:#{port}/stalled.mp4"
+      provider_id = 9_100
+
+      ProviderRuntime.put_capabilities(
+        provider_id,
+        struct!(ProviderCapabilities,
+          authenticated?: true,
+          active?: true,
+          max_connections: 1
+        )
+      )
+
+      conn = pipe(conn(:get, "/proxy"), url, provider_id: provider_id, content_id: 1)
+
+      # Whatever the viewer ends up being told, the slot must not stay leased:
+      # with max_connections at 1, a stranded lease locks every later viewer
+      # out of the provider entirely — including this viewer's own retry.
+      assert conn.state in [:sent, :chunked, :file]
+      assert %{capacity: %{leased_connections: 0}} = ProviderRuntime.snapshot(provider_id)
+    end
+  end
+
   describe "remembering the resource length across restarts" do
     test "recovers a persisted total size after the in-memory index is gone" do
       content_key = "url:http://example.test/restart.mp4"
@@ -320,6 +360,44 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
 
   defp expected_body do
     for index <- 0..(@body_size - 1), into: <<>>, do: <<rem(index, 256)>>
+  end
+
+  defp start_stalling_stub do
+    {:ok, server} =
+      start_supervised({Bandit, plug: __MODULE__.StallingPlug, port: 0, startup_log: false},
+        id: :stalling_stub
+      )
+
+    {:ok, {_address, port}} = ThousandIsland.listener_info(server)
+    {:ok, port}
+  end
+
+  defmodule StallingPlug do
+    @moduledoc false
+
+    import Plug.Conn
+
+    def init(opts), do: opts
+
+    # Answers the headers so the connection looks healthy, then never sends
+    # the body — the shape of a provider that accepts the request and then
+    # trickles nothing. Finch's per-receive timeout never fires because the
+    # socket stays open.
+    def call(conn, _opts) do
+      conn =
+        conn
+        |> put_resp_header("content-range", "bytes 0-4095/4096")
+        |> put_resp_header("content-type", "video/mp4")
+        |> send_chunked(206)
+
+      # Hold the response open until the test lets go. The `after` clause is
+      # only a safety net so a failing test cannot wedge the suite.
+      receive do
+        :release_stalled_request -> conn
+      after
+        2_000 -> conn
+      end
+    end
   end
 
   defp start_stub(counter) do

@@ -458,8 +458,18 @@ case get_env.("STREAM_PROXY_BACKEND") do
   _ -> :ok
 end
 
+# Xtream's reported `max_connections` is frequently wrong — accounts that
+# advertise 1 often serve several streams happily. Left unset, the reported
+# value is honoured; set it to override for live traffic.
+live_connection_ceiling =
+  case get_env.("LIVE_CONNECTION_CEILING") do
+    value when value in [nil, ""] -> nil
+    value -> RuntimeConfig.integer!("LIVE_CONNECTION_CEILING", value, 1, min: 1)
+  end
+
 config :streamix,
   iptv_upstream_user_agent: get_env.("IPTV_UPSTREAM_USER_AGENT") || "IPTVSmartersPlayer",
+  live_connection_ceiling: live_connection_ceiling,
   live_multiplexer_enabled:
     RuntimeConfig.boolean!("LIVE_MULTIPLEXER_ENABLED", get_env.("LIVE_MULTIPLEXER_ENABLED"), true),
   live_mux_idle_timeout_ms:

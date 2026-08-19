@@ -22,7 +22,17 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
 
   @registry Streamix.StreamRegistry
   @receive_timeout 30_000
-  @await_timeout 45_000
+  # Hard ceiling on one block download. `@receive_timeout` only bounds the gap
+  # between two chunks, so a slow-but-alive upstream can hold the connection
+  # far longer than any viewer is willing to wait. Past this point nobody is
+  # listening anymore: the player has given up, and the only thing the fetch
+  # still does is occupy a provider slot and eat bandwidth that the viewer's
+  # next attempt needs. Keep it under the player's own 30 s load timeout so
+  # subscribers get a real answer instead of timing out on us.
+  @download_deadline_ms 25_000
+  # Must stay above @download_deadline_ms — the fetcher is guaranteed to
+  # answer by then, and waiting longer only delays the caller's own failover.
+  @await_timeout 28_000
   # How long a finished fetcher stays around to answer late subscribers
   # before the block store takes over.
   @linger_ms 5_000
@@ -122,7 +132,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
 
   @impl true
   def handle_continue(:download, state) do
-    result = download(state)
+    result = download_within_deadline(state)
 
     Enum.each(state.pending, &GenServer.reply(&1, result))
 
@@ -148,6 +158,38 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   @impl true
   def handle_info(:timeout, state), do: {:stop, :normal, state}
   def handle_info(_message, state), do: {:noreply, state, @linger_ms}
+
+  # The download runs in a task purely so it can be killed. Finch's timeouts
+  # bound each receive, not the request as a whole, and a provider that
+  # trickles bytes keeps `Finch.request/3` inside `prim_inet:recv0` for as
+  # long as it likes — which strands the lease acquired below, because the
+  # `after` that releases it never runs. Killing the task closes the socket
+  # and the lease comes back through the owner's `:DOWN`.
+  defp download_within_deadline(state) do
+    task = Task.Supervisor.async_nolink(Streamix.TaskSupervisor, fn -> download(state) end)
+    deadline = download_deadline_ms()
+
+    case Task.yield(task, deadline) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        result
+
+      {:exit, reason} ->
+        Logger.warning("[VodMux] block download crashed: #{SafeLog.redact_inspect(reason)}")
+        {:error, :block_download_crashed}
+
+      nil ->
+        Logger.warning(
+          "[VodMux] abandoning block download after #{deadline}ms; releasing the provider slot"
+        )
+
+        {:error, :block_deadline_exceeded}
+    end
+  end
+
+  # Configurable so tests can exercise the deadline without burning 25 s.
+  defp download_deadline_ms do
+    Application.get_env(:streamix, :vod_block_deadline_ms, @download_deadline_ms)
+  end
 
   defp download(state) do
     case ProviderRuntime.acquire(state.provider_id, :vod, self()) do

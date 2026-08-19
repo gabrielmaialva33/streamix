@@ -28,6 +28,38 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
     ProviderRuntime.release(second)
   end
 
+  test "an operator ceiling overrides an under-reported account max_connections" do
+    provider_id = 107
+    # Providers routinely advertise 1 while happily serving several streams.
+    ProviderRuntime.put_capabilities(provider_id, capabilities(max_connections: 1))
+
+    assert {:ok, only} = ProviderRuntime.acquire(provider_id, :live)
+    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :live)
+    ProviderRuntime.release(only)
+
+    previous = Application.get_env(:streamix, :live_connection_ceiling)
+    Application.put_env(:streamix, :live_connection_ceiling, 3)
+    on_exit(fn -> restore_live_ceiling(previous) end)
+
+    leases = acquire_leases(provider_id, :live, 3)
+    assert {:error, :capacity_exhausted} = ProviderRuntime.acquire(provider_id, :live)
+
+    assert %{capacity: %{max_connections: 3}} = ProviderRuntime.snapshot(provider_id)
+
+    Enum.each(leases, &ProviderRuntime.release/1)
+  end
+
+  test "falls back to the reported max_connections when no ceiling is configured" do
+    provider_id = 108
+    previous = Application.get_env(:streamix, :live_connection_ceiling)
+    Application.delete_env(:streamix, :live_connection_ceiling)
+    on_exit(fn -> restore_live_ceiling(previous) end)
+
+    ProviderRuntime.put_capabilities(provider_id, capabilities(max_connections: 2))
+
+    assert %{capacity: %{max_connections: 2}} = ProviderRuntime.snapshot(provider_id)
+  end
+
   test "allows VOD leases up to the configured ceiling above max_connections" do
     provider_id = 106
     ProviderRuntime.put_capabilities(provider_id, capabilities(max_connections: 2))
@@ -125,6 +157,11 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntimeTest do
   defp capabilities(overrides) do
     struct!(ProviderCapabilities, [authenticated?: true, active?: true] ++ overrides)
   end
+
+  defp restore_live_ceiling(nil), do: Application.delete_env(:streamix, :live_connection_ceiling)
+
+  defp restore_live_ceiling(value),
+    do: Application.put_env(:streamix, :live_connection_ceiling, value)
 
   defp acquire_leases(provider_id, traffic_class, count) do
     for _index <- 1..count do

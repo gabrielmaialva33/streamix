@@ -279,7 +279,17 @@ defmodule Streamix.Iptv.Streaming.ProviderRuntime do
     )
   end
 
-  defp connection_ceiling(reported_max_connections, :live), do: reported_max_connections
+  # Xtream accounts routinely under-report `max_connections` — an account that
+  # advertises 1 often serves several streams without complaint. Honour the
+  # reported value by default (it is the only signal we have), but let an
+  # operator who knows better raise it instead of being throttled by a number
+  # the provider made up.
+  defp connection_ceiling(reported_max_connections, :live) do
+    case Application.get_env(:streamix, :live_connection_ceiling) do
+      ceiling when is_integer(ceiling) and ceiling > 0 -> ceiling
+      _ -> reported_max_connections
+    end
+  end
 
   defp provider_snapshot(provider, leases) do
     %{
