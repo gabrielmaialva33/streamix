@@ -26,6 +26,10 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
 
   @default_block_size 4 * 1_024 * 1_024
   @default_readahead_blocks 1
+  # Window served for an open-ended range. Large enough to carry a faststart
+  # `moov` plus the first seconds of playback in one response, small enough
+  # that the provider slot is not held for the whole movie.
+  @default_open_range_window_bytes 16 * 1_024 * 1_024
 
   @doc "Size of one cache block, in bytes."
   @spec block_size() :: pos_integer()
@@ -166,7 +170,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
     if range_start >= total_size do
       StreamErrors.halt(conn, :upstream_not_found)
     else
-      range_end = resolve_range_end(requested_end, total_size)
+      range_end = resolve_range_end(requested_end, range_start, total_size)
       size = block_size()
 
       conn = send_range_headers(conn, range_start, range_end, total_size)
@@ -187,8 +191,24 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
 
   # A client asking past the end still gets a valid response bounded by the
   # resource, which is what `Content-Range` has to advertise.
-  defp resolve_range_end(:eof, total_size), do: total_size - 1
-  defp resolve_range_end(requested_end, total_size), do: min(requested_end, total_size - 1)
+  #
+  # An open range (`bytes=0-`, or no Range at all) literally asks for the rest
+  # of the file, and players send exactly that to start playback. Honouring it
+  # to the letter commits this response — and the provider slot behind it — to
+  # streaming the entire movie, so two viewers are enough to exhaust an account
+  # that allows a handful of connections. Serving a window instead keeps the
+  # slot turning over; the player simply asks for the next range, which is the
+  # same thing it already does for a bounded request.
+  defp resolve_range_end(:eof, range_start, total_size) do
+    min(range_start + open_range_window_bytes() - 1, total_size - 1)
+  end
+
+  defp resolve_range_end(requested_end, _range_start, total_size),
+    do: min(requested_end, total_size - 1)
+
+  defp open_range_window_bytes do
+    Application.get_env(:streamix, :vod_open_range_window_bytes, @default_open_range_window_bytes)
+  end
 
   # The first block was already fetched to learn the resource length, so it is
   # threaded through instead of being read twice.

@@ -97,6 +97,69 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "an open-ended range" do
+    setup do
+      counter = :counters.new(1, [:atomics])
+      {:ok, port} = start_stub(counter)
+
+      %{counter: counter, url: "http://127.0.0.1:#{port}/movie.mp4"}
+    end
+
+    test "is answered with a window instead of the whole resource", %{url: url} do
+      previous = Application.get_env(:streamix, :vod_open_range_window_bytes)
+      Application.put_env(:streamix, :vod_open_range_window_bytes, @block_size)
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:streamix, :vod_open_range_window_bytes, previous)
+        else
+          Application.delete_env(:streamix, :vod_open_range_window_bytes)
+        end
+      end)
+
+      # `bytes=0-` is what a <video> element sends to start playback. Serving
+      # it to the letter pins the provider slot for the entire movie, which is
+      # what let two viewers exhaust the account.
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=0-")
+        |> pipe(url, provider_id: 7_010, content_id: 1)
+
+      assert conn.status == 206
+      assert byte_size(conn.resp_body) == @block_size
+
+      assert Plug.Conn.get_resp_header(conn, "content-range") == [
+               "bytes 0-#{@block_size - 1}/#{@body_size}"
+             ]
+    end
+
+    test "keeps the window relative to where the player seeked to", %{url: url} do
+      previous = Application.get_env(:streamix, :vod_open_range_window_bytes)
+      Application.put_env(:streamix, :vod_open_range_window_bytes, @block_size)
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:streamix, :vod_open_range_window_bytes, previous)
+        else
+          Application.delete_env(:streamix, :vod_open_range_window_bytes)
+        end
+      end)
+
+      offset = @block_size
+
+      conn =
+        conn(:get, "/proxy")
+        |> Plug.Conn.put_req_header("range", "bytes=#{offset}-")
+        |> pipe(url, provider_id: 7_011, content_id: 1)
+
+      assert conn.status == 206
+
+      assert Plug.Conn.get_resp_header(conn, "content-range") == [
+               "bytes #{offset}-#{offset + @block_size - 1}/#{@body_size}"
+             ]
+    end
+  end
+
   describe "a provider that stops sending bytes" do
     setup do
       previous = Application.get_env(:streamix, :vod_block_deadline_ms)

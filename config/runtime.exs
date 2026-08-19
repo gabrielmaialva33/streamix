@@ -505,6 +505,13 @@ config :streamix,
       min: 256 * 1_024,
       max: 64 * 1_024 * 1_024
     ),
+  vod_open_range_window_bytes:
+    RuntimeConfig.integer!(
+      "VOD_OPEN_RANGE_WINDOW_BYTES",
+      get_env.("VOD_OPEN_RANGE_WINDOW_BYTES"),
+      16 * 1_024 * 1_024,
+      min: 1_024 * 1_024
+    ),
   vod_readahead_blocks:
     RuntimeConfig.integer!(
       "VOD_READAHEAD_BLOCKS",
