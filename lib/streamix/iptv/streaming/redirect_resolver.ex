@@ -408,8 +408,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_redirect(url, headers, count, opts)
 
-      {:ok, %{status: status}} when status in 200..299 ->
-        {:ok, url}
+      {:ok, %{status: status, headers: headers}} when status in 200..299 ->
+        accept_media(url, headers)
 
       {:ok, %{status: status}} ->
         Logger.warning("RedirectResolver: unexpected status #{status} for #{sanitize(url)}")
@@ -418,6 +418,35 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # A 2xx only ends the chain when it actually carries media. Providers
+  # (and the CDNs in front of them) answer 200 + `text/html` for expired
+  # credentials, abuse pages, and — the case that motivated this — a
+  # Cloudflare-cached *empty* body. Treating those as the final URL made
+  # the proxy stream zero bytes with no length, which surfaces client-side
+  # as a player that spins forever and then dies with `open stream failed`.
+  # Rejecting here lets the caller rotate to the next host in the failover
+  # chain, or fail loudly, instead of serving a stream that cannot play.
+  @non_media_types ["text/html", "text/plain", "application/json", "text/xml", "application/xml"]
+
+  defp accept_media(url, headers) do
+    content_type =
+      headers
+      |> Map.get("content-type", [])
+      |> List.first()
+      |> to_string()
+      |> String.downcase()
+
+    if Enum.any?(@non_media_types, &String.starts_with?(content_type, &1)) do
+      Logger.warning(
+        "RedirectResolver: non-media content-type #{inspect(content_type)} for #{sanitize(url)}"
+      )
+
+      {:error, {:not_media, content_type}}
+    else
+      {:ok, url}
     end
   end
 

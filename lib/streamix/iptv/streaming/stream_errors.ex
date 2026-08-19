@@ -105,6 +105,12 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
     do: :upstream_unavailable
 
   def code_from_reason({:unexpected_status, _}), do: :stream_resolution_failed
+
+  # The upstream answered 2xx but with a web page instead of media — expired
+  # credentials, an abuse notice, or a CDN-cached empty body. The content is
+  # not playable from this host, so it reads as an unavailable provider.
+  def code_from_reason({:not_media, _content_type}), do: :upstream_unavailable
+
   def code_from_reason({:http_error, 404}), do: :upstream_not_found
 
   def code_from_reason({:http_error, status}) when status in 500..599,

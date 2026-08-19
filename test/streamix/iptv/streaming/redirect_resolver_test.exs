@@ -63,6 +63,38 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
       end)
     end
 
+    test "rejects a 2xx that carries a web page instead of media", %{base: base} do
+      # Field case: the provider's CDN cached an empty text/html body for a
+      # movie. Accepting it made the proxy serve zero bytes with no length,
+      # and the player hung until it died with `open stream failed`.
+      capture_log(fn ->
+        assert {:error, {:not_media, content_type}} =
+                 RedirectResolver.resolve("#{base}/empty-html")
+
+        assert content_type =~ "text/html"
+      end)
+    end
+
+    test "rejects a non-media page reached at the end of a redirect chain", %{base: base} do
+      capture_log(fn ->
+        assert {:error, {:not_media, _}} = RedirectResolver.resolve("#{base}/redirect-to-html")
+      end)
+    end
+
+    test "does not retry a non-media response — the answer will not change",
+         %{base: base, counter: counter} do
+      capture_log(fn ->
+        assert {:error, {:not_media, _}} = RedirectResolver.resolve("#{base}/empty-html")
+      end)
+
+      assert Agent.get(counter, & &1)["/empty-html"] == 1
+    end
+
+    test "still accepts a 2xx that carries real media", %{base: base} do
+      assert {:ok, final} = RedirectResolver.resolve("#{base}/real-media")
+      assert final == "#{base}/real-media"
+    end
+
     test "missing Location header on redirect returns :missing_location", %{base: base} do
       assert {:error, :missing_location} = RedirectResolver.resolve("#{base}/headless-redirect")
     end
@@ -177,6 +209,28 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
 
     defp handle(conn, "/2%20Fast%202%20Furious.mp4") do
       send_resp(conn, 200, "ok")
+    end
+
+    # A CDN-cached empty error page: 200, text/html, no body. This is what
+    # the provider serves for a poisoned cache entry.
+    defp handle(conn, "/empty-html") do
+      conn
+      |> put_resp_content_type("text/html")
+      |> send_resp(200, "")
+    end
+
+    # 200 that really is media — must still resolve.
+    defp handle(conn, "/real-media") do
+      conn
+      |> put_resp_content_type("video/mp4")
+      |> send_resp(200, "binary-ish")
+    end
+
+    # Redirect chain that ends on the poisoned HTML page.
+    defp handle(conn, "/redirect-to-html") do
+      conn
+      |> put_resp_header("location", "http://#{conn.host}:#{conn.port}/empty-html")
+      |> send_resp(302, "")
     end
 
     defp handle(conn, _other), do: send_resp(conn, 404, "")
