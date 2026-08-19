@@ -97,6 +97,36 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexerTest do
     end
   end
 
+  describe "remembering the resource length across restarts" do
+    test "recovers a persisted total size after the in-memory index is gone" do
+      content_key = "url:http://example.test/restart.mp4"
+
+      BlockStore.put_total_size(content_key, 2_963_452_723)
+      assert BlockStore.total_size(content_key) == 2_963_452_723
+
+      # A deploy restarts the app: ETS starts empty while the cache volume
+      # survives. Losing the length here is what makes an already-cached
+      # movie stop playing, because the multiplexer can no longer answer a
+      # 206 and falls back to the length-less direct proxy.
+      :ets.delete_all_objects(BlockStore.Meta)
+
+      assert BlockStore.total_size(content_key) == 2_963_452_723
+    end
+
+    test "reports no length for content it never saw" do
+      assert BlockStore.total_size("url:http://example.test/never-seen.mp4") == nil
+    end
+
+    test "reset clears the persisted length too" do
+      content_key = "url:http://example.test/wiped.mp4"
+      BlockStore.put_total_size(content_key, 1_234)
+
+      BlockStore.reset()
+
+      assert BlockStore.total_size(content_key) == nil
+    end
+  end
+
   describe "serving through the block cache" do
     setup do
       counter = :counters.new(1, [:atomics])

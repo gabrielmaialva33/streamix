@@ -89,15 +89,66 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
   @spec put_total_size(String.t(), pos_integer()) :: :ok
   def put_total_size(content_key, total_size) when is_integer(total_size) and total_size > 0 do
     :ets.insert(@meta_table, {content_key, total_size})
+    persist_total_size(content_key, total_size)
     :ok
   end
 
   @spec total_size(String.t()) :: pos_integer() | nil
   def total_size(content_key) do
     case :ets.lookup(@meta_table, content_key) do
-      [{^content_key, total_size}] -> total_size
-      [] -> nil
+      [{^content_key, total_size}] ->
+        total_size
+
+      [] ->
+        # ETS is per-boot, but the cached blocks outlive deploys. Without
+        # the length the multiplexer cannot answer a 206, so it falls back
+        # to the direct proxy — and if the upstream has meanwhile stopped
+        # reporting a length (expired credentials, a CDN-cached error page),
+        # the resource becomes unplayable even though its blocks are right
+        # there on disk. Recovering it from the sidecar keeps a restart from
+        # throwing away something we already know.
+        recover_total_size(content_key)
     end
+  end
+
+  defp persist_total_size(content_key, total_size) do
+    path = total_size_path_for(content_key)
+
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
+      File.write(path, Integer.to_string(total_size))
+    end
+    |> case do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[VodMux] could not persist total size: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  defp recover_total_size(content_key) do
+    with {:ok, contents} <- File.read(total_size_path_for(content_key)),
+         {total_size, ""} <- Integer.parse(String.trim(contents)),
+         true <- total_size > 0 do
+      :ets.insert(@meta_table, {content_key, total_size})
+      total_size
+    else
+      _ -> nil
+    end
+  end
+
+  @doc false
+  @spec total_size_path_for(String.t()) :: Path.t()
+  def total_size_path_for(content_key) do
+    digest = digest_for(content_key)
+
+    Path.join([
+      cache_dir(),
+      binary_part(digest, 0, 2),
+      binary_part(digest, 2, 2),
+      "#{digest}.size"
+    ])
   end
 
   @doc false
@@ -106,10 +157,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
   @doc "Absolute path a block would occupy."
   @spec path_for(key()) :: Path.t()
   def path_for({content_key, block_index}) do
-    digest =
-      :sha256
-      |> :crypto.hash(content_key)
-      |> Base.url_encode64(padding: false)
+    digest = digest_for(content_key)
 
     # Two levels of fan-out keep directory sizes reasonable once a large
     # catalog has been through the cache.
@@ -119,6 +167,12 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockStore do
       binary_part(digest, 2, 2),
       "#{digest}.#{block_index}"
     ])
+  end
+
+  defp digest_for(content_key) do
+    :sha256
+    |> :crypto.hash(content_key)
+    |> Base.url_encode64(padding: false)
   end
 
   @spec cache_dir() :: Path.t()
