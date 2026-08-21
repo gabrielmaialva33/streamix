@@ -2,7 +2,7 @@ name: streamix
 
 services:
   postgres:
-    image: ${POSTGRES_IMAGE:-timescale/timescaledb:2.29.1-pg17}
+    image: ${POSTGRES_IMAGE:-timescale/timescaledb:2.29.2-pg17}
     container_name: streamix-postgres
     command:
       [
