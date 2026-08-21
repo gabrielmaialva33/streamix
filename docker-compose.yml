@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: timescale/timescaledb:2.29.1-pg17
+    image: timescale/timescaledb:2.29.2-pg17
     container_name: streamix-postgres
     command:
       [
