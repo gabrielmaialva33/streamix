@@ -12,7 +12,7 @@
  * - Bandwidth estimation
  */
 
-import { bufferLogger as log } from "../core/logger";
+import { bufferLogger as log } from "../core/logger.js";
 
 // Buffer health states
 const BufferHealth = {
@@ -36,6 +36,7 @@ const RecoveryStrategy = {
 export class NativeBufferManager {
   constructor(video, options = {}) {
     this.video = video;
+    this.timerApi = options.timerApi ?? globalThis;
 
     // Configuration
     this.config = {
@@ -56,6 +57,8 @@ export class NativeBufferManager {
     // State
     this.isRunning = false;
     this.checkTimer = null;
+    this.recoveryTimer = null;
+    this.stallDecayTimer = null;
     this.stallCount = 0;
     this.lastStallTime = 0;
     this.lastBufferedEnd = 0;
@@ -67,6 +70,9 @@ export class NativeBufferManager {
     this.lastSeekTime = 0;
     this.lastStallWarningTime = 0;
     this.lastCriticalWarningTime = 0;
+    this.intentionalPause = false;
+    this.recoveryPauseExpected = false;
+    this.destroyed = false;
 
     // Callbacks
     this.onBufferHealthChange = options.onBufferHealthChange || (() => {});
@@ -80,6 +86,7 @@ export class NativeBufferManager {
     this._onProgress = this._onProgress.bind(this);
     this._onCanPlay = this._onCanPlay.bind(this);
     this._onSeeking = this._onSeeking.bind(this);
+    this._onPause = this._onPause.bind(this);
 
     log.debug("[NativeBuffer] Initialized with config:", this.config);
   }
@@ -88,8 +95,9 @@ export class NativeBufferManager {
    * Start monitoring buffer health
    */
   start() {
-    if (this.isRunning) return;
+    if (this.isRunning || this.destroyed) return;
     this.isRunning = true;
+    this.intentionalPause = false;
     this.playbackStartTime = Date.now();
 
     // Listen to video events
@@ -98,9 +106,13 @@ export class NativeBufferManager {
     this.video.addEventListener("progress", this._onProgress);
     this.video.addEventListener("canplay", this._onCanPlay);
     this.video.addEventListener("seeking", this._onSeeking);
+    this.video.addEventListener("pause", this._onPause);
 
     // Start periodic health check
-    this.checkTimer = setInterval(() => this._checkHealth(), this.config.checkInterval);
+    this.checkTimer = this.timerApi.setInterval(
+      () => this._checkHealth(),
+      this.config.checkInterval,
+    );
 
     log.info("[NativeBuffer] Started monitoring");
   }
@@ -109,29 +121,46 @@ export class NativeBufferManager {
    * Stop monitoring
    */
   stop() {
-    if (!this.isRunning) return;
+    const wasRunning = this.isRunning;
     this.isRunning = false;
+    this.intentionalPause = true;
+    this.recoveryPauseExpected = false;
+    this.isRecovering = false;
 
     // Remove listeners
-    this.video.removeEventListener("waiting", this._onWaiting);
-    this.video.removeEventListener("playing", this._onPlaying);
-    this.video.removeEventListener("progress", this._onProgress);
-    this.video.removeEventListener("canplay", this._onCanPlay);
-    this.video.removeEventListener("seeking", this._onSeeking);
-
-    // Clear timer
-    if (this.checkTimer) {
-      clearInterval(this.checkTimer);
-      this.checkTimer = null;
+    if (wasRunning && this.video) {
+      this.video.removeEventListener("waiting", this._onWaiting);
+      this.video.removeEventListener("playing", this._onPlaying);
+      this.video.removeEventListener("progress", this._onProgress);
+      this.video.removeEventListener("canplay", this._onCanPlay);
+      this.video.removeEventListener("seeking", this._onSeeking);
+      this.video.removeEventListener("pause", this._onPause);
     }
 
-    log.info("[NativeBuffer] Stopped monitoring. Stats:", this.getStats());
+    // Clear timer
+    if (this.checkTimer !== null) {
+      this.timerApi.clearInterval(this.checkTimer);
+      this.checkTimer = null;
+    }
+    this._clearRecoveryTimer();
+    this._clearStallDecayTimer();
+
+    if (wasRunning) log.info("[NativeBuffer] Stopped monitoring. Stats:", this.getStats());
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.stop();
+    this.destroyed = true;
+    this.video = null;
   }
 
   /**
    * Handle stall/buffering event
    */
   _onWaiting() {
+    if (!this.isRunning || this.destroyed || this.intentionalPause) return;
+
     const now = Date.now();
 
     // Ignore stalls within 1s of each other (same event)
@@ -186,6 +215,12 @@ export class NativeBufferManager {
    * Handle playback resumed
    */
   _onPlaying() {
+    if (!this.isRunning || this.destroyed) return;
+
+    this.intentionalPause = false;
+    this.recoveryPauseExpected = false;
+    this._clearRecoveryTimer();
+
     if (this.isRecovering) {
       this.isRecovering = false;
       log.info("[NativeBuffer] Recovery successful, playback resumed");
@@ -193,8 +228,17 @@ export class NativeBufferManager {
     }
 
     // Reset stall count after 10s of smooth playback
-    setTimeout(() => {
-      if (!this.video.paused && !this.isRecovering) {
+    this._clearStallDecayTimer();
+    this.stallDecayTimer = this.timerApi.setTimeout(() => {
+      this.stallDecayTimer = null;
+      if (
+        this.isRunning &&
+        !this.destroyed &&
+        !this.intentionalPause &&
+        this.video &&
+        !this.video.paused &&
+        !this.isRecovering
+      ) {
         this.stallCount = Math.max(0, this.stallCount - 1);
       }
     }, 10000);
@@ -237,13 +281,33 @@ export class NativeBufferManager {
   _onSeeking() {
     this.lastSeekTime = Date.now();
     this.stallCount = 0;
+    this.recoveryPauseExpected = false;
+    this.isRecovering = false;
+    this._clearRecoveryTimer();
+  }
+
+  _onPause() {
+    if (!this.isRunning || this.destroyed) return;
+
+    if (this.recoveryPauseExpected) {
+      this.recoveryPauseExpected = false;
+      return;
+    }
+
+    this.markIntentionalPause();
+  }
+
+  markIntentionalPause() {
+    this.intentionalPause = true;
+    this.isRecovering = false;
+    this._clearRecoveryTimer();
   }
 
   /**
    * Periodic health check
    */
   _checkHealth() {
-    if (!this.video) return;
+    if (!this.isRunning || this.destroyed || !this.video) return;
 
     const bufferAhead = this.getBufferedAhead();
     const health = this.getBufferHealth();
@@ -298,6 +362,16 @@ export class NativeBufferManager {
    * Attempt to recover from repeated stalls
    */
   _attemptRecovery() {
+    if (
+      !this.isRunning ||
+      this.destroyed ||
+      this.intentionalPause ||
+      !this.video ||
+      this.video.paused
+    ) {
+      return;
+    }
+
     this.isRecovering = true;
     log.info("[NativeBuffer] Attempting recovery...");
 
@@ -305,10 +379,20 @@ export class NativeBufferManager {
     const currentTime = this.video.currentTime;
 
     // Pause briefly to let buffer fill
+    this.recoveryPauseExpected = true;
     this.video.pause();
 
-    setTimeout(() => {
-      if (this.isRecovering) {
+    this._clearRecoveryTimer();
+    this.recoveryTimer = this.timerApi.setTimeout(() => {
+      this.recoveryTimer = null;
+      this.recoveryPauseExpected = false;
+      if (
+        this.isRunning &&
+        !this.destroyed &&
+        !this.intentionalPause &&
+        this.isRecovering &&
+        this.video
+      ) {
         const bufferNow = this.getBufferedAhead();
         log.info(`[NativeBuffer] Recovery pause done, buffer: ${bufferNow.toFixed(1)}s`);
 
@@ -327,6 +411,18 @@ export class NativeBufferManager {
     }, this.config.recoveryPauseTime);
 
     this.onRecovery({ strategy: RecoveryStrategy.PAUSE_PREFETCH });
+  }
+
+  _clearRecoveryTimer() {
+    if (this.recoveryTimer === null) return;
+    this.timerApi.clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
+  }
+
+  _clearStallDecayTimer() {
+    if (this.stallDecayTimer === null) return;
+    this.timerApi.clearTimeout(this.stallDecayTimer);
+    this.stallDecayTimer = null;
   }
 
   /**

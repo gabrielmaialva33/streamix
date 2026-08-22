@@ -5,7 +5,7 @@
  * to enable adaptive streaming mode selection.
  */
 
-import { NetworkQuality } from "./streaming_config";
+import { NetworkQuality } from "./streaming_config.js";
 
 // Bandwidth thresholds in bits per second
 const BANDWIDTH_THRESHOLDS = {
@@ -28,6 +28,11 @@ export class NetworkMonitor {
     this.currentQuality = NetworkQuality.GOOD;
     this.onQualityChange = options.onQualityChange || null;
     this.intervalId = null;
+    this.started = false;
+    this.navigatorRef = options.navigatorRef ?? globalThis.navigator ?? {};
+    this.timerApi = options.timerApi ?? globalThis;
+    this.connection = this.navigatorRef.connection || null;
+    this.connectionChangeHandler = () => this.checkNavigatorConnection();
 
     // Configuration
     this.maxSamples = options.maxSamples || MAX_SAMPLES;
@@ -35,7 +40,7 @@ export class NetworkMonitor {
     this.checkInterval = options.checkInterval || 5000; // 5 seconds
 
     // Use Navigator API if available
-    this.useNavigatorAPI = "connection" in navigator;
+    this.useNavigatorAPI = !!this.connection;
   }
 
   /**
@@ -56,16 +61,17 @@ export class NetworkMonitor {
    * Start monitoring network conditions
    */
   start() {
+    if (this.started) return;
+    this.started = true;
+
     // Initial check using Navigator API
     if (this.useNavigatorAPI) {
       this.checkNavigatorConnection();
-      navigator.connection?.addEventListener("change", () => {
-        this.checkNavigatorConnection();
-      });
+      this.connection?.addEventListener("change", this.connectionChangeHandler);
     }
 
     // Periodic check
-    this.intervalId = setInterval(() => {
+    this.intervalId = this.timerApi.setInterval(() => {
       this.evaluateQuality();
     }, this.checkInterval);
   }
@@ -74,8 +80,13 @@ export class NetworkMonitor {
    * Stop monitoring
    */
   stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
+    if (!this.started) return;
+    this.started = false;
+
+    this.connection?.removeEventListener("change", this.connectionChangeHandler);
+
+    if (this.intervalId !== null) {
+      this.timerApi.clearInterval(this.intervalId);
       this.intervalId = null;
     }
   }
@@ -84,9 +95,9 @@ export class NetworkMonitor {
    * Check connection using Navigator Network Information API
    */
   checkNavigatorConnection() {
-    if (!navigator.connection) return;
+    if (!this.connection) return;
 
-    const connection = navigator.connection;
+    const connection = this.connection;
     const effectiveType = connection.effectiveType;
     const downlink = connection.downlink; // Mbps
 
