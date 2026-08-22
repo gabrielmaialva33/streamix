@@ -5,17 +5,24 @@
  * including AC3, DTS, EAC3 (Dolby Digital).
  */
 
-import { getEnvInfo, avplayerLogger as log } from "../core/logger";
-import { stopThenDestroyPlaybackEngine } from "../player/playback_engine_lifecycle";
-import { hasPlayableSubtitleTimeBase, initialAVPlayerPlayOptions } from "../player/subtitle_policy";
-import { detectWebCodecsSupport } from "./codec_detector";
+import { getEnvInfo, avplayerLogger as log } from "../core/logger.js";
+import {
+  awaitPlaybackOperation,
+  createSynchronousErrorNotifier,
+  stopThenDestroyPlaybackEngine,
+} from "../player/playback_engine_lifecycle.js";
+import {
+  hasPlayableSubtitleTimeBase,
+  initialAVPlayerPlayOptions,
+} from "../player/subtitle_policy.js";
+import { detectWebCodecsSupport } from "./codec_detector.js";
 import {
   AVPLAYER_CONFIG,
   DECODER_WASM_FILES,
   getAvPlayerScriptUrls,
   getWasmUrl as getWasmUrlFromConfig,
   OTHER_WASM_FILES,
-} from "./config";
+} from "./config.js";
 
 // Cache for tested local WASM availability
 const localWasmAvailable = new Map();
@@ -364,6 +371,7 @@ export function getAVPlayerAccelerationConfig() {
 // proxy hosts, to retry on 5xx with exponential backoff. Other fetches
 // on the page (LiveView, image proxy, TMDB) are untouched.
 function installRetryingFetch() {
+  if (!globalThis.window?.fetch) return;
   if (window.__streamixFetchPatched) return;
   window.__streamixFetchPatched = true;
 
@@ -421,10 +429,21 @@ function installRetryingFetch() {
 
 installRetryingFetch();
 
+export class AVPlayerDestroyedError extends Error {
+  constructor() {
+    super("Player has been destroyed");
+    this.name = "AVPlayerDestroyedError";
+  }
+}
+
+export const isAVPlayerDestroyedError = (error) =>
+  error instanceof AVPlayerDestroyedError || error?.name === "AVPlayerDestroyedError";
+
 export class AVPlayerWrapper {
   constructor(options = {}) {
     this.container = options.container;
     this.onError = options.onError || (() => {});
+    this._notifyError = createSynchronousErrorNotifier(this.onError);
     this.onReady = options.onReady || (() => {});
     this.onPlay = options.onPlay || (() => {});
     this.onPause = options.onPause || (() => {});
@@ -435,6 +454,22 @@ export class AVPlayerWrapper {
     this.isReady = false;
     this.currentUrl = null;
     this._destroyed = false;
+    this._initPromise = null;
+    this._instanceCounted = false;
+    this._runtime = options.windowRef || globalThis.window;
+    this._navigator = options.navigatorRef || globalThis.navigator || {};
+    this._dependencies = {
+      configureRuntime:
+        options.configureRuntime ||
+        (() => {
+          configureWebpackPublicPath();
+          configureLibmediaLogging();
+        }),
+      getAccelerationConfig: options.getAccelerationConfig || getAVPlayerAccelerationConfig,
+      getScriptUrls: options.getScriptUrls || getAvPlayerScriptUrls,
+      loadScript: options.loadScript || loadScript,
+      createPlayer: options.createPlayer || ((config) => new this._runtime.AVPlayer(config)),
+    };
 
     // Internal state for tracking playback
     this._playing = false;
@@ -446,47 +481,63 @@ export class AVPlayerWrapper {
   /**
    * Initialize the AVPlayer with all required dependencies
    */
-  async init() {
-    if (this.player || this._destroyed) {
-      return;
-    }
+  init() {
+    if (this.player || this._destroyed) return Promise.resolve();
+    if (this._initPromise) return this._initPromise;
+
+    const initialization = this._initialize();
+    const tracked = initialization.finally(() => {
+      if (this._initPromise === tracked) this._initPromise = null;
+    });
+    this._initPromise = tracked;
+    return tracked;
+  }
+
+  _throwIfDestroyed() {
+    if (this._destroyed) throw new AVPlayerDestroyedError();
+  }
+
+  async _initialize() {
+    if (this.player || this._destroyed) return;
 
     try {
       log.debug("Initializing...");
 
       // Step 1: Configure webpack public path for dynamic chunk loading
-      configureWebpackPublicPath();
-      configureLibmediaLogging();
+      this._dependencies.configureRuntime();
 
       // Step 2: Get script URLs from config
-      const scriptUrls = getAvPlayerScriptUrls();
+      const scriptUrls = this._dependencies.getScriptUrls();
 
       // Step 3: Load cheap-polyfill.js FIRST
-      await loadScript(scriptUrls.polyfill, "cheap-polyfill");
+      await this._dependencies.loadScript(scriptUrls.polyfill, "cheap-polyfill");
+      this._throwIfDestroyed();
       log.debug("Loaded cheap-polyfill.js");
 
       // Step 4: Configure polyfill URL for BigInt fallback
       if (typeof BigInt === "undefined" || BigInt === Number) {
-        window.CHEAP_POLYFILL_URL = scriptUrls.polyfill;
+        this._runtime.CHEAP_POLYFILL_URL = scriptUrls.polyfill;
       }
 
       // Step 5: Load AVPlayer main script
-      await loadScript(scriptUrls.player, "avplayer-script");
+      await this._dependencies.loadScript(scriptUrls.player, "avplayer-script");
+      this._throwIfDestroyed();
       log.debug("Loaded avplayer.js");
 
-      if (!window.AVPlayer) {
+      if (!this._runtime?.AVPlayer) {
         throw new Error("AVPlayer not found after loading script");
       }
 
       // Step 5: Initialize AudioContext (required for Web Audio API playback)
-      if (!window.AVPlayer.audioContext) {
-        window.AVPlayer.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      if (!this._runtime.AVPlayer.audioContext) {
+        const AudioContextClass = this._runtime.AudioContext || this._runtime.webkitAudioContext;
+        this._runtime.AVPlayer.audioContext = new AudioContextClass();
         // Create a dummy source to unlock audio on mobile
-        window.AVPlayer.audioContext.createBufferSource();
+        this._runtime.AVPlayer.audioContext.createBufferSource();
         log.debug("AudioContext initialized");
       }
 
-      const accelerationConfig = getAVPlayerAccelerationConfig();
+      const accelerationConfig = this._dependencies.getAccelerationConfig();
       log.debug("Acceleration config:", accelerationConfig);
 
       // Step 6: Create the player instance
@@ -501,8 +552,8 @@ export class AVPlayerWrapper {
       // audio crackles or drops out. Detect mobile and back off to a
       // safer value there.
       const isLowEndMobile =
-        /Android|iPhone|iPad/i.test(navigator.userAgent) &&
-        (navigator.hardwareConcurrency || 4) <= 4;
+        /Android|iPhone|iPad/i.test(this._navigator.userAgent || "") &&
+        (this._navigator.hardwareConcurrency || 4) <= 4;
       const audioWorkletBufferLength = isLowEndMobile ? 10 : 6;
 
       // Jitter buffer: previously hard-pinned to 0.2-1s for "tight sync".
@@ -512,7 +563,8 @@ export class AVPlayerWrapper {
       const jitterBufferMin = isLowEndMobile ? 0.5 : 0.3;
       const jitterBufferMax = isLowEndMobile ? 3 : 1.5;
 
-      this.player = new window.AVPlayer({
+      this._throwIfDestroyed();
+      const player = this._dependencies.createPlayer({
         container: this.container,
         getWasm: (type, codecId) => {
           const url = getWasmUrl(type, codecId);
@@ -532,6 +584,8 @@ export class AVPlayerWrapper {
         // libmedia silently ignored it. We pass it via `play()` below.
         // `loop: false` is also dropped — it's the libmedia default.
       });
+      this._throwIfDestroyed();
+      this.player = player;
 
       // Set up event listeners
       this.setupEventListeners();
@@ -539,15 +593,17 @@ export class AVPlayerWrapper {
       // Track live AVPlayer instances so we don't close the shared
       // AudioContext while another player still needs it (probe +
       // main, watch-party rejoin races).
-      window._avplayerInstanceCount = (window._avplayerInstanceCount || 0) + 1;
+      this._runtime._avplayerInstanceCount = (this._runtime._avplayerInstanceCount || 0) + 1;
+      this._instanceCounted = true;
 
       this.isReady = true;
       this.onReady();
 
       log.debug("Initialized successfully");
     } catch (error) {
+      if (isAVPlayerDestroyedError(error) || this._destroyed) return;
       log.error("Failed to initialize:", error);
-      this.onError(error);
+      this._notifyError(error);
       throw error;
     }
   }
@@ -578,7 +634,7 @@ export class AVPlayerWrapper {
 
     this.player.on("error", (error) => {
       log.error("Error event:", error);
-      this.onError(error);
+      this._notifyError(error);
     });
 
     // Add more event listeners for debugging
@@ -679,12 +735,16 @@ export class AVPlayerWrapper {
    */
   async load(url, options = {}) {
     if (this._destroyed) {
-      throw new Error("Player has been destroyed");
+      throw new AVPlayerDestroyedError();
     }
 
     if (!this.player) {
       await this.init();
     }
+
+    this._throwIfDestroyed();
+    const player = this.player;
+    if (!player) throw new Error("Player failed to initialize");
 
     this.currentUrl = url;
     log.debug("Loading:", url);
@@ -696,14 +756,6 @@ export class AVPlayerWrapper {
       log.debug("Calling player.load()...");
 
       const loadTimeoutMs = options.loadTimeoutMs || 30000;
-
-      // Create a timeout promise to detect if load hangs
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(
-          () => reject(new Error(`Load timeout after ${Math.round(loadTimeoutMs / 1000)} seconds`)),
-          loadTimeoutMs,
-        );
-      });
 
       // Build load options for AVPlayer.
       //   ext     – forces format detection for URLs without extensions
@@ -728,19 +780,21 @@ export class AVPlayerWrapper {
       }
       this._isLive = !!options.isLive;
 
-      const loadResult = this.player.load(url, loadOptions);
+      const loadResult = player.load(url, loadOptions);
       log.debug("load() returned:", loadResult);
+      await awaitPlaybackOperation(loadResult, {
+        timeoutMs: loadTimeoutMs,
+        timeoutMessage: `Load timeout after ${Math.round(loadTimeoutMs / 1000)} seconds`,
+      });
 
-      if (loadResult && typeof loadResult.then === "function") {
-        // Race between load and timeout
-        await Promise.race([loadResult, timeoutPromise]);
-      }
+      if (this._destroyed || this.player !== player) throw new AVPlayerDestroyedError();
 
       log.debug("Load complete");
     } catch (error) {
+      if (isAVPlayerDestroyedError(error) || this._destroyed) throw error;
       log.error("Load error:", error);
       log.error("Error stack:", error?.stack);
-      this.onError(error);
+      this._notifyError(error);
       throw error;
     }
   }
@@ -779,7 +833,7 @@ export class AVPlayerWrapper {
       this.onPlay();
     } catch (error) {
       log.error("Play error:", error);
-      this.onError(error);
+      this._notifyError(error);
       throw error;
     }
   }
@@ -1248,22 +1302,23 @@ export class AVPlayerWrapper {
 
     // Decrement live-instance counter and only close the shared
     // AudioContext when the last AVPlayer is gone.
-    if (this.isReady && window._avplayerInstanceCount > 0) {
-      window._avplayerInstanceCount -= 1;
+    if (this._instanceCounted && this._runtime?._avplayerInstanceCount > 0) {
+      this._runtime._avplayerInstanceCount -= 1;
+      this._instanceCounted = false;
     }
 
     // Cleanup AudioContext to free memory
     // Only close if we created it and no other AVPlayer instances are using it
-    if (window.AVPlayer?.audioContext && !window._avplayerInstanceCount) {
+    if (this._runtime?.AVPlayer?.audioContext && !this._runtime._avplayerInstanceCount) {
       try {
-        const audioCtx = window.AVPlayer.audioContext;
+        const audioCtx = this._runtime.AVPlayer.audioContext;
         if (audioCtx.state !== "closed") {
           // Suspend first, then close
           if (audioCtx.state === "running") {
             await audioCtx.suspend();
           }
           await audioCtx.close();
-          window.AVPlayer.audioContext = null;
+          this._runtime.AVPlayer.audioContext = null;
           log.debug("AudioContext closed");
         }
       } catch (e) {
