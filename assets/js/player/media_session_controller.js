@@ -27,26 +27,29 @@ export function createMediaSessionController({
   metadata = {},
   actions = {},
   onError = () => {},
+  now = () => Date.now(),
+  positionUpdateIntervalMs = 1_000,
 } = {}) {
   const mediaSession = navigatorRef?.mediaSession;
   let destroyed = false;
+  let lastPositionUpdateAt = Number.NEGATIVE_INFINITY;
 
-  const reportError = (error) => {
+  const reportError = (operation, error) => {
     try {
-      onError(error);
+      onError(operation, error);
     } catch {
       // Media integration is best-effort and must never interrupt playback.
     }
   };
 
-  const safely = (operation) => {
+  const safely = (operation, callback) => {
     if (!mediaSession || destroyed) return false;
 
     try {
-      operation();
+      callback();
       return true;
     } catch (error) {
-      reportError(error);
+      reportError(operation, error);
       return false;
     }
   };
@@ -54,7 +57,7 @@ export function createMediaSessionController({
   const setup = () => {
     if (!mediaSession || destroyed) return false;
 
-    safely(() => {
+    safely("metadata", () => {
       const MediaMetadataImpl = windowRef?.MediaMetadata;
       if (typeof MediaMetadataImpl === "function") {
         mediaSession.metadata = new MediaMetadataImpl(metadata);
@@ -64,7 +67,7 @@ export function createMediaSessionController({
     for (const action of MEDIA_ACTIONS) {
       const handler = actions[action];
       if (typeof handler !== "function") continue;
-      safely(() => mediaSession.setActionHandler(action, handler));
+      safely(`action:${action}`, () => mediaSession.setActionHandler(action, handler));
     }
 
     return true;
@@ -72,15 +75,26 @@ export function createMediaSessionController({
 
   const setPlaybackState = (state) => {
     const normalizedState = PLAYBACK_STATES.has(state) ? state : "none";
-    return safely(() => {
+    return safely("playback-state", () => {
       mediaSession.playbackState = normalizedState;
     });
   };
 
-  const clearPositionState = () =>
-    safely(() => {
+  const clearPositionState = () => {
+    const cleared = safely("position:clear", () => {
       if (typeof mediaSession.setPositionState === "function") {
         mediaSession.setPositionState();
+      }
+    });
+
+    if (cleared) lastPositionUpdateAt = Number.NEGATIVE_INFINITY;
+    return cleared;
+  };
+
+  const publishPosition = (normalizedState) =>
+    safely("position:update", () => {
+      if (typeof mediaSession.setPositionState === "function") {
+        mediaSession.setPositionState(normalizedState);
       }
     });
 
@@ -88,18 +102,30 @@ export function createMediaSessionController({
     const normalizedState = normalizeMediaPositionState(state);
     if (!normalizedState) return false;
 
-    return safely(() => {
-      if (typeof mediaSession.setPositionState === "function") {
-        mediaSession.setPositionState(normalizedState);
-      }
-    });
+    const updated = publishPosition(normalizedState);
+    if (updated) lastPositionUpdateAt = now();
+    return updated;
+  };
+
+  const updatePosition = ({ force = false, ...state } = {}) => {
+    const normalizedState = normalizeMediaPositionState(state);
+    if (!normalizedState) return false;
+
+    const timestamp = now();
+    if (!force && timestamp - lastPositionUpdateAt < positionUpdateIntervalMs) return false;
+
+    const updated = publishPosition(normalizedState);
+    if (updated) lastPositionUpdateAt = timestamp;
+    return updated;
   };
 
   return {
     setup,
     setPlaybackState,
     setPositionState,
+    updatePosition,
     clearPositionState,
+    clearPosition: clearPositionState,
     get supported() {
       return Boolean(mediaSession);
     },
@@ -108,11 +134,11 @@ export function createMediaSessionController({
 
       if (mediaSession) {
         for (const action of MEDIA_ACTIONS) {
-          safely(() => mediaSession.setActionHandler(action, null));
+          safely(`action:${action}:destroy`, () => mediaSession.setActionHandler(action, null));
         }
         clearPositionState();
         setPlaybackState("none");
-        safely(() => {
+        safely("metadata:destroy", () => {
           mediaSession.metadata = null;
         });
       }

@@ -53,7 +53,12 @@ test("drives metadata, actions, explicit playback state, and VOD position", () =
   assert.equal(controller.setPlaybackState("playing"), true);
   assert.equal(harness.session.playbackState, "playing");
   assert.equal(
-    controller.setPositionState({ duration: 120, position: 150, playbackRate: 1.25 }),
+    controller.updatePosition({
+      duration: 120,
+      position: 150,
+      playbackRate: 1.25,
+      force: true,
+    }),
     true,
   );
   assert.deepEqual(harness.positions.at(-1), {
@@ -62,11 +67,41 @@ test("drives metadata, actions, explicit playback state, and VOD position", () =
     playbackRate: 1.25,
   });
 
+  assert.equal(controller.clearPosition(), true);
+  assert.equal(harness.positions.at(-1), undefined);
+
   controller.destroy();
   assert.equal(harness.session.playbackState, "none");
   assert.equal(harness.session.metadata, null);
   assert.equal(harness.handlers.get("play"), null);
   assert.equal(harness.positions.at(-1), undefined);
+});
+
+test("throttles regular timeline updates while allowing forced synchronization", () => {
+  const harness = createMediaSessionHarness();
+  let timestamp = 1_000;
+  const controller = createMediaSessionController({
+    navigatorRef: { mediaSession: harness.session },
+    windowRef: {},
+    now: () => timestamp,
+    positionUpdateIntervalMs: 1_000,
+  });
+
+  controller.setup();
+  assert.equal(
+    controller.updatePosition({ duration: 120, position: 25, playbackRate: 1, force: true }),
+    true,
+  );
+
+  timestamp = 1_200;
+  assert.equal(controller.updatePosition({ duration: 120, position: 26, playbackRate: 1 }), false);
+
+  timestamp = 2_001;
+  assert.equal(controller.updatePosition({ duration: 120, position: 27, playbackRate: 1 }), true);
+  assert.deepEqual(harness.positions.filter(Boolean), [
+    { duration: 120, position: 25, playbackRate: 1 },
+    { duration: 120, position: 27, playbackRate: 1 },
+  ]);
 });
 
 test("normalizes position state and ignores invalid media values", () => {

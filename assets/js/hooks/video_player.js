@@ -3744,7 +3744,7 @@ const VideoPlayer = {
       if (target === null) return;
 
       Promise.resolve(engine.seek(target))
-        .then(() => this.updateMediaSessionPositionState({ force: true }))
+        .then(() => this.updateMediaSessionPosition({ force: true }))
         .catch((error) => {
           log.debug("[VideoPlayer] managed engine seek skipped:", error.message);
         });
@@ -3768,7 +3768,7 @@ const VideoPlayer = {
       Promise.resolve(engine.seek(target))
         .then(() => {
           emitPlaybackEvent(this.el, "seeked");
-          this.updateMediaSessionPositionState({ force: true });
+          this.updateMediaSessionPosition({ force: true });
         })
         .catch((error) => {
           log.debug("[VideoPlayer] managed engine seek skipped:", error.message);
@@ -3801,6 +3801,13 @@ const VideoPlayer = {
     }
 
     return duration;
+  },
+
+  getPlaybackRate() {
+    if (!this.supportsPlaybackRateControl()) return 1;
+
+    const playbackRate = Number(this.video?.playbackRate);
+    return Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
   },
 
   isPaused() {
