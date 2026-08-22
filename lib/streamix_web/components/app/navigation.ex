@@ -56,22 +56,22 @@ defmodule StreamixWeb.App.Navigation do
       aria-label={@label}
       aria-current={@active && "page"}
       class={[
-        "mobile-bottom-tab flex min-h-11 min-w-0 flex-col items-center justify-center py-1.5 transition-colors touch-manipulation",
+        "mobile-bottom-tab flex min-h-11 min-w-0 flex-col items-center justify-center py-1 transition-colors touch-manipulation",
         @active && "text-brand",
         !@active && "text-text-secondary active:text-text-primary"
       ]}
     >
       <span class={[
         "flex items-center justify-center rounded-xl transition-all",
-        @active && "bg-brand/15 px-4 py-1",
-        !@active && "px-2 py-1"
+        @active && "bg-brand/15 px-3 py-0.5",
+        !@active && "px-2 py-0.5"
       ]}>
         <.icon
           name={if @active, do: @icon_active, else: @icon}
-          class="size-5 transition-transform"
+          class="size-[19px] transition-transform"
         />
       </span>
-      <span class="text-[10px] mt-0.5 font-medium">{@label}</span>
+      <span class="mt-0.5 text-[9px] font-medium leading-none">{@label}</span>
     </.session_link>
     """
   end
@@ -86,7 +86,7 @@ defmodule StreamixWeb.App.Navigation do
       aria-label="Navegação principal"
       class="mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 md:hidden"
     >
-      <div class="grid h-16 grid-cols-5 items-stretch">
+      <div class="grid h-[3.75rem] grid-cols-5 items-stretch">
         <.bottom_tab
           id="mobile-tab-home"
           path={@home_path}

@@ -61,7 +61,7 @@
     /* Shared interaction and mobile-shell contract */
     --touch-target-min: 2.75rem;
     --player-target: 3rem;
-    --mobile-nav-height: 4rem;
+    --mobile-nav-height: 3.75rem;
     --mobile-nav-surface: rgb(10 10 10 / 0.97);
     --mobile-nav-border: rgb(255 255 255 / 0.09);
     --mobile-nav-elevation: 0 -10px 30px rgb(0 0 0 / 0.38);
