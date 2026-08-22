@@ -30,7 +30,7 @@
 // the npm package is intentionally not installed because the browser
 // never imports it and its legacy build tree carries known advisories.
 
-import { avplayerLogger as log } from "../core/logger";
+import { avplayerLogger as log } from "../core/logger.js";
 
 const DEFAULT_BASE_URL = "/vendor/h265web/";
 const SCRIPT_NAME = "h265web.js";
@@ -93,6 +93,7 @@ export class H265webWrapper {
     this._lastPts = 0;
     this._duration = 0;
     this._mediaInfo = null;
+    this._playing = false;
   }
 
   async init() {
@@ -132,7 +133,10 @@ export class H265webWrapper {
       this._lastPts = pts;
       this._emit("timeupdate", pts);
     };
-    player.on_play_finished = () => this._emit("ended");
+    player.on_play_finished = () => {
+      this._playing = false;
+      this._emit("ended");
+    };
     player.on_seek_start_callback = (target) => this._emit("seeking", target);
     player.on_seek_done_callback = (target) => this._emit("seeked", target);
     player.on_load_caching_callback = () => this._emit("waiting");
@@ -179,11 +183,25 @@ export class H265webWrapper {
   }
 
   async play() {
-    return this.player?.play?.();
+    if (!this.player || typeof this.player.play !== "function") {
+      throw new Error("H265webWrapper: not loaded");
+    }
+
+    const result = this.player.play();
+    if (result && typeof result.then === "function") await result;
+    this._playing = true;
+    this._emit("playing");
+    return result;
   }
 
-  pause() {
-    return this.player?.pause?.();
+  async pause() {
+    if (!this.player || typeof this.player.pause !== "function") return undefined;
+
+    const result = this.player.pause();
+    if (result && typeof result.then === "function") await result;
+    this._playing = false;
+    this._emit("paused");
+    return result;
   }
 
   async seek(time) {
@@ -204,7 +222,7 @@ export class H265webWrapper {
   }
 
   isPlaying() {
-    return !!this.player;
+    return this._playing;
   }
 
   getMediaInfo() {
@@ -237,6 +255,7 @@ export class H265webWrapper {
       log.warn("[h265web] release threw:", err);
     } finally {
       this.player = null;
+      this._playing = false;
       this.events.clear();
       if (this.video) {
         this.video.style.display = this._previousVideoDisplay || "";
