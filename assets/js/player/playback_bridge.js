@@ -27,11 +27,15 @@ export function installPlaybackBridge(el, hook) {
 
   el.streamixPlayback = {
     get engine() {
-      return hook.usingAVPlayer ? "avplayer" : "native";
+      if (hook.usingAVPlayer) return "avplayer";
+      if (hook.usingH265web) return "h265web";
+      if (hook.usingAvbridge) return "avbridge";
+      return "native";
     },
     getCurrentTime: () => hook.getCurrentTime(),
     getDuration: () => hook.getDuration(),
     isPaused: () => hook.isPaused(),
+    getPlaybackRate: () => hook.getPlaybackRate?.() || 1,
     seekTo: (time) => hook.seekTo(time),
     play: () => {
       if (hook.isPaused()) hook.togglePlayPause();
@@ -39,13 +43,9 @@ export function installPlaybackBridge(el, hook) {
     pause: () => {
       if (!hook.isPaused()) hook.togglePlayPause();
     },
-    // Playback rate nudging is native-only: AVPlayer has no equivalent
-    // knob, so consumers fall back to seeking for those engines.
-    setPlaybackRate: (rate) => {
-      if (hook.usingAVPlayer) return false;
-      hook.setPlaybackRate(rate);
-      return true;
-    },
+    // Canvas engines expose no reliable rate control, so consumers fall
+    // back to seeking instead of pretending a hidden <video> changed speed.
+    setPlaybackRate: (rate) => hook.setPlaybackRate(rate) !== false,
   };
 
   return () => {

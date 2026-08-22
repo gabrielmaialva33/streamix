@@ -25,7 +25,10 @@ function fakeElement() {
 function fakeHook(overrides = {}) {
   return {
     usingAVPlayer: false,
+    usingAvbridge: false,
+    usingH265web: false,
     paused: true,
+    playbackRate: 1,
     time: 0,
     seeked: [],
     rates: [],
@@ -46,8 +49,14 @@ function fakeHook(overrides = {}) {
       this.toggles += 1;
       this.paused = !this.paused;
     },
+    getPlaybackRate() {
+      return this.usingAVPlayer || this.usingH265web ? 1 : this.playbackRate;
+    },
     setPlaybackRate(rate) {
+      if (this.usingAVPlayer || this.usingH265web) return false;
       this.rates.push(rate);
+      this.playbackRate = rate;
+      return true;
     },
     ...overrides,
   };
@@ -60,6 +69,14 @@ test("reports the engine currently driving playback", () => {
 
   assert.equal(el.streamixPlayback.engine, "native");
 
+  hook.usingAvbridge = true;
+  assert.equal(el.streamixPlayback.engine, "avbridge");
+
+  hook.usingAvbridge = false;
+  hook.usingH265web = true;
+  assert.equal(el.streamixPlayback.engine, "h265web");
+
+  hook.usingH265web = false;
   hook.usingAVPlayer = true;
   assert.equal(el.streamixPlayback.engine, "avplayer");
 });
@@ -98,7 +115,13 @@ test("declines playback rate changes on AVPlayer, which has no rate knob", () =>
   assert.deepEqual(hook.rates, []);
 
   hook.usingAVPlayer = false;
+  hook.usingH265web = true;
+  assert.equal(el.streamixPlayback.setPlaybackRate(1.1), false);
+  assert.deepEqual(hook.rates, []);
+
+  hook.usingH265web = false;
   assert.equal(el.streamixPlayback.setPlaybackRate(1.1), true);
+  assert.equal(el.streamixPlayback.getPlaybackRate(), 1.1);
   assert.deepEqual(hook.rates, [1.1]);
 });
 
