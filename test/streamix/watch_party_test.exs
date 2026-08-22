@@ -195,6 +195,47 @@ defmodule Streamix.WatchPartyTest do
     RoomServer.stop(room.id)
   end
 
+  test "viewer capacity reserves one seat for the host and always permits host reconnection" do
+    host = AccountsFixtures.user_fixture()
+    provider = IptvFixtures.provider_fixture(host, %{visibility: :public})
+    movie = IptvFixtures.movie_fixture(provider, %{name: "Reserved Host Seat"})
+
+    room =
+      %Room{}
+      |> Room.create_changeset(%{
+        host_user_id: host.id,
+        catalog_item_id: movie.catalog_item_id,
+        source_type: "movie",
+        source_id: movie.id,
+        max_participants: 3
+      })
+      |> Repo.insert!()
+
+    viewer_a = AccountsFixtures.user_fixture()
+    viewer_b = AccountsFixtures.user_fixture()
+    blocked_viewer = AccountsFixtures.user_fixture()
+    participant_fixture(room, viewer_a)
+    participant_fixture(room, viewer_b)
+
+    assert WatchParty.room_capacity(room.id, blocked_viewer.id).full?
+    refute WatchParty.room_capacity(room.id, viewer_a.id).full?
+    refute WatchParty.room_capacity(room.id, host.id).full?
+
+    assert {:error, :room_full} =
+             WatchParty.join_room(room.id, blocked_viewer.id, "blocked-viewer-tab")
+
+    assert {:ok, %Participant{role: "host"}} =
+             WatchParty.join_room(room.id, host.id, "host-return-tab")
+
+    assert WatchParty.room_capacity(room.id, blocked_viewer.id) == %{
+             current: 3,
+             maximum: 3,
+             full?: true
+           }
+
+    RoomServer.stop(room.id)
+  end
+
   test "messages require active membership, trim content, and never expose account email" do
     %{room: room, user: user} = room_fixture()
     participant_fixture(room, user)

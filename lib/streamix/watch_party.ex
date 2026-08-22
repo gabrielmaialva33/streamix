@@ -88,13 +88,23 @@ defmodule Streamix.WatchParty do
     |> Enum.map(&preload_room_content/1)
   end
 
-  def room_capacity(room_id) when is_integer(room_id) do
+  def room_capacity(room_id, user_id \\ nil) when is_integer(room_id) do
     case Repo.get(Room, room_id) do
       %Room{} = room ->
-        %{current: active_participant_count(room_id), maximum: room.max_participants}
+        current = active_participant_count(room_id)
+        returning? = is_integer(user_id) and not is_nil(active_participant(room_id, user_id))
+
+        full? =
+          cond do
+            returning? -> false
+            user_id == room.host_user_id -> false
+            true -> active_viewer_count(room_id, room.host_user_id) >= room.max_participants - 1
+          end
+
+        %{current: current, maximum: room.max_participants, full?: full?}
 
       nil ->
-        %{current: 0, maximum: 0}
+        %{current: 0, maximum: 0, full?: true}
     end
   end
 
@@ -442,11 +452,15 @@ defmodule Streamix.WatchParty do
   defp insert_participant_locked(_room, _room_id, _user_id), do: Repo.rollback(:room_ended)
 
   defp insert_new_participant(room, room_id, user_id) do
-    if active_participant_count(room_id) >= room.max_participants do
-      Repo.rollback(:room_full)
-    else
-      role = if room.host_user_id == user_id, do: "host", else: "viewer"
-      insert_participant_record(room_id, user_id, role)
+    cond do
+      room.host_user_id == user_id ->
+        insert_participant_record(room_id, user_id, "host")
+
+      active_viewer_count(room_id, room.host_user_id) >= room.max_participants - 1 ->
+        Repo.rollback(:room_full)
+
+      true ->
+        insert_participant_record(room_id, user_id, "viewer")
     end
   end
 
@@ -490,6 +504,15 @@ defmodule Streamix.WatchParty do
   defp active_participant_count(room_id) do
     from(participant in Participant,
       where: participant.room_id == ^room_id and is_nil(participant.left_at)
+    )
+    |> Repo.aggregate(:count)
+  end
+
+  defp active_viewer_count(room_id, host_user_id) do
+    from(participant in Participant,
+      where:
+        participant.room_id == ^room_id and participant.user_id != ^host_user_id and
+          is_nil(participant.left_at)
     )
     |> Repo.aggregate(:count)
   end

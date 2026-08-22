@@ -36,7 +36,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
          :ok <- WatchParty.authorize_room_user(room, user_id) do
       content_name = Iptv.catalog_item_content_name(room.catalog_item)
       content_icon = Iptv.catalog_item_content_icon(room.catalog_item)
-      capacity = WatchParty.room_capacity(room.id)
+      capacity = WatchParty.room_capacity(room.id, user_id)
 
       {:ok,
        assign(socket,
@@ -80,9 +80,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
   @impl true
   def render(assigns) do
-    capacity = assigns.capacity
-    room_full? = capacity.maximum > 0 and capacity.current >= capacity.maximum
-    assigns = assign(assigns, :room_full?, room_full?)
+    assigns = assign(assigns, :room_full?, assigns.capacity.full?)
 
     ~H"""
     <div class="flex min-h-[80vh] items-center justify-center px-4 py-10">
