@@ -598,7 +598,17 @@ defmodule Streamix.Iptv do
   defdelegate halt_stream_error(conn, code, opts \\ []), to: StreamErrors, as: :halt
   defdelegate stream_error_code_from_reason(reason), to: StreamErrors, as: :code_from_reason
   defdelegate resolve_stream_url(url, opts \\ []), to: RedirectResolver, as: :resolve
-  defdelegate prewarm_stream_url(url, opts \\ []), to: RedirectResolver, as: :prewarm_async
+
+  @doc "Resolves a stream URL using the source-proxy credential-exchange policy."
+  defdelegate resolve_stream_url_for_proxy(url, opts \\ []),
+    to: RedirectResolver,
+    as: :resolve_for_proxy
+
+  @doc "Prewarms without fetching a single-use token target."
+  def prewarm_stream_url(url, opts \\ []) when is_binary(url) and is_list(opts) do
+    RedirectResolver.prewarm_for_proxy_async(url, opts)
+  end
+
   defdelegate pipe_stream(conn, url, opts \\ []), to: VodProxy, as: :pipe
   defdelegate pipe_live_stream(conn, url, opts \\ []), to: LiveProxy, as: :pipe
 

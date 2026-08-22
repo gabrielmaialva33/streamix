@@ -55,6 +55,40 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
       # /r2 itself was never fetched — we stopped at the redirect that
       # pointed to it.
       assert Map.get(Agent.get(counter, & &1), "/r2") in [nil, 0]
+
+      assert :miss = RedirectResolver.peek("#{base}/r1")
+
+      assert_raise ArgumentError, fn ->
+        RedirectResolver.peek("#{base}/r1", stop_fn: stop_fn)
+      end
+
+      expected_full = "#{base}/final"
+      assert {:ok, ^expected_full} = RedirectResolver.resolve("#{base}/r1")
+      assert Agent.get(counter, &Map.get(&1, "/r2", 0)) == 1
+    end
+
+    test "explicit policy scopes preserve single-flight and remain independently peekable", %{
+      base: base,
+      counter: counter
+    } do
+      slow = "#{base}/slow"
+
+      tasks =
+        for _ <- 1..4 do
+          Task.async(fn ->
+            RedirectResolver.resolve(slow,
+              cache_scope: :partial_test,
+              stop_fn: fn _next_url -> true end
+            )
+          end)
+        end
+
+      assert_receive {:request_started, "/slow", request_pid}
+      send(request_pid, :release_slow_request)
+      assert Enum.all?(Task.await_many(tasks, 10_000), &match?({:ok, _}, &1))
+      assert Agent.get(counter, & &1)["/slow"] == 1
+      assert :miss = RedirectResolver.peek(slow)
+      assert {:ok, ^slow} = RedirectResolver.peek(slow, cache_scope: :partial_test)
     end
 
     test "non-2xx terminal status returns {:error, {:unexpected_status, code}}", %{base: base} do
@@ -126,6 +160,33 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
       {:ok, _} = RedirectResolver.resolve("#{base}/r1")
       assert Agent.get(counter, & &1) == hits_after_prewarm
     end
+
+    test "partial prewarm safely seeds a later full-chain resolution", %{
+      base: base,
+      counter: counter
+    } do
+      source = "#{base}/movie/test-user/test-password/stream.ts"
+      token = "#{base}/single-use-token"
+      final = "#{base}/final-media"
+
+      :ok = RedirectResolver.prewarm_for_proxy_async(source)
+      assert_receive {:request_started, "/movie/test-user/test-password/stream.ts", _request_pid}
+
+      assert {:ok, ^token} = RedirectResolver.resolve_for_proxy(source)
+      assert Agent.get(counter, &Map.get(&1, "/single-use-token", 0)) == 0
+      assert :miss = RedirectResolver.peek(source)
+
+      assert {:ok, ^token} =
+               RedirectResolver.peek(source, cache_scope: :credential_exchange)
+
+      assert {:ok, ^final} = RedirectResolver.resolve(source)
+      # Full resolution resumes from the cached credential-free hop. The
+      # credential-bearing origin is not fetched twice, and the token target
+      # is still consumed only by the real full-chain request.
+      assert Agent.get(counter, &Map.get(&1, "/movie/test-user/test-password/stream.ts", 0)) == 1
+      assert Agent.get(counter, &Map.get(&1, "/single-use-token", 0)) == 1
+      assert Agent.get(counter, &Map.get(&1, "/final-media", 0)) == 1
+    end
   end
 
   # --- Test server -----------------------------------------------------
@@ -175,6 +236,24 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
 
     defp handle(conn, "/final") do
       send_resp(conn, 200, "ok")
+    end
+
+    defp handle(conn, "/movie/test-user/test-password/stream.ts") do
+      conn
+      |> put_resp_header("location", "http://#{conn.host}:#{conn.port}/single-use-token")
+      |> send_resp(302, "")
+    end
+
+    defp handle(conn, "/single-use-token") do
+      conn
+      |> put_resp_header("location", "http://#{conn.host}:#{conn.port}/final-media")
+      |> send_resp(302, "")
+    end
+
+    defp handle(conn, "/final-media") do
+      conn
+      |> put_resp_content_type("video/mp4")
+      |> send_resp(200, "media")
     end
 
     # /slow holds the first request open until the test releases it, so

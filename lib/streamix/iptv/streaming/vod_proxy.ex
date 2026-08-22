@@ -236,7 +236,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     # that responds with 200/206. Stopping at the first non-creds hop
     # would still leave us on a 302 redirector and the pre-flight
     # would bounce.
-    RedirectResolver.resolve(url, stop_fn: fn _ -> false end)
+    RedirectResolver.resolve(url)
   end
 
   defp do_pipe(conn, _final_url, %{retry_count: n} = state)

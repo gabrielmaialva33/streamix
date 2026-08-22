@@ -217,7 +217,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   # `VodProxy` does. `RedirectResolver` caches the outcome, so this is cheap
   # for the blocks that follow.
   defp resolve(url) do
-    RedirectResolver.resolve(url, stop_fn: fn _ -> false end)
+    RedirectResolver.resolve(url)
   end
 
   defp fetch_range(state, final_url) do

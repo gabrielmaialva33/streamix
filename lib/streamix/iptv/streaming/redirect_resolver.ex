@@ -45,6 +45,9 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   @poll_interval_ms 50
   @redis :streamix_redis
   @redis_prefix "stream_redirect:"
+  @full_cache_scope :full
+  @credential_exchange_cache_scope :credential_exchange
+  @first_redirect_cache_scope :prewarm_first_redirect
   @uri_path_characters ~c"/:@!$&'()*+,;=%"
 
   # Client API
@@ -61,6 +64,10 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
   Options:
 
+    * `:cache_scope` — separates cached results produced by different
+      resolution policies. The default full-chain policy uses `:full`.
+      A custom `:stop_fn` without an explicit scope is deliberately
+      uncached so it can never poison the full-chain result.
     * `:stop_fn` — `fn next_url -> boolean`. Stop walking the chain when
       this returns `true` for the next URL (used to short-circuit at the
       first hop where IPTV credentials have been swapped for a
@@ -70,16 +77,37 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       call (mostly useful in tests to point at a stub server).
   """
   def resolve(url, opts \\ []) when is_binary(url) do
-    case lookup(url) do
-      {:hit, result} ->
-        result
+    case cache_policy(opts) do
+      :uncached ->
+        resolve_uncached(url, opts)
 
-      :miss ->
-        do_resolve(url, opts)
+      {:cached, scope} ->
+        case lookup(url, scope) do
+          {:hit, result} ->
+            result
 
-      :resolving ->
-        # Someone else owns the resolution — wait for their result.
-        wait_for_resolution(url, opts)
+          :miss ->
+            do_resolve(url, opts, scope)
+
+          :resolving ->
+            # Someone else owns the resolution — wait for their result.
+            wait_for_resolution(url, opts, scope)
+        end
+    end
+  end
+
+  @doc """
+  Resolves only far enough to exchange credentials embedded in an Xtream
+  path for the first credential-free redirect target.
+
+  This policy has its own cache scope so its intentionally partial result
+  can never be mistaken for a full-chain resolution.
+  """
+  def resolve_for_proxy(url, opts \\ []) when is_binary(url) and is_list(opts) do
+    if credentials_in_url?(url) do
+      resolve(url, credential_exchange_options(opts))
+    else
+      resolve(url, opts)
     end
   end
 
@@ -90,19 +118,47 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   If a resolution is already in flight or cached, this is a no-op.
   """
   def prewarm_async(url, opts \\ []) when is_binary(url) do
-    case lookup(url) do
-      {:hit, _} ->
-        :ok
-
-      :resolving ->
-        :ok
-
-      :miss ->
+    case cache_policy(opts) do
+      :uncached ->
         Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
-          _ = resolve(url, opts)
+          _ = resolve_uncached(url, opts)
         end)
 
         :ok
+
+      {:cached, scope} ->
+        case lookup(url, scope) do
+          {:hit, _} ->
+            :ok
+
+          :resolving ->
+            :ok
+
+          :miss ->
+            Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
+              _ = resolve(url, opts)
+            end)
+
+            :ok
+        end
+    end
+  end
+
+  @doc """
+  Prewarms the exact same credential-exchange policy used by
+  `resolve_for_proxy/2`. Credential-free URLs use an isolated, first-hop
+  prewarm scope and therefore cannot contaminate the default full scope.
+  """
+  def prewarm_for_proxy_async(url, opts \\ []) when is_binary(url) and is_list(opts) do
+    if credentials_in_url?(url) do
+      prewarm_async(url, credential_exchange_options(opts))
+    else
+      prewarm_async(
+        url,
+        opts
+        |> Keyword.put(:cache_scope, @first_redirect_cache_scope)
+        |> Keyword.put(:stop_fn, &stop_at_first_redirect?/1)
+      )
     end
   end
 
@@ -115,9 +171,16 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   path) and falling back to the Phoenix `/api/stream/proxy` token
   redirect (cache miss → wait-and-redirect path).
   """
-  @spec peek(String.t()) :: {:ok, String.t()} | :miss
-  def peek(url) when is_binary(url) do
-    case lookup(url) do
+  @spec peek(String.t(), keyword()) :: {:ok, String.t()} | :miss
+  def peek(url, opts \\ []) when is_binary(url) and is_list(opts) do
+    case Keyword.keys(opts) -- [:cache_scope] do
+      [] -> :ok
+      unsupported -> raise ArgumentError, "unsupported peek options: #{inspect(unsupported)}"
+    end
+
+    scope = Keyword.get(opts, :cache_scope, @full_cache_scope)
+
+    case lookup(url, scope) do
       {:hit, {:ok, _final} = ok} -> ok
       _ -> :miss
     end
@@ -165,8 +228,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
   # Internals
 
-  defp lookup(url) do
-    key = cache_key(url)
+  defp lookup(url, scope) do
+    key = cache_key(url, scope)
     now = System.system_time(:second)
 
     case :ets.lookup(@table, key) do
@@ -196,15 +259,15 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     :ets.insert(@table, {key, {:result, result}, expires_at})
   end
 
-  defp do_resolve(url, opts) do
-    key = cache_key(url)
+  defp do_resolve(url, opts, scope) do
+    key = cache_key(url, scope)
     placeholder_expires = System.system_time(:second) + @placeholder_ttl_seconds
 
     if :ets.insert_new(@table, {key, :resolving, placeholder_expires}) do
       # We won the lock — perform the resolution and publish the result.
       result =
         try do
-          walk_chain(url, opts)
+          walk_chain_from_policy(url, opts, scope)
         catch
           kind, reason ->
             Logger.error(
@@ -219,17 +282,17 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
       result
     else
       # Lost the race — another caller is already resolving.
-      wait_for_resolution(url, opts)
+      wait_for_resolution(url, opts, scope)
     end
   end
 
-  defp wait_for_resolution(url, opts) do
-    key = cache_key(url)
+  defp wait_for_resolution(url, opts, scope) do
+    key = cache_key(url, scope)
     deadline = System.monotonic_time(:millisecond) + (@placeholder_ttl_seconds + 1) * 1000
-    poll_until_resolved(key, url, opts, deadline)
+    poll_until_resolved(key, url, opts, scope, deadline)
   end
 
-  defp poll_until_resolved(key, url, opts, deadline) do
+  defp poll_until_resolved(key, url, opts, scope, deadline) do
     Process.sleep(@poll_interval_ms)
 
     case :ets.lookup(@table, key) do
@@ -238,18 +301,32 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
       [{^key, :resolving, _}] ->
         if System.monotonic_time(:millisecond) < deadline do
-          poll_until_resolved(key, url, opts, deadline)
+          poll_until_resolved(key, url, opts, scope, deadline)
         else
           # Owner appears stuck — claim the slot and resolve ourselves.
           Logger.warning("RedirectResolver: lock holder timed out for #{sanitize(url)}, retrying")
 
           :ets.delete(@table, key)
-          do_resolve(url, opts)
+          do_resolve(url, opts, scope)
         end
 
       _ ->
         # Slot was purged while we were polling. Try again from scratch.
-        do_resolve(url, opts)
+        do_resolve(url, opts, scope)
+    end
+  end
+
+  defp resolve_uncached(url, opts) do
+    try do
+      walk_chain(url, opts)
+    catch
+      kind, reason ->
+        Logger.error(
+          "RedirectResolver: walk_chain crashed (#{kind}): " <>
+            "#{SafeLog.redact_inspect(reason)} for #{sanitize(url)}"
+        )
+
+        {:error, {:resolver_crashed, kind, reason}}
     end
   end
 
@@ -299,46 +376,130 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   # unknown runtime terms if Redis contents are corrupted.
   # sobelow_skip ["Misc.BinToTerm"]
   defp redis_get(key) do
-    full_key = @redis_prefix <> key
+    if Process.whereis(@redis) do
+      full_key = @redis_prefix <> key
 
-    try do
-      case Redix.pipeline(@redis, [["GET", full_key], ["TTL", full_key]]) do
-        {:ok, [nil, _]} ->
-          :miss
+      try do
+        case Redix.pipeline(@redis, [["GET", full_key], ["TTL", full_key]]) do
+          {:ok, [nil, _]} ->
+            :miss
 
-        {:ok, [encoded, ttl]} when is_binary(encoded) and is_integer(ttl) and ttl > 0 ->
-          {:ok, {:erlang.binary_to_term(encoded, [:safe]), ttl}}
+          {:ok, [encoded, ttl]} when is_binary(encoded) and is_integer(ttl) and ttl > 0 ->
+            {:ok, {:erlang.binary_to_term(encoded, [:safe]), ttl}}
 
-        _ ->
-          :miss
+          _ ->
+            :miss
+        end
+      rescue
+        _ -> :miss
+      catch
+        :exit, _ -> :miss
       end
-    rescue
-      _ -> :miss
-    catch
-      :exit, _ -> :miss
+    else
+      :miss
     end
   end
 
   defp redis_set_async(key, result, ttl_seconds) do
-    full_key = @redis_prefix <> key
-    payload = :erlang.term_to_binary(result)
+    if Process.whereis(@redis) do
+      full_key = @redis_prefix <> key
+      payload = :erlang.term_to_binary(result)
 
-    Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
-      try do
-        Redix.command(@redis, ["SETEX", full_key, Integer.to_string(ttl_seconds), payload])
-      rescue
-        e -> Logger.debug("RedirectResolver: Redis SETEX failed: #{SafeLog.redact_inspect(e)}")
-      catch
-        :exit, reason ->
-          Logger.debug("RedirectResolver: Redis exit: #{SafeLog.redact_inspect(reason)}")
-      end
-    end)
+      Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
+        try do
+          Redix.command(@redis, ["SETEX", full_key, Integer.to_string(ttl_seconds), payload])
+        rescue
+          e -> Logger.debug("RedirectResolver: Redis SETEX failed: #{SafeLog.redact_inspect(e)}")
+        catch
+          :exit, reason ->
+            Logger.debug("RedirectResolver: Redis exit: #{SafeLog.redact_inspect(reason)}")
+        end
+      end)
+    end
 
     :ok
   end
 
-  defp cache_key(url) do
-    :crypto.hash(:sha256, url) |> Base.encode16(case: :lower)
+  defp cache_key(url, scope) do
+    :crypto.hash(:sha256, :erlang.term_to_binary({scope, url}))
+    |> Base.encode16(case: :lower)
+  end
+
+  defp cache_policy(opts) do
+    case Keyword.fetch(opts, :cache_scope) do
+      {:ok, scope} ->
+        {:cached, scope}
+
+      :error ->
+        if Keyword.has_key?(opts, :stop_fn), do: :uncached, else: {:cached, @full_cache_scope}
+    end
+  end
+
+  defp walk_chain_from_policy(url, opts, scope) do
+    case resolution_start_url(url, opts, scope) do
+      ^url ->
+        walk_chain(url, opts)
+
+      prewarmed_url ->
+        case do_walk(prewarmed_url, 0, opts) do
+          {:error, _reason} ->
+            # A short-lived prewarmed token may expire or point at a dead
+            # cluster node. Retry from the credential-bearing origin so the
+            # provider can issue a fresh token before publishing an error.
+            walk_chain(url, opts)
+
+          result ->
+            result
+        end
+    end
+  end
+
+  defp resolution_start_url(url, opts, @full_cache_scope) do
+    if Keyword.has_key?(opts, :stop_fn) do
+      url
+    else
+      case prewarmed_result(url) do
+        {:ok, next_url} when is_binary(next_url) -> next_url
+        _ -> url
+      end
+    end
+  end
+
+  defp resolution_start_url(url, _opts, _scope), do: url
+
+  defp prewarmed_result(url) do
+    {scope, opts} = prewarm_policy(url)
+
+    case lookup(url, scope) do
+      {:hit, result} -> result
+      :resolving -> wait_for_resolution(url, opts, scope)
+      :miss -> :miss
+    end
+  end
+
+  defp prewarm_policy(url) do
+    if credentials_in_url?(url) do
+      {@credential_exchange_cache_scope, credential_exchange_options([])}
+    else
+      {@first_redirect_cache_scope,
+       [cache_scope: @first_redirect_cache_scope, stop_fn: &stop_at_first_redirect?/1]}
+    end
+  end
+
+  defp credential_exchange_options(opts) do
+    opts
+    |> Keyword.put(:cache_scope, @credential_exchange_cache_scope)
+    |> Keyword.put(:stop_fn, &credentials_exchanged?/1)
+  end
+
+  defp stop_at_first_redirect?(_next_url), do: true
+  defp credentials_exchanged?(next_url), do: not credentials_in_url?(next_url)
+
+  defp credentials_in_url?(url) do
+    case URI.parse(url).path do
+      nil -> false
+      path -> Regex.match?(~r{/(live|movie|series)/[^/]+/[^/]+/}, path)
+    end
   end
 
   defp purge_expired do

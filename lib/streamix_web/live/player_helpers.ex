@@ -244,7 +244,7 @@ defmodule StreamixWeb.PlayerHelpers do
   defp do_prewarm(type, id, user_id) do
     with {:ok, upstream_type} <- prewarmable_upstream_type(type),
          {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
-      Iptv.prewarm_stream_url(url, stop_fn: fn _ -> false end)
+      Iptv.prewarm_stream_url(url)
     else
       _ -> :ok
     end

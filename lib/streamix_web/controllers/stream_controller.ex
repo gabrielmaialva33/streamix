@@ -210,14 +210,7 @@ defmodule StreamixWeb.StreamController do
     # essas creds por um token de curta duração — o resto dos hops lentos
     # (vauth → vauth → vauth) roda no nginx, sem segurar BEAM. Se a URL
     # já vem limpa, mantém o chase deep antigo (sem regressão).
-    stop_fn =
-      if credentials_in_url?(url) do
-        fn next_url -> not credentials_in_url?(next_url) end
-      else
-        fn _ -> false end
-      end
-
-    case Iptv.resolve_stream_url(url, stop_fn: stop_fn) do
+    case Iptv.resolve_stream_url_for_proxy(url) do
       {:ok, final_url} ->
         # Pick a source proxy from the configured pool. Each request
         # gets a different source (round-robin across the user's session
