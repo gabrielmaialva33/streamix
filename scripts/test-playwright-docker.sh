@@ -81,6 +81,9 @@ fi
 echo "[playwright] installing frontend asset binaries"
 env MIX_ENV=test bash scripts/install-asset-binaries.sh
 
+echo "[playwright] removing stale digested and precompressed assets"
+env MIX_ENV=test mix phx.digest.clean --all
+
 echo "[playwright] building current frontend assets"
 env MIX_ENV=test mix assets.build
 
@@ -127,6 +130,7 @@ if [ "$#" -eq 0 ]; then
     test/streamix_web/e2e/login_persistence_test.exs \
     test/streamix_web/e2e/player_lifecycle_test.exs \
     test/streamix_web/e2e/premium_visibility_test.exs \
+    test/streamix_web/e2e/watch_party_sync_test.exs \
     test/streamix_web/e2e/webkit_reconnect_test.exs
 
   if [ "${browser}" = "chromium" ]; then
