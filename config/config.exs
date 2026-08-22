@@ -227,6 +227,8 @@ config :streamix, Oban,
      crontab: [
        # Cleanup orphaned favorites/history daily at 2 AM
        {"0 2 * * *", Streamix.Workers.CleanupOrphanedDataWorker},
+       # Recover abandoned party processes and prune old ended rooms.
+       {"*/15 * * * *", Streamix.Workers.CleanupWatchPartyRoomsWorker},
        # Retain detailed client QoE samples for 90 days.
        {"30 2 * * *", Streamix.Workers.CleanupQoeEventsWorker},
        # Sync all providers every 6 hours
