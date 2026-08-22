@@ -279,7 +279,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             seekIndex < playIndex &&
             !state.autoplay &&
             state.preload === "metadata" &&
-            state.pictureInPictureDisabled &&
+            !state.pictureInPictureDisabled &&
             state.nativeControls &&
             state.lifecycleLogs === "false" &&
             state.nativeTouchControls &&
@@ -438,7 +438,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
         assert state["centerOverlayCount"] == 0
         assert state["seekButtonCount"] == 0
-        assert state["pipButtonCount"] == 0
+        assert state["pipButtonCount"] == 1
         assert state["hiddenState"]["controlsVisible"] == false
         assert state["hiddenState"]["closeOpacity"] > 0
         assert state["hiddenState"]["closePointerEvents"] == "auto"

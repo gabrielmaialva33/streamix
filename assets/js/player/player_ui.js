@@ -57,6 +57,9 @@ export class PlayerUI {
       expandIcon: container.querySelector(".expand-icon"),
       collapseIcon: container.querySelector(".collapse-icon"),
 
+      // Picture-in-Picture
+      pipButton: container.querySelector("#pip-btn"),
+
       // Controls container
       controls: container.querySelector("#player-controls"),
       topControls: container.querySelector("#player-top-controls"),
@@ -417,6 +420,27 @@ export class PlayerUI {
         collapseIcon.classList.add("hidden");
       }
     }
+  }
+
+  setPiPAvailable(available) {
+    const { pipButton } = this.elements;
+    if (!pipButton) return;
+
+    pipButton.classList.toggle("hidden", !available);
+    pipButton.disabled = !available;
+    if (!available) this.updatePiPUI(false);
+  }
+
+  updatePiPUI(active) {
+    const { pipButton } = this.elements;
+    if (!pipButton) return;
+
+    pipButton.setAttribute("aria-pressed", String(active));
+    pipButton.setAttribute(
+      "aria-label",
+      active ? "Sair do modo picture-in-picture" : "Ativar picture-in-picture",
+    );
+    pipButton.title = active ? "Sair do picture-in-picture" : "Picture-in-picture";
   }
 
   // ============================================

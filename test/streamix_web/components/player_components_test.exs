@@ -23,13 +23,13 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.find(document, "#center-play") == []
     assert Floki.find(document, "#seek-backward-btn") == []
     assert Floki.find(document, "#seek-forward-btn") == []
-    assert Floki.find(document, "#pip-btn") == []
+    assert Floki.find(document, "#pip-btn[aria-pressed=false].hidden") != []
 
     assert [{"video", video_attributes, _children}] =
              Floki.find(document, "#video-element")
 
     assert {"preload", "none"} in video_attributes
-    assert {"disablepictureinpicture", "disablepictureinpicture"} in video_attributes
+    refute List.keymember?(video_attributes, "disablepictureinpicture", 0)
 
     assert Floki.find(document, "#player-close-btn.size-12") != []
   end

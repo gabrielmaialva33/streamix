@@ -57,3 +57,37 @@ test("keeps buffer diagnostics available for explicit debug sessions", () => {
     globalThis.window = previousWindow;
   }
 });
+
+test("exposes PiP only while the active engine supports it", () => {
+  const classes = new Set(["hidden"]);
+  const attributes = new Map([["aria-pressed", "false"]]);
+  const pipButton = {
+    classList: {
+      toggle(name, force) {
+        if (force) classes.add(name);
+        else classes.delete(name);
+      },
+    },
+    disabled: true,
+    setAttribute(name, value) {
+      attributes.set(name, value);
+    },
+    title: "Picture-in-picture",
+  };
+  const playerUI = {
+    elements: { pipButton },
+    updatePiPUI: PlayerUI.prototype.updatePiPUI,
+  };
+
+  PlayerUI.prototype.setPiPAvailable.call(playerUI, true);
+  assert.equal(classes.has("hidden"), false);
+  assert.equal(pipButton.disabled, false);
+
+  PlayerUI.prototype.updatePiPUI.call(playerUI, true);
+  assert.equal(attributes.get("aria-pressed"), "true");
+
+  PlayerUI.prototype.setPiPAvailable.call(playerUI, false);
+  assert.equal(classes.has("hidden"), true);
+  assert.equal(pipButton.disabled, true);
+  assert.equal(attributes.get("aria-pressed"), "false");
+});

@@ -290,6 +290,23 @@ defmodule StreamixWeb.PlayerComponents.Controls do
     """
   end
 
+  def pip_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id="pip-btn"
+      phx-click={JS.dispatch("player:toggle-pip")}
+      aria-label="Ativar picture-in-picture"
+      aria-pressed="false"
+      disabled
+      class="hidden flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 disabled:pointer-events-none sm:size-11"
+      title="Picture-in-picture"
+    >
+      <.icon name="hero-rectangle-stack" class="size-6 sm:size-5" aria-hidden="true" />
+    </button>
+    """
+  end
+
   defp format_subtitle_offset(0), do: "0s"
 
   defp format_subtitle_offset(offset_ms) do

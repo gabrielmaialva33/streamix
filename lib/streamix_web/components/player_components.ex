@@ -153,7 +153,6 @@ defmodule StreamixWeb.PlayerComponents do
         phx-update="ignore"
         class="absolute inset-0 w-full h-full object-contain"
         preload="none"
-        disablepictureinpicture
         playsinline
         webkit-playsinline
         x-webkit-airplay="allow"
@@ -230,6 +229,7 @@ defmodule StreamixWeb.PlayerComponents do
             <div class="flex items-center gap-1 sm:gap-2">
               <.speed_button :if={@content_type not in [:live, :live_channel]} />
               <.settings_button subtitle_offset_ms={@subtitle_offset_ms} />
+              <.pip_button />
               <.fullscreen_button />
             </div>
           </div>
