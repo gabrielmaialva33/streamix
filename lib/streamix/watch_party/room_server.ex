@@ -20,6 +20,8 @@ defmodule Streamix.WatchParty.RoomServer do
   @idle_check_interval :timer.seconds(60)
   @idle_timeout :timer.minutes(5)
   @host_grace_timeout :timer.minutes(2)
+  @connection_fence_timeout :timer.seconds(30)
+  @persistence_retry_interval :timer.seconds(5)
   @snapshot_interval :timer.seconds(15)
   @command_lead_ms 350
   @max_drift_log 2.0
@@ -131,6 +133,7 @@ defmodule Streamix.WatchParty.RoomServer do
       connections: %{},
       connection_monitors: %{},
       monitor_connections: %{},
+      connection_fences: %{},
       participant_states: %{},
       last_activity: restore_monotonic_activity(activity_updated_at, monotonic_now),
       activity_updated_at: activity_updated_at,
@@ -156,6 +159,11 @@ defmodule Streamix.WatchParty.RoomServer do
     cancel_timer(state[:sync_timer])
     cancel_timer(state[:idle_timer])
     cancel_timer(state[:host_grace_timer])
+
+    Enum.each(state[:connection_fences] || %{}, fn {_key, fence} ->
+      cancel_timer(fence.timer)
+    end)
+
     :ok
   end
 
@@ -236,7 +244,7 @@ defmodule Streamix.WatchParty.RoomServer do
         {:reply, {:error, :invalid_content_ref}, state}
 
       true ->
-        state =
+        candidate =
           state
           |> Map.put(:catalog_item_id, catalog_item_id)
           |> Map.put(:source_type, source_type)
@@ -244,20 +252,26 @@ defmodule Streamix.WatchParty.RoomServer do
           |> Map.put(:playback, paused_playback(0.0))
           |> touch_activity()
           |> bump_version()
-          |> persist_snapshot(true)
 
-        broadcast(state.room_id, {
-          :content_changed,
-          %{
-            catalog_item_id: catalog_item_id,
-            source_type: source_type,
-            source_id: source_id,
-            version: state.version
-          }
-        })
+        case persist_snapshot_result(candidate, true) do
+          {:ok, persisted} ->
+            broadcast(persisted.room_id, {
+              :content_changed,
+              %{
+                catalog_item_id: catalog_item_id,
+                source_type: source_type,
+                source_id: source_id,
+                version: persisted.version
+              }
+            })
 
-        emit(:content_changed, %{count: 1}, %{room_id: state.room_id})
-        {:reply, {:ok, state.version}, state}
+            emit(:content_changed, %{count: 1}, %{room_id: persisted.room_id})
+            {:reply, {:ok, persisted.version}, persisted}
+
+          {:error, reason, _candidate} ->
+            log_persistence_failure(state, "content change", reason)
+            {:reply, {:error, :persistence_failed}, state}
+        end
     end
   end
 
@@ -266,8 +280,10 @@ defmodule Streamix.WatchParty.RoomServer do
     state = recover_connection(state, user_id, connection_id, owner_pid)
 
     if host_connection?(state, user_id, connection_id) do
-      state = end_persisted_room(state, "host_ended")
-      {:stop, :normal, :ok, state}
+      case end_persisted_room(state, "host_ended") do
+        {:ok, ended_state} -> {:stop, :normal, :ok, ended_state}
+        {:error, _reason, current_state} -> {:reply, {:error, :persistence_failed}, current_state}
+      end
     else
       {:reply, {:error, :not_host}, state}
     end
@@ -334,8 +350,11 @@ defmodule Streamix.WatchParty.RoomServer do
 
     if connection_count(state) == 0 and idle_ms > @idle_timeout do
       Logger.info("[WatchParty] Room #{state.room_id} idle timeout, ending room")
-      state = end_persisted_room(state, "idle_timeout")
-      {:stop, :normal, state}
+
+      case end_persisted_room(state, "idle_timeout") do
+        {:ok, ended_state} -> {:stop, :normal, ended_state}
+        {:error, _reason, current_state} -> {:noreply, current_state}
+      end
     else
       {:noreply, state}
     end
@@ -346,12 +365,38 @@ defmodule Streamix.WatchParty.RoomServer do
       {:noreply, clear_host_grace(state)}
     else
       Logger.info("[WatchParty] Room #{state.room_id} host grace expired")
-      state = end_persisted_room(state, "host_disconnected")
-      {:stop, :normal, state}
+      state = clear_host_grace(state)
+
+      case end_persisted_room(state, "host_disconnected") do
+        {:ok, ended_state} ->
+          {:stop, :normal, ended_state}
+
+        {:error, _reason, current_state} ->
+          {:noreply, schedule_host_end_retry(current_state)}
+      end
     end
   end
 
   def handle_info({:host_grace_expired, _stale_ref}, state), do: {:noreply, state}
+
+  def handle_info({:DOWN, monitor_ref, :process, _owner_pid, :noconnection}, state) do
+    case Map.get(state.monitor_connections, monitor_ref) do
+      nil ->
+        {:noreply, state}
+
+      key ->
+        Logger.warning(
+          "[WatchParty] Room #{state.room_id} connection #{inspect(key)} lost its node; fencing before eviction"
+        )
+
+        state =
+          state
+          |> drop_connection_monitor(key, true)
+          |> schedule_connection_fence(key)
+
+        {:noreply, state}
+    end
+  end
 
   def handle_info({:DOWN, monitor_ref, :process, _owner_pid, _reason}, state) do
     case Map.get(state.monitor_connections, monitor_ref) do
@@ -359,23 +404,23 @@ defmodule Streamix.WatchParty.RoomServer do
         {:noreply, state}
 
       {user_id, connection_id} ->
-        state =
-          state
-          |> remove_connection(user_id, connection_id, demonitor?: false)
-          |> touch_activity()
+        {:noreply, finalize_connection_loss(state, user_id, connection_id)}
+    end
+  end
 
-        {state, departure} = finish_connection_departure(state, user_id)
-        state = persist_snapshot(state, true)
+  def handle_info({:connection_fence_expired, key, fence_ref}, state) do
+    case Map.get(state.connection_fences, key) do
+      %{ref: ^fence_ref} ->
+        {user_id, connection_id} = key
 
-        if not departure.user_connected? do
-          mark_participant_left(state.room_id, user_id, state.persist?)
-          broadcast(state.room_id, {:participant_left, user_id})
-        end
+        Logger.warning(
+          "[WatchParty] Room #{state.room_id} fenced connection #{inspect(key)} did not recover"
+        )
 
-        if departure.room_empty? do
-          Logger.info("[WatchParty] Room #{state.room_id} lost its last connection")
-        end
+        state = cancel_connection_fence(state, key)
+        {:noreply, finalize_connection_loss(state, user_id, connection_id)}
 
+      _stale_or_recovered ->
         {:noreply, state}
     end
   end
@@ -432,78 +477,107 @@ defmodule Streamix.WatchParty.RoomServer do
     }
   end
 
-  defp persist_snapshot(%{persist?: false} = state, _force?), do: state
-
   defp persist_snapshot(state, force?) do
+    case persist_snapshot_result(state, force?) do
+      {:ok, persisted} ->
+        persisted
+
+      {:error, reason, current_state} ->
+        log_persistence_failure(current_state, "snapshot", reason)
+        current_state
+    end
+  end
+
+  defp persist_snapshot_result(%{persist?: false} = state, _force?), do: {:ok, state}
+
+  defp persist_snapshot_result(state, force?) do
     if force? or now() - state.last_persisted_at >= @snapshot_interval do
       playback = compute_current_playback(state.playback)
       timestamp = DateTime.utc_now()
 
-      {_, _} =
-        from(room in Room,
-          where: room.id == ^state.room_id and room.status == "active",
-          where: room.playback_version <= ^state.version
-        )
-        |> Repo.update_all(
-          set: [
-            catalog_item_id: state.catalog_item_id,
-            source_type: state.source_type,
-            source_id: state.source_id,
-            playback_state: Atom.to_string(playback.state),
-            playback_position: playback.position,
-            playback_buffering: playback.host_buffering,
-            playback_version: state.version,
-            playback_updated_at: timestamp,
-            last_activity_at: state.activity_updated_at,
-            updated_at: DateTime.utc_now(:second)
-          ]
-        )
-
-      %{state | last_persisted_at: now()}
+      case from(room in Room,
+             where: room.id == ^state.room_id and room.status == "active",
+             where: room.playback_version <= ^state.version
+           )
+           |> Repo.update_all(
+             set: [
+               catalog_item_id: state.catalog_item_id,
+               source_type: state.source_type,
+               source_id: state.source_id,
+               playback_state: Atom.to_string(playback.state),
+               playback_position: playback.position,
+               playback_buffering: playback.host_buffering,
+               playback_version: state.version,
+               playback_updated_at: timestamp,
+               last_activity_at: state.activity_updated_at,
+               updated_at: DateTime.utc_now(:second)
+             ]
+           ) do
+        {1, _rows} -> {:ok, %{state | last_persisted_at: now()}}
+        {0, _rows} -> {:error, :stale_or_inactive_room, state}
+      end
     else
-      state
+      {:ok, state}
     end
   rescue
-    error ->
-      Logger.warning(
-        "[WatchParty] Room #{state.room_id} snapshot persistence failed: #{Exception.message(error)}"
-      )
-
-      state
+    error -> {:error, error, state}
   end
 
   defp end_persisted_room(state, reason) do
-    if state.persist? do
-      case Repo.get(Room, state.room_id) do
-        %Room{status: "active"} = room ->
-          room
-          |> Room.end_changeset(reason)
-          |> Repo.update()
+    case persist_room_end(state, reason) do
+      :ok ->
+        broadcast(state.room_id, {:room_ended, reason})
+        emit(:room_ended, %{count: 1}, %{room_id: state.room_id, reason: reason})
+        {:ok, state}
 
-        _ ->
+      {:error, error} ->
+        log_persistence_failure(state, "room end (#{reason})", error)
+        {:error, error, state}
+    end
+  end
+
+  defp persist_room_end(%{persist?: false}, _reason), do: :ok
+
+  defp persist_room_end(state, reason) do
+    Repo.transaction(fn ->
+      room =
+        from(room in Room, where: room.id == ^state.room_id, lock: "FOR UPDATE")
+        |> Repo.one()
+
+      case room do
+        %Room{status: "active"} = active_room ->
+          active_room
+          |> Room.end_changeset(reason)
+          |> Repo.update!()
+
+          mark_participants_left(state.room_id)
+
+        %Room{} ->
+          mark_participants_left(state.room_id)
+
+        nil ->
           :ok
       end
-
-      mark_participants_left(state.room_id)
+    end)
+    |> case do
+      {:ok, _result} -> :ok
+      {:error, error} -> {:error, error}
     end
-
-    broadcast(state.room_id, {:room_ended, reason})
-    emit(:room_ended, %{count: 1}, %{room_id: state.room_id, reason: reason})
-    state
   rescue
-    error ->
-      Logger.error(
-        "[WatchParty] Room #{state.room_id} failed to persist end state: #{Exception.message(error)}"
-      )
+    error -> {:error, error}
+  end
 
-      broadcast(state.room_id, {:room_ended, reason})
-      state
+  defp log_persistence_failure(state, operation, reason) do
+    Logger.error(
+      "[WatchParty] Room #{state.room_id} #{operation} persistence failed: #{inspect(reason)}"
+    )
   end
 
   # --- Connection and host lifecycle ---
 
   defp put_connection(state, user_id, connection_id, owner_pid) do
     key = {user_id, connection_id}
+    state = cancel_connection_fence(state, key)
 
     state =
       case Map.get(state.connection_monitors, key) do
@@ -539,7 +613,11 @@ defmodule Streamix.WatchParty.RoomServer do
   defp remove_connection(state, user_id, connection_id, opts \\ []) do
     demonitor? = Keyword.get(opts, :demonitor?, true)
     key = {user_id, connection_id}
-    state = drop_connection_monitor(state, key, demonitor?)
+
+    state =
+      state
+      |> cancel_connection_fence(key)
+      |> drop_connection_monitor(key, demonitor?)
 
     connections =
       case Map.get(state.connections, user_id) do
@@ -557,6 +635,27 @@ defmodule Streamix.WatchParty.RoomServer do
       end
 
     %{state | connections: connections}
+  end
+
+  defp schedule_connection_fence(state, key) do
+    state = cancel_connection_fence(state, key)
+    ref = make_ref()
+
+    timer =
+      Process.send_after(self(), {:connection_fence_expired, key, ref}, @connection_fence_timeout)
+
+    %{state | connection_fences: Map.put(state.connection_fences, key, %{ref: ref, timer: timer})}
+  end
+
+  defp cancel_connection_fence(state, key) do
+    case Map.pop(state.connection_fences, key) do
+      {nil, _connection_fences} ->
+        state
+
+      {%{timer: timer}, connection_fences} ->
+        cancel_timer(timer)
+        %{state | connection_fences: connection_fences}
+    end
   end
 
   defp drop_connection_monitor(state, key, demonitor?) do
@@ -605,6 +704,27 @@ defmodule Streamix.WatchParty.RoomServer do
       true ->
         state
     end
+  end
+
+  defp finalize_connection_loss(state, user_id, connection_id) do
+    state =
+      state
+      |> remove_connection(user_id, connection_id)
+      |> touch_activity()
+
+    {state, departure} = finish_connection_departure(state, user_id)
+    state = persist_snapshot(state, true)
+
+    if not departure.user_connected? do
+      mark_participant_left(state.room_id, user_id, state.persist?)
+      broadcast(state.room_id, {:participant_left, user_id})
+    end
+
+    if departure.room_empty? do
+      Logger.info("[WatchParty] Room #{state.room_id} lost its last connection")
+    end
+
+    state
   end
 
   defp finish_connection_departure(state, user_id) do
@@ -684,15 +804,28 @@ defmodule Streamix.WatchParty.RoomServer do
   defp clear_host_grace(state),
     do: %{state | host_grace_timer: nil, host_grace_ref: nil}
 
+  defp schedule_host_end_retry(state) do
+    ref = make_ref()
+    timer = Process.send_after(self(), {:host_grace_expired, ref}, @persistence_retry_interval)
+    %{state | host_grace_timer: timer, host_grace_ref: ref}
+  end
+
   defp pause_for_host_absence(state) do
     playback = compute_current_playback(state.playback)
 
-    state =
+    candidate =
       %{state | playback: paused_playback(playback.position)}
       |> touch_activity()
-      |> broadcast_action(%{"action" => "pause", "reason" => "host_disconnected"})
+      |> bump_version()
 
-    persist_snapshot(state, true)
+    case persist_snapshot_result(candidate, true) do
+      {:ok, persisted} ->
+        broadcast_action(persisted, %{"action" => "pause", "reason" => "host_disconnected"})
+
+      {:error, reason, _candidate} ->
+        log_persistence_failure(state, "host absence pause", reason)
+        candidate
+    end
   end
 
   # --- Beacon and synchronization ---
@@ -708,12 +841,19 @@ defmodule Streamix.WatchParty.RoomServer do
       updated_at: now()
     }
 
-    state = %{state | playback: playback} |> bump_version()
+    candidate = %{state | playback: playback} |> bump_version()
 
     if previous.state != playback_state or previous.host_buffering != buffering do
-      broadcast_periodic_sync(state)
+      case persist_snapshot_result(candidate, true) do
+        {:ok, persisted} ->
+          broadcast_persisted_sync(persisted)
+
+        {:error, reason, _candidate} ->
+          log_persistence_failure(state, "host beacon transition", reason)
+          state
+      end
     else
-      state
+      candidate
     end
   end
 
@@ -754,13 +894,16 @@ defmodule Streamix.WatchParty.RoomServer do
 
   defp broadcast_periodic_sync(state) do
     state = bump_version(state)
+    broadcast_persisted_sync(state)
+  end
+
+  defp broadcast_persisted_sync(state) do
     playback = compute_current_playback(state.playback)
     broadcast(state.room_id, {:sync_command, sync_payload(state, playback)})
     state
   end
 
   defp broadcast_action(state, action) do
-    state = bump_version(state)
     playback = compute_current_playback(state.playback)
     system_time = System.system_time(:millisecond)
 
@@ -799,17 +942,23 @@ defmodule Streamix.WatchParty.RoomServer do
   defp handle_host_playback_action(state, action) do
     case apply_action(state, action) do
       {:ok, next_state} ->
-        next_state =
-          next_state
-          |> broadcast_action(action)
-          |> persist_snapshot(true)
+        candidate = bump_version(next_state)
 
-        emit(:playback_action, %{count: 1}, %{
-          room_id: state.room_id,
-          action: action["action"]
-        })
+        case persist_snapshot_result(candidate, true) do
+          {:ok, persisted} ->
+            persisted = broadcast_action(persisted, action)
 
-        {:reply, :ok, next_state}
+            emit(:playback_action, %{count: 1}, %{
+              room_id: state.room_id,
+              action: action["action"]
+            })
+
+            {:reply, :ok, persisted}
+
+          {:error, reason, _candidate} ->
+            log_persistence_failure(state, "playback action", reason)
+            {:reply, {:error, :persistence_failed}, state}
+        end
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}

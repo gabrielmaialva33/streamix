@@ -215,6 +215,68 @@ defmodule Streamix.WatchParty.RoomServerTest do
     assert Process.alive?(pid)
   end
 
+  test "a transient node partition fences a connection and a later beacon restores its monitor" do
+    viewer_id = 202
+    connection_id = "viewer-tab"
+    %{pid: pid, room_id: room_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
+
+    assert {:ok, _} = RoomServer.join(room_id, viewer_id, connection_id)
+
+    state = :sys.get_state(pid)
+    old_monitor = state.connection_monitors[{viewer_id, connection_id}].ref
+    send(pid, {:DOWN, old_monitor, :process, self(), :noconnection})
+
+    fenced = :sys.get_state(pid)
+    assert fenced.connections[viewer_id] == MapSet.new([connection_id])
+    assert Map.has_key?(fenced.connection_fences, {viewer_id, connection_id})
+    refute Map.has_key?(fenced.connection_monitors, {viewer_id, connection_id})
+    refute_receive {:participant_left, ^viewer_id}
+
+    assert :ok =
+             RoomServer.sync_beacon(
+               room_id,
+               viewer_id,
+               connection_id,
+               15.0,
+               "playing",
+               false,
+               1
+             )
+
+    recovered = :sys.get_state(pid)
+    refute Map.has_key?(recovered.connection_fences, {viewer_id, connection_id})
+    assert recovered.connection_monitors[{viewer_id, connection_id}].ref != old_monitor
+    assert recovered.participant_states[viewer_id].position == 15.0
+    refute_receive {:participant_left, ^viewer_id}
+  end
+
+  test "an unrecovered node partition expires its fence before host grace starts" do
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
+
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+    assert {:ok, _} = RoomServer.join(room_id, 202, "viewer-tab")
+
+    state = :sys.get_state(pid)
+    old_monitor = state.connection_monitors[{host_user_id, "host-tab"}].ref
+    send(pid, {:DOWN, old_monitor, :process, self(), :noconnection})
+
+    fenced = :sys.get_state(pid)
+    assert fenced.connections[host_user_id] == MapSet.new(["host-tab"])
+    assert fenced.host_grace_ref == nil
+    refute_receive {:host_status, :offline}
+
+    %{ref: fence_ref} = fenced.connection_fences[{host_user_id, "host-tab"}]
+    send(pid, {:connection_fence_expired, {host_user_id, "host-tab"}, fence_ref})
+
+    expired = :sys.get_state(pid)
+    refute Map.has_key?(expired.connections, host_user_id)
+    assert is_reference(expired.host_grace_ref)
+    assert_receive {:sync_command, %{type: "pause", reason: "host_disconnected"}}
+    assert_receive {:host_status, :offline}
+  end
+
   test "malformed playback actions and beacons are ignored without crashing the room" do
     %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
 
