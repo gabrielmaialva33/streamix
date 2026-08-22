@@ -96,8 +96,8 @@ defmodule Streamix.Application do
         # happens per block instead of per connection.
         Streamix.Iptv.Streaming.VodMultiplexer.BlockStore,
         {Streamix.Iptv.Streaming.VodMultiplexer.Supervisor, []},
-        # Watch Party infrastructure
-        {Registry, keys: :unique, name: Streamix.WatchParty.Registry},
+        # Watch Party room processes use distributed `:global` names so one
+        # authoritative timeline is shared across clustered Phoenix nodes.
         {DynamicSupervisor, name: Streamix.WatchParty.RoomSupervisor, strategy: :one_for_one}
         # Torrent infrastructure (gated by config — only starts when the
         # torrent provider is enabled). Per-info_hash StreamSession

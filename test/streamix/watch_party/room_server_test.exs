@@ -4,41 +4,45 @@ defmodule Streamix.WatchParty.RoomServerTest do
   alias Streamix.WatchParty
   alias Streamix.WatchParty.RoomServer
 
-  test "starts paused with the host present and returns current state to joiners" do
-    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+  test "uses a transient child and starts without phantom participants" do
+    opts = room_server_opts()
+    child_spec = RoomServer.child_spec(opts)
+
+    assert child_spec.restart == :transient
+
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server(opts)
 
     assert RoomServer.whereis(room_id) == pid
+    assert :sys.get_state(pid).connections == %{}
 
-    assert {:ok, %{state: :paused, position: joined_position}} = RoomServer.join(room_id, 202)
+    assert {:ok, %{state: :paused, position: joined_position}} =
+             RoomServer.join(room_id, host_user_id, "host-tab")
 
     assert {:ok, %{state: :paused, position: current_position}, ^host_user_id} =
              RoomServer.get_state(room_id)
 
     assert_in_delta joined_position, 0.0, 0.001
     assert_in_delta current_position, 0.0, 0.001
-
-    assert :sys.get_state(pid).participants == MapSet.new([host_user_id, 202])
+    assert :sys.get_state(pid).connections == %{host_user_id => MapSet.new(["host-tab"])}
   end
 
-  test "only the host can control playback and commands include timing metadata" do
+  test "only an active host connection controls playback and commands are sequenced" do
     %{room_id: room_id, host_user_id: host_user_id} = start_room_server()
     Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
 
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+    assert {:ok, _} = RoomServer.join(room_id, 202, "viewer-tab")
+
     assert {:error, :not_host} =
-             RoomServer.playback_action(room_id, 202, %{
+             RoomServer.playback_action(room_id, 202, "viewer-tab", %{
                "action" => "play",
                "position" => 12.5
              })
 
-    assert {:ok, %{state: :paused, position: paused_position}, ^host_user_id} =
-             RoomServer.get_state(room_id)
-
-    assert_in_delta paused_position, 0.0, 0.001
-
     before_command = System.system_time(:millisecond)
 
     assert :ok =
-             RoomServer.playback_action(room_id, host_user_id, %{
+             RoomServer.playback_action(room_id, host_user_id, "host-tab", %{
                "action" => "play",
                "position" => 12.5
              })
@@ -47,13 +51,15 @@ defmodule Streamix.WatchParty.RoomServerTest do
                     %{
                       type: "play",
                       position: position,
+                      sequence: sequence,
                       server_time: server_time,
                       target_time: target_time
                     }}
 
     assert position >= 12.5
+    assert sequence > 0
     assert server_time >= before_command
-    assert target_time >= server_time
+    assert target_time > server_time
 
     assert {:ok, %{state: :playing, position: current_position}, ^host_user_id} =
              RoomServer.get_state(room_id)
@@ -61,26 +67,33 @@ defmodule Streamix.WatchParty.RoomServerTest do
     assert current_position >= position
   end
 
-  test "large viewer drift triggers a targeted resync and records the beacon" do
+  test "large viewer drift produces a usable targeted sync command" do
     viewer_id = 202
     %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
     Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
 
-    assert {:ok, _playback} = RoomServer.join(room_id, viewer_id)
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+    assert {:ok, _} = RoomServer.join(room_id, viewer_id, "viewer-tab")
 
     assert :ok =
-             RoomServer.playback_action(room_id, host_user_id, %{
+             RoomServer.playback_action(room_id, host_user_id, "host-tab", %{
                "action" => "seek",
                "position" => 10.0
              })
 
-    assert_receive {:sync_command, %{type: "seek"}}
+    assert_receive {:sync_command, %{type: "seek", sequence: action_sequence}}
 
-    assert :ok = RoomServer.sync_beacon(room_id, viewer_id, 20.0, "playing", false, 123)
+    assert :ok =
+             RoomServer.sync_beacon(
+               room_id,
+               viewer_id,
+               "viewer-tab",
+               20.0,
+               "playing",
+               false,
+               123
+             )
 
-    # sync_beacon/6 is a cast. A state read from the same caller is the
-    # deterministic barrier proving that the room processed the beacon and
-    # issued its PubSub broadcast before we inspect the test mailbox.
     room_state = :sys.get_state(pid)
 
     assert %{position: 20.0, state: "playing", buffering: false} =
@@ -88,26 +101,157 @@ defmodule Streamix.WatchParty.RoomServerTest do
 
     assert_receive {:resync_user,
                     %{
-                      user_id: ^viewer_id,
+                      type: "sync",
+                      target_user_id: ^viewer_id,
                       state: "paused",
                       position: position,
+                      sequence: sequence,
                       server_time: server_time
                     }}
 
     assert_in_delta position, 10.0, 0.01
+    assert sequence > action_sequence
     assert is_integer(server_time)
-
-    assert {:ok, _playback, ^host_user_id} = RoomServer.get_state(room_id)
   end
 
-  test "periodic sync broadcasts only after another participant joins" do
-    %{pid: pid, room_id: room_id} = start_room_server()
+  test "host beacons freeze the shared timeline while buffering and resume it afterward" do
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
     Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
 
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+    assert {:ok, _} = RoomServer.join(room_id, 202, "viewer-tab")
+
+    assert :ok =
+             RoomServer.playback_action(room_id, host_user_id, "host-tab", %{
+               "action" => "play",
+               "position" => 10.0
+             })
+
+    assert_receive {:sync_command, %{type: "play"}}
+
+    assert :ok =
+             RoomServer.sync_beacon(
+               room_id,
+               host_user_id,
+               "host-tab",
+               12.0,
+               "playing",
+               true,
+               1
+             )
+
+    _barrier = :sys.get_state(pid)
+    assert_receive {:sync_command, %{type: "sync", host_buffering: true}}
+
+    :sys.replace_state(pid, fn state ->
+      put_in(state.playback.updated_at, System.monotonic_time(:millisecond) - 5_000)
+    end)
+
+    assert {:ok, %{position: buffered_position, host_buffering: true}, ^host_user_id} =
+             RoomServer.get_state(room_id)
+
+    assert_in_delta buffered_position, 12.0, 0.001
+
+    assert :ok =
+             RoomServer.sync_beacon(
+               room_id,
+               host_user_id,
+               "host-tab",
+               12.0,
+               "playing",
+               false,
+               2
+             )
+
+    _barrier = :sys.get_state(pid)
+    assert_receive {:sync_command, %{type: "sync", host_buffering: false}}
+
+    :sys.replace_state(pid, fn state ->
+      put_in(state.playback.updated_at, System.monotonic_time(:millisecond) - 2_000)
+    end)
+
+    assert {:ok, %{position: resumed_position, host_buffering: false}, ^host_user_id} =
+             RoomServer.get_state(room_id)
+
+    assert resumed_position >= 13.9
+  end
+
+  test "one tab leaving does not evict the same user from another tab" do
+    %{pid: pid, room_id: room_id} = start_room_server()
+
+    assert {:ok, _} = RoomServer.join(room_id, 202, "tab-a")
+    assert {:ok, _} = RoomServer.join(room_id, 202, "tab-b")
+
+    assert {:ok, %{user_connected?: true, room_empty?: false}} =
+             RoomServer.leave(room_id, 202, "tab-a")
+
+    assert :sys.get_state(pid).connections[202] == MapSet.new(["tab-b"])
+
+    assert {:ok, %{user_connected?: false, room_empty?: true}} =
+             RoomServer.leave(room_id, 202, "tab-b")
+
+    refute Map.has_key?(:sys.get_state(pid).connections, 202)
+  end
+
+  test "a crashed browser owner releases its connection without relying on LiveView terminate" do
+    viewer_id = 202
+    %{pid: pid, room_id: room_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
+    test_pid = self()
+
+    owner_pid =
+      spawn(fn ->
+        send(test_pid, {:joined, RoomServer.join(room_id, viewer_id, "viewer-tab")})
+        receive do: (:stop -> :ok)
+      end)
+
+    assert_receive {:joined, {:ok, _playback}}
+    assert :sys.get_state(pid).connections[viewer_id] == MapSet.new(["viewer-tab"])
+
+    Process.exit(owner_pid, :kill)
+
+    assert_receive {:participant_left, ^viewer_id}
+    refute Map.has_key?(:sys.get_state(pid).connections, viewer_id)
+    assert Process.alive?(pid)
+  end
+
+  test "malformed playback actions and beacons are ignored without crashing the room" do
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+
+    assert {:error, :invalid_playback_action} =
+             RoomServer.playback_action(room_id, host_user_id, "host-tab", %{
+               "action" => "play",
+               "position" => "not-a-number"
+             })
+
+    assert :ok =
+             RoomServer.sync_beacon(
+               room_id,
+               host_user_id,
+               "host-tab",
+               "not-a-number",
+               "invalid",
+               "invalid",
+               0
+             )
+
+    state = :sys.get_state(pid)
+    assert Process.alive?(pid)
+    assert state.participant_states == %{}
+    assert state.playback.state == :paused
+  end
+
+  test "periodic sync requires at least two connected users" do
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
+
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
     send(pid, :sync_broadcast)
     refute_receive {:sync_command, _payload}
 
-    assert {:ok, _playback} = RoomServer.join(room_id, 202)
+    assert {:ok, _} = RoomServer.join(room_id, 202, "viewer-tab")
     send(pid, :sync_broadcast)
 
     assert_receive {:sync_command,
@@ -115,19 +259,75 @@ defmodule Streamix.WatchParty.RoomServerTest do
                       type: "sync",
                       state: "paused",
                       position: sync_position,
+                      sequence: sequence,
                       server_time: server_time
                     }}
 
     assert_in_delta sync_position, 0.0, 0.001
+    assert sequence > 0
     assert is_integer(server_time)
   end
 
-  test "an empty room terminates after its idle deadline" do
+  test "host content transitions are authoritative room events" do
     %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
+
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+
+    assert {:ok, version} =
+             RoomServer.change_content(room_id, host_user_id, "host-tab", %{
+               catalog_item_id: 901,
+               source_type: "episode",
+               source_id: 902
+             })
+
+    assert_receive {:content_changed,
+                    %{
+                      catalog_item_id: 901,
+                      source_type: "episode",
+                      source_id: 902,
+                      version: ^version
+                    }}
+
+    state = :sys.get_state(pid)
+    assert state.catalog_item_id == 901
+    assert state.source_type == "episode"
+    assert state.source_id == 902
+    assert state.playback.state == :paused
+    assert_in_delta state.playback.position, 0.0, 0.001
+  end
+
+  test "host grace expiry ends a room that still has viewers" do
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
     monitor = Process.monitor(pid)
 
-    RoomServer.leave(room_id, host_user_id)
-    _state_after_leave = :sys.get_state(pid)
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+    assert {:ok, _} = RoomServer.join(room_id, 202, "viewer-tab")
+
+    assert {:ok, %{user_connected?: false, room_empty?: false}} =
+             RoomServer.leave(room_id, host_user_id, "host-tab")
+
+    assert_receive {:sync_command, %{type: "pause", reason: "host_disconnected"}}
+    assert_receive {:host_status, :offline}
+
+    %{host_grace_ref: ref} = :sys.get_state(pid)
+    send(pid, {:host_grace_expired, ref})
+
+    assert_receive {:room_ended, "host_disconnected"}
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}
+    assert RoomServer.whereis(room_id) == nil
+  end
+
+  test "an empty room terminates normally after its idle deadline" do
+    %{pid: pid, room_id: room_id, host_user_id: host_user_id} = start_room_server()
+    Phoenix.PubSub.subscribe(Streamix.PubSub, WatchParty.topic(room_id))
+    monitor = Process.monitor(pid)
+
+    assert {:ok, _} = RoomServer.join(room_id, host_user_id, "host-tab")
+
+    assert {:ok, %{room_empty?: true}} =
+             RoomServer.leave(room_id, host_user_id, "host-tab")
 
     :sys.replace_state(pid, fn state ->
       %{state | last_activity: System.monotonic_time(:millisecond) - :timer.minutes(5) - 1}
@@ -135,32 +335,29 @@ defmodule Streamix.WatchParty.RoomServerTest do
 
     send(pid, :idle_check)
 
+    assert_receive {:room_ended, "idle_timeout"}
     assert_receive {:DOWN, ^monitor, :process, ^pid, :normal}
-
-    # Registry removes dead entries asynchronously. The process monitor is the
-    # authoritative shutdown signal; a briefly stale lookup must never resolve
-    # to another live room process.
-    case RoomServer.whereis(room_id) do
-      nil -> :ok
-      registered_pid -> refute Process.alive?(registered_pid)
-    end
+    assert RoomServer.whereis(room_id) == nil
   end
 
-  defp start_room_server do
-    room_id = System.unique_integer([:positive])
-    host_user_id = System.unique_integer([:positive])
+  defp start_room_server(opts \\ room_server_opts()) do
+    pid = start_supervised!({RoomServer, opts})
 
-    child_spec =
-      Supervisor.child_spec(
-        {RoomServer,
-         room_id: room_id,
-         host_user_id: host_user_id,
-         catalog_item_id: System.unique_integer([:positive])},
-        restart: :temporary
-      )
+    %{
+      pid: pid,
+      room_id: Keyword.fetch!(opts, :room_id),
+      host_user_id: Keyword.fetch!(opts, :host_user_id)
+    }
+  end
 
-    pid = start_supervised!(child_spec)
-
-    %{pid: pid, room_id: room_id, host_user_id: host_user_id}
+  defp room_server_opts do
+    [
+      room_id: System.unique_integer([:positive]),
+      host_user_id: System.unique_integer([:positive]),
+      catalog_item_id: System.unique_integer([:positive]),
+      source_type: "movie",
+      source_id: System.unique_integer([:positive]),
+      persist?: false
+    ]
   end
 end
