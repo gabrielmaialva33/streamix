@@ -33,7 +33,7 @@ defmodule StreamixWeb.Content.CardComponents do
     <div
       id={@id}
       class={[
-        "content-card group/card relative overflow-hidden rounded-lg bg-surface transition-all hover:ring-2 hover:ring-brand/50",
+        "content-card group/card relative overflow-hidden rounded-md bg-surface transition-all hover:ring-2 hover:ring-brand/50 sm:rounded-lg",
         @class
       ]}
       {@rest}
@@ -77,7 +77,7 @@ defmodule StreamixWeb.Content.CardComponents do
 
           <div
             :if={@badge != []}
-            class="absolute right-1.5 top-1.5 flex flex-col items-end gap-1 sm:right-2 sm:top-2"
+            class="absolute left-1.5 top-1.5 flex flex-col items-start gap-1 sm:left-2 sm:top-2"
           >
             <%= for badge <- @badge do %>
               {render_slot(badge)}
@@ -89,11 +89,17 @@ defmodule StreamixWeb.Content.CardComponents do
           </div>
         </div>
 
-        <div class={["p-3", @secondary_action != [] && "pr-14"]}>
-          <h3 class="truncate text-sm font-medium text-text-primary" title={@title}>
+        <div class="p-2 sm:p-3">
+          <h3
+            class="line-clamp-2 min-h-[2.35em] text-[11px] font-medium leading-[1.18] text-text-primary sm:min-h-0 sm:truncate sm:text-sm sm:leading-normal"
+            title={@title}
+          >
             {@title}
           </h3>
-          <p :if={@subtitle not in [nil, ""]} class="min-h-4 text-xs text-text-secondary">
+          <p
+            :if={@subtitle not in [nil, ""]}
+            class="mt-1 truncate text-[10px] leading-none text-text-secondary sm:min-h-4 sm:text-xs sm:leading-normal"
+          >
             {@subtitle}
           </p>
           <%= for metadata <- @metadata do %>
@@ -105,7 +111,7 @@ defmodule StreamixWeb.Content.CardComponents do
       <div
         :if={@secondary_action != []}
         data-media-secondary
-        class="absolute bottom-2 right-2 z-10"
+        class="absolute right-0.5 top-0.5 z-10 sm:right-1 sm:top-1"
       >
         <%= for action <- @secondary_action do %>
           {render_slot(action)}
@@ -364,7 +370,7 @@ defmodule StreamixWeb.Content.CardComponents do
           phx-click={@on_favorite}
           phx-value-id={@movie.id}
           phx-value-type="movie"
-          class="flex size-11 flex-shrink-0 items-center justify-center rounded-md text-text-secondary transition-all hover:scale-105 hover:bg-brand/10 hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand"
+          class="flex size-11 flex-shrink-0 items-center justify-center rounded-full bg-black/35 text-white/75 backdrop-blur-sm transition-all hover:scale-105 hover:bg-brand/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-brand"
           aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
         >
           <.icon
@@ -451,7 +457,7 @@ defmodule StreamixWeb.Content.CardComponents do
           phx-click={@on_favorite}
           phx-value-id={@series.id}
           phx-value-type="series"
-          class="flex size-11 flex-shrink-0 items-center justify-center rounded-md text-text-secondary transition-all hover:scale-105 hover:bg-brand/10 hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand"
+          class="flex size-11 flex-shrink-0 items-center justify-center rounded-full bg-black/35 text-white/75 backdrop-blur-sm transition-all hover:scale-105 hover:bg-brand/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-brand"
           aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
         >
           <.icon

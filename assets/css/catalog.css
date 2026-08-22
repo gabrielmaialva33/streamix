@@ -232,25 +232,25 @@
 .browse-toolbar {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
 }
 
 .browse-toolbar__row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
     min-width: 0;
 }
 
 .browse-toolbar__row > .content-nav {
-    flex: 1 1 auto;
+    flex: 1 1 15rem;
 }
 
 .browse-toolbar__search {
-    flex: 0 1 360px;
+    flex: 1 1 17rem;
     margin-left: auto;
-    min-width: 240px;
+    min-width: 220px;
     max-width: 360px;
 }
 
@@ -267,18 +267,32 @@
 }
 
 @media (max-width: 639px) {
+    .browse-toolbar {
+        gap: 0.625rem;
+    }
+
+    .browse-toolbar__row {
+        gap: 0.5rem;
+        align-items: stretch;
+    }
+
+    .browse-toolbar__row > .content-nav {
+        flex: 1 1 12rem;
+    }
+
     .content-nav__tab {
-        padding: 8px 12px;
-        font-size: 14px;
+        gap: 6px;
+        padding: 8px 10px;
+        font-size: 13px;
     }
 
     .content-nav__tab::after {
-        left: 12px;
-        right: 12px;
+        left: 10px;
+        right: 10px;
     }
 
     .segmented-control__item {
-        padding: 5px 10px;
+        padding: 5px 9px;
         font-size: 12px;
     }
 
@@ -287,10 +301,10 @@
     }
 
     .browse-toolbar__search {
-        flex-basis: 100%;
+        flex: 1 1 11rem;
         margin-left: 0;
         max-width: none;
-        min-width: 0;
+        min-width: 9rem;
     }
 
     .category-chip {
@@ -326,14 +340,20 @@
 .responsive-poster-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: 0.625rem;
 }
 
 .responsive-wide-grid,
 .responsive-gallery-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: 0.625rem;
+}
+
+@media (min-width: 360px) and (max-width: 639px) {
+    .responsive-poster-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 /* Skip style/layout/paint work for catalog cards far outside the viewport.
@@ -345,7 +365,7 @@
     }
 
     .catalog-stream-item--wide {
-        contain-intrinsic-block-size: auto 12rem;
+        contain-intrinsic-block-size: auto 9rem;
     }
 }
 

@@ -35,9 +35,9 @@ defmodule StreamixWeb.App.Media do
     <div class="group relative">
       <.link
         href={~p"/watch/live_channel/#{@channel.id}"}
-        class="block rounded-xl overflow-hidden bg-surface-elevated border border-glass-border hover:border-brand/30 transition-all card-glow hover:-translate-y-1 cursor-pointer"
+        class="block cursor-pointer overflow-hidden rounded-lg border border-glass-border bg-surface transition-all hover:-translate-y-1 hover:border-brand/30 sm:rounded-xl sm:bg-surface-elevated card-glow"
       >
-        <div class="relative aspect-video bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 flex items-center justify-center p-4 sm:p-6">
+        <div class="relative flex aspect-video items-center justify-center bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 p-2.5 sm:p-6">
           <div
             id={"channel-img-#{@channel.id}"}
             phx-hook="ImageFallback"
@@ -47,8 +47,9 @@ defmodule StreamixWeb.App.Media do
               :if={@channel.stream_icon not in [nil, ""]}
               src={ImageProxy.proxy(@channel.stream_icon)}
               alt={@channel.name}
-              class="max-w-full max-h-full object-contain drop-shadow-lg"
+              class="max-h-[72%] max-w-[76%] object-contain drop-shadow-lg sm:max-h-full sm:max-w-full"
               loading="lazy"
+              decoding="async"
               data-fallback-target
             />
             <div
@@ -65,20 +66,20 @@ defmodule StreamixWeb.App.Media do
             </div>
           </div>
 
-          <span class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 text-2xs font-bold rounded-md bg-brand/90 text-white backdrop-blur-sm">
-            <span class="w-1.5 h-1.5 rounded-full bg-white live-pulse" /> AO VIVO
+          <span class="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-md bg-brand/90 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm sm:left-2 sm:top-2 sm:text-2xs">
+            <span class="size-1 rounded-full bg-white live-pulse sm:size-1.5" /> AO VIVO
           </span>
 
-          <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <div class="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-              <.icon name="hero-play-solid" class="size-6 text-black ml-0.5" />
+          <div class="absolute inset-0 hidden items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
+            <div class="flex size-11 items-center justify-center rounded-full bg-white/90 shadow-lg sm:size-12">
+              <.icon name="hero-play-solid" class="ml-0.5 size-5 text-black sm:size-6" />
             </div>
           </div>
         </div>
 
-        <div class="px-3 py-2.5 space-y-1">
+        <div class="space-y-0.5 px-2 py-2 sm:space-y-1 sm:px-3 sm:py-2.5">
           <h3
-            class="font-medium text-xs sm:text-sm text-text-primary truncate group-hover:text-brand transition-colors"
+            class="truncate text-[11px] font-medium leading-tight text-text-primary transition-colors group-hover:text-brand sm:text-sm sm:leading-normal"
             title={@channel.name}
           >
             {@channel.name}
@@ -99,10 +100,10 @@ defmodule StreamixWeb.App.Media do
         phx-value-type="live_channel"
         aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
         class={[
-          "absolute right-2 top-2 z-10 flex size-11 items-center justify-center rounded-full backdrop-blur-sm transition-all",
-          @is_favorite && "text-brand bg-brand/20",
+          "absolute right-0.5 top-0.5 z-10 flex size-11 items-center justify-center rounded-full backdrop-blur-sm transition-all sm:right-1 sm:top-1",
+          @is_favorite && "bg-brand/20 text-brand",
           !@is_favorite &&
-            "bg-black/30 text-white/60 opacity-100 hover:bg-brand/20 hover:text-brand sm:opacity-0 sm:group-hover:opacity-100"
+            "bg-black/25 text-white/60 opacity-100 hover:bg-brand/20 hover:text-brand sm:opacity-0 sm:group-hover:opacity-100"
         ]}
       >
         <.icon
