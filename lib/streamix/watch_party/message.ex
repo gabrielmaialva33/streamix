@@ -6,7 +6,7 @@ defmodule Streamix.WatchParty.Message do
 
   schema "watch_party_messages" do
     field :user_id, :id
-    field :user_email, :string, virtual: true
+    field :user_label, :string, virtual: true
     field :content, :string
     field :type, :string, default: "text"
 
@@ -20,9 +20,10 @@ defmodule Streamix.WatchParty.Message do
   def changeset(message, attrs) do
     message
     |> cast(attrs, [:room_id, :user_id, :content, :type])
+    |> update_change(:content, &String.trim/1)
     |> validate_required([:room_id, :user_id, :content])
     |> validate_inclusion(:type, @valid_types)
-    |> validate_length(:content, max: 500)
+    |> validate_length(:content, min: 1, max: 500)
     |> foreign_key_constraint(:room_id)
     |> foreign_key_constraint(:user_id)
   end
