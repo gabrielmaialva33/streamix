@@ -51,6 +51,7 @@ npm-debug.log
 /.codex
 /.superpowers/
 /.antigravitycli/
+/.winx/
 
 # Local browser and packaging artifacts
 *.wgt
