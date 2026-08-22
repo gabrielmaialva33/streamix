@@ -26,6 +26,16 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
                          _ -> :webkit
                        end)
 
+  @mobile_opts [
+                 viewport: %{width: 390, height: 844},
+                 device_scale_factor: 3.0,
+                 service_workers: "block"
+               ] ++
+                 if(@playwright_browser == :firefox,
+                   do: [],
+                   else: [is_mobile: true]
+                 )
+
   use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
   use StreamixWeb, :verified_routes
 
@@ -68,6 +78,32 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     end
   end
 
+  @tag browser_context_opts: @mobile_opts
+  test "mobile catalog keeps posters dense and live cards compact", %{conn: conn} do
+    user = user_fixture()
+    provider = provider_fixture(user, %{is_active: true})
+
+    for index <- 1..9 do
+      movie_fixture(provider, %{
+        name: "Filme mobile #{index}",
+        title: "Filme mobile com título maior #{index}"
+      })
+    end
+
+    for index <- 1..8 do
+      channel_fixture(provider, %{name: "Canal esportivo mobile #{index}"})
+    end
+
+    conn
+    |> login(user)
+    |> visit(~p"/providers/#{provider.id}/movies")
+    |> assert_has("body .phx-connected #movies .catalog-stream-item")
+    |> assert_compact_poster_grid()
+    |> visit(~p"/providers/#{provider.id}")
+    |> assert_has("body .phx-connected #channels .catalog-stream-item")
+    |> assert_compact_live_grid()
+  end
+
   defp login(session, user) do
     cookie =
       build_conn()
@@ -92,5 +128,98 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
           ]
         )
     end)
+  end
+
+  defp assert_compact_poster_grid(session) do
+    PhoenixTest.Playwright.evaluate(
+      session,
+      """
+      () => {
+        const items = Array.from(document.querySelectorAll("#movies > .catalog-stream-item")).slice(0, 6);
+        const rects = items.map((item) => {
+          const rect = item.getBoundingClientRect();
+          return {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height};
+        });
+        const favorite = items[0]?.querySelector("[data-media-secondary] button")?.getBoundingClientRect();
+        const toolbar = document.querySelector(".browse-toolbar")?.getBoundingClientRect();
+
+        return {
+          viewportWidth: innerWidth,
+          rects,
+          favorite: favorite ? {width: favorite.width, height: favorite.height, right: favorite.right} : null,
+          toolbarHeight: toolbar?.height || 0,
+          horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+        };
+      }
+      """,
+      [is_function: true],
+      fn state ->
+        assert state["viewportWidth"] == 390
+        assert length(state["rects"]) == 6
+
+        [first, second, third, fourth | _rest] = state["rects"]
+        assert_in_delta first["top"], second["top"], 2
+        assert_in_delta first["top"], third["top"], 2
+        assert fourth["top"] > first["bottom"]
+
+        for rect <- Enum.take(state["rects"], 3) do
+          assert rect["width"] >= 100
+          assert rect["width"] <= 125
+          assert rect["height"] > rect["width"] * 1.6
+          assert rect["right"] <= 390
+        end
+
+        assert state["favorite"]["width"] >= 44
+        assert state["favorite"]["height"] >= 44
+        assert state["favorite"]["right"] <= 390
+        assert state["toolbarHeight"] <= 130
+        assert state["horizontalOverflow"] <= 1
+      end
+    )
+  end
+
+  defp assert_compact_live_grid(session) do
+    PhoenixTest.Playwright.evaluate(
+      session,
+      """
+      () => {
+        const items = Array.from(document.querySelectorAll("#channels > .catalog-stream-item")).slice(0, 4);
+        const rects = items.map((item) => {
+          const rect = item.getBoundingClientRect();
+          return {left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height};
+        });
+        const favorite = items[0]?.querySelector("button[aria-label*='favoritos']")?.getBoundingClientRect();
+        const toolbar = document.querySelector(".browse-toolbar")?.getBoundingClientRect();
+
+        return {
+          rects,
+          favorite: favorite ? {width: favorite.width, height: favorite.height, right: favorite.right} : null,
+          toolbarHeight: toolbar?.height || 0,
+          horizontalOverflow: document.documentElement.scrollWidth - innerWidth
+        };
+      }
+      """,
+      [is_function: true],
+      fn state ->
+        assert length(state["rects"]) == 4
+
+        [first, second, third | _rest] = state["rects"]
+        assert_in_delta first["top"], second["top"], 2
+        assert third["top"] > first["bottom"]
+
+        for rect <- Enum.take(state["rects"], 2) do
+          assert rect["width"] >= 165
+          assert rect["width"] <= 180
+          assert rect["height"] <= 165
+          assert rect["right"] <= 390
+        end
+
+        assert state["favorite"]["width"] >= 44
+        assert state["favorite"]["height"] >= 44
+        assert state["favorite"]["right"] <= 390
+        assert state["toolbarHeight"] <= 140
+        assert state["horizontalOverflow"] <= 1
+      end
+    )
   end
 end
