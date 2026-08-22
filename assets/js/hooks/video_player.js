@@ -40,6 +40,7 @@ import {
   writeIosPlayerState,
 } from "../player/ios_playback_state";
 import { LifecycleScope } from "../player/lifecycle_scope";
+import { createMediaSessionController } from "../player/media_session_controller";
 import { createMobileControls } from "../player/mobile_controls";
 import { classifyMpegtsError, executeMpegtsDecision } from "../player/mpegts_error_policy.js";
 import { NativeBufferingController } from "../player/native_buffering_controller";
@@ -77,6 +78,7 @@ import {
   scheduleGuardedPlaybackRetry,
 } from "../player/playback_load_guard.js";
 import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
+import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
 import { clampSeekTime, relativeSeekTarget } from "../player/playback_time";
 import { diagnoseError } from "../player/player_diagnostics";
 import {
@@ -95,6 +97,7 @@ import {
 } from "../player/player_preferences";
 import { createInitialPlayerState } from "../player/player_state";
 import { PlayerUI } from "../player/player_ui";
+import { createScreenWakeLockController } from "../player/screen_wake_lock_controller";
 import { collectStartupDiagnostics } from "../player/startup_diagnostics";
 import {
   findPortugueseTrack,
@@ -126,7 +129,7 @@ const VideoPlayer = {
     this.setupEventListeners();
     this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
-    this.setupMediaSession();
+    this.setupPlaybackSystemIntegration();
     this.aspectRatioController = createAspectRatioController({
       root: this.el,
       video: this.video,
@@ -262,16 +265,10 @@ const VideoPlayer = {
       video: this.video,
     });
 
-    // Auto-hide controls needs the *real* playing state — when
-    // AVPlayer is the active player the native <video> stays
-    // paused, so without this override the control bar never
-    // fades and the timeline sticks on top of the picture.
-    this.playerUI.setIsPlayingFn(() => {
-      if (this.usingAVPlayer && this.avPlayer) {
-        return !!this.avPlayer._playing;
-      }
-      return !!(this.video && !this.video.paused);
-    });
+    // Canvas-backed engines leave the native <video> paused, so UI auto-hide
+    // must ask the hook for the active engine's state instead of reading the
+    // element directly.
+    this.playerUI.setIsPlayingFn(() => !this.isPaused());
   },
 
   // ============================================
@@ -630,6 +627,22 @@ const VideoPlayer = {
     );
   },
 
+  getActivePlaybackEngine() {
+    if (this.usingAVPlayer && this.avPlayer) return this.avPlayer;
+    if (this.usingAvbridge && this.avbridge) return this.avbridge;
+    if (this.usingH265web && this.h265web) return this.h265web;
+    return null;
+  },
+
+  usesNativePlaybackEvents() {
+    return (
+      !this._suppressNativePlaybackEvents &&
+      !this.usingAVPlayer &&
+      !this.usingH265web &&
+      !this._switchingToAVPlayer
+    );
+  },
+
   setPiPState(active) {
     const nextState = !!active;
     const changed = this.pipActive !== nextState;
@@ -649,47 +662,82 @@ const VideoPlayer = {
     void exitPictureInPicture({ documentRef: document, video: this.video }).catch(() => {});
   },
 
-  setupMediaSession() {
-    if (!("mediaSession" in navigator)) return;
+  setupPlaybackSystemIntegration() {
+    this.screenWakeLockController = createScreenWakeLockController({
+      onError: (operation, error) =>
+        log.debug(`[VideoPlayer] Screen Wake Lock ${operation} skipped:`, error?.message || error),
+    });
 
-    try {
-      if ("MediaMetadata" in window) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: this.mediaTitle,
-          artist: this.mediaSubtitle,
-          album: "Streamix",
-        });
-      }
+    this.mediaSessionController = createMediaSessionController({
+      metadata: {
+        title: this.mediaTitle,
+        artist: this.mediaSubtitle,
+        album: "Streamix",
+      },
+      actions: {
+        play: () => {
+          if (this.isPaused()) return this.togglePlayPause();
+          return undefined;
+        },
+        pause: () => {
+          if (!this.isPaused()) return this.togglePlayPause();
+          return undefined;
+        },
+        seekbackward: (event) => this.seek(-(event.seekOffset || 10)),
+        seekforward: (event) => this.seek(event.seekOffset || 10),
+        seekto: (event) => {
+          if (typeof event.seekTime === "number") this.seekTo(event.seekTime);
+        },
+      },
+      onError: (operation, error) =>
+        log.debug(`[VideoPlayer] Media Session ${operation} skipped:`, error?.message || error),
+    });
 
-      navigator.mediaSession.setActionHandler("play", () => {
-        if (this.isPaused()) this.togglePlayPause();
-      });
-      navigator.mediaSession.setActionHandler("pause", () => {
-        if (!this.isPaused()) this.togglePlayPause();
-      });
-      navigator.mediaSession.setActionHandler("seekbackward", (event) => {
-        this.seek(-(event.seekOffset || 10));
-      });
-      navigator.mediaSession.setActionHandler("seekforward", (event) => {
-        this.seek(event.seekOffset || 10);
-      });
-      navigator.mediaSession.setActionHandler("seekto", (event) => {
-        if (typeof event.seekTime === "number") this.seekTo(event.seekTime);
-      });
-      this.updateMediaSessionPlaybackState();
-    } catch (error) {
-      log.debug("[VideoPlayer] Media Session setup skipped:", error.message);
-    }
+    this.setPlaybackSystemState("none");
   },
 
-  updateMediaSessionPlaybackState() {
-    if (!("mediaSession" in navigator)) return;
+  setPlaybackSystemState(state) {
+    if (this._destroyed && state !== "none") return;
 
-    try {
-      navigator.mediaSession.playbackState = this.isPaused() ? "paused" : "playing";
-    } catch (error) {
-      log.debug("[VideoPlayer] Media Session state update skipped:", error.message);
+    this.mediaSessionController?.setPlaybackState(state);
+    void this.screenWakeLockController?.setPlaybackActive(state === "playing");
+
+    if (state === "none") return;
+
+    this.updateMediaSessionPosition({ force: true });
+  },
+
+  updateMediaSessionPosition({ force = false } = {}) {
+    if (!this.mediaSessionController) return;
+
+    if (this.contentType !== "vod") {
+      if (force) this.mediaSessionController.clearPosition();
+      return;
     }
+
+    this.mediaSessionController.updatePosition({
+      duration: this.getDuration(),
+      position: this.getCurrentTime(),
+      playbackRate: this.getPlaybackRate(),
+      force,
+    });
+  },
+
+  handlePlaybackStarted() {
+    if (this._terminalPlaybackError) {
+      this.setPlaybackSystemState("none");
+      return;
+    }
+
+    this.setPlaybackSystemState("playing");
+  },
+
+  handlePlaybackPaused() {
+    this.setPlaybackSystemState(this._terminalPlaybackError ? "none" : "paused");
+  },
+
+  handlePlaybackEnded() {
+    this.setPlaybackSystemState("none");
   },
 
   setupIosPwaTapControls() {
@@ -807,7 +855,10 @@ const VideoPlayer = {
     this.lifecycle.listenOptional(this.video, "play", () => {
       this.playerUI.updatePlayPauseUI(false);
       this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
-      if (!this.usingAVPlayer) emitPlaybackEvent(this.el, "play");
+      if (this.usesNativePlaybackEvents()) {
+        this.handlePlaybackStarted();
+        emitPlaybackEvent(this.el, "play");
+      }
     });
     this.lifecycle.listenOptional(this.video, "pause", () => {
       this.playerUI.updatePlayPauseUI(true);
@@ -817,14 +868,13 @@ const VideoPlayer = {
         wasPlaying: false,
         reason: "pause",
       });
-      if (!this.usingAVPlayer) emitPlaybackEvent(this.el, "pause");
+      if (this.usesNativePlaybackEvents()) {
+        this.handlePlaybackPaused();
+        emitPlaybackEvent(this.el, "pause");
+      }
     });
-    this.lifecycle.listenOptional(this.video, "play", () => this.updateMediaSessionPlaybackState());
-    this.lifecycle.listenOptional(this.video, "pause", () =>
-      this.updateMediaSessionPlaybackState(),
-    );
     this.lifecycle.listenOptional(this.video, "ended", () => {
-      this.updateMediaSessionPlaybackState();
+      if (this.usesNativePlaybackEvents()) this.handlePlaybackEnded();
       this.flushPlaybackMetrics("completed");
     });
     this.lifecycle.listenOptional(this.video, "volumechange", () =>
@@ -916,7 +966,7 @@ const VideoPlayer = {
     );
     this.lifecycle.listenOptional(this.video, "seeked", () => {
       this.nativeBufferingController.handleSeeked();
-      if (!this.usingAVPlayer) emitPlaybackEvent(this.el, "seeked");
+      if (this.usesNativePlaybackEvents()) emitPlaybackEvent(this.el, "seeked");
     });
 
     // Buffer health monitoring with debounce to prevent flickering
@@ -937,6 +987,11 @@ const VideoPlayer = {
   // ============================================
   // UI Update Helpers
   // ============================================
+
+  showPlaybackError(message, hint = null) {
+    this.updateMediaSessionPlaybackState("none");
+    this.playerUI.showError(message, hint);
+  },
 
   applyAudioOutput({ outputVolume, muted }) {
     // Keep the native element synchronized even while it is hidden. That
@@ -994,6 +1049,7 @@ const VideoPlayer = {
     const currentTime = this.getCurrentTime();
     const duration = this.getDuration();
     this.playerUI.updateTimeUI(currentTime, duration);
+    this.updateMediaSessionPosition();
   },
 
   updateBufferBar() {
@@ -1006,6 +1062,12 @@ const VideoPlayer = {
     }
   },
 
+  showPlaybackError(message, hint = null) {
+    this._terminalPlaybackError = true;
+    this.setPlaybackSystemState("none");
+    this.showPlaybackError(message, hint);
+  },
+
   /**
    * Show error with optional automatic diagnostics (Netflix pattern)
    * @param {string} message - Error message to display
@@ -1013,7 +1075,7 @@ const VideoPlayer = {
    * @param {boolean} runDiagnostics - Whether to run automatic diagnostics
    */
   async showErrorWithDiagnostics(message, error = null, runDiagnostics = false) {
-    this.playerUI.showError(message);
+    this.showPlaybackError(message);
 
     if (runDiagnostics && error) {
       try {
@@ -1043,8 +1105,19 @@ const VideoPlayer = {
     this.audioController.setVolume(volume);
   },
 
+  supportsPlaybackRateControl() {
+    return !this.usingAVPlayer && !this.usingH265web;
+  },
+
   setPlaybackRate(rate) {
-    if (!this.video) return;
+    const normalizedRate = Number(rate);
+    if (!this.video || !Number.isFinite(normalizedRate) || normalizedRate <= 0) return false;
+
+    if (!this.supportsPlaybackRateControl()) {
+      this.playerUI?.updateSpeedUI(1);
+      this.updateMediaSessionPosition({ force: true });
+      return false;
+    }
 
     // iOS Safari with native HLS flushes the decoder on any playbackRate
     // change ≠ 1.0, producing a 50-100ms stall. When we're already in
@@ -1055,19 +1128,22 @@ const VideoPlayer = {
     const native = !!this.video.canPlayType?.("application/vnd.apple.mpegurl");
     const inWatchParty = !!window.streamixWatchPartyActive;
 
-    if (native && inWatchParty && rate > 1.0) {
+    if (native && inWatchParty && normalizedRate > 1.0) {
       this.video.playbackRate = 1.0;
       savePlaybackRate(1.0);
+      this.updateMediaSessionPosition({ force: true });
       this.pushEventSafe("playback_rate_changed", { rate: 1.0 });
       this.playerUI?.showNotice?.(
         "Velocidade variável não é suportada com HLS nativo do iOS durante watch party.",
       );
-      return;
+      return true;
     }
 
-    this.video.playbackRate = rate;
-    savePlaybackRate(rate);
-    this.pushEventSafe("playback_rate_changed", { rate });
+    this.video.playbackRate = normalizedRate;
+    savePlaybackRate(normalizedRate);
+    this.updateMediaSessionPosition({ force: true });
+    this.pushEventSafe("playback_rate_changed", { rate: normalizedRate });
+    return true;
   },
 
   reportProgress() {
@@ -1377,6 +1453,7 @@ const VideoPlayer = {
 
   cleanup() {
     this.reportPlayerLifecycle("player_cleanup");
+    this.setPlaybackSystemState("none");
     this.playbackSessionId += 1;
     this._metadataProbeCancel?.();
     this._metadataProbeCancel = null;
@@ -1459,6 +1536,7 @@ const VideoPlayer = {
   resetNativeMediaElement({ restoreAudioState = false } = {}) {
     if (!this.video) return;
 
+    this._suppressNativePlaybackEvents = true;
     const muted = this.video.muted;
     const volume = this.video.volume;
 
@@ -1476,6 +1554,8 @@ const VideoPlayer = {
   emergencyStopPlayback() {
     if (this._emergencyStopDone) return;
     this._emergencyStopDone = true;
+    this._suppressNativePlaybackEvents = true;
+    this.setPlaybackSystemState("none");
 
     try {
       this.video?.pause();
@@ -1703,7 +1783,7 @@ const VideoPlayer = {
         this.playerUI.showControls();
         this.playerUI.clearHideControlsTimeout();
       } else {
-        this.playerUI.showError(`Falha ao iniciar reproducao: ${e.message}`);
+        this.showPlaybackError(`Falha ao iniciar reproducao: ${e.message}`);
       }
     }
   },
@@ -1804,8 +1884,10 @@ const VideoPlayer = {
   },
 
   initPlayer() {
+    this._terminalPlaybackError = false;
+
     if (!this.streamUrl) {
-      this.playerUI.showError("URL do stream nao fornecida");
+      this.showPlaybackError("URL do stream nao fornecida");
       return;
     }
 
@@ -1909,7 +1991,7 @@ const VideoPlayer = {
         this.playWithMpegts("flv");
         break;
       case "flv-unsupported":
-        this.playerUI.showError("Reproducao FLV nao suportada neste navegador");
+        this.showPlaybackError("Reproducao FLV nao suportada neste navegador");
         break;
       default:
         log.warn("[VideoPlayer] Unknown engine decision:", engine);
@@ -2118,7 +2200,7 @@ const VideoPlayer = {
       .catch((error) => {
         log.error("mpegts.js recovery failed:", error);
         if (this.isCurrentPlaybackSession(transitionSessionId)) {
-          this.playerUI.showError("Erro ao recuperar o stream ao vivo");
+          this.showPlaybackError("Erro ao recuperar o stream ao vivo");
         }
         return false;
       })
@@ -2134,6 +2216,7 @@ const VideoPlayer = {
   },
 
   async playWithHls() {
+    this._suppressNativePlaybackEvents = false;
     this.syncPiPAvailability();
     log.info("Playing with HLS.js, url:", this.currentUrl);
     this.reportPlayerLifecycle("player_engine_selected", { engine: "hls-js" });
@@ -2142,7 +2225,7 @@ const VideoPlayer = {
       if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
         this.playNative();
       } else {
-        this.playerUI.showError("HLS nao suportado neste navegador");
+        this.showPlaybackError("HLS nao suportado neste navegador");
       }
       return;
     }
@@ -2170,11 +2253,12 @@ const VideoPlayer = {
     if (this.getNativeHlsSupport()) {
       this.playNative();
     } else {
-      this.playerUI.showError("HLS nao suportado neste navegador");
+      this.showPlaybackError("HLS nao suportado neste navegador");
     }
   },
 
   async playWithAvbridge() {
+    this._suppressNativePlaybackEvents = false;
     this.disablePiPForCanvasPlayback();
     log.info("Playing with avbridge, url:", this.currentUrl);
     this.avbridgeAttempted = true;
@@ -2206,8 +2290,10 @@ const VideoPlayer = {
         }
       }
       await this.avbridge.play();
+      this.handlePlaybackStarted();
       this.playbackMetrics?.markPlaying();
     } catch (err) {
+      this.setPlaybackSystemState("none");
       log.warn("[Avbridge] init failed, falling back to AVPlayer:", err);
       this.playbackMetrics?.recordError();
       this.reportPlayerLifecycle("player_engine_fallback", {
@@ -2259,7 +2345,34 @@ const VideoPlayer = {
         // origin than Phoenix (CDN, edge cache).
         baseUrl: this.el.dataset.h265webBaseUrl || undefined,
       });
-      await this.h265web.load(this.currentUrl, {
+      const h265web = this.h265web;
+      const h265webTicks = createPlaybackTickThrottle();
+      h265web.on("playing", () => {
+        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
+        this.playerUI.updatePlayPauseUI(false);
+        this.handlePlaybackStarted();
+        emitPlaybackEvent(this.el, "play");
+      });
+      h265web.on("paused", () => {
+        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
+        this.playerUI.updatePlayPauseUI(true);
+        this.handlePlaybackPaused();
+        emitPlaybackEvent(this.el, "pause");
+      });
+      h265web.on("timeupdate", () => {
+        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
+
+        const tick = h265webTicks.next();
+        if (tick.updateUi) this.updateTimeUI();
+        if (tick.reportProgress && this.contentType === "vod") this.reportProgress();
+      });
+      h265web.on("ended", () => {
+        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
+        this.playerUI.updatePlayPauseUI(true);
+        this.handlePlaybackEnded();
+        this.flushPlaybackMetrics("completed");
+      });
+      await h265web.load(this.currentUrl, {
         startTime: resumeTime,
         autoPlay: true,
       });
@@ -2282,9 +2395,10 @@ const VideoPlayer = {
           log.warn("[H265web] seek-on-load failed, will try after play()", seekErr);
         }
       }
-      await this.h265web.play();
+      await h265web.play();
       this.playbackMetrics?.markPlaying();
     } catch (err) {
+      this.setPlaybackSystemState("none");
       log.warn("[H265web] init failed, falling back to AVPlayer:", err);
       this.playbackMetrics?.recordError();
       this.reportPlayerLifecycle("player_engine_fallback", {
@@ -2306,6 +2420,7 @@ const VideoPlayer = {
   },
 
   async playWithMpegts(type = "mpegts") {
+    this._suppressNativePlaybackEvents = false;
     this.syncPiPAvailability();
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
     this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
@@ -2352,7 +2467,7 @@ const VideoPlayer = {
     if (type === "flv") {
       const transitionSessionId = await this.teardownStreamLoaderForTransition(sessionId);
       if (transitionSessionId != null) {
-        this.playerUI.showError("Reproducao FLV nao suportada neste navegador");
+        this.showPlaybackError("Reproducao FLV nao suportada neste navegador");
       }
       return;
     }
@@ -2365,6 +2480,7 @@ const VideoPlayer = {
   },
 
   playNative() {
+    this._suppressNativePlaybackEvents = false;
     this.syncPiPAvailability();
     const sessionId = this.playbackSessionId;
     const resumeTime = this.takeResumeTime();
@@ -2494,7 +2610,7 @@ const VideoPlayer = {
         }
       }
 
-      this.playerUI.showError(message);
+      this.showPlaybackError(message);
       this.video.removeEventListener("error", errorHandler);
     };
 
@@ -2633,7 +2749,7 @@ const VideoPlayer = {
     // Circuit breaker check
     if (!this.canAttemptFallback()) {
       log.debug("[VideoPlayer] Circuit breaker prevented fallback attempt");
-      this.playerUI.showError("Formato de audio nao suportado. Tente novamente mais tarde.");
+      this.showPlaybackError("Formato de audio nao suportado. Tente novamente mais tarde.");
       return;
     }
 
@@ -2726,6 +2842,7 @@ const VideoPlayer = {
           this.playerUI.hideLoading();
           this.playerUI.updatePlayPauseUI(false);
           this.startAVPlayerTimeUpdates();
+          this.handlePlaybackStarted();
           this.playbackMetrics?.markPlaying();
           emitPlaybackEvent(this.el, "play");
 
@@ -2740,6 +2857,7 @@ const VideoPlayer = {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           log.debug("[VideoPlayer] AVPlayer paused");
           this.playerUI.updatePlayPauseUI(true);
+          this.handlePlaybackPaused();
           emitPlaybackEvent(this.el, "pause");
         },
         onError: (error) => {
@@ -2759,6 +2877,7 @@ const VideoPlayer = {
           log.debug("[VideoPlayer] AVPlayer ended");
           this.playerUI.updatePlayPauseUI(true);
           this.stopAVPlayerTimeUpdates();
+          this.handlePlaybackEnded();
           this.flushPlaybackMetrics("completed");
         },
       });
@@ -2786,6 +2905,7 @@ const VideoPlayer = {
 
       avPlayer.setVolume(audioOutputVolume(this.canonicalAudioState()));
 
+      this.usingAVPlayer = true;
       log.debug("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
       await avPlayer.play();
       if (!this.isCurrentPlaybackSession(sessionId)) {
@@ -2794,7 +2914,7 @@ const VideoPlayer = {
       }
       log.debug("[VideoPlayer] AVPlayer play() completed");
 
-      this.usingAVPlayer = true;
+      this.updateMediaSessionPosition({ force: true });
       log.debug("[VideoPlayer] Seamless AVPlayer switch complete");
 
       // Detect available audio/subtitle tracks from AVPlayer
@@ -3340,11 +3460,15 @@ const VideoPlayer = {
           this.playerUI.updatePlayPauseUI(false); // false = not paused
           this.playerUI.hideLoading();
           this.startAVPlayerTimeUpdates();
+          this.handlePlaybackStarted();
           this.playbackMetrics?.markPlaying();
+          emitPlaybackEvent(this.el, "play");
         },
         onPause: () => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           this.playerUI.updatePlayPauseUI(true); // true = paused
+          this.handlePlaybackPaused();
+          emitPlaybackEvent(this.el, "pause");
         },
         onTimeUpdate: () => {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
@@ -3354,6 +3478,7 @@ const VideoPlayer = {
           if (!this.isCurrentPlaybackSession(sessionId)) return;
           this.playerUI.updatePlayPauseUI(true);
           this.stopAVPlayerTimeUpdates();
+          this.handlePlaybackEnded();
           this.flushPlaybackMetrics("completed");
         },
       });
@@ -3412,6 +3537,8 @@ const VideoPlayer = {
           await this.teardownAVPlayer(avPlayer);
           return;
         }
+      } else {
+        this.handlePlaybackPaused();
       }
 
       // Start time updates
@@ -3538,7 +3665,7 @@ const VideoPlayer = {
         isPaused: () => this.isPaused(),
         isMuted: () => this.canonicalAudioState().muted,
         isPiPSupported: () => this.isPiPSupported(),
-        getPlaybackRate: () => this.video?.playbackRate || 1,
+        getPlaybackRate: () => this.getPlaybackRate(),
       },
     });
 
@@ -3564,29 +3691,42 @@ const VideoPlayer = {
     this.el.requestFullscreen?.() || this.video?.requestFullscreen?.();
   },
 
+  getManagedPlaybackEngine() {
+    if (this.usingAVPlayer && this.avPlayer) return this.avPlayer;
+    if (this.usingAvbridge && this.avbridge) return this.avbridge;
+    if (this.usingH265web && this.h265web) return this.h265web;
+    return null;
+  },
+
   async togglePlayPause() {
-    if (this.usingAVPlayer && this.avPlayer) {
-      const isPlaying = this.avPlayer.isPlaying();
-      log.debug("[VideoPlayer] togglePlayPause: AVPlayer isPlaying =", isPlaying);
-      if (isPlaying) {
-        await this.avPlayer.pause();
-      } else {
-        try {
-          await this.avPlayer.play();
-        } catch (err) {
-          log.error("[VideoPlayer] AVPlayer play() failed:", err);
+    const engine = this.getManagedPlaybackEngine();
+
+    if (engine) {
+      const isPlaying = engine.isPlaying();
+      log.debug("[VideoPlayer] togglePlayPause: managed engine isPlaying =", isPlaying);
+
+      try {
+        if (isPlaying) {
+          await engine.pause();
+          this.updateMediaSessionPlaybackState("paused");
+        } else {
+          await engine.play();
+          this.updateMediaSessionPlaybackState("playing");
         }
+      } catch (error) {
+        log.error("[VideoPlayer] managed engine play/pause failed:", error);
       }
+      return;
+    }
+
+    if (this.video.paused) {
+      this.video.play().catch((error) => {
+        if (error.name === "AbortError") return;
+        log.debug("[VideoPlayer] togglePlayPause play() failed:", error.message);
+      });
     } else {
-      if (this.video.paused) {
-        this.video.play().catch((e) => {
-          if (e.name === "AbortError") return;
-          log.debug("[VideoPlayer] togglePlayPause play() failed:", e.message);
-        });
-      } else {
-        this.nativeBufferManager?.markIntentionalPause();
-        this.video.pause();
-      }
+      this.nativeBufferManager?.markIntentionalPause();
+      this.video.pause();
     }
   },
 
@@ -3603,16 +3743,20 @@ const VideoPlayer = {
   seek(seconds) {
     if (this.contentType === "live") return;
 
-    if (this.usingAVPlayer && this.avPlayer) {
-      const currentTime = this.avPlayer.getCurrentTime();
-      const duration = this.avPlayer.getDuration();
-      const target = relativeSeekTarget(currentTime, seconds, duration);
+    const engine = this.getManagedPlaybackEngine();
+    if (engine) {
+      const target = relativeSeekTarget(engine.getCurrentTime(), seconds, engine.getDuration());
       if (target === null) return;
 
-      this.avPlayer.seek(target).catch((e) => {
-        log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
-      });
-    } else if (this.video) {
+      Promise.resolve(engine.seek(target))
+        .then(() => this.updateMediaSessionPositionState({ force: true }))
+        .catch((error) => {
+          log.debug("[VideoPlayer] managed engine seek skipped:", error.message);
+        });
+      return;
+    }
+
+    if (this.video) {
       const target = relativeSeekTarget(this.video.currentTime, seconds, this.getDuration());
       if (target !== null) this.seekNativeTo(target);
     }
@@ -3624,12 +3768,15 @@ const VideoPlayer = {
     const target = clampSeekTime(time, this.getDuration());
     if (target === null) return;
 
-    if (this.usingAVPlayer && this.avPlayer) {
-      this.avPlayer
-        .seek(target)
-        .then(() => emitPlaybackEvent(this.el, "seeked"))
-        .catch((e) => {
-          log.debug("[VideoPlayer] AVPlayer seek skipped:", e.message);
+    const engine = this.getManagedPlaybackEngine();
+    if (engine) {
+      Promise.resolve(engine.seek(target))
+        .then(() => {
+          emitPlaybackEvent(this.el, "seeked");
+          this.updateMediaSessionPositionState({ force: true });
+        })
+        .catch((error) => {
+          log.debug("[VideoPlayer] managed engine seek skipped:", error.message);
         });
     } else if (this.video) {
       this.seekNativeTo(target);
@@ -3644,20 +3791,13 @@ const VideoPlayer = {
   },
 
   getCurrentTime() {
-    if (this.usingAVPlayer && this.avPlayer) {
-      return this.avPlayer.getCurrentTime();
-    }
-    return this.video?.currentTime || 0;
+    const engine = this.getManagedPlaybackEngine();
+    return engine?.getCurrentTime?.() ?? this.video?.currentTime ?? 0;
   },
 
   getDuration() {
-    let duration = 0;
-
-    if (this.usingAVPlayer && this.avPlayer) {
-      duration = this.avPlayer.getDuration();
-    } else {
-      duration = this.video?.duration || 0;
-    }
+    const engine = this.getManagedPlaybackEngine();
+    const duration = engine?.getDuration?.() ?? this.video?.duration ?? 0;
 
     // Sanity check: if duration is absurd (>12 hours), use expected duration from DB
     const MAX_SANE_DURATION = 12 * 60 * 60; // 12 hours in seconds
@@ -3669,9 +3809,8 @@ const VideoPlayer = {
   },
 
   isPaused() {
-    if (this.usingAVPlayer && this.avPlayer) {
-      return !this.avPlayer.isPlaying();
-    }
+    const engine = this.getManagedPlaybackEngine();
+    if (engine) return !engine.isPlaying();
     return this.video?.paused ?? true;
   },
 
@@ -3741,16 +3880,12 @@ const VideoPlayer = {
       this.keyboardManager = null;
     }
 
-    if ("mediaSession" in navigator) {
-      try {
-        ["play", "pause", "seekbackward", "seekforward", "seekto"].forEach((action) => {
-          navigator.mediaSession.setActionHandler(action, null);
-        });
-        navigator.mediaSession.playbackState = "none";
-      } catch (error) {
-        log.debug("[VideoPlayer] Media Session cleanup skipped:", error.message);
-      }
-    }
+    this.mediaSessionController?.destroy();
+    this.mediaSessionController = null;
+
+    const wakeLockController = this.screenWakeLockController;
+    this.screenWakeLockController = null;
+    void wakeLockController?.destroy();
 
     if (this.watchInterval) {
       clearInterval(this.watchInterval);

@@ -82,6 +82,16 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     |> assert_mobile_controls_fit(390, 844)
   end
 
+  @tag browser_context_opts: @mobile_portrait_opts
+  test "keeps the screen awake only while portrait playback is active", %{
+    conn: session,
+    media_origin: media_origin
+  } do
+    session
+    |> open_mobile_player(media_origin)
+    |> assert_playback_system_lifecycle()
+  end
+
   @mobile_landscape_opts [
                            viewport: %{width: 844, height: 390},
                            device_scale_factor: 3.0,
@@ -154,7 +164,67 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       Object.defineProperty(navigator, "platform", {value: "iPhone", configurable: true});
       Object.defineProperty(navigator, "maxTouchPoints", {value: 5, configurable: true});
 
-      window.__streamixPlayerProbe = {events: [], playCalls: 0, loadCalls: 0, currentTime: 0};
+      const probe = window.__streamixPlayerProbe = {
+        events: [],
+        playCalls: 0,
+        loadCalls: 0,
+        currentTime: 0,
+        wakeLockRequests: [],
+        wakeLockReleases: 0,
+        mediaPlaybackState: "none",
+        mediaPlaybackStates: [],
+        mediaPositions: []
+      };
+
+      Object.defineProperty(navigator, "wakeLock", {
+        configurable: true,
+        value: {
+          async request(type) {
+            const sentinel = new EventTarget();
+            let released = false;
+
+            Object.defineProperty(sentinel, "released", {
+              configurable: true,
+              get: () => released
+            });
+
+            sentinel.release = async () => {
+              if (released) return;
+              released = true;
+              probe.wakeLockReleases += 1;
+              sentinel.dispatchEvent(new Event("release"));
+            };
+
+            probe.wakeLockRequests.push(type);
+            return sentinel;
+          }
+        }
+      });
+
+      const mediaActions = new Map();
+      const mediaSession = {
+        metadata: null,
+        setActionHandler(action, handler) {
+          mediaActions.set(action, handler);
+        },
+        setPositionState(state) {
+          probe.mediaPositions.push(state || null);
+        }
+      };
+
+      Object.defineProperty(mediaSession, "playbackState", {
+        configurable: true,
+        get: () => probe.mediaPlaybackState,
+        set(value) {
+          probe.mediaPlaybackState = value;
+          probe.mediaPlaybackStates.push(value);
+        }
+      });
+
+      Object.defineProperty(navigator, "mediaSession", {
+        configurable: true,
+        value: mediaSession
+      });
 
       Object.defineProperty(HTMLMediaElement.prototype, "src", {
         configurable: true,
@@ -214,6 +284,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
         this.__streamixPlaying = true;
         window.__streamixPlayerProbe.playCalls += 1;
         window.__streamixPlayerProbe.events.push(`play:${this.currentTime || 0}`);
+        this.dispatchEvent(new Event("play"));
         this.dispatchEvent(new Event("loadedmetadata"));
         this.dispatchEvent(new Event("canplay"));
         this.dispatchEvent(new Event("playing"));
@@ -305,6 +376,83 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       [is_function: true, timeout: 4_000],
       fn state ->
         assert state["events"] == ["seek:25", "play:25"]
+      end
+    )
+  end
+
+  defp assert_playback_system_lifecycle(session) do
+    PhoenixTest.Playwright.evaluate(
+      session,
+      """
+      async () => {
+        const waitFor = async (predicate, label) => {
+          const deadline = performance.now() + 3000;
+
+          while (!predicate() && performance.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+
+          if (!predicate()) throw new Error(`timed out waiting for ${label}`);
+        };
+
+        let probe;
+        let video;
+        let hook;
+
+        await waitFor(() => {
+          probe = window.__streamixPlayerProbe;
+          video = document.getElementById("video-element");
+          hook = document.getElementById("video-player-container")?.__videoPlayerHook;
+          return Boolean(probe && video && hook);
+        }, "player lifecycle probe");
+
+        await waitFor(
+          () => probe.wakeLockRequests.length === 1 && probe.mediaPlaybackState === "playing",
+          "initial playback system state"
+        );
+
+        const activePosition = probe.mediaPositions.find(
+          (state) => state && state.duration === 120 && state.position === 25 && state.playbackRate === 1
+        );
+
+        video.pause();
+        await waitFor(
+          () => probe.wakeLockReleases === 1 && probe.mediaPlaybackState === "paused",
+          "pause release"
+        );
+
+        await video.play();
+        await waitFor(
+          () => probe.wakeLockRequests.length === 2 && probe.mediaPlaybackState === "playing",
+          "resume acquisition"
+        );
+
+        hook.showPlaybackError("Erro terminal de teste");
+        await waitFor(
+          () => probe.wakeLockReleases === 2 && probe.mediaPlaybackState === "none",
+          "terminal error cleanup"
+        );
+
+        return {
+          activePosition,
+          mediaPlaybackStates: probe.mediaPlaybackStates,
+          mediaPlaybackState: probe.mediaPlaybackState,
+          wakeLockRequests: probe.wakeLockRequests,
+          wakeLockReleases: probe.wakeLockReleases
+        };
+      }
+      """,
+      [is_function: true, timeout: 5_000],
+      fn state ->
+        assert state["wakeLockRequests"] == ["screen", "screen"]
+        assert state["wakeLockReleases"] == 2
+        assert state["mediaPlaybackState"] == "none"
+        assert state["activePosition"]["duration"] == 120
+        assert state["activePosition"]["position"] == 25
+        assert state["activePosition"]["playbackRate"] == 1
+        assert "playing" in state["mediaPlaybackStates"]
+        assert "paused" in state["mediaPlaybackStates"]
+        assert "none" in state["mediaPlaybackStates"]
       end
     )
   end
