@@ -1,3 +1,20 @@
+import { favoriteActionLabel, updateFavoritePreviewButton } from "./content_card_state.js";
+
+function shouldAvoidSpeculativePreload(navigatorRef = globalThis.navigator) {
+  const connection = navigatorRef?.connection || {};
+  const effectiveType = connection.effectiveType || "unknown";
+  const deviceMemory = navigatorRef?.deviceMemory || 4;
+  const cpuCores = navigatorRef?.hardwareConcurrency || 4;
+
+  return (
+    connection.saveData === true ||
+    effectiveType === "slow-2g" ||
+    effectiveType === "2g" ||
+    deviceMemory <= 2 ||
+    cpuCores <= 4
+  );
+}
+
 /**
  * Content Card Hook - Netflix-style Hover Preview
  *
@@ -15,8 +32,10 @@
 // Track if we've already preloaded WASM
 let hasPreloadedWasm = false;
 
-// Lazy import for preload function
+// Lazy import for preload function. The promise is shared across all cards so
+// a grid full of hover hooks cannot start duplicate decoder preloads.
 let preloadAVPlayerWasm = null;
+let preloadAVPlayerPromise = null;
 
 async function ensurePreloadFunctionLoaded() {
   if (!preloadAVPlayerWasm) {
@@ -67,6 +86,7 @@ const ContentCard = {
     // Instance-level preview state (not shared globals)
     this.activePreview = null;
     this.previewTimeout = null;
+    this.previewCloseTimeout = null;
 
     // Get content data from attributes
     this.contentId = this.el.dataset.contentId;
@@ -83,6 +103,7 @@ const ContentCard = {
     this.genre = this.el.dataset.genre;
     this.duration = this.el.dataset.duration;
     this.isFavorite = this.el.dataset.favorite === "true";
+    this.avoidSpeculativePreload = shouldAvoidSpeculativePreload();
 
     // Hover delay (Netflix uses ~600ms)
     this.hoverDelay = 600;
@@ -93,26 +114,27 @@ const ContentCard = {
     // Bind handlers
     this.handleMouseEnter = this.handleMouseEnter.bind(this);
     this.handleMouseLeave = this.handleMouseLeave.bind(this);
-    this.handleFocus = this.handleFocus.bind(this);
 
     // Hover previews are a desktop affordance. Mobile taps should navigate
     // immediately without a preview DOM/layout cycle.
     if (this.supportsHover) {
       this.el.addEventListener("mouseenter", this.handleMouseEnter);
       this.el.addEventListener("mouseleave", this.handleMouseLeave);
-      this.el.addEventListener("focus", this.handleFocus);
     }
   },
 
   destroyed() {
     this.el.removeEventListener("mouseenter", this.handleMouseEnter);
     this.el.removeEventListener("mouseleave", this.handleMouseLeave);
-    this.el.removeEventListener("focus", this.handleFocus);
 
     // Always clear pending timeout, regardless of pendingPreview flag
     if (this.previewTimeout) {
       clearTimeout(this.previewTimeout);
       this.previewTimeout = null;
+    }
+    if (this.previewCloseTimeout) {
+      clearTimeout(this.previewCloseTimeout);
+      this.previewCloseTimeout = null;
     }
     this.pendingPreview = false;
 
@@ -128,18 +150,22 @@ const ContentCard = {
   handleMouseEnter() {
     this.pendingPreview = true;
 
+    if (this.previewCloseTimeout) {
+      clearTimeout(this.previewCloseTimeout);
+      this.previewCloseTimeout = null;
+    }
+
     // Cancel any existing timeout
     if (this.previewTimeout) {
       clearTimeout(this.previewTimeout);
     }
 
-    // Start WASM preload immediately
-    this.preloadWasm();
-
-    // Delay before showing preview
+    // Confirm hover intent before importing and compiling any decoder code.
+    // Fly-by pointer movement should not download megabytes of optional WASM.
     this.previewTimeout = setTimeout(() => {
       this.previewTimeout = null;
       if (this.pendingPreview) {
+        void this.preloadWasm();
         this.showPreview();
       }
     }, this.hoverDelay);
@@ -153,8 +179,9 @@ const ContentCard = {
       this.previewTimeout = null;
     }
 
-    // Close preview if we're not hovering over it
-    setTimeout(() => {
+    // Close preview if we're not hovering over it.
+    this.previewCloseTimeout = setTimeout(() => {
+      this.previewCloseTimeout = null;
       if (
         this.activePreview &&
         !this.activePreview.matches(":hover") &&
@@ -165,10 +192,6 @@ const ContentCard = {
     }, 100);
   },
 
-  handleFocus() {
-    this.preloadWasm();
-  },
-
   _closePreview() {
     if (this.activePreview) {
       this.activePreview.remove();
@@ -177,6 +200,10 @@ const ContentCard = {
     if (this.previewTimeout) {
       clearTimeout(this.previewTimeout);
       this.previewTimeout = null;
+    }
+    if (this.previewCloseTimeout) {
+      clearTimeout(this.previewCloseTimeout);
+      this.previewCloseTimeout = null;
     }
     if (activePreviewInstance === this) {
       activePreviewInstance = null;
@@ -302,7 +329,7 @@ const ContentCard = {
           this.cover
             ? `
           <div class="aspect-video bg-surface-hover overflow-hidden">
-            <img src="${this.escapeHtml(this.cover)}" alt="${this.escapeHtml(this.title)}" class="w-full h-full object-cover" />
+            <img src="${this.escapeHtml(this.cover)}" alt="${this.escapeHtml(this.title)}" class="w-full h-full object-cover" decoding="async" draggable="false" />
             <div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent"></div>
           </div>
         `
@@ -339,12 +366,16 @@ const ContentCard = {
           </button>
           <button
             data-action="favorite"
+            type="button"
+            aria-label="${favoriteActionLabel(this.isFavorite)}"
             class="p-2.5 rounded-md bg-surface-hover hover:bg-surface border border-border transition-colors"
           >
             ${heartIcon}
           </button>
           <button
             data-action="details"
+            type="button"
+            aria-label="Ver detalhes de ${this.escapeHtml(this.title)}"
             class="p-2.5 rounded-md bg-surface-hover hover:bg-surface border border-border transition-colors"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -378,11 +409,14 @@ const ContentCard = {
       favoriteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.pushEvent("toggle_favorite", { id: this.contentId, type: this.contentType });
-        // Update visual state
+        // Update visual and assistive state together.
         this.isFavorite = !this.isFavorite;
-        favoriteBtn.innerHTML = this.isFavorite
-          ? `<svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>`
-          : `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>`;
+        updateFavoritePreviewButton(favoriteBtn, {
+          isFavorite: this.isFavorite,
+          iconHtml: this.isFavorite
+            ? `<svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/></svg>`
+            : `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>`,
+        });
       });
     }
 
@@ -406,21 +440,29 @@ const ContentCard = {
   },
 
   async preloadWasm() {
-    if (hasPreloadedWasm) return;
+    if (hasPreloadedWasm) return true;
+    if (preloadAVPlayerPromise) return preloadAVPlayerPromise;
 
-    const needsPreload = this.sourceType === "gindex" || this.contentType === "vod";
-    if (!needsPreload) return;
+    const needsPreload = this.sourceType === "gindex";
+    if (!needsPreload || this.avoidSpeculativePreload) return false;
 
-    try {
-      const preload = await ensurePreloadFunctionLoaded();
-      if (preload && !hasPreloadedWasm) {
+    preloadAVPlayerPromise = (async () => {
+      try {
+        const preload = await ensurePreloadFunctionLoaded();
+        if (!preload || hasPreloadedWasm) return false;
+
+        await preload({ source_type: this.sourceType });
         hasPreloadedWasm = true;
-        // pre-loading AVPlayer WASM
-        preload();
+        return true;
+      } catch {
+        // Preloading is an optional optimization; playback still lazy-loads on demand.
+        return false;
+      } finally {
+        preloadAVPlayerPromise = null;
       }
-    } catch {
-      // pre-load failed, non-critical
-    }
+    })();
+
+    return preloadAVPlayerPromise;
   },
 };
 
