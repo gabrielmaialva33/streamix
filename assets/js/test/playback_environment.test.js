@@ -5,6 +5,8 @@ import {
   getPlaybackResourcePolicy,
   hasWebCodecsHevcSupport,
   isAppleTouchDevice,
+  isAppleWebKitBrowser,
+  isDirectStreamUrlAllowed,
   isFirefoxBrowser,
   isStandalonePwa,
   readEngineFlag,
@@ -35,6 +37,36 @@ test("classifies playback environment capabilities", () => {
   assert.equal(hasWebCodecsHevcSupport({ VideoDecoder() {} }), true);
   assert.equal(isFirefoxBrowser({ userAgent: "Mozilla Firefox/140" }), true);
   assert.equal(
+    isAppleWebKitBrowser({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/140 Mobile/15E148 Safari/604.1",
+      platform: "iPhone",
+      maxTouchPoints: 5,
+      vendor: "Google Inc.",
+    }),
+    true,
+  );
+  assert.equal(
+    isAppleWebKitBrowser({
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+      platform: "MacIntel",
+      maxTouchPoints: 0,
+      vendor: "Google Inc.",
+    }),
+    false,
+  );
+  assert.equal(
+    isAppleWebKitBrowser({
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+      platform: "MacIntel",
+      maxTouchPoints: 0,
+      vendor: "Apple Computer, Inc.",
+    }),
+    true,
+  );
+  assert.equal(
     isAppleTouchDevice({
       userAgent: "Mozilla/5.0",
       platform: "MacIntel",
@@ -49,6 +81,13 @@ test("classifies playback environment capabilities", () => {
     }),
     true,
   );
+});
+
+test("blocks mixed-content direct stream retries without rejecting secure URLs", () => {
+  assert.equal(isDirectStreamUrlAllowed("http://provider.test/live.ts", "https:"), false);
+  assert.equal(isDirectStreamUrlAllowed("https://provider.test/live.ts", "https:"), true);
+  assert.equal(isDirectStreamUrlAllowed("http://provider.test/live.ts", "http:"), true);
+  assert.equal(isDirectStreamUrlAllowed("", "https:"), false);
 });
 
 test("avoids speculative probes on constrained devices and networks", () => {

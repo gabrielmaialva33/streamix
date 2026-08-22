@@ -70,6 +70,13 @@ export function createInitialPlayerState(
 
     retryCount: 0,
     maxRetries: 3,
+    _hlsRetryTimer: null,
+    _mpegtsNetworkAttempts: 0,
+    _mpegtsRecreateAttempts: 0,
+    _mpegtsRecoveryPromise: null,
+    _mpegtsRecoverySessionId: null,
+    _mpegtsRetryTimer: null,
+    _streamLoaderTeardownPromise: Promise.resolve(),
     useProxy: true,
     fallbackAttempts: 0,
     maxFallbackAttempts: 5,
@@ -93,6 +100,8 @@ export function createInitialPlayerState(
     avPlayerAttempted: false,
     avPlayerTimeInterval: null,
     preferAVPlayer: false,
+    _avPlayerFailureSessionId: null,
+    _avPlayerFailurePromise: null,
 
     avbridge: null,
     usingAvbridge: false,

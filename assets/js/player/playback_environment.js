@@ -17,6 +17,36 @@ export function readEngineFlag(containerEl, engine, storage) {
 export const isFirefoxBrowser = (navigatorRef = globalThis.navigator) =>
   /firefox/i.test(navigatorRef?.userAgent || "");
 
+export function isDirectStreamUrlAllowed(streamUrl, pageProtocol = globalThis.location?.protocol) {
+  if (typeof streamUrl !== "string" || streamUrl.length === 0) return false;
+  return !(pageProtocol === "https:" && /^http:\/\//i.test(streamUrl));
+}
+
+export function canRetryDirectStream({
+  currentUrl,
+  pageProtocol = globalThis.location?.protocol,
+  streamUrl,
+  useProxy,
+} = {}) {
+  return !!(
+    useProxy &&
+    currentUrl !== streamUrl &&
+    isDirectStreamUrlAllowed(streamUrl, pageProtocol)
+  );
+}
+
+export function isAppleWebKitBrowser(navigatorRef = globalThis.navigator) {
+  const userAgent = navigatorRef?.userAgent || "";
+  const isWebKit = /AppleWebKit/i.test(userAgent);
+
+  if (!isWebKit) return false;
+
+  // Every browser on iPhone/iPad uses WebKit, including CriOS/FxiOS.
+  // On desktop, navigator.vendor separates Safari from Chromium UAs that
+  // also contain both "Macintosh" and "AppleWebKit".
+  return isAppleTouchDevice(navigatorRef) || navigatorRef?.vendor === "Apple Computer, Inc.";
+}
+
 export function isAppleTouchDevice(navigatorRef = globalThis.navigator) {
   const userAgent = navigatorRef?.userAgent || "";
   const platform = navigatorRef?.platform || "";
