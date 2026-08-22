@@ -116,11 +116,21 @@ let _AdaptiveBufferManager = null;
 
 async function getAdaptiveBufferManager() {
   if (!_AdaptiveBufferManager) {
-    const mod = await import("./adaptive_buffer");
+    const mod = await import("./adaptive_buffer.js");
     _AdaptiveBufferManager = mod.AdaptiveBufferManager;
   }
   return _AdaptiveBufferManager;
 }
+
+export class StreamLoaderCancelledError extends Error {
+  constructor() {
+    super("Stream loader operation was cancelled");
+    this.name = "StreamLoaderCancelledError";
+  }
+}
+
+export const isStreamLoaderCancelledError = (error) =>
+  error instanceof StreamLoaderCancelledError || error?.name === "StreamLoaderCancelledError";
 
 /**
  * StreamLoader class - manages HLS and MPEG-TS players
@@ -131,6 +141,16 @@ export class StreamLoader {
     this.streamingMode = options.streamingMode || "balanced";
     this.contentType = options.contentType || "live";
     this.sessionId = options.sessionId || 0;
+    this.disposed = false;
+    this._hlsLoadToken = 0;
+    this._mpegtsLoadToken = 0;
+    this._destroyedHlsInstances = new WeakSet();
+    this._destroyedMpegtsInstances = new WeakSet();
+    this._dependencies = {
+      getAdaptiveBufferManager: options.getAdaptiveBufferManager || getAdaptiveBufferManager,
+      getHls: options.getHls || getHls,
+      getMpegts: options.getMpegts || getMpegts,
+    };
 
     // Player instances
     this.hls = null;
@@ -155,7 +175,112 @@ export class StreamLoader {
   }
 
   updateSessionId(sessionId) {
+    if (this.disposed) return;
     this.sessionId = sessionId;
+  }
+
+  _isHlsLoadCurrent(token) {
+    return !this.disposed && token === this._hlsLoadToken;
+  }
+
+  _isMpegtsLoadCurrent(token) {
+    return !this.disposed && token === this._mpegtsLoadToken;
+  }
+
+  _assertHlsLoadCurrent(token, hls = null) {
+    if (this._isHlsLoadCurrent(token)) return;
+    this._destroyHlsInstance(hls);
+    throw new StreamLoaderCancelledError();
+  }
+
+  _assertMpegtsLoadCurrent(token, player = null) {
+    if (this._isMpegtsLoadCurrent(token)) return;
+    this._destroyMpegtsInstance(player);
+    throw new StreamLoaderCancelledError();
+  }
+
+  _destroyHlsInstance(hls) {
+    if (!hls || this._destroyedHlsInstances.has(hls)) return;
+    this._destroyedHlsInstances.add(hls);
+    try {
+      hls.destroy();
+    } catch (error) {
+      log.debug("[StreamLoader] HLS teardown failed:", error);
+    }
+  }
+
+  _destroyMpegtsInstance(player) {
+    if (!player || this._destroyedMpegtsInstances.has(player)) return;
+    this._destroyedMpegtsInstances.add(player);
+    for (const operation of ["pause", "unload", "detachMediaElement", "destroy"]) {
+      try {
+        player[operation]?.();
+      } catch (error) {
+        log.debug(`[StreamLoader] mpegts ${operation} failed:`, error);
+      }
+    }
+  }
+
+  _bindHlsListeners(hls, Hls, token, sessionId, lowLatencyTarget) {
+    hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+      if (!this._isHlsLoadCurrent(token)) return;
+      if (data.frag.stats.loaded && data.frag.stats.loading.end) {
+        const loadTime = data.frag.stats.loading.end - data.frag.stats.loading.start;
+        const bandwidth = (data.frag.stats.loaded * 8000) / loadTime;
+        this.onFragLoaded(bandwidth, sessionId);
+      }
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+      if (!this._isHlsLoadCurrent(token)) return;
+      if (lowLatencyTarget != null && "targetLatency" in hls) {
+        hls.targetLatency = lowLatencyTarget;
+        log.debug(`[StreamLoader] HLS target latency set to ${lowLatencyTarget}s`);
+      }
+      log.debug("HLS manifest parsed, levels:", data.levels.length);
+      this.onManifestParsed(data, sessionId);
+    });
+
+    hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+      if (!this._isHlsLoadCurrent(token)) return;
+      this.onLevelSwitched(data.level, hls.levels[data.level], sessionId);
+    });
+
+    hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+      if (this._isHlsLoadCurrent(token)) this.onAudioTracksUpdated(hls.audioTracks, sessionId);
+    });
+
+    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+      if (this._isHlsLoadCurrent(token)) {
+        this.onSubtitleTracksUpdated(hls.subtitleTracks, sessionId);
+      }
+    });
+
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!this._isHlsLoadCurrent(token)) return;
+      log.error("HLS error:", data);
+      this.onError("hls", data, sessionId);
+    });
+  }
+
+  _bindMpegtsListeners(player, mpegts, token, sessionId) {
+    player.on(mpegts.Events.STATISTICS_INFO, (info) => {
+      if (this._isMpegtsLoadCurrent(token) && info.speed) {
+        this.onStatisticsInfo(info.speed * 1000, sessionId);
+      }
+    });
+
+    player.on(mpegts.Events.MEDIA_INFO, (info) => {
+      if (!this._isMpegtsLoadCurrent(token)) return;
+      log.debug("MPEG-TS media info:", info);
+      this.onMediaInfo(info, sessionId);
+    });
+
+    player.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+      if (!this._isMpegtsLoadCurrent(token)) return;
+      log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
+      this.onError("mpegts", { errorType, errorDetail, errorInfo }, sessionId);
+    });
   }
 
   /**
@@ -163,8 +288,17 @@ export class StreamLoader {
    */
   async loadHls(url) {
     log.debug("Loading HLS:", url);
+    if (this.disposed) throw new StreamLoaderCancelledError();
+    const token = ++this._hlsLoadToken;
+    const sessionId = this.sessionId;
+    if (this.hls) {
+      const previousHls = this.hls;
+      this.hls = null;
+      this._destroyHlsInstance(previousHls);
+    }
 
-    const Hls = await getHls();
+    const Hls = await this._dependencies.getHls();
+    this._assertHlsLoadCurrent(token);
     this._Hls = Hls;
 
     if (!Hls.isSupported()) {
@@ -182,65 +316,46 @@ export class StreamLoader {
         ? (hlsConfig.liveSyncDuration ?? null)
         : null;
 
-    this.hls = new Hls({
+    const hls = new Hls({
       ...hlsConfig,
       xhrSetup: (xhr) => {
         xhr.withCredentials = false;
       },
     });
 
-    this.hls.loadSource(url);
-    this.hls.attachMedia(this.video);
+    this._bindHlsListeners(hls, Hls, token, sessionId, lowLatencyTarget);
+    this._assertHlsLoadCurrent(token, hls);
+    this.hls = hls;
+
+    try {
+      hls.loadSource(url);
+      this._assertHlsLoadCurrent(token, hls);
+      hls.attachMedia(this.video);
+      this._assertHlsLoadCurrent(token, hls);
+    } catch (error) {
+      if (this.hls === hls) this.hls = null;
+      this._destroyHlsInstance(hls);
+      throw error;
+    }
 
     // Initialize Adaptive Buffer Manager for ADAPTIVE mode
     if (this.streamingMode === StreamingMode.ADAPTIVE && adaptiveConfig) {
       try {
-        const AdaptiveBufferManager = await getAdaptiveBufferManager();
-        this.adaptiveBufferManager = new AdaptiveBufferManager(this.hls, adaptiveConfig);
-        this.adaptiveBufferManager.start();
+        const AdaptiveBufferManager = await this._dependencies.getAdaptiveBufferManager();
+        this._assertHlsLoadCurrent(token, hls);
+        const manager = new AdaptiveBufferManager(hls, adaptiveConfig);
+        this._assertHlsLoadCurrent(token, hls);
+        this.adaptiveBufferManager = manager;
+        manager.start();
         log.info("[StreamLoader] Adaptive buffer management enabled");
       } catch (e) {
+        if (isStreamLoaderCancelledError(e)) throw e;
         log.warn("[StreamLoader] Failed to load adaptive buffer manager:", e.message);
       }
     }
 
-    // Track bandwidth
-    this.hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
-      if (data.frag.stats.loaded && data.frag.stats.loading.end) {
-        const loadTime = data.frag.stats.loading.end - data.frag.stats.loading.start;
-        const bandwidth = (data.frag.stats.loaded * 8000) / loadTime;
-        this.onFragLoaded(bandwidth, this.sessionId);
-      }
-    });
-
-    this.hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-      if (lowLatencyTarget != null && "targetLatency" in this.hls) {
-        this.hls.targetLatency = lowLatencyTarget;
-        log.debug(`[StreamLoader] HLS target latency set to ${lowLatencyTarget}s`);
-      }
-      log.debug("HLS manifest parsed, levels:", data.levels.length);
-      this.onManifestParsed(data, this.sessionId);
-    });
-
-    this.hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
-      const level = this.hls.levels[data.level];
-      this.onLevelSwitched(data.level, level, this.sessionId);
-    });
-
-    this.hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
-      this.onAudioTracksUpdated(this.hls.audioTracks, this.sessionId);
-    });
-
-    this.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
-      this.onSubtitleTracksUpdated(this.hls.subtitleTracks, this.sessionId);
-    });
-
-    this.hls.on(Hls.Events.ERROR, (_event, data) => {
-      log.error("HLS error:", data);
-      this.onError("hls", data, this.sessionId);
-    });
-
-    return this.hls;
+    this._assertHlsLoadCurrent(token, hls);
+    return hls;
   }
 
   /**
@@ -248,13 +363,22 @@ export class StreamLoader {
    */
   async loadMpegts(url, type = "mpegts") {
     log.debug("Loading MPEG-TS:", url, "type:", type);
+    if (this.disposed) throw new StreamLoaderCancelledError();
+    const token = ++this._mpegtsLoadToken;
+    const sessionId = this.sessionId;
+    if (this.mpegtsPlayer) {
+      const previousPlayer = this.mpegtsPlayer;
+      this.mpegtsPlayer = null;
+      this._destroyMpegtsInstance(previousPlayer);
+    }
 
-    const mpegts = await getMpegts();
+    const mpegts = await this._dependencies.getMpegts();
+    this._assertMpegtsLoadCurrent(token);
     this._mpegts = mpegts;
 
     const config = getStreamingConfig(this.streamingMode);
 
-    this.mpegtsPlayer = mpegts.createPlayer(
+    const player = mpegts.createPlayer(
       {
         type: type,
         isLive: this.contentType === "live",
@@ -263,26 +387,22 @@ export class StreamLoader {
       config.mpegts,
     );
 
-    this.mpegtsPlayer.attachMediaElement(this.video);
-    this.mpegtsPlayer.load();
+    this._bindMpegtsListeners(player, mpegts, token, sessionId);
+    this._assertMpegtsLoadCurrent(token, player);
+    this.mpegtsPlayer = player;
 
-    this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, (info) => {
-      if (info.speed) {
-        this.onStatisticsInfo(info.speed * 1000, this.sessionId);
-      }
-    });
+    try {
+      player.attachMediaElement(this.video);
+      this._assertMpegtsLoadCurrent(token, player);
+      player.load();
+      this._assertMpegtsLoadCurrent(token, player);
+    } catch (error) {
+      if (this.mpegtsPlayer === player) this.mpegtsPlayer = null;
+      this._destroyMpegtsInstance(player);
+      throw error;
+    }
 
-    this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
-      log.debug("MPEG-TS media info:", info);
-      this.onMediaInfo(info, this.sessionId);
-    });
-
-    this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
-      log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
-      this.onError("mpegts", { errorType, errorDetail, errorInfo }, this.sessionId);
-    });
-
-    return this.mpegtsPlayer;
+    return player;
   }
 
   /**
@@ -290,6 +410,7 @@ export class StreamLoader {
    * Returns true if soft reload was used, false if full reload needed
    */
   async loadHlsSoft(url) {
+    if (this.disposed) throw new StreamLoaderCancelledError();
     if (!this.hls) {
       log.debug("No existing HLS instance, using full load");
       return this.loadHls(url);
@@ -302,6 +423,7 @@ export class StreamLoader {
 
     // Load new source
     this.hls.loadSource(url);
+    if (this.disposed) throw new StreamLoaderCancelledError();
     this.hls.startLoad();
 
     return this.hls;
@@ -312,27 +434,30 @@ export class StreamLoader {
    * Returns player instance
    */
   async loadMpegtsSoft(url, type = "mpegts") {
+    if (this.disposed) throw new StreamLoaderCancelledError();
     if (!this.mpegtsPlayer) {
       log.debug("No existing MPEG-TS instance, using full load");
       return this.loadMpegts(url, type);
     }
 
     log.debug("Soft reloading MPEG-TS:", url);
+    const token = ++this._mpegtsLoadToken;
+    const sessionId = this.sessionId;
 
-    const mpegts = this._mpegts || (await getMpegts());
+    const mpegts = this._mpegts || (await this._dependencies.getMpegts());
+    this._assertMpegtsLoadCurrent(token);
     this._mpegts = mpegts;
 
     // Unload current stream but keep player
-    this.mpegtsPlayer.unload();
-
     // mpegts.js doesn't support changing URL, need to destroy and recreate
     // But we can skip the attachMediaElement step
     const config = getStreamingConfig(this.streamingMode);
     const wasAttached = this.mpegtsPlayer._mediaElement;
+    const oldPlayer = this.mpegtsPlayer;
+    this.mpegtsPlayer = null;
+    this._destroyMpegtsInstance(oldPlayer);
 
-    this.mpegtsPlayer.destroy();
-
-    this.mpegtsPlayer = mpegts.createPlayer(
+    const player = mpegts.createPlayer(
       {
         type: type,
         isLive: this.contentType === "live",
@@ -341,29 +466,24 @@ export class StreamLoader {
       config.mpegts,
     );
 
-    if (wasAttached) {
-      this.mpegtsPlayer.attachMediaElement(this.video);
-    }
-    this.mpegtsPlayer.load();
+    this._bindMpegtsListeners(player, mpegts, token, sessionId);
+    this._assertMpegtsLoadCurrent(token, player);
+    this.mpegtsPlayer = player;
 
-    // Re-attach event listeners
-    this.mpegtsPlayer.on(mpegts.Events.STATISTICS_INFO, (info) => {
-      if (info.speed) {
-        this.onStatisticsInfo(info.speed * 1000, this.sessionId);
+    try {
+      if (wasAttached) {
+        player.attachMediaElement(this.video);
+        this._assertMpegtsLoadCurrent(token, player);
       }
-    });
+      player.load();
+      this._assertMpegtsLoadCurrent(token, player);
+    } catch (error) {
+      if (this.mpegtsPlayer === player) this.mpegtsPlayer = null;
+      this._destroyMpegtsInstance(player);
+      throw error;
+    }
 
-    this.mpegtsPlayer.on(mpegts.Events.MEDIA_INFO, (info) => {
-      log.debug("MPEG-TS media info:", info);
-      this.onMediaInfo(info, this.sessionId);
-    });
-
-    this.mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
-      log.error("MPEG-TS error:", errorType, errorDetail, errorInfo);
-      this.onError("mpegts", { errorType, errorDetail, errorInfo }, this.sessionId);
-    });
-
-    return this.mpegtsPlayer;
+    return player;
   }
 
   /**
@@ -480,22 +600,28 @@ export class StreamLoader {
    * Destroy all players
    */
   destroy() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this._hlsLoadToken += 1;
+    this._mpegtsLoadToken += 1;
+
     // Stop adaptive buffer manager first
     if (this.adaptiveBufferManager) {
-      this.adaptiveBufferManager.stop();
+      try {
+        this.adaptiveBufferManager.stop();
+      } catch (error) {
+        log.debug("[StreamLoader] Adaptive buffer teardown failed:", error);
+      }
       this.adaptiveBufferManager = null;
     }
 
     if (this.hls) {
-      this.hls.destroy();
+      this._destroyHlsInstance(this.hls);
       this.hls = null;
     }
 
     if (this.mpegtsPlayer) {
-      this.mpegtsPlayer.pause();
-      this.mpegtsPlayer.unload();
-      this.mpegtsPlayer.detachMediaElement();
-      this.mpegtsPlayer.destroy();
+      this._destroyMpegtsInstance(this.mpegtsPlayer);
       this.mpegtsPlayer = null;
     }
   }
