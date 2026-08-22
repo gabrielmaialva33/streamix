@@ -99,7 +99,9 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
       %Room{}
       |> Room.create_changeset(%{
         host_user_id: provider.user_id,
-        catalog_item_id: orphan.id
+        catalog_item_id: orphan.id,
+        source_type: "movie",
+        source_id: orphan.id
       })
       |> Repo.insert!()
 
