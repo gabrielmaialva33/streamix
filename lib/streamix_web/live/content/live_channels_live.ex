@@ -50,7 +50,8 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   end
 
   def handle_event("load_more", _, socket) do
-    {:noreply, LiveChannels.load_more(socket)}
+    socket = LiveChannels.load_more(socket)
+    {:reply, %{page: socket.assigns.page}, socket}
   end
 
   def handle_event("play_channel", %{"id" => id}, socket) do
@@ -230,6 +231,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
               :for={{dom_id, channel} <- @streams.channels}
               id={dom_id}
               data-epg-channel-id={channel.id}
+              class="catalog-stream-item catalog-stream-item--wide"
             >
               <.live_channel_card
                 channel={channel}
@@ -238,13 +240,11 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             </div>
           </div>
 
-          <!-- Infinite Scroll Sentinel -->
-          <div
+          <.infinite_scroll_sentinel
             :if={@has_more && !@loading}
             id="channels-sentinel"
-            phx-hook="InfiniteScroll"
-            data-page={@page}
-            class="h-4"
+            page={@page}
+            stream_target="#channels"
           />
 
           <div

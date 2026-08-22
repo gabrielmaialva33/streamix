@@ -135,7 +135,11 @@ defmodule StreamixWeb.Content.MoviesLive do
             phx-update="stream"
             class="responsive-poster-grid"
           >
-            <div :for={{dom_id, movie} <- @streams.movies} id={dom_id}>
+            <div
+              :for={{dom_id, movie} <- @streams.movies}
+              id={dom_id}
+              class="catalog-stream-item catalog-stream-item--poster"
+            >
               <.movie_card
                 movie={movie}
                 is_favorite={MapSet.member?(@favorites_map, movie.id)}
@@ -145,14 +149,12 @@ defmodule StreamixWeb.Content.MoviesLive do
             </div>
           </div>
 
-          <!-- Infinite Scroll Sentinel -->
-          <div
+          <.infinite_scroll_sentinel
             :if={@has_more && !@loading}
             id="movies-sentinel"
-            phx-hook="InfiniteScroll"
-            data-page={@page}
-            data-sync-page-url="true"
-            class="h-4"
+            page={@page}
+            sync_page_url={true}
+            stream_target="#movies"
           />
 
           <div

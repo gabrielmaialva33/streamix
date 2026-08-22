@@ -131,7 +131,11 @@ defmodule StreamixWeb.Content.SeriesLive do
             phx-update="stream"
             class="responsive-poster-grid"
           >
-            <div :for={{dom_id, series} <- @streams.series} id={dom_id}>
+            <div
+              :for={{dom_id, series} <- @streams.series}
+              id={dom_id}
+              class="catalog-stream-item catalog-stream-item--poster"
+            >
               <.series_card
                 series={series}
                 is_favorite={MapSet.member?(@favorites_map, series.id)}
@@ -141,14 +145,12 @@ defmodule StreamixWeb.Content.SeriesLive do
             </div>
           </div>
 
-          <!-- Infinite Scroll Sentinel -->
-          <div
+          <.infinite_scroll_sentinel
             :if={@has_more && !@loading}
             id="series-sentinel"
-            phx-hook="InfiniteScroll"
-            data-page={@page}
-            data-sync-page-url="true"
-            class="h-4"
+            page={@page}
+            sync_page_url={true}
+            stream_target="#series"
           />
 
           <div

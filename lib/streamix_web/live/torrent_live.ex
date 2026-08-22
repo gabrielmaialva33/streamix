@@ -66,17 +66,17 @@ defmodule StreamixWeb.TorrentLive do
   end
 
   def handle_event("load_more", _, socket) do
-    if socket.assigns.loading or not socket.assigns.has_more do
-      {:noreply, socket}
-    else
-      socket =
+    socket =
+      if socket.assigns.loading or not socket.assigns.has_more do
+        socket
+      else
         socket
         |> assign(page: socket.assigns.page + 1)
         |> assign(loading: true)
         |> load_movies()
+      end
 
-      {:noreply, socket}
-    end
+    {:reply, %{page: socket.assigns.page}, socket}
   end
 
   def handle_event("toggle_favorite", %{"id" => id}, socket) do
@@ -130,7 +130,11 @@ defmodule StreamixWeb.TorrentLive do
       </div>
 
       <div id="torrents" phx-update="stream" class="responsive-poster-grid">
-        <div :for={{dom_id, movie} <- @streams.movies} id={dom_id}>
+        <div
+          :for={{dom_id, movie} <- @streams.movies}
+          id={dom_id}
+          class="catalog-stream-item catalog-stream-item--poster"
+        >
           <.torrent_card
             movie={movie}
             is_favorite={MapSet.member?(@favorites_map, movie.id)}
@@ -139,12 +143,11 @@ defmodule StreamixWeb.TorrentLive do
         </div>
       </div>
 
-      <div
+      <.infinite_scroll_sentinel
         :if={@has_more && !@loading && @provider}
         id="torrents-sentinel"
-        phx-hook="InfiniteScroll"
-        data-page={@page}
-        class="h-4"
+        page={@page}
+        stream_target="#torrents"
       />
 
       <div :if={@loading} class="flex justify-center py-8">

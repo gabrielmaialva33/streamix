@@ -294,7 +294,11 @@ defmodule StreamixWeb.SearchLive do
       </div>
 
       <div id="search-channels-grid" phx-update="stream" class="responsive-wide-grid">
-        <div :for={{dom_id, channel} <- @channels} id={dom_id}>
+        <div
+          :for={{dom_id, channel} <- @channels}
+          id={dom_id}
+          class="catalog-stream-item catalog-stream-item--wide"
+        >
           <.live_channel_card
             channel={channel}
             is_favorite={channel.is_favorite}
@@ -319,7 +323,11 @@ defmodule StreamixWeb.SearchLive do
       </div>
 
       <div id="search-movies-grid" phx-update="stream" class="responsive-poster-grid">
-        <div :for={{dom_id, movie} <- @movies} id={dom_id}>
+        <div
+          :for={{dom_id, movie} <- @movies}
+          id={dom_id}
+          class="catalog-stream-item catalog-stream-item--poster"
+        >
           <.movie_card movie={movie} is_favorite={movie.is_favorite} on_play="play_movie" />
         </div>
       </div>
@@ -340,7 +348,11 @@ defmodule StreamixWeb.SearchLive do
       </div>
 
       <div id="search-series-grid" phx-update="stream" class="responsive-poster-grid">
-        <div :for={{dom_id, series} <- @series} id={dom_id}>
+        <div
+          :for={{dom_id, series} <- @series}
+          id={dom_id}
+          class="catalog-stream-item catalog-stream-item--poster"
+        >
           <.series_card series={series} is_favorite={series.is_favorite} />
         </div>
       </div>

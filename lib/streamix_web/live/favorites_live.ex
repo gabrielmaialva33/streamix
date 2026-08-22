@@ -65,17 +65,17 @@ defmodule StreamixWeb.FavoritesLive do
   end
 
   def handle_event("load_more", _, socket) do
-    if socket.assigns.loading || socket.assigns.end_of_list do
-      {:noreply, socket}
-    else
-      socket =
+    socket =
+      if socket.assigns.loading || socket.assigns.end_of_list do
+        socket
+      else
         socket
         |> assign(page: socket.assigns.page + 1)
         |> assign(loading: true)
         |> load_favorites()
+      end
 
-      {:noreply, socket}
-    end
+    {:reply, %{page: socket.assigns.page}, socket}
   end
 
   def handle_event("play", %{"id" => id, "type" => type}, socket) do
@@ -166,13 +166,11 @@ defmodule StreamixWeb.FavoritesLive do
           favorite={favorite}
         />
       </div>
-      <%!-- Infinite Scroll Sentinel --%>
-      <div
+      <.infinite_scroll_sentinel
         :if={!@end_of_list && !@loading}
         id="favorites-sentinel"
-        phx-hook="InfiniteScroll"
-        data-page={@page}
-        class="h-4"
+        page={@page}
+        stream_target="#favorites-grid"
       />
 
       <div :if={@loading} class="flex justify-center py-8">
@@ -239,7 +237,7 @@ defmodule StreamixWeb.FavoritesLive do
       content_type={@favorite.content_type}
       on_click="play"
       data-favorite-kind="poster"
-      class="self-start border border-transparent hover:border-border"
+      class="catalog-stream-item catalog-stream-item--poster self-start border border-transparent hover:border-border"
     >
       <:badge>
         <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
@@ -264,7 +262,7 @@ defmodule StreamixWeb.FavoritesLive do
       content_type={@favorite.content_type}
       on_click="play"
       data-favorite-kind="wide"
-      class="self-start border border-transparent hover:border-border"
+      class="catalog-stream-item catalog-stream-item--wide self-start border border-transparent hover:border-border"
     >
       <:badge>
         <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">

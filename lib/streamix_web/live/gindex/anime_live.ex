@@ -66,17 +66,17 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   end
 
   def handle_event("load_more", _, socket) do
-    if socket.assigns.loading or not socket.assigns.has_more do
-      {:noreply, socket}
-    else
-      socket =
+    socket =
+      if socket.assigns.loading or not socket.assigns.has_more do
+        socket
+      else
         socket
         |> assign(page: socket.assigns.page + 1)
         |> assign(loading: true)
         |> load_animes()
+      end
 
-      {:noreply, socket}
-    end
+    {:reply, %{page: socket.assigns.page}, socket}
   end
 
   def handle_event("view_series", %{"id" => id}, socket) do
@@ -141,7 +141,11 @@ defmodule StreamixWeb.Gindex.AnimeLive do
         phx-update="stream"
         class="responsive-poster-grid"
       >
-        <div :for={{dom_id, anime} <- @streams.animes} id={dom_id}>
+        <div
+          :for={{dom_id, anime} <- @streams.animes}
+          id={dom_id}
+          class="catalog-stream-item catalog-stream-item--poster"
+        >
           <.series_card
             series={anime}
             source="gindex"
@@ -150,13 +154,11 @@ defmodule StreamixWeb.Gindex.AnimeLive do
         </div>
       </div>
 
-      <!-- Infinite Scroll Sentinel -->
-      <div
+      <.infinite_scroll_sentinel
         :if={@has_more && !@loading}
         id="animes-sentinel"
-        phx-hook="InfiniteScroll"
-        data-page={@page}
-        class="h-4"
+        page={@page}
+        stream_target="#animes"
       />
 
       <div :if={@loading} class="flex justify-center py-8">
