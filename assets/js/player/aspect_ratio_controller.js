@@ -1,4 +1,4 @@
-const STORAGE_KEY = "streamix:player:aspect";
+const LEGACY_STORAGE_KEY = "streamix:player:aspect";
 const VALID_MODES = new Set(["auto", "cover", "16-9", "4-3", "native"]);
 
 // AVPlayer (libmedia) and h265web each render into their own mount and
@@ -45,18 +45,20 @@ export function createAspectRatioController({
 
     try {
       return globalThis.localStorage;
-    } catch (_) {
+    } catch {
       return null;
     }
   };
 
-  const readMode = () => {
-    try {
-      return normalizeAspectMode(resolveStorage()?.getItem(STORAGE_KEY));
-    } catch (_) {
-      return "auto";
-    }
-  };
+  // Aspect choices are intentionally session-scoped. A mode selected for a
+  // 4:3 channel must not stretch the next movie, episode, or device session.
+  // Remove the old globally-persisted value so upgraded clients cannot carry
+  // the previous behaviour forward.
+  try {
+    resolveStorage()?.removeItem?.(LEGACY_STORAGE_KEY);
+  } catch {
+    // Locked-down browser storage does not affect the in-memory selection.
+  }
 
   // The native <video> can be replaced when the player restarts on a new
   // backend, so it is looked up on every apply instead of being captured
@@ -108,20 +110,12 @@ export function createAspectRatioController({
     });
   };
 
-  apply(readMode());
+  // Every new player starts from the media's intrinsic ratio. Manual choices
+  // remain available, but only for this mounted playback session.
+  apply("auto");
 
   root?.querySelectorAll(".aspect-option").forEach((button) => {
-    const onClick = () => {
-      const mode = normalizeAspectMode(button.dataset.aspectMode);
-
-      try {
-        resolveStorage()?.setItem(STORAGE_KEY, mode);
-      } catch (_) {
-        // Storage is best-effort; the selected mode still applies to this session.
-      }
-
-      apply(mode);
-    };
+    const onClick = () => apply(button.dataset.aspectMode);
 
     button.addEventListener("click", onClick);
     clickListeners.push([button, onClick]);
@@ -140,6 +134,9 @@ export function createAspectRatioController({
 
   return {
     apply,
+    get mode() {
+      return activeMode;
+    },
     destroy() {
       for (const observer of observers) {
         observer.disconnect();

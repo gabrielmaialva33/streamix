@@ -78,12 +78,13 @@ test("keeps working without storage and removes option listeners on destroy", ()
       return [];
     },
   };
+  const storageCalls = [];
   const storage = {
-    getItem() {
-      throw new Error("storage disabled");
+    removeItem(key) {
+      storageCalls.push(["remove", key]);
     },
-    setItem() {
-      throw new Error("storage disabled");
+    setItem(key, value) {
+      storageCalls.push(["set", key, value]);
     },
   };
   const mutationCallbacks = [];
@@ -104,6 +105,10 @@ test("keeps working without storage and removes option listeners on destroy", ()
     MutationObserverImpl: MutationObserverStub,
   });
 
+  assert.equal(video.style.objectFit, "");
+  assert.equal(check.hidden, true);
+  assert.deepEqual(storageCalls, [["remove", "streamix:player:aspect"]]);
+
   button.dispatchEvent(new Event("click"));
   assert.equal(mutationCallbacks.length, 2);
   for (const callback of mutationCallbacks) {
@@ -114,6 +119,7 @@ test("keeps working without storage and removes option listeners on destroy", ()
   assert.equal(avplayerCanvas.style.objectFit, "cover");
   assert.equal(h265webCanvas.style.objectFit, "cover");
   assert.equal(check.hidden, false);
+  assert.deepEqual(storageCalls, [["remove", "streamix:player:aspect"]]);
 
   controller.destroy();
   button.dataset.aspectMode = "native";
@@ -149,4 +155,63 @@ test("drives canvas players through custom properties and frees the box for forc
   assert.equal(avplayerCanvas.style.aspectRatio, "16 / 9");
   assert.equal(avplayerCanvas.style.margin, "auto");
   assert.equal(avplayerCanvas.style.maxWidth, "100%");
+});
+
+test("starts every mounted player in auto and keeps manual choices session-scoped", () => {
+  const storedValues = [];
+  const removedValues = [];
+  const storage = {
+    getItem() {
+      return "cover";
+    },
+    setItem(key, value) {
+      storedValues.push([key, value]);
+    },
+    removeItem(key) {
+      removedValues.push(key);
+    },
+  };
+  const button = new EventTarget();
+  button.dataset = { aspectMode: "cover" };
+
+  const buildController = () => {
+    const video = fakeElement();
+    const check = {
+      classList: { toggle() {} },
+      dataset: { aspectCheck: "auto" },
+    };
+    const root = {
+      querySelector: () => null,
+      querySelectorAll(selector) {
+        if (selector === ".aspect-option") return [button];
+        if (selector === ".aspect-check") return [check];
+        return [];
+      },
+    };
+
+    const controller = createAspectRatioController({
+      root,
+      video,
+      storage,
+      MutationObserverImpl: null,
+    });
+
+    return { controller, video };
+  };
+
+  const first = buildController();
+  assert.equal(first.controller.mode, "auto");
+  assert.equal(first.video.style.objectFit, "");
+
+  button.dispatchEvent(new Event("click"));
+  assert.equal(first.controller.mode, "cover");
+  assert.equal(first.video.style.objectFit, "cover");
+  first.controller.destroy();
+
+  const second = buildController();
+  assert.equal(second.controller.mode, "auto");
+  assert.equal(second.video.style.objectFit, "");
+  assert.deepEqual(storedValues, []);
+  assert.deepEqual(removedValues, ["streamix:player:aspect", "streamix:player:aspect"]);
+  second.controller.destroy();
 });
