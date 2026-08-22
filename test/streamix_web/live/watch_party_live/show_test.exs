@@ -46,8 +46,12 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     user: user
   } do
     conn = get(conn, ~p"/party/#{room.invite_code}/watch")
+    html = html_response(conn, 200)
 
-    assert html_response(conn, 200) =~ "watch-party-sync"
+    assert html =~ "watch-party-sync"
+    assert html =~ "watch-party-player-reserving"
+    refute html =~ "data-stream-url="
+    refute html =~ "data-next-episode="
     refute active_participant?(room.id, user.id)
     assert Billing.active_playback_count(user) == 0
     assert RoomServer.whereis(room.id) == nil
@@ -61,6 +65,8 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     {:ok, view, _html} = live(conn, ~p"/party/#{room.invite_code}/watch")
 
     assert has_element?(view, "#watch-party-sync[phx-hook='WatchPartySync'][data-is-host='true']")
+    assert has_element?(view, "#video-player-container[data-stream-url]")
+    refute has_element?(view, "#watch-party-player-reserving")
 
     assert active_participant?(room.id, user.id)
     assert Billing.active_playback_count(user) == 1
@@ -68,6 +74,21 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     pid = RoomServer.whereis(room.id)
     assert is_pid(pid)
     assert MapSet.size(:sys.get_state(pid).connections[user.id]) == 1
+  end
+
+  test "stable sync state stays out of the video and only exceptional states are shown", %{
+    conn: conn,
+    room: room
+  } do
+    {:ok, view, _html} = live(conn, ~p"/party/#{room.invite_code}/watch")
+
+    refute has_element?(view, "#watch-party-sync-status")
+
+    render_hook(view, "wp_sync_status", %{"status" => "buffering", "drift_ms" => nil})
+    assert has_element?(view, "#watch-party-sync-status", "Aguardando o buffer")
+
+    render_hook(view, "wp_sync_status", %{"status" => "synced", "drift_ms" => 0})
+    refute has_element?(view, "#watch-party-sync-status")
   end
 
   test "closing one tab preserves membership and playback for another tab", %{

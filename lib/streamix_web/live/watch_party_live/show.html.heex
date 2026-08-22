@@ -13,6 +13,7 @@
 >
   <main class={["relative min-w-0 flex-1", @chat_open && "sm:mr-80"]}>
     <.video_player
+      :if={is_binary(@stream_url)}
       content={@content}
       content_type={@content_type}
       stream_url={@stream_url}
@@ -29,6 +30,19 @@
       party_mode={true}
       party_role={if @is_host, do: :host, else: :viewer}
     />
+
+    <div
+      :if={is_nil(@stream_url)}
+      id="watch-party-player-reserving"
+      class="absolute inset-0 flex items-center justify-center bg-black text-white"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="flex flex-col items-center gap-3 text-center">
+        <span class="size-8 animate-spin rounded-full border-2 border-white/25 border-t-brand" />
+        <p class="text-sm text-white/75">Reservando sua tela e preparando a reprodução...</p>
+      </div>
+    </div>
 
     <div
       id="wp-reactions-container"
@@ -76,11 +90,15 @@
       </button>
     </div>
 
-    <div class="absolute bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)]">
+    <div
+      :if={show_sync_status?(@is_host, @host_status, @sync_status)}
+      class="pointer-events-none absolute left-1/2 top-[calc(4.75rem+env(safe-area-inset-top,0px))] z-20 max-w-[calc(100vw-2rem)] -translate-x-1/2"
+    >
       <span
         id="watch-party-sync-status"
         class={sync_status_class(@is_host, @host_status, @sync_status)}
         role="status"
+        aria-live="polite"
       >
         <span class="relative flex size-1.5 flex-shrink-0">
           <span

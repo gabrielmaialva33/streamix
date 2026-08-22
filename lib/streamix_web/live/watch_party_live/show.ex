@@ -27,9 +27,9 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     with %{} = room <- WatchParty.get_room_by_invite_with_content(invite_code),
          :ok <- WatchParty.authorize_room_user(room, user_id),
          {:ok, source_type, source_id} <- room_source_ref(room),
-         {:ok, content, provider, stream_url} <-
-           load_content(source_type, to_string(source_id), user_id) do
-      build_room_socket(socket, room, source_type, content, provider, stream_url)
+         {:ok, content, provider} <-
+           load_content_preflight(source_type, to_string(source_id), user_id) do
+      build_room_socket(socket, room, source_type, content, provider)
     else
       nil -> unavailable_room(socket)
       {:error, :content_not_entitled} -> content_not_entitled(socket)
@@ -37,14 +37,13 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     end
   end
 
-  defp build_room_socket(socket, room, source_type, content, provider, stream_url) do
+  defp build_room_socket(socket, room, source_type, content, provider) do
     user = socket.assigns.current_scope.user
     user_id = user.id
     is_host = room.host_user_id == user_id
     messages = WatchParty.list_messages(room.id, limit: 50)
     presences = Presence.list(presence_topic(room.id))
     playback_state = persisted_playback(room)
-    next_episode = if is_host, do: load_next_episode(source_type, content, provider, user_id)
 
     socket =
       socket
@@ -56,7 +55,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         source_type: source_type,
         content_type: safe_content_type(source_type),
         provider: provider,
-        stream_url: stream_url,
+        stream_url: nil,
         streaming_mode: default_streaming_mode(source_type),
         is_host: is_host,
         user_id: user_id,
@@ -73,7 +72,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         unread_messages: 0,
         message_input: "",
         message_ids: Enum.map(messages, & &1.id),
-        next_episode: next_episode,
+        next_episode: nil,
         current_time: 0,
         duration: 0,
         buffering: false,
@@ -99,7 +98,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
 
     case start_playback_session(socket, connection_id) do
       {:ok, playback_session} ->
-        join_connected_room(socket, connection_id, playback_session)
+        resolve_connected_stream(socket, connection_id, playback_session)
 
       {:error, :concurrent_stream_limit_reached} ->
         {:ok,
@@ -117,13 +116,36 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     end
   end
 
-  defp join_connected_room(socket, connection_id, playback_session) do
+  defp resolve_connected_stream(socket, connection_id, playback_session) do
+    user = socket.assigns.current_scope.user
+
+    case resolve_stream_url(
+           socket.assigns.source_type,
+           socket.assigns.content,
+           socket.assigns.provider,
+           user.id
+         ) do
+      {:ok, stream_url} ->
+        join_connected_room(socket, connection_id, playback_session, stream_url)
+
+      {:error, reason} ->
+        release_playback_session(playback_session)
+        Logger.warning("Watch Party stream resolution failed: #{inspect(reason)}")
+
+        {:ok,
+         socket
+         |> put_flash(:error, "Não foi possível preparar a reprodução desta sala")
+         |> redirect(to: ~p"/party")}
+    end
+  end
+
+  defp join_connected_room(socket, connection_id, playback_session, stream_url) do
     room = socket.assigns.room
     user = socket.assigns.current_scope.user
 
     case WatchParty.join_room(room.id, user.id, connection_id) do
       {:ok, _participant} ->
-        track_connected_presence(socket, connection_id, playback_session)
+        track_connected_presence(socket, connection_id, playback_session, stream_url)
 
       {:error, :room_full} ->
         release_playback_session(playback_session)
@@ -148,7 +170,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     end
   end
 
-  defp track_connected_presence(socket, connection_id, playback_session) do
+  defp track_connected_presence(socket, connection_id, playback_session, stream_url) do
     room = socket.assigns.room
     user = socket.assigns.current_scope.user
 
@@ -166,11 +188,23 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         playback_state = current_playback(room)
         presences = Presence.list(presence_topic(room.id))
 
+        next_episode =
+          if socket.assigns.is_host do
+            load_next_episode(
+              socket.assigns.source_type,
+              socket.assigns.content,
+              socket.assigns.provider,
+              user.id
+            )
+          end
+
         {:ok,
          assign(socket,
            playback_session: playback_session,
            connection_id: connection_id,
            joined: true,
+           stream_url: stream_url,
+           next_episode: next_episode,
            playback_state: playback_state,
            presences: presences,
            host_status: if(host_online?(presences), do: :online, else: :offline)
@@ -908,27 +942,30 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp safe_streaming_mode("adaptive"), do: :adaptive
   defp safe_streaming_mode(_mode), do: :balanced
 
-  defp sync_status_text(true, _host_status, _sync_status, _drift_ms),
-    do: "Você controla a reprodução"
+  defp show_sync_status?(false, :offline, _sync_status), do: true
+  defp show_sync_status?(_is_host, _host_status, sync_status), do: sync_status != "synced"
 
   defp sync_status_text(false, :offline, _sync_status, _drift_ms),
     do: "Anfitrião desconectado — aguardando retorno"
 
-  defp sync_status_text(false, _host_status, "connecting", _drift_ms),
+  defp sync_status_text(_is_host, _host_status, "disconnected", _drift_ms),
+    do: "Sincronização desconectada"
+
+  defp sync_status_text(_is_host, _host_status, "buffering", _drift_ms),
+    do: "Aguardando o buffer"
+
+  defp sync_status_text(_is_host, _host_status, "connecting", _drift_ms),
     do: "Conectando à sincronização"
 
-  defp sync_status_text(false, _host_status, "correcting", drift_ms)
+  defp sync_status_text(_is_host, _host_status, "correcting", drift_ms)
        when is_integer(drift_ms) and drift_ms > 0,
        do: "Ajustando sincronização (#{drift_ms} ms)"
 
-  defp sync_status_text(false, _host_status, "correcting", _drift_ms),
+  defp sync_status_text(_is_host, _host_status, "correcting", _drift_ms),
     do: "Ajustando sincronização"
 
-  defp sync_status_text(false, _host_status, "buffering", _drift_ms),
-    do: "Aguardando o buffer"
-
-  defp sync_status_text(false, _host_status, "disconnected", _drift_ms),
-    do: "Sincronização desconectada"
+  defp sync_status_text(true, _host_status, _sync_status, _drift_ms),
+    do: "Você controla a reprodução"
 
   defp sync_status_text(false, _host_status, _sync_status, drift_ms)
        when is_integer(drift_ms) and drift_ms >= 100,
