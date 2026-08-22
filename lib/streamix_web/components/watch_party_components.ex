@@ -54,9 +54,12 @@ defmodule StreamixWeb.WatchPartyComponents do
             user.is_host && "bg-brand text-white",
             !user.is_host && "bg-gradient-to-br from-white/15 to-white/5 text-white"
           ]}
-          title={if user.is_host, do: "#{user.email} (host)", else: user.email}
+          title={if user.is_host, do: "#{user.label} (anfitrião)", else: user.label}
+          aria-label={
+            if user.is_host, do: "#{user.label}, anfitrião, online", else: "#{user.label}, online"
+          }
         >
-          {String.first(user.email) |> String.upcase()}
+          {String.first(user.label || "P") |> String.upcase()}
           <span
             :if={user.is_host}
             class="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-warning rounded-full border-2 border-black flex items-center justify-center"
@@ -110,6 +113,7 @@ defmodule StreamixWeb.WatchPartyComponents do
       }
       class="group inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-full bg-white/10 text-white/90 text-xs hover:bg-white/20 backdrop-blur-sm transition-colors cursor-pointer border border-white/10 hover:border-white/20"
       title="Copiar link de convite"
+      aria-label={"Copiar link da sala #{String.upcase(@invite_code)}"}
     >
       <span class="w-5 h-5 rounded-full bg-brand/20 flex items-center justify-center flex-shrink-0">
         <.icon name="hero-link" class="size-3 text-brand" />
@@ -129,6 +133,7 @@ defmodule StreamixWeb.WatchPartyComponents do
   attr :messages, :list, required: true
   attr :message_input, :string, default: ""
   attr :room_id, :integer, required: true
+  attr :error, :string, default: nil
 
   def chat_sidebar(assigns) do
     ~H"""
@@ -143,9 +148,15 @@ defmodule StreamixWeb.WatchPartyComponents do
       still sees the video above the chat.
       Desktop (sm+): pinned right sidebar, full-height 320px wide.
     --%>
-    <aside class="fixed z-50 bg-surface/95 backdrop-blur-md flex flex-col shadow-modal
+    <aside
+      id="watch-party-chat"
+      phx-hook="WatchPartyChat"
+      aria-labelledby="watch-party-chat-title"
+      tabindex="-1"
+      class="fixed z-50 bg-surface/95 backdrop-blur-md flex flex-col shadow-modal
                   inset-x-0 bottom-0 h-[80dvh] rounded-t-lg border-t border-border
-                  sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 sm:h-full sm:w-80 sm:rounded-none sm:border-t-0 sm:border-l sm:border-border">
+                  sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 sm:h-full sm:w-80 sm:rounded-none sm:border-t-0 sm:border-l sm:border-border"
+    >
       <%!-- Mobile grip handle — affordance that the sheet can be dismissed. --%>
       <div class="sm:hidden pt-2 pb-1 flex justify-center flex-shrink-0">
         <div class="w-10 h-1 rounded-full bg-white/20" aria-hidden="true" />
@@ -157,7 +168,12 @@ defmodule StreamixWeb.WatchPartyComponents do
             <.icon name="hero-chat-bubble-left-right" class="size-4 text-brand" />
           </div>
           <div>
-            <h3 class="text-text-primary font-semibold text-sm leading-tight">Chat</h3>
+            <h3
+              id="watch-party-chat-title"
+              class="text-text-primary font-semibold text-sm leading-tight"
+            >
+              Chat
+            </h3>
             <p class="text-[11px] text-text-muted leading-tight">em tempo real</p>
           </div>
         </div>
@@ -174,18 +190,21 @@ defmodule StreamixWeb.WatchPartyComponents do
       <div
         id="wp-chat-messages"
         phx-update="stream"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
         class="flex-1 overflow-y-auto px-3 py-4 space-y-3 scrollbar-thin"
       >
         <div :for={{dom_id, message} <- @messages} id={dom_id} class="group">
           <%!-- Text messages render as a compact bubble with avatar initial --%>
           <div :if={message.type == "text"} class="flex items-start gap-2">
             <div class="w-7 h-7 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-              {message.user_email |> String.first() |> String.upcase()}
+              {message.user_label |> String.first() |> String.upcase()}
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-baseline gap-1.5">
                 <span class="font-semibold text-xs text-brand truncate">
-                  {message.user_email |> String.split("@") |> hd()}
+                  {message.user_label}
                 </span>
               </div>
               <p class="text-sm text-text-primary leading-snug break-words">{message.content}</p>
@@ -214,7 +233,7 @@ defmodule StreamixWeb.WatchPartyComponents do
           phx-click="send_reaction"
           phx-value-emoji={emoji}
           class="w-10 h-10 rounded-lg text-xl flex items-center justify-center hover:bg-surface-hover hover:scale-110 active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-brand"
-          aria-label="Enviar reação"
+          aria-label={"Enviar reação #{emoji}"}
         >
           {emoji}
         </button>
@@ -226,6 +245,9 @@ defmodule StreamixWeb.WatchPartyComponents do
         class="p-3 border-t border-border/60"
         style="padding-bottom: max(0.75rem, calc(0.75rem + env(safe-area-inset-bottom)))"
       >
+        <p :if={@error} id="watch-party-chat-error" role="alert" class="mb-2 text-xs text-error">
+          {@error}
+        </p>
         <div class="flex gap-2">
           <%!--
             iOS Safari: enterkeyhint="send" swaps Return for "Send" on the
@@ -239,6 +261,9 @@ defmodule StreamixWeb.WatchPartyComponents do
             placeholder="Digite uma mensagem..."
             autocomplete="off"
             enterkeyhint="send"
+            maxlength="500"
+            data-chat-input
+            aria-describedby={if @error, do: "watch-party-chat-error"}
             class="flex-1 bg-surface border border-border rounded-lg px-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-colors"
           />
           <button
