@@ -31,7 +31,9 @@ const supportsHoverPreview = () => {
 };
 
 const loadCatalogHooks = sharedModule(() => import("./catalog_hooks"));
+const loadPlaybackHooks = sharedModule(() => import("./playback_hooks"));
 const loadPwaHooks = sharedModule(() => import("./pwa_hooks"));
+const loadWatchPartyHooks = sharedModule(() => import("./watch_party_hooks"));
 
 const ContentCard = createLazyHook("ContentCard", () => import("./content_card"), {
   shouldLoad: supportsHoverPreview,
@@ -44,10 +46,19 @@ const InfiniteScroll = createLazyHook(
 const OfflineSync = createLazyHook("OfflineSync", namedHook(loadPwaHooks, "OfflineSync"));
 const PwaInstall = createLazyHook("PwaInstall", namedHook(loadPwaHooks, "PwaInstall"));
 const PwaRepair = createLazyHook("PwaRepair", namedHook(loadPwaHooks, "PwaRepair"));
-const TorrentSwarmGate = createLazyHook("TorrentSwarmGate", () => import("./torrent_swarm_gate"));
-const VideoPlayer = createLazyHook("VideoPlayer", () => import("./video_player"));
-const WatchPartyChat = createLazyHook("WatchPartyChat", () => import("./watch_party_chat"));
-const WatchPartySync = createLazyHook("WatchPartySync", () => import("./watch_party_sync"));
+const TorrentSwarmGate = createLazyHook(
+  "TorrentSwarmGate",
+  namedHook(loadPlaybackHooks, "TorrentSwarmGate"),
+);
+const VideoPlayer = createLazyHook("VideoPlayer", namedHook(loadPlaybackHooks, "VideoPlayer"));
+const WatchPartyChat = createLazyHook(
+  "WatchPartyChat",
+  namedHook(loadWatchPartyHooks, "WatchPartyChat"),
+);
+const WatchPartySync = createLazyHook(
+  "WatchPartySync",
+  namedHook(loadWatchPartyHooks, "WatchPartySync"),
+);
 
 export default {
   BrowseScrollRestoration,
