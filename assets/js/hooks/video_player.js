@@ -989,7 +989,8 @@ const VideoPlayer = {
   // ============================================
 
   showPlaybackError(message, hint = null) {
-    this.updateMediaSessionPlaybackState("none");
+    this._terminalPlaybackError = true;
+    this.setPlaybackSystemState("none");
     this.playerUI.showError(message, hint);
   },
 
@@ -1060,12 +1061,6 @@ const VideoPlayer = {
         this.video.currentTime,
       );
     }
-  },
-
-  showPlaybackError(message, hint = null) {
-    this._terminalPlaybackError = true;
-    this.setPlaybackSystemState("none");
-    this.showPlaybackError(message, hint);
   },
 
   /**
