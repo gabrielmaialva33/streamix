@@ -73,7 +73,7 @@ defmodule StreamixWeb.Home.CardsTest do
     refute public_channel_html =~ "<img"
   end
 
-  test "authenticated poster carousels use two readable mobile columns" do
+  test "authenticated poster shelves use compact horizontal mobile cards" do
     movie = %{id: 60, name: "Filme", provider_id: 7}
 
     home_html =
@@ -89,9 +89,14 @@ defmodule StreamixWeb.Home.CardsTest do
         recommendations: [movie]
       )
 
-    assert home_html =~ "grid-cols-2"
-    refute home_html =~ "grid-cols-3"
-    assert recommendation_html =~ "grid-cols-2"
-    refute recommendation_html =~ "grid-cols-3"
+    assert home_html =~ "snap-x"
+    assert home_html =~ "overflow-x-auto"
+    assert home_html =~ "w-[30vw]"
+    refute home_html =~ "grid-cols-2"
+
+    assert recommendation_html =~ "snap-x"
+    assert recommendation_html =~ "overflow-x-auto"
+    assert recommendation_html =~ "w-[30vw]"
+    refute recommendation_html =~ "grid-cols-2"
   end
 end

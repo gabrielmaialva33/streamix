@@ -20,7 +20,10 @@ defmodule StreamixWeb.Home.Cards do
       |> assign_new(:is_favorite, fn -> false end)
 
     ~H"""
-    <div class={["w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0", @class]}>
+    <div class={[
+      "w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start sm:w-[132px] sm:max-w-none lg:w-[148px]",
+      @class
+    ]}>
       <.movie_card
         movie={@movie}
         is_favorite={@is_favorite}
@@ -41,7 +44,10 @@ defmodule StreamixWeb.Home.Cards do
       |> assign_new(:is_favorite, fn -> false end)
 
     ~H"""
-    <div class={["w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0", @class]}>
+    <div class={[
+      "w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start sm:w-[132px] sm:max-w-none lg:w-[148px]",
+      @class
+    ]}>
       <.series_card
         series={@series}
         is_favorite={@is_favorite}
@@ -63,11 +69,11 @@ defmodule StreamixWeb.Home.Cards do
     <.link
       href={~p"/watch/live_channel/#{@channel.id}"}
       class={[
-        "group block transition-all duration-300 content-card w-full sm:w-[150px] lg:w-[176px]",
+        "content-card group block w-[42vw] min-w-[148px] max-w-[180px] flex-shrink-0 snap-start transition-all duration-300 sm:w-[150px] sm:max-w-none lg:w-[176px]",
         @class
       ]}
     >
-      <div class="aspect-video bg-surface-hover relative flex items-center justify-center rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
+      <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-md bg-surface-hover shadow-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-brand/20 sm:rounded-lg">
         <div id={"home-ch-img-#{@channel.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
             :if={@image_url}
@@ -98,8 +104,8 @@ defmodule StreamixWeb.Home.Cards do
           <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
         </div>
       </div>
-      <div class="pt-1.5 sm:pt-2 px-0.5">
-        <h3 class="text-2xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors mt-0.5">
+      <div class="px-0.5 pt-1.5 sm:pt-2">
+        <h3 class="mt-0.5 truncate text-[11px] font-medium leading-tight text-text-primary transition-colors group-hover:text-brand sm:text-sm sm:leading-normal">
           {@channel.name}
         </h3>
       </div>
@@ -117,11 +123,11 @@ defmodule StreamixWeb.Home.Cards do
     <.link
       href={watch_path(@entry.content_type, @entry.content_id)}
       class={[
-        "group flex-shrink-0 w-full sm:w-[220px] lg:w-[240px] block transition-all duration-300",
+        "group block w-[58vw] min-w-[196px] max-w-[230px] flex-shrink-0 snap-start transition-all duration-300 sm:w-[220px] sm:max-w-none lg:w-[240px]",
         @class
       ]}
     >
-      <div class="aspect-video bg-surface-hover relative flex items-center justify-center rounded-md sm:rounded-lg overflow-hidden shadow-sm group-hover:shadow-xl group-hover:shadow-brand/20 transition-all duration-300 group-hover:-translate-y-1">
+      <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-md bg-surface-hover shadow-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-brand/20 sm:rounded-lg">
         <div id={"history-img-#{@entry.id}"} phx-hook="ImageFallback" class="w-full h-full">
           <img
             :if={@image_url}
@@ -177,11 +183,11 @@ defmodule StreamixWeb.Home.Cards do
     <.link
       href={watch_path(@favorite.content_type, @favorite.content_id)}
       class={[
-        "group flex-shrink-0 w-full sm:w-[96px] lg:w-[108px] rounded-lg overflow-hidden bg-surface content-card transition-transform duration-300 hover:-translate-y-1",
+        "content-card group w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start overflow-hidden rounded-md bg-surface transition-transform duration-300 hover:-translate-y-1 sm:w-[96px] sm:max-w-none sm:rounded-lg lg:w-[108px]",
         @class
       ]}
     >
-      <div class="aspect-[2/3] bg-surface-hover relative flex items-center justify-center">
+      <div class="relative flex aspect-[2/3] items-center justify-center bg-surface-hover">
         <div
           id={"fav-img-#{@favorite.content_type}-#{@favorite.content_id}"}
           phx-hook="ImageFallback"

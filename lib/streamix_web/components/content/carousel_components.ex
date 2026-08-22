@@ -32,19 +32,11 @@ defmodule StreamixWeb.Content.CarouselComponents do
           </p>
         </div>
       <% else %>
-        <%!-- Mobile: readable 2-column grid --%>
-        <div class="grid grid-cols-2 gap-3 sm:hidden">
-          <.movie_card
-            :for={item <- Enum.take(@recommendations, 6)}
-            movie={item}
-            show_favorite={false}
-            on_play={@on_play}
-            on_details={@on_details}
-          />
-        </div>
-        <%!-- Desktop: horizontal scroll --%>
-        <div class="hidden sm:flex sm:gap-4 sm:overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth">
-          <div :for={item <- @recommendations} class="flex-shrink-0 w-[160px] lg:w-[180px]">
+        <div class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:gap-4 sm:py-2">
+          <div
+            :for={item <- @recommendations}
+            class="w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start sm:w-[160px] sm:max-w-none lg:w-[180px]"
+          >
             <.movie_card
               movie={item}
               show_favorite={false}

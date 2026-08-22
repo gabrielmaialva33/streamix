@@ -18,7 +18,7 @@ defmodule StreamixWeb.Home.Hero do
       URL bar shows/hides while scrolling. max-h-[800px] keeps it sane on
       tablets in landscape.
     --%>
-    <div class="relative h-[45dvh] sm:h-[60dvh] lg:h-[70dvh] min-h-[280px] sm:min-h-[400px] max-h-[800px] overflow-hidden -mt-16 sm:-mt-20 pt-14 sm:pt-16">
+    <div class="relative -mt-16 h-[42dvh] min-h-[250px] max-h-[620px] overflow-hidden pt-14 sm:-mt-20 sm:h-[60dvh] sm:min-h-[400px] sm:max-h-[800px] sm:pt-16 lg:h-[70dvh]">
       <%= if @featured do %>
         <.hero_background featured={@featured} />
       <% else %>
@@ -29,7 +29,7 @@ defmodule StreamixWeb.Home.Hero do
       <div class="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
 
       <div class="absolute inset-0 flex items-end">
-        <div class="w-full px-[4%] pb-16 lg:pb-24">
+        <div class="w-full px-[4%] pb-10 sm:pb-16 lg:pb-24">
           <.hero_content
             :if={@featured}
             featured={@featured}
@@ -232,7 +232,7 @@ defmodule StreamixWeb.Home.Hero do
 
     ~H"""
     <div class="max-w-2xl animate-slide-up">
-      <div class="flex items-center gap-2 mb-4">
+      <div class="mb-2 flex items-center gap-2 sm:mb-4">
         <span class="px-2 py-1 text-xs font-semibold bg-brand text-white rounded">
           {if @type == :movie, do: "FILME", else: "SÉRIE"}
         </span>
@@ -248,7 +248,7 @@ defmodule StreamixWeb.Home.Hero do
         </span>
       </div>
 
-      <h1 class="text-2xl sm:text-4xl md:text-6xl font-bold text-text-primary mb-2 sm:mb-4 drop-shadow-lg">
+      <h1 class="mb-2 line-clamp-2 max-w-[86vw] text-2xl font-bold leading-tight text-text-primary drop-shadow-lg sm:mb-4 sm:max-w-none sm:text-4xl md:text-6xl">
         {@content.title || @content.name}
       </h1>
 
@@ -259,7 +259,7 @@ defmodule StreamixWeb.Home.Hero do
         {@content.plot}
       </p>
 
-      <div class="flex gap-2 sm:gap-3">
+      <div class="flex flex-wrap gap-2 sm:gap-3">
         <.link
           href={content_path(@type, @content)}
           class="inline-flex min-h-11 items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black text-sm sm:text-base font-semibold rounded-md hover:bg-white/90 transition-colors"

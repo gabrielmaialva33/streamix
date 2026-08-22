@@ -21,7 +21,7 @@ defmodule StreamixWeb.Home.Authenticated do
       featured_favorite={@featured_favorite}
     />
 
-    <div class="space-y-6 sm:space-y-8 pb-12">
+    <div class="space-y-5 pb-10 sm:space-y-8 sm:pb-12">
       <.premium_cta_banner id="home-premium-cta" current_scope={@current_scope} />
 
       <.render_content_carousel
