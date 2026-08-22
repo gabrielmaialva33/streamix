@@ -14,6 +14,7 @@ export class NextEpisodeController {
     hlsLoader = getHls,
     hlsSupported = isHlsJsSupported,
     logger = log,
+    onPlay = null,
     root,
     scheduler = globalThis,
     streamType = getStreamType,
@@ -24,6 +25,7 @@ export class NextEpisodeController {
     this.hlsLoader = hlsLoader;
     this.hlsSupported = hlsSupported;
     this.log = logger;
+    this.onPlay = onPlay;
     this.root = root;
     this.scheduler = scheduler;
     this.streamType = streamType;
@@ -104,6 +106,13 @@ export class NextEpisodeController {
     if (!this.episode || this.destroyed) return;
 
     this.hide();
+
+    if (typeof this.onPlay === "function") {
+      this.log.debug("[VideoPlayer] Delegating next episode transition:", this.episode.title);
+      this.onPlay(this.episode);
+      return;
+    }
+
     const path = nextEpisodePath(this.episode);
     if (!path) {
       this.log.warn("[VideoPlayer] Invalid next episode ID:", this.episode.id);
@@ -166,6 +175,7 @@ export class NextEpisodeController {
 
     if (this.playButton) this.playButton.onclick = null;
     if (this.cancelButton) this.cancelButton.onclick = null;
+    this.onPlay = null;
     this.destroyPreloader();
     this.preconnect?.remove?.();
     this.preconnect = null;

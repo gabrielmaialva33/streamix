@@ -18,7 +18,7 @@ const createClassList = (...initial) => {
   };
 };
 
-const createHarness = (episode = { id: 9, title: "Episode 9" }) => {
+const createHarness = (episode = { id: 9, title: "Episode 9" }, onPlay = null) => {
   const playButton = {};
   const cancelButton = {};
   const countdownBar = { style: {} };
@@ -56,6 +56,7 @@ const createHarness = (episode = { id: 9, title: "Episode 9" }) => {
     episode,
     hlsSupported: () => false,
     logger: { debug() {}, warn() {} },
+    onPlay,
     root: {
       querySelector: (selector) => (selector === "#next-episode-overlay" ? overlay : null),
     },
@@ -88,6 +89,19 @@ test("owns the next-episode overlay countdown and navigation lifecycle", () => {
   harness.playButton.onclick();
   assert.equal(harness.windowRef.location.href, "/watch/episode/9");
   assert.deepEqual(harness.clearedIntervals, [17]);
+});
+
+test("delegates a party transition instead of navigating one browser", () => {
+  const delegated = [];
+  const harness = createHarness({ id: 10, title: "Episode 10", type: "episode" }, (episode) =>
+    delegated.push(episode),
+  );
+
+  harness.controller.show();
+  harness.playButton.onclick();
+
+  assert.deepEqual(delegated, [{ id: 10, title: "Episode 10", type: "episode" }]);
+  assert.equal(harness.windowRef.location.href, "about:blank");
 });
 
 test("cleans handlers and timers when the controller is destroyed", () => {

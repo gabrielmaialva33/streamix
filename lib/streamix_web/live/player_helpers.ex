@@ -107,6 +107,33 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_content_preflight(_, _, _), do: {:error, :not_found}
 
+  @doc """
+  Resolves the canonical catalog item behind a player surface.
+
+  GIndex rows are canonical movies/episodes, while torrent playback uses the
+  associated movie rather than the transient torrent stream id.
+  """
+  def resolve_catalog_item_id("gindex", %{id: id}),
+    do: Iptv.resolve_catalog_item_id("movie", id)
+
+  def resolve_catalog_item_id("gindex_episode", %{id: id}),
+    do: Iptv.resolve_catalog_item_id("episode", id)
+
+  def resolve_catalog_item_id("torrent", %{movie_id: movie_id}),
+    do: Iptv.resolve_catalog_item_id("movie", movie_id)
+
+  def resolve_catalog_item_id(type, %{id: id})
+      when type in ["live_channel", "movie", "series", "episode"] do
+    Iptv.resolve_catalog_item_id(type, id)
+  end
+
+  def resolve_catalog_item_id(_type, _content), do: {:error, :invalid_content_type}
+
+  def canonical_content_type("gindex"), do: "movie"
+  def canonical_content_type("gindex_episode"), do: "episode"
+  def canonical_content_type("torrent"), do: "movie"
+  def canonical_content_type(type), do: type
+
   defp load_gindex_movie(id) do
     movie = Iptv.get_movie_with_provider!(id)
 

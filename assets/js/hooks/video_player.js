@@ -129,6 +129,7 @@ const VideoPlayer = {
     this.setupEventListeners();
     this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
+    this.applyPartyControlPolicy();
     this.setupPlaybackSystemIntegration();
     this.aspectRatioController = createAspectRatioController({
       root: this.el,
@@ -146,6 +147,7 @@ const VideoPlayer = {
     // Without it they would poke the native <video>, which is idle whenever
     // AVPlayer is the active engine.
     this._disposePlaybackBridge = installPlaybackBridge(this.el, this);
+    this.el.dispatchEvent(new CustomEvent("streamix:playback-ready", { bubbles: true }));
 
     // All lifecycle listeners, QoE consumers and engine-agnostic controls
     // must exist before a fast media source can emit its first events.
@@ -157,6 +159,10 @@ const VideoPlayer = {
     this._startupDiagnosticsCancel = scheduleLowPriority(() => {
       if (!this._destroyed) this.runStartupDiagnostics();
     });
+  },
+
+  updated() {
+    this.applyPartyControlPolicy();
   },
 
   getPlaybackResourcePolicy() {
@@ -223,6 +229,14 @@ const VideoPlayer = {
     }
     this.nextEpisodeController = new NextEpisodeController({
       episode: this.nextEpisode,
+      onPlay:
+        this.partyMode && this.partyRole === "host"
+          ? (episode) =>
+              this.pushEventSafe("wp_next_episode", {
+                id: episode.id,
+                type: episode.type,
+              })
+          : null,
       root: this.el,
     });
   },
@@ -853,6 +867,11 @@ const VideoPlayer = {
 
     // Video Element Events
     this.lifecycle.listenOptional(this.video, "play", () => {
+      if (this._watchPartySyncHold && this.partyMode && this.partyRole === "viewer") {
+        queueMicrotask(() => this.setWatchPartySyncHold(true));
+        return;
+      }
+
       this.playerUI.updatePlayPauseUI(false);
       this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
       if (this.usesNativePlaybackEvents()) {
@@ -1104,7 +1123,69 @@ const VideoPlayer = {
     return !this.usingAVPlayer && !this.usingH265web;
   },
 
-  setPlaybackRate(rate) {
+  applyPartyControlPolicy() {
+    if (!this.partyMode || this.partyRole !== "viewer") return;
+
+    const playButton = this.el.querySelector("#play-pause-btn");
+    const progress = this.el.querySelector("#progress-container");
+    const speedButton = this.el.querySelector("#speed-btn");
+
+    if (playButton) {
+      playButton.disabled = true;
+      playButton.setAttribute("aria-label", "Reprodução controlada pelo anfitrião");
+      playButton.classList.add("cursor-not-allowed", "opacity-60");
+    }
+
+    if (progress) {
+      progress.setAttribute("aria-disabled", "true");
+      progress.classList.add("pointer-events-none", "cursor-not-allowed", "opacity-70");
+    }
+
+    if (speedButton) {
+      speedButton.disabled = true;
+      speedButton.setAttribute("aria-label", "Velocidade controlada pelo anfitrião");
+      speedButton.classList.add("cursor-not-allowed", "opacity-60");
+    }
+  },
+
+  setWatchPartySyncHold(held) {
+    const shouldHold = held === true && this.partyMode && this.partyRole === "viewer";
+    this._watchPartySyncHold = shouldHold;
+    if (!shouldHold) return true;
+
+    const engine = this.getManagedPlaybackEngine();
+
+    if (engine) {
+      try {
+        if (engine.isPlaying?.() !== false) {
+          void Promise.resolve(engine.pause?.()).catch(() => {});
+        }
+      } catch (error) {
+        log.debug("[VideoPlayer] Managed sync hold could not pause playback:", error);
+      }
+    } else if (this.video && !this.video.paused) {
+      this.nativeBufferManager?.markIntentionalPause();
+      this.video.pause();
+    }
+
+    this.setPlaybackSystemState("paused");
+    return true;
+  },
+
+  canControlPartyTransport({ remote = false } = {}) {
+    return remote || !this.partyMode || this.partyRole === "host";
+  },
+
+  rejectViewerTransportControl({ remote = false } = {}) {
+    if (this.canControlPartyTransport({ remote })) return false;
+
+    this.playerUI?.showNotice?.("A reprodução é controlada pelo anfitrião.");
+    return true;
+  },
+
+  setPlaybackRate(rate, { remote = false } = {}) {
+    if (this.rejectViewerTransportControl({ remote })) return false;
+
     const normalizedRate = Number(rate);
     if (!this.video || !Number.isFinite(normalizedRate) || normalizedRate <= 0) return false;
 
@@ -1121,13 +1202,12 @@ const VideoPlayer = {
     // chosen speed at 1.0 — otherwise the stall stacks on top of every
     // drift correction and the video looks broken.
     const native = !!this.video.canPlayType?.("application/vnd.apple.mpegurl");
-    const inWatchParty = !!window.streamixWatchPartyActive;
 
-    if (native && inWatchParty && normalizedRate > 1.0) {
+    if (native && this.partyMode && normalizedRate > 1.0) {
       this.video.playbackRate = 1.0;
-      savePlaybackRate(1.0);
+      if (!remote) savePlaybackRate(1.0);
       this.updateMediaSessionPosition({ force: true });
-      this.pushEventSafe("playback_rate_changed", { rate: 1.0 });
+      if (!remote) this.pushEventSafe("playback_rate_changed", { rate: 1.0 });
       this.playerUI?.showNotice?.(
         "Velocidade variável não é suportada com HLS nativo do iOS durante watch party.",
       );
@@ -1135,9 +1215,9 @@ const VideoPlayer = {
     }
 
     this.video.playbackRate = normalizedRate;
-    savePlaybackRate(normalizedRate);
+    if (!remote) savePlaybackRate(normalizedRate);
     this.updateMediaSessionPosition({ force: true });
-    this.pushEventSafe("playback_rate_changed", { rate: normalizedRate });
+    if (!remote) this.pushEventSafe("playback_rate_changed", { rate: normalizedRate });
     return true;
   },
 
@@ -1307,6 +1387,8 @@ const VideoPlayer = {
   },
 
   setNativeTouchControls(enabled) {
+    const allowed = !(this.partyMode && this.partyRole === "viewer");
+    enabled = enabled && allowed;
     this.nativeTouchControls = enabled;
     this.playerUI?.setNativeControlsMode(enabled);
 
@@ -1397,6 +1479,15 @@ const VideoPlayer = {
 
   pushEventSafe(event, payload) {
     if (this._destroyed || !this.el?.isConnected) return;
+
+    if (event === "buffering") {
+      this.el.dispatchEvent(
+        new CustomEvent("streamix:buffering", {
+          bubbles: true,
+          detail: payload,
+        }),
+      );
+    }
 
     try {
       this.pushEvent(event, payload);
@@ -3693,7 +3784,10 @@ const VideoPlayer = {
     return null;
   },
 
-  async togglePlayPause() {
+  async togglePlayPause({ remote = false } = {}) {
+    if (this.rejectViewerTransportControl({ remote })) return false;
+    if (remote && this._watchPartySyncHold && this.isPaused()) return false;
+
     const engine = this.getManagedPlaybackEngine();
 
     if (engine) {
@@ -3703,10 +3797,10 @@ const VideoPlayer = {
       try {
         if (isPlaying) {
           await engine.pause();
-          this.updateMediaSessionPlaybackState("paused");
+          this.setPlaybackSystemState("paused");
         } else {
           await engine.play();
-          this.updateMediaSessionPlaybackState("playing");
+          this.setPlaybackSystemState("playing");
         }
       } catch (error) {
         log.error("[VideoPlayer] managed engine play/pause failed:", error);
@@ -3715,14 +3809,20 @@ const VideoPlayer = {
     }
 
     if (this.video.paused) {
-      this.video.play().catch((error) => {
-        if (error.name === "AbortError") return;
-        log.debug("[VideoPlayer] togglePlayPause play() failed:", error.message);
-      });
-    } else {
-      this.nativeBufferManager?.markIntentionalPause();
-      this.video.pause();
+      try {
+        await this.video.play();
+        return true;
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          log.debug("[VideoPlayer] togglePlayPause play() failed:", error.message);
+        }
+        return false;
+      }
     }
+
+    this.nativeBufferManager?.markIntentionalPause();
+    this.video.pause();
+    return true;
   },
 
   toggleMute() {
@@ -3735,8 +3835,9 @@ const VideoPlayer = {
     this.pushEventSafe("volume_changed", { volume: Math.round(audioState.volume * 100) });
   },
 
-  seek(seconds) {
-    if (this.contentType === "live") return;
+  seek(seconds, { remote = false } = {}) {
+    if (this.rejectViewerTransportControl({ remote })) return false;
+    if (this.contentType === "live") return false;
 
     const engine = this.getManagedPlaybackEngine();
     if (engine) {
@@ -3757,8 +3858,9 @@ const VideoPlayer = {
     }
   },
 
-  seekTo(time) {
-    if (this.contentType === "live") return;
+  seekTo(time, { remote = false } = {}) {
+    if (this.rejectViewerTransportControl({ remote })) return false;
+    if (this.contentType === "live") return remote ? this.seekLiveTo(time) : false;
 
     const target = clampSeekTime(time, this.getDuration());
     if (target === null) return;
@@ -3779,10 +3881,27 @@ const VideoPlayer = {
   },
 
   seekNativeTo(time) {
-    if (!this.video || this.contentType === "live") return;
+    if (!this.video || this.contentType === "live") return false;
 
     this.nativeBufferingController.prepareSeek();
     this.video.currentTime = time;
+    return true;
+  },
+
+  seekLiveTo(time) {
+    if (!this.video || !Number.isFinite(Number(time))) return false;
+
+    const target = Number(time);
+    const ranges = this.video.seekable;
+    if (!ranges || ranges.length === 0) return false;
+
+    const rangeIndex = ranges.length - 1;
+    const start = ranges.start(rangeIndex);
+    const end = ranges.end(rangeIndex);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return false;
+
+    this.video.currentTime = Math.max(start, Math.min(end - 0.05, target));
+    return true;
   },
 
   getCurrentTime() {

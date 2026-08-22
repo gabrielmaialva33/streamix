@@ -34,6 +34,23 @@ defmodule StreamixWeb.PlayerComponentsTest do
     assert Floki.find(document, "#player-close-btn.size-12") != []
   end
 
+  test "renders viewer transport controls locked before JavaScript mounts" do
+    document =
+      render_component(&PlayerComponents.video_player/1,
+        content: %{id: 42, name: "Filme de teste", title: "Filme de teste"},
+        content_type: :movie,
+        stream_url: "/stream/movie/42",
+        party_mode: true,
+        party_role: :viewer
+      )
+      |> Floki.parse_fragment!()
+
+    assert Floki.find(document, "#video-player-container[data-party-role='viewer']") != []
+    assert Floki.find(document, "#play-pause-btn[disabled]") != []
+    assert Floki.find(document, "#progress-container[aria-disabled='true']") != []
+    assert Floki.find(document, "#speed-btn[disabled]") != []
+  end
+
   test "keeps live playback non-seekable" do
     html =
       render_component(&PlayerComponents.video_player/1,

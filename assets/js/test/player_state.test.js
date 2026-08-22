@@ -16,6 +16,8 @@ test("builds one explicit player state from the hook dataset", () => {
       imdbId: "tt123",
       mediaTitle: "Filme",
       nextEpisode: '{"id":9}',
+      partyMode: "true",
+      partyRole: "viewer",
       playerLifecycleLogs: "true",
       sourceType: "gindex",
       streamUrl: "/stream/42",
@@ -43,6 +45,8 @@ test("builds one explicit player state from the hook dataset", () => {
   assert.equal(state.subtitlesEnabled, false);
   assert.equal(state.featureFlagAvbridge, true);
   assert.equal(state.featureFlagH265web, false);
+  assert.equal(state.partyMode, true);
+  assert.equal(state.partyRole, "viewer");
   assert.equal(state.iosPwaMode, true);
   assert.equal(state.startTime, 1234);
   assert.strictEqual(state.playbackMetrics, playbackMetrics);

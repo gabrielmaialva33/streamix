@@ -32,6 +32,8 @@ function fakeHook(overrides = {}) {
     time: 0,
     seeked: [],
     rates: [],
+    remoteCalls: [],
+    syncHolds: [],
     toggles: 0,
     getCurrentTime() {
       return this.time;
@@ -42,20 +44,30 @@ function fakeHook(overrides = {}) {
     isPaused() {
       return this.paused;
     },
-    seekTo(time) {
+    seekTo(time, options) {
       this.seeked.push(time);
+      this.remoteCalls.push({ operation: "seek", options });
     },
-    togglePlayPause() {
+    togglePlayPause(options) {
+      this.remoteCalls.push({ operation: "toggle", options });
       this.toggles += 1;
       this.paused = !this.paused;
     },
     getPlaybackRate() {
       return this.usingAVPlayer || this.usingH265web ? 1 : this.playbackRate;
     },
-    setPlaybackRate(rate) {
+    supportsPlaybackRateControl() {
+      return !this.usingAVPlayer && !this.usingH265web;
+    },
+    setPlaybackRate(rate, options) {
+      this.remoteCalls.push({ operation: "rate", options });
       if (this.usingAVPlayer || this.usingH265web) return false;
       this.rates.push(rate);
       this.playbackRate = rate;
+      return true;
+    },
+    setWatchPartySyncHold(held) {
+      this.syncHolds.push(held);
       return true;
     },
     ...overrides,
@@ -104,6 +116,10 @@ test("play and pause are idempotent against the current state", () => {
   el.streamixPlayback.pause();
   el.streamixPlayback.pause();
   assert.equal(hook.toggles, 2);
+  assert.deepEqual(hook.remoteCalls, [
+    { operation: "toggle", options: { remote: true } },
+    { operation: "toggle", options: { remote: true } },
+  ]);
 });
 
 test("declines playback rate changes on AVPlayer, which has no rate knob", () => {
@@ -111,6 +127,7 @@ test("declines playback rate changes on AVPlayer, which has no rate knob", () =>
   const hook = fakeHook({ usingAVPlayer: true });
   installPlaybackBridge(el, hook);
 
+  assert.equal(el.streamixPlayback.supportsPlaybackRate(), false);
   assert.equal(el.streamixPlayback.setPlaybackRate(1.1), false);
   assert.deepEqual(hook.rates, []);
 
@@ -120,9 +137,43 @@ test("declines playback rate changes on AVPlayer, which has no rate knob", () =>
   assert.deepEqual(hook.rates, []);
 
   hook.usingH265web = false;
+  assert.equal(el.streamixPlayback.supportsPlaybackRate(), true);
   assert.equal(el.streamixPlayback.setPlaybackRate(1.1), true);
   assert.equal(el.streamixPlayback.getPlaybackRate(), 1.1);
   assert.deepEqual(hook.rates, [1.1]);
+  assert.deepEqual(hook.remoteCalls.at(-1), {
+    operation: "rate",
+    options: { remote: true },
+  });
+});
+
+test("remote seeks bypass local party transport restrictions", () => {
+  const el = fakeElement();
+  const hook = fakeHook();
+  installPlaybackBridge(el, hook);
+
+  el.streamixPlayback.seekTo(37);
+
+  assert.deepEqual(hook.seeked, [37]);
+  assert.deepEqual(hook.remoteCalls, [{ operation: "seek", options: { remote: true } }]);
+});
+
+test("forwards a durable watch-party sync hold to the active player", () => {
+  const el = fakeElement();
+  const hook = fakeHook();
+  installPlaybackBridge(el, hook);
+
+  assert.equal(el.streamixPlayback.setSyncHold(true), true);
+  assert.equal(el.streamixPlayback.setSyncHold(false), true);
+  assert.deepEqual(hook.syncHolds, [true, false]);
+});
+
+test("reports an unavailable sync-hold implementation instead of pretending it worked", () => {
+  const el = fakeElement();
+  const hook = fakeHook({ setWatchPartySyncHold: undefined });
+  installPlaybackBridge(el, hook);
+
+  assert.equal(el.streamixPlayback.setSyncHold(true), undefined);
 });
 
 test("emits state changes with the engine-agnostic position", () => {

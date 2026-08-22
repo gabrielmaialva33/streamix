@@ -20,10 +20,11 @@ const FOCUSABLE_SELECTORS = [
  * @param {Object} options - Configuration options
  * @param {function} [options.onEscape] - Callback when Escape is pressed
  * @param {HTMLElement} [options.returnFocusTo] - Element to return focus to on close
+ * @param {boolean} [options.closeOnClickOutside=true] - Close when clicking outside
  * @returns {Object} Focus trap controller with activate/deactivate methods
  */
 export function createFocusTrap(container, options = {}) {
-  const { onEscape, returnFocusTo } = options;
+  const { closeOnClickOutside = true, onEscape, returnFocusTo } = options;
 
   let active = false;
   let previouslyFocused = null;
@@ -78,7 +79,7 @@ export function createFocusTrap(container, options = {}) {
    * Handle click outside the container
    */
   function handleClickOutside(e) {
-    if (!active) return;
+    if (!active || !closeOnClickOutside) return;
 
     if (!container.contains(e.target)) {
       deactivate();

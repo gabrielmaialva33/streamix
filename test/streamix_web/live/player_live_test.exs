@@ -311,7 +311,11 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       assert_push_event(view, "subtitle_offset_changed", %{offset_ms: 500})
       assert Streamix.Accounts.get_user!(user.id).subtitle_offset_ms == 500
-      assert render(view) =~ "+0.5s"
+
+      # The player is a client-owned media island (`phx-update="ignore"`).
+      # VideoPlayer consumes the pushed event and updates the label without
+      # replacing the active media engine during a LiveView patch.
+      assert Process.alive?(view.pid)
 
       render_click(view, "reset_subtitle_offset")
 

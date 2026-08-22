@@ -36,16 +36,23 @@ export function installPlaybackBridge(el, hook) {
     getDuration: () => hook.getDuration(),
     isPaused: () => hook.isPaused(),
     getPlaybackRate: () => hook.getPlaybackRate?.() || 1,
-    seekTo: (time) => hook.seekTo(time),
+    supportsPlaybackRate: () => hook.supportsPlaybackRateControl?.() !== false,
+    seekTo: (time) => hook.seekTo(time, { remote: true }),
     play: () => {
-      if (hook.isPaused()) hook.togglePlayPause();
+      if (hook.isPaused()) return hook.togglePlayPause({ remote: true });
+      return true;
     },
     pause: () => {
-      if (!hook.isPaused()) hook.togglePlayPause();
+      if (!hook.isPaused()) return hook.togglePlayPause({ remote: true });
+      return true;
     },
     // Canvas engines expose no reliable rate control, so consumers fall
     // back to seeking instead of pretending a hidden <video> changed speed.
-    setPlaybackRate: (rate) => hook.setPlaybackRate(rate) !== false,
+    setPlaybackRate: (rate) => hook.setPlaybackRate(rate, { remote: true }) !== false,
+    setSyncHold: (held) =>
+      typeof hook.setWatchPartySyncHold === "function"
+        ? hook.setWatchPartySyncHold(held)
+        : undefined,
   };
 
   return () => {

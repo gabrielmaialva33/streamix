@@ -34,6 +34,8 @@ defmodule StreamixWeb.PlayerComponents do
   attr :subtitles_enabled, :boolean, default: true
   attr :subtitle_language, :string, default: "pt-BR"
   attr :subtitle_offset_ms, :integer, default: 0
+  attr :party_mode, :boolean, default: false
+  attr :party_role, :atom, default: :none, values: [:none, :host, :viewer]
 
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
@@ -63,6 +65,7 @@ defmodule StreamixWeb.PlayerComponents do
       |> assign(:media_title, Metadata.title(assigns.content, assigns.content_type))
       |> assign(:media_subtitle, Metadata.subtitle(assigns.content, assigns.content_type))
       |> assign(:episode_subtitle, Metadata.episode_subtitle(assigns.content))
+      |> assign(:party_transport_locked, assigns.party_mode and assigns.party_role == :viewer)
       |> assign(
         :player_lifecycle_logs,
         Application.get_env(:streamix, :player_lifecycle_logs, false) |> to_string()
@@ -86,6 +89,7 @@ defmodule StreamixWeb.PlayerComponents do
       id="video-player-container"
       class="relative w-full h-full bg-black group/player"
       phx-hook="VideoPlayer"
+      phx-update="ignore"
       data-stream-url={@stream_url}
       data-proxy-url={@proxy_url}
       data-content-type={@content_type_str}
@@ -105,6 +109,8 @@ defmodule StreamixWeb.PlayerComponents do
       data-subtitles-enabled={to_string(@subtitles_enabled)}
       data-subtitle-lang={@subtitle_language}
       data-subtitle-offset-ms={@subtitle_offset_ms}
+      data-party-mode={to_string(@party_mode)}
+      data-party-role={@party_role}
     >
       <%!-- Error container --%>
       <div
@@ -213,7 +219,10 @@ defmodule StreamixWeb.PlayerComponents do
           </div>
 
           <%!-- Progress bar --%>
-          <.progress_bar :if={@content_type not in [:live, :live_channel]} />
+          <.progress_bar
+            :if={@content_type not in [:live, :live_channel]}
+            disabled={@party_transport_locked}
+          />
 
           <%!-- Controls. On phones the row wraps: the clock takes its own line
                above the buttons so the 44px touch targets never get squeezed
@@ -221,7 +230,7 @@ defmodule StreamixWeb.PlayerComponents do
           <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
             <%!-- Left --%>
             <div id="player-primary-controls" class="flex min-w-0 items-center gap-1 sm:gap-3">
-              <.play_pause_button />
+              <.play_pause_button disabled={@party_transport_locked} />
               <.volume_control />
               <.live_badge :if={@content_type in [:live, :live_channel]} />
             </div>
@@ -230,7 +239,10 @@ defmodule StreamixWeb.PlayerComponents do
 
             <%!-- Right --%>
             <div class="ml-auto flex items-center gap-1 sm:gap-2">
-              <.speed_button :if={@content_type not in [:live, :live_channel]} />
+              <.speed_button
+                :if={@content_type not in [:live, :live_channel]}
+                disabled={@party_transport_locked}
+              />
               <.settings_button subtitle_offset_ms={@subtitle_offset_ms} />
               <.pip_button />
               <.fullscreen_button />

@@ -7,13 +7,20 @@ defmodule StreamixWeb.PlayerComponents.Controls do
 
   alias Phoenix.LiveView.JS
 
+  attr :disabled, :boolean, default: false
+
   def progress_bar(assigns) do
     ~H"""
     <div class="py-2 -my-2">
       <div
         id="progress-container"
-        class="relative h-1.5 sm:h-1 bg-white/30 rounded-full cursor-pointer group/progress active:h-2 sm:hover:h-1.5 transition-all touch-none"
-        phx-hook="ProgressBar"
+        class={[
+          "relative h-1.5 sm:h-1 bg-white/30 rounded-full group/progress transition-all touch-none",
+          !@disabled && "cursor-pointer active:h-2 sm:hover:h-1.5",
+          @disabled && "pointer-events-none cursor-not-allowed opacity-70"
+        ]}
+        phx-hook={if @disabled, do: nil, else: "ProgressBar"}
+        aria-disabled={to_string(@disabled)}
       >
         <div
           id="progress-buffered"
@@ -32,14 +39,23 @@ defmodule StreamixWeb.PlayerComponents.Controls do
     """
   end
 
+  attr :disabled, :boolean, default: false
+
   def play_pause_button(assigns) do
     ~H"""
     <button
       type="button"
       id="play-pause-btn"
-      phx-click={JS.dispatch("player:toggle-play")}
-      aria-label="Reproduzir ou pausar"
-      class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/25 sm:size-11"
+      phx-click={if @disabled, do: nil, else: JS.dispatch("player:toggle-play")}
+      aria-label={
+        if @disabled, do: "Reprodução controlada pelo anfitrião", else: "Reproduzir ou pausar"
+      }
+      disabled={@disabled}
+      class={[
+        "flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors sm:size-11",
+        !@disabled && "hover:bg-white/10 active:bg-white/25",
+        @disabled && "cursor-not-allowed opacity-60"
+      ]}
     >
       <.icon name="hero-play-solid" class="play-icon size-8 sm:size-7" aria-hidden="true" />
       <.icon
@@ -109,17 +125,30 @@ defmodule StreamixWeb.PlayerComponents.Controls do
     """
   end
 
+  attr :disabled, :boolean, default: false
+
   def speed_button(assigns) do
     ~H"""
     <div class="relative" id="speed-container">
       <button
         type="button"
         id="speed-btn"
-        phx-click={JS.toggle(to: "#speed-menu") |> JS.hide(to: "#settings-menu")}
-        aria-label="Velocidade de reprodução"
+        phx-click={
+          if @disabled,
+            do: nil,
+            else: JS.toggle(to: "#speed-menu") |> JS.hide(to: "#settings-menu")
+        }
+        aria-label={
+          if @disabled, do: "Velocidade controlada pelo anfitrião", else: "Velocidade de reprodução"
+        }
         aria-haspopup="menu"
         aria-expanded="false"
-        class="flex size-12 touch-manipulation items-center justify-center rounded text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
+        disabled={@disabled}
+        class={[
+          "flex size-12 touch-manipulation items-center justify-center rounded text-sm font-medium text-white/90 transition-colors sm:size-11",
+          !@disabled && "hover:bg-white/10 hover:text-white active:bg-white/20",
+          @disabled && "cursor-not-allowed opacity-60"
+        ]}
       >
         <span id="speed-label">1x</span>
       </button>
