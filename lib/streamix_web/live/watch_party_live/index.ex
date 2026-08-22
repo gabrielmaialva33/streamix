@@ -4,15 +4,24 @@ defmodule StreamixWeb.WatchPartyLive.Index do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.WatchParty
+  alias Streamix.{Iptv, WatchParty}
+  alias StreamixWeb.Helpers.ImageProxy
 
   def mount(_params, _session, socket) do
+    user_id = socket.assigns.current_scope.user.id
+
+    active_rooms =
+      user_id
+      |> WatchParty.list_active_rooms_for_user()
+      |> Enum.reject(&is_nil(&1.catalog_item))
+
     socket =
       socket
       |> assign(page_title: "Watch Party")
       |> assign(current_path: "/party")
       |> assign(invite_input: "")
       |> assign(error: nil)
+      |> assign(active_rooms: active_rooms)
 
     {:ok, socket}
   end
@@ -91,6 +100,60 @@ defmodule StreamixWeb.WatchPartyLive.Index do
           Assista filmes, séries e TV ao vivo com seus amigos — tudo sincronizado e com chat em tempo real.
         </p>
       </div>
+
+      <section :if={@active_rooms != []} class="mb-10 sm:mb-14" aria-labelledby="active-parties-title">
+        <div class="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <h2 id="active-parties-title" class="text-lg font-semibold text-text-primary">
+              Suas salas ativas
+            </h2>
+            <p class="text-sm text-text-muted">Retome uma sala sem gerar outro convite.</p>
+          </div>
+          <span class="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
+            {length(@active_rooms)}
+          </span>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <.link
+            :for={room <- @active_rooms}
+            navigate={~p"/party/#{room.invite_code}/watch"}
+            class="group flex min-w-0 items-center gap-3 rounded-lg border border-border bg-surface p-3 transition-colors hover:border-brand/40 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-brand"
+          >
+            <div class="size-16 flex-shrink-0 overflow-hidden rounded-md bg-surface-hover">
+              <img
+                :if={room_icon(room)}
+                src={ImageProxy.proxy(room_icon(room))}
+                alt=""
+                class="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+              <div
+                :if={!room_icon(room)}
+                class="flex h-full items-center justify-center text-text-muted"
+              >
+                <.icon name="hero-film" class="size-6" />
+              </div>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold text-text-primary">{room_title(room)}</p>
+              <p class="mt-1 text-xs text-text-muted">
+                {if room.host_user_id == @current_scope.user.id,
+                  do: "Você é o anfitrião",
+                  else: "Participante"}
+              </p>
+              <p class="mt-1 font-mono text-[10px] uppercase tracking-wider text-brand">
+                {String.upcase(room.invite_code)}
+              </p>
+            </div>
+            <.icon
+              name="hero-chevron-right"
+              class="size-4 flex-shrink-0 text-text-muted transition-transform group-hover:translate-x-0.5"
+            />
+          </.link>
+        </div>
+      </section>
 
       <%!-- Two-column layout --%>
       <div class="grid lg:grid-cols-2 gap-4 sm:gap-6">
@@ -219,4 +282,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
     </div>
     """
   end
+
+  defp room_title(room), do: Iptv.catalog_item_content_name(room.catalog_item) || "Conteúdo"
+  defp room_icon(room), do: Iptv.catalog_item_content_icon(room.catalog_item)
 end

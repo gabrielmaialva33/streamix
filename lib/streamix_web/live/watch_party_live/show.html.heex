@@ -1,6 +1,17 @@
-<div class="fixed inset-0 bg-black flex">
-  <%!-- Video area --%>
-  <div class={["flex-1 relative", @chat_open && "sm:mr-80"]}>
+<div
+  id="watch-party-sync"
+  phx-hook="WatchPartySync"
+  data-is-host={to_string(@is_host)}
+  data-room-id={@room.id}
+  data-host-status={@host_status}
+  data-server-state={@playback_state.state}
+  data-server-position={@playback_state.position}
+  data-server-buffering={to_string(Map.get(@playback_state, :host_buffering, false))}
+  data-server-sequence={Map.get(@playback_state, :version, 0)}
+  data-server-time={Map.get(@playback_state, :server_time)}
+  class="fixed inset-0 flex h-[100dvh] w-[100dvw] overflow-hidden bg-black"
+>
+  <main class={["relative min-w-0 flex-1", @chat_open && "sm:mr-80"]}>
     <.video_player
       content={@content}
       content_type={@content_type}
@@ -12,69 +23,84 @@
       show_controls={true}
       next_episode={@next_episode}
       expected_duration={Map.get(@content, :duration_secs, 0) || 0}
+      subtitles_enabled={@current_scope.user.subtitles_enabled}
+      subtitle_language={@current_scope.user.subtitle_language}
+      subtitle_offset_ms={@current_scope.user.subtitle_offset_ms}
+      party_mode={true}
+      party_role={if @is_host, do: :host, else: :viewer}
     />
 
-    <%!-- Watch Party Sync Hook --%>
     <div
-      id="watch-party-sync"
-      phx-hook="WatchPartySync"
-      data-is-host={to_string(@is_host)}
-      data-room-id={@room.id}
-      class="hidden"
+      id="wp-reactions-container"
+      class="pointer-events-none absolute bottom-20 right-4 z-50"
+      aria-hidden="true"
     />
 
-    <%!-- Floating reactions container --%>
-    <div id="wp-reactions-container" class="absolute bottom-20 right-4 pointer-events-none z-50" />
-
-    <%!-- Watch Party floating controls — grouped into a single pill
-         with a subtle backdrop so they read as one UI unit, not four
-         loose buttons floating on top of the video. --%>
-    <div class="absolute top-3 right-14 z-40 flex items-center gap-2 pl-2 pr-2 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 shadow-card">
+    <div class="absolute right-14 top-3 z-40 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-2 py-1.5 shadow-card backdrop-blur-md">
       <.presence_indicators presences={@presences} />
-      <div class="w-px h-6 bg-white/10" aria-hidden="true" />
+      <div class="h-6 w-px bg-white/10" aria-hidden="true" />
       <.invite_badge invite_code={@room.invite_code} />
-      <div class="w-px h-6 bg-white/10" aria-hidden="true" />
+      <div class="h-6 w-px bg-white/10" aria-hidden="true" />
 
       <button
+        type="button"
         phx-click="toggle_chat"
-        aria-label="Abrir chat"
+        aria-label={if @chat_open, do: "Fechar chat", else: "Abrir chat"}
+        aria-expanded={to_string(@chat_open)}
+        aria-controls="watch-party-chat"
         class={[
-          "relative w-9 h-9 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-brand",
+          "relative flex size-9 items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand",
           @chat_open && "bg-brand text-white shadow-md shadow-brand/30",
           !@chat_open && "text-white/80 hover:bg-white/10"
         ]}
       >
         <.icon name="hero-chat-bubble-left-right" class="size-4" />
+        <span
+          :if={@unread_messages > 0 and !@chat_open}
+          class="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold leading-none text-white"
+          aria-label={"#{@unread_messages} mensagens não lidas"}
+        >
+          {min(@unread_messages, 99)}
+        </span>
       </button>
 
       <button
         :if={@is_host}
+        type="button"
         phx-click="wp_end_party"
         data-confirm="Encerrar a Watch Party para todos?"
-        aria-label="Encerrar party"
-        class="w-9 h-9 rounded-full bg-error/90 text-white flex items-center justify-center hover:bg-error transition-colors shadow-md shadow-error/30 focus:outline-none focus:ring-2 focus:ring-error"
+        aria-label="Encerrar Watch Party"
+        class="flex size-9 items-center justify-center rounded-full bg-error/90 text-white shadow-md shadow-error/30 transition-colors hover:bg-error focus:outline-none focus:ring-2 focus:ring-error"
       >
         <.icon name="hero-x-mark" class="size-4" />
       </button>
     </div>
 
-    <%!-- Host indicator --%>
-    <div :if={!@is_host} class="absolute bottom-4 left-4 z-40">
-      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand/90 text-white text-xs font-medium backdrop-blur-sm shadow-card">
-        <span class="relative flex w-1.5 h-1.5">
-          <span class="absolute inline-flex w-full h-full rounded-full bg-white opacity-60 animate-ping"></span>
-          <span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-white"></span>
+    <div class="absolute bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)]">
+      <span
+        id="watch-party-sync-status"
+        class={sync_status_class(@is_host, @host_status, @sync_status)}
+        role="status"
+      >
+        <span class="relative flex size-1.5 flex-shrink-0">
+          <span
+            :if={@sync_status in ["synced", "correcting"] and @host_status == :online}
+            class="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60"
+          />
+          <span class="relative inline-flex size-1.5 rounded-full bg-current" />
         </span>
-        Sincronizado com o host
+        <span data-sync-status-text>
+          {sync_status_text(@is_host, @host_status, @sync_status, @sync_drift_ms)}
+        </span>
       </span>
     </div>
-  </div>
+  </main>
 
-  <%!-- Chat sidebar --%>
   <.chat_sidebar
     :if={@chat_open}
     messages={@streams.messages}
     message_input={@message_input}
     room_id={@room.id}
+    error={@chat_error}
   />
 </div>
