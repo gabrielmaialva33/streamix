@@ -7,8 +7,6 @@ import Modal from "./modal";
 import ProgressBar from "./progress_bar";
 import ScrollHeader from "./scroll_header";
 import ThemeToggle from "./theme_toggle";
-import WatchPartyChat from "./watch_party_chat";
-import WatchPartySync from "./watch_party_sync";
 
 const sharedModule = (loader) => {
   let modulePromise;
@@ -48,6 +46,8 @@ const PwaInstall = createLazyHook("PwaInstall", namedHook(loadPwaHooks, "PwaInst
 const PwaRepair = createLazyHook("PwaRepair", namedHook(loadPwaHooks, "PwaRepair"));
 const TorrentSwarmGate = createLazyHook("TorrentSwarmGate", () => import("./torrent_swarm_gate"));
 const VideoPlayer = createLazyHook("VideoPlayer", () => import("./video_player"));
+const WatchPartyChat = createLazyHook("WatchPartyChat", () => import("./watch_party_chat"));
+const WatchPartySync = createLazyHook("WatchPartySync", () => import("./watch_party_sync"));
 
 export default {
   BrowseScrollRestoration,
