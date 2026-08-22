@@ -153,6 +153,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
     source = """
     (() => {
       const contentId = #{Jason.encode!(to_string(content_id))};
+      window.__streamixLazyHookDiagnostics = true;
       const positions = {};
       positions[contentId] = {time: 25, duration: 120, timestamp: Date.now()};
       localStorage.setItem("streamix_playback_positions", JSON.stringify(positions));
@@ -474,7 +475,11 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
 
         if (!container || !hook) {
           const lazyError = container?.dataset.lazyHookError || "none";
-          throw new Error(`player hook unavailable; lazy error: ${lazyError}`);
+          const lazyDetail =
+            window.__streamixLazyHookErrors?.VideoPlayer ||
+            container?.dataset.lazyHookErrorDetail ||
+            "none";
+          throw new Error(`player hook unavailable; lazy error: ${lazyError}; detail: ${lazyDetail}`);
         }
 
         hook.nativeTouchControls = false;

@@ -22,7 +22,7 @@ function installCustomMethods(context, implementation) {
  * stays registered up front and hydrates the real implementation only when an
  * element using that hook actually mounts.
  */
-export function createLazyHook(name, loader) {
+export function createLazyHook(name, loader, { shouldLoad = () => true } = {}) {
   const stateKey = Symbol(`streamix:${name}`);
   let modulePromise;
 
@@ -46,6 +46,11 @@ export function createLazyHook(name, loader) {
       this[stateKey] = state;
 
       try {
+        if (shouldLoad(this) === false) {
+          state.skipped = true;
+          return;
+        }
+
         const module = await load();
         if (state.destroyed) return;
 
@@ -66,6 +71,16 @@ export function createLazyHook(name, loader) {
       } catch (error) {
         if (state.destroyed) return;
         this.el.dataset.lazyHookError = name;
+
+        if (globalThis.__streamixLazyHookDiagnostics === true) {
+          const errorName = error?.name || "Error";
+          const errorMessage = error?.message || String(error);
+          const detail = `${errorName}: ${errorMessage}`.slice(0, 300);
+          this.el.dataset.lazyHookErrorDetail = detail;
+          globalThis.__streamixLazyHookErrors ||= {};
+          globalThis.__streamixLazyHookErrors[name] = detail;
+        }
+
         console.error(`[Streamix] Failed to load ${name} hook`, error);
       }
     },

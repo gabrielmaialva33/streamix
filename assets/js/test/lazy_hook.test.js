@@ -52,3 +52,25 @@ test("does not mount a lazy implementation after its element was destroyed", asy
 
   assert.equal(mounted, false);
 });
+
+test("skips route-specific code when the mount environment does not need it", async () => {
+  let loadCount = 0;
+  const hook = createLazyHook(
+    "ContentCard",
+    async () => {
+      loadCount += 1;
+      return { default: { mounted() {} } };
+    },
+    {
+      shouldLoad: (context) => context.el.dataset.hoverPreview === "true",
+    },
+  );
+  const context = { el: { dataset: { hoverPreview: "false" } } };
+
+  await hook.mounted.call(context);
+  hook.updated.call(context);
+  hook.destroyed.call(context);
+
+  assert.equal(loadCount, 0);
+  assert.equal(context.el.dataset.lazyHookError, undefined);
+});
