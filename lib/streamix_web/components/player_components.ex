@@ -215,18 +215,21 @@ defmodule StreamixWeb.PlayerComponents do
           <%!-- Progress bar --%>
           <.progress_bar :if={@content_type not in [:live, :live_channel]} />
 
-          <%!-- Controls --%>
-          <div class="mt-3 flex items-center justify-between gap-2">
+          <%!-- Controls. On phones the row wraps: the clock takes its own line
+               above the buttons so the 44px touch targets never get squeezed
+               by a long "1:23:45 / 2:10:00" or by the PiP button. --%>
+          <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
             <%!-- Left --%>
             <div id="player-primary-controls" class="flex min-w-0 items-center gap-1 sm:gap-3">
               <.play_pause_button />
               <.volume_control />
-              <.time_display :if={@content_type not in [:live, :live_channel]} />
               <.live_badge :if={@content_type in [:live, :live_channel]} />
             </div>
 
+            <.time_display :if={@content_type not in [:live, :live_channel]} />
+
             <%!-- Right --%>
-            <div class="flex items-center gap-1 sm:gap-2">
+            <div class="ml-auto flex items-center gap-1 sm:gap-2">
               <.speed_button :if={@content_type not in [:live, :live_channel]} />
               <.settings_button subtitle_offset_ms={@subtitle_offset_ms} />
               <.pip_button />

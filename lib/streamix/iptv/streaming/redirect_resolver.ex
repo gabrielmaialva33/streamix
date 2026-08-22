@@ -119,29 +119,24 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   """
   def prewarm_async(url, opts \\ []) when is_binary(url) do
     case cache_policy(opts) do
-      :uncached ->
-        Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
-          _ = resolve_uncached(url, opts)
-        end)
-
-        :ok
-
-      {:cached, scope} ->
-        case lookup(url, scope) do
-          {:hit, _} ->
-            :ok
-
-          :resolving ->
-            :ok
-
-          :miss ->
-            Task.Supervisor.start_child(Streamix.TaskSupervisor, fn ->
-              _ = resolve(url, opts)
-            end)
-
-            :ok
-        end
+      :uncached -> start_prewarm(fn -> resolve_uncached(url, opts) end)
+      {:cached, scope} -> prewarm_cached(url, opts, scope)
     end
+  end
+
+  # A hit or an in-flight resolution already satisfies the prewarm contract,
+  # so only a genuine miss spawns work.
+  defp prewarm_cached(url, opts, scope) do
+    case lookup(url, scope) do
+      {:hit, _} -> :ok
+      :resolving -> :ok
+      :miss -> start_prewarm(fn -> resolve(url, opts) end)
+    end
+  end
+
+  defp start_prewarm(resolve_fun) when is_function(resolve_fun, 0) do
+    Task.Supervisor.start_child(Streamix.TaskSupervisor, fn -> _ = resolve_fun.() end)
+    :ok
   end
 
   @doc """
@@ -317,17 +312,15 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   defp resolve_uncached(url, opts) do
-    try do
-      walk_chain(url, opts)
-    catch
-      kind, reason ->
-        Logger.error(
-          "RedirectResolver: walk_chain crashed (#{kind}): " <>
-            "#{SafeLog.redact_inspect(reason)} for #{sanitize(url)}"
-        )
+    walk_chain(url, opts)
+  catch
+    kind, reason ->
+      Logger.error(
+        "RedirectResolver: walk_chain crashed (#{kind}): " <>
+          "#{SafeLog.redact_inspect(reason)} for #{sanitize(url)}"
+      )
 
-        {:error, {:resolver_crashed, kind, reason}}
-    end
+      {:error, {:resolver_crashed, kind, reason}}
   end
 
   defp cache_result(key, {:ok, final_url} = result) do

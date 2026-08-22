@@ -92,7 +92,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
     ~H"""
     <div
       id="time-display"
-      class="hidden text-xs font-medium tabular-nums text-white/90 min-[360px]:block sm:text-sm"
+      class="order-first basis-full text-right text-xs font-medium tabular-nums text-white/90 sm:order-none sm:ml-1 sm:basis-auto sm:text-left sm:text-sm"
     >
       <span id="current-time">0:00</span>
       <span class="text-white/50 mx-0.5 sm:mx-1">/</span>
