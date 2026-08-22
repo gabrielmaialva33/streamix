@@ -336,6 +336,19 @@
     gap: 0.75rem;
 }
 
+/* Skip style/layout/paint work for catalog cards far outside the viewport.
+   Browsers without content-visibility support keep the normal grid behavior. */
+@supports (content-visibility: auto) {
+    .catalog-stream-item {
+        content-visibility: auto;
+        contain-intrinsic-block-size: auto 24rem;
+    }
+
+    .catalog-stream-item--wide {
+        contain-intrinsic-block-size: auto 12rem;
+    }
+}
+
 @media (min-width: 640px) {
     .filter-strip {
         margin-inline: 0;
