@@ -47,13 +47,13 @@ test("holds one screen wake lock only while playback is active", async () => {
     },
   });
 
-  await Promise.all([controller.setActive(true), controller.sync(), controller.acquire()]);
+  await Promise.all([controller.setPlaybackActive(true), controller.sync(), controller.acquire()]);
 
   assert.deepEqual(requests, ["screen"]);
   assert.equal(controller.active, true);
   assert.equal(controller.held, true);
 
-  await controller.setActive(false);
+  await controller.setPlaybackActive(false);
 
   assert.equal(sentinels[0].releaseCalls, 1);
   assert.equal(controller.active, false);
@@ -76,7 +76,7 @@ test("releases while hidden and reacquires when visible playback resumes", async
     },
   });
 
-  await controller.setActive(true);
+  await controller.setPlaybackActive(true);
   documentRef.setVisibility("hidden");
   await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -98,7 +98,7 @@ test("contains unsupported, rejected, and stale wake-lock requests", async () =>
   const errors = [];
   const unsupported = createScreenWakeLockController({ documentRef, navigatorRef: {} });
 
-  assert.equal(await unsupported.setActive(true), null);
+  assert.equal(await unsupported.setPlaybackActive(true), null);
   await unsupported.destroy();
 
   const rejected = createScreenWakeLockController({
@@ -110,11 +110,11 @@ test("contains unsupported, rejected, and stale wake-lock requests", async () =>
         },
       },
     },
-    onError: (error) => errors.push(error.message),
+    onError: (operation, error) => errors.push([operation, error.message]),
   });
 
-  assert.equal(await rejected.setActive(true), null);
-  assert.deepEqual(errors, ["denied"]);
+  assert.equal(await rejected.setPlaybackActive(true), null);
+  assert.deepEqual(errors, [["request", "denied"]]);
   await rejected.destroy();
 
   let resolveRequest;
@@ -131,8 +131,8 @@ test("contains unsupported, rejected, and stale wake-lock requests", async () =>
     },
   });
 
-  const acquisition = stale.setActive(true);
-  await stale.setActive(false);
+  const acquisition = stale.setPlaybackActive(true);
+  await stale.setPlaybackActive(false);
   resolveRequest(staleSentinel);
   await acquisition;
 

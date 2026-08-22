@@ -18,21 +18,21 @@ export function createScreenWakeLockController({
 
   const isVisible = () => documentRef?.visibilityState !== "hidden";
 
-  const reportError = (error) => {
+  const reportError = (operation, error) => {
     try {
-      onError(error);
+      onError(operation, error);
     } catch {
       // Diagnostics must never break playback lifecycle handling.
     }
   };
 
-  const releaseSentinel = async (candidate) => {
+  const releaseSentinel = async (candidate, operation = "release") => {
     if (!candidate || typeof candidate.release !== "function") return;
 
     try {
       await candidate.release();
     } catch (error) {
-      reportError(error);
+      reportError(operation, error);
     }
   };
 
@@ -57,7 +57,7 @@ export function createScreenWakeLockController({
         if (!candidate) return null;
 
         if (destroyed || !active || !isVisible()) {
-          await releaseSentinel(candidate);
+          await releaseSentinel(candidate, "release-stale");
           return null;
         }
 
@@ -74,7 +74,7 @@ export function createScreenWakeLockController({
       })
       .catch((error) => {
         requestPromise = null;
-        reportError(error);
+        reportError("request", error);
         return null;
       });
 
@@ -83,7 +83,7 @@ export function createScreenWakeLockController({
 
   const sync = () => (active ? acquire() : release());
 
-  const setActive = (nextActive) => {
+  const setPlaybackActive = (nextActive) => {
     active = nextActive === true;
     return sync();
   };
@@ -101,7 +101,9 @@ export function createScreenWakeLockController({
   return {
     acquire,
     release,
-    setActive,
+    setPlaybackActive,
+    // Backward-compatible alias for callers outside the player hook.
+    setActive: setPlaybackActive,
     sync,
     get active() {
       return active;
