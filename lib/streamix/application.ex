@@ -72,8 +72,6 @@ defmodule Streamix.Application do
         {Phoenix.PubSub, name: Streamix.PubSub},
         Streamix.RuntimeBootstrap,
         # NOTE: Content caching uses Redis via Streamix.Cache (cluster-ready)
-        # Stream proxy for caching IPTV streams
-        Streamix.Iptv.StreamProxy,
         # Redirect-chain resolution cache (single-flight) — keeps the
         # first /api/stream/proxy hit fast by piggy-backing on a prewarm
         # task fired from PlayerLive.mount/3.
