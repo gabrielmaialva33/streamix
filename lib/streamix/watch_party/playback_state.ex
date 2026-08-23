@@ -23,20 +23,23 @@ defmodule Streamix.WatchParty.PlaybackState do
   def restore(snapshot, opts \\ []) do
     monotonic_now = Keyword.get_lazy(opts, :now, &now/0)
     wall_now = Keyword.get_lazy(opts, :wall_now, &DateTime.utc_now/0)
-    playback_state = if snapshot.playback_state == "playing", do: :playing, else: :paused
-    buffering = snapshot.playback_buffering == true
-    position = finite_position(snapshot.playback_position)
+
+    playback_state =
+      if Map.get(snapshot, :playback_state) == "playing", do: :playing, else: :paused
+
+    buffering = Map.get(snapshot, :playback_buffering) == true
+    position = finite_position(Map.get(snapshot, :playback_position))
 
     elapsed =
-      if playback_state == :playing and not buffering and snapshot.playback_updated_at do
-        max(0, DateTime.diff(wall_now, snapshot.playback_updated_at, :millisecond)) / 1_000.0
+      if playback_state == :playing and not buffering do
+        wall_elapsed(wall_now, Map.get(snapshot, :playback_updated_at))
       else
         0.0
       end
 
     %{
       state: playback_state,
-      position: position + elapsed,
+      position: advance(position, elapsed),
       host_buffering: buffering,
       updated_at: monotonic_now
     }
@@ -47,8 +50,8 @@ defmodule Streamix.WatchParty.PlaybackState do
   def current(playback, monotonic_now \\ now())
 
   def current(%{state: :playing, host_buffering: false} = playback, monotonic_now) do
-    elapsed = max(0, monotonic_now - playback.updated_at) / 1_000.0
-    %{playback | position: playback.position + elapsed}
+    elapsed = monotonic_elapsed(monotonic_now, playback.updated_at)
+    %{playback | position: advance(finite_position(playback.position), elapsed)}
   end
 
   def current(playback, _monotonic_now), do: playback
@@ -139,6 +142,23 @@ defmodule Streamix.WatchParty.PlaybackState do
       {:ok, position} -> position
       {:error, _reason} -> 0.0
     end
+  end
+
+  defp wall_elapsed(%DateTime{} = wall_now, %DateTime{} = updated_at) do
+    max(0, DateTime.diff(wall_now, updated_at, :millisecond)) / 1_000.0
+  end
+
+  defp wall_elapsed(_wall_now, _updated_at), do: 0.0
+
+  defp monotonic_elapsed(monotonic_now, updated_at)
+       when is_integer(monotonic_now) and is_integer(updated_at) do
+    max(0, monotonic_now - updated_at) / 1_000.0
+  end
+
+  defp monotonic_elapsed(_monotonic_now, _updated_at), do: 0.0
+
+  defp advance(position, elapsed) do
+    min(position + max(elapsed, 0.0), @max_position_seconds * 1.0)
   end
 
   defp now, do: System.monotonic_time(:millisecond)

@@ -77,4 +77,51 @@ defmodule Streamix.WatchParty.PlaybackStateTest do
     assert %{host_buffering: true, updated_at: 6_000} = buffered
     assert buffered.position == 0.0
   end
+
+  test "tolerates malformed legacy timestamps and missing persisted fields" do
+    wall_now = ~U[2026-01-01 12:00:03Z]
+
+    malformed =
+      PlaybackState.restore(
+        %{
+          playback_state: "playing",
+          playback_position: 25.0,
+          playback_buffering: false,
+          playback_updated_at: "not-a-datetime"
+        },
+        now: 7_000,
+        wall_now: wall_now
+      )
+
+    assert %{state: :playing, position: 25.0, updated_at: 7_000} = malformed
+
+    restored_empty = PlaybackState.restore(%{}, now: 8_000, wall_now: wall_now)
+
+    assert %{state: :paused, host_buffering: false} = restored_empty
+    assert restored_empty.position == 0.0
+  end
+
+  test "clamps restored and monotonic extrapolation to the timeline boundary" do
+    restored =
+      PlaybackState.restore(
+        %{
+          playback_state: "playing",
+          playback_position: 31_535_999.0,
+          playback_buffering: false,
+          playback_updated_at: ~U[2026-01-01 12:00:00Z]
+        },
+        now: 10_000,
+        wall_now: ~U[2026-01-01 12:00:10Z]
+      )
+
+    assert restored.position == 31_536_000.0
+
+    current =
+      PlaybackState.current(
+        %{state: :playing, position: 31_535_999.5, host_buffering: false, updated_at: 0},
+        10_000
+      )
+
+    assert current.position == 31_536_000.0
+  end
 end
