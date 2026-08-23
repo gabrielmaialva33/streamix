@@ -293,12 +293,14 @@ defmodule StreamixWeb.PlayerLiveTest do
       render_hook(view, "request_source_failover", %{
         "content_id" => movie_a.id,
         "position" => 93.75,
-        "reason" => "network exhausted"
+        "reason" => "network exhausted",
+        "request_id" => "player-failover-1"
       })
 
       assert_push_event(view, "source_failover", payload)
       assert payload.content_id == movie_b.id
       assert payload.provider_id == provider_b.id
+      assert payload.request_id == "player-failover-1"
       assert payload.provider_name == "Fonte B"
       assert payload.resume_time == 93.75
       assert payload.failover_count == 1
@@ -309,11 +311,13 @@ defmodule StreamixWeb.PlayerLiveTest do
       render_hook(view, "request_source_failover", %{
         "content_id" => movie_b.id,
         "position" => 100,
-        "reason" => "second source failed"
+        "reason" => "second source failed",
+        "request_id" => "player-failover-2"
       })
 
       assert_push_event(view, "source_failover_unavailable", %{
-        message: "Nenhuma outra fonte está disponível agora."
+        message: "Nenhuma outra fonte está disponível agora.",
+        request_id: "player-failover-2"
       })
     end
 

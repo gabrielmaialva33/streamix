@@ -105,12 +105,14 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     render_hook(view, "request_source_failover", %{
       "content_id" => movie.id,
       "position" => 118.25,
-      "reason" => "upstream exhausted"
+      "reason" => "upstream exhausted",
+      "request_id" => "party-failover-1"
     })
 
     assert_push_event(view, "source_failover", payload)
     assert payload.content_id == fallback_movie.id
     assert payload.provider_id == fallback_provider.id
+    assert payload.request_id == "party-failover-1"
     assert payload.resume_time == 118.25
     assert payload.stream_url =~ "/api/stream/proxy?token="
 
@@ -127,11 +129,13 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     render_hook(view, "request_source_failover", %{
       "content_id" => fallback_movie.id,
       "position" => 120.0,
-      "reason" => "fallback failed"
+      "reason" => "fallback failed",
+      "request_id" => "party-failover-2"
     })
 
     assert_push_event(view, "source_failover_unavailable", %{
-      message: "Nenhuma outra fonte está disponível agora."
+      message: "Nenhuma outra fonte está disponível agora.",
+      request_id: "party-failover-2"
     })
   end
 

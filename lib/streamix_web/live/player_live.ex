@@ -135,6 +135,7 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("request_source_failover", params, socket) do
     position = normalize_failover_position(params["position"])
     reason = normalize_failover_reason(params["reason"])
+    request_id = PlayerSourceFailover.normalize_request_id(params["request_id"])
 
     case PlayerSourceFailover.next(
            socket.assigns.content_type,
@@ -144,7 +145,7 @@ defmodule StreamixWeb.PlayerLive do
          ) do
       {:ok, source, attempted_ids} ->
         count = socket.assigns.source_failover_count + 1
-        payload = PlayerSourceFailover.payload(source, position, count)
+        payload = PlayerSourceFailover.payload(source, position, count, request_id)
 
         :telemetry.execute(
           [:streamix, :player, :source_failover],
@@ -191,10 +192,16 @@ defmodule StreamixWeb.PlayerLive do
         {:noreply,
          socket
          |> assign(source_failover_attempted_ids: attempted_ids)
-         |> push_event("source_failover_unavailable", %{
-           message: "Nenhuma outra fonte está disponível agora.",
-           hint: "Tente novamente em alguns instantes ou escolha outra versão nos detalhes."
-         })}
+         |> push_event(
+           "source_failover_unavailable",
+           PlayerSourceFailover.with_request_id(
+             %{
+               message: "Nenhuma outra fonte está disponível agora.",
+               hint: "Tente novamente em alguns instantes ou escolha outra versão nos detalhes."
+             },
+             request_id
+           )
+         )}
     end
   end
 

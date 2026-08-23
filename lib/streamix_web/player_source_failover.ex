@@ -12,6 +12,9 @@ defmodule StreamixWeb.PlayerSourceFailover do
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerHelpers
 
+  @max_request_id_bytes 128
+  @request_id_pattern ~r/\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
+
   @type source :: %{
           content: map(),
           content_type: String.t(),
@@ -61,8 +64,8 @@ defmodule StreamixWeb.PlayerSourceFailover do
   end
 
   @doc "Builds the credential-free browser payload for a selected source."
-  @spec payload(source(), number(), non_neg_integer()) :: map()
-  def payload(source, position, count) do
+  @spec payload(source(), number(), non_neg_integer(), term()) :: map()
+  def payload(source, position, count, request_id \\ nil) do
     content_type = content_type_atom(source.content_type)
     provider_type = source.provider.provider_type
 
@@ -78,6 +81,29 @@ defmodule StreamixWeb.PlayerSourceFailover do
       failover_count: count,
       message: "Fonte alterada para #{source.provider.name}. Retomando a reprodução."
     }
+    |> with_request_id(request_id)
+  end
+
+  @doc "Normalizes the opaque browser request identifier used to reject stale replies."
+  @spec normalize_request_id(term()) :: String.t() | nil
+  def normalize_request_id(value) when is_binary(value) do
+    request_id = String.trim(value)
+
+    if byte_size(request_id) in 1..@max_request_id_bytes and
+         Regex.match?(@request_id_pattern, request_id) do
+      request_id
+    end
+  end
+
+  def normalize_request_id(_value), do: nil
+
+  @doc "Adds a validated request identifier to an outgoing browser payload."
+  @spec with_request_id(map(), term()) :: map()
+  def with_request_id(payload, request_id) when is_map(payload) do
+    case normalize_request_id(request_id) do
+      nil -> payload
+      request_id -> Map.put(payload, :request_id, request_id)
+    end
   end
 
   defp resolve_candidate(%{content_type: "episode", id: id} = candidate, user_id) do
@@ -96,7 +122,12 @@ defmodule StreamixWeb.PlayerSourceFailover do
   end
 
   defp resolve_stream(candidate, content, provider, user_id) do
-    case PlayerHelpers.resolve_stream_url(candidate.content_type, content, provider, user_id) do
+    case PlayerHelpers.resolve_stream_url(
+           candidate.content_type,
+           content,
+           provider,
+           user_id
+         ) do
       {:ok, stream_url} ->
         {:ok,
          candidate

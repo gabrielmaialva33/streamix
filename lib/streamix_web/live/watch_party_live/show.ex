@@ -455,6 +455,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   def handle_event("request_source_failover", params, socket) do
+    request_id = PlayerSourceFailover.normalize_request_id(params["request_id"])
+
     with true <-
            socket.assigns.is_host and socket.assigns.joined and
              socket.assigns.source_failover_enabled,
@@ -468,7 +470,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
            ),
          {:ok, catalog_item_id} <- resolve_catalog_item_id(source.content_type, source.content),
          count = socket.assigns.source_failover_count + 1,
-         payload = PlayerSourceFailover.payload(source, position, count),
+         payload = PlayerSourceFailover.payload(source, position, count, request_id),
          {:ok, version} <-
            WatchParty.change_content(
              socket.assigns.room.id,
@@ -502,13 +504,14 @@ defmodule StreamixWeb.WatchPartyLive.Show do
        )}
     else
       {:error, :no_sources, attempted_ids} ->
-        source_failover_unavailable(socket, attempted_ids, params["reason"])
+        source_failover_unavailable(socket, attempted_ids, params["reason"], request_id)
 
       _reason ->
         source_failover_unavailable(
           socket,
           socket.assigns.source_failover_attempted_ids,
-          params["reason"]
+          params["reason"],
+          request_id
         )
     end
   end
@@ -740,7 +743,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     |> push_event("source_failover", pending.payload)
   end
 
-  defp source_failover_unavailable(socket, attempted_ids, reason) do
+  defp source_failover_unavailable(socket, attempted_ids, reason, request_id) do
     :telemetry.execute(
       [:streamix, :watch_party, :source_failover],
       %{count: 1},
@@ -758,10 +761,17 @@ defmodule StreamixWeb.WatchPartyLive.Show do
        source_failover_attempted_ids: attempted_ids,
        pending_source_failover: nil
      )
-     |> push_event("source_failover_unavailable", %{
-       message: "Nenhuma outra fonte está disponível agora.",
-       hint: "Tente novamente em alguns instantes ou encerre a sala para escolher outra versão."
-     })}
+     |> push_event(
+       "source_failover_unavailable",
+       PlayerSourceFailover.with_request_id(
+         %{
+           message: "Nenhuma outra fonte está disponível agora.",
+           hint:
+             "Tente novamente em alguns instantes ou encerre a sala para escolher outra versão."
+         },
+         request_id
+       )
+     )}
   end
 
   defp dispatch_playback(socket, action, raw_position) do
