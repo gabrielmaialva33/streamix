@@ -4,6 +4,8 @@ defmodule Streamix.OperationalHealthTest do
   alias Streamix.Gindex.{EndpointPolicy, HealthTracker}
   alias Streamix.OperationalHealth
 
+  @version Path.expand("../../VERSION", __DIR__) |> File.read!() |> String.trim()
+
   import Streamix.IptvFixtures
 
   test "reports failed public provider syncs as degraded without failing readiness" do
@@ -19,7 +21,7 @@ defmodule Streamix.OperationalHealthTest do
     assert snapshot.checks.providers.counts["failed"] == 1
     assert snapshot.checks.semantic_search.status == :disabled
     assert snapshot.checks.torrent.status == :disabled
-    assert snapshot.release.version == "0.0.100"
+    assert snapshot.release.version == @version
     assert is_binary(snapshot.release.revision)
     assert is_binary(snapshot.release.asset_version)
   end

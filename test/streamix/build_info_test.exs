@@ -3,6 +3,8 @@ defmodule Streamix.BuildInfoTest do
 
   alias Streamix.BuildInfo
 
+  @version Path.expand("../../VERSION", __DIR__) |> File.read!() |> String.trim()
+
   setup do
     previous_revision = System.get_env("STREAMIX_REVISION")
 
@@ -19,7 +21,7 @@ defmodule Streamix.BuildInfoTest do
     System.put_env("STREAMIX_REVISION", "abc123")
 
     assert %{
-             version: "0.0.100",
+             version: @version,
              revision: "abc123",
              asset_version: asset_version
            } = BuildInfo.snapshot()

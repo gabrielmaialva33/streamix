@@ -39,7 +39,7 @@ RUN mix local.hex --force && \
 ENV MIX_ENV="prod"
 
 # Install mix dependencies
-COPY mix.exs mix.lock ./
+COPY mix.exs mix.lock VERSION ./
 RUN mix deps.get --only $MIX_ENV
 RUN mkdir config
 
@@ -74,7 +74,7 @@ FROM ${RUNNER_IMAGE}
 ARG GIT_SHA=unknown
 
 RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates curl \
+    apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 libsctp1 locales ca-certificates curl \
     libvips42 \
     ffmpeg \
     && apt-get clean && rm -rf /var/lib/apt/lists/*

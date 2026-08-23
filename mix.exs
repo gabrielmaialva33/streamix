@@ -1,10 +1,12 @@
 defmodule Streamix.MixProject do
   use Mix.Project
 
+  @version Path.join(__DIR__, "VERSION") |> File.read!() |> String.trim()
+
   def project do
     [
       app: :streamix,
-      version: "0.0.100",
+      version: @version,
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

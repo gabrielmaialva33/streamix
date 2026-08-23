@@ -22,8 +22,9 @@ application and REST API. The current tree includes:
 - signed stream URLs, a Phoenix stream proxy, and a live stream multiplexer
 - PWA assets, offline metadata sync hooks, and a mobile / TV-facing REST API
 
-Historical release tags go through `v1.5.0`, but the current `mix.exs` reports `0.0.100`. Do not assume the
-numeric app version is the canonical source of feature availability. Prefer the current tree and git history.
+The application release version is sourced from the root `VERSION` file (currently `0.0.100`) and consumed by
+`mix.exs`. Historical release tags go through `v1.5.0`; do not infer feature availability by comparing those two
+version lines. Prefer the current tree and git history.
 
 This repository is the Phoenix backend + web UI. The older in-repo TV app was extracted to a separate repository, so
 do not document or modify an in-tree Tizen app here.
