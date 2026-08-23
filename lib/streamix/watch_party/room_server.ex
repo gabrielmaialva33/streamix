@@ -12,7 +12,7 @@ defmodule Streamix.WatchParty.RoomServer do
   import Ecto.Query, warn: false
 
   alias Streamix.Repo
-  alias Streamix.WatchParty.{Participant, PlaybackState, Room}
+  alias Streamix.WatchParty.{ConnectionState, Participant, PlaybackState, Room}
 
   require Logger
 
@@ -26,7 +26,6 @@ defmodule Streamix.WatchParty.RoomServer do
   @command_lead_ms 350
   @max_drift_log 2.0
   @drift_resync_threshold 3.0
-  @max_connection_id_bytes 128
 
   # --- Public API ---
 
@@ -590,10 +589,7 @@ defmodule Streamix.WatchParty.RoomServer do
         }
       end
 
-    connections =
-      Map.update(state.connections, user_id, MapSet.new([connection_id]), fn connection_ids ->
-        MapSet.put(connection_ids, connection_id)
-      end)
+    connections = ConnectionState.put(state.connections, user_id, connection_id)
 
     %{
       state
@@ -612,20 +608,7 @@ defmodule Streamix.WatchParty.RoomServer do
       |> cancel_connection_fence(key)
       |> drop_connection_monitor(key, demonitor?)
 
-    connections =
-      case Map.get(state.connections, user_id) do
-        nil ->
-          state.connections
-
-        connection_ids ->
-          remaining = MapSet.delete(connection_ids, connection_id)
-
-          if MapSet.size(remaining) == 0 do
-            Map.delete(state.connections, user_id)
-          else
-            Map.put(state.connections, user_id, remaining)
-          end
-      end
+    connections = ConnectionState.delete(state.connections, user_id, connection_id)
 
     %{state | connections: connections}
   end
@@ -721,17 +704,18 @@ defmodule Streamix.WatchParty.RoomServer do
   end
 
   defp finish_connection_departure(state, user_id) do
-    user_connected? = connected_user?(state, user_id)
+    departure =
+      ConnectionState.departure(
+        state.connections,
+        state.participant_states,
+        state.host_user_id,
+        user_id
+      )
+
+    state = %{state | participant_states: departure.participant_states}
 
     state =
-      if user_connected? do
-        state
-      else
-        %{state | participant_states: Map.delete(state.participant_states, user_id)}
-      end
-
-    state =
-      if user_id == state.host_user_id and not user_connected? do
+      if departure.host_disconnected? do
         state
         |> pause_for_host_absence()
         |> maybe_schedule_host_grace()
@@ -739,34 +723,24 @@ defmodule Streamix.WatchParty.RoomServer do
         state
       end
 
-    {state, %{user_connected?: user_connected?, room_empty?: connection_count(state) == 0}}
+    {state, Map.take(departure, [:user_connected?, :room_empty?])}
   end
 
-  defp connected_user?(state, user_id), do: Map.has_key?(state.connections, user_id)
+  defp connected_user?(state, user_id),
+    do: ConnectionState.user_connected?(state.connections, user_id)
 
-  defp connected_connection?(state, user_id, connection_id) do
-    case Map.get(state.connections, user_id) do
-      %MapSet{} = connection_ids -> MapSet.member?(connection_ids, connection_id)
-      _ -> false
-    end
-  end
+  defp connected_connection?(state, user_id, connection_id),
+    do: ConnectionState.connection_connected?(state.connections, user_id, connection_id)
 
   defp host_connection?(state, user_id, connection_id) do
     user_id == state.host_user_id and connected_connection?(state, user_id, connection_id)
   end
 
-  defp valid_connection?(user_id, connection_id, owner_pid) do
-    is_integer(user_id) and user_id > 0 and is_pid(owner_pid) and is_binary(connection_id) and
-      byte_size(connection_id) > 0 and byte_size(connection_id) <= @max_connection_id_bytes
-  end
+  defp valid_connection?(user_id, connection_id, owner_pid),
+    do: ConnectionState.valid_identity?(user_id, connection_id, owner_pid)
 
-  defp participant_count(state), do: map_size(state.connections)
-
-  defp connection_count(state) do
-    Enum.reduce(state.connections, 0, fn {_user_id, connection_ids}, total ->
-      total + MapSet.size(connection_ids)
-    end)
-  end
+  defp participant_count(state), do: ConnectionState.participant_count(state.connections)
+  defp connection_count(state), do: ConnectionState.connection_count(state.connections)
 
   defp maybe_schedule_host_grace(state) do
     cond do
