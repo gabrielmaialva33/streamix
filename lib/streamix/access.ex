@@ -42,6 +42,11 @@ defmodule Streamix.Access do
 
   def admin?(user), do: Accounts.admin?(user)
 
+  @doc "Returns whether a user may expose a personal provider to other accounts."
+  def publishes_providers?(user) do
+    admin?(user) or explicitly_permitted?(user, "publish_provider")
+  end
+
   def subscribed?(user), do: Billing.subscribed?(user)
 
   def explicitly_permitted?(%{id: user_id, role_id: role_id}, permission_name)

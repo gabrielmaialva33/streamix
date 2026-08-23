@@ -9,7 +9,8 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.WatchPartyComponents
 
   alias Streamix.{Accounts, Billing, Iptv, WatchParty}
-  alias StreamixWeb.Presence
+  alias StreamixWeb.{PlayerSourceFailover, Presence}
+  alias StreamixWeb.WatchPartyLive.Status
 
   require Logger
 
@@ -78,7 +79,11 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         buffering: false,
         last_beacon_at: nil,
         last_beacon_buffering: false,
-        last_buffering_transition_at: nil
+        last_buffering_transition_at: nil,
+        source_failover_enabled: is_host and automatic_failover_supported?(source_type, provider),
+        source_failover_attempted_ids: MapSet.new([content.id]),
+        source_failover_count: 0,
+        pending_source_failover: nil
       )
       |> stream(:messages, messages)
 
@@ -449,6 +454,78 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     {:noreply, socket}
   end
 
+  def handle_event("request_source_failover", params, socket) do
+    with true <-
+           socket.assigns.is_host and socket.assigns.joined and
+             socket.assigns.source_failover_enabled,
+         {:ok, position} <- normalize_position(params["position"]),
+         {:ok, source, attempted_ids} <-
+           PlayerSourceFailover.next(
+             socket.assigns.source_type,
+             socket.assigns.content,
+             socket.assigns.current_scope.user,
+             socket.assigns.source_failover_attempted_ids
+           ),
+         {:ok, catalog_item_id} <- resolve_catalog_item_id(source.content_type, source.content),
+         count = socket.assigns.source_failover_count + 1,
+         payload = PlayerSourceFailover.payload(source, position, count),
+         {:ok, version} <-
+           WatchParty.change_content(
+             socket.assigns.room.id,
+             socket.assigns.user_id,
+             socket.assigns.connection_id,
+             %{
+               catalog_item_id: catalog_item_id,
+               source_type: source.content_type,
+               source_id: source.content.id,
+               position: position
+             }
+           ) do
+      :telemetry.execute(
+        [:streamix, :watch_party, :source_failover],
+        %{count: 1},
+        %{
+          room_id: socket.assigns.room.id,
+          from_content_id: socket.assigns.content.id,
+          to_content_id: source.content.id,
+          provider_id: source.provider.id,
+          reason: normalize_failover_reason(params["reason"]),
+          status: :selected
+        }
+      )
+
+      {:noreply,
+       assign(socket,
+         source_failover_attempted_ids: attempted_ids,
+         source_failover_count: count,
+         pending_source_failover: %{version: version, source: source, payload: payload}
+       )}
+    else
+      {:error, :no_sources, attempted_ids} ->
+        source_failover_unavailable(socket, attempted_ids, params["reason"])
+
+      _reason ->
+        source_failover_unavailable(
+          socket,
+          socket.assigns.source_failover_attempted_ids,
+          params["reason"]
+        )
+    end
+  end
+
+  def handle_event("reset_source_failover", _params, socket) do
+    if socket.assigns.is_host do
+      {:noreply,
+       assign(socket,
+         source_failover_attempted_ids: MapSet.new([socket.assigns.content.id]),
+         source_failover_count: 0,
+         pending_source_failover: nil
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("buffering", %{"buffering" => buffering}, socket)
       when is_boolean(buffering) do
     socket = assign(socket, buffering: buffering)
@@ -574,6 +651,13 @@ defmodule StreamixWeb.WatchPartyLive.Show do
      |> push_event("wp_host_status", %{status: Atom.to_string(status)})}
   end
 
+  def handle_info(
+        {:content_changed, %{version: version} = change},
+        %{assigns: %{pending_source_failover: %{version: version} = pending}} = socket
+      ) do
+    {:noreply, apply_pending_source_failover(socket, pending, change)}
+  end
+
   def handle_info({:content_changed, %{version: version}}, socket) do
     {:noreply,
      push_navigate(socket,
@@ -607,6 +691,78 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   # --- Private helpers ---
+
+  defp apply_pending_source_failover(socket, pending, change) do
+    source = pending.source
+    position = Map.get(change, :position, pending.payload.resume_time)
+    version = Map.fetch!(change, :version)
+
+    room = %{
+      socket.assigns.room
+      | catalog_item_id: Map.get(change, :catalog_item_id, socket.assigns.room.catalog_item_id),
+        source_type: source.content_type,
+        source_id: source.content.id,
+        playback_state: "paused",
+        playback_position: position,
+        playback_buffering: false,
+        playback_version: version
+    }
+
+    playback_state = %{
+      state: :paused,
+      position: position,
+      host_buffering: false,
+      version: version,
+      server_time: System.system_time(:millisecond)
+    }
+
+    socket
+    |> assign(
+      page_title: "Watch Party — #{content_title(source.content, source.content_type)}",
+      room: room,
+      content: source.content,
+      source_type: source.content_type,
+      content_type: safe_content_type(source.content_type),
+      provider: source.provider,
+      stream_url: source.stream_url,
+      next_episode:
+        load_next_episode(
+          source.content_type,
+          source.content,
+          source.provider,
+          socket.assigns.user_id
+        ),
+      playback_state: playback_state,
+      current_time: position,
+      buffering: false,
+      pending_source_failover: nil
+    )
+    |> push_event("source_failover", pending.payload)
+  end
+
+  defp source_failover_unavailable(socket, attempted_ids, reason) do
+    :telemetry.execute(
+      [:streamix, :watch_party, :source_failover],
+      %{count: 1},
+      %{
+        room_id: socket.assigns.room.id,
+        from_content_id: socket.assigns.content.id,
+        reason: normalize_failover_reason(reason),
+        status: :unavailable
+      }
+    )
+
+    {:noreply,
+     socket
+     |> assign(
+       source_failover_attempted_ids: attempted_ids,
+       pending_source_failover: nil
+     )
+     |> push_event("source_failover_unavailable", %{
+       message: "Nenhuma outra fonte está disponível agora.",
+       hint: "Tente novamente em alguns instantes ou encerre a sala para escolher outra versão."
+     })}
+  end
 
   defp dispatch_playback(socket, action, raw_position) do
     with true <- socket.assigns.is_host and socket.assigns.joined,
@@ -928,6 +1084,14 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp normalize_optional_integer(value) when is_float(value), do: trunc(value)
   defp normalize_optional_integer(_value), do: nil
 
+  defp normalize_failover_reason(reason) when is_binary(reason) do
+    reason
+    |> String.trim()
+    |> String.slice(0, 160)
+  end
+
+  defp normalize_failover_reason(_reason), do: "unknown"
+
   defp safe_content_type("live_channel"), do: :live_channel
   defp safe_content_type("movie"), do: :movie
   defp safe_content_type("episode"), do: :episode
@@ -941,54 +1105,6 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp safe_streaming_mode("quality"), do: :quality
   defp safe_streaming_mode("adaptive"), do: :adaptive
   defp safe_streaming_mode(_mode), do: :balanced
-
-  defp show_sync_status?(false, :offline, _sync_status), do: true
-  defp show_sync_status?(_is_host, _host_status, sync_status), do: sync_status != "synced"
-
-  defp sync_status_text(false, :offline, _sync_status, _drift_ms),
-    do: "Anfitrião desconectado — aguardando retorno"
-
-  defp sync_status_text(_is_host, _host_status, "disconnected", _drift_ms),
-    do: "Sincronização desconectada"
-
-  defp sync_status_text(_is_host, _host_status, "buffering", _drift_ms),
-    do: "Aguardando o buffer"
-
-  defp sync_status_text(_is_host, _host_status, "connecting", _drift_ms),
-    do: "Conectando à sincronização"
-
-  defp sync_status_text(_is_host, _host_status, "correcting", drift_ms)
-       when is_integer(drift_ms) and drift_ms > 0,
-       do: "Ajustando sincronização (#{drift_ms} ms)"
-
-  defp sync_status_text(_is_host, _host_status, "correcting", _drift_ms),
-    do: "Ajustando sincronização"
-
-  defp sync_status_text(true, _host_status, _sync_status, _drift_ms),
-    do: "Você controla a reprodução"
-
-  defp sync_status_text(false, _host_status, _sync_status, drift_ms)
-       when is_integer(drift_ms) and drift_ms >= 100,
-       do: "Sincronizado com o anfitrião (#{drift_ms} ms)"
-
-  defp sync_status_text(false, _host_status, _sync_status, _drift_ms),
-    do: "Sincronizado com o anfitrião"
-
-  defp sync_status_class(is_host, host_status, sync_status) do
-    base =
-      "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-card backdrop-blur-sm"
-
-    modifier =
-      cond do
-        host_status == :offline -> " bg-warning/90 text-black"
-        sync_status == "disconnected" -> " bg-error/90 text-white"
-        sync_status in ["connecting", "correcting", "buffering"] -> " bg-warning/90 text-black"
-        is_host -> " bg-brand/90 text-white"
-        true -> " bg-success/90 text-black"
-      end
-
-    base <> modifier
-  end
 
   defp unavailable_room(socket) do
     {:ok,

@@ -21,7 +21,7 @@ defmodule StreamixWeb.Home.Cards do
 
     ~H"""
     <div class={[
-      "w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start sm:w-[132px] sm:max-w-none lg:w-[148px]",
+      "media-shelf-card media-shelf-card--poster media-shelf-card--poster-home",
       @class
     ]}>
       <.movie_card
@@ -45,7 +45,7 @@ defmodule StreamixWeb.Home.Cards do
 
     ~H"""
     <div class={[
-      "w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start sm:w-[132px] sm:max-w-none lg:w-[148px]",
+      "media-shelf-card media-shelf-card--poster media-shelf-card--poster-home",
       @class
     ]}>
       <.series_card
@@ -69,7 +69,7 @@ defmodule StreamixWeb.Home.Cards do
     <.link
       href={~p"/watch/live_channel/#{@channel.id}"}
       class={[
-        "content-card group block w-[42vw] min-w-[148px] max-w-[180px] flex-shrink-0 snap-start transition-all duration-300 sm:w-[150px] sm:max-w-none lg:w-[176px]",
+        "content-card media-shelf-card media-shelf-card--live group block transition-all duration-300",
         @class
       ]}
     >
@@ -123,7 +123,7 @@ defmodule StreamixWeb.Home.Cards do
     <.link
       href={watch_path(@entry.content_type, @entry.content_id)}
       class={[
-        "group block w-[58vw] min-w-[196px] max-w-[230px] flex-shrink-0 snap-start transition-all duration-300 sm:w-[220px] sm:max-w-none lg:w-[240px]",
+        "media-shelf-card media-shelf-card--progress group block transition-all duration-300",
         @class
       ]}
     >
@@ -183,7 +183,7 @@ defmodule StreamixWeb.Home.Cards do
     <.link
       href={watch_path(@favorite.content_type, @favorite.content_id)}
       class={[
-        "content-card group w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start overflow-hidden rounded-md bg-surface transition-transform duration-300 hover:-translate-y-1 sm:w-[96px] sm:max-w-none sm:rounded-lg lg:w-[108px]",
+        "content-card media-shelf-card media-shelf-card--favorite group overflow-hidden rounded-md bg-surface transition-transform duration-300 hover:-translate-y-1 sm:rounded-lg",
         @class
       ]}
     >

@@ -15,6 +15,7 @@ defmodule Streamix.Accounts.User do
     field :subtitles_enabled, :boolean, default: true
     field :subtitle_language, :string, default: "pt-BR"
     field :subtitle_offset_ms, :integer, default: 0
+    field :locale, :string, default: "pt_BR"
 
     belongs_to :role, Streamix.Accounts.Role
 
@@ -181,9 +182,12 @@ defmodule Streamix.Accounts.User do
       :show_adult_content,
       :subtitles_enabled,
       :subtitle_language,
-      :subtitle_offset_ms
+      :subtitle_offset_ms,
+      :locale
     ])
     |> validate_inclusion(:subtitle_language, ["pt-BR", "pt-PT", "en", "es"])
+    |> validate_inclusion(:locale, ["pt_BR", "en"])
+    |> check_constraint(:locale, name: :users_locale_supported)
     |> validate_number(:subtitle_offset_ms,
       greater_than_or_equal_to: -600_000,
       less_than_or_equal_to: 600_000

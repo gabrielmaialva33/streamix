@@ -29,6 +29,7 @@
       subtitle_offset_ms={@current_scope.user.subtitle_offset_ms}
       party_mode={true}
       party_role={if @is_host, do: :host, else: :viewer}
+      source_failover_enabled={@source_failover_enabled}
     />
 
     <div
@@ -91,12 +92,12 @@
     </div>
 
     <div
-      :if={show_sync_status?(@is_host, @host_status, @sync_status)}
+      :if={Status.show?(@is_host, @host_status, @sync_status)}
       class="pointer-events-none absolute left-1/2 top-[calc(4.75rem+env(safe-area-inset-top,0px))] z-20 max-w-[calc(100vw-2rem)] -translate-x-1/2"
     >
       <span
         id="watch-party-sync-status"
-        class={sync_status_class(@is_host, @host_status, @sync_status)}
+        class={Status.class(@is_host, @host_status, @sync_status)}
         role="status"
         aria-live="polite"
       >
@@ -108,7 +109,7 @@
           <span class="relative inline-flex size-1.5 rounded-full bg-current" />
         </span>
         <span data-sync-status-text>
-          {sync_status_text(@is_host, @host_status, @sync_status, @sync_drift_ms)}
+          {Status.text(@is_host, @host_status, @sync_status, @sync_drift_ms)}
         </span>
       </span>
     </div>

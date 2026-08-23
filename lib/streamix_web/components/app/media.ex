@@ -116,13 +116,16 @@ defmodule StreamixWeb.App.Media do
   end
 
   attr :provider, :map, required: true
+  attr :sync_progress, :map, default: nil
   attr :on_sync, :string, default: "sync_provider"
   attr :on_edit, :string, default: "edit_provider"
   attr :on_delete, :string, default: "delete_provider"
 
   def provider_card(assigns) do
     assigns =
-      assign(assigns, :sync_message, sync_status_message(assigns.provider.sync_status))
+      assigns
+      |> assign(:sync_message, sync_status_message(assigns.provider.sync_status))
+      |> assign(:sync_progress_label, sync_progress_label(assigns.sync_progress))
 
     ~H"""
     <div
@@ -148,6 +151,30 @@ defmodule StreamixWeb.App.Media do
       >
         {@sync_message}
       </p>
+
+      <div
+        :if={@sync_progress}
+        data-sync-progress
+        class="mt-3 rounded-lg border border-border bg-surface-hover/45 p-3"
+      >
+        <div class="mb-2 flex items-center justify-between gap-3 text-xs">
+          <span class="truncate font-medium text-text-primary">{@sync_progress_label}</span>
+          <span class="tabular-nums text-text-muted">{@sync_progress.percent}%</span>
+        </div>
+        <div
+          class="h-1.5 overflow-hidden rounded-full bg-border"
+          role="progressbar"
+          aria-label={@sync_progress_label}
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={@sync_progress.percent}
+        >
+          <div
+            class="h-full rounded-full bg-brand transition-[width] duration-300"
+            style={"width: #{@sync_progress.percent}%"}
+          />
+        </div>
+      </div>
 
       <div class="mt-4 min-h-12 text-sm text-text-secondary">
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -239,6 +266,35 @@ defmodule StreamixWeb.App.Media do
 
   defp sync_status_message("failed"), do: "A última sincronização falhou. Tente novamente."
   defp sync_status_message(_status), do: nil
+
+  defp sync_progress_label(nil), do: nil
+
+  defp sync_progress_label(%{phase: phase, type: type}) do
+    base =
+      case phase do
+        :queued -> "Na fila de sincronização"
+        :categories -> "Sincronizando categorias"
+        :live -> "Sincronizando canais"
+        :movies -> "Sincronizando filmes"
+        :series -> "Sincronizando séries"
+        :series_details -> "Atualizando episódios"
+        :metadata -> "Atualizando metadados"
+        :cleanup -> "Finalizando catálogo"
+        _ -> "Sincronizando catálogo"
+      end
+
+    case type do
+      value when value in [nil, "", :all] -> base
+      value -> "#{base} · #{format_sync_type(value)}"
+    end
+  end
+
+  defp format_sync_type(value) do
+    value
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
 
   defp sync_status_badge(assigns) do
     {bg, text, label} = Map.get(@sync_status_badges, assigns.status, @unknown_sync_badge)

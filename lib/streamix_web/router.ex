@@ -28,6 +28,7 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.CSPNonce
 
     plug :fetch_current_scope_for_user
+    plug StreamixWeb.Plugs.Locale
     plug :put_early_hints
   end
 
@@ -340,6 +341,7 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :mount_current_scope},
+            StreamixWeb.OnMount.Locale,
             StreamixWeb.OnMount.ProviderHealth,
             StreamixWeb.OnMount.ThemeEvents,
             StreamixWeb.OnMount.ClientTelemetry
@@ -360,6 +362,7 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :redirect_if_authenticated},
+            StreamixWeb.OnMount.Locale,
             StreamixWeb.OnMount.ThemeEvents,
             StreamixWeb.OnMount.ClientTelemetry
           ],
@@ -385,6 +388,7 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :require_authenticated},
+            StreamixWeb.OnMount.Locale,
             StreamixWeb.OnMount.ProviderHealth,
             StreamixWeb.OnMount.ThemeEvents,
             StreamixWeb.OnMount.ClientTelemetry
@@ -394,6 +398,7 @@ defmodule StreamixWeb.Router do
       live "/settings", User.SettingsLive, :index
       live "/billing", BillingLive, :index
       live "/search", SearchLive, :index
+      live "/guide", Content.GuideLive, :index
 
       # Global catalog (uses system global provider)
       live "/browse", Content.LiveChannelsLive, :index
@@ -445,6 +450,7 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :require_authenticated},
+            StreamixWeb.OnMount.Locale,
             StreamixWeb.OnMount.ThemeEvents,
             StreamixWeb.OnMount.ClientTelemetry
           ],
@@ -459,6 +465,7 @@ defmodule StreamixWeb.Router do
         @sandbox_on_mount ++
           [
             {StreamixWeb.UserAuth, :require_authenticated},
+            StreamixWeb.OnMount.Locale,
             {StreamixWeb.UserAuth, :require_admin},
             StreamixWeb.OnMount.ThemeEvents,
             StreamixWeb.OnMount.ClientTelemetry

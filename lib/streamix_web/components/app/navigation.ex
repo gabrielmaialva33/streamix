@@ -4,6 +4,7 @@ defmodule StreamixWeb.App.Navigation do
   """
 
   use Phoenix.Component
+  use Gettext, backend: StreamixWeb.Gettext
 
   import StreamixWeb.CoreComponents
 
@@ -83,7 +84,7 @@ defmodule StreamixWeb.App.Navigation do
     ~H"""
     <nav
       id="mobile-bottom-nav"
-      aria-label="Navegação principal"
+      aria-label={gettext("Navegação principal")}
       class="mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 md:hidden"
     >
       <div class="grid h-[3.75rem] grid-cols-5 items-stretch">
@@ -93,7 +94,7 @@ defmodule StreamixWeb.App.Navigation do
           current_path={@current_path}
           icon="hero-home"
           icon_active="hero-home-solid"
-          label="Início"
+          label={gettext("Início")}
           active={@current_path in ["/", "/home"]}
         />
         <.bottom_tab
@@ -102,8 +103,11 @@ defmodule StreamixWeb.App.Navigation do
           current_path={@current_path}
           icon="hero-squares-2x2"
           icon_active="hero-squares-2x2-solid"
-          label="Catálogo"
-          active={String.starts_with?(@current_path, "/browse")}
+          label={gettext("Catálogo")}
+          active={
+            String.starts_with?(@current_path, "/browse") or
+              String.starts_with?(@current_path, "/guide")
+          }
         />
         <.bottom_tab
           id="mobile-tab-search"
@@ -111,7 +115,7 @@ defmodule StreamixWeb.App.Navigation do
           current_path={@current_path}
           icon="hero-magnifying-glass"
           icon_active="hero-magnifying-glass-solid"
-          label="Busca"
+          label={gettext("Busca")}
           active={String.starts_with?(@current_path, "/search")}
         />
         <.bottom_tab
@@ -120,7 +124,7 @@ defmodule StreamixWeb.App.Navigation do
           current_path={@current_path}
           icon="hero-heart"
           icon_active="hero-heart-solid"
-          label="Lista"
+          label={gettext("Lista")}
           active={String.starts_with?(@current_path, "/favorites")}
         />
         <.bottom_tab
@@ -129,7 +133,7 @@ defmodule StreamixWeb.App.Navigation do
           current_path={@current_path}
           icon="hero-user-circle"
           icon_active="hero-user-circle-solid"
-          label="Perfil"
+          label={gettext("Perfil")}
           active={String.starts_with?(@current_path, "/settings")}
         />
       </div>

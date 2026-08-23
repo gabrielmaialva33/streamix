@@ -175,6 +175,16 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             />
           <% end %>
 
+          <.link
+            :if={@mode == :browse}
+            navigate={~p"/guide"}
+            class="segmented-control__item flex-shrink-0"
+            title="Abrir guia de programação"
+          >
+            <.icon name="hero-calendar-days" class="size-4" />
+            <span class="hidden sm:inline">Guia</span>
+          </.link>
+
           <.provider_dropdown
             :if={@mode == :browse}
             providers={@provider_options}

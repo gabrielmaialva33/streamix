@@ -6,7 +6,18 @@ defmodule Streamix.AI.UserAnalyticsTest do
   import Streamix.IptvFixtures
 
   alias Streamix.AI.UserAnalytics
-  alias Streamix.AI.UserAnalytics.{Filters, Indexing, Insights, Profile, Recommendations}
+
+  alias Streamix.AI.UserAnalytics.{
+    Channels,
+    Context,
+    Filters,
+    Indexing,
+    Insights,
+    PersonalizedContent,
+    Profile,
+    Recommendations
+  }
+
   alias Streamix.Cache
   alias Streamix.Iptv.{Category, Episode, Genre, History, Season, WatchProgress}
 
@@ -276,6 +287,75 @@ defmodule Streamix.AI.UserAnalyticsTest do
       assert_received {:profile_embedding_ids, "series", [series_id]}
       assert series_id == series.id
       refute series_id == episode.id
+    end
+  end
+
+  describe "personalization context and hybrid ranking" do
+    test "returns one complete empty context for a user without history" do
+      user = user_fixture()
+
+      assert %{
+               profile: nil,
+               insights: %{has_data: false},
+               movie_recommendations: [],
+               series_recommendations: [],
+               movie_scores: %{},
+               series_scores: %{}
+             } = Context.load(user.id)
+
+      assert UserAnalytics.get_personalization_context(user.id) == Context.load(user.id)
+    end
+
+    test "semantic similarity leads the hybrid score while metadata fills coverage gaps" do
+      items = [
+        %{
+          id: 1,
+          name: "Ação bem avaliada",
+          genres: [%{name: "Action"}],
+          rating: Decimal.new("9.8"),
+          year: 2026
+        },
+        %{
+          id: 2,
+          name: "Drama semanticamente próximo",
+          genres: [%{name: "Drama"}],
+          rating: "6.0",
+          year: 2020
+        },
+        %{id: 3, name: "Sem metadados", genres: [], rating: nil, year: nil}
+      ]
+
+      ranked =
+        PersonalizedContent.rank_items(
+          items,
+          %{favorite_genres: ["Action"]},
+          %{2 => 0.96, 1 => 0.1},
+          current_year: 2026
+        )
+
+      assert Enum.map(ranked, & &1.id) == [2, 1, 3]
+    end
+
+    test "channel affinity is deterministic and uses stable name/id tie breakers" do
+      channels = [
+        %{id: 3, name: "Zulu"},
+        %{id: 1, name: "Bravo"},
+        %{id: 2, name: "Alpha"},
+        %{id: 4, name: "Alpha"}
+      ]
+
+      category_scores = %{10 => 8.0, 20 => 3.0}
+      category_refs = [{1, 20}, {2, 10}, {4, 10}]
+
+      expected = [2, 4, 1, 3]
+
+      assert channels
+             |> Channels.rank_candidates(category_scores, category_refs)
+             |> Enum.map(& &1.id) == expected
+
+      assert channels
+             |> Channels.rank_candidates(category_scores, Enum.reverse(category_refs))
+             |> Enum.map(& &1.id) == expected
     end
   end
 

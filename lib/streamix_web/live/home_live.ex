@@ -18,24 +18,97 @@ defmodule StreamixWeb.HomeLive do
       socket
       |> assign(page_title: "Início")
       |> assign(current_path: home_path(socket))
-      |> assign(loading: true)
+      |> assign(loading: false)
       |> Data.assign_empty()
-
-    # Load data asynchronously for skeleton screen effect
-    if connected?(socket) do
-      send(self(), :load_data)
-    end
+      |> maybe_start_home_tasks()
 
     {:ok, socket}
   end
 
-  def handle_info(:load_data, socket) do
-    Logger.info("[HomeLive] :load_data fired user_id=#{user_id_from_socket(socket)}")
-    {:noreply, Data.load(socket)}
+  def handle_async(task, {:ok, sections}, socket)
+      when task in [:home_catalog, :home_personalization, :home_library, :home_annotations] do
+    group = task_group(task)
+
+    socket =
+      socket
+      |> Data.apply_sections(sections)
+      |> Data.mark_loaded(group)
+      |> maybe_start_annotations()
+
+    emit_home_group(group, :ok)
+    {:noreply, socket}
+  end
+
+  def handle_async(task, {:exit, reason}, socket)
+      when task in [:home_catalog, :home_personalization, :home_library, :home_annotations] do
+    group = task_group(task)
+    Logger.warning("[HomeLive] #{group} load failed: #{inspect(reason)}")
+    emit_home_group(group, :error)
+
+    {:noreply,
+     socket
+     |> Data.mark_loaded(group)
+     |> maybe_start_annotations()}
   end
 
   defp user_id_from_socket(%{assigns: %{current_scope: %{user: %{id: id}}}}), do: id
   defp user_id_from_socket(_), do: nil
+
+  defp maybe_start_home_tasks(socket) do
+    if connected?(socket) do
+      snapshot = home_snapshot(socket.assigns)
+
+      socket
+      |> start_async(:home_catalog, fn -> Data.catalog_sections(snapshot) end)
+      |> start_async(:home_personalization, fn -> Data.personalization_sections(snapshot) end)
+      |> start_async(:home_library, fn -> Data.library_sections(snapshot) end)
+    else
+      socket
+    end
+  end
+
+  defp maybe_start_annotations(socket) do
+    if connected?(socket) and Data.ready_for_annotations?(socket.assigns) and
+         Data.loading?(socket.assigns, :annotations) do
+      snapshot = home_snapshot(socket.assigns)
+
+      socket
+      |> Data.mark_started(:annotations)
+      |> start_async(:home_annotations, fn -> Data.annotation_sections(snapshot) end)
+    else
+      socket
+    end
+  end
+
+  defp home_snapshot(assigns) do
+    Map.take(assigns, [
+      :current_scope,
+      :featured,
+      :movies,
+      :series,
+      :channels,
+      :trending,
+      :new_releases,
+      :top_10,
+      :trending_genre,
+      :trending_period,
+      :series_genre,
+      :channels_category
+    ])
+  end
+
+  defp task_group(:home_catalog), do: :catalog
+  defp task_group(:home_personalization), do: :personalization
+  defp task_group(:home_library), do: :library
+  defp task_group(:home_annotations), do: :annotations
+
+  defp emit_home_group(group, status) do
+    :telemetry.execute(
+      [:streamix, :home, :group],
+      %{count: 1},
+      %{group: group, status: status}
+    )
+  end
 
   # ============================================
   # Event Handlers
@@ -95,15 +168,15 @@ defmodule StreamixWeb.HomeLive do
 
   def render(assigns) do
     ~H"""
-    <div data-loading-home={@loading && "true"}>
-      <%= if @loading do %>
-        <.skeleton_page rows={4} />
+    <div
+      id="home-progressive-shell"
+      data-loading-home={@loading && "true"}
+      aria-busy={Enum.any?(@home_loading, fn {_group, loading?} -> loading? end)}
+    >
+      <%= if @current_scope do %>
+        <.render_authenticated_home {assigns} />
       <% else %>
-        <%= if @current_scope do %>
-          <.render_authenticated_home {assigns} />
-        <% else %>
-          <.render_landing_page {assigns} />
-        <% end %>
+        <.render_landing_page {assigns} />
       <% end %>
     </div>
     """

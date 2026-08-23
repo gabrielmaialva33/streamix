@@ -11,6 +11,11 @@ defmodule StreamixWeb.Home.Landing do
   alias StreamixWeb.Helpers.ImageProxy
 
   def render_landing_page(assigns) do
+    assigns =
+      assigns
+      |> assign(:catalog_loading, group_loading?(assigns.home_loading, :catalog))
+      |> assign(:personalization_loading, group_loading?(assigns.home_loading, :personalization))
+
     ~H"""
     <% featured = featured_content(@featured) %>
     <% hero_image = if featured, do: public_hero_image(featured) %>
@@ -89,6 +94,14 @@ defmodule StreamixWeb.Home.Landing do
         />
       </div>
 
+      <div
+        :if={@catalog_loading || @personalization_loading}
+        id="public-catalog-loading"
+        aria-label="Carregando catálogo público"
+      >
+        <.skeleton_carousel count={5} />
+      </div>
+
       <.public_media_shelf
         :if={@trending != []}
         id="public-trending"
@@ -128,7 +141,10 @@ defmodule StreamixWeb.Home.Landing do
       <.public_channel_shelf :if={@channels != []} channels={@channels} />
 
       <div
-        :if={@movies == [] && @series == [] && @channels == []}
+        :if={
+          !@catalog_loading && !@personalization_loading && @movies == [] && @series == [] &&
+            @channels == []
+        }
         class="rounded-lg border border-white/10 bg-surface/60 px-6 py-12 text-center"
       >
         <.icon name="hero-squares-2x2" class="mx-auto mb-3 size-10 text-text-muted" />
@@ -344,6 +360,9 @@ defmodule StreamixWeb.Home.Landing do
     url = Map.get(content, :stream_icon) || Map.get(content, :cover)
     ImageProxy.browser_poster(url, :carousel)
   end
+
+  defp group_loading?(home_loading, group),
+    do: Map.get(home_loading || %{}, group) in [true, :running]
 
   defp public_rating(content) do
     case Map.get(content, :rating) do

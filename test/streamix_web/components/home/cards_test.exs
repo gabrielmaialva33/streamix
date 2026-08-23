@@ -89,14 +89,14 @@ defmodule StreamixWeb.Home.CardsTest do
         recommendations: [movie]
       )
 
-    assert home_html =~ "snap-x"
-    assert home_html =~ "overflow-x-auto"
-    assert home_html =~ "w-[30vw]"
+    assert home_html =~ "media-shelf-track"
+    assert home_html =~ "media-shelf-card--poster-home"
+    refute home_html =~ "w-[30vw]"
     refute home_html =~ "grid-cols-2"
 
-    assert recommendation_html =~ "snap-x"
-    assert recommendation_html =~ "overflow-x-auto"
-    assert recommendation_html =~ "w-[30vw]"
+    assert recommendation_html =~ "media-shelf-track"
+    assert recommendation_html =~ "media-shelf-card--poster-featured"
+    refute recommendation_html =~ "w-[30vw]"
     refute recommendation_html =~ "grid-cols-2"
   end
 end

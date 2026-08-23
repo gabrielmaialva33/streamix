@@ -1,0 +1,148 @@
+/* ============================================
+   TV Guide
+   ============================================ */
+
+.guide-toolbar {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+    padding: 0.75rem;
+}
+
+.guide-input {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-hover);
+    color: var(--text-primary);
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    outline: none;
+    transition: border-color 160ms var(--ease-smooth), box-shadow 160ms var(--ease-smooth);
+}
+
+.guide-input:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 16%, transparent);
+}
+
+.guide-icon-button,
+.guide-now-button,
+.guide-favorite-button {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    color: var(--text-secondary);
+    transition: color 160ms var(--ease-smooth), background 160ms var(--ease-smooth), border-color 160ms var(--ease-smooth);
+}
+
+.guide-icon-button:hover,
+.guide-now-button:hover,
+.guide-favorite-button:hover {
+    border-color: color-mix(in srgb, var(--color-brand) 45%, var(--color-border));
+    background: var(--color-surface-hover);
+    color: var(--text-primary);
+}
+
+.guide-now-button {
+    flex: 1 1 auto;
+    gap: 0.4rem;
+    padding-inline: 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 650;
+}
+
+.guide-row {
+    display: grid;
+    gap: 0.625rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+    padding: 0.625rem;
+}
+
+.guide-channel {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.guide-favorite-button {
+    flex: 0 0 auto;
+    border-color: transparent;
+    background: var(--color-surface-hover);
+}
+
+.guide-programs {
+    display: grid;
+    grid-auto-columns: minmax(150px, 72vw);
+    grid-auto-flow: column;
+    gap: 0.5rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 0.15rem;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+}
+
+.guide-programs::-webkit-scrollbar {
+    display: none;
+}
+
+.guide-program {
+    min-height: 72px;
+    scroll-snap-align: start;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-hover);
+    padding: 0.625rem;
+}
+
+.guide-program--current {
+    border-color: color-mix(in srgb, var(--color-brand) 55%, var(--color-border));
+    background: color-mix(in srgb, var(--color-brand) 10%, var(--color-surface-hover));
+    box-shadow: inset 3px 0 0 var(--color-brand);
+}
+
+.guide-program--empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-style: italic;
+}
+
+@media (min-width: 640px) {
+    .guide-toolbar {
+        padding: 1rem;
+    }
+
+    .guide-now-button {
+        flex: 0 0 auto;
+    }
+
+    .guide-row {
+        grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .guide-channel {
+        border-right: 1px solid var(--color-border);
+        padding-right: 0.75rem;
+    }
+
+    .guide-programs {
+        grid-auto-columns: minmax(180px, 230px);
+    }
+}

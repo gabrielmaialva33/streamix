@@ -2,6 +2,7 @@ defmodule StreamixWeb.Providers.ProviderListLiveTest do
   use StreamixWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
   describe "edit route" do
@@ -19,6 +20,33 @@ defmodule StreamixWeb.Providers.ProviderListLiveTest do
       assert has_element?(view, "#provider-form")
       assert render(view) =~ "Editar Provedor"
       assert render(view) =~ "Meu Provider"
+    end
+  end
+
+  describe "provider form permissions" do
+    test "keeps shared visibility unavailable to regular users", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+
+      {:ok, view, _html} = live(conn, ~p"/providers/new")
+
+      refute has_element?(view, "#provider_is_public")
+      assert has_element?(view, "#provider-form", "Novos provedores são privados")
+    end
+
+    test "allows administrators to publish a provider", %{conn: conn} do
+      admin = admin_user_fixture()
+      conn = log_in_user(conn, admin)
+
+      {:ok, view, _html} = live(conn, ~p"/providers/new")
+
+      assert has_element?(view, "#provider_is_public")
+
+      assert has_element?(
+               view,
+               "label[for='provider_is_public']",
+               "Compartilhar no catálogo público"
+             )
     end
   end
 
@@ -46,7 +74,14 @@ defmodule StreamixWeb.Providers.ProviderListLiveTest do
          }}
       )
 
-      assert has_element?(view, "#providers-#{provider.id}", "Provider sincronizando")
+      card = "#providers-#{provider.id}"
+      assert has_element?(view, card, "Provider sincronizando")
+      assert has_element?(view, "#{card} [data-sync-progress]", "Sincronizando categorias")
+
+      assert has_element?(
+               view,
+               "#{card} [role='progressbar'][aria-valuenow='0'][aria-valuemax='100']"
+             )
     end
 
     test "renders pending sync state and touch-safe labelled actions", %{

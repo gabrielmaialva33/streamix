@@ -247,6 +247,101 @@ defmodule StreamixWeb.PlayerLiveTest do
       end
     end
 
+    test "moves terminal VOD playback to the next equivalent healthy source", %{
+      conn: conn,
+      user: user
+    } do
+      provider_a =
+        provider_fixture(user, %{
+          name: "Fonte A",
+          visibility: "private",
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      provider_b =
+        provider_fixture(user, %{
+          name: "Fonte B",
+          visibility: "private",
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      movie_a =
+        movie_fixture(provider_a, %{
+          name: "Filme com redundância",
+          title: "Filme com redundância",
+          year: 2025,
+          tmdb_id: "991122",
+          stream_id: 81_001
+        })
+
+      movie_b =
+        movie_fixture(provider_b, %{
+          name: "Filme com redundância 1080p",
+          title: "Filme com redundância 1080p",
+          year: 2025,
+          tmdb_id: "991122",
+          stream_id: 81_002
+        })
+
+      {:ok, view, html} = live(conn, ~p"/watch/movie/#{movie_a.id}")
+
+      assert html =~ ~s(data-source-failover-enabled="true")
+      assert html =~ ~s(id="source-failover-status")
+
+      render_hook(view, "request_source_failover", %{
+        "content_id" => movie_a.id,
+        "position" => 93.75,
+        "reason" => "network exhausted"
+      })
+
+      assert_push_event(view, "source_failover", payload)
+      assert payload.content_id == movie_b.id
+      assert payload.provider_id == provider_b.id
+      assert payload.provider_name == "Fonte B"
+      assert payload.resume_time == 93.75
+      assert payload.failover_count == 1
+      assert payload.stream_type == "mp4"
+      assert payload.stream_url =~ "/api/stream/proxy?token="
+      assert payload.proxy_url == payload.stream_url
+
+      render_hook(view, "request_source_failover", %{
+        "content_id" => movie_b.id,
+        "position" => 100,
+        "reason" => "second source failed"
+      })
+
+      assert_push_event(view, "source_failover_unavailable", %{
+        message: "Nenhuma outra fonte está disponível agora."
+      })
+    end
+
+    test "keeps failover disabled for torrent swarm playback", %{conn: conn, user: user} do
+      provider =
+        provider_fixture(user, %{
+          visibility: "private",
+          provider_type: "torrent",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{name: "Torrent sem troca URL-only"})
+      info_hash = :crypto.strong_rand_bytes(20) |> Base.encode16(case: :lower)
+
+      _stream =
+        %TorrentStream{}
+        |> TorrentStream.changeset(%{
+          info_hash: info_hash,
+          magnet_uri: "magnet:?xt=urn:btih:#{info_hash}",
+          source_slug: "test",
+          movie_id: movie.id
+        })
+        |> Repo.insert!()
+
+      html = conn |> get(~p"/watch/movie/#{movie.id}") |> html_response(200)
+      refute html =~ ~s(data-source-failover-enabled="true")
+    end
+
     test "close player returns to safe return path", %{conn: conn, user: user} do
       provider =
         provider_fixture(user, %{

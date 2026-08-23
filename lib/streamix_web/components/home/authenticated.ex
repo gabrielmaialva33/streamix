@@ -13,6 +13,12 @@ defmodule StreamixWeb.Home.Authenticated do
   import StreamixWeb.Home.Hero
 
   def render_authenticated_home(assigns) do
+    assigns =
+      assigns
+      |> assign(:catalog_loading, group_loading?(assigns.home_loading, :catalog))
+      |> assign(:personalization_loading, group_loading?(assigns.home_loading, :personalization))
+      |> assign(:library_loading, group_loading?(assigns.home_loading, :library))
+
     ~H"""
     <.render_hero_section
       featured={@featured}
@@ -23,6 +29,15 @@ defmodule StreamixWeb.Home.Authenticated do
 
     <div class="space-y-5 pb-10 sm:space-y-8 sm:pb-12">
       <.premium_cta_banner id="home-premium-cta" current_scope={@current_scope} />
+
+      <div
+        :if={@library_loading}
+        id="home-library-loading"
+        class="px-[4%]"
+        aria-label="Carregando sua biblioteca"
+      >
+        <.skeleton_carousel count={3} />
+      </div>
 
       <.render_content_carousel
         :if={@history != []}
@@ -38,6 +53,15 @@ defmodule StreamixWeb.Home.Authenticated do
         type={:favorites}
       />
 
+      <div
+        :if={@personalization_loading}
+        id="home-personalization-loading"
+        class="px-[4%]"
+        aria-label="Carregando recomendações"
+      >
+        <.skeleton_carousel count={4} />
+      </div>
+
       <.for_you_section :if={@recommendations != []} recommendations={@recommendations} />
 
       <.render_ai_trending_section
@@ -51,6 +75,15 @@ defmodule StreamixWeb.Home.Authenticated do
         progress_map={@movie_progress}
         favorites_map={@movie_favorites_map}
       />
+
+      <div
+        :if={@catalog_loading}
+        id="home-catalog-loading"
+        class="px-[4%]"
+        aria-label="Carregando catálogo"
+      >
+        <.skeleton_carousel count={5} />
+      </div>
 
       <.render_content_carousel
         :if={@new_releases != []}
@@ -93,7 +126,10 @@ defmodule StreamixWeb.Home.Authenticated do
       />
 
       <div
-        :if={@movies == [] && @series == [] && @channels == []}
+        :if={
+          !@catalog_loading && !@personalization_loading && @movies == [] && @series == [] &&
+            @channels == []
+        }
         class="px-[4%] py-24 text-center"
       >
         <.icon name="hero-film" class="size-16 text-text-muted mx-auto mb-4" />
@@ -111,4 +147,7 @@ defmodule StreamixWeb.Home.Authenticated do
     </div>
     """
   end
+
+  defp group_loading?(home_loading, group),
+    do: Map.get(home_loading || %{}, group) in [true, :running]
 end

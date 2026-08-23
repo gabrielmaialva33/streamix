@@ -12,7 +12,7 @@ defmodule Streamix.WatchParty.RoomServer do
   import Ecto.Query, warn: false
 
   alias Streamix.Repo
-  alias Streamix.WatchParty.{Participant, Room}
+  alias Streamix.WatchParty.{Participant, PlaybackState, Room}
 
   require Logger
 
@@ -26,7 +26,6 @@ defmodule Streamix.WatchParty.RoomServer do
   @command_lead_ms 350
   @max_drift_log 2.0
   @drift_resync_threshold 3.0
-  @max_position_seconds 31_536_000
   @max_connection_id_bytes 128
 
   # --- Public API ---
@@ -129,7 +128,7 @@ defmodule Streamix.WatchParty.RoomServer do
       catalog_item_id: snapshot.catalog_item_id,
       source_type: snapshot.source_type,
       source_id: snapshot.source_id,
-      playback: restore_playback(snapshot),
+      playback: PlaybackState.restore(snapshot, now: monotonic_now),
       connections: %{},
       connection_monitors: %{},
       monitor_connections: %{},
@@ -192,7 +191,7 @@ defmodule Streamix.WatchParty.RoomServer do
         })
       end
 
-      {:reply, {:ok, compute_current_playback(state.playback)}, state}
+      {:reply, {:ok, PlaybackState.current(state.playback)}, state}
     else
       {:reply, {:error, :invalid_connection}, state}
     end
@@ -230,7 +229,11 @@ defmodule Streamix.WatchParty.RoomServer do
   @impl true
   def handle_call(
         {:change_content, user_id, connection_id, owner_pid,
-         %{catalog_item_id: catalog_item_id, source_type: source_type, source_id: source_id}},
+         %{
+           catalog_item_id: catalog_item_id,
+           source_type: source_type,
+           source_id: source_id
+         } = content_ref},
         _from,
         state
       ) do
@@ -244,33 +247,12 @@ defmodule Streamix.WatchParty.RoomServer do
         {:reply, {:error, :invalid_content_ref}, state}
 
       true ->
-        candidate =
-          state
-          |> Map.put(:catalog_item_id, catalog_item_id)
-          |> Map.put(:source_type, source_type)
-          |> Map.put(:source_id, source_id)
-          |> Map.put(:playback, paused_playback(0.0))
-          |> touch_activity()
-          |> bump_version()
+        case PlaybackState.normalize_position(Map.get(content_ref, :position, 0.0)) do
+          {:ok, position} ->
+            change_room_content(state, catalog_item_id, source_type, source_id, position)
 
-        case persist_snapshot_result(candidate, true) do
-          {:ok, persisted} ->
-            broadcast(persisted.room_id, {
-              :content_changed,
-              %{
-                catalog_item_id: catalog_item_id,
-                source_type: source_type,
-                source_id: source_id,
-                version: persisted.version
-              }
-            })
-
-            emit(:content_changed, %{count: 1}, %{room_id: persisted.room_id})
-            {:reply, {:ok, persisted.version}, persisted}
-
-          {:error, reason, _candidate} ->
-            log_persistence_failure(state, "content change", reason)
-            {:reply, {:error, :persistence_failed}, state}
+          {:error, _reason} ->
+            {:reply, {:error, :invalid_content_ref}, state}
         end
     end
   end
@@ -291,9 +273,41 @@ defmodule Streamix.WatchParty.RoomServer do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    playback = compute_current_playback(state.playback)
+    playback = PlaybackState.current(state.playback)
 
     {:reply, {:ok, Map.put(playback, :version, state.version), state.host_user_id}, state}
+  end
+
+  defp change_room_content(state, catalog_item_id, source_type, source_id, position) do
+    candidate =
+      state
+      |> Map.put(:catalog_item_id, catalog_item_id)
+      |> Map.put(:source_type, source_type)
+      |> Map.put(:source_id, source_id)
+      |> Map.put(:playback, PlaybackState.paused(position))
+      |> touch_activity()
+      |> bump_version()
+
+    case persist_snapshot_result(candidate, true) do
+      {:ok, persisted} ->
+        broadcast(persisted.room_id, {
+          :content_changed,
+          %{
+            catalog_item_id: catalog_item_id,
+            source_type: source_type,
+            source_id: source_id,
+            position: position,
+            version: persisted.version
+          }
+        })
+
+        emit(:content_changed, %{count: 1}, %{room_id: persisted.room_id})
+        {:reply, {:ok, persisted.version}, persisted}
+
+      {:error, reason, _candidate} ->
+        log_persistence_failure(state, "content change", reason)
+        {:reply, {:error, :persistence_failed}, state}
+    end
   end
 
   @impl true
@@ -305,7 +319,7 @@ defmodule Streamix.WatchParty.RoomServer do
     state = recover_connection(state, user_id, connection_id, owner_pid)
 
     if connected_connection?(state, user_id, connection_id) and
-         valid_beacon?(position, participant_state, buffering) do
+         PlaybackState.valid_beacon?(position, participant_state, buffering) do
       participant_states =
         Map.put(state.participant_states, user_id, %{
           position: position,
@@ -456,27 +470,6 @@ defmodule Streamix.WatchParty.RoomServer do
   defp snapshot_room_id(%Room{id: room_id}), do: room_id
   defp snapshot_room_id(%{room_id: room_id}), do: room_id
 
-  defp restore_playback(snapshot) do
-    playback_state = if snapshot.playback_state == "playing", do: :playing, else: :paused
-    buffering = snapshot.playback_buffering == true
-    position = finite_position(snapshot.playback_position)
-
-    elapsed =
-      if playback_state == :playing and not buffering and snapshot.playback_updated_at do
-        max(0, DateTime.diff(DateTime.utc_now(), snapshot.playback_updated_at, :millisecond)) /
-          1_000.0
-      else
-        0.0
-      end
-
-    %{
-      state: playback_state,
-      position: position + elapsed,
-      host_buffering: buffering,
-      updated_at: now()
-    }
-  end
-
   defp persist_snapshot(state, force?) do
     case persist_snapshot_result(state, force?) do
       {:ok, persisted} ->
@@ -492,7 +485,7 @@ defmodule Streamix.WatchParty.RoomServer do
 
   defp persist_snapshot_result(state, force?) do
     if force? or now() - state.last_persisted_at >= @snapshot_interval do
-      playback = compute_current_playback(state.playback)
+      playback = PlaybackState.current(state.playback)
       timestamp = DateTime.utc_now()
 
       case from(room in Room,
@@ -811,10 +804,10 @@ defmodule Streamix.WatchParty.RoomServer do
   end
 
   defp pause_for_host_absence(state) do
-    playback = compute_current_playback(state.playback)
+    playback = PlaybackState.current(state.playback)
 
     candidate =
-      %{state | playback: paused_playback(playback.position)}
+      %{state | playback: PlaybackState.paused(playback.position)}
       |> touch_activity()
       |> bump_version()
 
@@ -831,15 +824,9 @@ defmodule Streamix.WatchParty.RoomServer do
   # --- Beacon and synchronization ---
 
   defp reconcile_host_beacon(state, position, participant_state, buffering) do
-    previous = compute_current_playback(state.playback)
-    playback_state = if participant_state == "playing", do: :playing, else: :paused
-
-    playback = %{
-      state: playback_state,
-      position: position,
-      host_buffering: buffering,
-      updated_at: now()
-    }
+    previous = PlaybackState.current(state.playback)
+    playback = PlaybackState.from_beacon(position, participant_state, buffering)
+    playback_state = playback.state
 
     candidate = %{state | playback: playback} |> bump_version()
 
@@ -860,7 +847,7 @@ defmodule Streamix.WatchParty.RoomServer do
   defp maybe_resync_viewer(state, _user_id, _position, true), do: state
 
   defp maybe_resync_viewer(state, user_id, position, false) do
-    playback = compute_current_playback(state.playback)
+    playback = PlaybackState.current(state.playback)
     drift = abs(position - playback.position)
 
     cond do
@@ -898,13 +885,13 @@ defmodule Streamix.WatchParty.RoomServer do
   end
 
   defp broadcast_persisted_sync(state) do
-    playback = compute_current_playback(state.playback)
+    playback = PlaybackState.current(state.playback)
     broadcast(state.room_id, {:sync_command, sync_payload(state, playback)})
     state
   end
 
   defp broadcast_action(state, action) do
-    playback = compute_current_playback(state.playback)
+    playback = PlaybackState.current(state.playback)
     system_time = System.system_time(:millisecond)
 
     payload =
@@ -940,9 +927,9 @@ defmodule Streamix.WatchParty.RoomServer do
   # --- Playback state ---
 
   defp handle_host_playback_action(state, action) do
-    case apply_action(state, action) do
-      {:ok, next_state} ->
-        candidate = bump_version(next_state)
+    case PlaybackState.apply(state.playback, action) do
+      {:ok, playback} ->
+        candidate = state |> Map.put(:playback, playback) |> touch_activity() |> bump_version()
 
         case persist_snapshot_result(candidate, true) do
           {:ok, persisted} ->
@@ -963,82 +950,6 @@ defmodule Streamix.WatchParty.RoomServer do
       {:error, reason} ->
         {:reply, {:error, reason}, state}
     end
-  end
-
-  defp apply_action(state, %{"action" => "play", "position" => position}) do
-    with {:ok, position} <- normalize_position(position) do
-      {:ok,
-       state
-       |> Map.put(:playback, %{
-         state: :playing,
-         position: position,
-         host_buffering: false,
-         updated_at: now()
-       })
-       |> touch_activity()}
-    end
-  end
-
-  defp apply_action(state, %{"action" => "pause", "position" => position}) do
-    with {:ok, position} <- normalize_position(position) do
-      {:ok, state |> Map.put(:playback, paused_playback(position)) |> touch_activity()}
-    end
-  end
-
-  defp apply_action(state, %{"action" => "seek", "position" => position}) do
-    with {:ok, position} <- normalize_position(position) do
-      current = compute_current_playback(state.playback)
-
-      {:ok,
-       state
-       |> Map.put(:playback, %{
-         current
-         | position: position,
-           updated_at: now(),
-           host_buffering: false
-       })
-       |> touch_activity()}
-    end
-  end
-
-  defp apply_action(_state, _action), do: {:error, :invalid_playback_action}
-
-  defp compute_current_playback(%{state: :playing, host_buffering: false} = playback) do
-    elapsed = max(0, now() - playback.updated_at) / 1_000.0
-    %{playback | position: playback.position + elapsed}
-  end
-
-  defp compute_current_playback(playback), do: playback
-
-  defp paused_playback(position) do
-    %{
-      state: :paused,
-      position: finite_position(position),
-      host_buffering: false,
-      updated_at: now()
-    }
-  end
-
-  defp normalize_position(value)
-       when is_integer(value) and value >= 0 and value <= @max_position_seconds,
-       do: {:ok, value * 1.0}
-
-  defp normalize_position(value)
-       when is_float(value) and value >= 0 and value <= @max_position_seconds,
-       do: {:ok, value}
-
-  defp normalize_position(_value), do: {:error, :invalid_playback_action}
-
-  defp finite_position(value) do
-    case normalize_position(value) do
-      {:ok, position} -> position
-      {:error, _reason} -> 0.0
-    end
-  end
-
-  defp valid_beacon?(position, participant_state, buffering) do
-    match?({:ok, _position}, normalize_position(position)) and
-      participant_state in ~w(playing paused) and is_boolean(buffering)
   end
 
   defp valid_content_ref?(catalog_item_id, source_type, source_id) do

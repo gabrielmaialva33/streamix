@@ -76,6 +76,65 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     assert MapSet.size(:sys.get_state(pid).connections[user.id]) == 1
   end
 
+  test "host failover changes the authoritative room source without leaving the player", %{
+    conn: conn,
+    room: room,
+    movie: movie,
+    user: user
+  } do
+    fallback_provider =
+      provider_fixture(user, %{
+        name: "Party fallback",
+        visibility: "public",
+        provider_type: "xtream",
+        is_active: true
+      })
+
+    fallback_movie =
+      movie_fixture(fallback_provider, %{
+        name: "#{movie.title} 1080p",
+        title: "#{movie.title} 1080p",
+        year: movie.year,
+        tmdb_id: movie.tmdb_id,
+        stream_id: 93_001
+      })
+
+    {:ok, view, html} = live(conn, ~p"/party/#{room.invite_code}/watch")
+    assert html =~ ~s(data-source-failover-enabled="true")
+
+    render_hook(view, "request_source_failover", %{
+      "content_id" => movie.id,
+      "position" => 118.25,
+      "reason" => "upstream exhausted"
+    })
+
+    assert_push_event(view, "source_failover", payload)
+    assert payload.content_id == fallback_movie.id
+    assert payload.provider_id == fallback_provider.id
+    assert payload.resume_time == 118.25
+    assert payload.stream_url =~ "/api/stream/proxy?token="
+
+    assert {:ok, %{state: :paused, position: position}, _host_id} =
+             RoomServer.get_state(room.id)
+
+    assert_in_delta position, 118.25, 0.001
+
+    persisted = Repo.get!(Room, room.id)
+    assert persisted.source_type == "movie"
+    assert persisted.source_id == fallback_movie.id
+    assert_in_delta persisted.playback_position, 118.25, 0.001
+
+    render_hook(view, "request_source_failover", %{
+      "content_id" => fallback_movie.id,
+      "position" => 120.0,
+      "reason" => "fallback failed"
+    })
+
+    assert_push_event(view, "source_failover_unavailable", %{
+      message: "Nenhuma outra fonte está disponível agora."
+    })
+  end
+
   test "stable sync state stays out of the video and only exceptional states are shown", %{
     conn: conn,
     room: room

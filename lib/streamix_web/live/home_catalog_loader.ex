@@ -34,8 +34,13 @@ defmodule StreamixWeb.HomeCatalogLoader do
     channels: [],
     favorites: [],
     history: [],
+    recommendations: [],
+    featured_favorite: false,
+    movie_favorites_map: MapSet.new(),
+    series_favorites_map: MapSet.new(),
     movie_progress: %{},
-    series_progress: %{}
+    series_progress: %{},
+    genre_filters: []
   }
 
   @spec load(%{required(term()) => (-> term())} | keyword((-> term())), keyword()) :: map()

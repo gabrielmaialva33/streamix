@@ -32,10 +32,10 @@ defmodule StreamixWeb.Content.CarouselComponents do
           </p>
         </div>
       <% else %>
-        <div class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:gap-4 sm:py-2">
+        <div class="media-shelf-track">
           <div
             :for={item <- @recommendations}
-            class="w-[30vw] min-w-[104px] max-w-[122px] flex-shrink-0 snap-start sm:w-[160px] sm:max-w-none lg:w-[180px]"
+            class="media-shelf-card media-shelf-card--poster media-shelf-card--poster-featured"
           >
             <.movie_card
               movie={item}

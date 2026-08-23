@@ -2,13 +2,14 @@ defmodule StreamixWeb.User.SettingsLive do
   use StreamixWeb, :live_view
 
   alias Streamix.Accounts
+  alias StreamixWeb.Locale
 
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
 
     socket =
       socket
-      |> assign(page_title: "Configurações")
+      |> assign(page_title: gettext("Configurações"))
       |> assign(current_path: "/settings")
       |> assign(current_email: user.email)
       |> assign(email_form: to_form(Accounts.change_user_email(user), as: "user"))
@@ -78,6 +79,33 @@ defmodule StreamixWeb.User.SettingsLive do
     end
   end
 
+  def handle_event("save_locale", %{"user" => attrs}, socket) do
+    user = socket.assigns.current_scope.user
+    requested_locale = Map.get(attrs, "locale", Locale.default())
+
+    case Accounts.update_user_settings(user, %{locale: requested_locale}) do
+      {:ok, updated_user} ->
+        locale = Locale.put(updated_user.locale)
+
+        {:noreply,
+         socket
+         |> assign(
+           current_scope: %{socket.assigns.current_scope | user: updated_user},
+           locale: locale,
+           html_lang: Locale.html_lang(locale),
+           page_title: gettext("Configurações"),
+           settings_form: to_form(Accounts.change_user_settings(updated_user), as: "user")
+         )
+         |> put_flash(:info, gettext("Idioma da interface atualizado"))}
+
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> assign(settings_form: to_form(changeset, as: "user"))
+         |> put_flash(:error, gettext("Não foi possível atualizar o idioma"))}
+    end
+  end
+
   def handle_event("save_subtitle_preferences", %{"user" => attrs}, socket) do
     user = socket.assigns.current_scope.user
 
@@ -93,9 +121,9 @@ defmodule StreamixWeb.User.SettingsLive do
     ~H"""
     <div class="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
       <div>
-        <h1 class="text-2xl font-bold text-text-primary sm:text-3xl">Configurações</h1>
+        <h1 class="text-2xl font-bold text-text-primary sm:text-3xl">{gettext("Configurações")}</h1>
         <p class="mt-1 text-sm text-text-secondary sm:text-base">
-          Gerencie as configurações da sua conta
+          {gettext("Gerencie as configurações da sua conta")}
         </p>
       </div>
 
@@ -201,6 +229,35 @@ defmodule StreamixWeb.User.SettingsLive do
               </:actions>
             </.simple_form>
           </div>
+        </section>
+
+        <section
+          id="interface-preferences"
+          class="rounded-lg border border-border bg-surface p-4 sm:p-5"
+        >
+          <div class="mb-4">
+            <h2 class="text-lg font-semibold text-text-primary">{gettext("Interface")}</h2>
+            <p class="mt-1 text-sm text-text-secondary">
+              {gettext("Escolha o idioma usado na navegação e nas mensagens principais.")}
+            </p>
+          </div>
+
+          <.form
+            for={@settings_form}
+            id="locale-preferences-form"
+            phx-submit="save_locale"
+            class="space-y-4"
+          >
+            <.input
+              field={@settings_form[:locale]}
+              type="select"
+              label={gettext("Idioma da interface")}
+              options={@locale_options}
+            />
+            <.button type="submit" variant="primary">
+              {gettext("Salvar idioma")}
+            </.button>
+          </.form>
         </section>
 
         <section

@@ -22,6 +22,7 @@ defmodule Streamix.AI.UserAnalytics do
   """
 
   alias Streamix.AI.UserAnalytics.Channels
+  alias Streamix.AI.UserAnalytics.Context
   alias Streamix.AI.UserAnalytics.Filters
   alias Streamix.AI.UserAnalytics.Indexing
   alias Streamix.AI.UserAnalytics.Insights
@@ -31,6 +32,7 @@ defmodule Streamix.AI.UserAnalytics do
 
   defdelegate compute_user_profile(user_id), to: Profile
   defdelegate get_user_profile(user_id), to: Profile
+  defdelegate get_personalization_context(user_id), to: Context, as: :load
 
   defdelegate get_recommendations(user_id, opts \\ []), to: Recommendations
   defdelegate get_similar_to(content_id, collection, opts \\ []), to: Recommendations

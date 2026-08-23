@@ -36,6 +36,7 @@ defmodule StreamixWeb.PlayerComponents do
   attr :subtitle_offset_ms, :integer, default: 0
   attr :party_mode, :boolean, default: false
   attr :party_role, :atom, default: :none, values: [:none, :host, :viewer]
+  attr :source_failover_enabled, :boolean, default: false
 
   def video_player(assigns) do
     # Use external nginx proxy for HTTP streams (except GIndex which plays directly)
@@ -111,7 +112,22 @@ defmodule StreamixWeb.PlayerComponents do
       data-subtitle-offset-ms={@subtitle_offset_ms}
       data-party-mode={to_string(@party_mode)}
       data-party-role={@party_role}
+      data-source-failover-enabled={to_string(@source_failover_enabled)}
     >
+      <div
+        id="source-failover-status"
+        class="pointer-events-none absolute left-1/2 top-[max(4.5rem,env(safe-area-inset-top))] z-20 hidden -translate-x-1/2 rounded-full border border-white/10 bg-black/75 px-4 py-2 text-center text-xs font-medium text-white shadow-xl backdrop-blur-md"
+        role="status"
+        aria-live="polite"
+        data-failover-state="idle"
+      >
+        <span
+          class="mr-1.5 inline-block size-1.5 animate-pulse rounded-full bg-brand"
+          aria-hidden="true"
+        />
+        <span data-source-failover-text>Procurando outra fonte disponível…</span>
+      </div>
+
       <%!-- Error container --%>
       <div
         id="error-container"

@@ -60,11 +60,13 @@ defmodule Streamix.AI.UserAnalytics.Channels do
   end
 
   defp get_popular_channels(user_id, limit, exclude_ids, show_adult) do
-    Iptv.list_channel_recommendation_candidates(user_id,
+    user_id
+    |> Iptv.list_channel_recommendation_candidates(
       limit: limit,
       exclude_ids: exclude_ids,
       show_adult: show_adult
     )
+    |> stable_channels()
   end
 
   defp compute_channel_category_scores(channel_ids, history) do
@@ -110,7 +112,9 @@ defmodule Streamix.AI.UserAnalytics.Channels do
       )
 
     channels
-    |> Enum.sort_by(fn channel -> if channel.id in watched_ids, do: 1, else: 0 end)
+    |> Enum.sort_by(fn channel ->
+      {if(channel.id in watched_ids, do: 1, else: 0), normalized_name(channel), channel.id}
+    end)
     |> Enum.take(limit)
   end
 
@@ -129,6 +133,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
           recommended_channels(
             user_id,
             top_category_ids,
+            category_scores,
             watched_channel_ids,
             limit,
             show_adult
@@ -152,15 +157,55 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     |> Enum.map(fn {id, _score} -> id end)
   end
 
-  defp recommended_channels(user_id, top_category_ids, watched_channel_ids, limit, show_adult) do
-    Iptv.list_channel_recommendation_candidates(user_id,
-      category_ids: top_category_ids,
-      exclude_ids: watched_channel_ids,
-      limit: limit * 3,
-      show_adult: show_adult
-    )
-    |> Enum.shuffle()
+  defp recommended_channels(
+         user_id,
+         top_category_ids,
+         category_scores,
+         watched_channel_ids,
+         limit,
+         show_adult
+       ) do
+    candidates =
+      Iptv.list_channel_recommendation_candidates(user_id,
+        category_ids: top_category_ids,
+        exclude_ids: watched_channel_ids,
+        limit: limit * 3,
+        show_adult: show_adult
+      )
+
+    category_refs =
+      candidates
+      |> Enum.map(& &1.id)
+      |> Iptv.channel_recommendation_category_refs()
+
+    candidates
+    |> rank_candidates(category_scores, category_refs)
     |> Enum.take(limit)
+  end
+
+  @doc "Ranks channel candidates by watched-category affinity with stable tie-breakers."
+  @spec rank_candidates([map()], map(), [{integer(), integer()}]) :: [map()]
+  def rank_candidates(channels, category_scores, category_refs) do
+    affinity_by_channel =
+      Enum.reduce(category_refs, %{}, fn {channel_id, category_id}, acc ->
+        score = Map.get(category_scores, category_id, 0.0)
+        Map.update(acc, channel_id, score, &(&1 + score))
+      end)
+
+    Enum.sort_by(channels, fn channel ->
+      {-Map.get(affinity_by_channel, channel.id, 0.0), normalized_name(channel), channel.id}
+    end)
+  end
+
+  defp stable_channels(channels) do
+    Enum.sort_by(channels, &{normalized_name(&1), &1.id})
+  end
+
+  defp normalized_name(channel) do
+    channel
+    |> Map.get(:name, "")
+    |> to_string()
+    |> String.downcase()
   end
 
   defp fill_channel_recommendations(

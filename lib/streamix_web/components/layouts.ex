@@ -3,6 +3,7 @@ defmodule StreamixWeb.Layouts do
   This module holds layouts and related functionality.
   """
   use Phoenix.Component
+  use Gettext, backend: StreamixWeb.Gettext
   use StreamixWeb, :verified_routes
 
   import Phoenix.Controller, only: [get_csrf_token: 0]

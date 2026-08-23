@@ -123,7 +123,7 @@ defmodule StreamixWeb.Home.Carousel do
         <.carousel_arrows id={@carousel_id}>
           <div
             data-carousel-track
-            class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:grid sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:auto-cols-[220px] sm:gap-4 sm:py-2 lg:auto-cols-[280px]"
+            class="media-shelf-track media-shelf-track--two-row media-shelf-track--channels-wide"
           >
             <.channel_card
               :for={{channel, idx} <- Enum.with_index(@items)}
@@ -149,7 +149,7 @@ defmodule StreamixWeb.Home.Carousel do
         <.carousel_arrows id={@carousel_id}>
           <div
             data-carousel-track
-            class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:gap-4 sm:py-2"
+            class="media-shelf-track"
           >
             <%= case @type do %>
               <% :movies -> %>
@@ -225,7 +225,7 @@ defmodule StreamixWeb.Home.Carousel do
       <.carousel_arrows id="carousel-trending">
         <div
           data-carousel-track
-          class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:gap-4 sm:py-2"
+          class="media-shelf-track"
         >
           <.render_movie_card
             :for={{movie, idx} <- Enum.with_index(@items)}
@@ -266,7 +266,7 @@ defmodule StreamixWeb.Home.Carousel do
       <.carousel_arrows id="carousel-series">
         <div
           data-carousel-track
-          class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:gap-4 sm:py-2"
+          class="media-shelf-track"
         >
           <.render_series_card
             :for={{series, idx} <- Enum.with_index(@items)}
@@ -302,7 +302,7 @@ defmodule StreamixWeb.Home.Carousel do
       <.carousel_arrows id="carousel-channels">
         <div
           data-carousel-track
-          class="flex snap-x snap-proximity gap-2.5 overflow-x-auto py-1 scrollbar-hide scroll-smooth sm:grid sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:auto-cols-[150px] sm:gap-4 sm:py-2 lg:auto-cols-[176px] xl:auto-cols-[184px]"
+          class="media-shelf-track media-shelf-track--two-row media-shelf-track--channels-compact"
         >
           <.channel_card
             :for={{channel, idx} <- Enum.with_index(@items)}

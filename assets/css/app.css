@@ -2,6 +2,8 @@
 @import "./platform.css";
 @import "./theme.css";
 @import "./catalog.css";
+@import "./guide.css";
+@import "./media_shelves.css";
 @import "./motion.css";
 @import "./player.css";
 @import "./pwa.css";

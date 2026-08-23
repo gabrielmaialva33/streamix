@@ -1,0 +1,123 @@
+/* ============================================
+   Media shelves — semantic sizing contracts
+   ============================================ */
+
+.media-shelf-track {
+    display: flex;
+    gap: 0.625rem;
+    overflow-x: auto;
+    padding-block: 0.25rem;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+}
+
+.media-shelf-track::-webkit-scrollbar {
+    display: none;
+}
+
+.media-shelf-card {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+}
+
+.media-shelf-card--poster,
+.media-shelf-card--favorite {
+    width: 30vw;
+    min-width: 104px;
+    max-width: 122px;
+}
+
+.media-shelf-card--live {
+    width: 42vw;
+    min-width: 148px;
+    max-width: 180px;
+}
+
+.media-shelf-card--progress {
+    width: 58vw;
+    min-width: 196px;
+    max-width: 230px;
+}
+
+@media (min-width: 640px) {
+    .media-shelf-track {
+        gap: 1rem;
+        padding-block: 0.5rem;
+    }
+
+    .media-shelf-track--two-row {
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+    }
+
+    .media-shelf-track--channels-wide {
+        grid-auto-columns: 220px;
+    }
+
+    .media-shelf-track--channels-compact {
+        grid-auto-columns: 150px;
+    }
+
+    .media-shelf-card--poster-home {
+        width: 132px;
+        max-width: none;
+    }
+
+    .media-shelf-card--poster-featured {
+        width: 160px;
+        max-width: none;
+    }
+
+    .media-shelf-card--favorite {
+        width: 96px;
+        max-width: none;
+    }
+
+    .media-shelf-card--live {
+        width: 150px;
+        max-width: none;
+    }
+
+    .media-shelf-card--progress {
+        width: 220px;
+        max-width: none;
+    }
+}
+
+@media (min-width: 1024px) {
+    .media-shelf-track--channels-wide {
+        grid-auto-columns: 280px;
+    }
+
+    .media-shelf-track--channels-compact {
+        grid-auto-columns: 176px;
+    }
+
+    .media-shelf-card--poster-home {
+        width: 148px;
+    }
+
+    .media-shelf-card--poster-featured {
+        width: 180px;
+    }
+
+    .media-shelf-card--favorite {
+        width: 108px;
+    }
+
+    .media-shelf-card--live {
+        width: 176px;
+    }
+
+    .media-shelf-card--progress {
+        width: 240px;
+    }
+}
+
+@media (min-width: 1280px) {
+    .media-shelf-track--channels-compact {
+        grid-auto-columns: 184px;
+    }
+}

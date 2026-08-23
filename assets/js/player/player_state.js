@@ -42,6 +42,7 @@ export function createInitialPlayerState(
     subtitleOffsetMs: finiteNumber(dataset.subtitleOffsetMs),
     partyMode: dataset.partyMode === "true",
     partyRole: dataset.partyRole || "none",
+    sourceFailoverEnabled: dataset.sourceFailoverEnabled === "true",
     mediaTitle: dataset.mediaTitle || documentRef?.title || "Streamix",
     mediaSubtitle: dataset.mediaSubtitle || "Streamix",
     initialMode,
@@ -98,6 +99,8 @@ export function createInitialPlayerState(
     mediaSessionController: null,
     mobileControls: null,
     screenWakeLockController: null,
+    sourceFailoverController: null,
+    _sourceFailoverResumeTime: null,
 
     avPlayer: null,
     usingAVPlayer: false,

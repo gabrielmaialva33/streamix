@@ -27,6 +27,7 @@ defmodule StreamixWeb.Providers.ProviderListLive do
       |> assign(page_title: "Provedores")
       |> assign(current_path: "/providers")
       |> assign(empty_providers: Enum.empty?(providers))
+      |> assign(sync_progress: %{})
       |> stream(:providers, providers)
 
     {:ok, socket}
@@ -65,12 +66,17 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     provider = Iptv.get_user_provider(user_id, id)
 
     if provider do
-      Iptv.async_sync_provider(provider)
+      case Iptv.async_sync_provider(provider) do
+        {:ok, _job} ->
+          {:noreply,
+           socket
+           |> stream_insert(:providers, %{provider | sync_status: "pending"})
+           |> put_sync_progress(provider.id, %{phase: :queued, percent: 0, type: nil})
+           |> put_flash(:info, "Sincronização iniciada para #{provider.name}")}
 
-      {:noreply,
-       socket
-       |> stream_insert(:providers, %{provider | sync_status: "pending"})
-       |> put_flash(:info, "Sincronização iniciada para #{provider.name}")}
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "Não foi possível agendar a sincronização")}
+      end
     else
       {:noreply,
        put_flash(
@@ -79,6 +85,10 @@ defmodule StreamixWeb.Providers.ProviderListLive do
          "Esse provedor não está disponível para sua conta. Pode estar inativo, ter sido removido ou ser privado de outro usuário."
        )}
     end
+  end
+
+  def handle_event("edit_provider", %{"id" => id}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/providers/#{id}/edit")}
   end
 
   def handle_event("delete_provider", %{"id" => id}, socket) do
@@ -110,6 +120,21 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     {:noreply, push_patch(socket, to: ~p"/providers")}
   end
 
+  def handle_info({:sync_progress, %{provider_id: id} = payload}, socket) do
+    user_id = socket.assigns.current_scope.user.id
+
+    case Iptv.get_user_provider(user_id, id) do
+      nil ->
+        {:noreply, socket}
+
+      provider ->
+        {:noreply,
+         socket
+         |> put_sync_progress(id, normalize_sync_progress(payload))
+         |> stream_insert(:providers, provider)}
+    end
+  end
+
   def handle_info({:sync_progress, _payload}, socket), do: {:noreply, socket}
 
   def handle_info({:sync_status, %{provider_id: id, status: status} = payload}, socket) do
@@ -131,7 +156,16 @@ defmodule StreamixWeb.Providers.ProviderListLive do
               if(status == "completed", do: DateTime.utc_now(), else: provider.live_synced_at)
         }
 
-        {:noreply, stream_insert(socket, :providers, updated_provider)}
+        socket = stream_insert(socket, :providers, updated_provider)
+
+        socket =
+          if status in ["completed", "failed", "partial"] do
+            clear_sync_progress(socket, id)
+          else
+            socket
+          end
+
+        {:noreply, socket}
     end
   end
 
@@ -169,7 +203,10 @@ defmodule StreamixWeb.Providers.ProviderListLive do
         class="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3"
       >
         <div :for={{dom_id, provider} <- @streams.providers} id={dom_id} class="h-full min-w-0">
-          <.provider_card provider={provider} />
+          <.provider_card
+            provider={provider}
+            sync_progress={Map.get(@sync_progress, provider.id)}
+          />
         </div>
       </div>
 
@@ -198,4 +235,29 @@ defmodule StreamixWeb.Providers.ProviderListLive do
     </div>
     """
   end
+
+  defp put_sync_progress(socket, provider_id, progress) do
+    assign(socket, :sync_progress, Map.put(socket.assigns.sync_progress, provider_id, progress))
+  end
+
+  defp clear_sync_progress(socket, provider_id) do
+    assign(socket, :sync_progress, Map.delete(socket.assigns.sync_progress, provider_id))
+  end
+
+  defp normalize_sync_progress(payload) do
+    percent =
+      payload
+      |> Map.get(:percent, 0)
+      |> normalize_percent()
+
+    %{
+      phase: Map.get(payload, :phase, :syncing),
+      percent: percent,
+      type: Map.get(payload, :type)
+    }
+  end
+
+  defp normalize_percent(value) when is_integer(value), do: max(0, min(100, value))
+  defp normalize_percent(value) when is_float(value), do: value |> round() |> normalize_percent()
+  defp normalize_percent(_value), do: 0
 end

@@ -24,6 +24,7 @@ defmodule StreamixWeb.HomeData do
   @home_history_limit 6
   @home_channels_limit 24
   @home_top_10_limit 10
+  @home_groups [:catalog, :personalization, :library, :annotations]
 
   def assign_empty(socket) do
     socket
@@ -50,37 +51,43 @@ defmodule StreamixWeb.HomeData do
     |> assign(genre_filters: AI.get_user_genre_filters(nil))
     |> assign(period_filters: AI.get_period_filters())
     |> assign(channel_filters: AI.get_channel_category_filters())
+    |> assign(home_loading: Map.new(@home_groups, &{&1, true}))
   end
 
+  @doc "Loads every home group synchronously for non-LiveView callers and tests."
   def load(socket) do
     socket
-    |> prefetch_personalization()
-    |> load_public_catalog()
-    |> load_user_data()
+    |> apply_sections(catalog_sections(socket.assigns))
+    |> apply_sections(personalization_sections(socket.assigns))
+    |> apply_sections(library_sections(socket.assigns))
+    |> then(fn loaded -> apply_sections(loaded, annotation_sections(loaded.assigns)) end)
+    |> mark_all_loaded()
     |> assign(loading: false)
   end
 
-  # Warm the ConCache entries the personalization sections all read so
-  # the parallel fetchers hit a cache hit instead of racing for the same
-  # lock. Without this, `:trending` + `:series` + `:recommendations` all
-  # call `UserAnalytics.get_user_profile/1` (and `get_user_insights/1`)
-  # at the same time; whoever loses the lock waits the full
-  # `acquire_lock_timeout` and falls back to []. Concretely this was the
-  # root cause of the home staying on its skeleton — reproduced in
-  # `test/streamix_web/e2e/home_skeleton_test.exs`.
-  defp prefetch_personalization(%{assigns: %{current_scope: nil}} = socket), do: socket
+  @doc "Applies a section result map to the LiveView socket."
+  def apply_sections(socket, sections) when is_map(sections) do
+    Enum.reduce(sections, socket, fn {key, value}, acc -> assign(acc, key, value) end)
+  end
 
-  defp prefetch_personalization(socket) do
-    case user_id(socket) do
-      nil ->
-        socket
+  @doc "Marks one progressive home group as running."
+  def mark_started(socket, group) when group in @home_groups do
+    assign(socket, :home_loading, Map.put(socket.assigns.home_loading, group, :running))
+  end
 
-      uid ->
-        # Result is discarded; the side effect is the populated cache.
-        _ = AI.get_user_profile(uid)
-        _ = AI.get_user_insights(uid)
-        socket
-    end
+  @doc "Marks one progressive home group as complete."
+  def mark_loaded(socket, group) when group in @home_groups do
+    assign(socket, :home_loading, Map.put(socket.assigns.home_loading, group, false))
+  end
+
+  @doc "Returns whether one progressive home group is still loading."
+  def loading?(assigns, group) when is_map(assigns) and group in @home_groups do
+    get_in(assigns, [:home_loading, group]) == true
+  end
+
+  @doc "Returns whether the catalog and personalization inputs are ready for annotations."
+  def ready_for_annotations?(assigns) when is_map(assigns) do
+    not loading?(assigns, :catalog) and not loading?(assigns, :personalization)
   end
 
   def filter_trending_genre(socket, genre) do
@@ -159,54 +166,32 @@ defmodule StreamixWeb.HomeData do
     end
   end
 
-  def user_id(socket) do
-    case socket.assigns.current_scope do
-      nil -> nil
-      scope -> scope.user.id
-    end
-  end
+  def user_id(%{assigns: assigns}), do: user_id(assigns)
+  def user_id(%{current_scope: nil}), do: nil
+  def user_id(%{current_scope: %{user: %{id: id}}}), do: id
+  def user_id(_assigns), do: nil
 
-  defp load_public_catalog(socket) do
-    show_adult = show_adult_content?(socket)
+  @doc "Loads the non-personalized catalog shelves for progressive rendering."
+  def catalog_sections(assigns) when is_map(assigns) do
+    show_adult = show_adult_content?(assigns)
 
     sections =
-      HomeCatalogLoader.load(%{
-        featured: fn -> Iptv.get_featured_content(show_adult: show_adult) end,
-        stats: fn -> Iptv.get_public_stats() end,
-        trending: fn ->
-          load_trending(
-            user_id(socket),
-            socket.assigns.trending_genre,
-            socket.assigns.trending_period,
-            show_adult_content?(socket)
-          )
-        end,
-        new_releases: fn ->
-          Iptv.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
-        end,
-        top_10: fn -> load_top_10(show_adult) end,
-        movies: fn ->
-          Iptv.list_public_movies(limit: @home_default_limit, show_adult: show_adult)
-        end,
-        series: fn ->
-          load_series(user_id(socket), socket.assigns.series_genre, show_adult)
-        end,
-        channels: fn ->
-          load_channels(user_id(socket), socket.assigns.channels_category, show_adult)
-        end
-      })
+      HomeCatalogLoader.load(
+        %{
+          featured: fn -> Iptv.get_featured_content(show_adult: show_adult) end,
+          stats: fn -> Iptv.get_public_stats() end,
+          new_releases: fn ->
+            Iptv.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
+          end,
+          top_10: fn -> load_top_10(show_adult) end,
+          movies: fn ->
+            Iptv.list_public_movies(limit: @home_default_limit, show_adult: show_adult)
+          end
+        },
+        timeout: 8_000
+      )
 
-    stats = public_stats(sections.stats, sections)
-
-    socket
-    |> assign(:featured, sections.featured)
-    |> assign(:stats, stats)
-    |> assign(:trending, sections.trending)
-    |> assign(:new_releases, sections.new_releases)
-    |> assign(:top_10, sections.top_10)
-    |> assign(:movies, sections.movies)
-    |> assign(:series, sections.series)
-    |> assign(:channels, sections.channels)
+    Map.put(sections, :stats, public_stats(sections.stats, sections))
   end
 
   defp public_stats(stats, sections) do
@@ -229,9 +214,9 @@ defmodule StreamixWeb.HomeData do
   end
 
   defp stale_public_stats?(stats, sections) do
-    public_count(stats, :movies_count) < length(sections.movies || []) or
-      public_count(stats, :series_count) < length(sections.series || []) or
-      public_count(stats, :channels_count) < length(sections.channels || [])
+    public_count(stats, :movies_count) < length(Map.get(sections, :movies, [])) or
+      public_count(stats, :series_count) < length(Map.get(sections, :series, [])) or
+      public_count(stats, :channels_count) < length(Map.get(sections, :channels, []))
   end
 
   defp public_count(stats, key) when is_map(stats) do
@@ -240,73 +225,114 @@ defmodule StreamixWeb.HomeData do
 
   defp public_count(_stats, _key), do: 0
 
-  defp load_user_data(%{assigns: %{current_scope: nil}} = socket) do
-    socket
-    |> assign(favorites: [])
-    |> assign(history: [])
-    |> assign(recommendations: [])
-    |> assign(featured_favorite: false)
-    |> assign(movie_favorites_map: MapSet.new())
-    |> assign(series_favorites_map: MapSet.new())
+  @doc "Loads shelves that use the shared user taste context."
+  def personalization_sections(assigns) when is_map(assigns) do
+    user_id = user_id(assigns)
+    show_adult = show_adult_content?(assigns)
+    personalization = personalization_context(user_id)
+
+    HomeCatalogLoader.load(
+      %{
+        trending: fn ->
+          load_trending(
+            user_id,
+            Map.get(assigns, :trending_genre, "all"),
+            Map.get(assigns, :trending_period, 7),
+            show_adult,
+            personalization
+          )
+        end,
+        series: fn ->
+          load_series(
+            user_id,
+            Map.get(assigns, :series_genre, "all"),
+            show_adult,
+            personalization
+          )
+        end,
+        channels: fn ->
+          load_channels(user_id, Map.get(assigns, :channels_category, "all"), show_adult)
+        end,
+        recommendations: fn -> load_recommendations(user_id, show_adult, personalization) end,
+        genre_filters: fn -> load_genre_filters(user_id) end
+      },
+      timeout: 8_000
+    )
   end
 
-  defp load_user_data(socket) do
-    user = socket.assigns.current_scope.user
-    user_id = user.id
-    show_adult = user.show_adult_content
-    movie_ids = collect_content_ids(socket.assigns, [:movies, :trending, :new_releases, :top_10])
-    series_ids = collect_content_ids(socket.assigns, [:series])
+  @doc "Loads the user's library shelves independently of AI and catalog queries."
+  def library_sections(%{current_scope: nil}) do
+    %{favorites: [], history: []}
+  end
 
-    user_sections =
-      HomeCatalogLoader.load(%{
+  def library_sections(%{current_scope: %{user: user}}) do
+    HomeCatalogLoader.load(
+      %{
         favorites: fn ->
-          Iptv.list_home_favorites(user_id,
+          Iptv.list_home_favorites(user.id,
             limit: @home_default_limit,
-            show_adult: show_adult
+            show_adult: user.show_adult_content
           )
         end,
         history: fn ->
-          Iptv.list_home_history(user_id,
+          Iptv.list_home_history(user.id,
             limit: @home_history_limit,
-            show_adult: show_adult
+            show_adult: user.show_adult_content
           )
-        end,
-        recommendations: fn -> load_recommendations(user_id, show_adult) end,
-        featured_favorite: fn -> check_featured_favorite(socket.assigns.featured, user_id) end,
-        movie_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "movie", movie_ids) end,
-        series_favorites_map: fn -> Iptv.list_favorite_ids(user_id, "series", series_ids) end,
-        movie_progress: fn -> Iptv.get_watch_progress_map(user_id, "movie", movie_ids) end,
-        series_progress: fn -> Iptv.get_series_progress_map(user_id, series_ids) end,
-        genre_filters: fn -> load_genre_filters(user_id) end
-      })
-
-    socket
-    |> assign(:favorites, user_sections.favorites)
-    |> assign(:history, user_sections.history)
-    |> assign(:recommendations, user_sections.recommendations)
-    |> assign(:featured_favorite, user_sections.featured_favorite)
-    |> assign(:movie_favorites_map, user_sections.movie_favorites_map)
-    |> assign(:series_favorites_map, user_sections.series_favorites_map)
-    |> assign(:movie_progress, user_sections.movie_progress)
-    |> assign(:series_progress, user_sections.series_progress)
-    |> assign(:genre_filters, user_sections.genre_filters)
+        end
+      },
+      timeout: 6_000
+    )
   end
 
-  defp load_trending(nil, _genre, period, _show_adult) do
+  @doc "Loads favorite/progress annotations after the catalog shelves are available."
+  def annotation_sections(%{current_scope: nil}) do
+    %{
+      featured_favorite: false,
+      movie_favorites_map: MapSet.new(),
+      series_favorites_map: MapSet.new(),
+      movie_progress: %{},
+      series_progress: %{}
+    }
+  end
+
+  def annotation_sections(%{current_scope: %{user: user}} = assigns) do
+    movie_ids = collect_content_ids(assigns, [:movies, :trending, :new_releases, :top_10])
+    series_ids = collect_content_ids(assigns, [:series])
+
+    HomeCatalogLoader.load(
+      %{
+        featured_favorite: fn -> check_featured_favorite(Map.get(assigns, :featured), user.id) end,
+        movie_favorites_map: fn -> Iptv.list_favorite_ids(user.id, "movie", movie_ids) end,
+        series_favorites_map: fn -> Iptv.list_favorite_ids(user.id, "series", series_ids) end,
+        movie_progress: fn -> Iptv.get_watch_progress_map(user.id, "movie", movie_ids) end,
+        series_progress: fn -> Iptv.get_series_progress_map(user.id, series_ids) end
+      },
+      timeout: 6_000
+    )
+  end
+
+  defp load_trending(user_id, genre, period, show_adult, personalization \\ nil)
+
+  defp load_trending(nil, _genre, period, _show_adult, _personalization) do
     Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
       Iptv.list_trending_movies(limit: @home_default_limit, days: period, show_adult: false)
     end)
   end
 
-  defp load_trending(user_id, genre, period, show_adult) do
+  defp load_trending(user_id, genre, period, show_adult, personalization) do
     cache_key = "home:trending:user:#{user_id}:#{genre}:#{period}:adult:#{show_adult}"
+    personalization = personalization || personalization_context(user_id)
 
     Cache.fetch(cache_key, @trending_ttl, fn ->
       AI.get_personalized_trending(user_id,
         limit: @home_default_limit,
         genre: genre,
         days: period,
-        show_adult: show_adult
+        show_adult: show_adult,
+        profile: personalization.profile,
+        insights: personalization.insights,
+        semantic_scores: personalization.movie_scores
       )
     end)
   end
@@ -317,15 +343,22 @@ defmodule StreamixWeb.HomeData do
     end)
   end
 
-  defp load_series(nil, _genre, _show_adult) do
+  defp load_series(user_id, genre, show_adult, personalization \\ nil)
+
+  defp load_series(nil, _genre, _show_adult, _personalization) do
     Iptv.list_public_series(limit: @home_default_limit, show_adult: false)
   end
 
-  defp load_series(user_id, genre, show_adult) do
+  defp load_series(user_id, genre, show_adult, personalization) do
+    personalization = personalization || personalization_context(user_id)
+
     AI.get_personalized_series(user_id,
       limit: @home_default_limit,
       genre: genre,
-      show_adult: show_adult
+      show_adult: show_adult,
+      profile: personalization.profile,
+      insights: personalization.insights,
+      semantic_scores: personalization.series_scores
     )
   end
 
@@ -341,11 +374,15 @@ defmodule StreamixWeb.HomeData do
     )
   end
 
-  defp load_recommendations(user_id, show_adult) do
-    ids = recommendation_ids(user_id)
+  defp load_recommendations(nil, _show_adult, _personalization), do: []
+
+  defp load_recommendations(user_id, show_adult, personalization) do
+    ids = recommendation_ids(personalization.movie_recommendations)
 
     recommendations =
-      Iptv.list_visible_movies_by_ids(user_id, ids, show_adult: show_adult)
+      user_id
+      |> Iptv.list_visible_movies_by_ids(ids, show_adult: show_adult)
+      |> order_by_ids(ids)
 
     if length(recommendations) >= @home_default_limit do
       Enum.take(recommendations, @home_default_limit)
@@ -353,7 +390,10 @@ defmodule StreamixWeb.HomeData do
       fallback =
         AI.get_personalized_trending(user_id,
           limit: @home_default_limit,
-          show_adult: show_adult
+          show_adult: show_adult,
+          profile: personalization.profile,
+          insights: personalization.insights,
+          semantic_scores: personalization.movie_scores
         )
 
       (recommendations ++ fallback)
@@ -362,9 +402,8 @@ defmodule StreamixWeb.HomeData do
     end
   end
 
-  defp recommendation_ids(user_id) do
-    user_id
-    |> AI.get_recommendations(limit: @home_default_limit * 4)
+  defp recommendation_ids(recommendations) do
+    recommendations
     |> normalize_recommendations()
     |> Enum.flat_map(&recommendation_id/1)
   end
@@ -392,10 +431,34 @@ defmodule StreamixWeb.HomeData do
 
   defp normalize_recommendation_id(_id), do: []
 
+  defp load_genre_filters(nil), do: AI.get_user_genre_filters(nil)
+
   defp load_genre_filters(user_id) do
     Cache.fetch("home:genre_filters:user:#{user_id}", @genre_filters_ttl, fn ->
       AI.get_user_genre_filters(user_id)
     end)
+  end
+
+  defp personalization_context(nil) do
+    %{
+      profile: nil,
+      insights: %{},
+      movie_recommendations: [],
+      series_recommendations: [],
+      movie_scores: %{},
+      series_scores: %{}
+    }
+  end
+
+  defp personalization_context(user_id), do: AI.get_personalization_context(user_id)
+
+  defp mark_all_loaded(socket) do
+    assign(socket, :home_loading, Map.new(@home_groups, &{&1, false}))
+  end
+
+  defp order_by_ids(items, ids) do
+    positions = ids |> Enum.with_index() |> Map.new()
+    Enum.sort_by(items, &Map.get(positions, &1.id, length(ids)))
   end
 
   defp collect_content_ids(assigns, keys) do
@@ -461,10 +524,9 @@ defmodule StreamixWeb.HomeData do
     )
   end
 
-  defp show_adult_content?(%{assigns: %{current_scope: %{user: user}}}),
-    do: user.show_adult_content
-
-  defp show_adult_content?(_socket), do: false
+  defp show_adult_content?(%{assigns: assigns}), do: show_adult_content?(assigns)
+  defp show_adult_content?(%{current_scope: %{user: user}}), do: user.show_adult_content
+  defp show_adult_content?(_assigns), do: false
 
   defp refresh_featured_favorite(socket) do
     assign(

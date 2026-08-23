@@ -1,20 +1,12 @@
 defmodule StreamixWeb.E2E.HomeSkeletonTest do
   @moduledoc """
-  Regression: HomeLive used to leave Safari iOS users staring at the
-  skeleton forever. Reproducing this locally on WebKit revealed the
-  actual culprit was NOT iOS-specific — `HomeCatalogLoader` fans 8
-  sections out concurrently, and at least two of them
-  (`:trending`, `:series`) call `Profile.get_user_profile/1`, which
-  acquires the ConCache lock `user_profile:USER_ID`. The losers wait
-  on `GenServer.call(.., :lock, 5_000)` and time out after 5 s, falling
-  back to `[]`. On a fast desktop this just looks like a slow load
-  (~10 s). On iOS Safari, with extra WS-upgrade and tab-suspend cost,
-  it crosses the LiveSocket health threshold and the skeleton sticks.
+  Regression coverage for the progressive home shell and responsive catalog.
 
-  Assert the home reaches a usable state quickly enough that the
-  symptom can't return. Adjust the `:max_load_ms` once the lock
-  contention is fixed (e.g. by computing the profile once in
-  `Data.load/1` and passing it down to the per-section fetchers).
+  The home previously waited for every catalog and personalization fetch before
+  replacing one page-wide skeleton. Slow AI/profile work therefore hid an
+  otherwise usable catalog. The current contract renders the shell immediately,
+  computes personalization inputs once, and resolves each shelf group
+  independently.
 
       mix test --include playwright test/streamix_web/e2e/home_skeleton_test.exs
   """
@@ -26,6 +18,16 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
                          _ -> :webkit
                        end)
 
+  @compact_mobile_opts [
+                         viewport: %{width: 360, height: 800},
+                         device_scale_factor: 3.0,
+                         service_workers: "block"
+                       ] ++
+                         if(@playwright_browser == :firefox,
+                           do: [],
+                           else: [is_mobile: true]
+                         )
+
   @mobile_opts [
                  viewport: %{width: 390, height: 844},
                  device_scale_factor: 3.0,
@@ -35,6 +37,16 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
                    do: [],
                    else: [is_mobile: true]
                  )
+
+  @large_mobile_opts [
+                       viewport: %{width: 430, height: 932},
+                       device_scale_factor: 3.0,
+                       service_workers: "block"
+                     ] ++
+                       if(@playwright_browser == :firefox,
+                         do: [],
+                         else: [is_mobile: true]
+                       )
 
   use PhoenixTest.Playwright.Case, async: false, browser: @playwright_browser
   use StreamixWeb, :verified_routes
@@ -63,23 +75,34 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     :ok
   end
 
-  describe "HomeLive skeleton on WebKit" do
-    test "skeleton clears within 5s of mount", %{conn: conn} do
+  describe "progressive HomeLive" do
+    test "renders its shell immediately and resolves every shelf group", %{conn: conn} do
       conn
       |> login(user_fixture())
       |> visit(~p"/")
-      # Authenticated home renders the premium CTA banner once Data.load
-      # completes. If the WS upgrade or async load gets stuck (the actual
-      # Safari iOS bug), this assert times out — that's the regression.
-      # Generous timeout because HomeCatalogLoader fans out 8 sections
-      # with their own 15s budget each.
-      |> assert_has("#home-premium-cta", timeout: 20_000)
+      |> assert_has("#home-progressive-shell")
+      |> assert_has("#home-premium-cta")
+      |> assert_has("#home-progressive-shell[aria-busy='false']", timeout: 10_000)
       |> refute_has(~s|[data-loading-home="true"]|)
     end
   end
 
+  @tag browser_context_opts: @compact_mobile_opts
+  test "compact mobile catalog remains dense at 360px", %{conn: conn} do
+    assert_mobile_catalog(conn, 360)
+  end
+
   @tag browser_context_opts: @mobile_opts
-  test "mobile catalog keeps posters dense and live cards compact", %{conn: conn} do
+  test "standard mobile catalog remains dense at 390px", %{conn: conn} do
+    assert_mobile_catalog(conn, 390)
+  end
+
+  @tag browser_context_opts: @large_mobile_opts
+  test "large mobile catalog remains dense at 430px", %{conn: conn} do
+    assert_mobile_catalog(conn, 430)
+  end
+
+  defp assert_mobile_catalog(conn, viewport_width) do
     user = user_fixture()
     provider = provider_fixture(user, %{is_active: true})
 
@@ -98,10 +121,10 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     |> login(user)
     |> visit(~p"/providers/#{provider.id}/movies")
     |> assert_has("body .phx-connected #movies .catalog-stream-item")
-    |> assert_compact_poster_grid()
+    |> assert_compact_poster_grid(viewport_width)
     |> visit(~p"/providers/#{provider.id}")
     |> assert_has("body .phx-connected #channels .catalog-stream-item")
-    |> assert_compact_live_grid()
+    |> assert_compact_live_grid(viewport_width)
   end
 
   defp login(session, user) do
@@ -130,7 +153,7 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     end)
   end
 
-  defp assert_compact_poster_grid(session) do
+  defp assert_compact_poster_grid(session, viewport_width) do
     PhoenixTest.Playwright.evaluate(
       session,
       """
@@ -154,7 +177,7 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
       """,
       [is_function: true],
       fn state ->
-        assert state["viewportWidth"] == 390
+        assert state["viewportWidth"] == viewport_width
         assert length(state["rects"]) == 6
 
         [first, second, third, fourth | _rest] = state["rects"]
@@ -162,11 +185,12 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
         assert_in_delta first["top"], third["top"], 2
         assert fourth["top"] > first["bottom"]
 
+        expected_width = (viewport_width - 52) / 3
+
         for rect <- Enum.take(state["rects"], 3) do
-          assert rect["width"] >= 100
-          assert rect["width"] <= 125
+          assert_in_delta rect["width"], expected_width, 6
           assert rect["height"] > rect["width"] * 1.6
-          assert rect["right"] <= 390
+          assert rect["right"] <= viewport_width
         end
 
         assert state["favorite"]["width"] >= 44
@@ -178,7 +202,7 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
     )
   end
 
-  defp assert_compact_live_grid(session) do
+  defp assert_compact_live_grid(session, viewport_width) do
     PhoenixTest.Playwright.evaluate(
       session,
       """
@@ -207,11 +231,12 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
         assert_in_delta first["top"], second["top"], 2
         assert third["top"] > first["bottom"]
 
+        expected_width = (viewport_width - 42) / 2
+
         for rect <- Enum.take(state["rects"], 2) do
-          assert rect["width"] >= 165
-          assert rect["width"] <= 180
-          assert rect["height"] <= 165
-          assert rect["right"] <= 390
+          assert_in_delta rect["width"], expected_width, 7
+          assert rect["height"] <= 180
+          assert rect["right"] <= viewport_width
         end
 
         assert state["favorite"]["width"] >= 44

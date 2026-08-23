@@ -98,6 +98,7 @@ import {
 import { createInitialPlayerState } from "../player/player_state";
 import { PlayerUI } from "../player/player_ui";
 import { createScreenWakeLockController } from "../player/screen_wake_lock_controller";
+import { createSourceFailoverController } from "../player/source_failover_controller.js";
 import { collectStartupDiagnostics } from "../player/startup_diagnostics";
 import {
   findPortugueseTrack,
@@ -127,6 +128,7 @@ const VideoPlayer = {
     this.initUI();
     this.updateVolumeUI();
     this.setupEventListeners();
+    this.setupSourceFailover();
     this.setupNetworkMonitor();
     this.setupKeyboardShortcuts();
     this.applyPartyControlPolicy();
@@ -824,6 +826,81 @@ const VideoPlayer = {
     });
   },
 
+  setupSourceFailover() {
+    const statusElement = this.el.querySelector("#source-failover-status");
+
+    this.sourceFailoverController = createSourceFailoverController({
+      enabled: this.sourceFailoverEnabled,
+      statusElement,
+      pushRequest: (payload) => this.pushEventSafe("request_source_failover", payload),
+      onApply: (payload) => this.applySourceFailover(payload),
+      onUnavailable: (terminalError, payload) => {
+        this.presentTerminalPlaybackError(
+          terminalError?.message || payload?.error_message || "Falha na reprodução",
+          payload?.hint || null,
+        );
+      },
+    });
+
+    const applyRef = this.handleEvent("source_failover", (payload) =>
+      this.sourceFailoverController?.apply(payload),
+    );
+    const unavailableRef = this.handleEvent("source_failover_unavailable", (payload) =>
+      this.sourceFailoverController?.unavailable(payload),
+    );
+
+    this.lifecycle.add(() => {
+      this.removeHandleEvent?.(applyRef);
+      this.removeHandleEvent?.(unavailableRef);
+      this.sourceFailoverController?.destroy();
+      this.sourceFailoverController = null;
+    });
+  },
+
+  applySourceFailover(payload) {
+    const streamUrl = payload?.stream_url;
+    if (typeof streamUrl !== "string" || streamUrl.length === 0) return;
+
+    this.reportPlayerLifecycle("source_failover_applied", {
+      previous_content_id: this.contentId,
+      next_content_id: payload.content_id,
+      provider_id: payload.provider_id,
+      failover_count: payload.failover_count,
+    });
+
+    this._sourceFailoverResumeTime = Number(payload.resume_time) || 0;
+    this._savedPosition = null;
+    this.streamUrl = streamUrl;
+    this.proxyUrl = payload.proxy_url || streamUrl;
+    this.sourceType = payload.source_type || this.sourceType;
+    this.contentId = String(payload.content_id);
+    this.useProxy = true;
+    this.currentUrl = null;
+    this.currentStreamType = payload.stream_type || null;
+
+    this.el.dataset.streamUrl = this.streamUrl;
+    this.el.dataset.proxyUrl = this.proxyUrl;
+    this.el.dataset.sourceType = this.sourceType;
+    this.el.dataset.contentId = this.contentId;
+    if (payload.stream_type) this.el.dataset.streamType = payload.stream_type;
+
+    this.retryCount = 0;
+    this._hlsRecoveryAttempts = 0;
+    this._mpegtsNetworkAttempts = 0;
+    this._mpegtsRecreateAttempts = 0;
+    this.fallbackAttempts = 0;
+    this._switchingToAVPlayer = false;
+    this.avPlayerAttempted = false;
+    this.avbridgeAttempted = false;
+    this.h265webAttempted = false;
+    this._emergencyStopDone = false;
+
+    this.playerUI.hideError();
+    this.playerUI.showLoading();
+    this.cleanup();
+    this.initPlayer();
+  },
+
   // ============================================
   // Event Listeners
   // ============================================
@@ -1008,6 +1085,25 @@ const VideoPlayer = {
   // ============================================
 
   showPlaybackError(message, hint = null) {
+    const failoverRequested = this.sourceFailoverController?.request({
+      contentId: this.contentId,
+      position: this.getCurrentTime(),
+      reason: message,
+    });
+
+    if (failoverRequested) {
+      this._terminalPlaybackError = false;
+      this.setPlaybackSystemState("none");
+      this.playerUI.hideError();
+      this.playerUI.showLoading();
+      this.cleanup();
+      return;
+    }
+
+    this.presentTerminalPlaybackError(message, hint);
+  },
+
+  presentTerminalPlaybackError(message, hint = null) {
     this._terminalPlaybackError = true;
     this.setPlaybackSystemState("none");
     this.playerUI.showError(message, hint);
@@ -1503,6 +1599,8 @@ const VideoPlayer = {
 
   retryPlaybackFromError() {
     log.info("[VideoPlayer] Retrying playback from error screen");
+    this.sourceFailoverController?.reset();
+    this.pushEventSafe("reset_source_failover", {});
     this.reportPlayerLifecycle("player_retry_from_error", {
       retry_count: this.retryCount,
       fallback_attempts: this.fallbackAttempts,
@@ -1798,6 +1896,12 @@ const VideoPlayer = {
   },
 
   takeResumeTime(fallback = 0) {
+    const failoverTime = Number(this._sourceFailoverResumeTime);
+    if (Number.isFinite(failoverTime) && failoverTime > 0) {
+      this._sourceFailoverResumeTime = null;
+      return failoverTime;
+    }
+
     const savedTime =
       this.contentType === "vod" && this._savedPosition?.time > 0 ? this._savedPosition.time : null;
 

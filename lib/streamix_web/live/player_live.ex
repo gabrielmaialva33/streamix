@@ -26,6 +26,7 @@ defmodule StreamixWeb.PlayerLive do
 
   alias Streamix.Iptv
   alias Streamix.Torrent
+  alias StreamixWeb.PlayerSourceFailover
 
   @torrent_peer_target 30
 
@@ -129,6 +130,80 @@ defmodule StreamixWeb.PlayerLive do
     )
 
     {:noreply, socket}
+  end
+
+  def handle_event("request_source_failover", params, socket) do
+    position = normalize_failover_position(params["position"])
+    reason = normalize_failover_reason(params["reason"])
+
+    case PlayerSourceFailover.next(
+           socket.assigns.content_type,
+           socket.assigns.content,
+           socket.assigns.current_scope.user,
+           socket.assigns.source_failover_attempted_ids
+         ) do
+      {:ok, source, attempted_ids} ->
+        count = socket.assigns.source_failover_count + 1
+        payload = PlayerSourceFailover.payload(source, position, count)
+
+        :telemetry.execute(
+          [:streamix, :player, :source_failover],
+          %{count: 1},
+          %{
+            status: :selected,
+            from_content_id: socket.assigns.content.id,
+            to_content_id: source.content.id,
+            provider_id: source.provider.id,
+            reason: reason
+          }
+        )
+
+        {:noreply,
+         socket
+         |> assign(
+           content: source.content,
+           provider: source.provider,
+           stream_url: source.stream_url,
+           content_type: safe_content_type(source.content_type),
+           next_episode:
+             load_next_episode(
+               source.content_type,
+               source.content,
+               source.provider,
+               socket.assigns.user_id
+             ),
+           source_failover_attempted_ids: attempted_ids,
+           source_failover_count: count
+         )
+         |> push_event("source_failover", payload)}
+
+      {:error, :no_sources, attempted_ids} ->
+        :telemetry.execute(
+          [:streamix, :player, :source_failover],
+          %{count: 1},
+          %{
+            status: :unavailable,
+            from_content_id: socket.assigns.content.id,
+            reason: reason
+          }
+        )
+
+        {:noreply,
+         socket
+         |> assign(source_failover_attempted_ids: attempted_ids)
+         |> push_event("source_failover_unavailable", %{
+           message: "Nenhuma outra fonte está disponível agora.",
+           hint: "Tente novamente em alguns instantes ou escolha outra versão nos detalhes."
+         })}
+    end
+  end
+
+  def handle_event("reset_source_failover", _params, socket) do
+    {:noreply,
+     assign(socket,
+       source_failover_attempted_ids: MapSet.new([socket.assigns.content.id]),
+       source_failover_count: 0
+     )}
   end
 
   def handle_event("player_debug", _params, socket) do
@@ -321,6 +396,7 @@ defmodule StreamixWeb.PlayerLive do
         subtitles_enabled={@current_scope.user.subtitles_enabled}
         subtitle_language={@current_scope.user.subtitle_language}
         subtitle_offset_ms={@current_scope.user.subtitle_offset_ms}
+        source_failover_enabled={@source_failover_enabled}
       />
       <.torrent_swarm_gate
         :if={@player_state == :torrent_buffering}
@@ -498,6 +574,11 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(next_episode: next_episode)
       |> assign(playback_session: playback_session)
       |> assign(return_to: return_to)
+      |> assign(
+        source_failover_enabled: automatic_failover_supported?(type, provider),
+        source_failover_attempted_ids: MapSet.new([content.id]),
+        source_failover_count: 0
+      )
 
     {:ok, socket}
   end
@@ -546,6 +627,11 @@ defmodule StreamixWeb.PlayerLive do
       |> assign(torrent_failure_reason: nil)
       |> assign(torrent_status_url: ~p"/api/stream/torrent/#{info_hash}/status")
       |> assign(torrent_peer_target: @torrent_peer_target)
+      |> assign(
+        source_failover_enabled: false,
+        source_failover_attempted_ids: MapSet.new([content.id]),
+        source_failover_count: 0
+      )
 
     {:ok, socket}
   end
@@ -640,6 +726,28 @@ defmodule StreamixWeb.PlayerLive do
   defp safe_streaming_mode("quality"), do: :quality
   defp safe_streaming_mode("adaptive"), do: :adaptive
   defp safe_streaming_mode(_), do: :balanced
+
+  defp normalize_failover_position(value) when is_integer(value) and value >= 0, do: value * 1.0
+
+  defp normalize_failover_position(value) when is_float(value) and value >= 0,
+    do: value
+
+  defp normalize_failover_position(value) when is_binary(value) do
+    case Float.parse(value) do
+      {position, ""} when position >= 0 -> position
+      _ -> 0.0
+    end
+  end
+
+  defp normalize_failover_position(_value), do: 0.0
+
+  defp normalize_failover_reason(reason) when is_binary(reason) do
+    reason
+    |> String.trim()
+    |> String.slice(0, 160)
+  end
+
+  defp normalize_failover_reason(_reason), do: "unknown"
 
   defp start_torrent_session_task(socket, content) do
     if connected?(socket) do

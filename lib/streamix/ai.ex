@@ -23,6 +23,7 @@ defmodule Streamix.AI do
   # Personalization
   defdelegate compute_user_profile(user_id), to: UserAnalytics
   defdelegate get_user_profile(user_id), to: UserAnalytics
+  defdelegate get_personalization_context(user_id), to: UserAnalytics
   defdelegate get_user_insights(user_id), to: UserAnalytics
   defdelegate get_recommendations(user_id, opts \\ []), to: UserAnalytics
   defdelegate get_channel_recommendations(user_id, opts \\ []), to: UserAnalytics

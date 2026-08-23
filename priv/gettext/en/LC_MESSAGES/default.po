@@ -1,0 +1,279 @@
+## "msgid"s in this file come from POT (.pot) files.
+###
+### Do not add, change, or remove "msgid"s manually here as
+### they're tied to the ones in the corresponding POT file
+### (with the same domain).
+###
+### Use "mix gettext.extract --merge" or "mix gettext.merge"
+### to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:119
+#, elixir-autogen, elixir-format
+msgid "%{count} canal"
+msgid_plural "%{count} canais"
+msgstr[0] "%{count} channel"
+msgstr[1] "%{count} channels"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:172
+#, elixir-autogen, elixir-format
+msgid "Adicionar %{channel} aos favoritos"
+msgstr "Add %{channel} to favorites"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:24
+#, elixir-autogen, elixir-format
+msgid "Agora"
+msgstr "Now"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:24
+#, elixir-autogen, elixir-format
+msgid "Aguardando o buffer"
+msgstr "Waiting for buffer"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:34
+#, elixir-autogen, elixir-format
+msgid "Ajustando sincronização"
+msgstr "Adjusting sync"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:31
+#, elixir-autogen, elixir-format
+msgid "Ajustando sincronização (%{drift} ms)"
+msgstr "Adjusting sync (%{drift} ms)"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:236
+#, elixir-autogen, elixir-format
+msgid "Ajuste os filtros ou sincronize o EPG do seu provedor para preencher a programação."
+msgstr "Adjust the filters or sync your provider's EPG to populate the schedule."
+
+#: lib/streamix_web/live/watch_party_live/status.ex:18
+#, elixir-autogen, elixir-format
+msgid "Anfitrião desconectado — aguardando retorno"
+msgstr "Host disconnected — waiting for return"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:159
+#, elixir-autogen, elixir-format
+msgid "Assistir"
+msgstr "Watch"
+
+#: lib/streamix_web/components/app/navigation.ex:118
+#, elixir-autogen, elixir-format
+msgid "Busca"
+msgstr "Search"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:54
+#, elixir-autogen, elixir-format
+msgid "Buscar canais…"
+msgstr "Search channels…"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:45
+#, elixir-autogen, elixir-format
+msgid "Buscar canal"
+msgstr "Search channel"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:122
+#, elixir-autogen, elixir-format
+msgid "Carregando guia"
+msgstr "Loading guide"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:77
+#, elixir-autogen, elixir-format
+msgid "Categorias da programação"
+msgstr "Schedule categories"
+
+#: lib/streamix_web/components/app/navigation.ex:106
+#: lib/streamix_web/components/layouts/app.html.heex:113
+#, elixir-autogen, elixir-format
+msgid "Catálogo"
+msgstr "Catalog"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:27
+#, elixir-autogen, elixir-format
+msgid "Conectando à sincronização"
+msgstr "Connecting to sync"
+
+#: lib/streamix_web/live/user/settings_live.ex:12
+#: lib/streamix_web/live/user/settings_live.ex:96
+#: lib/streamix_web/live/user/settings_live.ex:124
+#, elixir-autogen, elixir-format
+msgid "Configurações"
+msgstr "Settings"
+
+#: lib/streamix_web/live/user/settings_live.ex:241
+#, elixir-autogen, elixir-format
+msgid "Escolha o idioma usado na navegação e nas mensagens principais."
+msgstr "Choose the language used for navigation and primary messages."
+
+#: lib/streamix_web/live/content/guide_live.html.heex:107
+#, elixir-autogen, elixir-format
+msgid "Favoritos"
+msgstr "Favorites"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:61
+#, elixir-autogen, elixir-format
+msgid "Filtrar provedor"
+msgstr "Filter provider"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:38
+#, elixir-autogen, elixir-format
+msgid "Filtros do guia"
+msgstr "Guide filters"
+
+#: lib/streamix_web/live/user/settings_live.ex:126
+#, elixir-autogen, elixir-format
+msgid "Gerencie as configurações da sua conta"
+msgstr "Manage your account settings"
+
+#: lib/streamix_web/components/layouts/app.html.heex:121
+#, elixir-autogen, elixir-format
+msgid "Guia"
+msgstr "Guide"
+
+#: lib/streamix_web/live/content/guide_live.ex:22
+#: lib/streamix_web/live/content/guide_live.html.heex:6
+#, elixir-autogen, elixir-format
+msgid "Guia de TV"
+msgstr "TV Guide"
+
+#: lib/streamix_web/live/user/settings_live.ex:254
+#, elixir-autogen, elixir-format
+msgid "Idioma da interface"
+msgstr "Interface language"
+
+#: lib/streamix_web/live/user/settings_live.ex:99
+#, elixir-autogen, elixir-format
+msgid "Idioma da interface atualizado"
+msgstr "Interface language updated"
+
+#: lib/streamix_web/live/user/settings_live.ex:239
+#, elixir-autogen, elixir-format
+msgid "Interface"
+msgstr "Interface"
+
+#: lib/streamix_web/components/app/navigation.ex:97
+#: lib/streamix_web/components/layouts/app.html.heex:105
+#, elixir-autogen, elixir-format
+msgid "Início"
+msgstr "Home"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:114
+#, elixir-autogen, elixir-format
+msgid "Janela:"
+msgstr "Window:"
+
+#: lib/streamix_web/components/app/navigation.ex:127
+#, elixir-autogen, elixir-format
+msgid "Lista"
+msgstr "List"
+
+#: lib/streamix_web/components/layouts/app.html.heex:137
+#, elixir-autogen, elixir-format
+msgid "Minha Lista"
+msgstr "My List"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:19
+#, elixir-autogen, elixir-format
+msgid "Mostrar programação anterior"
+msgstr "Show earlier schedule"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:31
+#, elixir-autogen, elixir-format
+msgid "Mostrar próxima programação"
+msgstr "Show later schedule"
+
+#: lib/streamix_web/components/app/navigation.ex:87
+#, elixir-autogen, elixir-format
+msgid "Navegação principal"
+msgstr "Main navigation"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:233
+#, elixir-autogen, elixir-format
+msgid "Nenhum canal no guia"
+msgstr "No channels in the guide"
+
+#: lib/streamix_web/live/content/guide_live.ex:90
+#, elixir-autogen, elixir-format
+msgid "Não foi possível atualizar o guia agora."
+msgstr "The guide could not be updated right now."
+
+#: lib/streamix_web/live/user/settings_live.ex:105
+#, elixir-autogen, elixir-format
+msgid "Não foi possível atualizar o idioma"
+msgstr "The language could not be updated"
+
+#: lib/streamix_web/components/app/navigation.ex:136
+#, elixir-autogen, elixir-format
+msgid "Perfil"
+msgstr "Profile"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:191
+#, elixir-autogen, elixir-format
+msgid "Programação de %{channel}"
+msgstr "%{channel} schedule"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:171
+#, elixir-autogen, elixir-format
+msgid "Remover %{channel} dos favoritos"
+msgstr "Remove %{channel} from favorites"
+
+#: lib/streamix_web/live/user/settings_live.ex:258
+#, elixir-autogen, elixir-format
+msgid "Salvar idioma"
+msgstr "Save language"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:222
+#, elixir-autogen, elixir-format
+msgid "Sem programação disponível nesta janela"
+msgstr "No schedule available in this window"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:44
+#, elixir-autogen, elixir-format
+msgid "Sincronizado com o anfitrião"
+msgstr "Synced with host"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:41
+#, elixir-autogen, elixir-format
+msgid "Sincronizado com o anfitrião (%{drift} ms)"
+msgstr "Synced with host (%{drift} ms)"
+
+#: lib/streamix_web/live/watch_party_live/status.ex:21
+#, elixir-autogen, elixir-format
+msgid "Sincronização desconectada"
+msgstr "Sync disconnected"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:84
+#, elixir-autogen, elixir-format
+msgid "Todos"
+msgstr "All"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:64
+#, elixir-autogen, elixir-format
+msgid "Todos os provedores"
+msgstr "All providers"
+
+#: lib/streamix_web/components/layouts/app.html.heex:129
+#, elixir-autogen, elixir-format
+msgid "Torrents"
+msgstr "Torrents"
+
+#: lib/streamix_web/live/content/guide_live.html.heex:9
+#, elixir-autogen, elixir-format
+msgid "Veja o que está passando agora e a programação das próximas horas."
+msgstr ""
+
+#: lib/streamix_web/live/watch_party_live/status.ex:37
+#, elixir-autogen, elixir-format
+msgid "Você controla a reprodução"
+msgstr ""
+
+#: lib/streamix_web/live/content/guide_live.html.heex:244
+#, elixir-autogen, elixir-format
+msgid "Voltar aos canais"
+msgstr ""
+
+#: lib/streamix_web/components/layouts/app.html.heex:145
+#, elixir-autogen, elixir-format
+msgid "Watch Party"
+msgstr ""

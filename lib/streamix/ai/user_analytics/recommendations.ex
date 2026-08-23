@@ -39,7 +39,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
     cache_key = build_recommendations_key(user_id, opts)
 
     Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      recommend_for_profile(Profile.get_user_profile(user_id), user_id, opts)
+      recommend_for_profile(resolve_profile(user_id, opts), user_id, opts)
     end)
   end
 
@@ -47,6 +47,13 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
 
   defp recommend_for_profile(profile_vector, user_id, opts) do
     search_recommendations(user_id, profile_vector, opts)
+  end
+
+  defp resolve_profile(user_id, opts) do
+    case Keyword.fetch(opts, :profile) do
+      {:ok, profile} -> profile
+      :error -> Profile.get_user_profile(user_id)
+    end
   end
 
   @doc """

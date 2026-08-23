@@ -134,6 +134,85 @@ defmodule StreamixWeb.PlayerHelpers do
   def canonical_content_type("torrent"), do: "movie"
   def canonical_content_type(type), do: type
 
+  @doc "Returns whether a player source can move between equivalent provider copies."
+  def automatic_failover_supported?(type, provider) do
+    canonical_content_type(to_string(type)) in ["movie", "episode"] and
+      Map.get(provider, :provider_type) not in [:torrent, "torrent"]
+  end
+
+  @doc """
+  Returns equivalent visible playback sources ranked by runtime health.
+
+  The current source remains in the result so callers can preserve one common
+  ordering contract and exclude already-attempted ids locally. Torrent-backed
+  movie rows are intentionally omitted because switching to them requires the
+  swarm-gate lifecycle rather than a URL-only player restart.
+  """
+  def failover_sources(type, content, user_id) do
+    case canonical_content_type(to_string(type)) do
+      "movie" -> movie_failover_sources(content, user_id)
+      "episode" -> episode_failover_sources(content, user_id)
+      _ -> []
+    end
+  end
+
+  defp movie_failover_sources(movie, user_id) do
+    [movie | Iptv.list_movie_variants(movie, user_id, limit: 32)]
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.reject(&(Map.get(&1.provider, :provider_type) in [:torrent, "torrent"]))
+    |> Enum.map(&source_candidate("movie", &1, &1.provider))
+    |> Iptv.sort_stream_sources(media_type: :vod, current_source_id: movie.id)
+  end
+
+  defp episode_failover_sources(
+         %{season: %{season_number: season_number, series: series}} = episode,
+         user_id
+       ) do
+    current_provider = series.provider
+
+    alternatives =
+      series
+      |> Iptv.list_series_variants(user_id, limit: 24)
+      |> Enum.flat_map(fn candidate_series ->
+        case matching_episode(candidate_series, season_number, episode.episode_num) do
+          nil -> []
+          candidate -> [source_candidate("episode", candidate, candidate_series.provider)]
+        end
+      end)
+
+    [source_candidate("episode", episode, current_provider) | alternatives]
+    |> Enum.uniq_by(& &1.id)
+    |> Iptv.sort_stream_sources(media_type: :vod, current_source_id: episode.id)
+  end
+
+  defp episode_failover_sources(_episode, _user_id), do: []
+
+  defp matching_episode(series, season_number, episode_number) do
+    with seasons when is_list(seasons) <- Map.get(series, :seasons),
+         season when not is_nil(season) <-
+           Enum.find(seasons, &(Map.get(&1, :season_number) == season_number)),
+         episodes when is_list(episodes) <- Map.get(season, :episodes) do
+      Enum.find(episodes, &(Map.get(&1, :episode_num) == episode_number))
+    else
+      _ -> nil
+    end
+  end
+
+  defp source_candidate(type, content, provider) do
+    %{
+      id: content.id,
+      content_id: content.id,
+      content_type: type,
+      content: content,
+      provider: provider,
+      provider_id: provider.id,
+      name: Map.get(content, :name) || Map.get(content, :title),
+      title: Map.get(content, :title) || Map.get(content, :name),
+      duration_secs: Map.get(content, :duration_secs),
+      tmdb_id: Map.get(content, :tmdb_id)
+    }
+  end
+
   defp load_gindex_movie(id) do
     movie = Iptv.get_movie_with_provider!(id)
 
