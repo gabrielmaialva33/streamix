@@ -72,6 +72,7 @@ defmodule StreamixWeb.Router do
   pipeline :authenticated_stream do
     plug :fetch_session
     plug :fetch_live_flash
+    plug :protect_from_forgery
     plug :fetch_current_scope_for_user
   end
 

@@ -80,9 +80,18 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
       conn
       |> login(user_fixture())
       |> visit(~p"/")
+      |> assert_has("body .phx-connected")
       |> assert_has("#home-progressive-shell")
       |> assert_has("#home-premium-cta")
-      |> assert_has("#home-progressive-shell[aria-busy='false']", timeout: 10_000)
+      |> assert_has("#home-progressive-shell[data-home-catalog-state='false']", timeout: 10_000)
+      |> assert_has("#home-progressive-shell[data-home-personalization-state='false']",
+        timeout: 10_000
+      )
+      |> assert_has("#home-progressive-shell[data-home-library-state='false']", timeout: 10_000)
+      |> assert_has("#home-progressive-shell[data-home-annotations-state='false']",
+        timeout: 10_000
+      )
+      |> assert_has("#home-progressive-shell[aria-busy='false']")
       |> refute_has(~s|[data-loading-home="true"]|)
     end
   end

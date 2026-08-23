@@ -403,18 +403,8 @@ defmodule StreamixWeb.HomeData do
   end
 
   defp recommendation_ids(recommendations) do
-    recommendations
-    |> normalize_recommendations()
-    |> Enum.flat_map(&recommendation_id/1)
+    Enum.flat_map(recommendations, &recommendation_id/1)
   end
-
-  defp normalize_recommendations(recommendations) when is_list(recommendations),
-    do: recommendations
-
-  defp normalize_recommendations({:ok, recommendations}) when is_list(recommendations),
-    do: recommendations
-
-  defp normalize_recommendations(_result), do: []
 
   defp recommendation_id(%{id: id}), do: normalize_recommendation_id(id)
   defp recommendation_id(%{"id" => id}), do: normalize_recommendation_id(id)

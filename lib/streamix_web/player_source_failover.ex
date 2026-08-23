@@ -27,24 +27,37 @@ defmodule StreamixWeb.PlayerSourceFailover do
 
     type
     |> PlayerHelpers.failover_sources(content, user.id)
-    |> Enum.reduce_while({:error, :no_sources, attempted_ids}, fn candidate, result ->
-      attempted = elem(result, 2)
+    |> Enum.reduce_while(
+      {:error, :no_sources, attempted_ids},
+      &select_candidate(&1, &2, user)
+    )
+  end
 
-      if MapSet.member?(attempted, candidate.id) do
-        {:cont, result}
-      else
-        attempted = MapSet.put(attempted, candidate.id)
+  defp select_candidate(candidate, result, user) do
+    attempted = elem(result, 2)
 
-        if Access.plays_global_content?(user, candidate.provider) do
-          case resolve_candidate(candidate, user.id) do
-            {:ok, source} -> {:halt, {:ok, source, attempted}}
-            {:error, _reason} -> {:cont, {:error, :no_sources, attempted}}
-          end
-        else
-          {:cont, {:error, :no_sources, attempted}}
-        end
-      end
-    end)
+    if MapSet.member?(attempted, candidate.id) do
+      {:cont, result}
+    else
+      resolve_untried_candidate(candidate, attempted, user)
+    end
+  end
+
+  defp resolve_untried_candidate(candidate, attempted, user) do
+    attempted = MapSet.put(attempted, candidate.id)
+
+    case authorized_source(candidate, user) do
+      {:ok, source} -> {:halt, {:ok, source, attempted}}
+      {:error, _reason} -> {:cont, {:error, :no_sources, attempted}}
+    end
+  end
+
+  defp authorized_source(candidate, user) do
+    if Access.plays_global_content?(user, candidate.provider) do
+      resolve_candidate(candidate, user.id)
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc "Builds the credential-free browser payload for a selected source."

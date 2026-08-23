@@ -59,8 +59,11 @@ defmodule StreamixWeb.HomeLive do
       snapshot = home_snapshot(socket.assigns)
 
       socket
+      |> Data.mark_started(:catalog)
       |> start_async(:home_catalog, fn -> Data.catalog_sections(snapshot) end)
+      |> Data.mark_started(:personalization)
       |> start_async(:home_personalization, fn -> Data.personalization_sections(snapshot) end)
+      |> Data.mark_started(:library)
       |> start_async(:home_library, fn -> Data.library_sections(snapshot) end)
     else
       socket
@@ -166,12 +169,25 @@ defmodule StreamixWeb.HomeLive do
   defp home_path(%{host_uri: %URI{path: "/home"}}), do: "/home"
   defp home_path(_socket), do: "/"
 
+  defp home_group_state(home_loading, group) do
+    home_loading
+    |> Map.fetch!(group)
+    |> to_string()
+  end
+
+  defp home_busy?(home_loading),
+    do: Enum.any?(home_loading, fn {_group, state} -> state != false end)
+
   def render(assigns) do
     ~H"""
     <div
       id="home-progressive-shell"
       data-loading-home={@loading && "true"}
-      aria-busy={Enum.any?(@home_loading, fn {_group, loading?} -> loading? end)}
+      data-home-catalog-state={home_group_state(@home_loading, :catalog)}
+      data-home-personalization-state={home_group_state(@home_loading, :personalization)}
+      data-home-library-state={home_group_state(@home_loading, :library)}
+      data-home-annotations-state={home_group_state(@home_loading, :annotations)}
+      aria-busy={to_string(home_busy?(@home_loading))}
     >
       <%= if @current_scope do %>
         <.render_authenticated_home {assigns} />

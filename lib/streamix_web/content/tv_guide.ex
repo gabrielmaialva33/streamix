@@ -20,7 +20,13 @@ defmodule StreamixWeb.Content.TvGuide do
         }
 
   @doc "Loads visible channels and their programs for one bounded window."
-  @spec load(map(), keyword()) :: %{rows: [row()], categories: [String.t()], providers: [map()]}
+  @spec load(map(), keyword()) :: %{
+          rows: [row()],
+          categories: [String.t()],
+          providers: [map()],
+          starts_at: DateTime.t(),
+          ends_at: DateTime.t()
+        }
   def load(user, opts \\ []) do
     starts_at = Keyword.get_lazy(opts, :starts_at, &default_start/0)
     ends_at = Keyword.get(opts, :ends_at, DateTime.add(starts_at, @window_hours, :hour))

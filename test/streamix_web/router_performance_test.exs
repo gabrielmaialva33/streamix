@@ -29,7 +29,8 @@ defmodule StreamixWeb.RouterPerformanceTest do
       |> get(~p"/home")
       |> html_response(200)
 
-    assert html =~ ~s(data-loading-home="true")
+    assert html =~ ~s(id="home-progressive-shell")
+    refute html =~ ~s(data-loading-home="true")
   end
 
   test "authenticated home route remains protected", %{conn: conn} do

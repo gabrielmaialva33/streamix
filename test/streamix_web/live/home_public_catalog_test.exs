@@ -30,9 +30,7 @@ defmodule StreamixWeb.HomePublicCatalogTest do
       })
 
       {:ok, view, _html} = live(conn, ~p"/")
-
-      html = render(view)
-
+      html = render_async(view)
       assert html =~ "Catálogo público"
       assert html =~ "Public Movie"
       assert html =~ "Public Series"
@@ -80,7 +78,7 @@ defmodule StreamixWeb.HomePublicCatalogTest do
       end
 
       {:ok, view, _html} = live(conn, ~p"/")
-
+      _html = render_async(view)
       assert has_element?(view, "#public-stat-movies", "14")
       assert has_element?(view, "#public-stat-series", "13")
       assert has_element?(view, "#public-stat-channels", "25")
@@ -103,8 +101,7 @@ defmodule StreamixWeb.HomePublicCatalogTest do
         })
 
       {:ok, view, _html} = live(conn, ~p"/")
-      html = render(view)
-
+      html = render_async(view)
       refute html =~ "png.pngtree.com"
 
       assert has_element?(

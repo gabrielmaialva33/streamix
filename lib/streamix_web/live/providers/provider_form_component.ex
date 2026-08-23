@@ -148,9 +148,8 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
 
     {:noreply,
      start_async(socket, :create_provider, fn ->
-       with :ok <- ensure_connection_tested(params, connection_already_tested?),
-            {:ok, provider} <- Iptv.create_provider(user_id, params) do
-         {:ok, provider}
+       with :ok <- ensure_connection_tested(params, connection_already_tested?) do
+         Iptv.create_provider(user_id, params)
        end
      end)}
   end

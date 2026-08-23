@@ -270,24 +270,23 @@ defmodule StreamixWeb.App.Media do
   defp sync_progress_label(nil), do: nil
 
   defp sync_progress_label(%{phase: phase, type: type}) do
-    base =
-      case phase do
-        :queued -> "Na fila de sincronização"
-        :categories -> "Sincronizando categorias"
-        :live -> "Sincronizando canais"
-        :movies -> "Sincronizando filmes"
-        :series -> "Sincronizando séries"
-        :series_details -> "Atualizando episódios"
-        :metadata -> "Atualizando metadados"
-        :cleanup -> "Finalizando catálogo"
-        _ -> "Sincronizando catálogo"
-      end
+    base = sync_phase_label(phase)
 
     case type do
       value when value in [nil, "", :all] -> base
       value -> "#{base} · #{format_sync_type(value)}"
     end
   end
+
+  defp sync_phase_label(:queued), do: "Na fila de sincronização"
+  defp sync_phase_label(:categories), do: "Sincronizando categorias"
+  defp sync_phase_label(:live), do: "Sincronizando canais"
+  defp sync_phase_label(:movies), do: "Sincronizando filmes"
+  defp sync_phase_label(:series), do: "Sincronizando séries"
+  defp sync_phase_label(:series_details), do: "Atualizando episódios"
+  defp sync_phase_label(:metadata), do: "Atualizando metadados"
+  defp sync_phase_label(:cleanup), do: "Finalizando catálogo"
+  defp sync_phase_label(_phase), do: "Sincronizando catálogo"
 
   defp format_sync_type(value) do
     value
