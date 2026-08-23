@@ -9,7 +9,15 @@ max_cases =
       System.schedulers_online()
   end
 
-ExUnit.start(exclude: [:integration, :slow, :playwright], max_cases: max_cases)
+# Most warning/error output in this suite comes from tests intentionally exercising
+# degraded upstreams, quota exhaustion, retries, and circuit breakers. Capture logs
+# per test and let ExUnit print them only when the owning test fails.
+ExUnit.start(
+  exclude: [:integration, :slow, :playwright],
+  max_cases: max_cases,
+  capture_log: true
+)
+
 Ecto.Adapters.SQL.Sandbox.mode(Streamix.Repo, :manual)
 
 # Start Playwright supervisor only when explicitly running :playwright tests
