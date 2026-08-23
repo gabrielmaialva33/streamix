@@ -34,11 +34,7 @@ import {
   formatErrorForLog,
 } from "../player/error_telemetry";
 import { evaluateFallbackAttempt } from "../player/fallback_policy";
-import {
-  buildIosPlayerState,
-  readIosPlayerState,
-  writeIosPlayerState,
-} from "../player/ios_playback_state";
+import { createIosPwaPlaybackController } from "../player/ios_pwa_playback_controller.js";
 import { LifecycleScope } from "../player/lifecycle_scope";
 import { createMediaSessionController } from "../player/media_session_controller";
 import { createMobileControls } from "../player/mobile_controls";
@@ -224,6 +220,23 @@ const VideoPlayer = {
       render: ({ volume, muted }) => this.playerUI?.updateVolumeUI(volume, muted),
       saveVolume,
       saveMuted,
+    });
+    this.iosPwaPlaybackController = createIosPwaPlaybackController({
+      isEnabled: () => this.iosPwaMode,
+      getContentType: () => this.contentType,
+      getContentId: () => this.contentId,
+      getVideo: () => this.video,
+      getCurrentTime: () => this.getCurrentTime(),
+      getDuration: () => this.getDuration(),
+      isPaused: () => this.isPaused(),
+      getAudioState: () => this.canonicalAudioState(),
+      setAudioState: (state) => this.setCanonicalAudioState(state),
+      applyAudioState: () => this.applyAudioState(),
+      savePlaybackPosition,
+      onStorageUnavailable: () => log.debug("[VideoPlayer] iOS PWA state storage unavailable"),
+      onSeekError: (error) =>
+        log.debug("[VideoPlayer] iOS PWA restore seek failed:", error.message),
+      onPlayError: (error) => log.debug("[VideoPlayer] iOS PWA resume play failed:", error.message),
     });
 
     if (this.nextEpisodeParseFailed) {
@@ -950,7 +963,11 @@ const VideoPlayer = {
       }
 
       this.playerUI.updatePlayPauseUI(false);
-      this.persistIosPlaybackState({ userPaused: false, wasPlaying: true, reason: "play" });
+      this.iosPwaPlaybackController.persist({
+        userPaused: false,
+        wasPlaying: true,
+        reason: "play",
+      });
       if (this.usesNativePlaybackEvents()) {
         this.handlePlaybackStarted();
         emitPlaybackEvent(this.el, "play");
@@ -959,8 +976,8 @@ const VideoPlayer = {
     this.lifecycle.listenOptional(this.video, "pause", () => {
       this.playerUI.updatePlayPauseUI(true);
       this.nativeBufferingController.handlePause();
-      this.persistIosPlaybackState({
-        userPaused: !this._suspendingForIos && document.visibilityState !== "hidden",
+      this.iosPwaPlaybackController.persist({
+        userPaused: this.iosPwaPlaybackController.pauseWasUserInitiated(),
         wasPlaying: false,
         reason: "pause",
       });
@@ -996,14 +1013,14 @@ const VideoPlayer = {
     this.lifecycle.listen(document, "fullscreenchange", this._onFullscreenChange);
     this.lifecycle.listen(document, "webkitfullscreenchange", this._onFullscreenChange);
 
-    this._onIosVisibilityChange = () => this.handleIosVisibilityChange();
+    this._onIosVisibilityChange = () => this.iosPwaPlaybackController.handleVisibilityChange();
     this.lifecycle.listen(document, "visibilitychange", this._onIosVisibilityChange);
 
-    this._onPageShow = () => this.resumeIosPlaybackState();
+    this._onPageShow = () => this.iosPwaPlaybackController.resume();
     this.lifecycle.listen(window, "pageshow", this._onPageShow);
 
     this._onPageTeardown = (event) => {
-      this.handleIosPageHide(event);
+      this.iosPwaPlaybackController.handlePageHide(event);
       if (this.iosPwaMode && event?.persisted) return;
       this.flushPlaybackMetrics("cancelled");
       this.emergencyStopPlayback();
@@ -1332,7 +1349,7 @@ const VideoPlayer = {
       // Save position to localStorage for resume later
       if (this.contentId && this.contentType === "vod") {
         savePlaybackPosition(this.contentId, currentTime, duration);
-        this.persistIosPlaybackState({ reason: "progress" });
+        this.iosPwaPlaybackController.persist({ reason: "progress" });
       }
 
       this.pushEventSafe("progress_update", {
@@ -1343,106 +1360,9 @@ const VideoPlayer = {
     }
   },
 
-  persistIosPlaybackState(extra = {}) {
-    if (!this.iosPwaMode || this.contentType !== "vod" || !this.contentId) return;
-
-    const currentTime = Math.floor(this.getCurrentTime());
-    const duration = Math.floor(this.getDuration());
-    const paused = this.isPaused();
-    const audioState = this.canonicalAudioState();
-    const state = buildIosPlayerState(
-      {
-        contentId: this.contentId,
-        path: `${window.location.pathname}${window.location.search}`,
-        currentTime,
-        duration,
-        paused,
-        muted: audioState.muted,
-        volume: audioState.volume,
-        playbackRate: this.video?.playbackRate ?? 1,
-      },
-      extra,
-    );
-    if (!state) return;
-
-    if (currentTime > 0) {
-      savePlaybackPosition(this.contentId, currentTime, duration);
-    }
-
-    if (!writeIosPlayerState(state)) {
-      log.debug("[VideoPlayer] iOS PWA state storage unavailable");
-    }
-  },
-
-  handleIosVisibilityChange() {
-    if (!this.iosPwaMode || this.contentType !== "vod") return;
-
-    if (document.visibilityState === "hidden") {
-      const wasPlaying = !this.isPaused();
-      this._suspendingForIos = true;
-      this._wasPlayingBeforeHidden = wasPlaying;
-      this.persistIosPlaybackState({ userPaused: false, wasPlaying, reason: "hidden" });
-      return;
-    }
-
-    this._suspendingForIos = false;
-    this.resumeIosPlaybackState();
-  },
-
-  handleIosPageHide(event) {
-    if (!this.iosPwaMode || this.contentType !== "vod") return;
-    const wasPlaying = !this.isPaused();
-    this._suspendingForIos = true;
-    this._wasPlayingBeforeHidden = wasPlaying;
-    this.persistIosPlaybackState({
-      userPaused: false,
-      wasPlaying,
-      reason: event?.persisted ? "pagehide-persisted" : "pagehide",
-    });
-  },
-
-  resumeIosPlaybackState() {
-    if (!this.iosPwaMode || this.contentType !== "vod" || !this.video) return;
-
-    const state = readIosPlayerState(this.contentId);
-    if (!state) return;
-
-    const currentAudioState = this.canonicalAudioState();
-    this.setCanonicalAudioState({
-      volume: Number.isFinite(state.volume) ? state.volume : currentAudioState.volume,
-      muted: typeof state.muted === "boolean" ? state.muted : currentAudioState.muted,
-    });
-    this.applyAudioState();
-
-    if (Number.isFinite(state.playbackRate) && state.playbackRate > 0) {
-      this.video.playbackRate = state.playbackRate;
-    }
-
-    if (state.time > 5 && Math.abs((this.video.currentTime || 0) - state.time) > 2) {
-      try {
-        this.video.currentTime = state.time;
-      } catch (error) {
-        log.debug("[VideoPlayer] iOS PWA restore seek failed:", error.message);
-      }
-    }
-
-    if (state.userPaused) {
-      this.video.pause();
-      return;
-    }
-
-    if (state.wasPlaying || this._wasPlayingBeforeHidden) {
-      this.video.play().catch((error) => {
-        if (error.name !== "AbortError" && error.name !== "NotAllowedError") {
-          log.debug("[VideoPlayer] iOS PWA resume play failed:", error.message);
-        }
-      });
-    }
-  },
-
-  // ============================================
+  // ==================================================
   // URL Handling
-  // ============================================
+  // ==================================================
 
   getEffectiveUrl(streamType) {
     const directUrlAllowed = isDirectStreamUrlAllowed(this.streamUrl, window.location.protocol);

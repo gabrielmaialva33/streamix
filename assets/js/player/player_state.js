@@ -100,6 +100,7 @@ export function createInitialPlayerState(
     mobileControls: null,
     screenWakeLockController: null,
     sourceFailoverController: null,
+    iosPwaPlaybackController: null,
     _sourceFailoverResumeTime: null,
 
     avPlayer: null,
@@ -137,8 +138,6 @@ export function createInitialPlayerState(
     _emergencyStopDone: false,
     _terminalPlaybackError: false,
     iosPwaMode: deps.isIosPwaMode(),
-    _suspendingForIos: false,
-    _wasPlayingBeforeHidden: false,
     _lastIosPwaTapAt: 0,
     _destroyed: false,
   };
