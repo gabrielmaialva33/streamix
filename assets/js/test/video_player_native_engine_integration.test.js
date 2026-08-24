@@ -17,8 +17,9 @@ function methodSource(source, name) {
   assert.equal(starts.length, 1, `expected exactly one ${name}() method`);
 
   const start = starts[0];
-  const openingBrace = source.indexOf("{", start);
-  assert.ok(openingBrace >= 0, `missing opening brace for ${name}()`);
+  const signatureEnd = source.indexOf(") {", start);
+  assert.ok(signatureEnd >= 0, `missing method body for ${name}()`);
+  const openingBrace = signatureEnd + 2;
 
   let depth = 0;
   let quote = null;

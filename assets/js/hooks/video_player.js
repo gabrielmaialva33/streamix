@@ -40,12 +40,18 @@ import {
   formatErrorForLog,
 } from "../player/error_telemetry";
 import { evaluateFallbackAttempt } from "../player/fallback_policy";
+import {
+  createHlsRecoveryCoordinator,
+  HLS_RECOVERY_OPERATION,
+  HLS_RECOVERY_OUTCOME,
+  HLS_RECOVERY_REASON,
+} from "../player/hls_recovery_coordinator.js";
 import { createIosPwaPlaybackController } from "../player/ios_pwa_playback_controller.js";
 import { LifecycleScope } from "../player/lifecycle_scope";
 import { createMediaElementEngine } from "../player/media_element_engine.js";
 import { createMediaSessionController } from "../player/media_session_controller";
 import { createMobileControls } from "../player/mobile_controls";
-import { classifyMpegtsError, executeMpegtsDecision } from "../player/mpegts_error_policy.js";
+import { createMpegtsRecoveryCoordinator } from "../player/mpegts_recovery_coordinator.js";
 import { NativeBufferingController } from "../player/native_buffering_controller";
 import {
   waitForNativeReady as awaitNativeReady,
@@ -77,11 +83,7 @@ import {
   isStandalonePwa,
   scheduleLowPriority,
 } from "../player/playback_environment";
-import {
-  guardPlaybackLoad,
-  runGuardedPlaybackRetry,
-  scheduleGuardedPlaybackRetry,
-} from "../player/playback_load_guard.js";
+import { guardPlaybackLoad } from "../player/playback_load_guard.js";
 import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
 import { createPlaybackStateObserver } from "../player/playback_state_observer.js";
 import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
@@ -218,6 +220,33 @@ const VideoPlayer = {
     this.video = this.el.querySelector("video");
     this.configureNativePlaybackElement();
     Object.assign(this, createInitialPlayerState(this.el));
+    this.hlsRecoveryCoordinator = createHlsRecoveryCoordinator({
+      onFailure: (error) => this.reportHlsRecoveryFailure(error),
+      onRecovering: (decision) =>
+        this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_recovery", {
+          recovery_attempt: decision.nextAttempts,
+          recovery_operation: decision.operation,
+          recovery_reason: decision.reason,
+        }),
+    });
+    this.mpegtsRecoveryCoordinator = createMpegtsRecoveryCoordinator({
+      maxNetworkAttempts: this.maxRetries,
+      onDecision: (decision, data, snapshot) =>
+        this.reportPlayerDebug("mpegts_recovery_decision", {
+          action: decision.action,
+          error_type: data?.errorType,
+          error_detail: data?.errorDetail,
+          network_attempts: snapshot.networkAttempts,
+          recreate_attempts: snapshot.recreateAttempts,
+        }),
+      onRecovering: (decision, _data, snapshot) =>
+        this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "mpegts_recovery", {
+          recovery_action: decision.action,
+          recovery_reason: decision.reason,
+          network_attempts: snapshot.networkAttempts,
+          recreate_attempts: snapshot.recreateAttempts,
+        }),
+    });
     this.avPlayerTeardownQueue = new PlaybackEngineTeardownQueue({
       onError: (error) => log.debug("[VideoPlayer] AVPlayer teardown failed:", error),
     });
@@ -673,12 +702,19 @@ const VideoPlayer = {
     return this.mediaElementEngine;
   },
 
-  setMediaElementEngine(engineId) {
+  setMediaElementEngine(engineId, engineOverride = null) {
     const current = this.mediaElementEngine;
-    if (current?.id === engineId && !current.destroyed) return current;
+    if (
+      current?.id === engineId &&
+      !current.destroyed &&
+      (!engineOverride || current.wraps(engineOverride))
+    ) {
+      return current;
+    }
 
     const engine =
-      engineId === ENGINE_ID.NATIVE
+      engineOverride ??
+      (engineId === ENGINE_ID.NATIVE
         ? createNativePlaybackEngine({
             video: this.video,
             beforePause: () => this.nativeBufferManager?.markIntentionalPause(),
@@ -689,11 +725,12 @@ const VideoPlayer = {
             video: this.video,
             beforePause: () => this.nativeBufferManager?.markIntentionalPause(),
             beforeSeek: () => this.nativeBufferingController?.prepareSeek(),
-          });
+          }));
 
     const next = createPlaybackEngineAdapter({
       id: engineId,
       engine,
+      ownsEngine: engineOverride == null,
     });
 
     this.mediaElementEngine = next;
@@ -802,6 +839,13 @@ const VideoPlayer = {
     if (this._terminalPlaybackError) {
       this.setPlaybackSystemState("none");
       return;
+    }
+
+    if (this.mediaElementEngine?.id === ENGINE_ID.HLS) {
+      this.hlsRecoveryCoordinator?.markRecovered();
+    }
+    if (this.mediaElementEngine?.id === ENGINE_ID.MPEGTS) {
+      this.mpegtsRecoveryCoordinator?.markRecovered();
     }
 
     this.observePlaybackState(PLAYBACK_STATE.PLAYING, "playback_started");
@@ -945,9 +989,8 @@ const VideoPlayer = {
     if (payload.stream_type) this.el.dataset.streamType = payload.stream_type;
 
     this.retryCount = 0;
-    this._hlsRecoveryAttempts = 0;
-    this._mpegtsNetworkAttempts = 0;
-    this._mpegtsRecreateAttempts = 0;
+    this.hlsRecoveryCoordinator?.reset();
+    this.mpegtsRecoveryCoordinator?.reset();
     this.fallbackAttempts = 0;
     this._switchingToAVPlayer = false;
     this.avPlayerAttempted = false;
@@ -1579,9 +1622,8 @@ const VideoPlayer = {
     this.playerUI.hideError();
     this.playerUI.showLoading();
     this.retryCount = 0;
-    this._hlsRecoveryAttempts = 0;
-    this._mpegtsNetworkAttempts = 0;
-    this._mpegtsRecreateAttempts = 0;
+    this.hlsRecoveryCoordinator?.reset();
+    this.mpegtsRecoveryCoordinator?.reset();
     this.fallbackAttempts = 0;
     this._switchingToAVPlayer = false;
     this.avPlayerAttempted = false;
@@ -1620,8 +1662,8 @@ const VideoPlayer = {
     this._metadataProbeCancel = null;
     this._qualityCapabilitiesCancel?.();
     this._qualityCapabilitiesCancel = null;
-    this.cancelHlsRetry();
-    this.cancelMpegtsRetry();
+    this.hlsRecoveryCoordinator?.cancel();
+    this.mpegtsRecoveryCoordinator?.cancel();
 
     if (this.mediaElementEngine) {
       const mediaElementEngine = this.mediaElementEngine;
@@ -1783,12 +1825,6 @@ const VideoPlayer = {
     return !this._destroyed && sessionId === this.playbackSessionId;
   },
 
-  cancelHlsRetry() {
-    if (this._hlsRetryTimer == null) return;
-    clearTimeout(this._hlsRetryTimer);
-    this._hlsRetryTimer = null;
-  },
-
   hlsRecoveryContext() {
     const loader = this.streamLoader;
     const sessionId = this.playbackSessionId;
@@ -1813,39 +1849,6 @@ const VideoPlayer = {
       { message: error?.message || String(error), type: "network" },
       true,
     );
-  },
-
-  runHlsRecovery(operation) {
-    const { isCurrent, loader, url } = this.hlsRecoveryContext();
-    this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_recovery");
-    return runGuardedPlaybackRetry({
-      isCurrent,
-      onError: (error) => this.reportHlsRecoveryFailure(error),
-      run: () => operation(loader, url),
-    });
-  },
-
-  scheduleHlsRecovery(delayMs, operation) {
-    this.cancelHlsRetry();
-    const { isCurrent, loader, url } = this.hlsRecoveryContext();
-
-    this._hlsRetryTimer = scheduleGuardedPlaybackRetry({
-      delayMs,
-      isCurrent,
-      onError: (error) => this.reportHlsRecoveryFailure(error),
-      run: () => operation(loader, url),
-      schedule: (callback, delay) =>
-        setTimeout(() => {
-          this._hlsRetryTimer = null;
-          callback();
-        }, delay),
-    });
-  },
-
-  cancelMpegtsRetry() {
-    if (this._mpegtsRetryTimer == null) return;
-    clearTimeout(this._mpegtsRetryTimer);
-    this._mpegtsRetryTimer = null;
   },
 
   async teardownStreamLoaderForTransition(sessionId) {
@@ -2194,6 +2197,98 @@ const VideoPlayer = {
     }
   },
 
+  logHlsRecoveryDecision(decision) {
+    switch (decision.reason) {
+      case HLS_RECOVERY_REASON.MANIFEST_SOFT_RELOAD:
+        log.warn(`Soft recovering HLS (attempt ${decision.nextAttempts})...`);
+        break;
+      case HLS_RECOVERY_REASON.NETWORK_RESTART:
+        log.warn(`Network error, restarting HLS load (attempt ${decision.nextAttempts})...`);
+        break;
+      case HLS_RECOVERY_REASON.NETWORK_SOFT_RELOAD:
+        log.warn("Network recovery exhausted, soft reloading HLS...");
+        break;
+      case HLS_RECOVERY_REASON.MEDIA_RECOVERY:
+        log.warn(`Media error, recovering HLS (attempt ${decision.nextAttempts})...`);
+        break;
+      case HLS_RECOVERY_REASON.MEDIA_SOFT_RELOAD:
+        log.warn("Media recovery exhausted, soft reloading HLS...");
+        break;
+      default:
+        log.warn("[VideoPlayer] HLS recovery started:", {
+          operation: decision.operation,
+          reason: decision.reason,
+        });
+    }
+  },
+
+  handleHlsFallback(decision) {
+    if (decision.reason === HLS_RECOVERY_REASON.MANIFEST_UNAVAILABLE) {
+      if (this.retryCount < this.maxRetries && isMpegtsSupported()) {
+        this.retryCount++;
+        log.warn("HLS failed, trying mpegts.js...");
+        this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_to_mpegts_fallback");
+        this.cleanup({ preservePlaybackState: true });
+        this.playWithMpegts();
+      } else {
+        this.showErrorWithDiagnostics(
+          "Não foi possível carregar — servidor indisponível",
+          { message: "Manifest load failed", type: "network" },
+          true,
+        );
+      }
+      return;
+    }
+
+    if (this.retryCount < this.maxRetries) {
+      this.retryCount++;
+      this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_engine_fallback");
+      this.cleanup({ preservePlaybackState: true });
+      if (isMpegtsSupported()) {
+        this.playWithMpegts();
+      } else {
+        this.playNative();
+      }
+    } else {
+      this.showErrorWithDiagnostics(
+        "Erro de reprodução — formato não suportado",
+        { message: "Media format error", type: "codec" },
+        true,
+      );
+    }
+  },
+
+  handleHlsStreamError(data) {
+    const recovery = this.hlsRecoveryCoordinator.handle(data, this.hlsRecoveryContext());
+    const { decision } = recovery;
+
+    switch (decision.outcome) {
+      case HLS_RECOVERY_OUTCOME.IGNORED:
+        log.debug("HLS non-fatal error:", decision.event.details);
+        break;
+      case HLS_RECOVERY_OUTCOME.REFRESH_TOKEN:
+        log.warn("Auth error detected, requesting token refresh");
+        this.pushEventSafe("request_token_refresh", {});
+        break;
+      case HLS_RECOVERY_OUTCOME.RECOVERY_RUNNING:
+      case HLS_RECOVERY_OUTCOME.RECOVERY_SCHEDULED:
+        this.logHlsRecoveryDecision(decision);
+        break;
+      case HLS_RECOVERY_OUTCOME.FALLBACK_REQUIRED:
+        this.handleHlsFallback(decision);
+        break;
+      default:
+        log.warn("[VideoPlayer] Unknown HLS recovery outcome:", decision);
+        this.handleHlsFallback({
+          ...decision,
+          operation: HLS_RECOVERY_OPERATION.SOFT_RELOAD,
+          reason: HLS_RECOVERY_REASON.UNHANDLED_FATAL,
+        });
+    }
+
+    return recovery;
+  },
+
   handleStreamError(type, data) {
     this.playbackMetrics?.recordError();
 
@@ -2228,90 +2323,7 @@ const VideoPlayer = {
     });
 
     if (type === "hls") {
-      // Track recovery attempts
-      this._hlsRecoveryAttempts = this._hlsRecoveryAttempts || 0;
-
-      // Non-fatal errors - just log
-      if (!data.fatal) {
-        log.debug("HLS non-fatal error:", data.details);
-        return;
-      }
-
-      // Check for auth errors (403/401)
-      if (data.response?.code === 403 || data.response?.code === 401) {
-        log.warn("Auth error detected, requesting token refresh");
-        this.pushEventSafe("request_token_refresh", {});
-        return;
-      }
-
-      switch (data.type) {
-        case "networkError":
-          if (data.details === "manifestLoadError" || data.details === "manifestParsingError") {
-            // First try soft reload
-            if (this._hlsRecoveryAttempts < 2 && this.streamLoader?.canSoftReload("hls")) {
-              this._hlsRecoveryAttempts++;
-              log.warn(`Soft recovering HLS (attempt ${this._hlsRecoveryAttempts})...`);
-              this.scheduleHlsRecovery(1000 * this._hlsRecoveryAttempts, (loader, url) =>
-                loader.loadHlsSoft(url),
-              );
-              return;
-            }
-            // Then try different player
-            if (this.retryCount < this.maxRetries && isMpegtsSupported()) {
-              this.retryCount++;
-              log.warn("HLS failed, trying mpegts.js...");
-              this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_to_mpegts_fallback");
-              this.cleanup({ preservePlaybackState: true });
-              this.playWithMpegts();
-            } else {
-              this.showErrorWithDiagnostics(
-                "Nao foi possivel carregar - servidor indisponivel",
-                { message: "Manifest load failed", type: "network" },
-                true,
-              );
-            }
-          } else {
-            // Fragment/level load errors - try soft recovery first
-            if (this._hlsRecoveryAttempts < 3) {
-              this._hlsRecoveryAttempts++;
-              log.warn(`Network error, soft recovering (attempt ${this._hlsRecoveryAttempts})...`);
-              void this.runHlsRecovery((loader) => loader.startLoad());
-            } else {
-              log.warn("Network recovery failed, reloading stream...");
-              this._hlsRecoveryAttempts = 0;
-              void this.runHlsRecovery((loader, url) => loader.loadHlsSoft(url));
-            }
-          }
-          break;
-        case "mediaError":
-          if (this._hlsRecoveryAttempts < 2) {
-            this._hlsRecoveryAttempts++;
-            log.warn(`Media error, recovering (attempt ${this._hlsRecoveryAttempts})...`);
-            void this.runHlsRecovery((loader) => loader.recoverMediaError());
-          } else {
-            log.warn("Media recovery failed, reloading stream...");
-            this._hlsRecoveryAttempts = 0;
-            void this.runHlsRecovery((loader, url) => loader.loadHlsSoft(url));
-          }
-          break;
-        default:
-          if (this.retryCount < this.maxRetries) {
-            this.retryCount++;
-            this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_engine_fallback");
-            this.cleanup({ preservePlaybackState: true });
-            if (isMpegtsSupported()) {
-              this.playWithMpegts();
-            } else {
-              this.playNative();
-            }
-          } else {
-            this.showErrorWithDiagnostics(
-              "Erro de reproducao - formato nao suportado",
-              { message: "Media format error", type: "codec" },
-              true,
-            );
-          }
-      }
+      this.handleHlsStreamError(data);
     } else if (type === "mpegts") {
       void this.recoverFromMpegtsError(data);
     }
@@ -2319,41 +2331,18 @@ const VideoPlayer = {
 
   recoverFromMpegtsError(data) {
     const sessionId = this.playbackSessionId;
-    if (this._mpegtsRecoverySessionId === sessionId && this._mpegtsRecoveryPromise) {
-      return this._mpegtsRecoveryPromise;
-    }
+    let transitionSessionId = sessionId;
 
-    this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "mpegts_recovery");
-
-    const canTryAVPlayer =
-      this.shouldPreferAVPlayerForLiveTs() && !this.usingAVPlayer && !this.avPlayerAttempted;
-    const decision = classifyMpegtsError(data, {
-      canTryAVPlayer,
+    return this.mpegtsRecoveryCoordinator.handle(data, {
+      sessionId,
+      canTryAVPlayer:
+        this.shouldPreferAVPlayerForLiveTs() && !this.usingAVPlayer && !this.avPlayerAttempted,
       canTryDirect: canRetryDirectStream({
         currentUrl: this.currentUrl,
         pageProtocol: window.location.protocol,
         streamUrl: this.streamUrl,
         useProxy: this.useProxy,
       }),
-      maxNetworkAttempts: this.maxRetries,
-      networkAttempts: this._mpegtsNetworkAttempts,
-      recreateAttempts: this._mpegtsRecreateAttempts,
-    });
-
-    if (decision.counter === "network") this._mpegtsNetworkAttempts += 1;
-    if (decision.counter === "recreate") this._mpegtsRecreateAttempts += 1;
-
-    this.reportPlayerDebug("mpegts_recovery_decision", {
-      action: decision.action,
-      error_type: data?.errorType,
-      error_detail: data?.errorDetail,
-      network_attempts: this._mpegtsNetworkAttempts,
-      recreate_attempts: this._mpegtsRecreateAttempts,
-    });
-
-    let transitionSessionId = sessionId;
-    this._mpegtsRecoverySessionId = sessionId;
-    const recovery = executeMpegtsDecision(decision, {
       cleanup: async () => {
         const nextSessionId = await this.teardownStreamLoaderForTransition(sessionId);
         if (nextSessionId == null) return false;
@@ -2375,12 +2364,10 @@ const VideoPlayer = {
         log.warn("mpegts.js proxy path failed; retrying the direct URL");
         this.useProxy = false;
         this.currentUrl = this.streamUrl;
-        this._mpegtsNetworkAttempts = 0;
-        this._mpegtsRecreateAttempts = 0;
         void this.playWithMpegts();
       },
-      retryMpegts: () => {
-        log.warn(`Recreating mpegts.js after ${decision.reason}`);
+      retryMpegts: (decision) => {
+        log.warn(`Recreating mpegts.js after ${decision?.reason ?? "transport error"}`);
         void this.playWithMpegts();
       },
       fallbackAVPlayer: () => {
@@ -2388,30 +2375,13 @@ const VideoPlayer = {
         void this.tryAVPlayerFallback();
       },
       fallbackNative: () => this.playNative(),
-      schedule: (callback, delayMs) => {
-        this.cancelMpegtsRetry();
-        this._mpegtsRetryTimer = setTimeout(() => {
-          this._mpegtsRetryTimer = null;
-          callback();
-        }, delayMs);
-      },
-    })
-      .catch((error) => {
+      onFailure: (error) => {
         log.error("mpegts.js recovery failed:", error);
         if (this.isCurrentPlaybackSession(transitionSessionId)) {
           this.showPlaybackError("Erro ao recuperar o stream ao vivo");
         }
-        return false;
-      })
-      .finally(() => {
-        if (this._mpegtsRecoverySessionId === sessionId) {
-          this._mpegtsRecoverySessionId = null;
-          this._mpegtsRecoveryPromise = null;
-        }
-      });
-
-    this._mpegtsRecoveryPromise = recovery;
-    return recovery;
+      },
+    });
   },
 
   async playWithHls() {
@@ -2440,8 +2410,11 @@ const VideoPlayer = {
     });
     if (result.status === "cancelled" || result.status === "stale") return;
     if (result.status === "loaded") {
+      const hlsEngine = this.streamLoader.getHlsEngine();
+      if (!hlsEngine) throw new Error("HLS engine was not registered by StreamLoader");
+
       this.hls = result.engine;
-      this.setMediaElementEngine(ENGINE_ID.HLS);
+      this.setMediaElementEngine(ENGINE_ID.HLS, hlsEngine);
       return;
     }
 

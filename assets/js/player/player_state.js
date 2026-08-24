@@ -74,12 +74,7 @@ export function createInitialPlayerState(
 
     retryCount: 0,
     maxRetries: 3,
-    _hlsRetryTimer: null,
-    _mpegtsNetworkAttempts: 0,
-    _mpegtsRecreateAttempts: 0,
-    _mpegtsRecoveryPromise: null,
-    _mpegtsRecoverySessionId: null,
-    _mpegtsRetryTimer: null,
+    hlsRecoveryCoordinator: null,
     _streamLoaderTeardownPromise: Promise.resolve(),
     _suppressNativePlaybackEvents: false,
     useProxy: true,
