@@ -1,0 +1,139 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
+
+async function readHookSource() {
+  return readFile(hookUrl, "utf8");
+}
+
+function methodSource(source, name) {
+  const candidates = [`  ${name}(`, `  async ${name}(`];
+  const starts = candidates
+    .map((candidate) => source.indexOf(candidate))
+    .filter((position) => position >= 0);
+
+  assert.equal(starts.length, 1, `expected exactly one ${name}() method`);
+
+  const start = starts[0];
+  const openingBrace = source.indexOf("{", start);
+  assert.ok(openingBrace >= 0, `missing opening brace for ${name}()`);
+
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let index = openingBrace; index < source.length; index += 1) {
+    const character = source[index];
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+
+  assert.fail(`unbalanced ${name}() method`);
+}
+
+test("the hook creates a policy-aware NativePlaybackEngine only for native playback", async () => {
+  const source = await readHookSource();
+  const method = methodSource(source, "setMediaElementEngine");
+
+  assert.match(
+    source,
+    /import \{ createNativePlaybackEngine \} from "\.\.\/player\/native_playback_engine\.js";/,
+  );
+  assert.match(method, /engineId === ENGINE_ID\.NATIVE/);
+  assert.match(method, /createNativePlaybackEngine\(\{/);
+  assert.match(
+    method,
+    /beforePause: \(\) => this\.nativeBufferManager\?\.markIntentionalPause\(\)/,
+  );
+  assert.match(method, /beforeSeek: \(\) => this\.nativeBufferingController\?\.prepareSeek\(\)/);
+  assert.match(method, /resetSourceOnDestroy: false/);
+  assert.match(method, /createMediaElementEngine\(\{/);
+  assert.match(method, /createPlaybackEngineAdapter\(\{/);
+});
+
+test("native ownership is explicit while HLS and MPEG-TS stay on the shared media adapter", async () => {
+  const source = await readHookSource();
+  const nativeMethod = methodSource(source, "getNativePlaybackEngine");
+  const managedMethod = methodSource(source, "getManagedPlaybackEngine");
+
+  assert.match(nativeMethod, /this\.mediaElementEngine\?\.id !== ENGINE_ID\.NATIVE/);
+  assert.match(nativeMethod, /this\.mediaElementEngine\.destroyed/);
+  assert.match(nativeMethod, /return this\.mediaElementEngine/);
+
+  assert.match(managedMethod, /return this\.getNativePlaybackEngine\(\);/);
+  assert.doesNotMatch(managedMethod, /ENGINE_ID\.HLS/);
+  assert.doesNotMatch(managedMethod, /ENGINE_ID\.MPEGTS/);
+});
+
+test("native source ownership and initial play use the engine adapter", async () => {
+  const source = await readHookSource();
+  const playNative = methodSource(source, "playNative");
+  const playAfterResume = methodSource(source, "playNativeAfterResume");
+
+  assert.match(
+    playNative,
+    /const nativeEngine = this\.setMediaElementEngine\(ENGINE_ID\.NATIVE\);/,
+  );
+  assert.match(playNative, /nativeEngine\.load\(this\.currentUrl\);/);
+  assert.doesNotMatch(playNative, /this\.video\.src = this\.currentUrl/);
+
+  assert.match(playAfterResume, /const nativeEngine = this\.getNativePlaybackEngine\(\);/);
+  assert.match(
+    playAfterResume,
+    /await \(nativeEngine \? nativeEngine\.play\(\) : this\.video\.play\(\)\);/,
+  );
+});
+
+test("native reads use the adapter before canvas engines or raw media fallback", async () => {
+  const source = await readHookSource();
+
+  const expectations = [
+    ["getCurrentTime", "nativeEngine.getCurrentTime()"],
+    ["getDuration", "nativeEngine.getDuration()"],
+    ["isPaused", "!nativeEngine.isPlaying()"],
+  ];
+
+  for (const [methodName, call] of expectations) {
+    const method = methodSource(source, methodName);
+    const nativeLookup = method.indexOf("const nativeEngine = this.getNativePlaybackEngine();");
+    const managedLookup = method.indexOf("const engine = this.getManagedPlaybackEngine();");
+
+    assert.ok(nativeLookup >= 0, `${methodName}() must resolve the native owner`);
+    assert.ok(method.includes(call), `${methodName}() must delegate to ${call}`);
+    assert.ok(
+      managedLookup === -1 || nativeLookup < managedLookup,
+      `${methodName}() must prefer the native adapter`,
+    );
+  }
+});
+
+test("transport controls share the managed contract without bypassing native policies", async () => {
+  const source = await readHookSource();
+  const toggle = methodSource(source, "togglePlayPause");
+  const relativeSeek = methodSource(source, "seek");
+  const absoluteSeek = methodSource(source, "seekTo");
+
+  assert.match(toggle, /const engine = this\.getManagedPlaybackEngine\(\);/);
+  assert.match(toggle, /engine\.pause\(\)/);
+  assert.match(toggle, /engine\.play\(\)/);
+  assert.match(relativeSeek, /const engine = this\.getManagedPlaybackEngine\(\);/);
+  assert.match(relativeSeek, /engine\.seek\(/);
+  assert.match(absoluteSeek, /const engine = this\.getManagedPlaybackEngine\(\);/);
+  assert.match(absoluteSeek, /engine\.seek\(/);
+});

@@ -52,6 +52,7 @@ import {
   waitForNativeSeek as awaitNativeSeek,
   configureNativePlaybackElement as configureNativeElement,
 } from "../player/native_playback_controller";
+import { createNativePlaybackEngine } from "../player/native_playback_engine.js";
 import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
 import { NextEpisodeController } from "../player/next_episode_controller";
 import {
@@ -676,13 +677,23 @@ const VideoPlayer = {
     const current = this.mediaElementEngine;
     if (current?.id === engineId && !current.destroyed) return current;
 
+    const engine =
+      engineId === ENGINE_ID.NATIVE
+        ? createNativePlaybackEngine({
+            video: this.video,
+            beforePause: () => this.nativeBufferManager?.markIntentionalPause(),
+            beforeSeek: () => this.nativeBufferingController?.prepareSeek(),
+            resetSourceOnDestroy: false,
+          })
+        : createMediaElementEngine({
+            video: this.video,
+            beforePause: () => this.nativeBufferManager?.markIntentionalPause(),
+            beforeSeek: () => this.nativeBufferingController?.prepareSeek(),
+          });
+
     const next = createPlaybackEngineAdapter({
       id: engineId,
-      engine: createMediaElementEngine({
-        video: this.video,
-        beforePause: () => this.nativeBufferManager?.markIntentionalPause(),
-        beforeSeek: () => this.nativeBufferingController?.prepareSeek(),
-      }),
+      engine,
     });
 
     this.mediaElementEngine = next;
@@ -1937,7 +1948,8 @@ const VideoPlayer = {
 
     try {
       this.traceNativeLifecycle("native_play_request", sessionId, { resume_time: resumeTime });
-      await this.video.play();
+      const nativeEngine = this.getNativePlaybackEngine();
+      await (nativeEngine ? nativeEngine.play() : this.video.play());
       if (!this.isCurrentPlaybackSession(sessionId)) return;
       this.traceNativeLifecycle("native_play_resolved", sessionId, { resume_time: resumeTime });
     } catch (e) {
@@ -2686,12 +2698,12 @@ const VideoPlayer = {
     log.info("Playing with native video element, url:", this.currentUrl);
     this.setNativeTouchControls(isAppleTouchDevice());
     this.configureNativePlaybackElement({ resumeTime });
-    this.setMediaElementEngine(ENGINE_ID.NATIVE);
+    const nativeEngine = this.setMediaElementEngine(ENGINE_ID.NATIVE);
     this.reportPlayerLifecycle("player_engine_selected", {
       engine: ENGINE_ID.NATIVE,
       session_id: sessionId,
     });
-    this.video.src = this.currentUrl;
+    nativeEngine.load(this.currentUrl);
     this.traceNativeLifecycle("native_source_attached", sessionId);
 
     const playHandler = () => {
@@ -3899,11 +3911,18 @@ const VideoPlayer = {
     this.el.requestFullscreen?.() || this.video?.requestFullscreen?.();
   },
 
+  getNativePlaybackEngine() {
+    if (this.mediaElementEngine?.id !== ENGINE_ID.NATIVE || this.mediaElementEngine.destroyed) {
+      return null;
+    }
+    return this.mediaElementEngine;
+  },
+
   getManagedPlaybackEngine() {
     if (this.usingAVPlayer && this.avPlayer) return this.avPlayer;
     if (this.usingAvbridge && this.avbridge) return this.avbridge;
     if (this.usingH265web && this.h265web) return this.h265web;
-    return null;
+    return this.getNativePlaybackEngine();
   },
 
   async togglePlayPause({ remote = false } = {}) {
@@ -4027,11 +4046,17 @@ const VideoPlayer = {
   },
 
   getCurrentTime() {
+    const nativeEngine = this.getNativePlaybackEngine();
+    if (nativeEngine) return nativeEngine.getCurrentTime();
+
     const engine = this.getManagedPlaybackEngine();
     return engine?.getCurrentTime?.() ?? this.video?.currentTime ?? 0;
   },
 
   getDuration() {
+    const nativeEngine = this.getNativePlaybackEngine();
+    if (nativeEngine) return nativeEngine.getDuration();
+
     const engine = this.getManagedPlaybackEngine();
     const duration = engine?.getDuration?.() ?? this.video?.duration ?? 0;
 
@@ -4052,6 +4077,9 @@ const VideoPlayer = {
   },
 
   isPaused() {
+    const nativeEngine = this.getNativePlaybackEngine();
+    if (nativeEngine) return !nativeEngine.isPlaying();
+
     const engine = this.getManagedPlaybackEngine();
     if (engine) return !engine.isPlaying();
     return this.video?.paused ?? true;
