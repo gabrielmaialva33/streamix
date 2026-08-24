@@ -197,7 +197,7 @@ jobs:
         run: npm test
 
   e2e:
-    name: Browser ${{ matrix.browser }} and PWA tests
+    name: Player E2E / ${{ matrix.browser }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -306,7 +306,7 @@ jobs:
           mix openapi.spec.json --spec StreamixWeb.Api.V1.OpenApi --start-app=false --vendor-extensions=false /tmp/streamix-openapi.json
           npm --prefix assets run lint:openapi -- /tmp/streamix-openapi.json
 
-      - name: Run ${{ matrix.browser }} journeys
+      - name: Run player browser gate (${{ matrix.browser }})
         run: bash scripts/test-playwright-docker.sh
 
       - name: Run Chromium PWA installability smoke
