@@ -55,7 +55,7 @@ defmodule Streamix.Providers do
   defdelegate gindex_known_paths(provider_id, kind), to: GindexInventory, as: :known_paths
 
   @spec update_gindex_sync(pos_integer(), map()) ::
-          {:ok, Provider.t()}
+          :ok
           | {:error, :gindex_provider_not_found | {:invalid_gindex_sync_fields, term()}}
           | {:error, Ecto.Changeset.t()}
   defdelegate update_gindex_sync(provider_id, attrs), to: ProviderStore
@@ -76,7 +76,7 @@ defmodule Streamix.Providers do
   defdelegate torrent_sync_source(provider), to: ProviderStore
 
   @spec update_torrent_sync(pos_integer(), map()) ::
-          {:ok, Provider.t()}
+          :ok
           | {:error, :torrent_provider_not_found | {:invalid_torrent_sync_fields, term()}}
           | {:error, Ecto.Changeset.t()}
   defdelegate update_torrent_sync(provider_id, attrs), to: ProviderStore
