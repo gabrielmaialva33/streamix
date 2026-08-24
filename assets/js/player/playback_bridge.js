@@ -1,3 +1,5 @@
+import { engineIdFromRuntime } from "./engine_contract.js";
+
 /**
  * Playback bridge — engine-agnostic remote control for the active player.
  *
@@ -27,10 +29,7 @@ export function installPlaybackBridge(el, hook) {
 
   el.streamixPlayback = {
     get engine() {
-      if (hook.usingAVPlayer) return "avplayer";
-      if (hook.usingH265web) return "h265web";
-      if (hook.usingAvbridge) return "avbridge";
-      return "native";
+      return engineIdFromRuntime(hook);
     },
     getCurrentTime: () => hook.getCurrentTime(),
     getDuration: () => hook.getDuration(),

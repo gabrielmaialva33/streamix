@@ -50,6 +50,7 @@ export function createInitialPlayerState(
     playerLifecycleLogs: dataset.playerLifecycleLogs === "true",
 
     streamLoader: null,
+    mediaElementEngine: null,
     hls: null,
     mpegtsPlayer: null,
     streamingMode:
@@ -90,6 +91,7 @@ export function createInitialPlayerState(
     startTime: deps.now(),
     lastProgressReport: 0,
     playbackSessionId: 0,
+    playbackStateObserver: null,
     playbackMetrics: deps.createPlaybackMetrics(),
 
     pipActive: false,

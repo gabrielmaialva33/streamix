@@ -27,6 +27,12 @@ import { isMSEInWorkersSupported } from "../media/worker_mse";
 import { createAspectRatioController } from "../player/aspect_ratio_controller";
 import { createAudioController } from "../player/audio_controller";
 import { audioOutputVolume } from "../player/audio_state";
+import {
+  assertEngineSelection,
+  ENGINE_ID,
+  engineIdFromRuntime,
+  PLAYBACK_STATE,
+} from "../player/engine_contract.js";
 import { selectEngine } from "../player/engine_selector";
 import {
   createErrorReport,
@@ -36,6 +42,7 @@ import {
 import { evaluateFallbackAttempt } from "../player/fallback_policy";
 import { createIosPwaPlaybackController } from "../player/ios_pwa_playback_controller.js";
 import { LifecycleScope } from "../player/lifecycle_scope";
+import { createMediaElementEngine } from "../player/media_element_engine.js";
 import { createMediaSessionController } from "../player/media_session_controller";
 import { createMobileControls } from "../player/mobile_controls";
 import { classifyMpegtsError, executeMpegtsDecision } from "../player/mpegts_error_policy.js";
@@ -53,6 +60,7 @@ import {
   togglePictureInPicture,
 } from "../player/pip_controller.js";
 import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
+import { createPlaybackEngineAdapter } from "../player/playback_engine_adapter.js";
 import {
   PlaybackEngineTeardownQueue,
   resolvePlaybackResumeTime,
@@ -74,6 +82,7 @@ import {
   scheduleGuardedPlaybackRetry,
 } from "../player/playback_load_guard.js";
 import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
+import { createPlaybackStateObserver } from "../player/playback_state_observer.js";
 import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
 import { clampSeekTime, relativeSeekTarget } from "../player/playback_time";
 import { diagnoseError } from "../player/player_diagnostics";
@@ -660,7 +669,33 @@ const VideoPlayer = {
     if (this.usingAVPlayer && this.avPlayer) return this.avPlayer;
     if (this.usingAvbridge && this.avbridge) return this.avbridge;
     if (this.usingH265web && this.h265web) return this.h265web;
-    return null;
+    return this.mediaElementEngine;
+  },
+
+  setMediaElementEngine(engineId) {
+    const current = this.mediaElementEngine;
+    if (current?.id === engineId && !current.destroyed) return current;
+
+    const next = createPlaybackEngineAdapter({
+      id: engineId,
+      engine: createMediaElementEngine({
+        video: this.video,
+        beforePause: () => this.nativeBufferManager?.markIntentionalPause(),
+        beforeSeek: () => this.nativeBufferingController?.prepareSeek(),
+      }),
+    });
+
+    this.mediaElementEngine = next;
+
+    if (current) {
+      current
+        .destroy()
+        .catch((error) =>
+          log.debug("[VideoPlayer] Previous media element engine teardown failed:", error),
+        );
+    }
+
+    return next;
   },
 
   usesNativePlaybackEvents() {
@@ -758,6 +793,7 @@ const VideoPlayer = {
       return;
     }
 
+    this.observePlaybackState(PLAYBACK_STATE.PLAYING, "playback_started");
     this.setPlaybackSystemState("playing");
   },
 
@@ -1083,12 +1119,14 @@ const VideoPlayer = {
     });
 
     // Buffer health monitoring with debounce to prevent flickering
-    this.lifecycle.listenOptional(this.video, "waiting", () =>
-      this.nativeBufferingController.handleWaiting(),
-    );
-    this.lifecycle.listenOptional(this.video, "playing", () =>
-      this.nativeBufferingController.handlePlaying(),
-    );
+    this.lifecycle.listenOptional(this.video, "waiting", () => {
+      this.observePlaybackState(PLAYBACK_STATE.STALLED, "media_waiting");
+      this.nativeBufferingController.handleWaiting();
+    });
+    this.lifecycle.listenOptional(this.video, "playing", () => {
+      this.observePlaybackState(PLAYBACK_STATE.PLAYING, "media_playing");
+      this.nativeBufferingController.handlePlaying();
+    });
 
     // Also hide loading on canplaythrough (video exits buffering during playback)
     // The "playing" event doesn't fire when video exits buffering if already playing
@@ -1122,6 +1160,7 @@ const VideoPlayer = {
 
   presentTerminalPlaybackError(message, hint = null) {
     this._terminalPlaybackError = true;
+    this.observePlaybackState(PLAYBACK_STATE.TERMINAL, "terminal_error");
     this.setPlaybackSystemState("none");
     this.playerUI.showError(message, hint);
   },
@@ -1483,7 +1522,7 @@ const VideoPlayer = {
     this.pushEventSafe("player_lifecycle", {
       stage,
       session_id: this.playbackSessionId,
-      engine: this.usingAVPlayer ? "avplayer" : "native",
+      engine: engineIdFromRuntime(this),
       current_stream_type: this.currentStreamType,
       content_type: this.contentType,
       source_type: this.sourceType,
@@ -1555,8 +1594,15 @@ const VideoPlayer = {
     return this.avPlayerTeardownQueue?.destroy(player) || Promise.resolve();
   },
 
-  cleanup() {
-    this.reportPlayerLifecycle("player_cleanup");
+  cleanup({ preservePlaybackState = false } = {}) {
+    this.reportPlayerLifecycle("player_cleanup", {
+      preserve_playback_state: preservePlaybackState,
+    });
+
+    if (!preservePlaybackState) {
+      this.observePlaybackState(PLAYBACK_STATE.DESTROYED, "cleanup");
+    }
+
     this.setPlaybackSystemState("none");
     this.playbackSessionId += 1;
     this._metadataProbeCancel?.();
@@ -1565,6 +1611,14 @@ const VideoPlayer = {
     this._qualityCapabilitiesCancel = null;
     this.cancelHlsRetry();
     this.cancelMpegtsRetry();
+
+    if (this.mediaElementEngine) {
+      const mediaElementEngine = this.mediaElementEngine;
+      this.mediaElementEngine = null;
+      mediaElementEngine
+        .destroy()
+        .catch((error) => log.debug("[VideoPlayer] Media element engine teardown failed:", error));
+    }
 
     if (this.streamLoader) {
       const streamLoader = this.streamLoader;
@@ -1695,8 +1749,22 @@ const VideoPlayer = {
     }
   },
 
+  getPlaybackStateSnapshot() {
+    return this.playbackStateObserver?.snapshot() ?? null;
+  },
+
+  observePlaybackState(nextState, reason, metadata = {}) {
+    return this.playbackStateObserver?.observe(nextState, reason, metadata) ?? null;
+  },
+
   beginPlaybackSession() {
     this.playbackSessionId += 1;
+    this.playbackStateObserver = createPlaybackStateObserver({
+      reportLifecycle: (event, metadata) => this.reportPlayerLifecycle(event, metadata),
+      logInvalid: (transition) =>
+        log.debug("[VideoPlayer] Invalid playback state transition:", transition),
+    });
+    this.playbackStateObserver.begin(this.playbackSessionId);
     return this.playbackSessionId;
   },
 
@@ -1738,6 +1806,7 @@ const VideoPlayer = {
 
   runHlsRecovery(operation) {
     const { isCurrent, loader, url } = this.hlsRecoveryContext();
+    this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_recovery");
     return runGuardedPlaybackRetry({
       isCurrent,
       onError: (error) => this.reportHlsRecoveryFailure(error),
@@ -1770,7 +1839,7 @@ const VideoPlayer = {
 
   async teardownStreamLoaderForTransition(sessionId) {
     if (!this.isCurrentPlaybackSession(sessionId)) return null;
-    this.cleanup();
+    this.cleanup({ preservePlaybackState: true });
     const transitionSessionId = this.playbackSessionId;
     await (this._streamLoaderTeardownPromise || Promise.resolve());
     return this.isCurrentPlaybackSession(transitionSessionId) ? transitionSessionId : null;
@@ -2026,6 +2095,10 @@ const VideoPlayer = {
     this.cleanup();
     const sessionId = this.beginPlaybackSession();
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
+    this.observePlaybackState(PLAYBACK_STATE.LOADING, "source_loading", {
+      session_id: sessionId,
+      stream_type: this.currentStreamType,
+    });
     this.playbackMetrics.begin({
       contentType: this.contentType,
       streamType: this.currentStreamType,
@@ -2052,7 +2125,7 @@ const VideoPlayer = {
     const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
     const recommendedPlayer = getRecommendedPlayer(contentKey);
     const engineContext = this.buildEngineContext(recommendedPlayer);
-    const engine = selectEngine(engineContext);
+    const engine = assertEngineSelection(selectEngine(engineContext));
     this.playbackMetrics.selectEngine(engine);
 
     log.debug("[VideoPlayer] Engine decision context", {
@@ -2175,7 +2248,8 @@ const VideoPlayer = {
             if (this.retryCount < this.maxRetries && isMpegtsSupported()) {
               this.retryCount++;
               log.warn("HLS failed, trying mpegts.js...");
-              this.cleanup();
+              this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_to_mpegts_fallback");
+              this.cleanup({ preservePlaybackState: true });
               this.playWithMpegts();
             } else {
               this.showErrorWithDiagnostics(
@@ -2211,7 +2285,8 @@ const VideoPlayer = {
         default:
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
-            this.cleanup();
+            this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "hls_engine_fallback");
+            this.cleanup({ preservePlaybackState: true });
             if (isMpegtsSupported()) {
               this.playWithMpegts();
             } else {
@@ -2235,6 +2310,8 @@ const VideoPlayer = {
     if (this._mpegtsRecoverySessionId === sessionId && this._mpegtsRecoveryPromise) {
       return this._mpegtsRecoveryPromise;
     }
+
+    this.observePlaybackState(PLAYBACK_STATE.RECOVERING, "mpegts_recovery");
 
     const canTryAVPlayer =
       this.shouldPreferAVPlayerForLiveTs() && !this.usingAVPlayer && !this.avPlayerAttempted;
@@ -2329,7 +2406,7 @@ const VideoPlayer = {
     this._suppressNativePlaybackEvents = false;
     this.syncPiPAvailability();
     log.info("Playing with HLS.js, url:", this.currentUrl);
-    this.reportPlayerLifecycle("player_engine_selected", { engine: "hls-js" });
+    this.reportPlayerLifecycle("player_engine_selected", { engine: ENGINE_ID.HLS });
 
     if (!isHlsJsSupported()) {
       if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -2352,6 +2429,7 @@ const VideoPlayer = {
     if (result.status === "cancelled" || result.status === "stale") return;
     if (result.status === "loaded") {
       this.hls = result.engine;
+      this.setMediaElementEngine(ENGINE_ID.HLS);
       return;
     }
 
@@ -2372,7 +2450,7 @@ const VideoPlayer = {
     this.disablePiPForCanvasPlayback();
     log.info("Playing with avbridge, url:", this.currentUrl);
     this.avbridgeAttempted = true;
-    this.reportPlayerLifecycle("player_engine_selected", { engine: "avbridge" });
+    this.reportPlayerLifecycle("player_engine_selected", { engine: ENGINE_ID.AVBRIDGE });
 
     const sessionId = this.playbackSessionId;
     const resumeTime = this.takeResumeTime();
@@ -2381,7 +2459,10 @@ const VideoPlayer = {
       const { AvbridgeWrapper } = await loadAvbridge();
       if (!this.isCurrentPlaybackSession(sessionId)) return;
 
-      this.avbridge = new AvbridgeWrapper({ video: this.video });
+      this.avbridge = createPlaybackEngineAdapter({
+        id: ENGINE_ID.AVBRIDGE,
+        engine: new AvbridgeWrapper({ video: this.video }),
+      });
       await this.avbridge.load(this.currentUrl, { startTime: resumeTime });
       if (!this.isCurrentPlaybackSession(sessionId)) {
         await this.avbridge.destroy().catch(() => {});
@@ -2407,8 +2488,8 @@ const VideoPlayer = {
       log.warn("[Avbridge] init failed, falling back to AVPlayer:", err);
       this.playbackMetrics?.recordError();
       this.reportPlayerLifecycle("player_engine_fallback", {
-        from: "avbridge",
-        to: "avplayer",
+        from: ENGINE_ID.AVBRIDGE,
+        to: ENGINE_ID.AVPLAYER,
         reason: err?.message || String(err),
       });
       try {
@@ -2428,7 +2509,7 @@ const VideoPlayer = {
     this.disablePiPForCanvasPlayback();
     log.info("Playing with h265web, url:", this.currentUrl);
     this.h265webAttempted = true;
-    this.reportPlayerLifecycle("player_engine_selected", { engine: "h265web" });
+    this.reportPlayerLifecycle("player_engine_selected", { engine: ENGINE_ID.H265WEB });
 
     const sessionId = this.playbackSessionId;
     const resumeTime = this.takeResumeTime();
@@ -2447,13 +2528,16 @@ const VideoPlayer = {
         throw new Error("h265web mount element (#h265web-mount) not found in template");
       }
 
-      this.h265web = new H265webWrapper({
-        video: this.video,
-        mountEl,
-        // Override base URL via `data-h265web-base-url` on the player
-        // container — useful when the SDK is served from a different
-        // origin than Phoenix (CDN, edge cache).
-        baseUrl: this.el.dataset.h265webBaseUrl || undefined,
+      this.h265web = createPlaybackEngineAdapter({
+        id: ENGINE_ID.H265WEB,
+        engine: new H265webWrapper({
+          video: this.video,
+          mountEl,
+          // Override base URL via `data-h265web-base-url` on the player
+          // container — useful when the SDK is served from a different
+          // origin than Phoenix (CDN, edge cache).
+          baseUrl: this.el.dataset.h265webBaseUrl || undefined,
+        }),
       });
       const h265web = this.h265web;
       const h265webTicks = createPlaybackTickThrottle();
@@ -2512,8 +2596,8 @@ const VideoPlayer = {
       log.warn("[H265web] init failed, falling back to AVPlayer:", err);
       this.playbackMetrics?.recordError();
       this.reportPlayerLifecycle("player_engine_fallback", {
-        from: "h265web",
-        to: "avplayer",
+        from: ENGINE_ID.H265WEB,
+        to: ENGINE_ID.AVPLAYER,
         reason: err?.message || String(err),
       });
       try {
@@ -2535,7 +2619,11 @@ const VideoPlayer = {
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
     this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
     const sessionId = this.playbackSessionId;
-    this.reportPlayerLifecycle("player_engine_selected", { engine: type, session_id: sessionId });
+    this.reportPlayerLifecycle("player_engine_selected", {
+      engine: ENGINE_ID.MPEGTS,
+      requested_type: type,
+      session_id: sessionId,
+    });
 
     const loader = this.ensureStreamLoader();
     const onPlaying = () => {
@@ -2561,6 +2649,7 @@ const VideoPlayer = {
 
     if (result.status === "loaded") {
       this.mpegtsPlayer = result.engine;
+      this.setMediaElementEngine(ENGINE_ID.MPEGTS);
 
       void this.playNativeAfterResume(sessionId).catch((error) => {
         if (this.isCurrentPlaybackSession(sessionId)) {
@@ -2597,8 +2686,9 @@ const VideoPlayer = {
     log.info("Playing with native video element, url:", this.currentUrl);
     this.setNativeTouchControls(isAppleTouchDevice());
     this.configureNativePlaybackElement({ resumeTime });
+    this.setMediaElementEngine(ENGINE_ID.NATIVE);
     this.reportPlayerLifecycle("player_engine_selected", {
-      engine: "native",
+      engine: ENGINE_ID.NATIVE,
       session_id: sessionId,
     });
     this.video.src = this.currentUrl;
@@ -2990,6 +3080,10 @@ const VideoPlayer = {
           this.handlePlaybackEnded();
           this.flushPlaybackMetrics("completed");
         },
+      });
+      avPlayer = createPlaybackEngineAdapter({
+        id: ENGINE_ID.AVPLAYER,
+        engine: avPlayer,
       });
       this.avPlayer = avPlayer;
 
@@ -3591,6 +3685,10 @@ const VideoPlayer = {
           this.handlePlaybackEnded();
           this.flushPlaybackMetrics("completed");
         },
+      });
+      avPlayer = createPlaybackEngineAdapter({
+        id: ENGINE_ID.AVPLAYER,
+        engine: avPlayer,
       });
       this.avPlayer = avPlayer;
 

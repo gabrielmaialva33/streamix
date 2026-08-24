@@ -1,13 +1,4 @@
-const ENGINE_NAMES = new Map([
-  ["hls-js", "hls"],
-  ["mpegts-flv", "mpegts"],
-  ["flv-unsupported", "unknown"],
-]);
-
-const normalizeEngine = (engine) => {
-  if (typeof engine !== "string" || engine.length === 0) return "unknown";
-  return ENGINE_NAMES.get(engine) || engine.slice(0, 40);
-};
+import { ENGINE_ID, normalizeEngineId } from "./engine_contract.js";
 
 const defaultNow = () => globalThis.performance?.now?.() ?? Date.now();
 
@@ -33,7 +24,7 @@ export class PlaybackSession {
       errorCount: 0,
       fallbackCount: 0,
       mutedMismatch: false,
-      engine: "unknown",
+      engine: ENGINE_ID.UNKNOWN,
       contentType,
       streamType,
       displayMode,
@@ -43,7 +34,7 @@ export class PlaybackSession {
   }
 
   selectEngine(engine) {
-    if (this.active) this.active.engine = normalizeEngine(engine);
+    if (this.active) this.active.engine = normalizeEngineId(engine);
   }
 
   markPlaying() {
@@ -71,7 +62,7 @@ export class PlaybackSession {
   recordFallback(engine) {
     if (!this.active) return;
 
-    const target = normalizeEngine(engine);
+    const target = normalizeEngineId(engine);
     if (this.active.engine !== target) this.active.fallbackCount += 1;
     this.active.engine = target;
   }

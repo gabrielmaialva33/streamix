@@ -1,3 +1,5 @@
+import { ENGINE_SELECTION } from "./engine_contract.js";
+
 // Pure engine-selection decision for the video player hook.
 //
 // This module contains NO side effects and NO references to `window`,
@@ -72,18 +74,18 @@ export function selectEngine(ctx) {
   // A stale AVPlayer recommendation must not bypass native HLS on Apple
   // or MSE/hls.js everywhere else.
   if (streamType === "hls" || streamType === "m3u8") {
-    if (preferNativeHls && nativeHls) return "native";
-    if (hlsJs) return "hls-js";
-    return "native";
+    if (preferNativeHls && nativeHls) return ENGINE_SELECTION.NATIVE;
+    if (hlsJs) return ENGINE_SELECTION.HLS_JS;
+    return ENGINE_SELECTION.NATIVE;
   }
 
   // Raw transport streams are not HLS manifests. Keep this branch ahead
   // of remembered player preferences so a stale AVPlayer recommendation
   // cannot bypass mpegts.js, and never feed Xtream TS bytes to hls.js.
   if (streamType === "ts" || streamType === "xtream") {
-    if (mpegts) return "mpegts";
-    if (canTryAVPlayer && shouldPreferAVPlayerForLiveTs) return "avplayer";
-    return "native";
+    if (mpegts) return ENGINE_SELECTION.MPEGTS;
+    if (canTryAVPlayer && shouldPreferAVPlayerForLiveTs) return ENGINE_SELECTION.AVPLAYER;
+    return ENGINE_SELECTION.NATIVE;
   }
 
   // 4K HEVC content (2160p, HEVC/x265, "UHD") is the only place the
@@ -99,7 +101,7 @@ export function selectEngine(ctx) {
   const isVodContainer = streamType === "mkv" || streamType === "mp4";
 
   if (canTryAvbridge && isUhdHevc && isVodContainer) {
-    return "avbridge";
+    return ENGINE_SELECTION.AVBRIDGE;
   }
 
   // Same target content but for the h265web engine — kept around for
@@ -109,45 +111,45 @@ export function selectEngine(ctx) {
   // headers. Same `isUhdHevc` + container guard so non-4K stays on
   // AVPlayer.
   if (canTryH265web && isUhdHevc && isVodContainer) {
-    return "h265web";
+    return ENGINE_SELECTION.H265WEB;
   }
 
   // Device Codec Memory recommendation (Netflix pattern).
   if (canTryAVPlayer && recommendedPlayer === "avplayer") {
-    return "avplayer";
+    return ENGINE_SELECTION.AVPLAYER;
   }
 
   // Manual AVPlayer preference for GIndex / MKV.
   if (canTryAVPlayer && preferAVPlayer && (sourceType === "gindex" || streamType === "mkv")) {
-    return "avplayer";
+    return ENGINE_SELECTION.AVPLAYER;
   }
 
   // GIndex often serves Matroska/HEVC releases through signed download.aspx URLs.
   // Native <video> handles some MP4 variants well, but MKV needs AVPlayer's
   // demuxer/decoder path or the browser mistakes valid media for unsupported MP4.
   if (canTryAVPlayer && sourceType === "gindex" && streamType === "mkv") {
-    return "avplayer";
+    return ENGINE_SELECTION.AVPLAYER;
   }
 
   // GIndex MP4 can use native playback.
   if (sourceType === "gindex") {
-    return "native";
+    return ENGINE_SELECTION.NATIVE;
   }
 
   switch (streamType) {
     case "flv":
-      return mpegts ? "mpegts-flv" : "flv-unsupported";
+      return mpegts ? ENGINE_SELECTION.MPEGTS_FLV : ENGINE_SELECTION.FLV_UNSUPPORTED;
 
     case "mp4":
     case "mkv":
-      return "native";
+      return ENGINE_SELECTION.NATIVE;
 
     default:
       // Mixed/unknown follows the same explicit Apple-native policy.
-      if (preferNativeHls && nativeHls) return "native";
-      if (hlsJs) return "hls-js";
-      if (nativeHls) return "native";
-      if (mpegts) return "mpegts";
-      return "native";
+      if (preferNativeHls && nativeHls) return ENGINE_SELECTION.NATIVE;
+      if (hlsJs) return ENGINE_SELECTION.HLS_JS;
+      if (nativeHls) return ENGINE_SELECTION.NATIVE;
+      if (mpegts) return ENGINE_SELECTION.MPEGTS;
+      return ENGINE_SELECTION.NATIVE;
   }
 }
