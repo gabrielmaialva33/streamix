@@ -157,6 +157,14 @@ defmodule StreamixWeb.Telemetry do
         tags: [:stage, :content_type, :engine],
         description: "Playback failures by stage and engine"
       ),
+      counter("streamix.player.state_transition.count",
+        tags: [:from_state, :to_state, :engine],
+        description: "Observed player lifecycle state transitions"
+      ),
+      counter("streamix.player.state_transition_invalid.count",
+        tags: [:from_state, :to_state, :engine],
+        description: "Rejected player lifecycle state transitions"
+      ),
       counter("streamix.qoe.event.count",
         tags: [:kind, :engine, :outcome],
         description: "Persisted client QoE samples"
