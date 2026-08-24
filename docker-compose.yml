@@ -75,7 +75,7 @@ services:
       retries: 5
 
   rqbit:
-    image: ikatson/rqbit:9.0.0
+    image: ikatson/rqbit:9.0.1
     container_name: streamix-rqbit
     command: ["server", "start", "/home/rqbit/downloads"]
     ports:
