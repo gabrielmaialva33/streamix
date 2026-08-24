@@ -8,7 +8,7 @@ defmodule Streamix.Gindex.Sync do
 
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.{Animes, Movies, Paths, Series}
-  alias Streamix.Iptv
+  alias Streamix.Providers
 
   require Logger
 
@@ -21,7 +21,7 @@ defmodule Streamix.Gindex.Sync do
   """
   @spec sync_provider(term()) :: {:ok, map()} | {:error, term()}
   def sync_provider(provider) do
-    case Iptv.gindex_sync_source(provider) do
+    case Providers.gindex_sync_source(provider) do
       {:ok, source} ->
         start_provider_sync(source)
 
@@ -54,7 +54,7 @@ defmodule Streamix.Gindex.Sync do
   """
   @spec sync_category(term(), String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
   def sync_category(provider, category_path) do
-    with {:ok, source} <- Iptv.gindex_sync_source(provider) do
+    with {:ok, source} <- Providers.gindex_sync_source(provider) do
       Movies.sync_category(source, source.base_url, category_path)
     end
   end
@@ -64,7 +64,7 @@ defmodule Streamix.Gindex.Sync do
   """
   @spec list_categories(term(), String.t() | nil) :: {:ok, list()} | {:error, term()}
   def list_categories(provider, movies_path \\ nil) do
-    with {:ok, source} <- Iptv.gindex_sync_source(provider) do
+    with {:ok, source} <- Providers.gindex_sync_source(provider) do
       Scraper.list_categories(source.base_url, movies_path || Paths.movies_path(source))
     end
   end
@@ -75,7 +75,7 @@ defmodule Streamix.Gindex.Sync do
   @spec sync_kind(term(), String.t(), String.t(), kind(), keyword()) ::
           {:ok, map()} | {:error, term()}
   def sync_kind(provider, base_url, path, kind, opts \\ []) do
-    with {:ok, source} <- Iptv.gindex_sync_source(provider) do
+    with {:ok, source} <- Providers.gindex_sync_source(provider) do
       do_sync_kind(source, base_url, path, kind, opts)
     end
   end
@@ -91,7 +91,7 @@ defmodule Streamix.Gindex.Sync do
   def sync_path(provider, path, kind, opts \\ []) do
     with :ok <- validate_path(path),
          :ok <- validate_kind(kind),
-         {:ok, source} <- Iptv.gindex_sync_source(provider) do
+         {:ok, source} <- Providers.gindex_sync_source(provider) do
       do_sync_kind(source, source.base_url, path, kind, opts)
     end
   end
@@ -109,7 +109,7 @@ defmodule Streamix.Gindex.Sync do
   defp with_known_paths(source, kind, opts) do
     if Keyword.get(opts, :strategy) == :discovery_first and
          not Keyword.has_key?(opts, :known_paths) do
-      Keyword.put(opts, :known_paths, Iptv.gindex_known_paths(source.provider_id, kind))
+      Keyword.put(opts, :known_paths, Providers.gindex_known_paths(source.provider_id, kind))
     else
       opts
     end
@@ -131,7 +131,7 @@ defmodule Streamix.Gindex.Sync do
   @spec sync_movies_batch(term(), [map()]) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def sync_movies_batch(provider, movies) when is_list(movies) do
-    with {:ok, source} <- Iptv.gindex_sync_source(provider) do
+    with {:ok, source} <- Providers.gindex_sync_source(provider) do
       Logger.info("[GIndex Sync] Syncing batch of #{length(movies)} movies")
       Movies.upsert_batch(source, movies)
     end
@@ -144,7 +144,7 @@ defmodule Streamix.Gindex.Sync do
   @spec sync_series_batch(term(), [map()]) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def sync_series_batch(provider, series_list) when is_list(series_list) do
-    with {:ok, source} <- Iptv.gindex_sync_source(provider) do
+    with {:ok, source} <- Providers.gindex_sync_source(provider) do
       Logger.info("[GIndex Sync] Syncing batch of #{length(series_list)} series")
 
       case Series.upsert_batch(source, series_list) do
@@ -161,7 +161,7 @@ defmodule Streamix.Gindex.Sync do
   @spec sync_animes_batch(term(), [map()]) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def sync_animes_batch(provider, animes_list) when is_list(animes_list) do
-    with {:ok, source} <- Iptv.gindex_sync_source(provider) do
+    with {:ok, source} <- Providers.gindex_sync_source(provider) do
       Logger.info("[GIndex Sync] Syncing batch of #{length(animes_list)} animes")
 
       case Animes.upsert_batch(source, animes_list) do
@@ -194,7 +194,7 @@ defmodule Streamix.Gindex.Sync do
       vod_synced_at: DateTime.utc_now(:second)
     }
 
-    case Iptv.update_gindex_sync(source.provider_id, attrs) do
+    case Providers.update_gindex_sync(source.provider_id, attrs) do
       :ok ->
         Logger.info(
           "[GIndex Sync] Completed: #{movies_count} movies, #{series_stats.series_count} series, " <>
@@ -230,7 +230,7 @@ defmodule Streamix.Gindex.Sync do
   end
 
   defp update_status(source, status) do
-    Iptv.update_gindex_sync(source.provider_id, %{sync_status: status})
+    Providers.update_gindex_sync(source.provider_id, %{sync_status: status})
   end
 
   defp provider_state_error(stage, reason) do

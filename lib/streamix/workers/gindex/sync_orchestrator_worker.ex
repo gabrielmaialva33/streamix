@@ -14,7 +14,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
     unique: [period: :timer.hours(1), fields: [:worker, :args], states: :incomplete]
 
   alias Streamix.Gindex
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Workers.Gindex.BackfillTmdbWorker
   alias Streamix.Workers.SyncGindexProviderWorker
 
@@ -56,7 +56,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
   end
 
   defp reconcile(provider_id, cycle_id) do
-    case Iptv.get_provider(provider_id) do
+    case Providers.get_provider(provider_id) do
       nil ->
         :ok
 
@@ -90,7 +90,7 @@ defmodule Streamix.Workers.Gindex.SyncOrchestratorWorker do
       series_synced_at: now
     }
 
-    case Iptv.refresh_gindex_counts(provider_id, attrs) do
+    case Providers.refresh_gindex_counts(provider_id, attrs) do
       {:ok, provider} ->
         Logger.info(
           "[GIndex Orchestrator] cycle=#{cycle_id} finalized status=#{status} " <>

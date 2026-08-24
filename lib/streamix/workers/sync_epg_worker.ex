@@ -25,13 +25,13 @@ defmodule Streamix.Workers.SyncEpgWorker do
     max_attempts: 2,
     unique: [period: 300, keys: [:provider_id]]
 
-  alias Streamix.Iptv
+  alias Streamix.{Guide, Providers}
 
   require Logger
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"provider_id" => provider_id}, attempt: attempt}) do
-    case Iptv.get_provider(provider_id) do
+    case Providers.get_provider(provider_id) do
       nil ->
         {:error, :provider_not_found}
 
@@ -46,7 +46,7 @@ defmodule Streamix.Workers.SyncEpgWorker do
         "(attempt #{attempt})"
     )
 
-    case Iptv.sync_all_epg(provider) do
+    case Guide.sync_all_epg(provider) do
       {:ok, %{channels: ch, programs: pr} = stats} ->
         broadcast(provider, %{synced: ch, programs: pr, failed: 0})
         Logger.info("[SyncEpgWorker] Done: #{inspect(stats)}")

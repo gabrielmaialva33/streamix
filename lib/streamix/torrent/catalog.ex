@@ -16,6 +16,7 @@ defmodule Streamix.Torrent.Catalog do
 
   alias Streamix.Cache
   alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Torrent.StatsRefresher
   alias Streamix.Torrent.TorrentStream
@@ -23,7 +24,7 @@ defmodule Streamix.Torrent.Catalog do
   @default_limit 48
 
   @doc "The browser-safe system torrent provider identity, or `nil` when absent."
-  def provider, do: Iptv.get_torrent_provider_ref()
+  def provider, do: Providers.get_torrent_provider_ref()
 
   @doc """
   Lists torrent movies ranked by swarm health (max seeders desc).

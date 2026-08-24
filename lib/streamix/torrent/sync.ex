@@ -12,6 +12,7 @@ defmodule Streamix.Torrent.Sync do
   """
 
   alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Torrent.{Catalog, Sources, TorrentStream}
 
@@ -35,7 +36,7 @@ defmodule Streamix.Torrent.Sync do
           {:ok, %{movies_count: non_neg_integer(), sources: [map()]}}
           | {:error, term()}
   def sync_provider(provider) do
-    case Iptv.torrent_sync_source(provider) do
+    case Providers.torrent_sync_source(provider) do
       {:ok, source} ->
         start_provider_sync(source)
 
@@ -83,13 +84,13 @@ defmodule Streamix.Torrent.Sync do
   def sync_source(provider, source_module, opts \\ [])
 
   def sync_source(provider, source_module, opts) when is_atom(source_module) do
-    with {:ok, source} <- Iptv.torrent_sync_source(provider) do
+    with {:ok, source} <- Providers.torrent_sync_source(provider) do
       do_sync_source(source, source_module, opts)
     end
   end
 
   def sync_source(provider, _source_module, _opts) do
-    case Iptv.torrent_sync_source(provider) do
+    case Providers.torrent_sync_source(provider) do
       {:ok, _source} -> {:error, :invalid_source}
       {:error, :not_torrent_provider} = error -> error
     end
@@ -430,7 +431,7 @@ defmodule Streamix.Torrent.Sync do
     now = DateTime.utc_now(:second)
     attrs = %{sync_status: sync_status, movies_count: movies_total, vod_synced_at: now}
 
-    case Iptv.update_torrent_sync(source.provider_id, attrs) do
+    case Providers.update_torrent_sync(source.provider_id, attrs) do
       :ok ->
         Logger.info(
           "[Torrent Sync] Provider #{source.provider_id} finalized: #{movies_total} movies " <>
@@ -445,7 +446,7 @@ defmodule Streamix.Torrent.Sync do
   end
 
   defp update_status(source, status),
-    do: Iptv.update_torrent_sync(source.provider_id, %{sync_status: status})
+    do: Providers.update_torrent_sync(source.provider_id, %{sync_status: status})
 
   @doc """
   Recomputes the provider's catalog counter from the database and marks
@@ -466,14 +467,14 @@ defmodule Streamix.Torrent.Sync do
   def refresh_provider_counts(provider, opts \\ [])
 
   def refresh_provider_counts(provider, opts) do
-    with {:ok, source} <- Iptv.torrent_sync_source(provider),
+    with {:ok, source} <- Providers.torrent_sync_source(provider),
          :ok <- Catalog.refresh_stats(source.provider_id) do
       movies_count = Iptv.count_torrent_movies(source.provider_id, show_adult: true)
       now = DateTime.utc_now(:second)
       sync_status = Keyword.get(opts, :sync_status, "completed")
       attrs = %{sync_status: sync_status, movies_count: movies_count, vod_synced_at: now}
 
-      case Iptv.update_torrent_sync(source.provider_id, attrs) do
+      case Providers.update_torrent_sync(source.provider_id, attrs) do
         :ok -> {:ok, Map.put(attrs, :provider_id, source.provider_id)}
         {:error, reason} -> {:error, reason}
       end

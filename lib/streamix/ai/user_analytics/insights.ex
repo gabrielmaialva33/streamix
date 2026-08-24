@@ -4,6 +4,7 @@ defmodule Streamix.AI.UserAnalytics.Insights do
   alias Streamix.Accounts
   alias Streamix.Cache
   alias Streamix.Iptv
+  alias Streamix.Library
 
   @recommendations_ttl 3600
 
@@ -23,7 +24,7 @@ defmodule Streamix.AI.UserAnalytics.Insights do
       show_adult = show_adult_content?(user_id)
 
       history =
-        Iptv.list_watch_history_for_analytics(user_id, limit: 500, show_adult: show_adult)
+        Library.list_watch_history_for_analytics(user_id, limit: 500, show_adult: show_adult)
 
       if Enum.empty?(history) do
         %{has_data: false}
@@ -35,7 +36,7 @@ defmodule Streamix.AI.UserAnalytics.Insights do
         %{
           has_data: true,
           total_items: length(history),
-          content_breakdown: Iptv.count_watch_history_by_type(user_id, show_adult: show_adult),
+          content_breakdown: Library.count_watch_history_by_type(user_id, show_adult: show_adult),
           completion_rate: calculate_completion_rate(history),
           favorite_genres: extract_favorite_genres(movie_history),
           watch_patterns: analyze_watch_patterns(history),

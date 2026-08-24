@@ -20,7 +20,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
     ]
 
   alias Streamix.Gindex
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
 
   require Logger
@@ -52,7 +52,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
         sync_fun,
         reset_delay_fun
       ) do
-    with %{id: _} = provider <- Iptv.get_provider(provider_id),
+    with %{id: _} = provider <- Providers.get_provider(provider_id),
          {:ok, kind_atom} <- parse_kind(kind),
          {:ok, scan_root} <- load_scan_root(job, provider_id, base_url, path, kind),
          {:ok, scan_root} <- Gindex.mark_scan_root_running(scan_root) do
@@ -484,7 +484,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   end
 
   defp recount_provider(provider_id) do
-    case Iptv.refresh_gindex_counts(provider_id) do
+    case Providers.refresh_gindex_counts(provider_id) do
       {:ok, _provider} ->
         :ok
 
@@ -498,7 +498,7 @@ defmodule Streamix.Workers.Gindex.ScanRootWorker do
   end
 
   defp mark_provider_status(provider_id, status) do
-    case Iptv.update_gindex_sync(provider_id, %{sync_status: status}) do
+    case Providers.update_gindex_sync(provider_id, %{sync_status: status}) do
       :ok ->
         :ok
 

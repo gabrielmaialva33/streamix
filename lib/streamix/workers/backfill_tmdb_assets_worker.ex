@@ -11,8 +11,8 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   primary, so anything under that threshold is almost certainly a row
   written by the broken parse pipeline.
 
-  Fetches via the public IPTV facade, which
-  reuses the TMDB cache and only hits the API when needed.
+  Fetches via the catalog application boundary, which reuses the TMDB cache
+  and only hits the API when needed.
 
   ## Usage
 
@@ -34,7 +34,7 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv
+  alias Streamix.Catalog
   alias Streamix.Iptv.{Movie, MovieAsset, Series, SeriesAsset}
   alias Streamix.Repo
 
@@ -56,14 +56,14 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"kind" => "movies", "ids" => ids}}) do
     movies = Repo.all(from m in Movie, where: m.id in ^ids, preload: [:assets, :credits])
-    run_batch(movies, &Iptv.fetch_movie_info/1, "movies")
+    run_batch(movies, &Catalog.fetch_movie_info/1, "movies")
   end
 
   def perform(%Oban.Job{args: %{"kind" => "series", "ids" => ids}}) do
     series =
       Repo.all(from s in Series, where: s.id in ^ids, preload: [:assets, credits: :person])
 
-    run_batch(series, &Iptv.fetch_series_info/1, "series")
+    run_batch(series, &Catalog.fetch_series_info/1, "series")
   end
 
   # Cron entrypoint — no args means "go find pending items and enqueue".

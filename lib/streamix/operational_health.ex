@@ -10,7 +10,7 @@ defmodule Streamix.OperationalHealth do
 
   alias Ecto.Adapters.SQL
   alias Streamix.AI.{Embeddings, Qdrant, SemanticSearch}
-  alias Streamix.{BuildInfo, Gindex, Iptv, Repo, Torrent}
+  alias Streamix.{BuildInfo, Gindex, Providers, Repo, Torrent}
 
   @check_timeout :timer.seconds(6)
   @required_checks [:database, :redis]
@@ -84,7 +84,7 @@ defmodule Streamix.OperationalHealth do
 
   defp check_providers do
     counts =
-      Iptv.list_public_providers()
+      Providers.list_public_providers()
       |> Enum.frequencies_by(&(&1.sync_status || "unknown"))
 
     degraded_count =

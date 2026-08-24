@@ -6,7 +6,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   alias Streamix.Accounts
   alias Streamix.AI.Qdrant
   alias Streamix.Cache
-  alias Streamix.Iptv
+  alias Streamix.Library
 
   @user_profile_collection "user_profiles"
   @recommendations_ttl 3600
@@ -62,7 +62,7 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   defp get_watched_content_with_embeddings(user_id) do
     history =
       user_id
-      |> Iptv.list_watch_history_for_analytics(
+      |> Library.list_watch_history_for_analytics(
         limit: 100,
         show_adult: show_adult_content?(user_id)
       )

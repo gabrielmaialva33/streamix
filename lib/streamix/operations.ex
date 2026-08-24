@@ -9,7 +9,7 @@ defmodule Streamix.Operations do
 
   import Ecto.Query
 
-  alias Streamix.{BuildInfo, Gindex, Iptv, Qoe, Repo, Torrent}
+  alias Streamix.{BuildInfo, Gindex, Providers, Qoe, Repo, Torrent}
 
   @event_table :streamix_operations_events
 
@@ -38,7 +38,7 @@ defmodule Streamix.Operations do
   def runtime_summary do
     %{
       revision: release_revision(),
-      providers: Iptv.cached_provider_health_summary(),
+      providers: Providers.cached_provider_health_summary(),
       torrent: Torrent.health(),
       gindex: Gindex.operations_status(),
       events: event_summary()

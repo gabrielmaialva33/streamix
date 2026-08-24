@@ -21,7 +21,7 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Torrent
   alias Streamix.Workers.Torrent.{SyncOrchestratorWorker, SyncSourceWorker}
@@ -30,10 +30,10 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
 
   @impl Oban.Worker
   def perform(_job) do
-    if Iptv.torrent_provider_enabled?() do
+    if Providers.torrent_provider_enabled?() do
       Logger.info("[Torrent Dispatcher] ensuring provider exists")
 
-      case Iptv.ensure_torrent_provider() do
+      case Providers.ensure_torrent_provider() do
         {:ok, %{id: _} = provider} ->
           dispatch(provider)
 
@@ -150,6 +150,6 @@ defmodule Streamix.Workers.SyncTorrentProviderWorker do
   end
 
   defp mark_status(provider, status) do
-    Iptv.update_provider(provider, %{sync_status: status})
+    Providers.update_provider(provider, %{sync_status: status})
   end
 end

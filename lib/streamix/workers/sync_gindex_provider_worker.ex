@@ -14,7 +14,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
   import Ecto.Query
 
   alias Streamix.Gindex
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.ScanRootWorker
   alias Streamix.Workers.Gindex.SyncOrchestratorWorker
@@ -26,10 +26,10 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
   @impl Oban.Worker
   def perform(_job) do
-    if Iptv.gindex_provider_enabled?() do
+    if Providers.gindex_provider_enabled?() do
       Logger.info("[GIndex Dispatcher] ensuring provider exists")
 
-      case Iptv.ensure_gindex_provider() do
+      case Providers.ensure_gindex_provider() do
         {:ok, %{id: _} = provider} ->
           dispatch(provider)
 
@@ -177,7 +177,7 @@ defmodule Streamix.Workers.SyncGindexProviderWorker do
 
     status = cycle_status(summary)
 
-    Iptv.update_gindex_sync(provider_id, %{sync_status: status})
+    Providers.update_gindex_sync(provider_id, %{sync_status: status})
   end
 
   defp cycle_status(%{roots_unfinished: unfinished, roots_paused_quota: quota})

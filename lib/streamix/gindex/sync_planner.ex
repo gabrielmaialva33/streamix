@@ -11,7 +11,7 @@ defmodule Streamix.Gindex.SyncPlanner do
   can evolve without dragging the legacy monolithic syncer with it.
   """
 
-  alias Streamix.Iptv
+  alias Streamix.Providers
 
   @type kind :: :movies | :series | :animes
   @type root :: %{base_url: String.t(), path: String.t(), kind: kind()}
@@ -33,7 +33,7 @@ defmodule Streamix.Gindex.SyncPlanner do
   """
   @spec roots_for(term(), Date.t()) :: [root()]
   def roots_for(provider, date \\ Date.utc_today()) do
-    case Iptv.gindex_sync_source(provider) do
+    case Providers.gindex_sync_source(provider) do
       {:ok, source} -> roots_for_source(source, date)
       {:error, :not_gindex_provider} -> raise ArgumentError, "expected a GIndex provider"
     end

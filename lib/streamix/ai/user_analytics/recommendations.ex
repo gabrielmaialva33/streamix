@@ -10,7 +10,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   alias Streamix.AI.UserAnalytics.Formatter
   alias Streamix.AI.UserAnalytics.Profile
   alias Streamix.Cache
-  alias Streamix.Iptv
+  alias Streamix.Library
 
   @recommendations_ttl 3600
   @content_collections ~w(movies series)
@@ -158,7 +158,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   defp get_watched_content_ids(user_id, collection) do
     content_type = collection_to_content_type(collection)
 
-    Iptv.list_watch_history_for_analytics(user_id,
+    Library.list_watch_history_for_analytics(user_id,
       content_type: content_type,
       limit: 500,
       show_adult: show_adult_content?(user_id)

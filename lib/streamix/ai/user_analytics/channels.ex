@@ -2,6 +2,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
   @moduledoc false
 
   alias Streamix.Iptv
+  alias Streamix.Library
 
   @doc """
   Gets recommended live channels based on watch history.
@@ -19,7 +20,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     show_adult = Keyword.get(opts, :show_adult, false)
 
     history =
-      Iptv.list_watch_history_for_analytics(user_id,
+      Library.list_watch_history_for_analytics(user_id,
         content_type: "live_channel",
         limit: 100,
         show_adult: show_adult
@@ -96,7 +97,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
 
   defp get_channels_by_category(user_id, category_name, limit, show_adult) do
     history =
-      Iptv.list_watch_history_for_analytics(user_id,
+      Library.list_watch_history_for_analytics(user_id,
         content_type: "live_channel",
         limit: 50,
         show_adult: show_adult

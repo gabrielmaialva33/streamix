@@ -23,7 +23,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
   import Ecto.Query
 
   alias Streamix.Gindex
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Workers.Gindex.SyncOrchestratorWorker
   alias Streamix.Workers.SyncGindexProviderWorker
@@ -50,7 +50,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
       |> DateTime.truncate(:second)
       |> DateTime.to_naive()
 
-    stale_candidates = Iptv.list_stale_sync_candidates(threshold)
+    stale_candidates = Providers.list_stale_sync_candidates(threshold)
 
     Enum.each(stale_candidates, &maybe_reset/1)
 
@@ -82,7 +82,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
           ">#{@stuck_threshold_minutes}m with no in-flight jobs — resetting to failed"
       )
 
-      Iptv.update_provider(provider, %{sync_status: "failed"})
+      Providers.update_provider(provider, %{sync_status: "failed"})
     else
       Logger.debug(
         "[SyncWatchdog] provider #{provider.id} still has #{in_flight} in-flight jobs, leaving syncing"
@@ -97,7 +97,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
 
     cond do
       status = intentional_pause_status(summary) ->
-        Iptv.update_gindex_sync(provider.id, %{sync_status: status})
+        Providers.update_gindex_sync(provider.id, %{sync_status: status})
 
       stale_heartbeat?(summary.heartbeat_at) ->
         Logger.warning(
@@ -178,7 +178,7 @@ defmodule Streamix.Workers.SyncWatchdogWorker do
         "resetting to failed"
     )
 
-    Iptv.update_gindex_sync(provider.id, %{sync_status: "failed"})
+    Providers.update_gindex_sync(provider.id, %{sync_status: "failed"})
   end
 
   defp workers_for(%{provider_type: :torrent}), do: @torrent_workers

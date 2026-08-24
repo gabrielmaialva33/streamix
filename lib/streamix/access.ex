@@ -8,7 +8,7 @@ defmodule Streamix.Access do
   alias Streamix.Access.{Permission, RolePermission, UserPermission}
   alias Streamix.Accounts
   alias Streamix.Billing
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Repo
 
   def plays_global_content?(user, provider_or_content) do
@@ -20,10 +20,9 @@ defmodule Streamix.Access do
 
   def global_content?(%{provider_id: provider_id, provider: %Ecto.Association.NotLoaded{}})
       when is_integer(provider_id) do
-    # Resolve via the Iptv facade so this module stops importing the
-    # Provider schema directly — keeps Access from reaching into Iptv's
-    # internals just to pattern-match on a struct shape.
-    case Iptv.get_provider(provider_id) do
+    # Resolve through the provider application boundary so Access does not
+    # reach into IPTV schemas just to pattern-match on a struct shape.
+    case Providers.get_provider(provider_id) do
       nil -> false
       provider -> provider_global_system?(provider)
     end

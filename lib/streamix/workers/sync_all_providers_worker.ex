@@ -23,7 +23,7 @@ defmodule Streamix.Workers.SyncAllProvidersWorker do
 
   use Oban.Worker, queue: :sync, max_attempts: 1
 
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Workers.SyncProviderWorker
 
   require Logger
@@ -32,7 +32,7 @@ defmodule Streamix.Workers.SyncAllProvidersWorker do
   def perform(_job) do
     Logger.info("Starting periodic sync for all providers")
 
-    providers = Iptv.list_personal_xtream_providers()
+    providers = Providers.list_personal_xtream_providers()
 
     count = length(providers)
 

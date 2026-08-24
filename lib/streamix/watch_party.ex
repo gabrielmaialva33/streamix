@@ -9,7 +9,7 @@ defmodule Streamix.WatchParty do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.{Access, Accounts, Billing, Iptv, Repo, Torrent}
+  alias Streamix.{Access, Accounts, Billing, Catalog, Playback, Repo, Torrent}
   alias Streamix.WatchParty.{Message, Participant, Room, RoomServer}
 
   @topic_prefix "watch_party:room:"
@@ -64,7 +64,7 @@ defmodule Streamix.WatchParty do
   def preload_room_content(nil), do: nil
 
   def preload_room_content(%Room{} = room) do
-    %{room | catalog_item: Iptv.get_catalog_item_with_content(room.catalog_item_id)}
+    %{room | catalog_item: Catalog.get_catalog_item_with_content(room.catalog_item_id)}
   end
 
   def list_active_rooms_for_user(user_id, opts \\ []) when is_integer(user_id) do
@@ -114,7 +114,7 @@ defmodule Streamix.WatchParty do
     user = Accounts.get_user(user_id, preload_role: true)
 
     with %{} = catalog_item <- room.catalog_item,
-         %{} = content <- Iptv.catalog_item_content(catalog_item),
+         %{} = content <- Catalog.catalog_item_content(catalog_item),
          {:ok, provider} <- playable_provider(catalog_item.content_type, content.id, user_id),
          %{} = user <- user,
          true <- Access.plays_global_content?(user, provider) do
@@ -585,21 +585,21 @@ defmodule Streamix.WatchParty do
   end
 
   defp playable_provider("live_channel", content_id, user_id) do
-    case Iptv.get_playable_channel(user_id, content_id) do
+    case Playback.get_playable_channel(user_id, content_id) do
       %{provider: provider} -> {:ok, provider}
       _ -> {:error, :content_not_available}
     end
   end
 
   defp playable_provider("movie", content_id, user_id) do
-    case Iptv.get_playable_movie(user_id, content_id) do
+    case Playback.get_playable_movie(user_id, content_id) do
       %{provider: provider} -> {:ok, provider}
       _ -> {:error, :content_not_available}
     end
   end
 
   defp playable_provider("episode", content_id, user_id) do
-    case Iptv.get_playable_episode(user_id, content_id) do
+    case Playback.get_playable_episode(user_id, content_id) do
       %{season: %{series: %{provider: provider}}} -> {:ok, provider}
       _ -> {:error, :content_not_available}
     end
@@ -614,8 +614,8 @@ defmodule Streamix.WatchParty do
        ) do
     user = Accounts.get_user(user_id, preload_role: true)
 
-    with %{} = catalog_item <- Iptv.get_catalog_item_with_content(catalog_item_id),
-         %{} = content <- Iptv.catalog_item_content(catalog_item),
+    with %{} = catalog_item <- Catalog.get_catalog_item_with_content(catalog_item_id),
+         %{} = content <- Catalog.catalog_item_content(catalog_item),
          :ok <- validate_source_match(source_type, source_id, catalog_item, content),
          {:ok, provider} <- playable_provider(catalog_item.content_type, content.id, user_id),
          %{} = user <- user,

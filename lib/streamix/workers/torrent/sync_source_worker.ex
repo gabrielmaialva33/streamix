@@ -11,7 +11,7 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
 
   use Oban.Worker, queue: :torrent_sync, max_attempts: 3
 
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Torrent
 
   require Logger
@@ -25,7 +25,7 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
         args: %{"provider_id" => provider_id, "source_slug" => source_slug} = args,
         meta: meta
       }) do
-    with %{provider_type: :torrent} = provider <- Iptv.get_provider(provider_id),
+    with %{provider_type: :torrent} = provider <- Providers.get_provider(provider_id),
          module when is_atom(module) and not is_nil(module) <- Torrent.source_for(source_slug) do
       workflow_id = Map.get(args, "workflow_id")
       start_page = checkpoint_page(meta)

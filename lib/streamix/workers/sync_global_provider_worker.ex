@@ -11,17 +11,17 @@ defmodule Streamix.Workers.SyncGlobalProviderWorker do
 
   use Oban.Worker, queue: :sync, max_attempts: 3
 
-  alias Streamix.Iptv
+  alias Streamix.Providers
   alias Streamix.Workers.SyncProviderWorker
 
   require Logger
 
   @impl Oban.Worker
   def perform(_job) do
-    if Iptv.global_provider_enabled?() do
+    if Providers.global_provider_enabled?() do
       Logger.info("[IPTV] Starting sync for global provider")
 
-      case Iptv.ensure_global_provider() do
+      case Providers.ensure_global_provider() do
         {:ok, provider} when is_struct(provider) ->
           Logger.info("[IPTV] Global provider exists: #{provider.name}")
           sync_global_provider(provider)
