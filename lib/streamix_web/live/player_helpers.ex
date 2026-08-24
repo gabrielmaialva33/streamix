@@ -3,8 +3,6 @@ defmodule StreamixWeb.PlayerHelpers do
   Shared helpers for loading playable content.
   Used by PlayerLive and WatchPartyLive.Show.
   """
-
-  alias Streamix.Iptv
   alias Streamix.Torrent
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
@@ -55,7 +53,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_content_preflight("live_channel", id, user_id) do
     with {:ok, id} <- parse_id(id),
-         %{} = channel <- Iptv.get_playable_channel(user_id, id) do
+         %{} = channel <- Streamix.Playback.get_playable_channel(user_id, id) do
       {:ok, channel, channel.provider}
     else
       _ -> {:error, :not_found}
@@ -64,7 +62,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_content_preflight("movie", id, user_id) do
     with {:ok, id} <- parse_id(id),
-         %{} = movie <- Iptv.get_playable_movie(user_id, id) do
+         %{} = movie <- Streamix.Playback.get_playable_movie(user_id, id) do
       {:ok, movie, movie.provider}
     else
       _ -> {:error, :not_found}
@@ -73,7 +71,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_content_preflight("episode", id, user_id) do
     with {:ok, id} <- parse_id(id),
-         %{} = episode <- Iptv.get_playable_episode(user_id, id) do
+         %{} = episode <- Streamix.Playback.get_playable_episode(user_id, id) do
       {:ok, episode, episode.season.series.provider}
     else
       _ -> {:error, :not_found}
@@ -114,17 +112,17 @@ defmodule StreamixWeb.PlayerHelpers do
   associated movie rather than the transient torrent stream id.
   """
   def resolve_catalog_item_id("gindex", %{id: id}),
-    do: Iptv.resolve_catalog_item_id("movie", id)
+    do: Streamix.Catalog.resolve_catalog_item_id("movie", id)
 
   def resolve_catalog_item_id("gindex_episode", %{id: id}),
-    do: Iptv.resolve_catalog_item_id("episode", id)
+    do: Streamix.Catalog.resolve_catalog_item_id("episode", id)
 
   def resolve_catalog_item_id("torrent", %{movie_id: movie_id}),
-    do: Iptv.resolve_catalog_item_id("movie", movie_id)
+    do: Streamix.Catalog.resolve_catalog_item_id("movie", movie_id)
 
   def resolve_catalog_item_id(type, %{id: id})
       when type in ["live_channel", "movie", "series", "episode"] do
-    Iptv.resolve_catalog_item_id(type, id)
+    Streamix.Catalog.resolve_catalog_item_id(type, id)
   end
 
   def resolve_catalog_item_id(_type, _content), do: {:error, :invalid_content_type}
@@ -157,11 +155,11 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp movie_failover_sources(movie, user_id) do
-    [movie | Iptv.list_movie_variants(movie, user_id, limit: 32)]
+    [movie | Streamix.Playback.list_movie_variants(movie, user_id, limit: 32)]
     |> Enum.uniq_by(& &1.id)
     |> Enum.reject(&(Map.get(&1.provider, :provider_type) in [:torrent, "torrent"]))
     |> Enum.map(&source_candidate("movie", &1, &1.provider))
-    |> Iptv.sort_stream_sources(media_type: :vod, current_source_id: movie.id)
+    |> Streamix.Playback.sort_stream_sources(media_type: :vod, current_source_id: movie.id)
   end
 
   defp episode_failover_sources(
@@ -172,7 +170,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
     alternatives =
       series
-      |> Iptv.list_series_variants(user_id, limit: 24)
+      |> Streamix.Playback.list_series_variants(user_id, limit: 24)
       |> Enum.flat_map(fn candidate_series ->
         case matching_episode(candidate_series, season_number, episode.episode_num) do
           nil -> []
@@ -182,7 +180,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
     [source_candidate("episode", episode, current_provider) | alternatives]
     |> Enum.uniq_by(& &1.id)
-    |> Iptv.sort_stream_sources(media_type: :vod, current_source_id: episode.id)
+    |> Streamix.Playback.sort_stream_sources(media_type: :vod, current_source_id: episode.id)
   end
 
   defp episode_failover_sources(_episode, _user_id), do: []
@@ -214,7 +212,7 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp load_gindex_movie(id) do
-    movie = Iptv.get_movie_with_provider!(id)
+    movie = Streamix.Catalog.get_movie_with_provider!(id)
 
     if movie.gindex_path do
       {:ok, movie, movie.provider}
@@ -224,7 +222,7 @@ defmodule StreamixWeb.PlayerHelpers do
   end
 
   defp load_gindex_episode(id) do
-    episode = Iptv.get_episode_with_context!(id)
+    episode = Streamix.Catalog.get_episode_with_context!(id)
 
     if episode.gindex_path do
       {:ok, episode, episode.season.series.provider}
@@ -237,7 +235,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_next_episode(type, content, _provider, user_id)
       when type in ["episode", "gindex_episode"] do
-    case Iptv.get_next_episode(content.id) do
+    case Streamix.Catalog.get_next_episode(content.id) do
       nil ->
         nil
 
@@ -350,7 +348,7 @@ defmodule StreamixWeb.PlayerHelpers do
   defp do_prewarm(type, id, user_id) do
     with {:ok, upstream_type} <- prewarmable_upstream_type(type),
          {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
-      Iptv.prewarm_stream_url(url)
+      Streamix.Playback.prewarm_stream_url(url)
     else
       _ -> :ok
     end

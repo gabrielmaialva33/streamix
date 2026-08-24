@@ -15,7 +15,7 @@ defmodule StreamixWeb.FavoritesLive do
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Helpers.ImageProxy
 
   @per_page 24
@@ -92,7 +92,7 @@ defmodule StreamixWeb.FavoritesLive do
 
     case parse_positive_integer(content_id) do
       {:ok, content_id_int} ->
-        Iptv.remove_favorite(user_id, type, content_id_int)
+        Library.remove_favorite(user_id, type, content_id_int)
 
         # Update counts
         counts = update_counts(socket.assigns.counts, type, -1)
@@ -307,7 +307,7 @@ defmodule StreamixWeb.FavoritesLive do
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
     favorites =
-      Iptv.list_favorites(user_id, opts)
+      Library.list_favorites(user_id, opts)
       |> Enum.map(fn f -> Map.put(f, :id, "#{f.content_type}-#{f.content_id}") end)
 
     socket
@@ -317,12 +317,12 @@ defmodule StreamixWeb.FavoritesLive do
   end
 
   defp load_counts(user_id, show_adult) do
-    Iptv.count_favorites_by_type(user_id, show_adult: show_adult)
+    Library.count_favorites_by_type(user_id, show_adult: show_adult)
   end
 
   defp load_favorites_for_sync(user_id, show_adult) do
     # Load recent favorites for offline sync
-    Iptv.list_favorites(user_id, limit: 100, show_adult: show_adult)
+    Library.list_favorites(user_id, limit: 100, show_adult: show_adult)
     |> Enum.map(fn f ->
       %{
         content_type: f.content_type,

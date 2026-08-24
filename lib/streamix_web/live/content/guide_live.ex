@@ -5,7 +5,7 @@ defmodule StreamixWeb.Content.GuideLive do
 
   require Logger
 
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.TvGuide
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -34,7 +34,7 @@ defmodule StreamixWeb.Content.GuideLive do
        loading: true,
        load_generation: 0,
        refresh_ref: nil,
-       favorite_ids: Iptv.list_favorite_ids(user.id, "live_channel")
+       favorite_ids: Library.list_favorite_ids(user.id, "live_channel")
      )}
   end
 
@@ -129,7 +129,7 @@ defmodule StreamixWeb.Content.GuideLive do
          row when not is_nil(row) <-
            Enum.find(socket.assigns.all_rows, &(&1.channel.id == channel_id)),
          {:ok, status} <-
-           Iptv.toggle_favorite(
+           Library.toggle_favorite(
              socket.assigns.current_scope.user.id,
              "live_channel",
              channel_id,

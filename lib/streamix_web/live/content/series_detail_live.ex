@@ -4,8 +4,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   Works for both /browse/series/:id (global provider) and /providers/:id/series/:id (user provider).
   """
   use StreamixWeb, :live_view
-
-  alias Streamix.Iptv
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.LiveSessionNavigation
 
@@ -362,7 +360,11 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
           <!-- Image Gallery -->
           <.image_gallery
-            images={if Iptv.has_images?(@series), do: Iptv.image_urls(@series), else: []}
+            images={
+              if Streamix.Catalog.has_images?(@series),
+                do: Streamix.Catalog.image_urls(@series),
+                else: []
+            }
             alt="Imagem da série"
           />
 
@@ -475,7 +477,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp sort_series_sources(sources, current_series_id, preferred_provider_id) do
-    Iptv.sort_stream_sources(sources,
+    Streamix.Playback.sort_stream_sources(sources,
       media_type: :series,
       current_source_id: current_series_id,
       preferred_provider_id: preferred_provider_id

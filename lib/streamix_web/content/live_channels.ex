@@ -8,7 +8,7 @@ defmodule StreamixWeb.Content.LiveChannels do
   import StreamixWeb.Helpers.Params, only: [parse_integer: 1]
 
   alias Phoenix.LiveView
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
 
@@ -80,8 +80,9 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def play_channel(socket, id) do
     with channel_id when is_integer(channel_id) <- parse_integer(id),
-         %{} = channel <- Iptv.get_playable_channel(socket.assigns.user_id, channel_id) do
-      Iptv.add_watch_history(socket.assigns.user_id, "live_channel", channel.id, %{
+         %{} = channel <-
+           Streamix.Playback.get_playable_channel(socket.assigns.user_id, channel_id) do
+      Library.add_watch_history(socket.assigns.user_id, "live_channel", channel.id, %{
         content_name: channel.name,
         content_icon: channel.stream_icon
       })
@@ -136,7 +137,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def complete_provider_sync(socket) do
     provider = socket.assigns.provider
-    categories = Iptv.list_categories(provider.id, "live")
+    categories = Streamix.Catalog.list_categories(provider.id, "live")
 
     socket
     |> assign(categories: categories)
@@ -146,7 +147,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   def start_provider_sync(socket) do
     provider = socket.assigns.provider
-    Iptv.async_sync_provider(provider)
+    Streamix.Providers.async_sync_provider(provider)
 
     socket
     |> assign(provider: %{provider | sync_status: "pending"})
@@ -168,14 +169,14 @@ defmodule StreamixWeb.Content.LiveChannels do
     channels =
       if socket.assigns.mode == :browse and socket.assigns.provider_filter == "all" do
         socket.assigns.user_id
-        |> Iptv.list_visible_live_channels(opts)
+        |> Streamix.Catalog.list_visible_live_channels(opts)
         |> enrich_channels_by_provider()
       else
         provider = socket.assigns.provider
 
         provider.id
-        |> Iptv.list_live_channels(opts)
-        |> Iptv.enrich_channels_with_epg(provider.id)
+        |> Streamix.Catalog.list_live_channels(opts)
+        |> Streamix.Guide.enrich_channels_with_epg(provider.id)
       end
 
     socket
@@ -254,7 +255,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp apply_route_context(socket, %{"provider_id" => provider_id}, _provider_filter) do
     user = socket.assigns.current_scope.user
-    provider = Iptv.get_playable_provider(user.id, provider_id)
+    provider = Streamix.Providers.get_playable_provider(user.id, provider_id)
 
     if provider do
       {:ok, assign_provider_context(socket, provider, :provider, Integer.to_string(provider.id))}
@@ -296,7 +297,7 @@ defmodule StreamixWeb.Content.LiveChannels do
         []
       else
         provider.id
-        |> Iptv.list_categories("live")
+        |> Streamix.Catalog.list_categories("live")
         |> filter_adult_categories(user.show_adult_content)
       end
 
@@ -316,7 +317,7 @@ defmodule StreamixWeb.Content.LiveChannels do
   defp refresh_epg_by_id(socket, ids) do
     channels =
       ids
-      |> Enum.map(&Iptv.get_playable_channel(socket.assigns.user_id, &1))
+      |> Enum.map(&Streamix.Playback.get_playable_channel(socket.assigns.user_id, &1))
       |> Enum.filter(&match?(%{}, &1))
 
     programs_by_provider =
@@ -324,7 +325,7 @@ defmodule StreamixWeb.Content.LiveChannels do
       |> Enum.group_by(& &1.provider_id)
       |> Map.new(fn {provider_id, provider_channels} ->
         ids = Enum.map(provider_channels, & &1.id)
-        {provider_id, Iptv.current_programs_for_channels(provider_id, ids)}
+        {provider_id, Streamix.Guide.current_programs_for_channels(provider_id, ids)}
       end)
 
     Enum.reduce(channels, socket, fn channel, socket ->
@@ -338,7 +339,7 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp toggle_playable_channel(socket, channel_id) do
-    case Iptv.get_playable_channel(socket.assigns.user_id, channel_id) do
+    case Streamix.Playback.get_playable_channel(socket.assigns.user_id, channel_id) do
       %{} = channel -> toggle_loaded_channel(socket, channel_id, channel)
       nil -> socket
     end
@@ -360,7 +361,7 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp load_favorites_map(socket) do
-    favorite_ids = Iptv.list_favorite_ids(socket.assigns.user_id, "live_channel")
+    favorite_ids = Library.list_favorite_ids(socket.assigns.user_id, "live_channel")
     assign(socket, favorites_map: favorite_ids)
   end
 
@@ -368,7 +369,7 @@ defmodule StreamixWeb.Content.LiveChannels do
     channels
     |> Enum.group_by(& &1.provider_id)
     |> Enum.flat_map(fn {provider_id, provider_channels} ->
-      Iptv.enrich_channels_with_epg(provider_channels, provider_id)
+      Streamix.Guide.enrich_channels_with_epg(provider_channels, provider_id)
     end)
     |> Enum.sort_by(& &1.name)
   end
@@ -407,7 +408,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp provider_options(user_id) do
     user_id
-    |> Iptv.list_visible_providers()
+    |> Streamix.Providers.list_visible_providers()
     |> Enum.filter(&(&1.provider_type == :xtream))
   end
 
@@ -428,12 +429,12 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp provider_filter(_), do: "all"
 
-  defp selected_browse_provider(_user_id, "all"), do: Iptv.get_global_provider()
+  defp selected_browse_provider(_user_id, "all"), do: Streamix.Providers.get_global_provider()
 
   defp selected_browse_provider(user_id, provider_filter) do
     case Integer.parse(provider_filter) do
-      {provider_id, ""} -> Iptv.get_playable_provider(user_id, provider_id)
-      _ -> Iptv.get_global_provider()
+      {provider_id, ""} -> Streamix.Providers.get_playable_provider(user_id, provider_id)
+      _ -> Streamix.Providers.get_global_provider()
     end
   end
 
@@ -450,7 +451,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   defp maybe_sync_epg(provider) do
     if epg_needs_sync?(provider) do
-      Iptv.async_sync_epg(provider)
+      Streamix.Guide.async_sync_epg(provider)
       true
     else
       false

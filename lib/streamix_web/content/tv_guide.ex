@@ -6,8 +6,6 @@ defmodule StreamixWeb.Content.TvGuide do
   windows per provider, and returns presentation-neutral rows for LiveView.
   """
 
-  alias Streamix.Iptv
-
   @default_limit 100
   @window_hours 3
 
@@ -35,7 +33,7 @@ defmodule StreamixWeb.Content.TvGuide do
 
     providers =
       user.id
-      |> Iptv.list_visible_providers()
+      |> Streamix.Providers.list_visible_providers()
       |> Enum.filter(&(&1.provider_type == :xtream and &1.is_active))
 
     provider_names = Map.new(providers, &{&1.id, &1.name})
@@ -50,7 +48,7 @@ defmodule StreamixWeb.Content.TvGuide do
 
     rows =
       user.id
-      |> Iptv.list_visible_live_channels(channel_opts)
+      |> Streamix.Catalog.list_visible_live_channels(channel_opts)
       |> rows_with_programs(provider_names, starts_at, ends_at)
 
     %{
@@ -111,7 +109,7 @@ defmodule StreamixWeb.Content.TvGuide do
         channel_ids = Enum.map(provider_channels, & &1.id)
 
         {provider_id,
-         Iptv.programs_window_for_channels(provider_id, channel_ids, starts_at, ends_at)}
+         Streamix.Guide.programs_window_for_channels(provider_id, channel_ids, starts_at, ends_at)}
       end)
 
     now = DateTime.utc_now()

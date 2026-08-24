@@ -8,7 +8,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.PlayerHelpers
   import StreamixWeb.WatchPartyComponents
 
-  alias Streamix.{Accounts, Billing, Iptv, WatchParty}
+  alias Streamix.{Accounts, Billing, Library, WatchParty}
   alias StreamixWeb.{PlayerSourceFailover, Presence}
   alias StreamixWeb.WatchPartyLive.Status
 
@@ -411,7 +411,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
          {:ok, duration} <- normalize_duration(duration) do
       if socket.assigns.content_type not in [:live, :live_channel] do
         {type, id} = progress_ref(socket.assigns.source_type, socket.assigns.content)
-        Iptv.update_watch_progress(socket.assigns.user_id, type, id, current_time, duration)
+        Library.update_watch_progress(socket.assigns.user_id, type, id, current_time, duration)
       end
 
       Billing.touch_playback_session(socket.assigns.playback_session)
@@ -425,7 +425,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     case normalize_duration(duration) do
       {:ok, duration} ->
         {type, id} = progress_ref(socket.assigns.source_type, socket.assigns.content)
-        Iptv.update_watch_time(socket.assigns.user_id, type, id, duration)
+        Library.update_watch_time(socket.assigns.user_id, type, id, duration)
         Billing.touch_playback_session(socket.assigns.playback_session)
         {:noreply, socket}
 
@@ -579,10 +579,14 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     {:noreply, redirect(socket, to: ~p"/")}
   end
 
+  def handle_event("player_lifecycle", params, socket) do
+    StreamixWeb.PlayerLifecycleTelemetry.observe(params)
+    {:noreply, socket}
+  end
+
   # Browser-only events that don't need server state.
   def handle_event(event, _params, socket)
       when event in [
-             "player_lifecycle",
              "ios_pwa_player_event",
              "qualities_available",
              "quality_changed",
@@ -905,7 +909,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp release_playback_session(session), do: Billing.end_playback_session(session)
 
   defp record_watch_history("torrent", content, user_id) do
-    Iptv.add_to_watch_history(user_id, %{
+    Library.add_to_watch_history(user_id, %{
       content_type: "movie",
       content_id: content.movie_id,
       content_name: content_title(content, "torrent"),
@@ -914,7 +918,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   end
 
   defp record_watch_history(source_type, content, user_id) do
-    Iptv.add_to_watch_history(user_id, %{
+    Library.add_to_watch_history(user_id, %{
       content_type: canonical_content_type(source_type),
       content_id: content.id,
       content_name: content_title(content, source_type),
@@ -992,7 +996,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   defp assign_server_playback(socket, _command), do: socket
 
   defp room_source_ref(room) do
-    content = Iptv.catalog_item_content(room.catalog_item)
+    content = Streamix.Catalog.catalog_item_content(room.catalog_item)
 
     cond do
       is_binary(room.source_type) and is_integer(room.source_id) and room.source_id > 0 ->

@@ -14,8 +14,7 @@ defmodule StreamixWeb.TorrentLive do
   import StreamixWeb.App.Filters
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
-
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias Streamix.Torrent
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Helpers.ImageProxy
@@ -84,7 +83,7 @@ defmodule StreamixWeb.TorrentLive do
 
     case parse_positive_integer(id) do
       {:ok, movie_id} ->
-        movie = Iptv.get_movie!(movie_id)
+        movie = Streamix.Catalog.get_movie!(movie_id)
 
         case FavoriteState.toggle(user_id, "movie", movie_id, %{
                content_name: movie.title || movie.name,
@@ -258,7 +257,7 @@ defmodule StreamixWeb.TorrentLive do
       empty_results = socket.assigns.page == 1 and Enum.empty?(movies)
 
       favorite_ids =
-        Iptv.list_favorite_ids(socket.assigns.user_id, "movie", Enum.map(movies, & &1.id))
+        Library.list_favorite_ids(socket.assigns.user_id, "movie", Enum.map(movies, & &1.id))
 
       socket
       |> stream(:movies, movies)

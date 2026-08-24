@@ -7,7 +7,7 @@ defmodule StreamixWeb.HomeData do
 
   alias Streamix.AI
   alias Streamix.Cache
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.HomeCatalogLoader
 
@@ -178,14 +178,17 @@ defmodule StreamixWeb.HomeData do
     sections =
       HomeCatalogLoader.load(
         %{
-          featured: fn -> Iptv.get_featured_content(show_adult: show_adult) end,
-          stats: fn -> Iptv.get_public_stats() end,
+          featured: fn -> Streamix.Catalog.get_featured_content(show_adult: show_adult) end,
+          stats: fn -> Streamix.Catalog.get_public_stats() end,
           new_releases: fn ->
-            Iptv.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
+            Streamix.Catalog.list_new_releases(limit: @home_default_limit, show_adult: show_adult)
           end,
           top_10: fn -> load_top_10(show_adult) end,
           movies: fn ->
-            Iptv.list_public_movies(limit: @home_default_limit, show_adult: show_adult)
+            Streamix.Catalog.list_public_movies(
+              limit: @home_default_limit,
+              show_adult: show_adult
+            )
           end
         },
         timeout: 8_000
@@ -198,7 +201,7 @@ defmodule StreamixWeb.HomeData do
     stats = normalize_public_stats(stats)
 
     if stale_public_stats?(stats, sections) do
-      Iptv.get_public_stats(refresh: true)
+      Streamix.Catalog.get_public_stats(refresh: true)
       |> normalize_public_stats()
     else
       stats
@@ -269,13 +272,13 @@ defmodule StreamixWeb.HomeData do
     HomeCatalogLoader.load(
       %{
         favorites: fn ->
-          Iptv.list_home_favorites(user.id,
+          Library.list_home_favorites(user.id,
             limit: @home_default_limit,
             show_adult: user.show_adult_content
           )
         end,
         history: fn ->
-          Iptv.list_home_history(user.id,
+          Library.list_home_history(user.id,
             limit: @home_history_limit,
             show_adult: user.show_adult_content
           )
@@ -303,10 +306,10 @@ defmodule StreamixWeb.HomeData do
     HomeCatalogLoader.load(
       %{
         featured_favorite: fn -> check_featured_favorite(Map.get(assigns, :featured), user.id) end,
-        movie_favorites_map: fn -> Iptv.list_favorite_ids(user.id, "movie", movie_ids) end,
-        series_favorites_map: fn -> Iptv.list_favorite_ids(user.id, "series", series_ids) end,
-        movie_progress: fn -> Iptv.get_watch_progress_map(user.id, "movie", movie_ids) end,
-        series_progress: fn -> Iptv.get_series_progress_map(user.id, series_ids) end
+        movie_favorites_map: fn -> Library.list_favorite_ids(user.id, "movie", movie_ids) end,
+        series_favorites_map: fn -> Library.list_favorite_ids(user.id, "series", series_ids) end,
+        movie_progress: fn -> Library.get_watch_progress_map(user.id, "movie", movie_ids) end,
+        series_progress: fn -> Library.get_series_progress_map(user.id, series_ids) end
       },
       timeout: 6_000
     )
@@ -316,7 +319,11 @@ defmodule StreamixWeb.HomeData do
 
   defp load_trending(nil, _genre, period, _show_adult, _personalization) do
     Cache.fetch("home:trending:guest:#{period}", @trending_ttl, fn ->
-      Iptv.list_trending_movies(limit: @home_default_limit, days: period, show_adult: false)
+      Streamix.Catalog.list_trending_movies(
+        limit: @home_default_limit,
+        days: period,
+        show_adult: false
+      )
     end)
   end
 
@@ -339,14 +346,14 @@ defmodule StreamixWeb.HomeData do
 
   defp load_top_10(show_adult) do
     Cache.fetch("home:top_10:adult:#{show_adult}", @top_10_ttl, fn ->
-      Iptv.list_top_10_movies(limit: @home_top_10_limit, show_adult: show_adult)
+      Streamix.Catalog.list_top_10_movies(limit: @home_top_10_limit, show_adult: show_adult)
     end)
   end
 
   defp load_series(user_id, genre, show_adult, personalization \\ nil)
 
   defp load_series(nil, _genre, _show_adult, _personalization) do
-    Iptv.list_public_series(limit: @home_default_limit, show_adult: false)
+    Streamix.Catalog.list_public_series(limit: @home_default_limit, show_adult: false)
   end
 
   defp load_series(user_id, genre, show_adult, personalization) do
@@ -363,7 +370,7 @@ defmodule StreamixWeb.HomeData do
   end
 
   defp load_channels(nil, _category, _show_adult) do
-    Iptv.list_public_channels(limit: @home_channels_limit, show_adult: false)
+    Streamix.Catalog.list_public_channels(limit: @home_channels_limit, show_adult: false)
   end
 
   defp load_channels(user_id, category, show_adult) do
@@ -381,7 +388,7 @@ defmodule StreamixWeb.HomeData do
 
     recommendations =
       user_id
-      |> Iptv.list_visible_movies_by_ids(ids, show_adult: show_adult)
+      |> Streamix.Catalog.list_visible_movies_by_ids(ids, show_adult: show_adult)
       |> order_by_ids(ids)
 
     if length(recommendations) >= @home_default_limit do
@@ -461,7 +468,7 @@ defmodule StreamixWeb.HomeData do
   defp check_featured_favorite(nil, _user_id), do: false
 
   defp check_featured_favorite({type, content}, user_id) do
-    Iptv.favorite?(user_id, content_type(type), content.id)
+    Library.favorite?(user_id, content_type(type), content.id)
   end
 
   defp content_type(:movie), do: "movie"
@@ -507,7 +514,7 @@ defmodule StreamixWeb.HomeData do
     assign(
       socket,
       :favorites,
-      Iptv.list_home_favorites(user.id,
+      Library.list_home_favorites(user.id,
         limit: @home_default_limit,
         show_adult: user.show_adult_content
       )

@@ -15,7 +15,7 @@ defmodule StreamixWeb.HistoryLive do
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Helpers.ImageProxy
 
   @per_page 20
@@ -91,7 +91,7 @@ defmodule StreamixWeb.HistoryLive do
 
     case parse_positive_integer(id) do
       {:ok, entry_id} ->
-        Iptv.remove_from_watch_history(user_id, entry_id)
+        Library.remove_from_watch_history(user_id, entry_id)
 
         # Update counts
         counts = update_counts(socket.assigns.counts, type, -1)
@@ -110,7 +110,7 @@ defmodule StreamixWeb.HistoryLive do
 
   def handle_event("clear_history", _, socket) do
     user_id = socket.assigns.user_id
-    Iptv.clear_watch_history(user_id)
+    Library.clear_watch_history(user_id)
 
     socket =
       socket
@@ -298,7 +298,7 @@ defmodule StreamixWeb.HistoryLive do
     opts = [limit: @per_page, offset: offset, show_adult: socket.assigns.show_adult]
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
-    history = Iptv.list_watch_history(user_id, opts)
+    history = Library.list_watch_history(user_id, opts)
 
     socket
     |> assign(loading: false)
@@ -307,12 +307,12 @@ defmodule StreamixWeb.HistoryLive do
   end
 
   defp load_counts(user_id, show_adult) do
-    Iptv.count_watch_history_by_type(user_id, show_adult: show_adult)
+    Library.count_watch_history_by_type(user_id, show_adult: show_adult)
   end
 
   defp load_history_for_sync(user_id, show_adult) do
     # Load recent history for offline sync
-    Iptv.list_watch_history(user_id, limit: 100, show_adult: show_adult)
+    Library.list_watch_history(user_id, limit: 100, show_adult: show_adult)
     |> Enum.map(fn h ->
       %{
         id: h.id,

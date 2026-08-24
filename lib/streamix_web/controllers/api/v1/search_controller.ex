@@ -24,7 +24,6 @@ defmodule StreamixWeb.Api.V1.SearchController do
 
   alias Streamix.AI
   alias Streamix.Helpers
-  alias Streamix.Iptv
   alias StreamixWeb.Api.V1.Response
 
   @doc """
@@ -212,7 +211,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp enrich_movie_results(results) do
     results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    movies = Iptv.list_public_movies_by_ids(ids, show_adult: false)
+    movies = Streamix.Catalog.list_public_movies_by_ids(ids, show_adult: false)
     movies_map = Map.new(movies, &{&1.id, &1})
 
     Enum.flat_map(results, fn result ->
@@ -226,7 +225,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp enrich_series_results(results) do
     results = normalize_result_ids(results)
     ids = Enum.map(results, & &1.id)
-    series = Iptv.list_public_series_by_ids(ids, show_adult: false)
+    series = Streamix.Catalog.list_public_series_by_ids(ids, show_adult: false)
     series_map = Map.new(series, &{&1.id, &1})
 
     Enum.flat_map(results, fn result ->
@@ -244,8 +243,8 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp parse_collection("series"), do: {:ok, :series}
   defp parse_collection(_), do: :invalid_collection
 
-  defp public_source?(:movies, id), do: Iptv.list_public_movies_by_ids([id]) != []
-  defp public_source?(:series, id), do: Iptv.list_public_series_by_ids([id]) != []
+  defp public_source?(:movies, id), do: Streamix.Catalog.list_public_movies_by_ids([id]) != []
+  defp public_source?(:series, id), do: Streamix.Catalog.list_public_series_by_ids([id]) != []
 
   defp merge_movie(result, movie) do
     %{
@@ -256,7 +255,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
       poster: proxy_image(movie.stream_icon),
-      backdrop: proxy_image(Iptv.backdrop_urls(movie)),
+      backdrop: proxy_image(Streamix.Catalog.backdrop_urls(movie)),
       plot: movie.plot,
       score: result.score
     }
@@ -271,7 +270,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
       poster: proxy_image(series.cover),
-      backdrop: proxy_image(Iptv.backdrop_urls(series)),
+      backdrop: proxy_image(Streamix.Catalog.backdrop_urls(series)),
       plot: series.plot,
       score: result.score
     }
@@ -287,7 +286,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp fallback_search(conn, query, :movies) do
-    movies = Iptv.search_public_movies(query, limit: result_limit(conn.params, 20))
+    movies = Streamix.Search.search_public_movies(query, limit: result_limit(conn.params, 20))
 
     json(conn, %{
       movies: Enum.map(movies, &serialize_movie/1),
@@ -297,7 +296,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   end
 
   defp fallback_search(conn, query, :series) do
-    series = Iptv.search_public_series(query, limit: result_limit(conn.params, 20))
+    series = Streamix.Search.search_public_series(query, limit: result_limit(conn.params, 20))
 
     json(conn, %{
       series: Enum.map(series, &serialize_series/1),

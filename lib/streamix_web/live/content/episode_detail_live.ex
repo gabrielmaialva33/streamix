@@ -5,8 +5,6 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   and /providers/:provider_id/series/:series_id/episode/:id (user provider).
   """
   use StreamixWeb, :live_view
-
-  alias Streamix.Iptv
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.PlayerHelpers
 
@@ -297,7 +295,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp present?(value), do: is_binary(value) and value != ""
 
   defp get_series_backdrop(series) do
-    case Iptv.backdrop_urls(series) do
+    case Streamix.Catalog.backdrop_urls(series) do
       [url | _] -> url
       _ -> get_series_backdrop_fallback(series)
     end

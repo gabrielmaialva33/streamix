@@ -67,7 +67,7 @@ defmodule StreamixWeb.App.Premium do
     if assigns.current_scope &&
          Streamix.Access.plays_global_content?(
            assigns.current_scope.user,
-           Streamix.Iptv.get_global_provider()
+           Streamix.Providers.get_global_provider()
          ) do
       ~H""
     else

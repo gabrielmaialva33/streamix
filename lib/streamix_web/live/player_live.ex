@@ -20,11 +20,10 @@ defmodule StreamixWeb.PlayerLive do
 
   require Logger
 
-  alias Streamix.{Access, Accounts, Billing}
+  alias Streamix.{Access, Accounts, Billing, Library}
   import StreamixWeb.PlayerComponents
   import StreamixWeb.PlayerHelpers
 
-  alias Streamix.Iptv
   alias Streamix.Torrent
   alias StreamixWeb.PlayerSourceFailover
 
@@ -64,7 +63,7 @@ defmodule StreamixWeb.PlayerLive do
     # Update progress in database for VOD content (only for logged-in users)
     if user_id && socket.assigns.content_type != :live do
       {progress_type, progress_id} = progress_ref(type, content)
-      Iptv.update_watch_progress(user_id, progress_type, progress_id, current_time, duration)
+      Library.update_watch_progress(user_id, progress_type, progress_id, current_time, duration)
     end
 
     Billing.touch_playback_session(socket.assigns[:playback_session])
@@ -234,34 +233,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("player_lifecycle", params, socket) do
-    if Application.get_env(:streamix, :player_lifecycle_logs, false) do
-      Logger.debug("player_lifecycle #{params["stage"]}",
-        player_stage: params["stage"],
-        player_session_id: params["session_id"],
-        player_engine: params["engine"],
-        stream_type: params["current_stream_type"],
-        content_type: params["content_type"],
-        source_type: params["source_type"],
-        using_avplayer: params["using_avplayer"],
-        native_touch_controls: params["native_touch_controls"],
-        native_current_time: params["current_time"],
-        native_duration: params["duration"],
-        native_ready_state: params["ready_state"],
-        native_network_state: params["network_state"],
-        native_paused: params["paused"],
-        native_seeking: params["seeking"],
-        native_autoplay: params["autoplay"],
-        native_preload: params["preload"],
-        native_buffered_range_count: params["buffered_range_count"],
-        native_buffered_ranges: params["buffered_ranges"],
-        native_has_current_src: params["has_current_src"],
-        native_resume_time: params["resume_time"],
-        native_has_audio_issue: params["has_audio_issue"],
-        native_error_name: params["error_name"],
-        native_error_message: params["error_message"]
-      )
-    end
-
+    StreamixWeb.PlayerLifecycleTelemetry.observe(params)
     {:noreply, socket}
   end
 
@@ -281,7 +253,7 @@ defmodule StreamixWeb.PlayerLive do
       content = socket.assigns.content
       type = Atom.to_string(socket.assigns.content_type)
       {progress_type, progress_id} = progress_ref(type, content)
-      Iptv.update_watch_time(user_id, progress_type, progress_id, duration)
+      Library.update_watch_time(user_id, progress_type, progress_id, duration)
     end
 
     Billing.touch_playback_session(socket.assigns[:playback_session])
@@ -656,7 +628,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp record_watch_history(user_id, "torrent", content) do
-    Iptv.add_to_watch_history(user_id, %{
+    Library.add_to_watch_history(user_id, %{
       content_type: "movie",
       content_id: content.movie_id,
       content_name: content_title(content, "torrent"),
@@ -665,7 +637,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp record_watch_history(user_id, type, content) do
-    Iptv.add_to_watch_history(user_id, %{
+    Library.add_to_watch_history(user_id, %{
       content_type: type,
       content_id: content.id,
       content_name: content_title(content, type),

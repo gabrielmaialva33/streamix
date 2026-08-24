@@ -3,8 +3,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   LiveView for displaying GIndex movie details.
   """
   use StreamixWeb, :live_view
-
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
@@ -14,7 +13,7 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     user_id = socket.assigns.current_scope.user.id
     return_to = safe_return_path(params["return_to"])
 
-    case Iptv.get_movie(movie_id) do
+    case Streamix.Catalog.get_movie(movie_id) do
       nil ->
         {:ok,
          socket
@@ -29,8 +28,8 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
            |> put_flash(:error, "Filme não pertence ao GIndex")
            |> push_navigate(to: ~p"/gindex/movies")}
         else
-          is_favorite = Iptv.favorite?(user_id, "movie", movie.id)
-          movie = Iptv.get_movie_with_provider!(movie.id)
+          is_favorite = Library.favorite?(user_id, "movie", movie.id)
+          movie = Streamix.Catalog.get_movie_with_provider!(movie.id)
 
           socket =
             socket

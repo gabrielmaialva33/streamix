@@ -13,8 +13,6 @@ defmodule StreamixWeb.Api.V1.StatusController do
 
   use StreamixWeb, :controller
 
-  alias Streamix.Iptv
-
   @doc """
   GET /api/v1/providers/status
 
@@ -27,8 +25,8 @@ defmodule StreamixWeb.Api.V1.StatusController do
   in "should I show a banner?" can check one field.
   """
   def index(conn, _params) do
-    reports = Iptv.list_provider_health_reports()
-    overall = Iptv.provider_health_summary(reports)
+    reports = Streamix.Providers.list_provider_health_reports()
+    overall = Streamix.Providers.provider_health_summary(reports)
 
     json(conn, %{
       overall: %{

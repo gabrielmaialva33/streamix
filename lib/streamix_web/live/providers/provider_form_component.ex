@@ -4,7 +4,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   """
   use StreamixWeb, :live_component
 
-  alias Streamix.{Access, Iptv}
+  alias Streamix.Access
 
   def mount(socket) do
     {:ok,
@@ -18,9 +18,9 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   def update(%{provider: provider} = assigns, socket) do
     changeset =
       if provider do
-        Iptv.change_provider(provider)
+        Streamix.Providers.change_provider(provider)
       else
-        Iptv.new_provider_changeset()
+        Streamix.Providers.new_provider_changeset()
       end
 
     {:ok,
@@ -35,9 +35,9 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   def handle_event("validate", %{"provider" => params}, socket) do
     changeset =
       if socket.assigns.provider do
-        Iptv.change_provider(socket.assigns.provider, params)
+        Streamix.Providers.change_provider(socket.assigns.provider, params)
       else
-        Iptv.new_provider_changeset(params)
+        Streamix.Providers.new_provider_changeset(params)
       end
       |> Map.put(:action, :validate)
 
@@ -149,7 +149,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
     {:noreply,
      start_async(socket, :create_provider, fn ->
        with :ok <- ensure_connection_tested(params, connection_already_tested?) do
-         Iptv.create_provider(user_id, params)
+         Streamix.Providers.create_provider(user_id, params)
        end
      end)}
   end
@@ -157,7 +157,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   defp update_provider(socket, provider, params) do
     user_id = socket.assigns.current_scope.user.id
 
-    case Iptv.update_user_provider(user_id, provider, params) do
+    case Streamix.Providers.update_user_provider(user_id, provider, params) do
       {:ok, provider} ->
         notify_parent({:saved, provider})
         {:noreply, socket}
@@ -178,7 +178,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   defp format_error(_), do: "Ocorreu um erro desconhecido"
 
   defp test_connection(%{url: url, username: username, password: password}) do
-    Iptv.test_connection(url, username, password)
+    Streamix.Providers.test_connection(url, username, password)
   end
 
   defp ensure_connection_tested(_params, true), do: :ok

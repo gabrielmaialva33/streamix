@@ -9,7 +9,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
   import StreamixWeb.WatchPartyComponents
 
-  alias Streamix.{Iptv, WatchParty}
+  alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
   @impl true
@@ -34,8 +34,8 @@ defmodule StreamixWeb.WatchPartyLive.Join do
   defp resolve_invite(socket, invite_code, user_id) do
     with %{} = room <- WatchParty.get_room_by_invite_with_content(invite_code),
          :ok <- WatchParty.authorize_room_user(room, user_id) do
-      content_name = Iptv.catalog_item_content_name(room.catalog_item)
-      content_icon = Iptv.catalog_item_content_icon(room.catalog_item)
+      content_name = Streamix.Catalog.catalog_item_content_name(room.catalog_item)
+      content_icon = Streamix.Catalog.catalog_item_content_icon(room.catalog_item)
       capacity = WatchParty.room_capacity(room.id, user_id)
 
       {:ok,

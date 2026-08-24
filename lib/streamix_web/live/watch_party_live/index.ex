@@ -4,7 +4,7 @@ defmodule StreamixWeb.WatchPartyLive.Index do
   """
   use StreamixWeb, :live_view
 
-  alias Streamix.{Iptv, WatchParty}
+  alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
   def mount(_params, _session, socket) do
@@ -283,6 +283,8 @@ defmodule StreamixWeb.WatchPartyLive.Index do
     """
   end
 
-  defp room_title(room), do: Iptv.catalog_item_content_name(room.catalog_item) || "Conteúdo"
-  defp room_icon(room), do: Iptv.catalog_item_content_icon(room.catalog_item)
+  defp room_title(room),
+    do: Streamix.Catalog.catalog_item_content_name(room.catalog_item) || "Conteúdo"
+
+  defp room_icon(room), do: Streamix.Catalog.catalog_item_content_icon(room.catalog_item)
 end

@@ -8,7 +8,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Api.Envelope
   alias StreamixWeb.Api.V1.Response
 
@@ -30,7 +30,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
       show_adult: user.show_adult_content
     ]
 
-    favorites = Iptv.list_favorites(user.id, opts)
+    favorites = Library.list_favorites(user.id, opts)
 
     json(conn, %{
       favorites:
@@ -55,7 +55,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     case playable_favorite_target(user.id, type, content_id) do
       {:ok, content_id} ->
-        case Iptv.add_favorite(user.id, type, content_id) do
+        case Library.add_favorite(user.id, type, content_id) do
           {:ok, fav} ->
             # New endpoints use Envelope for the canonical `%{data, meta}`
             # shape. Older endpoints in this controller (`index/2`,
@@ -95,7 +95,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     with true <- type in @content_types,
          {:ok, content_id} <- parse_positive_integer(content_id) do
-      Iptv.remove_favorite(user.id, type, content_id)
+      Library.remove_favorite(user.id, type, content_id)
       send_resp(conn, 204, "")
     else
       false ->
@@ -115,7 +115,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
 
     with {:ok, content_id} <- parse_positive_integer(content_id),
          true <- favorite_or_playable?(user.id, type, content_id) do
-      case Iptv.toggle_favorite(user.id, type, content_id) do
+      case Library.toggle_favorite(user.id, type, content_id) do
         {:ok, action} ->
           json(conn, %{status: Atom.to_string(action)})
 
@@ -176,7 +176,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   defp process_parsed_sync_operation(user_id, type, content_id, action) do
-    exists? = Iptv.favorite?(user_id, type, content_id)
+    exists? = Library.favorite?(user_id, type, content_id)
 
     case {action, exists?} do
       {"add", false} -> sync_add_favorite(user_id, type, content_id)
@@ -188,7 +188,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   defp sync_add_favorite(user_id, type, content_id) do
     case playable_favorite_target(user_id, type, content_id) do
       {:ok, content_id} ->
-        Iptv.add_favorite(user_id, type, content_id)
+        Library.add_favorite(user_id, type, content_id)
         :added
 
       {:error, _} ->
@@ -197,7 +197,7 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   defp sync_remove_favorite(user_id, type, content_id) do
-    Iptv.remove_favorite(user_id, type, content_id)
+    Library.remove_favorite(user_id, type, content_id)
     :removed
   end
 
@@ -230,21 +230,21 @@ defmodule StreamixWeb.Api.V1.FavoritesController do
   end
 
   defp playable_favorite?(user_id, "movie", content_id),
-    do: not is_nil(Iptv.get_playable_movie(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_movie(user_id, content_id))
 
   defp playable_favorite?(user_id, "series", content_id),
-    do: not is_nil(Iptv.get_playable_series(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_series(user_id, content_id))
 
   defp playable_favorite?(user_id, "episode", content_id),
-    do: not is_nil(Iptv.get_playable_episode(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_episode(user_id, content_id))
 
   defp playable_favorite?(user_id, "live_channel", content_id),
-    do: not is_nil(Iptv.get_playable_channel(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_channel(user_id, content_id))
 
   defp playable_favorite?(_user_id, _type, _content_id), do: :invalid_content_type
 
   defp favorite_or_playable?(user_id, type, content_id) do
-    if Iptv.favorite?(user_id, type, content_id) do
+    if Library.favorite?(user_id, type, content_id) do
       true
     else
       playable_favorite?(user_id, type, content_id)

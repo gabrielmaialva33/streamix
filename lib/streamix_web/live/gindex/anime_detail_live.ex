@@ -4,8 +4,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   Releases are stored as "seasons" but displayed as quality variants.
   """
   use StreamixWeb, :live_view
-
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
@@ -15,7 +14,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   def mount(%{"id" => anime_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
-    case Iptv.get_gindex_anime_with_seasons(anime_id) do
+    case Streamix.Catalog.get_gindex_anime_with_seasons(anime_id) do
       nil ->
         {:ok,
          socket
@@ -23,7 +22,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
          |> push_navigate(to: ~p"/browse/animes?source=gindex")}
 
       anime ->
-        is_favorite = Iptv.favorite?(user_id, "series", anime.id)
+        is_favorite = Library.favorite?(user_id, "series", anime.id)
         sorted_releases = Enum.sort_by(anime.seasons || [], & &1.season_number)
 
         first_release_id =

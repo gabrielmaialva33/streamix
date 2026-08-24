@@ -3,7 +3,7 @@ defmodule StreamixWeb.Content.FavoriteState do
   Shared favorite toggling helpers for LiveView surfaces.
   """
 
-  alias Streamix.Iptv
+  alias Streamix.Library
 
   @type status :: :added | :removed
 
@@ -12,7 +12,7 @@ defmodule StreamixWeb.Content.FavoriteState do
   def toggle(nil, _content_type, _content_id, _attrs), do: {:error, :unauthorized}
 
   def toggle(user_id, content_type, content_id, attrs) do
-    Iptv.toggle_favorite(user_id, content_type, content_id, attrs)
+    Library.toggle_favorite(user_id, content_type, content_id, attrs)
   end
 
   def apply_map(socket, assign_key, content_id, :added) do

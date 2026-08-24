@@ -7,8 +7,6 @@ defmodule StreamixWeb.App.Media do
   use StreamixWeb, :verified_routes
 
   import StreamixWeb.CoreComponents
-
-  alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
   @sync_status_badges %{
@@ -324,7 +322,7 @@ defmodule StreamixWeb.App.Media do
   attr :use_proxy, :boolean, default: true
 
   def video_player_v2(assigns) do
-    stream_url = Iptv.live_channel_stream_url(assigns.channel, assigns.provider)
+    stream_url = Streamix.Playback.live_channel_stream_url(assigns.channel, assigns.provider)
 
     proxy_url =
       if assigns.use_proxy do

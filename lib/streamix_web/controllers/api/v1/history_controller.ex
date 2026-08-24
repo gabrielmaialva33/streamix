@@ -14,7 +14,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
       parse_positive_integer: 1
     ]
 
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Api.V1.Response
 
   plug StreamixWeb.Plugs.BearerAuth
@@ -33,7 +33,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
       show_adult: user.show_adult_content
     ]
 
-    items = Iptv.list_watch_history(user.id, opts)
+    items = Library.list_watch_history(user.id, opts)
 
     json(conn, %{
       items:
@@ -103,7 +103,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
 
     case parse_positive_integer(id) do
       {:ok, entry_id} ->
-        Iptv.remove_from_watch_history(user.id, entry_id)
+        Library.remove_from_watch_history(user.id, entry_id)
         send_resp(conn, 204, "")
 
       :error ->
@@ -131,7 +131,7 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   defp parse_optional_duration(value), do: parse_non_negative_integer(value)
 
   defp save_history(conn, user_id, type, content_id, attrs) do
-    case Iptv.add_watch_history(user_id, type, content_id, attrs) do
+    case Library.add_watch_history(user_id, type, content_id, attrs) do
       {:ok, entry} ->
         conn
         |> put_status(:created)
@@ -166,13 +166,13 @@ defmodule StreamixWeb.Api.V1.HistoryController do
   end
 
   defp playable_history?(user_id, "movie", content_id),
-    do: not is_nil(Iptv.get_playable_movie(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_movie(user_id, content_id))
 
   defp playable_history?(user_id, "episode", content_id),
-    do: not is_nil(Iptv.get_playable_episode(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_episode(user_id, content_id))
 
   defp playable_history?(user_id, "live_channel", content_id),
-    do: not is_nil(Iptv.get_playable_channel(user_id, content_id))
+    do: not is_nil(Streamix.Playback.get_playable_channel(user_id, content_id))
 
   defp playable_history?(_user_id, _type, _content_id), do: :invalid_content_type
 end

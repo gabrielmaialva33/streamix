@@ -17,7 +17,6 @@ defmodule StreamixWeb.Api.V1.EpgController do
   import StreamixWeb.Helpers.Params,
     only: [bounded_integer: 4, parse_positive_integer: 1]
 
-  alias Streamix.Iptv
   alias StreamixWeb.Api.V1.Response
 
   @max_hours 12
@@ -47,7 +46,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
   def programs(conn, %{"channel_ids" => channel_ids_str} = params) do
     channel_ids = parse_channel_ids(channel_ids_str)
     hours = bounded_integer(params["hours"], 6, 1, @max_hours)
-    provider = Iptv.get_global_provider()
+    provider = Streamix.Providers.get_global_provider()
 
     if is_nil(provider) or channel_ids == [] do
       json(conn, %{programs: empty_list_keyed(channel_ids), fetched_until: nil})
@@ -57,7 +56,7 @@ defmodule StreamixWeb.Api.V1.EpgController do
 
       programs =
         provider.id
-        |> Iptv.programs_window_for_channels(channel_ids, now, until)
+        |> Streamix.Guide.programs_window_for_channels(channel_ids, now, until)
         |> serialize_programs_window()
 
       json(conn, %{programs: programs, fetched_until: until})
@@ -87,14 +86,14 @@ defmodule StreamixWeb.Api.V1.EpgController do
   """
   def now(conn, %{"channel_ids" => channel_ids_str}) do
     channel_ids = parse_channel_ids(channel_ids_str)
-    provider = Iptv.get_global_provider()
+    provider = Streamix.Providers.get_global_provider()
 
     if is_nil(provider) or channel_ids == [] do
       json(conn, %{now: empty_keyed(channel_ids)})
     else
       now =
         provider.id
-        |> Iptv.current_programs_for_channels(channel_ids)
+        |> Streamix.Guide.current_programs_for_channels(channel_ids)
         |> serialize_current_programs()
 
       json(conn, %{now: now})

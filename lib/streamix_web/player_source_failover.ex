@@ -8,7 +8,7 @@ defmodule StreamixWeb.PlayerSourceFailover do
   their failover order and exclusion semantics remain identical.
   """
 
-  alias Streamix.{Access, Iptv}
+  alias Streamix.Access
   alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerHelpers
 
@@ -107,7 +107,7 @@ defmodule StreamixWeb.PlayerSourceFailover do
   end
 
   defp resolve_candidate(%{content_type: "episode", id: id} = candidate, user_id) do
-    case Iptv.get_playable_episode(user_id, id) do
+    case Streamix.Playback.get_playable_episode(user_id, id) do
       nil ->
         {:error, :not_found}
 

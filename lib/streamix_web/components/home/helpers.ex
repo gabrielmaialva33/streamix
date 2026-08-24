@@ -2,8 +2,6 @@ defmodule StreamixWeb.Home.Helpers do
   @moduledoc false
 
   use StreamixWeb, :verified_routes
-
-  alias Streamix.Iptv
   alias StreamixWeb.Helpers.ImageProxy
 
   def get_backdrop(content) do
@@ -17,7 +15,7 @@ defmodule StreamixWeb.Home.Helpers do
     end
   end
 
-  def backdrop_urls(content), do: Iptv.backdrop_urls(content)
+  def backdrop_urls(content), do: Streamix.Catalog.backdrop_urls(content)
 
   def content_path(:movie, movie), do: ~p"/watch/movie/#{movie.id}"
   def content_path(:series, series), do: ~p"/browse/series/#{series.id}"

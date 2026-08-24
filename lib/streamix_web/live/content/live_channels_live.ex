@@ -110,7 +110,7 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     {:noreply, LiveChannels.start_provider_sync(socket)}
   end
 
-  # `Streamix.Iptv.Sync.Telemetry` broadcasts per-phase progress (live, movies,
+  # `Provider synchronization` broadcasts per-phase progress (live, movies,
   # series, categories) on the same `provider:<id>` topic this view subscribes
   # to. This page only renders the coarse `sync_status` spinner, so the fine
   # grained ticks are intentionally ignored rather than crashing the view.

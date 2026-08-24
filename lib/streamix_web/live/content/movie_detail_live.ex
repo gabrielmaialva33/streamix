@@ -4,8 +4,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   Works for both /browse/movies/:id (global provider) and /providers/:id/movies/:id (user provider).
   """
   use StreamixWeb, :live_view
-
-  alias Streamix.Iptv
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
@@ -311,7 +309,11 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
           <!-- Image Gallery -->
           <.image_gallery
-            images={if Iptv.has_images?(@movie), do: Iptv.image_urls(@movie), else: []}
+            images={
+              if Streamix.Catalog.has_images?(@movie),
+                do: Streamix.Catalog.image_urls(@movie),
+                else: []
+            }
             alt="Imagem do filme"
           />
 
@@ -336,7 +338,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # ============================================
 
   defp og_image_url(movie) do
-    case Iptv.backdrop_urls(movie) do
+    case Streamix.Catalog.backdrop_urls(movie) do
       [url | _] -> url
       _ -> og_image_url_fallback(movie)
     end
@@ -403,7 +405,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp sort_movie_variants(variants, current_movie_id, preferred_provider_id) do
-    Iptv.sort_stream_sources(variants,
+    Streamix.Playback.sort_stream_sources(variants,
       media_type: :movie,
       current_source_id: current_movie_id,
       preferred_provider_id: preferred_provider_id

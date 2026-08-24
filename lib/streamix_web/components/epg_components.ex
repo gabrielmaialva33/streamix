@@ -4,8 +4,6 @@ defmodule StreamixWeb.EpgComponents do
   """
   use Phoenix.Component
 
-  alias Streamix.Iptv
-
   @doc """
   Displays current program info with progress bar.
   Shows "Ao Vivo" badge, program title, and progress indicator.
@@ -53,7 +51,9 @@ defmodule StreamixWeb.EpgComponents do
   attr :program, :any, required: true
 
   def epg_progress_bar(assigns) do
-    progress = if assigns.program, do: Iptv.epg_program_progress(assigns.program), else: 0
+    progress =
+      if assigns.program, do: Streamix.Guide.epg_program_progress(assigns.program), else: 0
+
     assigns = assign(assigns, :progress, progress)
 
     ~H"""

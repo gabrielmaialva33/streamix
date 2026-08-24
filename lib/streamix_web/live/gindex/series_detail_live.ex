@@ -3,8 +3,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   LiveView for displaying GIndex series details with seasons and episodes.
   """
   use StreamixWeb, :live_view
-
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
@@ -14,7 +13,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   def mount(%{"id" => series_id}, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
 
-    case Iptv.get_gindex_series_with_seasons(series_id) do
+    case Streamix.Catalog.get_gindex_series_with_seasons(series_id) do
       nil ->
         {:ok,
          socket
@@ -22,7 +21,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
          |> push_navigate(to: ~p"/browse/series?source=gindex")}
 
       series ->
-        is_favorite = Iptv.favorite?(user_id, "series", series.id)
+        is_favorite = Library.favorite?(user_id, "series", series.id)
         sorted_seasons = Enum.sort_by(series.seasons || [], & &1.season_number)
 
         first_season_id =

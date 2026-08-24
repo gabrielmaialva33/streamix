@@ -11,7 +11,7 @@ defmodule StreamixWeb.Content.Browse do
   import StreamixWeb.Helpers.Params, only: [parse_integer: 1]
 
   alias Phoenix.LiveView
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
 
@@ -226,14 +226,14 @@ defmodule StreamixWeb.Content.Browse do
 
   defp apply_route_context(socket, kind, %{"provider_id" => provider_id}, _source) do
     config = config!(kind)
-    provider = Iptv.get_playable_provider(socket.assigns.user_id, provider_id)
+    provider = Streamix.Providers.get_playable_provider(socket.assigns.user_id, provider_id)
 
     if provider do
       user = socket.assigns.user
 
       categories =
         provider.id
-        |> Iptv.list_categories(config.category_type)
+        |> Streamix.Catalog.list_categories(config.category_type)
         |> filter_adult_categories(user.show_adult_content)
 
       {:ok,
@@ -246,7 +246,7 @@ defmodule StreamixWeb.Content.Browse do
        |> assign(mode: :provider)
        |> assign(source: "iptv")
        |> assign(categories: categories)
-       |> assign(gindex_counts: Iptv.gindex_counts())}
+       |> assign(gindex_counts: Streamix.Catalog.gindex_counts())}
     else
       {:redirect,
        socket
@@ -279,7 +279,7 @@ defmodule StreamixWeb.Content.Browse do
      |> assign(mode: :browse)
      |> assign(source: "gindex")
      |> assign(categories: [])
-     |> assign(gindex_counts: Iptv.gindex_counts())}
+     |> assign(gindex_counts: Streamix.Catalog.gindex_counts())}
   end
 
   defp apply_route_context(socket, kind, params, _source) do
@@ -298,7 +298,7 @@ defmodule StreamixWeb.Content.Browse do
 
         true ->
           provider.id
-          |> Iptv.list_categories(config.category_type)
+          |> Streamix.Catalog.list_categories(config.category_type)
           |> filter_adult_categories(user.show_adult_content)
       end
 
@@ -312,7 +312,7 @@ defmodule StreamixWeb.Content.Browse do
      |> assign(mode: :browse)
      |> assign(source: "iptv")
      |> assign(categories: categories)
-     |> assign(gindex_counts: Iptv.gindex_counts())}
+     |> assign(gindex_counts: Streamix.Catalog.gindex_counts())}
   end
 
   defp load_items(%{assigns: %{source: "gindex"}} = socket, :movies) do
@@ -320,7 +320,7 @@ defmodule StreamixWeb.Content.Browse do
     page = socket.assigns.page
 
     items =
-      Iptv.list_gindex_movies(
+      Streamix.Catalog.list_gindex_movies(
         search: socket.assigns.search,
         limit: @per_page,
         offset: offset(page),
@@ -334,7 +334,7 @@ defmodule StreamixWeb.Content.Browse do
     page = socket.assigns.page
 
     items =
-      Iptv.list_gindex_series(
+      Streamix.Catalog.list_gindex_series(
         search: socket.assigns.search,
         limit: @per_page,
         offset: offset(page)
@@ -369,9 +369,9 @@ defmodule StreamixWeb.Content.Browse do
 
     items =
       case sort do
-        "new" -> Iptv.list_new_releases(pagination)
-        "trending" -> Iptv.list_trending("movies", pagination)
-        "rating" -> Iptv.list_top_10_movies(pagination)
+        "new" -> Streamix.Catalog.list_new_releases(pagination)
+        "trending" -> Streamix.Catalog.list_trending("movies", pagination)
+        "rating" -> Streamix.Catalog.list_top_10_movies(pagination)
       end
 
     assign_items(socket, :movies, items, sort != "rating")
@@ -387,8 +387,8 @@ defmodule StreamixWeb.Content.Browse do
 
     items =
       case sort do
-        "popularity" -> Iptv.list_trending("series", pagination)
-        "rating" -> Iptv.list_top_10_series(pagination)
+        "popularity" -> Streamix.Catalog.list_trending("series", pagination)
+        "rating" -> Streamix.Catalog.list_top_10_series(pagination)
       end
 
     assign_items(socket, :series, items, sort != "rating")
@@ -447,18 +447,27 @@ defmodule StreamixWeb.Content.Browse do
   end
 
   defp load_favorites_map(socket, kind) do
-    favorite_ids = Iptv.list_favorite_ids(socket.assigns.user_id, config!(kind).content_type)
+    favorite_ids = Library.list_favorite_ids(socket.assigns.user_id, config!(kind).content_type)
     assign(socket, favorites_map: favorite_ids)
   end
 
-  defp list_provider_items(:movies, provider_id, opts), do: Iptv.list_movies(provider_id, opts)
-  defp list_provider_items(:series, provider_id, opts), do: Iptv.list_series(provider_id, opts)
+  defp list_provider_items(:movies, provider_id, opts),
+    do: Streamix.Catalog.list_movies(provider_id, opts)
 
-  defp list_visible_items(:movies, user_id, opts), do: Iptv.list_visible_movies(user_id, opts)
-  defp list_visible_items(:series, user_id, opts), do: Iptv.list_visible_series(user_id, opts)
+  defp list_provider_items(:series, provider_id, opts),
+    do: Streamix.Catalog.list_series(provider_id, opts)
 
-  defp get_playable_item(:movies, user_id, id), do: Iptv.get_playable_movie(user_id, id)
-  defp get_playable_item(:series, user_id, id), do: Iptv.get_playable_series(user_id, id)
+  defp list_visible_items(:movies, user_id, opts),
+    do: Streamix.Catalog.list_visible_movies(user_id, opts)
+
+  defp list_visible_items(:series, user_id, opts),
+    do: Streamix.Catalog.list_visible_series(user_id, opts)
+
+  defp get_playable_item(:movies, user_id, id),
+    do: Streamix.Playback.get_playable_movie(user_id, id)
+
+  defp get_playable_item(:series, user_id, id),
+    do: Streamix.Playback.get_playable_series(user_id, id)
 
   defp favorite_attrs(:movies, movie) do
     %{
@@ -565,7 +574,7 @@ defmodule StreamixWeb.Content.Browse do
 
   defp provider_options(user_id) do
     user_id
-    |> Iptv.list_visible_providers()
+    |> Streamix.Providers.list_visible_providers()
     |> Enum.filter(&(&1.provider_type == :xtream))
   end
 
@@ -586,12 +595,12 @@ defmodule StreamixWeb.Content.Browse do
 
   defp provider_filter(_), do: "all"
 
-  defp selected_browse_provider(_user_id, "all"), do: Iptv.get_global_provider()
+  defp selected_browse_provider(_user_id, "all"), do: Streamix.Providers.get_global_provider()
 
   defp selected_browse_provider(user_id, provider_filter) do
     case Integer.parse(provider_filter) do
-      {provider_id, ""} -> Iptv.get_playable_provider(user_id, provider_id)
-      _ -> Iptv.get_global_provider()
+      {provider_id, ""} -> Streamix.Providers.get_playable_provider(user_id, provider_id)
+      _ -> Streamix.Providers.get_global_provider()
     end
   end
 

@@ -11,15 +11,14 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   import StreamixWeb.Content.NavigationComponents
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
-
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
 
   @per_page 48
 
   def mount(_params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
-    gindex_counts = Iptv.gindex_counts()
+    gindex_counts = Streamix.Catalog.gindex_counts()
 
     socket =
       socket
@@ -88,7 +87,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
 
     case parse_positive_integer(id) do
       {:ok, anime_id} ->
-        anime = Iptv.get_series!(anime_id)
+        anime = Streamix.Catalog.get_series!(anime_id)
 
         case FavoriteState.toggle(user_id, "series", anime_id, %{
                content_name: anime.title || anime.name,
@@ -184,7 +183,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
     page = socket.assigns.page
 
     animes =
-      Iptv.list_gindex_animes(
+      Streamix.Catalog.list_gindex_animes(
         search: search,
         limit: @per_page,
         offset: (page - 1) * @per_page
@@ -202,7 +201,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
 
   defp load_favorites_map(socket) do
     user_id = socket.assigns.user_id
-    favorite_ids = Iptv.list_favorite_ids(user_id, "series")
+    favorite_ids = Library.list_favorite_ids(user_id, "series")
     assign(socket, favorites_map: favorite_ids)
   end
 end

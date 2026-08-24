@@ -22,7 +22,6 @@ defmodule StreamixWeb.StreamToken.Resolver do
   alias Streamix.Access
   alias Streamix.Accounts
   alias Streamix.Gindex
-  alias Streamix.Iptv
   alias StreamixWeb.UrlValidator
 
   # Token expires in 2 hours (reduced from 24h for security).
@@ -122,7 +121,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   # ----- URL-token path -----
 
   defp handle_url_token(url, user_id, provider_id, premium_required, bypass_subscription) do
-    case Iptv.get_provider(provider_id) do
+    case Streamix.Providers.get_provider(provider_id) do
       nil ->
         {:error, :invalid_token}
 
@@ -208,14 +207,14 @@ defmodule StreamixWeb.StreamToken.Resolver do
   end
 
   defp get_stream_url("movie", id, user_id, bypass) do
-    case Iptv.get_movie_for_stream(id) do
+    case Streamix.Playback.get_movie_for_stream(id) do
       nil -> {:error, :not_found}
       movie -> build_movie_url(movie.provider, user_id, movie, bypass)
     end
   end
 
   defp get_stream_url("episode", id, user_id, bypass) do
-    case Iptv.get_episode_for_stream(id) do
+    case Streamix.Playback.get_episode_for_stream(id) do
       nil ->
         {:error, :not_found}
 
@@ -225,7 +224,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   end
 
   defp get_stream_url("channel", id, user_id, bypass) do
-    case Iptv.get_live_channel_for_stream(id) do
+    case Streamix.Playback.get_live_channel_for_stream(id) do
       nil ->
         {:error, :not_found}
 

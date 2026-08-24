@@ -15,7 +15,7 @@ defmodule StreamixWeb.SearchLive do
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
-  alias Streamix.Iptv
+  alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
 
   @page_size 24
@@ -477,7 +477,7 @@ defmodule StreamixWeb.SearchLive do
 
   defp search_channels(user_id, query, show_adult, offset, page_size) do
     user_id
-    |> Iptv.search_channels(query,
+    |> Streamix.Search.search_channels(query,
       limit: page_size + 1,
       offset: offset,
       show_adult: show_adult
@@ -487,7 +487,7 @@ defmodule StreamixWeb.SearchLive do
 
   defp search_movies(user_id, query, show_adult, offset, page_size) do
     user_id
-    |> Iptv.search_movies(query,
+    |> Streamix.Search.search_movies(query,
       limit: page_size + 1,
       offset: offset,
       show_adult: show_adult
@@ -497,7 +497,7 @@ defmodule StreamixWeb.SearchLive do
 
   defp search_series(user_id, query, show_adult, offset, page_size) do
     user_id
-    |> Iptv.search_series(query,
+    |> Streamix.Search.search_series(query,
       limit: page_size + 1,
       offset: offset,
       show_adult: show_adult
@@ -567,22 +567,23 @@ defmodule StreamixWeb.SearchLive do
   defp result_stream(:series), do: :search_series
 
   defp favorite_ids_for(user_id, :channels, items) do
-    Iptv.list_favorite_ids(user_id, "live_channel", Enum.map(items, & &1.id))
+    Library.list_favorite_ids(user_id, "live_channel", Enum.map(items, & &1.id))
   end
 
   defp favorite_ids_for(user_id, :movies, items) do
-    Iptv.list_favorite_ids(user_id, "movie", Enum.map(items, & &1.id))
+    Library.list_favorite_ids(user_id, "movie", Enum.map(items, & &1.id))
   end
 
   defp favorite_ids_for(user_id, :series, items) do
-    Iptv.list_favorite_ids(user_id, "series", Enum.map(items, & &1.id))
+    Library.list_favorite_ids(user_id, "series", Enum.map(items, & &1.id))
   end
 
   defp search_favorite_ids(user_id, channels, movies, series) do
     %{
-      live_channels: Iptv.list_favorite_ids(user_id, "live_channel", Enum.map(channels, & &1.id)),
-      movies: Iptv.list_favorite_ids(user_id, "movie", Enum.map(movies, & &1.id)),
-      series: Iptv.list_favorite_ids(user_id, "series", Enum.map(series, & &1.id))
+      live_channels:
+        Library.list_favorite_ids(user_id, "live_channel", Enum.map(channels, & &1.id)),
+      movies: Library.list_favorite_ids(user_id, "movie", Enum.map(movies, & &1.id)),
+      series: Library.list_favorite_ids(user_id, "series", Enum.map(series, & &1.id))
     }
   end
 

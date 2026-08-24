@@ -2,7 +2,7 @@ defmodule StreamixWeb.StreamController do
   @moduledoc """
   Controller for proxying IPTV streams.
 
-  Default backend is `Streamix.Iptv.Streaming.VodProxy` which pumps
+  Default backend is the configured VOD proxy which pumps
   upstream bytes through the BEAM via `Finch.stream/5` +
   `Plug.Conn.chunk/2`. Set `STREAM_PROXY_BACKEND=redirect` to fall
   back to the 302-to-source-proxy flow handled by
@@ -13,7 +13,6 @@ defmodule StreamixWeb.StreamController do
   require Logger
 
   alias Streamix.Gindex
-  alias Streamix.Iptv
   alias Streamix.SafeLog
   alias StreamixWeb.Plugs.ApiKeyAuth
   alias StreamixWeb.StreamErrors
@@ -123,7 +122,7 @@ defmodule StreamixWeb.StreamController do
   defp stream_by_type(%{method: "HEAD"} = conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
       :redirect -> resolve_and_redirect_to_proxy(conn, url)
-      _ -> Iptv.head_stream(conn, url, stream_options(url, type, meta))
+      _ -> Streamix.Playback.head_stream(conn, url, stream_options(url, type, meta))
     end
   end
 
@@ -138,14 +137,14 @@ defmodule StreamixWeb.StreamController do
     opts = stream_options(url, "channel", meta)
 
     if Application.get_env(:streamix, :live_multiplexer_enabled, true) do
-      Iptv.pipe_live_stream(conn, url, opts)
+      Streamix.Playback.pipe_live_stream(conn, url, opts)
     else
-      Iptv.pipe_stream(conn, url, opts)
+      Streamix.Playback.pipe_stream(conn, url, opts)
     end
   end
 
   defp pipe_from_beam(conn, url, type, meta) do
-    Iptv.pipe_vod_stream(conn, url, stream_options(url, type, meta))
+    Streamix.Playback.pipe_vod_stream(conn, url, stream_options(url, type, meta))
   end
 
   defp stream_options(url, type, meta) do
@@ -162,12 +161,12 @@ defmodule StreamixWeb.StreamController do
   # locks the credentials. No-op (chain = [url]) when there's no provider
   # context — keeps raw-URL tokens working unchanged.
   defp derive_url_chain(url, %{provider_id: provider_id}) when is_integer(provider_id) do
-    case Iptv.get_provider(provider_id) do
+    case Streamix.Providers.get_provider(provider_id) do
       nil ->
         [url]
 
       provider ->
-        Iptv.provider_stream_url_chain(provider, url)
+        Streamix.Playback.provider_stream_url_chain(provider, url)
     end
   end
 
@@ -210,7 +209,7 @@ defmodule StreamixWeb.StreamController do
     # essas creds por um token de curta duração — o resto dos hops lentos
     # (vauth → vauth → vauth) roda no nginx, sem segurar BEAM. Se a URL
     # já vem limpa, mantém o chase deep antigo (sem regressão).
-    case Iptv.resolve_stream_url_for_proxy(url) do
+    case Streamix.Playback.resolve_stream_url_for_proxy(url) do
       {:ok, final_url} ->
         # Pick a source proxy from the configured pool. Each request
         # gets a different source (round-robin across the user's session
@@ -301,7 +300,7 @@ defmodule StreamixWeb.StreamController do
   defp transient_error?({:unexpected_status, status}) when status in [502, 503, 504], do: true
   defp transient_error?(_), do: false
 
-  # Redirect-chain resolution lives in `Streamix.Iptv.Streaming.RedirectResolver`.
+  # Redirect-chain resolution lives in `the playback subsystem`.
   # The controller calls `RedirectResolver.resolve/2`; the same module is
   # also used by `PlayerLive.mount/3` to prewarm the cache.
 
