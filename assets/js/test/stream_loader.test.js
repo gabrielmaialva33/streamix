@@ -60,6 +60,14 @@ function createFakeHls(calls = []) {
       assert.equal(this.handlers.size, Object.keys(HLS_EVENTS).length);
     }
 
+    stopLoad() {
+      calls.push("stopLoad");
+    }
+
+    startLoad() {
+      calls.push("startLoad");
+    }
+
     destroy() {
       calls.push("destroy");
     }
@@ -110,7 +118,7 @@ test("HLS listeners observe synchronous events emitted by loadSource", async () 
   const errors = [];
   const Hls = createFakeHls(calls);
   const loader = new StreamLoader({
-    video: {},
+    video: { play() {}, pause() {} },
     getHls: async () => Hls,
     onManifestParsed: (data, sessionId) => manifests.push({ data, sessionId }),
     onError: (type, data, sessionId) => errors.push({ data, sessionId, type }),
@@ -133,7 +141,7 @@ test("mpegts listeners observe synchronous events emitted by attach/load", async
   const errors = [];
   const mpegts = createFakeMpegts(calls);
   const loader = new StreamLoader({
-    video: {},
+    video: { play() {}, pause() {} },
     getMpegts: async () => mpegts,
     onMediaInfo: (info, sessionId) => mediaInfo.push({ info, sessionId }),
     onError: (type, data, sessionId) => errors.push({ data, sessionId, type }),

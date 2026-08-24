@@ -10,6 +10,7 @@
  */
 
 import { streamLogger as log } from "../core/logger.js";
+import { createHlsPlaybackEngine } from "../player/hls_playback_engine.js";
 import { getHls, getMpegts } from "./player_libs.js";
 import { getStreamingConfig, StreamingMode } from "./streaming_config.js";
 
@@ -147,6 +148,7 @@ export class StreamLoader {
     this._destroyedHlsInstances = new WeakSet();
     this._destroyedMpegtsInstances = new WeakSet();
     this._dependencies = {
+      createHlsPlaybackEngine: options.createHlsPlaybackEngine || createHlsPlaybackEngine,
       getAdaptiveBufferManager: options.getAdaptiveBufferManager || getAdaptiveBufferManager,
       getHls: options.getHls || getHls,
       getMpegts: options.getMpegts || getMpegts,
@@ -154,6 +156,7 @@ export class StreamLoader {
 
     // Player instances
     this.hls = null;
+    this.hlsEngine = null;
     this.mpegtsPlayer = null;
 
     // Cached library references (set after first lazy load)
@@ -201,9 +204,14 @@ export class StreamLoader {
 
   _destroyHlsInstance(hls) {
     if (!hls || this._destroyedHlsInstances.has(hls)) return;
+
+    const engine = this.hlsEngine?.client === hls ? this.hlsEngine : null;
+    if (engine) this.hlsEngine = null;
+
     this._destroyedHlsInstances.add(hls);
     try {
-      hls.destroy();
+      if (engine) engine.destroy();
+      else hls.destroy();
     } catch (error) {
       log.debug("[StreamLoader] HLS teardown failed:", error);
     }
@@ -322,15 +330,19 @@ export class StreamLoader {
         xhr.withCredentials = false;
       },
     });
+    const hlsEngine = this._dependencies.createHlsPlaybackEngine({
+      video: this.video,
+      hls,
+      resetSourceOnDestroy: false,
+    });
 
     this._bindHlsListeners(hls, Hls, token, sessionId, lowLatencyTarget);
     this._assertHlsLoadCurrent(token, hls);
     this.hls = hls;
+    this.hlsEngine = hlsEngine;
 
     try {
-      hls.loadSource(url);
-      this._assertHlsLoadCurrent(token, hls);
-      hls.attachMedia(this.video);
+      hlsEngine.load(url);
       this._assertHlsLoadCurrent(token, hls);
     } catch (error) {
       if (this.hls === hls) this.hls = null;
@@ -411,22 +423,16 @@ export class StreamLoader {
    */
   async loadHlsSoft(url) {
     if (this.disposed) throw new StreamLoaderCancelledError();
-    if (!this.hls) {
-      log.debug("No existing HLS instance, using full load");
+    if (!this.hls || !this.hlsEngine) {
+      log.debug("No existing HLS engine, using full load");
       return this.loadHls(url);
     }
 
     log.debug("Soft reloading HLS:", url);
-
-    // Stop current loading
-    this.hls.stopLoad();
-
-    // Load new source
-    this.hls.loadSource(url);
+    const hls = this.hlsEngine.reload(url);
     if (this.disposed) throw new StreamLoaderCancelledError();
-    this.hls.startLoad();
 
-    return this.hls;
+    return hls;
   }
 
   /**
@@ -500,6 +506,13 @@ export class StreamLoader {
    */
   getHls() {
     return this.hls;
+  }
+
+  /**
+   * Get the contract-compliant HLS playback engine.
+   */
+  getHlsEngine() {
+    return this.hlsEngine;
   }
 
   /**
