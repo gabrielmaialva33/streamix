@@ -21,7 +21,7 @@ function normalizeEventMap(eventMap) {
  * idempotent teardown so the player hook can coordinate every engine uniformly.
  */
 export class PlaybackEngineAdapter {
-  constructor({ id, engine, eventMap = {} }) {
+  constructor({ id, engine, eventMap = {}, ownsEngine = true }) {
     const normalizedId = normalizeEngineId(id);
     if (normalizedId === ENGINE_ID.UNKNOWN) {
       throw new TypeError(`PlaybackEngineAdapter requires a known engine id: ${id}`);
@@ -32,12 +32,17 @@ export class PlaybackEngineAdapter {
     this.id = normalizedId;
     this._engine = engine;
     this._eventMap = normalizeEventMap(eventMap);
+    this._ownsEngine = ownsEngine !== false;
     this._destroyed = false;
     this._destroyPromise = null;
   }
 
   get destroyed() {
     return this._destroyed;
+  }
+
+  wraps(engine) {
+    return !this._destroyed && this._engine === engine;
   }
 
   supports(method) {
@@ -144,9 +149,9 @@ export class PlaybackEngineAdapter {
     let result;
 
     try {
-      // Invoke the concrete teardown before returning. AVPlayer and other
-      // engines abort fetch/audio synchronously before their first await.
-      result = engine.destroy();
+      // Shared transport owners such as StreamLoader may lend an engine to the
+      // hook. In that case adapter teardown only releases the reference.
+      result = this._ownsEngine ? engine.destroy() : undefined;
     } catch (error) {
       result = Promise.reject(error);
     }

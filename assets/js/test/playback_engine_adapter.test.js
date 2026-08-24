@@ -230,6 +230,25 @@ test("teardown is idempotent and soft controls tolerate cleanup races", async ()
   });
 });
 
+test("can release a borrowed engine without destroying the transport owner", async () => {
+  const engine = createEngine();
+  const adapter = createPlaybackEngineAdapter({
+    id: ENGINE_ID.HLS,
+    engine,
+    ownsEngine: false,
+  });
+
+  assert.equal(adapter.wraps(engine), true);
+  await adapter.destroy();
+
+  assert.equal(adapter.destroyed, true);
+  assert.equal(adapter.wraps(engine), false);
+  assert.deepEqual(
+    engine.calls.filter(([method]) => method === "destroy"),
+    [],
+  );
+});
+
 test("optional capabilities degrade to safe defaults", () => {
   const engine = createEngine();
   delete engine.getCurrentTime;
