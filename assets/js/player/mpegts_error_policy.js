@@ -122,7 +122,12 @@ export async function executeMpegtsDecision(
     refreshToken = () => {},
     retryDirect = () => {},
     retryMpegts = () => {},
-    schedule = (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+    schedule = (callback, delayMs) =>
+      new Promise((resolve, reject) => {
+        globalThis.setTimeout(() => {
+          Promise.resolve().then(callback).then(resolve, reject);
+        }, delayMs);
+      }),
   } = {},
 ) {
   if (decision.action === "ignore") return true;
@@ -155,8 +160,7 @@ export async function executeMpegtsDecision(
   };
 
   if ((decision.delayMs || 0) > 0) {
-    schedule(run, decision.delayMs);
-    return true;
+    return schedule(run, decision.delayMs);
   }
 
   return run();
