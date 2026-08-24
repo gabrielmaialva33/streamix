@@ -27,6 +27,7 @@ export const PLAYBACK_STATE = Object.freeze({
   PLAYING: "playing",
   STALLED: "stalled",
   RECOVERING: "recovering",
+  ENDED: "ended",
   TERMINAL: "terminal",
   DESTROYED: "destroyed",
 });

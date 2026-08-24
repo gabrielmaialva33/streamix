@@ -12,7 +12,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetry do
   @known_engines MapSet.new(~w(native hls mpegts avplayer avbridge h265web unknown))
 
   @known_states MapSet.new(
-                  ~w(idle selecting_source loading ready playing stalled recovering terminal destroyed unknown)
+                  ~w(idle selecting_source loading ready playing stalled recovering ended terminal destroyed unknown)
                 )
 
   @state_changed_stage "player_state_changed"
