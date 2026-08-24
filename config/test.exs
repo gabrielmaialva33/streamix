@@ -52,6 +52,10 @@ config :streamix, :disable_local_cache, true
 # running on the developer machine or CI runner.
 config :streamix, :qdrant, enabled: false
 
+# RabbitMQ/Broadway is an integration boundary. Unit and browser tests use
+# direct domain calls and must not inherit RABBITMQ_ENABLED from a local .env.
+config :streamix, :rabbitmq, enabled: false
+
 # The provider health sampler runs in its own process and periodically touches
 # the database. Disable it in tests so SQL sandbox ownership stays per-test.
 config :streamix, :provider_health_monitor_enabled, false

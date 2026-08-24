@@ -407,9 +407,10 @@ config :streamix, :qdrant,
   url: get_env.("QDRANT_URL") || "http://localhost:6333",
   api_key: get_env.("QDRANT_API_KEY")
 
-# RabbitMQ configuration for Broadway distributed workers
-# Set RABBITMQ_ENABLED=true to enable
-if RuntimeConfig.boolean!("RABBITMQ_ENABLED", get_env.("RABBITMQ_ENABLED"), false) do
+# RabbitMQ configuration for Broadway distributed workers.
+# Tests must stay hermetic even when a developer's .env enables RabbitMQ.
+if config_env() != :test and
+     RuntimeConfig.boolean!("RABBITMQ_ENABLED", get_env.("RABBITMQ_ENABLED"), false) do
   config :streamix, :rabbitmq,
     enabled: true,
     connection: [
