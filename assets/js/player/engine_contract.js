@@ -44,6 +44,86 @@ export const ENGINE_EVENT = Object.freeze({
   TRACK_CHANGED: "track_changed",
 });
 
+export const PLAYBACK_ENGINE_REQUIRED_METHODS = Object.freeze([
+  "load",
+  "play",
+  "pause",
+  "seek",
+  "destroy",
+]);
+
+export const PLAYBACK_ENGINE_CAPABILITY_METHODS = Object.freeze([
+  "init",
+  "stop",
+  "setVolume",
+  "getCurrentTime",
+  "getDuration",
+  "isPlaying",
+  "snapshot",
+  "getAudioTracks",
+  "getSubtitleTracks",
+  "selectAudioTrack",
+  "selectSubtitleTrack",
+  "loadExternalSubtitle",
+  "setSubtitleDelay",
+  "on",
+  "off",
+]);
+
+export const PLAYBACK_ENGINE_METHODS = Object.freeze([
+  ...PLAYBACK_ENGINE_REQUIRED_METHODS,
+  ...PLAYBACK_ENGINE_CAPABILITY_METHODS,
+]);
+
+function isEngineObject(engine) {
+  return (
+    engine !== null &&
+    (typeof engine === "object" || typeof engine === "function")
+  );
+}
+
+export function playbackEngineViolations(engine) {
+  if (!isEngineObject(engine)) return ["engine must be an object"];
+
+  return PLAYBACK_ENGINE_REQUIRED_METHODS.filter(
+    (method) => typeof engine[method] !== "function",
+  ).map((method) => `missing method ${method}()`);
+}
+
+export function assertPlaybackEngine(
+  engine,
+  { name = "Playback engine" } = {},
+) {
+  if (!isEngineObject(engine)) {
+    throw new TypeError(`${name} requires an engine object`);
+  }
+
+  const missing = PLAYBACK_ENGINE_REQUIRED_METHODS.filter(
+    (method) => typeof engine[method] !== "function",
+  );
+
+  if (missing.length > 0) {
+    throw new TypeError(
+      `${name} is missing required methods: ${missing.join(", ")}`,
+    );
+  }
+
+  return engine;
+}
+
+export function playbackEngineCapabilities(engine) {
+  assertPlaybackEngine(engine);
+
+  return Object.freeze(
+    Object.fromEntries(
+      PLAYBACK_ENGINE_CAPABILITY_METHODS.map((method) => [
+        method,
+        typeof engine[method] === "function",
+      ]),
+    ),
+  );
+}
+
 const RUNTIME_ENGINE_IDS = new Set(Object.values(ENGINE_ID));
 const ENGINE_SELECTIONS = new Set(Object.values(ENGINE_SELECTION));
 const SELECTION_TO_ENGINE_ID = new Map([

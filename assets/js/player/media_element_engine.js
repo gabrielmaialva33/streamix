@@ -1,3 +1,5 @@
+import { assertPlaybackEngine } from "./engine_contract.js";
+
 function finiteNonNegative(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : fallback;
@@ -91,5 +93,7 @@ export class MediaElementEngine {
 }
 
 export function createMediaElementEngine(options) {
-  return new MediaElementEngine(options);
+  return assertPlaybackEngine(new MediaElementEngine(options), {
+    name: "MediaElementEngine",
+  });
 }

@@ -1,6 +1,8 @@
-import { ENGINE_ID, normalizeEngineId } from "./engine_contract.js";
-
-const REQUIRED_METHODS = ["load", "play", "pause", "seek", "destroy"];
+import {
+  assertPlaybackEngine,
+  ENGINE_ID,
+  normalizeEngineId,
+} from "./engine_contract.js";
 
 function finiteNonNegative(value, fallback = 0) {
   const number = Number(value);
@@ -13,18 +15,6 @@ function normalizeEventMap(eventMap) {
     return new Map(Object.entries(eventMap));
   }
   return new Map();
-}
-
-function assertEngine(engine) {
-  if (!engine || (typeof engine !== "object" && typeof engine !== "function")) {
-    throw new TypeError("PlaybackEngineAdapter requires an engine object");
-  }
-
-  const missing = REQUIRED_METHODS.filter((method) => typeof engine[method] !== "function");
-
-  if (missing.length > 0) {
-    throw new TypeError(`Playback engine is missing required methods: ${missing.join(", ")}`);
-  }
 }
 
 /**
@@ -41,7 +31,7 @@ export class PlaybackEngineAdapter {
       throw new TypeError(`PlaybackEngineAdapter requires a known engine id: ${id}`);
     }
 
-    assertEngine(engine);
+    assertPlaybackEngine(engine, { name: "PlaybackEngineAdapter" });
 
     this.id = normalizedId;
     this._engine = engine;
