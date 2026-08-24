@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  playbackEngineCapabilities,
-  playbackEngineViolations,
-} from "../player/engine_contract.js";
+import { playbackEngineCapabilities, playbackEngineViolations } from "../player/engine_contract.js";
 import {
   createNativePlaybackEngine,
   NativePlaybackEngine,
@@ -186,12 +183,7 @@ test("destroys idempotently and resets the media source once", () => {
   assert.equal(engine.destroy(), true);
   assert.equal(engine.destroy(), false);
   assert.equal(video.src, "");
-  assert.deepEqual(video.calls, [
-    ["load"],
-    ["pause"],
-    ["removeAttribute", "src"],
-    ["load"],
-  ]);
+  assert.deepEqual(video.calls, [["load"], ["pause"], ["removeAttribute", "src"], ["load"]]);
   assert.deepEqual(engine.snapshot(), {
     engine: "native",
     attached: false,

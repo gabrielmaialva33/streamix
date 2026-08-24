@@ -25,17 +25,8 @@ test("publishes one immutable source of truth for the engine surface", () => {
   assert.equal(Object.isFrozen(PLAYBACK_ENGINE_REQUIRED_METHODS), true);
   assert.equal(Object.isFrozen(PLAYBACK_ENGINE_CAPABILITY_METHODS), true);
   assert.equal(Object.isFrozen(PLAYBACK_ENGINE_METHODS), true);
-  assert.deepEqual(PLAYBACK_ENGINE_REQUIRED_METHODS, [
-    "load",
-    "play",
-    "pause",
-    "seek",
-    "destroy",
-  ]);
-  assert.equal(
-    new Set(PLAYBACK_ENGINE_METHODS).size,
-    PLAYBACK_ENGINE_METHODS.length,
-  );
+  assert.deepEqual(PLAYBACK_ENGINE_REQUIRED_METHODS, ["load", "play", "pause", "seek", "destroy"]);
+  assert.equal(new Set(PLAYBACK_ENGINE_METHODS).size, PLAYBACK_ENGINE_METHODS.length);
 });
 
 test("reports invalid objects and every missing required method", () => {

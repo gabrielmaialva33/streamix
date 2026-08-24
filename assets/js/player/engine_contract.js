@@ -76,10 +76,7 @@ export const PLAYBACK_ENGINE_METHODS = Object.freeze([
 ]);
 
 function isEngineObject(engine) {
-  return (
-    engine !== null &&
-    (typeof engine === "object" || typeof engine === "function")
-  );
+  return engine !== null && (typeof engine === "object" || typeof engine === "function");
 }
 
 export function playbackEngineViolations(engine) {
@@ -90,10 +87,7 @@ export function playbackEngineViolations(engine) {
   ).map((method) => `missing method ${method}()`);
 }
 
-export function assertPlaybackEngine(
-  engine,
-  { name = "Playback engine" } = {},
-) {
+export function assertPlaybackEngine(engine, { name = "Playback engine" } = {}) {
   if (!isEngineObject(engine)) {
     throw new TypeError(`${name} requires an engine object`);
   }
@@ -103,9 +97,7 @@ export function assertPlaybackEngine(
   );
 
   if (missing.length > 0) {
-    throw new TypeError(
-      `${name} is missing required methods: ${missing.join(", ")}`,
-    );
+    throw new TypeError(`${name} is missing required methods: ${missing.join(", ")}`);
   }
 
   return engine;

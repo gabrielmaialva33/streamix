@@ -1,7 +1,4 @@
-import {
-  assertPlaybackEngine,
-  ENGINE_ID,
-} from "./engine_contract.js";
+import { assertPlaybackEngine, ENGINE_ID } from "./engine_contract.js";
 import { createMediaElementEngine } from "./media_element_engine.js";
 
 const PRELOAD_VALUES = new Set(["none", "metadata", "auto"]);
@@ -245,10 +242,7 @@ export class NativePlaybackEngine {
   clearPendingMetadataSeek() {
     if (!this.pendingMetadataHandler || !this.video) return;
 
-    this.video.removeEventListener?.(
-      "loadedmetadata",
-      this.pendingMetadataHandler,
-    );
+    this.video.removeEventListener?.("loadedmetadata", this.pendingMetadataHandler);
     this.pendingMetadataHandler = null;
   }
 

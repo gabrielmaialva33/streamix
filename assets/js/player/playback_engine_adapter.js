@@ -1,8 +1,4 @@
-import {
-  assertPlaybackEngine,
-  ENGINE_ID,
-  normalizeEngineId,
-} from "./engine_contract.js";
+import { assertPlaybackEngine, ENGINE_ID, normalizeEngineId } from "./engine_contract.js";
 
 function finiteNonNegative(value, fallback = 0) {
   const number = Number(value);
