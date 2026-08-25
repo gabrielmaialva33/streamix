@@ -59,7 +59,10 @@ export function selectEngine(ctx) {
     shouldPreferAVPlayerForLiveTs,
     preferNativeHls,
     capabilities = {},
+    mediaCapability = null,
   } = ctx;
+  const avoidNative = mediaCapability?.avoidNative === true;
+  const preferNativeByCapability = mediaCapability?.preferNative === true;
 
   const hlsJs = !!capabilities.hlsJs;
   const mpegts = !!capabilities.mpegts;
@@ -74,7 +77,9 @@ export function selectEngine(ctx) {
   // A stale AVPlayer recommendation must not bypass native HLS on Apple
   // or MSE/hls.js everywhere else.
   if (streamType === "hls" || streamType === "m3u8") {
-    if (preferNativeHls && nativeHls) return ENGINE_SELECTION.NATIVE;
+    if ((preferNativeHls || preferNativeByCapability) && nativeHls && !avoidNative) {
+      return ENGINE_SELECTION.NATIVE;
+    }
     if (hlsJs) return ENGINE_SELECTION.HLS_JS;
     return ENGINE_SELECTION.NATIVE;
   }
@@ -133,6 +138,7 @@ export function selectEngine(ctx) {
 
   // GIndex MP4 can use native playback.
   if (sourceType === "gindex") {
+    if (avoidNative && canTryAVPlayer) return ENGINE_SELECTION.AVPLAYER;
     return ENGINE_SELECTION.NATIVE;
   }
 
@@ -142,13 +148,16 @@ export function selectEngine(ctx) {
 
     case "mp4":
     case "mkv":
+      if (avoidNative && canTryAVPlayer) return ENGINE_SELECTION.AVPLAYER;
       return ENGINE_SELECTION.NATIVE;
 
     default:
       // Mixed/unknown follows the same explicit Apple-native policy.
-      if (preferNativeHls && nativeHls) return ENGINE_SELECTION.NATIVE;
+      if ((preferNativeHls || preferNativeByCapability) && nativeHls && !avoidNative) {
+        return ENGINE_SELECTION.NATIVE;
+      }
       if (hlsJs) return ENGINE_SELECTION.HLS_JS;
-      if (nativeHls) return ENGINE_SELECTION.NATIVE;
+      if (nativeHls && !avoidNative) return ENGINE_SELECTION.NATIVE;
       if (mpegts) return ENGINE_SELECTION.MPEGTS;
       return ENGINE_SELECTION.NATIVE;
   }
