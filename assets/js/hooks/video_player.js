@@ -108,6 +108,7 @@ import {
   saveVolume,
 } from "../player/player_preferences";
 import { createInitialPlayerState } from "../player/player_state";
+import { createPlayerTrackController } from "../player/player_track_controller.js";
 import { PlayerUI } from "../player/player_ui";
 import { createPlayerUiController } from "../player/player_ui_controller.js";
 import { createScreenWakeLockController } from "../player/screen_wake_lock_controller";
@@ -367,6 +368,20 @@ const VideoPlayer = {
       ui: this.playerUI,
       updateMediaSessionPosition: () => this.updateMediaSessionPosition(),
     });
+    this.playerTrackController = createPlayerTrackController({
+      refreshAudioTracks: () => this.refreshAudioTracksLegacy(),
+      refreshSubtitleTracks: () => this.refreshSubtitleTracksLegacy(),
+      selectAudioTrack: (trackIndex) => this.applyAudioTrackSelection(trackIndex),
+      selectSubtitleTrack: (trackIndex) => this.applySubtitleTrackSelection(trackIndex),
+      setSubtitleOffset: (offsetMs) => this.applySubtitleOffsetSelection(offsetMs),
+      loadExternalSubtitle: (...args) => this.loadExternalSubtitleForAvPlayerLegacy(...args),
+      loadNativeExternalSubtitle: (...args) =>
+        this.loadNativeExternalSubtitleForSessionLegacy(...args),
+      reloadNativeExternalSubtitle: (...args) => this.reloadNativeExternalSubtitleLegacy(...args),
+      onError: (operation, error) =>
+        log.debug(`[VideoPlayer] Track operation ${operation} failed:`, error),
+    });
+
     this.nativeBufferingController = new NativeBufferingController({
       contentType: this.contentType,
       emit: (event, payload) => this.pushEventSafe(event, payload),
@@ -516,6 +531,14 @@ const VideoPlayer = {
   // ============================================
 
   setAudioTrack(trackIndex) {
+    if (this.playerTrackController) {
+      return this.playerTrackController.selectAudioTrack(trackIndex);
+    }
+
+    return this.applyAudioTrackSelection(trackIndex);
+  },
+
+  applyAudioTrackSelection(trackIndex) {
     if (this.usingAVPlayer && this.avPlayer) {
       this.setAVPlayerAudioTrack(trackIndex);
       return;
@@ -537,6 +560,14 @@ const VideoPlayer = {
   },
 
   updateAudioTracks() {
+    if (this.playerTrackController) {
+      return this.playerTrackController.refreshAudioTracks();
+    }
+
+    return this.refreshAudioTracksLegacy();
+  },
+
+  refreshAudioTracksLegacy() {
     const hls = this.streamLoader?.getHls();
     if (!hls) return;
 
@@ -570,6 +601,14 @@ const VideoPlayer = {
   // ============================================
 
   setSubtitleTrack(trackIndex) {
+    if (this.playerTrackController) {
+      return this.playerTrackController.selectSubtitleTrack(trackIndex);
+    }
+
+    return this.applySubtitleTrackSelection(trackIndex);
+  },
+
+  applySubtitleTrackSelection(trackIndex) {
     if (this.streamLoader) {
       this.streamLoader.setSubtitleTrack(trackIndex);
     }
@@ -593,6 +632,14 @@ const VideoPlayer = {
   },
 
   async setSubtitleOffset(offsetMs) {
+    if (this.playerTrackController) {
+      return this.playerTrackController.setSubtitleOffset(offsetMs);
+    }
+
+    return this.applySubtitleOffsetSelection(offsetMs);
+  },
+
+  async applySubtitleOffsetSelection(offsetMs) {
     const parsedOffset = Number(offsetMs);
     if (!Number.isFinite(parsedOffset)) return;
 
@@ -614,7 +661,15 @@ const VideoPlayer = {
     );
   },
 
-  async reloadNativeExternalSubtitle(selectedTrack) {
+  async reloadNativeExternalSubtitle(...args) {
+    if (this.playerTrackController) {
+      return this.playerTrackController.reloadNativeExternalSubtitle(...args);
+    }
+
+    return this.reloadNativeExternalSubtitleLegacy(...args);
+  },
+
+  async reloadNativeExternalSubtitleLegacy(selectedTrack) {
     this._subtitleOffsetReloadTimer = null;
 
     if (this._nativeExternalSubtitleReloading) {
@@ -665,6 +720,14 @@ const VideoPlayer = {
   },
 
   updateSubtitleTracks() {
+    if (this.playerTrackController) {
+      return this.playerTrackController.refreshSubtitleTracks();
+    }
+
+    return this.refreshSubtitleTracksLegacy();
+  },
+
+  refreshSubtitleTracksLegacy() {
     const hls = this.streamLoader?.getHls();
     if (!hls) return;
 
@@ -3243,7 +3306,15 @@ const VideoPlayer = {
    * support, or when the backend has nothing (204). Uses a Blob URL so
    * the player doesn't re-request (and to dodge CORS).
    */
-  async loadExternalSubtitleIfAvailable(sessionId = this.playbackSessionId) {
+  async loadExternalSubtitleIfAvailable(...args) {
+    if (this.playerTrackController) {
+      return this.playerTrackController.loadExternalSubtitle(...args);
+    }
+
+    return this.loadExternalSubtitleForAvPlayerLegacy(...args);
+  },
+
+  async loadExternalSubtitleForAvPlayerLegacy(sessionId = this.playbackSessionId) {
     if (!this.imdbId || !this.avPlayer) return;
     if (typeof this.avPlayer.loadExternalSubtitle !== "function") return;
     if (hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return;
@@ -3275,7 +3346,18 @@ const VideoPlayer = {
    * Attach the external WebVTT to the native HTML5 player used by
    * ordinary torrent MP4s and expose it through Streamix's subtitle menu.
    */
-  async loadNativeExternalSubtitleIfAvailable(sessionId = this.playbackSessionId, force = false) {
+  async loadNativeExternalSubtitleIfAvailable(...args) {
+    if (this.playerTrackController) {
+      return this.playerTrackController.loadNativeExternalSubtitle(...args);
+    }
+
+    return this.loadNativeExternalSubtitleForSessionLegacy(...args);
+  },
+
+  async loadNativeExternalSubtitleForSessionLegacy(
+    sessionId = this.playbackSessionId,
+    force = false,
+  ) {
     if (!this.imdbId || !this.video || this.sourceType !== "torrent") return;
 
     const nativeTracks = Array.from(this.video.textTracks || []).map((track) => ({
@@ -4137,6 +4219,7 @@ const VideoPlayer = {
     this.playbackOrchestrator = null;
     this.networkMonitor?.stop();
     this.nativeBufferManager?.stop();
+    this.playerTrackController?.destroy();
     this.playerUIController?.destroy();
     this.playerUIController = null;
     this.playerUI = null;
