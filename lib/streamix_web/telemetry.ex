@@ -165,6 +165,30 @@ defmodule StreamixWeb.Telemetry do
         tags: [:from_state, :to_state, :engine],
         description: "Rejected player lifecycle state transitions"
       ),
+      counter("streamix.player.qoe.count",
+        tags: [:qoe_event, :engine, :live],
+        description: "Player Quality of Experience lifecycle samples"
+      ),
+      summary("streamix.player.qoe.startup_ms",
+        tags: [:engine, :live],
+        description: "Time from session start to first playback"
+      ),
+      summary("streamix.player.qoe.rebuffer_duration_ms",
+        tags: [:engine, :live],
+        description: "Accumulated player rebuffer duration"
+      ),
+      summary("streamix.player.qoe.rebuffer_ratio",
+        tags: [:engine, :live],
+        description: "Ratio of playback window spent rebuffering"
+      ),
+      summary("streamix.player.qoe.live_latency",
+        tags: [:engine],
+        description: "Observed live playback latency in seconds"
+      ),
+      summary("streamix.player.qoe.frame_drop_ratio",
+        tags: [:engine],
+        description: "Ratio of dropped to decoded video frames"
+      ),
       counter("streamix.qoe.event.count",
         tags: [:kind, :engine, :outcome],
         description: "Persisted client QoE samples"

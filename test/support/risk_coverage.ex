@@ -11,6 +11,15 @@ defmodule Streamix.TestSupport.RiskCoverage do
     {Streamix.Billing, 75.0},
     {Streamix.Access, 70.0},
     {Streamix.Qoe, 85.0},
+    {Streamix.Catalog, 70.0},
+    {Streamix.Guide, 40.0},
+    {Streamix.Library, 70.0},
+    {Streamix.Playback, 60.0},
+    {Streamix.Providers, 65.0},
+    {Streamix.Search, 70.0},
+    {Streamix.Iptv.Streaming.ResponsePolicy, 95.0},
+    {StreamixWeb.PlayerLifecycleTelemetry, 65.0},
+    {StreamixWeb.PlayerQoeTelemetry, 85.0},
     {Streamix.Torrent.Catalog, 70.0},
     {Streamix.Torrent.StatsRefresher, 70.0}
   ]

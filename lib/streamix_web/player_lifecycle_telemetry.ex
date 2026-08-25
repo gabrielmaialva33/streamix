@@ -34,6 +34,7 @@ defmodule StreamixWeb.PlayerLifecycleTelemetry do
 
   @spec observe(map()) :: :ok
   def observe(params) when is_map(params) do
+    StreamixWeb.PlayerQoeTelemetry.observe(params)
     event = normalize(params)
     emit_metric(event)
     maybe_log(event)
