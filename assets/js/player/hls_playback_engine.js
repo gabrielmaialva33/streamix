@@ -57,6 +57,35 @@ function safeRead(read, fallback = null) {
   }
 }
 
+function normalizeTrackIndex(value) {
+  if (value == null || typeof value === "boolean") return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+
+  const number = Number(value);
+  return Number.isInteger(number) && number >= -1 ? number : null;
+}
+
+function snapshotTracks(hls, tracksProperty, activeProperty) {
+  const tracks = safeRead(() => hls[tracksProperty], []);
+  if (!Array.isArray(tracks)) return Object.freeze([]);
+
+  const activeIndex = normalizeTrackIndex(safeRead(() => hls[activeProperty], -1)) ?? -1;
+
+  return Object.freeze(
+    tracks.map((track, index) => {
+      const candidate = track && typeof track === "object" ? track : {};
+      const active = index === activeIndex;
+
+      return Object.freeze({
+        ...candidate,
+        index,
+        active,
+        selected: active,
+      });
+    }),
+  );
+}
+
 /**
  * Contract adapter around one hls.js instance.
  *
@@ -154,6 +183,34 @@ export class HlsPlaybackEngine {
   isPlaying() {
     this.assertActive();
     return this.video.paused === false && this.video.ended !== true;
+  }
+
+  getAudioTracks() {
+    this.assertActive();
+    return snapshotTracks(this.hls, "audioTracks", "audioTrack");
+  }
+
+  getSubtitleTracks() {
+    this.assertActive();
+    return snapshotTracks(this.hls, "subtitleTracks", "subtitleTrack");
+  }
+
+  selectAudioTrack(trackIndex) {
+    this.assertActive();
+    const index = normalizeTrackIndex(trackIndex);
+    if (index == null) return false;
+
+    this.hls.audioTrack = index;
+    return index;
+  }
+
+  selectSubtitleTrack(trackIndex) {
+    this.assertActive();
+    const index = normalizeTrackIndex(trackIndex);
+    if (index == null) return false;
+
+    this.hls.subtitleTrack = index;
+    return index;
   }
 
   on(event, handler) {
