@@ -85,10 +85,10 @@ import {
 } from "../player/playback_environment";
 import { guardPlaybackLoad } from "../player/playback_load_guard.js";
 import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
-import { createPlaybackStateObserver } from "../player/playback_state_observer.js";
+import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
 import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
 import { clampSeekTime, relativeSeekTarget } from "../player/playback_time";
-import { diagnoseError } from "../player/player_diagnostics";
+import { createPlayerDiagnosticsController } from "../player/player_diagnostics_controller.js";
 import {
   forgetRecommendedPlayer,
   getPlaybackPosition,
@@ -107,7 +107,6 @@ import { createInitialPlayerState } from "../player/player_state";
 import { PlayerUI } from "../player/player_ui";
 import { createScreenWakeLockController } from "../player/screen_wake_lock_controller";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
-import { collectStartupDiagnostics } from "../player/startup_diagnostics";
 import {
   findPortugueseTrack,
   formatTrackLabel,
@@ -162,7 +161,9 @@ const VideoPlayer = {
     // All lifecycle listeners, QoE consumers and engine-agnostic controls
     // must exist before a fast media source can emit its first events.
     this.syncPiPAvailability();
-    this.initPlayer();
+    void this.prepareMediaCapabilityProfile().finally(() => {
+      if (!this._destroyed) this.initPlayer();
+    });
 
     // Run diagnostics as low-priority work so startup playback and user
     // gestures are not competing with WebCodecs/codec probes on the main thread.
@@ -184,18 +185,7 @@ const VideoPlayer = {
    * Helps detect issues early and inform backend of device capabilities
    */
   async runStartupDiagnostics() {
-    try {
-      const policy = this.getPlaybackResourcePolicy();
-      const diagnostics = await collectStartupDiagnostics({ policy });
-      this.pushEventSafe("device_diagnostics", diagnostics);
-
-      // Initialize codec-aware ABR if supported
-      if (diagnostics.advanced.codecRecommendation) {
-        this.initCodecAwareABR(diagnostics.advanced.codecRecommendation);
-      }
-    } catch (e) {
-      log.debug("[VideoPlayer] Startup diagnostics failed (non-critical):", e);
-    }
+    return this.diagnosticsController?.runStartup() ?? null;
   },
 
   /**
@@ -220,6 +210,33 @@ const VideoPlayer = {
     this.video = this.el.querySelector("video");
     this.configureNativePlaybackElement();
     Object.assign(this, createInitialPlayerState(this.el));
+    this.diagnosticsController = createPlayerDiagnosticsController({
+      getResourcePolicy: () => this.getPlaybackResourcePolicy(),
+      getErrorContext: () => ({
+        contentType: this.contentType,
+        streamType: this.currentStreamType,
+        sourceType: this.sourceType,
+      }),
+      getDebugContext: () => ({
+        current_stream_type: this.currentStreamType,
+        content_type: this.contentType,
+        source_type: this.sourceType,
+        use_proxy: this.useProxy,
+        current_url_present: Boolean(this.currentUrl),
+        stream_url_present: Boolean(this.streamUrl),
+        proxy_url_present: Boolean(this.proxyUrl),
+        prefer_avplayer: this.preferAVPlayer,
+        using_avplayer: this.usingAVPlayer,
+        avplayer_attempted: this.avPlayerAttempted,
+        should_prefer_avplayer_for_live_ts: this.shouldPreferAVPlayerForLiveTs(),
+        hls_supported: isHlsJsSupported(),
+        mpegts_supported: isMpegtsSupported(),
+        user_agent: globalThis.navigator?.userAgent ?? null,
+      }),
+      initCodecAwareABR: (recommendation) => this.initCodecAwareABR(recommendation),
+      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
+      showPlaybackError: (message) => this.showPlaybackError(message),
+    });
     this.hlsRecoveryCoordinator = createHlsRecoveryCoordinator({
       onFailure: (error) => this.reportHlsRecoveryFailure(error),
       onRecovering: (decision) =>
@@ -735,7 +752,9 @@ const VideoPlayer = {
 
     this.mediaElementEngine = next;
 
-    if (current) {
+    if (this.playbackOrchestrator) {
+      this.playbackOrchestrator.activateEngine(engineId, next);
+    } else if (current) {
       current
         .destroy()
         .catch((error) =>
@@ -1295,37 +1314,35 @@ const VideoPlayer = {
    * @param {boolean} runDiagnostics - Whether to run automatic diagnostics
    */
   async showErrorWithDiagnostics(message, error = null, runDiagnostics = false) {
-    this.showPlaybackError(message);
-
-    if (runDiagnostics && error) {
-      try {
-        const diagnosis = await diagnoseError(error, {
-          contentType: this.contentType,
-          streamType: this.currentStreamType,
-          sourceType: this.sourceType,
-        });
-
-        log.debug("[VideoPlayer] Diagnostics result:", diagnosis);
-
-        // If we have a suggested player, offer to try it
-        if (diagnosis.suggestedPlayer?.player && diagnosis.suggestedPlayer.player !== "native") {
-          this.pushEventSafe("diagnostic_suggestion", {
-            player: diagnosis.suggestedPlayer.player,
-            reason: diagnosis.suggestedPlayer.reason,
-            recommendations: diagnosis.recommendations,
-          });
-        }
-      } catch (e) {
-        log.warn("[VideoPlayer] Diagnostics failed:", e);
-      }
+    if (!this.diagnosticsController) {
+      this.showPlaybackError(message);
+      return null;
     }
+
+    return this.diagnosticsController.showError(message, error, runDiagnostics);
   },
 
   setVolume(volume) {
     this.audioController.setVolume(volume);
   },
 
+  getPlaybackCapabilities() {
+    return this.playbackOrchestrator?.capabilities() ?? {};
+  },
+
+  getPlaybackTrackSnapshot() {
+    return (
+      this.playbackOrchestrator?.trackSnapshot() ?? {
+        capabilities: {},
+        audioTracks: [],
+        subtitleTracks: [],
+      }
+    );
+  },
+
   supportsPlaybackRateControl() {
+    const capabilities = this.getPlaybackCapabilities();
+    if (capabilities.setPlaybackRate || capabilities.getPlaybackRate) return true;
     return !this.usingAVPlayer && !this.usingH265web;
   },
 
@@ -1529,6 +1546,7 @@ const VideoPlayer = {
       isUhdHevc: this.el?.dataset?.uhdHevc === "true",
       shouldPreferAVPlayerForLiveTs: this.shouldPreferAVPlayerForLiveTs(),
       preferNativeHls: isAppleWebKitBrowser(),
+      mediaCapability: this.mediaCapabilityProfile,
       capabilities: {
         hlsJs: isHlsJsSupported(),
         mpegts: isMpegtsSupported(),
@@ -1542,35 +1560,20 @@ const VideoPlayer = {
   },
 
   reportPlayerDebug(stage, extra = {}) {
-    this.pushEventSafe("player_debug", {
-      stage,
-      current_stream_type: this.currentStreamType,
-      content_type: this.contentType,
-      source_type: this.sourceType,
-      use_proxy: this.useProxy,
-      current_url: this.currentUrl,
-      stream_url: this.streamUrl,
-      proxy_url: this.proxyUrl,
-      prefer_avplayer: this.preferAVPlayer,
-      using_avplayer: this.usingAVPlayer,
-      avplayer_attempted: this.avPlayerAttempted,
-      should_prefer_avplayer_for_live_ts: this.shouldPreferAVPlayerForLiveTs(),
-      hls_supported: isHlsJsSupported(),
-      mpegts_supported: isMpegtsSupported(),
-      user_agent: navigator.userAgent,
-      ...extra,
-    });
+    return this.diagnosticsController?.reportDebug(stage, extra) ?? null;
   },
 
   reportPlayerLifecycle(stage, extra = {}) {
     if (stage === "player_engine_selected") {
       if (extra.fallback) {
         this.playbackMetrics?.recordFallback(extra.engine);
+        this.playbackOrchestrator?.recordFallback(extra.engine);
       } else {
         this.playbackMetrics?.selectEngine(extra.engine);
       }
     } else if (stage === "player_engine_fallback") {
       this.playbackMetrics?.recordFallback(extra.to);
+      this.playbackOrchestrator?.recordFallback(extra.to);
     }
 
     this.pushEventSafe("player_lifecycle", {
@@ -1668,9 +1671,16 @@ const VideoPlayer = {
     if (this.mediaElementEngine) {
       const mediaElementEngine = this.mediaElementEngine;
       this.mediaElementEngine = null;
-      mediaElementEngine
-        .destroy()
-        .catch((error) => log.debug("[VideoPlayer] Media element engine teardown failed:", error));
+
+      if (this.playbackOrchestrator) {
+        this.playbackOrchestrator.releaseEngine(mediaElementEngine.id);
+      } else {
+        mediaElementEngine
+          .destroy()
+          .catch((error) =>
+            log.debug("[VideoPlayer] Media element engine teardown failed:", error),
+          );
+      }
     }
 
     if (this.streamLoader) {
@@ -1803,24 +1813,25 @@ const VideoPlayer = {
   },
 
   getPlaybackStateSnapshot() {
-    return this.playbackStateObserver?.snapshot() ?? null;
+    return this.playbackOrchestrator?.snapshot().lifecycle ?? null;
   },
 
   observePlaybackState(nextState, reason, metadata = {}) {
-    return this.playbackStateObserver?.observe(nextState, reason, metadata) ?? null;
+    return this.playbackOrchestrator?.observe(nextState, reason, metadata) ?? null;
   },
 
   beginPlaybackSession() {
-    this.playbackSessionId += 1;
-    this.playbackStateObserver = createPlaybackStateObserver({
-      reportLifecycle: (event, metadata) => this.reportPlayerLifecycle(event, metadata),
-      logInvalid: (transition) =>
-        log.debug("[VideoPlayer] Invalid playback state transition:", transition),
-    });
-    this.playbackStateObserver.begin(this.playbackSessionId);
+    if (!this.playbackOrchestrator || this.playbackOrchestrator.destroyed) {
+      this.playbackOrchestrator = createPlaybackOrchestrator({
+        reportLifecycle: (event, metadata) => this.reportPlayerLifecycle(event, metadata),
+        logInvalid: (transition) =>
+          log.debug("[VideoPlayer] Invalid playback state transition:", transition),
+      });
+    }
+
+    this.playbackSessionId = this.playbackOrchestrator.begin();
     return this.playbackSessionId;
   },
-
   isCurrentPlaybackSession(sessionId) {
     return !this._destroyed && sessionId === this.playbackSessionId;
   },
@@ -2448,6 +2459,7 @@ const VideoPlayer = {
         id: ENGINE_ID.AVBRIDGE,
         engine: new AvbridgeWrapper({ video: this.video }),
       });
+      this.trackManagedEngine(ENGINE_ID.AVBRIDGE, this.avbridge);
       await this.avbridge.load(this.currentUrl, { startTime: resumeTime });
       if (!this.isCurrentPlaybackSession(sessionId)) {
         await this.avbridge.destroy().catch(() => {});
@@ -2524,6 +2536,7 @@ const VideoPlayer = {
           baseUrl: this.el.dataset.h265webBaseUrl || undefined,
         }),
       });
+      this.trackManagedEngine(ENGINE_ID.H265WEB, this.h265web);
       const h265web = this.h265web;
       const h265webTicks = createPlaybackTickThrottle();
       h265web.on("playing", () => {
@@ -2633,8 +2646,9 @@ const VideoPlayer = {
     }
 
     if (result.status === "loaded") {
-      this.mpegtsPlayer = result.engine;
-      this.setMediaElementEngine(ENGINE_ID.MPEGTS);
+      const mpegtsEngine = this.streamLoader.getMpegtsEngine();
+      this.mpegtsPlayer = this.streamLoader.getMpegtsPlayer();
+      this.setMediaElementEngine(ENGINE_ID.MPEGTS, mpegtsEngine);
 
       void this.playNativeAfterResume(sessionId).catch((error) => {
         if (this.isCurrentPlaybackSession(sessionId)) {
@@ -3071,6 +3085,7 @@ const VideoPlayer = {
         engine: avPlayer,
       });
       this.avPlayer = avPlayer;
+      this.trackManagedEngine(ENGINE_ID.AVPLAYER, this.avPlayer);
 
       const avPlayerUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
 
@@ -3676,6 +3691,7 @@ const VideoPlayer = {
         engine: avPlayer,
       });
       this.avPlayer = avPlayer;
+      this.trackManagedEngine(ENGINE_ID.AVPLAYER, this.avPlayer);
 
       await avPlayer.init();
       if (!this.isCurrentPlaybackSession(sessionId)) {
@@ -3891,6 +3907,13 @@ const VideoPlayer = {
     return this.mediaElementEngine;
   },
 
+  trackManagedEngine(engineId, engine) {
+    this.playbackOrchestrator?.activateEngine(engineId, engine, {
+      registryOwnsEngine: false,
+    });
+    return engine;
+  },
+
   getManagedPlaybackEngine() {
     if (this.usingAVPlayer && this.avPlayer) return this.avPlayer;
     if (this.usingAvbridge && this.avbridge) return this.avbridge;
@@ -4092,6 +4115,8 @@ const VideoPlayer = {
     this._qualityCapabilitiesCancel?.();
     this._qualityCapabilitiesCancel = null;
     this.cleanup();
+    this.playbackOrchestrator?.destroy();
+    this.playbackOrchestrator = null;
     this.networkMonitor?.stop();
     this.nativeBufferManager?.stop();
     this.playerUI?.clearHideControlsTimeout();

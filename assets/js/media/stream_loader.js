@@ -11,6 +11,7 @@
 
 import { streamLogger as log } from "../core/logger.js";
 import { createHlsPlaybackEngine } from "../player/hls_playback_engine.js";
+import { createMpegtsPlaybackEngine } from "../player/mpegts_playback_engine.js";
 import { getHls, getMpegts } from "./player_libs.js";
 import { getStreamingConfig, StreamingMode } from "./streaming_config.js";
 
@@ -158,6 +159,7 @@ export class StreamLoader {
     this.hls = null;
     this.hlsEngine = null;
     this.mpegtsPlayer = null;
+    this.mpegtsEngine = null;
 
     // Cached library references (set after first lazy load)
     this._Hls = null;
@@ -216,15 +218,30 @@ export class StreamLoader {
       log.debug("[StreamLoader] HLS teardown failed:", error);
     }
   }
+  _destroyMpegtsInstance() {
+    this.mpegtsLoadGeneration += 1;
 
-  _destroyMpegtsInstance(player) {
-    if (!player || this._destroyedMpegtsInstances.has(player)) return;
-    this._destroyedMpegtsInstances.add(player);
-    for (const operation of ["pause", "unload", "detachMediaElement", "destroy"]) {
+    const engine = this.mpegtsEngine;
+    const player = this.mpegtsPlayer;
+    this.mpegtsEngine = null;
+    this.mpegtsPlayer = null;
+
+    if (engine) {
       try {
-        player[operation]?.();
-      } catch (error) {
-        log.debug(`[StreamLoader] mpegts ${operation} failed:`, error);
+        engine.destroy();
+      } catch {
+        // Teardown stays best-effort during source transitions.
+      }
+      return;
+    }
+
+    if (!player) return;
+
+    for (const method of ["pause", "unload", "detachMediaElement", "destroy"]) {
+      try {
+        player[method]?.();
+      } catch {
+        // Compatibility cleanup for instances created before the engine wrapper.
       }
     }
   }
@@ -399,14 +416,21 @@ export class StreamLoader {
       config.mpegts,
     );
 
+    const engine = createMpegtsPlaybackEngine({
+      video: this.video,
+      player,
+      source: { url, type },
+      resetSourceOnDestroy: false,
+    });
+
     this._bindMpegtsListeners(player, mpegts, token, sessionId);
     this._assertMpegtsLoadCurrent(token, player);
     this.mpegtsPlayer = player;
+    this.mpegtsEngine = engine;
 
     try {
-      player.attachMediaElement(this.video);
       this._assertMpegtsLoadCurrent(token, player);
-      player.load();
+      engine.load({ url, type });
       this._assertMpegtsLoadCurrent(token, player);
     } catch (error) {
       if (this.mpegtsPlayer === player) this.mpegtsPlayer = null;
@@ -440,61 +464,15 @@ export class StreamLoader {
    * Returns player instance
    */
   async loadMpegtsSoft(url, type = "mpegts") {
-    if (this.disposed) throw new StreamLoaderCancelledError();
-    if (!this.mpegtsPlayer) {
-      log.debug("No existing MPEG-TS instance, using full load");
-      return this.loadMpegts(url, type);
-    }
+    if (!this.mpegtsEngine) return this.loadMpegts(url, type);
 
-    log.debug("Soft reloading MPEG-TS:", url);
-    const token = ++this._mpegtsLoadToken;
-    const sessionId = this.sessionId;
+    const generation = this.mpegtsLoadGeneration;
+    this._assertMpegtsLoadCurrent(generation);
+    this.mpegtsEngine.reload({ url, type });
+    this._assertMpegtsLoadCurrent(generation);
 
-    const mpegts = this._mpegts || (await this._dependencies.getMpegts());
-    this._assertMpegtsLoadCurrent(token);
-    this._mpegts = mpegts;
-
-    // Unload current stream but keep player
-    // mpegts.js doesn't support changing URL, need to destroy and recreate
-    // But we can skip the attachMediaElement step
-    const config = getStreamingConfig(this.streamingMode);
-    const wasAttached = this.mpegtsPlayer._mediaElement;
-    const oldPlayer = this.mpegtsPlayer;
-    this.mpegtsPlayer = null;
-    this._destroyMpegtsInstance(oldPlayer);
-
-    const player = mpegts.createPlayer(
-      {
-        type: type,
-        isLive: this.contentType === "live",
-        url: url,
-      },
-      config.mpegts,
-    );
-
-    this._bindMpegtsListeners(player, mpegts, token, sessionId);
-    this._assertMpegtsLoadCurrent(token, player);
-    this.mpegtsPlayer = player;
-
-    try {
-      if (wasAttached) {
-        player.attachMediaElement(this.video);
-        this._assertMpegtsLoadCurrent(token, player);
-      }
-      player.load();
-      this._assertMpegtsLoadCurrent(token, player);
-    } catch (error) {
-      if (this.mpegtsPlayer === player) this.mpegtsPlayer = null;
-      this._destroyMpegtsInstance(player);
-      throw error;
-    }
-
-    return player;
+    return { status: "loaded", engine: this.mpegtsEngine };
   }
-
-  /**
-   * Check if soft reload is available for current stream type
-   */
   canSoftReload(streamType) {
     if (streamType === "hls" && this.hls) return true;
     if (streamType === "ts" && this.mpegtsPlayer) return true;
@@ -520,6 +498,10 @@ export class StreamLoader {
    */
   getMpegtsPlayer() {
     return this.mpegtsPlayer;
+  }
+
+  getMpegtsEngine() {
+    return this.mpegtsEngine;
   }
 
   /**

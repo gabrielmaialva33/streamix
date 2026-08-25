@@ -86,7 +86,8 @@ export function createInitialPlayerState(
     startTime: deps.now(),
     lastProgressReport: 0,
     playbackSessionId: 0,
-    playbackStateObserver: null,
+    playbackOrchestrator: null,
+    mediaCapabilityProfile: null,
     playbackMetrics: deps.createPlaybackMetrics(),
 
     pipActive: false,
