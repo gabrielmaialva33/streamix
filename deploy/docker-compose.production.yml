@@ -53,7 +53,7 @@ services:
       - shared_network
 
   rabbitmq:
-    image: ${RABBITMQ_IMAGE:-rabbitmq:4.3.4-management-alpine}
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.3.5-management-alpine}
     container_name: streamix-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
