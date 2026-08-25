@@ -11,7 +11,6 @@ defmodule Streamix.Torrent.Sync do
   worker layer can stay consistent across catalogs.
   """
 
-  alias Streamix.Iptv
   alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Torrent.{Catalog, Sources, TorrentStream}
@@ -283,7 +282,7 @@ defmodule Streamix.Torrent.Sync do
   defp upsert_item(source, source_slug, item) do
     Repo.transact(fn ->
       with {:ok, movie_id} <-
-             Iptv.upsert_torrent_movie(
+             Catalog.upsert_movie(
                source.provider_id,
                movie_attrs(item, synthesize_stream_id(item.external_id))
              ) do
@@ -469,7 +468,7 @@ defmodule Streamix.Torrent.Sync do
   def refresh_provider_counts(provider, opts) do
     with {:ok, source} <- Providers.torrent_sync_source(provider),
          :ok <- Catalog.refresh_stats(source.provider_id) do
-      movies_count = Iptv.count_torrent_movies(source.provider_id, show_adult: true)
+      movies_count = Catalog.count_movies_for_provider(source.provider_id, show_adult: true)
       now = DateTime.utc_now(:second)
       sync_status = Keyword.get(opts, :sync_status, "completed")
       attrs = %{sync_status: sync_status, movies_count: movies_count, vod_synced_at: now}

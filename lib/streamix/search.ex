@@ -1,4 +1,6 @@
 defmodule Streamix.Search do
+  alias Streamix.Iptv.TmdbClient
+
   @moduledoc """
   Application boundary for catalog search and public search discovery.
 
@@ -23,4 +25,16 @@ defmodule Streamix.Search do
     as: :search_public
 
   defdelegate search_series(user_id, query, opts \\ []), to: SeriesOps, as: :search
+
+  # Search document and TMDB matching support
+
+  defdelegate list_search_documents(kind, ids, opts),
+    to: Streamix.Iptv.SearchDocuments,
+    as: :list
+
+  def search_tmdb(:movie, query, opts),
+    do: TmdbClient.search_movie(query, opts)
+
+  def search_tmdb(:series, query, opts),
+    do: TmdbClient.search_series(query, opts)
 end

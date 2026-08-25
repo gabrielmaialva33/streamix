@@ -31,7 +31,6 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
 
   import Ecto.Query
 
-  alias Streamix.Iptv
   alias Streamix.Iptv.{Episode, Season, Series}
   alias Streamix.Repo
 
@@ -94,7 +93,7 @@ defmodule Streamix.Workers.SyncSeriesDetailsWorker do
     series_list
     |> Task.async_stream(
       fn series ->
-        case Iptv.sync_series_details(series) do
+        case Streamix.Catalog.sync_series_details(series) do
           {:ok, _result} -> {:ok, series}
           {:error, reason} -> {:error, series, reason}
         end

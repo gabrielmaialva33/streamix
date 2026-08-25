@@ -12,7 +12,6 @@ defmodule Streamix.Gindex.Sync.Movies do
   alias Streamix.Gindex.Scraper
   alias Streamix.Gindex.Sync.DiscoveryCursor
   alias Streamix.Gindex.Sync.Normalizers.Movie, as: MovieNormalizer
-  alias Streamix.Iptv
 
   require Logger
 
@@ -484,7 +483,7 @@ defmodule Streamix.Gindex.Sync.Movies do
     now = DateTime.utc_now(:second)
     entries = Enum.map(movies, &MovieNormalizer.attrs/1)
 
-    case Iptv.upsert_gindex_movies(provider_id, entries, now) do
+    case Streamix.Catalog.upsert_gindex_movies(provider_id, entries, now) do
       {:ok, count} ->
         Logger.debug("[GIndex Sync] Upserted #{count} movies")
         {:ok, count}

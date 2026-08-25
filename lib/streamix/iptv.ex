@@ -25,16 +25,9 @@ defmodule Streamix.Iptv do
   alias Streamix.Iptv.{
     Catalog,
     Channels,
-    Content.GindexIngest,
-    Content.GindexStream,
-    Content.TorrentMovies,
-    Content.TrackMetadata,
     Movies,
     Provider,
-    SearchDocuments,
-    SeriesOps,
-    Sync,
-    TmdbClient
+    SeriesOps
   }
 
   alias Streamix.Iptv.Streaming.StreamErrors
@@ -99,13 +92,8 @@ defmodule Streamix.Iptv do
   defdelegate search_channels(user_id, query, opts \\ []), to: Search
   defdelegate search_public_channels(query, opts \\ []), to: Search
 
-  defdelegate channel_recommendation_category_refs(channel_ids),
-    to: Channels,
-    as: :recommendation_category_refs
-
-  defdelegate list_channel_recommendation_candidates(user_id, opts \\ []),
-    to: Channels,
-    as: :list_recommendation_candidates
+  defdelegate channel_recommendation_category_refs(channel_ids), to: CatalogBoundary
+  defdelegate list_channel_recommendation_candidates(user_id, opts \\ []), to: CatalogBoundary
 
   defdelegate live_channel_stream_url(channel, provider), to: PlaybackBoundary
 
@@ -133,7 +121,7 @@ defmodule Streamix.Iptv do
   defdelegate list_visible_movies_by_ids(user_id, ids, opts \\ []), to: CatalogBoundary
 
   defdelegate list_public_movies_by_ids(ids, opts \\ []), to: CatalogBoundary
-  defdelegate list_movie_genre_names(ids), to: Movies, as: :list_genre_names_for_ids
+  defdelegate list_movie_genre_names(ids), to: CatalogBoundary
 
   defdelegate list_movie_variants(movie, user_id, opts \\ []), to: PlaybackBoundary
 
@@ -142,13 +130,10 @@ defmodule Streamix.Iptv do
   defdelegate count_gindex_movies, to: Movies, as: :count_gindex
 
   # Torrent Movies
-  defdelegate upsert_torrent_movie(provider_id, attrs), to: TorrentMovies, as: :upsert
-  defdelegate list_torrent_movies(provider_id, opts \\ []), to: TorrentMovies, as: :list
-  defdelegate count_torrent_movies(provider_id, opts \\ []), to: TorrentMovies, as: :count
-
-  defdelegate get_torrent_movie_for_playback(movie_id),
-    to: TorrentMovies,
-    as: :get_for_playback
+  defdelegate upsert_torrent_movie(provider_id, attrs), to: CatalogBoundary
+  defdelegate list_torrent_movies(provider_id, opts \\ []), to: CatalogBoundary
+  defdelegate count_torrent_movies(provider_id, opts \\ []), to: CatalogBoundary
+  defdelegate get_torrent_movie_for_playback(movie_id), to: CatalogBoundary
 
   # =============================================================================
   # Series
@@ -196,18 +181,14 @@ defmodule Streamix.Iptv do
   """
   @spec upsert_gindex_movies(pos_integer(), [map()], DateTime.t()) ::
           {:ok, non_neg_integer()} | {:error, term()}
-  defdelegate upsert_gindex_movies(provider_id, movies, now),
-    to: GindexIngest,
-    as: :upsert_movies
+  defdelegate upsert_gindex_movies(provider_id, movies, now), to: CatalogBoundary
 
   @doc """
   Persists one normalized GIndex series tree atomically.
   """
   @spec upsert_gindex_series(pos_integer(), map(), DateTime.t()) ::
           {:ok, non_neg_integer()} | {:error, term()}
-  defdelegate upsert_gindex_series(provider_id, content, now),
-    to: GindexIngest,
-    as: :upsert_series
+  defdelegate upsert_gindex_series(provider_id, content, now), to: CatalogBoundary
 
   @doc "Returns GIndex paths already represented in one provider's catalog."
   @spec gindex_known_paths(pos_integer(), :movies | :series | :animes) ::
@@ -238,11 +219,11 @@ defmodule Streamix.Iptv do
              track_metadata: map() | nil
            }}
           | {:error, :not_found | :unsupported_type}
-  defdelegate get_media_track_source(type, id), to: TrackMetadata, as: :get_source
+  defdelegate get_media_track_source(type, id), to: CatalogBoundary
 
   @spec put_media_track_metadata(:movie | :episode, pos_integer(), term()) ::
           :ok | {:error, :invalid_metadata | :not_found | :unsupported_type}
-  defdelegate put_media_track_metadata(type, id, metadata), to: TrackMetadata, as: :put
+  defdelegate put_media_track_metadata(type, id, metadata), to: CatalogBoundary
 
   @type gindex_stream_source :: %{
           base_url: String.t(),
@@ -259,13 +240,11 @@ defmodule Streamix.Iptv do
 
   @spec get_gindex_stream_source(:movie | :episode, pos_integer()) ::
           {:ok, gindex_stream_source()} | {:error, gindex_stream_source_error()}
-  defdelegate get_gindex_stream_source(type, id), to: GindexStream, as: :get_source
+  defdelegate get_gindex_stream_source(type, id), to: PlaybackBoundary
 
   @spec put_gindex_stream_cache(:movie | :episode, pos_integer(), String.t(), DateTime.t()) ::
           :ok | {:error, :invalid_cache | :not_found | :unsupported_type}
-  defdelegate put_gindex_stream_cache(type, id, url, expires_at),
-    to: GindexStream,
-    as: :put_cache
+  defdelegate put_gindex_stream_cache(type, id, url, expires_at), to: PlaybackBoundary
 
   # =============================================================================
   # Providers — compatibility delegates
@@ -352,9 +331,7 @@ defmodule Streamix.Iptv do
   defdelegate get_featured_content(opts \\ []), to: CatalogBoundary
   defdelegate get_public_stats(opts \\ []), to: CatalogBoundary
 
-  defdelegate list_search_documents(kind, provider_id \\ nil, opts \\ []),
-    to: SearchDocuments,
-    as: :list
+  defdelegate list_search_documents(kind, provider_id \\ nil, opts \\ []), to: Search
 
   defdelegate list_genres_for(kind), to: Catalog
 
@@ -388,10 +365,7 @@ defmodule Streamix.Iptv do
   @type tmdb_kind :: :movie | :series
 
   @spec search_tmdb(tmdb_kind(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def search_tmdb(kind, query, opts \\ [])
-
-  def search_tmdb(:movie, query, opts), do: TmdbClient.search_movie(query, opts)
-  def search_tmdb(:series, query, opts), do: TmdbClient.search_series(query, opts)
+  defdelegate search_tmdb(kind, query, opts \\ []), to: Search
 
   defdelegate catalog_item_content(catalog_item), to: CatalogBoundary
   defdelegate catalog_item_content_name(catalog_item), to: CatalogBoundary
@@ -422,10 +396,10 @@ defmodule Streamix.Iptv do
   """
   defdelegate async_sync_epg(provider), to: Guide
 
-  defdelegate sync_series_details(series), to: Sync
+  defdelegate sync_series_details(series), to: CatalogBoundary
 
   defdelegate cleanup_orphaned_user_data(provider_id \\ nil, opts \\ []),
-    to: Sync
+    to: Library
 
   # =============================================================================
   # Stream delivery

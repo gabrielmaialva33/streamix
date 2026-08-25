@@ -20,7 +20,7 @@ defmodule Streamix.Gindex.MetadataProbe do
 
   require Logger
 
-  alias Streamix.{Gindex, Iptv}
+  alias Streamix.Gindex
 
   # Cap how much of the file we feed to ffprobe. For MP4 the moov box
   # is at the start in 99 % of web-optimized files; for MKV the seek
@@ -60,7 +60,7 @@ defmodule Streamix.Gindex.MetadataProbe do
   def fetch(_, _), do: {:error, :unsupported_type}
 
   defp do_fetch(type, id, url_fn) do
-    with {:ok, source} <- Iptv.get_media_track_source(type, id) do
+    with {:ok, source} <- Streamix.Catalog.get_media_track_source(type, id) do
       cached_or_schedule(type, source, url_fn)
     end
   end
@@ -202,7 +202,7 @@ defmodule Streamix.Gindex.MetadataProbe do
   end
 
   defp persist(type, id, tracks) do
-    case Iptv.put_media_track_metadata(type, id, tracks) do
+    case Streamix.Catalog.put_media_track_metadata(type, id, tracks) do
       :ok -> :ok
       {:error, reason} -> Logger.warning("MetadataProbe persist failed: #{inspect(reason)}")
     end

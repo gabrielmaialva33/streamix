@@ -3,7 +3,6 @@ defmodule Streamix.AI.UserAnalytics.Insights do
 
   alias Streamix.Accounts
   alias Streamix.Cache
-  alias Streamix.Iptv
   alias Streamix.Library
 
   @recommendations_ttl 3600
@@ -67,7 +66,7 @@ defmodule Streamix.AI.UserAnalytics.Insights do
       []
     else
       movie_ids
-      |> Iptv.list_movie_genre_names()
+      |> Streamix.Catalog.list_movie_genre_names()
       |> Enum.frequencies()
       |> Enum.sort_by(fn {_genre, count} -> count end, :desc)
       |> Enum.take(5)

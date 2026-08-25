@@ -1,7 +1,6 @@
 defmodule Streamix.AI.UserAnalytics.Channels do
   @moduledoc false
 
-  alias Streamix.Iptv
   alias Streamix.Library
 
   @doc """
@@ -62,7 +61,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
 
   defp get_popular_channels(user_id, limit, exclude_ids, show_adult) do
     user_id
-    |> Iptv.list_channel_recommendation_candidates(
+    |> Streamix.Catalog.list_channel_recommendation_candidates(
       limit: limit,
       exclude_ids: exclude_ids,
       show_adult: show_adult
@@ -77,7 +76,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
         Map.update(acc, entry.content_id, weight, &(&1 + weight))
       end)
 
-    channel_categories = Iptv.channel_recommendation_category_refs(channel_ids)
+    channel_categories = Streamix.Catalog.channel_recommendation_category_refs(channel_ids)
 
     Enum.reduce(channel_categories, %{}, fn {channel_id, category_id}, acc ->
       weight = Map.get(channel_weights, channel_id, 1.0)
@@ -106,7 +105,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     watched_ids = Enum.map(history, & &1.content_id)
 
     channels =
-      Iptv.list_channel_recommendation_candidates(user_id,
+      Streamix.Catalog.list_channel_recommendation_candidates(user_id,
         category_name: category_name,
         limit: limit * 2,
         show_adult: show_adult
@@ -167,7 +166,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
          show_adult
        ) do
     candidates =
-      Iptv.list_channel_recommendation_candidates(user_id,
+      Streamix.Catalog.list_channel_recommendation_candidates(user_id,
         category_ids: top_category_ids,
         exclude_ids: watched_channel_ids,
         limit: limit * 3,
@@ -177,7 +176,7 @@ defmodule Streamix.AI.UserAnalytics.Channels do
     category_refs =
       candidates
       |> Enum.map(& &1.id)
-      |> Iptv.channel_recommendation_category_refs()
+      |> Streamix.Catalog.channel_recommendation_category_refs()
 
     candidates
     |> rank_candidates(category_scores, category_refs)

@@ -22,7 +22,6 @@ defmodule Streamix.AI.SemanticSearch do
   require Logger
 
   alias Streamix.AI.{Embeddings, Qdrant}
-  alias Streamix.Iptv
 
   # The NVIDIA endpoint accepts 64 E5 inputs in one request (also within
   # Gemini's batch API envelope). Sending 10 made a full production backfill
@@ -250,7 +249,7 @@ defmodule Streamix.AI.SemanticSearch do
   def index_all_movies(provider_id \\ nil, opts \\ []) do
     after_id = Keyword.get(opts, :after_id, 0)
 
-    movies = Iptv.list_search_documents(:movies, provider_id, after_id: after_id)
+    movies = Streamix.Search.list_search_documents(:movies, provider_id, after_id: after_id)
 
     Logger.info("[SemanticSearch] Indexing #{length(movies)} movies after id #{after_id}")
 
@@ -263,7 +262,7 @@ defmodule Streamix.AI.SemanticSearch do
   def index_all_series(provider_id \\ nil, opts \\ []) do
     after_id = Keyword.get(opts, :after_id, 0)
 
-    series = Iptv.list_search_documents(:series, provider_id, after_id: after_id)
+    series = Streamix.Search.list_search_documents(:series, provider_id, after_id: after_id)
 
     Logger.info("[SemanticSearch] Indexing #{length(series)} series after id #{after_id}")
 
@@ -280,7 +279,7 @@ defmodule Streamix.AI.SemanticSearch do
   def index_all_animes(provider_id \\ nil, opts \\ []) do
     after_id = Keyword.get(opts, :after_id, 0)
 
-    animes = Iptv.list_search_documents(:animes, provider_id, after_id: after_id)
+    animes = Streamix.Search.list_search_documents(:animes, provider_id, after_id: after_id)
 
     Logger.info("[SemanticSearch] Indexing #{length(animes)} animes after id #{after_id}")
 

@@ -24,6 +24,32 @@ defmodule Streamix.Architecture.ApplicationBoundaryConsumersTest do
                     Path.join(@core_root, "search.ex")
                   ])
 
+  test "production consumers never call the broad Streamix.Iptv facade" do
+    violations =
+      @core_root
+      |> source_files()
+      |> Enum.reject(&excluded_path?/1)
+      |> Enum.flat_map(fn path ->
+        ast = parse_file!(path)
+        has_short_alias? = broad_iptv_alias?(ast)
+
+        ast
+        |> collect_facade_calls(path, has_short_alias?, [])
+        |> Enum.map(fn {call_path, line, function, arity} ->
+          {relative_path(call_path), line, function, arity}
+        end)
+      end)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    assert violations == [], """
+    Production modules outside the IPTV implementation must depend on focused
+    application contexts instead of the historical Streamix.Iptv facade.
+
+    #{format_facade_violations(violations)}
+    """
+  end
+
   test "core consumers use focused boundaries for every owned contract" do
     owners = contract_owners()
 
@@ -185,6 +211,14 @@ defmodule Streamix.Architecture.ApplicationBoundaryConsumersTest do
   end
 
   defp relative_path(path), do: Path.relative_to(path, @project_root)
+
+  defp format_facade_violations([]), do: "No violations."
+
+  defp format_facade_violations(violations) do
+    Enum.map_join(violations, "\n", fn {path, line, function, arity} ->
+      "  - #{path}:#{line} calls Streamix.Iptv.#{function}/#{arity}"
+    end)
+  end
 
   defp format_violations([]), do: "No violations."
 

@@ -6,6 +6,7 @@ defmodule Streamix.Architecture.CatalogBoundaryTest do
   @web_root Path.expand("../../../lib/streamix_web", __DIR__)
 
   test "every catalog call made by the web layer is exported by Streamix.Catalog" do
+    Code.ensure_loaded!(Catalog)
     calls = remote_calls(@web_root, [:Streamix, :Catalog])
 
     assert calls != []

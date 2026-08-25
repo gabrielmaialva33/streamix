@@ -120,8 +120,10 @@ Before adding a function:
 After the application-boundary migration on August 24, 2026:
 
 - the web layer has no direct dependency on `Streamix.Iptv`;
-- production modules outside the IPTV implementation have no direct facade call
-  for an already-owned contract;
+- production modules outside the IPTV implementation have no direct call to the
+  broad `Streamix.Iptv` facade;
+- remaining IPTV references outside the implementation are explicit nested
+  implementation modules used by composition or domain-specific adapters;
 - the six boundary contracts have no overlapping function/arities;
 - the compile graph reports one remaining cycle, confined to the Phoenix web
   layer and its compile/export macros.

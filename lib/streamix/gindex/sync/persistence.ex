@@ -7,7 +7,6 @@ defmodule Streamix.Gindex.Sync.Persistence do
   """
 
   alias Streamix.Gindex.Sync.Normalizers.{Episode, Season, Series}
-  alias Streamix.Iptv
 
   require Logger
 
@@ -22,7 +21,7 @@ defmodule Streamix.Gindex.Sync.Persistence do
     try do
       content = normalize_content(data)
 
-      case Iptv.upsert_gindex_series(provider_id, content, now) do
+      case Streamix.Catalog.upsert_gindex_series(provider_id, content, now) do
         {:ok, episode_count} ->
           Logger.debug(
             "[GIndex Sync] Synced #{type_label} '#{content_name}' with #{episode_count} episodes"

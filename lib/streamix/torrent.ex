@@ -8,7 +8,6 @@ defmodule Streamix.Torrent do
   internal sync modules directly.
   """
 
-  alias Streamix.Iptv
   alias Streamix.Repo
   alias Streamix.Torrent.{Catalog, Client, Config, Sources, StreamSession, Sync, TorrentStream}
 
@@ -51,7 +50,7 @@ defmodule Streamix.Torrent do
   def get_stream_for_playback(id) do
     with %TorrentStream{movie_id: movie_id} = stream when is_integer(movie_id) <-
            Repo.get(TorrentStream, id),
-         {:ok, movie, provider} <- Iptv.get_torrent_movie_for_playback(movie_id) do
+         {:ok, movie, provider} <- Catalog.get_movie_for_playback(movie_id) do
       {:ok, stream, movie, provider}
     else
       _ -> :not_found

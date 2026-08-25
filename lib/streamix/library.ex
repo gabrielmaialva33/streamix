@@ -142,4 +142,8 @@ defmodule Streamix.Library do
       end
     end)
   end
+
+  # User-library maintenance
+
+  defdelegate cleanup_orphaned_user_data(user_id, opts), to: Streamix.Iptv.Sync
 end

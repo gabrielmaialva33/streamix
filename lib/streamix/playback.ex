@@ -92,4 +92,14 @@ defmodule Streamix.Playback do
 
   defdelegate halt_stream_error(conn, code, opts \\ []), to: StreamErrors, as: :halt
   defdelegate stream_error_code_from_reason(reason), to: StreamErrors, as: :code_from_reason
+
+  # GIndex stream source cache
+
+  defdelegate get_gindex_stream_source(content_type, content_id),
+    to: Streamix.Iptv.Content.GindexStream,
+    as: :get_source
+
+  defdelegate put_gindex_stream_cache(content_type, content_id, source, attrs),
+    to: Streamix.Iptv.Content.GindexStream,
+    as: :put_cache
 end

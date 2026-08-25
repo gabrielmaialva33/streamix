@@ -1,4 +1,6 @@
 defmodule Streamix.Torrent.Catalog do
+  alias Streamix.Catalog, as: MediaCatalog
+
   @moduledoc """
   Read model for the torrent catalog UI.
 
@@ -15,7 +17,6 @@ defmodule Streamix.Torrent.Catalog do
   import Ecto.Query
 
   alias Streamix.Cache
-  alias Streamix.Iptv
   alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Torrent.StatsRefresher
@@ -44,7 +45,7 @@ defmodule Streamix.Torrent.Catalog do
 
   defp do_list_movies(provider, opts) do
     opts = Keyword.put_new(opts, :limit, @default_limit)
-    Iptv.list_torrent_movies(provider.id, opts)
+    MediaCatalog.list_torrent_movies(provider.id, opts)
   end
 
   @doc "Total movie count for the torrent provider (0 when off)."
@@ -60,7 +61,7 @@ defmodule Streamix.Torrent.Catalog do
           {__MODULE__, :movie_count, provider.id, show_adult},
           :timer.minutes(5),
           fn ->
-            Iptv.count_torrent_movies(provider.id, show_adult: show_adult)
+            MediaCatalog.count_torrent_movies(provider.id, show_adult: show_adult)
           end
         )
     end
@@ -102,4 +103,18 @@ defmodule Streamix.Torrent.Catalog do
     )
     |> Repo.one()
   end
+
+  defdelegate upsert_movie(provider_id, attrs), to: MediaCatalog, as: :upsert_torrent_movie
+
+  defdelegate get_movie_for_playback(movie_id),
+    to: MediaCatalog,
+    as: :get_torrent_movie_for_playback
+
+  defdelegate list_movies_for_provider(provider_id, opts),
+    to: MediaCatalog,
+    as: :list_torrent_movies
+
+  defdelegate count_movies_for_provider(provider_id, opts),
+    to: MediaCatalog,
+    as: :count_torrent_movies
 end

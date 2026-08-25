@@ -16,7 +16,6 @@ defmodule Streamix.Gindex.UrlCache do
 
   alias Streamix.Gindex.Client
   alias Streamix.Gindex.SingleFlight
-  alias Streamix.Iptv
 
   require Logger
 
@@ -136,7 +135,7 @@ defmodule Streamix.Gindex.UrlCache do
   end
 
   defp refresh_url(type, id) do
-    with {:ok, source} <- Iptv.get_gindex_stream_source(type, id) do
+    with {:ok, source} <- Streamix.Playback.get_gindex_stream_source(type, id) do
       fetch_and_cache_url(type, id, source)
     end
   end
@@ -160,7 +159,7 @@ defmodule Streamix.Gindex.UrlCache do
   defp persist_url(type, id, url) do
     expires_at = DateTime.utc_now(:second) |> DateTime.add(30, :minute)
 
-    case Iptv.put_gindex_stream_cache(type, id, url, expires_at) do
+    case Streamix.Playback.put_gindex_stream_cache(type, id, url, expires_at) do
       :ok ->
         :ok
 

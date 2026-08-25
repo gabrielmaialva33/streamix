@@ -8,7 +8,16 @@ defmodule Streamix.Catalog do
   callers must not depend on the historical `Streamix.Iptv` facade.
   """
 
-  alias Streamix.Iptv.{Assets, CatalogItem, Channels, ContentRef, Movies, SeriesOps}
+  alias Streamix.Iptv.{
+    Assets,
+    CatalogItem,
+    Channels,
+    Content.TorrentMovies,
+    ContentRef,
+    Movies,
+    SeriesOps
+  }
+
   alias Streamix.Iptv.Catalog, as: CatalogStore
 
   # Home and discovery
@@ -115,4 +124,46 @@ defmodule Streamix.Catalog do
   defdelegate catalog_item_content_icon(item), to: CatalogItem, as: :content_icon
   defdelegate catalog_item_content_name(item), to: CatalogItem, as: :content_name
   defdelegate resolve_catalog_item_id(content_type, content_id), to: ContentRef
+
+  # Torrent-backed catalog records
+
+  defdelegate upsert_torrent_movie(provider_id, attrs), to: TorrentMovies, as: :upsert
+  defdelegate list_torrent_movies(provider_id, opts \\ []), to: TorrentMovies, as: :list
+  defdelegate count_torrent_movies(provider_id, opts \\ []), to: TorrentMovies, as: :count
+
+  defdelegate get_torrent_movie_for_playback(movie_id),
+    to: TorrentMovies,
+    as: :get_for_playback
+
+  # Recommendation and ingestion support
+
+  defdelegate list_channel_recommendation_candidates(user_id, opts),
+    to: Streamix.Iptv.Channels,
+    as: :list_recommendation_candidates
+
+  defdelegate channel_recommendation_category_refs(channels),
+    to: Streamix.Iptv.Channels,
+    as: :recommendation_category_refs
+
+  defdelegate list_movie_genre_names(ids),
+    to: Streamix.Iptv.Movies,
+    as: :list_genre_names_for_ids
+
+  defdelegate get_media_track_source(content_type, content_id),
+    to: Streamix.Iptv.Content.TrackMetadata,
+    as: :get_source
+
+  defdelegate put_media_track_metadata(content_type, content_id, attrs),
+    to: Streamix.Iptv.Content.TrackMetadata,
+    as: :put
+
+  defdelegate upsert_gindex_movies(provider_id, entries, opts),
+    to: Streamix.Iptv.Content.GindexIngest,
+    as: :upsert_movies
+
+  defdelegate upsert_gindex_series(provider_id, entries, opts),
+    to: Streamix.Iptv.Content.GindexIngest,
+    as: :upsert_series
+
+  defdelegate sync_series_details(series), to: Streamix.Iptv.Sync
 end
