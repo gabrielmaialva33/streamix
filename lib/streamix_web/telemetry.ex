@@ -29,6 +29,7 @@ defmodule StreamixWeb.Telemetry do
   # LiveView renders. Seconds-scale metrics get a separate bucket set.
   @latency_buckets_ms [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000]
   @latency_buckets_s [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+  @ratio_buckets [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1]
   @cls_buckets_milli [10, 25, 50, 100, 250, 500, 1_000]
 
   def metrics do
@@ -169,24 +170,29 @@ defmodule StreamixWeb.Telemetry do
         tags: [:qoe_event, :engine, :live],
         description: "Player Quality of Experience lifecycle samples"
       ),
-      summary("streamix.player.qoe.startup_ms",
+      distribution("streamix.player.qoe.startup_ms",
         tags: [:engine, :live],
+        reporter_options: [buckets: @latency_buckets_ms],
         description: "Time from session start to first playback"
       ),
-      summary("streamix.player.qoe.rebuffer_duration_ms",
+      distribution("streamix.player.qoe.rebuffer_duration_ms",
         tags: [:engine, :live],
+        reporter_options: [buckets: @latency_buckets_ms],
         description: "Accumulated player rebuffer duration"
       ),
-      summary("streamix.player.qoe.rebuffer_ratio",
+      distribution("streamix.player.qoe.rebuffer_ratio",
         tags: [:engine, :live],
+        reporter_options: [buckets: @ratio_buckets],
         description: "Ratio of playback window spent rebuffering"
       ),
-      summary("streamix.player.qoe.live_latency",
+      distribution("streamix.player.qoe.live_latency",
         tags: [:engine],
+        reporter_options: [buckets: @latency_buckets_s],
         description: "Observed live playback latency in seconds"
       ),
-      summary("streamix.player.qoe.frame_drop_ratio",
+      distribution("streamix.player.qoe.frame_drop_ratio",
         tags: [:engine],
+        reporter_options: [buckets: @ratio_buckets],
         description: "Ratio of dropped to decoded video frames"
       ),
       counter("streamix.qoe.event.count",

@@ -3,6 +3,13 @@ defmodule StreamixWeb.TelemetryTest do
 
   alias StreamixWeb.Telemetry
 
+  test "uses only metric types supported by the Prometheus reporter" do
+    unsupported_metrics =
+      Enum.filter(Telemetry.metrics(), &(Map.get(&1, :__struct__) == Telemetry.Metrics.Summary))
+
+    assert unsupported_metrics == []
+  end
+
   test "exports callback latency for each LiveView lifecycle stage with a stable view tag" do
     stages = [:mount, :handle_params, :handle_event, :render]
     metrics = Telemetry.metrics()

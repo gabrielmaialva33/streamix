@@ -1,5 +1,6 @@
 defmodule StreamixWeb.PlayerQoeTelemetryTest do
-  use ExUnit.Case, async: true
+  # Telemetry handlers are global and must not observe events from concurrent tests.
+  use ExUnit.Case, async: false
 
   alias StreamixWeb.PlayerQoeTelemetry
 
@@ -89,15 +90,24 @@ defmodule StreamixWeb.PlayerQoeTelemetryTest do
     refute_receive {:telemetry, _, _, _}
   end
 
-  test "telemetry metrics expose the QoE measurements" do
-    names = Enum.map(StreamixWeb.Telemetry.metrics(), & &1.name)
+  test "telemetry metrics expose QoE measurements through Prometheus distributions" do
+    metrics = StreamixWeb.Telemetry.metrics()
+    names = Enum.map(metrics, & &1.name)
 
     assert [:streamix, :player, :qoe, :count] in names
-    assert [:streamix, :player, :qoe, :startup_ms] in names
-    assert [:streamix, :player, :qoe, :rebuffer_duration_ms] in names
-    assert [:streamix, :player, :qoe, :rebuffer_ratio] in names
-    assert [:streamix, :player, :qoe, :live_latency] in names
-    assert [:streamix, :player, :qoe, :frame_drop_ratio] in names
+
+    for measurement <- [
+          :startup_ms,
+          :rebuffer_duration_ms,
+          :rebuffer_ratio,
+          :live_latency,
+          :frame_drop_ratio
+        ] do
+      metric = Enum.find(metrics, &(&1.name == [:streamix, :player, :qoe, measurement]))
+
+      assert %Telemetry.Metrics.Distribution{} = metric
+      assert metric.reporter_options[:buckets] != []
+    end
   end
 
   defp attach(event_name) do
