@@ -34,12 +34,25 @@ function finiteOffset(value) {
   return Number.isFinite(offset) ? offset : 0;
 }
 
+function sameOperationValue(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) {
+    return Object.is(left, right);
+  }
+
+  return (
+    left.length === right.length && left.every((value, index) => Object.is(value, right[index]))
+  );
+}
+
 const OPERATION = Object.freeze({
   AUDIO_TRACK: "audio_track",
   SUBTITLE_TRACK: "subtitle_track",
   SUBTITLE_OFFSET: "subtitle_offset",
   REFRESH_AUDIO: "refresh_audio",
   REFRESH_SUBTITLES: "refresh_subtitles",
+  LOAD_EXTERNAL_SUBTITLE: "load_external_subtitle",
+  LOAD_NATIVE_EXTERNAL_SUBTITLE: "load_native_external_subtitle",
+  RELOAD_NATIVE_EXTERNAL_SUBTITLE: "reload_native_external_subtitle",
 });
 
 export class PlayerTrackController {
@@ -49,24 +62,31 @@ export class PlayerTrackController {
     selectAudioTrack,
     selectSubtitleTrack,
     setSubtitleOffset,
+    loadExternalSubtitle,
+    loadNativeExternalSubtitle,
+    reloadNativeExternalSubtitle,
     onError = null,
   }) {
     this._operations = Object.freeze({
       refreshAudioTracks: requiredCallback(refreshAudioTracks, "refreshAudioTracks"),
-      refreshSubtitleTracks: requiredCallback(
-        refreshSubtitleTracks,
-        "refreshSubtitleTracks",
-      ),
+      refreshSubtitleTracks: requiredCallback(refreshSubtitleTracks, "refreshSubtitleTracks"),
       selectAudioTrack: requiredCallback(selectAudioTrack, "selectAudioTrack"),
-      selectSubtitleTrack: requiredCallback(
-        selectSubtitleTrack,
-        "selectSubtitleTrack",
-      ),
+      selectSubtitleTrack: requiredCallback(selectSubtitleTrack, "selectSubtitleTrack"),
       setSubtitleOffset: requiredCallback(setSubtitleOffset, "setSubtitleOffset"),
+      loadExternalSubtitle: requiredCallback(loadExternalSubtitle, "loadExternalSubtitle"),
+      loadNativeExternalSubtitle: requiredCallback(
+        loadNativeExternalSubtitle,
+        "loadNativeExternalSubtitle",
+      ),
+      reloadNativeExternalSubtitle: requiredCallback(
+        reloadNativeExternalSubtitle,
+        "reloadNativeExternalSubtitle",
+      ),
     });
     this._onError = optionalCallback(onError, "onError");
     this._destroyed = false;
     this._revision = 0;
+    this._operationRevisions = new Map();
     this._desired = {
       audioTrack: null,
       subtitleTrack: null,
@@ -85,17 +105,11 @@ export class PlayerTrackController {
   }
 
   refreshAudioTracks() {
-    return this._runRefresh(
-      OPERATION.REFRESH_AUDIO,
-      this._operations.refreshAudioTracks,
-    );
+    return this._runRefresh(OPERATION.REFRESH_AUDIO, this._operations.refreshAudioTracks);
   }
 
   refreshSubtitleTracks() {
-    return this._runRefresh(
-      OPERATION.REFRESH_SUBTITLES,
-      this._operations.refreshSubtitleTracks,
-    );
+    return this._runRefresh(OPERATION.REFRESH_SUBTITLES, this._operations.refreshSubtitleTracks);
   }
 
   selectAudioTrack(trackIndex) {
@@ -127,6 +141,24 @@ export class PlayerTrackController {
     );
   }
 
+  loadExternalSubtitle(...args) {
+    return this._runCommand(OPERATION.LOAD_EXTERNAL_SUBTITLE, args, (receivedArgs) =>
+      this._operations.loadExternalSubtitle(...receivedArgs),
+    );
+  }
+
+  loadNativeExternalSubtitle(...args) {
+    return this._runCommand(OPERATION.LOAD_NATIVE_EXTERNAL_SUBTITLE, args, (receivedArgs) =>
+      this._operations.loadNativeExternalSubtitle(...receivedArgs),
+    );
+  }
+
+  reloadNativeExternalSubtitle(...args) {
+    return this._runCommand(OPERATION.RELOAD_NATIVE_EXTERNAL_SUBTITLE, args, (receivedArgs) =>
+      this._operations.reloadNativeExternalSubtitle(...receivedArgs),
+    );
+  }
+
   snapshot() {
     return Object.freeze({
       destroyed: this._destroyed,
@@ -139,6 +171,9 @@ export class PlayerTrackController {
         subtitleOffset: this._pending.has(OPERATION.SUBTITLE_OFFSET),
         refreshAudio: this._pending.has(OPERATION.REFRESH_AUDIO),
         refreshSubtitles: this._pending.has(OPERATION.REFRESH_SUBTITLES),
+        loadExternalSubtitle: this._pending.has(OPERATION.LOAD_EXTERNAL_SUBTITLE),
+        loadNativeExternalSubtitle: this._pending.has(OPERATION.LOAD_NATIVE_EXTERNAL_SUBTITLE),
+        reloadNativeExternalSubtitle: this._pending.has(OPERATION.RELOAD_NATIVE_EXTERNAL_SUBTITLE),
       }),
     });
   }
@@ -148,6 +183,7 @@ export class PlayerTrackController {
 
     this._destroyed = true;
     this._revision += 1;
+    this._operationRevisions.clear();
     this._pending.clear();
     return true;
   }
@@ -165,14 +201,25 @@ export class PlayerTrackController {
     if (this._destroyed) return undefined;
 
     const current = this._pending.get(operationName);
-    if (current && Object.is(current.value, value)) return current.result;
+    if (current && sameOperationValue(current.value, value)) return current.result;
 
     this._desired[stateKey] = value;
     return this._run(operationName, operation, value, stateKey);
   }
 
+  _runCommand(operationName, value, operation) {
+    if (this._destroyed) return undefined;
+
+    const current = this._pending.get(operationName);
+    if (current && sameOperationValue(current.value, value)) return current.result;
+
+    return this._run(operationName, () => operation(value), value, null);
+  }
+
   _run(operationName, operation, value, stateKey) {
-    const revision = ++this._revision;
+    this._revision += 1;
+    const revision = (this._operationRevisions.get(operationName) ?? 0) + 1;
+    this._operationRevisions.set(operationName, revision);
     let result;
 
     try {
@@ -183,7 +230,11 @@ export class PlayerTrackController {
     }
 
     if (!isPromiseLike(result)) {
-      if (stateKey != null && !this._destroyed && revision === this._revision) {
+      if (
+        stateKey != null &&
+        !this._destroyed &&
+        this._operationRevisions.get(operationName) === revision
+      ) {
         this._applied[stateKey] = value;
       }
       return result;
@@ -197,7 +248,11 @@ export class PlayerTrackController {
 
     const promise = Promise.resolve(result).then(
       (output) => {
-        if (!this._destroyed && revision === this._revision && stateKey != null) {
+        if (
+          !this._destroyed &&
+          this._operationRevisions.get(operationName) === revision &&
+          stateKey != null
+        ) {
           this._applied[stateKey] = value;
         }
         this._clearPending(operationName, pending);
