@@ -309,6 +309,9 @@ jobs:
       - name: Run player browser gate (${{ matrix.browser }})
         run: bash scripts/test-playwright-docker.sh
 
+      - name: Run MPEG-TS browser gate (${{ matrix.browser }})
+        run: bash scripts/test-mpegts-browser-gate.sh
+
       - name: Run Chromium PWA installability smoke
         if: matrix.browser == 'chromium'
         run: bash scripts/test-pwa-chromium.sh
