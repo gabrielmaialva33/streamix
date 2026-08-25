@@ -18,6 +18,15 @@ playback engine:
 
 It does not own UI state, preferences, LiveView events, or player lifecycle.
 
+### `HlsPlaybackEngine`
+
+`assets/js/player/hls_playback_engine.js` is the sole owner of hls.js audio and
+subtitle state. It exposes discovery and selection through the shared playback
+engine contract, including the active track marker used by `TrackCoordinator`.
+`StreamLoader` may forward those capabilities, but it no longer reads or writes
+`hls.audioTracks`, `hls.audioTrack`, `hls.subtitleTracks`, or
+`hls.subtitleTrack` directly.
+
 ### `PlayerTrackController`
 
 `assets/js/player/player_track_controller.js` is the product command boundary.
@@ -38,21 +47,26 @@ avbridge, h265web, Phoenix, or the player hook.
 ### `VideoPlayer`
 
 `assets/js/hooks/video_player.js` remains the composition root. Public track
-commands delegate to `PlayerTrackController`, while the existing engine-specific
-application methods remain narrow callbacks during the incremental migration:
+commands delegate to `PlayerTrackController`. HLS discovery and selection now
+flow through `PlaybackOrchestrator` → `TrackCoordinator` → `HlsPlaybackEngine`.
+The hook only converts normalized track metadata into product UI/events and
+persists the user preference.
 
-- `applyAudioTrackSelection`;
-- `applySubtitleTrackSelection`;
+The remaining engine-specific application callbacks are:
+
+- `applyAudioTrackSelection` for the transitional AVPlayer branch plus product
+  persistence/events;
+- `applySubtitleTrackSelection` for the transitional native/AVPlayer branches
+  plus product persistence/events;
 - `applySubtitleOffsetSelection`;
-- `refreshAudioTracksLegacy`;
-- `refreshSubtitleTracksLegacy`;
 - `loadExternalSubtitleForAvPlayerLegacy`;
 - `loadNativeExternalSubtitleForSessionLegacy`;
 - `reloadNativeExternalSubtitleLegacy`.
 
-These callback names make the remaining migration surface explicit. New event
-handlers must call the public methods and must not call the legacy application
-methods directly.
+The generic `refreshAudioTracksFromActiveEngine` and
+`refreshSubtitleTracksFromActiveEngine` methods consume only the active engine
+contract. New event handlers must call the public methods and must not access
+hls.js track properties directly.
 
 ## Concurrency rules
 
@@ -76,13 +90,13 @@ their original promise result.
 
 ## Next extraction
 
-The next track slice should move implementation details behind the legacy
-callbacks into focused modules. External subtitle command ownership is already
-centralized; URL acquisition, native `<track>` lifecycle, presentation, and
-preference persistence still remain in the hook. The order should remain:
+The next track slice should move AVPlayer discovery and selection behind an
+AVPlayer engine/adapter capability. After that, native external subtitles can
+move into a focused controller and resolver. The order should remain:
 
 1. preserve behavior with tests;
-2. move URL acquisition and native `<track>` lifecycle;
-3. move presentation and preference persistence;
-4. remove each legacy callback only after all callers use the focused boundary;
-5. repeat Chromium, Firefox, and WebKit gates.
+2. move AVPlayer track discovery/selection behind the engine contract;
+3. move URL acquisition and native `<track>` lifecycle;
+4. move presentation and preference persistence;
+5. remove each legacy callback only after all callers use the focused boundary;
+6. repeat Chromium, Firefox, and WebKit gates.
