@@ -192,10 +192,26 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
       session,
       """
       async () => {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const container = document.querySelector("#video-player-container");
-        const hook = container?.__videoPlayerHook;
-        const track = document.querySelector("#video-element track");
+        const deadline = Date.now() + 8_000;
+        let container;
+        let hook;
+        let track;
+
+        while (Date.now() < deadline) {
+          container = document.querySelector("#video-player-container");
+          hook = container?.__videoPlayerHook;
+          track = document.querySelector("#video-element track");
+
+          if (
+            hook?.playbackSessionId > 0 &&
+            hook?._nativeExternalSubtitleTrack?.isConnected &&
+            track?.isConnected
+          ) {
+            break;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
         const subtitleResponse = await fetch(
           "/api/subtitles/#{@imdb_id}?lang=pt-BR&offset_ms=500"
         );
@@ -222,7 +238,7 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
         };
       }
       """,
-      [is_function: true],
+      [is_function: true, timeout: 12_000],
       fn state ->
         assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
         assert state["subtitleLang"] == "pt-BR"

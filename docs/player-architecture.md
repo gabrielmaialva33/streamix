@@ -1,5 +1,24 @@
 # Player architecture
 
+## Presentation ownership
+
+`PlayerUI` is the low-level DOM renderer. `PlayerUiController` is the presentation
+boundary used by the `VideoPlayer` hook for playback state that affects the
+visible player chrome:
+
+- time and progress;
+- buffered ranges and buffer health;
+- loading, recovery, and terminal errors;
+- play/pause state;
+- playback speed;
+- fullscreen state;
+- Picture-in-Picture availability and state;
+- control visibility and native-controls mode.
+
+The hook supplies state and callbacks, but it must not call those `PlayerUI`
+rendering methods directly. Quality, audio, and subtitle option lists remain a
+separate incremental migration because they also coordinate track selection.
+
 The Streamix player separates browser integration, playback engines, recovery,
 selection policy, and product fallbacks. The goal is to keep transport-specific
 state out of the Phoenix hook while preserving a single user-facing player.
@@ -157,6 +176,45 @@ Diagnostic payloads are treated as a security boundary:
 
 Startup probes, error suggestions, and debug reports must be added through this
 controller rather than implemented directly in `video_player.js`.
+
+## Presentation coordination
+
+`PlayerUI` remains the DOM renderer for the player. It owns element lookup,
+class and attribute updates, loading timers, progress rendering, menus, and
+control animations.
+
+`PlayerUiController` is the presentation boundary used by the hook. It owns the
+coordination of state that spans multiple `PlayerUI` operations:
+
+- time, progress, buffered range, and Media Session position updates;
+- loading, recovery, and terminal-error presentation;
+- play/pause, playback-speed, and fullscreen visual state;
+- custom-control visibility and auto-hide policy;
+- retry-action binding without exposing cached DOM elements to the hook;
+- Picture-in-Picture availability, active state, and bounded telemetry;
+- presentation teardown.
+
+The dependency direction is:
+
+```text
+VideoPlayer hook
+    -> PlayerUiController
+        -> PlayerUI
+            -> DOM
+```
+
+`NativeBufferingController` and `mobile_controls.js` receive
+`PlayerUiController`, not the raw DOM renderer, so buffering and input events
+cannot bypass the presentation boundary.
+
+The hook may still use `PlayerUI` directly for isolated menus and labels such as
+quality, audio, subtitles, and notices. Coordinated loading, error, time,
+buffer, controls, play/pause, playback speed, fullscreen, retry actions, and PiP
+state must not be written directly from `video_player.js`.
+
+`PlayerUiController` must remain independent from Phoenix, LiveView, concrete
+playback engines, source selection, networking, and recovery policy. Optional
+PiP telemetry failures are contained and never become playback failures.
 
 ## Browser gates
 
