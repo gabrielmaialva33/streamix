@@ -1,5 +1,6 @@
 defmodule StreamixWeb.PlayerLifecycleHandlersTest do
-  use ExUnit.Case, async: true
+  # Telemetry handlers are global and must not observe events from concurrent tests.
+  use ExUnit.Case, async: false
 
   alias StreamixWeb.PlayerLive
   alias StreamixWeb.WatchPartyLive.Show

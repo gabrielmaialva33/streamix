@@ -165,6 +165,27 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
       Object.defineProperty(navigator, "platform", {value: "iPhone", configurable: true});
       Object.defineProperty(navigator, "maxTouchPoints", {value: 5, configurable: true});
 
+      // Spoofing an iPhone user agent does not change the host browser's
+      // MediaCapabilities implementation. Keep this native-playback scenario
+      // deterministic across Chromium, Firefox, and WebKit.
+      const decodingInfo = async () => ({
+        supported: true,
+        smooth: true,
+        powerEfficient: true
+      });
+
+      if (navigator.mediaCapabilities) {
+        Object.defineProperty(navigator.mediaCapabilities, "decodingInfo", {
+          value: decodingInfo,
+          configurable: true
+        });
+      } else {
+        Object.defineProperty(navigator, "mediaCapabilities", {
+          value: {decodingInfo},
+          configurable: true
+        });
+      }
+
       const probe = window.__streamixPlayerProbe = {
         events: [],
         playCalls: 0,
@@ -318,6 +339,9 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           const avMount = document.querySelector("#avplayer-mount");
           const probe = window.__streamixPlayerProbe || {};
           const hook = container && container.__videoPlayerHook;
+          const orchestratorSnapshot = hook && hook.playbackOrchestrator
+            ? hook.playbackOrchestrator.snapshot()
+            : null;
 
           return {
             currentTime: video ? video.currentTime : 0,
@@ -338,12 +362,14 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             streamType: hook ? String(hook.currentStreamType || "") : null,
             currentUrlPresent: Boolean(hook && hook.currentUrl),
             mediaEngineId: hook && hook.mediaElementEngine ? String(hook.mediaElementEngine.id || "") : null,
-            registryPresent: Boolean(hook && hook.engineRegistry),
+            activeEngineId: orchestratorSnapshot ? orchestratorSnapshot.engineId : null,
+            orchestratorPresent: Boolean(orchestratorSnapshot),
             usingAVPlayer: hook ? Boolean(hook.usingAVPlayer) : false,
             usingAvbridge: hook ? Boolean(hook.usingAvbridge) : false,
             usingH265web: hook ? Boolean(hook.usingH265web) : false,
             streamLoaderPresent: Boolean(hook && hook.streamLoader),
-            playerState: hook && hook.playbackStateObserver ? String(hook.playbackStateObserver.state || "") : null,
+            playerState: orchestratorSnapshot ? orchestratorSnapshot.lifecycle.state : null,
+            mediaCapability: hook ? hook.mediaCapabilityProfile : null,
             events: probe.events || [],
             playCalls: probe.playCalls || 0
           };
