@@ -1,4 +1,6 @@
 defmodule Streamix.Iptv.Streaming.LiveProxy do
+  alias Streamix.Iptv.Streaming.ResponsePolicy
+
   @moduledoc """
   Plug adapter for `StreamMultiplexer` live subscriptions.
 
@@ -89,6 +91,8 @@ defmodule Streamix.Iptv.Streaming.LiveProxy do
   end
 
   defp send_live_headers(conn, status, headers) do
+    conn = ResponsePolicy.put_live(conn)
+
     conn =
       Enum.reduce(headers, conn, fn {name, value}, conn ->
         normalized_name = String.downcase(name)

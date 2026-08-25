@@ -1,4 +1,5 @@
 defmodule Streamix.Iptv.Streaming.VodProxy.Headers do
+  alias Streamix.Iptv.Streaming.ResponsePolicy
   @moduledoc false
 
   alias Plug.Conn
@@ -45,7 +46,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy.Headers do
     conn
     |> copy_response(upstream_headers, [])
     |> ensure_accept_ranges()
-    |> Conn.put_resp_header("cache-control", "no-cache, no-store")
     |> put_cors()
     |> Conn.send_resp(status, "")
   end
@@ -58,7 +58,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy.Headers do
     conn
     |> copy_response(upstream_headers, skip)
     |> ensure_accept_ranges()
-    |> Conn.put_resp_header("cache-control", "no-cache, no-store")
     |> put_cors()
     |> Conn.send_chunked(status)
   end
@@ -81,13 +80,6 @@ defmodule Streamix.Iptv.Streaming.VodProxy.Headers do
   end
 
   defp put_cors(conn) do
-    conn
-    |> Conn.put_resp_header("access-control-allow-origin", "*")
-    |> Conn.put_resp_header("access-control-allow-methods", "GET, HEAD, OPTIONS")
-    |> Conn.put_resp_header("access-control-allow-headers", "Range, Accept-Encoding")
-    |> Conn.put_resp_header(
-      "access-control-expose-headers",
-      "Content-Length, Content-Range, Accept-Ranges"
-    )
+    ResponsePolicy.put_vod(conn)
   end
 end

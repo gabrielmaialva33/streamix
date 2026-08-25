@@ -55,7 +55,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy.HeadersTest do
     assert get_resp_header(response, "content-length") == ["1234"]
     assert get_resp_header(response, "etag") == ["stream-v1"]
     assert get_resp_header(response, "accept-ranges") == ["bytes"]
-    assert get_resp_header(response, "cache-control") == ["no-cache, no-store"]
+    assert get_resp_header(response, "cache-control") == ["private, no-store"]
     assert get_resp_header(response, "access-control-allow-origin") == ["*"]
     assert get_resp_header(response, "set-cookie") == []
   end
