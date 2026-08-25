@@ -246,7 +246,7 @@ export class StreamLoader {
     }
   }
 
-  _bindHlsListeners(hls, Hls, token, sessionId, lowLatencyTarget) {
+  _bindHlsListeners(hls, hlsEngine, Hls, token, sessionId, lowLatencyTarget) {
     hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
       if (!this._isHlsLoadCurrent(token)) return;
       if (data.frag.stats.loaded && data.frag.stats.loading.end) {
@@ -272,13 +272,13 @@ export class StreamLoader {
     });
 
     hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
-      if (this._isHlsLoadCurrent(token)) this.onAudioTracksUpdated(hls.audioTracks, sessionId);
+      if (!this._isHlsLoadCurrent(token)) return;
+      this.onAudioTracksUpdated(hlsEngine.getAudioTracks?.() ?? [], sessionId);
     });
 
     hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
-      if (this._isHlsLoadCurrent(token)) {
-        this.onSubtitleTracksUpdated(hls.subtitleTracks, sessionId);
-      }
+      if (!this._isHlsLoadCurrent(token)) return;
+      this.onSubtitleTracksUpdated(hlsEngine.getSubtitleTracks?.() ?? [], sessionId);
     });
 
     hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -353,7 +353,7 @@ export class StreamLoader {
       resetSourceOnDestroy: false,
     });
 
-    this._bindHlsListeners(hls, Hls, token, sessionId, lowLatencyTarget);
+    this._bindHlsListeners(hls, hlsEngine, Hls, token, sessionId, lowLatencyTarget);
     this._assertHlsLoadCurrent(token, hls);
     this.hls = hls;
     this.hlsEngine = hlsEngine;
@@ -533,18 +533,14 @@ export class StreamLoader {
    * Set audio track (HLS only)
    */
   setAudioTrack(trackIndex) {
-    if (this.hls) {
-      this.hls.audioTrack = trackIndex;
-    }
+    return this.hlsEngine?.selectAudioTrack?.(trackIndex) ?? false;
   }
 
   /**
    * Set subtitle track (HLS only)
    */
   setSubtitleTrack(trackIndex) {
-    if (this.hls) {
-      this.hls.subtitleTrack = trackIndex;
-    }
+    return this.hlsEngine?.selectSubtitleTrack?.(trackIndex) ?? false;
   }
 
   /**
