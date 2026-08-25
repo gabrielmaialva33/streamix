@@ -369,8 +369,8 @@ const VideoPlayer = {
       updateMediaSessionPosition: () => this.updateMediaSessionPosition(),
     });
     this.playerTrackController = createPlayerTrackController({
-      refreshAudioTracks: () => this.refreshAudioTracksLegacy(),
-      refreshSubtitleTracks: () => this.refreshSubtitleTracksLegacy(),
+      refreshAudioTracks: () => this.refreshAudioTracksFromActiveEngine(),
+      refreshSubtitleTracks: () => this.refreshSubtitleTracksFromActiveEngine(),
       selectAudioTrack: (trackIndex) => this.applyAudioTrackSelection(trackIndex),
       selectSubtitleTrack: (trackIndex) => this.applySubtitleTrackSelection(trackIndex),
       setSubtitleOffset: (offsetMs) => this.applySubtitleOffsetSelection(offsetMs),
@@ -544,8 +544,10 @@ const VideoPlayer = {
       return;
     }
 
-    if (this.streamLoader) {
-      this.streamLoader.setAudioTrack(trackIndex);
+    if (this.playbackOrchestrator) {
+      this.playbackOrchestrator.selectAudioTrack(trackIndex);
+    } else {
+      this.streamLoader?.setAudioTrack(trackIndex);
     }
     this.selectedAudioTrack = trackIndex;
 
@@ -564,22 +566,22 @@ const VideoPlayer = {
       return this.playerTrackController.refreshAudioTracks();
     }
 
-    return this.refreshAudioTracksLegacy();
+    return this.refreshAudioTracksFromActiveEngine();
   },
 
-  refreshAudioTracksLegacy() {
-    const hls = this.streamLoader?.getHls();
-    if (!hls) return;
+  refreshAudioTracksFromActiveEngine() {
+    const trackSnapshot = this.playbackOrchestrator?.trackSnapshot();
+    if (!trackSnapshot) return;
 
-    this.audioTracks = hls.audioTracks.map((track, index) => ({
-      index,
+    this.audioTracks = trackSnapshot.audioTracks.map((track) => ({
+      index: track.index,
       id: track.id,
-      name: track.name,
-      lang: track.lang,
-      label: track.name || track.lang || `Audio ${index + 1}`,
+      name: track.raw?.name ?? track.label,
+      lang: track.language,
+      label: track.label,
     }));
 
-    const currentTrack = hls.audioTrack;
+    const currentTrack = trackSnapshot.audioTracks.find((track) => track.active)?.index ?? -1;
 
     this.playerUI.updateAudioOptions(this.audioTracks, currentTrack, (track) =>
       this.setAudioTrack(track),
@@ -609,8 +611,10 @@ const VideoPlayer = {
   },
 
   applySubtitleTrackSelection(trackIndex) {
-    if (this.streamLoader) {
-      this.streamLoader.setSubtitleTrack(trackIndex);
+    if (this.playbackOrchestrator) {
+      this.playbackOrchestrator.selectSubtitleTrack(trackIndex);
+    } else {
+      this.streamLoader?.setSubtitleTrack(trackIndex);
     }
     if (this._nativeExternalSubtitleTrack?.track) {
       this._nativeExternalSubtitleTrack.track.mode = trackIndex === -1 ? "disabled" : "showing";
@@ -724,22 +728,22 @@ const VideoPlayer = {
       return this.playerTrackController.refreshSubtitleTracks();
     }
 
-    return this.refreshSubtitleTracksLegacy();
+    return this.refreshSubtitleTracksFromActiveEngine();
   },
 
-  refreshSubtitleTracksLegacy() {
-    const hls = this.streamLoader?.getHls();
-    if (!hls) return;
+  refreshSubtitleTracksFromActiveEngine() {
+    const trackSnapshot = this.playbackOrchestrator?.trackSnapshot();
+    if (!trackSnapshot) return;
 
-    this.subtitleTracks = hls.subtitleTracks.map((track, index) => ({
-      index,
+    this.subtitleTracks = trackSnapshot.subtitleTracks.map((track) => ({
+      index: track.index,
       id: track.id,
-      name: track.name,
-      lang: track.lang,
-      label: track.name || track.lang || `Legenda ${index + 1}`,
+      name: track.raw?.name ?? track.label,
+      lang: track.language,
+      label: track.label,
     }));
 
-    const currentTrack = hls.subtitleTrack;
+    const currentTrack = trackSnapshot.subtitleTracks.find((track) => track.active)?.index ?? -1;
 
     this.playerUI.updateSubtitleOptions(this.subtitleTracks, currentTrack, (track) =>
       this.setSubtitleTrack(track),
@@ -800,6 +804,18 @@ const VideoPlayer = {
     if (this.usingAvbridge && this.avbridge) return this.avbridge;
     if (this.usingH265web && this.h265web) return this.h265web;
     return this.mediaElementEngine;
+  },
+
+  activateHlsEngineFromLoader(sessionId = this.playbackSessionId, loader = this.streamLoader) {
+    if (!this.isCurrentPlaybackSession(sessionId) || !loader || this.streamLoader !== loader) {
+      return null;
+    }
+
+    const hlsEngine = loader.getHlsEngine?.();
+    if (!hlsEngine || hlsEngine.destroyed) return null;
+
+    this.hls = hlsEngine.client;
+    return this.setMediaElementEngine(ENGINE_ID.HLS, hlsEngine);
   },
 
   setMediaElementEngine(engineId, engineOverride = null) {
@@ -2101,6 +2117,7 @@ const VideoPlayer = {
       sessionId: this.playbackSessionId,
       onManifestParsed: (data, sessionId) => {
         if (!this.isCurrentPlaybackSession(sessionId)) return;
+        if (!this.activateHlsEngineFromLoader(sessionId)) return;
 
         log.info("Manifest parsed, levels:", data.levels.length);
         this.playerUIController.hideLoading();
@@ -2141,10 +2158,14 @@ const VideoPlayer = {
         }
       },
       onAudioTracksUpdated: (_tracks, sessionId) => {
-        if (this.isCurrentPlaybackSession(sessionId)) this.updateAudioTracks();
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+        if (!this.activateHlsEngineFromLoader(sessionId)) return;
+        this.updateAudioTracks();
       },
       onSubtitleTracksUpdated: (_tracks, sessionId) => {
-        if (this.isCurrentPlaybackSession(sessionId)) this.updateSubtitleTracks();
+        if (!this.isCurrentPlaybackSession(sessionId)) return;
+        if (!this.activateHlsEngineFromLoader(sessionId)) return;
+        this.updateSubtitleTracks();
       },
       onFragLoaded: (bandwidth, sessionId) => {
         if (!this.isCurrentPlaybackSession(sessionId)) return;
@@ -2502,11 +2523,10 @@ const VideoPlayer = {
     });
     if (result.status === "cancelled" || result.status === "stale") return;
     if (result.status === "loaded") {
-      const hlsEngine = this.streamLoader.getHlsEngine();
-      if (!hlsEngine) throw new Error("HLS engine was not registered by StreamLoader");
-
       this.hls = result.engine;
-      this.setMediaElementEngine(ENGINE_ID.HLS, hlsEngine);
+      if (!this.activateHlsEngineFromLoader(sessionId, loader)) {
+        throw new Error("HLS engine was not registered by StreamLoader");
+      }
       return;
     }
 
