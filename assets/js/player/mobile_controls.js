@@ -11,7 +11,7 @@ export function createMobileControls({
   root,
   controls,
   video,
-  playerUI,
+  presentation,
   shouldUseNativeControls,
   toggleFullscreen,
   environment = {
@@ -38,32 +38,25 @@ export function createMobileControls({
     if (currentTime - lastTapTime < 300) {
       toggleFullscreen();
     } else {
-      playerUI.toggleControlsVisibility();
+      presentation.toggleControlsVisibility();
     }
 
     lastTapTime = currentTime;
   };
 
-  const onTouchStart = () => playerUI.clearHideControlsTimeout();
-  const onTouchEnd = () => playerUI.scheduleHideControls();
+  const onTouchStart = () => presentation.cancelControlsAutoHide();
+  const onTouchEnd = () => presentation.scheduleControlsAutoHide();
   const onMouseMove = () => {
-    if (!isTouchDevice) {
-      playerUI.showControls();
-      playerUI.scheduleHideControls();
-    }
+    if (!isTouchDevice) presentation.revealControls();
   };
-  const onPlay = () => playerUI.scheduleHideControls();
-  const onPause = () => {
-    playerUI.showControls();
-    playerUI.clearHideControlsTimeout();
-  };
+  const onPlay = () => presentation.scheduleControlsAutoHide();
+  const onPause = () => presentation.keepControlsVisible();
 
   if (isTouchDevice) {
     root.addEventListener("click", onPlayerClick);
     controls.addEventListener("touchstart", onTouchStart, { passive: true });
     controls.addEventListener("touchend", onTouchEnd, { passive: true });
-    playerUI.showControls();
-    playerUI.scheduleHideControls();
+    presentation.revealControls();
   }
 
   root.addEventListener("mousemove", onMouseMove);

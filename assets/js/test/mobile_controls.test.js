@@ -19,10 +19,11 @@ test("routes touch taps and removes every listener on destroy", () => {
     root,
     controls,
     video,
-    playerUI: {
-      clearHideControlsTimeout: () => calls.push("clear"),
-      scheduleHideControls: () => calls.push("schedule"),
-      showControls: () => calls.push("show"),
+    presentation: {
+      cancelControlsAutoHide: () => calls.push("cancel-auto-hide"),
+      keepControlsVisible: () => calls.push("keep-visible"),
+      revealControls: () => calls.push("reveal"),
+      scheduleControlsAutoHide: () => calls.push("schedule-auto-hide"),
       toggleControlsVisibility: () => calls.push("toggle-controls"),
     },
     shouldUseNativeControls: () => false,
@@ -39,11 +40,11 @@ test("routes touch taps and removes every listener on destroy", () => {
   root.dispatchEvent(new Event("click", { cancelable: true }));
   video.dispatchEvent(new Event("pause"));
 
-  assert.deepEqual(calls, ["show", "schedule", "toggle-controls", "fullscreen", "show", "clear"]);
+  assert.deepEqual(calls, ["reveal", "toggle-controls", "fullscreen", "keep-visible"]);
 
   controller.destroy();
   root.dispatchEvent(new Event("click"));
   video.dispatchEvent(new Event("play"));
 
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 4);
 });
