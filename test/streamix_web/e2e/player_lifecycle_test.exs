@@ -333,6 +333,17 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
             avChildren: avMount ? avMount.childElementCount : -1,
             nativeTouchControls: hook ? hook.nativeTouchControls : false,
             sessionId: hook ? hook.playbackSessionId : 0,
+            destroyed: hook ? Boolean(hook._destroyed) : null,
+            sourceType: hook ? String(hook.sourceType || "") : null,
+            streamType: hook ? String(hook.currentStreamType || "") : null,
+            currentUrlPresent: Boolean(hook && hook.currentUrl),
+            mediaEngineId: hook && hook.mediaElementEngine ? String(hook.mediaElementEngine.id || "") : null,
+            registryPresent: Boolean(hook && hook.engineRegistry),
+            usingAVPlayer: hook ? Boolean(hook.usingAVPlayer) : false,
+            usingAvbridge: hook ? Boolean(hook.usingAvbridge) : false,
+            usingH265web: hook ? Boolean(hook.usingH265web) : false,
+            streamLoaderPresent: Boolean(hook && hook.streamLoader),
+            playerState: hook && hook.playbackStateObserver ? String(hook.playbackStateObserver.state || "") : null,
             events: probe.events || [],
             playCalls: probe.playCalls || 0
           };
