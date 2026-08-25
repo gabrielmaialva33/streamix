@@ -44,6 +44,13 @@ function hlsDouble(overrides = {}) {
     currentLevel: 2,
     loadLevel: 3,
     autoLevelEnabled: true,
+    audioTrack: 1,
+    subtitleTrack: -1,
+    audioTracks: [
+      { id: "en", name: "English", lang: "en" },
+      { id: "pt", name: "Português", lang: "pt-BR" },
+    ],
+    subtitleTracks: [{ id: "pt", name: "Português", lang: "pt-BR" }],
     bandwidthEstimate: 4_500_000,
     latency: 2.4,
     targetLatency: 3,
@@ -132,6 +139,31 @@ test("implements the shared playback controls through the media element", async 
   assert.equal(engine.setVolume(2), 1);
 });
 
+test("owns HLS audio and subtitle discovery and selection", () => {
+  const hls = hlsDouble();
+  const engine = createHlsPlaybackEngine({ video: videoDouble(), hls });
+
+  const audioTracks = engine.getAudioTracks();
+  const subtitleTracks = engine.getSubtitleTracks();
+
+  assert.equal(Object.isFrozen(audioTracks), true);
+  assert.equal(Object.isFrozen(audioTracks[0]), true);
+  assert.equal(audioTracks[0].active, false);
+  assert.equal(audioTracks[1].active, true);
+  assert.equal(audioTracks[1].selected, true);
+  assert.equal(subtitleTracks[0].active, false);
+
+  assert.equal(engine.selectAudioTrack(0), 0);
+  assert.equal(hls.audioTrack, 0);
+  assert.equal(engine.selectSubtitleTrack(0), 0);
+  assert.equal(hls.subtitleTrack, 0);
+  assert.equal(engine.selectAudioTrack("invalid"), false);
+  assert.equal(engine.selectAudioTrack(null), false);
+  assert.equal(engine.selectSubtitleTrack(""), false);
+  assert.equal(hls.audioTrack, 0);
+  assert.equal(hls.subtitleTrack, 0);
+});
+
 test("exposes HLS diagnostics in an immutable snapshot", () => {
   const engine = createHlsPlaybackEngine({
     video: videoDouble({ currentTime: 9, duration: 90, paused: false }),
@@ -175,7 +207,10 @@ test("forwards hls.js events and reports optional capabilities", () => {
   const capabilities = playbackEngineCapabilities(engine);
   assert.equal(capabilities.snapshot, true);
   assert.equal(capabilities.setVolume, true);
-  assert.equal(capabilities.getAudioTracks, false);
+  assert.equal(capabilities.getAudioTracks, true);
+  assert.equal(capabilities.getSubtitleTracks, true);
+  assert.equal(capabilities.selectAudioTrack, true);
+  assert.equal(capabilities.selectSubtitleTrack, true);
 });
 
 test("destroys the hls.js client once without resetting the shared source by default", () => {

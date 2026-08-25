@@ -47,8 +47,9 @@ test("StreamLoader owns HLS transport while VideoPlayer borrows its engine contr
   assert.match(loader, /hlsEngine\.load\(url\)/);
   assert.match(loader, /this\.hlsEngine\.reload\(url\)/);
 
-  assert.match(hook, /const hlsEngine = this\.streamLoader\.getHlsEngine\(\)/);
-  assert.match(hook, /this\.setMediaElementEngine\(ENGINE_ID\.HLS, hlsEngine\)/);
+  assert.match(hook, /activateHlsEngineFromLoader\(/);
+  assert.match(hook, /const hlsEngine = loader\.getHlsEngine\?\.\(\)/);
+  assert.match(hook, /return this\.setMediaElementEngine\(ENGINE_ID\.HLS, hlsEngine\)/);
   assert.match(hook, /ownsEngine: engineOverride == null/);
   assert.doesNotMatch(hook, /new Hls\(/);
 });

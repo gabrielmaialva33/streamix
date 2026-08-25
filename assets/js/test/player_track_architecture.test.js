@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const controllerUrl = new URL("../player/player_track_controller.js", import.meta.url);
+const hlsEngineUrl = new URL("../player/hls_playback_engine.js", import.meta.url);
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
+const streamLoaderUrl = new URL("../media/stream_loader.js", import.meta.url);
 
 async function source(url) {
   return readFile(url, "utf8");
@@ -17,7 +19,30 @@ test("PlayerTrackController remains independent of engines, Phoenix, and the hoo
   assert.doesNotMatch(controller, /document\.|window\.|querySelector/);
 });
 
-test("VideoPlayer creates one track controller with narrow legacy boundaries", async () => {
+test("HLS track state stays behind the playback engine contract", async () => {
+  const [hlsEngine, hook, streamLoader] = await Promise.all([
+    source(hlsEngineUrl),
+    source(hookUrl),
+    source(streamLoaderUrl),
+  ]);
+
+  assert.doesNotMatch(hook, /\bhls\.(audioTracks|audioTrack|subtitleTracks|subtitleTrack)\b/);
+  assert.doesNotMatch(
+    streamLoader,
+    /this\.hls\.(audioTracks|audioTrack|subtitleTracks|subtitleTrack)\b/,
+  );
+  assert.match(hlsEngine, /getAudioTracks\(\)/);
+  assert.match(hlsEngine, /getSubtitleTracks\(\)/);
+  assert.match(hlsEngine, /selectAudioTrack\(trackIndex\)/);
+  assert.match(hlsEngine, /selectSubtitleTrack\(trackIndex\)/);
+  assert.match(streamLoader, /this\.hlsEngine\?\.selectAudioTrack\?\.\(trackIndex\)/);
+  assert.match(streamLoader, /this\.hlsEngine\?\.selectSubtitleTrack\?\.\(trackIndex\)/);
+  assert.match(hook, /this\.playbackOrchestrator\.selectAudioTrack\(trackIndex\)/);
+  assert.match(hook, /this\.playbackOrchestrator\.selectSubtitleTrack\(trackIndex\)/);
+  assert.match(hook, /this\.playbackOrchestrator\?\.trackSnapshot\(\)/);
+});
+
+test("VideoPlayer creates one track controller with narrow composition boundaries", async () => {
   const hook = await source(hookUrl);
 
   assert.match(
@@ -25,8 +50,11 @@ test("VideoPlayer creates one track controller with narrow legacy boundaries", a
     /import \{ createPlayerTrackController \} from "\.\.\/player\/player_track_controller\.js";/,
   );
   assert.match(hook, /this\.playerTrackController = createPlayerTrackController\(\{/);
-  assert.match(hook, /refreshAudioTracks: \(\) => this\.refreshAudioTracksLegacy\(\)/);
-  assert.match(hook, /refreshSubtitleTracks: \(\) => this\.refreshSubtitleTracksLegacy\(\)/);
+  assert.match(hook, /refreshAudioTracks: \(\) => this\.refreshAudioTracksFromActiveEngine\(\)/);
+  assert.match(
+    hook,
+    /refreshSubtitleTracks: \(\) => this\.refreshSubtitleTracksFromActiveEngine\(\)/,
+  );
   assert.match(
     hook,
     /selectAudioTrack: \(trackIndex\) => this\.applyAudioTrackSelection\(trackIndex\)/,

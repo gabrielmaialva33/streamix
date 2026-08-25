@@ -48,12 +48,16 @@ function videoDouble() {
 test("StreamLoader owns the HLS engine lifecycle and exposes it to the hook", async () => {
   const rawCalls = [];
   const engineCalls = [];
+  const audioUpdates = [];
+  const subtitleUpdates = [];
   const Hls = fakeHlsClass(rawCalls);
   let engine;
 
   const loader = new StreamLoader({
     video: videoDouble(),
     getHls: async () => Hls,
+    onAudioTracksUpdated: (tracks, sessionId) => audioUpdates.push([tracks, sessionId]),
+    onSubtitleTracksUpdated: (tracks, sessionId) => subtitleUpdates.push([tracks, sessionId]),
     createHlsPlaybackEngine({ hls, video, resetSourceOnDestroy }) {
       engine = {
         client: hls,
@@ -64,6 +68,20 @@ test("StreamLoader owns the HLS engine lifecycle and exposes it to the hook", as
         reload(url) {
           engineCalls.push(["reload", url]);
           return hls;
+        },
+        getAudioTracks() {
+          return [{ id: "pt", index: 0, active: true }];
+        },
+        getSubtitleTracks() {
+          return [{ id: "pt", index: 0, active: false }];
+        },
+        selectAudioTrack(trackIndex) {
+          engineCalls.push(["select-audio", trackIndex]);
+          return trackIndex;
+        },
+        selectSubtitleTrack(trackIndex) {
+          engineCalls.push(["select-subtitle", trackIndex]);
+          return trackIndex;
         },
         destroy() {
           engineCalls.push(["destroy", resetSourceOnDestroy]);
@@ -81,8 +99,19 @@ test("StreamLoader owns the HLS engine lifecycle and exposes it to the hook", as
   assert.equal(loader.getHlsEngine(), engine);
   assert.deepEqual(engineCalls, [["load", "https://example.test/one.m3u8", loader.video]]);
 
+  rawHls.handlers.get(EVENTS.AUDIO_TRACKS_UPDATED)();
+  rawHls.handlers.get(EVENTS.SUBTITLE_TRACKS_UPDATED)();
+  assert.deepEqual(audioUpdates, [[[{ id: "pt", index: 0, active: true }], 0]]);
+  assert.deepEqual(subtitleUpdates, [[[{ id: "pt", index: 0, active: false }], 0]]);
+
   assert.equal(await loader.loadHlsSoft("https://example.test/two.m3u8"), rawHls);
   assert.deepEqual(engineCalls.at(-1), ["reload", "https://example.test/two.m3u8"]);
+  assert.equal(loader.setAudioTrack(1), 1);
+  assert.equal(loader.setSubtitleTrack(-1), -1);
+  assert.deepEqual(engineCalls.slice(-2), [
+    ["select-audio", 1],
+    ["select-subtitle", -1],
+  ]);
 
   loader.destroy();
 
