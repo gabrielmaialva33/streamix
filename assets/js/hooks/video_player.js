@@ -2208,7 +2208,7 @@ const VideoPlayer = {
     return this.streamLoader;
   },
 
-  initPlayer() {
+  initPlayer({ sessionId: providedSessionId = null } = {}) {
     this._terminalPlaybackError = false;
 
     if (!this.streamUrl) {
@@ -2239,7 +2239,7 @@ const VideoPlayer = {
 
     this.flushPlaybackMetrics("restarted");
     this.cleanup();
-    const sessionId = this.beginPlaybackSession();
+    const sessionId = providedSessionId ?? this.beginPlaybackSession();
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
     this.observePlaybackState(PLAYBACK_STATE.LOADING, "source_loading", {
       session_id: sessionId,
@@ -2304,7 +2304,7 @@ const VideoPlayer = {
         break;
       case "avplayer":
         log.debug("Using AVPlayer (engine_selector decision)");
-        this.tryAVPlayerFallback();
+        void this.startWithAVPlayer(sessionId);
         break;
       case "native":
         log.debug("Using native playback (engine_selector decision)");
@@ -3027,50 +3027,47 @@ const VideoPlayer = {
     resumeTime = 0,
     skipTeardown = false,
   }) {
-    if (this._avPlayerFailureSessionId === sessionId && this._avPlayerFailurePromise) {
-      return this._avPlayerFailurePromise;
-    }
-
     if (!this.isCurrentPlaybackSession(sessionId)) return Promise.resolve(false);
 
-    this._avPlayerFailureSessionId = sessionId;
-    const transition = (async () => {
-      log.error("[VideoPlayer] AVPlayer failed, returning to native playback:", error);
-      this.playbackMetrics?.recordError();
+    return this.playbackEngineTransitionController.recover({
+      key: "avplayer-to-native-recovery",
+      sourceSessionId: sessionId,
+      engine: skipTeardown ? null : avPlayer,
+      capture: () => ({
+        error,
+        resumeTime: resolvePlaybackResumeTime(avPlayer, resumeTime),
+      }),
+      prepare: ({ capture }) => {
+        log.error("[VideoPlayer] AVPlayer failed, returning to native playback:", error);
+        this.playbackMetrics?.recordError();
 
-      const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
-      if (contentKey) forgetRecommendedPlayer(contentKey);
-      const failureResumeTime = resolvePlaybackResumeTime(avPlayer, resumeTime);
-      if (this.contentType === "vod" && failureResumeTime > 0) {
-        this._savedPosition = { time: failureResumeTime };
-      }
-
-      let transitionSessionId;
-      if (skipTeardown) {
+        const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+        if (contentKey) forgetRecommendedPlayer(contentKey);
+        if (this.contentType === "vod" && capture.resumeTime > 0) {
+          this._savedPosition = { time: capture.resumeTime };
+        }
+      },
+      releasePrevious: () => {
         this.stopAVPlayerTimeUpdates();
         if (!avPlayer || this.avPlayer === avPlayer) this.avPlayer = null;
         this.playbackOrchestrator?.releaseEngine(ENGINE_ID.AVPLAYER);
-        transitionSessionId = this.beginPlaybackSession();
+      },
+      restoreNative: () => this.restoreNativePlayerPresentation(),
+      activateNative: ({ sessionId: nativeSessionId }) => {
+        if (this._destroyed || !this.isCurrentPlaybackSession(nativeSessionId)) return false;
+        this.initPlayer({ sessionId: nativeSessionId });
+        return true;
+      },
+      complete: () => true,
+      onFailure: (recoveryError, context) => {
+        log.error("[VideoPlayer] Failed to restore native playback:", recoveryError);
         this.restoreNativePlayerPresentation();
-      } else {
-        transitionSessionId = await this.revertToNativePlayer(avPlayer);
-      }
-
-      if (this._destroyed || !this.isCurrentPlaybackSession(transitionSessionId)) return false;
-
-      this._switchingToAVPlayer = false;
-      this.initPlayer();
-      return true;
-    })();
-
-    this._avPlayerFailurePromise = transition.finally(() => {
-      if (this._avPlayerFailureSessionId === sessionId) {
-        this._avPlayerFailureSessionId = null;
-        this._avPlayerFailurePromise = null;
-      }
+        const failureSessionId = context.sessionId ?? context.sourceSessionId;
+        if (this.isCurrentPlaybackSession(failureSessionId)) {
+          this.showPlaybackError("Não foi possível restaurar a reprodução.");
+        }
+      },
     });
-
-    return this._avPlayerFailurePromise;
   },
 
   handleAVPlayerTransitionError({ context, avPlayer, error, resumeTime = 0 }) {
@@ -3079,10 +3076,12 @@ const VideoPlayer = {
 
     const transitionController = this.playbackEngineTransitionController;
     const transitionSnapshot = transitionController?.snapshot?.();
-    const transitionPending =
-      transitionController?.active && transitionSnapshot?.phase !== "completed";
+    const pendingNativeToAVPlayer =
+      transitionController?.active &&
+      transitionSnapshot?.key?.startsWith("native-to-avplayer") &&
+      transitionSnapshot?.phase !== "completed";
 
-    if (transitionPending) {
+    if (pendingNativeToAVPlayer) {
       void transitionController.cancel("avplayer_error").then((cancelled) => {
         if (!cancelled || !this.isCurrentPlaybackSession(sessionId)) return false;
 
@@ -3180,6 +3179,8 @@ const VideoPlayer = {
     fallback = false,
     initializeEngine = false,
     key,
+    recordSuccess = fallback,
+    sessionId = null,
     showLoading = false,
     trackIndex = null,
     trackType = null,
@@ -3187,6 +3188,7 @@ const VideoPlayer = {
     return this.playbackEngineTransitionController.transition({
       key,
       capture,
+      sessionId,
       prepare: ({ capture: playback, sessionId }) => {
         if (showLoading) this.playerUIController.showLoading();
         else this.playerUIController.hideError();
@@ -3222,7 +3224,7 @@ const VideoPlayer = {
       },
       createEngine: (context) =>
         this.createAVPlayerTransitionEngine(context, {
-          recordSuccess: fallback,
+          recordSuccess,
           resumeTime: context.capture?.resumeTime ?? 0,
           trackSwitch: Boolean(trackType),
         }),
@@ -3292,6 +3294,38 @@ const VideoPlayer = {
           resumeTime: context.capture?.resumeTime ?? 0,
           skipTeardown: true,
         }),
+    });
+  },
+
+  startWithAVPlayer(sessionId) {
+    if (!this.isCurrentPlaybackSession(sessionId)) return Promise.resolve(false);
+
+    if (this._switchingToAVPlayer || this.playbackEngineTransitionController.active) {
+      log.debug("[VideoPlayer] AVPlayer startup transition already active");
+      return Promise.resolve(false);
+    }
+
+    if (this.usingAVPlayer) return Promise.resolve(this.avPlayer ?? true);
+
+    this.disablePiPForCanvasPlayback();
+    this.avPlayerAttempted = true;
+    this.reportPlayerDebug("start_avplayer_selected", {
+      session_id: sessionId,
+    });
+
+    return this.transitionNativeToAVPlayer({
+      key: "startup-avplayer",
+      sessionId,
+      initializeEngine: true,
+      recordSuccess: true,
+      capture: () => {
+        const resumeTime = this.takeResumeTime(this.video.currentTime || 0);
+        return {
+          resumeTime,
+          shouldPlay: true,
+          wasPlaying: !this.video.paused || resumeTime > 0,
+        };
+      },
     });
   },
 
@@ -3695,18 +3729,6 @@ const VideoPlayer = {
     this.applyAudioState();
     this.updateVolumeUI();
     this.syncPiPAvailability();
-  },
-
-  async revertToNativePlayer(avPlayer = this.avPlayer) {
-    log.debug("[VideoPlayer] Reverting to native player");
-    this.reportPlayerLifecycle("player_engine_destroyed", { engine: "avplayer" });
-    const transitionSessionId = this.beginPlaybackSession();
-
-    this.stopAVPlayerTimeUpdates();
-    if (this.avPlayer === avPlayer) this.avPlayer = null;
-    await this.teardownAVPlayer(avPlayer);
-    this.restoreNativePlayerPresentation();
-    return transitionSessionId;
   },
 
   toggleAVPlayerPreference() {
