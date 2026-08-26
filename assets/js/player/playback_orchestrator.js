@@ -185,6 +185,14 @@ export class PlaybackOrchestrator {
     return this.trackCoordinator.snapshot();
   }
 
+  refreshAudioTracks() {
+    return this.trackCoordinator.refreshAudioTracks();
+  }
+
+  refreshSubtitleTracks() {
+    return this.trackCoordinator.refreshSubtitleTracks();
+  }
+
   selectAudioTrack(trackId) {
     return this.trackCoordinator.selectAudioTrack(trackId);
   }

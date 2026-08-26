@@ -79,6 +79,7 @@ function snapshotTracks(hls, tracksProperty, activeProperty) {
       return Object.freeze({
         ...candidate,
         index,
+        selectionId: index,
         active,
         selected: active,
       });

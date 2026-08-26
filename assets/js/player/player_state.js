@@ -64,11 +64,10 @@ export function createInitialPlayerState(
 
     audioTracks: [],
     subtitleTracks: [],
-    _nativeExternalSubtitleTrack: null,
-    _nativeExternalSubtitleReloading: false,
-    _subtitleOffsetReloadTimer: null,
-    _externalSubtitleBlobUrl: null,
-    _externalSubtitleLoadedFor: null,
+    subtitleSourceResolver: null,
+    nativeSubtitleController: null,
+    playerTrackPresentationController: null,
+    _externalSubtitleSourceLease: null,
     selectedAudioTrack: 0,
     selectedSubtitleTrack: -1,
 
@@ -87,6 +86,7 @@ export function createInitialPlayerState(
     lastProgressReport: 0,
     playbackSessionId: 0,
     playbackOrchestrator: null,
+    playbackEngineTransitionController: null,
     mediaCapabilityProfile: null,
     playbackMetrics: deps.createPlaybackMetrics(),
 
@@ -107,6 +107,7 @@ export function createInitialPlayerState(
     avPlayerAttempted: false,
     avPlayerTimeInterval: null,
     preferAVPlayer: false,
+    _switchingToAVPlayer: false,
     _avPlayerFailureSessionId: null,
     _avPlayerFailurePromise: null,
 

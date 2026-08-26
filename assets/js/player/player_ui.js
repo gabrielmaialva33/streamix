@@ -538,6 +538,11 @@ export class PlayerUI {
     });
   }
 
+  updateSubtitleOffsetLabel(label) {
+    const value = this.container.querySelector("#subtitle-sync-value");
+    if (value) value.textContent = String(label ?? "");
+  }
+
   renderOptionList(items, currentValue, className, dataAttr = "level") {
     // Create a document fragment to build elements safely (avoid XSS from labels)
     const fragment = document.createDocumentFragment();

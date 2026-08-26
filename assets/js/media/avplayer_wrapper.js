@@ -1193,7 +1193,7 @@ export class AVPlayerWrapper {
    * @param {number} trackId - The track ID to select
    */
   async selectAudioTrack(trackId) {
-    if (!this.player) return;
+    if (!this.player) return false;
 
     try {
       // Save current position before switching
@@ -1219,6 +1219,7 @@ export class AVPlayerWrapper {
       }
 
       log.debug(`Audio track switch complete with resync`);
+      return trackId;
     } catch (e) {
       log.error("Error selecting audio track:", e);
       throw e;
@@ -1230,7 +1231,7 @@ export class AVPlayerWrapper {
    * @param {number} trackId - The track ID to select, or -1 to disable subtitles
    */
   async selectSubtitleTrack(trackId) {
-    if (!this.player) return;
+    if (!this.player) return false;
 
     try {
       log.debug(`Selecting subtitle track: ${trackId}`);
@@ -1247,6 +1248,7 @@ export class AVPlayerWrapper {
         this.player.setSubtitleEnable?.(true);
       }
       log.debug(`Subtitle track ${trackId} selected`);
+      return trackId;
     } catch (e) {
       log.error("Error selecting subtitle track:", e);
       throw e;
@@ -1259,8 +1261,18 @@ export class AVPlayerWrapper {
    * @param {number} delayMs
    */
   setSubtitleDelay(delayMs) {
-    if (!this.player || typeof this.player.setSubtitleDelay !== "function") return;
-    this.player.setSubtitleDelay(Math.trunc(delayMs));
+    const delay = Number(delayMs);
+    if (
+      !this.player ||
+      typeof this.player.setSubtitleDelay !== "function" ||
+      !Number.isFinite(delay)
+    ) {
+      return false;
+    }
+
+    const normalized = Math.trunc(delay);
+    this.player.setSubtitleDelay(normalized);
+    return normalized;
   }
 
   /**
