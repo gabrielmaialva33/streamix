@@ -64,6 +64,7 @@ import {
 } from "../player/native_playback_controller";
 import { createNativePlaybackEngine } from "../player/native_playback_engine.js";
 import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
+import { createNativeSubtitleController } from "../player/native_subtitle_controller.js";
 import { NextEpisodeController } from "../player/next_episode_controller";
 import {
   exitPictureInPicture,
@@ -76,6 +77,7 @@ import {
   PlaybackEngineTeardownQueue,
   resolvePlaybackResumeTime,
 } from "../player/playback_engine_lifecycle";
+import { createPlaybackEngineTransitionController } from "../player/playback_engine_transition_controller.js";
 import {
   canRetryDirectStream,
   getPlaybackResourcePolicy,
@@ -109,15 +111,13 @@ import {
 } from "../player/player_preferences";
 import { createInitialPlayerState } from "../player/player_state";
 import { createPlayerTrackController } from "../player/player_track_controller.js";
+import { createPlayerTrackPresentationController } from "../player/player_track_presentation_controller.js";
 import { PlayerUI } from "../player/player_ui";
 import { createPlayerUiController } from "../player/player_ui_controller.js";
 import { createScreenWakeLockController } from "../player/screen_wake_lock_controller";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
-import {
-  findPortugueseTrack,
-  formatTrackLabel,
-  hasSubtitleInLanguage,
-} from "../player/track_metadata";
+import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
+import { hasSubtitleInLanguage } from "../player/track_metadata";
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -273,6 +273,21 @@ const VideoPlayer = {
     this.avPlayerTeardownQueue = new PlaybackEngineTeardownQueue({
       onError: (error) => log.debug("[VideoPlayer] AVPlayer teardown failed:", error),
     });
+    this.playbackEngineTransitionController = createPlaybackEngineTransitionController({
+      beginSession: () => this.beginPlaybackSession(),
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      drainTeardown: () => this.avPlayerTeardownQueue.drain(),
+      destroyEngine: (engine) => this.teardownAVPlayer(engine),
+      onError: (operation, error, context) =>
+        log.debug(`[VideoPlayer] Engine transition ${operation} failed:`, {
+          error,
+          key: context?.key,
+          sessionId: context?.sessionId,
+        }),
+      onStateChange: (snapshot) => {
+        this._switchingToAVPlayer = snapshot.active;
+      },
+    });
 
     // One canonical audio state feeds every playback engine and the UI. It
     // remains independent from temporary native <video> resets during engine
@@ -368,16 +383,65 @@ const VideoPlayer = {
       ui: this.playerUI,
       updateMediaSessionPosition: () => this.updateMediaSessionPosition(),
     });
+    this.subtitleSourceResolver = createSubtitleSourceResolver({
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      onError: (operation, error) =>
+        log.debug(`[VideoPlayer] Subtitle source ${operation} failed:`, error),
+    });
+    this.nativeSubtitleController = createNativeSubtitleController({
+      video: this.video,
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      resolveSource: ({ sessionId, offsetMs, force, language }) =>
+        this.subtitleSourceResolver?.resolve({
+          sessionId,
+          imdbId: this.imdbId,
+          language: language || this.subtitleLang,
+          offsetMs,
+          force,
+        }),
+      onError: (operation, error) =>
+        log.debug(`[VideoPlayer] Native subtitle ${operation} failed:`, error),
+    });
+    this.playerTrackPresentationController = createPlayerTrackPresentationController({
+      emit: (event, payload) => this.pushEventSafe(event, payload),
+      getContentId: () => this.contentId,
+      initialState: {
+        audioTracks: this.audioTracks,
+        selectedAudioTrack: this.selectedAudioTrack,
+        selectedSubtitleTrack: this.selectedSubtitleTrack,
+        subtitleOffsetMs: this.subtitleOffsetMs,
+        subtitleTracks: this.subtitleTracks,
+      },
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      onError: (operation, error) =>
+        log.debug(`[VideoPlayer] Track presentation ${operation} failed:`, error),
+      onStateChange: (snapshot) => {
+        this.audioTracks = [...snapshot.audioTracks];
+        this.subtitleTracks = [...snapshot.subtitleTracks];
+        this.selectedAudioTrack = snapshot.selectedAudioTrack;
+        this.selectedSubtitleTrack = snapshot.selectedSubtitleTrack;
+        this.subtitleOffsetMs = snapshot.subtitleOffsetMs;
+      },
+      renderAudioOptions: (tracks, currentTrack, onSelect) =>
+        this.playerUI?.updateAudioOptions(tracks, currentTrack, onSelect),
+      renderSubtitleOptions: (tracks, currentTrack, onSelect) =>
+        this.playerUI?.updateSubtitleOptions(tracks, currentTrack, onSelect),
+      renderSubtitleOffset: (label) => this.playerUI?.updateSubtitleOffsetLabel(label),
+      saveAudioPreference: saveAudioTrack,
+      saveSubtitlePreference: saveSubtitleTrack,
+    });
+    this.playerTrackPresentationController.presentSubtitleOffset(this.subtitleOffsetMs);
+
     this.playerTrackController = createPlayerTrackController({
       refreshAudioTracks: () => this.refreshAudioTracksFromActiveEngine(),
       refreshSubtitleTracks: () => this.refreshSubtitleTracksFromActiveEngine(),
       selectAudioTrack: (trackIndex) => this.applyAudioTrackSelection(trackIndex),
       selectSubtitleTrack: (trackIndex) => this.applySubtitleTrackSelection(trackIndex),
       setSubtitleOffset: (offsetMs) => this.applySubtitleOffsetSelection(offsetMs),
-      loadExternalSubtitle: (...args) => this.loadExternalSubtitleForAvPlayerLegacy(...args),
-      loadNativeExternalSubtitle: (...args) =>
-        this.loadNativeExternalSubtitleForSessionLegacy(...args),
-      reloadNativeExternalSubtitle: (...args) => this.reloadNativeExternalSubtitleLegacy(...args),
+      loadExternalSubtitle: (...args) => this.loadExternalSubtitleForActiveEngine(...args),
+      loadNativeExternalSubtitle: (...args) => this.loadNativeExternalSubtitleForSession(...args),
+      reloadNativeExternalSubtitle: (...args) =>
+        this.reloadNativeExternalSubtitleForSession(...args),
       onError: (operation, error) =>
         log.debug(`[VideoPlayer] Track operation ${operation} failed:`, error),
     });
@@ -538,29 +602,21 @@ const VideoPlayer = {
     return this.applyAudioTrackSelection(trackIndex);
   },
 
-  applyAudioTrackSelection(trackIndex) {
-    if (this.usingAVPlayer && this.avPlayer) {
-      this.setAVPlayerAudioTrack(trackIndex);
-      return;
+  async applyAudioTrackSelection(trackIndex) {
+    const sessionId = this.playbackSessionId;
+    const result = this.playbackOrchestrator
+      ? await this.playbackOrchestrator.selectAudioTrack(trackIndex)
+      : this.streamLoader?.setAudioTrack(trackIndex);
+
+    if (result === false || result == null || !this.isCurrentPlaybackSession(sessionId)) {
+      return false;
     }
 
-    if (this.playbackOrchestrator) {
-      this.playbackOrchestrator.selectAudioTrack(trackIndex);
-    } else {
-      this.streamLoader?.setAudioTrack(trackIndex);
-    }
-    this.selectedAudioTrack = trackIndex;
-
-    // Save preference
-    saveAudioTrack(trackIndex, this.contentId);
-
-    const track = this.audioTracks[trackIndex];
-    this.pushEventSafe("audio_track_changed", {
-      track: trackIndex,
-      label: track?.name || track?.lang || `Track ${trackIndex}`,
+    const presented = this.playerTrackPresentationController?.presentAudioSelection(trackIndex, {
+      sessionId,
     });
+    return presented === false ? false : result;
   },
-
   updateAudioTracks() {
     if (this.playerTrackController) {
       return this.playerTrackController.refreshAudioTracks();
@@ -569,39 +625,24 @@ const VideoPlayer = {
     return this.refreshAudioTracksFromActiveEngine();
   },
 
-  refreshAudioTracksFromActiveEngine() {
-    const trackSnapshot = this.playbackOrchestrator?.trackSnapshot();
-    if (!trackSnapshot) return;
+  async refreshAudioTracksFromActiveEngine() {
+    const sessionId = this.playbackSessionId;
+    const refreshedTracks = await this.playbackOrchestrator?.refreshAudioTracks();
+    if (!this.isCurrentPlaybackSession(sessionId)) return false;
 
-    this.audioTracks = trackSnapshot.audioTracks.map((track) => ({
-      index: track.index,
-      id: track.id,
-      name: track.raw?.name ?? track.label,
-      lang: track.language,
-      label: track.label,
-    }));
+    const snapshot = this.playbackOrchestrator?.trackSnapshot?.();
+    const tracks = Array.isArray(refreshedTracks) ? refreshedTracks : (snapshot?.audioTracks ?? []);
 
-    const currentTrack = trackSnapshot.audioTracks.find((track) => track.active)?.index ?? -1;
-
-    this.playerUI.updateAudioOptions(this.audioTracks, currentTrack, (track) =>
-      this.setAudioTrack(track),
+    return (
+      this.playerTrackPresentationController?.presentAudioTracks({
+        activeTrack: snapshot?.selectedAudioTrack ?? 0,
+        preferredTrack: this._preferredAudioTrack,
+        selectTrack: (trackIndex) => this.setAudioTrack(trackIndex),
+        sessionId,
+        tracks,
+      }) ?? []
     );
-
-    // Apply saved preference
-    if (this._preferredAudioTrack !== null && this._preferredAudioTrack < this.audioTracks.length) {
-      this.setAudioTrack(this._preferredAudioTrack);
-    }
-
-    this.pushEventSafe("audio_tracks_available", {
-      tracks: this.audioTracks,
-      current: currentTrack,
-    });
   },
-
-  // ============================================
-  // Subtitle Track Selection
-  // ============================================
-
   setSubtitleTrack(trackIndex) {
     if (this.playerTrackController) {
       return this.playerTrackController.selectSubtitleTrack(trackIndex);
@@ -610,31 +651,27 @@ const VideoPlayer = {
     return this.applySubtitleTrackSelection(trackIndex);
   },
 
-  applySubtitleTrackSelection(trackIndex) {
-    if (this.playbackOrchestrator) {
-      this.playbackOrchestrator.selectSubtitleTrack(trackIndex);
-    } else {
-      this.streamLoader?.setSubtitleTrack(trackIndex);
-    }
-    if (this._nativeExternalSubtitleTrack?.track) {
-      this._nativeExternalSubtitleTrack.track.mode = trackIndex === -1 ? "disabled" : "showing";
-    }
-    this.selectedSubtitleTrack = trackIndex;
+  async applySubtitleTrackSelection(trackIndex) {
+    const sessionId = this.playbackSessionId;
+    let result = this.playbackOrchestrator
+      ? await this.playbackOrchestrator.selectSubtitleTrack(trackIndex)
+      : this.streamLoader?.setSubtitleTrack(trackIndex);
 
-    // Save preference
-    saveSubtitleTrack(trackIndex, this.contentId);
+    const nativeResult = this.nativeSubtitleController?.select(trackIndex);
+    if (nativeResult !== false && nativeResult != null) result = nativeResult;
 
-    const track = trackIndex >= 0 ? this.subtitleTracks[trackIndex] : null;
-    this.pushEventSafe("subtitle_track_changed", {
-      track: trackIndex,
-      label:
-        track?.label ||
-        track?.name ||
-        track?.lang ||
-        (trackIndex === -1 ? "Desativado" : `Faixa ${trackIndex}`),
+    if (result === false || result == null || !this.isCurrentPlaybackSession(sessionId)) {
+      return false;
+    }
+
+    const presented = this.playerTrackPresentationController?.presentSubtitleSelection(trackIndex, {
+      sessionId,
     });
-  },
+    if (presented === false) return false;
 
+    await this.playbackOrchestrator?.setSubtitleDelay(this.subtitleOffsetMs);
+    return this.isCurrentPlaybackSession(sessionId) ? result : false;
+  },
   async setSubtitleOffset(offsetMs) {
     if (this.playerTrackController) {
       return this.playerTrackController.setSubtitleOffset(offsetMs);
@@ -644,85 +681,89 @@ const VideoPlayer = {
   },
 
   async applySubtitleOffsetSelection(offsetMs) {
-    const parsedOffset = Number(offsetMs);
-    if (!Number.isFinite(parsedOffset)) return;
+    const sessionId = this.playbackSessionId;
+    const normalizedOffset = this.playerTrackPresentationController?.presentSubtitleOffset(
+      offsetMs,
+      { sessionId },
+    );
+    if (normalizedOffset === false || normalizedOffset == null) return false;
 
-    this.subtitleOffsetMs = Math.max(-600_000, Math.min(600_000, Math.trunc(parsedOffset)));
-    this.updateSubtitleOffsetLabel();
-
-    if (this.usingAVPlayer && this.avPlayer) {
-      this.applyAVPlayerSubtitleDelay();
-      return;
-    }
-
-    if (!this._nativeExternalSubtitleTrack && !this._nativeExternalSubtitleReloading) return;
+    const engineResult = await this.playbackOrchestrator?.setSubtitleDelay(normalizedOffset);
+    if (!this.isCurrentPlaybackSession(sessionId)) return false;
+    if (engineResult !== false && engineResult != null) return engineResult;
 
     const selectedTrack = this.selectedSubtitleTrack;
-    clearTimeout(this._subtitleOffsetReloadTimer);
-    this._subtitleOffsetReloadTimer = setTimeout(
-      () => this.reloadNativeExternalSubtitle(selectedTrack),
-      150,
+    const scheduled = this.nativeSubtitleController?.scheduleReload(
+      {
+        sessionId,
+        offsetMs: normalizedOffset,
+        language: this.subtitleLang,
+        label: "Português (auto)",
+      },
+      (snapshot) =>
+        this.applyNativeSubtitleReloadResult(snapshot, {
+          selectedTrack,
+          sessionId,
+        }),
     );
-  },
 
+    return scheduled ? normalizedOffset : false;
+  },
   async reloadNativeExternalSubtitle(...args) {
     if (this.playerTrackController) {
       return this.playerTrackController.reloadNativeExternalSubtitle(...args);
     }
 
-    return this.reloadNativeExternalSubtitleLegacy(...args);
+    return this.reloadNativeExternalSubtitleForSession(...args);
   },
 
-  async reloadNativeExternalSubtitleLegacy(selectedTrack) {
-    this._subtitleOffsetReloadTimer = null;
+  async reloadNativeExternalSubtitleForSession(selectedTrack = this.selectedSubtitleTrack) {
+    const sessionId = this.playbackSessionId;
+    const snapshot = await this.nativeSubtitleController?.reload({
+      sessionId,
+      offsetMs: this.subtitleOffsetMs,
+      language: this.subtitleLang,
+      label: "Português (auto)",
+    });
 
-    if (this._nativeExternalSubtitleReloading) {
-      this._subtitleOffsetReloadTimer = setTimeout(
-        () => this.reloadNativeExternalSubtitle(selectedTrack),
-        150,
-      );
-      return;
-    }
-
-    this._nativeExternalSubtitleReloading = true;
-    this._nativeExternalSubtitleTrack?.remove();
-    this._nativeExternalSubtitleTrack = null;
-    this._externalSubtitleLoadedFor = null;
-
-    if (this._externalSubtitleBlobUrl) {
-      URL.revokeObjectURL(this._externalSubtitleBlobUrl);
-      this._externalSubtitleBlobUrl = null;
-    }
-
-    try {
-      await this.loadNativeExternalSubtitleIfAvailable(this.playbackSessionId, true);
-      if (this._nativeExternalSubtitleTrack) {
-        this.setSubtitleTrack(selectedTrack === -1 ? -1 : 0);
-      } else {
-        this.subtitleTracks = [];
-        this.setSubtitleTrack(-1);
-        this.playerUI.updateSubtitleOptions([], -1, (track) => this.setSubtitleTrack(track));
-      }
-    } finally {
-      this._nativeExternalSubtitleReloading = false;
-    }
+    return this.applyNativeSubtitleReloadResult(snapshot, {
+      selectedTrack,
+      sessionId,
+    });
   },
 
+  async applyNativeSubtitleReloadResult(snapshot, { selectedTrack, sessionId }) {
+    if (!this.isCurrentPlaybackSession(sessionId)) return false;
+
+    return this.applyNativeSubtitleSnapshot(snapshot, selectedTrack, {
+      sessionId,
+    });
+  },
+  async applyNativeSubtitleSnapshot(
+    snapshot,
+    selectedTrack,
+    { emitAvailable = true, sessionId = this.playbackSessionId } = {},
+  ) {
+    return (
+      this.playerTrackPresentationController?.presentNativeSubtitleSnapshot(snapshot, {
+        emitAvailable,
+        selectTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
+        selectedTrack,
+        sessionId,
+      }) ?? false
+    );
+  },
+  clearNativeSubtitlePresentation(sessionId = this.playbackSessionId) {
+    return (
+      this.playerTrackPresentationController?.clearSubtitlePresentation({
+        selectTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
+        sessionId,
+      }) ?? false
+    );
+  },
   updateSubtitleOffsetLabel() {
-    const label = this.el.querySelector("#subtitle-sync-value");
-    if (!label) return;
-
-    const seconds = this.subtitleOffsetMs / 1_000;
-    const value = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
-    label.textContent = `${seconds > 0 ? "+" : ""}${value}s`;
+    return this.playerTrackPresentationController?.presentSubtitleOffset(this.subtitleOffsetMs);
   },
-
-  applyAVPlayerSubtitleDelay() {
-    if (!this.avPlayer || typeof this.avPlayer.setSubtitleDelay !== "function") return;
-
-    this.avPlayer.setSubtitleDelay(this.subtitleOffsetMs);
-  },
-
   updateSubtitleTracks() {
     if (this.playerTrackController) {
       return this.playerTrackController.refreshSubtitleTracks();
@@ -731,42 +772,27 @@ const VideoPlayer = {
     return this.refreshSubtitleTracksFromActiveEngine();
   },
 
-  refreshSubtitleTracksFromActiveEngine() {
-    const trackSnapshot = this.playbackOrchestrator?.trackSnapshot();
-    if (!trackSnapshot) return;
+  async refreshSubtitleTracksFromActiveEngine() {
+    const sessionId = this.playbackSessionId;
+    const refreshedTracks = await this.playbackOrchestrator?.refreshSubtitleTracks();
+    if (!this.isCurrentPlaybackSession(sessionId)) return false;
 
-    this.subtitleTracks = trackSnapshot.subtitleTracks.map((track) => ({
-      index: track.index,
-      id: track.id,
-      name: track.raw?.name ?? track.label,
-      lang: track.language,
-      label: track.label,
-    }));
+    const snapshot = this.playbackOrchestrator?.trackSnapshot?.();
+    const tracks = Array.isArray(refreshedTracks)
+      ? refreshedTracks
+      : (snapshot?.subtitleTracks ?? []);
 
-    const currentTrack = trackSnapshot.subtitleTracks.find((track) => track.active)?.index ?? -1;
-
-    this.playerUI.updateSubtitleOptions(this.subtitleTracks, currentTrack, (track) =>
-      this.setSubtitleTrack(track),
+    return (
+      this.playerTrackPresentationController?.presentSubtitleTracks({
+        activeTrack: snapshot?.selectedSubtitleTrack ?? -1,
+        preferredTrack: this._preferredSubtitleTrack,
+        selectTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
+        sessionId,
+        subtitlesEnabled: this.subtitlesEnabled,
+        tracks,
+      }) ?? []
     );
-
-    // Apply saved preference
-    if (
-      this._preferredSubtitleTrack !== null &&
-      this._preferredSubtitleTrack < this.subtitleTracks.length
-    ) {
-      this.setSubtitleTrack(this._preferredSubtitleTrack);
-    }
-
-    this.pushEventSafe("subtitle_tracks_available", {
-      tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
-      current: currentTrack,
-    });
   },
-
-  // ============================================
-  // Picture-in-Picture
-  // ============================================
-
   async togglePiP() {
     if (!this.isPiPSupported()) return;
 
@@ -1759,6 +1785,7 @@ const VideoPlayer = {
 
     this.setPlaybackSystemState("none");
     this.playbackSessionId += 1;
+    void this.playbackEngineTransitionController?.cancel("cleanup");
     this._metadataProbeCancel?.();
     this._metadataProbeCancel = null;
     this._qualityCapabilitiesCancel?.();
@@ -1805,18 +1832,9 @@ const VideoPlayer = {
       this.avPlayer = null;
       this.teardownAVPlayer(avPlayer);
     }
-    if (this._nativeExternalSubtitleTrack) {
-      this._nativeExternalSubtitleTrack.remove();
-      this._nativeExternalSubtitleTrack = null;
-    }
-    clearTimeout(this._subtitleOffsetReloadTimer);
-    this._subtitleOffsetReloadTimer = null;
-    this._nativeExternalSubtitleReloading = false;
-    if (this._externalSubtitleBlobUrl) {
-      URL.revokeObjectURL(this._externalSubtitleBlobUrl);
-      this._externalSubtitleBlobUrl = null;
-    }
-    this._externalSubtitleLoadedFor = null;
+    this.nativeSubtitleController?.reset();
+    this.releaseExternalSubtitleSourceLease();
+    this.subtitleSourceResolver?.reset();
     if (this.avbridge) {
       this.avbridge.destroy().catch((err) => {
         log.debug("[VideoPlayer] avbridge cleanup threw:", err);
@@ -3002,7 +3020,13 @@ const VideoPlayer = {
     return decision.allowed;
   },
 
-  transitionFromFailedAVPlayer({ sessionId, avPlayer, error, resumeTime = 0 }) {
+  transitionFromFailedAVPlayer({
+    sessionId,
+    avPlayer,
+    error,
+    resumeTime = 0,
+    skipTeardown = false,
+  }) {
     if (this._avPlayerFailureSessionId === sessionId && this._avPlayerFailurePromise) {
       return this._avPlayerFailurePromise;
     }
@@ -3021,7 +3045,17 @@ const VideoPlayer = {
         this._savedPosition = { time: failureResumeTime };
       }
 
-      const transitionSessionId = await this.revertToNativePlayer(avPlayer);
+      let transitionSessionId;
+      if (skipTeardown) {
+        this.stopAVPlayerTimeUpdates();
+        if (!avPlayer || this.avPlayer === avPlayer) this.avPlayer = null;
+        this.playbackOrchestrator?.releaseEngine(ENGINE_ID.AVPLAYER);
+        transitionSessionId = this.beginPlaybackSession();
+        this.restoreNativePlayerPresentation();
+      } else {
+        transitionSessionId = await this.revertToNativePlayer(avPlayer);
+      }
+
       if (this._destroyed || !this.isCurrentPlaybackSession(transitionSessionId)) return false;
 
       this._switchingToAVPlayer = false;
@@ -3039,28 +3073,246 @@ const VideoPlayer = {
     return this._avPlayerFailurePromise;
   },
 
-  async tryAVPlayerFallback() {
-    // Prevent duplicate switch attempts
-    if (this._switchingToAVPlayer) {
-      log.debug("[VideoPlayer] Already switching to AVPlayer, skipping fallback");
+  handleAVPlayerTransitionError({ context, avPlayer, error, resumeTime = 0 }) {
+    const sessionId = context?.sessionId;
+    if (!this.isCurrentPlaybackSession(sessionId)) return;
+
+    const transitionController = this.playbackEngineTransitionController;
+    const transitionSnapshot = transitionController?.snapshot?.();
+    const transitionPending =
+      transitionController?.active && transitionSnapshot?.phase !== "completed";
+
+    if (transitionPending) {
+      void transitionController.cancel("avplayer_error").then((cancelled) => {
+        if (!cancelled || !this.isCurrentPlaybackSession(sessionId)) return false;
+
+        return this.transitionFromFailedAVPlayer({
+          sessionId,
+          avPlayer: null,
+          error,
+          resumeTime,
+          skipTeardown: true,
+        });
+      });
       return;
     }
 
-    // Circuit breaker check
+    void this.transitionFromFailedAVPlayer({
+      sessionId,
+      avPlayer,
+      error,
+      resumeTime,
+    });
+  },
+
+  async createAVPlayerTransitionEngine(
+    context,
+    { recordSuccess = false, resumeTime = 0, trackSwitch = false } = {},
+  ) {
+    const { AVPlayerWrapper } = await loadAVPlayer();
+    const avContainer = this.el.querySelector("#avplayer-mount");
+    avContainer.replaceChildren();
+    avContainer.classList.remove("hidden");
+
+    let avPlayer = null;
+    const wrapper = new AVPlayerWrapper({
+      container: avContainer,
+      onReady: () => {
+        if (!this.isCurrentPlaybackSession(context.sessionId)) return;
+        log.debug(
+          trackSwitch
+            ? "[VideoPlayer] AVPlayer ready for track switch"
+            : "[VideoPlayer] AVPlayer ready",
+        );
+      },
+      onPlay: () => {
+        if (!this.isCurrentPlaybackSession(context.sessionId)) return;
+        this.playerUIController.hideLoading();
+        this.playerUIController.updatePlayPauseUI(false);
+        this.startAVPlayerTimeUpdates();
+        this.handlePlaybackStarted();
+        this.playbackMetrics?.markPlaying();
+        emitPlaybackEvent(this.el, "play");
+
+        if (recordSuccess) {
+          const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
+          recordPlayerSuccess(contentKey, "avplayer", {
+            sourceType: this.sourceType,
+            streamType: this.currentStreamType,
+          });
+        }
+      },
+      onPause: () => {
+        if (!this.isCurrentPlaybackSession(context.sessionId)) return;
+        this.playerUIController.updatePlayPauseUI(true);
+        this.handlePlaybackPaused();
+        emitPlaybackEvent(this.el, "pause");
+      },
+      onError: (error) =>
+        this.handleAVPlayerTransitionError({
+          context,
+          avPlayer,
+          error,
+          resumeTime,
+        }),
+      onTimeUpdate: () => {
+        if (!this.isCurrentPlaybackSession(context.sessionId)) return;
+        this.updateTimeUI();
+      },
+      onEnded: () => {
+        if (!this.isCurrentPlaybackSession(context.sessionId)) return;
+        this.playerUIController.updatePlayPauseUI(true);
+        this.stopAVPlayerTimeUpdates();
+        this.handlePlaybackEnded();
+        this.flushPlaybackMetrics("completed");
+      },
+    });
+
+    avPlayer = createPlaybackEngineAdapter({
+      id: ENGINE_ID.AVPLAYER,
+      engine: wrapper,
+    });
+    return avPlayer;
+  },
+
+  transitionNativeToAVPlayer({
+    capture,
+    fallback = false,
+    initializeEngine = false,
+    key,
+    showLoading = false,
+    trackIndex = null,
+    trackType = null,
+  }) {
+    return this.playbackEngineTransitionController.transition({
+      key,
+      capture,
+      prepare: ({ capture: playback, sessionId }) => {
+        if (showLoading) this.playerUIController.showLoading();
+        else this.playerUIController.hideError();
+
+        this.reportPlayerLifecycle("player_engine_selected", {
+          engine: "avplayer",
+          fallback,
+          session_id: sessionId,
+        });
+
+        if (fallback) {
+          this.video.pause();
+          if (this._nativeErrorHandler) {
+            this.video.removeEventListener("error", this._nativeErrorHandler);
+          }
+        }
+
+        this.resetNativeMediaElement();
+        this.nativeSubtitleController?.reset();
+        this.subtitleTracks = [];
+        log.debug("[VideoPlayer] Preparing AVPlayer transition", {
+          key,
+          resumeTime: playback?.resumeTime ?? 0,
+          shouldPlay: playback?.shouldPlay === true,
+        });
+      },
+      releasePrevious: async () => {
+        if (!this.avPlayer) return;
+
+        const oldAvPlayer = this.avPlayer;
+        this.avPlayer = null;
+        await this.teardownAVPlayer(oldAvPlayer);
+      },
+      createEngine: (context) =>
+        this.createAVPlayerTransitionEngine(context, {
+          recordSuccess: fallback,
+          resumeTime: context.capture?.resumeTime ?? 0,
+          trackSwitch: Boolean(trackType),
+        }),
+      initializeEngine: initializeEngine ? ({ engine }) => engine.init() : null,
+      loadEngine: async ({ engine }) => {
+        const url = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
+        const extension = trackType
+          ? this.sourceType === "gindex"
+            ? "mkv"
+            : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv"
+          : getFileExtension(this.streamUrl, this.sourceType, this.currentStreamType);
+        const isLive = this.contentType === "live";
+        await engine.load(url, this.buildAVPlayerLoadOptions(extension, isLive));
+      },
+      registerEngine: ({ engine }) => {
+        this.avPlayer = engine;
+        this.trackManagedEngine(ENGINE_ID.AVPLAYER, engine);
+      },
+      restoreEngine: async ({ capture: playback, engine }) => {
+        const resumeTime = playback?.resumeTime ?? 0;
+
+        if (fallback && resumeTime > 0) await engine.seek(resumeTime);
+        engine.setVolume(audioOutputVolume(this.canonicalAudioState()));
+        if (!fallback && resumeTime > 0) await engine.seek(resumeTime);
+
+        if (trackType === "audio" && this._probedAudioTracks?.[trackIndex]) {
+          const tracks = await this.updateAudioTracks();
+          if (tracks?.[trackIndex]) await this.setAudioTrack(trackIndex);
+        } else if (trackType === "subtitle") {
+          const tracks = await this.updateSubtitleTracks();
+          if (trackIndex === -1 || tracks?.[trackIndex]) {
+            await this.setSubtitleTrack(trackIndex);
+          }
+        }
+      },
+      activateEngine: async ({ capture: playback, engine }) => {
+        this.usingAVPlayer = true;
+        this.video.classList.add("hidden");
+
+        if (playback?.shouldPlay === true) await engine.play();
+        else this.handlePlaybackPaused();
+      },
+      complete: ({ capture: playback, engine, sessionId }) => {
+        this.startAVPlayerTimeUpdates();
+        this.updateMediaSessionPosition({ force: true });
+        void this.detectAVPlayerTracks(sessionId);
+        this.playerUIController.hideLoading();
+        log.debug("[VideoPlayer] AVPlayer transition completed", {
+          key,
+          resumeTime: playback?.resumeTime ?? 0,
+          trackIndex,
+          trackType,
+        });
+        return engine;
+      },
+      rollbackEngine: ({ engine }) => {
+        if (this.avPlayer === engine) this.avPlayer = null;
+        this.playbackOrchestrator?.releaseEngine(ENGINE_ID.AVPLAYER);
+        this.stopAVPlayerTimeUpdates();
+        this.usingAVPlayer = false;
+      },
+      onFailure: (error, context) =>
+        this.transitionFromFailedAVPlayer({
+          sessionId: context.sessionId,
+          avPlayer: null,
+          error,
+          resumeTime: context.capture?.resumeTime ?? 0,
+          skipTeardown: true,
+        }),
+    });
+  },
+
+  async tryAVPlayerFallback() {
+    if (this._switchingToAVPlayer || this.playbackEngineTransitionController.active) {
+      log.debug("[VideoPlayer] Already switching to AVPlayer, skipping fallback");
+      return false;
+    }
+
     if (!this.canAttemptFallback()) {
       log.debug("[VideoPlayer] Circuit breaker prevented fallback attempt");
       this.showPlaybackError("Formato de audio nao suportado. Tente novamente mais tarde.");
-      return;
+      return false;
     }
 
     if (this.avPlayerAttempted || this.usingAVPlayer) {
       log.debug("[VideoPlayer] AVPlayer fallback already attempted, skipping");
-      return;
+      return false;
     }
 
-    this._switchingToAVPlayer = true;
     this.disablePiPForCanvasPlayback();
-
     this.avPlayerAttempted = true;
     this.fallbackAttempts++;
     this.lastFallbackTime = Date.now();
@@ -3079,244 +3331,39 @@ const VideoPlayer = {
     this.reportPlayerDebug("try_avplayer_fallback", {
       fallback_attempts: this.fallbackAttempts,
     });
-    this.playerUIController.hideError();
 
-    const sessionId = this.beginPlaybackSession();
-    const resumeTime = this.takeResumeTime(this.video.currentTime || 0);
-    const wasPlaying = !this.video.paused || resumeTime > 0;
-    this.reportPlayerLifecycle("player_engine_selected", {
-      engine: "avplayer",
-      session_id: sessionId,
+    return this.transitionNativeToAVPlayer({
+      key: "native-to-avplayer-fallback",
       fallback: true,
+      capture: () => {
+        const resumeTime = this.takeResumeTime(this.video.currentTime || 0);
+        return {
+          resumeTime,
+          shouldPlay: true,
+          wasPlaying: !this.video.paused || resumeTime > 0,
+        };
+      },
     });
-
-    this.video.pause();
-
-    if (this._nativeErrorHandler) {
-      this.video.removeEventListener("error", this._nativeErrorHandler);
-    }
-
-    let avPlayer = null;
-
-    try {
-      // cleanup() starts teardown synchronously but remains non-blocking for
-      // LiveView navigation. Before creating another AVPlayer, wait for any
-      // queued teardown so shared AudioContext resources cannot overlap.
-      await this.avPlayerTeardownQueue.drain();
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-      // Lazy load AVPlayer
-      const { AVPlayerWrapper } = await loadAVPlayer();
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-      // Use server-rendered mount (phx-update="ignore") so the
-      // canvas survives LiveView patches in watch-party rooms.
-      const avContainer = this.el.querySelector("#avplayer-mount");
-      avContainer.replaceChildren();
-      avContainer.classList.remove("hidden");
-
-      this.video.classList.add("hidden");
-      this.resetNativeMediaElement();
-      if (this._nativeExternalSubtitleTrack) {
-        this._nativeExternalSubtitleTrack.remove();
-        this._nativeExternalSubtitleTrack = null;
-      }
-      this.subtitleTracks = [];
-
-      if (this.avPlayer) {
-        const oldAvPlayer = this.avPlayer;
-        this.avPlayer = null;
-        await this.teardownAVPlayer(oldAvPlayer);
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-      }
-
-      avPlayer = new AVPlayerWrapper({
-        container: avContainer,
-        onReady: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          log.debug("[VideoPlayer] AVPlayer ready");
-        },
-        onPlay: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          log.debug("[VideoPlayer] AVPlayer playing with audio support");
-          this.playerUIController.hideLoading();
-          this.playerUIController.updatePlayPauseUI(false);
-          this.startAVPlayerTimeUpdates();
-          this.handlePlaybackStarted();
-          this.playbackMetrics?.markPlaying();
-          emitPlaybackEvent(this.el, "play");
-
-          // Record successful AVPlayer playback for Device Codec Memory
-          const contentKey = this.sourceType === "gindex" ? "gindex" : this.currentStreamType;
-          recordPlayerSuccess(contentKey, "avplayer", {
-            sourceType: this.sourceType,
-            streamType: this.currentStreamType,
-          });
-        },
-        onPause: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          log.debug("[VideoPlayer] AVPlayer paused");
-          this.playerUIController.updatePlayPauseUI(true);
-          this.handlePlaybackPaused();
-          emitPlaybackEvent(this.el, "pause");
-        },
-        onError: (error) => {
-          void this.transitionFromFailedAVPlayer({
-            sessionId,
-            avPlayer,
-            error,
-            resumeTime,
-          });
-        },
-        onTimeUpdate: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          this.updateTimeUI();
-        },
-        onEnded: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          log.debug("[VideoPlayer] AVPlayer ended");
-          this.playerUIController.updatePlayPauseUI(true);
-          this.stopAVPlayerTimeUpdates();
-          this.handlePlaybackEnded();
-          this.flushPlaybackMetrics("completed");
-        },
-      });
-      avPlayer = createPlaybackEngineAdapter({
-        id: ENGINE_ID.AVPLAYER,
-        engine: avPlayer,
-      });
-      this.avPlayer = avPlayer;
-      this.trackManagedEngine(ENGINE_ID.AVPLAYER, this.avPlayer);
-
-      const avPlayerUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
-
-      const ext = getFileExtension(this.streamUrl, this.sourceType, this.currentStreamType);
-      const isLive = this.contentType === "live";
-      log.debug("[VideoPlayer] AVPlayer loading via:", avPlayerUrl, "ext:", ext, "isLive:", isLive);
-
-      await avPlayer.load(avPlayerUrl, this.buildAVPlayerLoadOptions(ext, isLive));
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        await this.teardownAVPlayer(avPlayer);
-        return;
-      }
-
-      if (resumeTime > 0) {
-        await avPlayer.seek(resumeTime);
-        if (!this.isCurrentPlaybackSession(sessionId)) {
-          await this.teardownAVPlayer(avPlayer);
-          return;
-        }
-      }
-
-      avPlayer.setVolume(audioOutputVolume(this.canonicalAudioState()));
-
-      this.usingAVPlayer = true;
-      log.debug("[VideoPlayer] Calling AVPlayer play(), wasPlaying:", wasPlaying);
-      await avPlayer.play();
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        await this.teardownAVPlayer(avPlayer);
-        return;
-      }
-      log.debug("[VideoPlayer] AVPlayer play() completed");
-
-      this.updateMediaSessionPosition({ force: true });
-      log.debug("[VideoPlayer] Seamless AVPlayer switch complete");
-
-      // Detect available audio/subtitle tracks from AVPlayer
-      this.detectAVPlayerTracks(sessionId);
-    } catch (error) {
-      await this.transitionFromFailedAVPlayer({ sessionId, avPlayer, error, resumeTime });
-    } finally {
-      this._switchingToAVPlayer = false;
-    }
   },
 
-  /**
-   * Detect and expose audio/subtitle tracks from AVPlayer
-   */
   async detectAVPlayerTracks(sessionId = this.playbackSessionId) {
     if (!this.avPlayer) return;
 
     try {
-      // Small delay to let AVPlayer fully initialize streams
       await new Promise((resolve) => setTimeout(resolve, 500));
       if (!this.isCurrentPlaybackSession(sessionId) || !this.avPlayer) return;
 
-      // Get audio tracks
-      const audioTracks = await this.avPlayer.getAudioTracks();
+      await this.updateAudioTracks();
       if (!this.isCurrentPlaybackSession(sessionId)) return;
-      if (audioTracks && audioTracks.length > 0) {
-        this.audioTracks = audioTracks.map((track, index) => ({
-          index,
-          id: track.id,
-          label: formatTrackLabel(track),
-          language: track.language || "",
-          codec: track.codec || "",
-        }));
 
-        const currentTrack = audioTracks.findIndex((t) => t.selected) || 0;
-
-        this.playerUI.updateAudioOptions(this.audioTracks, currentTrack, (track) =>
-          this.setAVPlayerAudioTrack(track),
-        );
-
-        // Apply saved preference
-        if (
-          this._preferredAudioTrack !== null &&
-          this._preferredAudioTrack < this.audioTracks.length
-        ) {
-          this.setAVPlayerAudioTrack(this._preferredAudioTrack);
-        }
-
-        this.pushEventSafe("audio_tracks_available", {
-          tracks: this.audioTracks,
-          current: currentTrack,
-        });
-
-        log.debug("[VideoPlayer] AVPlayer audio tracks detected:", this.audioTracks);
-      }
-
-      // Get subtitle tracks
-      const subtitleTracks = await this.avPlayer.getSubtitleTracks();
+      await this.updateSubtitleTracks();
       if (!this.isCurrentPlaybackSession(sessionId)) return;
-      if (subtitleTracks && subtitleTracks.length > 0) {
-        this.subtitleTracks = subtitleTracks.map((track, index) => ({
-          index,
-          id: track.id,
-          label: formatTrackLabel(track),
-          language: track.language || "",
-        }));
 
-        const currentTrack = subtitleTracks.findIndex((t) => t.selected);
-        this.selectedSubtitleTrack = currentTrack;
-
-        this.playerUI.updateSubtitleOptions(this.subtitleTracks, currentTrack, (track) =>
-          this.setAVPlayerSubtitleTrack(track),
-        );
-
-        // Apply saved preference
-        if (
-          this._preferredSubtitleTrack !== null &&
-          this._preferredSubtitleTrack < this.subtitleTracks.length
-        ) {
-          this.setAVPlayerSubtitleTrack(this._preferredSubtitleTrack);
-        }
-
-        this.pushEventSafe("subtitle_tracks_available", {
-          tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
-          current: currentTrack,
-        });
-
-        log.debug("[VideoPlayer] AVPlayer subtitle tracks detected:", this.subtitleTracks);
-      }
-    } catch (e) {
-      log.warn("[VideoPlayer] Failed to detect AVPlayer tracks:", e);
+      await this.playbackOrchestrator?.setSubtitleDelay(this.subtitleOffsetMs);
+    } catch (error) {
+      log.warn("[VideoPlayer] Failed to refresh AVPlayer tracks:", error);
     }
 
-    // Offer an external subtitle when the file ships none in the wanted
-    // language (e.g. English-audio torrents). Runs after the embedded
-    // probe so embedded tracks always take precedence.
-    this.applyAVPlayerSubtitleDelay();
     await this.loadExternalSubtitleIfAvailable(sessionId);
   },
 
@@ -3331,34 +3378,52 @@ const VideoPlayer = {
       return this.playerTrackController.loadExternalSubtitle(...args);
     }
 
-    return this.loadExternalSubtitleForAvPlayerLegacy(...args);
+    return this.loadExternalSubtitleForActiveEngine(...args);
   },
 
-  async loadExternalSubtitleForAvPlayerLegacy(sessionId = this.playbackSessionId) {
-    if (!this.imdbId || !this.avPlayer) return;
-    if (typeof this.avPlayer.loadExternalSubtitle !== "function") return;
-    if (hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return;
+  async loadExternalSubtitleForActiveEngine(sessionId = this.playbackSessionId) {
+    if (!this.imdbId || !this.usingAVPlayer || !this.avPlayer) return false;
+    if (hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return false;
+
+    let sourceLease = null;
 
     try {
-      // AVPlayer applies the preference through its native subtitle-delay
-      // control, so fetch an unshifted VTT and avoid applying the offset twice.
-      const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId, 0);
-      if (!subtitleUrl || !this.avPlayer) return;
+      sourceLease = await this.subtitleSourceResolver?.resolve({
+        sessionId,
+        imdbId: this.imdbId,
+        language: this.subtitleLang,
+        offsetMs: 0,
+      });
+      if (!sourceLease) return false;
+      if (!this.isCurrentPlaybackSession(sessionId)) {
+        this.releaseSubtitleSourceLease(sourceLease);
+        return false;
+      }
 
-      await this.avPlayer.loadExternalSubtitle({
-        source: subtitleUrl,
+      const result = await this.playbackOrchestrator?.loadExternalSubtitle({
+        source: sourceLease.source,
         lang: this.subtitleLang,
         title: "Português (auto)",
       });
+      if (result === false || result == null) {
+        this.releaseSubtitleSourceLease(sourceLease);
+        return false;
+      }
 
-      // Re-probe so the new track shows up in the subtitle menu.
+      this.releaseExternalSubtitleSourceLease();
+      this._externalSubtitleSourceLease = sourceLease;
+      sourceLease = null;
+
       if (this.isCurrentPlaybackSession(sessionId)) {
-        await this.detectAVPlayerTracks(sessionId);
+        await this.updateSubtitleTracks();
       }
 
       log.debug("[VideoPlayer] External subtitle loaded for", this.imdbId);
-    } catch (e) {
-      log.warn("[VideoPlayer] External subtitle load failed:", e);
+      return result;
+    } catch (error) {
+      this.releaseSubtitleSourceLease(sourceLease);
+      log.warn("[VideoPlayer] External subtitle load failed:", error);
+      return false;
     }
   },
 
@@ -3371,84 +3436,43 @@ const VideoPlayer = {
       return this.playerTrackController.loadNativeExternalSubtitle(...args);
     }
 
-    return this.loadNativeExternalSubtitleForSessionLegacy(...args);
+    return this.loadNativeExternalSubtitleForSession(...args);
   },
 
-  async loadNativeExternalSubtitleForSessionLegacy(
-    sessionId = this.playbackSessionId,
-    force = false,
-  ) {
-    if (!this.imdbId || !this.video || this.sourceType !== "torrent") return;
+  async loadNativeExternalSubtitleForSession(sessionId = this.playbackSessionId, force = false) {
+    if (!this.imdbId || !this.nativeSubtitleController || this.sourceType !== "torrent") {
+      return false;
+    }
 
-    const nativeTracks = Array.from(this.video.textTracks || []).map((track) => ({
-      label: track.label,
-      language: track.language,
-    }));
-    if (!force && hasSubtitleInLanguage(nativeTracks, this.subtitleLang)) return;
+    const snapshot = await this.nativeSubtitleController.load({
+      sessionId,
+      force,
+      language: this.subtitleLang,
+      label: "Português (auto)",
+      offsetMs: this.subtitleOffsetMs,
+    });
+    if (!snapshot || !this.isCurrentPlaybackSession(sessionId)) return false;
+
+    const preferredTrack = this.subtitlesEnabled && this._preferredSubtitleTrack !== -1 ? 0 : -1;
+    await this.applyNativeSubtitleSnapshot(snapshot, preferredTrack);
+    log.debug("[VideoPlayer] Native external subtitle loaded for", this.imdbId);
+    return snapshot;
+  },
+
+  releaseSubtitleSourceLease(sourceLease) {
+    if (!sourceLease?.release) return;
 
     try {
-      const subtitleUrl = await this.fetchExternalSubtitleUrl(sessionId);
-      if (!subtitleUrl || !this.video) return;
-
-      const trackElement = document.createElement("track");
-      trackElement.kind = "subtitles";
-      trackElement.label = "Português (auto)";
-      trackElement.srclang = this.subtitleLang;
-      trackElement.src = subtitleUrl;
-      this.video.appendChild(trackElement);
-      this._nativeExternalSubtitleTrack = trackElement;
-
-      this.subtitleTracks = [
-        {
-          index: 0,
-          id: 0,
-          label: trackElement.label,
-          language: trackElement.srclang,
-        },
-      ];
-
-      const preferredTrack = this.subtitlesEnabled && this._preferredSubtitleTrack !== -1 ? 0 : -1;
-      this.setSubtitleTrack(preferredTrack);
-      this.playerUI.updateSubtitleOptions(this.subtitleTracks, preferredTrack, (track) =>
-        this.setSubtitleTrack(track),
-      );
-
-      this.pushEventSafe("subtitle_tracks_available", {
-        tracks: [{ index: -1, label: "Desativado" }, ...this.subtitleTracks],
-        current: preferredTrack,
-      });
-
-      log.debug("[VideoPlayer] Native external subtitle loaded for", this.imdbId);
-    } catch (e) {
-      log.warn("[VideoPlayer] Native external subtitle load failed:", e);
+      sourceLease.release();
+    } catch (error) {
+      log.debug("[VideoPlayer] External subtitle source cleanup failed:", error);
     }
   },
 
-  /**
-   * Fetch one subtitle per playback session and return a Blob URL that
-   * either the native player or AVPlayer can consume without CORS.
-   */
-  async fetchExternalSubtitleUrl(sessionId, offsetMs = this.subtitleOffsetMs) {
-    if (this._externalSubtitleLoadedFor === sessionId) return null;
-    this._externalSubtitleLoadedFor = sessionId;
-
-    const params = new URLSearchParams({
-      lang: this.subtitleLang,
-      offset_ms: String(offsetMs),
-    });
-    const url = `/api/subtitles/${encodeURIComponent(this.imdbId)}?${params}`;
-    const res = await fetch(url, { headers: { accept: "text/vtt" } });
-    if (res.status !== 200) return null; // 204 = no subtitle available
-    if (!this.isCurrentPlaybackSession(sessionId)) return null;
-
-    const vtt = await res.text();
-    if (!vtt || !this.isCurrentPlaybackSession(sessionId)) return null;
-
-    if (this._externalSubtitleBlobUrl) {
-      URL.revokeObjectURL(this._externalSubtitleBlobUrl);
-    }
-    this._externalSubtitleBlobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
-    return this._externalSubtitleBlobUrl;
+  releaseExternalSubtitleSourceLease() {
+    const sourceLease = this._externalSubtitleSourceLease;
+    this._externalSubtitleSourceLease = null;
+    this.releaseSubtitleSourceLease(sourceLease);
   },
 
   buildAVPlayerLoadOptions(ext, isLive) {
@@ -3486,54 +3510,9 @@ const VideoPlayer = {
   /**
    * Set audio track for AVPlayer
    */
-  async setAVPlayerAudioTrack(trackIndex) {
-    if (!this.avPlayer || !this.audioTracks[trackIndex]) return;
-
-    try {
-      const track = this.audioTracks[trackIndex];
-      await this.avPlayer.selectAudioTrack(track.id);
-      this.selectedAudioTrack = trackIndex;
-      saveAudioTrack(trackIndex, this.contentId);
-
-      this.pushEventSafe("audio_track_changed", {
-        track: trackIndex,
-        label: track.label,
-      });
-      log.debug("[VideoPlayer] AVPlayer audio track changed to:", track.label);
-    } catch (e) {
-      log.error("[VideoPlayer] Failed to change AVPlayer audio track:", e);
-    }
-  },
-
   /**
    * Set subtitle track for AVPlayer (-1 to disable)
    */
-  async setAVPlayerSubtitleTrack(trackIndex) {
-    if (!this.avPlayer) return;
-
-    try {
-      if (trackIndex === -1) {
-        await this.avPlayer.selectSubtitleTrack(-1);
-        this.selectedSubtitleTrack = -1;
-        saveSubtitleTrack(-1, this.contentId);
-        this.pushEventSafe("subtitle_track_changed", { track: -1, label: "Desativado" });
-      } else if (this.subtitleTracks[trackIndex]) {
-        const track = this.subtitleTracks[trackIndex];
-        await this.avPlayer.selectSubtitleTrack(track.id);
-        this.selectedSubtitleTrack = trackIndex;
-        saveSubtitleTrack(trackIndex, this.contentId);
-        this.pushEventSafe("subtitle_track_changed", {
-          track: trackIndex,
-          label: track.label,
-        });
-        log.debug("[VideoPlayer] AVPlayer subtitle track changed to:", track.label);
-      }
-      this.applyAVPlayerSubtitleDelay();
-    } catch (e) {
-      log.error("[VideoPlayer] Failed to change AVPlayer subtitle track:", e);
-    }
-  },
-
   /**
    * Probe metadata in background.
    *
@@ -3551,6 +3530,7 @@ const VideoPlayer = {
   async probeMetadataInBackground() {
     if (this.usingAVPlayer || this._metadataProbed || this._destroyed) return;
     this._metadataProbed = true;
+    const sessionId = this.playbackSessionId;
     const policy = this.getPlaybackResourcePolicy();
     if (!policy.shouldProbeTracks) {
       log.debug("[VideoPlayer] Skipping track probe:", policy.reason);
@@ -3567,7 +3547,7 @@ const VideoPlayer = {
       const res = await fetch(`/api/gindex-tracks/${contentType}/${contentId}`, {
         headers: { Accept: "application/json" },
       });
-      if (this._destroyed) return;
+      if (this._destroyed || !this.isCurrentPlaybackSession(sessionId)) return;
       if (!res.ok) {
         log.debug("[VideoPlayer] Track probe API returned", res.status, "— skipping");
         return;
@@ -3580,65 +3560,17 @@ const VideoPlayer = {
 
       let preferredAudioTrack = 0;
 
-      if (audio.length > 1) {
-        // ffprobe gives us {index, codec, language, title, channels, ...};
-        // map to the shape the player UI expects (re-numbered index 0..N
-        // so the "select track 1" -> "select audio 1" mapping works
-        // regardless of the underlying ffprobe stream index).
-        this._probedAudioTracks = audio.map((track, index) => ({
-          index,
-          id: track.index,
-          label: formatTrackLabel({
-            index,
-            label: track.title,
-            language: track.language,
-            codec: track.codec,
-            channels: track.channels,
-          }),
-          language: track.language || "",
-        }));
+      const probedPresentation = this.playerTrackPresentationController?.presentProbedTracks({
+        audioTracks: audio,
+        onAudioSelect: (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex),
+        onSubtitleSelect: (trackIndex) => this.handleProbedSubtitleTrackSelect(trackIndex),
+        sessionId,
+        subtitleTracks: subtitle,
+      });
 
-        log.debug("[VideoPlayer] Probed audio tracks:", this._probedAudioTracks);
-
-        preferredAudioTrack = findPortugueseTrack(this._probedAudioTracks);
-        log.debug("[VideoPlayer] Preferred Portuguese track index:", preferredAudioTrack);
-
-        this.playerUI.updateAudioOptions(
-          this._probedAudioTracks,
-          preferredAudioTrack,
-          (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex),
-        );
-
-        this.pushEventSafe("audio_tracks_available", {
-          tracks: this._probedAudioTracks,
-          current: preferredAudioTrack,
-        });
-      }
-
-      if (subtitle.length > 0) {
-        this._probedSubtitleTracks = subtitle.map((track, index) => ({
-          index,
-          id: track.index,
-          label: formatTrackLabel({
-            index,
-            label: track.title,
-            language: track.language,
-            codec: track.codec,
-          }),
-          language: track.language || "",
-        }));
-
-        log.debug("[VideoPlayer] Probed subtitle tracks:", this._probedSubtitleTracks);
-
-        this.playerUI.updateSubtitleOptions(this._probedSubtitleTracks, -1, (trackIndex) =>
-          this.handleProbedSubtitleTrackSelect(trackIndex),
-        );
-
-        this.pushEventSafe("subtitle_tracks_available", {
-          tracks: [{ index: -1, label: "Desativado" }, ...this._probedSubtitleTracks],
-          current: -1,
-        });
-      }
+      this._probedAudioTracks = [...(probedPresentation?.audioTracks ?? [])];
+      this._probedSubtitleTracks = [...(probedPresentation?.subtitleTracks ?? [])];
+      preferredAudioTrack = probedPresentation?.selectedAudioTrack ?? 0;
 
       if (this._destroyed) return;
 
@@ -3676,10 +3608,10 @@ const VideoPlayer = {
       return;
     }
 
-    // If already using AVPlayer, just change the track
+    // If already using AVPlayer, refresh its concrete capabilities first.
     if (this.usingAVPlayer && this.avPlayer) {
-      this.audioTracks = this._probedAudioTracks;
-      await this.setAVPlayerAudioTrack(trackIndex);
+      const tracks = await this.updateAudioTracks();
+      if (tracks?.[trackIndex]) await this.setAudioTrack(trackIndex);
       return;
     }
 
@@ -3703,10 +3635,10 @@ const VideoPlayer = {
       return;
     }
 
-    // If already using AVPlayer, just change the track
+    // If already using AVPlayer, refresh its concrete capabilities first.
     if (this.usingAVPlayer && this.avPlayer) {
-      this.subtitleTracks = this._probedSubtitleTracks || [];
-      await this.setAVPlayerSubtitleTrack(trackIndex);
+      const tracks = await this.updateSubtitleTracks();
+      if (trackIndex === -1 || tracks?.[trackIndex]) await this.setSubtitleTrack(trackIndex);
       return;
     }
 
@@ -3730,178 +3662,28 @@ const VideoPlayer = {
    * Switch from native to AVPlayer and apply selected track
    */
   async switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay) {
-    // Prevent duplicate switch attempts
-    if (this._switchingToAVPlayer) {
+    if (this._switchingToAVPlayer || this.playbackEngineTransitionController.active) {
       log.debug("[VideoPlayer] Already switching to AVPlayer, ignoring duplicate call");
-      return;
+      return false;
     }
-    this._switchingToAVPlayer = true;
+
     this.disablePiPForCanvasPlayback();
     this.avPlayerAttempted = true;
 
-    const sessionId = this.beginPlaybackSession();
-    this.playerUIController.showLoading();
-    let avPlayer = null;
-
-    try {
-      // Stop native player fully; pause()+src="" can leave decoded audio alive.
-      this.resetNativeMediaElement();
-
-      if (this.avPlayer) {
-        const oldAvPlayer = this.avPlayer;
-        this.avPlayer = null;
-        await this.teardownAVPlayer(oldAvPlayer);
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-      }
-
-      await this.avPlayerTeardownQueue.drain();
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-      const { AVPlayerWrapper } = await loadAVPlayer();
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-      // Use server-rendered mount (phx-update="ignore").
-      const avContainer = this.el.querySelector("#avplayer-mount");
-      avContainer.replaceChildren();
-      avContainer.classList.remove("hidden");
-
-      avPlayer = new AVPlayerWrapper({
-        container: avContainer,
-        onReady: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          log.debug("[VideoPlayer] AVPlayer ready for track switch");
-        },
-        onError: (e) => {
-          void this.transitionFromFailedAVPlayer({
-            sessionId,
-            avPlayer,
-            error: e,
-            resumeTime: seekTime,
-          });
-        },
-        onPlay: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          this.playerUIController.updatePlayPauseUI(false);
-          this.playerUIController.hideLoading();
-          this.startAVPlayerTimeUpdates();
-          this.handlePlaybackStarted();
-          this.playbackMetrics?.markPlaying();
-          emitPlaybackEvent(this.el, "play");
-        },
-        onPause: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          this.playerUIController.updatePlayPauseUI(true);
-          this.handlePlaybackPaused();
-          emitPlaybackEvent(this.el, "pause");
-        },
-        onTimeUpdate: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          this.updateTimeUI();
-        },
-        onEnded: () => {
-          if (!this.isCurrentPlaybackSession(sessionId)) return;
-          this.playerUIController.updatePlayPauseUI(true);
-          this.stopAVPlayerTimeUpdates();
-          this.handlePlaybackEnded();
-          this.flushPlaybackMetrics("completed");
-        },
-      });
-      avPlayer = createPlaybackEngineAdapter({
-        id: ENGINE_ID.AVPLAYER,
-        engine: avPlayer,
-      });
-      this.avPlayer = avPlayer;
-      this.trackManagedEngine(ENGINE_ID.AVPLAYER, this.avPlayer);
-
-      await avPlayer.init();
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        await this.teardownAVPlayer(avPlayer);
-        return;
-      }
-
-      // Load the stream (use proxyUrl if available, otherwise direct URL)
-      const proxyUrl = this.proxyUrl ? this.toAbsoluteUrl(this.proxyUrl) : this.streamUrl;
-      // For GIndex content, default to mkv since URL parsing is unreliable
-      const ext =
-        this.sourceType === "gindex"
-          ? "mkv"
-          : this.streamUrl.split(".").pop()?.split("?")[0] || "mkv";
-      const isLive = this.contentType === "live";
-      await avPlayer.load(proxyUrl, this.buildAVPlayerLoadOptions(ext, isLive));
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        await this.teardownAVPlayer(avPlayer);
-        return;
-      }
-
-      // Apply volume settings — wrapper exposes only `setVolume`
-      // (no `mute()`). Use volume 0 for the muted state.
-      avPlayer.setVolume(audioOutputVolume(this.canonicalAudioState()));
-
-      // Mark as using AVPlayer
-      this.usingAVPlayer = true;
-      this.video.classList.add("hidden");
-
-      // Seek to saved position
-      if (seekTime > 0) {
-        await avPlayer.seek(seekTime);
-        if (!this.isCurrentPlaybackSession(sessionId)) {
-          await this.teardownAVPlayer(avPlayer);
-          return;
-        }
-      }
-
-      // Apply the selected track
-      if (trackType === "audio" && this._probedAudioTracks?.[trackIndex]) {
-        this.audioTracks = this._probedAudioTracks;
-        await this.setAVPlayerAudioTrack(trackIndex);
-      } else if (trackType === "subtitle") {
-        this.subtitleTracks = this._probedSubtitleTracks || [];
-        await this.setAVPlayerSubtitleTrack(trackIndex);
-      }
-
-      // Start playback
-      if (shouldPlay) {
-        await avPlayer.play();
-        if (!this.isCurrentPlaybackSession(sessionId)) {
-          await this.teardownAVPlayer(avPlayer);
-          return;
-        }
-      } else {
-        this.handlePlaybackPaused();
-      }
-
-      // Start time updates
-      this.startAVPlayerTimeUpdates();
-
-      // Detect tracks from now-active AVPlayer
-      this.detectAVPlayerTracks(sessionId);
-
-      this.playerUIController.hideLoading();
-      log.debug("[VideoPlayer] Switched to AVPlayer with", trackType, "track", trackIndex);
-    } catch (error) {
-      await this.transitionFromFailedAVPlayer({
-        sessionId,
-        avPlayer,
-        error,
-        resumeTime: seekTime,
-      });
-    } finally {
-      this._switchingToAVPlayer = false;
-    }
+    return this.transitionNativeToAVPlayer({
+      key: `native-to-avplayer-${trackType}-track`,
+      capture: () => ({
+        resumeTime: Number(seekTime) || 0,
+        shouldPlay: shouldPlay === true,
+      }),
+      initializeEngine: true,
+      showLoading: true,
+      trackIndex,
+      trackType,
+    });
   },
 
-  async revertToNativePlayer(avPlayer = this.avPlayer) {
-    log.debug("[VideoPlayer] Reverting to native player");
-    this.reportPlayerLifecycle("player_engine_destroyed", { engine: "avplayer" });
-    const transitionSessionId = this.beginPlaybackSession();
-
-    this.stopAVPlayerTimeUpdates();
-
-    if (this.avPlayer === avPlayer) {
-      this.avPlayer = null;
-    }
-    await this.teardownAVPlayer(avPlayer);
-
+  restoreNativePlayerPresentation() {
     const avContainer = this.el.querySelector("#avplayer-mount");
     if (avContainer) {
       avContainer.replaceChildren();
@@ -3913,6 +3695,17 @@ const VideoPlayer = {
     this.applyAudioState();
     this.updateVolumeUI();
     this.syncPiPAvailability();
+  },
+
+  async revertToNativePlayer(avPlayer = this.avPlayer) {
+    log.debug("[VideoPlayer] Reverting to native player");
+    this.reportPlayerLifecycle("player_engine_destroyed", { engine: "avplayer" });
+    const transitionSessionId = this.beginPlaybackSession();
+
+    this.stopAVPlayerTimeUpdates();
+    if (this.avPlayer === avPlayer) this.avPlayer = null;
+    await this.teardownAVPlayer(avPlayer);
+    this.restoreNativePlayerPresentation();
     return transitionSessionId;
   },
 
@@ -4234,12 +4027,20 @@ const VideoPlayer = {
     this._metadataProbeCancel = null;
     this._qualityCapabilitiesCancel?.();
     this._qualityCapabilitiesCancel = null;
+    this.playbackEngineTransitionController?.destroy();
     this.cleanup();
+    this.playbackEngineTransitionController = null;
+    this.nativeSubtitleController?.destroy();
+    this.nativeSubtitleController = null;
     this.playbackOrchestrator?.destroy();
     this.playbackOrchestrator = null;
     this.networkMonitor?.stop();
     this.nativeBufferManager?.stop();
+    this.subtitleSourceResolver?.destroy();
+    this.subtitleSourceResolver = null;
     this.playerTrackController?.destroy();
+    this.playerTrackPresentationController?.destroy();
+    this.playerTrackPresentationController = null;
     this.playerUIController?.destroy();
     this.playerUIController = null;
     this.playerUI = null;
