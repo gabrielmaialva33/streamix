@@ -116,3 +116,51 @@ test("destroy during load rejects as cancellation without duplicate error callba
   assert.equal(errorCalls, 0);
   assert.equal(wrapper.player, null);
 });
+
+test("exposes stable AVPlayer track capability results", async () => {
+  const calls = [];
+  const wrapper = createWrapper();
+  wrapper.player = createPlayer({
+    async selectAudio(id) {
+      calls.push(["audio", id]);
+    },
+    async selectSubtitle(id) {
+      calls.push(["subtitle", id]);
+    },
+    setSubtitleEnable(enabled) {
+      calls.push(["subtitle-enabled", enabled]);
+    },
+    setSubtitleDelay(delay) {
+      calls.push(["subtitle-delay", delay]);
+    },
+    async loadExternalSubtitle(options) {
+      calls.push(["external-subtitle", options]);
+      return 91;
+    },
+  });
+  wrapper.getCurrentTime = () => 0;
+
+  assert.equal(await wrapper.selectAudioTrack(17), 17);
+  assert.equal(await wrapper.selectSubtitleTrack(23), 23);
+  assert.equal(await wrapper.selectSubtitleTrack(-1), -1);
+  assert.equal(wrapper.setSubtitleDelay(125.9), 125);
+  assert.equal(wrapper.setSubtitleDelay(Number.NaN), false);
+  assert.equal(await wrapper.loadExternalSubtitle({ source: "blob:subtitle", lang: "pt-BR" }), 91);
+
+  assert.deepEqual(calls, [
+    ["audio", 17],
+    ["subtitle", 23],
+    ["subtitle-enabled", true],
+    ["subtitle-enabled", false],
+    ["subtitle-delay", 125],
+    ["external-subtitle", { source: "blob:subtitle", lang: "pt-BR" }],
+  ]);
+});
+
+test("track selection and delay degrade safely before AVPlayer is ready", async () => {
+  const wrapper = createWrapper();
+
+  assert.equal(await wrapper.selectAudioTrack(1), false);
+  assert.equal(await wrapper.selectSubtitleTrack(1), false);
+  assert.equal(wrapper.setSubtitleDelay(100), false);
+});

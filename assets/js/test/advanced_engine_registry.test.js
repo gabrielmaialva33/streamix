@@ -14,7 +14,7 @@ test("advanced engines are visible to the orchestrator without transferring owne
   assert.match(source, /trackManagedEngine\(engineId, engine\) \{[\s\S]*registryOwnsEngine: false/);
   assert.match(source, /trackManagedEngine\(ENGINE_ID\.AVBRIDGE, this\.avbridge\);/);
   assert.match(source, /trackManagedEngine\(ENGINE_ID\.H265WEB, this\.h265web\);/);
-  assert.match(source, /trackManagedEngine\(ENGINE_ID\.AVPLAYER, this\.avPlayer\);/);
+  assert.match(source, /trackManagedEngine\(ENGINE_ID\.AVPLAYER, (?:this\.avPlayer|engine)\);/);
 });
 
 test("the hook still owns advanced-engine teardown", async () => {

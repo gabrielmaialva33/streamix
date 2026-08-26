@@ -52,6 +52,15 @@ test("builds one explicit player state from the hook dataset", () => {
   assert.strictEqual(state.playbackMetrics, playbackMetrics);
   assert.deepEqual(state.nextEpisode, { id: 9 });
   assert.equal(state.nextEpisodeParseFailed, false);
+  assert.equal(state.subtitleSourceResolver, null);
+  assert.equal(state.nativeSubtitleController, null);
+  assert.equal(state.playerTrackPresentationController, null);
+  assert.equal(state.playbackEngineTransitionController, null);
+  assert.equal(state._switchingToAVPlayer, false);
+  assert.equal(state._externalSubtitleSourceLease, null);
+  assert.equal(Object.hasOwn(state, "_externalSubtitleLoadedFor"), false);
+  assert.equal(Object.hasOwn(state, "_nativeExternalSubtitleTrack"), false);
+  assert.equal(Object.hasOwn(state, "_subtitleOffsetReloadTimer"), false);
   assert.equal(state._destroyed, false);
 });
 

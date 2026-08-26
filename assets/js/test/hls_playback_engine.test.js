@@ -148,9 +148,12 @@ test("owns HLS audio and subtitle discovery and selection", () => {
 
   assert.equal(Object.isFrozen(audioTracks), true);
   assert.equal(Object.isFrozen(audioTracks[0]), true);
+  assert.equal(audioTracks[0].selectionId, 0);
   assert.equal(audioTracks[0].active, false);
+  assert.equal(audioTracks[1].selectionId, 1);
   assert.equal(audioTracks[1].active, true);
   assert.equal(audioTracks[1].selected, true);
+  assert.equal(subtitleTracks[0].selectionId, 0);
   assert.equal(subtitleTracks[0].active, false);
 
   assert.equal(engine.selectAudioTrack(0), 0);
