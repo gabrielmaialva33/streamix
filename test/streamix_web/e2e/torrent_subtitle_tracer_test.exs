@@ -163,6 +163,26 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
         get() { return {length: 1}; }
       });
       HTMLMediaElement.prototype.canPlayType = () => "probably";
+      // The tracer validates native HTML subtitles. Keep engine selection
+      // independent from the host browser's MediaCapabilities profile.
+      const decodingInfo = async () => ({
+        supported: true,
+        smooth: true,
+        powerEfficient: true
+      });
+
+      if (navigator.mediaCapabilities) {
+        Object.defineProperty(navigator.mediaCapabilities, "decodingInfo", {
+          value: decodingInfo,
+          configurable: true
+        });
+      } else {
+        Object.defineProperty(navigator, "mediaCapabilities", {
+          value: {decodingInfo},
+          configurable: true
+        });
+      }
+
       HTMLMediaElement.prototype.load = function () {
         queueMicrotask(() => this.dispatchEvent(new Event("loadedmetadata")));
       };
@@ -195,16 +215,24 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
         const deadline = Date.now() + 8_000;
         let container;
         let hook;
+        let nativeSubtitleSnapshot;
+        let subtitleSourceSnapshot;
         let track;
 
         while (Date.now() < deadline) {
           container = document.querySelector("#video-player-container");
           hook = container?.__videoPlayerHook;
           track = document.querySelector("#video-element track");
+          nativeSubtitleSnapshot = hook?.nativeSubtitleController
+            ? hook.nativeSubtitleController.snapshot()
+            : null;
+          subtitleSourceSnapshot = hook?.subtitleSourceResolver
+            ? hook.subtitleSourceResolver.snapshot()
+            : null;
 
           if (
             hook?.playbackSessionId > 0 &&
-            hook?._nativeExternalSubtitleTrack?.isConnected &&
+            nativeSubtitleSnapshot?.active &&
             track?.isConnected
           ) {
             break;
@@ -212,6 +240,7 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
 
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
+
         const subtitleResponse = await fetch(
           "/api/subtitles/#{@imdb_id}?lang=pt-BR&offset_ms=500"
         );
@@ -224,15 +253,22 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
           trackLabel: track?.label,
           trackCount: document.querySelectorAll("#video-element track").length,
           subtitleOptions: document.querySelector("#subtitle-options")?.innerHTML,
-          hookState: hook && {
-            sourceType: hook.sourceType,
-            imdbId: hook.imdbId,
-            sessionId: hook.playbackSessionId,
-            externalLoadedFor: hook._externalSubtitleLoadedFor,
-            sameVideoNode: hook.video === document.querySelector("#video-element"),
-            nativeTrackConnected: hook._nativeExternalSubtitleTrack?.isConnected,
-            tracks: hook.subtitleTracks
-          },
+          hookState: hook
+            ? {
+                engine: hook.playbackOrchestrator?.currentEngineId?.() ?? null,
+                sourceType: hook.sourceType,
+                imdbId: hook.imdbId,
+                sessionId: hook.playbackSessionId,
+                usingAVPlayer: hook.usingAVPlayer,
+                nativeSubtitle: nativeSubtitleSnapshot,
+                subtitleSource: subtitleSourceSnapshot,
+                sameVideoNode: hook.video === document.querySelector("#video-element"),
+                nativeTrackConnected: Boolean(
+                  nativeSubtitleSnapshot?.active && track?.isConnected
+                ),
+                tracks: hook.subtitleTracks
+              }
+            : null,
           subtitleStatus: subtitleResponse.status,
           shifted
         };
@@ -240,11 +276,20 @@ defmodule StreamixWeb.E2E.TorrentSubtitleTracerTest do
       """,
       [is_function: true, timeout: 12_000],
       fn state ->
+        hook_state = Map.fetch!(state, "hookState")
+        native_subtitle = Map.fetch!(hook_state, "nativeSubtitle")
+        subtitle_source = Map.fetch!(hook_state, "subtitleSource")
+
         assert String.starts_with?(state["streamUrl"], "/api/stream/torrent/")
         assert state["subtitleLang"] == "pt-BR"
         assert state["subtitleOffsetMs"] == "500"
-        assert state["hookState"]["sameVideoNode"]
-        assert state["hookState"]["nativeTrackConnected"]
+        assert hook_state["engine"] == "native"
+        assert hook_state["usingAVPlayer"] == false
+        assert hook_state["sameVideoNode"]
+        assert hook_state["nativeTrackConnected"]
+        assert native_subtitle["active"]
+        assert subtitle_source["cachedResponses"] == 1
+        assert subtitle_source["activeLeases"] == 1
         assert state["trackLabel"] == "Português (auto)", inspect(state)
         assert state["trackCount"] == 1, inspect(state)
         assert state["subtitleOptions"] =~ "Português (auto)", inspect(state)
