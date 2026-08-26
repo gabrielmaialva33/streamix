@@ -108,8 +108,6 @@ export function createInitialPlayerState(
     avPlayerTimeInterval: null,
     preferAVPlayer: false,
     _switchingToAVPlayer: false,
-    _avPlayerFailureSessionId: null,
-    _avPlayerFailurePromise: null,
 
     avbridge: null,
     usingAvbridge: false,
