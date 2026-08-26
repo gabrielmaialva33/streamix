@@ -202,33 +202,25 @@ as a lease:
 For native playback, `NativeSubtitleController` owns the lease while its track
 is attached and releases it on replacement, reset, stale completion, or
 destroy. For AVPlayer, `VideoPlayer` temporarily retains the accepted lease and
-releases it during replacement or player cleanup. The resolver also tracks all
-active leases as a final safety boundary and releases any survivor during reset
-or terminal teardown.
-
-## Error behavior
-
-Discovery failures degrade to an empty immutable track list and are reported as
-non-fatal diagnostics. Asynchronous selection and command failures are reported
-and rethrown unchanged so `PlayerTrackController` preserves the original
-operation error. Native DOM replacement and cleanup errors are contained by
-`NativeSubtitleController`. Network, response, Blob, Object URL, cancellation,
-and source cleanup failures are contained by `SubtitleSourceResolver`. None of
-these diagnostics can replace a playback failure.
-
 ## Transition boundary
 
-The track subsystem now has explicit owners for commands, engine capabilities,
+The track subsystem has explicit owners for commands, engine capabilities,
 presentation, native DOM, and external source acquisition. Its remaining hook
 methods are thin adapters used while engines change.
 
-The first cross-engine transaction family, native to AVPlayer, now runs through
-`PlaybackEngineTransitionController`. The controller owns ordering, session
-checks, cancellation, provisional rollback, teardown drain, and one terminal
-outcome. Concrete AVPlayer construction and product policy remain in
-`VideoPlayer`.
+`PlaybackEngineTransitionController` now owns all AVPlayer transaction routes:
+
+- native fallback to AVPlayer;
+- track-driven native to AVPlayer switches;
+- AVPlayer runtime recovery back to native;
+- direct AVPlayer activation selected during initial engine policy.
+
+The direct-start route reuses the playback session already created by
+`initPlayer()` and bypasses fallback-only counters and circuit-breaker policy.
+It still uses the same create, init, load, register, restore, activate, rollback,
+teardown, and native-recovery guarantees.
 
 See `docs/player-engine-transitions.md` for the phase model, ownership rules,
-and validation contract. The next recut is AVPlayer-to-native recovery; it must
-reuse the same transition boundary and keep all browser, torrent-subtitle, and
-MPEG-TS gates green.
+session-reuse contract, and validation matrix. The next transition recut should
+make provisional-engine destruction transition-specific before moving the first
+non-AVPlayer engine family into the controller.

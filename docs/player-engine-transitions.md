@@ -106,19 +106,72 @@ The focused tests cover:
 Every incremental transition extraction must also keep the full JavaScript,
 Elixir, Chromium, Firefox, WebKit, torrent-subtitle, and MPEG-TS gates green.
 
+## AVPlayer to native recovery
+
+Runtime AVPlayer failures now use the same transition controller through
+`recover()` instead of a second hook-owned state machine. The ordered recovery
+pipeline is:
+
+```text
+validate failed AVPlayer session
+  -> capture the best resume position
+  -> apply failure and recommendation policy
+  -> release the AVPlayer adapter from the orchestrator
+  -> destroy the failed engine through the teardown queue
+  -> drain teardown
+  -> begin one replacement native session
+  -> restore native DOM and canonical audio presentation
+  -> restart engine selection using that same session
+  -> complete once
+```
+
+The controller deduplicates repeated recovery requests by transition key and
+failed source session. `_avPlayerFailureSessionId` and
+`_avPlayerFailurePromise` are no longer required in `VideoPlayer`.
+
+An AVPlayer error emitted while native-to-AVPlayer construction is pending first
+cancels that forward transition. Its provisional adapter is rolled back and
+destroyed by the controller; recovery then runs with no second teardown. An
+error emitted after commit enters recovery directly. A request arriving during
+the narrow committed-but-not-yet-finalized window is queued behind the completed
+forward promise rather than being mistaken for the forward transition result.
+
+`initPlayer()` accepts an optional existing session for recovery. Ordinary
+startup still creates its own session, while recovery consumes the session that
+the controller created. This removes the previous double-session handoff.
+
+Recovery failures attempt source-engine cleanup before invoking product failure
+policy. Cancellation or a stale session cannot later reactivate native playback,
+and diagnostic failures cannot replace the original recovery error.
+
+## Initial AVPlayer activation
+
+When `engine_selector` chooses AVPlayer during `initPlayer()`, the hook now calls
+`startWithAVPlayer(sessionId)` instead of entering the fallback entrypoint. The
+startup adapter preserves the session already created by `initPlayer()` and
+passes it to the transition controller. The controller uses that supplied
+session instead of calling `beginPlaybackSession()` a second time.
+
+Direct startup deliberately bypasses fallback-only policy such as the circuit
+breaker, fallback counters, and fallback timestamps. It still marks AVPlayer as
+attempted, records a successful AVPlayer recommendation after playback starts,
+and uses the same create, explicit init, load, register, restore, activate,
+rollback, teardown, and native-recovery pipeline as fallback and track-driven
+switches.
+
+A supplied startup session is validated after capture and after every later
+asynchronous phase. If it has already become stale, no provisional AVPlayer is
+created and no replacement session is introduced.
+
 ## Next extraction
 
-The next transition family is **AVPlayer to native recovery**. It should move
-these remaining responsibilities out of `VideoPlayer` without changing product
-policy:
+All AVPlayer construction and recovery routes now use one transaction state
+machine. The next safe slice is to make provisional-engine disposal a
+transition-specific boundary instead of a controller-wide AVPlayer callback.
+That will allow the first non-AVPlayer family—preferably initial MPEG-TS
+activation—to reuse the controller without weakening the existing HLS and
+MPEG-TS recovery coordinators.
 
-1. capture the best failure resume position;
-2. forget a failed recommendation when appropriate;
-3. serialize AVPlayer teardown;
-4. restore native DOM and canonical audio presentation;
-5. begin the replacement native session;
-6. restart engine selection exactly once;
-7. deduplicate runtime error events and failed-transition recovery.
-
-That recut should reuse the same controller primitives rather than introduce a
-second transition state machine.
+That recut must preserve engine-specific ownership, direct-start policy,
+startup metrics, stale-session cleanup, and the existing Chromium, Firefox,
+WebKit, torrent-subtitle, and MPEG-TS gates.
