@@ -95,6 +95,30 @@ function transitionOptions(harness, overrides = {}) {
   };
 }
 
+function recoveryOptions(harness, overrides = {}) {
+  const engine = overrides.engine ?? { id: "avplayer" };
+  return {
+    key: "avplayer-to-native-recovery",
+    sourceSessionId: 7,
+    engine,
+    capture: () => {
+      harness.calls.push("capture-recovery");
+      return { resumeTime: 24 };
+    },
+    prepare: ({ sourceSessionId }) => harness.calls.push(`prepare-recovery:${sourceSessionId}`),
+    releasePrevious: ({ sourceSessionId }) =>
+      harness.calls.push(`release-recovery:${sourceSessionId}`),
+    restoreNative: ({ capture, sessionId }) =>
+      harness.calls.push(`restore-native:${sessionId}:${capture.resumeTime}`),
+    activateNative: ({ sessionId }) => harness.calls.push(`activate-native:${sessionId}`),
+    complete: ({ sessionId }) => {
+      harness.calls.push(`complete-recovery:${sessionId}`);
+      return sessionId;
+    },
+    ...overrides,
+  };
+}
+
 test("validates controller and transition boundaries", async () => {
   assert.throws(() => new PlaybackEngineTransitionController(), /requires beginSession\(\)/);
 
@@ -140,6 +164,53 @@ test("runs one native-to-engine transaction in deterministic order", async () =>
     revision: 1,
     sessionId: null,
   });
+});
+
+test("reuses a supplied startup session without beginning a second session", async () => {
+  const harness = createHarness({ currentSession: 7 });
+  const engine = { id: "avplayer" };
+
+  const result = await harness.controller.transition(
+    transitionOptions(harness, {
+      engine,
+      key: "startup-avplayer",
+      sessionId: 7,
+    }),
+  );
+
+  assert.strictEqual(result, engine);
+  assert.equal(harness.calls.includes("begin"), false);
+  assert.deepEqual(harness.calls, [
+    "capture",
+    "prepare:7",
+    "release:7",
+    "drain:7",
+    "create:7",
+    "initialize:avplayer",
+    "load:avplayer",
+    "register:avplayer",
+    "restore:avplayer:42",
+    "activate:avplayer",
+    "complete:avplayer",
+  ]);
+});
+
+test("rejects a supplied startup session that is already stale", async () => {
+  const harness = createHarness({ currentSession: 8 });
+
+  const result = await harness.controller.transition(
+    transitionOptions(harness, {
+      key: "startup-avplayer",
+      sessionId: 7,
+    }),
+  );
+
+  assert.equal(result, false);
+  assert.deepEqual(harness.calls, ["capture"]);
+  assert.equal(harness.destroyed.length, 0);
+  assert.ok(
+    harness.snapshots.some(({ phase }) => phase === PLAYBACK_ENGINE_TRANSITION_PHASE.STALE),
+  );
 });
 
 test("publishes immutable bounded lifecycle snapshots", async () => {
@@ -271,6 +342,131 @@ test("a cancelled pending rejection remains cancelled instead of becoming a fail
   );
 });
 
+test("validates recovery boundaries before starting work", () => {
+  const harness = createHarness({ currentSession: 7 });
+
+  assert.throws(
+    () => harness.controller.recover({ sourceSessionId: 7 }),
+    /requires activateNative\(\)/,
+  );
+  assert.throws(
+    () => harness.controller.recover({ activateNative() {} }),
+    /requires sourceSessionId/,
+  );
+});
+
+test("runs AVPlayer-to-native recovery after serialized source teardown", async () => {
+  const harness = createHarness({ currentSession: 7 });
+  const engine = { id: "avplayer" };
+
+  const result = await harness.controller.recover(recoveryOptions(harness, { engine }));
+
+  assert.equal(result, 8);
+  assert.deepEqual(harness.calls, [
+    "capture-recovery",
+    "prepare-recovery:7",
+    "release-recovery:7",
+    "destroy:avplayer",
+    "drain:null",
+    "begin",
+    "restore-native:8:24",
+    "activate-native:8",
+    "complete-recovery:8",
+  ]);
+  assert.deepEqual(harness.destroyed, [engine]);
+});
+
+test("deduplicates repeated runtime recovery for the same failed session", async () => {
+  const restoring = deferred();
+  const harness = createHarness({ currentSession: 7 });
+  const options = recoveryOptions(harness, {
+    restoreNative: async ({ sessionId }) => {
+      harness.calls.push(`restore-native:${sessionId}`);
+      await restoring.promise;
+    },
+  });
+
+  const first = harness.controller.recover(options);
+  const second = harness.controller.recover(options);
+  assert.strictEqual(first, second);
+
+  while (!harness.calls.includes("restore-native:8")) await Promise.resolve();
+  restoring.resolve();
+  assert.equal(await first, 8);
+  assert.equal(harness.calls.filter((call) => call === "capture-recovery").length, 1);
+  assert.equal(harness.calls.filter((call) => call === "destroy:avplayer").length, 1);
+});
+
+test("rejects recovery for a playback session that is already stale", async () => {
+  const harness = createHarness({ currentSession: 8 });
+
+  assert.equal(await harness.controller.recover(recoveryOptions(harness)), false);
+  assert.deepEqual(harness.calls, []);
+  assert.deepEqual(harness.destroyed, []);
+});
+
+test("cancelling recovery cannot reactivate native playback later", async () => {
+  const restoring = deferred();
+  const harness = createHarness({ currentSession: 7 });
+  const engine = { id: "avplayer" };
+  const resultPromise = harness.controller.recover(
+    recoveryOptions(harness, {
+      engine,
+      restoreNative: async ({ sessionId }) => {
+        harness.calls.push(`restore-native:${sessionId}`);
+        await restoring.promise;
+      },
+    }),
+  );
+
+  while (!harness.calls.includes("restore-native:8")) await Promise.resolve();
+  assert.equal(await harness.controller.cancel("navigation"), true);
+  restoring.resolve();
+
+  assert.equal(await resultPromise, false);
+  assert.equal(
+    harness.calls.some((call) => call === "activate-native:8"),
+    false,
+  );
+  assert.equal(harness.calls.filter((call) => call === "destroy:avplayer").length, 1);
+});
+
+test("recovery destroys the failed engine before invoking product failure policy", async () => {
+  const harness = createHarness({ currentSession: 7 });
+  const engine = { id: "avplayer" };
+  const original = new Error("native surface failed");
+  const failures = [];
+
+  const result = await harness.controller.recover(
+    recoveryOptions(harness, {
+      engine,
+      restoreNative() {
+        throw original;
+      },
+      onFailure(error, context) {
+        failures.push({
+          destroyedBeforeFailure: harness.destroyed.includes(engine),
+          error,
+          sessionId: context.sessionId,
+          sourceSessionId: context.sourceSessionId,
+        });
+      },
+    }),
+  );
+
+  assert.equal(result, false);
+  assert.deepEqual(failures, [
+    {
+      destroyedBeforeFailure: true,
+      error: original,
+      sessionId: 8,
+      sourceSessionId: 7,
+    },
+  ]);
+  assert.equal(harness.errors.at(-1).operation, "recovery");
+  assert.strictEqual(harness.errors.at(-1).error, original);
+});
+
 test("routes the original transition error through one failure outcome", async () => {
   const harness = createHarness();
   const engine = { id: "avplayer" };
@@ -367,4 +563,32 @@ test("destroy is terminal, idempotent and cleans active provisional work", async
   assert.equal(harness.controller.destroyed, true);
   assert.equal(harness.controller.snapshot().phase, PLAYBACK_ENGINE_TRANSITION_PHASE.DESTROYED);
   assert.equal(await harness.controller.transition(transitionOptions(harness)), false);
+});
+
+test("queues recovery requested during the forward transition commit window", async () => {
+  let harness;
+  let recoveryPromise = null;
+  let recoveryRequested = false;
+  const failedEngine = { id: "failed-avplayer" };
+
+  harness = createHarness({
+    onStateChange(snapshot) {
+      if (!recoveryRequested && snapshot.phase === PLAYBACK_ENGINE_TRANSITION_PHASE.COMPLETED) {
+        recoveryRequested = true;
+        recoveryPromise = harness.controller.recover(
+          recoveryOptions(harness, {
+            engine: failedEngine,
+            sourceSessionId: 1,
+          }),
+        );
+      }
+    },
+  });
+
+  const forwardEngine = await harness.controller.transition(transitionOptions(harness));
+  assert.equal(forwardEngine.id, "avplayer");
+  assert.ok(recoveryPromise);
+  assert.equal(await recoveryPromise, 2);
+  assert.equal(harness.calls.filter((call) => call === "begin").length, 2);
+  assert.equal(harness.calls.filter((call) => call === "destroy:failed-avplayer").length, 1);
 });
