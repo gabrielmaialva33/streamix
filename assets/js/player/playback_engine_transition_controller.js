@@ -472,7 +472,7 @@ export class PlaybackEngineTransitionController {
   }
 
   async _releaseRecoverySource(context, throwOnError) {
-    if (!context || context.released) return false;
+    if (!context?.engine || context.released) return false;
 
     context.released = true;
     let releaseError = null;
@@ -483,22 +483,23 @@ export class PlaybackEngineTransitionController {
       }
     } catch (error) {
       releaseError = error;
-      if (!throwOnError) safeNotify(this._onError, "release_previous", error, context);
+      safeNotify(this._onError, "release_previous", error, context);
     }
 
-    if (context.engine && !context.cleaned) {
-      context.cleaned = true;
-      try {
-        await this._destroyEngine(context.engine, context);
-      } catch (error) {
-        releaseError ??= error;
-        if (!throwOnError) {
-          safeNotify(this._onError, "destroy_recovery_engine", error, context);
-        }
-      }
+    const destroyEngine =
+      typeof context.options.destroyEngine === "function"
+        ? context.options.destroyEngine
+        : this._destroyEngine;
+
+    try {
+      await destroyEngine(context.engine, context);
+    } catch (error) {
+      releaseError ??= error;
+      safeNotify(this._onError, "destroy_engine", error, context);
     }
 
-    if (releaseError && throwOnError) throw releaseError;
+    context.engine = null;
+    if (throwOnError && releaseError) throw releaseError;
     return true;
   }
 
@@ -514,8 +515,13 @@ export class PlaybackEngineTransitionController {
       safeNotify(this._onError, "rollback", error, context);
     }
 
+    const destroyEngine =
+      typeof context.options.destroyEngine === "function"
+        ? context.options.destroyEngine
+        : this._destroyEngine;
+
     try {
-      await this._destroyEngine(context.engine, context);
+      await destroyEngine(context.engine, context);
     } catch (error) {
       safeNotify(this._onError, "destroy_engine", error, context);
     }

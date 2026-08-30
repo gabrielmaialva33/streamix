@@ -222,3 +222,38 @@ test("native restart consumes the recovery session instead of creating a second 
     /const sessionId = providedSessionId \?\? this\.beginPlaybackSession\(\)/,
   );
 });
+
+test("transition contexts can override provisional and recovery engine destruction", async () => {
+  const controller = await source(controllerUrl);
+  const overridePattern =
+    /typeof context\.options\.destroyEngine === "function"[\s\S]*?context\.options\.destroyEngine[\s\S]*?: this\._destroyEngine/g;
+
+  assert.equal(controller.match(overridePattern)?.length, 2);
+});
+
+test("initial MPEG-TS activation uses the shared transition controller with a local destroyer", async () => {
+  const hook = await source(hookUrl);
+  const transition = methodSlice(hook, "playWithMpegts", "loadMpegtsForTransition");
+  const loader = methodSlice(hook, "loadMpegtsForTransition", "playNative");
+
+  assert.match(transition, /this\.playbackEngineTransitionController\.transition\(\{/);
+  assert.match(transition, /key: `startup-mpegts-\$\{type\}`/);
+  assert.match(transition, /sessionId,/);
+  assert.match(transition, /createEngine: \(\) => this\.ensureStreamLoader\(\)/);
+  assert.match(transition, /loadEngine: \(\) => this\.loadMpegtsForTransition\(type\)/);
+  assert.match(transition, /loader\.getMpegtsEngine\(\)/);
+  assert.match(transition, /destroyEngine: async \(loader\) =>/);
+  assert.match(transition, /await loader\.destroy\(\)/);
+  assert.match(transition, /this\.playbackOrchestrator\?\.releaseEngine\(ENGINE_ID\.MPEGTS\)/);
+  assert.match(transition, /context\.capture\?\.type === "flv"/);
+  assert.match(transition, /errorType: "OtherError"/);
+  assert.doesNotMatch(transition, /guardPlaybackLoad/);
+  assert.doesNotMatch(transition, /teardownAVPlayer/);
+
+  assert.match(loader, /await guardPlaybackLoad\(\{/);
+  assert.match(loader, /destroy: \(\) => undefined/);
+  assert.match(loader, /this\.setMediaElementEngine\(ENGINE_ID\.MPEGTS, mpegtsEngine\)/);
+  assert.match(loader, /throw result\.error/);
+  assert.doesNotMatch(loader, /recoverFromMpegtsError/);
+  assert.doesNotMatch(loader, /teardownStreamLoaderForTransition/);
+});

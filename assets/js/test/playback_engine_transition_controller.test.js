@@ -467,6 +467,60 @@ test("recovery destroys the failed engine before invoking product failure policy
   assert.strictEqual(harness.errors.at(-1).error, original);
 });
 
+test("recovery teardown failure blocks native activation and preserves the source error", async () => {
+  const harness = createHarness({ currentSession: 7 });
+  const engine = { id: "avplayer" };
+  const original = new Error("failed to release AVPlayer");
+  const failures = [];
+
+  const result = await harness.controller.recover(
+    recoveryOptions(harness, {
+      engine,
+      releasePrevious({ sourceSessionId }) {
+        harness.calls.push(`release-recovery:${sourceSessionId}`);
+        throw original;
+      },
+      onFailure(error, context) {
+        failures.push({
+          error,
+          sessionId: context.sessionId,
+          sourceSessionId: context.sourceSessionId,
+        });
+      },
+    }),
+  );
+
+  assert.equal(result, false);
+  assert.deepEqual(harness.calls, [
+    "capture-recovery",
+    "prepare-recovery:7",
+    "release-recovery:7",
+    "destroy:avplayer",
+    "drain:null",
+  ]);
+  assert.deepEqual(harness.destroyed, [engine]);
+  assert.deepEqual(failures, [
+    {
+      error: original,
+      sessionId: null,
+      sourceSessionId: 7,
+    },
+  ]);
+  assert.equal(harness.errors.at(-2).operation, "release_previous");
+  assert.strictEqual(harness.errors.at(-2).error, original);
+  assert.equal(harness.errors.at(-1).operation, "recovery");
+  assert.strictEqual(harness.errors.at(-1).error, original);
+  assert.equal(harness.calls.includes("begin"), false);
+  assert.equal(
+    harness.calls.some((call) => call.startsWith("restore-native:")),
+    false,
+  );
+  assert.equal(
+    harness.calls.some((call) => call.startsWith("activate-native:")),
+    false,
+  );
+});
+
 test("routes the original transition error through one failure outcome", async () => {
   const harness = createHarness();
   const engine = { id: "avplayer" };
@@ -591,4 +645,49 @@ test("queues recovery requested during the forward transition commit window", as
   assert.equal(await recoveryPromise, 2);
   assert.equal(harness.calls.filter((call) => call === "begin").length, 2);
   assert.equal(harness.calls.filter((call) => call === "destroy:failed-avplayer").length, 1);
+});
+
+test("transition-specific destroyer overrides the global provisional-engine destroyer", async () => {
+  const harness = createHarness();
+  const engine = { id: "mpegts" };
+  const locallyDestroyed = [];
+  const original = new Error("load failed");
+
+  const result = await harness.controller.transition(
+    transitionOptions(harness, {
+      engine,
+      destroyEngine(created, context) {
+        locallyDestroyed.push({ created, key: context.key });
+      },
+      loadEngine() {
+        throw original;
+      },
+    }),
+  );
+
+  assert.equal(result, false);
+  assert.deepEqual(locallyDestroyed, [{ created: engine, key: "native-to-avplayer" }]);
+  assert.deepEqual(harness.destroyed, []);
+});
+
+test("recovery-specific destroyer overrides the global source-engine destroyer", async () => {
+  const harness = createHarness({ currentSession: 7 });
+  const engine = { id: "avplayer" };
+  const locallyDestroyed = [];
+
+  const result = await harness.controller.recover(
+    recoveryOptions(harness, {
+      engine,
+      sourceSessionId: 7,
+      destroyEngine(created, context) {
+        locallyDestroyed.push({ created, key: context.key });
+      },
+    }),
+  );
+
+  assert.equal(result, 8);
+  assert.equal(locallyDestroyed.length, 1);
+  assert.strictEqual(locallyDestroyed[0].created, engine);
+  assert.equal(typeof locallyDestroyed[0].key, "string");
+  assert.deepEqual(harness.destroyed, []);
 });

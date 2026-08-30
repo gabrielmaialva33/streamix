@@ -2722,7 +2722,57 @@ const VideoPlayer = {
     }
   },
 
-  async playWithMpegts(type = "mpegts") {
+  playWithMpegts(type = "mpegts") {
+    const sessionId = this.playbackSessionId;
+
+    return this.playbackEngineTransitionController.transition({
+      key: `startup-mpegts-${type}`,
+      sessionId,
+      capture: () => ({ type }),
+      createEngine: () => this.ensureStreamLoader(),
+      loadEngine: () => this.loadMpegtsForTransition(type),
+      registerEngine: ({ engine: loader }) => {
+        const mpegtsEngine = loader.getMpegtsEngine();
+        if (!mpegtsEngine) {
+          throw new Error("MPEG-TS transition completed without an engine");
+        }
+        return mpegtsEngine;
+      },
+      activateEngine: ({ engine: loader }) => Boolean(loader.getMpegtsEngine()),
+      complete: ({ engine: loader }) => loader.getMpegtsEngine(),
+      rollbackEngine: ({ engine: loader }) => {
+        this.playbackOrchestrator?.releaseEngine(ENGINE_ID.MPEGTS);
+        if (this.mpegtsPlayer === loader.getMpegtsPlayer()) {
+          this.mpegtsPlayer = null;
+        }
+      },
+      destroyEngine: async (loader) => {
+        await loader.destroy();
+        if (this.streamLoader === loader) this.streamLoader = null;
+      },
+      onFailure: async (error, context) => {
+        if (!this.isCurrentPlaybackSession(context.sessionId)) return false;
+
+        if (context.capture?.type === "flv") {
+          const transitionSessionId = await this.teardownStreamLoaderForTransition(
+            context.sessionId,
+          );
+          if (transitionSessionId != null) {
+            this.showPlaybackError("Reproducao FLV nao suportada neste navegador");
+          }
+          return false;
+        }
+
+        return this.recoverFromMpegtsError({
+          errorType: "OtherError",
+          errorDetail: "OtherError",
+          errorInfo: { cause: error },
+        });
+      },
+    });
+  },
+
+  async loadMpegtsForTransition(type = "mpegts") {
     this._suppressNativePlaybackEvents = false;
     this.syncPiPAvailability();
     log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
@@ -2748,12 +2798,12 @@ const VideoPlayer = {
       load: () => loader.loadMpegts(this.currentUrl, type),
       isCancelled: isStreamLoaderCancelledError,
       isCurrent: () => this.isCurrentPlaybackSession(sessionId) && this.streamLoader === loader,
-      destroy: () => loader.destroy(),
+      destroy: () => undefined,
     });
 
     if (result.status === "cancelled" || result.status === "stale") {
       this.video.removeEventListener("playing", onPlaying);
-      return;
+      throw result.error || new Error(`MPEG-TS load became ${result.status}`);
     }
 
     if (result.status === "loaded") {
@@ -2773,19 +2823,7 @@ const VideoPlayer = {
     this.video.removeEventListener("playing", onPlaying);
     log.error("mpegts.js initialization error:", result.error);
     this.playbackMetrics?.recordError();
-    if (type === "flv") {
-      const transitionSessionId = await this.teardownStreamLoaderForTransition(sessionId);
-      if (transitionSessionId != null) {
-        this.showPlaybackError("Reproducao FLV nao suportada neste navegador");
-      }
-      return;
-    }
-
-    await this.recoverFromMpegtsError({
-      errorType: "OtherError",
-      errorDetail: "OtherError",
-      errorInfo: { cause: result.error },
-    });
+    throw result.error;
   },
 
   playNative() {
