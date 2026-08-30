@@ -391,8 +391,9 @@ PLAYWRIGHT_BROWSER=webkit bash scripts/test-playwright-docker.sh
 bash scripts/test-pwa-chromium.sh
 ```
 
-Tests refuse remote database hosts and non-`*_test` database names by default. Configure `TEST_DATABASE_URL` explicitly
-when your development `DATABASE_URL` points anywhere other than the local test database.
+Test commands deliberately ignore the repository `.env`. Without exported overrides they use the local Compose
+`streamix_test` database and Redis database 15. Export `TEST_DATABASE_URL` or `TEST_REDIS_URL` for alternate test
+infrastructure; remote hosts and non-`*_test` database names still fail closed unless explicitly authorized.
 
 CI runs compilation, Credo, security and dependency audits, coverage floors, Dialyzer, frontend tests, the three
 Playwright browser engines, mobile/PWA smoke tests, image scanning, and immutable-image provenance checks.

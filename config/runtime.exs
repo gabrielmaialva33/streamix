@@ -3,14 +3,12 @@ import Dotenvy
 
 alias Streamix.RuntimeConfig
 
-# Load .env file in dev/test environments
-# This creates an env map that merges .env with System.get_env()
+# Development may use the repository .env file. Test and production are
+# process-only so a development/production URL can never leak into test runs.
 env =
-  if config_env() in [:dev, :test] do
-    source!([".env", System.get_env()])
-  else
-    System.get_env()
-  end
+  RuntimeConfig.load_environment(config_env(), System.get_env(), fn sources ->
+    source!(sources)
+  end)
 
 # Helper to get env value
 get_env = fn key ->
@@ -49,13 +47,14 @@ infer_test_database_url = fn
     end
 end
 
-# Database URL (works in all environments, loaded from .env in dev/test)
+# Database URL. Development may read .env; test and production use process env.
 # Example: ecto://user:pass@host/database
 database_url =
   case config_env() do
     :test ->
       database_url =
-        get_env.("TEST_DATABASE_URL") || infer_test_database_url.(get_env.("DATABASE_URL"))
+        get_env.("TEST_DATABASE_URL") || infer_test_database_url.(get_env.("DATABASE_URL")) ||
+          RuntimeConfig.local_test_database_url()
 
       allowed_hosts =
         get_env.("TEST_DATABASE_ALLOWED_HOSTS")
@@ -102,12 +101,14 @@ config :streamix, Streamix.Repo,
   migration_lock: :pg_advisory_lock,
   socket_options: maybe_ipv6
 
-# Redis URL (loaded from .env in dev/test via Dotenvy, System env in prod)
+# Redis URL. Tests default to local Redis and are isolated on database 15.
 redis_url =
   case config_env() do
     :test ->
       explicit_test_url = get_env.("TEST_REDIS_URL")
-      source_url = explicit_test_url || get_env.("REDIS_URL") || "redis://localhost:6379"
+
+      source_url =
+        explicit_test_url || get_env.("REDIS_URL") || RuntimeConfig.local_test_redis_url()
 
       allowed_hosts =
         get_env.("TEST_REDIS_ALLOWED_HOSTS")

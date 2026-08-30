@@ -3,6 +3,19 @@ defmodule Streamix.RuntimeConfig do
 
   @truthy ~w(1 true yes on)
   @falsy ~w(0 false no off)
+  @local_test_database_url "ecto://streamix:streamix@localhost/streamix_test"
+  @local_test_redis_url "redis://localhost:6379"
+
+  def load_environment(:dev, system_env, dotenv_loader)
+      when is_map(system_env) and is_function(dotenv_loader, 1) do
+    dotenv_loader.([".env", system_env])
+  end
+
+  def load_environment(_environment, system_env, _dotenv_loader) when is_map(system_env),
+    do: system_env
+
+  def local_test_database_url, do: @local_test_database_url
+  def local_test_redis_url, do: @local_test_redis_url
 
   def boolean!(name, value, default) when is_binary(name) and is_boolean(default) do
     case normalize(value) do

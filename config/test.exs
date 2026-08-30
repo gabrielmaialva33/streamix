@@ -6,16 +6,14 @@ config :streamix, env: :test
 # Only in tests, remove the complexity from the password hashing algorithm
 config :bcrypt_elixir, :log_rounds, 1
 
-# Database connection details are loaded from TEST_DATABASE_URL in config/runtime.exs.
-# If TEST_DATABASE_URL is absent, runtime.exs derives a sibling *_test database from
-# DATABASE_URL automatically. Remote hosts fail closed unless
-# ALLOW_REMOTE_TEST_DATABASE=i-know-this-is-a-test-database is explicitly set.
-# The MIX_TEST_PARTITION environment variable can be used for built-in test
-# partitioning in CI.
+# Test runtime configuration deliberately ignores the repository .env file.
+# Resolution order is TEST_DATABASE_URL, an exported DATABASE_URL converted to a
+# sibling *_test database, then the local Compose streamix_test default. Remote
+# hosts still fail closed unless ALLOW_REMOTE_TEST_DATABASE is explicitly set.
 #
-# Redis follows the same safety boundary. TEST_REDIS_URL is authoritative; a
-# local REDIS_URL falls back to database 15, while remote hosts fail closed
-# unless an isolated non-zero database is explicitly authorized.
+# Redis follows the same process-only boundary: TEST_REDIS_URL, exported
+# REDIS_URL, then localhost. Shared local Redis URLs are isolated on database 15;
+# remote Redis requires an explicit non-zero test database and opt-in.
 config :streamix, Streamix.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2,
