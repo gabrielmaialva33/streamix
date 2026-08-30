@@ -1222,7 +1222,6 @@ const VideoPlayer = {
         reason: "play",
       });
       if (this.usesNativePlaybackEvents()) {
-        this.handlePlaybackStarted();
         emitPlaybackEvent(this.el, "play");
       }
     });
@@ -1342,7 +1341,11 @@ const VideoPlayer = {
       this.nativeBufferingController.handleWaiting();
     });
     this.lifecycle.listenOptional(this.video, "playing", () => {
-      this.observePlaybackState(PLAYBACK_STATE.PLAYING, "media_playing");
+      if (this.usesNativePlaybackEvents()) {
+        this.handlePlaybackStarted();
+      } else {
+        this.observePlaybackState(PLAYBACK_STATE.PLAYING, "media_playing");
+      }
       this.nativeBufferingController.handlePlaying();
     });
 
@@ -2787,8 +2790,7 @@ const VideoPlayer = {
     const loader = this.ensureStreamLoader();
     const onPlaying = () => {
       if (!this.isCurrentPlaybackSession(sessionId)) return;
-      this._mpegtsNetworkAttempts = 0;
-      this._mpegtsRecreateAttempts = 0;
+      this.mpegtsRecoveryCoordinator?.markRecovered();
       this.playerUIController.hideLoading();
       this.playerUIController.hideError();
     };
