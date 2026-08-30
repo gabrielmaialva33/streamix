@@ -3,9 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
+const commandControllerUrl = new URL("../player/playback_command_controller.js", import.meta.url);
 
 async function readHookSource() {
   return readFile(hookUrl, "utf8");
+}
+
+async function readCommandControllerSource() {
+  return readFile(commandControllerUrl, "utf8");
 }
 
 function methodSource(source, name) {
@@ -102,7 +107,7 @@ test("native source ownership and initial play use the engine adapter", async ()
 });
 
 test("native reads use the adapter before canvas engines or raw media fallback", async () => {
-  const source = await readHookSource();
+  const source = await readCommandControllerSource();
 
   const expectations = [
     ["getCurrentTime", "nativeEngine.getCurrentTime()"],
@@ -125,7 +130,7 @@ test("native reads use the adapter before canvas engines or raw media fallback",
 });
 
 test("transport controls share the managed contract without bypassing native policies", async () => {
-  const source = await readHookSource();
+  const source = await readCommandControllerSource();
   const toggle = methodSource(source, "togglePlayPause");
   const relativeSeek = methodSource(source, "seek");
   const absoluteSeek = methodSource(source, "seekTo");

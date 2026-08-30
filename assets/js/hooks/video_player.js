@@ -72,6 +72,7 @@ import {
   togglePictureInPicture,
 } from "../player/pip_controller.js";
 import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
+import { createPlaybackCommandController } from "../player/playback_command_controller";
 import { createPlaybackEngineAdapter } from "../player/playback_engine_adapter.js";
 import {
   PlaybackEngineTeardownQueue,
@@ -93,7 +94,6 @@ import { guardPlaybackLoad } from "../player/playback_load_guard.js";
 import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
 import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
 import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
-import { clampSeekTime, relativeSeekTarget } from "../player/playback_time";
 import { createPlayerDiagnosticsController } from "../player/player_diagnostics_controller.js";
 import {
   forgetRecommendedPlayer,
@@ -104,7 +104,6 @@ import {
   saveAudioTrack,
   saveMuted,
   savePlaybackPosition,
-  savePlaybackRate,
   savePreferAVPlayer,
   saveSubtitleTrack,
   saveVolume,
@@ -139,6 +138,7 @@ const VideoPlayer = {
     this.initializeState();
     this.loadPreferences();
     this.initUI();
+    this.initPlaybackCommandController();
     this.updateVolumeUI();
     this.setupEventListeners();
     this.setupSourceFailover();
@@ -458,6 +458,33 @@ const VideoPlayer = {
   // ============================================
   // Network Monitoring
   // ============================================
+
+  initPlaybackCommandController() {
+    this.playbackCommandController?.destroy();
+    this.playbackCommandController = createPlaybackCommandController({
+      getRoot: () => this.el,
+      getVideo: () => this.video,
+      getContentType: () => this.contentType,
+      getExpectedDuration: () => this.expectedDuration,
+      getManagedPlaybackEngine: () => this.getManagedPlaybackEngine(),
+      getNativePlaybackEngine: () => this.getNativePlaybackEngine(),
+      rejectViewerTransportControl: (options) => this.rejectViewerTransportControl(options),
+      isWatchPartySyncHeld: () => this._watchPartySyncHold === true,
+      supportsPlaybackRateControl: () => this.supportsPlaybackRateControl(),
+      isPartyMode: () => this.partyMode === true,
+      getAudioController: () => this.audioController,
+      getNativeBufferManager: () => this.nativeBufferManager,
+      getNativeBufferingController: () => this.nativeBufferingController,
+      getPlayerUiController: () => this.playerUIController,
+      getPlayerUi: () => this.playerUI,
+      setPlaybackSystemState: (state) => this.setPlaybackSystemState(state),
+      updateMediaSessionPosition: (options) => this.updateMediaSessionPosition(options),
+      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
+      emitPlaybackEvent,
+      onDebug: (...args) => log.debug(...args),
+      onError: (...args) => log.error(...args),
+    });
+  },
 
   setupNetworkMonitor() {
     this.networkMonitor = new NetworkMonitor({
@@ -1514,44 +1541,9 @@ const VideoPlayer = {
     return true;
   },
 
-  setPlaybackRate(rate, { remote = false } = {}) {
-    if (this.rejectViewerTransportControl({ remote })) return false;
-
-    const normalizedRate = Number(rate);
-    if (!this.video || !Number.isFinite(normalizedRate) || normalizedRate <= 0) return false;
-
-    if (!this.supportsPlaybackRateControl()) {
-      this.playerUIController?.updateSpeedUI(1);
-      this.updateMediaSessionPosition({ force: true });
-      return false;
-    }
-
-    // iOS Safari with native HLS flushes the decoder on any playbackRate
-    // change ≠ 1.0, producing a 50-100ms stall. When we're already in
-    // "conservative sync" mode (i.e. the watch_party_sync hook detected
-    // native HLS and is throttling its corrections), cap the user's
-    // chosen speed at 1.0 — otherwise the stall stacks on top of every
-    // drift correction and the video looks broken.
-    const native = !!this.video.canPlayType?.("application/vnd.apple.mpegurl");
-
-    if (native && this.partyMode && normalizedRate > 1.0) {
-      this.video.playbackRate = 1.0;
-      if (!remote) savePlaybackRate(1.0);
-      this.updateMediaSessionPosition({ force: true });
-      if (!remote) this.pushEventSafe("playback_rate_changed", { rate: 1.0 });
-      this.playerUI?.showNotice?.(
-        "Velocidade variável não é suportada com HLS nativo do iOS durante watch party.",
-      );
-      return true;
-    }
-
-    this.video.playbackRate = normalizedRate;
-    if (!remote) savePlaybackRate(normalizedRate);
-    this.updateMediaSessionPosition({ force: true });
-    if (!remote) this.pushEventSafe("playback_rate_changed", { rate: normalizedRate });
-    return true;
+  setPlaybackRate(rate, options = {}) {
+    return this.playbackCommandController?.setPlaybackRate(rate, options) ?? false;
   },
-
   reportProgress() {
     const currentTime = Math.floor(this.getCurrentTime());
     const duration = Math.floor(this.getDuration());
@@ -3856,170 +3848,49 @@ const VideoPlayer = {
     return this.getNativePlaybackEngine();
   },
 
-  async togglePlayPause({ remote = false } = {}) {
-    if (this.rejectViewerTransportControl({ remote })) return false;
-    if (remote && this._watchPartySyncHold && this.isPaused()) return false;
-
-    const engine = this.getManagedPlaybackEngine();
-
-    if (engine) {
-      const isPlaying = engine.isPlaying();
-      log.debug("[VideoPlayer] togglePlayPause: managed engine isPlaying =", isPlaying);
-
-      try {
-        if (isPlaying) {
-          await engine.pause();
-          this.setPlaybackSystemState("paused");
-        } else {
-          await engine.play();
-          this.setPlaybackSystemState("playing");
-        }
-      } catch (error) {
-        log.error("[VideoPlayer] managed engine play/pause failed:", error);
-      }
-      return;
-    }
-
-    if (this.video.paused) {
-      try {
-        await this.video.play();
-        return true;
-      } catch (error) {
-        if (error.name !== "AbortError") {
-          log.debug("[VideoPlayer] togglePlayPause play() failed:", error.message);
-        }
-        return false;
-      }
-    }
-
-    this.nativeBufferManager?.markIntentionalPause();
-    this.video.pause();
-    return true;
+  async togglePlayPause(options = {}) {
+    return this.playbackCommandController?.togglePlayPause(options);
   },
 
   toggleMute() {
-    const audioState = this.audioController.toggleMute();
-    this.pushEventSafe("mute_toggled", { muted: audioState.muted });
+    return this.playbackCommandController?.toggleMute();
   },
 
   adjustVolume(delta) {
-    const audioState = this.audioController.adjustVolume(delta);
-    this.pushEventSafe("volume_changed", { volume: Math.round(audioState.volume * 100) });
+    return this.playbackCommandController?.adjustVolume(delta);
   },
 
-  seek(seconds, { remote = false } = {}) {
-    if (this.rejectViewerTransportControl({ remote })) return false;
-    if (this.contentType === "live") return false;
-
-    const engine = this.getManagedPlaybackEngine();
-    if (engine) {
-      const target = relativeSeekTarget(engine.getCurrentTime(), seconds, engine.getDuration());
-      if (target === null) return;
-
-      Promise.resolve(engine.seek(target))
-        .then(() => this.updateMediaSessionPosition({ force: true }))
-        .catch((error) => {
-          log.debug("[VideoPlayer] managed engine seek skipped:", error.message);
-        });
-      return;
-    }
-
-    if (this.video) {
-      const target = relativeSeekTarget(this.video.currentTime, seconds, this.getDuration());
-      if (target !== null) this.seekNativeTo(target);
-    }
+  seek(seconds, options = {}) {
+    return this.playbackCommandController?.seek(seconds, options);
   },
 
-  seekTo(time, { remote = false } = {}) {
-    if (this.rejectViewerTransportControl({ remote })) return false;
-    if (this.contentType === "live") return remote ? this.seekLiveTo(time) : false;
-
-    const target = clampSeekTime(time, this.getDuration());
-    if (target === null) return;
-
-    const engine = this.getManagedPlaybackEngine();
-    if (engine) {
-      Promise.resolve(engine.seek(target))
-        .then(() => {
-          emitPlaybackEvent(this.el, "seeked");
-          this.updateMediaSessionPosition({ force: true });
-        })
-        .catch((error) => {
-          log.debug("[VideoPlayer] managed engine seek skipped:", error.message);
-        });
-    } else if (this.video) {
-      this.seekNativeTo(target);
-    }
+  seekTo(time, options = {}) {
+    return this.playbackCommandController?.seekTo(time, options);
   },
 
   seekNativeTo(time) {
-    if (!this.video || this.contentType === "live") return false;
-
-    this.nativeBufferingController.prepareSeek();
-    this.video.currentTime = time;
-    return true;
+    return this.playbackCommandController?.seekNativeTo(time) ?? false;
   },
 
   seekLiveTo(time) {
-    if (!this.video || !Number.isFinite(Number(time))) return false;
-
-    const target = Number(time);
-    const ranges = this.video.seekable;
-    if (!ranges || ranges.length === 0) return false;
-
-    const rangeIndex = ranges.length - 1;
-    const start = ranges.start(rangeIndex);
-    const end = ranges.end(rangeIndex);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return false;
-
-    this.video.currentTime = Math.max(start, Math.min(end - 0.05, target));
-    return true;
+    return this.playbackCommandController?.seekLiveTo(time) ?? false;
   },
 
   getCurrentTime() {
-    const nativeEngine = this.getNativePlaybackEngine();
-    if (nativeEngine) return nativeEngine.getCurrentTime();
-
-    const engine = this.getManagedPlaybackEngine();
-    return engine?.getCurrentTime?.() ?? this.video?.currentTime ?? 0;
+    return this.playbackCommandController?.getCurrentTime() ?? 0;
   },
 
   getDuration() {
-    const nativeEngine = this.getNativePlaybackEngine();
-    if (nativeEngine) return nativeEngine.getDuration();
-
-    const engine = this.getManagedPlaybackEngine();
-    const duration = engine?.getDuration?.() ?? this.video?.duration ?? 0;
-
-    // Sanity check: if duration is absurd (>12 hours), use expected duration from DB
-    const MAX_SANE_DURATION = 12 * 60 * 60; // 12 hours in seconds
-    if (duration > MAX_SANE_DURATION && this.expectedDuration > 0) {
-      return this.expectedDuration;
-    }
-
-    return duration;
+    return this.playbackCommandController?.getDuration() ?? 0;
   },
 
   getPlaybackRate() {
-    if (!this.supportsPlaybackRateControl()) return 1;
-
-    const playbackRate = Number(this.video?.playbackRate);
-    return Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+    return this.playbackCommandController?.getPlaybackRate() ?? 1;
   },
 
   isPaused() {
-    const nativeEngine = this.getNativePlaybackEngine();
-    if (nativeEngine) return !nativeEngine.isPlaying();
-
-    const engine = this.getManagedPlaybackEngine();
-    if (engine) return !engine.isPlaying();
-    return this.video?.paused ?? true;
+    return this.playbackCommandController?.isPaused() ?? true;
   },
-
-  // ============================================
-  // Watch Time Tracking
-  // ============================================
-
   trackWatchTime() {
     // Guard: clear existing interval to prevent stacking
     if (this.watchInterval) {
@@ -4039,6 +3910,8 @@ const VideoPlayer = {
   destroyed() {
     this.flushPlaybackMetrics("cancelled");
     this._destroyed = true;
+    this.playbackCommandController?.destroy();
+    this.playbackCommandController = null;
     this._disposePlaybackBridge?.();
     this._disposePlaybackBridge = null;
     this.lifecycle?.dispose();
