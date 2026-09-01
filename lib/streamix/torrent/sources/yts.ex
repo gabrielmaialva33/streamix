@@ -51,7 +51,7 @@ defmodule Streamix.Torrent.Sources.Yts do
            finch: [name: Streamix.Finch],
            headers: [
              {"user-agent",
-              "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.cloud)"},
+              "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.fun)"},
              {"accept", "application/json"}
            ],
            decoders: [json: &Jason.decode(&1, keys: :strings)]

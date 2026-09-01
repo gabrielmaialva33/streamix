@@ -222,7 +222,7 @@ defmodule StreamixWeb.StreamControllerTest do
     test "token signed with bypass_subscription=true skips auth without any header", %{
       conn: conn
     } do
-      # This is the path that matters for source.mahina.cloud/proxy — the
+      # This is the path that matters for source.mahina.fun/proxy — the
       # intermediate proxy strips headers, but the token itself carries the
       # authorization claim (signed, so it can't be forged).
       owner = user_fixture()
@@ -389,7 +389,7 @@ defmodule StreamixWeb.StreamControllerTest do
       connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
     )
 
-    Application.put_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    Application.put_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
 
     token =
       StreamToken.sign_url(
@@ -403,7 +403,7 @@ defmodule StreamixWeb.StreamControllerTest do
     assert response(conn, 302) =~ "redirected"
 
     location = get_resp_header(conn, "location") |> List.first()
-    assert String.starts_with?(location, "https://source.mahina.cloud/proxy?url=")
+    assert String.starts_with?(location, "https://source.mahina.fun/proxy?url=")
 
     proxied_url =
       location
@@ -451,7 +451,7 @@ defmodule StreamixWeb.StreamControllerTest do
       connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
     )
 
-    Application.put_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    Application.put_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
 
     token =
       StreamToken.sign_url(
@@ -465,7 +465,7 @@ defmodule StreamixWeb.StreamControllerTest do
     assert response(conn, 302) =~ "redirected"
 
     location = get_resp_header(conn, "location") |> List.first()
-    assert String.starts_with?(location, "https://source.mahina.cloud/proxy?url=")
+    assert String.starts_with?(location, "https://source.mahina.fun/proxy?url=")
 
     proxied_url =
       location

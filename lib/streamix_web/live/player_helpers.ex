@@ -282,7 +282,7 @@ defmodule StreamixWeb.PlayerHelpers do
 
     if gindex_content?(movie) do
       # 4K HEVC GIndex content streams direct from the nginx hop
-      # (`gindex.mahina.cloud/stream`) — keeps the BEAM out of the
+      # (`gindex.mahina.fun/stream`) — keeps the BEAM out of the
       # bytes path and lets the browser-side h265web.js engine open
       # the stream URL it can pump straight into the canvas.
       {:ok, build_gindex_stream_url(token)}

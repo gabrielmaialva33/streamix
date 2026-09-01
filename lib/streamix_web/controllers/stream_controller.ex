@@ -56,7 +56,7 @@ defmodule StreamixWeb.StreamController do
 
   @doc """
   Resolves a signed token into the upstream URL **without** proxying
-  bytes. Designed for an external nginx (`gindex.mahina.cloud`) to do
+  bytes. Designed for an external nginx (`gindex.mahina.fun`) to do
   the byte streaming itself — the BEAM never sees the 4K MKV traffic,
   so we stay clear of the Cloudflare 524 origin-timeout and the
   Phoenix/Finch chunk pump.
@@ -203,7 +203,7 @@ defmodule StreamixWeb.StreamController do
   # --- All streaming types: resolve redirects and send to source proxy ---
 
   defp resolve_and_redirect_to_proxy(conn, url) do
-    # O nginx em source.mahina.cloud já segue cadeia de redirects via Lua,
+    # O nginx em source.mahina.fun já segue cadeia de redirects via Lua,
     # com cache + UA stealth. Quando a URL inicial vem com creds IPTV
     # (/movie/USER/PASS/...) só andamos a chain o suficiente pra trocar
     # essas creds por um token de curta duração — o resto dos hops lentos
@@ -268,7 +268,7 @@ defmodule StreamixWeb.StreamController do
   # Picks a source proxy URL from the configured pool. Configurable
   # via `:streamix, :stream_proxy_urls` (list) — falls back to the
   # legacy `:stream_proxy_url` (single) for backwards compatibility,
-  # and ultimately to source.mahina.cloud.
+  # and ultimately to source.mahina.fun.
   #
   # The choice is randomized per-request (not deterministic per URL)
   # because cb.chokitecnologia returns a different vauth IP based on
@@ -281,7 +281,7 @@ defmodule StreamixWeb.StreamController do
         Enum.random(list)
 
       _ ->
-        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
     end
   end
 

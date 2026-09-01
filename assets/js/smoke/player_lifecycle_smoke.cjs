@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { chromium } = require("playwright");
 
-const productionOrigin = "https://streamix.mahina.cloud";
+const productionOrigin = "https://streamix.mahina.fun";
 const configuredUrl = process.env.STREAMIX_SMOKE_URL;
 const storageState = process.env.STREAMIX_SMOKE_STORAGE_STATE;
 const email = process.env.STREAMIX_SMOKE_EMAIL;

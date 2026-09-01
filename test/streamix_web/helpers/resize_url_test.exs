@@ -8,7 +8,7 @@ defmodule StreamixWeb.Helpers.ResizeUrlTest do
       # Real URLs carry TMDB-style path segments — exercising one here
       # proves we URL-encode the full string (including the `/t/p/...`
       # path) so query-string parsing at the server stays unambiguous.
-      url = "https://tmdb.mahina.cloud/t/p/w780/foo bar.jpg"
+      url = "https://tmdb.mahina.fun/t/p/w780/foo bar.jpg"
       out = ResizeUrl.flatten("poster", url, [240, 480, 720])
 
       assert Map.keys(out) |> Enum.sort() == ["poster_w240", "poster_w480", "poster_w720"]

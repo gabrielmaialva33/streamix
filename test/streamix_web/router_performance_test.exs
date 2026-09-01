@@ -59,7 +59,7 @@ defmodule StreamixWeb.RouterPerformanceTest do
   end
 
   defp stream_proxy_hint?(conn) do
-    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
 
     conn
     |> get_resp_header("link")

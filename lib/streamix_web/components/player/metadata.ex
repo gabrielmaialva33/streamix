@@ -10,7 +10,7 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
       stream_url
     else
       proxy_base =
-        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+        Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
 
       "#{proxy_base}/proxy?url=#{URI.encode_www_form(stream_url)}"
     end

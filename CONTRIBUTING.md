@@ -127,6 +127,7 @@ Expectations:
 - keep compiler warnings at zero
 - run `mix precommit` before asking for review
 - if you touch JS hooks or player code, run `cd assets && npm ci` first if dependencies are missing
+- install `ffmpeg` before browser runs; Playwright generates temporary H.264/AAC MPEG-TS fixtures locally
 - browser-sensitive changes must pass Chromium, Firefox and WebKit; PWA/mobile changes must also pass the constrained
   Chromium + iPhone smoke
 

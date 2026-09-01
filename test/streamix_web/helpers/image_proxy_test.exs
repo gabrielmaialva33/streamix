@@ -55,7 +55,7 @@ defmodule StreamixWeb.Helpers.ImageProxyTest do
 
   test "builds a responsive TMDB hero source set" do
     srcset =
-      ImageProxy.srcset("https://tmdb.mahina.cloud/t/p/w1280/backdrop.jpg?_v=v2", :hero)
+      ImageProxy.srcset("https://tmdb.mahina.fun/t/p/w1280/backdrop.jpg?_v=v2", :hero)
 
     assert srcset =~ "/w500/backdrop.jpg 500w"
     assert srcset =~ "/w780/backdrop.jpg 780w"

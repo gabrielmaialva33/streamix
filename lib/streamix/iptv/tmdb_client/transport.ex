@@ -138,6 +138,6 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
     do: Req.Response.get_retry_after(response) || @initial_backoff
 
   defp image_base_url do
-    "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")}/t/p"
+    "#{Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.fun")}/t/p"
   end
 end

@@ -24,8 +24,8 @@ defmodule StreamixWeb.Catalog.ImageProxy do
   def proxy(urls) when is_list(urls), do: Enum.map(urls, &proxy/1)
 
   def proxy(url) when is_binary(url) do
-    tmdb = Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")
-    imgmxa = Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.cloud")
+    tmdb = Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.fun")
+    imgmxa = Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.fun")
 
     url
     |> String.replace("https://image.tmdb.org", tmdb)

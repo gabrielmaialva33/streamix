@@ -45,7 +45,7 @@ defmodule Streamix.TvAppRelease do
            finch: [name: Streamix.Finch],
            headers: [
              {"accept", "application/vnd.github+json"},
-             {"user-agent", "streamix.mahina.cloud"}
+             {"user-agent", "streamix.mahina.fun"}
            ]
          ) do
       {:ok, %{status: 200, body: body}} ->

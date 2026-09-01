@@ -448,7 +448,7 @@ end
 # the IPTV upstream. Different sources should sit behind different ASNs so
 # that a vauth IP banned for one source still works through the other.
 #
-# Comma-separated env: `STREAM_PROXY_URLS=https://source.mahina.cloud,https://source2.mahina.cloud`
+# Comma-separated env: `STREAM_PROXY_URLS=https://source.mahina.fun,https://source2.mahina.fun`
 # Falls back to the single `STREAM_PROXY_URL` for older deploys.
 stream_proxy_urls =
   get_env.("STREAM_PROXY_URLS")
@@ -530,11 +530,11 @@ config :streamix,
       20 * 1_024 * 1_024 * 1_024,
       min: 256 * 1_024 * 1_024
     ),
-  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.cloud",
+  stream_proxy_url: get_env.("STREAM_PROXY_URL") || "https://source.mahina.fun",
   stream_proxy_urls: stream_proxy_urls,
-  tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.cloud",
-  imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.cloud",
-  image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.cloud",
+  tmdb_proxy_url: get_env.("TMDB_PROXY_URL") || "https://tmdb.mahina.fun",
+  imgmxa_proxy_url: get_env.("IMGMXA_PROXY_URL") || "https://imgmxa.mahina.fun",
+  image_proxy_url: get_env.("IMAGE_PROXY_URL") || "https://img.mahina.fun",
   # Public hostname of the GIndex direct-stream nginx proxy. Catalog
   # URLs for GIndex content point straight at it instead of
   # `/api/stream/proxy`, so 4K MKV bytes never traverse the BEAM and

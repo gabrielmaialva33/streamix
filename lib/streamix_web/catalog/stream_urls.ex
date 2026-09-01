@@ -10,7 +10,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
 
     * `signed_*_url/1` — token-based proxy for AVPlay on Tizen (works
       with any format).
-    * `browser_*_url/1` — routed through the `source.mahina.cloud`
+    * `browser_*_url/1` — routed through the `source.mahina.fun`
       browser proxy to handle CORS for web players.
 
   All catalog endpoints are behind the `:api_v1` pipeline which runs
@@ -18,7 +18,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   action, the caller has proved integration-level authorization. We embed
   that authorization inside the signed token so the stream proxy can
   bypass the subscription check even when the URL is later fetched
-  through an intermediate proxy (e.g. `source.mahina.cloud`) that doesn't
+  through an intermediate proxy (e.g. `source.mahina.fun`) that doesn't
   forward the `X-API-Key` header.
   """
 
@@ -79,7 +79,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   end
 
   # GIndex VOD content (movies + episodes with a non-empty `gindex_path`)
-  # streams from a dedicated nginx hop at `gindex.mahina.cloud`. The
+  # streams from a dedicated nginx hop at `gindex.mahina.fun`. The
   # nginx side hits our resolve-only endpoint over the tunnel, gets the
   # `download.aspx` URL, and pumps bytes back to the player without
   # ever touching the BEAM. Falsy `:gindex_direct_proxy_url` disables
@@ -99,7 +99,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   defp gindex_content?(_), do: false
 
   defp browser_token_proxy_url(token) do
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
     token_url = token_proxy_url(token)
     "#{proxy_base}/proxy?url=#{URI.encode_www_form(token_url)}"
   end

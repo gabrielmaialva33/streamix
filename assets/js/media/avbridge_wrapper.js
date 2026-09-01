@@ -56,7 +56,7 @@ export class AvbridgeWrapper {
       source: url,
       target: this.video,
       // Browser CORS is already handled by the upstream proxy
-      // (`gindex.mahina.cloud` adds permissive CORS headers); leave
+      // (`gindex.mahina.fun` adds permissive CORS headers); leave
       // requestInit unset so avbridge issues vanilla GETs.
     };
     if (this.initialStrategy) opts.initialStrategy = this.initialStrategy;

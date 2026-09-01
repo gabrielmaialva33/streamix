@@ -19,13 +19,13 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   @browser_blocked_hosts ["png.pngtree.com", "static.vecteezy.com"]
 
   defp tmdb_proxy_url,
-    do: Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.cloud")
+    do: Application.get_env(:streamix, :tmdb_proxy_url, "https://tmdb.mahina.fun")
 
   defp imgmxa_proxy_url,
-    do: Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.cloud")
+    do: Application.get_env(:streamix, :imgmxa_proxy_url, "https://imgmxa.mahina.fun")
 
   defp image_proxy_url,
-    do: Application.get_env(:streamix, :image_proxy_url, "https://img.mahina.cloud")
+    do: Application.get_env(:streamix, :image_proxy_url, "https://img.mahina.fun")
 
   # TMDB image sizes (Netflix uses 20-30KB for thumbnails)
   @tmdb_sizes %{
@@ -49,7 +49,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   ## Examples
 
       iex> proxy("https://image.tmdb.org/t/p/w500/abc.jpg")
-      "https://tmdb.mahina.cloud/t/p/w500/abc.jpg?_v=v2"
+      "https://tmdb.mahina.fun/t/p/w500/abc.jpg?_v=v2"
 
       iex> proxy(nil)
       nil
@@ -238,7 +238,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   ## Examples
 
       iex> thumbnail("https://image.tmdb.org/t/p/w500/abc.jpg")
-      "https://tmdb.mahina.cloud/t/p/w185/abc.jpg?_v=v2"
+      "https://tmdb.mahina.fun/t/p/w185/abc.jpg?_v=v2"
   """
   def thumbnail(nil), do: nil
   def thumbnail(""), do: nil
@@ -281,8 +281,8 @@ defmodule StreamixWeb.Helpers.ImageProxy do
 
   ## Examples
 
-      iex> resize("https://tmdb.mahina.cloud/t/p/w500/abc.jpg", :thumbnail)
-      "https://tmdb.mahina.cloud/t/p/w185/abc.jpg"
+      iex> resize("https://tmdb.mahina.fun/t/p/w500/abc.jpg", :thumbnail)
+      "https://tmdb.mahina.fun/t/p/w185/abc.jpg"
   """
   def resize(nil, _size), do: nil
   def resize("", _size), do: nil
@@ -346,7 +346,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   ## Examples
 
       iex> poster("https://image.tmdb.org/t/p/original/abc.jpg", :carousel)
-      "https://tmdb.mahina.cloud/t/p/w342/abc.jpg?_v=v2"
+      "https://tmdb.mahina.fun/t/p/w342/abc.jpg?_v=v2"
   """
   @spec poster(String.t() | nil, atom()) :: String.t() | nil
   def poster(nil, _ctx), do: nil
@@ -385,7 +385,7 @@ defmodule StreamixWeb.Helpers.ImageProxy do
   ## Examples
 
       iex> srcset("/abc.jpg")
-      "https://tmdb.mahina.cloud/t/p/w185/abc.jpg 185w, https://tmdb.mahina.cloud/t/p/w342/abc.jpg 342w, https://tmdb.mahina.cloud/t/p/w500/abc.jpg 500w"
+      "https://tmdb.mahina.fun/t/p/w185/abc.jpg 185w, https://tmdb.mahina.fun/t/p/w342/abc.jpg 342w, https://tmdb.mahina.fun/t/p/w500/abc.jpg 500w"
   """
   def srcset(path, context \\ :card)
   def srcset(nil, _context), do: nil

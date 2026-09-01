@@ -133,7 +133,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
     # lookup, and the response headers — which is exactly the logic
     # that lives in this module.
     test "serves a cached response without hitting the network", %{cache_dir: cache_dir} do
-      url = "https://tmdb.mahina.cloud/t/p/w780/example.jpg"
+      url = "https://tmdb.mahina.fun/t/p/w780/example.jpg"
       width = 480
       quality = 80
 
@@ -156,7 +156,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
       # w=9999 isn't in the allowlist → the controller normalizes it to
       # the default (480). We verify by seeding the cache under 480 and
       # asking for 9999: if normalization works, we get the cached hit.
-      url = "https://tmdb.mahina.cloud/t/p/w780/norm.jpg"
+      url = "https://tmdb.mahina.fun/t/p/w780/norm.jpg"
       jpeg_bytes = minimal_jpeg()
       path = cache_path_for(cache_dir, url, 480, nil, 80)
       File.mkdir_p!(Path.dirname(path))
@@ -170,7 +170,7 @@ defmodule StreamixWeb.Api.V1.ImageResizeControllerTest do
     end
 
     test "does not accept valid numeric prefixes in resize params", %{cache_dir: cache_dir} do
-      url = "https://tmdb.mahina.cloud/t/p/w780/strict.jpg"
+      url = "https://tmdb.mahina.fun/t/p/w780/strict.jpg"
       jpeg_bytes = minimal_jpeg()
       path = cache_path_for(cache_dir, url, 480, nil, 80)
       File.mkdir_p!(Path.dirname(path))

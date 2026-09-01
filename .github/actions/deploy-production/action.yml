@@ -27,7 +27,7 @@ inputs:
   base-url:
     description: Public production URL used by deployment canaries
     required: false
-    default: https://streamix.mahina.cloud
+    default: https://streamix.mahina.fun
   canary-email:
     description: API account email used by the authenticated production canary
     required: true

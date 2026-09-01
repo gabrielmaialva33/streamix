@@ -391,6 +391,10 @@ PLAYWRIGHT_BROWSER=webkit bash scripts/test-playwright-docker.sh
 bash scripts/test-pwa-chromium.sh
 ```
 
+The Playwright suite requires `ffmpeg` and generates temporary MPEG-TS
+fixtures locally. Cross-browser playback therefore stays independent from
+external IPTV provider availability.
+
 Test commands deliberately ignore the repository `.env`. Without exported overrides they use the local Compose
 `streamix_test` database and Redis database 15. Export `TEST_DATABASE_URL` or `TEST_REDIS_URL` for alternate test
 infrastructure; remote hosts and non-`*_test` database names still fail closed unless explicitly authorized.

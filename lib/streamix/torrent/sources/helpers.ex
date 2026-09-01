@@ -11,7 +11,7 @@ defmodule Streamix.Torrent.Sources.Helpers do
   alias Streamix.Torrent.Magnet
 
   @headers [
-    {"user-agent", "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.cloud)"},
+    {"user-agent", "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.fun)"},
     {"accept", "application/json"}
   ]
 

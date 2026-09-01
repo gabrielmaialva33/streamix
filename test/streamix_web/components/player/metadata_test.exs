@@ -11,7 +11,7 @@ defmodule StreamixWeb.PlayerComponents.MetadataTest do
     assert Metadata.proxy_url(torrent, :torrent) == torrent
 
     direct = "https://provider.example/movie name.mkv"
-    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    proxy_base = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
 
     assert Metadata.proxy_url(direct, :movie) ==
              "#{proxy_base}/proxy?url=#{URI.encode_www_form(direct)}"

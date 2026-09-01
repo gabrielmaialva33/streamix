@@ -30,7 +30,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: production
-      url: https://streamix.mahina.cloud
+      url: https://streamix.mahina.fun
 
     steps:
       - name: Checkout deployment scripts
