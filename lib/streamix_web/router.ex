@@ -167,7 +167,7 @@ defmodule StreamixWeb.Router do
     get "/stream/proxy", StreamController, :proxy
     head "/stream/proxy", StreamController, :proxy
 
-    # Resolve-only endpoint — used by the gindex.mahina.cloud nginx
+    # Resolve-only endpoint — used by the gindex.mahina.fun nginx
     # reverse proxy to translate a signed token into the upstream
     # `download.aspx` URL without ever streaming bytes through the
     # BEAM. Authenticated by the X-Internal-Auth header
@@ -496,6 +496,10 @@ defmodule StreamixWeb.Router do
     end
   end
 
+  if Application.compile_env(:streamix, :env) == :test do
+    forward "/__playwright__/media", StreamixWeb.PlaywrightMediaFixture.MediaPlug
+  end
+
   # Prometheus metrics scrape endpoint — protected by basic auth via
   # METRICS_USER / METRICS_PASSWORD env (or :metrics_auth config).
   scope "/", StreamixWeb do
@@ -522,7 +526,7 @@ defmodule StreamixWeb.Router do
   defp player_path?(_path), do: false
 
   defp put_stream_proxy_hint(conn) do
-    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.cloud")
+    proxy = Application.get_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
     link = "<#{proxy}>; rel=preconnect; crossorigin"
 
     # Best-effort: a noop on adapters that don't implement inform/3.

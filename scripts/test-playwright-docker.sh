@@ -78,6 +78,11 @@ if ss -H -ltn "sport = :${playwright_port}" | grep -q .; then
   exit 2
 fi
 
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  echo "[playwright] ffmpeg is required for deterministic MPEG-TS fixtures" >&2
+  exit 2
+fi
+
 echo "[playwright] installing frontend asset binaries"
 env MIX_ENV=test bash scripts/install-asset-binaries.sh
 
@@ -128,6 +133,7 @@ if [ "$#" -eq 0 ]; then
   set -- \
     test/streamix_web/e2e/home_skeleton_test.exs \
     test/streamix_web/e2e/login_persistence_test.exs \
+    test/streamix_web/e2e/live_mpegts_playback_test.exs \
     test/streamix_web/e2e/player_lifecycle_test.exs \
     test/streamix_web/e2e/premium_visibility_test.exs \
     test/streamix_web/e2e/watch_party_sync_test.exs \
