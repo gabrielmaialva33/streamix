@@ -56,6 +56,7 @@ test("builds one explicit player state from the hook dataset", () => {
   assert.equal(state.nativeSubtitleController, null);
   assert.equal(state.playerTrackPresentationController, null);
   assert.equal(state.playbackEngineTransitionController, null);
+  assert.equal(state.playbackBrowserIntegration, null);
   assert.equal(state._switchingToAVPlayer, false);
   assert.equal(state._externalSubtitleSourceLease, null);
   assert.equal(Object.hasOwn(state, "_externalSubtitleLoadedFor"), false);

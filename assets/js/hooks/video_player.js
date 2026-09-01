@@ -1,4 +1,3 @@
-import { KeyboardManager } from "../core/keyboard_manager";
 import { playerLogger as log, setErrorReporter } from "../core/logger";
 import { getCapabilitySummary, getMediaDecodingInfo } from "../media/codec_detector";
 import { CodecAwareABR } from "../media/codec_priority";
@@ -53,7 +52,6 @@ import {
   probeMediaCapability,
 } from "../player/media_capability_policy";
 import { createMediaElementEngine } from "../player/media_element_engine.js";
-import { createMediaSessionController } from "../player/media_session_controller";
 import { createMobileControls } from "../player/mobile_controls";
 import { createMpegtsRecoveryCoordinator } from "../player/mpegts_recovery_coordinator.js";
 import { NativeBufferingController } from "../player/native_buffering_controller";
@@ -66,12 +64,8 @@ import { createNativePlaybackEngine } from "../player/native_playback_engine.js"
 import { buildNativePlaybackSnapshot } from "../player/native_playback_snapshot";
 import { createNativeSubtitleController } from "../player/native_subtitle_controller.js";
 import { NextEpisodeController } from "../player/next_episode_controller";
-import {
-  exitPictureInPicture,
-  isPictureInPictureSupported,
-  togglePictureInPicture,
-} from "../player/pip_controller.js";
 import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
+import { createPlaybackBrowserIntegration } from "../player/playback_browser_integration.js";
 import { createPlaybackCommandController } from "../player/playback_command_controller";
 import { createPlaybackEngineAdapter } from "../player/playback_engine_adapter.js";
 import {
@@ -113,7 +107,6 @@ import { createPlayerTrackController } from "../player/player_track_controller.j
 import { createPlayerTrackPresentationController } from "../player/player_track_presentation_controller.js";
 import { PlayerUI } from "../player/player_ui";
 import { createPlayerUiController } from "../player/player_ui_controller.js";
-import { createScreenWakeLockController } from "../player/screen_wake_lock_controller";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
 import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
 import { hasSubtitleInLanguage } from "../player/track_metadata";
@@ -139,6 +132,7 @@ const VideoPlayer = {
     this.loadPreferences();
     this.initUI();
     this.initPlaybackCommandController();
+    this.initPlaybackBrowserIntegration();
     this.updateVolumeUI();
     this.setupEventListeners();
     this.setupSourceFailover();
@@ -486,6 +480,32 @@ const VideoPlayer = {
     });
   },
 
+  initPlaybackBrowserIntegration() {
+    this.playbackBrowserIntegration?.destroy();
+    this.playbackBrowserIntegration = createPlaybackBrowserIntegration({
+      root: this.el,
+      video: this.video,
+      commands: this.playbackCommandController,
+      presentation: this.playerUIController,
+      getCanvasPlaybackActive: () => this.isCanvasPlaybackActive(),
+      getContentType: () => this.contentType,
+      getMuted: () => this.canonicalAudioState().muted,
+      isPlayerDestroyed: () => this._destroyed,
+      metadata: {
+        title: this.mediaTitle,
+        artist: this.mediaSubtitle,
+        album: "Streamix",
+      },
+      emit: (event, payload) => this.pushEventSafe(event, payload),
+      onError: (operation, error) =>
+        log.debug(
+          `[VideoPlayer] Browser integration ${operation} skipped:`,
+          error?.message || error,
+        ),
+    });
+    this.playbackBrowserIntegration.start();
+  },
+
   setupNetworkMonitor() {
     this.networkMonitor = new NetworkMonitor({
       onQualityChange: (newQuality, oldQuality, stats) => {
@@ -821,26 +841,11 @@ const VideoPlayer = {
     );
   },
   async togglePiP() {
-    if (!this.isPiPSupported()) return;
-
-    try {
-      const active = await togglePictureInPicture({
-        documentRef: document,
-        video: this.video,
-      });
-      this.setPiPState(active);
-    } catch (error) {
-      console.error("PiP error:", error);
-      this.pushEventSafe("pip_error", { message: error.message });
-    }
+    return this.playbackBrowserIntegration?.togglePiP();
   },
 
   isPiPSupported() {
-    return isPictureInPictureSupported({
-      canvasPlaybackActive: this.isCanvasPlaybackActive(),
-      documentRef: document,
-      video: this.video,
-    });
+    return this.playbackBrowserIntegration?.isPiPSupported() ?? false;
   },
 
   isCanvasPlaybackActive() {
@@ -927,78 +932,27 @@ const VideoPlayer = {
   },
 
   setPiPState(active) {
-    return this.playerUIController?.setPiPState(active) ?? false;
+    return this.playbackBrowserIntegration?.setPiPState(active) ?? false;
   },
 
   syncPiPAvailability() {
-    return this.playerUIController?.syncPiPAvailability() ?? false;
+    return this.playbackBrowserIntegration?.syncPiPAvailability() ?? false;
   },
 
   disablePiPForCanvasPlayback() {
-    this.playerUIController?.disablePiP();
-
-    void exitPictureInPicture({ documentRef: document, video: this.video }).catch(() => {});
+    return this.playbackBrowserIntegration?.disablePiPForCanvasPlayback();
   },
 
   setupPlaybackSystemIntegration() {
-    this.screenWakeLockController = createScreenWakeLockController({
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] Screen Wake Lock ${operation} skipped:`, error?.message || error),
-    });
-
-    this.mediaSessionController = createMediaSessionController({
-      metadata: {
-        title: this.mediaTitle,
-        artist: this.mediaSubtitle,
-        album: "Streamix",
-      },
-      actions: {
-        play: () => {
-          if (this.isPaused()) return this.togglePlayPause();
-          return undefined;
-        },
-        pause: () => {
-          if (!this.isPaused()) return this.togglePlayPause();
-          return undefined;
-        },
-        seekbackward: (event) => this.seek(-(event.seekOffset || 10)),
-        seekforward: (event) => this.seek(event.seekOffset || 10),
-        seekto: (event) => {
-          if (typeof event.seekTime === "number") this.seekTo(event.seekTime);
-        },
-      },
-      onError: (operation, error) =>
-        log.debug(`[VideoPlayer] Media Session ${operation} skipped:`, error?.message || error),
-    });
-
-    this.setPlaybackSystemState("none");
+    return this.playbackBrowserIntegration?.setupPlaybackSystemIntegration() ?? false;
   },
 
   setPlaybackSystemState(state) {
-    if (this._destroyed && state !== "none") return;
-
-    this.mediaSessionController?.setPlaybackState(state);
-    void this.screenWakeLockController?.setPlaybackActive(state === "playing");
-
-    if (state === "none") return;
-
-    this.updateMediaSessionPosition({ force: true });
+    return this.playbackBrowserIntegration?.setPlaybackSystemState(state) ?? false;
   },
 
-  updateMediaSessionPosition({ force = false } = {}) {
-    if (!this.mediaSessionController) return;
-
-    if (this.contentType !== "vod") {
-      if (force) this.mediaSessionController.clearPosition();
-      return;
-    }
-
-    this.mediaSessionController.updatePosition({
-      duration: this.getDuration(),
-      position: this.getCurrentTime(),
-      playbackRate: this.getPlaybackRate(),
-      force,
-    });
+  updateMediaSessionPosition(options = {}) {
+    return this.playbackBrowserIntegration?.updateMediaSessionPosition(options) ?? false;
   },
 
   handlePlaybackStarted() {
@@ -1258,14 +1212,6 @@ const VideoPlayer = {
       this.nativeBufferingController.handleProgress();
     });
 
-    // Fullscreen events. Stash the handler so `destroyed()` can
-    // remove it — without that, every LiveView nav stacked one
-    // more listener on `document` for the lifetime of the SPA.
-    this._onFullscreenChange = () =>
-      this.playerUIController.updateFullscreenUI(!!document.fullscreenElement);
-    this.lifecycle.listen(document, "fullscreenchange", this._onFullscreenChange);
-    this.lifecycle.listen(document, "webkitfullscreenchange", this._onFullscreenChange);
-
     this._onIosVisibilityChange = () => this.iosPwaPlaybackController.handleVisibilityChange();
     this.lifecycle.listen(document, "visibilitychange", this._onIosVisibilityChange);
 
@@ -1299,20 +1245,6 @@ const VideoPlayer = {
       this.proxyUrl = proxyUrl;
       this.retryCount = 0;
       this.initPlayer();
-    });
-
-    // PiP events
-    this.lifecycle.listenOptional(this.video, "enterpictureinpicture", () => {
-      this.setPiPState(true);
-    });
-
-    this.lifecycle.listenOptional(this.video, "leavepictureinpicture", () => {
-      this.setPiPState(false);
-    });
-
-    this.lifecycle.listenOptional(this.video, "webkitpresentationmodechanged", () => {
-      const active = this.video.webkitPresentationMode === "picture-in-picture";
-      this.setPiPState(active);
     });
 
     // Progress tracking for VOD
@@ -3826,45 +3758,11 @@ const VideoPlayer = {
   // ============================================
 
   setupKeyboardShortcuts() {
-    this.keyboardManager = new KeyboardManager({
-      contentType: this.contentType,
-      actions: {
-        togglePlayPause: () => this.togglePlayPause(),
-        toggleMute: () => this.toggleMute(),
-        toggleFullscreen: () => this.toggleFullscreen(),
-        togglePiP: () => this.togglePiP(),
-        adjustVolume: (delta) => this.adjustVolume(delta),
-        seek: (seconds) => this.seek(seconds),
-        seekTo: (time) => this.seekTo(time),
-        setPlaybackRate: (rate) => this.setPlaybackRate(rate),
-        getDuration: () => this.getDuration(),
-        isPaused: () => this.isPaused(),
-        isMuted: () => this.canonicalAudioState().muted,
-        isPiPSupported: () => this.isPiPSupported(),
-        getPlaybackRate: () => this.getPlaybackRate(),
-      },
-    });
-
-    this.keyboardManager.start();
+    return this.playbackBrowserIntegration?.setupKeyboardShortcuts() ?? false;
   },
 
   toggleFullscreen() {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-      return;
-    }
-
-    if (this.video?.webkitDisplayingFullscreen) {
-      this.video.webkitExitFullscreen?.();
-      return;
-    }
-
-    if (isAppleTouchDevice() && this.video?.webkitEnterFullscreen) {
-      this.video.webkitEnterFullscreen();
-      return;
-    }
-
-    this.el.requestFullscreen?.() || this.video?.requestFullscreen?.();
+    return this.playbackBrowserIntegration?.toggleFullscreen();
   },
 
   getNativePlaybackEngine() {
@@ -3964,6 +3862,8 @@ const VideoPlayer = {
     this._qualityCapabilitiesCancel = null;
     this.playbackEngineTransitionController?.destroy();
     this.cleanup();
+    this.playbackBrowserIntegration?.destroy();
+    this.playbackBrowserIntegration = null;
     this.playbackEngineTransitionController = null;
     this.nativeSubtitleController?.destroy();
     this.nativeSubtitleController = null;
@@ -3985,7 +3885,6 @@ const VideoPlayer = {
     this.mobileControls?.destroy();
     this.mobileControls = null;
 
-    this._onFullscreenChange = null;
     this._onPageTeardown = null;
     this._onIosVisibilityChange = null;
     this._onPageShow = null;
@@ -4001,18 +3900,6 @@ const VideoPlayer = {
     this.nextEpisodeController = null;
     this.nativeBufferingController?.destroy();
     this.nativeBufferingController = null;
-
-    if (this.keyboardManager) {
-      this.keyboardManager.destroy();
-      this.keyboardManager = null;
-    }
-
-    this.mediaSessionController?.destroy();
-    this.mediaSessionController = null;
-
-    const wakeLockController = this.screenWakeLockController;
-    this.screenWakeLockController = null;
-    void wakeLockController?.destroy();
 
     if (this.watchInterval) {
       clearInterval(this.watchInterval);

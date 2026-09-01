@@ -92,11 +92,9 @@ export function createInitialPlayerState(
 
     pipActive: false,
     networkMonitor: null,
-    keyboardManager: null,
+    playbackBrowserIntegration: null,
     aspectRatioController: null,
-    mediaSessionController: null,
     mobileControls: null,
-    screenWakeLockController: null,
     sourceFailoverController: null,
     iosPwaPlaybackController: null,
     _sourceFailoverResumeTime: null,

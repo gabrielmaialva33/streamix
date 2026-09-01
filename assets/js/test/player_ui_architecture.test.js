@@ -4,6 +4,7 @@ import test from "node:test";
 
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const controllerUrl = new URL("../player/player_ui_controller.js", import.meta.url);
+const browserIntegrationUrl = new URL("../player/playback_browser_integration.js", import.meta.url);
 
 async function source(url) {
   return readFile(url, "utf8");
@@ -19,13 +20,14 @@ test("PlayerUiController remains independent of Phoenix and the VideoPlayer hook
 
 test("VideoPlayer delegates presentation coordination to PlayerUiController", async () => {
   const hook = await source(hookUrl);
+  const browserIntegration = await source(browserIntegrationUrl);
 
   assert.match(hook, /createPlayerUiController/);
   assert.match(hook, /playerUIController = createPlayerUiController\(/);
   assert.match(hook, /playerUI: this\.playerUIController/);
   assert.match(hook, /return this\.playerUIController\?\.updateTime\(\) \?\? null/);
   assert.match(hook, /return this\.playerUIController\?\.updateBuffer\(\) \?\? null/);
-  assert.match(hook, /this\.playerUIController\?\.disablePiP\(\)/);
+  assert.match(browserIntegration, /this\.presentation\.disablePiP\(\)/);
   assert.match(hook, /this\.playerUIController\?\.destroy\(\)/);
 });
 

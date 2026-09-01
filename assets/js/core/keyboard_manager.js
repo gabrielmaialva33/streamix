@@ -25,6 +25,7 @@
 /**
  * @typedef {Object} KeyboardManagerOptions
  * @property {string} contentType - "live" or "vod"
+ * @property {Document} [documentRef] - Document that owns keyboard events
  * @property {KeyboardActions} actions - Player action callbacks
  * @property {function(string): void} [showFeedback] - Show visual feedback
  */
@@ -35,6 +36,7 @@ export class KeyboardManager {
    */
   constructor(options) {
     this.contentType = options.contentType || "live";
+    this.documentRef = options.documentRef || globalThis.document;
     this.actions = options.actions;
     this.showFeedback = options.showFeedback || (() => {});
 
@@ -49,7 +51,7 @@ export class KeyboardManager {
     if (this.isActive) return;
 
     this.keyHandler = (e) => this.handleKeyDown(e);
-    document.addEventListener("keydown", this.keyHandler);
+    this.documentRef?.addEventListener("keydown", this.keyHandler);
     this.isActive = true;
   }
 
@@ -60,7 +62,7 @@ export class KeyboardManager {
     if (!this.isActive) return;
 
     if (this.keyHandler) {
-      document.removeEventListener("keydown", this.keyHandler);
+      this.documentRef?.removeEventListener("keydown", this.keyHandler);
       this.keyHandler = null;
     }
     this.isActive = false;
@@ -208,6 +210,7 @@ export class KeyboardManager {
   destroy() {
     this.stop();
     this.actions = null;
+    this.documentRef = null;
     this.showFeedback = null;
   }
 }
