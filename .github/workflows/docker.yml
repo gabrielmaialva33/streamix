@@ -286,6 +286,12 @@ jobs:
           mix deps.get --only test
           npm ci --prefix assets --no-audit --no-fund
 
+      - name: Install ffmpeg for deterministic media fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+
       - name: Install asset binaries
         run: bash scripts/install-asset-binaries.sh
 
