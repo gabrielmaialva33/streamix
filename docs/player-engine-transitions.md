@@ -27,25 +27,38 @@ boundary.
 It does not import AVPlayer, HLS.js, MPEG-TS, Phoenix, LiveView, or browser DOM
 APIs. Concrete work is supplied through callbacks by the composition root.
 
+### `AvPlayerEngineActivation`
+
+`assets/js/player/avplayer_engine_activation.js` owns the AVPlayer family of
+activations behind the explicit activation host:
+
+- deciding whether a startup, fallback, or track-driven engine switch may run;
+- constructing `AVPlayerWrapper` and its product callbacks;
+- choosing the stream URL and AVPlayer load profile;
+- registering the concrete adapter through the host;
+- restoring canonical audio, selected tracks, media-session state, and UI;
+- runtime AVPlayer-error policy after a transition has committed;
+- AVPlayer-to-native recovery and the rAF progress loop.
+
 ### `VideoPlayer`
 
 `assets/js/hooks/video_player.js` still owns:
 
-- deciding whether a fallback or track-driven engine switch is allowed;
-- circuit-breaker and recommendation policy;
-- constructing `AVPlayerWrapper` and its product callbacks;
-- choosing the stream URL and AVPlayer load profile;
-- registering the concrete adapter in `PlaybackOrchestrator`;
-- restoring canonical audio, selected tracks, media-session state, and UI;
-- runtime AVPlayer-error policy after a transition has committed.
+- the circuit-breaker counters (`canAttemptFallback()`) and the AVPlayer
+  preference toggle;
+- the AVPlayer teardown queue that the transition controller drains;
+- the thin compatibility delegates `startWithAVPlayer()`,
+  `tryAVPlayerFallback()`, `switchToAVPlayerWithTrack()` and
+  `stopAVPlayerTimeUpdates()`.
 
-The hook no longer owns the transaction order or repeats session, teardown,
-load, seek, activation, and rollback guards in each native-to-AVPlayer entrypoint.
+Neither the hook nor the activation repeats session, teardown, load, seek,
+activation, and rollback guards in each native-to-AVPlayer entrypoint.
 
 ## Native to AVPlayer transaction
 
-Both `tryAVPlayerFallback()` and `switchToAVPlayerWithTrack()` delegate to
-`transitionNativeToAVPlayer()`, which composes this ordered pipeline:
+`AvPlayerEngineActivation.activate()` (startup), `tryFallback()` and
+`switchWithTrack()` delegate to `transition()`, which composes this ordered
+pipeline:
 
 ```text
 capture
@@ -101,7 +114,7 @@ The focused tests cover:
 - diagnostic containment;
 - commit ownership;
 - terminal teardown;
-- architecture boundaries in the hook.
+- architecture boundaries in the hook and in the activation modules.
 
 Every incremental transition extraction must also keep the full JavaScript,
 Elixir, Chromium, Firefox, WebKit, torrent-subtitle, and MPEG-TS gates green.
@@ -146,10 +159,11 @@ and diagnostic failures cannot replace the original recovery error.
 
 ## Initial AVPlayer activation
 
-When `engine_selector` chooses AVPlayer during `initPlayer()`, the hook now calls
-`startWithAVPlayer(sessionId)` instead of entering the fallback entrypoint. The
-startup adapter preserves the session already created by `initPlayer()` and
-passes it to the transition controller. The controller uses that supplied
+When `engine_selector` chooses AVPlayer during `initPlayer()`, the hook
+dispatches through `PlaybackEngineActivation`, which calls
+`AvPlayerEngineActivation.activate()` instead of entering the fallback
+entrypoint. The startup route preserves the session already created by
+`initPlayer()` and passes it to the transition controller. The controller uses that supplied
 session instead of calling `beginPlaybackSession()` a second time.
 
 Direct startup deliberately bypasses fallback-only policy such as the circuit
@@ -163,15 +177,21 @@ A supplied startup session is validated after capture and after every later
 asynchronous phase. If it has already become stale, no provisional AVPlayer is
 created and no replacement session is introduced.
 
+## Engine activation modules
+
+Every engine decision now flows through `PlaybackEngineActivation`
+(`assets/js/player/playback_engine_activation.js`), which dispatches one
+activation per `engine_selector` result: HLS.js, MPEG-TS/FLV, native and AVPlayer
+own their construction, loading, registration and rollback in
+`hls_engine_activation.js`, `mpegts_engine_activation.js`,
+`native_engine_activation.js` and `avplayer_engine_activation.js`. The hook only
+builds the activation host and keeps thin compatibility delegates.
+
 ## Next extraction
 
-All AVPlayer construction and recovery routes now use one transaction state
-machine. The next safe slice is to make provisional-engine disposal a
-transition-specific boundary instead of a controller-wide AVPlayer callback.
-That will allow the first non-AVPlayer family—preferably initial MPEG-TS
-activation—to reuse the controller without weakening the existing HLS and
-MPEG-TS recovery coordinators.
-
-That recut must preserve engine-specific ownership, direct-start policy,
-startup metrics, stale-session cleanup, and the existing Chromium, Firefox,
-WebKit, torrent-subtitle, and MPEG-TS gates.
+The remaining hook-hosted engines are avbridge and h265web. Both share the same
+canvas-engine skeleton (lazy wrapper load, adapter registration, resume seek,
+AVPlayer fallback on failure) and are the next candidates for an activation
+module. That recut must preserve engine-specific ownership, direct-start
+policy, startup metrics, stale-session cleanup, and the existing Chromium,
+Firefox, WebKit, torrent-subtitle, and MPEG-TS gates.
