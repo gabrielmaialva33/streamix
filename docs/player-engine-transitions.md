@@ -33,7 +33,9 @@ APIs. Concrete work is supplied through callbacks by the composition root.
 activations behind the explicit activation host:
 
 - deciding whether a startup, fallback, or track-driven engine switch may run;
-- constructing `AVPlayerWrapper` and its product callbacks;
+- constructing `AvPlayerPlaybackEngine` and subscribing its contract events
+  (`ready`, `playing`, `paused`, `timeupdate`, `ended`, `error`) to product
+  policy through the shared adapter;
 - choosing the stream URL and AVPlayer load profile;
 - registering the concrete adapter through the host;
 - restoring canonical audio, selected tracks, media-session state, and UI;
@@ -199,11 +201,20 @@ fallback on any failure. The hook only builds the activation host, keeps thin
 compatibility delegates, and no longer constructs any concrete engine; the
 `playback_engine_activation_architecture` contract enforces that boundary.
 
+### `AvPlayerPlaybackEngine`
+
+`assets/js/player/avplayer_playback_engine.js` is the contract engine around
+one `AVPlayerWrapper`, symmetric with `hls_playback_engine.js`,
+`mpegts_playback_engine.js` and `native_playback_engine.js`. It owns wrapper
+construction, translates the wrapper's callbacks into `ENGINE_EVENT`, exposes
+the full capability surface with active-state guards, and provides a bounded
+snapshot plus idempotent teardown. The wrapper keeps script loading and the
+libmedia player; product policy never touches it directly.
+
 ## Next extraction
 
-With every engine activation extracted, the next slices are turning the
-AVPlayer integration into a complete adapter (moving the remaining
-`AVPlayerWrapper` product callbacks behind the engine contract) and starting the
-Watch Party decomposition. Each recut must preserve engine-specific ownership,
-direct-start policy, startup metrics, stale-session cleanup, and the existing
-Chromium, Firefox, WebKit, torrent-subtitle, and MPEG-TS gates.
+With every engine activation extracted and AVPlayer behind a complete engine,
+the next slice is the Watch Party decomposition. Each recut must preserve
+engine-specific ownership, direct-start policy, startup metrics, stale-session
+cleanup, and the existing Chromium, Firefox, WebKit, torrent-subtitle, and
+MPEG-TS gates.
