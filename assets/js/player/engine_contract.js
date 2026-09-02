@@ -36,6 +36,8 @@ export const ENGINE_EVENT = Object.freeze({
   METADATA: "metadata",
   READY: "ready",
   PLAYING: "playing",
+  PAUSED: "paused",
+  TIME_UPDATE: "timeupdate",
   STALLED: "stalled",
   RECOVERED: "recovered",
   ENDED: "ended",

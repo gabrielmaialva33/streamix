@@ -1,6 +1,7 @@
 import { playerLogger as log } from "../core/logger.js";
 import { getFileExtension } from "../media/stream_loader.js";
-import { ENGINE_ID, ENGINE_SELECTION } from "./engine_contract.js";
+import { createAvPlayerPlaybackEngine } from "./avplayer_playback_engine.js";
+import { ENGINE_EVENT, ENGINE_ID, ENGINE_SELECTION } from "./engine_contract.js";
 import {
   assertActivationHost,
   PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS,
@@ -80,6 +81,7 @@ export const AVPLAYER_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
 ]);
 
 const defaultDependencies = {
+  createAvPlayerPlaybackEngine,
   createPlaybackEngineAdapter,
   forgetRecommendedPlayer,
   frameApi: {
@@ -356,58 +358,59 @@ export class AvPlayerEngineActivation {
     mount.replaceChildren();
     mount.classList.remove("hidden");
 
-    const isCurrent = () => this.host.isSessionCurrent(context.sessionId);
-    let avPlayer = null;
-    const wrapper = new AVPlayerWrapper({
-      container: mount,
-      onReady: () => {
-        if (!isCurrent()) return;
-        this.logger.debug(
-          trackSwitch
-            ? "[VideoPlayer] AVPlayer ready for track switch"
-            : "[VideoPlayer] AVPlayer ready",
-        );
-      },
-      onPlay: () => {
-        if (!isCurrent()) return;
-        const presentation = this.host.getPresentation();
-        presentation?.hideLoading();
-        presentation?.updatePlayPauseUI(false);
-        this.startTimeUpdates();
-        this.host.handlePlaybackStarted();
-        this.host.markPlaying();
-        this.host.emitPlaybackEvent("play");
-
-        if (recordSuccess) {
-          const sourceType = this.host.getSourceType();
-          const streamType = this.host.getStreamType();
-          this.deps.recordPlayerSuccess(this.contentKey(), "avplayer", { sourceType, streamType });
-        }
-      },
-      onPause: () => {
-        if (!isCurrent()) return;
-        this.host.getPresentation()?.updatePlayPauseUI(true);
-        this.host.handlePlaybackPaused();
-        this.host.emitPlaybackEvent("pause");
-      },
-      onError: (error) => this.handleEngineError({ context, avPlayer, error, resumeTime }),
-      onTimeUpdate: () => {
-        if (!isCurrent()) return;
-        this.host.updateTimeUI();
-      },
-      onEnded: () => {
-        if (!isCurrent()) return;
-        this.host.getPresentation()?.updatePlayPauseUI(true);
-        this.stopTimeUpdates();
-        this.host.handlePlaybackEnded();
-        this.host.flushPlaybackMetrics("completed");
-      },
-    });
-
-    avPlayer = this.deps.createPlaybackEngineAdapter({
+    // The engine owns the wrapper and translates its callbacks into the shared
+    // event vocabulary; product policy subscribes through the adapter below.
+    const avPlayer = this.deps.createPlaybackEngineAdapter({
       id: ENGINE_ID.AVPLAYER,
-      engine: wrapper,
+      engine: this.deps.createAvPlayerPlaybackEngine({ AVPlayerWrapper, container: mount }),
     });
+    const isCurrent = () => this.host.isSessionCurrent(context.sessionId);
+
+    avPlayer.on(ENGINE_EVENT.READY, () => {
+      if (!isCurrent()) return;
+      this.logger.debug(
+        trackSwitch
+          ? "[VideoPlayer] AVPlayer ready for track switch"
+          : "[VideoPlayer] AVPlayer ready",
+      );
+    });
+    avPlayer.on(ENGINE_EVENT.PLAYING, () => {
+      if (!isCurrent()) return;
+      const presentation = this.host.getPresentation();
+      presentation?.hideLoading();
+      presentation?.updatePlayPauseUI(false);
+      this.startTimeUpdates();
+      this.host.handlePlaybackStarted();
+      this.host.markPlaying();
+      this.host.emitPlaybackEvent("play");
+
+      if (recordSuccess) {
+        const sourceType = this.host.getSourceType();
+        const streamType = this.host.getStreamType();
+        this.deps.recordPlayerSuccess(this.contentKey(), "avplayer", { sourceType, streamType });
+      }
+    });
+    avPlayer.on(ENGINE_EVENT.PAUSED, () => {
+      if (!isCurrent()) return;
+      this.host.getPresentation()?.updatePlayPauseUI(true);
+      this.host.handlePlaybackPaused();
+      this.host.emitPlaybackEvent("pause");
+    });
+    avPlayer.on(ENGINE_EVENT.ERROR, (error) =>
+      this.handleEngineError({ context, avPlayer, error, resumeTime }),
+    );
+    avPlayer.on(ENGINE_EVENT.TIME_UPDATE, () => {
+      if (!isCurrent()) return;
+      this.host.updateTimeUI();
+    });
+    avPlayer.on(ENGINE_EVENT.ENDED, () => {
+      if (!isCurrent()) return;
+      this.host.getPresentation()?.updatePlayPauseUI(true);
+      this.stopTimeUpdates();
+      this.host.handlePlaybackEnded();
+      this.host.flushPlaybackMetrics("completed");
+    });
+
     return avPlayer;
   }
 
