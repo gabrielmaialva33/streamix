@@ -13,6 +13,7 @@ const nativeSubtitleControllerUrl = new URL(
 const subtitleSourceResolverUrl = new URL("../player/subtitle_source_resolver.js", import.meta.url);
 const playerStateUrl = new URL("../player/player_state.js", import.meta.url);
 const streamLoaderUrl = new URL("../media/stream_loader.js", import.meta.url);
+const trackOperationsUrl = new URL("../player/track_operations.js", import.meta.url);
 
 async function source(url) {
   return readFile(url, "utf8");
@@ -48,7 +49,11 @@ test("HLS track state stays behind the playback engine contract", async () => {
 });
 
 test("AVPlayer track details stay behind its wrapper and the active-engine coordinator", async () => {
-  const [avplayerWrapper, hook] = await Promise.all([source(avplayerWrapperUrl), source(hookUrl)]);
+  const [avplayerWrapper, hook, operations] = await Promise.all([
+    source(avplayerWrapperUrl),
+    source(hookUrl),
+    source(trackOperationsUrl),
+  ]);
 
   for (const capability of [
     "getAudioTracks",
@@ -69,19 +74,24 @@ test("AVPlayer track details stay behind its wrapper and the active-engine coord
     hook,
     /setAVPlayerAudioTrack|setAVPlayerSubtitleTrack|applyAVPlayerSubtitleDelay|loadExternalSubtitleForAvPlayerLegacy/,
   );
-  assert.match(hook, /this\.playbackOrchestrator\?\.refreshAudioTracks\(\)/);
-  assert.match(hook, /this\.playbackOrchestrator\?\.refreshSubtitleTracks\(\)/);
-  assert.match(hook, /this\.playbackOrchestrator\.selectAudioTrack\(trackIndex\)/);
-  assert.match(hook, /this\.playbackOrchestrator\.selectSubtitleTrack\(trackIndex\)/);
-  assert.match(hook, /this\.playbackOrchestrator\?\.loadExternalSubtitle\(\{/);
-  assert.match(hook, /this\.playbackOrchestrator\?\.setSubtitleDelay\(/);
+  assert.doesNotMatch(
+    hook,
+    /playbackOrchestrator\??\.(refreshAudioTracks|refreshSubtitleTracks|selectAudioTrack|selectSubtitleTrack|loadExternalSubtitle)\(/,
+  );
+  assert.match(operations, /getOrchestrator\(\)\?\.refreshAudioTracks\(\)/);
+  assert.match(operations, /getOrchestrator\(\)\?\.refreshSubtitleTracks\(\)/);
+  assert.match(operations, /orchestrator\.selectAudioTrack\(trackIndex\)/);
+  assert.match(operations, /orchestrator\.selectSubtitleTrack\(trackIndex\)/);
+  assert.match(operations, /getOrchestrator\(\)\?\.loadExternalSubtitle\(\{/);
+  assert.match(operations, /getOrchestrator\(\)\?\.setSubtitleDelay\(/);
 });
 
 test("native subtitle DOM lifecycle stays behind NativeSubtitleController", async () => {
-  const [controller, hook, playerState] = await Promise.all([
+  const [controller, hook, playerState, operations] = await Promise.all([
     source(nativeSubtitleControllerUrl),
     source(hookUrl),
     source(playerStateUrl),
+    source(trackOperationsUrl),
   ]);
 
   assert.match(controller, /export class NativeSubtitleController/);
@@ -96,10 +106,11 @@ test("native subtitle DOM lifecycle stays behind NativeSubtitleController", asyn
     /import \{ createNativeSubtitleController \} from "\.\.\/player\/native_subtitle_controller\.js";/,
   );
   assert.match(hook, /this\.nativeSubtitleController = createNativeSubtitleController\(\{/);
-  assert.match(hook, /this\.nativeSubtitleController\?\.select\(trackIndex\)/);
-  assert.match(hook, /this\.nativeSubtitleController\?\.scheduleReload\(/);
-  assert.match(hook, /this\.nativeSubtitleController\.load\(\{/);
-  assert.match(hook, /this\.nativeSubtitleController\?\.reload\(\{/);
+  assert.match(operations, /getNativeSubtitleController\(\)\?\.select\(trackIndex\)/);
+  assert.match(operations, /getNativeSubtitleController\(\)\?\.scheduleReload\(/);
+  assert.match(operations, /nativeSubtitles\.load\(\{/);
+  assert.match(operations, /getNativeSubtitleController\(\)\?\.reload\(\{/);
+  assert.doesNotMatch(hook, /nativeSubtitleController\??\.(select|scheduleReload|load|reload)\(/);
   assert.match(hook, /this\.nativeSubtitleController\?\.reset\(\)/);
   assert.match(hook, /this\.nativeSubtitleController\?\.destroy\(\)/);
 
@@ -116,7 +127,10 @@ test("native subtitle DOM lifecycle stays behind NativeSubtitleController", asyn
 
   assert.match(playerState, /subtitleSourceResolver: null/);
   assert.match(playerState, /nativeSubtitleController: null/);
-  assert.match(playerState, /_externalSubtitleSourceLease: null/);
+  assert.match(playerState, /trackOperations: null/);
+  assert.doesNotMatch(playerState, /_externalSubtitleSourceLease/);
+  assert.doesNotMatch(hook, /_externalSubtitleSourceLease/);
+  assert.match(operations, /this\.externalSubtitleLease = /);
   assert.doesNotMatch(
     playerState,
     /_externalSubtitleLoadedFor|_nativeExternalSubtitleTrack|_nativeExternalSubtitleReloading|_subtitleOffsetReloadTimer|_externalSubtitleBlobUrl/,
@@ -124,11 +138,12 @@ test("native subtitle DOM lifecycle stays behind NativeSubtitleController", asyn
 });
 
 test("external subtitle acquisition stays behind SubtitleSourceResolver", async () => {
-  const [resolver, hook, nativeController, playerState] = await Promise.all([
+  const [resolver, hook, nativeController, playerState, operations] = await Promise.all([
     source(subtitleSourceResolverUrl),
     source(hookUrl),
     source(nativeSubtitleControllerUrl),
     source(playerStateUrl),
+    source(trackOperationsUrl),
   ]);
 
   assert.match(resolver, /export class SubtitleSourceResolver/);
@@ -148,7 +163,11 @@ test("external subtitle acquisition stays behind SubtitleSourceResolver", async 
     /import \{ createSubtitleSourceResolver \} from "\.\.\/player\/subtitle_source_resolver\.js";/,
   );
   assert.match(hook, /this\.subtitleSourceResolver = createSubtitleSourceResolver\(\{/);
-  assert.match(hook, /this\.subtitleSourceResolver\?\.resolve\(\{/);
+  assert.match(operations, /getSubtitleSourceResolver\(\)\?\.resolve\(\{/);
+  assert.doesNotMatch(
+    operations,
+    /\/api\/subtitles\/|URL\.createObjectURL|URL\.revokeObjectURL|new Blob\(/,
+  );
   assert.match(hook, /this\.subtitleSourceResolver\?\.reset\(\)/);
   assert.match(hook, /this\.subtitleSourceResolver\?\.destroy\(\)/);
   assert.doesNotMatch(hook, /fetchExternalSubtitleSource|_externalSubtitleLoadedFor/);
@@ -171,35 +190,66 @@ test("VideoPlayer creates one track controller with narrow composition boundarie
     /import \{ createPlayerTrackController \} from "\.\.\/player\/player_track_controller\.js";/,
   );
   assert.match(hook, /this\.playerTrackController = createPlayerTrackController\(\{/);
-  assert.match(hook, /refreshAudioTracks: \(\) => this\.refreshAudioTracksFromActiveEngine\(\)/);
   assert.match(
     hook,
-    /refreshSubtitleTracks: \(\) => this\.refreshSubtitleTracksFromActiveEngine\(\)/,
+    /import \{ createTrackOperations \} from "\.\.\/player\/track_operations\.js";/,
   );
   assert.match(
     hook,
-    /selectAudioTrack: \(trackIndex\) => this\.applyAudioTrackSelection\(trackIndex\)/,
+    /this\.trackOperations = createTrackOperations\(\{ host: this\.buildTrackOperationsHost\(\) \}\)/,
+  );
+  assert.match(hook, /buildTrackOperationsHost\(\) \{/);
+  assert.match(hook, /refreshAudioTracks: \(\) => this\.trackOperations\.refreshAudioTracks\(\)/);
+  assert.match(
+    hook,
+    /refreshSubtitleTracks: \(\) => this\.trackOperations\.refreshSubtitleTracks\(\)/,
   );
   assert.match(
     hook,
-    /selectSubtitleTrack: \(trackIndex\) =>\s*this\.applySubtitleTrackSelection\(trackIndex\)/,
+    /selectAudioTrack: \(trackIndex\) => this\.trackOperations\.selectAudioTrack\(trackIndex\)/,
   );
   assert.match(
     hook,
-    /setSubtitleOffset: \(offsetMs\) => this\.applySubtitleOffsetSelection\(offsetMs\)/,
+    /selectSubtitleTrack: \(trackIndex\) =>\s*this\.trackOperations\.selectSubtitleTrack\(trackIndex\)/,
   );
   assert.match(
     hook,
-    /loadExternalSubtitle: \(\.\.\.args\) =>\s*this\.loadExternalSubtitleForActiveEngine\(\.\.\.args\)/,
+    /setSubtitleOffset: \(offsetMs\) => this\.trackOperations\.setSubtitleOffset\(offsetMs\)/,
   );
   assert.match(
     hook,
-    /loadNativeExternalSubtitle: \(\.\.\.args\) =>\s*this\.loadNativeExternalSubtitleForSession\(\.\.\.args\)/,
+    /loadExternalSubtitle: \(\.\.\.args\) =>\s*this\.trackOperations\.loadExternalSubtitle\(\.\.\.args\)/,
   );
   assert.match(
     hook,
-    /reloadNativeExternalSubtitle: \(\.\.\.args\) =>\s*this\.reloadNativeExternalSubtitleForSession\(\.\.\.args\)/,
+    /loadNativeExternalSubtitle: \(\.\.\.args\) =>\s*this\.trackOperations\.loadNativeExternalSubtitle\(\.\.\.args\)/,
   );
+  assert.match(
+    hook,
+    /reloadNativeExternalSubtitle: \(\.\.\.args\) =>\s*this\.trackOperations\.reloadNativeExternalSubtitle\(\.\.\.args\)/,
+  );
+  assert.doesNotMatch(
+    hook,
+    /applyAudioTrackSelection|applySubtitleTrackSelection|applySubtitleOffsetSelection|refreshAudioTracksFromActiveEngine|refreshSubtitleTracksFromActiveEngine|loadExternalSubtitleForActiveEngine|loadNativeExternalSubtitleForSession|reloadNativeExternalSubtitleForSession|applyNativeSubtitleSnapshot|releaseSubtitleSourceLease\(/,
+  );
+});
+
+test("TrackOperations stays behind an explicit host, independent of engines and Phoenix", async () => {
+  const operations = await source(trackOperationsUrl);
+
+  assert.match(operations, /TRACK_OPERATIONS_HOST_METHODS = Object\.freeze\(\[/);
+  assert.match(
+    operations,
+    /assertActivationHost\(host, TRACK_OPERATIONS_HOST_METHODS, "TrackOperations"\)/,
+  );
+  assert.match(operations, /hasSubtitleInLanguage/);
+  assert.doesNotMatch(operations, /hooks\/video_player|pushEvent|LiveSocket|Phoenix/);
+  assert.doesNotMatch(operations, /document\.|window\.|querySelector|globalThis\./);
+  assert.doesNotMatch(
+    operations,
+    /hls_playback|mpegts|avplayer_wrapper|avbridge|h265web|native_playback_engine|stream_loader/i,
+  );
+  assert.doesNotMatch(operations, /this\.host\.(video|avPlayer|playbackOrchestrator|el)\b/);
 });
 
 test("public track commands delegate through PlayerTrackController", async () => {
@@ -247,6 +297,15 @@ test("track controller lifecycle is tied to the player lifecycle", async () => {
   assert.match(hook, /this\.nativeSubtitleController\?\.destroy\(\);/);
   assert.match(hook, /this\.subtitleSourceResolver\?\.destroy\(\);/);
   assert.match(hook, /this\.playerTrackController\?\.destroy\(\);/);
+  assert.match(hook, /this\.trackOperations\?\.destroy\(\);/);
+  assert.ok(
+    hook.indexOf("this.playerTrackController?.destroy();") <
+      hook.indexOf("this.trackOperations?.destroy();"),
+  );
+  assert.ok(
+    hook.indexOf("this.trackOperations?.destroy();") <
+      hook.indexOf("this.playerTrackPresentationController?.destroy();"),
+  );
   assert.ok(
     hook.indexOf("this.nativeSubtitleController?.destroy();") <
       hook.indexOf("this.subtitleSourceResolver?.destroy();"),
@@ -268,11 +327,12 @@ test("track presentation stays behind PlayerTrackPresentationController", async 
   );
   const playerStateUrl = new URL("../player/player_state.js", import.meta.url);
   const playerUiUrl = new URL("../player/player_ui.js", import.meta.url);
-  const [presentation, hook, playerState, playerUi] = await Promise.all([
+  const [presentation, hook, playerState, playerUi, operations] = await Promise.all([
     source(presentationUrl),
     source(hookUrl),
     source(playerStateUrl),
     source(playerUiUrl),
+    source(trackOperationsUrl),
   ]);
 
   assert.match(presentation, /export class PlayerTrackPresentationController/);
@@ -299,13 +359,25 @@ test("track presentation stays behind PlayerTrackPresentationController", async 
     hook,
     /this\.playerTrackPresentationController = createPlayerTrackPresentationController\(\{/,
   );
-  assert.match(hook, /this\.playerTrackPresentationController\?\.presentAudioSelection\(/);
-  assert.match(hook, /this\.playerTrackPresentationController\?\.presentAudioTracks\(/);
-  assert.match(hook, /this\.playerTrackPresentationController\?\.presentSubtitleSelection\(/);
-  assert.match(hook, /this\.playerTrackPresentationController\?\.presentSubtitleTracks\(/);
-  assert.match(hook, /this\.playerTrackPresentationController\?\.presentSubtitleOffset\(/);
-  assert.match(hook, /this\.playerTrackPresentationController\?\.presentNativeSubtitleSnapshot\(/);
-  assert.match(hook, /this\.playerTrackPresentationController\?\.clearSubtitlePresentation\(/);
+  for (const presenter of [
+    "presentAudioSelection",
+    "presentAudioTracks",
+    "presentSubtitleSelection",
+    "presentSubtitleTracks",
+    "presentSubtitleOffset",
+    "presentNativeSubtitleSnapshot",
+    "clearSubtitlePresentation",
+  ]) {
+    assert.match(operations, new RegExp(`getPresentation\\(\\)\\?\\.${presenter}\\(`));
+  }
+  assert.doesNotMatch(
+    hook,
+    /playerTrackPresentationController\?\.(presentAudio|presentSubtitle|presentNative|clearSubtitle)/,
+  );
+  assert.match(
+    hook,
+    /this\.playerTrackPresentationController\.presentSubtitleOffset\(this\.subtitleOffsetMs\)/,
+  );
 
   assert.doesNotMatch(hook, /saveAudioTrack\(/);
   assert.doesNotMatch(hook, /saveSubtitleTrack\(/);
