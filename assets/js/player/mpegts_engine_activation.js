@@ -13,7 +13,6 @@ export const MPEGTS_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   ...PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS,
   "clearStreamLoader",
   "ensureStreamLoader",
-  "getMpegtsPlayer",
   "getPresentation",
   "getStreamLoader",
   "getTransitionController",
@@ -26,7 +25,6 @@ export const MPEGTS_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   "releaseEngine",
   "reportDebug",
   "reportLifecycle",
-  "setMpegtsPlayer",
   "setNativePlaybackEventsSuppressed",
   "showPlaybackError",
   "syncPiPAvailability",
@@ -90,11 +88,8 @@ export class MpegtsEngineActivation {
       },
       activateEngine: ({ engine: loader }) => Boolean(loader.getMpegtsEngine()),
       complete: ({ engine: loader }) => loader.getMpegtsEngine(),
-      rollbackEngine: ({ engine: loader }) => {
+      rollbackEngine: () => {
         this.host.releaseEngine(ENGINE_ID.MPEGTS);
-        if (this.host.getMpegtsPlayer() === loader.getMpegtsPlayer()) {
-          this.host.setMpegtsPlayer(null);
-        }
       },
       destroyEngine: async (loader) => {
         await loader.destroy();
@@ -161,7 +156,6 @@ export class MpegtsEngineActivation {
 
     if (result.status === "loaded") {
       const mpegtsEngine = loader.getMpegtsEngine();
-      this.host.setMpegtsPlayer(loader.getMpegtsPlayer());
       this.host.registerMediaElementEngine(ENGINE_ID.MPEGTS, mpegtsEngine);
 
       void Promise.resolve(this.host.playNativeAfterResume(sessionId)).catch((error) => {

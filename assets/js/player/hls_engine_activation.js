@@ -21,7 +21,6 @@ export const HLS_ENGINE_ACTIVATION_HOST_METHODS = Object.freeze([
   "recordPlaybackError",
   "registerMediaElementEngine",
   "reportLifecycle",
-  "setHlsClient",
   "setNativePlaybackEventsSuppressed",
   "showPlaybackError",
   "syncPiPAvailability",
@@ -77,7 +76,6 @@ export class HlsEngineActivation {
     const hlsEngine = loader.getHlsEngine?.();
     if (!hlsEngine || hlsEngine.destroyed) return null;
 
-    this.host.setHlsClient(hlsEngine.client);
     return this.host.registerMediaElementEngine(ENGINE_ID.HLS, hlsEngine);
   }
 
@@ -110,7 +108,6 @@ export class HlsEngineActivation {
     if (result.status === "cancelled" || result.status === "stale") return false;
 
     if (result.status === "loaded") {
-      this.host.setHlsClient(result.engine);
       if (!this.adoptLoaderEngine(sessionId, loader)) {
         throw new Error("HLS engine was not registered by StreamLoader");
       }

@@ -60,7 +60,7 @@ function createHarness({ hostOverrides = {}, loader = createLoader() } = {}) {
     syncedPiP: 0,
     teardownSessions: [],
   };
-  const state = { sessionId: 5, loader, mpegtsPlayer: null };
+  const state = { sessionId: 5, loader };
   const video = new EventTarget();
   const controller = createPlaybackEngineTransitionController({
     beginSession: () => {
@@ -83,7 +83,6 @@ function createHarness({ hostOverrides = {}, loader = createLoader() } = {}) {
       return state.loader;
     },
     getCurrentUrl: () => "https://example.test/live.ts",
-    getMpegtsPlayer: () => state.mpegtsPlayer,
     getPresentation: () => ({
       hideLoading: () => calls.presentation.push("hideLoading"),
       hideError: () => calls.presentation.push("hideError"),
@@ -113,9 +112,6 @@ function createHarness({ hostOverrides = {}, loader = createLoader() } = {}) {
     releaseEngine: (engineId) => calls.released.push(engineId),
     reportDebug: (stage, extra) => calls.debug.push([stage, extra]),
     reportLifecycle: (stage, extra) => calls.lifecycle.push([stage, extra]),
-    setMpegtsPlayer: (player) => {
-      state.mpegtsPlayer = player;
-    },
     setNativePlaybackEventsSuppressed: (value) => calls.suppressed.push(value),
     showPlaybackError: (message) => calls.errors.push(message),
     syncPiPAvailability: () => {
@@ -163,7 +159,6 @@ test("a successful startup borrows the loader engine and requests native playbac
   assert.equal(result, state.loader.engine);
   assert.deepEqual(state.loader.loads, [["https://example.test/live.ts", "mpegts"]]);
   assert.deepEqual(calls.registered, [[ENGINE_ID.MPEGTS, state.loader.engine]]);
-  assert.equal(state.mpegtsPlayer, state.loader.player);
   assert.deepEqual(calls.playAfterResume, [5]);
   assert.deepEqual(calls.suppressed, [false]);
   assert.equal(calls.syncedPiP, 1);

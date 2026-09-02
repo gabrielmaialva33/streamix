@@ -34,7 +34,6 @@ test("the MPEG-TS activation borrows the engine without owning transport teardow
   const activation = await source(activationUrl);
 
   assert.match(activation, /const mpegtsEngine = loader\.getMpegtsEngine\(\);/);
-  assert.match(activation, /this\.host\.setMpegtsPlayer\(loader\.getMpegtsPlayer\(\)\);/);
   assert.match(
     activation,
     /this\.host\.registerMediaElementEngine\(ENGINE_ID\.MPEGTS, mpegtsEngine\);/,

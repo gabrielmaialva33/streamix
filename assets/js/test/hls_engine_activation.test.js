@@ -37,7 +37,6 @@ function createHarness({ hostOverrides = {}, dependencies = {}, loader = createL
   const calls = {
     activated: [],
     errors: [],
-    hlsClients: [],
     lifecycle: [],
     registered: [],
     recordedErrors: 0,
@@ -62,7 +61,6 @@ function createHarness({ hostOverrides = {}, dependencies = {}, loader = createL
       return { id: engineId, engine };
     },
     reportLifecycle: (stage, extra) => calls.lifecycle.push([stage, extra]),
-    setHlsClient: (client) => calls.hlsClients.push(client),
     setNativePlaybackEventsSuppressed: (value) => calls.suppressed.push(value),
     showPlaybackError: (message) => calls.errors.push(message),
     syncPiPAvailability: () => {
@@ -114,10 +112,6 @@ test("a successful load borrows the loader engine into the media element registr
   assert.deepEqual(calls.suppressed, [false]);
   assert.equal(calls.syncedPiP, 1);
   assert.deepEqual(calls.lifecycle, [["player_engine_selected", { engine: ENGINE_ID.HLS }]]);
-  assert.deepEqual(calls.hlsClients, [
-    state.loader.hlsEngine.client,
-    state.loader.hlsEngine.client,
-  ]);
   assert.deepEqual(calls.registered, [[ENGINE_ID.HLS, state.loader.hlsEngine]]);
   assert.equal(state.loader.destroyed, 0);
 });
@@ -228,6 +222,5 @@ test("adoptLoaderEngine guards session, loader identity and destroyed engines", 
   state.loader.hlsEngine = { client: { id: "fresh" }, destroyed: false };
   const registered = activation.adoptLoaderEngine();
   assert.equal(registered.id, ENGINE_ID.HLS);
-  assert.deepEqual(calls.hlsClients, [{ id: "fresh" }]);
   assert.deepEqual(calls.registered, [[ENGINE_ID.HLS, state.loader.hlsEngine]]);
 });
