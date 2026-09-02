@@ -10,17 +10,10 @@ import {
 } from "../watch_party/drift_policy.js";
 import { createWatchPartyPlayerBinding } from "../watch_party/player_binding.js";
 import { createReactionPresenter } from "../watch_party/reactions.js";
-import {
-  driftChanged,
-  normalizeDriftMs,
-  renderSyncStatus,
-  resolveSyncStatus,
-  syncStatusText,
-} from "../watch_party/sync_status.js";
+import { createSyncStatusPublisher } from "../watch_party/status_publisher.js";
 
 const PLAYER_READY_EVENT = "streamix:playback-ready";
 const MAX_ACTION_DELAY_MS = 1500;
-const SYNC_STATUS_ELEMENT_ID = "watch-party-sync-status";
 
 /**
  * Watch Party sync hook: composition root for the viewer/host sync loop.
@@ -76,14 +69,17 @@ const WatchPartySync = {
     this.syncHoldReason = this.isHost ? null : "connecting";
     this.isBuffering = false;
     this.lastHostStatus = null;
-    this.lastPublishedStatus = null;
-    this.lastPublishedDrift = null;
 
     this.clock = createClockSync({ push: (event, payload) => this._safePush(event, payload) });
     this.sequencer = createCommandSequencer();
     this.commands = createSyncCommandScheduler();
     this.beacons = createBeaconScheduler({ send: () => this._sendBeacon() });
     this.reactions = createReactionPresenter();
+    this.status = createSyncStatusPublisher({
+      getContext: () => ({ holdReason: this.syncHoldReason, isHost: this.isHost }),
+      push: (event, payload) => this._safePush(event, payload),
+      render: (status, driftMs) => this._renderStatus(status, driftMs),
+    });
     this.binding = createWatchPartyPlayerBinding({
       getSyncHold: () => this.syncHold,
       isDestroyed: () => this.destroyedHook,
@@ -130,6 +126,8 @@ const WatchPartySync = {
       "useConservativeSync",
       () => this.nativeHlsPlayback || this.playback?.supportsPlaybackRate?.() === false,
     );
+    define("lastPublishedStatus", () => this.status?.lastStatus ?? null);
+    define("lastPublishedDrift", () => this.status?.lastDrift ?? null);
     define("syncLock", () => this.commands?.locked === true);
     define("clockReady", () => this.clock?.ready === true);
     define("commandGeneration", () => this.commands?.generation ?? 0);
@@ -162,9 +160,7 @@ const WatchPartySync = {
     this._applyHostSnapshot();
     this._applyServerSnapshot();
 
-    if (this.lastPublishedStatus) {
-      this._renderStatus(this.lastPublishedStatus, this.lastPublishedDrift);
-    }
+    this.status?.rerender();
   },
 
   destroyed() {
@@ -515,33 +511,15 @@ const WatchPartySync = {
   // Status
 
   _publishStatus(status, driftMs = null) {
-    const resolved = resolveSyncStatus({
-      holdReason: this.syncHoldReason,
-      isHost: this.isHost,
-      status,
-    });
-    const normalizedDrift = normalizeDriftMs(driftMs);
-
-    this._renderStatus(resolved, normalizedDrift);
-    if (
-      resolved === this.lastPublishedStatus &&
-      !driftChanged(this.lastPublishedDrift, normalizedDrift)
-    ) {
-      return;
-    }
-
-    this.lastPublishedStatus = resolved;
-    this.lastPublishedDrift = normalizedDrift;
-    this._safePush("wp_sync_status", { status: resolved, drift_ms: normalizedDrift });
+    return this.status.publish(status, driftMs);
   },
 
   _renderStatus(status, driftMs = null) {
-    const element = document.getElementById(SYNC_STATUS_ELEMENT_ID);
-    return renderSyncStatus(element, { driftMs, isHost: this.isHost, status });
+    return this.status.renderBadge(status, driftMs);
   },
 
   _statusText(status, driftMs = null) {
-    return syncStatusText({ driftMs, isHost: this.isHost, status });
+    return this.status.text(status, driftMs);
   },
 
   _safePush(event, payload) {
