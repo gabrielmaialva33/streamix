@@ -100,7 +100,7 @@ test("initial AVPlayer selection reuses the initPlayer session without fallback 
     source(hookUrl),
     source(avPlayerActivationUrl),
   ]);
-  const initPlayer = methodSlice(hook, "initPlayer", "logHlsRecoveryDecision");
+  const initPlayer = methodSlice(hook, "initPlayer", "buildEngineRecoveryHost");
   const startup = methodSlice(activation, "activate", "tryFallback");
   const transaction = methodSlice(activation, "transition", "createEngine");
 

@@ -13,9 +13,12 @@ async function source(url) {
 test("browser integration routes owned fullscreen presentation through PlayerUiController", async () => {
   const hook = await source(hookUrl);
   const browserIntegration = await source(browserIntegrationUrl);
+  const bindings = await source(new URL("../player/media_event_bindings.js", import.meta.url));
 
   assert.match(hook, /createPlayerUiController\s*\(\s*\{/);
-  assert.match(hook, /playerUIController\??\.updateSpeedUI\s*\(/);
+  assert.match(bindings, /getUiController\(\)\.updateSpeedUI\s*\(/);
+  assert.match(hook, /getUiController: \(\) => this\.playerUIController/);
+  assert.doesNotMatch(hook, /playerUIController\??\.updateSpeedUI\s*\(/);
   assert.doesNotMatch(hook, /playerUIController\??\.updateFullscreenUI\s*\(/);
   assert.match(browserIntegration, /presentation\.updateFullscreenUI\s*\(/);
 

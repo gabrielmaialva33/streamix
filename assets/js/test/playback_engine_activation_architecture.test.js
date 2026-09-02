@@ -120,7 +120,7 @@ test("VideoPlayer composes one engine activation coordinator behind an explicit 
 
 test("initPlayer dispatches every engine decision through the coordinator", async () => {
   const hook = await source(hookUrl);
-  const initPlayer = methodSlice(hook, "initPlayer", "logHlsRecoveryDecision");
+  const initPlayer = methodSlice(hook, "initPlayer", "buildEngineRecoveryHost");
 
   assert.match(
     initPlayer,

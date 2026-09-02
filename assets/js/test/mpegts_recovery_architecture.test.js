@@ -6,6 +6,8 @@ const coordinatorUrl = new URL("../player/mpegts_recovery_coordinator.js", impor
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const stateUrl = new URL("../player/player_state.js", import.meta.url);
 const activationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
+const policyUrl = new URL("../player/engine_recovery_policy.js", import.meta.url);
+const bindingsUrl = new URL("../player/media_event_bindings.js", import.meta.url);
 
 async function source(url) {
   return readFile(url, "utf8");
@@ -52,17 +54,25 @@ test("the MPEG-TS coordinator is independent from the hook and concrete fallback
   );
 });
 
-test("VideoPlayer delegates MPEG-TS retry state while retaining product fallbacks", async () => {
-  const hook = await source(hookUrl);
+test("VideoPlayer delegates MPEG-TS retry state and product fallbacks to the recovery policy", async () => {
+  const [hook, policy] = await Promise.all([source(hookUrl), source(policyUrl)]);
 
   assert.match(hook, /createMpegtsRecoveryCoordinator.*mpegts_recovery_coordinator\.js/s);
   assert.doesNotMatch(hook, /classifyMpegtsError|executeMpegtsDecision|cancelMpegtsRetry/);
   assert.doesNotMatch(hook, /_mpegtsRecoveryPromise|_mpegtsRecoverySessionId|_mpegtsRetryTimer/);
   assert.doesNotMatch(hook, /this\.mpegtsNetworkAttempts|this\.mpegtsRecreateAttempts/);
+  assert.match(
+    hook,
+    /recoverFromMpegtsError\(data\) \{\s*return this\.engineRecoveryPolicy\?\.recoverFromMpegtsError\(data\)/,
+  );
+  assert.doesNotMatch(hook, /mpegtsRecoveryCoordinator\.handle\(/);
 
   for (const callback of ["retryDirect", "retryMpegts", "fallbackAVPlayer", "fallbackNative"]) {
-    assert.match(hook, new RegExp(`${callback}:`));
+    assert.match(policy, new RegExp(`${callback}:`));
+    assert.doesNotMatch(hook, new RegExp(`${callback}:`));
   }
+  assert.match(policy, /teardownStreamLoaderForTransition\(sessionId\)/);
+  assert.match(policy, /this\.host\.isSessionCurrent\(transitionSessionId\)/);
 });
 
 test("the initial hook state no longer owns MPEG-TS recovery internals", async () => {
@@ -75,8 +85,12 @@ test("the initial hook state no longer owns MPEG-TS recovery internals", async (
 });
 
 test("MPEG-TS recovery is reset by confirmed playback, not by the initial play request", async () => {
-  const [hook, activation] = await Promise.all([source(hookUrl), source(activationUrl)]);
-  const listeners = methodSource(hook, "setupEventListeners");
+  const [hook, activation, bindings] = await Promise.all([
+    source(hookUrl),
+    source(activationUrl),
+    source(bindingsUrl),
+  ]);
+  const listeners = methodSource(bindings, "bindMediaEvents");
   const loadMpegts = activation.slice(activation.indexOf("  async load("));
 
   assert.match(
@@ -94,6 +108,9 @@ test("MPEG-TS recovery is reset by confirmed playback, not by the initial play r
 
   assert.doesNotMatch(playListener, /handlePlaybackStarted/);
   assert.match(playingListener, /handlePlaybackStarted/);
+  assert.match(hook, /this\.mediaEventBindings = createMediaEventBindings\(\{/);
+  assert.match(hook, /this\.mediaEventBindings\.bindMediaEvents\(\);/);
+  assert.doesNotMatch(hook, /listenOptional\(this\.video, "playing"/);
   assert.match(loadMpegts, /onPlaying[\s\S]*this\.host\.markMpegtsRecovered\(\)/);
   assert.doesNotMatch(loadMpegts, /_mpegtsNetworkAttempts|_mpegtsRecreateAttempts/);
 });
