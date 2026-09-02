@@ -8,7 +8,7 @@ import {
   detectQualityCodec,
   qualityVideoCodec,
 } from "../media/quality_probe";
-import { getStreamType, isStreamLoaderCancelledError, StreamLoader } from "../media/stream_loader";
+import { getStreamType, isStreamLoaderCancelledError } from "../media/stream_loader";
 import {
   ContentType,
   FeatureFlags,
@@ -97,6 +97,7 @@ import { createPlayerTrackPresentationController } from "../player/player_track_
 import { PlayerUI } from "../player/player_ui";
 import { createPlayerUiController } from "../player/player_ui_controller.js";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
+import { createStreamTransport } from "../player/stream_transport.js";
 import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
 import { hasSubtitleInLanguage } from "../player/track_metadata";
 import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
@@ -201,6 +202,8 @@ const VideoPlayer = {
     this.video = this.el.querySelector("video");
     this.configureNativePlaybackElement();
     Object.assign(this, createInitialPlayerState(this.el));
+    this.streamTransport = createStreamTransport({ host: this.buildStreamTransportHost() });
+    this._definePlayerAccessors();
     this.watchPartyPolicy = createWatchPartyPlayerPolicy({
       enabled: this.partyMode === true,
       role: this.partyRole,
@@ -514,9 +517,7 @@ const VideoPlayer = {
       applyAudioState: () => this.applyAudioState(),
       canAttemptFallback: () => this.canAttemptFallback(),
       cancelNativeAudioCheck: () => this.nativeEngineActivation?.cancelAudioCheck(),
-      clearStreamLoader: (loader) => {
-        if (this.streamLoader === loader) this.streamLoader = null;
-      },
+      clearStreamLoader: (loader) => this.streamTransport?.release(loader),
       detachNativeErrorHandler: () => this.nativeEngineActivation?.detachErrorHandler(),
       disablePiPForCanvasPlayback: () => this.disablePiPForCanvasPlayback(),
       emitPlaybackEvent: (event) => emitPlaybackEvent(this.el, event),
@@ -540,7 +541,7 @@ const VideoPlayer = {
       getProxyUrl: () => this.proxyUrl,
       getSessionId: () => this.playbackSessionId,
       getSourceType: () => this.sourceType,
-      getStreamLoader: () => this.streamLoader,
+      getStreamLoader: () => this.streamTransport?.current ?? null,
       getStreamType: () => this.currentStreamType,
       getStreamUrl: () => this.streamUrl,
       getSubtitleOffsetMs: () => this.subtitleOffsetMs,
@@ -703,9 +704,7 @@ const VideoPlayer = {
     log.debug(`Switching streaming mode: ${this.streamingMode} -> ${newMode}`);
     this.streamingMode = newMode;
 
-    if (this.streamLoader) {
-      this.streamLoader.updateStreamingMode(newMode);
-    }
+    this.streamTransport?.updateStreamingMode(newMode);
 
     this.pushEventSafe("streaming_mode_changed", {
       mode: newMode,
@@ -718,7 +717,7 @@ const VideoPlayer = {
   // ============================================
 
   setQuality(levelIndex) {
-    if (this.streamLoader) {
+    if (this.streamTransport?.current) {
       // Use codec-aware ABR for auto quality selection
       if (levelIndex === -1 && this.codecABR && FeatureFlags.advancedABR.enabled) {
         const suggestion = this.codecABR.suggestQuality(this.availableQualities);
@@ -729,7 +728,7 @@ const VideoPlayer = {
           reason: suggestion.reason,
         });
       }
-      this.streamLoader.setQuality(levelIndex);
+      this.streamTransport.setQuality(levelIndex);
     }
     this.manualQuality = levelIndex === -1 ? null : levelIndex;
 
@@ -742,10 +741,10 @@ const VideoPlayer = {
   },
 
   updateQualityList() {
-    if (!this.streamLoader) return;
+    if (!this.streamTransport?.current) return;
 
-    this.availableQualities = this.streamLoader.getQualityLevels();
-    const currentLevel = this.streamLoader.getCurrentLevel();
+    this.availableQualities = this.streamTransport.qualityLevels();
+    const currentLevel = this.streamTransport.currentLevel();
 
     // Enhance quality list with codec information
     const enhancedQualities = this.availableQualities.map((q) => ({
@@ -823,7 +822,7 @@ const VideoPlayer = {
     const sessionId = this.playbackSessionId;
     const result = this.playbackOrchestrator
       ? await this.playbackOrchestrator.selectAudioTrack(trackIndex)
-      : this.streamLoader?.setAudioTrack(trackIndex);
+      : this.streamTransport?.setAudioTrack(trackIndex);
 
     if (result === false || result == null || !this.isCurrentPlaybackSession(sessionId)) {
       return false;
@@ -872,7 +871,7 @@ const VideoPlayer = {
     const sessionId = this.playbackSessionId;
     let result = this.playbackOrchestrator
       ? await this.playbackOrchestrator.selectSubtitleTrack(trackIndex)
-      : this.streamLoader?.setSubtitleTrack(trackIndex);
+      : this.streamTransport?.setSubtitleTrack(trackIndex);
 
     const nativeResult = this.nativeSubtitleController?.select(trackIndex);
     if (nativeResult !== false && nativeResult != null) result = nativeResult;
@@ -1834,18 +1833,7 @@ const VideoPlayer = {
       }
     }
 
-    if (this.streamLoader) {
-      const streamLoader = this.streamLoader;
-      this.streamLoader = null;
-      try {
-        this._streamLoaderTeardownPromise = Promise.resolve(streamLoader.destroy()).catch((error) =>
-          log.debug("[VideoPlayer] StreamLoader teardown failed:", error),
-        );
-      } catch (error) {
-        log.debug("[VideoPlayer] StreamLoader teardown failed:", error);
-        this._streamLoaderTeardownPromise = Promise.resolve();
-      }
-    }
+    void this.streamTransport?.teardown();
 
     this.nativeBufferManager?.destroy();
     this.nativeBufferManager = null;
@@ -1973,19 +1961,10 @@ const VideoPlayer = {
   },
 
   hlsRecoveryContext() {
-    const loader = this.streamLoader;
-    const sessionId = this.playbackSessionId;
-    const url = this.currentUrl;
-
-    return {
-      isCurrent: () =>
-        !!loader &&
-        this.isCurrentPlaybackSession(sessionId) &&
-        this.streamLoader === loader &&
-        this.currentUrl === url,
-      loader,
-      url,
-    };
+    return this.streamTransport.recoveryContext({
+      sessionId: this.playbackSessionId,
+      url: this.currentUrl,
+    });
   },
 
   reportHlsRecoveryFailure(error) {
@@ -2002,7 +1981,7 @@ const VideoPlayer = {
     if (!this.isCurrentPlaybackSession(sessionId)) return null;
     this.cleanup({ preservePlaybackState: true });
     const transitionSessionId = this.playbackSessionId;
-    await (this._streamLoaderTeardownPromise || Promise.resolve());
+    await this.streamTransport.awaitTeardown();
     return this.isCurrentPlaybackSession(transitionSessionId) ? transitionSessionId : null;
   },
 
@@ -2032,93 +2011,44 @@ const VideoPlayer = {
     return this.nativeEngineActivation?.playAfterResume(sessionId, resumeTime) ?? Promise.resolve();
   },
 
-  // Idempotent stream loader factory. `cleanup()` nils out `streamLoader`
-  // during player fallbacks, so `playWith*` methods call this before use
-  // to avoid `TypeError: reading 'loadHls' of null`.
+  // Idempotent stream loader factory. `cleanup()` tears the loader down during
+  // engine fallbacks, so activations call this before use.
   ensureStreamLoader() {
-    if (this.streamLoader) {
-      this.streamLoader.updateSessionId(this.playbackSessionId);
-      return this.streamLoader;
-    }
+    return this.streamTransport.ensure();
+  },
 
-    this.streamLoader = new StreamLoader({
-      video: this.video,
-      streamingMode: this.streamingMode,
-      contentType: this.contentType,
-      sessionId: this.playbackSessionId,
-      onManifestParsed: (data, sessionId) => {
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-        if (!this.activateHlsEngineFromLoader(sessionId)) return;
-
-        log.info("Manifest parsed, levels:", data.levels.length);
-        this.playerUIController.hideLoading();
-        this.playerUIController.hideError();
-        this.updateQualityList();
-        this.updateAudioTracks();
-        this.updateSubtitleTracks();
-
-        this.playNativeAfterResume(sessionId);
-      },
-      onError: (type, data, sessionId) => {
-        if (this.isCurrentPlaybackSession(sessionId)) this.handleStreamError(type, data);
-      },
-      onLevelSwitched: (level, levelData, sessionId) => {
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-        // Keep codec-aware ABR pointed at the codec the player is
-        // actually decoding right now. Without this update,
-        // `codecABR.suggestQuality()` keeps using the codec captured at
-        // first level setup (always "h264" by default) and recommends
-        // the wrong bandwidth/quality for HEVC/AV1 streams.
-        if (this.codecABR && levelData?.codec) {
-          this.codecABR.setCodec(levelData.codec);
-        }
-
-        const isAuto = this.manualQuality === null;
-        this.pushEventSafe("quality_switched", {
-          level,
-          height: levelData?.height,
-          bitrate: levelData?.bitrate,
-          auto: isAuto,
-        });
-
-        // Show visual feedback for quality changes (only for auto switching)
-        if (isAuto && levelData?.height) {
-          const qualityLabel = `Auto: ${levelData.height}p`;
-          this.playerUI.showQualityChange(qualityLabel);
-        }
-      },
-      onAudioTracksUpdated: (_tracks, sessionId) => {
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-        if (!this.activateHlsEngineFromLoader(sessionId)) return;
-        this.updateAudioTracks();
-      },
-      onSubtitleTracksUpdated: (_tracks, sessionId) => {
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-        if (!this.activateHlsEngineFromLoader(sessionId)) return;
-        this.updateSubtitleTracks();
-      },
-      onFragLoaded: (bandwidth, sessionId) => {
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-        this.networkMonitor?.addSample(bandwidth);
-        // Feed bandwidth to codec-aware ABR
-        if (this.codecABR) {
-          this.codecABR.recordBandwidth(bandwidth / 1000); // Convert to kbps
-        }
-      },
-      onMediaInfo: (_info, sessionId) => {
-        if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-        this.playerUIController.hideLoading();
-        this.playerUIController.hideError();
-      },
-      onStatisticsInfo: (bps, sessionId) => {
-        if (this.isCurrentPlaybackSession(sessionId)) this.networkMonitor?.addSample(bps);
-      },
+  // LiveView copies every own property of this object onto the hook instance,
+  // which would freeze prototype getters into one-time values. Live accessors
+  // are therefore defined on the instance once the collaborators exist.
+  _definePlayerAccessors() {
+    Object.defineProperty(this, "streamLoader", {
+      configurable: true,
+      enumerable: false,
+      get: () => this.streamTransport?.current ?? null,
     });
+  },
 
-    return this.streamLoader;
+  buildStreamTransportHost() {
+    return {
+      adoptHlsEngine: (sessionId) => this.activateHlsEngineFromLoader(sessionId),
+      getCodecAbr: () => this.codecABR,
+      getContentType: () => this.contentType,
+      getCurrentUrl: () => this.currentUrl,
+      getNetworkMonitor: () => this.networkMonitor,
+      getPresentation: () => this.playerUIController,
+      getSessionId: () => this.playbackSessionId,
+      getStreamingMode: () => this.streamingMode,
+      getVideo: () => this.video,
+      handleStreamError: (type, data) => this.handleStreamError(type, data),
+      isManualQuality: () => this.manualQuality !== null,
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      playNativeAfterResume: (sessionId) => this.playNativeAfterResume(sessionId),
+      pushEvent: (event, payload) => this.pushEventSafe(event, payload),
+      showQualityChange: (label) => this.playerUI?.showQualityChange(label),
+      updateAudioTracks: () => this.updateAudioTracks(),
+      updateQualityList: () => this.updateQualityList(),
+      updateSubtitleTracks: () => this.updateSubtitleTracks(),
+    };
   },
 
   initPlayer({ sessionId: providedSessionId = null } = {}) {
@@ -2864,6 +2794,7 @@ const VideoPlayer = {
     this.avbridgeEngineActivation = null;
     this.h265webEngineActivation = null;
     this.watchPartyPolicy = null;
+    this.streamTransport = null;
     this.playbackEngineTransitionController = null;
     this.nativeSubtitleController?.destroy();
     this.nativeSubtitleController = null;

@@ -49,7 +49,7 @@ export function createInitialPlayerState(
     expectedDuration: Number.parseInt(dataset.expectedDuration, 10) || 0,
     playerLifecycleLogs: dataset.playerLifecycleLogs === "true",
 
-    streamLoader: null,
+    streamTransport: null,
     mediaElementEngine: null,
     streamingMode:
       initialMode ||
@@ -72,7 +72,6 @@ export function createInitialPlayerState(
     retryCount: 0,
     maxRetries: 3,
     hlsRecoveryCoordinator: null,
-    _streamLoaderTeardownPromise: Promise.resolve(),
     _suppressNativePlaybackEvents: false,
     useProxy: true,
     fallbackAttempts: 0,
