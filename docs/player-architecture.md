@@ -31,6 +31,8 @@ VideoPlayer hook
   ├── StreamTransport (StreamLoader lifecycle, callbacks, HLS recovery context)
   ├── TrackProbeController (GIndex track probe, dual-audio policy, probed selections)
   ├── TrackOperations (engine-facing track selection, subtitle offset, external subtitle leases)
+  ├── MediaEventBindings (root controls, media element, and page lifecycle listeners)
+  ├── EngineRecoveryPolicy (cross-engine fallbacks after HLS/MPEG-TS recovery decisions)
   ├── PlaybackOrchestrator
   │     ├── playback session and lifecycle
   │     ├── EngineRegistry
