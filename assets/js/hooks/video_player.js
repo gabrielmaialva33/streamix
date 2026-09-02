@@ -99,6 +99,7 @@ import { createPlayerUiController } from "../player/player_ui_controller.js";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
 import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
 import { hasSubtitleInLanguage } from "../player/track_metadata";
+import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
 
 /**
  * Enhanced VideoPlayer Hook for Streamix
@@ -200,6 +201,16 @@ const VideoPlayer = {
     this.video = this.el.querySelector("video");
     this.configureNativePlaybackElement();
     Object.assign(this, createInitialPlayerState(this.el));
+    this.watchPartyPolicy = createWatchPartyPlayerPolicy({
+      enabled: this.partyMode === true,
+      role: this.partyRole,
+      root: this.el,
+      getVideo: () => this.video,
+      getManagedEngine: () => this.getManagedPlaybackEngine(),
+      getNativeBufferManager: () => this.nativeBufferManager,
+      setPlaybackSystemState: (state) => this.setPlaybackSystemState(state),
+      showNotice: (message) => this.playerUI?.showNotice?.(message),
+    });
     this.diagnosticsController = createPlayerDiagnosticsController({
       getResourcePolicy: () => this.getPlaybackResourcePolicy(),
       getErrorContext: () => ({
@@ -305,14 +316,13 @@ const VideoPlayer = {
     }
     this.nextEpisodeController = new NextEpisodeController({
       episode: this.nextEpisode,
-      onPlay:
-        this.partyMode && this.partyRole === "host"
-          ? (episode) =>
-              this.pushEventSafe("wp_next_episode", {
-                id: episode.id,
-                type: episode.type,
-              })
-          : null,
+      onPlay: this.watchPartyPolicy?.isHost
+        ? (episode) =>
+            this.pushEventSafe("wp_next_episode", {
+              id: episode.id,
+              type: episode.type,
+            })
+        : null,
       root: this.el,
     });
   },
@@ -453,9 +463,9 @@ const VideoPlayer = {
       getManagedPlaybackEngine: () => this.getManagedPlaybackEngine(),
       getNativePlaybackEngine: () => this.getNativePlaybackEngine(),
       rejectViewerTransportControl: (options) => this.rejectViewerTransportControl(options),
-      isWatchPartySyncHeld: () => this._watchPartySyncHold === true,
+      isWatchPartySyncHeld: () => this.watchPartyPolicy?.held === true,
       supportsPlaybackRateControl: () => this.supportsPlaybackRateControl(),
-      isPartyMode: () => this.partyMode === true,
+      isPartyMode: () => this.watchPartyPolicy?.enabled === true,
       getAudioController: () => this.audioController,
       getNativeBufferManager: () => this.nativeBufferManager,
       getNativeBufferingController: () => this.nativeBufferingController,
@@ -521,7 +531,6 @@ const VideoPlayer = {
       getH265web: () => this.h265web,
       getH265webBaseUrl: () => this.el?.dataset?.h265webBaseUrl || null,
       getH265webMount: () => this.el?.querySelector("#h265web-mount") ?? null,
-      getMpegtsPlayer: () => this.mpegtsPlayer,
       getNativeBufferManager: () => this.nativeBufferManager,
       getNativeBufferingController: () => this.nativeBufferingController,
       getNativeHlsSupport: () => this.getNativeHlsSupport(),
@@ -594,12 +603,6 @@ const VideoPlayer = {
         this.h265web = engine;
       },
       setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
-      setHlsClient: (client) => {
-        this.hls = client;
-      },
-      setMpegtsPlayer: (player) => {
-        this.mpegtsPlayer = player;
-      },
       setNativeBufferManager: (manager) => {
         this.nativeBufferManager = manager;
       },
@@ -1305,7 +1308,7 @@ const VideoPlayer = {
 
     // Video Element Events
     this.lifecycle.listenOptional(this.video, "play", () => {
-      if (this._watchPartySyncHold && this.partyMode && this.partyRole === "viewer") {
+      if (this.watchPartyPolicy?.shouldReapplyHoldOnPlay()) {
         queueMicrotask(() => this.setWatchPartySyncHold(true));
         return;
       }
@@ -1558,63 +1561,19 @@ const VideoPlayer = {
   },
 
   applyPartyControlPolicy() {
-    if (!this.partyMode || this.partyRole !== "viewer") return;
-
-    const playButton = this.el.querySelector("#play-pause-btn");
-    const progress = this.el.querySelector("#progress-container");
-    const speedButton = this.el.querySelector("#speed-btn");
-
-    if (playButton) {
-      playButton.disabled = true;
-      playButton.setAttribute("aria-label", "Reprodução controlada pelo anfitrião");
-      playButton.classList.add("cursor-not-allowed", "opacity-60");
-    }
-
-    if (progress) {
-      progress.setAttribute("aria-disabled", "true");
-      progress.classList.add("pointer-events-none", "cursor-not-allowed", "opacity-70");
-    }
-
-    if (speedButton) {
-      speedButton.disabled = true;
-      speedButton.setAttribute("aria-label", "Velocidade controlada pelo anfitrião");
-      speedButton.classList.add("cursor-not-allowed", "opacity-60");
-    }
+    return this.watchPartyPolicy?.applyControlPolicy() ?? false;
   },
 
   setWatchPartySyncHold(held) {
-    const shouldHold = held === true && this.partyMode && this.partyRole === "viewer";
-    this._watchPartySyncHold = shouldHold;
-    if (!shouldHold) return true;
-
-    const engine = this.getManagedPlaybackEngine();
-
-    if (engine) {
-      try {
-        if (engine.isPlaying?.() !== false) {
-          void Promise.resolve(engine.pause?.()).catch(() => {});
-        }
-      } catch (error) {
-        log.debug("[VideoPlayer] Managed sync hold could not pause playback:", error);
-      }
-    } else if (this.video && !this.video.paused) {
-      this.nativeBufferManager?.markIntentionalPause();
-      this.video.pause();
-    }
-
-    this.setPlaybackSystemState("paused");
-    return true;
+    return this.watchPartyPolicy?.setSyncHold(held) ?? true;
   },
 
-  canControlPartyTransport({ remote = false } = {}) {
-    return remote || !this.partyMode || this.partyRole === "host";
+  canControlPartyTransport(options = {}) {
+    return this.watchPartyPolicy?.canControlTransport(options) ?? true;
   },
 
-  rejectViewerTransportControl({ remote = false } = {}) {
-    if (this.canControlPartyTransport({ remote })) return false;
-
-    this.playerUI?.showNotice?.("A reprodução é controlada pelo anfitrião.");
-    return true;
+  rejectViewerTransportControl(options = {}) {
+    return this.watchPartyPolicy?.rejectViewerTransportControl(options) ?? false;
   },
 
   setPlaybackRate(rate, options = {}) {
@@ -1689,7 +1648,7 @@ const VideoPlayer = {
   },
 
   setNativeTouchControls(enabled) {
-    const allowed = !(this.partyMode && this.partyRole === "viewer");
+    const allowed = this.watchPartyPolicy?.allowsNativeTouchControls() ?? true;
     enabled = enabled && allowed;
     this.nativeTouchControls = enabled;
     this.playerUIController?.setNativeControlsMode(enabled);
@@ -1887,8 +1846,6 @@ const VideoPlayer = {
         this._streamLoaderTeardownPromise = Promise.resolve();
       }
     }
-    this.hls = null;
-    this.mpegtsPlayer = null;
 
     this.nativeBufferManager?.destroy();
     this.nativeBufferManager = null;
@@ -2906,6 +2863,7 @@ const VideoPlayer = {
     this.avPlayerEngineActivation = null;
     this.avbridgeEngineActivation = null;
     this.h265webEngineActivation = null;
+    this.watchPartyPolicy = null;
     this.playbackEngineTransitionController = null;
     this.nativeSubtitleController?.destroy();
     this.nativeSubtitleController = null;

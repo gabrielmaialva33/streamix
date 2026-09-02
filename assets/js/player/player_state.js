@@ -51,8 +51,6 @@ export function createInitialPlayerState(
 
     streamLoader: null,
     mediaElementEngine: null,
-    hls: null,
-    mpegtsPlayer: null,
     streamingMode:
       initialMode ||
       deps.selectStreamingMode(contentType === "live" ? ContentType.LIVE : ContentType.VOD, "good"),
@@ -131,7 +129,7 @@ export function createInitialPlayerState(
     nativeBufferManager: null,
     nativeBufferingController: null,
     nativeTouchControls: false,
-    _watchPartySyncHold: false,
+    watchPartyPolicy: null,
     _emergencyStopDone: false,
     _terminalPlaybackError: false,
     iosPwaMode: deps.isIosPwaMode(),
