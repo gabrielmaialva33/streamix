@@ -30,6 +30,7 @@ VideoPlayer hook
   ├── DOM, Phoenix events, controls, Watch Party policy, PiP and Media Session
   ├── StreamTransport (StreamLoader lifecycle, callbacks, HLS recovery context)
   ├── TrackProbeController (GIndex track probe, dual-audio policy, probed selections)
+  ├── TrackOperations (engine-facing track selection, subtitle offset, external subtitle leases)
   ├── PlaybackOrchestrator
   │     ├── playback session and lifecycle
   │     ├── EngineRegistry
