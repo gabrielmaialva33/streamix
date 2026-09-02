@@ -28,6 +28,7 @@ state out of the Phoenix hook while preserving a single user-facing player.
 ```text
 VideoPlayer hook
   ├── DOM, Phoenix events, controls, Watch Party policy, PiP and Media Session
+  ├── StreamTransport (StreamLoader lifecycle, callbacks, HLS recovery context)
   ├── PlaybackOrchestrator
   │     ├── playback session and lifecycle
   │     ├── EngineRegistry
@@ -264,6 +265,7 @@ and timing pieces live in `assets/js/watch_party/`:
 | `command_scheduler.js` | delayed host actions under a generation counter, sync lock |
 | `drift_policy.js` | pure viewer reaction (resume, pause, seek, nudge, hold, synced) |
 | `sync_status.js` | status precedence, drift throttling, labels and badge classes |
+| `status_publisher.js` | stateful publisher: badge render, `wp_sync_status` dedupe, rerender on LiveView patches |
 | `beacon_scheduler.js` | adaptive beacon cadence |
 | `player_binding.js` | player discovery/polling, bridge adoption, buffering signals, host event forwarding |
 | `player_policy.js` | player-side rules: viewer control lockout, remote-only transport, durable sync hold |
