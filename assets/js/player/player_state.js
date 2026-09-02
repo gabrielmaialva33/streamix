@@ -65,7 +65,7 @@ export function createInitialPlayerState(
     subtitleSourceResolver: null,
     nativeSubtitleController: null,
     playerTrackPresentationController: null,
-    _externalSubtitleSourceLease: null,
+    trackOperations: null,
     selectedAudioTrack: 0,
     selectedSubtitleTrack: -1,
 

@@ -99,7 +99,7 @@ import { createPlayerUiController } from "../player/player_ui_controller.js";
 import { createSourceFailoverController } from "../player/source_failover_controller.js";
 import { createStreamTransport } from "../player/stream_transport.js";
 import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
-import { hasSubtitleInLanguage } from "../player/track_metadata";
+import { createTrackOperations } from "../player/track_operations.js";
 import { createTrackProbeController } from "../player/track_probe_controller.js";
 import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
 
@@ -430,16 +430,18 @@ const VideoPlayer = {
     });
     this.playerTrackPresentationController.presentSubtitleOffset(this.subtitleOffsetMs);
 
+    this.trackOperations = createTrackOperations({ host: this.buildTrackOperationsHost() });
     this.playerTrackController = createPlayerTrackController({
-      refreshAudioTracks: () => this.refreshAudioTracksFromActiveEngine(),
-      refreshSubtitleTracks: () => this.refreshSubtitleTracksFromActiveEngine(),
-      selectAudioTrack: (trackIndex) => this.applyAudioTrackSelection(trackIndex),
-      selectSubtitleTrack: (trackIndex) => this.applySubtitleTrackSelection(trackIndex),
-      setSubtitleOffset: (offsetMs) => this.applySubtitleOffsetSelection(offsetMs),
-      loadExternalSubtitle: (...args) => this.loadExternalSubtitleForActiveEngine(...args),
-      loadNativeExternalSubtitle: (...args) => this.loadNativeExternalSubtitleForSession(...args),
+      refreshAudioTracks: () => this.trackOperations.refreshAudioTracks(),
+      refreshSubtitleTracks: () => this.trackOperations.refreshSubtitleTracks(),
+      selectAudioTrack: (trackIndex) => this.trackOperations.selectAudioTrack(trackIndex),
+      selectSubtitleTrack: (trackIndex) => this.trackOperations.selectSubtitleTrack(trackIndex),
+      setSubtitleOffset: (offsetMs) => this.trackOperations.setSubtitleOffset(offsetMs),
+      loadExternalSubtitle: (...args) => this.trackOperations.loadExternalSubtitle(...args),
+      loadNativeExternalSubtitle: (...args) =>
+        this.trackOperations.loadNativeExternalSubtitle(...args),
       reloadNativeExternalSubtitle: (...args) =>
-        this.reloadNativeExternalSubtitleForSession(...args),
+        this.trackOperations.reloadNativeExternalSubtitle(...args),
       onError: (operation, error) =>
         log.debug(`[VideoPlayer] Track operation ${operation} failed:`, error),
     });
@@ -835,205 +837,81 @@ const VideoPlayer = {
   // Audio Track Selection
   // ============================================
 
+  buildTrackOperationsHost() {
+    return {
+      getNativeSubtitleController: () => this.nativeSubtitleController,
+      getOrchestrator: () => this.playbackOrchestrator,
+      getPresentation: () => this.playerTrackPresentationController,
+      getSessionId: () => this.playbackSessionId,
+      getStreamTransport: () => this.streamTransport,
+      getSubtitleSourceResolver: () => this.subtitleSourceResolver,
+      getTrackState: () => ({
+        imdbId: this.imdbId,
+        preferredAudioTrack: this._preferredAudioTrack,
+        preferredSubtitleTrack: this._preferredSubtitleTrack,
+        selectedSubtitleTrack: this.selectedSubtitleTrack,
+        sourceType: this.sourceType,
+        subtitleLang: this.subtitleLang,
+        subtitleOffsetMs: this.subtitleOffsetMs,
+        subtitleTracks: this.subtitleTracks,
+        subtitlesEnabled: this.subtitlesEnabled,
+      }),
+      hasActiveAVPlayer: () => Boolean(this.usingAVPlayer && this.avPlayer),
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
+      setSubtitleTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
+      updateSubtitleTracks: () => this.updateSubtitleTracks(),
+    };
+  },
+
   setAudioTrack(trackIndex) {
     if (this.playerTrackController) {
       return this.playerTrackController.selectAudioTrack(trackIndex);
     }
 
-    return this.applyAudioTrackSelection(trackIndex);
+    return this.trackOperations?.selectAudioTrack(trackIndex) ?? false;
   },
 
-  async applyAudioTrackSelection(trackIndex) {
-    const sessionId = this.playbackSessionId;
-    const result = this.playbackOrchestrator
-      ? await this.playbackOrchestrator.selectAudioTrack(trackIndex)
-      : this.streamTransport?.setAudioTrack(trackIndex);
-
-    if (result === false || result == null || !this.isCurrentPlaybackSession(sessionId)) {
-      return false;
-    }
-
-    const presented = this.playerTrackPresentationController?.presentAudioSelection(trackIndex, {
-      sessionId,
-    });
-    return presented === false ? false : result;
-  },
   updateAudioTracks() {
     if (this.playerTrackController) {
       return this.playerTrackController.refreshAudioTracks();
     }
 
-    return this.refreshAudioTracksFromActiveEngine();
+    return this.trackOperations?.refreshAudioTracks() ?? [];
   },
 
-  async refreshAudioTracksFromActiveEngine() {
-    const sessionId = this.playbackSessionId;
-    const refreshedTracks = await this.playbackOrchestrator?.refreshAudioTracks();
-    if (!this.isCurrentPlaybackSession(sessionId)) return false;
-
-    const snapshot = this.playbackOrchestrator?.trackSnapshot?.();
-    const tracks = Array.isArray(refreshedTracks) ? refreshedTracks : (snapshot?.audioTracks ?? []);
-
-    return (
-      this.playerTrackPresentationController?.presentAudioTracks({
-        activeTrack: snapshot?.selectedAudioTrack ?? 0,
-        preferredTrack: this._preferredAudioTrack,
-        selectTrack: (trackIndex) => this.setAudioTrack(trackIndex),
-        sessionId,
-        tracks,
-      }) ?? []
-    );
-  },
   setSubtitleTrack(trackIndex) {
     if (this.playerTrackController) {
       return this.playerTrackController.selectSubtitleTrack(trackIndex);
     }
 
-    return this.applySubtitleTrackSelection(trackIndex);
+    return this.trackOperations?.selectSubtitleTrack(trackIndex) ?? false;
   },
 
-  async applySubtitleTrackSelection(trackIndex) {
-    const sessionId = this.playbackSessionId;
-    let result = this.playbackOrchestrator
-      ? await this.playbackOrchestrator.selectSubtitleTrack(trackIndex)
-      : this.streamTransport?.setSubtitleTrack(trackIndex);
-
-    const nativeResult = this.nativeSubtitleController?.select(trackIndex);
-    if (nativeResult !== false && nativeResult != null) result = nativeResult;
-
-    if (result === false || result == null || !this.isCurrentPlaybackSession(sessionId)) {
-      return false;
-    }
-
-    const presented = this.playerTrackPresentationController?.presentSubtitleSelection(trackIndex, {
-      sessionId,
-    });
-    if (presented === false) return false;
-
-    await this.playbackOrchestrator?.setSubtitleDelay(this.subtitleOffsetMs);
-    return this.isCurrentPlaybackSession(sessionId) ? result : false;
-  },
   async setSubtitleOffset(offsetMs) {
     if (this.playerTrackController) {
       return this.playerTrackController.setSubtitleOffset(offsetMs);
     }
 
-    return this.applySubtitleOffsetSelection(offsetMs);
+    return this.trackOperations?.setSubtitleOffset(offsetMs) ?? false;
   },
 
-  async applySubtitleOffsetSelection(offsetMs) {
-    const sessionId = this.playbackSessionId;
-    const normalizedOffset = this.playerTrackPresentationController?.presentSubtitleOffset(
-      offsetMs,
-      { sessionId },
-    );
-    if (normalizedOffset === false || normalizedOffset == null) return false;
-
-    const engineResult = await this.playbackOrchestrator?.setSubtitleDelay(normalizedOffset);
-    if (!this.isCurrentPlaybackSession(sessionId)) return false;
-    if (engineResult !== false && engineResult != null) return engineResult;
-
-    const selectedTrack = this.selectedSubtitleTrack;
-    const scheduled = this.nativeSubtitleController?.scheduleReload(
-      {
-        sessionId,
-        offsetMs: normalizedOffset,
-        language: this.subtitleLang,
-        label: "Português (auto)",
-      },
-      (snapshot) =>
-        this.applyNativeSubtitleReloadResult(snapshot, {
-          selectedTrack,
-          sessionId,
-        }),
-    );
-
-    return scheduled ? normalizedOffset : false;
-  },
   async reloadNativeExternalSubtitle(...args) {
     if (this.playerTrackController) {
       return this.playerTrackController.reloadNativeExternalSubtitle(...args);
     }
 
-    return this.reloadNativeExternalSubtitleForSession(...args);
+    return this.trackOperations?.reloadNativeExternalSubtitle(...args) ?? false;
   },
 
-  async reloadNativeExternalSubtitleForSession(selectedTrack = this.selectedSubtitleTrack) {
-    const sessionId = this.playbackSessionId;
-    const snapshot = await this.nativeSubtitleController?.reload({
-      sessionId,
-      offsetMs: this.subtitleOffsetMs,
-      language: this.subtitleLang,
-      label: "Português (auto)",
-    });
-
-    return this.applyNativeSubtitleReloadResult(snapshot, {
-      selectedTrack,
-      sessionId,
-    });
-  },
-
-  async applyNativeSubtitleReloadResult(snapshot, { selectedTrack, sessionId }) {
-    if (!this.isCurrentPlaybackSession(sessionId)) return false;
-
-    return this.applyNativeSubtitleSnapshot(snapshot, selectedTrack, {
-      sessionId,
-    });
-  },
-  async applyNativeSubtitleSnapshot(
-    snapshot,
-    selectedTrack,
-    { emitAvailable = true, sessionId = this.playbackSessionId } = {},
-  ) {
-    return (
-      this.playerTrackPresentationController?.presentNativeSubtitleSnapshot(snapshot, {
-        emitAvailable,
-        selectTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
-        selectedTrack,
-        sessionId,
-      }) ?? false
-    );
-  },
-  clearNativeSubtitlePresentation(sessionId = this.playbackSessionId) {
-    return (
-      this.playerTrackPresentationController?.clearSubtitlePresentation({
-        selectTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
-        sessionId,
-      }) ?? false
-    );
-  },
-  updateSubtitleOffsetLabel() {
-    return this.playerTrackPresentationController?.presentSubtitleOffset(this.subtitleOffsetMs);
-  },
   updateSubtitleTracks() {
     if (this.playerTrackController) {
       return this.playerTrackController.refreshSubtitleTracks();
     }
 
-    return this.refreshSubtitleTracksFromActiveEngine();
+    return this.trackOperations?.refreshSubtitleTracks() ?? [];
   },
 
-  async refreshSubtitleTracksFromActiveEngine() {
-    const sessionId = this.playbackSessionId;
-    const refreshedTracks = await this.playbackOrchestrator?.refreshSubtitleTracks();
-    if (!this.isCurrentPlaybackSession(sessionId)) return false;
-
-    const snapshot = this.playbackOrchestrator?.trackSnapshot?.();
-    const tracks = Array.isArray(refreshedTracks)
-      ? refreshedTracks
-      : (snapshot?.subtitleTracks ?? []);
-
-    return (
-      this.playerTrackPresentationController?.presentSubtitleTracks({
-        activeTrack: snapshot?.selectedSubtitleTrack ?? -1,
-        preferredTrack: this._preferredSubtitleTrack,
-        selectTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
-        sessionId,
-        subtitlesEnabled: this.subtitlesEnabled,
-        tracks,
-      }) ?? []
-    );
-  },
   async togglePiP() {
     return this.playbackBrowserIntegration?.togglePiP();
   },
@@ -2430,101 +2308,19 @@ const VideoPlayer = {
       return this.playerTrackController.loadExternalSubtitle(...args);
     }
 
-    return this.loadExternalSubtitleForActiveEngine(...args);
+    return this.trackOperations?.loadExternalSubtitle(...args) ?? false;
   },
 
-  async loadExternalSubtitleForActiveEngine(sessionId = this.playbackSessionId) {
-    if (!this.imdbId || !this.usingAVPlayer || !this.avPlayer) return false;
-    if (hasSubtitleInLanguage(this.subtitleTracks, this.subtitleLang)) return false;
-
-    let sourceLease = null;
-
-    try {
-      sourceLease = await this.subtitleSourceResolver?.resolve({
-        sessionId,
-        imdbId: this.imdbId,
-        language: this.subtitleLang,
-        offsetMs: 0,
-      });
-      if (!sourceLease) return false;
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        this.releaseSubtitleSourceLease(sourceLease);
-        return false;
-      }
-
-      const result = await this.playbackOrchestrator?.loadExternalSubtitle({
-        source: sourceLease.source,
-        lang: this.subtitleLang,
-        title: "Português (auto)",
-      });
-      if (result === false || result == null) {
-        this.releaseSubtitleSourceLease(sourceLease);
-        return false;
-      }
-
-      this.releaseExternalSubtitleSourceLease();
-      this._externalSubtitleSourceLease = sourceLease;
-      sourceLease = null;
-
-      if (this.isCurrentPlaybackSession(sessionId)) {
-        await this.updateSubtitleTracks();
-      }
-
-      log.debug("[VideoPlayer] External subtitle loaded for", this.imdbId);
-      return result;
-    } catch (error) {
-      this.releaseSubtitleSourceLease(sourceLease);
-      log.warn("[VideoPlayer] External subtitle load failed:", error);
-      return false;
-    }
-  },
-
-  /**
-   * Attach the external WebVTT to the native HTML5 player used by
-   * ordinary torrent MP4s and expose it through Streamix's subtitle menu.
-   */
   async loadNativeExternalSubtitleIfAvailable(...args) {
     if (this.playerTrackController) {
       return this.playerTrackController.loadNativeExternalSubtitle(...args);
     }
 
-    return this.loadNativeExternalSubtitleForSession(...args);
-  },
-
-  async loadNativeExternalSubtitleForSession(sessionId = this.playbackSessionId, force = false) {
-    if (!this.imdbId || !this.nativeSubtitleController || this.sourceType !== "torrent") {
-      return false;
-    }
-
-    const snapshot = await this.nativeSubtitleController.load({
-      sessionId,
-      force,
-      language: this.subtitleLang,
-      label: "Português (auto)",
-      offsetMs: this.subtitleOffsetMs,
-    });
-    if (!snapshot || !this.isCurrentPlaybackSession(sessionId)) return false;
-
-    const preferredTrack = this.subtitlesEnabled && this._preferredSubtitleTrack !== -1 ? 0 : -1;
-    await this.applyNativeSubtitleSnapshot(snapshot, preferredTrack);
-    log.debug("[VideoPlayer] Native external subtitle loaded for", this.imdbId);
-    return snapshot;
-  },
-
-  releaseSubtitleSourceLease(sourceLease) {
-    if (!sourceLease?.release) return;
-
-    try {
-      sourceLease.release();
-    } catch (error) {
-      log.debug("[VideoPlayer] External subtitle source cleanup failed:", error);
-    }
+    return this.trackOperations?.loadNativeExternalSubtitle(...args) ?? false;
   },
 
   releaseExternalSubtitleSourceLease() {
-    const sourceLease = this._externalSubtitleSourceLease;
-    this._externalSubtitleSourceLease = null;
-    this.releaseSubtitleSourceLease(sourceLease);
+    this.trackOperations?.releaseExternalSubtitleLease();
   },
 
   probeMetadataInBackground() {
@@ -2696,6 +2492,8 @@ const VideoPlayer = {
     this.trackProbeController?.destroy();
     this.trackProbeController = null;
     this.playerTrackController?.destroy();
+    this.trackOperations?.destroy();
+    this.trackOperations = null;
     this.playerTrackPresentationController?.destroy();
     this.playerTrackPresentationController = null;
     this.playerUIController?.destroy();
