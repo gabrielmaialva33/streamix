@@ -88,6 +88,7 @@ export function createInitialPlayerState(
     playbackOrchestrator: null,
     playbackEngineTransitionController: null,
     playbackEngineActivation: null,
+    nativeEngineActivation: null,
     mediaCapabilityProfile: null,
     playbackMetrics: deps.createPlaybackMetrics(),
 
@@ -102,7 +103,6 @@ export function createInitialPlayerState(
 
     avPlayer: null,
     usingAVPlayer: false,
-    audioCheckTimeout: null,
     avPlayerAttempted: false,
     avPlayerTimeInterval: null,
     preferAVPlayer: false,
