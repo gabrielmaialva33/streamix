@@ -7,6 +7,7 @@ const controllerUrl = new URL(
   import.meta.url,
 );
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
+const avPlayerActivationUrl = new URL("../player/avplayer_engine_activation.js", import.meta.url);
 const mpegtsActivationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
 const playerStateUrl = new URL("../player/player_state.js", import.meta.url);
 
@@ -66,10 +67,11 @@ test("VideoPlayer composes one transition controller with narrow lifecycle bound
 });
 
 test("native-to-AVPlayer transaction owns the complete ordered stage surface", async () => {
-  const hook = await source(hookUrl);
-  const transition = methodSlice(hook, "transitionNativeToAVPlayer", "tryAVPlayerFallback");
+  const activation = await source(avPlayerActivationUrl);
+  const transition = methodSlice(activation, "transition", "createEngine");
 
-  assert.match(transition, /this\.playbackEngineTransitionController\.transition\(\{/);
+  assert.match(transition, /const controller = this\.host\.getTransitionController\(\)/);
+  assert.match(transition, /controller\.transition\(\{/);
   assert.match(transition, /\bcapture,\s*sessionId,\s*prepare:/);
   for (const stage of [
     "prepare",
@@ -87,42 +89,40 @@ test("native-to-AVPlayer transaction owns the complete ordered stage surface", a
     assert.match(transition, new RegExp(`${stage}:`), `missing ${stage}`);
   }
 
-  assert.match(transition, /this\.trackManagedEngine\(ENGINE_ID\.AVPLAYER, engine\)/);
-  assert.match(transition, /this\.playbackOrchestrator\?\.releaseEngine\(ENGINE_ID\.AVPLAYER\)/);
+  assert.match(transition, /this\.host\.trackManagedEngine\(ENGINE_ID\.AVPLAYER, engine\)/);
+  assert.match(transition, /this\.host\.releaseEngine\(ENGINE_ID\.AVPLAYER\)/);
   assert.match(transition, /skipTeardown: true/);
 });
 
 test("initial AVPlayer selection reuses the initPlayer session without fallback policy", async () => {
-  const [controller, hook] = await Promise.all([source(controllerUrl), source(hookUrl)]);
+  const [controller, hook, activation] = await Promise.all([
+    source(controllerUrl),
+    source(hookUrl),
+    source(avPlayerActivationUrl),
+  ]);
   const initPlayer = methodSlice(hook, "initPlayer", "logHlsRecoveryDecision");
-  const startup = methodSlice(hook, "startWithAVPlayer", "tryAVPlayerFallback");
-  const transaction = methodSlice(hook, "transitionNativeToAVPlayer", "startWithAVPlayer");
+  const startup = methodSlice(activation, "activate", "tryFallback");
+  const transaction = methodSlice(activation, "transition", "createEngine");
 
   assert.match(
     initPlayer,
     /void this\.playbackEngineActivation\.activate\(engine, \{ sessionId \}\);/,
   );
-  assert.match(
-    hook,
-    /\[ENGINE_SELECTION\.AVPLAYER\]: \(\{ sessionId \}\) => this\.startWithAVPlayer\(sessionId\)/,
-  );
+  assert.match(hook, /\[ENGINE_SELECTION\.AVPLAYER\]: this\.avPlayerEngineActivation,/);
   assert.doesNotMatch(initPlayer, /tryAVPlayerFallback\(|startWithAVPlayer\(/);
 
   assert.match(startup, /key: "startup-avplayer"/);
   assert.match(startup, /sessionId,/);
   assert.match(startup, /initializeEngine: true/);
   assert.match(startup, /recordSuccess: true/);
-  assert.match(startup, /this\.avPlayerAttempted = true/);
+  assert.match(startup, /this\.host\.markAVPlayerAttempted\(\)/);
   assert.doesNotMatch(
     startup,
     /canAttemptFallback|fallbackAttempts|lastFallbackTime|fallback: true/,
   );
 
   assert.match(transaction, /sessionId = null/);
-  assert.match(
-    transaction,
-    /this\.playbackEngineTransitionController\.transition\(\{[\s\S]*sessionId,/,
-  );
+  assert.match(transaction, /controller\.transition\(\{[\s\S]*sessionId,/);
   assert.match(
     controller,
     /context\.sessionId = context\.options\.sessionId \?\? this\._beginSession\(\)/,
@@ -130,31 +130,36 @@ test("initial AVPlayer selection reuses the initPlayer session without fallback 
 });
 
 test("fallback and track-switch entrypoints retain policy but delegate transaction mechanics", async () => {
-  const hook = await source(hookUrl);
-  const fallback = methodSlice(hook, "tryAVPlayerFallback", "detectAVPlayerTracks");
-  const trackSwitch = methodSlice(
-    hook,
-    "switchToAVPlayerWithTrack",
-    "restoreNativePlayerPresentation",
-  );
+  const [hook, activation] = await Promise.all([source(hookUrl), source(avPlayerActivationUrl)]);
+  const fallback = methodSlice(activation, "tryFallback", "switchWithTrack");
+  const trackSwitch = methodSlice(activation, "switchWithTrack", "transition");
 
-  assert.match(fallback, /this\.canAttemptFallback\(\)/);
-  assert.match(fallback, /this\.avPlayerAttempted \|\| this\.usingAVPlayer/);
+  assert.match(fallback, /this\.host\.canAttemptFallback\(\)/);
+  assert.match(
+    fallback,
+    /this\.host\.isAVPlayerAttempted\(\) \|\| this\.host\.isUsingAVPlayer\(\)/,
+  );
+  assert.match(fallback, /this\.host\.recordFallbackAttempt\(\)/);
   assert.match(fallback, /key: "native-to-avplayer-fallback"/);
-  assert.match(fallback, /return this\.transitionNativeToAVPlayer\(\{/);
+  assert.match(fallback, /return this\.transition\(\{/);
 
   assert.match(trackSwitch, /key: `native-to-avplayer-\$\{trackType\}-track`/);
   assert.match(trackSwitch, /initializeEngine: true/);
-  assert.match(trackSwitch, /return this\.transitionNativeToAVPlayer\(\{/);
+  assert.match(trackSwitch, /return this\.transition\(\{/);
 
   for (const entrypoint of [fallback, trackSwitch]) {
     assert.doesNotMatch(entrypoint, /beginPlaybackSession\(/);
-    assert.doesNotMatch(entrypoint, /avPlayerTeardownQueue\.drain\(/);
+    assert.doesNotMatch(entrypoint, /drain\(/);
     assert.doesNotMatch(entrypoint, /new AVPlayerWrapper/);
     assert.doesNotMatch(entrypoint, /trackManagedEngine\(/);
     assert.doesNotMatch(entrypoint, /await avPlayer\.(init|load|seek|play)\(/);
   }
 
+  assert.match(hook, /canAttemptFallback\(\) \{/, "circuit-breaker policy stays on the hook");
+  assert.match(
+    hook,
+    /tryAVPlayerFallback\(\) \{\s*return this\.avPlayerEngineActivation\?\.tryFallback\(\)/,
+  );
   assert.doesNotMatch(hook, /this\._switchingToAVPlayer = true/);
 });
 
@@ -178,21 +183,14 @@ test("cleanup cancels transitions and terminal teardown destroys the controller 
 });
 
 test("AVPlayer-to-native recovery reuses the transition controller without duplicate hook state", async () => {
-  const [controller, hook, playerState] = await Promise.all([
+  const [controller, hook, playerState, activation] = await Promise.all([
     source(controllerUrl),
     source(hookUrl),
     source(playerStateUrl),
+    source(avPlayerActivationUrl),
   ]);
-  const recovery = methodSlice(
-    hook,
-    "transitionFromFailedAVPlayer",
-    "handleAVPlayerTransitionError",
-  );
-  const errorHandler = methodSlice(
-    hook,
-    "handleAVPlayerTransitionError",
-    "createAVPlayerTransitionEngine",
-  );
+  const recovery = methodSlice(activation, "recoverToNative", "handleEngineError");
+  const errorHandler = methodSlice(activation, "handleEngineError", "detectTracks");
 
   assert.match(controller, /recover\(options = \{\}\)/);
   assert.match(controller, /sourceSessionId/);
@@ -201,15 +199,15 @@ test("AVPlayer-to-native recovery reuses the transition controller without dupli
   assert.match(controller, /await this\._releaseRecoverySource\(context, true\)/);
   assert.match(controller, /context\.sessionId = this\._beginSession\(\)/);
 
-  assert.match(recovery, /this\.playbackEngineTransitionController\.recover\(\{/);
+  assert.match(recovery, /controller\.recover\(\{/);
   assert.match(recovery, /key: "avplayer-to-native-recovery"/);
   assert.match(recovery, /sourceSessionId: sessionId/);
   assert.match(recovery, /engine: skipTeardown \? null : avPlayer/);
   assert.match(recovery, /resolvePlaybackResumeTime\(avPlayer, resumeTime\)/);
   assert.match(recovery, /forgetRecommendedPlayer\(contentKey\)/);
-  assert.match(recovery, /this\.playbackOrchestrator\?\.releaseEngine\(ENGINE_ID\.AVPLAYER\)/);
-  assert.match(recovery, /restoreNative: \(\) => this\.restoreNativePlayerPresentation\(\)/);
-  assert.match(recovery, /this\.initPlayer\(\{ sessionId: nativeSessionId \}\)/);
+  assert.match(recovery, /this\.host\.releaseEngine\(ENGINE_ID\.AVPLAYER\)/);
+  assert.match(recovery, /restoreNative: \(\) => this\.restoreNativePresentation\(\)/);
+  assert.match(recovery, /this\.host\.initPlayer\(\{ sessionId: nativeSessionId \}\)/);
 
   assert.match(errorHandler, /key\?\.startsWith\("native-to-avplayer"\)/);
   assert.match(errorHandler, /cancel\("avplayer_error"\)/);

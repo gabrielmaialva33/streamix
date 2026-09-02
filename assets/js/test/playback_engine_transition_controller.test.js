@@ -691,3 +691,43 @@ test("recovery-specific destroyer overrides the global source-engine destroyer",
   assert.equal(typeof locallyDestroyed[0].key, "string");
   assert.deepEqual(harness.destroyed, []);
 });
+
+test("a failure handler can queue native recovery behind its own failed transition", async () => {
+  let sessionId = 1;
+  const events = [];
+  const controller = createPlaybackEngineTransitionController({
+    beginSession: () => {
+      sessionId += 1;
+      return sessionId;
+    },
+    isSessionCurrent: (candidate) => candidate === sessionId,
+    drainTeardown: async () => {},
+    destroyEngine: async () => events.push("destroy"),
+  });
+
+  const result = await controller.transition({
+    key: "native-to-avplayer-fallback",
+    createEngine: () => ({ id: "provisional" }),
+    loadEngine: () => {
+      throw new Error("open stream failed");
+    },
+    activateEngine: () => true,
+    rollbackEngine: () => events.push("rollback"),
+    onFailure: (_error, context) => {
+      void controller.recover({
+        key: "avplayer-to-native-recovery",
+        sourceSessionId: context.sessionId,
+        activateNative: ({ sessionId: nativeSessionId }) => {
+          events.push(`native:${nativeSessionId}`);
+          return true;
+        },
+      });
+    },
+  });
+
+  assert.equal(result, false, "the failed transition settles instead of deadlocking");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(events, ["rollback", "destroy", "native:3"]);
+  assert.equal(controller.snapshot().phase, "idle");
+});
