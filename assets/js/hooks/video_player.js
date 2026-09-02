@@ -29,6 +29,7 @@ import { audioOutputVolume } from "../player/audio_state";
 import {
   assertEngineSelection,
   ENGINE_ID,
+  ENGINE_SELECTION,
   engineIdFromRuntime,
   PLAYBACK_STATE,
 } from "../player/engine_contract.js";
@@ -39,6 +40,7 @@ import {
   formatErrorForLog,
 } from "../player/error_telemetry";
 import { evaluateFallbackAttempt } from "../player/fallback_policy";
+import { createHlsEngineActivation } from "../player/hls_engine_activation.js";
 import {
   createHlsRecoveryCoordinator,
   HLS_RECOVERY_OPERATION,
@@ -53,6 +55,10 @@ import {
 } from "../player/media_capability_policy";
 import { createMediaElementEngine } from "../player/media_element_engine.js";
 import { createMobileControls } from "../player/mobile_controls";
+import {
+  createMpegtsEngineActivation,
+  FLV_UNSUPPORTED_MESSAGE,
+} from "../player/mpegts_engine_activation.js";
 import { createMpegtsRecoveryCoordinator } from "../player/mpegts_recovery_coordinator.js";
 import { NativeBufferingController } from "../player/native_buffering_controller";
 import {
@@ -67,6 +73,7 @@ import { NextEpisodeController } from "../player/next_episode_controller";
 import { emitPlaybackEvent, installPlaybackBridge } from "../player/playback_bridge";
 import { createPlaybackBrowserIntegration } from "../player/playback_browser_integration.js";
 import { createPlaybackCommandController } from "../player/playback_command_controller";
+import { createPlaybackEngineActivation } from "../player/playback_engine_activation.js";
 import { createPlaybackEngineAdapter } from "../player/playback_engine_adapter.js";
 import {
   PlaybackEngineTeardownQueue,
@@ -84,7 +91,6 @@ import {
   isStandalonePwa,
   scheduleLowPriority,
 } from "../player/playback_environment";
-import { guardPlaybackLoad } from "../player/playback_load_guard.js";
 import { loadAVPlayer, loadAvbridge, loadH265web } from "../player/playback_module_loader";
 import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
 import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
@@ -134,6 +140,7 @@ const VideoPlayer = {
     this.initPlaybackCommandController();
     this.initPlaybackBrowserIntegration();
     this.updateVolumeUI();
+    this.initPlaybackEngineActivation();
     this.setupEventListeners();
     this.setupSourceFailover();
     this.setupNetworkMonitor();
@@ -506,6 +513,82 @@ const VideoPlayer = {
     this.playbackBrowserIntegration.start();
   },
 
+  // The activation host is the only surface engine activations may touch.
+  // Every member is an explicit callback so activations stay independent
+  // from the hook object and can be exercised with fakes.
+  buildPlaybackEngineActivationHost() {
+    return {
+      clearStreamLoader: (loader) => {
+        if (this.streamLoader === loader) this.streamLoader = null;
+      },
+      ensureStreamLoader: () => this.ensureStreamLoader(),
+      getCurrentUrl: () => this.currentUrl,
+      getMpegtsPlayer: () => this.mpegtsPlayer,
+      getNativeHlsSupport: () => this.getNativeHlsSupport(),
+      getPresentation: () => this.playerUIController,
+      getSessionId: () => this.playbackSessionId,
+      getStreamLoader: () => this.streamLoader,
+      getTransitionController: () => this.playbackEngineTransitionController,
+      getVideo: () => this.video,
+      isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+      markMpegtsRecovered: () => this.mpegtsRecoveryCoordinator?.markRecovered(),
+      playNativeAfterResume: (sessionId) => this.playNativeAfterResume(sessionId),
+      recordPlaybackError: () => this.playbackMetrics?.recordError(),
+      recoverFromMpegtsError: (data) => this.recoverFromMpegtsError(data),
+      registerMediaElementEngine: (engineId, engine) =>
+        this.setMediaElementEngine(engineId, engine),
+      releaseEngine: (engineId) => this.playbackOrchestrator?.releaseEngine(engineId),
+      reportDebug: (stage, extra) => this.reportPlayerDebug(stage, extra),
+      reportLifecycle: (stage, extra) => this.reportPlayerLifecycle(stage, extra),
+      setHlsClient: (client) => {
+        this.hls = client;
+      },
+      setMpegtsPlayer: (player) => {
+        this.mpegtsPlayer = player;
+      },
+      setNativePlaybackEventsSuppressed: (suppressed) => {
+        this._suppressNativePlaybackEvents = suppressed === true;
+      },
+      showPlaybackError: (message, hint = null) => this.showPlaybackError(message, hint),
+      syncPiPAvailability: () => this.syncPiPAvailability(),
+      teardownStreamLoaderForTransition: (sessionId) =>
+        this.teardownStreamLoaderForTransition(sessionId),
+    };
+  },
+
+  initPlaybackEngineActivation() {
+    this.playbackEngineActivation?.destroy();
+    const host = this.buildPlaybackEngineActivationHost();
+    const mpegtsActivation = createMpegtsEngineActivation({ host });
+
+    this.playbackEngineActivation = createPlaybackEngineActivation({
+      host,
+      activations: {
+        [ENGINE_SELECTION.HLS_JS]: createHlsEngineActivation({ host }),
+        [ENGINE_SELECTION.MPEGTS]: mpegtsActivation,
+        [ENGINE_SELECTION.MPEGTS_FLV]: mpegtsActivation,
+        // Engines below still live on the hook. They keep registering thin
+        // delegates here until each one owns its activation module.
+        [ENGINE_SELECTION.NATIVE]: () => this.playNative(),
+        [ENGINE_SELECTION.AVPLAYER]: ({ sessionId }) => this.startWithAVPlayer(sessionId),
+        [ENGINE_SELECTION.AVBRIDGE]: () => this.playWithAvbridge(),
+        [ENGINE_SELECTION.H265WEB]: () => this.playWithH265web(),
+        [ENGINE_SELECTION.FLV_UNSUPPORTED]: () => {
+          this.showPlaybackError(FLV_UNSUPPORTED_MESSAGE);
+          return false;
+        },
+      },
+      onUnknownSelection: (selection) =>
+        log.warn("[VideoPlayer] Unknown engine decision:", selection),
+      onError: (operation, error, request) =>
+        log.error(`[VideoPlayer] Engine activation ${operation} failed:`, {
+          error,
+          selection: request?.selection,
+          sessionId: request?.sessionId,
+        }),
+    });
+  },
+
   setupNetworkMonitor() {
     this.networkMonitor = new NetworkMonitor({
       onQualityChange: (newQuality, oldQuality, stats) => {
@@ -865,15 +948,11 @@ const VideoPlayer = {
   },
 
   activateHlsEngineFromLoader(sessionId = this.playbackSessionId, loader = this.streamLoader) {
-    if (!this.isCurrentPlaybackSession(sessionId) || !loader || this.streamLoader !== loader) {
-      return null;
-    }
-
-    const hlsEngine = loader.getHlsEngine?.();
-    if (!hlsEngine || hlsEngine.destroyed) return null;
-
-    this.hls = hlsEngine.client;
-    return this.setMediaElementEngine(ENGINE_ID.HLS, hlsEngine);
+    return (
+      this.playbackEngineActivation
+        ?.get(ENGINE_SELECTION.HLS_JS)
+        ?.adoptLoaderEngine(sessionId, loader) ?? null
+    );
   },
 
   setMediaElementEngine(engineId, engineOverride = null) {
@@ -2220,39 +2299,8 @@ const VideoPlayer = {
       selected_engine: engine,
     });
 
-    switch (engine) {
-      case "avbridge":
-        log.debug("Using avbridge (engine_selector decision)");
-        this.playWithAvbridge();
-        break;
-      case "h265web":
-        log.debug("Using h265web (engine_selector decision)");
-        this.playWithH265web();
-        break;
-      case "avplayer":
-        log.debug("Using AVPlayer (engine_selector decision)");
-        void this.startWithAVPlayer(sessionId);
-        break;
-      case "native":
-        log.debug("Using native playback (engine_selector decision)");
-        this.playNative();
-        break;
-      case "hls-js":
-        this.playWithHls();
-        break;
-      case "mpegts":
-        this.playWithMpegts();
-        break;
-      case "mpegts-flv":
-        this.playWithMpegts("flv");
-        break;
-      case "flv-unsupported":
-        this.showPlaybackError("Reproducao FLV nao suportada neste navegador");
-        break;
-      default:
-        log.warn("[VideoPlayer] Unknown engine decision:", engine);
-        this.playNative();
-    }
+    log.debug("[VideoPlayer] Activating engine (engine_selector decision):", engine);
+    void this.playbackEngineActivation.activate(engine, { sessionId });
   },
 
   logHlsRecoveryDecision(decision) {
@@ -2442,49 +2490,10 @@ const VideoPlayer = {
     });
   },
 
-  async playWithHls() {
-    this._suppressNativePlaybackEvents = false;
-    this.syncPiPAvailability();
-    log.info("Playing with HLS.js, url:", this.currentUrl);
-    this.reportPlayerLifecycle("player_engine_selected", { engine: ENGINE_ID.HLS });
-
-    if (!isHlsJsSupported()) {
-      if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
-        this.playNative();
-      } else {
-        this.showPlaybackError("HLS nao suportado neste navegador");
-      }
-      return;
-    }
-
-    const sessionId = this.playbackSessionId;
-    const loader = this.ensureStreamLoader();
-
-    const result = await guardPlaybackLoad({
-      load: () => loader.loadHls(this.currentUrl),
-      isCancelled: isStreamLoaderCancelledError,
-      isCurrent: () => this.isCurrentPlaybackSession(sessionId) && this.streamLoader === loader,
-      destroy: () => loader.destroy(),
-    });
-    if (result.status === "cancelled" || result.status === "stale") return;
-    if (result.status === "loaded") {
-      this.hls = result.engine;
-      if (!this.activateHlsEngineFromLoader(sessionId, loader)) {
-        throw new Error("HLS engine was not registered by StreamLoader");
-      }
-      return;
-    }
-
-    log.error("HLS.js initialization failed:", result.error);
-    this.playbackMetrics?.recordError();
-    const transitionSessionId = await this.teardownStreamLoaderForTransition(sessionId);
-    if (transitionSessionId == null) return;
-
-    if (this.getNativeHlsSupport()) {
-      this.playNative();
-    } else {
-      this.showPlaybackError("HLS nao suportado neste navegador");
-    }
+  playWithHls() {
+    return (
+      this.playbackEngineActivation?.activate(ENGINE_SELECTION.HLS_JS) ?? Promise.resolve(false)
+    );
   },
 
   async playWithAvbridge() {
@@ -2658,106 +2667,8 @@ const VideoPlayer = {
   },
 
   playWithMpegts(type = "mpegts") {
-    const sessionId = this.playbackSessionId;
-
-    return this.playbackEngineTransitionController.transition({
-      key: `startup-mpegts-${type}`,
-      sessionId,
-      capture: () => ({ type }),
-      createEngine: () => this.ensureStreamLoader(),
-      loadEngine: () => this.loadMpegtsForTransition(type),
-      registerEngine: ({ engine: loader }) => {
-        const mpegtsEngine = loader.getMpegtsEngine();
-        if (!mpegtsEngine) {
-          throw new Error("MPEG-TS transition completed without an engine");
-        }
-        return mpegtsEngine;
-      },
-      activateEngine: ({ engine: loader }) => Boolean(loader.getMpegtsEngine()),
-      complete: ({ engine: loader }) => loader.getMpegtsEngine(),
-      rollbackEngine: ({ engine: loader }) => {
-        this.playbackOrchestrator?.releaseEngine(ENGINE_ID.MPEGTS);
-        if (this.mpegtsPlayer === loader.getMpegtsPlayer()) {
-          this.mpegtsPlayer = null;
-        }
-      },
-      destroyEngine: async (loader) => {
-        await loader.destroy();
-        if (this.streamLoader === loader) this.streamLoader = null;
-      },
-      onFailure: async (error, context) => {
-        if (!this.isCurrentPlaybackSession(context.sessionId)) return false;
-
-        if (context.capture?.type === "flv") {
-          const transitionSessionId = await this.teardownStreamLoaderForTransition(
-            context.sessionId,
-          );
-          if (transitionSessionId != null) {
-            this.showPlaybackError("Reproducao FLV nao suportada neste navegador");
-          }
-          return false;
-        }
-
-        return this.recoverFromMpegtsError({
-          errorType: "OtherError",
-          errorDetail: "OtherError",
-          errorInfo: { cause: error },
-        });
-      },
-    });
-  },
-
-  async loadMpegtsForTransition(type = "mpegts") {
-    this._suppressNativePlaybackEvents = false;
-    this.syncPiPAvailability();
-    log.info("Playing with mpegts.js, type:", type, "url:", this.currentUrl);
-    this.reportPlayerDebug("play_with_mpegts", { requested_type: type });
-    const sessionId = this.playbackSessionId;
-    this.reportPlayerLifecycle("player_engine_selected", {
-      engine: ENGINE_ID.MPEGTS,
-      requested_type: type,
-      session_id: sessionId,
-    });
-
-    const loader = this.ensureStreamLoader();
-    const onPlaying = () => {
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-      this.mpegtsRecoveryCoordinator?.markRecovered();
-      this.playerUIController.hideLoading();
-      this.playerUIController.hideError();
-    };
-    this.video.addEventListener("playing", onPlaying, { once: true });
-
-    const result = await guardPlaybackLoad({
-      load: () => loader.loadMpegts(this.currentUrl, type),
-      isCancelled: isStreamLoaderCancelledError,
-      isCurrent: () => this.isCurrentPlaybackSession(sessionId) && this.streamLoader === loader,
-      destroy: () => undefined,
-    });
-
-    if (result.status === "cancelled" || result.status === "stale") {
-      this.video.removeEventListener("playing", onPlaying);
-      throw result.error || new Error(`MPEG-TS load became ${result.status}`);
-    }
-
-    if (result.status === "loaded") {
-      const mpegtsEngine = this.streamLoader.getMpegtsEngine();
-      this.mpegtsPlayer = this.streamLoader.getMpegtsPlayer();
-      this.setMediaElementEngine(ENGINE_ID.MPEGTS, mpegtsEngine);
-
-      void this.playNativeAfterResume(sessionId).catch((error) => {
-        if (this.isCurrentPlaybackSession(sessionId)) {
-          log.debug("mpegts.js play request failed:", error);
-        }
-      });
-
-      return;
-    }
-
-    this.video.removeEventListener("playing", onPlaying);
-    log.error("mpegts.js initialization error:", result.error);
-    this.playbackMetrics?.recordError();
-    throw result.error;
+    const selection = type === "flv" ? ENGINE_SELECTION.MPEGTS_FLV : ENGINE_SELECTION.MPEGTS;
+    return this.playbackEngineActivation?.activate(selection) ?? Promise.resolve(false);
   },
 
   playNative() {
@@ -3864,6 +3775,8 @@ const VideoPlayer = {
     this.cleanup();
     this.playbackBrowserIntegration?.destroy();
     this.playbackBrowserIntegration = null;
+    this.playbackEngineActivation?.destroy();
+    this.playbackEngineActivation = null;
     this.playbackEngineTransitionController = null;
     this.nativeSubtitleController?.destroy();
     this.nativeSubtitleController = null;

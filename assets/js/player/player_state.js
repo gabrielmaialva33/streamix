@@ -87,6 +87,7 @@ export function createInitialPlayerState(
     playbackSessionId: 0,
     playbackOrchestrator: null,
     playbackEngineTransitionController: null,
+    playbackEngineActivation: null,
     mediaCapabilityProfile: null,
     playbackMetrics: deps.createPlaybackMetrics(),
 
