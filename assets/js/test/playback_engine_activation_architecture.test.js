@@ -8,6 +8,9 @@ const hlsActivationUrl = new URL("../player/hls_engine_activation.js", import.me
 const mpegtsActivationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
 const nativeActivationUrl = new URL("../player/native_engine_activation.js", import.meta.url);
 const avPlayerActivationUrl = new URL("../player/avplayer_engine_activation.js", import.meta.url);
+const canvasActivationUrl = new URL("../player/canvas_engine_activation.js", import.meta.url);
+const avbridgeActivationUrl = new URL("../player/avbridge_engine_activation.js", import.meta.url);
+const h265webActivationUrl = new URL("../player/h265web_engine_activation.js", import.meta.url);
 const playerStateUrl = new URL("../player/player_state.js", import.meta.url);
 
 async function source(url) {
@@ -66,6 +69,19 @@ test("VideoPlayer composes one engine activation coordinator behind an explicit 
   assert.match(hook, /\[ENGINE_SELECTION\.AVPLAYER\]: this\.avPlayerEngineActivation,/);
   assert.match(playerState, /avPlayerEngineActivation: null/);
   assert.doesNotMatch(playerState, /avPlayerTimeInterval/);
+  assert.match(
+    hook,
+    /import \{ createAvbridgeEngineActivation \} from "\.\.\/player\/avbridge_engine_activation\.js";/,
+  );
+  assert.match(
+    hook,
+    /import \{ createH265webEngineActivation \} from "\.\.\/player\/h265web_engine_activation\.js";/,
+  );
+  assert.match(hook, /\[ENGINE_SELECTION\.AVBRIDGE\]: this\.avbridgeEngineActivation,/);
+  assert.match(hook, /\[ENGINE_SELECTION\.H265WEB\]: this\.h265webEngineActivation,/);
+  assert.match(playerState, /avbridgeEngineActivation: null/);
+  assert.match(playerState, /h265webEngineActivation: null/);
+  assert.doesNotMatch(playerState, /h265webTimeInterval/);
   assert.match(playerState, /nativeEngineActivation: null/);
   assert.doesNotMatch(playerState, /audioCheckTimeout/);
   assert.ok(
@@ -131,6 +147,8 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "tryAVPlayerFallback() { return this.avPlayerEngineActivation?.tryFallback() ?? Promise.resolve(false); }",
     "switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay) { return ( this.avPlayerEngineActivation?.switchWithTrack(trackType, trackIndex, seekTime, shouldPlay) ?? Promise.resolve(false) ); }",
     "stopAVPlayerTimeUpdates() { return this.avPlayerEngineActivation?.stopTimeUpdates() ?? false; }",
+    "playWithAvbridge() { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.AVBRIDGE) ?? Promise.resolve(false) ); }",
+    "playWithH265web() { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.H265WEB) ?? Promise.resolve(false) ); }",
   ]) {
     assert.ok(normalized.includes(delegate), `missing thin activation delegate: ${delegate}`);
   }
@@ -171,6 +189,14 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "transitionNativeToAVPlayer",
     "transitionFromFailedAVPlayer",
     "id: ENGINE_ID.AVPLAYER",
+    "loadAvbridge",
+    "loadH265web",
+    "new AvbridgeWrapper",
+    "new H265webWrapper",
+    "createPlaybackTickThrottle",
+    "id: ENGINE_ID.AVBRIDGE",
+    "id: ENGINE_ID.H265WEB",
+    'reportPlayerLifecycle("player_engine_fallback"',
   ]) {
     assert.equal(
       hook.includes(leakedActivation),
@@ -205,11 +231,17 @@ test("engine activations consume the host contract and never reach for the hook 
     source(mpegtsActivationUrl),
     source(nativeActivationUrl),
     source(avPlayerActivationUrl),
+    source(canvasActivationUrl),
+    source(avbridgeActivationUrl),
+    source(h265webActivationUrl),
   ]);
 
   for (const activation of activations) {
-    assert.match(activation, /assertActivationHost\(/);
-    assert.match(activation, /PLAYBACK_ENGINE_ACTIVATION_HOST_METHODS/);
+    assert.ok(
+      /assertActivationHost\(/.test(activation) ||
+        /extends CanvasEngineActivation/.test(activation),
+      "every activation validates its host directly or through the canvas base",
+    );
     assert.match(activation, /_HOST_METHODS = Object\.freeze\(\[/);
     assert.doesNotMatch(activation, /hooks\/video_player|Phoenix|LiveSocket|pushEvent|handleEvent/);
     assert.doesNotMatch(activation, /document\.|window\.|querySelector/);
@@ -223,7 +255,7 @@ test("engine activations consume the host contract and never reach for the hook 
     );
   }
 
-  const [hls, mpegts, native, avplayer] = activations;
+  const [hls, mpegts, native, avplayer, canvas, avbridge, h265web] = activations;
   assert.match(hls, /activate\(ENGINE_SELECTION\.NATIVE, \{ sessionId/);
   assert.match(mpegts, /this\.host\.getTransitionController\(\)/);
   assert.match(mpegts, /this\.host\.recoverFromMpegtsError\(/);
@@ -240,6 +272,14 @@ test("engine activations consume the host contract and never reach for the hook 
     avplayer,
     /evaluateFallbackAttempt|PlaybackEngineTeardownQueue|new PlaybackEngineTransitionController/,
   );
+  assert.match(canvas, /export class CanvasEngineActivation/);
+  assert.match(canvas, /this\.host\.tryAVPlayerFallback\(\)/);
+  assert.match(canvas, /player_engine_fallback/);
+  assert.match(avbridge, /extends CanvasEngineActivation/);
+  assert.match(avbridge, /this\.deps\.loadAvbridge\(\)/);
+  assert.match(h265web, /extends CanvasEngineActivation/);
+  assert.match(h265web, /this\.deps\.loadH265web\(\)/);
+  assert.match(h265web, /this\.host\.getH265webMount\(\)/);
 });
 
 test("every host callback of the activation host resolves to a method the hook still defines", async () => {
@@ -261,4 +301,40 @@ test("every host callback of the activation host resolves to a method the hook s
       `activation host references this.${name}() but the hook no longer defines it`,
     );
   }
+});
+
+test("the hook no longer constructs any concrete playback engine", async () => {
+  const hook = await source(hookUrl);
+  const start = hook.indexOf("  initPlaybackEngineActivation() {");
+  const end = hook.indexOf("  setupNetworkMonitor() {", start);
+  assert.ok(start >= 0 && end > start);
+  const wiring = hook.slice(start, end);
+
+  for (const selection of [
+    "HLS_JS",
+    "MPEGTS",
+    "MPEGTS_FLV",
+    "NATIVE",
+    "AVPLAYER",
+    "AVBRIDGE",
+    "H265WEB",
+  ]) {
+    const registration = new RegExp(
+      `\\[ENGINE_SELECTION\\.${selection}\\]: (?:this\\.\\w+EngineActivation|\\w+Activation|create\\w+EngineActivation\\(\\{ host \\}\\)),`,
+    );
+    assert.match(
+      wiring,
+      registration,
+      `${selection} must be registered as an activation instance, not a hook delegate`,
+    );
+  }
+
+  assert.doesNotMatch(hook, /new \w+Wrapper\(/);
+  assert.doesNotMatch(hook, /load(AVPlayer|Avbridge|H265web)\(/);
+  assert.doesNotMatch(hook, /createPlaybackEngineAdapter\(\{\s*id: ENGINE_ID\./);
+  assert.doesNotMatch(
+    hook,
+    /createNativePlaybackEngine|createMediaElementEngine|createHlsPlaybackEngine|createMpegtsPlaybackEngine/,
+  );
+  assert.match(hook, /createPlaybackEngineAdapter\(\{ id: engineId, engine, ownsEngine \}\)/);
 });
