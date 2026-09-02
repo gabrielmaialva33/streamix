@@ -253,8 +253,8 @@ When adding or modifying an engine:
 ## Watch Party sync
 
 `assets/js/hooks/watch_party_sync.js` is the composition root for the room
-sync loop. It owns LiveView transport (`wp_*` events), the binding to the
-player bridge (`streamixPlayback`) and the durable hold state. The decision
+sync loop. It owns LiveView transport (`wp_*` events), the durable hold state
+and the orchestration between the modules below. The decision
 and timing pieces live in `assets/js/watch_party/`:
 
 | Module | Responsibility |
@@ -265,6 +265,8 @@ and timing pieces live in `assets/js/watch_party/`:
 | `drift_policy.js` | pure viewer reaction (resume, pause, seek, nudge, hold, synced) |
 | `sync_status.js` | status precedence, drift throttling, labels and badge classes |
 | `beacon_scheduler.js` | adaptive beacon cadence |
+| `player_binding.js` | player discovery/polling, bridge adoption, buffering signals, host event forwarding |
+| `player_policy.js` | player-side rules: viewer control lockout, remote-only transport, durable sync hold |
 | `reactions.js` | floating reactions and invite-copy feedback |
 
 Modules never touch globals or LiveView directly: timers, documents and the
