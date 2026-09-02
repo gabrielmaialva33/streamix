@@ -29,6 +29,7 @@ state out of the Phoenix hook while preserving a single user-facing player.
 VideoPlayer hook
   ├── DOM, Phoenix events, controls, Watch Party policy, PiP and Media Session
   ├── StreamTransport (StreamLoader lifecycle, callbacks, HLS recovery context)
+  ├── TrackProbeController (GIndex track probe, dual-audio policy, probed selections)
   ├── PlaybackOrchestrator
   │     ├── playback session and lifecycle
   │     ├── EngineRegistry
