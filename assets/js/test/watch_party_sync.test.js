@@ -418,3 +418,40 @@ test("rejects invalid action positions before taking the sync lock", () => {
   assert.equal(context.syncLock, false);
   assert.deepEqual(seeks, []);
 });
+
+test("accessors stay live after LiveView copies the hook definition onto an instance", () => {
+  // Mirrors phoenix_live_view's ViewHook: `this[key] = callbacks[key]` for
+  // every own property, which snapshots prototype getters into plain values.
+  const instance = {
+    el: { dataset: { isHost: "false" } },
+    handleEvent() {},
+    pushEvent() {},
+  };
+  for (const key of Object.keys(WatchPartySync)) instance[key] = WatchPartySync[key];
+
+  instance._setup();
+  assert.equal(instance.playback, null);
+  const bridge = {
+    getCurrentTime: () => 3,
+    isPaused: () => true,
+    supportsPlaybackRate: () => false,
+  };
+  instance.binding.playback = bridge;
+  assert.equal(instance.playback, bridge, "playback reads through to the binding");
+  assert.equal(instance.useConservativeSync, true, "conservative sync follows the live bridge");
+
+  instance.playback = null;
+  assert.equal(instance.binding.playback, null, "the setter writes through");
+
+  assert.equal(instance.commandGeneration, 0);
+  instance.commands.cancelAll();
+  assert.equal(instance.commandGeneration, 1, "generation is read live from the scheduler");
+
+  instance.commands.lock();
+  assert.equal(instance.syncLock, true);
+  instance.commands.unlock();
+  assert.equal(instance.syncLock, false);
+
+  instance.clock.ready = true;
+  assert.equal(instance.clockReady, true);
+});
