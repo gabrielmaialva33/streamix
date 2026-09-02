@@ -332,3 +332,40 @@ test("track presentation stays behind PlayerTrackPresentationController", async 
       hook.indexOf("this.playerUIController?.destroy();"),
   );
 });
+
+test("the background track probe and probed selections live in TrackProbeController", async () => {
+  const [hook, controller] = await Promise.all([
+    source(new URL("../hooks/video_player.js", import.meta.url)),
+    source(new URL("../player/track_probe_controller.js", import.meta.url)),
+  ]);
+
+  assert.match(
+    hook,
+    /import \{ createTrackProbeController \} from "\.\.\/player\/track_probe_controller\.js";/,
+  );
+  assert.match(hook, /this\.trackProbeController = createTrackProbeController\(\{/);
+  assert.match(
+    hook,
+    /probeMetadataInBackground\(\) \{\s*return this\.trackProbeController\?\.probe\(\)/,
+  );
+  assert.match(
+    hook,
+    /handleProbedAudioTrackSelect\(trackIndex\) \{\s*return this\.trackProbeController\?\.selectAudioTrack\(trackIndex\)/,
+  );
+  assert.match(
+    hook,
+    /handleProbedSubtitleTrackSelect\(trackIndex\) \{\s*return this\.trackProbeController\?\.selectSubtitleTrack\(trackIndex\)/,
+  );
+  assert.doesNotMatch(
+    hook,
+    /_probedAudioTracks|_probedSubtitleTracks|_metadataProbed|api\/gindex-tracks/,
+  );
+
+  assert.match(controller, /TRACK_PROBE_HOST_METHODS = Object\.freeze\(\[/);
+  assert.match(controller, /this\.host\.presentProbedTracks\(\{/);
+  assert.match(controller, /this\.host\.switchToAVPlayerWithTrack\(/);
+  assert.doesNotMatch(
+    controller,
+    /hooks\/video_player|pushEvent|LiveSocket|Phoenix|document\.|window\./,
+  );
+});
