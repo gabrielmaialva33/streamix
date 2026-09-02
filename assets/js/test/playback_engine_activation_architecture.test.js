@@ -268,6 +268,15 @@ test("engine activations consume the host contract and never reach for the hook 
   assert.match(avplayer, /this\.host\.canAttemptFallback\(\)/);
   assert.match(avplayer, /this\.deps\.loadAVPlayer\(\)/);
   assert.match(avplayer, /this\.host\.teardownAVPlayer\(/);
+  assert.match(
+    avplayer,
+    /this\.deps\.createAvPlayerPlaybackEngine\(\{ AVPlayerWrapper, container: mount \}\)/,
+  );
+  assert.match(
+    avplayer,
+    /avPlayer\.on\(ENGINE_EVENT\.(READY|PLAYING|PAUSED|ERROR|TIME_UPDATE|ENDED),/,
+  );
+  assert.doesNotMatch(avplayer, /new AVPlayerWrapper\(|onPlay:|onPause:|onEnded:|onTimeUpdate:/);
   assert.doesNotMatch(
     avplayer,
     /evaluateFallbackAttempt|PlaybackEngineTeardownQueue|new PlaybackEngineTransitionController/,

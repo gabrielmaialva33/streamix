@@ -19,16 +19,24 @@ test("media element engines validate through the same contract", async () => {
   const mediaElement = await source("../player/media_element_engine.js");
   const native = await source("../player/native_playback_engine.js");
   const hls = await source("../player/hls_playback_engine.js");
+  const avplayer = await source("../player/avplayer_playback_engine.js");
 
   assert.match(mediaElement, /assertPlaybackEngine\(new MediaElementEngine\(options\)/);
   assert.match(native, /assertPlaybackEngine\(new NativePlaybackEngine\(options\)/);
   assert.match(hls, /assertPlaybackEngine\(new HlsPlaybackEngine\(options\)/);
+  assert.match(avplayer, /assertPlaybackEngine\(new AvPlayerPlaybackEngine\(options\)/);
+  assert.match(avplayer, /new Wrapper\(\{[\s\S]*onReady:[\s\S]*onError:/);
+  assert.match(
+    avplayer,
+    /this\.emit\(ENGINE_EVENT\.(READY|PLAYING|PAUSED|TIME_UPDATE|ENDED|ERROR)/,
+  );
 });
 
 test("concrete engines remain independent from the Phoenix hook", async () => {
   for (const relativePath of [
     "../player/native_playback_engine.js",
     "../player/hls_playback_engine.js",
+    "../player/avplayer_playback_engine.js",
   ]) {
     const engine = await source(relativePath);
 
