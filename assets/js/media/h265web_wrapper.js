@@ -4,7 +4,7 @@
 // — built against the public PRO docs at
 // https://h265web.com/markdown-docs/get-started.php.
 //
-// Same surface as `AVPlayerWrapper` so `video_player.js` can swap engines
+// Same surface as `AVPlayerWrapper` so the activation layer can swap engines
 // without branching on which one it has.
 //
 // Why h265web.js?
@@ -114,7 +114,7 @@ export class H265webWrapper {
     const player = factory();
     this.player = player;
 
-    // Wire the callbacks that `video_player.js` mirrors as native
+    // Wire the callbacks that `H265webEngineActivation` mirrors as native
     // events. h265web emits PTS in seconds (matches `<video>.currentTime`).
     player.on_ready_show_done_callback = () => {
       if (typeof player.get_duration === "function") {

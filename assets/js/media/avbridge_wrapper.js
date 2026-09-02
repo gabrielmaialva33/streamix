@@ -16,7 +16,7 @@
 //     hardware path, the decode lands on the GPU → <10% CPU.
 //
 // We keep `AVPlayerWrapper` as the universal fallback. The hook in
-// `video_player.js` tries avbridge first for GIndex MKV/HEVC, and
+// The engine selector tries avbridge first for GIndex MKV/HEVC, and
 // falls back to AVPlayerWrapper on any init error.
 
 import { avplayerLogger as log } from "../core/logger";
@@ -34,7 +34,7 @@ export class AvbridgeWrapper {
 
   /**
    * Lazily import the avbridge bundle and create the underlying player.
-   * Called once from `playWithAvbridge` in the LiveView hook.
+   * Called once from `AvbridgeEngineActivation` in the player activation layer.
    */
   async init() {
     const mod = await import("avbridge");

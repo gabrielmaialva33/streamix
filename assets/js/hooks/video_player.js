@@ -20,6 +20,7 @@ import { isMSEInWorkersSupported } from "../media/worker_mse";
 import { createAspectRatioController } from "../player/aspect_ratio_controller";
 import { createAudioController } from "../player/audio_controller";
 import { audioOutputVolume } from "../player/audio_state";
+import { createAvbridgeEngineActivation } from "../player/avbridge_engine_activation.js";
 import { createAvPlayerEngineActivation } from "../player/avplayer_engine_activation.js";
 import {
   assertEngineSelection,
@@ -35,6 +36,7 @@ import {
   formatErrorForLog,
 } from "../player/error_telemetry";
 import { evaluateFallbackAttempt } from "../player/fallback_policy";
+import { createH265webEngineActivation } from "../player/h265web_engine_activation.js";
 import { createHlsEngineActivation } from "../player/hls_engine_activation.js";
 import {
   createHlsRecoveryCoordinator,
@@ -76,9 +78,7 @@ import {
   isStandalonePwa,
   scheduleLowPriority,
 } from "../player/playback_environment";
-import { loadAvbridge, loadH265web } from "../player/playback_module_loader";
 import { createPlaybackOrchestrator } from "../player/playback_orchestrator.js";
-import { createPlaybackTickThrottle } from "../player/playback_tick_throttle.js";
 import { createPlayerDiagnosticsController } from "../player/player_diagnostics_controller.js";
 import {
   getPlaybackPosition,
@@ -514,9 +514,13 @@ const VideoPlayer = {
       flushPlaybackMetrics: (outcome) => this.flushPlaybackMetrics(outcome),
       getAVPlayer: () => this.avPlayer,
       getAVPlayerMount: () => this.el?.querySelector("#avplayer-mount") ?? null,
+      getAvbridge: () => this.avbridge,
       getContentType: () => this.contentType,
       getCurrentUrl: () => this.currentUrl,
       getFallbackAttempts: () => this.fallbackAttempts,
+      getH265web: () => this.h265web,
+      getH265webBaseUrl: () => this.el?.dataset?.h265webBaseUrl || null,
+      getH265webMount: () => this.el?.querySelector("#h265web-mount") ?? null,
       getMpegtsPlayer: () => this.mpegtsPlayer,
       getNativeBufferManager: () => this.nativeBufferManager,
       getNativeBufferingController: () => this.nativeBufferingController,
@@ -550,6 +554,12 @@ const VideoPlayer = {
       markAVPlayerAttempted: () => {
         this.avPlayerAttempted = true;
       },
+      markAvbridgeAttempted: () => {
+        this.avbridgeAttempted = true;
+      },
+      markH265webAttempted: () => {
+        this.h265webAttempted = true;
+      },
       markMpegtsRecovered: () => this.mpegtsRecoveryCoordinator?.markRecovered(),
       markPlaying: () => this.playbackMetrics?.markPlaying(),
       playNativeAfterResume: (sessionId) => this.playNativeAfterResume(sessionId),
@@ -577,6 +587,12 @@ const VideoPlayer = {
       setAVPlayer: (engine) => {
         this.avPlayer = engine;
       },
+      setAvbridge: (engine) => {
+        this.avbridge = engine;
+      },
+      setH265web: (engine) => {
+        this.h265web = engine;
+      },
       setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
       setHlsClient: (client) => {
         this.hls = client;
@@ -591,10 +607,17 @@ const VideoPlayer = {
         this._suppressNativePlaybackEvents = suppressed === true;
       },
       setNativeTouchControls: (enabled) => this.setNativeTouchControls(enabled),
+      setPlaybackSystemState: (state) => this.setPlaybackSystemState(state),
       setSubtitleDelay: (delayMs) => this.playbackOrchestrator?.setSubtitleDelay(delayMs),
       setSubtitleTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
       setUsingAVPlayer: (using) => {
         this.usingAVPlayer = using === true;
+      },
+      setUsingAvbridge: (using) => {
+        this.usingAvbridge = using === true;
+      },
+      setUsingH265web: (using) => {
+        this.usingH265web = using === true;
       },
       showPlaybackError: (message, hint = null) => this.showPlaybackError(message, hint),
       syncPiPAvailability: () => this.syncPiPAvailability(),
@@ -621,6 +644,8 @@ const VideoPlayer = {
     this.nativeEngineActivation = createNativeEngineActivation({ host });
     this.avPlayerEngineActivation?.destroy();
     this.avPlayerEngineActivation = createAvPlayerEngineActivation({ host });
+    this.avbridgeEngineActivation = createAvbridgeEngineActivation({ host });
+    this.h265webEngineActivation = createH265webEngineActivation({ host });
 
     this.playbackEngineActivation = createPlaybackEngineActivation({
       host,
@@ -630,10 +655,8 @@ const VideoPlayer = {
         [ENGINE_SELECTION.MPEGTS_FLV]: mpegtsActivation,
         [ENGINE_SELECTION.NATIVE]: this.nativeEngineActivation,
         [ENGINE_SELECTION.AVPLAYER]: this.avPlayerEngineActivation,
-        // Engines below still live on the hook. They keep registering thin
-        // delegates here until each one owns its activation module.
-        [ENGINE_SELECTION.AVBRIDGE]: () => this.playWithAvbridge(),
-        [ENGINE_SELECTION.H265WEB]: () => this.playWithH265web(),
+        [ENGINE_SELECTION.AVBRIDGE]: this.avbridgeEngineActivation,
+        [ENGINE_SELECTION.H265WEB]: this.h265webEngineActivation,
         [ENGINE_SELECTION.FLV_UNSUPPORTED]: () => {
           this.showPlaybackError(FLV_UNSUPPORTED_MESSAGE);
           return false;
@@ -2423,174 +2446,16 @@ const VideoPlayer = {
     );
   },
 
-  async playWithAvbridge() {
-    this._suppressNativePlaybackEvents = false;
-    this.disablePiPForCanvasPlayback();
-    log.info("Playing with avbridge, url:", this.currentUrl);
-    this.avbridgeAttempted = true;
-    this.reportPlayerLifecycle("player_engine_selected", { engine: ENGINE_ID.AVBRIDGE });
-
-    const sessionId = this.playbackSessionId;
-    const resumeTime = this.takeResumeTime();
-
-    try {
-      const { AvbridgeWrapper } = await loadAvbridge();
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-      this.avbridge = createPlaybackEngineAdapter({
-        id: ENGINE_ID.AVBRIDGE,
-        engine: new AvbridgeWrapper({ video: this.video }),
-      });
-      this.trackManagedEngine(ENGINE_ID.AVBRIDGE, this.avbridge);
-      await this.avbridge.load(this.currentUrl, { startTime: resumeTime });
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        await this.avbridge.destroy().catch(() => {});
-        this.avbridge = null;
-        return;
-      }
-
-      this.usingAvbridge = true;
-      this.playerUIController.hideLoading();
-
-      if (resumeTime > 0) {
-        try {
-          await this.avbridge.seek(resumeTime);
-        } catch (seekErr) {
-          log.warn("[Avbridge] seek-on-load failed, will try after play()", seekErr);
-        }
-      }
-      await this.avbridge.play();
-      this.handlePlaybackStarted();
-      this.playbackMetrics?.markPlaying();
-    } catch (err) {
-      this.setPlaybackSystemState("none");
-      log.warn("[Avbridge] init failed, falling back to AVPlayer:", err);
-      this.playbackMetrics?.recordError();
-      this.reportPlayerLifecycle("player_engine_fallback", {
-        from: ENGINE_ID.AVBRIDGE,
-        to: ENGINE_ID.AVPLAYER,
-        reason: err?.message || String(err),
-      });
-      try {
-        await this.avbridge?.destroy?.();
-      } catch {
-        // best effort
-      }
-      this.avbridge = null;
-      this.usingAvbridge = false;
-      if (this.isCurrentPlaybackSession(sessionId)) {
-        this.tryAVPlayerFallback();
-      }
-    }
+  playWithAvbridge() {
+    return (
+      this.playbackEngineActivation?.activate(ENGINE_SELECTION.AVBRIDGE) ?? Promise.resolve(false)
+    );
   },
 
-  async playWithH265web() {
-    this.disablePiPForCanvasPlayback();
-    log.info("Playing with h265web, url:", this.currentUrl);
-    this.h265webAttempted = true;
-    this.reportPlayerLifecycle("player_engine_selected", { engine: ENGINE_ID.H265WEB });
-
-    const sessionId = this.playbackSessionId;
-    const resumeTime = this.takeResumeTime();
-
-    try {
-      const { H265webWrapper } = await loadH265web();
-      if (!this.isCurrentPlaybackSession(sessionId)) return;
-
-      // h265web renders into its own canvas inside an opaque div. The
-      // template ships `<div id="h265web-mount" phx-update="ignore">`
-      // for exactly this reason — same `phx-update="ignore"` trick we
-      // use for `avplayer-mount` so a LiveView patch does not wipe the
-      // canvas mid-playback.
-      const mountEl = this.el.querySelector("#h265web-mount");
-      if (!mountEl) {
-        throw new Error("h265web mount element (#h265web-mount) not found in template");
-      }
-
-      this.h265web = createPlaybackEngineAdapter({
-        id: ENGINE_ID.H265WEB,
-        engine: new H265webWrapper({
-          video: this.video,
-          mountEl,
-          // Override base URL via `data-h265web-base-url` on the player
-          // container — useful when the SDK is served from a different
-          // origin than Phoenix (CDN, edge cache).
-          baseUrl: this.el.dataset.h265webBaseUrl || undefined,
-        }),
-      });
-      this.trackManagedEngine(ENGINE_ID.H265WEB, this.h265web);
-      const h265web = this.h265web;
-      const h265webTicks = createPlaybackTickThrottle();
-      h265web.on("playing", () => {
-        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
-        this.playerUIController.updatePlayPauseUI(false);
-        this.handlePlaybackStarted();
-        emitPlaybackEvent(this.el, "play");
-      });
-      h265web.on("paused", () => {
-        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
-        this.playerUIController.updatePlayPauseUI(true);
-        this.handlePlaybackPaused();
-        emitPlaybackEvent(this.el, "pause");
-      });
-      h265web.on("timeupdate", () => {
-        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
-
-        const tick = h265webTicks.next();
-        if (tick.updateUi) this.updateTimeUI();
-        if (tick.reportProgress && this.contentType === "vod") this.reportProgress();
-      });
-      h265web.on("ended", () => {
-        if (!this.isCurrentPlaybackSession(sessionId) || this.h265web !== h265web) return;
-        this.playerUIController.updatePlayPauseUI(true);
-        this.handlePlaybackEnded();
-        this.flushPlaybackMetrics("completed");
-      });
-      await h265web.load(this.currentUrl, {
-        startTime: resumeTime,
-        autoPlay: true,
-      });
-      if (!this.isCurrentPlaybackSession(sessionId)) {
-        await this.h265web.destroy().catch(() => {});
-        this.h265web = null;
-        return;
-      }
-
-      this.usingH265web = true;
-      this.playerUIController.hideLoading();
-
-      // Resume + play. h265web.load already attaches the source, so we
-      // just align `currentTime` and kick playback the way the native
-      // path does. Any error throws → catch falls through to AVPlayer.
-      if (resumeTime > 0) {
-        try {
-          await this.h265web.seek(resumeTime);
-        } catch (seekErr) {
-          log.warn("[H265web] seek-on-load failed, will try after play()", seekErr);
-        }
-      }
-      await h265web.play();
-      this.playbackMetrics?.markPlaying();
-    } catch (err) {
-      this.setPlaybackSystemState("none");
-      log.warn("[H265web] init failed, falling back to AVPlayer:", err);
-      this.playbackMetrics?.recordError();
-      this.reportPlayerLifecycle("player_engine_fallback", {
-        from: ENGINE_ID.H265WEB,
-        to: ENGINE_ID.AVPLAYER,
-        reason: err?.message || String(err),
-      });
-      try {
-        await this.h265web?.destroy?.();
-      } catch {
-        // best effort
-      }
-      this.h265web = null;
-      this.usingH265web = false;
-      if (this.isCurrentPlaybackSession(sessionId)) {
-        this.tryAVPlayerFallback();
-      }
-    }
+  playWithH265web() {
+    return (
+      this.playbackEngineActivation?.activate(ENGINE_SELECTION.H265WEB) ?? Promise.resolve(false)
+    );
   },
 
   playWithMpegts(type = "mpegts") {
@@ -3039,6 +2904,8 @@ const VideoPlayer = {
     this.playbackEngineActivation = null;
     this.nativeEngineActivation = null;
     this.avPlayerEngineActivation = null;
+    this.avbridgeEngineActivation = null;
+    this.h265webEngineActivation = null;
     this.playbackEngineTransitionController = null;
     this.nativeSubtitleController?.destroy();
     this.nativeSubtitleController = null;

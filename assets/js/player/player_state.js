@@ -90,6 +90,8 @@ export function createInitialPlayerState(
     playbackEngineActivation: null,
     nativeEngineActivation: null,
     avPlayerEngineActivation: null,
+    avbridgeEngineActivation: null,
+    h265webEngineActivation: null,
     mediaCapabilityProfile: null,
     playbackMetrics: deps.createPlaybackMetrics(),
 
@@ -116,7 +118,6 @@ export function createInitialPlayerState(
     h265web: null,
     usingH265web: false,
     h265webAttempted: false,
-    h265webTimeInterval: null,
     featureFlagH265web: deps.readEngineFlag(el, "h265web"),
 
     nextEpisode,
