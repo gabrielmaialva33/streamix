@@ -181,17 +181,29 @@ created and no replacement session is introduced.
 
 Every engine decision now flows through `PlaybackEngineActivation`
 (`assets/js/player/playback_engine_activation.js`), which dispatches one
-activation per `engine_selector` result: HLS.js, MPEG-TS/FLV, native and AVPlayer
-own their construction, loading, registration and rollback in
-`hls_engine_activation.js`, `mpegts_engine_activation.js`,
-`native_engine_activation.js` and `avplayer_engine_activation.js`. The hook only
-builds the activation host and keeps thin compatibility delegates.
+activation per `engine_selector` result. Each engine owns its construction,
+loading, registration and rollback:
+
+| Selection | Module |
+|-----------|--------|
+| `hls-js` | `hls_engine_activation.js` |
+| `mpegts`, `mpegts-flv` | `mpegts_engine_activation.js` |
+| `native` | `native_engine_activation.js` |
+| `avplayer` | `avplayer_engine_activation.js` |
+| `avbridge` | `avbridge_engine_activation.js` (extends `canvas_engine_activation.js`) |
+| `h265web` | `h265web_engine_activation.js` (extends `canvas_engine_activation.js`) |
+
+`CanvasEngineActivation` holds the shared GPU/canvas skeleton: lazy wrapper
+load, adapter registration as a managed engine, resume seek, play, and AVPlayer
+fallback on any failure. The hook only builds the activation host, keeps thin
+compatibility delegates, and no longer constructs any concrete engine; the
+`playback_engine_activation_architecture` contract enforces that boundary.
 
 ## Next extraction
 
-The remaining hook-hosted engines are avbridge and h265web. Both share the same
-canvas-engine skeleton (lazy wrapper load, adapter registration, resume seek,
-AVPlayer fallback on failure) and are the next candidates for an activation
-module. That recut must preserve engine-specific ownership, direct-start
-policy, startup metrics, stale-session cleanup, and the existing Chromium,
-Firefox, WebKit, torrent-subtitle, and MPEG-TS gates.
+With every engine activation extracted, the next slices are turning the
+AVPlayer integration into a complete adapter (moving the remaining
+`AVPlayerWrapper` product callbacks behind the engine contract) and starting the
+Watch Party decomposition. Each recut must preserve engine-specific ownership,
+direct-start policy, startup metrics, stale-session cleanup, and the existing
+Chromium, Firefox, WebKit, torrent-subtitle, and MPEG-TS gates.
