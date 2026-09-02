@@ -6,6 +6,7 @@ const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const coordinatorUrl = new URL("../player/playback_engine_activation.js", import.meta.url);
 const hlsActivationUrl = new URL("../player/hls_engine_activation.js", import.meta.url);
 const mpegtsActivationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
+const nativeActivationUrl = new URL("../player/native_engine_activation.js", import.meta.url);
 const playerStateUrl = new URL("../player/player_state.js", import.meta.url);
 
 async function source(url) {
@@ -47,6 +48,14 @@ test("VideoPlayer composes one engine activation coordinator behind an explicit 
     hook,
     /createMpegtsEngineActivation,[\s\S]*from "\.\.\/player\/mpegts_engine_activation\.js";/,
   );
+  assert.match(
+    hook,
+    /import \{ createNativeEngineActivation \} from "\.\.\/player\/native_engine_activation\.js";/,
+  );
+  assert.match(hook, /this\.nativeEngineActivation = createNativeEngineActivation\(\{ host \}\);/);
+  assert.match(hook, /\[ENGINE_SELECTION\.NATIVE\]: this\.nativeEngineActivation,/);
+  assert.match(playerState, /nativeEngineActivation: null/);
+  assert.doesNotMatch(playerState, /audioCheckTimeout/);
   assert.ok(
     normalized.includes(
       "this.initPlaybackBrowserIntegration(); this.updateVolumeUI(); this.initPlaybackEngineActivation(); this.setupEventListeners();",
@@ -104,6 +113,8 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "playWithHls() { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.HLS_JS) ?? Promise.resolve(false) ); }",
     'playWithMpegts(type = "mpegts") { const selection = type === "flv" ? ENGINE_SELECTION.MPEGTS_FLV : ENGINE_SELECTION.MPEGTS; return this.playbackEngineActivation?.activate(selection) ?? Promise.resolve(false); }',
     "activateHlsEngineFromLoader(sessionId = this.playbackSessionId, loader = this.streamLoader) { return ( this.playbackEngineActivation ?.get(ENGINE_SELECTION.HLS_JS) ?.adoptLoaderEngine(sessionId, loader) ?? null ); }",
+    "playNative() { return ( this.playbackEngineActivation?.activate(ENGINE_SELECTION.NATIVE) ?? Promise.resolve(false) ); }",
+    "playNativeAfterResume(sessionId, resumeTime) { return this.nativeEngineActivation?.playAfterResume(sessionId, resumeTime) ?? Promise.resolve(); }",
   ]) {
     assert.ok(normalized.includes(delegate), `missing thin activation delegate: ${delegate}`);
   }
@@ -119,6 +130,18 @@ test("extracted engine entrypoints stay thin compatibility delegates on the hook
     "startup-mpegts",
     "MPEG-TS transition completed without an engine",
     "HLS engine was not registered by StreamLoader",
+    "new NativeBufferManager",
+    'from "../media/native_buffer"',
+    "createNativePlaybackEngine",
+    "createMediaElementEngine",
+    "detectAudioIssue",
+    "native_source_attached",
+    "canTryAVPlayerForCurrentVod",
+    "shouldCheckNativeAudio",
+    "traceNativeLifecycle",
+    "audioCheckTimeout",
+    "_nativeErrorHandler",
+    'recordPlayerSuccess(contentKey, "native"',
   ]) {
     assert.equal(
       hook.includes(leakedActivation),
@@ -148,7 +171,11 @@ test("the coordinator owns dispatch without knowing concrete engines or the DOM"
 });
 
 test("engine activations consume the host contract and never reach for the hook or Phoenix", async () => {
-  const activations = await Promise.all([source(hlsActivationUrl), source(mpegtsActivationUrl)]);
+  const activations = await Promise.all([
+    source(hlsActivationUrl),
+    source(mpegtsActivationUrl),
+    source(nativeActivationUrl),
+  ]);
 
   for (const activation of activations) {
     assert.match(activation, /assertActivationHost\(/);
@@ -166,9 +193,34 @@ test("engine activations consume the host contract and never reach for the hook 
     );
   }
 
-  const [hls, mpegts] = activations;
+  const [hls, mpegts, native] = activations;
   assert.match(hls, /activate\(ENGINE_SELECTION\.NATIVE, \{ sessionId/);
   assert.match(mpegts, /this\.host\.getTransitionController\(\)/);
   assert.match(mpegts, /this\.host\.recoverFromMpegtsError\(/);
   assert.doesNotMatch(mpegts, /PlaybackEngineTransitionController\(/);
+  assert.match(native, /this\.deps\.createNativePlaybackEngine\(\{/);
+  assert.match(native, /this\.host\.tryAVPlayerFallback\(\)/);
+  assert.match(native, /this\.deps\.loadAVPlayer\(\)/);
+  assert.doesNotMatch(native, /AVPlayerWrapper|transitionNativeToAVPlayer|MediaError\./);
+});
+
+test("every host callback of the activation host resolves to a method the hook still defines", async () => {
+  const hook = await source(hookUrl);
+  const start = hook.indexOf("  buildPlaybackEngineActivationHost() {");
+  const end = hook.indexOf("  initPlaybackEngineActivation() {", start);
+  assert.ok(start >= 0 && end > start, "host builder must exist before the activation wiring");
+
+  const hostBuilder = hook.slice(start, end);
+  const referenced = new Set(
+    [...hostBuilder.matchAll(/this\.([A-Za-z_$][\w$]*)\(/g)].map((match) => match[1]),
+  );
+  assert.ok(referenced.size >= 15, "host builder must delegate to hook methods");
+
+  for (const name of referenced) {
+    const defined = new RegExp(`^  (?:async )?${name}\\(`, "m").test(hook);
+    assert.ok(
+      defined,
+      `activation host references this.${name}() but the hook no longer defines it`,
+    );
+  }
 });

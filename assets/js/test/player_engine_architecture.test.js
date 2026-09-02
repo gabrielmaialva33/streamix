@@ -55,6 +55,6 @@ test("StreamLoader owns HLS transport while the HLS activation borrows its engin
 
   assert.match(hook, /activateHlsEngineFromLoader\(/);
   assert.match(hook, /\?\.adoptLoaderEngine\(sessionId, loader\)/);
-  assert.match(hook, /ownsEngine: engineOverride == null/);
+  assert.match(hook, /setMediaElementEngine\(engineId, engine, \{ ownsEngine = false \} = \{\}\)/);
   assert.doesNotMatch(hook, /loader\.getHlsEngine|new Hls\(/);
 });
