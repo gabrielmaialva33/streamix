@@ -100,6 +100,7 @@ import { createSourceFailoverController } from "../player/source_failover_contro
 import { createStreamTransport } from "../player/stream_transport.js";
 import { createSubtitleSourceResolver } from "../player/subtitle_source_resolver.js";
 import { hasSubtitleInLanguage } from "../player/track_metadata";
+import { createTrackProbeController } from "../player/track_probe_controller.js";
 import { createWatchPartyPlayerPolicy } from "../watch_party/player_policy.js";
 
 /**
@@ -442,6 +443,29 @@ const VideoPlayer = {
       onError: (operation, error) =>
         log.debug(`[VideoPlayer] Track operation ${operation} failed:`, error),
     });
+    this.trackProbeController = createTrackProbeController({
+      host: {
+        getContentId: () => this.el?.dataset?.contentId,
+        getContentType: () => this.contentType,
+        getResourcePolicy: () => this.getPlaybackResourcePolicy(),
+        getSessionId: () => this.playbackSessionId,
+        getVideo: () => this.video,
+        hasAVPlayer: () => this.avPlayer != null,
+        isDestroyed: () => this._destroyed === true,
+        isSessionCurrent: (sessionId) => this.isCurrentPlaybackSession(sessionId),
+        isSwitchingToAVPlayer: () => this._switchingToAVPlayer === true,
+        isUsingAVPlayer: () => this.usingAVPlayer === true,
+        prefersAVPlayer: () => this.preferAVPlayer === true,
+        presentProbedTracks: (options) =>
+          this.playerTrackPresentationController?.presentProbedTracks(options),
+        setAudioTrack: (trackIndex) => this.setAudioTrack(trackIndex),
+        setSubtitleTrack: (trackIndex) => this.setSubtitleTrack(trackIndex),
+        switchToAVPlayerWithTrack: (trackType, trackIndex, seekTime, shouldPlay) =>
+          this.switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay),
+        updateAudioTracks: () => this.updateAudioTracks(),
+        updateSubtitleTracks: () => this.updateSubtitleTracks(),
+      },
+    });
 
     this.nativeBufferingController = new NativeBufferingController({
       contentType: this.contentType,
@@ -550,7 +574,8 @@ const VideoPlayer = {
       handlePlaybackEnded: () => this.handlePlaybackEnded(),
       handlePlaybackPaused: () => this.handlePlaybackPaused(),
       handlePlaybackStarted: () => this.handlePlaybackStarted(),
-      hasProbedAudioTrack: (trackIndex) => Boolean(this._probedAudioTracks?.[trackIndex]),
+      hasProbedAudioTrack: (trackIndex) =>
+        this.trackProbeController?.hasProbedAudioTrack(trackIndex) === true,
       initPlayer: (options) => this.initPlayer(options),
       isAVPlayerAttempted: () => this.avPlayerAttempted === true,
       isDestroyed: () => this._destroyed === true,
@@ -2502,154 +2527,18 @@ const VideoPlayer = {
     this.releaseSubtitleSourceLease(sourceLease);
   },
 
-  /**
-   * Probe metadata in background.
-   *
-   * Old behavior spawned a 2nd full @libmedia/avplayer instance just to
-   * enumerate tracks — ~1 s wall time, ~5 MB of WASM, full Web Audio
-   * context. We replaced that with a server-side ffprobe cache:
-   * `/api/gindex-tracks/:type/:id` returns `{audio, subtitle}` from a
-   * jsonb column (or runs ffprobe + caches on miss, ~200 ms one-time).
-   *
-   * Cache miss fallback: if the API can't probe (file unreachable,
-   * not GIndex, etc.), we silently bail — native playback keeps
-   * working, the audio menu just shows whatever the native player
-   * exposes.
-   */
-  async probeMetadataInBackground() {
-    if (this.usingAVPlayer || this._metadataProbed || this._destroyed) return;
-    this._metadataProbed = true;
-    const sessionId = this.playbackSessionId;
-    const policy = this.getPlaybackResourcePolicy();
-    if (!policy.shouldProbeTracks) {
-      log.debug("[VideoPlayer] Skipping track probe:", policy.reason);
-      return;
-    }
-
-    const contentId = this.el.dataset.contentId;
-    const contentType = this.contentType; // "movie" | "episode" | "live"
-    if (!contentId || (contentType !== "movie" && contentType !== "episode")) return;
-
-    log.debug("[VideoPlayer] Probing GIndex tracks via API...");
-
-    try {
-      const res = await fetch(`/api/gindex-tracks/${contentType}/${contentId}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (this._destroyed || !this.isCurrentPlaybackSession(sessionId)) return;
-      if (!res.ok) {
-        log.debug("[VideoPlayer] Track probe API returned", res.status, "— skipping");
-        return;
-      }
-      const data = await res.json();
-      if (this._destroyed) return;
-
-      const audio = Array.isArray(data.audio) ? data.audio : [];
-      const subtitle = Array.isArray(data.subtitle) ? data.subtitle : [];
-
-      let preferredAudioTrack = 0;
-
-      const probedPresentation = this.playerTrackPresentationController?.presentProbedTracks({
-        audioTracks: audio,
-        onAudioSelect: (trackIndex) => this.handleProbedAudioTrackSelect(trackIndex),
-        onSubtitleSelect: (trackIndex) => this.handleProbedSubtitleTrackSelect(trackIndex),
-        sessionId,
-        subtitleTracks: subtitle,
-      });
-
-      this._probedAudioTracks = [...(probedPresentation?.audioTracks ?? [])];
-      this._probedSubtitleTracks = [...(probedPresentation?.subtitleTracks ?? [])];
-      preferredAudioTrack = probedPresentation?.selectedAudioTrack ?? 0;
-
-      if (this._destroyed) return;
-
-      // Dual Audio auto-switch: when there's more than one audio track,
-      // the native player can't reliably pick PT-BR — bridge to AVPlayer
-      // with the preferred track selected.
-      if (this._probedAudioTracks && this._probedAudioTracks.length > 1) {
-        if (policy.avoidSpeculativeWork && !this.preferAVPlayer) {
-          log.debug(
-            "[VideoPlayer] Dual audio detected, waiting for user selection:",
-            policy.reason,
-          );
-          return;
-        }
-
-        log.debug(
-          "[VideoPlayer] Multiple audio tracks detected, auto-switching to AVPlayer with Portuguese track",
-          preferredAudioTrack,
-        );
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        if (!this._destroyed) this.handleProbedAudioTrackSelect(preferredAudioTrack);
-      }
-    } catch (e) {
-      log.debug("[VideoPlayer] Track probe API call failed:", e?.message);
-    }
+  probeMetadataInBackground() {
+    return this.trackProbeController?.probe() ?? Promise.resolve(false);
   },
 
-  /**
-   * Handle audio track selection from probed tracks (switches to AVPlayer)
-   */
-  async handleProbedAudioTrackSelect(trackIndex) {
-    // Prevent duplicate switch attempts
-    if (this._switchingToAVPlayer) {
-      log.debug("[VideoPlayer] Already switching to AVPlayer, ignoring...");
-      return;
-    }
-
-    // If already using AVPlayer, refresh its concrete capabilities first.
-    if (this.usingAVPlayer && this.avPlayer) {
-      const tracks = await this.updateAudioTracks();
-      if (tracks?.[trackIndex]) await this.setAudioTrack(trackIndex);
-      return;
-    }
-
-    log.debug("[VideoPlayer] User selected audio track, switching to AVPlayer...");
-
-    // Save current position before switching
-    const currentTime = this.video.currentTime;
-    const wasPlaying = !this.video.paused;
-
-    // Switch to AVPlayer with selected track
-    await this.switchToAVPlayerWithTrack("audio", trackIndex, currentTime, wasPlaying);
+  handleProbedAudioTrackSelect(trackIndex) {
+    return this.trackProbeController?.selectAudioTrack(trackIndex) ?? Promise.resolve(false);
   },
 
-  /**
-   * Handle subtitle track selection from probed tracks (switches to AVPlayer)
-   */
-  async handleProbedSubtitleTrackSelect(trackIndex) {
-    // Prevent duplicate switch attempts
-    if (this._switchingToAVPlayer) {
-      log.debug("[VideoPlayer] Already switching to AVPlayer, ignoring...");
-      return;
-    }
-
-    // If already using AVPlayer, refresh its concrete capabilities first.
-    if (this.usingAVPlayer && this.avPlayer) {
-      const tracks = await this.updateSubtitleTracks();
-      if (trackIndex === -1 || tracks?.[trackIndex]) await this.setSubtitleTrack(trackIndex);
-      return;
-    }
-
-    if (trackIndex === -1) {
-      // Subtitles disabled, no need to switch if not using AVPlayer
-      log.debug("[VideoPlayer] Subtitles disabled, staying on native");
-      return;
-    }
-
-    log.debug("[VideoPlayer] User selected subtitle track, switching to AVPlayer...");
-
-    // Save current position before switching
-    const currentTime = this.video.currentTime;
-    const wasPlaying = !this.video.paused;
-
-    // Switch to AVPlayer
-    await this.switchToAVPlayerWithTrack("subtitle", trackIndex, currentTime, wasPlaying);
+  handleProbedSubtitleTrackSelect(trackIndex) {
+    return this.trackProbeController?.selectSubtitleTrack(trackIndex) ?? Promise.resolve(false);
   },
 
-  /**
-   * Switch from native to AVPlayer and apply selected track
-   */
   switchToAVPlayerWithTrack(trackType, trackIndex, seekTime, shouldPlay) {
     return (
       this.avPlayerEngineActivation?.switchWithTrack(trackType, trackIndex, seekTime, shouldPlay) ??
@@ -2804,6 +2693,8 @@ const VideoPlayer = {
     this.nativeBufferManager?.stop();
     this.subtitleSourceResolver?.destroy();
     this.subtitleSourceResolver = null;
+    this.trackProbeController?.destroy();
+    this.trackProbeController = null;
     this.playerTrackController?.destroy();
     this.playerTrackPresentationController?.destroy();
     this.playerTrackPresentationController = null;
