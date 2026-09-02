@@ -57,6 +57,7 @@ npm-debug.log
 *.wgt
 cookies.txt
 /test-results/
+.playwright-cli
 
 # Generated agent documentation
 /docs/superpowers/
