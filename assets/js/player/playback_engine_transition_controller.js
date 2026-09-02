@@ -180,8 +180,13 @@ export class PlaybackEngineTransitionController {
       if (
         activeContext?.cancelled ||
         activeContext?.committed ||
-        this._phase === PLAYBACK_ENGINE_TRANSITION_PHASE.COMPLETED
+        this._phase === PLAYBACK_ENGINE_TRANSITION_PHASE.COMPLETED ||
+        this._phase === PLAYBACK_ENGINE_TRANSITION_PHASE.FAILED
       ) {
+        // A failure handler may request recovery while its own transition is
+        // still settling. Queue the recovery behind that promise instead of
+        // handing the pending transition back, which would deadlock a handler
+        // that awaits it.
         return this._activePromise.then(() => this.recover(options));
       }
       return this._activePromise;
