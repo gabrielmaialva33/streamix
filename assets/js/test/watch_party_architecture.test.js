@@ -28,6 +28,7 @@ test("watch party modules are pure or explicitly injected, never LiveView or hoo
       "player_binding.js",
       "player_policy.js",
       "reactions.js",
+      "status_publisher.js",
       "sync_status.js",
     ],
   );
@@ -70,12 +71,13 @@ test("the sync hook composes the modules and keeps only transport, binding and h
     "createSyncCommandScheduler",
     "createBeaconScheduler",
     "createReactionPresenter",
+    "createSyncStatusPublisher",
   ]) {
     assert.match(hook, new RegExp(`this\\.\\w+ = ${factory}\\(`), `hook must compose ${factory}`);
   }
   assert.match(hook, /resolveDriftCorrection\(\{/);
-  assert.match(hook, /resolveSyncStatus\(\{/);
-  assert.match(hook, /renderSyncStatus\(element, \{/);
+  assert.match(hook, /this\.status\.publish\(status, driftMs\)/);
+  assert.match(hook, /this\.status\.renderBadge\(status, driftMs\)/);
   assert.match(hook, /_setup\(\) \{/);
   assert.match(hook, /_defineAccessors\(\) \{/);
   assert.doesNotMatch(
@@ -105,6 +107,12 @@ test("the sync hook composes the modules and keeps only transport, binding and h
     "streamix:buffering",
     "playerWaitTimer",
     'getElementById("video-player-container")',
+    'getElementById("watch-party-sync-status")',
+    "resolveSyncStatus(",
+    "normalizeDriftMs(",
+    "driftChanged(",
+    "renderSyncStatus(",
+    "lastPublishedStatus =",
   ]) {
     assert.equal(
       hook.includes(leakedInternal),
