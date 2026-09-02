@@ -1,4 +1,3 @@
-import { PLAYBACK_BRIDGE_EVENT } from "../player/playback_bridge.js";
 import { createBeaconScheduler } from "../watch_party/beacon_scheduler.js";
 import { createClockSync } from "../watch_party/clock_sync.js";
 import { createSyncCommandScheduler } from "../watch_party/command_scheduler.js";
@@ -9,6 +8,7 @@ import {
   RATE_RESET_DELAY_MS,
   resolveDriftCorrection,
 } from "../watch_party/drift_policy.js";
+import { createWatchPartyPlayerBinding } from "../watch_party/player_binding.js";
 import { createReactionPresenter } from "../watch_party/reactions.js";
 import {
   driftChanged,
@@ -19,18 +19,16 @@ import {
 } from "../watch_party/sync_status.js";
 
 const PLAYER_READY_EVENT = "streamix:playback-ready";
-const BUFFERING_EVENT = "streamix:buffering";
 const MAX_ACTION_DELAY_MS = 1500;
-const PLAYER_POLL_FAST_ATTEMPTS = 50;
 const SYNC_STATUS_ELEMENT_ID = "watch-party-sync-status";
 
 /**
  * Watch Party sync hook: composition root for the viewer/host sync loop.
  *
  * Clock estimation, command ordering, delayed command scheduling, drift policy,
- * status vocabulary, beacon cadence and reaction/copy presentation live in
- * `assets/js/watch_party/`. The hook owns LiveView transport, the player
- * bridge binding and the durable hold state.
+ * status vocabulary, beacon cadence, reaction/copy presentation and the player
+ * bridge binding live in `assets/js/watch_party/`. The hook owns LiveView
+ * transport, the durable hold state and the orchestration between them.
  */
 const WatchPartySync = {
   mounted() {
@@ -73,15 +71,10 @@ const WatchPartySync = {
     this.roomId = this.el?.dataset?.roomId;
     this.connectedToLiveView = true;
     this.destroyedHook = false;
-    this.playerEl = null;
-    this.videoEl = null;
-    this.playback = null;
-    this.playerWaitTimer = null;
     this.rateResetTimer = null;
     this.syncHold = !this.isHost;
     this.syncHoldReason = this.isHost ? null : "connecting";
     this.isBuffering = false;
-    this.nativeHlsPlayback = false;
     this.lastHostStatus = null;
     this.lastPublishedStatus = null;
     this.lastPublishedDrift = null;
@@ -91,6 +84,55 @@ const WatchPartySync = {
     this.commands = createSyncCommandScheduler();
     this.beacons = createBeaconScheduler({ send: () => this._sendBeacon() });
     this.reactions = createReactionPresenter();
+    this.binding = createWatchPartyPlayerBinding({
+      getSyncHold: () => this.syncHold,
+      isDestroyed: () => this.destroyedHook,
+      isHost: this.isHost,
+      onBound: () => this._handlePlayerBound(),
+      onBuffering: (buffering) => this._setBuffering(buffering),
+      onHostPlaybackEvent: (event, position) => this._safePush(event, { position }),
+      owner: this,
+      shouldForwardHostEvent: () => !this.syncLock && !this.destroyedHook,
+    });
+    this._defineAccessors();
+  },
+
+  // LiveView copies every own property of this object onto the hook instance
+  // (`this[key] = callbacks[key]`), which freezes prototype getters into
+  // one-time values. Live accessors must therefore be defined on the
+  // instance itself, after the collaborators exist.
+  _defineAccessors() {
+    const define = (name, get, set = null) =>
+      Object.defineProperty(this, name, {
+        configurable: true,
+        enumerable: false,
+        get,
+        ...(set ? { set } : {}),
+      });
+
+    define(
+      "playback",
+      () => this.binding?.playback ?? null,
+      (value) => {
+        if (this.binding) this.binding.playback = value;
+      },
+    );
+    define("playerEl", () => this.binding?.playerEl ?? null);
+    define("videoEl", () => this.binding?.videoEl ?? null);
+    define(
+      "nativeHlsPlayback",
+      () => this.binding?.nativeHlsPlayback === true,
+      (value) => {
+        if (this.binding) this.binding.nativeHlsPlayback = value === true;
+      },
+    );
+    define(
+      "useConservativeSync",
+      () => this.nativeHlsPlayback || this.playback?.supportsPlaybackRate?.() === false,
+    );
+    define("syncLock", () => this.commands?.locked === true);
+    define("clockReady", () => this.clock?.ready === true);
+    define("commandGeneration", () => this.commands?.generation ?? 0);
   },
 
   disconnected() {
@@ -132,10 +174,9 @@ const WatchPartySync = {
     this.beacons?.destroy();
     this.commands?.destroy();
     this._clearClockTimers();
-    this._clearTimer("playerWaitTimer");
     this._clearTimer("rateResetTimer");
     this._setSyncHold(false);
-    this._unbindPlayer();
+    this.binding?.destroy();
     this.reactions?.destroy();
 
     document.removeEventListener(PLAYER_READY_EVENT, this._onPlaybackReady);
@@ -144,96 +185,21 @@ const WatchPartySync = {
     if (this.el?.__watchPartySyncHook === this) delete this.el.__watchPartySyncHook;
   },
 
-  get useConservativeSync() {
-    return this.nativeHlsPlayback || this.playback?.supportsPlaybackRate?.() === false;
-  },
-
-  get syncLock() {
-    return this.commands?.locked === true;
-  },
-
-  get clockReady() {
-    return this.clock?.ready === true;
-  },
-
-  get commandGeneration() {
-    return this.commands?.generation ?? 0;
-  },
-
   // Player binding
 
   _waitForPlayer(attempts = 0) {
-    if (this.destroyedHook) return;
-    if (this._ensurePlayerBinding()) return;
-
-    const delay = attempts < PLAYER_POLL_FAST_ATTEMPTS ? 200 : 2000;
-    this._clearTimer("playerWaitTimer");
-    this.playerWaitTimer = setTimeout(() => this._waitForPlayer(attempts + 1), delay);
+    return this.binding.waitForPlayer(attempts);
   },
 
   _ensurePlayerBinding() {
-    if (this.destroyedHook) return false;
-
-    const playerEl = document.getElementById("video-player-container");
-    const videoEl = playerEl?.querySelector("video") || null;
-    if (!playerEl?.streamixPlayback || !videoEl) return false;
-
-    if (
-      this.playerEl !== playerEl ||
-      this.playback !== playerEl.streamixPlayback ||
-      playerEl.__watchPartySyncHook !== this
-    ) {
-      this._bindPlayer(playerEl, videoEl);
-    }
-
-    return true;
+    return this.binding.ensure();
   },
 
-  _bindPlayer(playerEl, videoEl) {
-    if (
-      this.playerEl === playerEl &&
-      this.playback === playerEl.streamixPlayback &&
-      playerEl.__watchPartySyncHook === this
-    ) {
-      return;
-    }
+  _unbindPlayer() {
+    return this.binding.unbind();
+  },
 
-    this._unbindPlayer();
-    this._clearTimer("playerWaitTimer");
-    this.playerEl = playerEl;
-    this.videoEl = videoEl;
-    this.playback = playerEl.streamixPlayback;
-    this.playback.setSyncHold?.(this.syncHold);
-    playerEl.__watchPartySyncHook = this;
-    this.nativeHlsPlayback = Boolean(
-      videoEl.canPlayType("application/vnd.apple.mpegurl") ||
-        videoEl.canPlayType("application/x-mpegURL"),
-    );
-
-    this._onBufferingEvent = (event) => {
-      if (typeof event.detail?.buffering === "boolean") {
-        this._setBuffering(event.detail.buffering);
-      }
-    };
-    playerEl.addEventListener(BUFFERING_EVENT, this._onBufferingEvent);
-
-    this._onWaiting = () => this._setBuffering(true);
-    this._onCanPlay = () => this._setBuffering(false);
-    this._onPlaying = () => this._setBuffering(false);
-    videoEl.addEventListener("waiting", this._onWaiting);
-    videoEl.addEventListener("canplay", this._onCanPlay);
-    videoEl.addEventListener("playing", this._onPlaying);
-
-    if (this.isHost) {
-      const eventToPush = { play: "wp_play", pause: "wp_pause", seeked: "wp_seek" };
-      this._onPlaybackEvent = (event) => {
-        if (this.syncLock || this.destroyedHook) return;
-        const pushEvent = eventToPush[event.detail?.type];
-        if (pushEvent) this._safePush(pushEvent, { position: this._position() });
-      };
-      playerEl.addEventListener(PLAYBACK_BRIDGE_EVENT, this._onPlaybackEvent);
-    }
-
+  _handlePlayerBound() {
     this._applyHostSnapshot();
     this._applyServerSnapshot();
     this._estimateClockOffset();
@@ -241,35 +207,6 @@ const WatchPartySync = {
     this._sendBeacon();
     this._safePush("wp_request_sync", {});
     this._publishStatus(this.isHost ? "synced" : "connecting");
-  },
-
-  _unbindPlayer() {
-    this.playback?.setSyncHold?.(false);
-
-    if (this.playerEl?.__watchPartySyncHook === this) {
-      delete this.playerEl.__watchPartySyncHook;
-    }
-
-    if (this.playerEl && this._onPlaybackEvent) {
-      this.playerEl.removeEventListener(PLAYBACK_BRIDGE_EVENT, this._onPlaybackEvent);
-    }
-    if (this.playerEl && this._onBufferingEvent) {
-      this.playerEl.removeEventListener(BUFFERING_EVENT, this._onBufferingEvent);
-    }
-    if (this.videoEl) {
-      if (this._onWaiting) this.videoEl.removeEventListener("waiting", this._onWaiting);
-      if (this._onCanPlay) this.videoEl.removeEventListener("canplay", this._onCanPlay);
-      if (this._onPlaying) this.videoEl.removeEventListener("playing", this._onPlaying);
-    }
-
-    this._onPlaybackEvent = null;
-    this._onBufferingEvent = null;
-    this._onWaiting = null;
-    this._onCanPlay = null;
-    this._onPlaying = null;
-    this.playerEl = null;
-    this.videoEl = null;
-    this.playback = null;
   },
 
   _setBuffering(buffering) {
