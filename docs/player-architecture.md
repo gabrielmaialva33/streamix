@@ -27,7 +27,7 @@ state out of the Phoenix hook while preserving a single user-facing player.
 
 ```text
 VideoPlayer hook
-  ├── DOM, Phoenix events, controls, Watch Party, PiP and Media Session
+  ├── DOM, Phoenix events, controls, Watch Party policy, PiP and Media Session
   ├── PlaybackOrchestrator
   │     ├── playback session and lifecycle
   │     ├── EngineRegistry
@@ -249,3 +249,24 @@ When adding or modifying an engine:
    full test suite, and the three-browser matrix.
 7. Ensure generated `priv/static` artifacts and temporary inspection files are
    not committed.
+
+## Watch Party sync
+
+`assets/js/hooks/watch_party_sync.js` is the composition root for the room
+sync loop. It owns LiveView transport (`wp_*` events), the binding to the
+player bridge (`streamixPlayback`) and the durable hold state. The decision
+and timing pieces live in `assets/js/watch_party/`:
+
+| Module | Responsibility |
+|--------|----------------|
+| `clock_sync.js` | ping/pong burst, best-RTT median offset, `serverNow()` |
+| `command_sequencer.js` | monotonic room sequence / legacy server-time ordering |
+| `command_scheduler.js` | delayed host actions under a generation counter, sync lock |
+| `drift_policy.js` | pure viewer reaction (resume, pause, seek, nudge, hold, synced) |
+| `sync_status.js` | status precedence, drift throttling, labels and badge classes |
+| `beacon_scheduler.js` | adaptive beacon cadence |
+| `reactions.js` | floating reactions and invite-copy feedback |
+
+Modules never touch globals or LiveView directly: timers, documents and the
+push function are injected, which keeps every policy testable without a
+browser. `watch_party_architecture.test.js` enforces that boundary.
