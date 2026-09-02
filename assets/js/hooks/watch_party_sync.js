@@ -1,45 +1,41 @@
 import { PLAYBACK_BRIDGE_EVENT } from "../player/playback_bridge.js";
+import { createBeaconScheduler } from "../watch_party/beacon_scheduler.js";
+import { createClockSync } from "../watch_party/clock_sync.js";
+import { createSyncCommandScheduler } from "../watch_party/command_scheduler.js";
+import { createCommandSequencer } from "../watch_party/command_sequencer.js";
+import {
+  DRIFT_ACTION,
+  driftThresholds,
+  RATE_RESET_DELAY_MS,
+  resolveDriftCorrection,
+} from "../watch_party/drift_policy.js";
+import { createReactionPresenter } from "../watch_party/reactions.js";
+import {
+  driftChanged,
+  normalizeDriftMs,
+  renderSyncStatus,
+  resolveSyncStatus,
+  syncStatusText,
+} from "../watch_party/sync_status.js";
 
 const PLAYER_READY_EVENT = "streamix:playback-ready";
 const BUFFERING_EVENT = "streamix:buffering";
 const MAX_ACTION_DELAY_MS = 1500;
 const PLAYER_POLL_FAST_ATTEMPTS = 50;
+const SYNC_STATUS_ELEMENT_ID = "watch-party-sync-status";
 
+/**
+ * Watch Party sync hook: composition root for the viewer/host sync loop.
+ *
+ * Clock estimation, command ordering, delayed command scheduling, drift policy,
+ * status vocabulary, beacon cadence and reaction/copy presentation live in
+ * `assets/js/watch_party/`. The hook owns LiveView transport, the player
+ * bridge binding and the durable hold state.
+ */
 const WatchPartySync = {
   mounted() {
-    this.isHost = this.el.dataset.isHost === "true";
-    this.roomId = this.el.dataset.roomId;
+    this._setup();
     this.el.__watchPartySyncHook = this;
-    this.connectedToLiveView = true;
-    this.destroyedHook = false;
-    this.playerEl = null;
-    this.videoEl = null;
-    this.playback = null;
-    this.playerWaitTimer = null;
-    this.beaconInterval = null;
-    this.currentBeaconMs = null;
-    this.rateResetTimer = null;
-    this.syncLock = false;
-    this.syncLockTimeout = null;
-    this.syncHold = !this.isHost;
-    this.syncHoldReason = this.isHost ? null : "connecting";
-    this.isBuffering = false;
-    this.nativeHlsPlayback = false;
-    this.clockOffset = 0;
-    this.clockReady = false;
-    this.clockOffsetSamples = [];
-    this.clockPingId = 0;
-    this.clockPingAttempts = 0;
-    this.clockPings = new Map();
-    this.clockPingTimer = null;
-    this.lastServerSequence = 0;
-    this.lastServerCommandTime = 0;
-    this.lastHostStatus = null;
-    this.commandGeneration = 0;
-    this.pendingCommandTimers = new Set();
-    this.reactionTimers = new Set();
-    this.lastPublishedStatus = null;
-    this.lastPublishedDrift = null;
 
     this.handleEvent("wp_sync_command", (command) => this._handleSyncCommand(command));
     this.handleEvent("wp_floating_reaction", (data) => this._showFloatingReaction(data));
@@ -68,6 +64,33 @@ const WatchPartySync = {
     document.addEventListener("visibilitychange", this._visibilityHandler);
 
     this._waitForPlayer(0);
+  },
+
+  // DOM-free state and collaborators. Tests build a hook context and call this
+  // directly; `mounted()` adds the document and window listeners on top.
+  _setup() {
+    this.isHost = this.el?.dataset?.isHost === "true";
+    this.roomId = this.el?.dataset?.roomId;
+    this.connectedToLiveView = true;
+    this.destroyedHook = false;
+    this.playerEl = null;
+    this.videoEl = null;
+    this.playback = null;
+    this.playerWaitTimer = null;
+    this.rateResetTimer = null;
+    this.syncHold = !this.isHost;
+    this.syncHoldReason = this.isHost ? null : "connecting";
+    this.isBuffering = false;
+    this.nativeHlsPlayback = false;
+    this.lastHostStatus = null;
+    this.lastPublishedStatus = null;
+    this.lastPublishedDrift = null;
+
+    this.clock = createClockSync({ push: (event, payload) => this._safePush(event, payload) });
+    this.sequencer = createCommandSequencer();
+    this.commands = createSyncCommandScheduler();
+    this.beacons = createBeaconScheduler({ send: () => this._sendBeacon() });
+    this.reactions = createReactionPresenter();
   },
 
   disconnected() {
@@ -106,16 +129,14 @@ const WatchPartySync = {
     this.destroyedHook = true;
     this.connectedToLiveView = false;
     this._stopBeacon();
-    this._cancelPendingCommands();
+    this.beacons?.destroy();
+    this.commands?.destroy();
     this._clearClockTimers();
     this._clearTimer("playerWaitTimer");
     this._clearTimer("rateResetTimer");
-    this._clearTimer("syncLockTimeout");
     this._setSyncHold(false);
     this._unbindPlayer();
-
-    for (const timer of this.reactionTimers) clearTimeout(timer);
-    this.reactionTimers.clear();
+    this.reactions?.destroy();
 
     document.removeEventListener(PLAYER_READY_EVENT, this._onPlaybackReady);
     document.removeEventListener("visibilitychange", this._visibilityHandler);
@@ -126,6 +147,20 @@ const WatchPartySync = {
   get useConservativeSync() {
     return this.nativeHlsPlayback || this.playback?.supportsPlaybackRate?.() === false;
   },
+
+  get syncLock() {
+    return this.commands?.locked === true;
+  },
+
+  get clockReady() {
+    return this.clock?.ready === true;
+  },
+
+  get commandGeneration() {
+    return this.commands?.generation ?? 0;
+  },
+
+  // Player binding
 
   _waitForPlayer(attempts = 0) {
     if (this.destroyedHook) return;
@@ -268,80 +303,19 @@ const WatchPartySync = {
 
   _estimateClockOffset() {
     if (!this.connectedToLiveView || this.destroyedHook) return;
-
-    this.clockReady = false;
-    this.clockOffsetSamples = [];
-    this.clockPingAttempts = 0;
-    this._clearClockTimers();
-    this._sendClockPing();
-  },
-
-  _sendClockPing() {
-    if (!this.connectedToLiveView || this.destroyedHook) return;
-    if (this.clockPingAttempts >= 5) {
-      this._computeClockOffset();
-      return;
-    }
-
-    this.clockPingAttempts += 1;
-    this.clockPingId += 1;
-    const id = this.clockPingId;
-    const startedAt = Date.now();
-    const timeout = setTimeout(() => {
-      this.clockPings.delete(id);
-      this._scheduleClockPing();
-    }, 2000);
-
-    this.clockPings.set(id, { startedAt, timeout });
-    this._safePush("wp_clock_ping", { id, client_time: startedAt });
+    this.clock.estimate();
   },
 
   _handleClockPong(data) {
-    const ping = this.clockPings.get(data?.id);
-    const serverTime = Number(data?.server_time);
-    if (!ping || !Number.isFinite(serverTime)) return;
-
-    clearTimeout(ping.timeout);
-    this.clockPings.delete(data.id);
-
-    const receivedAt = Date.now();
-    const rtt = receivedAt - ping.startedAt;
-    if (rtt >= 0 && rtt < 1000) {
-      this.clockOffsetSamples.push({
-        offset: (ping.startedAt + receivedAt) / 2 - serverTime,
-        rtt,
-      });
-    }
-
-    this._scheduleClockPing();
-  },
-
-  _scheduleClockPing() {
-    this._clearTimer("clockPingTimer");
-    this.clockPingTimer = setTimeout(() => this._sendClockPing(), 200);
-  },
-
-  _computeClockOffset() {
-    if (this.clockOffsetSamples.length === 0) return;
-
-    const offsets = [...this.clockOffsetSamples]
-      .sort((left, right) => left.rtt - right.rtt)
-      .slice(0, 3)
-      .map((sample) => sample.offset)
-      .sort((left, right) => left - right);
-
-    this.clockOffset = offsets[Math.floor(offsets.length / 2)];
-    this.clockReady = true;
+    this.clock.handlePong(data);
   },
 
   _serverNow() {
-    return Date.now() - this.clockOffset;
+    return this.clock.serverNow();
   },
 
   _clearClockTimers() {
-    this._clearTimer("clockPingTimer");
-    for (const ping of this.clockPings.values()) clearTimeout(ping.timeout);
-    this.clockPings.clear();
+    this.clock?.cancel();
   },
 
   // Command ordering and correction
@@ -423,27 +397,11 @@ const WatchPartySync = {
   },
 
   _acceptCommand(command) {
-    const sequence = Number(command?.sequence);
-    if (Number.isInteger(sequence) && sequence > 0) {
-      if (sequence < this.lastServerSequence) return false;
-      if (sequence === this.lastServerSequence) {
-        return this.syncHold && command?.type === "sync";
-      }
-      this.lastServerSequence = sequence;
-      return true;
-    }
-
-    const serverTime = Number(command?.server_time);
-    if (Number.isFinite(serverTime)) {
-      if (serverTime <= this.lastServerCommandTime) return false;
-      this.lastServerCommandTime = serverTime;
-    }
-
-    return true;
+    return this.sequencer.accept(command, { holding: this.syncHold });
   },
 
   _applyActionCommand(command, generation) {
-    if (!this.playback || generation !== this.commandGeneration || this.destroyedHook) return;
+    if (!this.playback || !this.commands.isCurrent(generation) || this.destroyedHook) return;
 
     const targetPosition = Number(command.position);
     if (!Number.isFinite(targetPosition) || targetPosition < 0) return;
@@ -451,7 +409,7 @@ const WatchPartySync = {
 
     switch (command.type) {
       case "play": {
-        const driftThreshold = this.useConservativeSync ? 1.0 : 0.3;
+        const driftThreshold = driftThresholds(this.useConservativeSync).play;
         void Promise.resolve(this.playback.play?.()).catch(() => {});
         this._scheduleCommand(
           () => {
@@ -478,97 +436,63 @@ const WatchPartySync = {
   },
 
   _correctDrift(serverPosition, serverState, serverTime) {
-    const position = Number(serverPosition);
-    const sentAt = Number(serverTime);
-    if (!Number.isFinite(position) || position < 0) return;
-    if (!["playing", "paused"].includes(serverState)) return;
+    const correction = resolveDriftCorrection({
+      clockReady: this.clockReady,
+      conservative: this.useConservativeSync,
+      currentPosition: this._position(),
+      paused: this._isPaused(),
+      serverNow: this._serverNow(),
+      serverPosition,
+      serverState,
+      serverTime,
+    });
+    if (!correction) return;
 
-    const elapsed =
-      serverState === "playing" && this.clockReady && Number.isFinite(sentAt)
-        ? Math.max(0, Math.min(10, (this._serverNow() - sentAt) / 1000))
-        : 0;
-    const targetPosition = position + elapsed;
-    const drift = this._position() - targetPosition;
-    const absoluteDrift = Math.abs(drift);
-    const driftMs = Math.round(absoluteDrift * 1000);
+    const { action, beacon, driftMs, lock, rate, seek, status, targetPosition } = correction;
+    if (lock) this._setSyncLock();
 
-    if (serverState === "playing" && this._isPaused()) {
-      this._setSyncLock();
-      void Promise.resolve(this.playback.play?.()).catch(() => {});
-      if (absoluteDrift > (this.useConservativeSync ? 1.0 : 0.3)) {
+    switch (action) {
+      case DRIFT_ACTION.RESUME:
+        void Promise.resolve(this.playback.play?.()).catch(() => {});
+        if (seek) this.playback.seekTo?.(targetPosition);
+        break;
+      case DRIFT_ACTION.PAUSE:
+        void Promise.resolve(this.playback.pause?.()).catch(() => {});
         this.playback.seekTo?.(targetPosition);
-      }
-      this._setAdaptiveBeacon("catchup");
-      this._publishStatus("correcting", driftMs);
-      return;
+        break;
+      case DRIFT_ACTION.SYNCED:
+        this._resetPlaybackRate();
+        break;
+      case DRIFT_ACTION.SEEK:
+        this.playback.seekTo?.(targetPosition);
+        this._resetPlaybackRate();
+        break;
+      case DRIFT_ACTION.HOLD:
+        break;
+      case DRIFT_ACTION.NUDGE:
+        this.playback.setPlaybackRate?.(rate);
+        this._clearTimer("rateResetTimer");
+        this.rateResetTimer = setTimeout(() => this._resetPlaybackRate(), RATE_RESET_DELAY_MS);
+        break;
     }
 
-    if (serverState === "paused" && !this._isPaused()) {
-      this._setSyncLock();
-      void Promise.resolve(this.playback.pause?.()).catch(() => {});
-      this.playback.seekTo?.(targetPosition);
-      this._setAdaptiveBeacon("synced");
-      this._publishStatus("synced", driftMs);
-      return;
-    }
-
-    const syncedThreshold = this.useConservativeSync ? 1.0 : 0.1;
-    const seekThreshold = this.useConservativeSync ? 3.0 : 0.5;
-
-    if (absoluteDrift < syncedThreshold) {
-      this._resetPlaybackRate();
-      this._setAdaptiveBeacon("synced");
-      this._publishStatus("synced", driftMs);
-      return;
-    }
-
-    if (absoluteDrift > seekThreshold) {
-      this._setSyncLock();
-      this.playback.seekTo?.(targetPosition);
-      this._resetPlaybackRate();
-      this._setAdaptiveBeacon("catchup");
-      this._publishStatus("correcting", driftMs);
-      return;
-    }
-
-    if (this.useConservativeSync) {
-      this._setAdaptiveBeacon("synced");
-      this._publishStatus("synced", driftMs);
-      return;
-    }
-
-    const direction = drift < 0 ? 1 : -1;
-    const normalized = Math.min(1, absoluteDrift / 0.5);
-    const adjustment = normalized * normalized * 0.15;
-    this.playback.setPlaybackRate?.(Math.max(0.8, Math.min(1.2, 1 + direction * adjustment)));
-    this._setAdaptiveBeacon("correcting");
-    this._publishStatus("correcting", driftMs);
-
-    this._clearTimer("rateResetTimer");
-    this.rateResetTimer = setTimeout(() => this._resetPlaybackRate(), 3000);
+    this._setAdaptiveBeacon(beacon);
+    this._publishStatus(status, driftMs);
   },
 
-  _scheduleCommand(callback, delay, generation) {
-    const timer = setTimeout(() => {
-      this.pendingCommandTimers.delete(timer);
-      if (generation === this.commandGeneration && !this.destroyedHook) callback();
+  _scheduleCommand(callback, delay, generation = this.commandGeneration) {
+    if (!this.commands.isCurrent(generation)) return;
+    this.commands.schedule(() => {
+      if (!this.destroyedHook) callback();
     }, delay);
-    this.pendingCommandTimers.add(timer);
   },
 
   _cancelPendingCommands() {
-    this.commandGeneration += 1;
-    for (const timer of this.pendingCommandTimers) clearTimeout(timer);
-    this.pendingCommandTimers.clear();
+    this.commands.cancelAll();
   },
 
   _setSyncLock() {
-    this.syncLock = true;
-    this._clearTimer("syncLockTimeout");
-    this.syncLockTimeout = setTimeout(() => {
-      this.syncLock = false;
-      this.syncLockTimeout = null;
-    }, 1500);
+    this.commands.lock();
   },
 
   _setSyncHold(held, reason = null) {
@@ -604,26 +528,11 @@ const WatchPartySync = {
   },
 
   _stopBeacon() {
-    if (this.beaconInterval) clearInterval(this.beaconInterval);
-    this.beaconInterval = null;
+    this.beacons?.stop();
   },
 
   _setAdaptiveBeacon(mode) {
-    const intervals = {
-      catchup: 1000,
-      correcting: 2000,
-      normal: 5000,
-      synced: 8000,
-    };
-    const interval = intervals[mode] || 5000;
-
-    if (this.beaconInterval && interval === this.currentBeaconMs) return;
-
-    this.currentBeaconMs = interval;
-    this._stopBeacon();
-    if (!this.connectedToLiveView || this.destroyedHook) return;
-
-    this.beaconInterval = setInterval(() => this._sendBeacon(), interval);
+    this.beacons.setMode(mode, { active: this.connectedToLiveView && !this.destroyedHook });
   },
 
   _sendBeacon({ urgent = false } = {}) {
@@ -666,86 +575,36 @@ const WatchPartySync = {
     }
   },
 
+  // Status
+
   _publishStatus(status, driftMs = null) {
-    if (!this.isHost) {
-      if (this.syncHoldReason === "buffering") status = "buffering";
-      if (this.syncHoldReason === "host_offline") status = "host_offline";
-      if (this.syncHoldReason === "disconnected") status = "disconnected";
-      if (this.syncHoldReason === "connecting") status = "connecting";
+    const resolved = resolveSyncStatus({
+      holdReason: this.syncHoldReason,
+      isHost: this.isHost,
+      status,
+    });
+    const normalizedDrift = normalizeDriftMs(driftMs);
+
+    this._renderStatus(resolved, normalizedDrift);
+    if (
+      resolved === this.lastPublishedStatus &&
+      !driftChanged(this.lastPublishedDrift, normalizedDrift)
+    ) {
+      return;
     }
-    if (this.isHost && status !== "buffering" && status !== "disconnected") status = "synced";
 
-    const numericDrift = Number(driftMs);
-    const normalizedDrift =
-      driftMs === null || driftMs === undefined || !Number.isFinite(numericDrift)
-        ? null
-        : Math.max(0, Math.round(numericDrift));
-    const driftChanged =
-      normalizedDrift !== null &&
-      (this.lastPublishedDrift === null ||
-        Math.abs(normalizedDrift - this.lastPublishedDrift) >= 100);
-
-    this._renderStatus(status, normalizedDrift);
-    if (status === this.lastPublishedStatus && !driftChanged) return;
-
-    this.lastPublishedStatus = status;
+    this.lastPublishedStatus = resolved;
     this.lastPublishedDrift = normalizedDrift;
-    this._safePush("wp_sync_status", { status, drift_ms: normalizedDrift });
+    this._safePush("wp_sync_status", { status: resolved, drift_ms: normalizedDrift });
   },
 
   _renderStatus(status, driftMs = null) {
-    const element = document.getElementById("watch-party-sync-status");
-    const textElement = element?.querySelector?.("[data-sync-status-text]");
-    if (!element || !textElement) return;
-
-    textElement.textContent = this._statusText(status, driftMs);
-    element.dataset.syncState = status;
-
-    element.classList.remove(
-      "bg-warning/90",
-      "bg-error/90",
-      "bg-brand/90",
-      "bg-success/90",
-      "text-black",
-      "text-white",
-    );
-
-    if (status === "disconnected") {
-      element.classList.add("bg-error/90", "text-white");
-    } else if (["host_offline", "connecting", "correcting", "buffering"].includes(status)) {
-      element.classList.add("bg-warning/90", "text-black");
-    } else if (this.isHost) {
-      element.classList.add("bg-brand/90", "text-white");
-    } else {
-      element.classList.add("bg-success/90", "text-black");
-    }
+    const element = document.getElementById(SYNC_STATUS_ELEMENT_ID);
+    return renderSyncStatus(element, { driftMs, isHost: this.isHost, status });
   },
 
   _statusText(status, driftMs = null) {
-    if (this.isHost) {
-      if (status === "buffering") return "Aguardando o buffer";
-      if (status === "disconnected") return "Sincronização desconectada";
-      return "Você controla a reprodução";
-    }
-
-    switch (status) {
-      case "host_offline":
-        return "Anfitrião desconectado — aguardando retorno";
-      case "connecting":
-        return "Conectando à sincronização";
-      case "correcting":
-        return Number.isInteger(driftMs) && driftMs > 0
-          ? `Ajustando sincronização (${driftMs} ms)`
-          : "Ajustando sincronização";
-      case "buffering":
-        return "Aguardando o buffer";
-      case "disconnected":
-        return "Sincronização desconectada";
-      default:
-        return Number.isInteger(driftMs) && driftMs >= 100
-          ? `Sincronizado com o anfitrião (${driftMs} ms)`
-          : "Sincronizado com o anfitrião";
-    }
+    return syncStatusText({ driftMs, isHost: this.isHost, status });
   },
 
   _safePush(event, payload) {
@@ -761,81 +620,12 @@ const WatchPartySync = {
 
   // Invite copy and reactions
 
-  async _copyInvite(event) {
-    const text = event.detail?.text;
-    if (typeof text !== "string" || text.length === 0) return;
-
-    let copied = false;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        copied = true;
-      }
-    } catch {
-      copied = false;
-    }
-
-    if (!copied) copied = this._legacyCopy(text);
-    this._announceCopy(copied, event.target);
-  },
-
-  _legacyCopy(text) {
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      const copied = document.execCommand?.("copy") === true;
-      textarea.remove();
-      return copied;
-    } catch {
-      return false;
-    }
-  },
-
-  _announceCopy(copied, target) {
-    let liveRegion = document.getElementById("watch-party-copy-status");
-    if (!liveRegion) {
-      liveRegion = document.createElement("span");
-      liveRegion.id = "watch-party-copy-status";
-      liveRegion.className = "sr-only";
-      liveRegion.setAttribute("aria-live", "polite");
-      document.body.appendChild(liveRegion);
-    }
-
-    liveRegion.textContent = copied
-      ? "Link da Watch Party copiado."
-      : "Não foi possível copiar o link.";
-    const button = target?.closest?.("button");
-    if (button && copied) {
-      const originalLabel = button.getAttribute("aria-label");
-      button.setAttribute("aria-label", "Link copiado");
-      const timer = setTimeout(() => {
-        this.reactionTimers.delete(timer);
-        if (originalLabel) button.setAttribute("aria-label", originalLabel);
-      }, 2000);
-      this.reactionTimers.add(timer);
-    }
+  _copyInvite(event) {
+    return this.reactions.copyInvite(event);
   },
 
   _showFloatingReaction(data) {
-    const container = document.getElementById("wp-reactions-container");
-    if (!container || typeof data?.emoji !== "string") return;
-
-    const element = document.createElement("div");
-    element.className = "floating-reaction";
-    element.textContent = data.emoji;
-    element.style.left = `${Math.random() * 80}px`;
-    container.appendChild(element);
-
-    const timer = setTimeout(() => {
-      this.reactionTimers.delete(timer);
-      element.remove();
-    }, 2000);
-    this.reactionTimers.add(timer);
+    return this.reactions.showFloatingReaction(data);
   },
 
   _clearTimer(property) {
