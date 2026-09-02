@@ -5,6 +5,7 @@ import test from "node:test";
 const streamLoaderUrl = new URL("../media/stream_loader.js", import.meta.url);
 const videoPlayerUrl = new URL("../hooks/video_player.js", import.meta.url);
 const engineUrl = new URL("../player/mpegts_playback_engine.js", import.meta.url);
+const activationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
 
 async function source(url) {
   return readFile(url, "utf8");
@@ -28,12 +29,19 @@ test("StreamLoader creates and owns the MPEG-TS playback engine", async () => {
   );
 });
 
-test("VideoPlayer borrows the MPEG-TS engine without owning transport teardown", async () => {
+test("the MPEG-TS activation borrows the engine without owning transport teardown", async () => {
   const hook = await source(videoPlayerUrl);
+  const activation = await source(activationUrl);
 
-  assert.match(hook, /const mpegtsEngine = this\.streamLoader\.getMpegtsEngine\(\);/);
-  assert.match(hook, /this\.mpegtsPlayer = this\.streamLoader\.getMpegtsPlayer\(\);/);
-  assert.match(hook, /this\.setMediaElementEngine\(ENGINE_ID\.MPEGTS, mpegtsEngine\);/);
+  assert.match(activation, /const mpegtsEngine = loader\.getMpegtsEngine\(\);/);
+  assert.match(activation, /this\.host\.setMpegtsPlayer\(loader\.getMpegtsPlayer\(\)\);/);
+  assert.match(
+    activation,
+    /this\.host\.registerMediaElementEngine\(ENGINE_ID\.MPEGTS, mpegtsEngine\);/,
+  );
+  assert.doesNotMatch(activation, /new MpegtsPlaybackEngine\(|createMpegtsPlaybackEngine\(/);
+
+  assert.doesNotMatch(hook, /getMpegtsEngine\(\)/);
   assert.doesNotMatch(hook, /new MpegtsPlaybackEngine\(/);
   assert.doesNotMatch(hook, /createMpegtsPlaybackEngine\(/);
 });

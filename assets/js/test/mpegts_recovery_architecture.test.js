@@ -5,6 +5,7 @@ import test from "node:test";
 const coordinatorUrl = new URL("../player/mpegts_recovery_coordinator.js", import.meta.url);
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
 const stateUrl = new URL("../player/player_state.js", import.meta.url);
+const activationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
 
 async function source(url) {
   return readFile(url, "utf8");
@@ -74,9 +75,14 @@ test("the initial hook state no longer owns MPEG-TS recovery internals", async (
 });
 
 test("MPEG-TS recovery is reset by confirmed playback, not by the initial play request", async () => {
-  const hook = await source(hookUrl);
+  const [hook, activation] = await Promise.all([source(hookUrl), source(activationUrl)]);
   const listeners = methodSource(hook, "setupEventListeners");
-  const loadMpegts = methodSource(hook, "loadMpegtsForTransition");
+  const loadMpegts = activation.slice(activation.indexOf("  async load("));
+
+  assert.match(
+    hook,
+    /markMpegtsRecovered: \(\) => this\.mpegtsRecoveryCoordinator\?\.markRecovered\(\)/,
+  );
   const playListener = listeners.slice(
     listeners.indexOf('listenOptional(this.video, "play"'),
     listeners.indexOf('listenOptional(this.video, "pause"'),
@@ -88,6 +94,6 @@ test("MPEG-TS recovery is reset by confirmed playback, not by the initial play r
 
   assert.doesNotMatch(playListener, /handlePlaybackStarted/);
   assert.match(playingListener, /handlePlaybackStarted/);
-  assert.match(loadMpegts, /onPlaying[\s\S]*mpegtsRecoveryCoordinator\?\.markRecovered\(\)/);
+  assert.match(loadMpegts, /onPlaying[\s\S]*this\.host\.markMpegtsRecovered\(\)/);
   assert.doesNotMatch(loadMpegts, /_mpegtsNetworkAttempts|_mpegtsRecreateAttempts/);
 });

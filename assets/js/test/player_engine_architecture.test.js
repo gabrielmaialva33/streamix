@@ -37,9 +37,10 @@ test("concrete engines remain independent from the Phoenix hook", async () => {
   }
 });
 
-test("StreamLoader owns HLS transport while VideoPlayer borrows its engine contract", async () => {
+test("StreamLoader owns HLS transport while the HLS activation borrows its engine contract", async () => {
   const loader = await source("../media/stream_loader.js");
   const hook = await source("../hooks/video_player.js");
+  const activation = await source("../player/hls_engine_activation.js");
 
   assert.match(loader, /createHlsPlaybackEngine/);
   assert.match(loader, /this\.hlsEngine = hlsEngine/);
@@ -47,9 +48,13 @@ test("StreamLoader owns HLS transport while VideoPlayer borrows its engine contr
   assert.match(loader, /hlsEngine\.load\(url\)/);
   assert.match(loader, /this\.hlsEngine\.reload\(url\)/);
 
+  assert.match(activation, /adoptLoaderEngine\(/);
+  assert.match(activation, /const hlsEngine = loader\.getHlsEngine\?\.\(\)/);
+  assert.match(activation, /this\.host\.registerMediaElementEngine\(ENGINE_ID\.HLS, hlsEngine\)/);
+  assert.doesNotMatch(activation, /new Hls\(|createHlsPlaybackEngine\(/);
+
   assert.match(hook, /activateHlsEngineFromLoader\(/);
-  assert.match(hook, /const hlsEngine = loader\.getHlsEngine\?\.\(\)/);
-  assert.match(hook, /return this\.setMediaElementEngine\(ENGINE_ID\.HLS, hlsEngine\)/);
+  assert.match(hook, /\?\.adoptLoaderEngine\(sessionId, loader\)/);
   assert.match(hook, /ownsEngine: engineOverride == null/);
-  assert.doesNotMatch(hook, /new Hls\(/);
+  assert.doesNotMatch(hook, /loader\.getHlsEngine|new Hls\(/);
 });

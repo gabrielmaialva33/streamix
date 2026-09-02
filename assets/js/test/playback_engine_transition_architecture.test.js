@@ -7,6 +7,7 @@ const controllerUrl = new URL(
   import.meta.url,
 );
 const hookUrl = new URL("../hooks/video_player.js", import.meta.url);
+const mpegtsActivationUrl = new URL("../player/mpegts_engine_activation.js", import.meta.url);
 const playerStateUrl = new URL("../player/player_state.js", import.meta.url);
 
 async function source(url) {
@@ -97,8 +98,15 @@ test("initial AVPlayer selection reuses the initPlayer session without fallback 
   const startup = methodSlice(hook, "startWithAVPlayer", "tryAVPlayerFallback");
   const transaction = methodSlice(hook, "transitionNativeToAVPlayer", "startWithAVPlayer");
 
-  assert.match(initPlayer, /case "avplayer":[\s\S]*void this\.startWithAVPlayer\(sessionId\);/);
-  assert.doesNotMatch(initPlayer, /tryAVPlayerFallback\(/);
+  assert.match(
+    initPlayer,
+    /void this\.playbackEngineActivation\.activate\(engine, \{ sessionId \}\);/,
+  );
+  assert.match(
+    hook,
+    /\[ENGINE_SELECTION\.AVPLAYER\]: \(\{ sessionId \}\) => this\.startWithAVPlayer\(sessionId\)/,
+  );
+  assert.doesNotMatch(initPlayer, /tryAVPlayerFallback\(|startWithAVPlayer\(/);
 
   assert.match(startup, /key: "startup-avplayer"/);
   assert.match(startup, /sessionId,/);
@@ -232,27 +240,32 @@ test("transition contexts can override provisional and recovery engine destructi
 });
 
 test("initial MPEG-TS activation uses the shared transition controller with a local destroyer", async () => {
-  const hook = await source(hookUrl);
-  const transition = methodSlice(hook, "playWithMpegts", "loadMpegtsForTransition");
-  const loader = methodSlice(hook, "loadMpegtsForTransition", "playNative");
+  const [hook, activation] = await Promise.all([source(hookUrl), source(mpegtsActivationUrl)]);
+  const transition = methodSlice(activation, "activate", "load");
+  const loader = activation.slice(activation.indexOf("  async load("));
 
-  assert.match(transition, /this\.playbackEngineTransitionController\.transition\(\{/);
+  assert.match(hook, /getTransitionController: \(\) => this\.playbackEngineTransitionController/);
+  assert.doesNotMatch(hook, /loadMpegtsForTransition|startup-mpegts/);
+
+  assert.match(transition, /const controller = this\.host\.getTransitionController\(\)/);
+  assert.match(transition, /controller\.transition\(\{/);
   assert.match(transition, /key: `startup-mpegts-\$\{type\}`/);
-  assert.match(transition, /sessionId,/);
-  assert.match(transition, /createEngine: \(\) => this\.ensureStreamLoader\(\)/);
-  assert.match(transition, /loadEngine: \(\) => this\.loadMpegtsForTransition\(type\)/);
+  assert.match(transition, /sessionId: request\.sessionId,/);
+  assert.match(transition, /createEngine: \(\) => this\.host\.ensureStreamLoader\(\)/);
+  assert.match(transition, /loadEngine: \(context\) => this\.load\(type, context\.sessionId\)/);
   assert.match(transition, /loader\.getMpegtsEngine\(\)/);
   assert.match(transition, /destroyEngine: async \(loader\) =>/);
   assert.match(transition, /await loader\.destroy\(\)/);
-  assert.match(transition, /this\.playbackOrchestrator\?\.releaseEngine\(ENGINE_ID\.MPEGTS\)/);
+  assert.match(transition, /this\.host\.clearStreamLoader\(loader\)/);
+  assert.match(transition, /this\.host\.releaseEngine\(ENGINE_ID\.MPEGTS\)/);
   assert.match(transition, /context\.capture\?\.type === "flv"/);
   assert.match(transition, /errorType: "OtherError"/);
   assert.doesNotMatch(transition, /guardPlaybackLoad/);
   assert.doesNotMatch(transition, /teardownAVPlayer/);
 
-  assert.match(loader, /await guardPlaybackLoad\(\{/);
+  assert.match(loader, /await this\.deps\.guardPlaybackLoad\(\{/);
   assert.match(loader, /destroy: \(\) => undefined/);
-  assert.match(loader, /this\.setMediaElementEngine\(ENGINE_ID\.MPEGTS, mpegtsEngine\)/);
+  assert.match(loader, /this\.host\.registerMediaElementEngine\(ENGINE_ID\.MPEGTS, mpegtsEngine\)/);
   assert.match(loader, /throw result\.error/);
   assert.doesNotMatch(loader, /recoverFromMpegtsError/);
   assert.doesNotMatch(loader, /teardownStreamLoaderForTransition/);
