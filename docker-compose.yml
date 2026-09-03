@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: timescale/timescaledb:2.29.1-pg17
+    image: timescale/timescaledb:2.29.2-pg17
     container_name: streamix-postgres
     command:
       [
@@ -27,7 +27,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:8.10.0-alpine
+    image: redis:8.10.1-alpine
     container_name: streamix-redis
     ports:
       - "6379:6379"
@@ -41,7 +41,7 @@ services:
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:4.3.4-management-alpine
+    image: rabbitmq:4.3.5-management-alpine
     container_name: streamix-rabbitmq
     ports:
       - "5672:5672" # AMQP
@@ -75,7 +75,7 @@ services:
       retries: 5
 
   rqbit:
-    image: ikatson/rqbit:9.0.0
+    image: ikatson/rqbit:9.0.1
     container_name: streamix-rqbit
     command: ["server", "start", "/home/rqbit/downloads"]
     ports:
