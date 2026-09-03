@@ -1,7 +1,14 @@
 defmodule Streamix.MixProject do
   use Mix.Project
 
-  @version Path.join(__DIR__, "VERSION") |> File.read!() |> String.trim()
+  # The release version is sourced from the root VERSION file. Tooling that
+  # evaluates this file in isolation (Dependabot copies only mix.exs and
+  # mix.lock into a scratch directory) must still be able to load the project,
+  # so a missing file falls back to a placeholder instead of raising.
+  @version (case File.read(Path.join(__DIR__, "VERSION")) do
+              {:ok, version} -> String.trim(version)
+              {:error, _reason} -> "0.0.0"
+            end)
 
   def project do
     [
