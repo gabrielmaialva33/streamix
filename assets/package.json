@@ -21,8 +21,8 @@
     "mpegts.js": "^1.8.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.8",
-    "@redocly/cli": "2.46.1",
+    "@biomejs/biome": "^2.5.12",
+    "@redocly/cli": "2.51.1",
     "playwright": "^1.62.1"
   }
 }
