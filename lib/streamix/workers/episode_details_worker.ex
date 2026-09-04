@@ -21,11 +21,16 @@ defmodule Streamix.Workers.EpisodeDetailsWorker do
 
   ## What it writes, and what it deliberately does not
 
-  Only columns neither sync path claims: `plot`, `still_path`, `air_date`,
-  `rating`, `duration_secs` and `tmdb_id`, and only where the stored value is
-  blank. `name` and `title` are left alone even though TMDB has better ones —
-  the GIndex ingest lists both in its replace set, so writing them would buy a
-  clean title until the next scan and no longer.
+  Only columns neither sync path claims: `tmdb_title`, `plot`, `still_path`,
+  `air_date`, `rating`, `duration_secs` and `tmdb_id`, and only where the
+  stored value is blank.
+
+  TMDB's episode name lands in `tmdb_title` rather than in `title` or `name`.
+  Both sync paths own those two — the GIndex ingest lists them in its replace
+  set, the xtream payload supplies them — so a value written there survives
+  only until the next scan. The separate column is what makes the name stick,
+  and it earns itself: 70.132 episodes carry no title at all and render as
+  "Episódio N", 32.778 of them in seasons TMDB already answered for.
 
   `seasons.tmdb_details_at` is the marker. `episodes.tmdb_enriched` cannot be
   one: an episode number the upstream carries and TMDB does not would keep the
@@ -143,6 +148,7 @@ defmodule Streamix.Workers.EpisodeDetailsWorker do
         select: %{
           id: e.id,
           episode_num: e.episode_num,
+          tmdb_title: e.tmdb_title,
           plot: e.plot,
           still_path: e.still_path,
           air_date: e.air_date,
@@ -153,11 +159,13 @@ defmodule Streamix.Workers.EpisodeDetailsWorker do
     )
   end
 
-  # `:name` is dropped on purpose — see the moduledoc. Everything else fills a
-  # blank and never replaces a value the provider supplied.
+  # Everything fills a blank and never replaces a value the provider supplied.
+  # TMDB's episode name goes to `tmdb_title`, never to `title` — see the
+  # moduledoc for why that column exists.
   defp write_episode(episode, attrs) do
     updates =
       %{}
+      |> fill(:tmdb_title, episode.tmdb_title, attrs[:name])
       |> fill(:plot, episode.plot, attrs[:plot])
       |> fill(:still_path, episode.still_path, attrs[:still_path])
       |> fill(:air_date, episode.air_date, attrs[:air_date])

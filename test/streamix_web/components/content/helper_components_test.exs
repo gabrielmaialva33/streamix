@@ -6,6 +6,26 @@ defmodule StreamixWeb.Content.HelperComponentsTest do
   describe "episode_title/1" do
     # `name` holds the raw filename for 102.209 of the catalog's 104.975
     # episodes, so the detail page was labelling episodes with a release string.
+    # Provenance, the same argument as `channels` over a release string on an
+    # audio track: TMDB names an episode by its number in a season it curates,
+    # while `title` came out of a filename.
+    test "prefers TMDB's episode name over both stored fields" do
+      episode = %{
+        tmdb_title: "O Janelão",
+        title: "A Caverna Encantada S01 E01",
+        name: "A.Caverna.Encantada.S01E01.1080p.WEB-DL.mkv",
+        episode_num: 1
+      }
+
+      assert HelperComponents.episode_title(episode) == "O Janelão"
+    end
+
+    test "falls back to the stored title when TMDB had no name" do
+      episode = %{tmdb_title: nil, title: "Steve Vs Sidney", name: "arquivo.mkv", episode_num: 19}
+
+      assert HelperComponents.episode_title(episode) == "Steve Vs Sidney"
+    end
+
     test "prefers the title over the filename in name" do
       episode = %{
         title: "Steve Vs Sidney",

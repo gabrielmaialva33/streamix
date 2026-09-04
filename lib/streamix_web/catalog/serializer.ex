@@ -211,6 +211,7 @@ defmodule StreamixWeb.Catalog.Serializer do
     %{
       id: episode.id,
       title: episode.title,
+      tmdb_title: episode.tmdb_title,
       episode_num: episode.episode_num,
       plot: episode.plot,
       still: ImageProxy.proxy(episode.still_path),
@@ -225,6 +226,7 @@ defmodule StreamixWeb.Catalog.Serializer do
     %{
       id: episode.id,
       title: episode.title,
+      tmdb_title: episode.tmdb_title,
       episode_num: episode.episode_num,
       season_number: episode.season.season_number,
       plot: episode.plot,

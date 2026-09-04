@@ -24,6 +24,11 @@ defmodule Streamix.Iptv.Episode do
     field :tmdb_id, :integer
     field :tmdb_enriched, :boolean, default: false
 
+    # TMDB's episode name. Deliberately not `title`: both sync paths own that
+    # column and would overwrite it on the next scan. Written programmatically
+    # by `Streamix.Workers.EpisodeDetailsWorker`, so it stays out of `@fields`.
+    field :tmdb_title, :string
+
     # GIndex fields
     field :gindex_path, :string
     field :gindex_url_cached, :string

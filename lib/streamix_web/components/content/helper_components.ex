@@ -44,17 +44,24 @@ defmodule StreamixWeb.Content.HelperComponents do
   end
 
   @doc """
-  Label for an episode row: the stored title, then the stored name, then a
-  numbered fallback — each run through the gindex cleaner.
+  Label for an episode row: TMDB's episode name, then the stored title, then
+  the stored name, then a numbered fallback — each run through the gindex
+  cleaner.
 
-  Title comes first because `name` is the raw filename for 102.209 of the
-  104.975 episodes in the catalog, and a filename is never a better label than
-  a title. The cleaner still runs on the title, since the provider's own parse
-  leaves scene tokens behind on some of them.
+  `tmdb_title` leads on provenance, the same reason `channels` beats a release
+  string when labelling an audio track: TMDB names an episode by its number in
+  a season it curates, while `title` and `name` are whatever a filename
+  yielded. It is also usually the only one there — 70.132 episodes have no
+  title at all and would otherwise read "Episódio N".
+
+  `name` comes last because it is the raw filename for 102.209 of the 104.975
+  episodes in the catalog. The cleaner runs on every branch, since the
+  provider's own parse leaves scene tokens behind on some titles.
   """
   def episode_title(episode) do
     raw =
-      present(Map.get(episode, :title)) ||
+      present(Map.get(episode, :tmdb_title)) ||
+        present(Map.get(episode, :title)) ||
         present(Map.get(episode, :name)) ||
         "Episódio #{Map.get(episode, :episode_num) || Map.get(episode, :num) || "?"}"
 
