@@ -296,6 +296,56 @@ defmodule Streamix.BillingTest do
              })
   end
 
+  test "start_playback_session/2 lets the same client supersede its own active session" do
+    user = user_fixture()
+    plan = plan_fixture(grants_global_access: false)
+    Billing.sync_plan_features!(plan, %{concurrent_streams: 1})
+
+    Billing.ensure_manual_subscription!(user, plan, %{
+      status: "active",
+      external_reference: "test:screen-limit-client",
+      starts_at: DateTime.utc_now(:second)
+    })
+
+    attrs = %{content_type: "live_channel", content_id: 7, client_id: "tab-a"}
+
+    assert {:ok, first} = Billing.start_playback_session(user, attrs)
+    assert {:ok, second} = Billing.start_playback_session(user, %{attrs | content_id: 8})
+
+    assert Repo.reload!(first).status == "ended"
+    assert second.status == "active"
+    assert second.client_id == "tab-a"
+    assert Billing.active_playback_count(user) == 1
+
+    assert {:error, :concurrent_stream_limit_reached} =
+             Billing.start_playback_session(user, %{attrs | client_id: "tab-b"})
+
+    assert {:error, :concurrent_stream_limit_reached} =
+             Billing.start_playback_session(user, Map.delete(attrs, :client_id))
+  end
+
+  test "start_playback_session/2 ignores blank or oversized client ids" do
+    user = user_fixture()
+
+    assert {:ok, blank} =
+             Billing.start_playback_session(user, %{
+               content_type: "movie",
+               content_id: 1,
+               client_id: "   "
+             })
+
+    assert is_nil(blank.client_id)
+
+    assert {:ok, oversized} =
+             Billing.start_playback_session(user, %{
+               content_type: "movie",
+               content_id: 2,
+               client_id: String.duplicate("x", 65)
+             })
+
+    assert is_nil(oversized.client_id)
+  end
+
   test "end_playback_session/1 is idempotent when the session no longer exists" do
     user = user_fixture()
 

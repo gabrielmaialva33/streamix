@@ -16,6 +16,7 @@ defmodule Streamix.Billing.PlaybackSession do
     field :last_seen_at, :utc_datetime
     field :ended_at, :utc_datetime
     field :metadata, :map, default: %{}
+    field :client_id, :string
 
     timestamps(type: :utc_datetime)
   end
@@ -33,7 +34,8 @@ defmodule Streamix.Billing.PlaybackSession do
       :started_at,
       :last_seen_at,
       :ended_at,
-      :metadata
+      :metadata,
+      :client_id
     ])
     |> validate_required([
       :user_id,
@@ -45,6 +47,7 @@ defmodule Streamix.Billing.PlaybackSession do
       :last_seen_at
     ])
     |> validate_inclusion(:status, @statuses)
+    |> validate_length(:client_id, max: 64)
     |> foreign_key_constraint(:user_id)
     |> unique_constraint(:session_id)
   end

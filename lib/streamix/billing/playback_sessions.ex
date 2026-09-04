@@ -8,6 +8,8 @@ defmodule Streamix.Billing.PlaybackSessions do
   alias Streamix.Billing.{Entitlements, PlaybackSession}
   alias Streamix.Repo
 
+  @client_id_max_length 64
+
   def start_playback_session(%{id: user_id}, attrs)
       when is_integer(user_id) and is_map(attrs) do
     cleanup_stale_playback_sessions!(user_id)
@@ -23,6 +25,9 @@ defmodule Streamix.Billing.PlaybackSessions do
 
   defp do_start_playback(user_id, attrs) do
     Repo.query!("SELECT pg_advisory_xact_lock($1)", [advisory_lock_key(user_id)])
+
+    attrs = Map.put(attrs, :client_id, normalize_client_id(Map.get(attrs, :client_id)))
+    supersede_client_sessions!(user_id, attrs.client_id)
 
     case ensure_playback_slot_available(user_id) do
       :ok -> do_insert_playback(user_id, attrs)
@@ -117,6 +122,36 @@ defmodule Streamix.Billing.PlaybackSessions do
         end
     end
   end
+
+  # A reconnecting tab (network blip, phone unlock, same-tab navigation) mounts
+  # a new LiveView before the old process has released its slot. Ending that
+  # client's previous sessions inside the advisory lock keeps the reconnect from
+  # counting as a second screen, while a different tab or device still does.
+  defp supersede_client_sessions!(_user_id, nil), do: :ok
+
+  defp supersede_client_sessions!(user_id, client_id) do
+    now = DateTime.utc_now(:second)
+
+    from(ps in PlaybackSession,
+      where: ps.user_id == ^user_id,
+      where: ps.status == "active",
+      where: ps.client_id == ^client_id
+    )
+    |> Repo.update_all(set: [status: "ended", ended_at: now, last_seen_at: now, updated_at: now])
+
+    :ok
+  end
+
+  defp normalize_client_id(client_id) when is_binary(client_id) do
+    trimmed = String.trim(client_id)
+
+    if trimmed != "" and byte_size(trimmed) <= @client_id_max_length and
+         String.printable?(trimmed),
+       do: trimmed,
+       else: nil
+  end
+
+  defp normalize_client_id(_client_id), do: nil
 
   defp cleanup_stale_playback_sessions!(user_id) do
     cutoff = DateTime.add(DateTime.utc_now(:second), -120, :second)

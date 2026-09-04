@@ -879,6 +879,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
     Billing.start_playback_session(socket.assigns.current_scope.user, %{
       content_type: socket.assigns.source_type,
       content_id: socket.assigns.content.id,
+      client_id: client_id_from_socket(socket),
       metadata: %{
         live_view: "watch_party",
         room_id: socket.assigns.room.id,

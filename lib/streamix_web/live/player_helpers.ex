@@ -51,6 +51,23 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_content(_, _, _), do: {:error, :not_found}
 
+  @doc """
+  Per-tab client identity sent by the browser as the `_client_id` connect
+  param. Only available on the connected mount; `nil` on the static render and
+  for clients that do not send it.
+  """
+  @spec client_id_from_socket(Phoenix.LiveView.Socket.t()) :: String.t() | nil
+  def client_id_from_socket(socket) do
+    if Phoenix.LiveView.connected?(socket) do
+      case Phoenix.LiveView.get_connect_params(socket) do
+        %{"_client_id" => client_id} when is_binary(client_id) -> client_id
+        _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
   def load_content_preflight("live_channel", id, user_id) do
     with {:ok, id} <- parse_id(id),
          %{} = channel <- Streamix.Playback.get_playable_channel(user_id, id) do

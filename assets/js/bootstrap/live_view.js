@@ -2,6 +2,7 @@ import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 import { hooks as colocatedHooks } from "phoenix-colocated/streamix";
 import topbar from "../../vendor/topbar";
+import { getClientId } from "../core/client_identity.js";
 import customHooks from "../hooks";
 
 const themeColor = (name, fallback) => {
@@ -87,7 +88,9 @@ export function startLiveView() {
   const liveSocket = new LiveSocket("/live", Socket, {
     // A failed iOS WebSocket handshake must not pin the session to longpoll.
     longPollFallbackMs: null,
-    params: { _csrf_token: csrfToken },
+    // `_client_id` is a per-tab identity: a reconnect or same-tab navigation
+    // supersedes that tab's playback session instead of counting as a second screen.
+    params: { _csrf_token: csrfToken, _client_id: getClientId() },
     hooks: {
       ...colocatedHooks,
       ...customHooks,
