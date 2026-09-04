@@ -1901,7 +1901,21 @@ const VideoPlayer = {
 
     this.flushPlaybackMetrics("restarted");
     this.cleanup();
-    const sessionId = providedSessionId ?? this.beginPlaybackSession();
+
+    // cleanup() advances playbackSessionId to invalidate work still in flight
+    // from the engine it just tore down. A caller that hands us a session is
+    // continuing that same session (the AVPlayer to native fallback does), so
+    // re-adopt it here: otherwise every isSessionCurrent() check below compares
+    // against the bumped id, aborts, and no engine is ever activated. The old
+    // engine is stopped by cleanup()'s explicit cancellations, not by the id.
+    let sessionId;
+
+    if (providedSessionId == null) {
+      sessionId = this.beginPlaybackSession();
+    } else {
+      sessionId = providedSessionId;
+      this.playbackSessionId = providedSessionId;
+    }
     this.currentUrl = this.getEffectiveUrl(this.currentStreamType);
     this.observePlaybackState(PLAYBACK_STATE.LOADING, "source_loading", {
       session_id: sessionId,
