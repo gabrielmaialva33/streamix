@@ -42,6 +42,19 @@ defmodule Streamix.Workers.TmdbDetailsWorkerTest do
       assert enqueued_ids("movie") == Enum.sort([pending.id, blank_plot.id])
     end
 
+    test "picks a row whose plot is set but whose title is blank", %{provider: provider} do
+      # A blank title is displayed as the raw `name`, so it is just as much a
+      # gap as a missing synopsis.
+      untitled =
+        movie_fixture(provider, %{tmdb_id: "554", plot: "Tem sinopse.", title: nil})
+
+      _complete =
+        movie_fixture(provider, %{tmdb_id: "555", plot: "Tem sinopse.", title: "Tem título"})
+
+      assert %{movie: %{rows: 1}} = TmdbDetailsWorker.enqueue_pending()
+      assert enqueued_ids("movie") == [untitled.id]
+    end
+
     test "returns matched series the same way", %{provider: provider} do
       series = series_content_fixture(provider, %{tmdb_id: "1399", plot: nil})
       _skipped = series_content_fixture(provider, %{tmdb_id: nil, plot: nil})

@@ -50,6 +50,16 @@ Cobertura de sinopse por origem, antes:
 | gindex | 16.353 | 0,1% |
 | xtream | 55.509 | 0,0% |
 
+**8.571 filmes exibindo a string de release como título.** A UI mostra
+`title || name`, e 16.309 filmes não têm `title` nenhum — então cai no `name`,
+que para 8.571 deles é `A Jornada de Vivo 2021 1080p NF WEB-DL DDP5 1 Atmos
+x264-PiA`. 7.899 desses já tinham `tmdb_id`: o título correto vinha na mesma
+resposta que já buscávamos e era descartado.
+
+O parser agora devolve `:_tmdb_title`, uma chave privada que só vira `:title`
+quando a linha não tem nenhum. Provider ganha do TMDB no catálogo dele, então
+um `:title` explícito nos attrs sempre vence.
+
 ## Idempotência
 
 `tmdb_details_at` existe porque *"o plot ainda está vazio"* não serve de marca.
@@ -57,18 +67,18 @@ O TMDB não tem sinopse em pt-BR para uma cauda longa de títulos, e essas linha
 voltariam para a fila toda noite, para sempre.
 
 A linha é carimbada assim que o enriquecimento **completa**, com ou sem
-resposta útil. Só volta quem foi carimbado há mais de 30 dias e continua sem
-sinopse — o que cobre uma falha transitória do TMDB sem transformar a cauda
-numa esteira. Um crash ou timeout deixa a linha sem carimbo, então ela é
+resposta útil. Só volta quem foi carimbado há mais de 30 dias e continua
+incompleto — sem sinopse **ou** sem título —, o que cobre uma falha transitória
+do TMDB sem transformar a cauda numa esteira. Um crash ou timeout deixa a linha sem carimbo, então ela é
 repescada na passada seguinte.
 
 O índice parcial carrega o mesmo predicado, então encolhe até sumir conforme a
 fila drena:
 
 ```sql
-create index movies_tmdb_details_pending_index on movies (id)
+create index movies_tmdb_details_pending_idx on movies (id)
   where tmdb_details_at is null and tmdb_id is not null
-    and (plot is null or plot = '');
+    and (plot is null or plot = '' or title is null or title = '');
 ```
 
 ## Duas regras que a ampliação do estágio 1 forçou

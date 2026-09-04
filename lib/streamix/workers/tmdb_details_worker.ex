@@ -1,6 +1,7 @@
 defmodule Streamix.Workers.TmdbDetailsWorker do
   @moduledoc """
-  Reads TMDB *details* for catalog rows that already carry a `tmdb_id`.
+  Reads TMDB *details* for catalog rows that already carry a `tmdb_id` and are
+  still missing a synopsis or a display title.
 
   The expensive half of the work — matching a filename to a TMDB record — is
   already done for most of the catalog, but nothing ever consumed the result.
@@ -22,15 +23,19 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
     * **Batch mode** — args `%{"kind" => "movie|series", "ids" => [...]}`.
     * **Cron mode** — args `%{}`. Picks up to `@cron_limit` pending rows per
       kind, plus a slice of stale retries, and spreads them across batches.
+      A row is pending when its plot or its title is blank: a blank title is
+      displayed as the raw `name`, which for 8.571 movies is the release
+      string, extension and all.
     * **Manual** — `enqueue_pending(limit: 5_000)` from IEx to drain faster
       than the nightly cadence.
 
-  `tmdb_details_at` is what makes this idempotent. "Plot is still empty" cannot
-  serve as the marker on its own: TMDB has no pt-BR overview for a long tail of
-  titles, and those rows would be re-fetched every single night forever. A row
-  is stamped once its enrichment ran to completion, and only rows stamped more
-  than `@stale_retry_after_days` ago that *still* have no plot come back — which
-  covers a transient TMDB failure without turning the tail into a treadmill.
+  `tmdb_details_at` is what makes this idempotent. "The field is still empty"
+  cannot serve as the marker on its own: TMDB has no pt-BR overview for a long
+  tail of titles, and those rows would be re-fetched every single night forever.
+  A row is stamped once its enrichment ran to completion, and only rows stamped
+  more than `@stale_retry_after_days` ago that are *still* incomplete come back
+  — which covers a transient TMDB failure without turning the tail into a
+  treadmill.
   """
 
   use Oban.Worker,
@@ -142,10 +147,17 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
     stamp_details_at(schema, row.id)
 
     case result do
-      {:ok, %{plot: plot}} when is_binary(plot) and plot != "" -> :enriched
+      {:ok, row} -> if incomplete?(row), do: :empty, else: :enriched
       _ -> :empty
     end
   end
+
+  defp incomplete?(%{plot: plot, title: title}), do: blank?(plot) or blank?(title)
+  defp incomplete?(_row), do: true
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: false
 
   defp stamp_details_at(schema, id) do
     from(r in schema, where: r.id == ^id)
@@ -162,7 +174,7 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
       from(r in schema,
         where: is_nil(r.tmdb_details_at),
         where: not is_nil(r.tmdb_id) and r.tmdb_id != "",
-        where: is_nil(r.plot) or r.plot == "",
+        where: is_nil(r.plot) or r.plot == "" or is_nil(r.title) or r.title == "",
         order_by: [asc: r.id],
         limit: ^limit,
         select: r.id
@@ -177,7 +189,7 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
       from(r in schema,
         where: r.tmdb_details_at < ^cutoff,
         where: not is_nil(r.tmdb_id) and r.tmdb_id != "",
-        where: is_nil(r.plot) or r.plot == "",
+        where: is_nil(r.plot) or r.plot == "" or is_nil(r.title) or r.title == "",
         order_by: [asc: r.tmdb_details_at],
         limit: ^@stale_retry_limit,
         select: r.id

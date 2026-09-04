@@ -8,6 +8,9 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
 
     %{}
     |> maybe_put(:plot, data["overview"])
+    # Private key: only promoted to `:title` when the row has none. See
+    # `Content.Movies.Enrichment.update_movie/2`.
+    |> maybe_put(:_tmdb_title, data["title"])
     |> maybe_put(:rating, parse_rating(data["vote_average"]))
     |> maybe_put(:duration_secs, parse_runtime_secs(data["runtime"]))
     |> maybe_put(:year, parse_year(data["release_date"]))
@@ -26,6 +29,9 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
 
     %{}
     |> maybe_put(:plot, data["overview"])
+    # TMDB names a TV record with `name`, not `title`. Same private-key rule
+    # as movies: fills a blank title, never replaces one.
+    |> maybe_put(:_tmdb_title, data["name"])
     |> maybe_put(:rating, parse_rating(data["vote_average"]))
     |> maybe_put(:year, parse_year(data["first_air_date"]))
     |> maybe_put(:youtube_trailer, parse_trailer(data["videos"]))

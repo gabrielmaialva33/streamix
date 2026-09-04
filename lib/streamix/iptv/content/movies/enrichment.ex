@@ -85,6 +85,7 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
   def update_movie(movie, attrs) do
     {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
     {images, attrs} = Map.pop(attrs, :_image_urls, [])
+    attrs = promote_tmdb_title(attrs, movie.title)
 
     with {:ok, updated} <- movie |> Movie.changeset(attrs) |> Repo.update() do
       persist_movie_assets(updated.id, "backdrop", backdrops)
@@ -127,6 +128,27 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
 
     :ok
   end
+
+  # A row with no `title` is displayed by its raw `name` — which for 8.571
+  # movies is the release string, extension and all ("A Jornada de Vivo 2021
+  # 1080p NF WEB-DL DDP5 1 Atmos x264-PiA"). TMDB's own pt-BR title is already
+  # in the response we fetched, so filling the gap costs nothing.
+  #
+  # Blank titles only. An explicit `:title` in `attrs` is the provider's, and
+  # the provider outranks TMDB on its own catalog.
+  defp promote_tmdb_title(attrs, current) do
+    {tmdb_title, attrs} = Map.pop(attrs, :_tmdb_title)
+
+    if blank?(current) and not blank?(tmdb_title) and not Map.has_key?(attrs, :title) do
+      Map.put(attrs, :title, tmdb_title)
+    else
+      attrs
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: false
 
   defp tmdb_profile(%Movie{gindex_path: path}) when is_binary(path) and path != "",
     do: :gindex

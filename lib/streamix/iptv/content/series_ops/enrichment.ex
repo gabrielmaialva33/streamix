@@ -145,6 +145,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Enrichment do
   defp update_series(series, attrs) do
     {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
     {images, attrs} = Map.pop(attrs, :_image_urls, [])
+    attrs = promote_tmdb_title(attrs, series.title)
 
     with {:ok, updated} <- series |> Series.changeset(attrs) |> Repo.update() do
       persist_series_assets(updated.id, "backdrop", backdrops)
@@ -152,6 +153,22 @@ defmodule Streamix.Iptv.Content.SeriesOps.Enrichment do
       {:ok, updated}
     end
   end
+
+  # Mirrors `Content.Movies.Enrichment`: a blank title falls back to the raw
+  # `name` on screen, and TMDB's is already in the response we fetched.
+  defp promote_tmdb_title(attrs, current) do
+    {tmdb_title, attrs} = Map.pop(attrs, :_tmdb_title)
+
+    if blank?(current) and not blank?(tmdb_title) and not Map.has_key?(attrs, :title) do
+      Map.put(attrs, :title, tmdb_title)
+    else
+      attrs
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: false
 
   defp needs_episode_tmdb_enrichment?(episode) do
     not episode.tmdb_enriched
