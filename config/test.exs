@@ -41,6 +41,11 @@ config :streamix, :session_secure, false
 # Disable rate limiting in tests to prevent flaky failures on repeated logins.
 config :streamix, :disable_rate_limit, true
 
+# Stream upstreams are validated against SSRF, which rejects loopback and
+# private addresses. The suite serves its fixtures from 127.0.0.1, so the
+# check is relaxed here and nowhere else.
+config :streamix, :allow_private_stream_targets, true
+
 # L1 entries (e.g. the cached global provider) use fixed keys and ConCache
 # is shared across the suite while the DB is per-test sandboxed — bypass
 # the local cache so tests never see another test's entries.

@@ -272,7 +272,7 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
     assert complete_meta == %{outcome: :client_closed, retry_count: 0}
   end
 
-  test "redacts tokens nested inside resolver errors" do
+  test "refuses a malformed redirect target without ever logging its token" do
     port = start_proxy_server(:invalid_query_redirect)
 
     log =
@@ -280,10 +280,12 @@ defmodule Streamix.Iptv.Streaming.VodProxyTest do
         VodProxy.pipe(conn(:get, "/proxy"), "http://127.0.0.1:#{port}/stream")
       end)
 
-    assert log =~ "invalid_request_target"
-    assert log =~ "stream_id=3333506"
-    assert log =~ "token=[REDACTED]"
+    # The redirect target is rejected by the SSRF guard before any request is
+    # made, so the upstream URL never reaches a log line and its token has
+    # nothing to redact. Redaction itself is covered in safe_log_test.exs.
+    assert log =~ "unsafe_url"
     refute log =~ "top-secret"
+    refute log =~ "stream_id=3333506"
   end
 
   defp attach_stream_proxy_telemetry do

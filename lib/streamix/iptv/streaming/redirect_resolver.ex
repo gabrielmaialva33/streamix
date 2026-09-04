@@ -33,6 +33,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
   alias Streamix.Iptv.Streaming.UpstreamPolicy
   alias Streamix.SafeLog
+  alias Streamix.Security.UrlValidator
 
   @table :stream_redirect_cache
   @ok_ttl_seconds 60
@@ -558,6 +559,27 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   defp do_walk(url, count, opts) do
+    case validate_target(url, opts) do
+      :ok -> request_hop(url, count, opts)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Every hop is validated, and so is the URL the chain starts from. The live
+  # path has always done this through StreamMultiplexer's url_validator; the
+  # VOD path did not, which left a redirect free to point the proxy at a
+  # loopback or private address. UrlValidator resolves the host, so a name
+  # that only points inward at request time is caught too.
+  defp validate_target(url, opts) do
+    allow_private_network =
+      Keyword.get_lazy(opts, :allow_private_network, fn ->
+        Application.get_env(:streamix, :allow_private_stream_targets, false)
+      end)
+
+    UrlValidator.validate_url(url, allow_private_network: allow_private_network)
+  end
+
+  defp request_hop(url, count, opts) do
     case Req.get(url, build_req_opts(opts)) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_redirect(url, headers, count, opts)

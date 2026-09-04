@@ -146,6 +146,41 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
     end
   end
 
+  describe "SSRF guard" do
+    test "refuses a scheme the proxy must never follow" do
+      log =
+        capture_log(fn ->
+          assert {:error, :unsafe_url} =
+                   RedirectResolver.resolve("file:///etc/passwd", allow_private_network: false)
+        end)
+
+      assert log =~ "SSRF blocked"
+    end
+
+    test "refuses a loopback target when private networks are not allowed", %{base: base} do
+      # The suite relaxes this globally so fixtures on 127.0.0.1 work; the
+      # explicit option is what production runs with.
+      log =
+        capture_log(fn ->
+          assert {:error, :unsafe_url} =
+                   RedirectResolver.resolve("#{base}/r1", allow_private_network: false)
+        end)
+
+      assert log =~ "SSRF blocked"
+    end
+
+    test "validates every hop, not just the URL the chain starts from", %{base: base} do
+      # The entry URL is accepted (the suite allows loopback), so a refusal
+      # here can only come from checking the redirect target itself.
+      log =
+        capture_log(fn ->
+          assert {:error, :unsafe_url} = RedirectResolver.resolve("#{base}/hostile-hop")
+        end)
+
+      assert log =~ "SSRF blocked"
+    end
+  end
+
   describe "prewarm_async/2" do
     test "populates the cache so subsequent resolve/2 is a hit", %{base: base, counter: counter} do
       :ok = RedirectResolver.prewarm_async("#{base}/r1")
@@ -236,6 +271,13 @@ defmodule Streamix.Iptv.Streaming.RedirectResolverTest do
 
     defp handle(conn, "/final") do
       send_resp(conn, 200, "ok")
+    end
+
+    # A hop that tries to walk the proxy off HTTP entirely.
+    defp handle(conn, "/hostile-hop") do
+      conn
+      |> put_resp_header("location", "file:///etc/passwd")
+      |> send_resp(302, "")
     end
 
     defp handle(conn, "/movie/test-user/test-password/stream.ts") do
