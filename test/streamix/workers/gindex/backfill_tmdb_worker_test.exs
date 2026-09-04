@@ -65,19 +65,34 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorkerTest do
       assert movie.id in enqueued_ids("movie")
     end
 
-    test "skips adult titles TMDB will never carry", %{xtream: provider} do
-      xxx = movie_fixture(provider, %{name: "[XXX] Oopsfamily 24 05 17 Amber Moore"})
-      adulto = movie_fixture(provider, %{name: "Alguma Coisa [Adulto]"})
-      prefixed = movie_fixture(provider, %{name: "XXX Hijabhookup Angeline"})
+    test "skips rows in an adult category", %{xtream: provider} do
+      adult = movie_fixture(provider, %{name: "Alguma Coisa"})
       normal = movie_fixture(provider, %{name: "Onde Começa o Inferno (1959)"})
+
+      categorize(adult, provider, "♠️ Adultos XXXX", is_adult: true)
+      categorize(normal, provider, "Lançamentos", is_adult: false)
 
       assert :ok = BackfillTmdbWorker.perform(%Oban.Job{args: %{}})
 
       ids = enqueued_ids("movie")
       assert normal.id in ids
-      refute xxx.id in ids
-      refute adulto.id in ids
-      refute prefixed.id in ids
+      refute adult.id in ids
+    end
+
+    # The flag is the only signal: a title reading like adult content is still
+    # swept when nothing marked it, and a real film whose name happens to start
+    # with "XXX" is never excluded for it.
+    test "goes by the category flag, not the title", %{xtream: provider} do
+      looks_adult = movie_fixture(provider, %{name: "XXX Hijabhookup Angeline"})
+      real_film = movie_fixture(provider, %{name: "xXx: Reativado (2017)"})
+
+      categorize(real_film, provider, "Ação", is_adult: false)
+
+      assert :ok = BackfillTmdbWorker.perform(%Oban.Job{args: %{}})
+
+      ids = enqueued_ids("movie")
+      assert looks_adult.id in ids
+      assert real_film.id in ids
     end
 
     test "skips rows a previous pass already searched", %{xtream: provider} do
@@ -97,6 +112,23 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorkerTest do
       assert :ok = BackfillTmdbWorker.perform(%Oban.Job{args: %{}})
       assert series.id in enqueued_ids("series")
     end
+  end
+
+  defp categorize(row, provider, name, is_adult: is_adult) do
+    category =
+      Repo.insert!(%Streamix.Iptv.Category{
+        external_id: "cat-#{System.unique_integer([:positive])}",
+        name: name,
+        type: "vod",
+        is_adult: is_adult,
+        provider_id: provider.id
+      })
+
+    Repo.insert_all("item_categories", [
+      %{catalog_item_id: row.catalog_item_id, category_id: category.id}
+    ])
+
+    row
   end
 
   defp enqueued_ids(kind) do

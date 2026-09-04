@@ -77,9 +77,15 @@ create index movies_tmdb_details_pending_index on movies (id)
 então escrever direto era seguro lá. 55.067 das linhas xtream que o sweep passou
 a visitar já carregam um pôster do provider.
 
-**Título adulto fica fora.** O TMDB não os tem, então todos os 6.517 são miss
-garantido — e `requeue_stale_misses/0` devolveria os 6.517 para a fila toda
-semana, indefinidamente.
+**Título adulto fica fora**, pelo flag curado `categories.is_adult`. O TMDB não
+os tem, então todos os 8.047 são miss garantido — e `requeue_stale_misses/0`
+devolveria os 8.047 para a fila toda semana, indefinidamente. Pior: uma busca
+que passe do limiar mesmo assim gravaria a sinopse e o pôster de um filme real
+em cima de um deles.
+
+Casar por palavra no título foi descartado depois de medir: o flag cobre as
+8.047 linhas, e o regex acrescentaria exatamente **uma** — um `^xxx ` que tem
+tanta chance de ser o filme do Vin Diesel quanto qualquer outra coisa.
 
 ## Cadência
 

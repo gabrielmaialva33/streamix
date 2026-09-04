@@ -29,9 +29,11 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   pass skips it. If we couldn't match, `tmdb_miss_reason` is filled in
   (`"no_results"`, `"low_score"`, `"rate_limited"`, ...) so we know why.
 
-  Adult titles are excluded from the sweep. TMDB does not carry them, so every
-  one is a guaranteed miss — and `requeue_stale_misses/0` would put all 6.517
-  of them back in the pool every week, forever.
+  Adult titles are excluded from the sweep, on the curated `categories.is_adult`
+  flag. TMDB does not carry them, so every one is a guaranteed miss —
+  `requeue_stale_misses/0` would put all 8.047 of them back in the pool every
+  week, forever — and a search that scores past the threshold anyway would
+  write a real film's synopsis and poster onto one.
 
   Resolving the id is only half the enrichment: `Streamix.Workers.TmdbDetailsWorker`
   reads the details for whatever this worker matches.
@@ -68,10 +70,6 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   # any realistic gindex catalog. Prevents runaway scheduling if a
   # data bug ever keeps `tmdb_searched_at` from being stamped.
   @max_loop_hops 10
-  # `[XXX]` / `[Adulto]` prefixes are structural markers in the provider's
-  # naming, not part of a title. Case-insensitive POSIX regex so Postgres can
-  # evaluate it while walking the partial index.
-  @adult_marker "\\[xxx\\]|\\[adulto\\]|^xxx "
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(15)
@@ -395,11 +393,29 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     Repo.all(
       from r in schema,
         where: is_nil(r.tmdb_searched_at),
-        where: fragment("? !~* ?", r.name, ^@adult_marker),
+        where:
+          is_nil(r.catalog_item_id) or
+            r.catalog_item_id not in subquery(adult_catalog_items()),
         order_by: [asc: r.id],
         limit: ^limit,
         select: r.id
     )
+  end
+
+  # `categories.is_adult` is the curated flag and it is complete: in production
+  # it covers all 8.047 adult rows, and matching on the title instead would add
+  # exactly one more — a `^xxx ` hit that is as likely to be the Vin Diesel
+  # film as anything else. The flag alone, then, with no title heuristic.
+  #
+  # Join tables are addressed by name rather than by schema module: this worker
+  # has no business reaching into another context's schemas, and the two
+  # columns it needs are stable.
+  defp adult_catalog_items do
+    from ic in "item_categories",
+      join: c in "categories",
+      on: c.id == ic.category_id,
+      where: c.is_adult,
+      select: ic.catalog_item_id
   end
 
   defp enqueue_batches(_kind, []), do: 0
