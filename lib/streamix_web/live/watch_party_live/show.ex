@@ -404,6 +404,12 @@ defmodule StreamixWeb.WatchPartyLive.Show do
         chat_error: nil
       )
 
+    # The phx-update="stream" container lives inside the sidebar, which is
+    # rendered behind `:if={@chat_open}`. Anything streamed while the sidebar
+    # was closed was pruned without ever reaching the DOM, so the chat opened
+    # empty. Re-stream the window every time it opens.
+    socket = if opening?, do: restream_chat_history(socket), else: socket
+
     {:noreply, if(opening?, do: push_event(socket, "wp_chat_opened", %{}), else: socket)}
   end
 
@@ -915,6 +921,14 @@ defmodule StreamixWeb.WatchPartyLive.Show do
      |> assign(joined: false)
      |> put_flash(:info, message)
      |> redirect(to: ~p"/")}
+  end
+
+  defp restream_chat_history(socket) do
+    messages = WatchParty.list_messages(socket.assigns.room.id, limit: @message_window)
+
+    socket
+    |> stream(:messages, messages, reset: true)
+    |> assign(message_ids: Enum.map(messages, & &1.id))
   end
 
   defp start_playback_session(socket, connection_id) do

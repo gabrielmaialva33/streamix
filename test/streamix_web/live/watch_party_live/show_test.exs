@@ -76,6 +76,28 @@ defmodule StreamixWeb.WatchPartyLive.ShowTest do
     assert MapSet.size(:sys.get_state(pid).connections[user.id]) == 1
   end
 
+  test "opening the chat shows messages that arrived while it was closed", %{
+    conn: conn,
+    room: room,
+    user: user
+  } do
+    {:ok, view, html} = live(conn, ~p"/party/#{room.invite_code}/watch")
+
+    # The sidebar starts closed, so the phx-update="stream" container does not
+    # exist yet and anything streamed into it is dropped.
+    refute has_element?(view, "#wp-chat-messages")
+
+    {:ok, _message} = WatchParty.send_message(room.id, user.id, "mensagem enquanto fechado")
+    refute html =~ "mensagem enquanto fechado"
+
+    opened = view |> element("[phx-click='toggle_chat']") |> render_click()
+
+    # Re-streaming on open is what makes the history appear; without it the
+    # chat rendered empty even though the message was stored.
+    assert has_element?(view, "#wp-chat-messages")
+    assert opened =~ "mensagem enquanto fechado"
+  end
+
   test "host failover changes the authoritative room source without leaving the player", %{
     conn: conn,
     room: room,
