@@ -27,6 +27,7 @@ compose_state_backup=""
 had_versioned_compose=false
 candidate_installed=false
 validated_compose_hash=""
+pre_migration_dump=""
 previous_image=$(docker inspect -f '{{.Image}}' streamix 2>/dev/null || true)
 readiness_body=$(mktemp)
 manifest_headers=$(mktemp)
@@ -219,6 +220,57 @@ preflight_compose() {
   echo "[deploy] production compose ${validated_compose_hash} passed drift and topology preflight"
 }
 
+# A migration that corrupts or backfills wrongly is permanent, and rollback()
+# only reverts the image: the new schema stays. Take a recovery point first and
+# refuse to migrate without one.
+#
+# The dump is taken inline rather than through scripts/backup-database.sh so a
+# freshly provisioned host can still deploy before that script is installed.
+# The standalone script remains the scheduled-backup path.
+backup_database() {
+  local dir=/opt/streamix/backups
+  local stamp db user size
+
+  mkdir -p "${dir}" && chmod 0700 "${dir}" || return 1
+
+  db=$(docker exec streamix-postgres sh -c 'echo "$POSTGRES_DB"' 2>/dev/null) || return 1
+  user=$(docker exec streamix-postgres sh -c 'echo "$POSTGRES_USER"' 2>/dev/null) || return 1
+  [ -n "${db}" ] && [ -n "${user}" ] || return 1
+
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  pre_migration_dump="${dir}/pre-deploy-${stamp}.dump"
+
+  echo "[deploy] taking pre-migration database backup"
+
+  # compress=1, not 9: this step blocks the deploy, and on the current database
+  # that is 3s instead of 14s for 20% more disk. The scheduled backup, which
+  # nobody waits on, keeps maximum compression.
+  if ! docker exec streamix-postgres pg_dump -U "${user}" -d "${db}" \
+      --format=custom --compress=1 >"${pre_migration_dump}"; then
+    rm -f "${pre_migration_dump}"
+    return 1
+  fi
+
+  size=$(stat -c %s "${pre_migration_dump}" 2>/dev/null || echo 0)
+
+  if [ "${size}" -lt "${DEPLOY_MIN_DUMP_BYTES:-1048576}" ]; then
+    echo "[deploy] pre-migration dump is only ${size} bytes; refusing to migrate" >&2
+    rm -f "${pre_migration_dump}"
+    return 1
+  fi
+
+  chmod 0600 "${pre_migration_dump}"
+  echo "[deploy] recovery point: ${pre_migration_dump} (${size} bytes)"
+
+  # Retention for the deploy-triggered dumps only; the scheduled backups keep
+  # their own window.
+  ls -1t "${dir}"/pre-deploy-*.dump 2>/dev/null \
+    | tail -n +"$(( ${DEPLOY_BACKUP_KEEP:-7} + 1 ))" \
+    | while IFS= read -r stale; do rm -f "${stale}"; done
+
+  return 0
+}
+
 install_compose_contract() {
   local candidate_hash="$1"
   local timestamp
@@ -391,9 +443,13 @@ if ! install_compose_contract "${validated_compose_hash}"; then
   rollback "failed to install the versioned Compose contract"
 fi
 
+if ! backup_database; then
+  rollback "pre-migration database backup failed"
+fi
+
 echo "[deploy] running migrations"
 if ! compose "${image_ref}" run --rm --no-deps streamix /app/bin/migrate; then
-  rollback "migration failed"
+  rollback "migration failed; restore from ${pre_migration_dump}"
 fi
 
 echo "[deploy] recreating container"
