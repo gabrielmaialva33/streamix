@@ -6,9 +6,14 @@ defmodule Streamix.Iptv.ProviderCapabilities do
   casing and missing fields. This module is deliberately pure: it converts the
   authenticated `player_api.php` response into data that can be exposed by
   health endpoints without retaining credentials or the raw payload.
-  """
 
-  @expiry_warning_seconds 72 * 60 * 60
+  `exp_date`, `max_connections` and `active_cons` are kept for display only.
+  Panels routinely report bogus expiry dates and under-report connection
+  limits, so neither field participates in account health: an account is
+  healthy while the panel authenticates it and reports an active status, and
+  a genuinely expired account surfaces as a stream-level 401/403 that the
+  runtime records as a terminal failure.
+  """
 
   @enforce_keys [:authenticated?, :active?]
   defstruct authenticated?: false,
@@ -41,7 +46,7 @@ defmodule Streamix.Iptv.ProviderCapabilities do
 
     capabilities = %__MODULE__{
       authenticated?: authenticated?,
-      active?: authenticated? and active_status?(status) and not expired?(expires_at),
+      active?: authenticated? and active_status?(status),
       status: status,
       expires_at: expires_at,
       max_connections: positive_integer(Map.get(user_info, "max_connections"), 1),
@@ -55,15 +60,17 @@ defmodule Streamix.Iptv.ProviderCapabilities do
 
   def from_account_info(_), do: {:error, :invalid_account_info}
 
-  @doc "Classifies account health independently from transport health."
+  @doc """
+  Classifies account health independently from transport health.
+
+  Only authentication and the panel's own status flag count. Declared expiry
+  and connection limits are ignored on purpose (see the module doc).
+  """
   @spec status(t(), DateTime.t()) :: :healthy | :degraded | :unhealthy
-  def status(%__MODULE__{} = capabilities, now \\ DateTime.utc_now()) do
+  def status(%__MODULE__{} = capabilities, _now \\ DateTime.utc_now()) do
     cond do
       not capabilities.authenticated? -> :unhealthy
       not capabilities.active? -> :unhealthy
-      expired_at?(capabilities.expires_at, now) -> :unhealthy
-      expiring_soon?(capabilities.expires_at, now) -> :degraded
-      capabilities.active_connections >= capabilities.max_connections -> :degraded
       true -> :healthy
     end
   end
@@ -89,18 +96,6 @@ defmodule Streamix.Iptv.ProviderCapabilities do
 
   defp active_status?(status) do
     String.downcase(status) in ["active", "enabled"]
-  end
-
-  defp expired?(nil), do: false
-  defp expired?(expires_at), do: DateTime.compare(expires_at, DateTime.utc_now()) == :lt
-
-  defp expired_at?(nil, _now), do: false
-  defp expired_at?(expires_at, now), do: DateTime.compare(expires_at, now) == :lt
-
-  defp expiring_soon?(nil, _now), do: false
-
-  defp expiring_soon?(expires_at, now) do
-    DateTime.diff(expires_at, now, :second) <= @expiry_warning_seconds
   end
 
   defp output_formats(formats) when is_list(formats) do

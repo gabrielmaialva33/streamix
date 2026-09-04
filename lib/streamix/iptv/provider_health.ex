@@ -140,7 +140,7 @@ defmodule Streamix.Iptv.ProviderHealth do
 
   # The probe authenticates against player_api.php. A bare endpoint returning
   # 401/403 only proves that nginx/PHP answered; it does not prove that this
-  # account is active, unexpired or below its connection budget.
+  # account still authenticates or is flagged active by the panel.
   @probe_timeout :timer.seconds(4)
   @probe_cache_ttl :timer.seconds(30)
 

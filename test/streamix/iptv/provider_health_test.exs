@@ -66,16 +66,16 @@ defmodule Streamix.Iptv.ProviderHealthTest do
     assert report.status == :unhealthy
   end
 
-  test "an authenticated but expiring account degrades the provider" do
+  test "a declared expiry date never degrades an authenticated active account" do
     provider = global_provider_fixture()
 
     capabilities = %ProviderCapabilities{
       authenticated?: true,
       active?: true,
       status: "Active",
-      expires_at: DateTime.add(DateTime.utc_now(), 1, :day),
+      expires_at: DateTime.add(DateTime.utc_now(), -1, :day),
       max_connections: 1,
-      active_connections: 0
+      active_connections: 1
     }
 
     [report] =
@@ -85,7 +85,8 @@ defmodule Streamix.Iptv.ProviderHealthTest do
         end
       )
 
-    assert report.status == :degraded
-    assert report.dimensions.control.status == :degraded
+    assert report.status == :healthy
+    assert report.dimensions.control.status == :healthy
+    assert report.capabilities.expires_at
   end
 end

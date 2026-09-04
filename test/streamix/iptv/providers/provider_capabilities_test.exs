@@ -46,21 +46,25 @@ defmodule Streamix.Iptv.ProviderCapabilitiesTest do
     assert ProviderCapabilities.status(capabilities) == :unhealthy
   end
 
-  test "marks accounts close to expiration or at capacity as degraded" do
-    expires_at = DateTime.utc_now() |> DateTime.add(2, :day) |> DateTime.to_unix()
+  test "declared expiry and connection limits never change account health" do
+    expired_at = DateTime.utc_now() |> DateTime.add(-2, :day) |> DateTime.to_unix()
 
     assert {:ok, capabilities} =
              ProviderCapabilities.from_account_info(%{
                "user_info" => %{
                  "auth" => "1",
                  "status" => "Active",
-                 "exp_date" => expires_at,
+                 "exp_date" => expired_at,
                  "max_connections" => "1",
-                 "active_cons" => "1"
+                 "active_cons" => "3"
                }
              })
 
-    assert ProviderCapabilities.status(capabilities) == :degraded
+    assert capabilities.active?
+    assert capabilities.expires_at
+    assert capabilities.max_connections == 1
+    assert capabilities.active_connections == 3
+    assert ProviderCapabilities.status(capabilities) == :healthy
   end
 
   test "public view never retains the raw account response" do
