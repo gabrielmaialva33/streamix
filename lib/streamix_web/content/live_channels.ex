@@ -33,7 +33,6 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(page: 1)
     |> assign(has_more: true)
     |> assign(loading: false)
-    |> assign(playing_channel: nil)
     |> assign(favorites_map: %{})
     |> assign(empty_results: false)
     |> assign(user_id: user.id)
@@ -78,6 +77,15 @@ defmodule StreamixWeb.Content.LiveChannels do
     end
   end
 
+  @doc """
+  Sends the viewer to the signed-token player route.
+
+  Playback never happens inline: rendering a player here meant building the
+  upstream Xtream URL, which carries the provider username and password, and
+  handing it to the browser. The `/watch/live_channel/:id` route mints a
+  `StreamixWeb.StreamToken` instead and enforces the premium gate and the
+  concurrent-screen limit on mount.
+  """
   def play_channel(socket, id) do
     with channel_id when is_integer(channel_id) <- parse_integer(id),
          %{} = channel <-
@@ -87,7 +95,7 @@ defmodule StreamixWeb.Content.LiveChannels do
         content_icon: channel.stream_icon
       })
 
-      assign(socket, playing_channel: channel)
+      LiveView.redirect(socket, to: ~p"/watch/live_channel/#{channel.id}")
     else
       _ -> socket
     end

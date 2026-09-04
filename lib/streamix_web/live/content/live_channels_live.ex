@@ -58,10 +58,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
     {:noreply, LiveChannels.play_channel(socket, id)}
   end
 
-  def handle_event("close_player", _, socket) do
-    {:noreply, assign(socket, playing_channel: nil)}
-  end
-
   # Player hook events - ignore silently as they're handled by the JS player
   def handle_event("progress_update", _params, socket), do: {:noreply, socket}
   def handle_event("player_initializing", _params, socket), do: {:noreply, socket}
@@ -284,12 +280,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
           </:action>
         </.empty_state>
       </div>
-
-      <.video_player_v2
-        :if={@playing_channel}
-        channel={@playing_channel}
-        provider={@playing_channel.provider}
-      />
     </div>
     """
   end

@@ -84,10 +84,34 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/browse")
 
-      html = render_hook(view, "play_channel", %{"id" => channel.id})
+      assert {:error, {:redirect, %{to: watch_path}}} =
+               render_hook(view, "play_channel", %{"id" => channel.id})
 
-      assert html =~ ~s(id="video-player-modal")
-      assert html =~ URI.encode_www_form(provider.url)
+      assert watch_path == "/watch/live_channel/#{channel.id}"
+    end
+
+    test "play_channel never renders upstream provider credentials into the DOM", %{conn: conn} do
+      user = user_fixture()
+
+      provider =
+        provider_fixture(user, %{
+          name: "Credential Leak Guard",
+          username: "leaky-user",
+          password: "leaky-pass"
+        })
+
+      channel = channel_fixture(provider, %{name: "Credential Guard Channel"})
+
+      conn = log_in_user(conn, user)
+      {:ok, view, html} = live(conn, ~p"/browse")
+
+      refute html =~ "leaky-user"
+      refute html =~ "leaky-pass"
+
+      # The only playback entrypoint is the signed-token route; no inline
+      # player may exist, because building one requires the upstream URL and
+      # that URL embeds the provider username and password.
+      assert {:error, {:redirect, _}} = render_hook(view, "play_channel", %{"id" => channel.id})
     end
 
     test "categories are only shown and applied after a provider is selected", %{conn: conn} do
@@ -149,7 +173,8 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
       favorite_html = render_hook(view, "toggle_favorite", %{"id" => private_channel.id})
       refresh_html = render_hook(view, "refresh_epg", %{"channel_ids" => [private_channel.id]})
 
-      refute play_html =~ ~s(id="video-player-modal")
+      # An unplayable channel must not redirect into the player either.
+      refute match?({:error, {:redirect, _}}, play_html)
       refute favorite_html =~ ~s(id="channel-img-#{private_channel.id}")
       refute refresh_html =~ "Other Private Channel"
       refute Iptv.favorite?(user.id, "live_channel", private_channel.id)
