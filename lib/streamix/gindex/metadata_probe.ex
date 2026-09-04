@@ -194,12 +194,52 @@ defmodule Streamix.Gindex.MetadataProbe do
       index: stream["index"],
       codec: stream["codec_name"],
       language: tags["language"] || tags["LANGUAGE"] || "und",
-      title: tags["title"] || tags["TITLE"],
+      title: sanitize_title(tags["title"] || tags["TITLE"]),
       channels: stream["channels"],
       default: disposition["default"] == 1,
       forced: disposition["forced"] == 1
     }
   end
+
+  # Release groups stamp their watermark into the container's track title, and
+  # the web player renders that title as the track's label. Every distinct
+  # title in the catalog carries one:
+  #
+  #     COMANDO.TO   LAPUMiA   LAPUMiAFiLMES.COM   WWW.BLUDV.COM
+  #     WWW.BLUDV.COM 5.1 [BR]   Inglês 5.1 - LAPUMiA   Português 2.0 - LAPUMiA
+  #
+  # Dropping the whole title on a watermark would also throw away the last two,
+  # which are the only genuinely useful labels in the set. So strip the
+  # watermark and keep what survives.
+  #
+  # The group list is short and specific on purpose: these are the groups this
+  # catalog actually carries. A bare group name has no generic signature that
+  # separates it from a real track title, so guessing would cost more than it
+  # buys.
+  @title_watermarks [
+    ~r/\bwww\.\S+/i,
+    ~r/\b[\w-]+\.(?:com|net|org|to|tv|me|cc)\b/i,
+    ~r/\bLAPUMiA\w*/i,
+    ~r/\bBLUDV\w*/i,
+    ~r/\bCOMANDO\w*/i
+  ]
+
+  defp sanitize_title(nil), do: nil
+
+  defp sanitize_title(title) when is_binary(title) do
+    cleaned =
+      @title_watermarks
+      |> Enum.reduce(title, &String.replace(&2, &1, " "))
+      |> String.replace(~r/[\s\-_|]+/u, " ")
+      |> String.trim()
+
+    # What is left has to read like a label, not like punctuation the stripping
+    # left behind. "Inglês 5.1" survives; "5.1 [BR]" does not, and its layout is
+    # already carried by `channels`.
+    if Regex.match?(~r/\p{L}{3,}/u, cleaned), do: cleaned, else: nil
+  end
+
+  defp sanitize_title(_title), do: nil
 
   defp persist(type, id, tracks) do
     case Streamix.Catalog.put_media_track_metadata(type, id, tracks) do
@@ -213,9 +253,20 @@ defmodule Streamix.Gindex.MetadataProbe do
   # shape regardless of fresh-vs-cached.
   defp normalize(%{} = m) do
     %{
-      audio: Map.get(m, "audio", Map.get(m, :audio, [])),
-      subtitle: Map.get(m, "subtitle", Map.get(m, :subtitle, [])),
+      audio: normalize_tracks(Map.get(m, "audio", Map.get(m, :audio, []))),
+      subtitle: normalize_tracks(Map.get(m, "subtitle", Map.get(m, :subtitle, []))),
       probed_at: Map.get(m, "probed_at", Map.get(m, :probed_at))
     }
   end
+
+  # Rows probed before `sanitize_title/1` existed still hold the watermark, so
+  # the same cleaning runs on read. Cheap, and it spares a data migration.
+  defp normalize_tracks(tracks) when is_list(tracks), do: Enum.map(tracks, &normalize_track/1)
+  defp normalize_tracks(_tracks), do: []
+
+  defp normalize_track(%{"title" => title} = track),
+    do: Map.put(track, "title", sanitize_title(title))
+
+  defp normalize_track(%{title: title} = track), do: Map.put(track, :title, sanitize_title(title))
+  defp normalize_track(track), do: track
 end
