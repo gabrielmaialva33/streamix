@@ -223,10 +223,21 @@ test("native restart consumes the recovery session instead of creating a second 
   const initPlayer = methodSlice(hook, "initPlayer", "playNative");
 
   assert.match(initPlayer, /initPlayer\(\{ sessionId: providedSessionId = null \} = \{\}\)/);
+
+  // A supplied session is reused; only the unsupplied case begins a new one.
   assert.match(
     initPlayer,
-    /const sessionId = providedSessionId \?\? this\.beginPlaybackSession\(\)/,
+    /if \(providedSessionId == null\) \{\s*sessionId = this\.beginPlaybackSession\(\);/,
   );
+  assert.doesNotMatch(initPlayer, /providedSessionId \?\? this\.beginPlaybackSession\(\)/);
+
+  // cleanup() advances playbackSessionId to invalidate in-flight work, so a
+  // supplied session has to be re-adopted after it. Without this every
+  // isSessionCurrent() check downstream compares against the bumped id, the
+  // activation aborts as stale, and the AVPlayer-to-native fallback restores
+  // no engine at all.
+  const afterCleanup = initPlayer.slice(initPlayer.indexOf("this.cleanup();"));
+  assert.match(afterCleanup, /this\.playbackSessionId = providedSessionId;/);
 });
 
 test("transition contexts can override provisional and recovery engine destruction", async () => {
