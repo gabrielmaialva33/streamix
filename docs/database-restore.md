@@ -28,6 +28,18 @@ O script `scripts/backup-database.sh` gera os três, recusa um dump menor que o
 piso configurado, valida que o `pg_restore --list` consegue ler o índice, e
 mantém os 14 mais recentes.
 
+**Backups não são automáticos.** Não há timer nem passo de deploy que os gere:
+por decisão do operador, rodar é manual. Na VPS o script está instalado em
+`/opt/streamix/bin/backup-database.sh`. Antes de qualquer migration com risco
+de perda de dado, rode:
+
+```bash
+ssh root@<vps> /opt/streamix/bin/backup-database.sh
+```
+
+A retenção só é aplicada quando o script roda, então os dumps existentes ficam
+onde estão até a próxima execução.
+
 ## Restaurando
 
 ```bash
