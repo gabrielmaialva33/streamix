@@ -13,6 +13,11 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   the fields exist in the payload and are never filled — so nothing else could
   ever identify them. They had never been through a matcher at all.
 
+  Rows with no plot are matched first. The eligible set also holds ~77k torrent
+  rows that already have a plot, a rating and a poster and only lack an id;
+  ordering by id alone would interleave the two and spend the nightly budget on
+  rows a viewer already sees complete.
+
   Runs in two shapes:
 
     * **Batch mode** — args `%{"kind" => "movie|series", "ids" => [...]}`
@@ -389,18 +394,44 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     enqueue_batches("movie", movie_ids) + enqueue_batches("series", series_ids)
   end
 
+  # Rows with nothing to show come first. Ordering by id alone would interleave
+  # the 55.511 xtream rows — which have no plot, no rating, no poster from
+  # anywhere — with 76.913 torrent rows that already carry all three and only
+  # want an id. Same nightly budget either way; this spends it where a viewer
+  # can see the difference, and cuts the xtream backlog from ~9 nights to ~4.
   defp pending_ids(schema, limit) do
-    Repo.all(
-      from r in schema,
-        where: is_nil(r.tmdb_searched_at),
-        where:
-          is_nil(r.catalog_item_id) or
-            r.catalog_item_id not in subquery(adult_catalog_items()),
-        order_by: [asc: r.id],
-        limit: ^limit,
-        select: r.id
-    )
+    starving = Repo.all(pending_query(schema, limit, :without_plot))
+    remaining = limit - length(starving)
+
+    if remaining > 0 do
+      starving ++ Repo.all(pending_query(schema, remaining, :with_plot))
+    else
+      starving
+    end
   end
+
+  defp pending_query(schema, limit, plot_state) do
+    from(r in schema,
+      where: is_nil(r.tmdb_searched_at),
+      # The matcher's job is to *find* an id. A row that has one is already
+      # answered, and re-deciding it by fuzzy name match could only make it
+      # worse.
+      where: is_nil(r.tmdb_id) or r.tmdb_id == "",
+      where:
+        is_nil(r.catalog_item_id) or
+          r.catalog_item_id not in subquery(adult_catalog_items()),
+      order_by: [asc: r.id],
+      limit: ^limit,
+      select: r.id
+    )
+    |> filter_by_plot(plot_state)
+  end
+
+  defp filter_by_plot(query, :without_plot),
+    do: where(query, [r], is_nil(r.plot) or r.plot == "")
+
+  defp filter_by_plot(query, :with_plot),
+    do: where(query, [r], not is_nil(r.plot) and r.plot != "")
 
   # `categories.is_adult` is the curated flag and it is complete: in production
   # it covers all 8.047 adult rows, and matching on the title instead would add

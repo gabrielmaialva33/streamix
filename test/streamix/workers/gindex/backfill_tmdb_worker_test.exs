@@ -106,6 +106,33 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorkerTest do
       refute searched.id in enqueued_ids("movie")
     end
 
+    test "skips rows that already carry a tmdb_id", %{xtream: provider} do
+      answered = movie_fixture(provider, %{name: "A Suspeita (2022)", tmdb_id: "853660"})
+      unanswered = movie_fixture(provider, %{name: "Miss Bala (2019)", tmdb_id: nil})
+
+      assert :ok = BackfillTmdbWorker.perform(%Oban.Job{args: %{}})
+
+      ids = enqueued_ids("movie")
+      assert unanswered.id in ids
+      refute answered.id in ids
+    end
+
+    # Same nightly budget either way; it should go to the rows a viewer sees
+    # as empty before the ones that only lack an id.
+    test "matches rows with no plot before rows that have one", %{xtream: provider} do
+      with_plot = movie_fixture(provider, %{name: "Já Tem Sinopse (2014)", plot: "Uma sinopse."})
+      without_plot = movie_fixture(provider, %{name: "Sem Sinopse (2015)", plot: nil})
+
+      assert :ok = BackfillTmdbWorker.perform(%Oban.Job{args: %{}})
+
+      ids = enqueued_ids("movie")
+      # `with_plot` has the lower id, so plain id ordering would have put it first.
+      assert with_plot.id < without_plot.id
+
+      assert Enum.find_index(ids, &(&1 == without_plot.id)) <
+               Enum.find_index(ids, &(&1 == with_plot.id))
+    end
+
     test "sweeps series the same way", %{xtream: provider} do
       series = series_content_fixture(provider, %{name: "Uma Série Qualquer (2019)"})
 
