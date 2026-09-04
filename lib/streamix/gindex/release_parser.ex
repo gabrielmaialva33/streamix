@@ -46,6 +46,11 @@ defmodule Streamix.Gindex.ReleaseParser do
     ~r/\b[AÁ]udio\b/iu,
     # Trailing hash like `[D20DD3A2]`
     ~r/\[[0-9A-F]{6,}\]/i,
+    # Single-letter bracket tags from the brazilian IPTV convention:
+    # `[L]` legendado, `[D]` dublado, `[N]` nacional. The `\b(...|LEG|...)`
+    # alternation above only catches the spelled-out forms, so `[L]` used to
+    # survive bracket stripping and land in the title as a stray "L".
+    ~r/\[[A-Z]\]/,
     # Extension tail
     ~r/\.(mp4|mkv|avi|mov|wmv|webm|m4v|ts)\z/i
   ]

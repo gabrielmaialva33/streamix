@@ -1,22 +1,40 @@
 defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   @moduledoc """
-  Finds posters for gindex catalog rows by asking TMDB.
+  Resolves a `tmdb_id` for catalog rows by matching their release string.
+
+  Named for gindex because that is where it started, and kept there because
+  Oban addresses queued jobs by module name. The matcher itself was never
+  gindex-specific: `release_source/1` falls back to `name` when there is no
+  `gindex_path`, and the anime pipeline only engages on an anime path. The
+  selection was the only thing holding it to one source.
+
+  It now covers the whole catalog. Production had 55.497 xtream movies whose
+  provider ships `plot`, `tmdb_id` and `rating` as empty strings and zeroes —
+  the fields exist in the payload and are never filled — so nothing else could
+  ever identify them. They had never been through a matcher at all.
 
   Runs in two shapes:
 
     * **Batch mode** — args `%{"kind" => "movie|series", "ids" => [...]}`
       loads the listed rows, runs each through `ReleaseParser` ➝
-      `TmdbMatcher`, and writes the winning `poster_path` into
-      `stream_icon`/`cover`, plus `tmdb_id` when we didn't have one.
+      `TmdbMatcher`, and writes the winning `tmdb_id`, plus the poster when
+      the row has no artwork of its own.
 
-    * **Cron mode** — args `%{}`. Grabs `@cron_limit` rows per kind that
-      have `gindex_path IS NOT NULL AND tmdb_searched_at IS NULL` and
-      enqueues them in batches of `@batch_size`. Runs nightly; also
-      safe to trigger manually after a scan finishes.
+    * **Cron mode** — args `%{}`. Grabs `@cron_limit` rows per kind with
+      `tmdb_searched_at IS NULL` and enqueues them in batches of
+      `@batch_size`. Runs nightly; also safe to trigger manually after a
+      scan finishes.
 
   Every row that's touched gets `tmdb_searched_at` stamped so the next
   pass skips it. If we couldn't match, `tmdb_miss_reason` is filled in
   (`"no_results"`, `"low_score"`, `"rate_limited"`, ...) so we know why.
+
+  Adult titles are excluded from the sweep. TMDB does not carry them, so every
+  one is a guaranteed miss — and `requeue_stale_misses/0` would put all 6.517
+  of them back in the pool every week, forever.
+
+  Resolving the id is only half the enrichment: `Streamix.Workers.TmdbDetailsWorker`
+  reads the details for whatever this worker matches.
   """
 
   use Oban.Worker,
@@ -50,6 +68,10 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   # any realistic gindex catalog. Prevents runaway scheduling if a
   # data bug ever keeps `tmdb_searched_at` from being stamped.
   @max_loop_hops 10
+  # `[XXX]` / `[Adulto]` prefixes are structural markers in the provider's
+  # naming, not part of a title. Case-insensitive POSIX regex so Postgres can
+  # evaluate it while walking the partial index.
+  @adult_marker "\\[xxx\\]|\\[adulto\\]|^xxx "
 
   @impl Oban.Worker
   def timeout(_job), do: :timer.minutes(15)
@@ -79,6 +101,8 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   # --- Batch processing ---
 
   defp process_batch(schema, kind, ids) do
+    artwork = artwork_field(kind)
+
     rows =
       Repo.all(
         from r in schema,
@@ -89,7 +113,8 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
             title: r.title,
             year: r.year,
             tmdb_id: r.tmdb_id,
-            gindex_path: r.gindex_path
+            gindex_path: r.gindex_path,
+            artwork: field(r, ^artwork)
           }
       )
 
@@ -156,8 +181,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
           tmdb_miss_reason: nil
         }
 
-        attrs = if is_nil(match.cover_url), do: Map.delete(attrs, :cover), else: attrs
-        update_row(schema, row.id, attrs)
+        update_row(schema, row.id, keep_artwork(attrs, row.artwork))
         :hit
 
       {:miss, reason} ->
@@ -175,8 +199,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
           tmdb_miss_reason: nil
         }
 
-        attrs = if is_nil(match.cover_url), do: Map.delete(attrs, :cover), else: attrs
-        update_row(schema, row.id, attrs)
+        update_row(schema, row.id, keep_artwork(attrs, row.artwork))
         :hit
 
       {:miss, reason} ->
@@ -187,7 +210,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   defp try_tmdb(schema, kind, row, title, year, reasons) do
     case TmdbMatcher.best_match(title, year, kind) do
       {:ok, match} ->
-        attrs = build_hit_attrs(kind, match)
+        attrs = kind |> build_hit_attrs(match) |> keep_artwork(row.artwork)
         update_row(schema, row.id, attrs)
         :hit
 
@@ -245,6 +268,9 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   defp fallback_title("", row), do: row.title || row.name || ""
   defp fallback_title(title, _row), do: title
 
+  defp artwork_field(:movie), do: :stream_icon
+  defp artwork_field(:series), do: :cover
+
   defp build_hit_attrs(:movie, match) do
     %{
       tmdb_id: match.tmdb_id,
@@ -252,7 +278,6 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
       tmdb_searched_at: DateTime.utc_now(:second),
       tmdb_miss_reason: nil
     }
-    |> drop_nil_poster()
   end
 
   defp build_hit_attrs(:series, match) do
@@ -262,18 +287,28 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
       tmdb_searched_at: DateTime.utc_now(:second),
       tmdb_miss_reason: nil
     }
-    |> drop_nil_poster()
   end
 
-  # Never overwrite a good poster with `nil` (happens when TMDB has the
-  # row but no poster asset uploaded yet). The tmdb_id + timestamp still
-  # persist so we don't re-query.
-  defp drop_nil_poster(attrs) do
-    case attrs[:stream_icon] || attrs[:cover] do
-      nil -> Map.drop(attrs, [:stream_icon, :cover])
-      _ -> attrs
+  # Artwork is only ever filled in, never replaced. Two reasons it can't be a
+  # blind write: TMDB has rows with no poster uploaded, and — since the sweep
+  # widened past gindex — 55.067 of the xtream rows it now visits already
+  # carry a poster from their provider. The tmdb_id and the timestamp persist
+  # either way, so a skipped poster never costs a re-query.
+  @doc false
+  def keep_artwork(attrs, existing) do
+    incoming = attrs[:stream_icon] || attrs[:cover]
+
+    if blank?(incoming) or not blank?(existing) do
+      Map.drop(attrs, [:stream_icon, :cover])
+    else
+      attrs
     end
   end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: false
 
   defp update_row(schema, id, attrs) do
     from(r in schema, where: r.id == ^id)
@@ -359,7 +394,8 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
   defp pending_ids(schema, limit) do
     Repo.all(
       from r in schema,
-        where: not is_nil(r.gindex_path) and is_nil(r.tmdb_searched_at),
+        where: is_nil(r.tmdb_searched_at),
+        where: fragment("? !~* ?", r.name, ^@adult_marker),
         order_by: [asc: r.id],
         limit: ^limit,
         select: r.id

@@ -54,5 +54,26 @@ defmodule Streamix.Gindex.ReleaseParserTest do
                year: 2002
              }
     end
+
+    # Single-letter bracket tags are the brazilian IPTV shorthand the xtream
+    # catalog uses: [L] legendado, [D] dublado, [N] nacional. The spelled-out
+    # alternation misses them, so the letter used to survive bracket stripping
+    # and end up in the title.
+    test "strips single-letter bracket tags without eating the title" do
+      assert ReleaseParser.parse("No Foco da Epidemia [L]") == %{
+               title: "No Foco da Epidemia",
+               year: nil
+             }
+
+      assert ReleaseParser.parse("Faster: No Limite da Velocidade (2025) [LEG]") == %{
+               title: "Faster: No Limite da Velocidade",
+               year: 2025
+             }
+
+      assert ReleaseParser.parse("O Realismo Socialista [D]") == %{
+               title: "O Realismo Socialista",
+               year: nil
+             }
+    end
   end
 end
