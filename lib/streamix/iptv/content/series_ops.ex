@@ -231,9 +231,15 @@ defmodule Streamix.Iptv.SeriesOps do
     series = get!(id)
 
     episode_count = count_episodes_for_series(series.id)
-    needs_sync = episode_count == 0 or is_nil(series.tmdb_id) or series.tmdb_id == ""
 
-    if needs_sync and upstream_available?(series.provider_id) do
+    # Block on the upstream only when the page would otherwise be empty.
+    #
+    # A missing tmdb_id used to force this too, which meant every open of an
+    # Xtream series blocked forever: those providers never send a tmdb_id, so
+    # the condition could never become false. Metadata enrichment is the
+    # scheduled workers' job and must not sit in front of a page whose
+    # episodes are already stored.
+    if episode_count == 0 and upstream_available?(series.provider_id) do
       case Sync.sync_series_details(series) do
         {:ok, _} -> :ok
         {:error, _reason} -> :ok
