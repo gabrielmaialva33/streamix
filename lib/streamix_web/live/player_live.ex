@@ -25,9 +25,11 @@ defmodule StreamixWeb.PlayerLive do
   import StreamixWeb.PlayerHelpers
 
   alias Streamix.Torrent
+  alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.PlayerSourceFailover
 
   @torrent_peer_target 30
+  @token_refresh_min_interval_ms 5_000
 
   @impl true
   def mount(%{"type" => type, "id" => id} = params, _session, socket) do
@@ -318,7 +320,11 @@ defmodule StreamixWeb.PlayerLive do
   def handle_event("qualities_available", _params, socket), do: {:noreply, socket}
   def handle_event("pip_error", _params, socket), do: {:noreply, socket}
   def handle_event("progress_update", _params, socket), do: {:noreply, socket}
-  def handle_event("request_token_refresh", _params, socket), do: {:noreply, socket}
+
+  def handle_event("request_token_refresh", _params, socket) do
+    {:noreply, refresh_stream_token(socket)}
+  end
+
   def handle_event("avplayer_preference_changed", _params, socket), do: {:noreply, socket}
 
   @impl true
@@ -620,10 +626,63 @@ defmodule StreamixWeb.PlayerLive do
       Billing.start_playback_session(socket.assigns.current_scope.user, %{
         content_type: type,
         content_id: content.id,
+        client_id: client_id_from_socket(socket),
         metadata: %{live_view: "player"}
       })
     else
       {:ok, nil}
+    end
+  end
+
+  # The hook asks for a fresh token when the proxy answers 401/403: the token
+  # outlived its max age, or the subscription lapsed mid-session. Re-sign for
+  # the current content and hand the new URLs to the player; when the user is
+  # no longer entitled, say so instead of leaving the player spinning.
+  defp refresh_stream_token(%{assigns: %{content: content, provider: provider}} = socket)
+       when is_map(content) do
+    now = System.monotonic_time(:millisecond)
+    last_refresh = socket.assigns[:token_refreshed_at]
+
+    cond do
+      socket.assigns.content_type == :torrent ->
+        socket
+
+      is_integer(last_refresh) and now - last_refresh < @token_refresh_min_interval_ms ->
+        socket
+
+      not Access.plays_global_content?(socket.assigns.current_scope.user, provider) ->
+        socket
+        |> put_flash(
+          :error,
+          "Sua assinatura não está mais ativa. Renove para continuar assistindo."
+        )
+        |> redirect(to: ~p"/plans")
+
+      true ->
+        push_refreshed_stream_token(socket, content, provider, now)
+    end
+  end
+
+  defp refresh_stream_token(socket), do: socket
+
+  defp push_refreshed_stream_token(socket, content, provider, now) do
+    type = Atom.to_string(socket.assigns.content_type)
+
+    case resolve_stream_url(type, content, provider, socket.assigns.user_id) do
+      {:ok, stream_url} ->
+        :telemetry.execute([:streamix, :player, :token_refresh], %{count: 1}, %{
+          content_type: type
+        })
+
+        socket
+        |> assign(stream_url: stream_url, token_refreshed_at: now)
+        |> push_event("refresh_token", %{
+          url: stream_url,
+          proxyUrl: Metadata.proxy_url(stream_url, socket.assigns.content_type)
+        })
+
+      {:error, _reason} ->
+        socket
     end
   end
 

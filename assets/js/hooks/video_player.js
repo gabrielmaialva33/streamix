@@ -1246,10 +1246,15 @@ const VideoPlayer = {
     this.handleEvent("seek", ({ time }) => this.seekTo(time));
     this.handleEvent("set_playback_rate", ({ rate }) => this.setPlaybackRate(rate));
     this.handleEvent("refresh_token", ({ url, proxyUrl }) => {
-      // Handle token refresh from server
+      // The server re-signed the stream token after a 401/403. Resume VOD
+      // where it stopped instead of restarting from zero.
       log.debug("[VideoPlayer] Token refreshed, updating URLs");
+      const resumeAt = this.contentType === "vod" ? this.video?.currentTime || 0 : 0;
+      if (resumeAt > 0) this._savedPosition = { time: resumeAt };
       this.streamUrl = url;
-      this.proxyUrl = proxyUrl;
+      this.proxyUrl = proxyUrl || url;
+      this.el.dataset.streamUrl = this.streamUrl;
+      this.el.dataset.proxyUrl = this.proxyUrl;
       this.retryCount = 0;
       this.initPlayer();
     });

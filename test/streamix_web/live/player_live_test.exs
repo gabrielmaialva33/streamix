@@ -4,6 +4,7 @@ defmodule StreamixWeb.PlayerLiveTest do
   import Phoenix.LiveViewTest
   import Streamix.IptvFixtures
 
+  alias Streamix.Billing
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Subscription
   alias Streamix.Iptv.{Episode, Season}
@@ -224,6 +225,91 @@ defmodule StreamixWeb.PlayerLiveTest do
       {:ok, _view, html} = live(conn, ~p"/watch/live_channel/#{channel.id}")
 
       assert html =~ "Canal Global Permitido"
+    end
+
+    test "a reconnecting tab supersedes its own playback session instead of hitting the screen limit",
+         %{conn: conn, user: user} do
+      plan = plan_fixture()
+      Billing.sync_plan_features!(plan, %{concurrent_streams: 1})
+      _subscription = subscription_fixture(user, plan)
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      channel = channel_fixture(provider, %{name: "Canal Reconectado"})
+      tab_a = put_connect_params(conn, %{"_client_id" => "tab-a"})
+
+      {:ok, _first, html} = live(tab_a, ~p"/watch/live_channel/#{channel.id}")
+      assert html =~ "Canal Reconectado"
+
+      {:ok, _second, html} = live(tab_a, ~p"/watch/live_channel/#{channel.id}")
+      assert html =~ "Canal Reconectado"
+      assert Billing.active_playback_count(user) == 1
+
+      tab_b = put_connect_params(conn, %{"_client_id" => "tab-b"})
+
+      assert {:error, {:redirect, %{to: "/plans?upgrade=screens"}}} =
+               live(tab_b, ~p"/watch/live_channel/#{channel.id}")
+    end
+
+    test "request_token_refresh re-signs the stream and pushes the new URLs", %{
+      conn: conn,
+      user: user
+    } do
+      plan = plan_fixture()
+      _subscription = subscription_fixture(user, plan)
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      channel = channel_fixture(provider, %{name: "Canal Token"})
+
+      {:ok, view, _html} = live(conn, ~p"/watch/live_channel/#{channel.id}")
+
+      render_hook(view, "request_token_refresh", %{})
+
+      assert_push_event(view, "refresh_token", %{url: url, proxyUrl: proxy_url})
+      assert url =~ "/api/stream/proxy?token="
+      assert proxy_url == url
+
+      # A second request inside the throttle window is ignored.
+      render_hook(view, "request_token_refresh", %{})
+      refute_push_event(view, "refresh_token", %{})
+    end
+
+    test "request_token_refresh sends a lapsed subscriber to /plans", %{conn: conn, user: user} do
+      plan = plan_fixture()
+      subscription = subscription_fixture(user, plan)
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      channel = channel_fixture(provider, %{name: "Canal Expirado"})
+
+      {:ok, view, _html} = live(conn, ~p"/watch/live_channel/#{channel.id}")
+
+      subscription
+      |> Ecto.Changeset.change(expires_at: DateTime.add(DateTime.utc_now(:second), -60, :second))
+      |> Repo.update!()
+
+      render_hook(view, "request_token_refresh", %{})
+
+      assert_redirect(view, "/plans")
     end
 
     test "private and public content owned by the user still opens without subscription", %{
