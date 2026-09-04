@@ -213,6 +213,10 @@ config :streamix, Oban,
     # pool of 3 tokens (round-robin) so each worker runs on its own
     # bucket and nobody blocks each other on 429s.
     gindex_enrich: 3,
+    # TMDB *details* backfill for rows that already carry a tmdb_id. Each job
+    # runs two enrichments in parallel, so 2 keeps the peak at 4 inflight —
+    # under the gindex pacer's allowance even when gindex_enrich is busy.
+    tmdb_details: 2,
     # Torrent ingestion. Concurrency 2 keeps two sources walking in
     # parallel without overwhelming any single upstream — each source
     # paces itself per `Streamix.Iptv.Torrent.Source.rate_limit_ms/0`.
@@ -257,6 +261,10 @@ config :streamix, Oban,
        # sync_status=completed; this cron is the safety net for runs
        # that ended in "failed" or when the auto-trigger didn't fire.
        {"30 3 * * *", Streamix.Workers.Gindex.BackfillTmdbWorker},
+       # Read TMDB details (plot, rating, tagline, trailer) for rows the
+       # poster backfill matched but never read. 04:45 clears the 03:30
+       # matcher and the 04:00 asset backfill, which share TMDB tokens.
+       {"45 4 * * *", Streamix.Workers.TmdbDetailsWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
        # Index embeddings for semantic search daily at 5 AM

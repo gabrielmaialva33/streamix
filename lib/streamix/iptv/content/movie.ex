@@ -54,6 +54,12 @@ defmodule Streamix.Iptv.Movie do
     field :tmdb_searched_at, :utc_datetime
     field :tmdb_miss_reason, :string
 
+    # Stamped by `Streamix.Workers.TmdbDetailsWorker` once the TMDB *details*
+    # endpoint has been read for this row. Distinct from `tmdb_searched_at`,
+    # which only records that we looked for a match. Written programmatically,
+    # so it is deliberately absent from `@fields`.
+    field :tmdb_details_at, :utc_datetime
+
     # Cached ffprobe output for GIndex content. Populated lazily by the
     # tracks endpoint the first time someone opens the audio menu. Choki
     # content never reads this column (hls.js exposes tracks at runtime).

@@ -35,6 +35,12 @@ defmodule Streamix.Iptv.Series do
     field :tmdb_searched_at, :utc_datetime
     field :tmdb_miss_reason, :string
 
+    # Stamped by `Streamix.Workers.TmdbDetailsWorker` once the TMDB *details*
+    # endpoint has been read for this row. Distinct from `tmdb_searched_at`,
+    # which only records that we looked for a match. Written programmatically,
+    # so it is deliberately absent from `@fields`.
+    field :tmdb_details_at, :utc_datetime
+
     # AniList fallback for anime rows that TMDB couldn't match.
     field :anilist_id, :integer
 

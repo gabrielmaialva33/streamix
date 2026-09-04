@@ -194,6 +194,7 @@ API surfaces under `/api/v1`:
 | `SyncGindexProviderWorker`  | daily at 03:00                 | `sync`           |
 | `SyncEpgWorker`             | on demand                      | `sync`           |
 | `SyncSeriesDetailsWorker`   | on demand                      | `series_details` |
+| `TmdbDetailsWorker`         | daily at 04:45                 | `tmdb_details`   |
 | `IndexEmbeddingsWorker`     | daily at 05:00                 | `ai`             |
 | `UpdateUserProfileWorker`   | triggered from analytics flows | `ai` / async     |
 
