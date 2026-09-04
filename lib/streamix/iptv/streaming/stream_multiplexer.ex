@@ -13,14 +13,19 @@ defmodule Streamix.Iptv.StreamMultiplexer do
 
   require Logger
 
-  alias Streamix.Iptv.Streaming.ProviderRuntime
+  alias Streamix.Iptv.Streaming.{ProviderRuntime, UpstreamLease}
   alias Streamix.Iptv.Streaming.StreamMultiplexer.{Health, Subscribers, Upstream}
   alias Streamix.Iptv.StreamMultiplexerSupervisor
   alias Streamix.SafeLog
   alias Streamix.Security.UrlValidator
 
   @connect_timeout 10_000
-  @default_idle_timeout 2_000
+  # Grace period the upstream stays open after the last viewer leaves. Zapping,
+  # pausing and reconnecting look like a disconnect, and each would otherwise
+  # cost a fresh provider connection. Idle multiplexers are reclaimed early when
+  # the provider runs out of slots (see `reclaim_if_idle/2`).
+  @default_idle_timeout 20_000
+  @reclaim_timeout 1_000
   @default_buffer_size 30
   @default_subscriber_buffer_bytes 5 * 1_024 * 1_024
   @max_redirects 5
@@ -52,6 +57,14 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   @spec demand(pid()) :: :ok
   def demand(pid) when is_pid(pid) do
     GenServer.cast(pid, {:demand, self()})
+  end
+
+  @doc false
+  @spec reclaim_if_idle(pid(), integer()) :: :reclaimed | :busy
+  def reclaim_if_idle(pid, provider_id) when is_pid(pid) do
+    GenServer.call(pid, {:reclaim_if_idle, provider_id}, @reclaim_timeout)
+  catch
+    :exit, _reason -> :busy
   end
 
   @doc "Unsubscribes the calling process."
@@ -134,6 +147,21 @@ defmodule Streamix.Iptv.StreamMultiplexer do
       {:error, reason, state} ->
         state = Subscribers.remove(state, pid)
         {:reply, {:error, reason}, Subscribers.maybe_start_idle_timer(state)}
+    end
+  end
+
+  def handle_call({:reclaim_if_idle, provider_id}, _from, state) do
+    if state.provider_id == provider_id and map_size(state.subscribers) == 0 and
+         state.status in [:connecting, :streaming] do
+      Logger.info("[StreamMux] reclaimed idle upstream stream_key=#{inspect(state.stream_key)}")
+
+      :telemetry.execute([:streamix, :live_mux, :reclaimed], %{count: 1}, %{
+        provider_id: provider_id
+      })
+
+      {:stop, :normal, :reclaimed, release_upstream(state)}
+    else
+      {:reply, :busy, state}
     end
   end
 
@@ -224,8 +252,16 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     end
   end
 
+  # The lease is released before the reply so the caller can re-acquire it
+  # right away instead of racing this process's terminate/2.
+  defp release_upstream(state) do
+    Upstream.close(state.mint_conn)
+    ProviderRuntime.release(state.lease)
+    %{state | mint_conn: nil, request_ref: nil, lease: :untracked}
+  end
+
   defp ensure_upstream_started(%{status: :idle} = state) do
-    case ProviderRuntime.acquire(state.provider_id, :live, self()) do
+    case UpstreamLease.acquire(state.provider_id, :live, self()) do
       {:ok, lease} ->
         send(self(), :connect)
 

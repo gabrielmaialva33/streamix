@@ -17,6 +17,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
 
   alias Streamix.Iptv.Streaming.ProviderRuntime
   alias Streamix.Iptv.Streaming.RedirectResolver
+  alias Streamix.Iptv.Streaming.UpstreamLease
   alias Streamix.Iptv.Streaming.VodMultiplexer.BlockStore
   alias Streamix.SafeLog
 
@@ -192,7 +193,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   end
 
   defp download(state) do
-    case ProviderRuntime.acquire(state.provider_id, :vod, self()) do
+    case UpstreamLease.acquire(state.provider_id, :vod, self()) do
       {:ok, lease} ->
         try do
           request(state)

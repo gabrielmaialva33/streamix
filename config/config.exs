@@ -49,7 +49,11 @@ config :streamix,
   # `STREAM_PROXY_BACKEND` env var.
   stream_proxy_backend: :beam,
   live_multiplexer_enabled: true,
-  live_mux_idle_timeout_ms: 2_000,
+  # Grace period an idle live upstream stays open after its last viewer leaves.
+  # Zapping, pause and reconnect look like disconnects; without the grace each
+  # would open a fresh provider connection. Idle upstreams are reclaimed early
+  # when the provider runs out of slots.
+  live_mux_idle_timeout_ms: 20_000,
   live_mux_stream_idle_timeout_ms: 45_000,
   # VOD block multiplexer. Viewers seek independently, so sharing happens per
   # fixed-size block: a block already fetched (or being fetched) is reused

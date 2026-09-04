@@ -41,7 +41,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     FallbackVideo,
     ProviderRuntime,
     RedirectResolver,
-    StreamErrors
+    StreamErrors,
+    UpstreamLease
   }
 
   alias Streamix.Iptv.Streaming.VodProxy.{Headers, Observability, Transfer}
@@ -415,7 +416,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp with_provider_lease(conn, context, fun) do
-    case ProviderRuntime.acquire(context.provider_id, context.dimension) do
+    case UpstreamLease.acquire(context.provider_id, context.dimension) do
       {:ok, lease} ->
         try do
           fun.(conn)

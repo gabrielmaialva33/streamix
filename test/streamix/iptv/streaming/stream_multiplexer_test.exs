@@ -67,6 +67,81 @@ defmodule Streamix.Iptv.StreamMultiplexerTest do
     send(viewer, :stop)
   end
 
+  test "reclaims an idle multiplexer when another channel needs the last lease" do
+    counter = start_supervised!({Agent, fn -> 0 end})
+    port = start_live_server(counter)
+    provider_id = 7_010
+    ProviderRuntime.put_capabilities(provider_id, capabilities(1))
+    base = System.unique_integer([:positive])
+
+    assert {:ok, first} =
+             StreamMultiplexer.subscribe({:reclaim_a, base}, "http://127.0.0.1:#{port}/live/a",
+               provider_id: provider_id,
+               idle_timeout: 60_000,
+               url_validator: &allow_test_url/1
+             )
+
+    first_pid = first.pid
+    first_monitor = Process.monitor(first_pid)
+    assert_receive {:upstream_ready, first_handler}
+    assert {:ok, 200, _headers, []} = await_ready(first)
+
+    # The last viewer leaves: the upstream stays open for the grace period and
+    # keeps the provider's only lease.
+    StreamMultiplexer.unsubscribe(first_pid)
+    assert map_size(:sys.get_state(first_pid).subscribers) == 0
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 1
+
+    assert {:ok, second} =
+             StreamMultiplexer.subscribe({:reclaim_b, base}, "http://127.0.0.1:#{port}/live/b",
+               provider_id: provider_id,
+               idle_timeout: 0,
+               url_validator: &allow_test_url/1
+             )
+
+    refute second.pid == first_pid
+    assert_receive {:DOWN, ^first_monitor, :process, ^first_pid, :normal}
+    assert_receive {:upstream_ready, second_handler}
+    assert {:ok, 200, _headers, []} = await_ready(second)
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 1
+    assert Agent.get(counter, & &1) == 2
+
+    send(first_handler, :done)
+    send(second_handler, :done)
+  end
+
+  test "never reclaims a multiplexer that still has a viewer" do
+    counter = start_supervised!({Agent, fn -> 0 end})
+    port = start_live_server(counter)
+    provider_id = 7_011
+    ProviderRuntime.put_capabilities(provider_id, capabilities(1))
+    base = System.unique_integer([:positive])
+
+    assert {:ok, first} =
+             StreamMultiplexer.subscribe({:busy_a, base}, "http://127.0.0.1:#{port}/live/a",
+               provider_id: provider_id,
+               idle_timeout: 60_000,
+               url_validator: &allow_test_url/1
+             )
+
+    first_pid = first.pid
+    assert_receive {:upstream_ready, first_handler}
+    assert {:ok, 200, _headers, []} = await_ready(first)
+
+    assert {:error, :capacity_exhausted} =
+             StreamMultiplexer.subscribe({:busy_b, base}, "http://127.0.0.1:#{port}/live/b",
+               provider_id: provider_id,
+               idle_timeout: 0,
+               url_validator: &allow_test_url/1
+             )
+
+    assert Process.alive?(first_pid)
+    assert ProviderRuntime.snapshot(provider_id).capacity.leased_connections == 1
+    assert Agent.get(counter, & &1) == 1
+
+    send(first_handler, :done)
+  end
+
   test "disconnects a slow subscriber when its bounded queue is full" do
     counter = start_supervised!({Agent, fn -> 0 end})
     port = start_live_server(counter)
