@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.Sync.Categories do
   import Ecto.Query, warn: false
 
   alias Streamix.Iptv.{AdultDetector, Category, Provider, XtreamClient}
+  alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
 
   require Logger
@@ -45,13 +46,18 @@ defmodule Streamix.Iptv.Sync.Categories do
           conflict_target: [:provider_id, :external_id, :type]
         )
 
-      # Delete orphaned categories (no longer in API response)
+      # Delete orphaned categories (no longer in API response). An empty list
+      # would render as `NOT (external_id = ANY([]))`, which is true for every
+      # row and would drop the provider's whole category set on one flaky
+      # upstream response, so that case aborts instead.
       current_external_ids = Enum.map(all_categories, & &1.external_id)
 
-      deleted_count = delete_orphaned_categories(provider.id, current_external_ids)
+      with :ok <- Helpers.ensure_upstream_present(all_categories, provider.id, schema: Category) do
+        deleted_count = delete_orphaned_categories(provider.id, current_external_ids)
 
-      Logger.info("Synced #{count} categories, removed #{deleted_count} orphaned")
-      {:ok, count}
+        Logger.info("Synced #{count} categories, removed #{deleted_count} orphaned")
+        {:ok, count}
+      end
     end
   end
 

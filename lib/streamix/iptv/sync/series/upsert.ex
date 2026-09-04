@@ -35,6 +35,12 @@ defmodule Streamix.Iptv.Sync.Series.Upsert do
   end
 
   defp sync_series_list(provider, series_list) do
+    with :ok <- Helpers.ensure_upstream_present(series_list, provider.id, @sync_opts) do
+      do_sync_series_list(provider, series_list)
+    end
+  end
+
+  defp do_sync_series_list(provider, series_list) do
     category_lookup = Helpers.build_category_lookup(provider.id, "series")
     now = DateTime.utc_now(:second)
 

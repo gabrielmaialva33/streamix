@@ -8,6 +8,7 @@ defmodule Streamix.Iptv.Sync.Helpers do
     ContentUpsert,
     Metadata,
     OrphanCleanup,
+    UpstreamGuard,
     ValueParser
   }
 
@@ -34,6 +35,8 @@ defmodule Streamix.Iptv.Sync.Helpers do
     as: :upsert_batched
 
   defdelegate pre_create_catalog_items(count, content_type, provider_id, now), to: ContentUpsert
+
+  defdelegate ensure_upstream_present(entries, provider_id, opts), to: UpstreamGuard
 
   defdelegate delete_orphaned_content(provider_id, current_stream_ids, opts),
     to: OrphanCleanup,

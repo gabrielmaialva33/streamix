@@ -132,6 +132,12 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
     }
   end
 
+  # An empty upstream season list means `get_series_info` came back thin, not
+  # that the series lost every season. `not in ^[]` would drop the WHERE filter
+  # and truncate the whole tree, cascading into users' watch progress, so the
+  # empty case leaves the stored seasons alone.
+  defp delete_orphaned_seasons(_series_id, []), do: {0, nil}
+
   defp delete_orphaned_seasons(series_id, current_season_nums) do
     Season
     |> where([s], s.series_id == ^series_id)
@@ -190,6 +196,11 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
       %{}
     end
   end
+
+  # Same guard as the seasons above: a season whose payload came back empty
+  # keeps its episodes instead of having every catalog_item (and, through the
+  # cascade, every episode) deleted.
+  defp delete_orphaned_episodes(_season_id, []), do: {:ok, {0, nil}}
 
   defp delete_orphaned_episodes(season_id, current_episode_nums) do
     # All three steps run in one transaction: a crash between the SELECT

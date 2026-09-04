@@ -42,14 +42,30 @@ defmodule Streamix.Iptv.Sync.OrphanCleanupTest do
            ) == 0
   end
 
-  test "supports series ids and treats an empty upstream list as delete all" do
+  test "refuses an unfiltered delete when the upstream list is empty" do
+    provider = provider_fixture(user_fixture())
+    first = series_content_fixture(provider, %{series_id: 9_001})
+    second = series_content_fixture(provider, %{series_id: 9_002})
+
+    assert_raise ArgumentError, ~r/refusing to delete every/, fn ->
+      OrphanCleanup.delete(provider.id, [], schema: Series, stream_id_field: :series_id)
+    end
+
+    assert Repo.get(Series, first.id)
+    assert Repo.get(Series, second.id)
+    assert Repo.get(CatalogItem, first.catalog_item_id)
+    assert Repo.get(CatalogItem, second.catalog_item_id)
+  end
+
+  test "supports series ids and clears a provider only when full delete is explicit" do
     provider = provider_fixture(user_fixture())
     first = series_content_fixture(provider, %{series_id: 9_001})
     second = series_content_fixture(provider, %{series_id: 9_002})
 
     assert OrphanCleanup.delete(provider.id, [],
              schema: Series,
-             stream_id_field: :series_id
+             stream_id_field: :series_id,
+             allow_full_delete: true
            ) == 2
 
     refute Repo.get(Series, first.id)

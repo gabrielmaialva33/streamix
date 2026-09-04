@@ -27,38 +27,44 @@ defmodule Streamix.Iptv.Sync.Movies do
            allow_private_network: provider.is_system
          ) do
       {:ok, streams} ->
-        category_lookup = Helpers.build_category_lookup(provider.id, "vod")
-        now = DateTime.utc_now(:second)
-
-        upsert_opts =
-          @sync_opts
-          |> Keyword.put(:attrs_fn, &MovieNormalizer.attrs/3)
-          |> Keyword.put(:category_fn, &build_category_assocs/3)
-          |> Keyword.put(:type, :movies)
-          |> Keyword.put(:provider, provider)
-
-        {count, all_stream_ids} =
-          Helpers.upsert_content_batched(streams, provider.id, category_lookup, now, upsert_opts)
-
-        # Sync genres and credits from the raw stream data
-        Helpers.sync_genres_and_credits(streams, provider.id, Movie, "movie_genres", "movie_id",
-          credits_table: "movie_credits"
-        )
-
-        deleted_count = Helpers.delete_orphaned_content(provider.id, all_stream_ids, @sync_opts)
-
-        now_utc = DateTime.utc_now(:second)
-
-        provider
-        |> Provider.sync_changeset(%{movies_count: count, vod_synced_at: now_utc})
-        |> Repo.update()
-
-        Logger.info("Synced #{count} movies, removed #{deleted_count} orphaned")
-        {:ok, count}
+        with :ok <- Helpers.ensure_upstream_present(streams, provider.id, @sync_opts) do
+          do_sync_movies(provider, streams)
+        end
 
       {:error, reason} ->
-        {:error, {:vod_sync_failed, reason}}
+        {:error, {:movies_sync_failed, reason}}
     end
+  end
+
+  defp do_sync_movies(%Provider{} = provider, streams) do
+    category_lookup = Helpers.build_category_lookup(provider.id, "vod")
+    now = DateTime.utc_now(:second)
+
+    upsert_opts =
+      @sync_opts
+      |> Keyword.put(:attrs_fn, &MovieNormalizer.attrs/3)
+      |> Keyword.put(:category_fn, &build_category_assocs/3)
+      |> Keyword.put(:type, :movies)
+      |> Keyword.put(:provider, provider)
+
+    {count, all_stream_ids} =
+      Helpers.upsert_content_batched(streams, provider.id, category_lookup, now, upsert_opts)
+
+    # Sync genres and credits from the raw stream data
+    Helpers.sync_genres_and_credits(streams, provider.id, Movie, "movie_genres", "movie_id",
+      credits_table: "movie_credits"
+    )
+
+    deleted_count = Helpers.delete_orphaned_content(provider.id, all_stream_ids, @sync_opts)
+
+    now_utc = DateTime.utc_now(:second)
+
+    provider
+    |> Provider.sync_changeset(%{movies_count: count, vod_synced_at: now_utc})
+    |> Repo.update()
+
+    Logger.info("Synced #{count} movies, removed #{deleted_count} orphaned")
+    {:ok, count}
   end
 
   defp build_category_assocs(streams, returned, category_lookup) do
