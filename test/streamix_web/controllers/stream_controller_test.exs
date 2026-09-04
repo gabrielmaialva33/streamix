@@ -296,8 +296,12 @@ defmodule StreamixWeb.StreamControllerTest do
       end
     end)
 
+    # `mode: :passive` belongs in the proxy tuple, not in connect_options:
+    # Mint.UnsafeProxy.connect/2 opens the socket with the *proxy* options and
+    # drops the connection options, so the mode Finch sets is lost and its
+    # recv/3 raises. Upstream bug; this keeps the proxy scaffolding working.
     Application.put_env(:streamix, :stream_proxy_req_options,
-      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
+      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, [mode: :passive]}]
     )
 
     token =
@@ -337,7 +341,7 @@ defmodule StreamixWeb.StreamControllerTest do
     end)
 
     Application.put_env(:streamix, :stream_proxy_req_options,
-      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
+      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, [mode: :passive]}]
     )
 
     token =
@@ -386,7 +390,7 @@ defmodule StreamixWeb.StreamControllerTest do
     end)
 
     Application.put_env(:streamix, :stream_proxy_req_options,
-      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
+      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, [mode: :passive]}]
     )
 
     Application.put_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
@@ -448,7 +452,7 @@ defmodule StreamixWeb.StreamControllerTest do
     end)
 
     Application.put_env(:streamix, :stream_proxy_req_options,
-      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, []}]
+      connect_options: [timeout: 5_000, proxy: {:http, "127.0.0.1", port, [mode: :passive]}]
     )
 
     Application.put_env(:streamix, :stream_proxy_url, "https://source.mahina.fun")
