@@ -6,6 +6,7 @@ defmodule StreamixWeb.StreamTokenTest do
 
   alias Streamix.Billing.Plan
   alias Streamix.Billing.Subscription
+  alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Repo
   alias StreamixWeb.StreamToken
 
@@ -103,6 +104,63 @@ defmodule StreamixWeb.StreamTokenTest do
 
     assert {:error, :torrent_playback_required} =
              StreamToken.upstream_url("movie", movie.id, owner.id)
+  end
+
+  describe "global content entitlement" do
+    setup do
+      owner = user_fixture()
+
+      provider =
+        provider_fixture(owner, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      series = series_content_fixture(provider, %{name: "Serie Global"})
+
+      season =
+        %Season{}
+        |> Season.changeset(%{season_number: 1, name: "T1", series_id: series.id})
+        |> Repo.insert!()
+
+      catalog_item = catalog_item_fixture("episode", provider.id)
+
+      episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: System.unique_integer([:positive]),
+          episode_num: 1,
+          title: "S01E01",
+          container_extension: "mp4",
+          season_id: season.id
+        })
+        |> Ecto.Changeset.put_change(:catalog_item_id, catalog_item.id)
+        |> Repo.insert!()
+
+      %{provider: provider, episode: episode}
+    end
+
+    test "an episode token is refused without a subscription", %{episode: episode} do
+      # An Episode has no provider_id and no provider association, so gating on
+      # the content struct made Access.global_content?/1 fall through to false
+      # and let every user through. The gate has to take the provider.
+      viewer = user_fixture()
+      token = StreamToken.sign_episode(episode.id, viewer.id)
+
+      assert {:error, :subscription_required} = StreamToken.verify_and_get_url(token)
+    end
+
+    test "an episode token resolves for a subscriber", %{episode: episode} do
+      viewer = user_fixture()
+      subscription_fixture(viewer, plan_fixture())
+
+      token = StreamToken.sign_episode(episode.id, viewer.id)
+
+      assert {:ok, url, "episode", _meta} = StreamToken.verify_and_get_url(token)
+      assert url =~ "/series/"
+    end
   end
 
   test "premium url token without entitlement is rejected" do

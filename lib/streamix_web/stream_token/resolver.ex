@@ -324,13 +324,17 @@ defmodule StreamixWeb.StreamToken.Resolver do
     {:error, :subscription_required}
   end
 
-  defp build_global_gindex_content_url(provider, user_id, content, _bypass, fetch_url) do
+  defp build_global_gindex_content_url(provider, user_id, _content, _bypass, fetch_url) do
     case Accounts.get_user(user_id) do
       nil ->
         {:error, :subscription_required}
 
       user ->
-        if Access.plays_global_content?(user, content) do
+        # Gate on the provider, never on the content struct. An Episode carries
+        # no provider_id and no provider association, so Access.global_content?/1
+        # falls through to its catch-all `false` clause and
+        # plays_global_content?/2 then returns true for everyone.
+        if Access.plays_global_content?(user, provider) do
           fetch_gindex_content_url(provider, fetch_url)
         else
           {:error, :subscription_required}
@@ -406,7 +410,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   defp build_global_content_url(
          provider,
          user_id,
-         content,
+         _content,
          content_path,
          stream_id,
          extension,
@@ -417,7 +421,8 @@ defmodule StreamixWeb.StreamToken.Resolver do
         {:error, :subscription_required}
 
       user ->
-        if Access.plays_global_content?(user, content) do
+        # See the note above: the gate must take the provider, not the content.
+        if Access.plays_global_content?(user, provider) do
           build_provider_content_url(provider, content_path, stream_id, extension)
         else
           {:error, :subscription_required}
