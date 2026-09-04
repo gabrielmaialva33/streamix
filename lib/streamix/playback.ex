@@ -10,6 +10,7 @@ defmodule Streamix.Playback do
   alias Streamix.Iptv.{Channels, LiveChannel, Movies, Provider, SeriesOps}
 
   alias Streamix.Iptv.Streaming.{
+    CapacityTelemetry,
     FailoverPolicy,
     LiveProxy,
     RedirectResolver,
@@ -91,6 +92,17 @@ defmodule Streamix.Playback do
   # Stable error translation used by the web delivery layer
 
   defdelegate halt_stream_error(conn, code, opts \\ []), to: StreamErrors, as: :halt
+
+  @doc """
+  Records that a stream was refused for lack of upstream capacity.
+
+  Exposed on the facade so web callers never reach into
+  `Streamix.Iptv.Streaming.*` directly.
+  """
+  defdelegate stream_capacity_refused(dimension, metadata \\ []),
+    to: CapacityTelemetry,
+    as: :refused
+
   defdelegate stream_error_code_from_reason(reason), to: StreamErrors, as: :code_from_reason
 
   # GIndex stream source cache

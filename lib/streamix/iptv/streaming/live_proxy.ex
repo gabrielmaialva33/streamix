@@ -1,4 +1,5 @@
 defmodule Streamix.Iptv.Streaming.LiveProxy do
+  alias Streamix.Iptv.Streaming.CapacityTelemetry
   alias Streamix.Iptv.Streaming.ResponsePolicy
 
   @moduledoc """
@@ -37,9 +38,20 @@ defmodule Streamix.Iptv.Streaming.LiveProxy do
       ])
 
     case StreamMultiplexer.subscribe(stream_key, urls, mux_opts) do
-      {:ok, subscription} -> consume_subscription(conn, url, opts, subscription)
-      {:error, :capacity_exhausted} -> StreamErrors.halt(conn, :provider_capacity_exhausted)
-      {:error, reason} -> fallback_before_headers(conn, url, opts, reason)
+      {:ok, subscription} ->
+        consume_subscription(conn, url, opts, subscription)
+
+      {:error, :capacity_exhausted} ->
+        CapacityTelemetry.refused(:live,
+          provider_id: Keyword.get(opts, :provider_id),
+          content_id: Keyword.get(opts, :content_id),
+          media_type: "channel"
+        )
+
+        StreamErrors.halt(conn, :provider_capacity_exhausted)
+
+      {:error, reason} ->
+        fallback_before_headers(conn, url, opts, reason)
     end
   end
 

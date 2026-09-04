@@ -115,6 +115,15 @@ defmodule StreamixWeb.Telemetry do
       last_value("vm.total_run_queue_lengths.cpu"),
       last_value("vm.total_run_queue_lengths.io"),
 
+      # Stream capacity refusals. One counter covers the live, VOD and GIndex
+      # paths because every refusal goes through CapacityTelemetry.
+      counter("streamix.stream_proxy.capacity_exhausted.bytes_sent",
+        event_name: [:streamix, :stream_proxy, :capacity_exhausted],
+        measurement: :bytes_sent,
+        tags: [:dimension, :provider_id],
+        description: "Streams refused because upstream capacity was exhausted"
+      ),
+
       # IPTV Sync Metrics
       counter("streamix.sync.start.count",
         tags: [:provider_id],

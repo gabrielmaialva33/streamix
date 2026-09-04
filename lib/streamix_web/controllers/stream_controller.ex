@@ -185,6 +185,8 @@ defmodule StreamixWeb.StreamController do
   }
 
   defp token_error(conn, {:quota_exhausted, _count}) do
+    Streamix.Playback.stream_capacity_refused(:gindex_quota)
+
     StreamErrors.halt(conn, :provider_capacity_exhausted,
       retry_after: Gindex.seconds_until_quota_reset()
     )
@@ -192,6 +194,8 @@ defmodule StreamixWeb.StreamController do
 
   defp token_error(conn, {:rate_limited, status, retry_after})
        when status in [429, 503] and is_integer(retry_after) do
+    Streamix.Playback.stream_capacity_refused(:gindex_rate_limited)
+
     StreamErrors.halt(conn, :provider_capacity_exhausted, retry_after: retry_after)
   end
 

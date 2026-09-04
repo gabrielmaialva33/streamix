@@ -37,6 +37,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   alias Streamix.SafeLog
 
   alias Streamix.Iptv.Streaming.{
+    CapacityTelemetry,
     FailoverPolicy,
     FallbackVideo,
     ProviderRuntime,
@@ -425,8 +426,15 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
         end
 
       {:error, :capacity_exhausted} ->
-        state = Map.merge(context, %{bytes_sent: 0, retry_count: 0})
-        Observability.emit(:capacity_exhausted, state)
+        # Observability.emit/3 already produces this event; go through
+        # CapacityTelemetry so the dimension is set and the refusal is logged
+        # and counted alongside the live and GIndex paths.
+        CapacityTelemetry.refused(context.dimension,
+          provider_id: Map.get(context, :provider_id),
+          content_id: Map.get(context, :content_id),
+          media_type: Map.get(context, :media_type)
+        )
+
         StreamErrors.halt(conn, :provider_capacity_exhausted)
     end
   end

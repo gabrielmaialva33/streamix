@@ -408,6 +408,7 @@ defmodule Streamix.Iptv do
 
   defdelegate halt_stream_error(conn, code, opts \\ []), to: PlaybackBoundary
   defdelegate stream_error_code_from_reason(reason), to: PlaybackBoundary
+  defdelegate stream_capacity_refused(dimension, metadata \\ []), to: PlaybackBoundary
   defdelegate resolve_stream_url(url, opts \\ []), to: PlaybackBoundary
 
   @doc "Resolves a stream URL using the source-proxy credential-exchange policy."
