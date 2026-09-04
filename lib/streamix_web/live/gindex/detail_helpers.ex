@@ -62,13 +62,5 @@ defmodule StreamixWeb.Gindex.DetailHelpers do
 
   Used by `SeriesDetailLive` and `AnimeDetailLive`.
   """
-  def episode_title(episode) do
-    raw =
-      Map.get(episode, :title) ||
-        Map.get(episode, :name) ||
-        "Episódio #{Map.get(episode, :episode_num)}"
-
-    cleaned = Gindex.clean_episode_title(raw)
-    if cleaned == "", do: raw, else: cleaned
-  end
+  defdelegate episode_title(episode), to: StreamixWeb.Content.HelperComponents
 end

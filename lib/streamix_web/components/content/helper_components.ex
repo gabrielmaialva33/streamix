@@ -43,10 +43,35 @@ defmodule StreamixWeb.Content.HelperComponents do
     end
   end
 
+  @doc """
+  Label for an episode row: the stored title, then the stored name, then a
+  numbered fallback — each run through the gindex cleaner.
+
+  Title comes first because `name` is the raw filename for 102.209 of the
+  104.975 episodes in the catalog, and a filename is never a better label than
+  a title. The cleaner still runs on the title, since the provider's own parse
+  leaves scene tokens behind on some of them.
+  """
   def episode_title(episode) do
-    Map.get(episode, :title) ||
-      "Episódio #{Map.get(episode, :episode_num) || Map.get(episode, :num) || "?"}"
+    raw =
+      present(Map.get(episode, :title)) ||
+        present(Map.get(episode, :name)) ||
+        "Episódio #{Map.get(episode, :episode_num) || Map.get(episode, :num) || "?"}"
+
+    case Streamix.Gindex.clean_episode_title(raw) do
+      "" -> raw
+      cleaned -> cleaned
+    end
   end
+
+  defp present(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp present(_value), do: nil
 
   def get_image_url(stream_icon, cover) do
     url =

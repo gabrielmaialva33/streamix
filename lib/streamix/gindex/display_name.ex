@@ -33,7 +33,7 @@ defmodule Streamix.Gindex.DisplayName do
   # Same noise tokens ReleaseParser strips, but as a single alternation
   # so we only need one pass and never eat anything outside a word
   # boundary.
-  @episode_noise ~r/\b(?:BluRay|Blu-Ray|BDRip|BRRip|BDMux|BD|WEB-?DL|WEB-?Rip|HDRip|DVDRip|HDTV|HDCAM|CAM|TS|Telesync|2160p|1080p|720p|480p|360p|4K|UHD|HDR10\+?|HDR|DV|10bit|8bit|x26[45]|H\.?26[45]|HEVC|AVC|XviD|DivX|AV1|DDP?\+?\d?[\.\+]\d|DTS(?:-?HD)?(?:-?MA)?|TrueHD|Atmos|AAC|AC3|E-AC3|FLAC|MP3|OPUS|MA|5\.1|7\.1|2\.0|DUAL|DUBLADO|DUB|LEGENDADO|LEG|MULTI|SUBS?|BRDUB|NACIONAL|PT-BR|PTBR|iNTERNAL|REPACK|PROPER|REMUX)\b/i
+  @episode_noise ~r/\b(?:BluRay|Blu-Ray|BDRip|BRRip|BDMux|BD|WEB-?DL|WEB-?Rip|HDRip|DVDRip|HDTV|HDCAM|CAM|TS|Telesync|2160p|1080p|720p|480p|360p|4K|UHD|HDR10\+?|HDR|DV|10bit|8bit|x26[45]|H[\s.]?26[45]|HEVC|AVC|XviD|DivX|AV1|DDP?\+?\d?[\.\+]\d|DTS(?:-?HD)?(?:-?MA)?|TrueHD|Atmos|AAC|AC3|E-AC3|FLAC|MP3|OPUS|MA|5\.1|7\.1|2\.0|DUAL|DUBLADO|DUB|LEGENDADO|LEG|MULTI|SUBS?|BRDUB|NACIONAL|PT-BR|PTBR|iNTERNAL|REPACK|PROPER|REMUX)\b/i
 
   @doc """
   Returns a trimmed, noise-free title. Falls back to the original
