@@ -265,6 +265,10 @@ config :streamix, Oban,
        # poster backfill matched but never read. 04:45 clears the 03:30
        # matcher and the 04:00 asset backfill, which share TMDB tokens.
        {"45 4 * * *", Streamix.Workers.TmdbDetailsWorker},
+       # Fill episode metadata from TMDB season payloads. 05:15 sits after the
+       # 04:45 movie/series details pass, which shares the same queue and the
+       # same TMDB token pool.
+       {"15 5 * * *", Streamix.Workers.EpisodeDetailsWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
        # Index embeddings for semantic search daily at 5 AM
