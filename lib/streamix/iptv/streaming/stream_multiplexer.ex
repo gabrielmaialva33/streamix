@@ -25,6 +25,12 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   # cost a fresh provider connection. Idle multiplexers are reclaimed early when
   # the provider runs out of slots (see `reclaim_if_idle/2`).
   @default_idle_timeout 20_000
+  # Upper bound on the grace once a stream has finished. A finished stream keeps
+  # no upstream and holds no lease, so the full grace above would only keep the
+  # registry name pointing at a process that answers :stream_ended. This caps
+  # (never raises) the configured grace, so a caller asking for 0 still gets an
+  # immediate shutdown.
+  @terminal_idle_timeout 1_000
   @reclaim_timeout 1_000
   @default_buffer_size 30
   @default_subscriber_buffer_bytes 5 * 1_024 * 1_024
@@ -372,7 +378,19 @@ defmodule Streamix.Iptv.StreamMultiplexer do
     Upstream.close(state.mint_conn)
     ProviderRuntime.release(state.lease)
 
-    {:ok, %{state | status: :done, mint_conn: nil, request_ref: nil, lease: :untracked}}
+    state =
+      %{
+        state
+        | status: :done,
+          mint_conn: nil,
+          request_ref: nil,
+          lease: :untracked,
+          idle_timeout: min(state.idle_timeout, @terminal_idle_timeout)
+      }
+      |> Subscribers.cancel_idle_timer()
+      |> Subscribers.maybe_start_idle_timer()
+
+    {:ok, state}
   end
 
   defp process_response({:error, _ref, reason}, state), do: {:stop, reason, state}

@@ -67,6 +67,39 @@ defmodule Streamix.Iptv.StreamMultiplexerTest do
     send(viewer, :stop)
   end
 
+  test "frees the registry name promptly after the upstream ends cleanly" do
+    counter = start_supervised!({Agent, fn -> 0 end})
+    port = start_live_server(counter)
+    provider_id = 7_012
+    stream_key = {:terminal_grace_test, System.unique_integer([:positive])}
+    url = "http://127.0.0.1:#{port}/live"
+
+    assert {:ok, subscription} =
+             StreamMultiplexer.subscribe(stream_key, url,
+               provider_id: provider_id,
+               # A long live grace must not keep a finished stream around.
+               idle_timeout: 60_000,
+               url_validator: &allow_test_url/1
+             )
+
+    mux_pid = subscription.pid
+    mux_monitor = Process.monitor(mux_pid)
+    assert_receive {:upstream_ready, handler_pid}
+    assert {:ok, 200, _headers, []} = await_ready(subscription)
+
+    # Terminal events are demand-driven like chunks, so ask before ending.
+    StreamMultiplexer.demand(mux_pid)
+    send(handler_pid, :done)
+    assert_receive {:stream_mux, ^mux_pid, :done}
+    StreamMultiplexer.unsubscribe(mux_pid)
+
+    # Without the terminal cap the process would sit on the registry name for
+    # the full 60s grace, answering :stream_ended to everyone who arrived in
+    # that window. Registry unregisters on process death, so the prompt exit
+    # is what frees the name.
+    assert_receive {:DOWN, ^mux_monitor, :process, ^mux_pid, :normal}, 3_000
+  end
+
   test "reclaims an idle multiplexer when another channel needs the last lease" do
     counter = start_supervised!({Agent, fn -> 0 end})
     port = start_live_server(counter)
