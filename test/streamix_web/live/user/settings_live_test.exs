@@ -4,6 +4,52 @@ defmodule StreamixWeb.User.SettingsLiveTest do
   import Phoenix.LiveViewTest
   import Streamix.AccountsFixtures
 
+  alias Streamix.Accounts
+
+  describe "password change" do
+    test "rejects a new password when the current one is wrong", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      html =
+        view
+        |> element("#password_form")
+        |> render_submit(%{
+          "current_password" => "definitely-not-the-password",
+          "user" => %{
+            "password" => "novasenha123456",
+            "password_confirmation" => "novasenha123456"
+          }
+        })
+
+      assert html =~ "senha atual incorreta"
+
+      # The stored password must be untouched, so a hijacked session cannot
+      # lock the real owner out.
+      assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+      refute Accounts.get_user_by_email_and_password(user.email, "novasenha123456")
+    end
+
+    test "changes the password when the current one is supplied", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> element("#password_form")
+      |> render_submit(%{
+        "user" => %{
+          "current_password" => valid_user_password(),
+          "password" => "novasenha123456",
+          "password_confirmation" => "novasenha123456"
+        }
+      })
+
+      assert Accounts.get_user_by_email_and_password(user.email, "novasenha123456")
+    end
+  end
+
   test "keeps PWA install visible and maintenance inside a collapsed diagnostic", %{conn: conn} do
     conn = log_in_user(conn, user_fixture())
 

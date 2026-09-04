@@ -50,8 +50,9 @@ defmodule StreamixWeb.User.SettingsLive do
 
   def handle_event("update_password", %{"user" => params}, socket) do
     user = socket.assigns.current_scope.user
+    current_password = Map.get(params, "current_password", "")
 
-    case Accounts.update_user_password(user, params) do
+    case Accounts.update_user_password(user, current_password, params) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -217,8 +218,6 @@ defmodule StreamixWeb.User.SettingsLive do
                 type="password"
                 label="Senha atual"
                 required
-                name="current_password"
-                id="password_current_password"
                 autocomplete="current-password"
               />
 

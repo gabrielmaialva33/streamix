@@ -367,6 +367,28 @@ defmodule Streamix.Accounts do
   end
 
   @doc """
+  Changes the password after re-authenticating the user.
+
+  A logged-in session is not proof of identity for this operation: a hijacked
+  cookie or an unlocked device would otherwise be enough to lock the real owner
+  out. The current password is verified first, and a wrong one comes back as a
+  changeset error on `:current_password` so the form can render it.
+  """
+  def update_user_password(user, current_password, attrs) do
+    if User.valid_password?(user, current_password) do
+      update_user_password(user, attrs)
+    else
+      changeset =
+        user
+        |> User.password_changeset(attrs)
+        |> Ecto.Changeset.add_error(:current_password, "senha atual incorreta")
+        |> Map.put(:action, :validate)
+
+      {:error, changeset}
+    end
+  end
+
+  @doc """
   Returns an `%Ecto.Changeset{}` for changing user settings.
 
   ## Examples
