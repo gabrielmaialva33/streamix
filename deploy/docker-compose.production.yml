@@ -21,7 +21,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - streamix_postgres_data:/home/postgres/pgdata/data
+      - streamix_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test:
         [
