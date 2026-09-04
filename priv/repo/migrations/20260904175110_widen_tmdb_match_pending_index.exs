@@ -3,9 +3,17 @@ defmodule Streamix.Repo.Migrations.WidenTmdbMatchPendingIndex do
 
   # `BackfillTmdbWorker` no longer restricts its sweep to gindex rows, so the
   # index backing its pending query has to lose the `gindex_path` half of its
-  # predicate. The new predicate is a superset of the old one — everything the
-  # gindex-scoped index served, this one serves too — so the old index is
-  # dropped rather than kept alongside.
+  # predicate.
+  #
+  # migration-safety: reviewed — this drops an index, never data, and the
+  # expand and the contract are already atomic here: Ecto wraps the migration
+  # in a transaction, so the replacement exists before the original goes and
+  # no query is ever left without one. The new predicate
+  # (`tmdb_searched_at IS NULL`) is a strict superset of the old
+  # (`... AND gindex_path IS NOT NULL`), so it serves every query the dropped
+  # index served, including the previous release's — which matters because
+  # migrations run before the new code is live. `down/0` recreates the
+  # original, so the rollout is reversible in both directions.
   def up do
     create index(:movies, [:id],
              where: "tmdb_searched_at IS NULL",
