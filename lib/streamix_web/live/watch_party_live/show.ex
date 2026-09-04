@@ -1,4 +1,5 @@
 defmodule StreamixWeb.WatchPartyLive.Show do
+  @token_refresh_min_interval_ms 5_000
   @moduledoc """
   Connected Watch Party player with durable sync, billing enforcement and chat.
   """
@@ -9,6 +10,7 @@ defmodule StreamixWeb.WatchPartyLive.Show do
   import StreamixWeb.WatchPartyComponents
 
   alias Streamix.{Accounts, Billing, Library, WatchParty}
+  alias StreamixWeb.PlayerComponents.Metadata
   alias StreamixWeb.{PlayerSourceFailover, Presence}
   alias StreamixWeb.WatchPartyLive.Status
 
@@ -118,6 +120,41 @@ defmodule StreamixWeb.WatchPartyLive.Show do
          socket
          |> put_flash(:error, "Não foi possível reservar uma tela para esta sala")
          |> redirect(to: ~p"/party")}
+    end
+  end
+
+  defp refresh_party_stream_token(%{assigns: %{content: content}} = socket)
+       when is_map(content) do
+    now = System.monotonic_time(:millisecond)
+    last_refresh = socket.assigns[:token_refreshed_at]
+
+    if is_integer(last_refresh) and now - last_refresh < @token_refresh_min_interval_ms do
+      socket
+    else
+      push_refreshed_party_token(socket, now)
+    end
+  end
+
+  defp refresh_party_stream_token(socket), do: socket
+
+  defp push_refreshed_party_token(socket, now) do
+    case resolve_stream_url(
+           socket.assigns.source_type,
+           socket.assigns.content,
+           socket.assigns.provider,
+           socket.assigns.current_scope.user.id
+         ) do
+      {:ok, stream_url} ->
+        socket
+        |> assign(stream_url: stream_url, token_refreshed_at: now)
+        |> push_event("refresh_token", %{
+          url: stream_url,
+          proxyUrl: Metadata.proxy_url(stream_url, socket.assigns.content_type)
+        })
+
+      {:error, reason} ->
+        Logger.warning("Watch Party token refresh failed: #{inspect(reason)}")
+        socket
     end
   end
 
@@ -605,10 +642,15 @@ defmodule StreamixWeb.WatchPartyLive.Show do
              "audio_track_changed",
              "subtitle_track_changed",
              "pip_error",
-             "request_token_refresh",
              "avplayer_preference_changed"
            ] do
     {:noreply, socket}
+  end
+
+  # A party stream token expires after two hours like any other. Without this,
+  # a long session stalled on a 401/403 until someone reloaded the page.
+  def handle_event("request_token_refresh", _params, socket) do
+    {:noreply, refresh_party_stream_token(socket)}
   end
 
   def handle_event(event, _params, socket) do
