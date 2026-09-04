@@ -17,6 +17,12 @@ defmodule Streamix.Iptv.Season do
     field :overview, :string
     field :episode_count, :integer, default: 0
 
+    # Stamped by `Streamix.Workers.EpisodeDetailsWorker` once TMDB's season
+    # payload has been read. Written programmatically, so it stays out of
+    # `changeset/2` — and out of the sync's replace list, which is what keeps a
+    # sync from resetting it.
+    field :tmdb_details_at, :utc_datetime
+
     belongs_to :series, Series
     has_many :episodes, Episode
 

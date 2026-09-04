@@ -100,6 +100,21 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
     end
   end
 
+  # Explicit replace lists, never `:replace_all_except`. That option builds the
+  # SET clause from the *schema*, so any column the payload does not carry is
+  # written as `EXCLUDED.col` — which, for a column absent from the INSERT, is
+  # the column default. Every sync was therefore nulling the episode columns
+  # the xtream payload has no opinion about: `name`, `still_path`, `air_date`,
+  # `rating`, `tmdb_id`, `tmdb_enriched` and the gindex fields. It is why 2.730
+  # of 2.739 xtream episodes had a null `name`, and why TMDB enrichment could
+  # not survive a six-hour sync cycle.
+  #
+  # These lists are exactly what the upstream payload supplies. Anything else
+  # belongs to enrichment and is left alone.
+  @season_replace_fields ~w(name cover air_date overview episode_count updated_at)a
+  @episode_replace_fields ~w(episode_id title plot cover duration_secs
+                             container_extension updated_at)a
+
   defp upsert_seasons(seasons_data, series_id, now) do
     season_attrs_list =
       seasons_data
@@ -108,7 +123,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
 
     {count, inserted_seasons} =
       Repo.insert_all(Season, season_attrs_list,
-        on_conflict: {:replace_all_except, [:id, :inserted_at]},
+        on_conflict: {:replace, @season_replace_fields},
         conflict_target: [:series_id, :season_number],
         returning: [:id, :season_number]
       )
@@ -175,7 +190,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
 
     {count, _} =
       Repo.insert_all(Episode, episode_attrs_list,
-        on_conflict: {:replace_all_except, [:id, :inserted_at, :catalog_item_id]},
+        on_conflict: {:replace, @episode_replace_fields},
         conflict_target: [:season_id, :episode_num]
       )
 
