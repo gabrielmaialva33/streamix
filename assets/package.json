@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",
-    "@redocly/cli": "2.51.1",
+    "@redocly/cli": "2.51.2",
     "playwright": "^1.62.1"
   }
 }
