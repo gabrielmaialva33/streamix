@@ -9,6 +9,7 @@ defmodule Streamix.Providers do
 
   alias Streamix.Iptv.{
     Content.GindexInventory,
+    EmbedplayProvider,
     GIndexProvider,
     GlobalProvider,
     Provider,
@@ -110,6 +111,13 @@ defmodule Streamix.Providers do
   defdelegate sync_provider_section(provider, section), to: Sync, as: :sync_section
 
   # Synthetic providers
+
+  defdelegate ensure_embedplay_provider(), to: EmbedplayProvider, as: :ensure_exists
+  defdelegate get_embedplay_provider(), to: EmbedplayProvider, as: :get
+
+  defdelegate refresh_embedplay_counts(provider_id, attrs \\ %{}),
+    to: EmbedplayProvider,
+    as: :refresh_counts
 
   defdelegate global_provider_enabled?(), to: GlobalProvider, as: :enabled?
   defdelegate ensure_global_provider(owner \\ nil), to: GlobalProvider, as: :ensure_exists!

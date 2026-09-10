@@ -20,8 +20,11 @@ defmodule Streamix.Iptv.Provider do
     field :visibility, Ecto.Enum, values: [:private, :public, :global], default: :private
     field :is_system, :boolean, default: false
 
-    # Provider type: xtream (default), gindex, or torrent
-    field :provider_type, Ecto.Enum, values: [:xtream, :gindex, :torrent], default: :xtream
+    # Provider type: xtream (default), gindex, torrent, or embedplay
+    field :provider_type, Ecto.Enum,
+      values: [:xtream, :gindex, :torrent, :embedplay],
+      default: :xtream
+
     field :gindex_url, :string
 
     # Counters by type
@@ -112,7 +115,7 @@ defmodule Streamix.Iptv.Provider do
 
   # Virtual/system providers don't need username/password.
   defp maybe_require_credentials(changeset) do
-    if get_field(changeset, :provider_type) in [:gindex, :torrent] do
+    if get_field(changeset, :provider_type) in [:gindex, :torrent, :embedplay] do
       changeset
     else
       validate_required(changeset, [:username, :password])

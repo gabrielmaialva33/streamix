@@ -482,9 +482,11 @@ defmodule Streamix.Iptv.Providers do
   Synchronously syncs a provider's content.
   """
   @spec sync(Provider.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def sync(provider, opts \\ []) do
-    Sync.sync_all(provider, opts)
-  end
+  def sync(provider, opts \\ [])
+
+  def sync(%Provider{provider_type: :embedplay}, _opts), do: Streamix.Embedplay.sync_catalog()
+
+  def sync(provider, opts), do: Sync.sync_all(provider, opts)
 
   @doc """
   Asynchronously syncs a provider's content using Oban.
@@ -508,6 +510,10 @@ defmodule Streamix.Iptv.Providers do
     %{"provider_id" => provider.id}
     |> SyncGindexProviderWorker.new()
     |> Oban.insert()
+  end
+
+  def async_sync(%Provider{provider_type: :embedplay}, _opts) do
+    Streamix.Embedplay.enqueue_sync()
   end
 
   def async_sync(%Provider{} = provider, opts) do

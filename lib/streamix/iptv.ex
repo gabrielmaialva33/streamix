@@ -314,6 +314,9 @@ defmodule Streamix.Iptv do
   defdelegate ensure_global_provider(owner \\ nil), to: ProviderBoundary
   defdelegate gindex_provider_enabled?(), to: ProviderBoundary
   defdelegate ensure_gindex_provider(), to: ProviderBoundary
+  defdelegate ensure_embedplay_provider(), to: ProviderBoundary
+  defdelegate get_embedplay_provider(), to: ProviderBoundary
+  defdelegate refresh_embedplay_counts(provider_id, attrs \\ %{}), to: ProviderBoundary
   defdelegate torrent_provider_enabled?(), to: ProviderBoundary
   defdelegate ensure_torrent_provider(), to: ProviderBoundary
   defdelegate get_torrent_provider(), to: ProviderBoundary
