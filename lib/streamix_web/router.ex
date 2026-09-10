@@ -51,6 +51,13 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 60, period: 60_000
   end
 
+  # HLS requests include playlists, audio, keys and segments. The generic
+  # stream-proxy limit is too low for normal adaptive playback.
+  pipeline :embedplay_stream do
+    plug StreamixWeb.Plugs.CORS
+    plug StreamixWeb.Plugs.RateLimit, limit: 1200, period: 60_000
+  end
+
   # Public diagnostic beacons can't authenticate because `sendBeacon()` can't
   # attach the app's custom headers. Give them a separate, intentionally small
   # bucket so they can't flood logs or consume the stream-proxy allowance.
@@ -156,6 +163,17 @@ defmodule StreamixWeb.Router do
     get "/stream/torrent/:info_hash/status", TorrentStreamController, :status
     get "/stream/torrent/:info_hash", TorrentStreamController, :stream
     get "/stream/torrent/:info_hash/:file_idx", TorrentStreamController, :stream
+  end
+
+  scope "/api/stream/embedplay", StreamixWeb do
+    pipe_through :embedplay_stream
+
+    options "/master.m3u8", EmbedplayStreamController, :options
+    get "/master.m3u8", EmbedplayStreamController, :master
+    head "/master.m3u8", EmbedplayStreamController, :master
+    options "/:session_id/:resource_id", EmbedplayStreamController, :options
+    get "/:session_id/:resource_id", EmbedplayStreamController, :resource
+    head "/:session_id/:resource_id", EmbedplayStreamController, :resource
   end
 
   # Stream proxy - public access for video streaming (rate limited)

@@ -80,6 +80,9 @@ defmodule StreamixWeb.StreamToken do
   """
   defdelegate verify_and_get_url(token, opts \\ []), to: Resolver
 
+  @doc "Authorizes an Embedplay movie without resolving or exposing its upstream URL."
+  defdelegate authorize_embedplay_movie(token), to: Resolver
+
   @doc """
   Returns the raw upstream URL that the given content would resolve to
   if its token were verified.

@@ -47,6 +47,11 @@ defmodule StreamixWeb.StreamController do
         Logger.debug("Stream proxy: #{content_type} url=#{sanitize_url(url)}")
         stream_by_type(conn, url, content_type, meta)
 
+      {:error, :embedplay_playback_required} ->
+        redirect(conn,
+          to: "/api/stream/embedplay/master.m3u8?token=#{URI.encode_www_form(token)}"
+        )
+
       {:error, reason} ->
         token_error(conn, reason)
     end

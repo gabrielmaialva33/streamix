@@ -355,6 +355,51 @@ else
   config :streamix, :torrent_provider, enabled: false
 end
 
+# Embedplay is opt-in and never inherits activation in the test environment.
+config :streamix, :embedplay,
+  enabled:
+    config_env() != :test and
+      RuntimeConfig.boolean!("EMBEDPLAY_ENABLED", get_env.("EMBEDPLAY_ENABLED"), false),
+  resolver_url: get_env.("EMBEDPLAY_RESOLVER_URL"),
+  resolver_token: get_env.("EMBEDPLAY_RESOLVER_SECRET"),
+  resolve_timeout_ms:
+    RuntimeConfig.integer!(
+      "EMBEDPLAY_RESOLVE_TIMEOUT_MS",
+      get_env.("EMBEDPLAY_RESOLVE_TIMEOUT_MS"),
+      45_000,
+      min: 1_000,
+      max: 120_000
+    ),
+  session_ttl_seconds:
+    RuntimeConfig.integer!(
+      "EMBEDPLAY_SESSION_TTL_SECONDS",
+      get_env.("EMBEDPLAY_SESSION_TTL_SECONDS"),
+      600,
+      min: 30,
+      max: 3_600
+    ),
+  idle_seconds:
+    RuntimeConfig.integer!(
+      "EMBEDPLAY_IDLE_SECONDS",
+      get_env.("EMBEDPLAY_IDLE_SECONDS"),
+      1_800,
+      min: 30,
+      max: 21_600
+    ),
+  max_sessions:
+    RuntimeConfig.integer!("EMBEDPLAY_MAX_SESSIONS", get_env.("EMBEDPLAY_MAX_SESSIONS"), 128,
+      min: 1,
+      max: 1_024
+    ),
+  max_concurrent_fetches:
+    RuntimeConfig.integer!(
+      "EMBEDPLAY_MAX_CONCURRENT_FETCHES",
+      get_env.("EMBEDPLAY_MAX_CONCURRENT_FETCHES"),
+      64,
+      min: 1,
+      max: 512
+    )
+
 # External subtitles. Providers are tried in chain order; each is only
 # used when its API key is present, so a missing key degrades to "no
 # subtitle" instead of erroring. Both keys are free with signup.

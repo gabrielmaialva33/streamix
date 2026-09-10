@@ -41,6 +41,31 @@ defmodule StreamixWeb.StreamToken.Resolver do
     end
   end
 
+  @doc false
+  def authorize_embedplay_movie(token) do
+    with {:ok, %{type: "movie", id: id, user_id: user_id} = claims} <-
+           Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: @token_max_age),
+         true <- is_integer(id) and id > 0,
+         %{provider: %{provider_type: :embedplay, is_active: true} = provider} = movie <-
+           Streamix.Playback.get_movie_for_stream(id),
+         {:ok, ^movie, _provider_id} <-
+           authorize_resolved_content(
+             provider,
+             user_id,
+             movie,
+             effective_bypass(claims, false),
+             fn ->
+               {:ok, movie}
+             end
+           ) do
+      {:ok, movie}
+    else
+      {:error, :expired} -> {:error, :token_expired}
+      {:error, reason} when reason in [:subscription_required, :unauthorized] -> {:error, reason}
+      _ -> {:error, :invalid_token}
+    end
+  end
+
   @doc """
   Returns the raw upstream URL that the given content would resolve to
   if its token were verified. Authorization is enforced.
@@ -241,10 +266,13 @@ defmodule StreamixWeb.StreamToken.Resolver do
     end
   end
 
+  defp build_movie_url(%{provider_type: :embedplay}, _user_id, _movie, _bypass),
+    do: {:error, :embedplay_playback_required}
+
   defp build_movie_url(provider, user_id, %{gindex_path: path} = movie, bypass)
        when is_binary(path) and path != "" do
     if gindex_provider?(provider) do
-      build_gindex_content_url(provider, user_id, movie, bypass, fn ->
+      authorize_resolved_content(provider, user_id, movie, bypass, fn ->
         Gindex.get_movie_url(movie.id)
       end)
     else
@@ -275,7 +303,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   defp build_episode_url(provider, user_id, %{gindex_path: path} = episode, bypass)
        when is_binary(path) and path != "" do
     if gindex_provider?(provider) do
-      build_gindex_content_url(provider, user_id, episode, bypass, fn ->
+      authorize_resolved_content(provider, user_id, episode, bypass, fn ->
         Gindex.get_episode_url(episode.id)
       end)
     else
@@ -303,28 +331,28 @@ defmodule StreamixWeb.StreamToken.Resolver do
     )
   end
 
-  defp build_gindex_content_url(provider, user_id, content, bypass, fetch_url) do
+  defp authorize_resolved_content(provider, user_id, content, bypass, fetch_url) do
     cond do
       Access.global_content?(provider) ->
-        build_global_gindex_content_url(provider, user_id, content, bypass, fetch_url)
+        authorize_global_resolved_content(provider, user_id, content, bypass, fetch_url)
 
       authorized_for_provider?(user_id, provider) ->
-        fetch_gindex_content_url(provider, fetch_url)
+        resolve_authorized_content(provider, fetch_url)
 
       true ->
         {:error, :unauthorized}
     end
   end
 
-  defp build_global_gindex_content_url(provider, _user_id, _content, true, fetch_url) do
-    fetch_gindex_content_url(provider, fetch_url)
+  defp authorize_global_resolved_content(provider, _user_id, _content, true, fetch_url) do
+    resolve_authorized_content(provider, fetch_url)
   end
 
-  defp build_global_gindex_content_url(_provider, nil, _content, _bypass, _fetch_url) do
+  defp authorize_global_resolved_content(_provider, nil, _content, _bypass, _fetch_url) do
     {:error, :subscription_required}
   end
 
-  defp build_global_gindex_content_url(provider, user_id, _content, _bypass, fetch_url) do
+  defp authorize_global_resolved_content(provider, user_id, _content, _bypass, fetch_url) do
     case Accounts.get_user(user_id) do
       nil ->
         {:error, :subscription_required}
@@ -335,14 +363,14 @@ defmodule StreamixWeb.StreamToken.Resolver do
         # falls through to its catch-all `false` clause and
         # plays_global_content?/2 then returns true for everyone.
         if Access.plays_global_content?(user, provider) do
-          fetch_gindex_content_url(provider, fetch_url)
+          resolve_authorized_content(provider, fetch_url)
         else
           {:error, :subscription_required}
         end
     end
   end
 
-  defp fetch_gindex_content_url(provider, fetch_url) do
+  defp resolve_authorized_content(provider, fetch_url) do
     case fetch_url.() do
       {:ok, url} -> {:ok, url, provider.id}
       {:error, reason} -> {:error, reason}

@@ -294,6 +294,11 @@ defmodule StreamixWeb.PlayerHelpers do
     {:ok, build_token_proxy_url(token)}
   end
 
+  def resolve_stream_url("movie", movie, %{provider_type: :embedplay}, user_id) do
+    token = StreamToken.sign_movie(movie.id, user_id)
+    {:ok, "/api/stream/embedplay/master.m3u8?token=#{URI.encode_www_form(token)}"}
+  end
+
   def resolve_stream_url("movie", movie, _provider, user_id) do
     token = StreamToken.sign_movie(movie.id, user_id)
 

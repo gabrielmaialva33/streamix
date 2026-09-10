@@ -32,7 +32,12 @@ defmodule StreamixWeb.Catalog.StreamUrls do
 
   def signed_movie_url(movie) do
     token = StreamToken.sign_movie(movie.id, nil, @sign_opts)
-    if gindex_content?(movie), do: gindex_direct_url(token), else: token_proxy_url(token)
+
+    cond do
+      embedplay_content?(movie) -> embedplay_url(token)
+      gindex_content?(movie) -> gindex_direct_url(token)
+      true -> token_proxy_url(token)
+    end
   end
 
   def signed_episode_url(episode) do
@@ -53,9 +58,8 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   # ---------------------------------------------------------------------
 
   def browser_movie_url(movie) do
-    movie.id
-    |> StreamToken.sign_movie(nil, @sign_opts)
-    |> browser_token_proxy_url()
+    token = StreamToken.sign_movie(movie.id, nil, @sign_opts)
+    if embedplay_content?(movie), do: embedplay_url(token), else: browser_token_proxy_url(token)
   end
 
   def browser_episode_url(episode) do
@@ -77,6 +81,12 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   defp token_proxy_url(token) do
     "#{endpoint_url()}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
+
+  defp embedplay_url(token),
+    do: "#{endpoint_url()}/api/stream/embedplay/master.m3u8?token=#{URI.encode_www_form(token)}"
+
+  defp embedplay_content?(%{provider: %{provider_type: :embedplay}}), do: true
+  defp embedplay_content?(_), do: false
 
   # GIndex VOD content (movies + episodes with a non-empty `gindex_path`)
   # streams from a dedicated nginx hop at `gindex.mahina.fun`. The

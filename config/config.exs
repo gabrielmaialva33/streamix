@@ -7,6 +7,17 @@
 # General application configuration
 import Config
 
+# Experimental movie provider; activation and ingestion are explicit.
+config :streamix, :embedplay,
+  enabled: false,
+  resolver_url: nil,
+  resolver_token: nil,
+  resolve_timeout_ms: 45_000,
+  session_ttl_seconds: 600,
+  idle_seconds: 1_800,
+  max_sessions: 128,
+  max_concurrent_fetches: 64
+
 # Player decoders are fetched on demand and are immutable. Include WASM in
 # Phoenix's digested static compressors so the first playback transfers the
 # compressed artifact instead of hundreds of raw kilobytes per codec.
