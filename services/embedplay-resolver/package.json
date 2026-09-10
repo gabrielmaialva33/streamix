@@ -1,0 +1,17 @@
+{
+  "name": "streamix-embedplay-resolver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ipaddr.js": "2.5.0",
+    "playwright": "1.63.0"
+  }
+}
