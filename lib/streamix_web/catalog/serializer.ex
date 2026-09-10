@@ -332,6 +332,7 @@ defmodule StreamixWeb.Catalog.Serializer do
 
   defp provider_content_types(:xtream), do: ["channels", "movies", "series"]
   defp provider_content_types(:gindex), do: ["movies", "series"]
+  defp provider_content_types(:embedplay), do: ["movies"]
   defp provider_content_types(:torrent), do: ["movies"]
   defp provider_content_types(_provider_type), do: []
 

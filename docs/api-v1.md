@@ -59,7 +59,7 @@ Failures retain one stable envelope:
 {
   "error": {
     "code": "invalid_provider_type",
-    "message": "Provider type must be xtream, gindex, or torrent"
+    "message": "Provider type must be xtream, gindex, torrent, or embedplay"
   }
 }
 ```
@@ -81,7 +81,7 @@ Movies, series, channels, categories, featured, home, curated shelves, catalog s
 | Parameter       | Meaning                                                           |
 |-----------------|-------------------------------------------------------------------|
 | `provider_id`   | Exact public provider identifier returned by `/catalog/providers` |
-| `provider_type` | Adapter filter: `xtream`, `gindex`, or `torrent`                  |
+| `provider_type` | Adapter filter: `xtream`, `gindex`, `torrent`, or `embedplay`                  |
 
 Movie and series listings aggregate every eligible provider by default. Equivalent variants are collapsed into one
 canonical card before `offset` and `limit` are applied, so `meta.pagination.total` describes the canonical result set.

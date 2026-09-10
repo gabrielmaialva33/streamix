@@ -4,7 +4,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
   alias OpenApiSpex.Schema
   alias StreamixWeb.Api.V1.Schemas.Common
 
-  @provider_types ["xtream", "gindex", "torrent"]
+  @provider_types ["xtream", "gindex", "torrent", "embedplay"]
   @sorts ["rating_desc", "created_desc", "year_desc", "name_asc"]
   @category_types ["live", "vod", "series"]
   @content_types ["movie", "series"]

@@ -18,7 +18,7 @@ defmodule StreamixWeb.Api.V1.OpenApiError do
     do: {"invalid_provider_id", "Invalid provider id"}
 
   defp error_response(name) when name in ["provider_type", :provider_type],
-    do: {"invalid_provider_type", "Provider type must be xtream, gindex, or torrent"}
+    do: {"invalid_provider_type", "Provider type must be xtream, gindex, torrent, or embedplay"}
 
   defp error_response(name)
        when (is_atom(name) and not is_nil(name)) or (is_binary(name) and name != ""),

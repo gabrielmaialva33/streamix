@@ -3,7 +3,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Common do
 
   alias OpenApiSpex.{Reference, Schema}
 
-  @provider_types ["xtream", "gindex", "torrent"]
+  @provider_types ["xtream", "gindex", "torrent", "embedplay"]
   @content_types ["channels", "movies", "series"]
 
   def schemas do
@@ -23,7 +23,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Common do
           [:code, :message],
           example: %{
             "code" => "invalid_provider_type",
-            "message" => "Provider type must be xtream, gindex, or torrent"
+            "message" => "Provider type must be xtream, gindex, torrent, or embedplay"
           }
         ),
       "ApiErrorResponse" =>

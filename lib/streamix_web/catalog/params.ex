@@ -4,7 +4,12 @@ defmodule StreamixWeb.Catalog.Params do
   """
 
   @allowed_sorts ~w(rating_desc created_desc year_desc name_asc)
-  @provider_types %{"gindex" => :gindex, "torrent" => :torrent, "xtream" => :xtream}
+  @provider_types %{
+    "embedplay" => :embedplay,
+    "gindex" => :gindex,
+    "torrent" => :torrent,
+    "xtream" => :xtream
+  }
 
   alias StreamixWeb.Catalog.Pagination
 
