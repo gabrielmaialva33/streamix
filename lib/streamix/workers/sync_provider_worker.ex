@@ -67,6 +67,12 @@ defmodule Streamix.Workers.SyncProviderWorker do
 
         :ok
 
+      %{provider_type: :embedplay} ->
+        case Streamix.Embedplay.enqueue_sync() do
+          {:ok, _job} -> :ok
+          {:error, _reason} = error -> error
+        end
+
       provider ->
         run_xtream_sync(iptv, provider, series_details)
     end

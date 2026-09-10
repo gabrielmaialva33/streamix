@@ -12,6 +12,7 @@ defmodule Streamix.Catalog do
     Assets,
     CatalogItem,
     Channels,
+    Content.EmbedplayMovies,
     Content.TorrentMovies,
     ContentRef,
     Movies,
@@ -124,6 +125,12 @@ defmodule Streamix.Catalog do
   defdelegate catalog_item_content_icon(item), to: CatalogItem, as: :content_icon
   defdelegate catalog_item_content_name(item), to: CatalogItem, as: :content_name
   defdelegate resolve_catalog_item_id(content_type, content_id), to: ContentRef
+
+  # Embedplay movie ingestion (stable source IDs, no playback URLs)
+
+  defdelegate upsert_embedplay_movie(provider_id, attrs), to: EmbedplayMovies, as: :upsert
+
+  defdelegate embedplay_pending_enrichment(ids), to: EmbedplayMovies, as: :pending_enrichment
 
   # Torrent-backed catalog records
 

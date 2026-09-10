@@ -129,6 +129,10 @@ defmodule Streamix.Iptv do
   defdelegate list_gindex_movies(opts \\ []), to: CatalogBoundary
   defdelegate count_gindex_movies, to: Movies, as: :count_gindex
 
+  # Embedplay Movies
+  defdelegate upsert_embedplay_movie(provider_id, attrs), to: CatalogBoundary
+  defdelegate embedplay_pending_enrichment(ids), to: CatalogBoundary
+
   # Torrent Movies
   defdelegate upsert_torrent_movie(provider_id, attrs), to: CatalogBoundary
   defdelegate list_torrent_movies(provider_id, opts \\ []), to: CatalogBoundary
