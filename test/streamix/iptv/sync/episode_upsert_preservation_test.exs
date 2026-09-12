@@ -4,6 +4,7 @@ defmodule Streamix.Iptv.Sync.EpisodeUpsertPreservationTest do
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv.{Episode, Season}
+  alias Streamix.Iptv.Sync.Series.SeasonsEpisodes
   alias Streamix.Repo
 
   # The xtream episode payload supplies only a handful of columns. Under
@@ -28,6 +29,8 @@ defmodule Streamix.Iptv.Sync.EpisodeUpsertPreservationTest do
         season_id: season.id,
         catalog_item_id: catalog_item.id,
         plot: "sinopse do TMDB",
+        duration_secs: 3600,
+        cover: "https://images.example.com/old.jpg",
         name: "Nome do episódio",
         still_path: "https://image.tmdb.org/p/w500/still.jpg",
         tmdb_enriched: true,
@@ -36,47 +39,62 @@ defmodule Streamix.Iptv.Sync.EpisodeUpsertPreservationTest do
       }
     ])
 
-    %{season: season, now: now, catalog_item: catalog_item}
+    %{series: series, season: season, now: now, catalog_item: catalog_item}
   end
 
-  test "a sync keeps every column its payload has no opinion about", %{
-    season: season,
-    now: now,
-    catalog_item: catalog_item
+  test "episode detail sync preserves shared enrichment when the provider sends blanks", %{
+    series: series,
+    season: season
   } do
-    # Exactly the map `Sync.Series.SeasonsEpisodes.episode_attrs/3` builds.
-    Repo.insert_all(
-      Episode,
-      [
-        %{
-          episode_id: 1,
-          episode_num: 1,
-          title: "Título do provider",
-          plot: nil,
-          cover: nil,
-          duration_secs: nil,
-          container_extension: "mp4",
-          season_id: season.id,
-          catalog_item_id: catalog_item.id,
-          inserted_at: now,
-          updated_at: now
-        }
-      ],
-      on_conflict:
-        {:replace, ~w(episode_id title plot cover duration_secs container_extension updated_at)a},
-      conflict_target: [:season_id, :episode_num]
+    for blank <- [nil, ""] do
+      assert {:ok, %{episodes: 1}} = SeasonsEpisodes.sync(series, episode_info(blank, blank))
+      episode = Repo.one!(from(e in Episode, where: e.season_id == ^season.id))
+      assert episode.episode_id == 2
+      assert episode.title == "Título do provider"
+      assert episode.cover == nil
+      assert episode.container_extension == "mp4"
+      assert episode.plot == "sinopse do TMDB"
+      assert episode.duration_secs == 3600
+      assert episode.name == "Nome do episódio"
+      assert episode.still_path == "https://image.tmdb.org/p/w500/still.jpg"
+      assert episode.tmdb_enriched
+    end
+  end
+
+  test "episode detail sync fills missing metadata and accepts useful updates", %{
+    series: series,
+    season: season
+  } do
+    Repo.update_all(from(e in Episode, where: e.season_id == ^season.id),
+      set: [plot: nil, duration_secs: nil]
     )
 
-    episode = Repo.one(from(e in Episode, where: e.season_id == ^season.id))
+    for {plot, seconds} <- [{"Sinopse do provider", 1200}, {"Sinopse atualizada", 1500}] do
+      assert {:ok, %{episodes: 1}} =
+               SeasonsEpisodes.sync(series, episode_info(plot, to_string(seconds)))
 
-    # Columns the payload carries are replaced, including with an explicit nil.
-    assert episode.title == "Título do provider"
-    assert episode.plot == nil
+      episode = Repo.one!(from(e in Episode, where: e.season_id == ^season.id))
+      assert episode.plot == plot
+      assert episode.duration_secs == seconds
+    end
+  end
 
-    # Everything the payload omits is enrichment, and survives.
-    assert episode.name == "Nome do episódio"
-    assert episode.still_path == "https://image.tmdb.org/p/w500/still.jpg"
-    assert episode.tmdb_enriched
+  defp episode_info(plot, duration) do
+    %{
+      "info" => %{},
+      "seasons" => [%{"season_number" => 1}],
+      "episodes" => %{
+        "1" => [
+          %{
+            "id" => "2",
+            "episode_num" => 1,
+            "title" => "Título do provider",
+            "container_extension" => "mp4",
+            "info" => %{"plot" => plot, "duration_secs" => duration}
+          }
+        ]
+      }
+    }
   end
 
   test "the season upsert keeps the same contract", %{season: season, now: now} do

@@ -5,6 +5,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
 
   import Ecto.Query, warn: false
 
+  alias Streamix.Iptv.Content.EnrichmentFields
   alias Streamix.Iptv.{Episode, Season, Series}
   alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Iptv.Sync.Series.Enrichment
@@ -100,7 +101,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
     end
   end
 
-  # Explicit replace lists, never `:replace_all_except`. That option builds the
+  # Explicit payload field lists, never `:replace_all_except`. That option builds the
   # SET clause from the *schema*, so any column the payload does not carry is
   # written as `EXCLUDED.col` — which, for a column absent from the INSERT, is
   # the column default. Every sync was therefore nulling the episode columns
@@ -110,9 +111,10 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
   # not survive a six-hour sync cycle.
   #
   # These lists are exactly what the upstream payload supplies. Anything else
-  # belongs to enrichment and is left alone.
+  # belongs to enrichment and is left alone. Episode plot and duration_secs
+  # are shared with TMDB: blank detail responses must preserve stored values.
   @season_replace_fields ~w(name cover air_date overview episode_count updated_at)a
-  @episode_replace_fields ~w(episode_id title plot cover duration_secs
+  @episode_fields ~w(episode_id title plot cover duration_secs
                              container_extension updated_at)a
 
   defp upsert_seasons(seasons_data, series_id, now) do
@@ -190,7 +192,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
 
     {count, _} =
       Repo.insert_all(Episode, episode_attrs_list,
-        on_conflict: {:replace, @episode_replace_fields},
+        on_conflict: EnrichmentFields.conflict_update(Episode, @episode_fields, "episode"),
         conflict_target: [:season_id, :episode_num]
       )
 
