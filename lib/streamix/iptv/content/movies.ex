@@ -17,6 +17,7 @@ defmodule Streamix.Iptv.Movies do
     Movie
   }
 
+  alias Streamix.Iptv.Content.EnrichmentFields
   alias Streamix.Iptv.Content.Movies.{Enrichment, Queries}
   alias Streamix.Iptv.Content.SourceEquivalence
   alias Streamix.Iptv.Content.VariantCards
@@ -609,20 +610,22 @@ defmodule Streamix.Iptv.Movies do
     # Step 1: Fetch from Xtream API
     xtream_attrs = Enrichment.fetch_xtream_attrs(movie)
 
-    # Step 2: Resolve a tmdb_id. Prefer what Xtream returned, then what we
-    # already have stored, and finally fall back to a name+year search on
-    # TMDB so titles from providers that don't ship tmdb_id still get
-    # enriched on their first enrichment run.
+    # A stored match wins over the panel. Historical empty/zero IDs are not
+    # matches; use the panel next, and a name+year search as the last resort.
     resolved_tmdb_id =
-      xtream_attrs[:tmdb_id] || movie.tmdb_id || Enrichment.resolve_movie_tmdb_id(movie)
+      if EnrichmentFields.blank?(:tmdb_id, movie.tmdb_id) do
+        xtream_attrs[:tmdb_id] || Enrichment.resolve_movie_tmdb_id(movie)
+      else
+        movie.tmdb_id
+      end
 
-    # Persist the resolved id so the next enrichment skips the search.
+    # Put the chosen ID into the winning side of the merge as well: otherwise
+    # a conflicting panel ID would still overwrite the stored match below.
     xtream_attrs =
-      if is_binary(resolved_tmdb_id) and resolved_tmdb_id != "" and
-           is_nil(xtream_attrs[:tmdb_id]) do
+      if is_binary(resolved_tmdb_id) and resolved_tmdb_id != "" do
         Map.put(xtream_attrs, :tmdb_id, resolved_tmdb_id)
       else
-        xtream_attrs
+        Map.delete(xtream_attrs, :tmdb_id)
       end
 
     # Step 3: Fetch from TMDB if we're still missing key data

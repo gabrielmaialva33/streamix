@@ -8,6 +8,7 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
     XtreamClient
   }
 
+  alias Streamix.Iptv.Content.EnrichmentFields
   alias Streamix.Repo
 
   # Only Xtream providers expose a VOD info API. Torrent/GIndex movies
@@ -212,13 +213,20 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
     |> maybe_put(:rating, parse_decimal(info["rating"]))
     |> maybe_put(:year, parse_integer(info["releasedate"] || info["release_date"]))
     |> maybe_put(:tmdb_id, to_string_or_nil(info["tmdb_id"]))
-    |> maybe_put(:imdb_id, info["kinopoisk_url"])
+    |> maybe_put(:imdb_id, parse_imdb_id(info["imdb_id"]) || parse_imdb_id(info["kinopoisk_url"]))
     |> maybe_put(:youtube_trailer, info["youtube_trailer"])
     |> maybe_put(:stream_icon, info["cover_big"] || info["movie_image"])
     |> maybe_put(:container_extension, movie_data["container_extension"])
+    |> EnrichmentFields.reject_blank("movie")
   end
 
   defp parse_vod_info(_, _), do: %{}
+
+  defp parse_imdb_id(value) when is_binary(value) do
+    if Regex.match?(~r/\Att[0-9]{6,9}\z/, value), do: value
+  end
+
+  defp parse_imdb_id(_value), do: nil
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, _key, ""), do: map
