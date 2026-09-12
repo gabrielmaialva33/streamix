@@ -6,6 +6,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
   import Ecto.Query, warn: false
 
   alias Streamix.Iptv.CatalogItem
+  alias Streamix.Iptv.Content.EnrichmentFields
   alias Streamix.Iptv.Content.SourceEquivalence
   alias Streamix.Iptv.Sync.CategoryAssocs
   alias Streamix.Repo
@@ -73,20 +74,15 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
     |> then(fn {count, ids} -> {count, Enum.reverse(ids)} end)
   end
 
-  # Replace exactly the columns the upstream payload carries, never
-  # `:replace_all_except`. That option builds the SET clause from the *schema*,
-  # so every column the normalizer does not produce is written as
-  # `EXCLUDED.col` — the column default. On movies that silently nulled
-  # `tagline`, `content_rating`, `track_metadata`, the gindex URL cache and,
-  # worst of all, `tmdb_searched_at` / `tmdb_details_at`: the enrichment
-  # bookkeeping. Every six-hour sync reset it, so the nightly TMDB workers
-  # would have redone the whole catalog on every cycle, forever.
-  #
-  # Derived from the row rather than hardcoded, so it stays correct when a
-  # normalizer gains or loses a field. The conflict target is dropped because
-  # replacing a column with the value it was matched on is pointless.
-  defp replace_fields([row | _rest], context) do
-    Map.keys(row) -- [:inserted_at, :provider_id, :catalog_item_id, context.stream_id_field]
+  # Only row keys participate: columns omitted by a list normalizer (including
+  # enrichment stamps) must never be replaced with schema defaults. Shared
+  # metadata accepts useful provider values, but blank list values cannot erase
+  # enrichment. Live-channel fields remain provider-owned.
+  defp conflict_update([row | _rest], context) do
+    fields =
+      Map.keys(row) -- [:inserted_at, :provider_id, :catalog_item_id, context.stream_id_field]
+
+    EnrichmentFields.conflict_update(context.schema, fields, context.catalog_content_type)
   end
 
   defp upsert_batch(batch, batch_stream_ids, context) do
@@ -111,7 +107,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsert do
 
     {inserted, returned} =
       Repo.insert_all(context.schema, content_data,
-        on_conflict: {:replace, replace_fields(content_data, context)},
+        on_conflict: conflict_update(content_data, context),
         conflict_target: [:provider_id, context.stream_id_field],
         returning: [:id, context.stream_id_field, :catalog_item_id]
       )
