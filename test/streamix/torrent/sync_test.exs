@@ -59,6 +59,38 @@ defmodule Streamix.Torrent.SyncTest do
       assert updated.vod_synced_at
     end
 
+    test "a source with nil tmdb_id cannot erase an enriched movie on resync", %{
+      provider: provider
+    } do
+      item = sample_item("enriched-movie", "Original name", [magnet("enriched")])
+      seed_pages([{1, [item], %{next_page: nil}}])
+      assert {:ok, _} = Sync.sync_provider(provider)
+      movie = Repo.get_by!(Movie, provider_id: provider.id)
+      stamped_at = DateTime.utc_now(:second)
+
+      Repo.update_all(from(m in Movie, where: m.id == ^movie.id),
+        set: [
+          tmdb_id: "550",
+          plot: "TMDB plot",
+          tmdb_searched_at: stamped_at,
+          tmdb_details_at: stamped_at
+        ]
+      )
+
+      # Mirrors YTS: a real synopsis, but an explicitly absent TMDB identifier.
+      item = %{item | title: "Updated name", plot: "Source synopsis", tmdb_id: nil}
+      seed_pages([{1, [item], %{next_page: nil}}])
+      assert {:ok, _} = Sync.sync_provider(provider)
+      reloaded = Repo.get!(Movie, movie.id)
+      assert reloaded.tmdb_id == "550"
+      assert reloaded.tmdb_searched_at == stamped_at
+      assert reloaded.tmdb_details_at == stamped_at
+      assert reloaded.plot == "Source synopsis"
+      assert reloaded.name == "Updated name"
+      assert reloaded.stream_id == movie.stream_id
+      assert reloaded.catalog_item_id == movie.catalog_item_id
+    end
+
     test "is idempotent — running the same items twice doesn't duplicate", %{provider: provider} do
       seed_pages([
         {1, [sample_item("ext-9", "Idempotent", [magnet("d")])], %{next_page: nil}}

@@ -5,6 +5,7 @@ defmodule Streamix.Iptv.Content.TorrentMovies do
 
   alias Streamix.Helpers
   alias Streamix.Iptv.{AdultFilter, CatalogItem, Movie, Provider}
+  alias Streamix.Iptv.Content.EnrichmentFields
   alias Streamix.Repo
 
   @movie_fields ~w(stream_id name title year stream_icon rating plot tmdb_id imdb_id duration_secs)a
@@ -12,7 +13,11 @@ defmodule Streamix.Iptv.Content.TorrentMovies do
   @spec upsert(pos_integer(), map()) :: {:ok, pos_integer()} | {:error, term()}
   def upsert(provider_id, attrs)
       when is_integer(provider_id) and provider_id > 0 and is_map(attrs) do
-    attrs = Map.take(attrs, @movie_fields)
+    attrs =
+      attrs
+      |> Map.take(@movie_fields)
+      |> EnrichmentFields.reject_blank("movie")
+
     stream_id = Map.get(attrs, :stream_id)
 
     Repo.transact(fn ->
