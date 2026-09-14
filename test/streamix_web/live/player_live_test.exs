@@ -335,6 +335,34 @@ defmodule StreamixWeb.PlayerLiveTest do
              "browser-supplied engine reached telemetry metadata unnormalized"
     end
 
+    # `trackWatchTime()` computes `Date.now() - this.startTime`, and
+    # `this.startTime` is never assigned anywhere in assets/js — so the value is
+    # NaN, which `JSON.stringify` turns into null on the way to the server.
+    # This pins what the server does with that.
+    test "update_watch_time survives the null duration the client actually sends", %{
+      conn: conn,
+      user: user
+    } do
+      plan = plan_fixture()
+      _subscription = subscription_fixture(user, plan)
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      movie = movie_fixture(provider, %{name: "Filme Watch Time"})
+      {:ok, view, _html} = live(conn, ~p"/watch/movie/#{movie.id}")
+
+      render_hook(view, "update_watch_time", %{"duration" => nil})
+
+      assert render(view) =~ "Filme Watch Time",
+             "a null duration from the player killed the LiveView"
+    end
+
     test "request_token_refresh sends a lapsed subscriber to /plans", %{conn: conn, user: user} do
       plan = plan_fixture()
       subscription = subscription_fixture(user, plan)
