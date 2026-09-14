@@ -128,6 +128,9 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
       |> Enum.reduce({0, 0}, fn
         {:ok, :enriched}, {enriched, failed} -> {enriched + 1, failed}
         {:ok, :empty}, {enriched, failed} -> {enriched, failed}
+        # A handled upstream error counts as failure like a crash does. It used
+        # to fall into `:empty`, so a fully failed night still logged failed=0.
+        {:ok, :failed}, {enriched, failed} -> {enriched, failed + 1}
         {:exit, _reason}, {enriched, failed} -> {enriched, failed + 1}
       end)
 
@@ -140,15 +143,26 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
 
   # The stamp goes on whether or not TMDB had an overview — an absent pt-BR
   # translation is an answer, and re-asking nightly is the behaviour this
-  # column exists to prevent. A crash or timeout leaves the row unstamped, so
-  # it is picked up again on the next pass.
+  # column exists to prevent.
+  #
+  # It does NOT go on when the fetch returns an error, which leaves the row for
+  # tomorrow instead of the 30-day stale sweep.
+  #
+  # Be careful about what that covers. A TMDB 429/401/timeout does NOT arrive
+  # here as an error: `Movies.Enrichment.fetch_from_tmdb/2` logs it and returns
+  # `%{}`, and `update_movie/2` answers `{:ok, movie}` for empty attrs. So an
+  # upstream failure is currently indistinguishable from "TMDB answered and had
+  # no pt-BR overview", and both get stamped. Only a write failure reaches the
+  # clause below. Making the upstream failure visible means changing what
+  # `fetch_info/2` returns, which is a wider change than this one.
   defp enrich(row, schema, fetch_fun) do
-    result = fetch_fun.(row)
-    stamp_details_at(schema, row.id)
+    case fetch_fun.(row) do
+      {:ok, enriched} ->
+        stamp_details_at(schema, row.id)
+        if incomplete?(enriched), do: :empty, else: :enriched
 
-    case result do
-      {:ok, row} -> if incomplete?(row), do: :empty, else: :enriched
-      _ -> :empty
+      _error ->
+        :failed
     end
   end
 
