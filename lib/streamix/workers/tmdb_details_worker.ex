@@ -73,7 +73,7 @@ defmodule Streamix.Workers.TmdbDetailsWorker do
   def perform(%Oban.Job{args: %{"kind" => "movie", "ids" => ids}}) when is_list(ids) do
     Movie
     |> load_batch(ids, [:provider, :assets, :credits])
-    |> run_batch(Movie, :movie, &Catalog.fetch_movie_info/1)
+    |> run_batch(Movie, :movie, &Catalog.fetch_movie_info(&1, sources: [:tmdb]))
   end
 
   def perform(%Oban.Job{args: %{"kind" => "series", "ids" => ids}}) when is_list(ids) do

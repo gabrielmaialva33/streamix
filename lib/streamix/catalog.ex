@@ -44,7 +44,7 @@ defmodule Streamix.Catalog do
   # Movies
 
   defdelegate count_public_catalog_movies(opts), to: Movies, as: :count_public_catalog
-  defdelegate fetch_movie_info(movie), to: Movies, as: :fetch_info
+  defdelegate fetch_movie_info(movie, opts \\ []), to: Movies, as: :fetch_info
   defdelegate get_movie(id), to: Movies, as: :get
   defdelegate get_movie!(id), to: Movies, as: :get!
   defdelegate get_movie_with_provider!(id), to: Movies, as: :get_with_provider!

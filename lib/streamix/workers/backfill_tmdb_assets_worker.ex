@@ -56,7 +56,7 @@ defmodule Streamix.Workers.BackfillTmdbAssetsWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"kind" => "movies", "ids" => ids}}) do
     movies = Repo.all(from m in Movie, where: m.id in ^ids, preload: [:assets, :credits])
-    run_batch(movies, &Catalog.fetch_movie_info/1, "movies")
+    run_batch(movies, &Catalog.fetch_movie_info(&1, sources: [:tmdb]), "movies")
   end
 
   def perform(%Oban.Job{args: %{"kind" => "series", "ids" => ids}}) do

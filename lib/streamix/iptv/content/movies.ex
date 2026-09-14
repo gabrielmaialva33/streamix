@@ -27,6 +27,10 @@ defmodule Streamix.Iptv.Movies do
   @public_summary_preloads [:provider, :genres]
   @search_result_preloads [:assets, :genres]
   @detail_preloads [:assets, :genres, credits: :person]
+
+  # Upstreams `fetch_info/2` consults when the caller says nothing. Interactive
+  # detail views keep both; background sweeps pass `sources: [:tmdb]`.
+  @default_sources [:xtream, :tmdb]
   @variant_preloads [:provider, :categories]
   @visible_dedupe_min_window 120
 
@@ -599,37 +603,47 @@ defmodule Streamix.Iptv.Movies do
   Returns {:ok, updated_movie} or {:error, reason}.
 
   Flow:
-  1. Fetch from Xtream API (get_vod_info)
+  1. Fetch from Xtream API (get_vod_info), unless the caller opts out
   2. If still missing key data (plot, cast, director) and tmdb_id is available, fetch from TMDB
   3. Merge all data and update the movie record
+
+  ## Options
+
+    * `:sources` — which upstreams to consult, defaults to
+      `#{inspect(@default_sources)}`. Both legs are honoured: dropping
+      `:xtream` skips `get_vod_info`, dropping `:tmdb` skips both the name+year
+      search and the details call. Background enrichment passes
+      `sources: [:tmdb]` so a nightly sweep does not issue one panel call per
+      movie against the account that also serves playback.
+
+  A stored `tmdb_id` is used regardless of `:sources` — it is already ours, and
+  reading it costs no upstream call.
   """
-  @spec fetch_info(Movie.t()) :: {:ok, Movie.t()} | {:error, term()}
-  def fetch_info(%Movie{} = movie) do
+  @spec fetch_info(Movie.t(), keyword()) :: {:ok, Movie.t()} | {:error, term()}
+  def fetch_info(%Movie{} = movie, opts \\ []) do
     movie = Repo.preload(movie, [:provider | @detail_preloads])
 
-    # Step 1: Fetch from Xtream API
-    xtream_attrs = Enrichment.fetch_xtream_attrs(movie)
+    sources = Keyword.get(opts, :sources, @default_sources)
 
-    # A stored match wins over the panel. Historical empty/zero IDs are not
-    # matches; use the panel next, and a name+year search as the last resort.
-    resolved_tmdb_id =
-      if EnrichmentFields.blank?(:tmdb_id, movie.tmdb_id) do
-        xtream_attrs[:tmdb_id] || Enrichment.resolve_movie_tmdb_id(movie)
-      else
-        movie.tmdb_id
-      end
-
-    # Put the chosen ID into the winning side of the merge as well: otherwise
-    # a conflicting panel ID would still overwrite the stored match below.
+    # Step 1: the panel leg, which costs one `get_vod_info` per movie against
+    # the same Xtream account that serves playback — and `ProviderRuntime`
+    # only admits the `:live` and `:vod` dimensions, so these are unpaced.
+    # What it adds over TMDB is `container_extension`, which provider sync
+    # already maintains. On the panels this deployment talks to we have also
+    # observed `tmdb_id: 0` and a Kinopoisk URL in `imdb_id`; that is a
+    # property of those panels, not of Xtream in general, and the parser
+    # rejects both. Background callers skip this leg entirely.
     xtream_attrs =
-      if is_binary(resolved_tmdb_id) and resolved_tmdb_id != "" do
-        Map.put(xtream_attrs, :tmdb_id, resolved_tmdb_id)
-      else
-        Map.delete(xtream_attrs, :tmdb_id)
-      end
+      if :xtream in sources, do: Enrichment.fetch_xtream_attrs(movie), else: %{}
+
+    resolved_tmdb_id = resolve_tmdb_id(movie, xtream_attrs, sources)
+    xtream_attrs = pin_tmdb_id(xtream_attrs, resolved_tmdb_id)
 
     # Step 3: Fetch from TMDB if we're still missing key data
-    tmdb_attrs = Enrichment.maybe_fetch_from_tmdb(movie, xtream_attrs, resolved_tmdb_id)
+    tmdb_attrs =
+      if :tmdb in sources,
+        do: Enrichment.maybe_fetch_from_tmdb(movie, xtream_attrs, resolved_tmdb_id),
+        else: %{}
 
     # Step 4: Merge attrs (TMDB fills in what Xtream didn't provide)
     final_attrs = Map.merge(tmdb_attrs, xtream_attrs)
@@ -637,6 +651,31 @@ defmodule Streamix.Iptv.Movies do
     case Enrichment.update_movie(movie, final_attrs) do
       {:ok, updated} -> {:ok, Repo.preload(updated, @detail_preloads, force: true)}
       error -> error
+    end
+  end
+
+  # A stored match wins over the panel: it is already ours and costs no call.
+  # Historical empty/zero IDs are not matches. The name+year search is the last
+  # resort and is itself a TMDB call, so it answers to `:tmdb` like the details
+  # request does — gating only one of the two would make `:sources` a
+  # half-truth.
+  defp resolve_tmdb_id(movie, xtream_attrs, sources) do
+    cond do
+      not EnrichmentFields.blank?(:tmdb_id, movie.tmdb_id) -> movie.tmdb_id
+      not is_nil(xtream_attrs[:tmdb_id]) -> xtream_attrs[:tmdb_id]
+      :tmdb in sources -> Enrichment.resolve_movie_tmdb_id(movie)
+      true -> nil
+    end
+  end
+
+  # `fetch_info/2` merges TMDB under Xtream, so the resolved id has to be put
+  # on the winning side. Without this a conflicting panel id would overwrite
+  # the stored match on the way out.
+  defp pin_tmdb_id(xtream_attrs, resolved_tmdb_id) do
+    if is_binary(resolved_tmdb_id) and resolved_tmdb_id != "" do
+      Map.put(xtream_attrs, :tmdb_id, resolved_tmdb_id)
+    else
+      Map.delete(xtream_attrs, :tmdb_id)
     end
   end
 

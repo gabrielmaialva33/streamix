@@ -113,7 +113,7 @@ defmodule Streamix.Iptv do
   defdelegate get_playable_movie(user_id, movie_id), to: PlaybackBoundary
   defdelegate get_public_movie(movie_id), to: CatalogBoundary
   defdelegate get_movie_with_provider!(id), to: CatalogBoundary
-  defdelegate fetch_movie_info(movie), to: CatalogBoundary
+  defdelegate fetch_movie_info(movie, opts \\ []), to: CatalogBoundary
   defdelegate search_movies(user_id, query, opts \\ []), to: Search
   defdelegate search_public_movies(query, opts \\ []), to: Search
   defdelegate get_movies_by_ids(ids), to: CatalogBoundary
