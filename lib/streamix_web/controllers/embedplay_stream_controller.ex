@@ -101,6 +101,13 @@ defmodule StreamixWeb.EmbedplayStreamController do
   defp error_status(:unauthorized), do: {403, :token_unauthorized}
   defp error_status(:subscription_required), do: {403, :subscription_required}
   defp error_status(:unsafe_url), do: {403, :unsafe_url}
+  # `stream_unavailable` means the resolver could not extract a source on this
+  # attempt — the logs show it failing at the selection stage, with the same
+  # title playing fine minutes earlier. That is not proof the title is gone, so
+  # it must stay retryable: a 404 here would mark a working title dead. It gets
+  # its own code purely so the failure is countable, and 503 rather than 502
+  # because the condition is expected to clear.
+  defp error_status(:no_source_available), do: {503, :no_source_available}
   defp error_status(:resource_not_found), do: {404, :resource_not_found}
   defp error_status(:upstream_not_found), do: {404, :upstream_not_found}
   defp error_status(:invalid_range), do: {416, :invalid_range}
