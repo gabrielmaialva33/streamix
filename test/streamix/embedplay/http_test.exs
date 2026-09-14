@@ -9,6 +9,61 @@ defmodule Streamix.Embedplay.HTTPTest do
     on_exit(fn -> Application.put_env(:streamix, :embedplay, original) end)
   end
 
+  describe "resolve/1 error classification" do
+    # The resolver answers 502 for several failures at once. Splitting them
+    # is about countability and backoff, NOT about declaring titles dead:
+    # `stream_unavailable` is raised whenever extraction failed, and in
+    # production it fired for a title that had played minutes earlier. Every
+    # case below therefore stays retryable.
+    setup do
+      config = Application.get_env(:streamix, :embedplay)
+
+      Application.put_env(
+        :streamix,
+        :embedplay,
+        config ++ [resolver_url: "http://127.0.0.1:9999", resolver_token: "test-only"]
+      )
+
+      %{movie: %Streamix.Iptv.Movie{tmdb_id: "10010", imdb_id: "tt0465925"}}
+    end
+
+    defp respond(status, body) do
+      Req.Test.expect(__MODULE__, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(status, body)
+      end)
+    end
+
+    test "a failed extraction is classified apart, and stays retryable", %{movie: movie} do
+      respond(502, ~s({"error":{"code":"stream_unavailable"}}))
+      assert {:error, :no_source_available} = HTTP.resolve(movie)
+    end
+
+    test "a challenge keeps the generic retryable classification", %{movie: movie} do
+      respond(502, ~s({"error":{"code":"challenge_required"}}))
+      assert {:error, :stream_resolution_failed} = HTTP.resolve(movie)
+    end
+
+    test "an unparseable error body falls back to the generic failure", %{movie: movie} do
+      respond(502, "<html>upstream exploded</html>")
+      assert {:error, :stream_resolution_failed} = HTTP.resolve(movie)
+    end
+
+    test "documented statuses keep their own meanings", %{movie: movie} do
+      for {status, expected} <- [
+            {503, :provider_capacity_exhausted},
+            {504, :upstream_timeout},
+            {401, :provider_disabled}
+          ] do
+        respond(status, ~s({"error":{"code":"stream_unavailable"}}))
+
+        assert {:error, ^expected} = HTTP.resolve(movie),
+               "status #{status} must not be reclassified by the body"
+      end
+    end
+  end
+
   test "checks every redirect and blocks a public-to-private redirect before requesting it" do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.host == "93.184.216.34"

@@ -23,10 +23,7 @@ defmodule Streamix.Embedplay.HTTP do
       ]
 
       case request(request) do
-        {:ok, %{status: 200, body: body}} -> decode_resolution(body)
-        {:ok, %{status: 503}} -> {:error, :provider_capacity_exhausted}
-        {:ok, %{status: 504}} -> {:error, :upstream_timeout}
-        {:ok, %{status: 401}} -> {:error, :provider_disabled}
+        {:ok, response} -> classify_resolution(response)
         _ -> {:error, :stream_resolution_failed}
       end
     else
@@ -93,6 +90,27 @@ defmodule Streamix.Embedplay.HTTP do
     end
   rescue
     ArgumentError -> {:error, :unsafe_url}
+  end
+
+  defp classify_resolution(%{status: 200, body: body}), do: decode_resolution(body)
+  defp classify_resolution(%{status: 503}), do: {:error, :provider_capacity_exhausted}
+  defp classify_resolution(%{status: 504}), do: {:error, :upstream_timeout}
+  defp classify_resolution(%{status: 401}), do: {:error, :provider_disabled}
+  defp classify_resolution(%{body: body}), do: resolution_error(body)
+
+  # The resolver answers 502 for several distinct situations and the status
+  # alone cannot tell them apart, so read the body. `stream_unavailable` is
+  # NOT a statement that the title has no source: the resolver raises it
+  # whenever extraction failed, and production logs show it failing at the
+  # selection stage for a title that played minutes earlier. It is separated
+  # here only so the case is countable and can carry its own backoff —
+  # everything below stays retryable, because treating an extraction failure
+  # as a dead title would take working content out of the catalogue.
+  defp resolution_error(body) do
+    case Jason.decode(body) do
+      {:ok, %{"error" => %{"code" => "stream_unavailable"}}} -> {:error, :no_source_available}
+      _ -> {:error, :stream_resolution_failed}
+    end
   end
 
   defp decode_resolution(body) do
