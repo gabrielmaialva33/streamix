@@ -1,0 +1,44 @@
+# Separate project: the main deployment's --remove-orphans must not remove this service.
+name: streamix-embedplay
+
+services:
+  resolver:
+    image: ${EMBEDPLAY_RESOLVER_IMAGE:?EMBEDPLAY_RESOLVER_IMAGE is required}
+    container_name: streamix-embedplay-resolver
+    env_file: ${EMBEDPLAY_RESOLVER_ENV_FILE:?EMBEDPLAY_RESOLVER_ENV_FILE is required}
+    init: true
+    user: pwuser
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./embedplay-seccomp.json
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+    shm_size: 512m
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+    stop_grace_period: 55s
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4010/resolve').then(r => process.exit(r.status === 401 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      - shared_network
+
+networks:
+  shared_network:
+    external: true

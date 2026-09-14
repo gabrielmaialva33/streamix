@@ -8,6 +8,9 @@ solve human challenges, or serve media to TV clients.
 
 ## Run locally
 
+For the isolated production container, see
+[the deployment runbook](../../docs/embedplay-deployment.md).
+
 Node 22+ and Chromium/Chrome with its sandbox available are required. Dependencies
 are exact-pinned in `package-lock.json`.
 
@@ -43,8 +46,8 @@ separately reuses verified sessions for ten minutes when starting playback. A di
 leave that shared resolution running, bounded by its deadline; it never leaves
 queued jobs. Run the resolver near the media gateway with the same egress IP.
 
-This service is opt-in and is not added to production Compose. If containerizing,
-use a non-root user and a Chromium-compatible seccomp policy; never mount host
+This service is opt-in and uses its own production Compose project. Its container
+uses a non-root user and a Chromium-compatible seccomp policy; never mount host
 credentials or a real browser profile. Docker on the development workstation uses
 a remote context: published ports and bind mounts are on that remote host, not the
 workstation. Do not start the local daemon implicitly.
