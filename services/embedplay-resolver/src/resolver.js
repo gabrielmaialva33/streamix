@@ -125,9 +125,11 @@ export function createBrowserResolver({ executablePath, timeoutMs = 30000,
         if (done) return;
         mark('selector_ready_ms');
         await selector.getByText(input.audio === 'dubbed' ? 'Dublado' : 'Legendado', { exact: true }).click({ timeout: 5000 });
+        mark('language_selected_ms');
         // This adapter deliberately supports only the independently verified BYSE
         // path; it never silently changes requested language or selects an ad.
-        const option = selector.getByText('Opção 2 (BYSE)', { exact: true });
+        // Option numbering is presentation, not server identity.
+        const option = selector.getByText(/^Opção\s+\d+\s+\(BYSE\)$/);
         await option.waitFor({ state: 'visible', timeout: 5000 });
         selected = true;
         await option.click({ timeout: 3000 });

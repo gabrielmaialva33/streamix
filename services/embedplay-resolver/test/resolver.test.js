@@ -10,7 +10,7 @@ const master = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000\nmedia.m3u8\n';
 const media = '#EXTM3U\n#EXTINF:10,\nsegment.ts\n#EXT-X-ENDLIST\n';
 const executablePath = process.env.EMBEDPLAY_BROWSER_EXECUTABLE || '/usr/bin/google-chrome-stable';
 
-async function fixture({ mode = 'success', timeoutMs = 3000, maxJobs = 100, observe, beforeRead = async () => {} } = {}) {
+async function fixture({ mode = 'success', timeoutMs = 3000, maxJobs = 100, observe, byseLabel = 'Opção 2 (BYSE)', beforeRead = async () => {} } = {}) {
   let closed = false;
   let proxyClosed = false;
   const readPaths = [];
@@ -20,7 +20,7 @@ async function fixture({ mode = 'success', timeoutMs = 3000, maxJobs = 100, obse
     'embedplayapi.top': '<iframe src="https://www.embedplay.one/select"></iframe>',
     'www.embedplay.one': `<div onclick="document.querySelector('#byse').hidden=false">Dublado</div>
       <div onclick="document.querySelector('#byse').hidden=true">Legendado</div>
-      <div id="byse" onclick="document.querySelector('#target').src='https://embedplaybyse.top/selected'">Opção 2 (BYSE)</div>
+      <div id="byse" onclick="document.querySelector('#target').src='https://embedplaybyse.top/selected'">${byseLabel}</div>
       <iframe id="target"></iframe><iframe src="https://embedplay.one/ad"></iframe>`,
     'embedplay.one': '<script>fetch("https://cdn.fixture.test/ad.m3u8")</script>',
     'embedplaybyse.top': '<iframe src="https://f7hyg4q.org/player"></iframe>',
@@ -89,6 +89,32 @@ test('timeout closes only its context; service shutdown closes browser and proxy
   assert.equal(f.closed(), false); assert.equal(f.proxyClosed(), false);
   await f.resolve.close();
   assert.ok(f.closed()); assert.ok(f.proxyClosed());
+});
+
+test('BYSE is selected by server identity when its option number changes', async t => {
+  const f = await fixture({ byseLabel: 'Opção 1 (BYSE)' });
+  t.after(() => f.resolve.close());
+
+  const result = await f.resolve({ tmdb_id: 123, audio: 'dubbed' });
+
+  assert.equal(result.manifest_url, 'https://cdn.fixture.test/content');
+  assert.equal(f.contexts().length, 0);
+});
+
+test('missing supported server is distinguishable from a failed language selection', async t => {
+  const events = [];
+  const f = await fixture({ byseLabel: 'Opção 2 (UPNS)', timeoutMs: 1500,
+    observe: event => events.push(event) });
+  t.after(() => f.resolve.close());
+
+  await assert.rejects(f.resolve({ tmdb_id: 123, audio: 'dubbed' }),
+    { code: 'resolution_timeout' });
+
+  assert.equal(events.length, 1);
+  assert.ok(Number.isFinite(events[0].language_selected_ms));
+  assert.ok(events[0].language_selected_ms >= events[0].selector_ready_ms);
+  assert.equal(events[0].provider_selected_ms, undefined);
+  assert.deepEqual(f.readPaths, []);
 });
 
 test('visible human challenge fails without attempting to solve it', async t => {

@@ -64,9 +64,23 @@ workstation. Do not start the local daemon implicitly.
 `tmdb_id` accepts a positive integer or decimal string. Alternatively pass
 `imdb_id` such as `tt1234567`; when both are present TMDB is authoritative. Only
 `dubbed` and `subtitled` are valid audio values. The current adapter resolves only
-BYSE; if the selected language has no BYSE option it fails, without falling back to
+BYSE by its server name, independently of its displayed option number; if the
+selected language has no BYSE option it fails, without falling back to
 a different language. No caller-supplied URL or additional input keys are accepted.
 The request body limit is 2 KiB.
+
+The movie inventory is not a promise that this adapter supports every listed
+movie. On September 14, 2026, a production-host inspection of TMDB 10010 found
+only dubbed ABYS and UPNS options, with no BYSE option. The ABYS document returned
+HTTP 403. UPNS exposed a configured HLS source through its Vidstack player, but
+that source returned HTTP 404 both when the player loaded it and when fetched
+independently. The browser probes used this resolver's service-worker-disabled
+context; a virtual URL served by a service worker is not ruled out by that 404.
+No standalone HTTP manifest was validated for UPNS. Neither path was validated as
+a fallback. These observations are
+specific to that movie, time and host; they do not establish catalog-wide
+availability or success rates. Retrying the BYSE selector cannot add a missing
+server. This adapter still supports only the verified BYSE path.
 
 Success is a JSON object containing `manifest_url` (private upstream URL),
 `expires_at: null`, and `headers: {}`. The unknown expiry must not be interpreted as
@@ -153,7 +167,7 @@ The service emits one JSON timing record per actual resolution, including failur
 Records contain only a fixed event name, a sanitized outcome and numeric elapsed
 milliseconds from resolution start. No content IDs, URLs, headers, tokens or raw
 errors are included. Milestones are `context_ready_ms`, `page_ready_ms`,
-`entry_loaded_ms`, `selector_ready_ms`, `provider_selected_ms`,
+`entry_loaded_ms`, `selector_ready_ms`, `language_selected_ms`, `provider_selected_ms`,
 `content_candidate_ms`, `manifest_verified_ms` and `total_ms` (including cleanup).
 Unreached milestones are omitted. These are cumulative offsets, not per-stage
 durations; subtract adjacent milestones for stage duration. Group successful and
