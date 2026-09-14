@@ -12,9 +12,10 @@ defmodule Streamix.Embedplay.HTTPTest do
   describe "resolve/1 error classification" do
     # The resolver answers 502 for several failures at once. Splitting them
     # is about countability and backoff, NOT about declaring titles dead:
-    # `stream_unavailable` is raised whenever extraction failed, and in
-    # production it fired for a title that had played minutes earlier. Every
-    # case below therefore stays retryable.
+    # `stream_unavailable` is raised whenever extraction failed, and the causes
+    # seen in production were environmental (an offered host answering 403 from
+    # this server; another yielding no fetchable manifest). Every case below
+    # therefore stays retryable.
     setup do
       config = Application.get_env(:streamix, :embedplay)
 

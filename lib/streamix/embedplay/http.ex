@@ -101,8 +101,11 @@ defmodule Streamix.Embedplay.HTTP do
   # The resolver answers 502 for several distinct situations and the status
   # alone cannot tell them apart, so read the body. `stream_unavailable` is
   # NOT a statement that the title has no source: the resolver raises it
-  # whenever extraction failed, and production logs show it failing at the
-  # selection stage for a title that played minutes earlier. It is separated
+  # whenever extraction failed. In production it fired because the page offered
+  # no source the resolver could use: one offered host answered 403 from this
+  # server, and another produced no manifest we could fetch independently
+  # (measured with service workers blocked, so a worker-served URL is not ruled
+  # out). None of that says the title has no source. It is separated
   # here only so the case is countable and can carry its own backoff —
   # everything below stays retryable, because treating an extraction failure
   # as a dead title would take working content out of the catalogue.
