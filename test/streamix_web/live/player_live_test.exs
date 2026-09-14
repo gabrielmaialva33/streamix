@@ -287,6 +287,54 @@ defmodule StreamixWeb.PlayerLiveTest do
       refute_push_event(view, "refresh_token", %{})
     end
 
+    # The attack path for the telemetry-handler detach: `player_error` carries
+    # browser-supplied values, and a non-string `stage` raises where a handler
+    # interpolates it. `:telemetry` answers a raising handler by detaching it,
+    # which is how one websocket frame silenced the authentication audit trail.
+    test "a hostile player_error cannot detach the telemetry handlers", %{
+      conn: conn,
+      user: user
+    } do
+      plan = plan_fixture()
+      _subscription = subscription_fixture(user, plan)
+
+      provider =
+        provider_fixture(user, %{
+          visibility: "global",
+          is_system: true,
+          provider_type: "xtream",
+          is_active: true
+        })
+
+      channel = channel_fixture(provider, %{name: "Canal Telemetria"})
+      {:ok, view, _html} = live(conn, ~p"/watch/live_channel/#{channel.id}")
+
+      ref = make_ref()
+      parent = self()
+
+      :telemetry.attach(
+        {__MODULE__, ref},
+        [:streamix, :player, :error],
+        fn _event, _measurements, meta, _ -> send(parent, {ref, meta}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach({__MODULE__, ref}) end)
+
+      render_hook(view, "player_error", %{
+        "stage" => %{"nested" => "map"},
+        "engine" => %{"also" => "a map"}
+      })
+
+      assert_receive {^ref, meta}
+
+      assert is_binary(meta.stage),
+             "browser-supplied stage reached telemetry metadata unnormalized"
+
+      assert is_binary(meta.engine) or is_nil(meta.engine),
+             "browser-supplied engine reached telemetry metadata unnormalized"
+    end
+
     test "request_token_refresh sends a lapsed subscriber to /plans", %{conn: conn, user: user} do
       plan = plan_fixture()
       subscription = subscription_fixture(user, plan)

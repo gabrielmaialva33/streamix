@@ -17,15 +17,31 @@ defmodule StreamixWeb.Telemetry.Handlers do
   registrations under the same ID.
   """
   def attach do
-    :telemetry.detach(@handler_id)
+    detach()
 
-    :telemetry.attach_many(
-      @handler_id,
-      events(),
-      &__MODULE__.handle_event/4,
-      nil
-    )
+    Enum.each(events(), fn event ->
+      :telemetry.attach(handler_id(event), event, &__MODULE__.handle_event/4, nil)
+    end)
   end
+
+  @doc """
+  Removes every handler this module registered.
+  """
+  def detach do
+    :telemetry.list_handlers([])
+    |> Enum.filter(&ours?/1)
+    |> Enum.each(&:telemetry.detach(&1.id))
+  end
+
+  # One id per event, never `attach_many`. `:telemetry` detaches a handler that
+  # raises, and under a shared id that took all fifteen events down together —
+  # including the authentication audit trail, which has no Prometheus metric and
+  # so has no other sink. Per-event ids keep the blast radius at one event.
+  defp handler_id(event), do: @handler_id <> ":" <> Enum.map_join(event, ".", &to_string/1)
+
+  # Handler ids are arbitrary terms; the Prometheus reporter registers tuples.
+  defp ours?(%{id: id}) when is_binary(id), do: String.starts_with?(id, @handler_id)
+  defp ours?(_handler), do: false
 
   defp events do
     [

@@ -26,6 +26,7 @@ defmodule StreamixWeb.PlayerLive do
 
   alias Streamix.Torrent
   alias StreamixWeb.PlayerComponents.Metadata
+  alias StreamixWeb.PlayerLifecycleTelemetry
   alias StreamixWeb.PlayerSourceFailover
 
   @torrent_peer_target 30
@@ -119,14 +120,21 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
+  # `params` is whatever the browser sent, so `stage` and `engine` cannot go
+  # into telemetry metadata raw: a non-string value raises where a handler
+  # interpolates it, and `:telemetry` responds by detaching the handler. Every
+  # other player event already goes through this normalizer — it bounds the
+  # text and matches the engine against a known list.
   def handle_event("player_error", params, socket) do
+    normalized = PlayerLifecycleTelemetry.normalize(params)
+
     :telemetry.execute(
       [:streamix, :player, :error],
       %{system_time: System.system_time()},
       %{
-        stage: params["stage"] || params["error_name"] || "unknown",
+        stage: normalized.stage,
         content_type: socket.assigns[:content_type],
-        engine: params["engine"] || "unknown"
+        engine: normalized.engine
       }
     )
 
@@ -235,7 +243,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   def handle_event("player_lifecycle", params, socket) do
-    StreamixWeb.PlayerLifecycleTelemetry.observe(params)
+    PlayerLifecycleTelemetry.observe(params)
     {:noreply, socket}
   end
 
