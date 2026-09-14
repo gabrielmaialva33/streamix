@@ -150,33 +150,43 @@ defmodule Streamix.Cache do
     # same key block on the first computation instead of racing.
     l1_ttl_ms = min(ttl_ms, L1.l1_ttl())
 
-    L1.get_or_store(key, fn ->
-      value =
-        case L2.get(key) do
-          nil ->
-            computed = fun.()
-            L2.set(key, computed, ttl)
-            computed
+    value =
+      L1.get_or_store(key, fn ->
+        %ConCache.Item{value: through_l2(key, ttl, fun), ttl: l1_ttl_ms}
+      end)
 
-          {cached, _ttl_ms} ->
-            cached
-        end
+    # `get_or_store` stores whatever the loader returns, so a failure has to be
+    # evicted right after rather than prevented. The window is one call.
+    if not cacheable_value?(value), do: L1.delete(key)
 
-      %ConCache.Item{value: value, ttl: l1_ttl_ms}
-    end)
+    value
   end
 
-  defp fetch_without_l1(key, ttl, fun) do
+  defp fetch_without_l1(key, ttl, fun), do: through_l2(key, ttl, fun)
+
+  defp through_l2(key, ttl, fun) do
     case L2.get(key) do
       nil ->
         value = fun.()
-        L2.set(key, value, ttl)
+        if cacheable_value?(value), do: L2.set(key, value, ttl)
         value
 
       {value, _ttl_ms} ->
         value
     end
   end
+
+  # An error is not an answer. Storing `{:error, _}` under the success TTL
+  # turns one rate-limited minute upstream into a full TTL of that same failure
+  # being replayed to every caller — for the TMDB keys that is 24 hours, which
+  # is how a single bad night became a day of missing metadata.
+  #
+  # `nil` is deliberately left cacheable here: several callers use it as a
+  # negative cache, and `L1.put/3` already refuses it while `get_or_store/2`
+  # does not. Aligning those two is a separate decision with its own blast
+  # radius.
+  defp cacheable_value?({:error, _reason}), do: false
+  defp cacheable_value?(_value), do: true
 
   # =============================================================================
   # Re-exports for legacy callers
