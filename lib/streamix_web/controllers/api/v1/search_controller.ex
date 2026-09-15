@@ -182,20 +182,15 @@ defmodule StreamixWeb.Api.V1.SearchController do
   Returns semantic search availability and stats.
   """
   def status(conn, _params) do
-    available = AI.semantic_search_available?()
+    health = AI.semantic_search_status()
+    stats = health |> Map.get(:collections, %{}) |> Map.take([:movies, :series])
 
-    stats =
-      if available do
-        {:ok, stats} = AI.semantic_search_stats()
-        Map.take(stats, [:movies, :series])
-      else
-        %{}
-      end
+    response =
+      health
+      |> Map.drop([:collections])
+      |> Map.merge(%{available: health.status == :ok, stats: stats})
 
-    json(conn, %{
-      available: available,
-      stats: stats
-    })
+    json(conn, response)
   end
 
   @doc """
