@@ -326,6 +326,7 @@ defmodule Streamix.AI.Qdrant do
          %{
            vectors_count: result["vectors_count"],
            points_count: result["points_count"],
+           vector_dimensions: get_in(result, ["config", "params", "vectors", "size"]),
            status: result["status"]
          }}
 

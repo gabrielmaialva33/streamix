@@ -21,7 +21,7 @@ defmodule Streamix.AI.SemanticSearch do
 
   require Logger
 
-  alias Streamix.AI.{Embeddings, Qdrant}
+  alias Streamix.AI.{Embeddings, Qdrant, SearchHealth}
 
   # The NVIDIA endpoint accepts 64 E5 inputs in one request (also within
   # Gemini's batch API envelope). Sending 10 made a full production backfill
@@ -36,17 +36,17 @@ defmodule Streamix.AI.SemanticSearch do
   # Public API
 
   @doc """
-  Checks if semantic search is available.
+  Checks cached provider liveness and collection compatibility.
   """
   def available? do
-    Embeddings.enabled?() and Qdrant.enabled?()
+    SearchHealth.status().status == :ok
   end
 
   @doc """
   Initializes the search system (creates collections).
   """
   def setup do
-    if available?() do
+    if Embeddings.enabled?() and Qdrant.enabled?() do
       Qdrant.setup_collections()
     else
       Logger.warning("[SemanticSearch] Not available - check embeddings and Qdrant config")

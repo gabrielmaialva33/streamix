@@ -9,6 +9,7 @@ defmodule Streamix.AI do
   alias Streamix.AI.{SemanticSearch, UserAnalytics}
 
   # Semantic search
+  defdelegate semantic_search_status(), to: Streamix.AI.SearchHealth, as: :status
   defdelegate semantic_search_available?(), to: SemanticSearch, as: :available?
   defdelegate semantic_search(query, collection, opts \\ []), to: SemanticSearch, as: :search
 
