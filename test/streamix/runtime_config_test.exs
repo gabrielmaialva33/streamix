@@ -1,5 +1,5 @@
 defmodule Streamix.RuntimeConfigTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Streamix.RuntimeConfig
 
@@ -61,5 +61,87 @@ defmodule Streamix.RuntimeConfigTest do
   test "normalizes comma-separated values and removes blanks and duplicates" do
     assert RuntimeConfig.csv(" first, ,second,first ") == ["first", "second"]
     assert RuntimeConfig.csv(nil) == []
+  end
+
+  describe "provider encryption key validation in runtime.exs" do
+    @required_prod_env %{
+      "DATABASE_URL" => "ecto://postgres:postgres@localhost/streamix_prod",
+      "SECRET_KEY_BASE" => String.duplicate("a", 64),
+      "LIVE_VIEW_SIGNING_SALT" => String.duplicate("b", 32),
+      "API_KEYS" => "test-api-key"
+    }
+
+    test "raises in production when PROVIDER_ENCRYPTION_KEY is missing, empty, or whitespace" do
+      original_env = System.get_env()
+
+      try do
+        System.put_env(@required_prod_env)
+
+        System.delete_env("PROVIDER_ENCRYPTION_KEY")
+
+        assert_raise RuntimeError, ~r/PROVIDER_ENCRYPTION_KEY is missing or empty/, fn ->
+          Config.Reader.read!("config/runtime.exs", env: :prod)
+        end
+
+        System.put_env("PROVIDER_ENCRYPTION_KEY", "")
+
+        assert_raise RuntimeError, ~r/PROVIDER_ENCRYPTION_KEY is missing or empty/, fn ->
+          Config.Reader.read!("config/runtime.exs", env: :prod)
+        end
+
+        System.put_env("PROVIDER_ENCRYPTION_KEY", "   ")
+
+        assert_raise RuntimeError, ~r/PROVIDER_ENCRYPTION_KEY is missing or empty/, fn ->
+          Config.Reader.read!("config/runtime.exs", env: :prod)
+        end
+      after
+        restore_env(original_env)
+      end
+    end
+
+    test "allows missing PROVIDER_ENCRYPTION_KEY in dev and test environments" do
+      original_env = System.get_env()
+
+      try do
+        System.delete_env("PROVIDER_ENCRYPTION_KEY")
+
+        config_test = Config.Reader.read!("config/runtime.exs", env: :test)
+        assert Keyword.get(config_test[:streamix] || [], :provider_encryption_key) == nil
+
+        System.put_env("DATABASE_URL", "ecto://postgres:postgres@localhost/streamix_dev")
+
+        # Reading dev config does not raise even if PROVIDER_ENCRYPTION_KEY is unset in environment
+        assert is_list(Config.Reader.read!("config/runtime.exs", env: :dev))
+      after
+        restore_env(original_env)
+      end
+    end
+
+    test "succeeds in production when PROVIDER_ENCRYPTION_KEY is present" do
+      original_env = System.get_env()
+
+      try do
+        System.put_env(@required_prod_env)
+        System.put_env("PROVIDER_ENCRYPTION_KEY", "dummy_key_at_least_32_bytes_long_1234567")
+
+        config = Config.Reader.read!("config/runtime.exs", env: :prod)
+
+        assert config[:streamix][:provider_encryption_key] ==
+                 "dummy_key_at_least_32_bytes_long_1234567"
+      after
+        restore_env(original_env)
+      end
+    end
+
+    defp restore_env(original_env) do
+      current_keys = System.get_env() |> Map.keys()
+      original_keys = Map.keys(original_env)
+
+      for key <- current_keys -- original_keys do
+        System.delete_env(key)
+      end
+
+      System.put_env(original_env)
+    end
   end
 end
