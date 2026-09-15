@@ -93,7 +93,19 @@ playwright_options = [
   # reload a page while Playwright is evaluating it, destroying the execution
   # context and turning unrelated player assertions into flakes.
   browser_context_opts: [service_workers: "block"],
-  js_logger: false,
+  # `nil`, not `false`. phoenix_test_playwright documents this option as
+  # "`false` to disable" and forwards the value untouched, but playwright_ex
+  # only ever treats `nil` as off. Up to 0.7.1 it tested truthiness
+  # (`if module = config.js_logger`), so `false` worked; 0.10.0 rewrote the
+  # check as `when not is_nil(module)`, which `false` passes — the first
+  # console message from the page then calls `false.log/3` and takes the
+  # connection process down. The supervisor is `:rest_for_one` with the
+  # transport ahead of the connection, so the node driver survives and the
+  # restarted connection re-sends `initialize`, tripping
+  # `assert(!this._initialized)` in RootDispatcher. That surfaces as a second,
+  # unrelated-looking `playwright_initialization_failed`; both errors are this
+  # one value.
+  js_logger: nil,
   trace: System.get_env("PW_TRACE", "false") in ~w(t true),
   screenshot: System.get_env("PW_SCREENSHOT", "false") in ~w(t true)
 ]
