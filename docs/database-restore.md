@@ -50,7 +50,7 @@ TS_VERSION=$(grep timescaledb_version /opt/streamix/backups/streamix-$STAMP.meta
 # 1. Container de destino (aqui, descartável para teste)
 docker run -d --name pg-restore \
   -e POSTGRES_USER=streamix -e POSTGRES_PASSWORD=temp -e POSTGRES_DB=postgres \
-  timescale/timescaledb:2.29.2-pg17
+  timescale/timescaledb:2.30.0-pg17
 
 # 2. Banco vazio, com a extensão na versão do dump
 docker exec pg-restore psql -U streamix -d postgres -c 'create database streamix_prod'
