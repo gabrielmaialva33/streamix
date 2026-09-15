@@ -32,8 +32,6 @@ defmodule StreamixWeb.Telemetry.HandlersTest do
 
   defp our_handlers, do: Enum.filter(:telemetry.list_handlers([]), &ours?/1)
 
-  defp detach_all, do: Enum.each(our_handlers(), &:telemetry.detach(&1.id))
-
   defp attached_events, do: MapSet.new(our_handlers(), & &1.event_name)
 
   test "a raising handler cannot take the authentication audit trail with it" do
