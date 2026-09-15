@@ -54,8 +54,46 @@ defmodule Streamix.Iptv.StreamMultiplexer do
       |> Keyword.put(:stream_key, stream_key)
       |> Keyword.put(:urls, Upstream.normalize_urls(urls))
 
+    subscribe_or_wait_out_corpse(args, true)
+  end
+
+  # A finished stream keeps its registry name for up to `@terminal_idle_timeout`
+  # so trailing chunks still reach the subscribers it already had. A viewer
+  # reconnecting inside that window lands on the dying process and is told
+  # `:stream_ended`.
+  #
+  # Reporting that upwards is the expensive answer: `LiveProxy` reads any
+  # non-capacity error as "the shared path is unavailable" and opens a
+  # dedicated upstream connection instead. On an account whose
+  # `max_connections` is 1 — the common case — that first reconnect takes the
+  # only slot, and every other viewer of the same channel is refused while a
+  # perfectly good shared path was one second away.
+  #
+  # So wait the corpse out and ask again. The retry is single: a second
+  # `:stream_ended` means something other than a shutdown race, and the caller
+  # should see it.
+  defp subscribe_or_wait_out_corpse(args, retry?) do
     with {:ok, pid} <- start_or_lookup(args) do
-      GenServer.call(pid, {:subscribe, self()}, @connect_timeout + 1_000)
+      case GenServer.call(pid, {:subscribe, self()}, @connect_timeout + 1_000) do
+        {:error, :stream_ended} when retry? ->
+          await_terminated(pid)
+          subscribe_or_wait_out_corpse(args, false)
+
+        reply ->
+          reply
+      end
+    end
+  end
+
+  defp await_terminated(pid) do
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      @terminal_idle_timeout + 500 ->
+        Process.demonitor(ref, [:flush])
+        :ok
     end
   end
 

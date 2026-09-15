@@ -100,6 +100,40 @@ defmodule Streamix.Iptv.StreamMultiplexerTest do
     assert_receive {:DOWN, ^mux_monitor, :process, ^mux_pid, :normal}, 3_000
   end
 
+  test "a viewer arriving during the terminal grace rejoins a shared stream" do
+    counter = start_supervised!({Agent, fn -> 0 end})
+    port = start_live_server(counter)
+    provider_id = 7_013
+    stream_key = {:terminal_rejoin_test, System.unique_integer([:positive])}
+    url = "http://127.0.0.1:#{port}/live"
+
+    opts = [provider_id: provider_id, idle_timeout: 60_000, url_validator: &allow_test_url/1]
+
+    assert {:ok, first} = StreamMultiplexer.subscribe(stream_key, url, opts)
+    first_pid = first.pid
+    assert_receive {:upstream_ready, first_handler}
+    assert {:ok, 200, _headers, []} = await_ready(first)
+
+    StreamMultiplexer.demand(first_pid)
+    send(first_handler, :done)
+    assert_receive {:stream_mux, ^first_pid, :done}
+
+    # The finished multiplexer still owns the registry name here. Answering
+    # :stream_ended would send LiveProxy down the dedicated-connection path,
+    # and on a max_connections=1 account that one reconnect starves every other
+    # viewer of the channel. Waiting the corpse out returns a shared stream.
+    assert {:ok, second} = StreamMultiplexer.subscribe(stream_key, url, opts),
+           "a viewer reconnecting inside the terminal grace was refused instead of rejoining"
+
+    refute second.pid == first_pid,
+           "the rejoin must land on a fresh multiplexer, not the finished one"
+
+    assert_receive {:upstream_ready, _second_handler}
+    assert {:ok, 200, _headers, _backlog} = await_ready(second)
+
+    StreamMultiplexer.unsubscribe(second.pid)
+  end
+
   test "reclaims an idle multiplexer when another channel needs the last lease" do
     counter = start_supervised!({Agent, fn -> 0 end})
     port = start_live_server(counter)
