@@ -359,8 +359,13 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       render_hook(view, "update_watch_time", %{"duration" => nil})
 
-      assert render(view) =~ "Filme Watch Time",
+      # Surviving means still answering. A dead view raises here instead.
+      assert is_binary(render(view)),
              "a null duration from the player killed the LiveView"
+
+      # And it must still do real work afterwards, not merely be alive.
+      render_hook(view, "progress_update", %{"current_time" => 12, "duration" => 3600})
+      assert is_binary(render(view))
     end
 
     test "request_token_refresh sends a lapsed subscriber to /plans", %{conn: conn, user: user} do

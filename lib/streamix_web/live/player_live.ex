@@ -255,17 +255,21 @@ defmodule StreamixWeb.PlayerLive do
     {:noreply, socket}
   end
 
-  def handle_event("update_watch_time", %{"duration" => duration}, socket) do
-    user_id = socket.assigns.user_id
-
-    # Only update watch time for logged-in users
-    if user_id do
-      content = socket.assigns.content
-      type = Atom.to_string(socket.assigns.content_type)
-      {progress_type, progress_id} = progress_ref(type, content)
-      Library.update_watch_time(user_id, progress_type, progress_id, duration)
-    end
-
+  # The player pings this every 30s. It used to forward the payload into
+  # `watch_progress.duration_seconds` — the column that holds the *media
+  # length*, which `progress_update` already writes every 10 seconds from the
+  # video element. The payload was session wall-clock, so whichever event
+  # landed last decided what the progress bar, the completion threshold and the
+  # personalization profile read.
+  #
+  # It never carried a usable number anyway: the client computes
+  # `Date.now() - this.startTime` and `startTime` is assigned nowhere, so the
+  # value arrived as null and `round/1` raised on it.
+  #
+  # What the ping is genuinely for is keeping the playback session alive, so
+  # that is all it does now. Params are ignored rather than matched, because
+  # nothing here should depend on what the browser sends.
+  def handle_event("update_watch_time", _params, socket) do
     Billing.touch_playback_session(socket.assigns[:playback_session])
 
     {:noreply, socket}
