@@ -2244,10 +2244,13 @@ const VideoPlayer = {
     if (this.watchInterval) {
       clearInterval(this.watchInterval);
     }
-    // Run directly every 30s instead of checking every 1s
+    // A 30s keepalive for the playback session. It used to send
+    // `Date.now() - this.startTime`, but `startTime` is assigned nowhere, so
+    // the value was always NaN — serialised as null, and the server raised on
+    // it. The server ignores the payload now; sending a bogus number would only
+    // invite someone to start trusting it again.
     this.watchInterval = setInterval(() => {
-      const duration = Math.floor((Date.now() - this.startTime) / 1000);
-      this.pushEventSafe("update_watch_time", { duration });
+      this.pushEventSafe("update_watch_time", {});
     }, 30000);
   },
 
@@ -2317,10 +2320,6 @@ const VideoPlayer = {
 
     if (this.watchInterval) {
       clearInterval(this.watchInterval);
-      const duration = Math.floor((Date.now() - this.startTime) / 1000);
-      if (duration > 0) {
-        this.pushEventSafe("update_watch_time", { duration });
-      }
     }
 
     if (this.el) {
