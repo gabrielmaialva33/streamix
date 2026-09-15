@@ -38,7 +38,14 @@ defmodule Streamix.Application do
            name: :streamix_l1_cache,
            ttl_check_interval: Streamix.Cache.l1_ttl_check_interval(),
            global_ttl: Streamix.Cache.l1_ttl(),
-           touch_on_read: true,
+           # No `touch_on_read`. ConCache renews an item's own TTL on every
+           # read and offers no absolute max-age, so any key read more often
+           # than its TTL never expires: `Cache.fetch/3` keeps answering from
+           # L1 and never revisits L2, which means a short-TTL entry can
+           # outlive its Redis copy until the node restarts. The day-stable
+           # `home` shelves are the visible case — a viewer would keep seeing
+           # yesterday's rows. Expiry is the point of a TTL; renewing it on
+           # read deletes the guarantee for exactly the entries that matter.
            # Default 5 s was too tight when multiple HomeLive sections all
            # hit `Profile.get_user_profile/1` at the same time and the
            # loser of the race waited on the lock, hit 5 s, crashed and
