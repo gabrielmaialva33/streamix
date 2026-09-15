@@ -9,8 +9,7 @@ defmodule Streamix.OperationalHealth do
   """
 
   alias Ecto.Adapters.SQL
-  alias Streamix.AI.{Embeddings, Qdrant, SemanticSearch}
-  alias Streamix.{BuildInfo, Gindex, Providers, Repo, Torrent}
+  alias Streamix.{AI, BuildInfo, Gindex, Providers, Repo, Torrent}
 
   @check_timeout :timer.seconds(6)
   @required_checks [:database, :redis]
@@ -157,38 +156,11 @@ defmodule Streamix.OperationalHealth do
   defp maybe_put_quota_resume(check, _quota), do: check
 
   defp check_semantic_search do
-    if Embeddings.enabled?() do
-      semantic_search_status()
-    else
-      %{status: :disabled}
-    end
+    AI.semantic_search_status()
   rescue
     _ -> %{status: :degraded}
   catch
     :exit, _ -> %{status: :degraded}
-  end
-
-  defp semantic_search_status do
-    case Qdrant.health_check() do
-      {:ok, :healthy} ->
-        {:ok, collections} = SemanticSearch.stats()
-
-        missing =
-          for {name, %{status: "not_found"}} <- collections,
-              do: name
-
-        %{
-          status: if(missing == [], do: :ok, else: :degraded),
-          missing_collections: missing,
-          collections: collections
-        }
-
-      {:error, :disabled} ->
-        %{status: :disabled}
-
-      {:error, _reason} ->
-        %{status: :degraded}
-    end
   end
 
   defp check_torrent do
