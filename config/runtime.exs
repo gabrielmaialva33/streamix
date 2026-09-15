@@ -131,7 +131,18 @@ config :streamix, :redis_url, redis_url
 
 # Provider password encryption key (AES-256-GCM)
 # Generate with: mix phx.gen.secret 32
-config :streamix, :provider_encryption_key, get_env.("PROVIDER_ENCRYPTION_KEY")
+provider_encryption_key = get_env.("PROVIDER_ENCRYPTION_KEY")
+
+if config_env() == :prod and
+     (is_nil(provider_encryption_key) or String.trim(provider_encryption_key) == "") do
+  raise """
+  environment variable PROVIDER_ENCRYPTION_KEY is missing or empty.
+  Without it, provider passwords will be stored in plaintext.
+  You can generate one by calling: mix phx.gen.secret 32
+  """
+end
+
+config :streamix, :provider_encryption_key, provider_encryption_key
 
 # Stripe billing configuration.
 #
