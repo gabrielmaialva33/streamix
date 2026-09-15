@@ -71,7 +71,7 @@ services:
       - shared_network
 
   qdrant:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.19.0}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.19.1}
     container_name: streamix-qdrant
     volumes:
       - streamix_qdrant_data:/qdrant/storage
