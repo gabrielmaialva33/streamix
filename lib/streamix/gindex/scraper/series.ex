@@ -16,6 +16,10 @@ defmodule Streamix.Gindex.Scraper.Series do
 
   @default_series_paths ["/1:/Séries/Séries WEB-DL/", "/1:/Séries/Séries Misturado/"]
 
+  # Season assumed for episodes found loose in a title folder when the
+  # filename itself carries no season marker.
+  @implicit_season_number 1
+
   def scrape_series(base_url, series_paths \\ @default_series_paths) do
     # Use reduce_while so the first folder failure halts the run with a
     # tagged error — Enum.flat_map was silently turning {:error, _} into
@@ -97,34 +101,30 @@ defmodule Streamix.Gindex.Scraper.Series do
     end
   end
 
-  @doc false
-  def scrape_single_series_result(base_url, folder) do
+  @doc """
+  Scrapes one series folder.
+
+  `:list_fun` overrides the folder lister (arity 2, `(path, base_url)`) so the
+  folder shapes this has to cope with can be exercised without an upstream.
+  """
+  def scrape_single_series_result(base_url, folder, opts \\ []) do
     Logger.debug("[GIndex Scraper] Scraping series: #{folder.name}")
 
     folder_meta = Parser.parse_series_folder(folder.name)
     series_id = Parser.path_to_stream_id(folder.path)
+    list_fun = Keyword.get(opts, :list_fun, &Client.list_folder_with_failover/2)
 
-    case Client.list_folder_with_failover(folder.path, base_url) do
+    case list_fun.(folder.path, base_url) do
       {:ok, items} ->
         season_folders =
           Enum.filter(items, fn item -> item.type == :folder and season_folder?(item) end)
 
         case scrape_seasons_result(base_url, season_folders, folder.path) do
           {:ok, []} ->
-            :empty
+            flat_series_result(series_id, folder_meta, folder, items)
 
           {:ok, seasons} ->
-            {:ok,
-             %{
-               series_id: series_id,
-               name: folder_meta.name,
-               title: folder_meta.original_name,
-               year: folder_meta.year,
-               gindex_path: folder.path,
-               seasons: seasons,
-               season_count: length(seasons),
-               episode_count: Enum.sum(Enum.map(seasons, & &1.episode_count))
-             }}
+            {:ok, series_result(series_id, folder_meta, folder, seasons)}
 
           {:error, _reason} = error ->
             error
@@ -216,6 +216,55 @@ defmodule Streamix.Gindex.Scraper.Series do
 
   def season_folder?(folder), do: Seasons.season_folder?(folder)
 
+  # Reached when the title folder has no season subfolder. A large part of this
+  # catalogue keeps the episodes loose inside the title folder — every
+  # telenovela under /0:/Novelas/ and roughly a third of /0:/Animes/ are shaped
+  # that way. Answering :empty here dropped them silently: no error, no
+  # skipped_count, nothing in the logs, so the scan root still finished as
+  # `completed` while the titles never existed. Treat the loose files as the
+  # season instead, and only give up when none of them yields an episode
+  # number.
+  defp flat_series_result(series_id, folder_meta, folder, items) do
+    case flat_seasons(items, folder) do
+      [] -> :empty
+      seasons -> {:ok, series_result(series_id, folder_meta, folder, seasons)}
+    end
+  end
+
+  defp series_result(series_id, folder_meta, folder, seasons) do
+    %{
+      series_id: series_id,
+      name: folder_meta.name,
+      title: folder_meta.original_name,
+      year: folder_meta.year,
+      gindex_path: folder.path,
+      seasons: seasons,
+      season_count: length(seasons),
+      episode_count: Enum.sum(Enum.map(seasons, & &1.episode_count))
+    }
+  end
+
+  # Groups by the season each filename resolves to rather than forcing
+  # everything into season 1: a flat folder holding S01E01..S02E12 still
+  # produces two seasons. Files with no season marker fall back to
+  # @implicit_season_number, which is the common case here (`E001`, `- 01`).
+  defp flat_seasons(items, folder) do
+    items
+    |> Enum.filter(fn item -> item.type == :file and Parser.video_file?(item.name) end)
+    |> build_episodes(@implicit_season_number)
+    |> Enum.group_by(& &1.season_number)
+    |> Enum.map(fn {season_number, episodes} ->
+      %{
+        season_number: season_number,
+        name: nil,
+        gindex_path: folder.path,
+        episodes: Enum.sort_by(episodes, & &1.episode_num),
+        episode_count: length(episodes)
+      }
+    end)
+    |> Enum.sort_by(& &1.season_number)
+  end
+
   defp build_episodes(files, season_number) do
     files
     |> Enum.map(fn file ->
@@ -297,7 +346,13 @@ defmodule Streamix.Gindex.Scraper.Series do
         match |> Enum.at(1) |> String.to_integer()
 
       true ->
-        nil
+        anime_episode_number(filename)
     end
   end
+
+  # Fansub releases number episodes as `Title - 01 [1080p]`, which none of the
+  # patterns above match. `Parser.parse_anime_episode/1` already owns that
+  # grammar; running it last means it can only supply a number where the other
+  # rules found none, so no existing filename changes meaning.
+  defp anime_episode_number(filename), do: Parser.parse_anime_episode(filename).episode
 end
