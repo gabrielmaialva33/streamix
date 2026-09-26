@@ -84,15 +84,9 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
 
     case DiscoveryCursor.phase(cursor) do
       :discover ->
-        run_discovery(
-          source,
-          base_url,
-          root_path,
-          folders,
-          cursor,
-          runtime,
-          listing_error
-        )
+        source
+        |> run_discovery(base_url, root_path, folders, cursor, runtime)
+        |> apply_listing_error(listing_error)
 
       :refresh ->
         cursor
@@ -116,20 +110,11 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
     |> apply_listing_error(listing_error)
   end
 
-  defp run_discovery(
-         source,
-         base_url,
-         root_path,
-         folders,
-         cursor,
-         runtime,
-         listing_error
-       ) do
+  defp run_discovery(source, base_url, root_path, folders, cursor, runtime) do
     result =
       cursor
       |> phase_runtime(:discover, runtime)
       |> run_phase(source, base_url, root_path, folders, DiscoveryCursor.position(cursor))
-      |> apply_listing_error(listing_error)
 
     case result do
       {:ok, discovery_stats} ->
@@ -140,7 +125,6 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
           folders,
           cursor,
           runtime,
-          listing_error,
           discovery_stats
         )
 
@@ -156,7 +140,6 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
          folders,
          cursor,
          runtime,
-         listing_error,
          discovery_stats
        ) do
     {refresh_cursor, transition_checkpoint} = DiscoveryCursor.begin_refresh(cursor)
@@ -171,8 +154,7 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
              root_path,
              folders,
              DiscoveryCursor.position(refresh_cursor)
-           )
-           |> apply_listing_error(listing_error) do
+           ) do
       {:ok, merge_stats(discovery_stats, refresh_stats)}
     end
   end
@@ -211,8 +193,28 @@ defmodule Streamix.Gindex.Sync.FolderBatch do
     |> finalize(source, root_path, runtime)
   end
 
+  # A truncated root listing used to abort the scan root: every folder it could
+  # reach was persisted and checkpointed, and then the terminal {:ok, stats} was
+  # rewritten to {:error, {:partial_listing, _}}, which paused the root with
+  # `retryable_error`. A paused root keeps its cycle active, so no new cycle
+  # could open and a single unlistable root froze ingestion for the whole
+  # provider. Worse, failing here also skipped `continue_with_refresh/7`, so the
+  # cursor stayed pinned in the `discover` phase and the refresh phase never ran
+  # again.
+  #
+  # Count the truncation as skipped work instead. `skipped_count` is what
+  # `cycle_summary/2` reads for `roots_with_skips`, so the cycle still finalizes
+  # as `partial` instead of claiming a clean sweep.
   defp apply_listing_error({:ok, _stats} = success, nil), do: success
-  defp apply_listing_error({:ok, _stats}, error), do: {:error, error}
+
+  defp apply_listing_error({:ok, stats}, error) do
+    Logger.warning(
+      "[GIndex Sync] root listing truncated, counting it as skipped: #{inspect(error)}"
+    )
+
+    {:ok, Map.update(stats, :skipped_count, 1, &(&1 + 1))}
+  end
+
   defp apply_listing_error({:error, _reason} = error, _listing_error), do: error
 
   defp process_folder(source, base_url, root_path, folder, {:ok, state}, runtime) do

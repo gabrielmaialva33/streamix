@@ -84,7 +84,10 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
     refute_received {:checkpoint, _checkpoint}
   end
 
-  test "persists folders from an incomplete listing without settling the root" do
+  test "records a truncated root listing as skipped instead of failing the root" do
+    # Failing here paused the scan root with `retryable_error`, and a paused root
+    # keeps its cycle active — so one unlistable root blocked every other root of
+    # the provider from ever starting a new cycle.
     parent = self()
     folders = folders(~w(a b))
     partial_items = folders ++ [%{name: "README", path: "/README.txt", type: :file}]
@@ -98,7 +101,7 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
          reason: {:all_endpoints_failed, [%{reason: {:http_error, 500}}]}
        }}
 
-    assert {:error, {:partial_listing, details}} =
+    assert {:ok, %{series_count: 2, episodes_count: 2, skipped_count: 1}} =
              Series.sync(@source, @base_url, [@root_path],
                batch_size: 2,
                list_fun: fn _base_url, @root_path -> {:error, listing_error} end,
@@ -109,10 +112,46 @@ defmodule Streamix.Gindex.Sync.SeriesTest do
                on_checkpoint: checkpoint_fun(parent)
              )
 
-    refute Map.has_key?(details, :items)
-    assert details.items_collected == 3
     assert_received {:persisted, ["A", "B"]}
     assert_received {:checkpoint, %{"root_path" => @root_path, "folder_path" => "/b/"}}
+  end
+
+  test "counts a truncated root listing once, and still reaches the refresh phase" do
+    # Failing on the truncation skipped `continue_with_refresh/7` entirely, so the
+    # cursor stayed pinned in `discover` and the refresh phase never ran again.
+    # Now both phases run, and the one truncation must be charged once, not once
+    # per phase.
+    parent = self()
+    folders = folders(~w(a b))
+    known_paths = MapSet.new(["/a/"])
+
+    listing_error =
+      {:partial_listing, %{items: folders, items_collected: 2, page: 1}}
+
+    scrape_fun = fn _base_url, folder ->
+      send(parent, {:scraped, folder.path})
+      {:ok, %{name: folder.name, episode_count: 1}}
+    end
+
+    assert {:ok, %{series_count: 2, episodes_count: 2, skipped_count: 1}} =
+             Series.sync(@source, @base_url, [@root_path],
+               strategy: :discovery_first,
+               discovery_window: ~D[2026-08-10],
+               known_paths: known_paths,
+               batch_size: 1,
+               list_fun: fn _base_url, @root_path -> {:error, listing_error} end,
+               scrape_fun: scrape_fun,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    # "/b/" is unknown, so it belongs to the discover phase; "/a/" is known, so
+    # only the refresh phase reaches it. Both arriving proves the truncation no
+    # longer aborts the run between the two phases.
+    assert_received {:scraped, "/b/"}
+    assert_received {:scraped, "/a/"}
+
+    assert_received {:checkpoint, %{"phase" => "refresh"}}
   end
 
   test "skips one broken folder without blocking the remaining catalog" do
