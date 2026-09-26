@@ -56,6 +56,59 @@ defmodule Streamix.Gindex.ParserTest do
     end
   end
 
+  describe "parse_anime_episode/1 — explicit season/episode markers" do
+    # Every filename here is taken verbatim from /0:/Animes/ in production.
+    # Before these two patterns existed the names fell through to the
+    # bare-number fallback, which takes the first 1-3 digit run in the string.
+    # The damage was not just a wrong number: the ingest de-duplicates episodes
+    # by `episode_num`, so a title whose files all scored the same number
+    # collapsed to a single episode, and a title where nothing matched was
+    # dropped entirely.
+
+    test "parses `SxxEyy` instead of a digit run in the title" do
+      # "009-1" scored 9 for every episode, collapsing 13 files into one.
+      assert Parser.parse_anime_episode(
+               "[Troidex][danfgtn] 009-1 (2006) - S01E01 [DVD-Rip_720p_x264_Dual].mkv"
+             ).episode == 1
+
+      assert Parser.parse_anime_episode(
+               "[Troidex][danfgtn] 009-1 (2006) - S01E12 [DVD-Rip_720p_x264_Dual].mkv"
+             ).episode == 12
+    end
+
+    test "parses `SxxEyy` in dotted release names" do
+      assert Parser.parse_anime_episode(
+               "Cherry.Magic!.Thirty.Years.of.Virginity.S01E07.1080p.CR.WEB-DL.x264.mkv"
+             ).episode == 7
+    end
+
+    test "parses the `1x01` season-by-episode shape" do
+      assert Parser.parse_anime_episode(
+               "ABCiee Working Diary - 1x01 - Newbie ABCiee Is Going to Do His Best.mkv"
+             ).episode == 1
+
+      assert Parser.parse_anime_episode(
+               "Magical Shopping Arcade Abenobashi - 1x13 - Farewell! [Abenobashi].avi"
+             ).episode == 13
+    end
+
+    test "prefers `1x01` over a digit run in the title" do
+      # "ACCA 13-Territory" scored 13 for all 12 episodes.
+      assert Parser.parse_anime_episode(
+               "ACCA 13-Territory Inspection Dept. - 1x04 - Smoldering Embers.mkv"
+             ).episode == 4
+    end
+
+    test "does not read a resolution as a season-by-episode marker" do
+      # `1280x720` must not parse as season 1280, episode 720: the leading
+      # digit run is four long, so the marker cannot start inside it.
+      assert Parser.parse_anime_episode("[KO] Aikatsu on Parade! - 05 [HD 1280x720 AAC].mkv").episode ==
+               5
+
+      assert Parser.parse_anime_episode("Show Name [720x480 DVD].mkv").episode == nil
+    end
+  end
+
   describe "parse_anime_episode/1 — fallback doesn't confuse year/resolution with episode" do
     test "ignores year in parentheses" do
       # Regression: a naive `\d+` match would collapse `(2021)` to

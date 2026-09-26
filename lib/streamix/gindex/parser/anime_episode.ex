@@ -46,8 +46,17 @@ defmodule Streamix.Gindex.Parser.AnimeEpisode do
 
   # Order matters: specific fansub layouts must win before the bare-number
   # fallback so extras, years, and resolutions do not become fake episodes.
+  #
+  # The two explicit season/episode markers come first because they are the
+  # only unambiguous ones. Without them these names reached the bare-number
+  # fallback, which takes the first 1-3 digit run in the filename: every
+  # episode of `ACCA 13-Territory ... - 1x01 -` scored 13 and the whole title
+  # collapsed to a single episode on ingest, and `Title - 1x01 - Name.mkv`
+  # (no brackets, no group) matched nothing at all and was dropped.
   defp extract_anime_episode_number(name) do
     patterns = [
+      ~r/\bS(?:\d{1,2})[\s._-]?E(\d{1,3})\b/i,
+      ~r/\b(?:\d{1,2})x(\d{1,3})\b/,
       ~r/-\s*(\d{1,3})\s*\[/,
       ~r/-\s*(\d{1,3})(?:\.|$)/,
       ~r/(?:Epis[oó]dio)\s*[\.-]?\s*(\d{1,3})\b/iu,
