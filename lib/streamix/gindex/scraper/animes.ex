@@ -10,6 +10,10 @@ defmodule Streamix.Gindex.Scraper.Animes do
 
   @top_level_cache_ttl 60 * 60
 
+  # Release slot used when the title folder has no release subfolder, so the
+  # loose files are the only release there is.
+  @implicit_release_index 1
+
   def scrape_animes(base_url, anime_path \\ "/0:/Animes/") do
     Logger.info("[GIndex Scraper] Scraping animes from: #{anime_path}")
 
@@ -76,31 +80,25 @@ defmodule Streamix.Gindex.Scraper.Animes do
     end
   end
 
-  @doc false
-  def scrape_single_anime_result(base_url, folder) do
+  @doc """
+  Scrapes one anime title folder.
+
+  `:list_fun` overrides the folder lister (arity 2, `(path, base_url)`) so the
+  folder shapes this has to cope with can be exercised without an upstream.
+  """
+  def scrape_single_anime_result(base_url, folder, opts \\ []) do
     Logger.debug("[GIndex Scraper] Scraping anime: #{folder.name}")
 
     folder_meta = Parser.parse_anime_folder(folder.name)
     anime_id = Parser.path_to_stream_id(folder.path)
+    list_fun = Keyword.get(opts, :list_fun, &Client.list_folder_with_failover/2)
 
-    with {:ok, items} <- Client.list_folder_with_failover(folder.path, base_url),
+    with {:ok, items} <- list_fun.(folder.path, base_url),
          release_folders = Enum.filter(items, &(&1.type == :folder)),
          {:ok, releases} <- scrape_anime_releases_result(base_url, release_folders) do
-      if releases == [] do
-        :empty
-      else
-        {:ok,
-         %{
-           series_id: anime_id,
-           name: folder_meta.name,
-           title: folder_meta.original_name,
-           year: folder_meta.year,
-           gindex_path: folder.path,
-           seasons: releases,
-           season_count: length(releases),
-           episode_count: Enum.sum(Enum.map(releases, & &1.episode_count)),
-           content_type: "anime"
-         }}
+      case releases do
+        [] -> flat_anime_result(anime_id, folder_meta, folder, items)
+        releases -> {:ok, anime_result(anime_id, folder_meta, folder, releases)}
       end
     else
       {:error, reason} = error ->
@@ -110,6 +108,62 @@ defmodule Streamix.Gindex.Scraper.Animes do
 
         error
     end
+  end
+
+  # Reached when the title folder holds no release subfolder. Roughly a third of
+  # /0:/Animes/ keeps the episodes loose in the title folder instead of under a
+  # `[Group] Title 1080p/` release folder, and answering :empty here dropped
+  # those titles silently: no error, no skipped_count, nothing in the logs, so
+  # the scan root still finished as `completed` while the titles never existed.
+  # Scraper.Series already treats loose files as the season; animes are
+  # dispatched to this module instead (kind: :animes), so the same shape has to
+  # be handled here too. Only give up when none of the loose files yields an
+  # episode number, which is what keeps junk folders out of the catalogue.
+  defp flat_anime_result(anime_id, folder_meta, folder, items) do
+    case flat_release(items, folder) do
+      nil -> :empty
+      release -> {:ok, anime_result(anime_id, folder_meta, folder, [release])}
+    end
+  end
+
+  # There is no release folder to parse, so there is no group, quality or score
+  # to report. The keys stay present and neutral because callers rank releases
+  # by :release_score.
+  defp flat_release(items, folder) do
+    episodes =
+      items
+      |> Enum.filter(fn item -> item.type == :file and Parser.video_file?(item.name) end)
+      |> scrape_anime_episodes_from_files(@implicit_release_index)
+
+    if episodes == [] do
+      nil
+    else
+      %{
+        season_number: @implicit_release_index,
+        name: nil,
+        gindex_path: folder.path,
+        episodes: episodes,
+        episode_count: length(episodes),
+        release_score: 0,
+        release_group: nil,
+        quality: nil,
+        is_dual: false
+      }
+    end
+  end
+
+  defp anime_result(anime_id, folder_meta, folder, releases) do
+    %{
+      series_id: anime_id,
+      name: folder_meta.name,
+      title: folder_meta.original_name,
+      year: folder_meta.year,
+      gindex_path: folder.path,
+      seasons: releases,
+      season_count: length(releases),
+      episode_count: Enum.sum(Enum.map(releases, & &1.episode_count)),
+      content_type: "anime"
+    }
   end
 
   def scrape_anime_releases(release_folders, base_url) when is_list(release_folders) do
