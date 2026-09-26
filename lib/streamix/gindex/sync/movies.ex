@@ -236,25 +236,41 @@ defmodule Streamix.Gindex.Sync.Movies do
         "#{length(pending)} pending, complete_listing=#{listing.complete?}"
     )
 
-    result =
-      pending
-      |> Enum.reduce_while({:ok, empty_category_state(skipped_count)}, fn item, state ->
-        process_movie_item(source, base_url, root_path, category.path, item, state, runtime)
-      end)
-      |> finalize_category(source, root_path, category.path, listing.complete?, runtime)
+    skipped_count = skipped_count + truncation_penalty(listing, category.path)
 
-    case {result, listing.error} do
-      {{:ok, stats}, nil} -> {:ok, stats}
-      {{:ok, _stats}, error} -> {:error, compact_listing_error(error)}
-      {{:error, _reason} = error, _listing_error} -> error
-    end
+    pending
+    |> Enum.reduce_while({:ok, empty_category_state(skipped_count)}, fn item, state ->
+      process_movie_item(source, base_url, root_path, category.path, item, state, runtime)
+    end)
+    |> finalize_category(source, root_path, category.path, runtime)
+  end
+
+  # A truncated listing used to abort the whole scan root: the run persisted
+  # every item it could reach and was then rewritten from {:ok, stats} to
+  # {:error, {:partial_listing, _}}, which paused the root with
+  # `retryable_error`. Because a paused root keeps its cycle active, no new
+  # cycle could ever open, so one unlistable category froze ingestion for every
+  # root of the provider — /1:/Filmes/ held the whole catalogue hostage for six
+  # days against an upstream 500 that no amount of retrying fixes.
+  #
+  # Count it as skipped work instead. `skipped_count` is what makes
+  # `cycle_summary/2` report `roots_with_skips`, so the cycle still finalizes as
+  # `partial` rather than claiming a clean sweep, while the remaining
+  # categories and roots get their turn.
+  defp truncation_penalty(%{error: nil}, _category_path), do: 0
+
+  defp truncation_penalty(%{error: error, items: items}, category_path) do
+    Logger.warning(
+      "[GIndex Sync] Movie category #{category_path} listing truncated at " <>
+        "#{length(items)} items, counting it as skipped: #{inspect(compact_listing_error(error))}"
+    )
+
+    1
   end
 
   defp compact_listing_error({:partial_listing, details}) when is_map(details) do
     {:partial_listing, Map.drop(details, [:items, "items"])}
   end
-
-  defp compact_listing_error(error), do: error
 
   defp process_movie_item(
          source,
@@ -327,23 +343,9 @@ defmodule Streamix.Gindex.Sync.Movies do
     end
   end
 
-  defp finalize_category(
-         {:ok, state},
-         source,
-         root_path,
-         category_path,
-         complete_listing?,
-         runtime
-       ) do
+  defp finalize_category({:ok, state}, source, root_path, category_path, runtime) do
     with {:ok, flushed} <- flush_pending(source, root_path, category_path, state, runtime),
-         :ok <-
-           maybe_complete_category(
-             root_path,
-             category_path,
-             complete_listing?,
-             flushed.skipped_count,
-             runtime
-           ) do
+         :ok <- complete_category(root_path, category_path, flushed.skipped_count, runtime) do
       {:ok, %{movies_count: flushed.movies_count, skipped_count: flushed.skipped_count}}
     end
   end
@@ -353,7 +355,6 @@ defmodule Streamix.Gindex.Sync.Movies do
          _source,
          _root_path,
          _category_path,
-         _complete_listing?,
          _runtime
        ),
        do: error
@@ -380,10 +381,11 @@ defmodule Streamix.Gindex.Sync.Movies do
   defp persist_movies(_source, [], _persist_fun), do: {:ok, 0}
   defp persist_movies(source, movies, persist_fun), do: persist_fun.(source, movies)
 
-  defp maybe_complete_category(_root_path, _category_path, false, _skipped_count, _runtime),
-    do: :ok
-
-  defp maybe_complete_category(root_path, category_path, true, skipped_count, runtime) do
+  # Written for a truncated listing too, otherwise `resume_categories/3` keeps
+  # the category at the head of the list and re-lists it on every attempt
+  # forever. "Complete" here means the walk is done with this category, not that
+  # the upstream handed over every item; `skipped_count` carries that.
+  defp complete_category(root_path, category_path, skipped_count, runtime) do
     persist_checkpoint(runtime.checkpoint_fun, %{
       "root_path" => root_path,
       "category_path" => category_path,

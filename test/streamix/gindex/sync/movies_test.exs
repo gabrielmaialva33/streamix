@@ -29,12 +29,12 @@ defmodule Streamix.Gindex.Sync.MoviesTest do
            ) == 1
   end
 
-  test "persists a partial category without falsely completing its cursor" do
+  test "records a truncated category as skipped instead of failing the root" do
     parent = self()
     items = [direct_movie("A"), direct_movie("B")]
     partial = {:partial_listing, %{items: items, items_collected: 2, page: 2}}
 
-    assert {:error, {:partial_listing, returned_error}} =
+    assert {:ok, %{movies_count: 2, skipped_count: 1}} =
              Movies.sync(@source, @base_url, @root_path,
                batch_size: 2,
                list_categories_fun: fn @base_url, @root_path -> {:ok, [@category]} end,
@@ -43,8 +43,6 @@ defmodule Streamix.Gindex.Sync.MoviesTest do
                on_checkpoint: checkpoint_fun(parent)
              )
 
-    assert returned_error == %{items_collected: 2, page: 2}
-
     assert_received {:persisted, ["A", "B"]}
 
     assert_received {:checkpoint,
@@ -52,10 +50,37 @@ defmodule Streamix.Gindex.Sync.MoviesTest do
                        "category_path" => @category_path,
                        "item_path" => "/1:/Filmes/2026/B.mkv",
                        "category_complete" => false,
-                       "skipped_count" => 0
+                       "skipped_count" => 1
                      }}
 
-    refute_received {:checkpoint, %{"category_complete" => true}}
+    # The walk has to move past the category it could not list whole, otherwise
+    # `resume_categories/3` keeps it at the head of the list and re-lists it on
+    # every attempt forever.
+    assert_received {:checkpoint,
+                     %{"category_complete" => true, "item_path" => nil, "skipped_count" => 1}}
+  end
+
+  test "keeps walking the categories that follow a truncated one" do
+    parent = self()
+    second = %{name: "2025", path: "/1:/Filmes/2025/"}
+    partial = {:partial_listing, %{items: [direct_movie("A")], items_collected: 1, page: 2}}
+
+    list_items_fun = fn
+      @base_url, @category_path -> {:error, partial}
+      @base_url, "/1:/Filmes/2025/" -> {:ok, [direct_movie("B")]}
+    end
+
+    assert {:ok, %{movies_count: 2, skipped_count: 1}} =
+             Movies.sync(@source, @base_url, @root_path,
+               batch_size: 1,
+               list_categories_fun: fn @base_url, @root_path -> {:ok, [@category, second]} end,
+               list_items_fun: list_items_fun,
+               persist_fun: persist_fun(parent),
+               on_checkpoint: checkpoint_fun(parent)
+             )
+
+    assert_received {:persisted, ["A"]}
+    assert_received {:persisted, ["B"]}
   end
 
   test "resumes inside a formerly partial category and then completes it" do
