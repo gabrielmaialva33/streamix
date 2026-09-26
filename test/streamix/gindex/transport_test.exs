@@ -47,6 +47,72 @@ defmodule Streamix.Gindex.TransportTest do
              )
   end
 
+  test "retries a 500 more than twice before giving up on the page" do
+    # Walking a deep listing page by page against the live index, one page in
+    # nine needed four retries. At the old budget of two, Pagination turned that
+    # page into a truncated listing and the whole category became unlistable.
+    for {status, body} <- [
+          {500, "TypeError: shard 1"},
+          {500, "TypeError: shard 2"},
+          {500, "TypeError: shard 3"},
+          {500, "TypeError: shard 4"},
+          {200, ~s({"data":{"files":[]}})}
+        ] do
+      Req.Test.expect(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, status, body) end)
+    end
+
+    base_url = "https://sync.example.com"
+
+    assert {:ok, %{status: 200}} =
+             Transport.request(
+               :post,
+               "#{base_url}/1:/Filmes/",
+               ~s({"id":"","type":"folder","password":"","page_token":null,"page_index":0}),
+               base_url,
+               plug: {Req.Test, __MODULE__},
+               server_error_delay_ms: 0,
+               operation: :list,
+               workload: :background
+             )
+  end
+
+  test "caps the exponential server-error backoff" do
+    # Uncapped, the sixth retry would sleep 160s and the eighth 640s, parking a
+    # single page for minutes against a two-hour worker timeout.
+    for attempt <- 0..3 do
+      expected = round(:timer.seconds(5) * :math.pow(2, attempt))
+      delay = Transport.server_error_delay(attempt)
+
+      assert delay >= expected
+      assert delay <= expected + 1_000
+    end
+
+    for attempt <- 4..8 do
+      assert Transport.server_error_delay(attempt) <= :timer.seconds(60) + 1_000
+    end
+  end
+
+  test "leaves playback without server-error retries" do
+    # A viewer waiting on a stream URL must not be parked behind a retry chain.
+    Req.Test.expect(__MODULE__, fn conn ->
+      Plug.Conn.send_resp(conn, 500, "TypeError: shard failure")
+    end)
+
+    base_url = "https://stream.example.com"
+
+    assert {:ok, %{status: 500}} =
+             Transport.request(
+               :post,
+               "#{base_url}/1:/Filmes/movie.mkv",
+               ~s({"id":"","type":"file"}),
+               base_url,
+               plug: {Req.Test, __MODULE__},
+               server_error_delay_ms: 0,
+               operation: :file_info,
+               workload: :playback
+             )
+  end
+
   test "keeps server-error retries independent from the request quota" do
     quota_counter = start_supervised!({Agent, fn -> 0 end})
 

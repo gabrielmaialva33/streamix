@@ -22,12 +22,24 @@ defmodule Streamix.Gindex.Transport do
   @default_background_retry_after 15 * 60
 
   # Worker 500s, including the common JavaScript TypeError, are intermittent
-  # across Cloudflare requests. Give the same origin two retries before
-  # returning the error. Cross-Worker fallback happens only in Pagination,
-  # which can safely restart a listing from page zero instead of replaying a
-  # foreign cursor or signed token.
+  # across Cloudflare requests. Cross-Worker fallback happens only in
+  # Pagination, which can safely restart a listing from page zero instead of
+  # replaying a foreign cursor or signed token.
+  #
+  # Measured against the live index while walking a deep listing page by page:
+  # of nine consecutive pages two answered on the first try, three needed one
+  # retry, three needed two, and one needed four. Two retries therefore gave up
+  # on roughly one page in nine, and because Pagination turns that into a
+  # truncated listing, `/1:/Filmes/Filmes (5519)/` was simply unlistable — the
+  # 500s were never fatal, just under-retried. Six covers the observed worst
+  # case with headroom.
+  #
+  # The delay needs a ceiling because the growth is exponential: uncapped, six
+  # retries would park a single page for five minutes and eight for twenty-one,
+  # against a two-hour worker timeout.
   @server_error_base_delay :timer.seconds(5)
-  @max_server_error_retries 2
+  @server_error_max_delay :timer.seconds(60)
+  @max_server_error_retries 6
 
   @typep request_state :: %{
            method: atom(),
@@ -264,6 +276,7 @@ defmodule Streamix.Gindex.Transport do
     %{
       body: body,
       method: method,
+      max_server_error_retries: max_server_error_retries,
       opts: opts,
       server_error_attempt: server_error_attempt,
       url: url
@@ -274,20 +287,26 @@ defmodule Streamix.Gindex.Transport do
     Logger.warning(
       "[GIndex] Server error (500) on #{method} #{url} body=#{String.slice(body_str, 0, 100)} " <>
         "req=#{summarize_retry_body(body)} " <>
-        "waiting #{div(delay, 1000)}s before retry (attempt #{server_error_attempt + 1}/#{@max_server_error_retries})"
+        "waiting #{div(delay, 1000)}s before retry " <>
+        "(attempt #{server_error_attempt + 1}/#{max_server_error_retries})"
     )
 
     Process.sleep(delay)
     request_with_retry(%{state | server_error_attempt: server_error_attempt + 1})
   end
 
-  defp server_error_delay(server_error_attempt, opts) do
+  @doc false
+  def server_error_delay(server_error_attempt, opts \\ []) do
     case Keyword.get(opts, :server_error_delay_ms) do
       delay when is_integer(delay) and delay >= 0 ->
         delay
 
       _ ->
-        base = (@server_error_base_delay * :math.pow(2, server_error_attempt)) |> round()
+        base =
+          (@server_error_base_delay * :math.pow(2, server_error_attempt))
+          |> round()
+          |> min(@server_error_max_delay)
+
         base + :rand.uniform(1000)
     end
   end
