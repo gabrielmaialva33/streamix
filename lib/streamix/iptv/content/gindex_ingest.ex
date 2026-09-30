@@ -14,6 +14,7 @@ defmodule Streamix.Iptv.Content.GindexIngest do
 
   @movie_replace_fields ~w(name title year container_extension gindex_path updated_at)a
   @episode_replace_fields ~w(episode_id title name container_extension gindex_path updated_at)a
+  @episode_renumber_fields ~w(episode_num title name container_extension gindex_path updated_at)a
 
   @spec upsert_movies(pos_integer(), [map()], DateTime.t()) ::
           {:ok, non_neg_integer()} | {:error, term()}
@@ -143,15 +144,39 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     end
   end
 
+  # `episodes` carries two competing unique indexes, on (season_id, episode_num)
+  # and on (season_id, episode_id), and an upsert may name only one of them as
+  # its conflict target. Keying everything on episode_num meant a file whose
+  # number changed looked new, so the insert collided with that file's own
+  # existing row on the episode_id index and aborted the whole scan root.
+  #
+  # Numbers do change. The filename parser learned to read `SxxEyy` and `1x01`,
+  # so files previously scored by the digit-run fallback are renumbered on the
+  # next sync — in production that took out /0:/Desenhos/ and
+  # /1:/Séries/Séries Misturado/ on every attempt for four days.
+  #
+  # So split by what identifies the row: a file already stored in this season
+  # keeps its row and only moves number; everything else is matched by number
+  # as before.
   defp upsert_episodes(season_id, episodes, provider_id, now) do
     episodes = Enum.uniq_by(episodes, &Map.fetch!(&1, :episode_num))
-    existing = existing_episode_catalog_items(season_id)
+    existing = existing_episodes(season_id)
+
+    {renumbered, fresh} =
+      Enum.split_with(episodes, &Map.has_key?(existing.by_id, Map.fetch!(&1, :episode_id)))
+
+    # A renumbered file takes its catalog item with it. Without holding it back,
+    # a different file arriving at the number it vacated would be handed the
+    # same catalog item and break the unique index on catalog_item_id — which is
+    # the common shape here, since a season that had collapsed onto one number
+    # comes back with a full set of episodes.
+    claimed = MapSet.new(renumbered, &Map.fetch!(existing.by_id, Map.fetch!(&1, :episode_id)))
+
+    reusable_by_number =
+      Map.reject(existing.by_number, fn {_number, item_id} -> MapSet.member?(claimed, item_id) end)
 
     new_episodes =
-      Enum.reject(episodes, fn episode ->
-        Map.has_key?(existing.by_id, Map.fetch!(episode, :episode_id)) or
-          Map.has_key?(existing.by_number, Map.fetch!(episode, :episode_num))
-      end)
+      Enum.reject(fresh, &Map.has_key?(reusable_by_number, Map.fetch!(&1, :episode_num)))
 
     new_catalog_item_ids =
       Helpers.pre_create_catalog_items(length(new_episodes), "episode", provider_id, now)
@@ -162,43 +187,91 @@ defmodule Streamix.Iptv.Content.GindexIngest do
       |> Enum.zip(new_catalog_item_ids)
       |> Map.new()
 
-    entries =
-      Enum.map(episodes, fn episode ->
-        catalog_item_id =
-          existing.by_id[Map.fetch!(episode, :episode_id)] ||
-            existing.by_number[Map.fetch!(episode, :episode_num)] ||
-            Map.fetch!(new_catalog_items, episode_key(episode))
-
-        episode
-        |> Map.take(@episode_fields)
-        |> Map.merge(%{
-          season_id: season_id,
-          catalog_item_id: catalog_item_id,
-          inserted_at: now,
-          updated_at: now
-        })
+    renumbered_entries =
+      Enum.map(renumbered, fn episode ->
+        catalog_item_id = Map.fetch!(existing.by_id, Map.fetch!(episode, :episode_id))
+        episode_entry(episode, season_id, catalog_item_id, now)
       end)
 
-    case entries do
-      [] ->
-        0
+    fresh_entries =
+      Enum.map(fresh, fn episode ->
+        catalog_item_id =
+          reusable_by_number[Map.fetch!(episode, :episode_num)] ||
+            Map.fetch!(new_catalog_items, episode_key(episode))
 
-      _entries ->
-        {count, _rows} =
-          Repo.insert_all(Episode, entries,
-            on_conflict: {:replace, @episode_replace_fields},
-            conflict_target: [:season_id, :episode_num]
-          )
+        episode_entry(episode, season_id, catalog_item_id, now)
+      end)
 
-        count
-    end
+    park_renumbered(existing, renumbered)
+
+    replace_renumbered(renumbered_entries) + insert_by_number(fresh_entries)
   end
 
-  defp existing_episode_catalog_items(season_id) do
+  defp episode_entry(episode, season_id, catalog_item_id, now) do
+    episode
+    |> Map.take(@episode_fields)
+    |> Map.merge(%{
+      season_id: season_id,
+      catalog_item_id: catalog_item_id,
+      inserted_at: now,
+      updated_at: now
+    })
+  end
+
+  # Moves the rows whose number is about to change out of the way first, so a
+  # season whose numbers merely permute cannot collide with itself partway
+  # through the upsert — Postgres checks the unique index row by row, not at the
+  # end of the statement. `- id` is distinct per row and can never meet a real
+  # episode number, and every parked row is restored by the upsert that follows,
+  # because parking is only ever applied to rows that upsert will update.
+  defp park_renumbered(existing, renumbered) do
+    ids =
+      for episode <- renumbered,
+          row = Map.fetch!(existing.row_by_id, Map.fetch!(episode, :episode_id)),
+          row.episode_num != Map.fetch!(episode, :episode_num),
+          do: row.id
+
+    if ids != [] do
+      from(episode in Episode,
+        where: episode.id in ^ids,
+        update: [set: [episode_num: fragment("- ?", episode.id)]]
+      )
+      |> Repo.update_all([])
+    end
+
+    :ok
+  end
+
+  defp replace_renumbered([]), do: 0
+
+  defp replace_renumbered(entries) do
+    {count, _rows} =
+      Repo.insert_all(Episode, entries,
+        on_conflict: {:replace, @episode_renumber_fields},
+        conflict_target: [:season_id, :episode_id]
+      )
+
+    count
+  end
+
+  defp insert_by_number([]), do: 0
+
+  defp insert_by_number(entries) do
+    {count, _rows} =
+      Repo.insert_all(Episode, entries,
+        on_conflict: {:replace, @episode_replace_fields},
+        conflict_target: [:season_id, :episode_num]
+      )
+
+    count
+  end
+
+  defp existing_episodes(season_id) do
     rows =
       Episode
       |> where(season_id: ^season_id)
       |> select([episode], {
+        episode.id,
         episode.episode_id,
         episode.episode_num,
         episode.catalog_item_id
@@ -207,12 +280,16 @@ defmodule Streamix.Iptv.Content.GindexIngest do
 
     %{
       by_id:
-        Map.new(rows, fn {episode_id, _episode_number, catalog_item_id} ->
+        Map.new(rows, fn {_id, episode_id, _episode_number, catalog_item_id} ->
           {episode_id, catalog_item_id}
         end),
       by_number:
-        Map.new(rows, fn {_episode_id, episode_number, catalog_item_id} ->
+        Map.new(rows, fn {_id, _episode_id, episode_number, catalog_item_id} ->
           {episode_number, catalog_item_id}
+        end),
+      row_by_id:
+        Map.new(rows, fn {id, episode_id, episode_number, _catalog_item_id} ->
+          {episode_id, %{id: id, episode_num: episode_number}}
         end)
     }
   end
