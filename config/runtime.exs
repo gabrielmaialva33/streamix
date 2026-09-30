@@ -443,16 +443,28 @@ if gemini_api_key = get_env.("GEMINI_API_KEY") do
   config :streamix, :gemini, api_key: gemini_api_key
 end
 
-# NVIDIA NIM configuration for embeddings (1024 dimensions).
+# NVIDIA NIM configuration for embeddings.
 # 2026-06: NVIDIA moved the embedding API to the OpenAI-compatible
-# `integrate.api.nvidia.com/v1` surface, which requires the new
-# namespaced model id `nvidia/nv-embedqa-e5-v5` (the old short form
-# returns 404 "page not found"). Override via NVIDIA_EMBEDDING_MODEL
-# if a different model is needed.
+# `integrate.api.nvidia.com/v1` surface, which requires the namespaced model
+# id (the old short form returns 404 "page not found").
+# 2026-08-25: the whole nv-embedqa generation reached end of life and answers
+# 410, so the default model moved to nvidia/nemotron-3-embed-1b at 2048
+# dimensions. Changing the model changes the vector size, which means the
+# Qdrant collections have to be recreated and reindexed — `Streamix.AI`
+# reports `:dimension_mismatch` until they are.
+# NVIDIA_EMBEDDING_DIMENSIONS is only needed for a model the app does not
+# already know the size of.
+nvidia_embedding_dimensions =
+  case get_env.("NVIDIA_EMBEDDING_DIMENSIONS") do
+    nil -> nil
+    value -> RuntimeConfig.integer!("NVIDIA_EMBEDDING_DIMENSIONS", value, 0, min: 1)
+  end
+
 if nvidia_api_key = get_env.("NVIDIA_API_KEY") do
   config :streamix, :nvidia,
     api_key: nvidia_api_key,
-    embedding_model: get_env.("NVIDIA_EMBEDDING_MODEL") || "nvidia/nv-embedqa-e5-v5"
+    embedding_model: get_env.("NVIDIA_EMBEDDING_MODEL"),
+    embedding_dimensions: nvidia_embedding_dimensions
 end
 
 # Qdrant vector database configuration

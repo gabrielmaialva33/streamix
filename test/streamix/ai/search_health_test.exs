@@ -18,7 +18,14 @@ defmodule Streamix.AI.SearchHealthTest do
       )
 
     Application.put_env(:streamix, :embeddings, provider: "nvidia")
-    Application.put_env(:streamix, :nvidia, api_key: "test-#{System.unique_integer([:positive])}")
+    # Pinned rather than left to the default model, so the fake upstream's 1024
+    # wide vectors stay consistent with what the app believes it configured.
+    # Otherwise every change of default model silently rewrites these cases.
+    Application.put_env(:streamix, :nvidia,
+      api_key: "test-#{System.unique_integer([:positive])}",
+      embedding_dimensions: 1024
+    )
+
     Application.put_env(:streamix, :gemini, api_key: "")
     Application.put_env(:streamix, :qdrant, enabled: true, url: "http://qdrant.test")
     Req.default_options(plug: fn conn -> respond(conn, upstream) end)

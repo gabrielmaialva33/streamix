@@ -28,14 +28,52 @@ defmodule Streamix.AI.Nvidia do
   # shape (`data: [{index, embedding}]`) — only the URL + model id
   # namespacing changed. Embedding dimensions remain 1024.
   @base_url "https://integrate.api.nvidia.com/v1"
-  @default_model "nvidia/nv-embedqa-e5-v5"
-  @embedding_dimensions 1024
   @max_rate_limit_retries 5
 
+  # 2026-08-25: NVIDIA retired a whole generation of embedding models on one
+  # day — nv-embedqa-e5-v5, llama-3.2-nv-embedqa-1b-v2 and baai/bge-m3 all
+  # answer 410 Gone. Semantic search had been degraded since, silently: the
+  # index stayed healthy but every query needs a fresh embedding, so
+  # `semantic_search_available?/0` went false and the UI fell back to text
+  # search while the "similar titles" row quietly rendered empty.
+  #
+  # The default has to be a model that is actually alive, otherwise a fresh
+  # deployment is broken before it starts.
+  @default_model "nvidia/nemotron-3-embed-1b"
+
+  # Dimensions are a property of the model, so they have to travel with it.
+  # Leaving them as a constant while NVIDIA_EMBEDDING_MODEL was configurable
+  # meant the two could silently disagree — and a model swap that keeps the
+  # dimension count is precisely the failure SearchHealth documents it cannot
+  # detect. Unknown models fall back to NVIDIA_EMBEDDING_DIMENSIONS.
+  @model_dimensions %{
+    "nvidia/nemotron-3-embed-1b" => 2048,
+    "nvidia/llama-nemotron-embed-vl-1b-v2" => 2048,
+    "nvidia/nv-embedqa-e5-v5" => 1024,
+    "nvidia/llama-3.2-nv-embedqa-1b-v2" => 2048,
+    "baai/bge-m3" => 1024
+  }
+
+  @default_dimensions 2048
+
   @doc """
-  Returns the embedding dimensions for the current model.
+  Returns the embedding dimensions for the configured model.
   """
-  def embedding_dimensions, do: @embedding_dimensions
+  def embedding_dimensions do
+    case configured_dimensions() do
+      dimensions when is_integer(dimensions) and dimensions > 0 ->
+        dimensions
+
+      _other ->
+        Map.get(@model_dimensions, model(), @default_dimensions)
+    end
+  end
+
+  defp configured_dimensions do
+    :streamix
+    |> Application.get_env(:nvidia, [])
+    |> Keyword.get(:embedding_dimensions)
+  end
 
   @doc """
   Checks if NVIDIA NIM is configured and enabled.
