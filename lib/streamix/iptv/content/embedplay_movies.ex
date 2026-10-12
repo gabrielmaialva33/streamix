@@ -40,6 +40,25 @@ defmodule Streamix.Iptv.Content.EmbedplayMovies do
     |> Repo.all()
   end
 
+  @doc """
+  Picks one movie of the provider for a health probe, or `nil`.
+
+  Random, so successive probes spread across distinct titles: one title that
+  genuinely has no source must neither keep a broken provider looking healthy
+  nor keep a working one degraded. Titles already enriched from TMDB come
+  first because their identity is known to be real. `exclude_ids` lets the
+  caller skip titles that just failed.
+  """
+  def canary_candidate(provider_id, exclude_ids \\ [])
+      when is_integer(provider_id) and is_list(exclude_ids) do
+    from(movie in Movie,
+      where: movie.provider_id == ^provider_id and movie.id not in ^exclude_ids,
+      order_by: [asc: is_nil(movie.tmdb_details_at), asc: fragment("random()")],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
   defp persist(provider_id, tmdb_id, attrs) do
     # Only identity is sync-owned. Never replace titles, artwork, plot or
     # enrichment bookkeeping with the index's ID-only payload.

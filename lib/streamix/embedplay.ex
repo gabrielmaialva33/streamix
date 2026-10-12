@@ -11,7 +11,7 @@ defmodule Streamix.Embedplay do
   `{:error, :provider_degraded}` until a probe resolves again.
   """
 
-  alias Streamix.Embedplay.{Gateway, Health, Sessions}
+  alias Streamix.Embedplay.{Canary, Gateway, Health, Sessions}
 
   def enabled?, do: config(:enabled, false)
 
@@ -41,4 +41,7 @@ defmodule Streamix.Embedplay do
   provider `:active`, and a `:window` summary of recent outcomes.
   """
   defdelegate health(), to: Health, as: :status
+
+  @doc "Runs one health probe if one is due. See `Streamix.Embedplay.Canary`."
+  defdelegate run_canary(), to: Canary, as: :run
 end

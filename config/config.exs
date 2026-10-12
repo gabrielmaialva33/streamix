@@ -36,7 +36,11 @@ config :streamix, :embedplay,
   # `resolver_outdated` is the resolver saying the upstream page no longer has
   # the structure it drives, which is about the site, not a title. Two
   # distinct titles rule out a single odd page.
-  health_outdated_trip_movies: 2
+  health_outdated_trip_movies: 2,
+  # While healthy the canary only probes after this long without any observed
+  # resolution; real playback is the cheaper signal. While degraded it probes
+  # on every 30-minute tick.
+  canary_idle_seconds: 3_600
 
 # Player decoders are fetched on demand and are immutable. Include WASM in
 # Phoenix's digested static compressors so the first playback transfers the
@@ -302,6 +306,10 @@ config :streamix, Oban,
        {"15 5 * * *", Streamix.Workers.EpisodeDetailsWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
+       # Embedplay resolution probe. Clears a degraded provider once resolution
+       # works again; while healthy it only resolves after an idle hour. Off the
+       # minutes every other entry uses.
+       {"17,47 * * * *", Streamix.Workers.EmbedplayCanaryWorker},
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
        # Repair missing Qdrant collections after each application boot without

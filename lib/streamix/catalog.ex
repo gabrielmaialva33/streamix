@@ -132,6 +132,10 @@ defmodule Streamix.Catalog do
 
   defdelegate embedplay_pending_enrichment(ids), to: EmbedplayMovies, as: :pending_enrichment
 
+  defdelegate embedplay_canary_movie(provider_id, exclude_ids \\ []),
+    to: EmbedplayMovies,
+    as: :canary_candidate
+
   # Torrent-backed catalog records
 
   defdelegate upsert_torrent_movie(provider_id, attrs), to: TorrentMovies, as: :upsert

@@ -132,6 +132,7 @@ defmodule Streamix.Iptv do
   # Embedplay Movies
   defdelegate upsert_embedplay_movie(provider_id, attrs), to: CatalogBoundary
   defdelegate embedplay_pending_enrichment(ids), to: CatalogBoundary
+  defdelegate embedplay_canary_movie(provider_id, exclude_ids \\ []), to: CatalogBoundary
 
   # Torrent Movies
   defdelegate upsert_torrent_movie(provider_id, attrs), to: CatalogBoundary
