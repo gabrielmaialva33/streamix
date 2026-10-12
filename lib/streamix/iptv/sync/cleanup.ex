@@ -8,7 +8,7 @@ defmodule Streamix.Iptv.Sync.Cleanup do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{CatalogItem, Favorite, WatchProgress}
+  alias Streamix.Iptv.{CatalogItem, Favorite, WatchEvent, WatchProgress}
   alias Streamix.Repo
   alias Streamix.WatchParty
 
@@ -43,6 +43,36 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     provider_id
     |> find_orphaned_catalog_item_ids(limit)
     |> do_cleanup()
+  end
+
+  @doc """
+  Returns the subset of `catalog_item_ids` that user data still hangs off:
+  favorites, watch progress, watch events or watch party rooms, active or
+  ended.
+
+  All four cascade from `catalog_items`, and the sweep above deletes a catalog
+  item as soon as no content row references it. So a content row whose catalog
+  item is in this set must not be deleted, or the next sweep takes the user's
+  data with it.
+  """
+  @spec catalog_item_ids_with_user_data([integer()]) :: MapSet.t(integer())
+  def catalog_item_ids_with_user_data([]), do: MapSet.new()
+
+  def catalog_item_ids_with_user_data(catalog_item_ids) when is_list(catalog_item_ids) do
+    ids = Enum.uniq(catalog_item_ids)
+
+    [Favorite, WatchProgress, WatchEvent]
+    |> Enum.flat_map(&referenced_catalog_item_ids(&1, ids))
+    |> Enum.concat(WatchParty.catalog_item_ids_with_rooms(ids))
+    |> MapSet.new()
+  end
+
+  defp referenced_catalog_item_ids(schema, ids) do
+    schema
+    |> where([row], row.catalog_item_id in ^ids)
+    |> distinct(true)
+    |> select([row], row.catalog_item_id)
+    |> Repo.all()
   end
 
   defp do_cleanup([]), do: {:ok, @empty_counts}

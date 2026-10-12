@@ -4,7 +4,7 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{CatalogItem, Episode, Season}
+  alias Streamix.Iptv.{CatalogItem, Episode, Favorite, Season, WatchEvent, WatchProgress}
   alias Streamix.Iptv.Sync.Cleanup
   alias Streamix.Repo
   alias Streamix.WatchParty.Room
@@ -110,6 +110,47 @@ defmodule Streamix.Iptv.Sync.CleanupTest do
 
     refute Repo.get(Room, room.id)
   end
+
+  test "names the catalog items that user data still hangs off", %{provider: provider} do
+    user = user_fixture()
+
+    [favorited, in_progress, watched, in_room, untouched] =
+      for _ <- 1..5, do: movie_item(provider)
+
+    Repo.insert!(%Favorite{user_id: user.id, catalog_item_id: favorited})
+    Repo.insert!(%WatchProgress{user_id: user.id, catalog_item_id: in_progress})
+
+    Repo.insert!(%WatchEvent{
+      user_id: user.id,
+      catalog_item_id: watched,
+      watched_at: ~U[2026-10-01 20:00:00Z]
+    })
+
+    %Room{}
+    |> Room.create_changeset(%{
+      host_user_id: user.id,
+      catalog_item_id: in_room,
+      source_type: "movie",
+      source_id: in_room
+    })
+    |> Repo.insert!()
+    |> Room.end_changeset("host_left")
+    |> Repo.update!()
+
+    assert Cleanup.catalog_item_ids_with_user_data([
+             favorited,
+             in_progress,
+             watched,
+             in_room,
+             untouched,
+             favorited
+           ]) == MapSet.new([favorited, in_progress, watched, in_room])
+
+    assert Cleanup.catalog_item_ids_with_user_data([untouched]) == MapSet.new()
+    assert Cleanup.catalog_item_ids_with_user_data([]) == MapSet.new()
+  end
+
+  defp movie_item(provider), do: catalog_item_fixture("movie", provider.id).id
 
   test "aggregates cleanup counts across transactional chunks", %{provider: provider} do
     now = DateTime.utc_now(:second)

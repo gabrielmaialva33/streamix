@@ -339,6 +339,23 @@ defmodule Streamix.WatchParty do
     count
   end
 
+  @doc """
+  Returns which of the given catalog items any room, active or ended, still
+  refers to. Rooms cascade from their catalog item, so this is what callers ask
+  before deleting content a room may hang off.
+  """
+  @spec catalog_item_ids_with_rooms([integer()]) :: [integer()]
+  def catalog_item_ids_with_rooms([]), do: []
+
+  def catalog_item_ids_with_rooms(catalog_item_ids) when is_list(catalog_item_ids) do
+    from(room in Room,
+      where: room.catalog_item_id in ^catalog_item_ids,
+      distinct: true,
+      select: room.catalog_item_id
+    )
+    |> Repo.all()
+  end
+
   @doc "Deletes rooms whose content belongs to the given catalog items."
   @spec delete_rooms_by_catalog_item_ids([integer()], keyword()) :: non_neg_integer()
   def delete_rooms_by_catalog_item_ids(catalog_item_ids, opts \\ [])
