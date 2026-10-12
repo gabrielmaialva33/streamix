@@ -203,16 +203,19 @@ defmodule StreamixWeb.Catalog.Serializer do
       name: season.name,
       season_number: season.season_number,
       episode_count: length(season.episodes || []),
-      episodes: Enum.map(season.episodes || [], &serialize_episode/1)
+      episodes: Enum.map(season.episodes || [], &serialize_episode(&1, season))
     }
   end
 
-  def serialize_episode(episode) do
+  # The season is the parent the episode was preloaded under, so its number
+  # costs no extra query.
+  def serialize_episode(episode, season) do
     %{
       id: episode.id,
       title: episode.title,
       tmdb_title: episode.tmdb_title,
       episode_num: episode.episode_num,
+      season_number: season.season_number,
       plot: episode.plot,
       still: ImageProxy.proxy(episode.still_path),
       duration: format_duration(episode.duration_secs),

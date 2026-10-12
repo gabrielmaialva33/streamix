@@ -616,6 +616,47 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
     end
   end
 
+  describe "episode season_number" do
+    test "every episode embedded in the series payload carries its season number", %{
+      conn: conn,
+      provider: provider
+    } do
+      series = public_series!(provider, %{name: "Numbered Show"})
+
+      for season_number <- [1, 2], episode_num <- [1, 2] do
+        insert_episode!(provider, series, season_number, episode_num)
+      end
+
+      seasons =
+        conn
+        |> get(~p"/api/v1/catalog/series/#{series.id}")
+        |> json_response(200)
+        |> get_in(["data", "seasons"])
+
+      assert Enum.map(seasons, & &1["season_number"]) |> Enum.sort() == [1, 2]
+
+      for season <- seasons do
+        assert length(season["episodes"]) == 2
+
+        assert Enum.all?(season["episodes"], &(&1["season_number"] == season["season_number"]))
+      end
+    end
+
+    test "the episode detail carries its season number", %{conn: conn, provider: provider} do
+      series = public_series!(provider, %{name: "Numbered Show"})
+      episode = insert_episode!(provider, series, 3, 5)
+
+      data =
+        conn
+        |> get(~p"/api/v1/catalog/episodes/#{episode.id}")
+        |> json_response(200)
+        |> Map.fetch!("data")
+
+      assert data["season_number"] == 3
+      assert data["episode_num"] == 5
+    end
+  end
+
   describe "public catalog detail access" do
     test "rejects malformed ids before querying the catalog", %{conn: conn} do
       response =
@@ -815,6 +856,35 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
                "provider_type" => nil
              }
     end
+  end
+
+  # `tmdb_enriched` keeps the episode detail from calling TMDB.
+  defp insert_episode!(provider, series, season_number, episode_num) do
+    season =
+      case Repo.get_by(Season, series_id: series.id, season_number: season_number) do
+        nil ->
+          %Season{}
+          |> Season.changeset(%{
+            season_number: season_number,
+            name: "Season #{season_number}",
+            series_id: series.id
+          })
+          |> Repo.insert!()
+
+        season ->
+          season
+      end
+
+    %Episode{}
+    |> Episode.changeset(%{
+      episode_id: System.unique_integer([:positive]),
+      episode_num: episode_num,
+      title: "S#{season_number}E#{episode_num}",
+      tmdb_enriched: true,
+      season_id: season.id,
+      catalog_item_id: catalog_item_fixture("episode", provider.id).id
+    })
+    |> Repo.insert!()
   end
 
   defp private_episode_fixture(provider) do

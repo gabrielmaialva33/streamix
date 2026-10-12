@@ -387,12 +387,23 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
         title: Common.string(nullable: true),
         tmdb_title: Common.string(nullable: true),
         episode_num: Common.integer(minimum: 0),
+        season_number: Common.integer(minimum: 0),
         plot: Common.string(nullable: true),
         still: Common.string(nullable: true),
         duration: Common.string(nullable: true),
         air_date: Common.string(format: :date, nullable: true)
       },
-      [:id, :title, :tmdb_title, :episode_num, :plot, :still, :duration, :air_date]
+      [
+        :id,
+        :title,
+        :tmdb_title,
+        :episode_num,
+        :season_number,
+        :plot,
+        :still,
+        :duration,
+        :air_date
+      ]
     )
   end
 
