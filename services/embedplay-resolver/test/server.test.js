@@ -30,6 +30,23 @@ test('authenticated private API sanitizes failures and rejects URL injection', a
   assert.equal(response.status, 400);
 });
 
+test('an outdated adapter and a title without a source are distinct 502 codes', async t => {
+  const { ResolverError } = await import('../src/errors.js');
+  const server = createResolverServer({ secret, resolve: async input => {
+    throw new ResolverError(input.tmdb_id === '1' ? 'unsupported_page' : 'stream_unavailable');
+  } });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const url = 'http://127.0.0.1:' + server.address().port + '/resolve';
+  for (const [tmdb_id, code] of [[1, 'unsupported_page'], [2, 'stream_unavailable']]) {
+    const response = await fetch(url, { method: 'POST', body: JSON.stringify({ tmdb_id, audio: 'dubbed' }),
+      headers: { authorization: 'Bearer ' + secret, 'content-type': 'application/json' } });
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { error: { code } });
+  }
+});
+
 test('queue coalesces same content, bounds capacity, and releases slots after failure', async () => {
   const one = deferred(); const two = deferred();
   let calls = 0;

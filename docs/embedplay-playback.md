@@ -25,6 +25,7 @@ route and gateway remain for sources that still resolve to a playlist.
   or a URL failing the SSRF validator is a resolution failure; it is never guessed.
 - Headers are restricted to `User-Agent`, `Referer` and `Origin` (at most eight,
   2 KiB each, no CR/LF). Cookie/Authorization-based media hosts are unsupported.
+  The resolver itself only ever returns `user-agent` and `referer`.
 - Errors: `503` → `provider_capacity_exhausted`, `504` → `upstream_timeout`.
   A `502` body is read: `stream_unavailable` → `no_source_available` (`503`,
   retryable, per attempt); `unsupported_page` → `resolver_outdated` (`503`). The
@@ -249,6 +250,45 @@ unchanged, `HEAD` carried `video/mp4` and `Accept-Ranges`, and closing the
 client mid-body released the fetch lease. Not verified: a real upstream
 transfer, a browser or physical Samsung TV playing the new URL, and upstream URL
 lifetime. Nothing was deployed.
+
+## Resolver change recorded on 2026-10-12
+
+From mid-September 2026 every resolution failed with `stream_unavailable`. The
+resolver drove only BYSE (its HLS path), which most titles no longer list (24 of 160
+sampled selector pages still did, behind a player host that had rotated away from
+the allowlisted `f7hyg4q.org`), and its anchored option pattern no longer matched
+the now whitespace-padded labels, so even those were never selected. The supported server is now
+ABYS (`embedplayabyss.top` → `abysscdn.com`), which serves progressive MP4 rather
+than HLS. Its media URL (`*.sssrr.org`) redirects to an ephemeral
+`*.trycloudflare.com` tunnel and answers `206 video/mp4` only with
+`Referer: https://abysscdn.com/`; it answers 403 without it and 404 when an
+`Origin` is added. No cookie is involved.
+
+Success is `{"kind":"mp4","media_url":…,"expires_at":null,"headers":{"referer":…,"user-agent":…}}`.
+An `hls` answer additionally carries `manifest_url` equal to `media_url`, which keeps
+releases that read only `manifest_url` working; an `mp4` answer omits it, so such a
+release fails cleanly instead of treating an MP4 as a playlist. `media_url` is the
+URL the content player requested, before redirects. The resolver verifies it
+outside the browser with exactly the returned headers before answering.
+
+A new error code, `unsupported_page` (HTTP 502), reports that the page loaded but
+no longer matches what the adapter can drive: no language control, no option shown,
+an unknown server name with no supported one beside it, or a frame chain leading to
+a host outside the allowlist. It means the adapter needs review, unlike
+`stream_unavailable`, which stays the answer for one title without a verified
+source (an unknown title, a language not offered, only unsupported servers, or
+sources that exist only behind the player's service worker). Measurements, the
+content-versus-advertising evidence and the allowlist are in the
+[resolver README](../services/embedplay-resolver/README.md).
+
+Current outcome: on 2026-10-12 abysscdn.com answered Chromium's headless
+User-Agent with a Cloudflare managed challenge. The resolver keeps that User-Agent
+and does not work around bot detection, so every ABYS title then ended as
+`challenge_required` (HTTP 502) about 3 seconds after the request, from the
+workstation. From the production VPS, a plain request to abysscdn.com with the
+headless User-Agent drew the same `403` with `cf-mitigated: challenge`. Streamix
+counts these towards provider health, so the catalog is hidden while it lasts and
+the canary restores it if the upstream stops challenging.
 
 ## Validation recorded on 2026-09-09
 

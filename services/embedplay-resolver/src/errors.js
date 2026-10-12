@@ -1,7 +1,10 @@
+// stream_unavailable: the page is one the adapter knows, but this title produced no
+// verified source. unsupported_page: the page loaded and no longer matches what the
+// adapter can drive, so the adapter itself needs review.
 export const statusCodes = {
   invalid_request: 400, unauthorized: 401, not_found: 404, busy: 503,
   resolution_timeout: 504, stream_unavailable: 502, challenge_required: 502,
-  resolver_unavailable: 503,
+  unsupported_page: 502, resolver_unavailable: 503,
 };
 
 export class ResolverError extends Error {

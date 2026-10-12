@@ -61,6 +61,10 @@ export class BrowserPool {
       const record = await this.ready();
       if (signal?.aborted) throw new ResolverError('resolution_timeout');
       if (record.contexts.size >= this.options.maxContexts) throw new ResolverError('busy');
+      // Service workers stay blocked: with them, the ABYS player swaps its <video>
+      // src for a worker-served decoy URL that is unusable outside the browser.
+      // The context keeps Chromium's own User-Agent; the resolver never alters its
+      // identity to avoid bot challenges (a served challenge is challenge_required).
       const context = await record.browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });
       if (signal?.aborted) {
         await context.close().catch(() => {});

@@ -92,3 +92,27 @@ test('cancellation during launch creates no orphan context; shutdown closes late
   assert.equal(proxies[0].closed, true);
   await assert.rejects(pool.acquire(), { code: 'resolver_unavailable' });
 });
+
+test('contexts keep Chromium\'s own user agent and cannot register service workers', async t => {
+  const { pool, browsers } = await fixture(t);
+  const lease = await pool.acquire();
+  t.after(() => lease.release());
+  const page = await lease.context.newPage();
+  // Context-level routing also serves the worker script, so "allow" would register.
+  await lease.context.route('https://fixture.test/**', route => route.fulfill(route.request().url().endsWith('/sw.js')
+    ? { contentType: 'text/javascript', body: 'self.addEventListener("fetch", () => {});' }
+    : { contentType: 'text/html', body: '<p>fixture</p>' }));
+  await page.goto('https://fixture.test/');
+  // No identity override: the same string as an unconfigured context of this browser.
+  const plain = await browsers[0].newContext();
+  const defaultAgent = await (await plain.newPage()).evaluate(() => navigator.userAgent);
+  await plain.close();
+  assert.equal(await page.evaluate(() => navigator.userAgent), defaultAgent);
+  assert.match(defaultAgent, /HeadlessChrome\//);
+  // Playwright's block mode turns register() into a no-op instead of rejecting it.
+  const registrations = await page.evaluate(async () => {
+    await navigator.serviceWorker?.register('/sw.js').catch(() => {});
+    return (await navigator.serviceWorker?.getRegistrations())?.length ?? 0;
+  });
+  assert.equal(registrations, 0);
+});
