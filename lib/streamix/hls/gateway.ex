@@ -40,6 +40,8 @@ defmodule Streamix.Hls.Gateway do
     * `:method`, `:range` — the client's method and single byte range
     * `:http_options` — Req options for the upstream requests
     * `:sniff_media` — label visible MPEG-TS bodies `video/mp2t`
+    * `:playlist_timeout`, `:media_timeout` — total deadline (ms) of one
+      upstream hop for a playlist or a media resource (default 15 s each)
 
   A `HEAD` on a playlist is answered without an upstream request.
   """
@@ -49,10 +51,17 @@ defmodule Streamix.Hls.Gateway do
     else
       fetch_opts =
         if kind == :playlist,
-          do: [],
-          else: opts |> Keyword.take([:range, :method]) |> Enum.reject(&is_nil(elem(&1, 1)))
+          do: [timeout: Keyword.get(opts, :playlist_timeout)],
+          else: [
+            timeout: Keyword.get(opts, :media_timeout),
+            range: Keyword.get(opts, :range),
+            method: Keyword.get(opts, :method)
+          ]
 
-      fetch_opts = Keyword.put(fetch_opts, :http_options, Keyword.get(opts, :http_options, []))
+      fetch_opts =
+        fetch_opts
+        |> Enum.reject(&is_nil(elem(&1, 1)))
+        |> Keyword.put(:http_options, Keyword.get(opts, :http_options, []))
 
       with {:ok, response} <- Fetch.fetch(url, Map.get(resource, :headers, []), fetch_opts) do
         respond(response, kind, opts)
@@ -65,31 +74,64 @@ defmodule Streamix.Hls.Gateway do
   through `register` and replaces each with `resource_url.(id)`.
   """
   def rewrite_playlist(body, base_url, register, resource_url) do
+    with {:ok, template} <- playlist_template(body, base_url, register) do
+      {:ok, render_template(template, resource_url)}
+    end
+  end
+
+  @doc """
+  Parses and registers a playlist body into a template: text and
+  `{:id, resource_id}` nodes, plus the ordered resource ids of its media
+  segments (`:segments`).
+
+  A template names resources only by their opaque ids — never an upstream URL
+  and never a client token — so a session may keep it and render it for every
+  viewer with that viewer's own resource URLs (`render_template/2`).
+  """
+  def playlist_template(body, base_url, register) do
     with {:ok, nodes} <- Playlist.parse(body, base_url),
          resources = Enum.uniq(for {:resource, url, kind} <- nodes, do: {url, kind}),
          {:ok, ids} <- register.(resources) do
       mapping = Map.new(Enum.zip(resources, ids))
 
-      rewritten =
-        Enum.map(nodes, fn
-          {:resource, url, kind} -> resource_url.(Map.fetch!(mapping, {url, kind}))
-          text -> text
-        end)
+      # A reference on a line of its own (after a newline) is a URI line:
+      # a variant or a segment. One inside a tag is an attribute (a key, a map,
+      # a rendition). Media URI lines are the segments, in playback order.
+      {nodes, {segments, _previous}} =
+        Enum.map_reduce(nodes, {[], "\n"}, &template_node(&1, &2, mapping))
 
-      {:ok, IO.iodata_to_binary(rewritten)}
+      {:ok, %{nodes: nodes, segments: Enum.reverse(segments)}}
     end
   end
 
+  defp template_node({:resource, url, kind}, {segments, previous}, mapping) do
+    id = Map.fetch!(mapping, {url, kind})
+    segments = if previous == "\n" and kind == :media, do: [id | segments], else: segments
+    {{:id, id}, {segments, :resource}}
+  end
+
+  defp template_node(text, {segments, _previous}, _mapping), do: {text, {segments, text}}
+
+  @doc "Renders a playlist template with `resource_url.(id)` for every reference."
+  def render_template(%{nodes: nodes}, resource_url) do
+    nodes
+    |> Enum.map(fn
+      {:id, id} -> resource_url.(id)
+      text -> text
+    end)
+    |> IO.iodata_to_binary()
+  end
+
+  @doc "The client response for a rendered playlist."
+  def playlist_response(body),
+    do: %{status: 200, body: body, headers: %{"content-type" => [@playlist_type]}}
+
   defp respond(response, kind, opts) do
     if kind == :playlist or Playlist.playlist?(response.body) do
-      with {:ok, body} <-
-             rewrite_playlist(
-               response.body,
-               response.url,
-               Keyword.fetch!(opts, :register),
-               Keyword.fetch!(opts, :resource_url)
-             ) do
-        {:ok, %{status: 200, body: body, headers: %{"content-type" => [@playlist_type]}}}
+      with {:ok, template} <-
+             playlist_template(response.body, response.url, Keyword.fetch!(opts, :register)) do
+        body = render_template(template, Keyword.fetch!(opts, :resource_url))
+        {:ok, Map.put(playlist_response(body), :template, template)}
       end
     else
       type =

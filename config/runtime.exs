@@ -455,6 +455,71 @@ config :streamix, :xtream_hls,
       2_048,
       min: 16,
       max: 100_000
+    ),
+  # Total deadline of one segment or key fetch. The measured CDN serves each
+  # connection at ~0.5–1 Mbit/s, so a segment can take tens of seconds.
+  media_timeout_ms:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_MEDIA_TIMEOUT_MS",
+      get_env.("XTREAM_HLS_MEDIA_TIMEOUT_MS"),
+      90_000,
+      min: 5_000,
+      max: 300_000
+    ),
+  # Lookahead: segments prefetched after the one a player asks for, and how
+  # many prefetches a session may have in flight. 0 segments disables it.
+  prefetch_segments:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_PREFETCH_SEGMENTS",
+      get_env.("XTREAM_HLS_PREFETCH_SEGMENTS"),
+      3,
+      min: 0,
+      max: 6
+    ),
+  prefetch_concurrency:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_PREFETCH_CONCURRENCY",
+      get_env.("XTREAM_HLS_PREFETCH_CONCURRENCY"),
+      3,
+      min: 1,
+      max: 6
+    ),
+  # Immutable VOD playlists kept per session, as templates.
+  playlist_cache_bytes:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_PLAYLIST_CACHE_BYTES",
+      get_env.("XTREAM_HLS_PLAYLIST_CACHE_BYTES"),
+      8 * 1_024 * 1_024,
+      min: 0,
+      max: 64 * 1_024 * 1_024
+    )
+
+# Short shared single-flight cache of HLS segments (prefetched segments wait
+# here for the player), bounded in memory.
+config :streamix, :hls_segment_cache,
+  ttl_ms:
+    RuntimeConfig.integer!(
+      "HLS_SEGMENT_CACHE_TTL_MS",
+      get_env.("HLS_SEGMENT_CACHE_TTL_MS"),
+      45_000,
+      min: 0,
+      max: 600_000
+    ),
+  max_bytes:
+    RuntimeConfig.integer!(
+      "HLS_SEGMENT_CACHE_MAX_BYTES",
+      get_env.("HLS_SEGMENT_CACHE_MAX_BYTES"),
+      128 * 1_024 * 1_024,
+      min: 1_024 * 1_024,
+      max: 4 * 1_024 * 1_024 * 1_024
+    ),
+  max_entry_bytes:
+    RuntimeConfig.integer!(
+      "HLS_SEGMENT_CACHE_MAX_ENTRY_BYTES",
+      get_env.("HLS_SEGMENT_CACHE_MAX_ENTRY_BYTES"),
+      16 * 1_024 * 1_024,
+      min: 64 * 1_024,
+      max: 64 * 1_024 * 1_024
     )
 
 # Providers with `direct_client_playback` have each VOD item's delivery

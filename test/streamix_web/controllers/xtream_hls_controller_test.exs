@@ -5,6 +5,7 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
+  alias Streamix.Hls.SegmentCache
   alias Streamix.Iptv.{Episode, Season}
   alias Streamix.Iptv.Streaming.XtreamHls.Sessions
   alias Streamix.{Providers, Repo}
@@ -27,12 +28,16 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
     original = Application.get_env(:streamix, :xtream_hls, [])
     original_keys = Application.get_env(:streamix, :api_keys, [])
 
+    # Lookahead is exercised on its own below; elsewhere it would add
+    # background upstream requests the assertions do not expect.
     Application.put_env(:streamix, :xtream_hls,
       http_options: [plug: {Req.Test, __MODULE__}],
-      lease_wait_ms: 50
+      lease_wait_ms: 50,
+      prefetch_segments: 0
     )
 
     Req.Test.set_req_test_to_shared()
+    :ok = SegmentCache.flush()
 
     on_exit(fn ->
       Application.put_env(:streamix, :xtream_hls, original)
@@ -376,12 +381,157 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
     end
   end
 
+  describe "keeping up with real time" do
+    setup do
+      owner = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(owner, {:upstream, conn.request_path, conn.method})
+        long_vod(conn)
+      end)
+
+      :ok
+    end
+
+    test "a VOD playlist is fetched once per session and rendered for each viewer", context do
+      master = get(build_conn(), context.master)
+      [variant] = lines(master.resp_body)
+      assert_received {:upstream, "/movie/megauser/s3cr3t-Pa55word/777.m3u8", "GET"}
+
+      # Another viewer of the same title gets the cached master with their own token.
+      other = aged_token(context.movie.id, 5)
+      second = get(build_conn(), master_path(other))
+      assert second.status == 200
+      assert second.resp_body =~ encoded(other)
+      refute second.resp_body =~ encoded(context.token)
+      refute_received {:upstream, _path, _method}
+
+      # The 2,646-segment variant is fetched once; a later request (a seek)
+      # and a HEAD are answered from the session.
+      first_variant = get(build_conn(), variant)
+      assert_received {:upstream, "/vod/720.m3u8", "GET"}
+
+      again = get(build_conn(), variant)
+      assert again.resp_body == first_variant.resp_body
+      assert length(lines(again.resp_body)) == 2_646
+      assert head(build_conn(), variant).status == 200
+      refute_received {:upstream, _path, _method}
+    end
+
+    test "a media playlist without ENDLIST is refetched every time", context do
+      owner = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(owner, {:upstream, conn.request_path, conn.method})
+        send_resp(conn, 200, "#EXTM3U\n#EXTINF:2,\nseg-1.ts\n")
+      end)
+
+      _ = get(build_conn(), context.master)
+      _ = get(build_conn(), context.master)
+
+      assert_received {:upstream, _path, "GET"}
+      assert_received {:upstream, _path, "GET"}
+    end
+
+    test "requesting a segment prefetches the next ones, once, under the cap", context do
+      Application.put_env(:streamix, :xtream_hls,
+        http_options: [plug: {Req.Test, __MODULE__}],
+        prefetch_segments: 3,
+        prefetch_concurrency: 2
+      )
+
+      owner = self()
+
+      Req.Test.stub(__MODULE__, fn
+        %{request_path: "/vod/seg-" <> _} = conn ->
+          send(owner, {:segment, conn.request_path, self()})
+
+          receive do
+            :go -> long_vod(conn)
+          end
+
+        conn ->
+          long_vod(conn)
+      end)
+
+      [variant] = lines(get(build_conn(), context.master).resp_body)
+      segments = lines(get(build_conn(), variant).resp_body)
+
+      viewer = Task.async(fn -> get(build_conn(), Enum.at(segments, 0)) end)
+
+      # The viewer's segment plus two prefetches (the cap), not a third.
+      gates =
+        for _ <- 1..3 do
+          assert_receive {:segment, path, pid}, 1_000
+          {path, pid}
+        end
+
+      assert gates |> Enum.map(&elem(&1, 0)) |> Enum.sort() ==
+               ["/vod/seg-0.ts", "/vod/seg-1.ts", "/vod/seg-2.ts"]
+
+      refute_receive {:segment, "/vod/seg-3.ts", _pid}, 100
+      Enum.each(gates, fn {_path, pid} -> send(pid, :go) end)
+      assert Task.await(viewer).resp_body == @ts_segment
+
+      # A freed slot refills the window (three ahead of the playhead, #0).
+      assert_receive {:segment, "/vod/seg-3.ts", pid}, 1_000
+      send(pid, :go)
+      wait_for_prefetch_idle(session_id(variant))
+
+      # The next segment was prefetched: the player's request costs no fetch,
+      # and it moves the window on to the one segment the session lacks.
+      assert get(build_conn(), Enum.at(segments, 1)).resp_body == @ts_segment
+      assert_receive {:segment, "/vod/seg-4.ts", pid}, 1_000
+      send(pid, :go)
+      wait_for_prefetch_idle(session_id(variant))
+
+      for path <- ["/vod/seg-1.ts", "/vod/seg-2.ts", "/vod/seg-3.ts", "/vod/seg-5.ts"] do
+        refute_received {:segment, ^path, _pid}
+      end
+    end
+
+    test "a failing prefetch is tried once, never retried in a loop", context do
+      Application.put_env(:streamix, :xtream_hls,
+        http_options: [plug: {Req.Test, __MODULE__}],
+        prefetch_segments: 3
+      )
+
+      owner = self()
+
+      Req.Test.stub(__MODULE__, fn
+        %{request_path: "/vod/seg-" <> _} = conn ->
+          send(owner, {:segment, conn.request_path})
+          send_resp(conn, 404, "gone")
+
+        conn ->
+          long_vod(conn)
+      end)
+
+      [variant] = lines(get(build_conn(), context.master).resp_body)
+      [first | _] = lines(get(build_conn(), variant).resp_body)
+
+      assert get(build_conn(), first).status == 404
+
+      requested =
+        for _ <- 1..4 do
+          assert_receive {:segment, path}, 1_000
+          path
+        end
+
+      assert Enum.sort(requested) ==
+               ["/vod/seg-0.ts", "/vod/seg-1.ts", "/vod/seg-2.ts", "/vod/seg-3.ts"]
+
+      refute_receive {:segment, _path}, 200
+    end
+  end
+
   describe "leases" do
     test "fetches beyond the per-provider cap wait, then fail cleanly", context do
       Application.put_env(:streamix, :xtream_hls,
         http_options: [plug: {Req.Test, __MODULE__}],
         lease_wait_ms: 50,
-        max_fetches_per_provider: 1
+        max_fetches_per_provider: 1,
+        prefetch_segments: 0
       )
 
       Req.Test.stub(__MODULE__, &upstream/1)
@@ -461,6 +611,44 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
   end
 
   defp master_path(token), do: "/api/stream/hls/master.m3u8?token=#{encoded(token)}"
+
+  defp aged_token(movie_id, seconds) do
+    Phoenix.Token.sign(
+      Endpoint,
+      "stream",
+      %{type: "movie", id: movie_id, user_id: nil, bypass: true},
+      signed_at: System.system_time(:second) - seconds
+    )
+  end
+
+  defp session_id(path),
+    do: path |> URI.parse() |> Map.fetch!(:path) |> Path.split() |> Enum.at(4)
+
+  defp wait_for_prefetch_idle(session_id) do
+    if MapSet.size(:sys.get_state(Sessions).sessions[session_id].prefetching) > 0,
+      do: wait_for_prefetch_idle(session_id),
+      else: :ok
+  end
+
+  # A VOD title shaped like the measured one: a master with one 720p variant
+  # of 2,646 two-second segments, ENDLIST included.
+  defp long_vod(%{request_path: "/movie/megauser/s3cr3t-Pa55word/777.m3u8"} = conn),
+    do: send_resp(conn, 200, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2000000\n/vod/720.m3u8\n")
+
+  defp long_vod(%{request_path: "/vod/720.m3u8"} = conn) do
+    segments = for i <- 0..2_645, do: "#EXTINF:2.0,\nseg-#{i}.ts\n"
+
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(200, ["#EXTM3U\n#EXT-X-TARGETDURATION:2\n", segments, "#EXT-X-ENDLIST\n"])
+  end
+
+  defp long_vod(%{request_path: "/vod/seg-" <> _} = conn) do
+    conn
+    |> put_resp_content_type("video/mp2t", nil)
+    |> send_resp(200, @ts_segment)
+  end
+
   defp encoded(token), do: URI.encode_www_form(token)
 
   defp lines(body) do

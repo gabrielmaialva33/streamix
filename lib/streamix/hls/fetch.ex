@@ -18,6 +18,7 @@ defmodule Streamix.Hls.Fetch do
 
   @max_body 32 * 1024 * 1024
   @max_redirects 5
+  @idle_timeout 15_000
   @response_headers ~w(content-type content-length content-range accept-ranges)
   @redirect_statuses [301, 302, 303, 307, 308]
 
@@ -25,8 +26,11 @@ defmodule Streamix.Hls.Fetch do
   Fetches `url` with `headers`, following at most five validated redirects.
 
   `headers` are sent unchanged on every hop. Options: `:method` (`:get` or
-  `:head`), `:range` (a single byte range, sent upstream as-is) and
-  `:http_options`.
+  `:head`), `:range` (a single byte range, sent upstream as-is),
+  `:http_options`, and `:timeout` — the total deadline of each hop in
+  milliseconds (default 15 s). The idle time between two reads is capped at
+  15 s whatever the total, so a slow but steady transfer may run longer than
+  that while a stalled one still fails.
 
   Returns `{:ok, %{status: 200 | 206, body:, url: final_url, headers:}}` or
   `{:error, reason}` where `reason` is `:unsafe_url`, `:upstream_not_found`
@@ -39,6 +43,8 @@ defmodule Streamix.Hls.Fetch do
     do: {:error, :upstream_unavailable}
 
   defp fetch(url, headers, opts, redirects) do
+    timeout = Keyword.get(opts, :timeout, @idle_timeout)
+
     with :ok <- UrlValidator.validate_url(url),
          {:ok, response} <-
            request(
@@ -46,7 +52,8 @@ defmodule Streamix.Hls.Fetch do
                method: Keyword.get(opts, :method, :get),
                url: url,
                headers: headers ++ range_header(opts),
-               receive_timeout: 15_000,
+               receive_timeout: min(timeout, @idle_timeout),
+               request_timeout: timeout,
                max_body: @max_body
              ],
              Keyword.get(opts, :http_options, [])
@@ -79,18 +86,25 @@ defmodule Streamix.Hls.Fetch do
   Runs one request with the body collected under `:max_body` bytes.
 
   `opts` are Req options plus the required `:max_body` and
-  `:receive_timeout`; the total request deadline equals the receive timeout.
-  Transport failures collapse to `:upstream_unavailable`, so no exception
-  (and no URL inside one) ever reaches a caller or a log line.
+  `:receive_timeout`; the total request deadline is `:request_timeout`, and
+  equals the receive timeout when that is not given. Transport failures
+  collapse to `:upstream_unavailable`, so no exception (and no URL inside
+  one) ever reaches a caller or a log line.
   """
   def request(opts, http_options \\ []) do
     {max_body, opts} = Keyword.pop!(opts, :max_body)
-    opts = Keyword.put(opts, :request_timeout, Keyword.fetch!(opts, :receive_timeout))
+    opts = Keyword.put_new(opts, :request_timeout, Keyword.fetch!(opts, :receive_timeout))
+
+    # A named pool carries its own connect timeout (Req refuses both).
+    connect =
+      if Keyword.has_key?(http_options, :finch),
+        do: [],
+        else: [connect_options: [timeout: 5_000]]
 
     options =
       base_options(http_options) ++
+        connect ++
         [
-          connect_options: [timeout: 5_000],
           into: fn {:data, data}, {request, response} ->
             body = response.body || ""
 

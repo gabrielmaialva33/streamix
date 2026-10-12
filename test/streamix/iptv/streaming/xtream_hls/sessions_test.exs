@@ -75,7 +75,7 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.SessionsTest do
       assert {:error, :resource_not_found} =
                Sessions.resource(second.session_id, second.resource_id, {:episode, 1})
 
-      assert {:ok, %{url: @url <> "?source=2", kind: :playlist}, 1} =
+      assert {:ok, %{url: @url <> "?source=2", kind: :playlist}, %{provider_id: 1, template: nil}} =
                Sessions.resource(second.session_id, second.resource_id, content)
     end
 
