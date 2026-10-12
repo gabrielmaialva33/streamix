@@ -20,6 +20,13 @@ defmodule Streamix.Iptv.Provider do
     field :visibility, Ecto.Enum, values: [:private, :public, :global], default: :private
     field :is_system, :boolean, default: false
 
+    # Automatic availability, independent of the operator's `is_active` switch.
+    # A degraded provider's catalog is hidden from browsing until a health probe
+    # clears it; see `Streamix.Embedplay.Health`. Never cast from params.
+    field :health_status, Ecto.Enum, values: [:healthy, :degraded], default: :healthy
+    field :degraded_at, :utc_datetime
+    field :degraded_reason, :string
+
     # Provider type: xtream (default), gindex, torrent, or embedplay
     field :provider_type, Ecto.Enum,
       values: [:xtream, :gindex, :torrent, :embedplay],

@@ -7,8 +7,9 @@ channels are intentionally unsupported until their availability contract is veri
 ## Activation and one-movie validation
 
 Apply database migrations and configure the private browser resolver before enabling
-`EMBEDPLAY_ENABLED=true`. No catalog crawl runs at startup, and there is no automatic cron.
-Activation alone does not import any content. See [the playback documentation](embedplay-playback.md) for the resolver
+`EMBEDPLAY_ENABLED=true`. No catalog crawl runs at startup; once enabled, a daily cron
+(06:43 UTC) refreshes the inventory, and is skipped while resolution is degraded (see
+[Resolution health](#resolution-health)). Activation alone does not import any content. See [the playback documentation](embedplay-playback.md) for the resolver
 and HLS session gateway.
 
 From an application console, import a movie whose availability you have confirmed:
@@ -50,6 +51,44 @@ Do not use the full inventory sync to validate the initial playback path.
 - Ingestion stores no embed page URL, iframe URL, manifest URL, cookie, or media token in a movie.
 - The source's `status` response is not a guarantee of media playback; resolution can still fail.
 
+## Resolution health
+
+Every playback start is observed by `Streamix.Embedplay.Health`. When resolution is
+systematically failing, the system provider is marked **degraded** in
+`providers.health_status` (with `degraded_at` and `degraded_reason`):
+
+- its movies drop out of every browse surface — browse API, home shelves, search, ranked
+  hydration and the provider directory — through `Streamix.Iptv.Access.browsable/2`;
+- new playback fails at once with `503 provider_degraded` instead of waiting several seconds
+  for a browser resolution that cannot succeed;
+- the daily catalog sync is skipped, so no more unplayable titles are imported.
+
+A direct lookup of a title still resolves, so favorites and history lead to that explicit error
+rather than to a missing page. `is_active` is never touched: it remains the operator's switch,
+and automatic recovery never re-enables a provider that was turned off on purpose.
+
+Trip rules, over a six-hour window with no success in between (any success resets the streak):
+
+| Resolver result | Trips after | Why |
+| --- | --- | --- |
+| `resolver_outdated` | 2 distinct titles | The page no longer has the structure the resolver drives — a site change, not a title |
+| `no_source_available` | 5 failures over 5 distinct titles | Can be one title without a source; five distinct misses in a row is not |
+| timeout, capacity, generic failure | never on their own | Transient |
+
+Recovery is automatic. `Streamix.Workers.EmbedplayCanaryWorker` runs at :17 and :47 past every
+hour and resolves one random title (skipping ones that just failed). While degraded it probes on
+every tick and the first success restores the catalog. While healthy it probes only after an
+hour without any observed resolution, so a breakage is still caught when nobody is watching and
+right after a deploy. Only one probe is ever in flight.
+
+The trip logs a `warning` and the recovery an `info` line, both prefixed `[Embedplay]` with the
+reason and counts. `Streamix.Embedplay.health/0` returns the persisted state and a summary of
+the window, and `/api/health/ready` reports `checks.embedplay`.
+
+Thresholds are application configuration (`config/config.exs`, `:embedplay`):
+`health_window_seconds`, `health_window_size`, `health_trip_failures`, `health_trip_movies`,
+`health_outdated_trip_movies` and `canary_idle_seconds`.
+
 ## Runtime configuration
 
 | Environment variable | Default | Meaning |
@@ -72,6 +111,9 @@ cards, deactivate its provider row as well.
 Tests use a fixed-host `Req.Test` fixture for inventory and sandboxed database records for
 idempotency, metadata preservation, source identity, skipped entries and activation guards.
 They never crawl the real inventory or consume a real stream.
+
+The health columns (`health_status`, `degraded_at`, `degraded_reason`) are an additive
+migration; code from the previous release ignores them.
 
 The migration changes the provider CHECK constraint and adds a partial singleton index; it
 rebuilds no media or history tables. Its rollback deliberately fails if Embedplay provider rows

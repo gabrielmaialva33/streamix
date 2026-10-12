@@ -10,7 +10,7 @@ defmodule Streamix.Iptv.Providers do
 
   alias Streamix.Billing
   alias Streamix.Cache
-  alias Streamix.Iptv.{Movie, Provider, Series, Sync, XtreamClient}
+  alias Streamix.Iptv.{Access, Movie, Provider, Series, Sync, XtreamClient}
   alias Streamix.Repo
   alias Streamix.Workers.{SyncGindexProviderWorker, SyncProviderWorker}
 
@@ -84,26 +84,29 @@ defmodule Streamix.Iptv.Providers do
   - Global (is_system: true)
   - Public (visibility: :public)
   - User's own private providers (visibility: :private, user_id: user_id)
+
+  Inactive and health-degraded providers are omitted (`Access.browsable/2`).
   """
   @spec list_visible(integer() | nil) :: [Provider.t()]
   def list_visible(user_id \\ nil) do
-    Provider
+    from(p in Provider, as: :provider)
     |> where([p], p.visibility in [:global, :public])
     |> or_where([p], p.user_id == ^user_id and p.visibility == :private)
-    |> where([p], p.is_active == true)
+    |> Access.browsable(:provider)
     |> order_by(asc: :name)
     |> Repo.all()
   end
 
   @doc """
   Lists only public providers (global + public visibility).
-  For unauthenticated users.
+  For unauthenticated users. Inactive and health-degraded providers are
+  omitted (`Access.browsable/2`).
   """
   @spec list_public() :: [Provider.t()]
   def list_public do
-    Provider
+    from(p in Provider, as: :provider)
     |> where([p], p.visibility in [:global, :public])
-    |> where([p], p.is_active == true)
+    |> Access.browsable(:provider)
     |> order_by(asc: :name)
     |> Repo.all()
   end

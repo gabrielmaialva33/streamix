@@ -300,6 +300,20 @@ defmodule Streamix.Cache do
     {:ok, count}
   end
 
+  @doc """
+  Invalidates the shared catalog shelves, public stats and the featured pick.
+
+  For changes in which providers are browsable that no operator edit
+  announced — a provider degrading or recovering on its own — so they show up
+  at once instead of as each entry expires (the home top-10 shelf lives a day).
+  """
+  @spec invalidate_public_catalog() :: {:ok, non_neg_integer()}
+  def invalidate_public_catalog do
+    delete(Keys.public_stats())
+    delete(Keys.featured())
+    invalidate_patterns(["home:*"])
+  end
+
   @doc "Invalidates all cache entries for a provider."
   @spec invalidate_provider(integer()) :: {:ok, non_neg_integer()}
   def invalidate_provider(provider_id), do: delete_pattern("*:provider:#{provider_id}")

@@ -119,6 +119,12 @@ defmodule Streamix.Providers do
     to: EmbedplayProvider,
     as: :refresh_counts
 
+  # Automatic health state. Separate from `is_active` (the operator switch):
+  # these never enable or disable the provider, they only hide its catalog
+  # from browsing while playback is systematically failing.
+  defdelegate mark_embedplay_degraded(reason), to: EmbedplayProvider, as: :mark_degraded
+  defdelegate mark_embedplay_healthy(), to: EmbedplayProvider, as: :mark_healthy
+
   defdelegate global_provider_enabled?(), to: GlobalProvider, as: :enabled?
   defdelegate ensure_global_provider(owner \\ nil), to: GlobalProvider, as: :ensure_exists!
   defdelegate gindex_provider_enabled?(), to: GIndexProvider, as: :enabled?

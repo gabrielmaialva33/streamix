@@ -93,6 +93,9 @@ defmodule StreamixWeb.EmbedplayStreamController do
   end
 
   defp error_status(:provider_disabled), do: {503, :provider_disabled}
+  # Resolution is systematically failing upstream, so playback is refused
+  # before a resolution starts. 503 because a health probe clears it.
+  defp error_status(:provider_degraded), do: {503, :provider_degraded}
   defp error_status(:provider_capacity_exhausted), do: {503, :provider_capacity_exhausted}
   defp error_status(:upstream_timeout), do: {504, :upstream_timeout}
   defp error_status(:missing_token), do: {400, :missing_token}

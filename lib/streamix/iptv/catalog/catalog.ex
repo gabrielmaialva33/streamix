@@ -13,6 +13,7 @@ defmodule Streamix.Iptv.Catalog do
   alias Streamix.Helpers
 
   alias Streamix.Iptv.{
+    Access,
     AdultFilter,
     CatalogItem,
     Category,
@@ -176,10 +177,8 @@ defmodule Streamix.Iptv.Catalog do
         as: :provider,
         on: channel.provider_id == provider.id
       )
-      |> where(
-        [provider: provider],
-        provider.visibility in [:global, :public] and provider.is_active == true
-      )
+      |> where([provider: provider], provider.visibility in [:global, :public])
+      |> Access.browsable(:provider)
       |> with_provider_filters(opts)
       |> Repo.aggregate(:count)
 
@@ -189,10 +188,8 @@ defmodule Streamix.Iptv.Catalog do
         as: :provider,
         on: movie.provider_id == provider.id
       )
-      |> where(
-        [provider: provider],
-        provider.visibility in [:global, :public] and provider.is_active == true
-      )
+      |> where([provider: provider], provider.visibility in [:global, :public])
+      |> Access.browsable(:provider)
       |> with_provider_filters(opts)
       |> Repo.aggregate(:count)
 
@@ -202,10 +199,8 @@ defmodule Streamix.Iptv.Catalog do
         as: :provider,
         on: series.provider_id == provider.id
       )
-      |> where(
-        [provider: provider],
-        provider.visibility in [:global, :public] and provider.is_active == true
-      )
+      |> where([provider: provider], provider.visibility in [:global, :public])
+      |> Access.browsable(:provider)
       |> with_provider_filters(opts)
       |> Repo.aggregate(:count)
 
@@ -570,8 +565,9 @@ defmodule Streamix.Iptv.Catalog do
       join: provider in Provider,
       as: :provider,
       on: movie.provider_id == provider.id,
-      where: provider.visibility in [:global, :public] and provider.is_active == true
+      where: provider.visibility in [:global, :public]
     )
+    |> Access.browsable(:provider)
   end
 
   defp public_series_query do
@@ -580,8 +576,9 @@ defmodule Streamix.Iptv.Catalog do
       join: provider in Provider,
       as: :provider,
       on: series.provider_id == provider.id,
-      where: provider.visibility in [:global, :public] and provider.is_active == true
+      where: provider.visibility in [:global, :public]
     )
+    |> Access.browsable(:provider)
   end
 
   defp with_provider_filters(query, opts) do
@@ -646,9 +643,9 @@ defmodule Streamix.Iptv.Catalog do
     )
     |> where(
       [category, provider: provider],
-      provider.visibility in [:global, :public] and provider.is_active == true and
-        category.is_adult == false
+      provider.visibility in [:global, :public] and category.is_adult == false
     )
+    |> Access.browsable(:provider)
     |> maybe_filter_provider(Keyword.get(opts, :provider_id))
     |> maybe_filter_provider_type(Keyword.get(opts, :provider_type))
     |> maybe_filter_category_type(Keyword.get(opts, :type))

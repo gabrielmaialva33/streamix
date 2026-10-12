@@ -16,7 +16,31 @@ config :streamix, :embedplay,
   session_ttl_seconds: 600,
   idle_seconds: 1_800,
   max_sessions: 128,
-  max_concurrent_fetches: 64
+  max_concurrent_fetches: 64,
+  # Resolution health (Streamix.Embedplay.Health). A degraded provider has its
+  # catalog hidden and playback failing fast until a canary probe resolves.
+  #
+  # Outcomes older than the window, or beyond its size, are forgotten. Six
+  # hours holds five hourly idle-time probes, so a breakage is caught even
+  # with nobody watching.
+  health_window_seconds: 21_600,
+  health_window_size: 200,
+  # `no_source_available` can be one title without a source, so it trips only
+  # as a rate: 5 failures over 5 distinct titles with no success in between.
+  # If a third of titles genuinely lacked a source, five independent misses in
+  # a row would still happen well under 1% of the time; during the outage that
+  # motivated this, every resolution failed, which trips on the fifth distinct
+  # title anyone tries to play.
+  health_trip_failures: 5,
+  health_trip_movies: 5,
+  # `resolver_outdated` is the resolver saying the upstream page no longer has
+  # the structure it drives, which is about the site, not a title. Two
+  # distinct titles rule out a single odd page.
+  health_outdated_trip_movies: 2,
+  # While healthy the canary only probes after this long without any observed
+  # resolution; real playback is the cheaper signal. While degraded it probes
+  # on every 30-minute tick.
+  canary_idle_seconds: 3_600
 
 # Player decoders are fetched on demand and are immutable. Include WASM in
 # Phoenix's digested static compressors so the first playback transfers the
@@ -282,6 +306,16 @@ config :streamix, Oban,
        {"15 5 * * *", Streamix.Workers.EpisodeDetailsWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
+       # Embedplay movie catalog, daily. 06:43 UTC is 03:43 in Brasília, the
+       # audience's quietest hour, and clears the 02:00–05:15 batch: the sync
+       # queues TMDB enrichment on the same token pool as the 04:45 and 05:15
+       # details passes. Off the */10 and */15 ticks. A no-op unless Embedplay
+       # is enabled, and skipped while its resolution is degraded.
+       {"43 6 * * *", Streamix.Workers.SyncEmbedplayProviderWorker},
+       # Embedplay resolution probe. Clears a degraded provider once resolution
+       # works again; while healthy it only resolves after an idle hour. Off the
+       # minutes every other entry uses.
+       {"17,47 * * * *", Streamix.Workers.EmbedplayCanaryWorker},
        # Index embeddings for semantic search daily at 5 AM
        {"0 5 * * *", Streamix.Workers.IndexEmbeddingsWorker},
        # Repair missing Qdrant collections after each application boot without

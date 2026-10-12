@@ -9,7 +9,7 @@ defmodule Streamix.OperationalHealth do
   """
 
   alias Ecto.Adapters.SQL
-  alias Streamix.{AI, BuildInfo, Gindex, Providers, Repo, Torrent}
+  alias Streamix.{AI, BuildInfo, Embedplay, Gindex, Providers, Repo, Torrent}
 
   @check_timeout :timer.seconds(6)
   @required_checks [:database, :redis]
@@ -25,7 +25,8 @@ defmodule Streamix.OperationalHealth do
         providers: &check_providers/0,
         gindex: &check_gindex/0,
         semantic_search: &check_semantic_search/0,
-        torrent: &check_torrent/0
+        torrent: &check_torrent/0,
+        embedplay: &check_embedplay/0
       ]
       |> run_checks()
 
@@ -178,6 +179,25 @@ defmodule Streamix.OperationalHealth do
     _ -> %{status: :degraded, active_torrents: 0}
   catch
     :exit, _ -> %{status: :degraded, active_torrents: 0}
+  end
+
+  # A degraded Embedplay provider has already been taken out of the catalog;
+  # reporting it here is what makes a silent upstream breakage visible.
+  defp check_embedplay do
+    case Embedplay.health() do
+      %{active: false} ->
+        %{status: :disabled}
+
+      %{status: :degraded} = health ->
+        %{status: :degraded, reason: health.reason, degraded_at: health.degraded_at}
+
+      %{status: :healthy} ->
+        %{status: :ok}
+    end
+  rescue
+    _ -> %{status: :degraded}
+  catch
+    :exit, _ -> %{status: :degraded}
   end
 
   defp timed_out_check(name) when name in @required_checks, do: %{status: :unavailable}
