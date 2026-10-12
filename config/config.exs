@@ -306,6 +306,12 @@ config :streamix, Oban,
        {"15 5 * * *", Streamix.Workers.EpisodeDetailsWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
+       # Embedplay movie catalog, daily. 06:43 UTC is 03:43 in Brasília, the
+       # audience's quietest hour, and clears the 02:00–05:15 batch: the sync
+       # queues TMDB enrichment on the same token pool as the 04:45 and 05:15
+       # details passes. Off the */10 and */15 ticks. A no-op unless Embedplay
+       # is enabled, and skipped while its resolution is degraded.
+       {"43 6 * * *", Streamix.Workers.SyncEmbedplayProviderWorker},
        # Embedplay resolution probe. Clears a degraded provider once resolution
        # works again; while healthy it only resolves after an idle hour. Off the
        # minutes every other entry uses.
