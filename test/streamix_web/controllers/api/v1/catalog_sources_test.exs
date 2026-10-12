@@ -331,6 +331,221 @@ defmodule StreamixWeb.Api.V1.CatalogSourcesTest do
     end
   end
 
+  describe "GET /api/v1/catalog/series/:id/sources" do
+    setup do
+      global = global_provider_fixture(%{name: "Alpha Global"})
+      bravo = public_provider!("Bravo")
+      charlie = public_provider!("Charlie")
+
+      # Specials (season 0) and seasons without episodes are not playable and
+      # must not count.
+      current =
+        series_copy!(
+          global,
+          %{
+            name: "Shared Show",
+            dub_available: true,
+            plot: "A show shared by several providers.",
+            content_rating: "14"
+          },
+          %{0 => 1, 1 => 3, 2 => 2, 3 => 0}
+        )
+
+      bravo_best = series_copy!(bravo, %{name: "Shared Show 4K Dublado"}, %{1 => 4})
+      bravo_other = series_copy!(bravo, %{name: "Shared Show Legendado"}, %{1 => 1})
+      charlie_copy = series_copy!(charlie, %{name: "Shared Show"}, %{1 => 2})
+
+      ProviderRuntime.record_success(bravo.id, :control, 40)
+      ProviderRuntime.record_failure(global.id, :control, :authentication_failed)
+
+      %{
+        global: global,
+        bravo: bravo,
+        charlie: charlie,
+        current: current,
+        bravo_best: bravo_best,
+        bravo_other: bravo_other,
+        charlie_copy: charlie_copy
+      }
+    end
+
+    test "offers one ranked copy per provider with its playable counts", ctx do
+      response =
+        ctx.conn
+        |> get(~p"/api/v1/catalog/series/#{ctx.current.id}/sources")
+        |> json_response(200)
+
+      assert response == %{
+               "data" => [
+                 %{
+                   "id" => ctx.bravo_best.id,
+                   "provider_id" => ctx.bravo.id,
+                   "provider_name" => "Bravo",
+                   "provider_status" => "healthy",
+                   "title" => "Shared Show 4K Dublado",
+                   "badges" => ["4K", "DUB"],
+                   "season_count" => 1,
+                   "episode_count" => 4,
+                   "recommended" => true,
+                   "current" => false
+                 },
+                 %{
+                   "id" => ctx.charlie_copy.id,
+                   "provider_id" => ctx.charlie.id,
+                   "provider_name" => "Charlie",
+                   "provider_status" => "unknown",
+                   "title" => "Shared Show",
+                   "badges" => [],
+                   "season_count" => 1,
+                   "episode_count" => 2,
+                   "recommended" => false,
+                   "current" => false
+                 },
+                 %{
+                   "id" => ctx.current.id,
+                   "provider_id" => ctx.global.id,
+                   "provider_name" => "Alpha Global",
+                   "provider_status" => "unhealthy",
+                   "title" => "Shared Show",
+                   "badges" => ["DUB"],
+                   "season_count" => 2,
+                   "episode_count" => 5,
+                   "recommended" => false,
+                   "current" => true
+                 }
+               ]
+             }
+    end
+
+    test "matches the series detail page's picker for the same data", ctx do
+      sources =
+        ctx.conn
+        |> get(~p"/api/v1/catalog/series/#{ctx.current.id}/sources")
+        |> json_response(200)
+        |> Map.fetch!("data")
+
+      {:ok, _view, html} =
+        build_conn()
+        |> log_in_user(user_fixture())
+        |> live(~p"/browse/series/#{ctx.current.id}")
+
+      cards =
+        html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("[data-source-card='series']")
+        |> Enum.map(fn card ->
+          %{
+            "id" => card |> LazyHTML.attribute("id") |> hd(),
+            "season_count" => data_count(card, "data-season-count"),
+            "episode_count" => data_count(card, "data-episode-count"),
+            "badges" =>
+              card
+              |> LazyHTML.query("[data-source-badge]")
+              |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+          }
+        end)
+
+      assert cards ==
+               Enum.map(sources, fn source ->
+                 source
+                 |> Map.take(["season_count", "episode_count", "badges"])
+                 |> Map.put("id", "series-source-#{source["id"]}")
+               end)
+    end
+
+    test "omits copies the stream endpoint would refuse or that have nothing to play", ctx do
+      owner = user_fixture()
+      private = provider_fixture(owner, %{name: "Private"})
+      inactive = "Inactive" |> public_provider!() |> update_provider!(is_active: false)
+      degraded = "Degraded" |> public_provider!() |> update_provider!(health_status: :degraded)
+      specials_only = public_provider!("Specials Only")
+
+      refused =
+        for {provider, seasons} <- [
+              {private, %{1 => 1}},
+              {inactive, %{1 => 1}},
+              {degraded, %{1 => 1}},
+              {specials_only, %{0 => 2}}
+            ] do
+          series_copy!(provider, %{name: "Shared Show"}, seasons).id
+        end
+
+      ids =
+        ctx.conn
+        |> get(~p"/api/v1/catalog/series/#{ctx.current.id}/sources")
+        |> json_response(200)
+        |> Map.fetch!("data")
+        |> Enum.map(& &1["id"])
+
+      assert ids == [ctx.bravo_best.id, ctx.charlie_copy.id, ctx.current.id]
+      assert Enum.all?(refused, &(&1 not in ids))
+    end
+
+    test "the requested copy can lose its provider slot to a better copy", ctx do
+      data =
+        ctx.conn
+        |> get(~p"/api/v1/catalog/series/#{ctx.bravo_other.id}/sources")
+        |> json_response(200)
+        |> Map.fetch!("data")
+
+      assert Enum.map(data, & &1["id"]) == [
+               ctx.bravo_best.id,
+               ctx.charlie_copy.id,
+               ctx.current.id
+             ]
+
+      refute Enum.any?(data, & &1["current"])
+    end
+
+    test "a requested copy without playable episodes is not offered", ctx do
+      specials_only =
+        series_copy!(public_provider!("Specials Only"), %{name: "Shared Show"}, %{0 => 2})
+
+      data =
+        ctx.conn
+        |> get(~p"/api/v1/catalog/series/#{specials_only.id}/sources")
+        |> json_response(200)
+        |> Map.fetch!("data")
+
+      assert Enum.map(data, & &1["id"]) == [
+               ctx.bravo_best.id,
+               ctx.charlie_copy.id,
+               ctx.current.id
+             ]
+
+      refute Enum.any?(data, & &1["current"])
+    end
+
+    test "404s like the series detail for unknown, private and disabled ids", %{conn: conn} do
+      private_series = series_copy!(provider_fixture(user_fixture()), %{}, %{1 => 1})
+
+      disabled_series =
+        "Disabled"
+        |> public_provider!()
+        |> update_provider!(is_active: false)
+        |> series_copy!(%{}, %{1 => 1})
+
+      for id <- [999_999_999, private_series.id, disabled_series.id] do
+        assert conn |> get(~p"/api/v1/catalog/series/#{id}") |> json_response(404)
+
+        assert conn
+               |> get(~p"/api/v1/catalog/series/#{id}/sources")
+               |> json_response(404) == %{
+                 "error" => %{"code" => "content_not_found", "message" => "Series not found"}
+               }
+      end
+
+      assert conn
+             |> get(~p"/api/v1/catalog/series/not-a-number/sources")
+             |> json_response(400) == %{
+               "error" => %{
+                 "code" => "invalid_parameter",
+                 "message" => "Invalid value for parameter id"
+               }
+             }
+    end
+  end
+
   # Each public provider gets its own owner so per-user provider limits never
   # interfere with the setup.
   defp public_provider!(name) do
@@ -341,6 +556,42 @@ defmodule StreamixWeb.Api.V1.CatalogSourcesTest do
     provider
     |> Ecto.Changeset.change(changes)
     |> Repo.update!()
+  end
+
+  defp data_count(card, attribute) do
+    [value] = card |> LazyHTML.query("[#{attribute}]") |> LazyHTML.attribute(attribute)
+    String.to_integer(value)
+  end
+
+  # A series copy sharing the TMDB id "888", with `episodes_per_season`
+  # episodes in each listed season (0 creates an empty season).
+  defp series_copy!(provider, attrs, episodes_per_season) do
+    series = series_content_fixture(provider, Map.merge(%{tmdb_id: "888"}, attrs))
+
+    for {season_number, episode_count} <- episodes_per_season do
+      season =
+        %Season{}
+        |> Season.changeset(%{
+          series_id: series.id,
+          season_number: season_number,
+          name: "Season #{season_number}"
+        })
+        |> Repo.insert!()
+
+      for episode_num <- 1..episode_count//1 do
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: System.unique_integer([:positive]),
+          episode_num: episode_num,
+          title: "S#{season_number}E#{episode_num}",
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+      end
+    end
+
+    series
   end
 
   defp series_with_episode!(provider, season_number, episode_num, title, extension \\ "mp4") do

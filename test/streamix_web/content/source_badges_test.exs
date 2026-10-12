@@ -21,6 +21,16 @@ defmodule StreamixWeb.Content.SourceBadgesTest do
            }) == ["MKV", "4K", "LEG"]
   end
 
+  test "a series flagged dub_available is dubbed even when its name says nothing" do
+    assert SourceBadges.badges(%{name: "Dark 4K", title: "Dark", dub_available: true}) ==
+             ["4K", "DUB"]
+
+    assert SourceBadges.badges(%{name: "Dark Dublado", title: nil, dub_available: false}) ==
+             ["DUB"]
+
+    assert SourceBadges.badges(%{name: "Dark", title: "Dark", dub_available: false}) == []
+  end
+
   test "ignores a missing or blank container and absent fields" do
     assert SourceBadges.badges(%{name: "Episode", title: "Episode", container_extension: ""}) ==
              []

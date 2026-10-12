@@ -183,6 +183,20 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
           },
           [:data]
         ),
+      "SeriesSource" => series_source(),
+      "SeriesSourcesResponse" =>
+        Common.object(
+          "SeriesSourcesResponse",
+          %{
+            data:
+              Common.array(Common.ref("SeriesSource"),
+                description:
+                  "Best copy first, at most one per provider. Empty when no copy is " <>
+                    "playable through this API."
+              )
+          },
+          [:data]
+        ),
       "ChannelDetail" => channel_detail(),
       "ChannelDetailResponse" => resource_response("ChannelDetailResponse", "ChannelDetail"),
       "RankedMovieCard" =>
@@ -419,6 +433,45 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
         :duration,
         :air_date
       ]
+    )
+  end
+
+  defp series_source do
+    properties = %{
+      id:
+        Common.id("Series identifier of this copy; open it with GET /api/v1/catalog/series/{id}"),
+      provider_id: Common.id("Provider serving this copy"),
+      provider_name: Common.string(min_length: 1, description: "Provider display name"),
+      provider_status:
+        Common.string(
+          enum: @provider_statuses,
+          description: "Provider classification, as reported by GET /api/v1/providers/status"
+        ),
+      title: Common.string(nullable: true, description: "Raw provider name of this copy"),
+      badges:
+        Common.array(Common.string(min_length: 1),
+          description: "Quality and audio labels; same rule as the web source picker",
+          unique_items: true
+        ),
+      season_count: Common.count("Seasons with at least one episode (specials excluded)"),
+      episode_count: Common.count("Episodes in those seasons"),
+      recommended: Common.boolean(description: "Ranked first; true for at most one copy"),
+      current: Common.boolean(description: "This is the requested id")
+    }
+
+    Common.object("SeriesSource", properties, Map.keys(properties),
+      example: %{
+        "id" => 7_212_683,
+        "provider_id" => 4,
+        "provider_name" => "Streamix Fallback",
+        "provider_status" => "healthy",
+        "title" => "Dark (Dublado)",
+        "badges" => ["DUB"],
+        "season_count" => 3,
+        "episode_count" => 26,
+        "recommended" => true,
+        "current" => true
+      }
     )
   end
 

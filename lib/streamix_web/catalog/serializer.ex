@@ -252,20 +252,45 @@ defmodule StreamixWeb.Catalog.Serializer do
   @doc """
   Shapes one equivalent playable copy of a movie or episode.
 
-  `source` is a failover candidate (`StreamixWeb.PlayerHelpers.failover_sources/3`)
-  and `provider_status` the provider's health classification.
+  `source` is a failover candidate (`StreamixWeb.PlayerHelpers.failover_sources/3`);
+  `flags` carry `:provider_status`, `:recommended` and `:current`.
   """
-  def serialize_source(source, provider_status, flags) do
+  def serialize_source(source, flags) do
     content = source.content
 
-    %{
+    source.provider
+    |> source_identity(flags)
+    |> Map.merge(%{
       id: source.id,
-      provider_id: source.provider.id,
-      provider_name: source.provider.name,
-      provider_status: Atom.to_string(provider_status),
       title: Map.get(content, :name) || Map.get(content, :title),
       container_extension: Map.get(content, :container_extension),
-      badges: SourceBadges.badges(content),
+      badges: SourceBadges.badges(content)
+    })
+  end
+
+  @doc """
+  Shapes one provider copy of a series for the series-level source picker.
+
+  `counts` is `{season_count, episode_count}` of its playable episodes;
+  `flags` are those of `serialize_source/2`.
+  """
+  def serialize_series_source(series, {season_count, episode_count}, flags) do
+    series.provider
+    |> source_identity(flags)
+    |> Map.merge(%{
+      id: series.id,
+      title: series.name || series.title,
+      badges: SourceBadges.badges(series),
+      season_count: season_count,
+      episode_count: episode_count
+    })
+  end
+
+  defp source_identity(provider, flags) do
+    %{
+      provider_id: provider.id,
+      provider_name: provider.name,
+      provider_status: flags |> Keyword.fetch!(:provider_status) |> Atom.to_string(),
       recommended: Keyword.fetch!(flags, :recommended),
       current: Keyword.fetch!(flags, :current)
     }

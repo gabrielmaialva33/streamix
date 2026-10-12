@@ -276,6 +276,7 @@ defmodule StreamixWeb.Router do
     get "/catalog/episodes/:id", CatalogController, :show_episode
     # Equivalent playable copies of one title (source picker / failover).
     get "/catalog/movies/:id/sources", CatalogController, :movie_sources
+    get "/catalog/series/:id/sources", CatalogController, :series_sources
     get "/catalog/episodes/:id/sources", CatalogController, :episode_sources
     get "/catalog/channels", CatalogController, :channels
     get "/catalog/channels/:id", CatalogController, :show_channel

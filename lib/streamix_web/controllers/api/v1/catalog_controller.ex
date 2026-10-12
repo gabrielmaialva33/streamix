@@ -245,6 +245,23 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       too_many_requests: @rate_limited
     ]
 
+  operation :series_sources,
+    operation_id: "catalog.series.sources",
+    summary: "List the provider copies of a series",
+    description:
+      "Returns one copy of the series per provider, including the requested one when it " <>
+        "has a playable episode, ranked best first by provider runtime health, with the " <>
+        "number of seasons and episodes each copy can play. Same choice as the web series " <>
+        "page.",
+    parameters: Schemas.id_parameter("Series"),
+    responses: [
+      ok: {"Series copies, best first", @json, Schemas.ref("SeriesSourcesResponse")},
+      bad_request: @invalid_filter,
+      not_found: @not_found,
+      unauthorized: @unauthorized,
+      too_many_requests: @rate_limited
+    ]
+
   operation :movie_stream,
     operation_id: "catalog.movies.stream",
     summary: "Create a signed movie playback URL",
@@ -312,6 +329,10 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   def movie_sources(conn, %{"id" => id}) do
     render_id_result(conn, id, &Api.movie_sources/1, "Movie not found")
+  end
+
+  def series_sources(conn, %{"id" => id}) do
+    render_id_result(conn, id, &Api.series_sources/1, "Series not found")
   end
 
   def episode_sources(conn, %{"id" => id}) do

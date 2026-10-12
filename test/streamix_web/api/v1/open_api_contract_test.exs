@@ -20,13 +20,13 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
 
     assert spec["openapi"] =~ ~r/^3\.0\./
     assert spec["info"]["title"] == "Streamix Catalog API"
-    assert map_size(spec["paths"]) == 21
+    assert map_size(spec["paths"]) == 22
     assert spec["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
 
     operations = Enum.map(spec["paths"], fn {_path, path_item} -> path_item["get"] end)
     operation_ids = Enum.map(operations, & &1["operationId"])
 
-    assert length(Enum.uniq(operation_ids)) == 21
+    assert length(Enum.uniq(operation_ids)) == 22
     assert Enum.all?(operations, &Map.has_key?(&1["responses"], "429"))
 
     assert Enum.all?(operations, fn operation ->
@@ -82,7 +82,8 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
       {"/api/v1/catalog/channels/#{channel.id}/stream", "catalog.channels.stream"},
       {"/api/v1/catalog/movies/#{movie.id}/sources", "catalog.movies.sources"},
       {"/api/v1/catalog/movies/#{playable_movie.id}/sources", "catalog.movies.sources"},
-      {"/api/v1/catalog/episodes/#{episode.id}/sources", "catalog.episodes.sources"}
+      {"/api/v1/catalog/episodes/#{episode.id}/sources", "catalog.episodes.sources"},
+      {"/api/v1/catalog/series/#{series.id}/sources", "catalog.series.sources"}
     ]
 
     Enum.each(requests, fn {path, operation_id} ->
@@ -118,6 +119,11 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     |> get(~p"/api/v1/catalog/episodes/999999999/sources")
     |> assert_status(404)
     |> assert_operation_response("catalog.episodes.sources")
+
+    build_conn()
+    |> get(~p"/api/v1/catalog/series/999999999/sources")
+    |> assert_status(404)
+    |> assert_operation_response("catalog.series.sources")
   end
 
   test "authentication failures also satisfy every catalog operation contract" do

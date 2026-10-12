@@ -5,6 +5,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   """
   use StreamixWeb, :live_view
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.Content.SeriesSources
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.LiveSessionNavigation
 
   import StreamixWeb.App.Premium
@@ -105,11 +107,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     preferred_provider_id = preferred_provider_id(provider_filter, mode, provider)
 
     series_sources =
-      series
-      |> Detail.series_variants(user_id)
-      |> ensure_current_series(series)
-      |> sort_series_sources(series.id, preferred_provider_id)
-      |> dedupe_series_sources()
+      SeriesSources.list(series, user_id, preferred_provider_id: preferred_provider_id)
 
     selected_series = selected_series_source(series_sources, series)
     selected_seasons = Detail.seasons_with_episodes(selected_series)
@@ -468,26 +466,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp preferred_provider_id(_provider_filter, :provider, %{id: id}), do: id
   defp preferred_provider_id(_provider_filter, _mode, _provider), do: nil
 
-  defp ensure_current_series(sources, series) do
-    cond do
-      Enum.any?(sources, &(&1.id == series.id)) -> sources
-      Detail.seasons_with_episodes(series) != [] -> [series | sources]
-      true -> sources
-    end
-  end
-
-  defp sort_series_sources(sources, current_series_id, preferred_provider_id) do
-    Streamix.Playback.sort_stream_sources(sources,
-      media_type: :series,
-      current_source_id: current_series_id,
-      preferred_provider_id: preferred_provider_id
-    )
-  end
-
   defp selected_series_source([source | _], _series), do: source
   defp selected_series_source([], series), do: series
-
-  defp dedupe_series_sources(sources), do: Enum.uniq_by(sources, & &1.provider_id)
 
   defp first_episode([first_season | _]) when first_season.episodes != [] do
     first_season.episodes
@@ -507,17 +487,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp source_categories(_), do: []
-
-  defp source_counts(series) do
-    seasons = Detail.seasons_with_episodes(series)
-
-    episode_count =
-      seasons
-      |> Enum.flat_map(& &1.episodes)
-      |> length()
-
-    {length(seasons), episode_count}
-  end
 
   defp series_sources(assigns) do
     recommended =
@@ -585,7 +554,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   attr :recommended?, :boolean, default: false
 
   defp series_source_card(assigns) do
-    {season_count, episode_count} = source_counts(assigns.source)
+    {season_count, episode_count} = SeriesSources.counts(assigns.source)
     playable_episode = first_episode(Detail.seasons_with_episodes(assigns.source))
 
     assigns =
@@ -629,17 +598,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               <.icon name="hero-server-stack" class="size-3.5" />
               {provider_name(@source)}
             </span>
-            <span class="rounded bg-surface-hover px-2 py-1">
+            <span data-season-count={@season_count} class="rounded bg-surface-hover px-2 py-1">
               {@season_count} temporadas
             </span>
-            <span class="rounded bg-surface-hover px-2 py-1">
+            <span data-episode-count={@episode_count} class="rounded bg-surface-hover px-2 py-1">
               {@episode_count} episódios
             </span>
             <span
-              :if={@source.dub_available}
+              :for={badge <- SourceBadges.badges(@source)}
+              data-source-badge
               class="rounded bg-brand/10 px-2 py-1 font-medium text-brand"
             >
-              DUB
+              {badge}
             </span>
           </div>
 

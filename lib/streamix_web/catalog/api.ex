@@ -57,16 +57,9 @@ defmodule StreamixWeb.Catalog.Api do
   end
 
   def series_detail(id) do
-    case Streamix.Catalog.get_public_series(id) do
-      nil ->
-        {:error, :not_found}
-
-      series ->
-        series = Streamix.Catalog.get_series_with_sync!(series.id)
-        {:ok, %{data: Serializer.serialize_series_detail(series)}}
+    with {:ok, series} <- public_series_with_seasons(id) do
+      {:ok, %{data: Serializer.serialize_series_detail(series)}}
     end
-  rescue
-    Ecto.NoResultsError -> {:error, :not_found}
   end
 
   def episode_detail(id) do
@@ -258,6 +251,16 @@ defmodule StreamixWeb.Catalog.Api do
     end
   end
 
+  @doc """
+  Provider copies of a series, one per provider, in the series detail page's
+  order. The id resolves exactly like `series_detail/1`.
+  """
+  def series_sources(id) do
+    with {:ok, series} <- public_series_with_seasons(id) do
+      {:ok, %{data: Sources.for_series(series)}}
+    end
+  end
+
   @doc "Equivalent playable copies of an episode, resolved like `episode_detail/1`."
   def episode_sources(id) do
     case Streamix.Catalog.get_public_episode(id) do
@@ -271,6 +274,15 @@ defmodule StreamixWeb.Catalog.Api do
       nil -> {:error, :not_found}
       channel -> {:ok, %{data: %{stream_url: StreamUrls.signed_channel_url(channel)}}}
     end
+  end
+
+  defp public_series_with_seasons(id) do
+    case Streamix.Catalog.get_public_series(id) do
+      nil -> {:error, :not_found}
+      series -> {:ok, Streamix.Catalog.get_series_with_sync!(series.id)}
+    end
+  rescue
+    Ecto.NoResultsError -> {:error, :not_found}
   end
 
   defp search_buckets(query, limit, provider_opts, timeout) do
