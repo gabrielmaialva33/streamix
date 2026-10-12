@@ -46,6 +46,12 @@ defmodule Streamix.Embedplay do
   """
   defdelegate health(), to: Health, as: :status
 
+  @doc """
+  Whether `movie`'s provider is degraded. Cheap — no resolution — so a `HEAD`
+  probe can report the same state a `GET` would.
+  """
+  defdelegate degraded?(movie), to: Health
+
   @doc "Runs one health probe if one is due. See `Streamix.Embedplay.Canary`."
   defdelegate run_canary(), to: Canary, as: :run
 end

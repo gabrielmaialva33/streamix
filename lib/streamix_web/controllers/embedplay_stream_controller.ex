@@ -9,13 +9,20 @@ defmodule StreamixWeb.EmbedplayStreamController do
   def master(conn, %{"token" => token}) do
     with true <- Embedplay.enabled?(),
          {:ok, movie} <- StreamToken.authorize_embedplay_movie(token) do
-      if head_request?(conn) do
-        conn
-        |> cors()
-        |> put_resp_content_type("application/vnd.apple.mpegurl")
-        |> send_resp(200, "")
-      else
-        open_and_serve(conn, movie, token)
+      cond do
+        not head_request?(conn) ->
+          open_and_serve(conn, movie, token)
+
+        # A HEAD that answered 200 while GET answered 503 made a client that
+        # probes first mount its player and then fail with a generic error.
+        Embedplay.degraded?(movie) ->
+          error(conn, :provider_degraded)
+
+        true ->
+          conn
+          |> cors()
+          |> put_resp_content_type("application/vnd.apple.mpegurl")
+          |> send_resp(200, "")
       end
     else
       false -> error(conn, :provider_disabled)
@@ -34,17 +41,25 @@ defmodule StreamixWeb.EmbedplayStreamController do
   def video(conn, %{"token" => token}) do
     with true <- Embedplay.enabled?(),
          {:ok, movie} <- StreamToken.authorize_embedplay_movie(token) do
-      if head_request?(conn) do
+      cond do
+        not head_request?(conn) ->
+          stream_video(conn, movie, true)
+
+        # The TV HTML5 backend probes with HEAD and mounts <video> on a 200, so
+        # HEAD has to report the same degraded state a GET would; otherwise the
+        # viewer gets a generic playback failure instead of "unavailable".
+        Embedplay.degraded?(movie) ->
+          error(conn, :provider_degraded)
+
         # Resolving starts a browser for about ten seconds; HEAD only has to
         # name the format, which the TV HTML5 backend uses to choose native
         # playback. The length is unknown until resolution, so it is omitted.
-        conn
-        |> cors()
-        |> put_resp_content_type("video/mp4", nil)
-        |> put_resp_header("accept-ranges", "bytes")
-        |> send_resp(200, "")
-      else
-        stream_video(conn, movie, true)
+        true ->
+          conn
+          |> cors()
+          |> put_resp_content_type("video/mp4", nil)
+          |> put_resp_header("accept-ranges", "bytes")
+          |> send_resp(200, "")
       end
     else
       false -> error(conn, :provider_disabled)

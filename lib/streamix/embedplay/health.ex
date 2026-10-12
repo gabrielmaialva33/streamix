@@ -82,6 +82,13 @@ defmodule Streamix.Embedplay.Health do
       process never saw the trip (the canary passes it: the window may have
       been lost on deploy while the persisted state survived)
   """
+  # Known, bounded race: the window decides transitions in one process, but
+  # the persisted write happens in the caller. A trip decided just before a
+  # recovery can therefore be *written* after it, leaving the row degraded
+  # while the window believes it is healthy. It is left in place rather than
+  # moving database I/O into the window process: the canary probes on every
+  # tick while the row says degraded and passes `recover: true`, so the state
+  # converges within one tick (30 minutes) without anyone acting on it.
   @spec observe(term(), term(), keyword()) :: :ok
   def observe(movie_id, result, opts \\ []) do
     server = Keyword.get(opts, :server, __MODULE__)

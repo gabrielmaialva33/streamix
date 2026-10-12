@@ -294,6 +294,23 @@ defmodule StreamixWeb.EmbedplayStreamControllerTest do
       refute_received {:upstream, _host, _path, _headers}
     end
 
+    test "HEAD reports a degraded provider instead of advertising the format",
+         %{video: video} = context do
+      # The TV HTML5 backend probes with HEAD and mounts <video> on a 200. A HEAD
+      # that said 200 while GET answered 503 sent the viewer a generic playback
+      # failure instead of the "unavailable" notice.
+      {:ok, _provider} = Providers.mark_embedplay_degraded(:resolver_outdated)
+
+      for path <- [video, context.master] do
+        response = head(build_conn(), path)
+
+        assert response.status == 503
+        assert get_resp_header(response, "access-control-allow-origin") == ["*"]
+      end
+
+      refute_received {:upstream, _host, _path, _headers}
+    end
+
     test "GET without Range streams the whole file as 200, never 206", %{video: video} do
       response = get(build_conn(), video)
 
