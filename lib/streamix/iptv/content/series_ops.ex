@@ -363,8 +363,11 @@ defmodule Streamix.Iptv.SeriesOps do
 
   @doc """
   Lists visible provider variants for the same canonical series.
+
+  A `nil` user is an anonymous (API-key) viewer and only sees variants from
+  public/global providers.
   """
-  @spec list_variants(Series.t(), integer(), keyword()) :: [Series.t()]
+  @spec list_variants(Series.t(), integer() | nil, keyword()) :: [Series.t()]
   def list_variants(%Series{} = series, user_id, opts \\ []) do
     Queries.list_variants(series, user_id, opts)
   end

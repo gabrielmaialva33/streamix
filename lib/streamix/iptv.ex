@@ -331,6 +331,7 @@ defmodule Streamix.Iptv do
   defdelegate provider_health_summary(), to: ProviderBoundary
   defdelegate provider_health_summary(reports), to: ProviderBoundary
   defdelegate list_provider_health_reports(opts \\ []), to: ProviderBoundary
+  defdelegate provider_health_statuses(providers), to: ProviderBoundary
   defdelegate cached_provider_health_summary(), to: ProviderBoundary
 
   defdelegate provider_stream_url_chain(provider, original_url), to: PlaybackBoundary

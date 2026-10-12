@@ -90,6 +90,41 @@ defmodule Streamix.Iptv.ProviderHealthTest do
     assert report.capabilities.expires_at
   end
 
+  test "statuses/1 classifies loaded providers like the report without probing upstream" do
+    open_circuit = global_provider_fixture()
+    probed = global_provider_fixture()
+    unprobed = global_provider_fixture()
+
+    inactive =
+      global_provider_fixture()
+      |> Ecto.Changeset.change(is_active: false)
+      |> Repo.update!()
+
+    for _ <- 1..5 do
+      XtreamCircuitBreaker.report_error(open_circuit.id, :server_error)
+    end
+
+    probe_key = {:provider_probe, probed.id}
+    ConCache.put(:streamix_l1_cache, probe_key, %{status: :degraded, capabilities: nil})
+    on_exit(fn -> ConCache.delete(:streamix_l1_cache, probe_key) end)
+
+    statuses = ProviderHealth.statuses([open_circuit, probed, unprobed, inactive])
+
+    # A cache miss means "no evidence": probing the unreachable example.com
+    # host would have classified `unprobed` as unhealthy instead.
+    assert statuses == %{
+             open_circuit.id => :unhealthy,
+             probed.id => :degraded,
+             unprobed.id => :unknown,
+             inactive.id => :unhealthy
+           }
+
+    reported = Map.new(ProviderHealth.list_reports(probe: false), &{&1.id, &1.status})
+
+    assert Map.take(reported, [open_circuit.id, unprobed.id]) ==
+             Map.take(statuses, [open_circuit.id, unprobed.id])
+  end
+
   test "a provider its health monitor degraded reports unhealthy while still active" do
     provider = global_provider_fixture(%{name: "Embedplay", provider_type: :embedplay})
     {:ok, _provider} = Streamix.Providers.mark_embedplay_degraded(:no_source_available)

@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   """
   use StreamixWeb, :live_view
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
 
@@ -523,7 +524,8 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               Stream {@variant.stream_id}
             </span>
             <span
-              :for={badge <- version_badges(@variant)}
+              :for={badge <- SourceBadges.badges(@variant)}
+              data-source-badge
               class="rounded bg-brand/10 px-2 py-1 font-medium text-brand"
             >
               {badge}
@@ -625,28 +627,4 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   end
 
   defp version_categories(_), do: []
-
-  defp version_badges(variant) do
-    source = "#{variant.name} #{variant.title}"
-    downcased = String.downcase(source)
-
-    [
-      extension_label(variant.container_extension),
-      contains_badge(downcased, "4k", "4K"),
-      contains_badge(downcased, "hdr", "HDR"),
-      contains_badge(downcased, "legendado", "LEG"),
-      contains_badge(downcased, "dublado", "DUB")
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-  end
-
-  defp extension_label(extension) when is_binary(extension) and extension != "",
-    do: String.upcase(extension)
-
-  defp extension_label(_), do: nil
-
-  defp contains_badge(value, needle, label) do
-    if String.contains?(value, needle), do: label
-  end
 end

@@ -248,6 +248,21 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       assert Enum.map(Iptv.list_movie_variants(selected, user.id), & &1.id) == []
     end
 
+    test "list_movie_variants/3 without a user only returns public and global copies" do
+      public = provider_fixture(user_fixture(), %{name: "Public", visibility: :public})
+      global = global_provider_fixture(%{name: "Global"})
+      private = provider_fixture(user_fixture(), %{name: "Private"})
+
+      movie = movie_fixture(public, %{name: "Anonymous Feature", tmdb_id: "4242"})
+      global_copy = movie_fixture(global, %{name: "Anonymous Feature", tmdb_id: "4242"})
+      _private_copy = movie_fixture(private, %{name: "Anonymous Feature", tmdb_id: "4242"})
+
+      assert movie
+             |> Iptv.list_movie_variants(nil)
+             |> Enum.map(& &1.id)
+             |> Enum.sort() == Enum.sort([movie.id, global_copy.id])
+    end
+
     test "list_visible_movies/2 collapses variants across visible providers" do
       user = user_fixture()
       global = global_provider_fixture(%{name: "Global"})

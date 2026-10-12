@@ -98,6 +98,10 @@ defmodule Streamix.Iptv.Access do
   Builds a base query for listing content from visible providers.
   Used for search and listing operations.
 
+  A `nil` user is an anonymous viewer (an API-key integration without a
+  session), so only public/global providers are visible — the same scope as
+  `public_providers/1`.
+
   ## Example
 
       Movie
@@ -105,7 +109,9 @@ defmodule Streamix.Iptv.Access do
       |> where([m, _p], ilike(m.name, ^"%query%"))
       |> Repo.all()
   """
-  @spec visible_to_user(Ecto.Queryable.t(), integer()) :: Ecto.Query.t()
+  @spec visible_to_user(Ecto.Queryable.t(), integer() | nil) :: Ecto.Query.t()
+  def visible_to_user(schema, nil), do: public_providers(schema)
+
   def visible_to_user(schema, user_id) do
     schema
     |> join(:inner, [c], p in Provider, as: :provider, on: c.provider_id == p.id)

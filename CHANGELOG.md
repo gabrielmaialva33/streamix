@@ -13,8 +13,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   synchronized counts without upstream URLs or credentials.
 - `provider_id` and `provider_type` filters across public listings, categories, featured, home, curated shelves,
   ranked search, and suggestions.
-- An executable OpenAPI 3 contract for all 19 catalog operations, served as JSON at `/api/v1/openapi.json` with an
+- An executable OpenAPI 3 contract for all 21 catalog operations, served as JSON at `/api/v1/openapi.json` with an
   interactive UI at `/api/v1/docs`.
+- `GET /api/v1/catalog/movies/:id/sources` and `GET /api/v1/catalog/episodes/:id/sources` list the equivalent playable
+  copies of a title, best first, with provider health, raw title, container and the same version badges as the web
+  source picker. Torrent copies and copies the stream endpoint would refuse are never listed.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
 

@@ -12,6 +12,7 @@ defmodule StreamixWeb.Catalog.Serializer do
   alias Streamix.Helpers
   alias StreamixWeb.Catalog.ImageProxy
   alias StreamixWeb.Catalog.StreamUrls
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Helpers.ResizeUrl
 
   # Netflix-style responsive images: hand clients a stable set of
@@ -241,6 +242,32 @@ defmodule StreamixWeb.Catalog.Serializer do
       stream_url: StreamUrls.signed_episode_url(episode),
       browser_stream_url: StreamUrls.browser_episode_url(episode),
       provider: serialize_provider_ref(series.provider)
+    }
+  end
+
+  # ---------------------------------------------------------------------
+  # Playback sources
+  # ---------------------------------------------------------------------
+
+  @doc """
+  Shapes one equivalent playable copy of a movie or episode.
+
+  `source` is a failover candidate (`StreamixWeb.PlayerHelpers.failover_sources/3`)
+  and `provider_status` the provider's health classification.
+  """
+  def serialize_source(source, provider_status, flags) do
+    content = source.content
+
+    %{
+      id: source.id,
+      provider_id: source.provider.id,
+      provider_name: source.provider.name,
+      provider_status: Atom.to_string(provider_status),
+      title: Map.get(content, :name) || Map.get(content, :title),
+      container_extension: Map.get(content, :container_extension),
+      badges: SourceBadges.badges(content),
+      recommended: Keyword.fetch!(flags, :recommended),
+      current: Keyword.fetch!(flags, :current)
     }
   end
 

@@ -440,8 +440,11 @@ defmodule Streamix.Iptv.Movies do
   This powers the detail-page version picker: the browse grid can show a
   single canonical card while the detail page still exposes provider/category
   variants such as 4K, HDR, dubbed, or alternate upstream copies.
+
+  A `nil` user is an anonymous (API-key) viewer and only sees variants from
+  public/global providers.
   """
-  @spec list_variants(Movie.t(), integer(), keyword()) :: [Movie.t()]
+  @spec list_variants(Movie.t(), integer() | nil, keyword()) :: [Movie.t()]
   def list_variants(%Movie{} = movie, user_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 24)
     candidate_limit = max(limit * 4, 48)

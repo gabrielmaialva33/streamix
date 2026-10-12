@@ -139,5 +139,12 @@ defmodule Streamix.Providers do
   defdelegate provider_health_summary(), to: ProviderHealth, as: :overall_status
   defdelegate provider_health_summary(reports), to: ProviderHealth, as: :overall_status
   defdelegate list_provider_health_reports(opts \\ []), to: ProviderHealth, as: :list_reports
+
+  @doc """
+  Returns `%{provider_id => status}` for loaded providers, with the same
+  classification as `list_provider_health_reports/1` but without probing
+  upstream on the caller's path.
+  """
+  defdelegate provider_health_statuses(providers), to: ProviderHealth, as: :statuses
   defdelegate cached_provider_health_summary(), to: ProviderHealthMonitor, as: :get
 end

@@ -61,6 +61,25 @@ defmodule Streamix.Iptv.ProviderHealth do
   end
 
   @doc """
+  Classifies already-loaded providers with the rules of `list_reports/1`,
+  returning `%{provider_id => status}`.
+
+  Meant for request paths, so it never waits on an upstream round trip: the
+  Xtream account probe is read from the cache that `list_reports/1` and
+  `Streamix.Iptv.ProviderHealthMonitor` keep warm, and a provider without a
+  cached probe is classified from its circuit breaker and observed traffic,
+  exactly like `list_reports(probe: false)`.
+  """
+  @spec statuses([Provider.t()]) :: %{integer() => status()}
+  def statuses(providers) when is_list(providers) do
+    cb_by_id = circuit_states_by_id()
+
+    Map.new(providers, fn %Provider{} = provider ->
+      {provider.id, build_report(provider, cb_by_id, probe: :cached).status}
+    end)
+  end
+
+  @doc """
   Summary of the overall system: one of `:healthy | :degraded | :unhealthy`,
   plus a count of providers in each state. Useful for a single
   top-of-page banner decision.
@@ -152,6 +171,7 @@ defmodule Streamix.Iptv.ProviderHealth do
     probe =
       cond do
         Keyword.get(opts, :probe, true) == false -> nil
+        Keyword.get(opts, :probe) == :cached -> peek_cached_probe(provider)
         probe_fun = Keyword.get(opts, :probe_fun) -> normalize_probe(probe_fun.(provider))
         true -> provider |> cached_probe() |> normalize_probe()
       end
@@ -175,6 +195,17 @@ defmodule Streamix.Iptv.ProviderHealth do
     # If the cache isn't available for some reason (test env), fall
     # through to the uncached probe rather than returning `:unknown`.
     _ -> probe_xtream(provider)
+  end
+
+  # Reads the probe cache without filling it, so the caller never pays for
+  # an upstream probe. A miss means "no probe evidence", not `:unknown`.
+  defp peek_cached_probe(%Provider{id: id}) do
+    case ConCache.get(:streamix_l1_cache, {:provider_probe, id}) do
+      nil -> nil
+      probe -> normalize_probe(probe)
+    end
+  rescue
+    _ -> nil
   end
 
   defp probe_xtream(%Provider{} = provider) do

@@ -8,6 +8,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
   @sorts ["rating_desc", "created_desc", "year_desc", "name_asc"]
   @category_types ["live", "vod", "series"]
   @content_types ["movie", "series"]
+  @provider_statuses ["healthy", "degraded", "unhealthy", "unknown"]
 
   def schemas do
     movie_card = movie_card_properties()
@@ -168,6 +169,20 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
       "SeriesDetailResponse" => resource_response("SeriesDetailResponse", "SeriesDetail"),
       "EpisodeDetail" => episode_detail(),
       "EpisodeDetailResponse" => resource_response("EpisodeDetailResponse", "EpisodeDetail"),
+      "PlaybackSource" => playback_source(),
+      "PlaybackSourcesResponse" =>
+        Common.object(
+          "PlaybackSourcesResponse",
+          %{
+            data:
+              Common.array(Common.ref("PlaybackSource"),
+                description:
+                  "Best source first. Empty when no copy is playable through this API; " <>
+                    "may contain only the requested id."
+              )
+          },
+          [:data]
+        ),
       "ChannelDetail" => channel_detail(),
       "ChannelDetailResponse" => resource_response("ChannelDetailResponse", "ChannelDetail"),
       "RankedMovieCard" =>
@@ -404,6 +419,46 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
         :duration,
         :air_date
       ]
+    )
+  end
+
+  defp playback_source do
+    properties = %{
+      id:
+        Common.id(
+          "Movie or episode identifier of this copy; request its playback URL from the " <>
+            "matching /stream endpoint"
+        ),
+      provider_id: Common.id("Provider serving this copy"),
+      provider_name: Common.string(min_length: 1, description: "Provider display name"),
+      provider_status:
+        Common.string(
+          enum: @provider_statuses,
+          description: "Provider classification, as reported by GET /api/v1/providers/status"
+        ),
+      title: Common.string(nullable: true, description: "Raw provider title of this copy"),
+      container_extension: Common.string(nullable: true, description: "File container"),
+      badges:
+        Common.array(Common.string(min_length: 1),
+          description: "Container, quality and audio labels; same rule as the web source picker",
+          unique_items: true
+        ),
+      recommended: Common.boolean(description: "Ranked first; true for at most one source"),
+      current: Common.boolean(description: "This is the requested id")
+    }
+
+    Common.object("PlaybackSource", properties, Map.keys(properties),
+      example: %{
+        "id" => 4_643_247,
+        "provider_id" => 4,
+        "provider_name" => "GIndex",
+        "provider_status" => "healthy",
+        "title" => "Dune Part Two 4K Dublado",
+        "container_extension" => "mkv",
+        "badges" => ["MKV", "4K", "DUB"],
+        "recommended" => true,
+        "current" => true
+      }
     )
   end
 

@@ -8,6 +8,7 @@ defmodule StreamixWeb.Catalog.Api do
   alias StreamixWeb.Catalog.Pagination
   alias StreamixWeb.Catalog.Params
   alias StreamixWeb.Catalog.Serializer
+  alias StreamixWeb.Catalog.Sources
   alias StreamixWeb.Catalog.StreamUrls
 
   def featured(params \\ %{}) do
@@ -243,6 +244,25 @@ defmodule StreamixWeb.Catalog.Api do
     case Streamix.Catalog.get_public_episode(id) do
       nil -> {:error, :not_found}
       episode -> {:ok, %{data: %{stream_url: StreamUrls.signed_episode_url(episode)}}}
+    end
+  end
+
+  @doc """
+  Equivalent playable copies of a movie, best first. The id resolves exactly
+  like `movie_detail/1`, so an id that page would 404 also 404s here.
+  """
+  def movie_sources(id) do
+    case Streamix.Catalog.get_public_movie(id) do
+      nil -> {:error, :not_found}
+      movie -> {:ok, %{data: Sources.for_movie(movie)}}
+    end
+  end
+
+  @doc "Equivalent playable copies of an episode, resolved like `episode_detail/1`."
+  def episode_sources(id) do
+    case Streamix.Catalog.get_public_episode(id) do
+      nil -> {:error, :not_found}
+      episode -> {:ok, %{data: Sources.for_episode(episode)}}
     end
   end
 

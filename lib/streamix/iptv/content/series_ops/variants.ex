@@ -7,7 +7,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.Variants do
   alias Streamix.Iptv.Content.{SourceEquivalence, VariantCards}
   alias Streamix.Repo
 
-  @spec list(Series.t(), integer(), keyword()) :: [Series.t()]
+  @spec list(Series.t(), integer() | nil, keyword()) :: [Series.t()]
   def list(%Series{} = series, user_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 12)
     candidate_limit = max(limit * 4, 32)

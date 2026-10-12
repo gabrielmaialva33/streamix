@@ -213,6 +213,38 @@ defmodule StreamixWeb.Api.V1.CatalogController do
       too_many_requests: @rate_limited
     ]
 
+  operation :movie_sources,
+    operation_id: "catalog.movies.sources",
+    summary: "List the playable sources of a movie",
+    description:
+      "Returns the equivalent provider copies of the movie that its stream endpoint would " <>
+        "sign, including the requested one, ranked best first by provider runtime health. " <>
+        "Torrent copies are never listed.",
+    parameters: Schemas.id_parameter("Movie"),
+    responses: [
+      ok: {"Playable sources, best first", @json, Schemas.ref("PlaybackSourcesResponse")},
+      bad_request: @invalid_filter,
+      not_found: @not_found,
+      unauthorized: @unauthorized,
+      too_many_requests: @rate_limited
+    ]
+
+  operation :episode_sources,
+    operation_id: "catalog.episodes.sources",
+    summary: "List the playable sources of an episode",
+    description:
+      "Returns the same season/episode number in equivalent provider copies of the series " <>
+        "that the episode stream endpoint would sign, including the requested one, ranked " <>
+        "best first by provider runtime health.",
+    parameters: Schemas.id_parameter("Episode"),
+    responses: [
+      ok: {"Playable sources, best first", @json, Schemas.ref("PlaybackSourcesResponse")},
+      bad_request: @invalid_filter,
+      not_found: @not_found,
+      unauthorized: @unauthorized,
+      too_many_requests: @rate_limited
+    ]
+
   operation :movie_stream,
     operation_id: "catalog.movies.stream",
     summary: "Create a signed movie playback URL",
@@ -276,6 +308,14 @@ defmodule StreamixWeb.Api.V1.CatalogController do
 
   def show_channel(conn, %{"id" => id}) do
     render_id_result(conn, id, &Api.channel_detail/1, "Channel not found")
+  end
+
+  def movie_sources(conn, %{"id" => id}) do
+    render_id_result(conn, id, &Api.movie_sources/1, "Movie not found")
+  end
+
+  def episode_sources(conn, %{"id" => id}) do
+    render_id_result(conn, id, &Api.episode_sources/1, "Episode not found")
   end
 
   def movie_stream(conn, %{"id" => id}) do
