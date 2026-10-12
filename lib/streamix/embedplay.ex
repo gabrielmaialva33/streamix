@@ -32,6 +32,10 @@ defmodule Streamix.Embedplay do
   def open_movie(movie), do: Health.guard(movie, fn -> Sessions.open(movie) end)
 
   defdelegate fetch_resource(session_id, resource_id, movie_id, opts \\ []), to: Gateway
+
+  defdelegate stream_resource(session_id, resource_id, movie_id, opts, acc, sink),
+    to: Gateway
+
   defdelegate rewrite_playlist(body, base_url, session_id, movie_id, resource_url), to: Gateway
   defdelegate invalidate_session(session_id), to: Sessions, as: :invalidate
 

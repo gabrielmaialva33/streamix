@@ -67,10 +67,16 @@ enrichment fix before allowing the paused queue to resume.
 
 ## Playback validation and catalog
 
-Follow [the one-movie import](embedplay-catalog.md) first. Test the signed Streamix
-gateway with a real HLS player, including segment loading and seeking. Keep all
-signed URLs in private temporary files and remove them after testing. Check a
-second master request to measure cache reuse separately from first resolution.
+Follow [the one-movie import](embedplay-catalog.md) first. Run the
+`20261012181003` migration so existing EmbedPlay movies hint `mp4` to the web
+player. Test the signed `video.mp4` URL with a real browser and the TV app,
+including the initial load, seeking, and a pause long enough to release the
+connection; for an HLS source, test the `master.m3u8` gateway with a real HLS
+player, including segment loading and seeking. Keep all signed URLs in private
+temporary files and remove them after testing. Check a second request to
+measure cache reuse separately from first resolution. Size
+`EMBEDPLAY_MAX_CONCURRENT_FETCHES` for the expected concurrent MP4 viewers: each
+holds a fetch lease for as long as its player keeps the response open.
 
 Only then enqueue the full inventory sync. It imports IDs and schedules TMDB
 details; it does not resolve every film. If `tmdb_details` is paused, full catalog

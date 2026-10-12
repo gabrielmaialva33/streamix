@@ -171,6 +171,9 @@ defmodule StreamixWeb.Router do
     options "/master.m3u8", EmbedplayStreamController, :options
     get "/master.m3u8", EmbedplayStreamController, :master
     head "/master.m3u8", EmbedplayStreamController, :master
+    options "/video.mp4", EmbedplayStreamController, :options
+    get "/video.mp4", EmbedplayStreamController, :video
+    head "/video.mp4", EmbedplayStreamController, :video
     options "/:session_id/:resource_id", EmbedplayStreamController, :options
     get "/:session_id/:resource_id", EmbedplayStreamController, :resource
     head "/:session_id/:resource_id", EmbedplayStreamController, :resource

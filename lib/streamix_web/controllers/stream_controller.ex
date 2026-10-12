@@ -49,7 +49,7 @@ defmodule StreamixWeb.StreamController do
 
       {:error, :embedplay_playback_required} ->
         redirect(conn,
-          to: "/api/stream/embedplay/master.m3u8?token=#{URI.encode_www_form(token)}"
+          to: "/api/stream/embedplay/video.mp4?token=#{URI.encode_www_form(token)}"
         )
 
       {:error, reason} ->

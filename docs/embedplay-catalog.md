@@ -10,7 +10,8 @@ Apply database migrations and configure the private browser resolver before enab
 `EMBEDPLAY_ENABLED=true`. No catalog crawl runs at startup; once enabled, a daily cron
 (06:43 UTC) refreshes the inventory, and is skipped while resolution is degraded (see
 [Resolution health](#resolution-health)). Activation alone does not import any content. See [the playback documentation](embedplay-playback.md) for the resolver
-and HLS session gateway.
+and the progressive MP4 / HLS playback gateway. Imported movies record `container_extension`
+`mp4`, which the web player uses to choose native progressive playback.
 
 From an application console, import a movie whose availability you have confirmed:
 
@@ -97,11 +98,14 @@ Thresholds are application configuration (`config/config.exs`, `:embedplay`):
 | `EMBEDPLAY_RESOLVER_URL` | unset | Private browser resolver base URL |
 | `EMBEDPLAY_RESOLVER_SECRET` | unset | Shared secret, also configured on the resolver |
 | `EMBEDPLAY_RESOLVE_TIMEOUT_MS` | `45000` | Backend resolution deadline, 1000–120000 ms |
-| `EMBEDPLAY_SESSION_TTL_SECONDS` | `600` | Resolved-source reuse for new playback starts, 30–3600 seconds |
+| `EMBEDPLAY_SESSION_TTL_SECONDS` | `600` | HLS resolved-source reuse for new playback starts, 30–3600 seconds |
 | `EMBEDPLAY_MAX_SESSIONS` | `128` | Per-process session bound, 1–1024 |
+| `EMBEDPLAY_MAX_CONCURRENT_FETCHES` | `64` | Concurrent upstream fetches, 1–512; for MP4, roughly concurrent viewers |
 
 This reuse window does not terminate active playback. A resource graph remains available
 while used, with cleanup after 30 minutes of inactivity or an explicit upstream expiry.
+An MP4 session is reused while alive regardless of the window, because every range request
+of a progressive playback opens the movie again (see the playback documentation).
 No upstream token lifetime is inferred from its URL.
 Disabling the feature prevents new resolution, imports and full sync. To hide already imported
 cards, deactivate its provider row as well.

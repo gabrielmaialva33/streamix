@@ -89,7 +89,9 @@ defmodule Streamix.Iptv.Content.EmbedplayMovies do
           catalog_item_id: item.id,
           stream_id: tmdb_id,
           name: "TMDB #{tmdb_id}",
-          container_extension: "m3u8"
+          # The web player's `data-stream-type` comes from this extension and
+          # decides its engine; EmbedPlay movies are served as progressive MP4.
+          container_extension: "mp4"
         })
       )
       |> Repo.insert()
