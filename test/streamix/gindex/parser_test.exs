@@ -109,6 +109,42 @@ defmodule Streamix.Gindex.ParserTest do
     end
   end
 
+  describe "parse_anime_episode/1 — the season the marker carries" do
+    # `SxxEyy` and `NxNN` name a season as well as an episode. Reading only the
+    # episode out of them filed files from different seasons under one, where
+    # their numbers collided and all but one were dropped on ingest.
+
+    test "reports the season from `SxxEyy`" do
+      result = Parser.parse_anime_episode("This.Is.Us.S05E03.Changes.1080p.WEB-DL.DUAL.mkv")
+      assert result.season == 5
+      assert result.episode == 3
+    end
+
+    test "reports the season from `NxNN`" do
+      result = Parser.parse_anime_episode("This Is Us - 3x11 - Songbird Road Part One.mkv")
+      assert result.season == 3
+      assert result.episode == 11
+    end
+
+    test "reports the season from a spaced marker the dotted parser cannot read" do
+      result = Parser.parse_anime_episode("[Grupo] Title - S01E02 [1080p].mkv")
+      assert result.season == 1
+      assert result.episode == 2
+    end
+
+    test "reports no season when the filename carries none" do
+      result = Parser.parse_anime_episode("[Erai-raws] Spy x Family - 01 [1080p].mkv")
+      assert result.season == nil
+      assert result.episode == 1
+    end
+
+    test "does not read a resolution as a season" do
+      result = Parser.parse_anime_episode("[KO] Aikatsu on Parade! - 05 [HD 1280x720 AAC].mkv")
+      assert result.season == nil
+      assert result.episode == 5
+    end
+  end
+
   describe "parse_anime_episode/1 — fallback doesn't confuse year/resolution with episode" do
     test "ignores year in parentheses" do
       # Regression: a naive `\d+` match would collapse `(2021)` to

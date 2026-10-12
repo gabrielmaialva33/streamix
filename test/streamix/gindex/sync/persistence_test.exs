@@ -1,5 +1,8 @@
 defmodule Streamix.Gindex.Sync.PersistenceTest do
-  use Streamix.DataCase, async: true
+  # Not async: one case reconfigures the global Logger level.
+  use Streamix.DataCase, async: false
+
+  import ExUnit.Callbacks, only: [on_exit: 1]
 
   alias Streamix.Gindex.Sync.Persistence
   alias Streamix.Iptv.{CatalogItem, Episode, Provider}
@@ -195,6 +198,76 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       assert {:ok, 2} = sync(provider, series_with([{111, 1}, {222, 2}]), DateTime.add(now, 60))
 
       assert Repo.aggregate(from(e in Episode, where: e.episode_num < 0), :count) == 0
+    end
+  end
+
+  describe "a number reassigned from a file that is gone" do
+    # The collision neither conflict target can resolve: a file that is still
+    # in the listing moves onto a number held by a row whose own file is not.
+    # Because the mover upserts on episode_id, the row in its way is never
+    # visited and Postgres rejects the batch on (season_id, episode_num). In
+    # production this left /0:/Animes/ `failed` and
+    # /1:/Séries/Séries Misturado/ retrying for eleven days.
+
+    test "drops the stale row and lets the surviving file take the number" do
+      provider = gindex_provider()
+      now = ~U[2026-10-12 12:00:00Z]
+
+      # The production shape, from /0:/Animes/Digimon Savers/: one file parsed
+      # as 0 by the old digit-run fallback, another already holding 1.
+      assert {:ok, 2} = sync(provider, series_with([{111, 0}, {222, 1}]), now)
+
+      kept = Repo.get_by!(Episode, episode_id: 111)
+      gone = Repo.get_by!(Episode, episode_id: 222)
+
+      # Only the first file is still upstream, and it now parses as 1.
+      assert {:ok, 1} = sync(provider, series_with([{111, 1}]), DateTime.add(now, 60))
+
+      assert episode_rows() == [{111, 1}]
+
+      moved = Repo.get_by!(Episode, episode_id: 111)
+      assert moved.id == kept.id
+      assert moved.catalog_item_id == kept.catalog_item_id
+      refute Repo.get(Episode, gone.id)
+    end
+
+    test "still repurposes the row when a new file claims the number" do
+      # Unchanged behaviour: when the claimant is a file the season has never
+      # seen, (season_id, episode_num) is the conflict target and the row is
+      # reused rather than dropped, so its catalog item survives.
+      provider = gindex_provider()
+      now = ~U[2026-10-12 12:00:00Z]
+
+      assert {:ok, 1} = sync(provider, series_with([{111, 1}]), now)
+      original = Repo.one!(Episode)
+
+      assert {:ok, 1} = sync(provider, series_with([{999, 1}]), DateTime.add(now, 60))
+
+      reused = Repo.one!(Episode)
+      assert reused.id == original.id
+      assert reused.catalog_item_id == original.catalog_item_id
+      assert reused.episode_id == 999
+    end
+
+    @tag :capture_log
+    test "says which files it drops when two share a number" do
+      provider = gindex_provider()
+      now = ~U[2026-10-12 12:00:00Z]
+
+      # The suite runs the Logger at :warning, and this is reported at :info
+      # precisely because it is an ordinary event rather than a fault.
+      previous = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: previous) end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, 1} = sync(provider, series_with([{111, 7}, {222, 7}]), now)
+        end)
+
+      # Silence here is how the catalogue lost episodes without a trace.
+      assert log =~ "collide on an episode number"
+      assert episode_rows() == [{111, 7}]
     end
   end
 

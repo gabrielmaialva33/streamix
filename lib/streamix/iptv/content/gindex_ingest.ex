@@ -3,6 +3,8 @@ defmodule Streamix.Iptv.Content.GindexIngest do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias Streamix.Iptv.{CatalogItem, Episode, Movie, Season, Series}
   alias Streamix.Iptv.Sync.Helpers
   alias Streamix.Repo
@@ -159,11 +161,14 @@ defmodule Streamix.Iptv.Content.GindexIngest do
   # keeps its row and only moves number; everything else is matched by number
   # as before.
   defp upsert_episodes(season_id, episodes, provider_id, now) do
-    episodes = Enum.uniq_by(episodes, &Map.fetch!(&1, :episode_num))
+    episodes = dedupe_by_number(episodes, season_id)
     existing = existing_episodes(season_id)
 
     {renumbered, fresh} =
       Enum.split_with(episodes, &Map.has_key?(existing.by_id, Map.fetch!(&1, :episode_id)))
+
+    stale = stale_blockers(existing, renumbered, episodes)
+    drop_stale(stale)
 
     # A renumbered file takes its catalog item with it. Without holding it back,
     # a different file arriving at the number it vacated would be handed the
@@ -171,9 +176,12 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     # the common shape here, since a season that had collapsed onto one number
     # comes back with a full set of episodes.
     claimed = MapSet.new(renumbered, &Map.fetch!(existing.by_id, Map.fetch!(&1, :episode_id)))
+    discarded = MapSet.new(stale, & &1.catalog_item_id)
 
     reusable_by_number =
-      Map.reject(existing.by_number, fn {_number, item_id} -> MapSet.member?(claimed, item_id) end)
+      Map.reject(existing.by_number, fn {_number, item_id} ->
+        MapSet.member?(claimed, item_id) or MapSet.member?(discarded, item_id)
+      end)
 
     new_episodes =
       Enum.reject(fresh, &Map.has_key?(reusable_by_number, Map.fetch!(&1, :episode_num)))
@@ -205,6 +213,79 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     park_renumbered(existing, renumbered)
 
     replace_renumbered(renumbered_entries) + insert_by_number(fresh_entries)
+  end
+
+  # Two files in one season can still resolve to the same number, and in this
+  # catalogue that is ordinary rather than wrong: a title folder keeps several
+  # releases of the same episode side by side. Measured on
+  # /1:/Séries/Séries Misturado/This Is Us/, 180 files reduce to 106 distinct
+  # season/episode pairs. The unique index permits one row per pair, so the
+  # rest have to go.
+  #
+  # Reported at info, not warning: it fires for a few hundred seasons every
+  # cycle, and a warning for an expected condition only teaches people to stop
+  # reading the log. What was wrong before was dropping them in silence, which
+  # is how the catalogue lost episodes with no trace.
+  defp dedupe_by_number(episodes, season_id) do
+    deduped = Enum.uniq_by(episodes, &Map.fetch!(&1, :episode_num))
+
+    if length(deduped) < length(episodes) do
+      kept = MapSet.new(deduped, &Map.fetch!(&1, :episode_id))
+
+      dropped =
+        episodes
+        |> Enum.reject(&MapSet.member?(kept, Map.fetch!(&1, :episode_id)))
+        |> Enum.map(fn episode ->
+          "#{Map.fetch!(episode, :episode_num)}=#{Map.get(episode, :name)}"
+        end)
+
+      Logger.info(
+        "[GIndex Ingest] season #{season_id}: #{length(dropped)} file(s) collide on an " <>
+          "episode number already taken and were dropped: " <>
+          Enum.join(Enum.take(dropped, 5), " | ")
+      )
+    end
+
+    deduped
+  end
+
+  # The one collision neither conflict target can resolve. A renumbered file
+  # moves onto a number another row still holds; because that file upserts on
+  # episode_id, the row in its way is never visited and Postgres rejects the
+  # whole batch on (season_id, episode_num). In production this is what left
+  # /0:/Animes/ `failed` and /1:/Séries/Séries Misturado/ retrying for eleven
+  # days.
+  #
+  # Such a row is stale by construction: its own file is no longer in the
+  # listing, while the number it occupies now belongs to a file that is. The
+  # previous code could repurpose a row like this only when the claimant was a
+  # new file, because then (season_id, episode_num) was the conflict target.
+  #
+  # Deleting it is measured rather than assumed: `episode_assets` and
+  # `torrent_streams` are the only tables cascading from episodes.id, and no
+  # GIndex episode in production has a row in either.
+  defp stale_blockers(existing, renumbered, episodes) do
+    incoming_ids = MapSet.new(episodes, &Map.fetch!(&1, :episode_id))
+    reassigned = MapSet.new(renumbered, &Map.fetch!(&1, :episode_num))
+
+    Enum.filter(existing.rows, fn row ->
+      MapSet.member?(reassigned, row.episode_num) and
+        not MapSet.member?(incoming_ids, row.episode_id)
+    end)
+  end
+
+  defp drop_stale([]), do: :ok
+
+  defp drop_stale(rows) do
+    ids = Enum.map(rows, & &1.id)
+
+    Logger.info(
+      "[GIndex Ingest] dropping #{length(ids)} stale episode row(s) whose number was " <>
+        "reassigned to a file still present upstream"
+    )
+
+    Repo.delete_all(from(episode in Episode, where: episode.id in ^ids))
+    :ok
   end
 
   defp episode_entry(episode, season_id, catalog_item_id, now) do
@@ -270,27 +351,19 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     rows =
       Episode
       |> where(season_id: ^season_id)
-      |> select([episode], {
-        episode.id,
-        episode.episode_id,
-        episode.episode_num,
-        episode.catalog_item_id
+      |> select([episode], %{
+        id: episode.id,
+        episode_id: episode.episode_id,
+        episode_num: episode.episode_num,
+        catalog_item_id: episode.catalog_item_id
       })
       |> Repo.all()
 
     %{
-      by_id:
-        Map.new(rows, fn {_id, episode_id, _episode_number, catalog_item_id} ->
-          {episode_id, catalog_item_id}
-        end),
-      by_number:
-        Map.new(rows, fn {_id, _episode_id, episode_number, catalog_item_id} ->
-          {episode_number, catalog_item_id}
-        end),
-      row_by_id:
-        Map.new(rows, fn {id, episode_id, episode_number, _catalog_item_id} ->
-          {episode_id, %{id: id, episode_num: episode_number}}
-        end)
+      rows: rows,
+      by_id: Map.new(rows, &{&1.episode_id, &1.catalog_item_id}),
+      by_number: Map.new(rows, &{&1.episode_num, &1.catalog_item_id}),
+      row_by_id: Map.new(rows, &{&1.episode_id, %{id: &1.id, episode_num: &1.episode_num}})
     }
   end
 

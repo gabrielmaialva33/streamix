@@ -66,6 +66,43 @@ defmodule Streamix.Gindex.Scraper.SeriesTest do
       assert series.episode_count == 3
     end
 
+    test "splits a flat folder that mixes seasons in two notations" do
+      # /1:/Séries/Séries Misturado/This Is Us/ really looks like this: some
+      # files written `3x11`, others `S05e03`. Only the dotted form reported a
+      # season, so the rest piled onto the folder's season and collided —
+      # season 38843 in production holds 12 rows for three different seasons.
+      folder = folder("This Is Us")
+
+      files = [
+        file(folder, "This Is Us - 3x11 - Songbird Road Part One.mkv"),
+        file(folder, "This Is Us - 3x12 - Songbird Road Part Two.mkv"),
+        file(folder, "This.Is.Us.S05e03.Changes.1080p.WEB-DL.DUAL.mkv"),
+        file(folder, "This.Is.Us.S05e04.Honestly.1080p.WEB-DL.DUAL.mkv")
+      ]
+
+      assert {:ok, series} = scrape(folder, files)
+      assert [third, fifth] = series.seasons
+      assert third.season_number == 3
+      assert Enum.map(third.episodes, & &1.episode_num) == [11, 12]
+      assert fifth.season_number == 5
+      assert Enum.map(fifth.episodes, & &1.episode_num) == [3, 4]
+      assert series.season_count == 2
+      assert series.episode_count == 4
+    end
+
+    test "keeps the folder's season for files that carry no marker" do
+      folder = folder("A Dona do Pedaço (2019)")
+
+      files = [
+        file(folder, "A.Dona.do.Pedaço.E001.1080p.WEB-DL.mkv"),
+        file(folder, "A.Dona.do.Pedaço.E002.1080p.WEB-DL.mkv")
+      ]
+
+      assert {:ok, series} = scrape(folder, files)
+      assert [season] = series.seasons
+      assert season.season_number == 1
+    end
+
     test "anchors every episode to the file it came from" do
       folder = folder("7Seeds")
       files = [file(folder, "[Grupo] 7Seeds - 01 [1080p].mkv")]

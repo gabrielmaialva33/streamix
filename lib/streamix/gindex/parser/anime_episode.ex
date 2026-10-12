@@ -9,19 +9,20 @@ defmodule Streamix.Gindex.Parser.AnimeEpisode do
   Parses an anime episode filename.
   """
   def parse(nil),
-    do: %{episode: nil, group: nil, quality: nil, extension: nil, is_dual: false}
+    do: %{episode: nil, season: nil, group: nil, quality: nil, extension: nil, is_dual: false}
 
   def parse(filename) when is_binary(filename) do
     filename = String.trim(filename)
     {name_without_ext, extension} = Files.split_extension(filename)
 
-    episode = extract_anime_episode_number(name_without_ext)
+    {season, episode} = extract_season_and_episode(name_without_ext)
     group = extract_group(name_without_ext)
     quality = extract_quality(name_without_ext)
     is_dual = String.contains?(String.downcase(name_without_ext), "dual")
 
     %{
       episode: episode,
+      season: season,
       group: group,
       quality: quality,
       extension: extension,
@@ -44,19 +45,42 @@ defmodule Streamix.Gindex.Parser.AnimeEpisode do
     end
   end
 
+  # `SxxEyy` and `NxNN` name a season as well as an episode, and both have to
+  # be kept. Reading only the episode out of them put files from different
+  # seasons into one — a flat folder holding `3x11` beside `S05e11` had both
+  # land on episode 11 of the same season, where the unique index allows one
+  # and the other was dropped.
+  #
+  # Only `Parser.ReleaseName` used to supply a season, and only from the
+  # dot-separated `Title.S05E03.rest` shape, so `3x11` and `Title - S01E02
+  # [1080p]` had nowhere to put theirs.
+  defp extract_season_and_episode(name) do
+    case season_episode_marker(name) do
+      {_season, _episode} = pair -> pair
+      nil -> {nil, extract_anime_episode_number(name)}
+    end
+  end
+
+  defp season_episode_marker(name) do
+    [
+      ~r/\bS(\d{1,2})[\s._-]?E(\d{1,3})\b/i,
+      ~r/\b(\d{1,2})x(\d{1,3})\b/
+    ]
+    |> Enum.find_value(fn regex ->
+      with [_, season, episode] <- Regex.run(regex, name),
+           season when is_integer(season) <- safe_integer(season),
+           episode when is_integer(episode) <- safe_integer(episode) do
+        {season, episode}
+      else
+        _other -> nil
+      end
+    end)
+  end
+
   # Order matters: specific fansub layouts must win before the bare-number
   # fallback so extras, years, and resolutions do not become fake episodes.
-  #
-  # The two explicit season/episode markers come first because they are the
-  # only unambiguous ones. Without them these names reached the bare-number
-  # fallback, which takes the first 1-3 digit run in the filename: every
-  # episode of `ACCA 13-Territory ... - 1x01 -` scored 13 and the whole title
-  # collapsed to a single episode on ingest, and `Title - 1x01 - Name.mkv`
-  # (no brackets, no group) matched nothing at all and was dropped.
   defp extract_anime_episode_number(name) do
     patterns = [
-      ~r/\bS(?:\d{1,2})[\s._-]?E(\d{1,3})\b/i,
-      ~r/\b(?:\d{1,2})x(\d{1,3})\b/,
       ~r/-\s*(\d{1,3})\s*\[/,
       ~r/-\s*(\d{1,3})(?:\.|$)/,
       ~r/(?:Epis[oó]dio)\s*[\.-]?\s*(\d{1,3})\b/iu,

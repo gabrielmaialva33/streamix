@@ -269,7 +269,8 @@ defmodule Streamix.Gindex.Scraper.Series do
     files
     |> Enum.map(fn file ->
       episode_meta = Parser.parse_episode_name(file.name)
-      episode_num = episode_meta.episode || infer_episode_number(file.name)
+      {inferred_season, inferred_episode} = infer_season_and_episode(file.name)
+      episode_num = episode_meta.episode || inferred_episode
 
       if episode_num do
         %{
@@ -277,7 +278,7 @@ defmodule Streamix.Gindex.Scraper.Series do
           episode_num: episode_num,
           title: episode_meta.title,
           name: file.name,
-          season_number: episode_meta.season || season_number,
+          season_number: episode_meta.season || inferred_season || season_number,
           container_extension: episode_meta.extension || "mkv",
           gindex_path: file.path,
           file_size: file.size
@@ -334,25 +335,35 @@ defmodule Streamix.Gindex.Scraper.Series do
     end
   end
 
-  defp infer_episode_number(filename) do
+  # `Parser.parse_episode_name/1` only reports a season for the dot-separated
+  # `Title.S05E03.rest` shape, so `3x11` and `Title - S01E02 [1080p]` used to
+  # arrive with none and were filed under whatever season the folder implied.
+  # A flat folder mixing seasons then piled them onto one, where their episode
+  # numbers collided and all but one were dropped.
+  #
+  # An explicit marker is the one unambiguous reading, so it is consulted first
+  # and supplies both halves. The remaining rules are unchanged and still only
+  # produce a number, so no filename that already resolved changes its episode.
+  defp infer_season_and_episode(filename) do
+    anime = Parser.parse_anime_episode(filename)
+
     cond do
+      anime.season && anime.episode ->
+        {anime.season, anime.episode}
+
       match = Regex.run(~r/E(\d{1,3})/i, filename) ->
-        match |> Enum.at(1) |> String.to_integer()
+        {nil, match |> Enum.at(1) |> String.to_integer()}
 
       match = Regex.run(~r/(?:Episode|Ep)[\s._-]*(\d{1,3})/i, filename) ->
-        match |> Enum.at(1) |> String.to_integer()
+        {nil, match |> Enum.at(1) |> String.to_integer()}
 
       match = Regex.run(~r/^(\d{1,3})[\s._-]/, filename) ->
-        match |> Enum.at(1) |> String.to_integer()
+        {nil, match |> Enum.at(1) |> String.to_integer()}
 
       true ->
-        anime_episode_number(filename)
+        # Fansub releases number episodes as `Title - 01 [1080p]`, which none of
+        # the rules above match; that grammar lives in the anime parser.
+        {nil, anime.episode}
     end
   end
-
-  # Fansub releases number episodes as `Title - 01 [1080p]`, which none of the
-  # patterns above match. `Parser.parse_anime_episode/1` already owns that
-  # grammar; running it last means it can only supply a number where the other
-  # rules found none, so no existing filename changes meaning.
-  defp anime_episode_number(filename), do: Parser.parse_anime_episode(filename).episode
 end
