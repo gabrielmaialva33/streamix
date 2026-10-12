@@ -264,17 +264,17 @@ config :streamix, Oban,
     # `failed`: the jobs that had completed were already gone by the time the
     # slowest source finished. Outlive any workflow, and keep a day of history
     # for debugging a failed run.
-    {Oban.Plugins.Pruner, max_age: 86_400},
+    {Oban.Pruner, max_age: 86_400},
     # Lifeline is the last-resort guard for a genuinely wedged node. Keep
     # this above the longest legitimate worker timeout (GIndex/AI/torrent
     # are capped at 2h30) so a live job is never made available a second
     # time. Single-node deploy restarts are recovered immediately by
     # Streamix.ObanStartupRecovery instead of waiting for this threshold.
-    {Oban.Plugins.Lifeline, rescue_after: :timer.hours(3)},
+    {Oban.Lifeline, rescue_after: :timer.hours(3)},
     # Keeps the partial indexes on oban_jobs healthy — noticeable on a
     # queue that churns thousands of jobs per week like gindex_scan.
-    {Oban.Plugins.Reindexer, schedule: "@weekly"},
-    {Oban.Plugins.Cron,
+    {Oban.Reindexer, schedule: "@weekly"},
+    {Oban.Cron,
      crontab: [
        # Cleanup orphaned favorites/history daily at 2 AM
        {"0 2 * * *", Streamix.Workers.CleanupOrphanedDataWorker},

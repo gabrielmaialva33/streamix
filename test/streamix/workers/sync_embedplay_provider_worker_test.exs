@@ -68,7 +68,7 @@ defmodule Streamix.Workers.SyncEmbedplayProviderWorkerTest do
       |> Application.fetch_env!(Oban)
       |> Keyword.fetch!(:plugins)
       |> Enum.find_value(fn
-        {Oban.Plugins.Cron, opts} -> Keyword.fetch!(opts, :crontab)
+        {Oban.Cron, opts} -> Keyword.fetch!(opts, :crontab)
         _plugin -> nil
       end)
 
