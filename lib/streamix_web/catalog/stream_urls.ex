@@ -82,8 +82,10 @@ defmodule StreamixWeb.Catalog.StreamUrls do
     "#{endpoint_url()}/api/stream/proxy?token=#{URI.encode_www_form(token)}"
   end
 
+  # The `.mp4` suffix is what makes every client pick progressive playback
+  # (the web player and both TV backends route any `.m3u8` URL to HLS).
   defp embedplay_url(token),
-    do: "#{endpoint_url()}/api/stream/embedplay/master.m3u8?token=#{URI.encode_www_form(token)}"
+    do: "#{endpoint_url()}/api/stream/embedplay/video.mp4?token=#{URI.encode_www_form(token)}"
 
   defp embedplay_content?(%{provider: %{provider_type: :embedplay}}), do: true
   defp embedplay_content?(_), do: false

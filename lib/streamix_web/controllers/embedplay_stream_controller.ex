@@ -25,6 +25,35 @@ defmodule StreamixWeb.EmbedplayStreamController do
 
   def master(conn, _), do: error(conn, :missing_token)
 
+  # Progressive movies have their own URL because every player picks its
+  # engine from the URL before fetching a byte: the web player and both TV
+  # backends send any URL containing `.m3u8` to an HLS engine (AVPlay switches
+  # to adaptive mode), whatever the response says. The `.mp4` suffix is the
+  # contract, so MP4 bytes are never served from — or redirected to from —
+  # the `.m3u8` route, and this route never serves a playlist.
+  def video(conn, %{"token" => token}) do
+    with true <- Embedplay.enabled?(),
+         {:ok, movie} <- StreamToken.authorize_embedplay_movie(token) do
+      if head_request?(conn) do
+        # Resolving starts a browser for about ten seconds; HEAD only has to
+        # name the format, which the TV HTML5 backend uses to choose native
+        # playback. The length is unknown until resolution, so it is omitted.
+        conn
+        |> cors()
+        |> put_resp_content_type("video/mp4", nil)
+        |> put_resp_header("accept-ranges", "bytes")
+        |> send_resp(200, "")
+      else
+        stream_video(conn, movie, true)
+      end
+    else
+      false -> error(conn, :provider_disabled)
+      {:error, reason} -> error(conn, reason)
+    end
+  end
+
+  def video(conn, _), do: error(conn, :missing_token)
+
   def resource(conn, %{"token" => token, "session_id" => sid, "resource_id" => rid}) do
     with true <- Embedplay.enabled?(),
          {:ok, movie} <- StreamToken.authorize_embedplay_movie(token) do
@@ -38,10 +67,102 @@ defmodule StreamixWeb.EmbedplayStreamController do
   def resource(conn, _), do: error(conn, :missing_token)
 
   defp open_and_serve(conn, movie, token) do
-    case Embedplay.open_movie(movie) do
+    case open(movie, :hls) do
       {:ok, session} -> serve(conn, session.session_id, session.resource_id, movie.id, token)
       {:error, reason} -> error(conn, reason)
     end
+  end
+
+  # Each route serves exactly one delivery format. A movie whose current
+  # source is in the other one fails cleanly instead of being cross-served,
+  # because the player already chose its engine from the URL.
+  defp open(movie, kind) do
+    case Embedplay.open_movie(movie) do
+      {:ok, session} ->
+        if Map.get(session, :kind, :hls) == kind,
+          do: {:ok, session},
+          else: {:error, :stream_format_mismatch}
+
+      error ->
+        error
+    end
+  end
+
+  defp stream_video(conn, movie, renew?) do
+    range = List.first(get_req_header(conn, "range"))
+
+    case open(movie, :mp4) do
+      {:ok, session} ->
+        conn
+        |> stream_session(session, movie.id, range)
+        |> finish_video(conn, movie, renew? and from_start?(range))
+
+      {:error, reason} ->
+        error(conn, reason)
+    end
+  end
+
+  defp stream_session(conn, session, movie_id, range) do
+    Embedplay.stream_resource(
+      session.session_id,
+      session.resource_id,
+      movie_id,
+      [range: range],
+      conn,
+      &write_media/2
+    )
+  end
+
+  defp finish_video({:ok, conn}, _conn, _movie, _renew?), do: conn
+  defp finish_video({:error, :upstream_aborted, conn}, _conn, _movie, _renew?), do: conn
+
+  # The gateway already invalidated the session whose source stopped
+  # authorizing. A read from byte 0 parses the file afresh, so it may continue
+  # on a new resolution within this same request, sparing a new viewer a
+  # failed first play on a stale cached source. A later range is never retried
+  # this way: a new resolution might be a different file, whose bytes would
+  # not continue the ones the player already holds.
+  defp finish_video({:error, :playback_restart_required}, conn, movie, true),
+    do: stream_video(conn, movie, false)
+
+  defp finish_video({:error, reason}, conn, _movie, _renew?), do: error(conn, reason)
+
+  defp from_start?(nil), do: true
+  defp from_start?(range), do: String.starts_with?(range, "bytes=0-")
+
+  defp write_media({:start, status, headers}, conn) do
+    conn =
+      headers
+      |> Enum.reduce(cors(conn), fn {name, values}, conn ->
+        put_resp_header(conn, name, Enum.join(values, ", "))
+      end)
+      # A compressed or otherwise transformed body would no longer be the
+      # byte range its `Content-Range` claims.
+      |> put_resp_header("cache-control", "private, no-store, no-transform")
+      |> close_after_body()
+
+    {:cont, send_chunked(conn, status)}
+  end
+
+  # A client that went away (a seek, a closed tab) halts the transfer, which
+  # stops the upstream read instead of draining the rest of the movie.
+  defp write_media({:data, data}, conn) do
+    case chunk(conn, data) do
+      {:ok, conn} -> {:cont, conn}
+      {:error, _client_gone} -> {:halt, conn}
+    end
+  end
+
+  # If the upstream fails mid-body, the response ends short of its declared
+  # length. On HTTP/1.x a kept-alive socket would leave the player waiting for
+  # bytes that never come until an idle timeout; closing it after the body
+  # makes the truncation visible at once, so the player re-requests the range.
+  # HTTP/2 already treats a body shorter than its declared length as an error.
+  # Reuse costs little here: a seek abandons the old response anyway.
+  defp close_after_body(conn) do
+    if get_http_protocol(conn) == :"HTTP/2",
+      do: conn,
+      else: put_resp_header(conn, "connection", "close")
   end
 
   defp serve(conn, sid, rid, movie_id, token) do
@@ -113,5 +234,14 @@ defmodule StreamixWeb.EmbedplayStreamController do
   defp error_status(:upstream_not_found), do: {404, :upstream_not_found}
   defp error_status(:invalid_range), do: {416, :invalid_range}
   defp error_status(:playback_restart_required), do: {409, :playback_restart_required}
+  # The resolver no longer recognises the upstream page, so every title fails
+  # alike until its adapter is fixed. 503 because that is expected to clear,
+  # and a code of its own so the systemic case is never read as per-title.
+  defp error_status(:resolver_outdated), do: {503, :resolver_outdated}
+  # The movie's current source is HLS on the MP4 route or MP4 on the HLS
+  # route. The player already chose its engine from the URL, so the bytes are
+  # not cross-served. Catalog URLs name the MP4 route, the only format the
+  # usable upstream delivers; an HLS-only resolution has no playable URL.
+  defp error_status(:stream_format_mismatch), do: {409, :stream_format_mismatch}
   defp error_status(_), do: {502, :stream_resolution_failed}
 end

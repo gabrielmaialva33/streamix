@@ -33,6 +33,10 @@ defmodule Streamix.Embedplay.Sessions do
     do: GenServer.call(__MODULE__, {:register, session_id, movie_id, urls})
 
   def invalidate(session_id), do: GenServer.call(__MODULE__, {:invalidate, session_id})
+
+  # A progressive transfer is one request that can outlast `idle_seconds`, so
+  # the gateway reports activity while bytes still flow.
+  def touch(session_id), do: GenServer.cast(__MODULE__, {:touch, session_id})
   def acquire, do: GenServer.call(__MODULE__, :acquire)
   def release(ref), do: GenServer.call(__MODULE__, {:release, ref})
 
@@ -129,6 +133,13 @@ defmodule Streamix.Embedplay.Sessions do
   end
 
   @impl true
+  def handle_cast({:touch, sid}, state) do
+    if Map.has_key?(state.sessions, sid),
+      do: {:noreply, touch(state, sid)},
+      else: {:noreply, state}
+  end
+
+  @impl true
   def handle_info({ref, result}, state) when is_reference(ref) do
     Process.demonitor(ref, [:flush])
     {:noreply, finish(state, ref, result)}
@@ -177,10 +188,13 @@ defmodule Streamix.Embedplay.Sessions do
 
   defp finish_result({:ok, source}, movie_id, state) do
     sid = opaque_id()
-    root = opaque_id() <> ".m3u8"
+    kind = Map.get(source, :kind, :hls)
+    {resource_kind, suffix} = root_kind(kind)
+    root = opaque_id() <> suffix
 
     session = %{
       id: sid,
+      kind: kind,
       root: root,
       movie_id: movie_id,
       headers: source.headers,
@@ -188,8 +202,8 @@ defmodule Streamix.Embedplay.Sessions do
       touched_at: now(),
       expires_at: parse_expiry(source.expires_at),
       registry_bytes: byte_size(source.url),
-      resources: %{root => %{url: source.url, kind: :playlist}},
-      urls: %{{source.url, :playlist} => root}
+      resources: %{root => %{url: source.url, kind: resource_kind}},
+      urls: %{{source.url, resource_kind} => root}
     }
 
     state = %{
@@ -203,6 +217,12 @@ defmodule Streamix.Embedplay.Sessions do
 
   defp finish_result({:error, reason}, _movie_id, state), do: {{:error, reason}, state}
   defp finish_result(_, _movie_id, state), do: {{:error, :stream_resolution_failed}, state}
+
+  # An HLS root is a playlist whose rewrite registers the rest of the graph.
+  # A progressive MP4 root is the whole movie: one media resource the gateway
+  # streams through, and nothing else is ever registered for it.
+  defp root_kind(:mp4), do: {:progressive, ".mp4"}
+  defp root_kind(_hls), do: {:playlist, ".m3u8"}
 
   defp register_urls(urls, session) do
     Enum.map_reduce(urls, session, &register_url/2)
@@ -229,13 +249,25 @@ defmodule Streamix.Embedplay.Sessions do
   defp cached(state, movie_id) do
     with sid when not is_nil(sid) <- state.cache[movie_id],
          session when not is_nil(session) <- state.sessions[sid],
-         true <- now() - session.created_at < session_ttl_seconds(),
+         true <- reusable?(session),
          false <- expired?(session) do
       session
     else
       _ -> nil
     end
   end
+
+  # An HLS viewer opens the movie once and then only touches resource URLs
+  # carrying its session id, so `session_ttl_seconds` can safely send *new*
+  # starts to a fresh resolution. A progressive movie has one stable URL and
+  # every range request — each seek, each reconnect — opens the movie again.
+  # Applying the TTL there would re-resolve mid-movie (a ~10 s browser run
+  # per request) and could hand later ranges of the same playback a different
+  # file. So an MP4 session is reused for as long as it is alive: until it
+  # goes idle, reaches an explicit resolver expiry, or upstream stops
+  # authorizing it (which invalidates it, and the next request resolves again).
+  defp reusable?(%{kind: :mp4}), do: true
+  defp reusable?(session), do: now() - session.created_at < session_ttl_seconds()
 
   defp cleanup(state) do
     Enum.reduce(state.sessions, state, fn {sid, session}, acc ->
@@ -257,7 +289,10 @@ defmodule Streamix.Embedplay.Sessions do
   end
 
   defp touch(state, sid), do: put_in(state.sessions[sid].touched_at, now())
-  defp public(session), do: %{session_id: session.id, resource_id: session.root}
+
+  defp public(session),
+    do: %{session_id: session.id, resource_id: session.root, kind: session.kind}
+
   defp now, do: System.monotonic_time(:second)
   defp max_sessions, do: Embedplay.config(:max_sessions, 128)
 
@@ -266,6 +301,12 @@ defmodule Streamix.Embedplay.Sessions do
   # `max_sessions` rather than a fixed number, because a cap that is small
   # relative to the session pool surfaces as `provider_capacity_exhausted`
   # mid-stream, which a player reports as a stall rather than a retry.
+  #
+  # A progressive MP4 transfer is different: it keeps its lease for as long as
+  # the player keeps that one response open, often the whole movie, plus a
+  # brief overlap while a seek replaces it. For MP4 sources this cap is
+  # therefore roughly the number of concurrent viewers, and a viewer seeking
+  # while it is exhausted gets a 503 for that range.
   defp max_concurrent_fetches,
     do: Embedplay.config(:max_concurrent_fetches, 64)
 
