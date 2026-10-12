@@ -224,6 +224,8 @@ defmodule Streamix.Iptv.ProviderHealth do
   end
 
   defp classify(%Provider{is_active: false}, _cb), do: :unhealthy
+  # Set by a health monitor that saw playback systematically failing.
+  defp classify(%Provider{health_status: :degraded}, _cb), do: :unhealthy
   defp classify(_provider, nil), do: :unknown
 
   defp classify(_provider, %{circuit_state: :open}), do: :unhealthy

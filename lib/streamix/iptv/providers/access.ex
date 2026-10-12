@@ -8,6 +8,12 @@ defmodule Streamix.Iptv.Access do
   - Public: Content from public/global providers only (for guests)
 
   This module eliminates duplication across channels, movies, series, and episodes.
+
+  Listing builders (`visible_to_user/2`, `public_providers/1`) only return
+  content from providers that are `browsable/2`. Single-item lookups
+  (`playable/3`, `public_only/2`) deliberately check the operator switch only,
+  so a title from a degraded provider still resolves and its playback can fail
+  with an explicit error instead of a not-found.
   """
 
   import Ecto.Query, warn: false
@@ -102,9 +108,9 @@ defmodule Streamix.Iptv.Access do
   @spec visible_to_user(Ecto.Queryable.t(), integer()) :: Ecto.Query.t()
   def visible_to_user(schema, user_id) do
     schema
-    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> join(:inner, [c], p in Provider, as: :provider, on: c.provider_id == p.id)
     |> where([c, p], p.visibility in [:global, :public] or p.user_id == ^user_id)
-    |> where([_c, p], p.is_active == true)
+    |> browsable(:provider)
   end
 
   @doc """
@@ -121,8 +127,37 @@ defmodule Streamix.Iptv.Access do
   @spec public_providers(Ecto.Queryable.t()) :: Ecto.Query.t()
   def public_providers(schema) do
     schema
-    |> join(:inner, [c], p in Provider, on: c.provider_id == p.id)
+    |> join(:inner, [c], p in Provider, as: :provider, on: c.provider_id == p.id)
     |> where([c, p], p.visibility in [:global, :public])
-    |> where([_c, p], p.is_active == true)
+    |> browsable(:provider)
+  end
+
+  @doc """
+  Restricts `query` to providers whose catalog may be offered for browsing.
+
+  This is the single definition of "listable provider" for catalog queries.
+  Two independent switches decide it:
+
+    * `is_active` — the operator's switch. Nothing automatic ever writes it.
+    * `health_status` — set to `:degraded` automatically while playback through
+      the provider is systematically failing, and cleared by a successful probe
+      (see `Streamix.Embedplay.Health`).
+
+  Keeping them apart is what lets recovery be automatic without ever
+  re-enabling a provider an operator disabled on purpose. `binding` names the
+  provider binding in `query`.
+
+  ## Example
+
+      from(movie in Movie,
+        join: provider in Provider,
+        as: :provider,
+        on: provider.id == movie.provider_id
+      )
+      |> Access.browsable(:provider)
+  """
+  @spec browsable(Ecto.Queryable.t(), atom()) :: Ecto.Query.t()
+  def browsable(query, binding) when is_atom(binding) do
+    where(query, [{^binding, p}], p.is_active == true and p.health_status == :healthy)
   end
 end

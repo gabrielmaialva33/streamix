@@ -89,4 +89,16 @@ defmodule Streamix.Iptv.ProviderHealthTest do
     assert report.dimensions.control.status == :healthy
     assert report.capabilities.expires_at
   end
+
+  test "a provider its health monitor degraded reports unhealthy while still active" do
+    provider = global_provider_fixture(%{name: "Embedplay", provider_type: :embedplay})
+    {:ok, _provider} = Streamix.Providers.mark_embedplay_degraded(:no_source_available)
+
+    [report] = ProviderHealth.list_reports(probe: false)
+
+    assert report.id == provider.id
+    assert report.is_active
+    assert report.status == :unhealthy
+    assert report.message == "Provedor temporariamente indisponível. Tentando reconectar."
+  end
 end
