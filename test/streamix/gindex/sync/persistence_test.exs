@@ -269,6 +269,27 @@ defmodule Streamix.Gindex.Sync.PersistenceTest do
       assert log =~ "collide on an episode number"
       assert episode_rows() == [{111, 7}]
     end
+
+    test "counts a file listed twice as one drop, not zero" do
+      # Production logged "season 42784: 0 file(s) collide ... were dropped"
+      # when the listing carried the same file twice: filtering out every
+      # episode_id that survived also removed the copy that had been dropped.
+      provider = gindex_provider()
+      now = ~U[2026-10-12 12:00:00Z]
+
+      previous = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: previous) end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, 1} = sync(provider, series_with([{111, 3}, {111, 3}]), now)
+        end)
+
+      assert log =~ "1 file(s) collide"
+      refute log =~ "0 file(s) collide"
+      assert episode_rows() == [{111, 3}]
+    end
   end
 
   test "rolls back the catalog item when the series cannot be inserted" do

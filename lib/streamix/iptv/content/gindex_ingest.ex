@@ -230,11 +230,12 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     deduped = Enum.uniq_by(episodes, &Map.fetch!(&1, :episode_num))
 
     if length(deduped) < length(episodes) do
-      kept = MapSet.new(deduped, &Map.fetch!(&1, :episode_id))
-
+      # The multiset difference, not a filter on episode_id: when the listing
+      # carries the same file twice, filtering out every id that survived also
+      # removed the duplicate that was dropped, and production logged
+      # "0 file(s) ... were dropped" for a season that had lost one.
       dropped =
-        episodes
-        |> Enum.reject(&MapSet.member?(kept, Map.fetch!(&1, :episode_id)))
+        (episodes -- deduped)
         |> Enum.map(fn episode ->
           "#{Map.fetch!(episode, :episode_num)}=#{Map.get(episode, :name)}"
         end)
