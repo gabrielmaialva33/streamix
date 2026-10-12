@@ -14,12 +14,16 @@ defmodule StreamixWeb.Catalog.StreamUrls do
       browser proxy to handle CORS for web players.
 
   Every client picks its playback engine from the URL suffix, so the route
-  follows the item's delivery (`Streamix.Playback.xtream_delivery/2`): an
+  follows the item's delivery (`Streamix.Playback.xtream_route/4`): an
   Xtream movie or episode stored as `m3u8` gets the HLS gateway's
-  `/api/stream/hls/master.m3u8` URL, everything else the progressive token
-  proxy. Behind the browser proxy the HLS master carries `edge=1`, which makes
-  the gateway wrap every playlist reference in the same proxy, so a player
-  that started there never leaves it.
+  `/api/stream/hls/master.m3u8` URL; an item of a `direct_client_playback`
+  provider is probed (once, then cached) and gets that master URL or the
+  direct route `/api/stream/vod/direct.<container>`; everything else keeps
+  the progressive token proxy. Behind the browser proxy the HLS master
+  carries `edge=1`, which makes the gateway wrap every playlist reference in
+  the same proxy, so a player that started there never leaves it. The direct
+  route is never put behind that proxy: its egress is a server address the
+  progressive CDN refuses, and the proxy would log the CDN URL.
 
   All catalog endpoints are behind the `:api_v1` pipeline which runs
   `StreamixWeb.Plugs.ApiKeyAuth` — so by the time we reach a catalog
@@ -44,19 +48,16 @@ defmodule StreamixWeb.Catalog.StreamUrls do
     cond do
       embedplay_content?(movie) -> embedplay_url(token)
       gindex_content?(movie) -> gindex_direct_url(token)
-      hls_content?(movie_provider(movie), movie) -> hls_master_url(token)
-      true -> token_proxy_url(token)
+      true -> signed_xtream_url(token, movie_provider(movie), :movie, movie)
     end
   end
 
   def signed_episode_url(episode) do
     token = StreamToken.sign_episode(episode.id, nil, @sign_opts)
 
-    cond do
-      gindex_content?(episode) -> gindex_direct_url(token)
-      hls_content?(episode_provider(episode), episode) -> hls_master_url(token)
-      true -> token_proxy_url(token)
-    end
+    if gindex_content?(episode),
+      do: gindex_direct_url(token),
+      else: signed_xtream_url(token, episode_provider(episode), :episode, episode)
   end
 
   def signed_channel_url(channel) do
@@ -74,19 +75,14 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   def browser_movie_url(movie) do
     token = StreamToken.sign_movie(movie.id, nil, @sign_opts)
 
-    cond do
-      embedplay_content?(movie) -> embedplay_url(token)
-      hls_content?(movie_provider(movie), movie) -> browser_hls_master_url(token)
-      true -> browser_token_proxy_url(token)
-    end
+    if embedplay_content?(movie),
+      do: embedplay_url(token),
+      else: browser_xtream_url(token, movie_provider(movie), :movie, movie)
   end
 
   def browser_episode_url(episode) do
     token = StreamToken.sign_episode(episode.id, nil, @sign_opts)
-
-    if hls_content?(episode_provider(episode), episode),
-      do: browser_hls_master_url(token),
-      else: browser_token_proxy_url(token)
+    browser_xtream_url(token, episode_provider(episode), :episode, episode)
   end
 
   def browser_channel_url(channel) do
@@ -125,6 +121,26 @@ defmodule StreamixWeb.Catalog.StreamUrls do
     if edge?, do: edge_url(endpoint_url() <> path <> "&edge=1"), else: path
   end
 
+  @doc """
+  The direct-client route for a movie or episode token of a
+  `direct_client_playback` provider. The suffix names the container the
+  client receives after the redirect, so it picks a progressive engine.
+  """
+  def direct_url(token, extension),
+    do: "#{endpoint_url()}/api/stream/vod/direct.#{extension}?token=#{URI.encode_www_form(token)}"
+
+  @doc """
+  The minted URL for an Xtream movie or episode token, by its route
+  (`Streamix.Playback.xtream_route/4`).
+  """
+  def xtream_url(token, route) do
+    case route do
+      :hls -> hls_master_url(token)
+      {:direct, extension} -> direct_url(token, extension)
+      :proxy -> token_proxy_url(token)
+    end
+  end
+
   # ---------------------------------------------------------------------
   # Internals
   # ---------------------------------------------------------------------
@@ -141,8 +157,16 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   defp embedplay_content?(%{provider: %{provider_type: :embedplay}}), do: true
   defp embedplay_content?(_), do: false
 
-  defp hls_content?(provider, content),
-    do: match?({:hls, _}, Streamix.Playback.xtream_delivery(provider, content))
+  defp signed_xtream_url(token, provider, type, content),
+    do: xtream_url(token, Streamix.Playback.xtream_route(provider, type, content))
+
+  defp browser_xtream_url(token, provider, type, content) do
+    case Streamix.Playback.xtream_route(provider, type, content) do
+      :hls -> browser_hls_master_url(token)
+      {:direct, extension} -> direct_url(token, extension)
+      :proxy -> browser_token_proxy_url(token)
+    end
+  end
 
   defp movie_provider(%{provider: %{} = provider}), do: provider
   defp movie_provider(_movie), do: nil

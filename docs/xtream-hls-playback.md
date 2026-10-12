@@ -41,8 +41,15 @@ player sends any URL containing `.m3u8` to hls.js; both TV backends treat
 
 `mp4`/`mkv` items, GIndex rows and every other provider type are unchanged
 and keep the progressive token proxy. The decision lives in one place,
-`Streamix.Playback.xtream_delivery/2`, which minting, the proxy redirect and
-the gateway's own authorization all consult.
+`Streamix.Playback.xtream_delivery/2` (and `xtream_route/4` for minting),
+which minting, the proxy redirect and the gateway's own authorization all
+consult.
+
+For a provider with `direct_client_playback`, `container_extension` is not
+trusted: each item is probed at play time
+([xtream-direct-playback.md](xtream-direct-playback.md)), and a source that
+answers HLS is served by this gateway rooted at that source's `?source=N`
+URL — whatever the catalogue extension says.
 
 Resource identifiers are opaque (144 random bits). Playlists end in `.m3u8`;
 media keeps a known upstream extension (`.ts`, `.aac`, `.m4s`, `.mp4`, `.key`,

@@ -348,19 +348,21 @@ defmodule StreamixWeb.XtreamHlsControllerTest do
         upstream(conn)
       end)
 
-      {:ok, _} = Providers.update_provider(context.provider, %{is_active: false})
+      {:ok, disabled} = Providers.update_provider(context.provider, %{is_active: false})
       response = get(build_conn(), context.master)
       assert json_response(response, 503)["error"]["code"] == "provider_disabled"
 
-      context.provider
+      disabled
       |> Ecto.Changeset.change(is_active: true, health_status: :degraded)
       |> Repo.update!()
 
-      for request <- [&get/2, &head/2] do
-        response = request.(build_conn(), context.master)
-        assert response.status == 503
-        assert get_resp_header(response, "access-control-allow-origin") == ["*"]
-      end
+      response = get(build_conn(), context.master)
+      assert json_response(response, 503)["error"]["code"] == "provider_degraded"
+
+      # HEAD reports the same state a GET would.
+      response = head(build_conn(), context.master)
+      assert response.status == 503
+      assert get_resp_header(response, "access-control-allow-origin") == ["*"]
 
       refute_received :upstream
     end

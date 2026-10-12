@@ -91,6 +91,19 @@ defmodule StreamixWeb.StreamToken do
   defdelegate authorize_xtream_hls(token, opts \\ []), to: Resolver
 
   @doc """
+  Authorizes a movie or episode token for the direct-client route of a
+  `direct_client_playback` provider and returns the final CDN URL the client
+  is redirected to. See `StreamixWeb.StreamToken.Resolver.authorize_xtream_direct/2`.
+  """
+  defdelegate authorize_xtream_direct(token, opts \\ []), to: Resolver
+
+  @doc """
+  Authorizes a token and returns the gateway route (`:hls` or
+  `{:direct, extension}`) its player must use.
+  """
+  defdelegate authorize_xtream_route(token, opts \\ []), to: Resolver
+
+  @doc """
   Returns the raw upstream URL that the given content would resolve to
   if its token were verified.
 

@@ -115,7 +115,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
   # are shared with TMDB: blank detail responses must preserve stored values.
   @season_replace_fields ~w(name cover air_date overview episode_count updated_at)a
   @episode_fields ~w(episode_id title plot cover duration_secs
-                             container_extension updated_at)a
+                             container_extension source_ids updated_at)a
 
   defp upsert_seasons(seasons_data, series_id, now) do
     season_attrs_list =
@@ -272,6 +272,7 @@ defmodule Streamix.Iptv.Sync.Series.SeasonsEpisodes do
       cover: get_in(episode, ["info", "cover_big"]) || get_in(episode, ["info", "movie_image"]),
       duration_secs: Helpers.parse_int(get_in(episode, ["info", "duration_secs"])),
       container_extension: episode["container_extension"],
+      source_ids: Helpers.parse_source_ids(episode["sources"]),
       season_id: season_id,
       inserted_at: now,
       updated_at: now

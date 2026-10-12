@@ -59,4 +59,40 @@ defmodule Streamix.Iptv.Sync.ValueParser do
   """
   def to_string_or_nil(nil), do: nil
   def to_string_or_nil(val), do: to_string(val)
+
+  @max_source_ids 32
+
+  @doc """
+  Extracts the source ids of an item's `sources` array, in order.
+
+  Each entry names its `source_id`, or only a URL carrying `?source=N`.
+  Duplicates and unusable entries are dropped; `nil` when nothing remains,
+  so an item without sources keeps a NULL column.
+  """
+  def parse_source_ids(sources) when is_list(sources) do
+    sources
+    |> Enum.map(&source_id/1)
+    |> Enum.filter(&(is_integer(&1) and &1 > 0))
+    |> Enum.uniq()
+    |> Enum.take(@max_source_ids)
+    |> case do
+      [] -> nil
+      ids -> ids
+    end
+  end
+
+  def parse_source_ids(_sources), do: nil
+
+  defp source_id(%{"source_id" => id}) when not is_nil(id), do: parse_int(id)
+
+  defp source_id(%{"url" => url}) when is_binary(url) do
+    with %URI{query: query} when is_binary(query) <- URI.parse(url),
+         %{"source" => id} <- URI.decode_query(query) do
+      parse_int(id)
+    else
+      _ -> nil
+    end
+  end
+
+  defp source_id(_entry), do: nil
 end

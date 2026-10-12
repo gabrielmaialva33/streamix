@@ -31,6 +31,24 @@ defmodule Streamix.Iptv.Sync.NormalizersTest do
       assert attrs.rating == nil
     end
 
+    test "keeps the ids of the item's upstream sources in the provider's order" do
+      sources = [
+        %{
+          "source_id" => 2,
+          "name" => "Fonte 2 (Backup)",
+          "url" => "http://x/movie/u/p/1.mp4?source=2"
+        },
+        %{"source_id" => "1", "name" => "Fonte 1 (Principal)"},
+        %{"name" => "Fonte 5", "url" => "http://x/movie/u/p/1.m3u8?source=5"},
+        %{"source_id" => 2},
+        %{"name" => "no id"}
+      ]
+
+      assert Movie.attrs(%{"sources" => sources}, @provider_id, @now).source_ids == [2, 1, 5]
+      assert Movie.attrs(%{"sources" => []}, @provider_id, @now).source_ids == nil
+      assert Movie.attrs(%{}, @provider_id, @now).source_ids == nil
+    end
+
     test "normalizes valid year and rating values" do
       attrs = Movie.attrs(%{"year" => "2024", "rating" => "8.7"}, @provider_id, @now)
 

@@ -27,6 +27,13 @@ defmodule Streamix.Iptv.Provider do
     field :degraded_at, :utc_datetime
     field :degraded_reason, :string
 
+    # Operator-only (admin changeset, never `user_changeset/2`). VOD delivery
+    # is then decided per item by probing its sources: HLS plays through the
+    # gateway, and a progressive source's final CDN URL — resolved server-side
+    # and never containing the account password — is handed to the client.
+    # See docs/xtream-direct-playback.md.
+    field :direct_client_playback, :boolean, default: false
+
     # Provider type: xtream (default), gindex, torrent, or embedplay
     field :provider_type, Ecto.Enum,
       values: [:xtream, :gindex, :torrent, :embedplay],
@@ -64,7 +71,7 @@ defmodule Streamix.Iptv.Provider do
                       live_channels_count movies_count series_count
                       live_synced_at vod_synced_at series_synced_at
                       epg_synced_at epg_sync_interval_hours server_info
-                      provider_type gindex_url)a
+                      provider_type gindex_url direct_client_playback)a
 
   @user_fields ~w(name url urls username password is_active visibility epg_sync_interval_hours)a
 

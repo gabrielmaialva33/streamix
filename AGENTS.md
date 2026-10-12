@@ -271,7 +271,15 @@ API surfaces under `/api/v1`:
 - RabbitMQ is optional. Respect `RABBITMQ_ENABLED`; the default path is Oban.
 - GIndex is rate-limited hard. Keep sequential behavior where the code expects it.
 - The TV app was extracted from this repository. Do not add docs or code assuming an in-repo Tizen frontend.
-- Do not bypass `StreamixWeb.StreamToken` or leak final upstream URLs to browsers.
+- Do not bypass `StreamixWeb.StreamToken` or leak final upstream URLs to browsers. The single,
+  owner-approved exception is direct-client playback: only for providers with the operator-only
+  `providers.direct_client_playback` flag, only for progressive VOD (a movie or episode whose
+  delivery probe resolved to a progressive source), and only after full token authorization,
+  `/api/stream/vod/direct.<container>` answers `302` to the final CDN URL resolved server-side —
+  `https`, without userinfo, and never containing the account password (it may carry the account
+  username and a short-lived CDN token). Never log that URL. HLS (always via the gateway), live,
+  provider panel URLs and every other upstream URL stay server-side. See
+  [`docs/xtream-direct-playback.md`](docs/xtream-direct-playback.md).
 - Do not introduce `live_redirect`, `live_patch`, `Phoenix.View`, `Phoenix.HTML.form_for`,
   `phx-update="append"`, `phx-update="prepend"`, or `@current_user`.
 

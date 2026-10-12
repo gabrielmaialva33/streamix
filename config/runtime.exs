@@ -457,6 +457,51 @@ config :streamix, :xtream_hls,
       max: 100_000
     )
 
+# Providers with `direct_client_playback` have each VOD item's delivery
+# probed at play time and cached: HLS through the gateway, or a redirect of
+# the client to the progressive CDN. See docs/xtream-direct-playback.md.
+config :streamix, :xtream_delivery,
+  hls_ttl_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_PROBE_HLS_TTL_SECONDS",
+      get_env.("XTREAM_PROBE_HLS_TTL_SECONDS"),
+      1_800,
+      min: 60,
+      max: 86_400
+    ),
+  direct_ttl_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_DIRECT_URL_TTL_SECONDS",
+      get_env.("XTREAM_DIRECT_URL_TTL_SECONDS"),
+      600,
+      min: 30,
+      max: 3_600
+    ),
+  failure_ttl_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_PROBE_FAILURE_TTL_SECONDS",
+      get_env.("XTREAM_PROBE_FAILURE_TTL_SECONDS"),
+      120,
+      min: 5,
+      max: 3_600
+    ),
+  max_sources:
+    RuntimeConfig.integer!(
+      "XTREAM_PROBE_MAX_SOURCES",
+      get_env.("XTREAM_PROBE_MAX_SOURCES"),
+      6,
+      min: 1,
+      max: 32
+    ),
+  deadline_ms:
+    RuntimeConfig.integer!(
+      "XTREAM_PROBE_DEADLINE_MS",
+      get_env.("XTREAM_PROBE_DEADLINE_MS"),
+      20_000,
+      min: 1_000,
+      max: 60_000
+    )
+
 # External subtitles. Providers are tried in chain order; each is only
 # used when its API key is present, so a missing key degrades to "no
 # subtitle" instead of erroring. Both keys are free with signup.

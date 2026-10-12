@@ -199,6 +199,17 @@ defmodule StreamixWeb.Router do
     head "/:session_id/:resource_id", XtreamHlsController, :resource
   end
 
+  # Progressive VOD of `direct_client_playback` providers: after token
+  # authorization the client is redirected to the CDN URL resolved here.
+  # The suffix names the container, so players pick a progressive engine.
+  scope "/api/stream/vod", StreamixWeb do
+    pipe_through :media_stream
+
+    options "/direct.:ext", XtreamDirectController, :options
+    get "/direct.:ext", XtreamDirectController, :show
+    head "/direct.:ext", XtreamDirectController, :show
+  end
+
   # Stream proxy - public access for video streaming (rate limited)
   scope "/api", StreamixWeb do
     pipe_through :api_rate_limited

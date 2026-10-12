@@ -5,8 +5,15 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
 
   # Streamix's own gateways are already CORS-safe origins. Wrapping the HLS
   # gateway's master in the stream proxy without `edge=1` would leave its
-  # root-relative playlist references resolving against the proxy host.
-  @own_stream_routes ["/api/stream/proxy?token=", "/api/stream/torrent/", "/api/stream/hls/"]
+  # root-relative playlist references resolving against the proxy host, and
+  # the direct-client route must never be fetched from the proxy: its egress
+  # is an address the progressive CDN refuses, and it would log the CDN URL.
+  @own_stream_routes [
+    "/api/stream/proxy?token=",
+    "/api/stream/torrent/",
+    "/api/stream/hls/",
+    "/api/stream/vod/direct."
+  ]
 
   @spec proxy_url(String.t() | nil, atom()) :: String.t() | nil
   def proxy_url(stream_url, _content_type) when is_binary(stream_url) do

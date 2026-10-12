@@ -310,7 +310,7 @@ defmodule StreamixWeb.PlayerHelpers do
       # the stream URL it can pump straight into the canvas.
       {:ok, build_gindex_stream_url(token)}
     else
-      {:ok, xtream_stream_url(token, provider, movie)}
+      {:ok, xtream_stream_url(token, provider, :movie, movie)}
     end
   end
 
@@ -320,7 +320,7 @@ defmodule StreamixWeb.PlayerHelpers do
     if gindex_content?(episode) do
       {:ok, build_gindex_stream_url(token)}
     else
-      {:ok, xtream_stream_url(token, provider, episode)}
+      {:ok, xtream_stream_url(token, provider, :episode, episode)}
     end
   end
 
@@ -393,7 +393,7 @@ defmodule StreamixWeb.PlayerHelpers do
   defp next_episode_stream_url("episode", next, provider, user_id) do
     next.id
     |> StreamToken.sign_episode(user_id)
-    |> xtream_stream_url(provider, next)
+    |> xtream_stream_url(provider, :episode, next, probe: false)
   end
 
   defp next_episode_stream_url("gindex_episode", next, _provider, user_id) do
@@ -415,12 +415,14 @@ defmodule StreamixWeb.PlayerHelpers do
     }
   end
 
-  # Players pick their engine from the URL suffix, so an `m3u8` Xtream item
-  # gets the HLS gateway's `.m3u8` URL; everything else the token proxy.
-  defp xtream_stream_url(token, provider, content) do
-    case Streamix.Playback.xtream_delivery(provider, content) do
-      {:hls, _extension} -> StreamUrls.hls_master_url(token)
+  # Players pick their engine from the URL suffix, so an HLS Xtream item gets
+  # the gateway's `.m3u8` URL, a direct-client item its container-suffixed
+  # direct route, and everything else the token proxy. Items of a probed
+  # provider are probed here (once, then cached) unless `probe: false`.
+  defp xtream_stream_url(token, provider, type, content, opts \\ []) do
+    case Streamix.Playback.xtream_route(provider, type, content, opts) do
       :proxy -> build_token_proxy_url(token)
+      route -> StreamUrls.xtream_url(token, route)
     end
   end
 

@@ -57,12 +57,32 @@ defmodule StreamixWeb.StreamController do
       {:error, :hls_playback_required} ->
         redirect(conn, to: "/api/stream/hls/master.m3u8?token=#{URI.encode_www_form(token)}")
 
+      # A `direct_client_playback` provider's item is HLS or progressive
+      # depending on which of its sources answers; its probe picks the route.
+      {:error, :delivery_probe_required} ->
+        redirect_to_probed_route(conn, token, opts)
+
       {:error, reason} ->
         token_error(conn, reason)
     end
   end
 
   def proxy(conn, _params), do: StreamErrors.halt(conn, :missing_token)
+
+  defp redirect_to_probed_route(conn, token, opts) do
+    encoded = URI.encode_www_form(token)
+
+    case StreamToken.authorize_xtream_route(token, opts) do
+      {:ok, :hls} ->
+        redirect(conn, to: "/api/stream/hls/master.m3u8?token=#{encoded}")
+
+      {:ok, {:direct, ext}} ->
+        redirect(conn, to: "/api/stream/vod/direct.#{ext}?token=#{encoded}")
+
+      {:error, reason} ->
+        token_error(conn, reason)
+    end
+  end
 
   @doc """
   Resolves a signed token into the upstream URL **without** proxying
@@ -191,7 +211,15 @@ defmodule StreamixWeb.StreamController do
     not_found: :content_not_found,
     torrent_playback_required: :torrent_playback_required,
     unauthorized: :token_unauthorized,
-    unsafe_url: :unsafe_url
+    unsafe_url: :unsafe_url,
+    # Outcomes of a delivery probe reached through the proxy redirect.
+    upstream_not_found: :upstream_not_found,
+    upstream_unavailable: :upstream_unavailable,
+    upstream_timeout: :upstream_timeout,
+    provider_capacity_exhausted: :provider_capacity_exhausted,
+    provider_disabled: :provider_disabled,
+    provider_degraded: :provider_degraded,
+    stream_format_mismatch: :stream_format_mismatch
   }
 
   defp token_error(conn, {:quota_exhausted, _count}) do
