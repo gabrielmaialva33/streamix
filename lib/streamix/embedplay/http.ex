@@ -2,12 +2,10 @@ defmodule Streamix.Embedplay.HTTP do
   @moduledoc false
 
   alias Streamix.Embedplay
+  alias Streamix.Hls.Fetch
   alias Streamix.Security.UrlValidator
 
-  @max_body 32 * 1024 * 1024
   @forward_headers ~w(user-agent referer origin)
-  @response_headers ~w(content-type content-length content-range accept-ranges)
-  @redirect_statuses [301, 302, 303, 307, 308]
 
   def resolve(movie) do
     url = Embedplay.config(:resolver_url)
@@ -23,7 +21,7 @@ defmodule Streamix.Embedplay.HTTP do
         max_body: 64 * 1024
       ]
 
-      case request(request) do
+      case Fetch.request(request, http_options()) do
         {:ok, response} -> classify_resolution(response)
         _ -> {:error, :stream_resolution_failed}
       end
@@ -36,45 +34,11 @@ defmodule Streamix.Embedplay.HTTP do
   # the `Range` are sent unchanged on every hop of a redirect chain — for both
   # `fetch/3` and `stream/5` — because the progressive source checks `Referer`
   # on its first host and then redirects to an ephemeral tunnel host. Nothing
-  # here adds an `Origin`, which that source answers with 404.
-  def fetch(url, headers, opts \\ []), do: fetch(url, headers, opts, 0)
-
-  defp fetch(_url, _headers, _opts, redirects) when redirects > 5,
-    do: {:error, :upstream_unavailable}
-
-  defp fetch(url, headers, opts, redirects) do
-    with :ok <- UrlValidator.validate_url(url),
-         {:ok, response} <-
-           request(
-             method: Keyword.get(opts, :method, :get),
-             url: url,
-             headers: headers ++ range_header(opts),
-             receive_timeout: 15_000,
-             max_body: @max_body
-           ) do
-      handle_response(response, url, headers, opts, redirects)
-    end
-  end
-
-  defp handle_response(%{status: status} = response, url, headers, opts, redirects)
-       when status in @redirect_statuses do
-    with {:ok, target} <- redirect_target(response, url) do
-      fetch(target, headers, opts, redirects + 1)
-    end
-  end
-
-  defp handle_response(%{status: status} = response, url, _headers, _opts, _redirects)
-       when status in [200, 206] do
-    {:ok,
-     %{
-       status: status,
-       body: response.body,
-       url: url,
-       headers: Map.take(response.headers, @response_headers)
-     }}
-  end
-
-  defp handle_response(response, _url, _headers, _opts, _redirects), do: status_error(response)
+  # here adds an `Origin`, which that source answers with 404. Buffered
+  # fetches (playlists, keys, segments) run through the shared
+  # `Streamix.Hls.Fetch`, which validates every hop the same way.
+  def fetch(url, headers, opts \\ []),
+    do: Fetch.fetch(url, headers, Keyword.put(opts, :http_options, http_options()))
 
   @doc """
   Streams a progressive media body to `sink` as it arrives instead of
@@ -101,7 +65,7 @@ defmodule Streamix.Embedplay.HTTP do
 
   defp stream(url, headers, opts, acc, sink, redirects) do
     with :ok <- UrlValidator.validate_url(url) do
-      (base_options() ++
+      (Fetch.base_options(http_options()) ++
          [
            method: :get,
            url: url,
@@ -166,8 +130,8 @@ defmodule Streamix.Embedplay.HTTP do
   end
 
   defp unstarted(%{status: status} = response, url, headers, opts, acc, sink, redirects)
-       when status in @redirect_statuses do
-    with {:ok, target} <- redirect_target(response, url) do
+       when status in [301, 302, 303, 307, 308] do
+    with {:ok, target} <- Fetch.redirect_target(response, url) do
       stream(target, headers, opts, acc, sink, redirects + 1)
     end
   end
@@ -182,35 +146,9 @@ defmodule Streamix.Embedplay.HTTP do
   end
 
   defp unstarted(response, _url, _headers, _opts, _acc, _sink, _redirects),
-    do: status_error(response)
+    do: Fetch.status_error(response)
 
-  defp redirect_target(response, url) do
-    with location when is_binary(location) <-
-           List.first(Map.get(response.headers, "location", [])),
-         {:ok, target} <- merge_url(url, location) do
-      {:ok, target}
-    else
-      _ -> {:error, :upstream_unavailable}
-    end
-  end
-
-  defp response_headers(response), do: Map.take(response.headers, @response_headers)
-
-  defp status_error(%{status: status}) when status in [401, 403, 410],
-    do: {:error, :playback_restart_required}
-
-  defp status_error(%{status: 404}), do: {:error, :upstream_not_found}
-  defp status_error(%{status: 416}), do: {:error, :invalid_range}
-  defp status_error(_response), do: {:error, :upstream_unavailable}
-
-  def merge_url(base, reference) do
-    case URI.new(reference) do
-      {:ok, %URI{fragment: nil} = uri} -> {:ok, base |> URI.merge(uri) |> URI.to_string()}
-      _ -> {:error, :unsafe_url}
-    end
-  rescue
-    ArgumentError -> {:error, :unsafe_url}
-  end
+  defp response_headers(response), do: Fetch.response_headers(response)
 
   defp classify_resolution(%{status: 200, body: body}), do: decode_resolution(body)
   defp classify_resolution(%{status: 503}), do: {:error, :provider_capacity_exhausted}
@@ -300,38 +238,5 @@ defmodule Streamix.Embedplay.HTTP do
     end
   end
 
-  defp base_options do
-    Embedplay.config(:http_options, []) ++
-      [redirect: false, retry: false, decode_body: false, compressed: false]
-  end
-
-  defp request(opts) do
-    {max_body, opts} = Keyword.pop!(opts, :max_body)
-    opts = Keyword.put(opts, :request_timeout, Keyword.fetch!(opts, :receive_timeout))
-
-    options =
-      base_options() ++
-        [
-          connect_options: [timeout: 5_000],
-          into: fn {:data, data}, {request, response} ->
-            body = response.body || ""
-
-            if byte_size(body) + byte_size(data) <= max_body do
-              {:cont, {request, %{response | body: body <> data}}}
-            else
-              {:halt, {request, Req.Response.put_private(response, :body_too_large, true)}}
-            end
-          end
-        ] ++ opts
-
-    case Req.request(options) do
-      {:ok, response} ->
-        if response.private[:body_too_large],
-          do: {:error, :response_too_large},
-          else: {:ok, response}
-
-      {:error, _} ->
-        {:error, :upstream_unavailable}
-    end
-  end
+  defp http_options, do: Embedplay.config(:http_options, [])
 end

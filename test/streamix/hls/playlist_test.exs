@@ -1,7 +1,7 @@
-defmodule Streamix.Embedplay.HLSTest do
+defmodule Streamix.Hls.PlaylistTest do
   use ExUnit.Case, async: true
 
-  alias Streamix.Embedplay.HLS
+  alias Streamix.Hls.Playlist
 
   test "discovers variant, audio, iframe, initialization, key and segment references" do
     body = """
@@ -17,7 +17,7 @@ defmodule Streamix.Embedplay.HLSTest do
     #EXT-X-ENDLIST
     """
 
-    assert {:ok, nodes} = HLS.parse(body, "https://93.184.216.34/root/master.m3u8?old=1")
+    assert {:ok, nodes} = Playlist.parse(body, "https://93.184.216.34/root/master.m3u8?old=1")
     references = for {:resource, url, kind} <- nodes, do: {url, kind}
 
     assert references == [
@@ -41,7 +41,7 @@ defmodule Streamix.Embedplay.HLSTest do
           "data:application/octet-stream;base64,AAAA",
           "https://name:password@example.com/key"
         ] do
-      assert {:error, _} = HLS.parse("#EXTM3U\n" <> line, "https://93.184.216.34/root.m3u8")
+      assert {:error, _} = Playlist.parse("#EXTM3U\n" <> line, "https://93.184.216.34/root.m3u8")
     end
   end
 end

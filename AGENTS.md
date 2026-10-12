@@ -101,6 +101,7 @@ lib/streamix/
 ├── cache/                    # L1 ConCache and L2 Redis implementations
 ├── ecto/                     # Shared Ecto types
 ├── gindex/                   # GIndex transport, parsing, matching, quota, and sync
+├── hls/                      # Shared HLS gateway: playlist rewrite, bounded fetch, registry
 ├── iptv/                     # Canonical catalog, providers, EPG, engagement, and streaming
 ├── qoe/                      # Privacy-bounded playback quality events
 ├── queue/                    # RabbitMQ/Broadway integration (optional)
