@@ -107,6 +107,24 @@ defmodule StreamixWeb.EmbedplayStreamControllerTest do
     assert head(build_conn(), context.master).status == 401
   end
 
+  test "a degraded provider refuses playback at once, without reaching the resolver", context do
+    owner = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(owner, {:upstream, conn.request_path})
+      fixture_response(conn)
+    end)
+
+    {:ok, _provider} = Providers.mark_embedplay_degraded(:resolver_outdated)
+
+    response = get(context.conn, context.master)
+
+    assert response.status == 503
+    assert %{"error" => %{"code" => "provider_degraded"}} = json_response(response, 503)
+    assert get_resp_header(response, "access-control-allow-origin") == ["*"]
+    refute_received {:upstream, _path}
+  end
+
   test "disabling the provider rejects playback and CORS preflight remains available", context do
     Application.put_env(:streamix, :embedplay, enabled: false)
     assert get(build_conn(), context.master).status == 503

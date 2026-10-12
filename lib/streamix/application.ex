@@ -31,6 +31,7 @@ defmodule Streamix.Application do
         {Task.Supervisor, name: Streamix.TaskSupervisor},
         Streamix.AI.SearchHealth,
         Streamix.Embedplay.Sessions,
+        Streamix.Embedplay.Health,
         {Redix, {redis_url(), [name: :streamix_redis]}},
         # L1 in-memory cache (ConCache) for hot data
         {ConCache,

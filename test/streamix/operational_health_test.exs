@@ -21,9 +21,27 @@ defmodule Streamix.OperationalHealthTest do
     assert snapshot.checks.providers.counts["failed"] == 1
     assert snapshot.checks.semantic_search.status == :disabled
     assert snapshot.checks.torrent.status == :disabled
+    assert snapshot.checks.embedplay.status == :disabled
     assert snapshot.release.version == @version
     assert is_binary(snapshot.release.revision)
     assert is_binary(snapshot.release.asset_version)
+  end
+
+  test "reports degraded Embedplay resolution without failing readiness" do
+    original = Application.get_env(:streamix, :embedplay, [])
+    Application.put_env(:streamix, :embedplay, enabled: true)
+    on_exit(fn -> Application.put_env(:streamix, :embedplay, original) end)
+    {:ok, _provider} = Streamix.Providers.ensure_embedplay_provider()
+
+    assert %{status: :ok} = OperationalHealth.snapshot().checks.embedplay
+
+    {:ok, _provider} = Streamix.Providers.mark_embedplay_degraded(:resolver_outdated)
+    snapshot = OperationalHealth.snapshot()
+
+    assert snapshot.status == :degraded
+
+    assert %{status: :degraded, reason: "resolver_outdated", degraded_at: %DateTime{}} =
+             snapshot.checks.embedplay
   end
 
   test "reports an exhausted GIndex quota as a degraded paused subsystem" do
