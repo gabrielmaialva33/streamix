@@ -54,12 +54,49 @@ defmodule Streamix.Torrent.Magnet do
 
   @doc """
   Pulls the lowercased 40-hex info_hash out of any magnet URI.
-  Returns `nil` when the URI doesn't carry an `xt=urn:btih:` slot.
+
+  Both encodings BEP 9 allows are accepted: 40 hex characters and 32
+  base32 characters (gratistorrent.com publishes the latter); base32 is
+  converted to hex. Returns `nil` when the URI doesn't carry a usable
+  `xt=urn:btih:` slot.
   """
   @spec info_hash(String.t()) :: String.t() | nil
   def info_hash(magnet) when is_binary(magnet) do
-    case Regex.run(~r/xt=urn:btih:([0-9a-fA-F]{40})/, magnet, capture: :all_but_first) do
-      [hash] -> String.downcase(hash)
+    case btih(magnet) do
+      {_raw, hex} -> hex
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Returns the magnet with a base32 `btih` rewritten to its hex form, so
+  every downstream consumer (dedupe, rqbit) sees one canonical encoding.
+  Hex magnets are returned untouched.
+  """
+  @spec normalize(String.t()) :: String.t()
+  def normalize(magnet) when is_binary(magnet) do
+    case btih(magnet) do
+      {raw, hex} when byte_size(raw) == 32 ->
+        String.replace(magnet, "urn:btih:" <> raw, "urn:btih:" <> hex, global: false)
+
+      _ ->
+        magnet
+    end
+  end
+
+  defp btih(magnet) do
+    case Regex.run(~r/xt=urn:btih:([0-9a-fA-F]{40}|[A-Za-z2-7]{32})(?![0-9A-Za-z])/, magnet,
+           capture: :all_but_first
+         ) do
+      [raw] when byte_size(raw) == 40 -> {raw, String.downcase(raw)}
+      [raw] -> base32_to_hex(raw)
+      _ -> nil
+    end
+  end
+
+  defp base32_to_hex(raw) do
+    case Base.decode32(String.upcase(raw)) do
+      {:ok, <<_::binary-size(20)>> = digest} -> {raw, Base.encode16(digest, case: :lower)}
       _ -> nil
     end
   end

@@ -8,6 +8,10 @@ defmodule Streamix.Torrent.Source do
   `t:magnet_info/0` rows that the orchestrator persists into
   `torrent_streams`.
 
+  `release_flags` marks releases that must not be ranked or labelled like
+  clean ones: `"unofficial_dub"` (fan-made dub) and `"cam"` (camera /
+  telesync capture).
+
   Each source owns its own pacing — `rate_limit_ms/0` is consulted by
   the orchestrator before every call to keep us well under whatever
   threshold the upstream tolerates.
@@ -25,7 +29,9 @@ defmodule Streamix.Torrent.Source do
           optional(:plot) => String.t() | nil,
           optional(:rating) => float() | nil,
           optional(:runtime_minutes) => integer() | nil,
-          optional(:genres) => [String.t()]
+          optional(:genres) => [String.t()],
+          optional(:original_title) => String.t() | nil,
+          optional(:source_url) => String.t() | nil
         }
 
   @type magnet_info :: %{
@@ -35,6 +41,7 @@ defmodule Streamix.Torrent.Source do
           optional(:quality) => String.t() | nil,
           optional(:codec) => String.t() | nil,
           optional(:audio_track) => String.t() | nil,
+          optional(:release_flags) => [String.t()],
           optional(:container) => String.t() | nil,
           optional(:size_bytes) => integer() | nil,
           optional(:seeders) => integer(),
@@ -66,4 +73,15 @@ defmodule Streamix.Torrent.Source do
   """
   @callback fetch_listing(fetch_opts()) ::
               {:ok, [listing_item()], meta :: map()} | {:error, term()}
+
+  @doc """
+  Optional targeted lookup of one wanted movie (title, year, IMDb id)
+  through the source's own search. Returns the candidate releases it
+  scraped; `Streamix.Torrent.Matching.match/2` decides which of them is the
+  wanted movie. Sources without a search simply do not implement it.
+  """
+  @callback search(wanted :: map(), keyword()) ::
+              {:ok, [listing_item()], meta :: map()} | {:error, term()}
+
+  @optional_callbacks search: 2
 end

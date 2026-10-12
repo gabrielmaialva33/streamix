@@ -81,27 +81,50 @@ defmodule Streamix.Torrent.Catalog do
   end
 
   @doc """
-  All streams for a movie, best swarm first. Used by the detail page to
-  list available qualities.
+  All streams for a movie, best first. Used by the detail page to list
+  available qualities.
+
+  Clean releases rank ahead of flagged ones (`release_flags`: unofficial
+  dub, camera capture) whatever their swarm size; within each group the
+  biggest swarm wins.
   """
   def streams_for_movie(movie_id) do
     from(ts in TorrentStream,
       where: ts.movie_id == ^movie_id,
-      order_by: [desc: ts.seeders, desc: ts.id]
+      order_by: ^ranking()
     )
     |> Repo.all()
   end
 
   @doc """
-  The single best stream to play for a movie (most seeders), or `nil`.
+  The single best stream to play for a movie, or `nil`: the clean release
+  with the most seeders, falling back to a flagged one only when nothing
+  clean exists.
   """
   def best_stream_for_movie(movie_id) do
     from(ts in TorrentStream,
       where: ts.movie_id == ^movie_id,
-      order_by: [desc: ts.seeders, desc: ts.id],
+      order_by: ^ranking(),
       limit: 1
     )
     |> Repo.one()
+  end
+
+  @doc """
+  TMDB ids the catalog already pairs with the given IMDb ids, as
+  `%{imdb_id => tmdb_id}` (ambiguous pairings are left out).
+  """
+  @spec tmdb_ids_by_imdb([String.t()], keyword()) :: %{String.t() => String.t()}
+  def tmdb_ids_by_imdb(imdb_ids, opts \\ [])
+  def tmdb_ids_by_imdb([], _opts), do: %{}
+  def tmdb_ids_by_imdb(imdb_ids, opts), do: MediaCatalog.torrent_tmdb_ids_by_imdb(imdb_ids, opts)
+
+  defp ranking do
+    [
+      asc: dynamic([ts], fragment("cardinality(?) > 0", ts.release_flags)),
+      desc: dynamic([ts], ts.seeders),
+      desc: dynamic([ts], ts.id)
+    ]
   end
 
   defdelegate upsert_movie(provider_id, attrs), to: MediaCatalog, as: :upsert_torrent_movie

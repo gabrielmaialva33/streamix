@@ -42,8 +42,8 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
 
         {:error, reason} ->
           Logger.error(
-            "[Torrent SyncSource] provider=#{provider_id} slug=#{source_slug} failed: " <>
-              inspect(reason)
+            "[Torrent SyncSource] provider=#{provider_id} slug=#{source_slug} failed " <>
+              "state=#{Torrent.failure_state(reason)}: #{inspect(reason)}"
           )
 
           {:error, reason}
@@ -65,13 +65,24 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorker do
     # settles. Legacy/manual jobs without a workflow still finalize
     # themselves for backwards compatibility.
     maybe_finalize_provider(provider, workflow_id)
+    log_completion(provider_id, source_slug, stats)
+    :ok
+  end
 
+  # A source with nothing configured returns an empty page by design; that
+  # is "disabled", not a successful sync of zero items.
+  defp log_completion(provider_id, source_slug, %{state: :disabled}) do
+    Logger.info(
+      "[Torrent SyncSource] provider=#{provider_id} slug=#{source_slug} disabled: " <>
+        "no scraper mirror or feed configured"
+    )
+  end
+
+  defp log_completion(provider_id, source_slug, stats) do
     Logger.info(
       "[Torrent SyncSource] provider=#{provider_id} slug=#{source_slug} ok " <>
         "movies=#{stats.movies} torrents=#{stats.torrents}"
     )
-
-    :ok
   end
 
   defp maybe_finalize_provider(provider, nil), do: Torrent.refresh_provider_counts(provider)

@@ -14,6 +14,7 @@ defmodule Streamix.Torrent.Sync do
   alias Streamix.Providers
   alias Streamix.Repo
   alias Streamix.Torrent.{Catalog, Sources, TorrentStream}
+  alias Streamix.Torrent.Sources.HtmlScraper
 
   require Logger
 
@@ -76,9 +77,12 @@ defmodule Streamix.Torrent.Sync do
   item into `movies` + every magnet into `torrent_streams`.
 
   Returns `{:ok, stats}` with the totals collected for this source.
+  `stats.state` is `:ok`, or `:disabled` when the source has nothing
+  configured (no scraper mirror, no feed) — an empty result that is *not*
+  a successful sync and must not be logged as one.
   """
   @spec sync_source(term(), module(), keyword()) ::
-          {:ok, %{movies: non_neg_integer(), torrents: non_neg_integer()}}
+          {:ok, %{movies: non_neg_integer(), torrents: non_neg_integer(), state: :ok | :disabled}}
           | {:error, term()}
   def sync_source(provider, source_module, opts \\ [])
 
@@ -109,7 +113,7 @@ defmodule Streamix.Torrent.Sync do
       source,
       source_module,
       start_page,
-      %{movies: 0, torrents: 0},
+      %{movies: 0, torrents: 0, state: :ok},
       max_pages,
       on_page
     )
@@ -136,7 +140,8 @@ defmodule Streamix.Torrent.Sync do
           {:ok, {movies_count, torrents_count}} ->
             new_acc = %{
               movies: acc.movies + movies_count,
-              torrents: acc.torrents + torrents_count
+              torrents: acc.torrents + torrents_count,
+              state: if(Map.get(meta, :disabled?) == true, do: :disabled, else: acc.state)
             }
 
             continue_sync(
@@ -160,10 +165,38 @@ defmodule Streamix.Torrent.Sync do
 
       {:error, reason} ->
         Logger.error(
-          "[Torrent Sync] Source #{source_module.slug()} page #{page} failed: #{inspect(reason)}"
+          "[Torrent Sync] Source #{source_module.slug()} page #{page} failed " <>
+            "state=#{failure_state(reason)}: #{inspect(reason)}"
         )
 
         {:error, reason}
+    end
+  end
+
+  @doc """
+  Short, greppable name for a sync failure: `"blocked"` (challenge, 403 or
+  interstitial), `"layout_changed"` (page fetched but the selector matched
+  nothing), `"rate_limited"`, `"http_error"`, `"not_found"`,
+  `"transport_error"`, `"page_limit_exceeded"`, `"invalid_pagination"`,
+  `"persistence_failed"` or `"error"`.
+  """
+  @spec failure_state(term()) :: String.t()
+  def failure_state({:page_limit_exceeded, _details}), do: "page_limit_exceeded"
+  def failure_state({:invalid_pagination, _details}), do: "invalid_pagination"
+  def failure_state({:item_upsert_failed, _id, _reason}), do: "persistence_failed"
+  def failure_state({:checkpoint_failed, _reason}), do: "checkpoint_failed"
+  def failure_state(reason), do: reason |> HtmlScraper.failure_kind() |> Atom.to_string()
+
+  @doc """
+  Persists already-scraped listing items for `provider` exactly like a
+  sync page would (movie upsert + torrent_streams upsert). Used by the
+  targeted search, which finds items outside the paginated listing.
+  """
+  @spec ingest_items(term(), module(), [map()]) ::
+          {:ok, {non_neg_integer(), non_neg_integer()}} | {:error, term()}
+  def ingest_items(provider, source_module, items) when is_list(items) do
+    with {:ok, source} <- Providers.torrent_sync_source(provider) do
+      upsert_items(source, source_module, items)
     end
   end
 
@@ -253,9 +286,15 @@ defmodule Streamix.Torrent.Sync do
   # Returns `{:ok, {movies_inserted_or_updated, torrents_inserted_or_updated}}`.
   defp upsert_items(source, source_module, items) when is_list(items) do
     source_slug = source_module.slug()
+    items = Enum.reject(items, &blank_title?/1)
+
+    tmdb_by_imdb =
+      items
+      |> missing_tmdb_imdb_ids()
+      |> Catalog.tmdb_ids_by_imdb(exclude_provider_id: source.provider_id)
 
     items
-    |> Enum.reject(&blank_title?/1)
+    |> Enum.map(&put_known_tmdb_id(&1, tmdb_by_imdb))
     |> Enum.reduce_while({:ok, {0, 0}}, fn item, {:ok, {movies, torrents}} ->
       case upsert_item(source, source_slug, item) do
         {:ok, torrent_count} ->
@@ -267,6 +306,35 @@ defmodule Streamix.Torrent.Sync do
       end
     end)
   end
+
+  # An item that names its IMDb film but no TMDB id is matched to the
+  # catalog by that IMDb id (when the catalog maps it to exactly one TMDB
+  # id), instead of being left to the fuzzy title matcher later.
+  defp missing_tmdb_imdb_ids(items) do
+    items
+    |> Enum.filter(&(blank?(Map.get(&1, :tmdb_id)) and imdb_id?(Map.get(&1, :imdb_id))))
+    |> Enum.map(& &1.imdb_id)
+    |> Enum.uniq()
+  end
+
+  defp put_known_tmdb_id(item, tmdb_by_imdb) when map_size(tmdb_by_imdb) == 0, do: item
+
+  defp put_known_tmdb_id(item, tmdb_by_imdb) do
+    case {Map.get(item, :tmdb_id), Map.get(tmdb_by_imdb, Map.get(item, :imdb_id))} do
+      {current, tmdb_id} when is_binary(tmdb_id) ->
+        if blank?(current), do: Map.put(item, :tmdb_id, tmdb_id), else: item
+
+      _ ->
+        item
+    end
+  end
+
+  defp imdb_id?(value) when is_binary(value), do: Regex.match?(~r/^tt\d{5,12}$/, value)
+  defp imdb_id?(_value), do: false
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) in ["", "0"]
+  defp blank?(_value), do: false
 
   # Some YTS rows leak through with an empty title (movies in late
   # scrub state on the upstream). Catching it at the source boundary is
@@ -340,6 +408,7 @@ defmodule Streamix.Torrent.Sync do
                :quality,
                :codec,
                :audio_track,
+               :release_flags,
                :container,
                :size_bytes,
                :seeders,
@@ -365,6 +434,7 @@ defmodule Streamix.Torrent.Sync do
         quality: magnet[:quality],
         codec: magnet[:codec],
         audio_track: magnet[:audio_track],
+        release_flags: release_flags(magnet[:release_flags]),
         container: magnet[:container],
         size_bytes: magnet[:size_bytes],
         seeders: magnet[:seeders] || 0,
@@ -377,6 +447,12 @@ defmodule Streamix.Torrent.Sync do
       }
     end
   end
+
+  defp release_flags(flags) when is_list(flags) do
+    flags |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort()
+  end
+
+  defp release_flags(_flags), do: []
 
   defp valid_info_hash?(hash) when is_binary(hash) do
     Regex.match?(~r/^[0-9a-fA-F]{40}$/, hash)
@@ -409,10 +485,15 @@ defmodule Streamix.Torrent.Sync do
     sources_stats =
       Enum.map(results, fn
         {module, {:ok, stats}} ->
-          %{slug: module.slug(), status: :ok, movies: stats.movies, torrents: stats.torrents}
+          %{
+            slug: module.slug(),
+            status: Map.get(stats, :state, :ok),
+            movies: stats.movies,
+            torrents: stats.torrents
+          }
 
         {module, {:error, reason}} ->
-          %{slug: module.slug(), status: :error, reason: reason}
+          %{slug: module.slug(), status: :error, failure: failure_state(reason), reason: reason}
       end)
 
     successful = Enum.filter(sources_stats, &(&1.status == :ok))

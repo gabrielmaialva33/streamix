@@ -136,6 +136,18 @@ config :logger, level: :warning
 # Disable Oban in tests (manual mode prevents auto-execution)
 config :streamix, Oban, testing: :manual
 
+# BR torrent scrapers never touch the network in tests: their sites are off
+# unless a test builds one explicitly, every request goes to a Req.Test stub
+# named after the HTTP module, and polite pacing is not slept through.
+config :streamix, :torrent_scrapers,
+  comandotorrent: [enabled: false],
+  gratistorrent: [enabled: false]
+
+config :streamix, :torrent_scraper_request_options,
+  plug: {Req.Test, Streamix.Torrent.Sources.ScraperHttp}
+
+config :streamix, :torrent_scraper_min_interval_ms, 0
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 

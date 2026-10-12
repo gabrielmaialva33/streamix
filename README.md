@@ -358,7 +358,7 @@ provider or enable one of the system catalog sources.
 |------------------------|----------------------------------------------------------------------------------------------------------|
 | Global Xtream catalog  | `GLOBAL_PROVIDER_ENABLED`, `GLOBAL_PROVIDER_URL`, `GLOBAL_PROVIDER_USERNAME`, `GLOBAL_PROVIDER_PASSWORD` |
 | GIndex catalog         | `GINDEX_ENABLED`, `GINDEX_ENDPOINTS`, `GINDEX_SYNC_URL`, `GINDEX_STREAM_URL`                             |
-| Torrent catalog        | `TORRENT_ENABLED`, `RQBIT_URL`, source endpoint variables                                                |
+| Torrent catalog        | `TORRENT_ENABLED`, `RQBIT_URL`, BR scraper overrides ([`docs/torrent-br-sources.md`](docs/torrent-br-sources.md)) |
 | Metadata and subtitles | `TMDB_API_TOKEN`, `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY`                                               |
 | Semantic discovery     | `QDRANT_ENABLED`, `QDRANT_URL`, `GEMINI_API_KEY` or `NVIDIA_API_KEY`                                     |
 | Billing                | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, Stripe price variables                                     |

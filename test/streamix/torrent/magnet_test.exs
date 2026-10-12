@@ -49,6 +49,29 @@ defmodule Streamix.Torrent.MagnetTest do
     test "returns nil for malformed URIs" do
       assert Magnet.info_hash("magnet:?xt=urn:sha1:nope") == nil
       assert Magnet.info_hash("not a magnet") == nil
+      assert Magnet.info_hash("magnet:?xt=urn:btih:#{@hash}ff&dn=too-long") == nil
+    end
+
+    test "accepts the base32 encoding GratisTorrent publishes" do
+      # Live gratistorrent.com magnet, 2026-10-12.
+      uri =
+        "magnet:?xt=urn:btih:inj2wd4utt7g6txt32zo43wqirm22buo&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&dn=Tadeo"
+
+      assert Magnet.info_hash(uri) == "4353ab0f949cfe6f4ef3deb2ee6ed04459ad068e"
+    end
+  end
+
+  describe "normalize/1" do
+    test "rewrites a base32 btih to hex and leaves the rest of the magnet alone" do
+      uri = "magnet:?xt=urn:btih:inj2wd4utt7g6txt32zo43wqirm22buo&dn=Tadeo"
+
+      assert Magnet.normalize(uri) ==
+               "magnet:?xt=urn:btih:4353ab0f949cfe6f4ef3deb2ee6ed04459ad068e&dn=Tadeo"
+    end
+
+    test "keeps hex magnets untouched" do
+      uri = "magnet:?xt=urn:btih:#{@hash}&dn=foo"
+      assert Magnet.normalize(uri) == uri
     end
   end
 

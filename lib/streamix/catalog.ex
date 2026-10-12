@@ -146,6 +146,10 @@ defmodule Streamix.Catalog do
     to: TorrentMovies,
     as: :get_for_playback
 
+  defdelegate torrent_tmdb_ids_by_imdb(imdb_ids, opts \\ []),
+    to: TorrentMovies,
+    as: :tmdb_ids_by_imdb
+
   # Recommendation and ingestion support
 
   defdelegate list_channel_recommendation_candidates(user_id, opts),

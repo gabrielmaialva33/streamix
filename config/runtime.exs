@@ -346,22 +346,42 @@ if config_env() != :test and
     gratistorrent: get_env.("GRATISTORRENT_SOURCE_URL"),
     comandotorrent: get_env.("COMANDOTORRENT_SOURCE_URL")
 
-  # Native HTML scrapers for BR torrent sites (dubbed/dual movies). Set a
-  # site's `*_BASE_URL` to enable; selectors fall back to the common
-  # WordPress shape and can be tuned per site if the layout differs.
-  config :streamix, :torrent_scrapers,
-    comandotorrent: [
-      base_url: get_env.("COMANDOTORRENT_BASE_URL"),
-      list_path: get_env.("COMANDOTORRENT_LIST_PATH") || "/",
-      post_link_selector:
-        get_env.("COMANDOTORRENT_POST_SELECTOR") || "article h2 a, .title a, h2.entry-title a"
-    ],
-    gratistorrent: [
-      base_url: get_env.("GRATISTORRENT_BASE_URL"),
-      list_path: get_env.("GRATISTORRENT_LIST_PATH") || "/",
-      post_link_selector:
-        get_env.("GRATISTORRENT_POST_SELECTOR") || "article h2 a, .title a, h2.entry-title a"
+  # Native HTML scrapers for BR torrent sites (dubbed/dual movies). Each
+  # source ships verified mirrors and selectors
+  # (Streamix.Torrent.Sources.ComandoTorrent / GratisTorrent) and is on
+  # whenever the torrent provider is. These variables only override the
+  # defaults; unset ones keep them. See docs/torrent-br-sources.md.
+  #
+  #   *_ENABLED=false     switch the scraper off (the JSON feed is used instead)
+  #   *_BASE_URLS         ordered, comma-separated mirror list (replaces defaults)
+  #   *_BASE_URL          legacy single URL, tried before the default mirrors
+  #   *_MAX_PAGES         newest listing pages crawled per nightly run
+  torrent_scraper = fn prefix ->
+    max_pages =
+      case get_env.(prefix <> "_MAX_PAGES") do
+        nil -> nil
+        value -> RuntimeConfig.integer!(prefix <> "_MAX_PAGES", value, 5, min: 1, max: 5_000)
+      end
+
+    [
+      enabled: RuntimeConfig.boolean!(prefix <> "_ENABLED", get_env.(prefix <> "_ENABLED"), true),
+      base_urls:
+        case RuntimeConfig.csv(get_env.(prefix <> "_BASE_URLS")) do
+          [] -> nil
+          urls -> urls
+        end,
+      base_url: get_env.(prefix <> "_BASE_URL"),
+      list_path: get_env.(prefix <> "_LIST_PATH"),
+      page_path: get_env.(prefix <> "_PAGE_PATH"),
+      search_path: get_env.(prefix <> "_SEARCH_PATH"),
+      post_link_selector: get_env.(prefix <> "_POST_SELECTOR"),
+      max_pages: max_pages
     ]
+  end
+
+  config :streamix, :torrent_scrapers,
+    comandotorrent: torrent_scraper.("COMANDOTORRENT"),
+    gratistorrent: torrent_scraper.("GRATISTORRENT")
 else
   config :streamix, :torrent_provider, enabled: false
 end

@@ -26,6 +26,9 @@ defmodule Streamix.Torrent.TorrentStream do
     field :quality, :string
     field :codec, :string
     field :audio_track, :string
+    # Quality warnings parsed from the release ("unofficial_dub", "cam").
+    # Flagged releases stay playable but rank behind clean ones.
+    field :release_flags, {:array, :string}, default: []
     field :container, :string
     field :size_bytes, :integer
 
@@ -43,7 +46,7 @@ defmodule Streamix.Torrent.TorrentStream do
     timestamps(type: :utc_datetime)
   end
 
-  @fields ~w(info_hash magnet_uri quality codec audio_track container
+  @fields ~w(info_hash magnet_uri quality codec audio_track release_flags container
              size_bytes seeders leechers seeders_updated_at source_slug
              movie_id episode_id)a
 
@@ -56,6 +59,7 @@ defmodule Streamix.Torrent.TorrentStream do
     |> update_change(:info_hash, &normalize_hash/1)
     |> validate_format(:info_hash, ~r/^[0-9a-f]{40}$/)
     |> validate_inclusion(:quality, ~w(480p 720p 1080p 2160p), message: "unknown quality")
+    |> validate_subset(:release_flags, ~w(unofficial_dub cam))
     |> unique_constraint(:info_hash)
     |> foreign_key_constraint(:movie_id)
     |> foreign_key_constraint(:episode_id)

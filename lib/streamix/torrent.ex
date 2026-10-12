@@ -8,14 +8,114 @@ defmodule Streamix.Torrent do
   internal sync modules directly.
   """
 
+  alias Streamix.Providers
   alias Streamix.Repo
-  alias Streamix.Torrent.{Catalog, Client, Config, Sources, StreamSession, Sync, TorrentStream}
+
+  alias Streamix.Torrent.{
+    Catalog,
+    Client,
+    Config,
+    Sources,
+    StreamSession,
+    Sync,
+    TargetedSearch,
+    TorrentStream,
+    Wanted
+  }
+
+  alias Streamix.Workers.Torrent.TargetedSearchWorker
 
   @ready_bytes 5_000_000
 
   defdelegate sync_provider(provider), to: Sync
   defdelegate sync_source(provider, source_module, opts \\ []), to: Sync
   defdelegate refresh_provider_counts(provider, opts \\ []), to: Sync
+
+  @doc ~s|Greppable failure state of a sync/scraper error ("blocked", "layout_changed", …).|
+  defdelegate failure_state(reason), to: Sync
+
+  # Targeted search: look specific catalog movies up instead of crawling.
+
+  @doc """
+  Synchronously searches `source_module` for every wanted movie and ingests
+  the matches for `provider`. See `Streamix.Torrent.TargetedSearch.run/4`.
+  """
+  defdelegate targeted_search(provider, source_module, wanted, opts \\ []),
+    to: TargetedSearch,
+    as: :run
+
+  @doc "Validates and normalizes a wanted-movie list (atom or string keys)."
+  defdelegate normalize_wanted(list), to: Wanted, as: :new_list
+
+  @doc "Parses a `tmdb_id,imdb_id,year,title` CSV into wanted movies."
+  defdelegate parse_wanted_csv(content), to: Wanted, as: :parse_csv
+
+  @doc "Reads a `tmdb_id,imdb_id,year,title` CSV file into wanted movies."
+  defdelegate read_wanted_csv(path), to: Wanted, as: :read_csv
+
+  @doc """
+  Enqueues one `Streamix.Workers.Torrent.TargetedSearchWorker` job per
+  searchable source (ComandoTorrent, GratisTorrent) for the system torrent
+  provider. Each job walks the whole wanted list sequentially at the
+  site's polite pace and checkpoints its position.
+
+  Options: `:sources` — slugs to restrict to (default: every configured
+  source that implements `search/2`).
+  """
+  @spec enqueue_targeted_search([map()], keyword()) ::
+          {:ok, [Oban.Job.t()]} | {:error, term()}
+  def enqueue_targeted_search(wanted, opts \\ []) when is_list(wanted) do
+    with {:ok, wanted} <- Wanted.new_list(wanted),
+         {:ok, provider} <- targeted_search_provider(),
+         [_ | _] = sources <- targeted_search_sources(Keyword.get(opts, :sources)) do
+      sources
+      |> Enum.map(fn source ->
+        %{
+          "provider_id" => provider.id,
+          "source_slug" => source.slug(),
+          "wanted" => Enum.map(wanted, &Wanted.to_args/1)
+        }
+        |> TargetedSearchWorker.new()
+        |> Oban.insert()
+      end)
+      |> collect_jobs()
+    else
+      [] -> {:error, :no_searchable_sources}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc "Refreshes the torrent catalog read model (movie stats, count cache)."
+  @spec refresh_catalog_stats(pos_integer()) :: :ok | {:error, term()}
+  def refresh_catalog_stats(provider_id), do: Catalog.refresh_stats(provider_id)
+
+  defp targeted_search_provider do
+    case Providers.ensure_torrent_provider() do
+      {:ok, %{id: _} = provider} -> {:ok, provider}
+      {:ok, :disabled} -> {:error, :torrent_disabled}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp targeted_search_sources(nil),
+    do: Enum.filter(Sources.list(), &TargetedSearch.searchable_source?/1)
+
+  defp targeted_search_sources(slugs) when is_list(slugs) do
+    slugs = Enum.map(slugs, &to_string/1)
+    nil |> targeted_search_sources() |> Enum.filter(&(&1.slug() in slugs))
+  end
+
+  defp collect_jobs(results) do
+    results
+    |> Enum.reduce_while({:ok, []}, fn
+      {:ok, job}, {:ok, jobs} -> {:cont, {:ok, [job | jobs]}}
+      {:error, reason}, _acc -> {:halt, {:error, {:enqueue_failed, reason}}}
+    end)
+    |> case do
+      {:ok, jobs} -> {:ok, Enum.reverse(jobs)}
+      error -> error
+    end
+  end
 
   # Catalog read model (powers the dedicated torrent screen).
   defdelegate provider(), to: Catalog
