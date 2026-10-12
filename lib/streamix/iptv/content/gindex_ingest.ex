@@ -6,7 +6,7 @@ defmodule Streamix.Iptv.Content.GindexIngest do
   require Logger
 
   alias Streamix.Iptv.{CatalogItem, Episode, Movie, Season, Series}
-  alias Streamix.Iptv.Sync.Helpers
+  alias Streamix.Iptv.Sync.{Cleanup, Helpers}
   alias Streamix.Repo
 
   @movie_fields ~w(stream_id name title year container_extension gindex_path)a
@@ -111,19 +111,193 @@ defmodule Streamix.Iptv.Content.GindexIngest do
     end
   end
 
+  # Every season row is upserted, and every season's listing deduped, before
+  # any episode is written, because a file can change season between scans and
+  # only a view of the whole series can see that. Reconciling first lets each
+  # per-season upsert below stay exactly as narrow as it was.
+  #
+  # Deduping up front matters for the same reason: targets must be computed
+  # from the entries that will actually be upserted, or a row could be moved
+  # into a season whose upsert then drops its file and never unparks it.
   defp sync_seasons(series, seasons, provider_id, now) do
-    Enum.reduce(seasons, 0, fn season_content, episode_count ->
-      season = upsert_season(series.id, Map.fetch!(season_content, :season))
+    scraped =
+      Enum.map(seasons, fn season_content ->
+        season = upsert_season(series.id, Map.fetch!(season_content, :season))
+        {season, dedupe_episodes(Map.fetch!(season_content, :episodes), season.id)}
+      end)
 
-      episode_count +
-        upsert_episodes(
-          season.id,
-          Map.fetch!(season_content, :episodes),
-          provider_id,
-          now
-        )
+    reconcile_seasons(series, scraped)
+
+    Enum.reduce(scraped, 0, fn {season, episodes}, episode_count ->
+      episode_count + upsert_episodes(season.id, episodes, provider_id, now)
     end)
   end
+
+  # A file whose season changed between scans used to get a second row in its
+  # new season, because `upsert_episodes/4` only ever sees the season it is
+  # writing. 209f6a7a taught the parser to read the season out of `SxxEyy`, and
+  # from the next scan on production held pairs like
+  #
+  #     season 1  ep 7  Vida-S02E07 - Episódio 7.mkv  created 2026-09-20
+  #     season 2  ep 7  Vida-S02E07 - Episódio 7.mkv  created 2026-10-12
+  #
+  # The new row starts with no history while the user's progress stays on the
+  # old one, which the UI keeps showing as a duplicate. Should the old row ever
+  # be deleted as a stale blocker, its catalog item is orphaned and the 02:00
+  # cleanup cascades the history away.
+  #
+  # So, for every file listed in exactly one season of this scrape:
+  #
+  #   * a row of it in another season, with none in the listed one, is moved
+  #     there and parked at `- id`. It keeps its catalog item, so the history
+  #     follows the file, and the upsert of that season then finds it by
+  #     episode_id and unparks it like any other renumbered file.
+  #   * if the listed season already holds a row of it, the rows elsewhere are
+  #     ghosts. A ghost is deleted only when no user data hangs off its catalog
+  #     item; otherwise it is kept and logged for a human to decide.
+  #
+  # A file listed in more than one season of the same scrape has no single
+  # right season, and neither has a row whose file is gone from the listing.
+  # Both are left exactly as they were.
+  defp reconcile_seasons(series, scraped) do
+    targets = single_season_targets(scraped)
+
+    misplaced =
+      series.id
+      |> series_episode_rows(Map.keys(targets))
+      |> Enum.group_by(& &1.episode_id)
+      |> Enum.flat_map(fn {episode_id, rows} ->
+        target = Map.fetch!(targets, episode_id)
+        {in_target, elsewhere} = Enum.split_with(rows, &(&1.season_id == target.id))
+        if elsewhere == [], do: [], else: [{target, in_target, elsewhere}]
+      end)
+
+    if misplaced != [] do
+      with_user_data =
+        misplaced
+        |> Enum.flat_map(fn {_target, _in_target, elsewhere} -> elsewhere end)
+        |> Enum.map(& &1.catalog_item_id)
+        |> Cleanup.catalog_item_ids_with_user_data()
+
+      {moves, ghosts} = plan_reconciliation(misplaced, with_user_data)
+
+      move_rows(series, moves)
+      drop_ghosts(series, ghosts, with_user_data)
+    end
+
+    :ok
+  end
+
+  defp single_season_targets(scraped) do
+    scraped
+    |> Enum.flat_map(fn {season, episodes} ->
+      Enum.map(episodes, &{Map.fetch!(&1, :episode_id), season})
+    end)
+    |> Enum.group_by(fn {episode_id, _season} -> episode_id end, fn {_id, season} -> season end)
+    |> Enum.flat_map(fn {episode_id, seasons} ->
+      case Enum.uniq_by(seasons, & &1.id) do
+        [season] -> [{episode_id, %{id: season.id, season_number: season.season_number}}]
+        _several -> []
+      end
+    end)
+    |> Map.new()
+  end
+
+  # When the listed season holds no row of the file but several other seasons
+  # do, one of them moves and the rest are ghosts of it. The row that moves is
+  # one carrying user data when there is one, so that history follows the
+  # file, and the oldest otherwise.
+  defp plan_reconciliation(misplaced, with_user_data) do
+    Enum.reduce(misplaced, {[], []}, fn
+      {target, [], elsewhere}, {moves, ghosts} ->
+        [mover | rest] =
+          Enum.sort_by(
+            elsewhere,
+            &{not MapSet.member?(with_user_data, &1.catalog_item_id), &1.id}
+          )
+
+        {[{target, mover} | moves], Enum.map(rest, &{target, &1}) ++ ghosts}
+
+      {target, _in_target, elsewhere}, {moves, ghosts} ->
+        {moves, Enum.map(elsewhere, &{target, &1}) ++ ghosts}
+    end)
+  end
+
+  defp move_rows(_series, []), do: :ok
+
+  defp move_rows(series, moves) do
+    moves
+    |> Enum.group_by(fn {target, _row} -> target.id end, fn {_target, row} -> row.id end)
+    |> Enum.each(fn {season_id, ids} ->
+      from(episode in Episode,
+        where: episode.id in ^ids,
+        update: [set: [season_id: ^season_id, episode_num: fragment("- ?", episode.id)]]
+      )
+      |> Repo.update_all([])
+    end)
+
+    Logger.info(
+      "[GIndex Ingest] series #{series.id}: moved #{length(moves)} file(s) to the season " <>
+        "their listing now names, keeping their rows: " <>
+        Enum.map_join(Enum.take(moves, 5), " | ", fn {target, row} ->
+          "#{episode_label(row)} #{row.season_number}->#{target.season_number}"
+        end)
+    )
+  end
+
+  defp drop_ghosts(_series, [], _with_user_data), do: :ok
+
+  defp drop_ghosts(series, ghosts, with_user_data) do
+    {kept, deletable} =
+      Enum.split_with(ghosts, fn {_target, row} ->
+        MapSet.member?(with_user_data, row.catalog_item_id)
+      end)
+
+    Enum.each(kept, fn {target, row} ->
+      Logger.warning(
+        "[GIndex Ingest] series #{series.id} (#{series.name}): #{episode_label(row)} is " <>
+          "listed only in season #{target.season_number}, which already holds it, but an " <>
+          "older row in season #{row.season_number} carries user data; kept for review " <>
+          "(episode row #{row.id}, catalog item #{row.catalog_item_id})"
+      )
+    end)
+
+    if deletable != [] do
+      ids = Enum.map(deletable, fn {_target, row} -> row.id end)
+      Repo.delete_all(from(episode in Episode, where: episode.id in ^ids))
+
+      Logger.info(
+        "[GIndex Ingest] series #{series.id}: dropped #{length(ids)} duplicate row(s) of " <>
+          "files now filed in another season: " <>
+          Enum.map_join(Enum.take(deletable, 5), " | ", fn {target, row} ->
+            "#{episode_label(row)} #{row.season_number}->#{target.season_number}"
+          end)
+      )
+    end
+
+    :ok
+  end
+
+  defp series_episode_rows(_series_id, []), do: []
+
+  defp series_episode_rows(series_id, episode_ids) do
+    from(episode in Episode,
+      join: season in assoc(episode, :season),
+      where: season.series_id == ^series_id and episode.episode_id in ^episode_ids,
+      select: %{
+        id: episode.id,
+        episode_id: episode.episode_id,
+        catalog_item_id: episode.catalog_item_id,
+        season_id: episode.season_id,
+        season_number: season.season_number,
+        name: episode.name,
+        gindex_path: episode.gindex_path
+      }
+    )
+    |> Repo.all()
+  end
+
+  defp episode_label(row), do: row.gindex_path || row.name || "episode #{row.episode_id}"
 
   defp upsert_season(series_id, attrs) do
     attrs = attrs |> Map.take(@season_fields) |> Map.put(:series_id, series_id)
@@ -159,9 +333,11 @@ defmodule Streamix.Iptv.Content.GindexIngest do
   #
   # So split by what identifies the row: a file already stored in this season
   # keeps its row and only moves number; everything else is matched by number
-  # as before.
+  # as before. A row `reconcile_seasons/2` just moved in from another season is
+  # found here the same way, parked at `- id`, and unparked by the upsert.
+  #
+  # `episodes` must already have been through `dedupe_episodes/2`.
   defp upsert_episodes(season_id, episodes, provider_id, now) do
-    episodes = dedupe_by_number(episodes, season_id)
     existing = existing_episodes(season_id)
 
     {renumbered, fresh} =
@@ -226,8 +402,17 @@ defmodule Streamix.Iptv.Content.GindexIngest do
   # cycle, and a warning for an expected condition only teaches people to stop
   # reading the log. What was wrong before was dropping them in silence, which
   # is how the catalogue lost episodes with no trace.
-  defp dedupe_by_number(episodes, season_id) do
-    deduped = Enum.uniq_by(episodes, &Map.fetch!(&1, :episode_num))
+  #
+  # The other unique index needs the same treatment. Two entries carrying one
+  # episode_id under different numbers — a `:erlang.phash2/1` collision between
+  # two paths, or a listing that returns a file twice and parses it apart —
+  # both survived a dedupe by number alone, and the insert then broke
+  # (season_id, episode_id) and aborted the series. Deduping by file first
+  # keeps the most entries: doing it second could drop a file whose number was
+  # only taken by the duplicate that goes anyway.
+  defp dedupe_episodes(episodes, season_id) do
+    by_file = Enum.uniq_by(episodes, &Map.fetch!(&1, :episode_id))
+    deduped = Enum.uniq_by(by_file, &Map.fetch!(&1, :episode_num))
 
     if length(deduped) < length(episodes) do
       # The multiset difference, not a filter on episode_id: when the listing
@@ -235,19 +420,21 @@ defmodule Streamix.Iptv.Content.GindexIngest do
       # removed the duplicate that was dropped, and production logged
       # "0 file(s) ... were dropped" for a season that had lost one.
       dropped =
-        (episodes -- deduped)
-        |> Enum.map(fn episode ->
-          "#{Map.fetch!(episode, :episode_num)}=#{Map.get(episode, :name)}"
-        end)
+        Enum.map(episodes -- by_file, &describe_drop(&1, "same file")) ++
+          Enum.map(by_file -- deduped, &describe_drop(&1, "same number"))
 
       Logger.info(
         "[GIndex Ingest] season #{season_id}: #{length(dropped)} file(s) collide on an " <>
-          "episode number already taken and were dropped: " <>
+          "episode number or file already taken and were dropped: " <>
           Enum.join(Enum.take(dropped, 5), " | ")
       )
     end
 
     deduped
+  end
+
+  defp describe_drop(episode, reason) do
+    "#{Map.fetch!(episode, :episode_num)}=#{Map.get(episode, :name)} (#{reason})"
   end
 
   # The one collision neither conflict target can resolve. A renumbered file
