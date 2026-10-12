@@ -8,7 +8,7 @@ import {
   detectQualityCodec,
   qualityVideoCodec,
 } from "../media/quality_probe";
-import { getStreamType } from "../media/stream_loader";
+import { resolveStreamType } from "../media/stream_loader";
 import {
   ContentType,
   FeatureFlags,
@@ -1895,8 +1895,9 @@ const VideoPlayer = {
       log.debug("Codec-aware ABR active - optimizing quality selection by codec efficiency");
     }
 
-    // Use explicit stream type hint from backend if available (token-based URLs have no extension)
-    this.currentStreamType = this.el.dataset.streamType || getStreamType(this.streamUrl);
+    // Use explicit stream type hint from backend if available (token-based URLs have
+    // no extension), except that a URL naming HLS (`.m3u8`) always gets an HLS engine.
+    this.currentStreamType = resolveStreamType(this.el.dataset.streamType, this.streamUrl);
     log.debug("Detected stream type:", this.currentStreamType);
 
     this.flushPlaybackMetrics("restarted");

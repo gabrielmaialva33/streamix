@@ -42,6 +42,39 @@ defmodule Streamix.Hls.RegistryTest do
     assert other =~ ~r/\.bin$/
   end
 
+  test "a live window drops references no refresh has named for longer than it" do
+    registry = Registry.new("https://93.184.216.34/live.m3u8", :playlist, window_seconds: 60)
+    root = Registry.root(registry)
+    segment = fn n -> {"https://93.184.216.34/seg-#{n}.ts", :media} end
+
+    # Refresh at t=0 names 1..5; at t=30 the playlist has moved to 3..7.
+    assert {:ok, first_ids, registry} = Registry.register(registry, Enum.map(1..5, segment), 0)
+    assert {:ok, second_ids, registry} = Registry.register(registry, Enum.map(3..7, segment), 30)
+
+    # Still-listed segments keep their identifiers across refreshes.
+    assert Enum.slice(first_ids, 2..4) == Enum.slice(second_ids, 0..2)
+    assert Registry.size(registry) == 8
+
+    # At t=61, 1 and 2 were last named at t=0 and go; 3..7 (named at 30) stay.
+    assert {:ok, _ids, registry} = Registry.register(registry, Enum.map(5..9, segment), 61)
+    assert Registry.lookup(registry, Enum.at(first_ids, 0)) == :error
+    assert Registry.lookup(registry, Enum.at(first_ids, 1)) == :error
+    assert {:ok, _} = Registry.lookup(registry, Enum.at(first_ids, 2))
+    assert {:ok, %{kind: :playlist}} = Registry.lookup(registry, root)
+    assert Registry.size(registry) == 1 + 7
+
+    # A channel left running for days stays at its window, never at the caps.
+    registry =
+      Enum.reduce(1..5_000, registry, fn tick, acc ->
+        refs = Enum.map((tick * 3)..(tick * 3 + 4), segment)
+        {:ok, _ids, acc} = Registry.register(acc, refs, 100 + tick * 10)
+        acc
+      end)
+
+    assert Registry.size(registry) < 40
+    assert {:ok, %{kind: :playlist}} = Registry.lookup(registry, root)
+  end
+
   test "growth is bounded by resource count and URL bytes" do
     registry = Registry.new("https://93.184.216.34/master.m3u8", :playlist)
 

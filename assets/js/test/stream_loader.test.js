@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isStreamLoaderCancelledError, StreamLoader } from "../media/stream_loader.js";
+import {
+  isStreamLoaderCancelledError,
+  resolveStreamType,
+  StreamLoader,
+} from "../media/stream_loader.js";
 
 const HLS_EVENTS = {
   FRAG_LOADED: "frag",
@@ -191,4 +195,28 @@ test("a stale mpegts import cannot attach or overwrite a newer loader session", 
   assert.equal(oldLoader.getMpegtsPlayer(), null);
   assert.equal(newLoader.getMpegtsPlayer(), currentPlayer);
   assert.equal(newCalls.filter((call) => call === "create").length, 1);
+});
+
+test("a live channel minted as an HLS gateway URL reaches HLS despite the ts hint", () => {
+  const master = "https://streamix.example/api/stream/hls/master.m3u8?token=abc";
+  const proxied =
+    "https://source.example/proxy?url=https%3A%2F%2Fstreamix.example%2Fapi%2Fstream%2Fhls%2Fmaster.m3u8%3Ftoken%3Dabc%26edge%3D1";
+
+  assert.equal(resolveStreamType("ts", master), "hls");
+  assert.equal(resolveStreamType("mp4", master), "hls");
+  assert.equal(resolveStreamType("ts", proxied), "hls");
+  assert.equal(resolveStreamType(undefined, master), "hls");
+});
+
+test("token URLs without an extension keep the server's hint", () => {
+  const proxy = "https://streamix.example/api/stream/proxy?token=abc";
+
+  assert.equal(resolveStreamType("ts", proxy), "ts");
+  assert.equal(resolveStreamType("mp4", proxy), "mp4");
+  assert.equal(resolveStreamType("m3u8", proxy), "m3u8");
+  assert.equal(resolveStreamType(undefined, "https://cdn.example/movie.mkv"), "mkv");
+  assert.equal(
+    resolveStreamType("mp4", "https://streamix.example/api/stream/vod/direct.mp4?token=abc"),
+    "mp4",
+  );
 });

@@ -74,6 +74,10 @@ defmodule Streamix.Application do
         # it separate prevents player traffic from exhausting checkout
         # capacity needed by sync, image, metadata and health requests.
         {Finch, name: Streamix.StreamFinch, pools: stream_finch_pools()},
+        # Keep-alive HTTP/1 pool for the HLS gateway's playlist, key and
+        # segment fetches, so consecutive segments from one CDN host reuse a
+        # warm TCP/TLS connection instead of handshaking per segment.
+        {Finch, name: Streamix.HlsFinch, pools: hls_finch_pools()},
         # Re-pins public DNS resolvers (1.1.1.1, 8.8.8.8) on top of
         # /etc/resolv.conf — see DnsKeeper module doc for why this is
         # needed on the Docker bridge network.
@@ -92,6 +96,10 @@ defmodule Streamix.Application do
         # Per-item delivery decisions (HLS gateway or direct client) for
         # `direct_client_playback` providers, cached with single-flight.
         Streamix.Iptv.Streaming.DeliveryProbe,
+        # Short shared single-flight cache of HLS segments: prefetched
+        # segments wait here for the player, and concurrent viewers share one
+        # upstream fetch per segment.
+        Streamix.Hls.SegmentCache,
         # GIndex endpoint manager (multi-endpoint failover)
         Streamix.Gindex.EndpointManager,
         # GIndex URL cache
@@ -197,6 +205,22 @@ defmodule Streamix.Application do
         # backpressure mechanism, which is a poor fit for large media bodies.
         protocols: [:http1],
         conn_max_idle_time: :timer.seconds(10),
+        pool_max_idle_time: :timer.minutes(5)
+      ]
+    })
+  end
+
+  # One pool per {scheme, host, port}: sized above the per-provider fetch
+  # lease cap (16) plus prefetches, idle connections kept long enough to
+  # carry a playback from one segment to the next.
+  defp hls_finch_pools do
+    Application.get_env(:streamix, :hls_finch_pools, %{
+      :default => [
+        size: 32,
+        count: 1,
+        protocols: [:http1],
+        conn_opts: [transport_opts: [timeout: 5_000]],
+        conn_max_idle_time: :timer.seconds(30),
         pool_max_idle_time: :timer.minutes(5)
       ]
     })

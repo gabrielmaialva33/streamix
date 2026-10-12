@@ -475,6 +475,105 @@ config :streamix, :xtream_hls,
       2_048,
       min: 16,
       max: 100_000
+    ),
+  # Total deadline of one segment or key fetch. The measured CDN serves each
+  # connection at ~0.5–1 Mbit/s, so a segment can take tens of seconds.
+  media_timeout_ms:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_MEDIA_TIMEOUT_MS",
+      get_env.("XTREAM_HLS_MEDIA_TIMEOUT_MS"),
+      90_000,
+      min: 5_000,
+      max: 300_000
+    ),
+  # Lookahead: segments prefetched after the one a player asks for, and how
+  # many prefetches a session may have in flight. 0 segments disables it.
+  prefetch_segments:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_PREFETCH_SEGMENTS",
+      get_env.("XTREAM_HLS_PREFETCH_SEGMENTS"),
+      3,
+      min: 0,
+      max: 6
+    ),
+  prefetch_concurrency:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_PREFETCH_CONCURRENCY",
+      get_env.("XTREAM_HLS_PREFETCH_CONCURRENCY"),
+      3,
+      min: 1,
+      max: 6
+    ),
+  # Immutable VOD playlists kept per session, as templates.
+  playlist_cache_bytes:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_PLAYLIST_CACHE_BYTES",
+      get_env.("XTREAM_HLS_PLAYLIST_CACHE_BYTES"),
+      8 * 1_024 * 1_024,
+      min: 0,
+      max: 64 * 1_024 * 1_024
+    ),
+  # Live channels: playlist refresh deadline, registry sliding window, idle
+  # eviction and lookahead (at most the next segment).
+  live_playlist_timeout_ms:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_PLAYLIST_TIMEOUT_MS",
+      get_env.("XTREAM_HLS_LIVE_PLAYLIST_TIMEOUT_MS"),
+      8_000,
+      min: 1_000,
+      max: 30_000
+    ),
+  live_window_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_WINDOW_SECONDS",
+      get_env.("XTREAM_HLS_LIVE_WINDOW_SECONDS"),
+      180,
+      min: 30,
+      max: 3_600
+    ),
+  live_idle_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_IDLE_SECONDS",
+      get_env.("XTREAM_HLS_LIVE_IDLE_SECONDS"),
+      300,
+      min: 30,
+      max: 3_600
+    ),
+  live_prefetch_segments:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_PREFETCH_SEGMENTS",
+      get_env.("XTREAM_HLS_LIVE_PREFETCH_SEGMENTS"),
+      1,
+      min: 0,
+      max: 1
+    )
+
+# Short shared single-flight cache of HLS segments (prefetched segments wait
+# here for the player), bounded in memory.
+config :streamix, :hls_segment_cache,
+  ttl_ms:
+    RuntimeConfig.integer!(
+      "HLS_SEGMENT_CACHE_TTL_MS",
+      get_env.("HLS_SEGMENT_CACHE_TTL_MS"),
+      45_000,
+      min: 0,
+      max: 600_000
+    ),
+  max_bytes:
+    RuntimeConfig.integer!(
+      "HLS_SEGMENT_CACHE_MAX_BYTES",
+      get_env.("HLS_SEGMENT_CACHE_MAX_BYTES"),
+      128 * 1_024 * 1_024,
+      min: 1_024 * 1_024,
+      max: 4 * 1_024 * 1_024 * 1_024
+    ),
+  max_entry_bytes:
+    RuntimeConfig.integer!(
+      "HLS_SEGMENT_CACHE_MAX_ENTRY_BYTES",
+      get_env.("HLS_SEGMENT_CACHE_MAX_ENTRY_BYTES"),
+      16 * 1_024 * 1_024,
+      min: 64 * 1_024,
+      max: 64 * 1_024 * 1_024
     )
 
 # Providers with `direct_client_playback` have each VOD item's delivery
@@ -496,6 +595,15 @@ config :streamix, :xtream_delivery,
       600,
       min: 30,
       max: 3_600
+    ),
+  # A live channel probed as TS (it keeps the live proxy).
+  ts_ttl_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_PROBE_TS_TTL_SECONDS",
+      get_env.("XTREAM_PROBE_TS_TTL_SECONDS"),
+      1_800,
+      min: 60,
+      max: 86_400
     ),
   failure_ttl_seconds:
     RuntimeConfig.integer!(

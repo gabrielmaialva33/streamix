@@ -76,7 +76,8 @@ defmodule StreamixWeb.PlayerSourceFailover do
       source_type: to_string(provider_type),
       stream_url: source.stream_url,
       proxy_url: Metadata.proxy_url(source.stream_url, content_type),
-      stream_type: Metadata.stream_type_hint(content_type, source.content, provider_type),
+      stream_type:
+        Metadata.stream_type(source.stream_url, content_type, source.content, provider_type),
       resume_time: normalize_position(position),
       failover_count: count,
       message: "Fonte alterada para #{source.provider.name}. Retomando a reprodução."

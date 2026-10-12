@@ -29,10 +29,19 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   every source answered `404`/`410`, and `{:error, :upstream_unavailable}`
   otherwise.
 
+  ## Live channels
+
+  For a `probe_live_delivery` provider, a channel's single live URL is walked
+  the same way. A `200` HLS answer → `{:hls, url}` (the gateway); a `200`
+  whose first byte is the MPEG-TS sync byte `0x47` → `:ts` (the existing live
+  proxy); any other `200` — some "channels" redirect to a third-party embed
+  page — → `{:error, :not_a_stream}`; `404`/`410` → `:upstream_not_found`;
+  anything else → `:upstream_unavailable`. A failure is never served.
+
   Decisions are cached in ETS per provider credentials, item and stream id:
-  HLS for `hls_ttl_seconds` (1800), direct for `direct_ttl_seconds` (600,
-  because the final URL embeds an upstream token) and failures for
-  `failure_ttl_seconds` (120). Concurrent callers for one item share one
+  HLS for `hls_ttl_seconds` (1800), TS for `ts_ttl_seconds` (1800), direct
+  for `direct_ttl_seconds` (600, because the final URL embeds an upstream
+  token) and failures for `failure_ttl_seconds` (120). Concurrent callers for one item share one
   probe, which runs under the provider's HLS fetch lease and an overall
   `deadline_ms` (20 s). Configuration lives under
   `config :streamix, :xtream_delivery`.
@@ -54,8 +63,8 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   @progressive_extensions ~w(mp4 mkv m4v mov avi webm mpg mpeg wmv flv ts)
   @max_waiters 256
 
-  @type decision :: {:hls, String.t()} | {:direct, String.t(), String.t()}
-  @type item_type :: :movie | :episode
+  @type decision :: {:hls, String.t()} | {:direct, String.t(), String.t()} | :ts
+  @type item_type :: :movie | :episode | :channel
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -64,7 +73,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   episode) of `provider`.
   """
   @spec decide(map(), item_type(), map()) :: {:ok, decision()} | {:error, atom()}
-  def decide(provider, type, content) when type in [:movie, :episode] do
+  def decide(provider, type, content) when type in [:movie, :episode, :channel] do
     key = cache_key(provider, type, content)
 
     case lookup(key) do
@@ -82,7 +91,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
 
   @doc "The cached decision for `content`, or `:miss`; never probes."
   @spec peek(map(), item_type(), map()) :: {:ok, decision()} | {:error, atom()} | :miss
-  def peek(provider, type, content) when type in [:movie, :episode] do
+  def peek(provider, type, content) when type in [:movie, :episode, :channel] do
     case lookup(cache_key(provider, type, content)) do
       {:hit, result} -> result
       :miss -> :miss
@@ -164,6 +173,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
 
   defp normalize({:ok, {:hls, _url}} = result), do: result
   defp normalize({:ok, {:direct, _url, _extension}} = result), do: result
+  defp normalize({:ok, :ts} = result), do: result
   defp normalize({:error, reason}) when is_atom(reason), do: {:error, reason}
   defp normalize(_other), do: {:error, :upstream_unavailable}
 
@@ -183,9 +193,39 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
 
   defp ttl({:ok, {:hls, _url}}), do: config(:hls_ttl_seconds, 1_800)
   defp ttl({:ok, {:direct, _url, _extension}}), do: config(:direct_ttl_seconds, 600)
+  defp ttl({:ok, :ts}), do: config(:ts_ttl_seconds, 1_800)
   defp ttl(_failure), do: config(:failure_ttl_seconds, 120)
 
   # --- The probe itself (runs in a supervised task) ---
+
+  # A live channel has one URL and no sources. Its answer is either an HLS
+  # playlist (the gateway), a TS byte stream (the live proxy), or not a
+  # stream at all — some "channels" redirect to a third-party embed page —
+  # which is reported unavailable and never served.
+  defp probe(provider, :channel, channel) do
+    url =
+      XtreamClient.live_stream_url(
+        provider.url,
+        provider.username,
+        provider.password,
+        channel.stream_id
+      )
+
+    result =
+      case with_lease(provider.id, fn -> RedirectResolver.final_hop(url, final_hop_options()) end) do
+        {:ok, hop} -> classify_live(hop, url)
+        {:error, reason} -> {:error, transport_reason(reason)}
+      end
+
+    with {:error, reason} <- result do
+      Logger.info(
+        "[DeliveryProbe] live channel unavailable provider=#{provider.id} " <>
+          "id=#{channel.id} reason=#{inspect(reason)}"
+      )
+
+      result
+    end
+  end
 
   defp probe(provider, type, content) do
     content
@@ -261,6 +301,25 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp hls?(%{content_type: type, prefix: prefix}),
     do: type in @hls_types or String.starts_with?(prefix, "#EXTM3U")
 
+  defp classify_live(%{status: status} = hop, url) when status in [200, 206] do
+    cond do
+      hls?(hop) -> {:ok, {:hls, url}}
+      transport_stream?(hop) -> {:ok, :ts}
+      true -> {:error, :not_a_stream}
+    end
+  end
+
+  defp classify_live(%{status: status}, _url) when status in [404, 410],
+    do: {:error, :upstream_not_found}
+
+  defp classify_live(_hop, _url), do: {:error, :upstream_unavailable}
+
+  # The body decides when there is one (MPEG-TS packets start with 0x47);
+  # the declared type only when the first chunk was empty.
+  defp transport_stream?(%{prefix: <<0x47, _::binary>>}), do: true
+  defp transport_stream?(%{prefix: "", content_type: "video/mp2t"}), do: true
+  defp transport_stream?(_hop), do: false
+
   # The client picks its engine from the Streamix URL suffix, so it names
   # the container the client will receive: the final URL's own extension
   # when it is a known progressive one, else the catalogue's.
@@ -316,6 +375,7 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
 
   defp stream_id(:movie, content), do: content.stream_id
   defp stream_id(:episode, content), do: content.episode_id
+  defp stream_id(:channel, content), do: content.stream_id
 
   defp final_hop_options do
     [

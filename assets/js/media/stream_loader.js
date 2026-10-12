@@ -44,6 +44,20 @@ export function getStreamType(url) {
 }
 
 /**
+ * Resolve the stream type the player should use.
+ *
+ * The server's hint covers token URLs that carry no extension (`/api/stream/proxy`),
+ * and it defaults live channels to `ts`. A URL that names HLS itself — the HLS
+ * gateway's `.m3u8` master, used for live channels whose provider answers HLS
+ * and for HLS movies and episodes — must reach an HLS engine whatever the hint
+ * says: feeding a playlist to mpegts.js or to a progressive <video> can only fail.
+ */
+export function resolveStreamType(hint, url) {
+  if (getStreamType(url) === "hls") return "hls";
+  return hint || getStreamType(url);
+}
+
+/**
  * Get file extension for format detection
  */
 export function getFileExtension(streamUrl, sourceType, currentStreamType) {

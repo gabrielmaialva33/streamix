@@ -31,6 +31,7 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
           | :resource_not_found
           | :playback_restart_required
           | :invalid_range
+          | :not_a_stream
           | :unknown
 
   @errors %{
@@ -89,6 +90,9 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
       "Playback session expired; request the stream URL again"
     },
     invalid_range: {:requested_range_not_satisfiable, "Unsupported byte range"},
+    # A probed live channel whose URL leads to a web page (a third-party
+    # embed site) instead of a stream. It is reported, never served.
+    not_a_stream: {:bad_gateway, "Channel source is not a playable stream"},
     unknown: {:bad_request, "Stream proxy error"}
   }
 

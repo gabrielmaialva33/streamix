@@ -290,9 +290,11 @@ defmodule StreamixWeb.PlayerHelpers do
 
   # --- Private ---
 
-  def resolve_stream_url("live_channel", channel, _provider, user_id) do
+  # A channel keeps the live token proxy unless its provider probes live
+  # delivery and the probe found HLS; then the `.m3u8` gateway URL is minted.
+  def resolve_stream_url("live_channel", channel, provider, user_id) do
     token = StreamToken.sign_channel(channel.id, user_id)
-    {:ok, build_token_proxy_url(token)}
+    {:ok, xtream_stream_url(token, provider, :channel, channel)}
   end
 
   def resolve_stream_url("movie", movie, %{provider_type: :embedplay}, user_id) do
