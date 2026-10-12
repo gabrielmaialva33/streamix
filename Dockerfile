@@ -73,7 +73,15 @@ FROM ${RUNNER_IMAGE}
 
 ARG GIT_SHA=unknown
 
+# Upgrade before installing, because the runner base is a dated Debian
+# snapshot while the image gate fails on fixed CRITICAL findings in OS
+# packages. On 2026-10-12 bookworm-20260803 still shipped perl-base
+# 5.36.0-7+deb12u3 against a fix in u4 (CVE-2026-13221), which blocked the
+# deploy of an unrelated change. Debian's point updates are the channel those
+# fixes arrive through, so taking them at build time stops a rebuild from
+# depending on how recent the pinned snapshot happens to be.
 RUN apt-get update -y && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 libsctp1 locales ca-certificates curl \
     libvips42 \
     ffmpeg \
