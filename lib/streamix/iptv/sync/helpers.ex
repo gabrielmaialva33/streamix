@@ -19,6 +19,7 @@ defmodule Streamix.Iptv.Sync.Helpers do
   defdelegate parse_int(value), to: ValueParser
   defdelegate parse_date(value), to: ValueParser
   defdelegate to_string_or_nil(value), to: ValueParser
+  defdelegate parse_source_ids(sources), to: ValueParser
 
   defdelegate build_category_lookup(provider_id, type), to: CategoryAssocs, as: :build_lookup
 

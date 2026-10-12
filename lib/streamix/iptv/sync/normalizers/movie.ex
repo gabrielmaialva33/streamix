@@ -18,6 +18,7 @@ defmodule Streamix.Iptv.Sync.Normalizers.Movie do
       rating: Helpers.parse_decimal(stream["rating"]),
       plot: stream["plot"],
       container_extension: stream["container_extension"],
+      source_ids: Helpers.parse_source_ids(stream["sources"]),
       duration_secs: stream["duration_secs"],
       tmdb_id: Helpers.to_string_or_nil(stream["tmdb_id"]),
       imdb_id: Helpers.to_string_or_nil(stream["imdb_id"]),

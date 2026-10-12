@@ -1,7 +1,21 @@
-defmodule Streamix.Embedplay.HLS do
-  @moduledoc false
+defmodule Streamix.Hls.Playlist do
+  @moduledoc """
+  Parses an HLS playlist into text and `{:resource, url, kind}` nodes, so a
+  gateway can put its own URL in place of every upstream reference.
 
-  alias Streamix.Embedplay.HTTP
+  Variants, renditions, segments, initialization maps, keys and every other
+  quoted `*URI` attribute are discovered; each reference is resolved against
+  the playlist's own URL with URI semantics. `kind` is `:playlist` for
+  variant streams, `#EXT-X-MEDIA`, I-frame and rendition-report references
+  and `:media` for everything else. The role decides the kind, never the
+  upstream `Content-Type`, which is unreliable on many CDNs.
+
+  The parser fails closed: variable definitions, content steering, a second
+  or unquoted URI attribute, a non-HTTP(S) reference, userinfo and playlists
+  over 2 MiB are refused instead of passed through.
+  """
+
+  alias Streamix.Hls.Fetch
 
   @uri_attribute ~r/(?<=[,:])([A-Z0-9-]*URI)="([^"]*)"/
   @playlist_tags ~w(#EXT-X-MEDIA: #EXT-X-I-FRAME-STREAM-INF: #EXT-X-RENDITION-REPORT:)
@@ -88,7 +102,7 @@ defmodule Streamix.Embedplay.HLS do
   end
 
   defp reference(base, value) when byte_size(value) > 0 and byte_size(value) <= 8192 do
-    with {:ok, url} <- HTTP.merge_url(base, value),
+    with {:ok, url} <- Fetch.merge_url(base, value),
          {:ok, %URI{scheme: scheme, host: host, userinfo: nil}} <- URI.new(url),
          true <- scheme in ["http", "https"] and is_binary(host) do
       {:ok, url}

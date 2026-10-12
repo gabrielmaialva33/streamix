@@ -37,6 +37,10 @@ defmodule Streamix.Iptv.Movie do
     field :rating, :decimal
     field :plot, :string
     field :container_extension, :string
+
+    # Ids of the item's upstream `sources` (selected with `?source=N`), in
+    # the provider's order. Written by the sync; read by the delivery probe.
+    field :source_ids, {:array, :integer}
     field :duration_secs, :integer
     field :tmdb_id, :string
     field :imdb_id, :string

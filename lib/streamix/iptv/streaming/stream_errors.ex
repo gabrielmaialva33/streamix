@@ -25,6 +25,12 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
           | :unauthorized
           | :unsafe_url
           | :missing_token
+          | :provider_disabled
+          | :provider_degraded
+          | :stream_format_mismatch
+          | :resource_not_found
+          | :playback_restart_required
+          | :invalid_range
           | :unknown
 
   @errors %{
@@ -64,6 +70,25 @@ defmodule Streamix.Iptv.Streaming.StreamErrors do
       :conflict,
       "Torrent content must use the torrent playback flow"
     },
+    # The HLS gateway's own conditions. An operator-disabled provider and an
+    # automatically degraded one are kept apart so only the latter reads as
+    # retryable.
+    provider_disabled: {:service_unavailable, "Provider is disabled"},
+    provider_degraded: {
+      :service_unavailable,
+      "Provider playback is temporarily unavailable",
+      retry_after: 60
+    },
+    stream_format_mismatch: {
+      :conflict,
+      "Content is not delivered in the format this URL serves"
+    },
+    resource_not_found: {:not_found, "Playback resource not found"},
+    playback_restart_required: {
+      :conflict,
+      "Playback session expired; request the stream URL again"
+    },
+    invalid_range: {:requested_range_not_satisfiable, "Unsupported byte range"},
     unknown: {:bad_request, "Stream proxy error"}
   }
 

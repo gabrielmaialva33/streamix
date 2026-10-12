@@ -17,7 +17,9 @@ defmodule Streamix.Playback do
     SourceSelector,
     StreamErrors,
     VodMultiplexer,
-    VodProxy
+    VodProxy,
+    XtreamDelivery,
+    XtreamHls
   }
 
   @type stream_error_code :: StreamErrors.code()
@@ -88,6 +90,43 @@ defmodule Streamix.Playback do
   end
 
   defdelegate head_stream(conn, url, opts \\ []), to: VodProxy, as: :head
+
+  # Xtream VOD delivery by container
+
+  @doc """
+  How an Xtream movie or episode reaches a player, without I/O:
+  `{:hls, "m3u8"}` for HLS items served by the HLS gateway, `:probe` for a
+  `direct_client_playback` provider (decided per item at play time), or
+  `:proxy` for the progressive token proxy.
+  """
+  defdelegate xtream_delivery(provider, content), to: XtreamDelivery, as: :mode
+
+  @doc """
+  The route a player must be given for an Xtream movie or episode: `:hls`,
+  `{:direct, extension}` or `:proxy`. Probes (cached) when the provider
+  requires it, unless `probe: false`. URL minting uses this.
+  """
+  defdelegate xtream_route(provider, type, content, opts \\ []), to: XtreamDelivery, as: :route
+
+  @doc """
+  The upstream a gateway serves an Xtream item from: `{:ok, {:hls, root_url}}`
+  (credential-bearing, server-side only) or `{:ok, {:direct, client_url,
+  extension}}` (safe to hand to the client).
+  """
+  defdelegate resolve_xtream_delivery(provider, type, content),
+    to: XtreamDelivery,
+    as: :resolve
+
+  @doc """
+  Opens (or reuses) the HLS gateway session for an Xtream item, rooted at its
+  credential-bearing playlist URL, which never leaves the server.
+  """
+  defdelegate open_xtream_hls(content, provider_id, url), to: XtreamHls, as: :open
+
+  @doc "Fetches one opaque resource (playlist, key or segment) of an Xtream HLS session."
+  defdelegate fetch_xtream_hls_resource(session_id, resource_id, content, opts \\ []),
+    to: XtreamHls,
+    as: :fetch_resource
 
   # Stable error translation used by the web delivery layer
 

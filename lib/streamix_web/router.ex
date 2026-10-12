@@ -58,6 +58,13 @@ defmodule StreamixWeb.Router do
     plug StreamixWeb.Plugs.RateLimit, limit: 1200, period: 60_000
   end
 
+  # The Xtream media gateway answers one request per playlist, key and
+  # segment, so it gets the same HLS-sized bucket.
+  pipeline :media_stream do
+    plug StreamixWeb.Plugs.CORS
+    plug StreamixWeb.Plugs.RateLimit, limit: 1200, period: 60_000
+  end
+
   # Public diagnostic beacons can't authenticate because `sendBeacon()` can't
   # attach the app's custom headers. Give them a separate, intentionally small
   # bucket so they can't flood logs or consume the stream-proxy allowance.
@@ -177,6 +184,30 @@ defmodule StreamixWeb.Router do
     options "/:session_id/:resource_id", EmbedplayStreamController, :options
     get "/:session_id/:resource_id", EmbedplayStreamController, :resource
     head "/:session_id/:resource_id", EmbedplayStreamController, :resource
+  end
+
+  # Xtream movies and episodes stored as `m3u8`: an HLS gateway whose
+  # playlists reference only opaque, token-authorized resource URLs.
+  scope "/api/stream/hls", StreamixWeb do
+    pipe_through :media_stream
+
+    options "/master.m3u8", XtreamHlsController, :options
+    get "/master.m3u8", XtreamHlsController, :master
+    head "/master.m3u8", XtreamHlsController, :master
+    options "/:session_id/:resource_id", XtreamHlsController, :options
+    get "/:session_id/:resource_id", XtreamHlsController, :resource
+    head "/:session_id/:resource_id", XtreamHlsController, :resource
+  end
+
+  # Progressive VOD of `direct_client_playback` providers: after token
+  # authorization the client is redirected to the CDN URL resolved here.
+  # The suffix names the container, so players pick a progressive engine.
+  scope "/api/stream/vod", StreamixWeb do
+    pipe_through :media_stream
+
+    options "/direct.:ext", XtreamDirectController, :options
+    get "/direct.:ext", XtreamDirectController, :show
+    head "/direct.:ext", XtreamDirectController, :show
   end
 
   # Stream proxy - public access for video streaming (rate limited)

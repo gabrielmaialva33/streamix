@@ -1,6 +1,8 @@
 defmodule StreamixWeb.EmbedplayStreamController do
   use StreamixWeb, :controller
 
+  import StreamixWeb.HlsResponse, only: [cors: 1, head_request?: 1, send_gateway_response: 2]
+
   alias Streamix.Embedplay
   alias StreamixWeb.StreamToken
 
@@ -190,33 +192,9 @@ defmodule StreamixWeb.EmbedplayStreamController do
     ]
 
     case Embedplay.fetch_resource(sid, rid, movie_id, opts) do
-      {:ok, response} ->
-        conn =
-          Enum.reduce(response.headers, cors(conn), fn {name, values}, conn ->
-            put_resp_header(conn, name, Enum.join(values, ", "))
-          end)
-
-        send_resp(conn, response.status, if(head_request?(conn), do: "", else: response.body))
-
-      {:error, reason} ->
-        error(conn, reason)
+      {:ok, response} -> send_gateway_response(conn, response)
+      {:error, reason} -> error(conn, reason)
     end
-  end
-
-  defp head_request?(conn), do: Map.get(conn.assigns, :original_method, conn.method) == "HEAD"
-
-  defp cors(conn) do
-    conn
-    |> put_resp_header("access-control-allow-origin", "*")
-    |> put_resp_header("access-control-allow-methods", "GET, HEAD, OPTIONS")
-    |> put_resp_header("access-control-allow-headers", "Range, Content-Type")
-    |> put_resp_header(
-      "access-control-expose-headers",
-      "Content-Range, Accept-Ranges, Content-Length"
-    )
-    |> put_resp_header("cache-control", "private, no-store")
-    |> put_resp_header("x-content-type-options", "nosniff")
-    |> put_resp_header("content-security-policy", "default-src 'none'; sandbox")
   end
 
   defp error(conn, reason) do

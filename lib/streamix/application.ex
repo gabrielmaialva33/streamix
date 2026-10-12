@@ -86,6 +86,12 @@ defmodule Streamix.Application do
         # first /api/stream/proxy hit fast by piggy-backing on a prewarm
         # task fired from PlayerLive.mount/3.
         Streamix.Iptv.Streaming.RedirectResolver,
+        # HLS gateway sessions and per-provider fetch leases for Xtream
+        # VOD delivered as `m3u8`.
+        Streamix.Iptv.Streaming.XtreamHls.Sessions,
+        # Per-item delivery decisions (HLS gateway or direct client) for
+        # `direct_client_playback` providers, cached with single-flight.
+        Streamix.Iptv.Streaming.DeliveryProbe,
         # GIndex endpoint manager (multi-endpoint failover)
         Streamix.Gindex.EndpointManager,
         # GIndex URL cache

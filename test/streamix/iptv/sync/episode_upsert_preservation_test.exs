@@ -79,6 +79,20 @@ defmodule Streamix.Iptv.Sync.EpisodeUpsertPreservationTest do
     end
   end
 
+  test "episode sync stores the ids of the episode's upstream sources", %{
+    series: series,
+    season: season
+  } do
+    info =
+      put_in(episode_info("p", "60"), ["episodes", "1", Access.at(0), "sources"], [
+        %{"source_id" => 1, "url" => "http://x/series/u/p/2.m3u8?source=1"},
+        %{"source_id" => 3, "url" => "http://x/series/u/p/2.mp4?source=3"}
+      ])
+
+    assert {:ok, %{episodes: 1}} = SeasonsEpisodes.sync(series, info)
+    assert Repo.one!(from(e in Episode, where: e.season_id == ^season.id)).source_ids == [1, 3]
+  end
+
   defp episode_info(plot, duration) do
     %{
       "info" => %{},

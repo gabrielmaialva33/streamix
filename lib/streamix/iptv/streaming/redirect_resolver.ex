@@ -98,6 +98,87 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   @doc """
+  Walks `url`'s redirect chain by hand and returns the first hop that does
+  not redirect, whatever its status.
+
+  Unlike `resolve/2` this never judges the final status: a CDN that refuses
+  this server (`401`/`403`) is still the final hop, because the caller may
+  hand that URL to a client the CDN does accept. Every hop, the first one
+  included, passes the SSRF validator before it is requested, and at most
+  #{@max_redirects} redirects are followed. Each hop is a `GET` (some
+  redirectors answer `HEAD` with `200` instead of redirecting) that is
+  halted as soon as the first body chunk arrives; only that chunk's first
+  16 bytes are kept, so a caller can recognise a playlist (`#EXTM3U`)
+  without reading a body. Uncached; nothing here logs a URL.
+
+  Returns `{:ok, %{url:, status:, content_type:, prefix:, redirects:}}` or
+  `{:error, reason}` (`:unsafe_url`, `:too_many_redirects`,
+  `:missing_location`, or a transport error).
+
+  Options: `:allow_private_network` (default `false`), `:headers` (replaces
+  the provider User-Agent header list) and `:req_options`.
+  """
+  @spec final_hop(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def final_hop(url, opts \\ []) when is_binary(url) and is_list(opts) do
+    final_hop(url, 0, Keyword.put_new(opts, :allow_private_network, false))
+  end
+
+  defp final_hop(_url, count, _opts) when count > @max_redirects,
+    do: {:error, :too_many_redirects}
+
+  defp final_hop(url, count, opts) do
+    with :ok <- validate_target(url, opts),
+         {:ok, response} <- Req.get(url, final_hop_req_opts(opts)) do
+      next_hop(response, url, count, opts)
+    end
+  end
+
+  defp next_hop(%{status: status} = response, url, count, opts)
+       when status in [301, 302, 303, 307, 308] do
+    case List.first(Map.get(response.headers, "location", [])) do
+      nil -> {:error, :missing_location}
+      location -> final_hop(absolute_location(url, location), count + 1, opts)
+    end
+  end
+
+  defp next_hop(response, url, count, _opts) do
+    {:ok,
+     %{
+       url: url,
+       status: response.status,
+       content_type: response_content_type(response.headers),
+       prefix: Map.get(response.private, :body_prefix, ""),
+       redirects: count
+     }}
+  end
+
+  defp final_hop_req_opts(opts) do
+    opts
+    |> build_req_opts()
+    |> Keyword.put(
+      :headers,
+      Keyword.get(opts, :headers, [{"user-agent", UpstreamPolicy.user_agent()}])
+    )
+    |> Keyword.put(:into, &keep_body_prefix/2)
+  end
+
+  defp keep_body_prefix({:data, chunk}, {request, response}) do
+    prefix = binary_part(chunk, 0, min(byte_size(chunk), 16))
+    {:halt, {request, Req.Response.put_private(response, :body_prefix, prefix)}}
+  end
+
+  defp response_content_type(headers) do
+    headers
+    |> Map.get("content-type", [])
+    |> List.first()
+    |> to_string()
+    |> String.split(";")
+    |> hd()
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  @doc """
   Resolves only far enough to exchange credentials embedded in an Xtream
   path for the first credential-free redirect target.
 

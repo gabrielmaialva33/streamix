@@ -4,6 +4,7 @@ defmodule StreamixWeb.PlayerHelpers do
   Used by PlayerLive and WatchPartyLive.Show.
   """
   alias Streamix.Torrent
+  alias StreamixWeb.Catalog.StreamUrls
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 
@@ -250,14 +251,14 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_next_episode(type, content, provider, user_id \\ nil)
 
-  def load_next_episode(type, content, _provider, user_id)
+  def load_next_episode(type, content, provider, user_id)
       when type in ["episode", "gindex_episode"] do
     case Streamix.Catalog.get_next_episode(content.id) do
       nil ->
         nil
 
       next ->
-        build_next_episode_payload(next, type, user_id)
+        build_next_episode_payload(next, type, provider, user_id)
     end
   end
 
@@ -299,7 +300,7 @@ defmodule StreamixWeb.PlayerHelpers do
     {:ok, "/api/stream/embedplay/video.mp4?token=#{URI.encode_www_form(token)}"}
   end
 
-  def resolve_stream_url("movie", movie, _provider, user_id) do
+  def resolve_stream_url("movie", movie, provider, user_id) do
     token = StreamToken.sign_movie(movie.id, user_id)
 
     if gindex_content?(movie) do
@@ -309,17 +310,17 @@ defmodule StreamixWeb.PlayerHelpers do
       # the stream URL it can pump straight into the canvas.
       {:ok, build_gindex_stream_url(token)}
     else
-      {:ok, build_token_proxy_url(token)}
+      {:ok, xtream_stream_url(token, provider, :movie, movie)}
     end
   end
 
-  def resolve_stream_url("episode", episode, _provider, user_id) do
+  def resolve_stream_url("episode", episode, provider, user_id) do
     token = StreamToken.sign_episode(episode.id, user_id)
 
     if gindex_content?(episode) do
       {:ok, build_gindex_stream_url(token)}
     else
-      {:ok, build_token_proxy_url(token)}
+      {:ok, xtream_stream_url(token, provider, :episode, episode)}
     end
   end
 
@@ -387,19 +388,21 @@ defmodule StreamixWeb.PlayerHelpers do
   defp gindex_content?(%{gindex_path: path}) when is_binary(path) and path != "", do: true
   defp gindex_content?(_content), do: false
 
-  defp next_episode_stream_url("episode", next, user_id) do
+  # The next episode belongs to the same series, so it shares the current
+  # episode's provider; that is what its delivery is decided against.
+  defp next_episode_stream_url("episode", next, provider, user_id) do
     next.id
     |> StreamToken.sign_episode(user_id)
-    |> build_token_proxy_url()
+    |> xtream_stream_url(provider, :episode, next, probe: false)
   end
 
-  defp next_episode_stream_url("gindex_episode", next, user_id) do
+  defp next_episode_stream_url("gindex_episode", next, _provider, user_id) do
     next.id
     |> StreamToken.sign_episode(user_id)
     |> build_gindex_stream_url()
   end
 
-  defp build_next_episode_payload(next, type, user_id) do
+  defp build_next_episode_payload(next, type, provider, user_id) do
     %{
       id: next.id,
       title: next.title || "Episódio #{next.episode_num}",
@@ -407,9 +410,20 @@ defmodule StreamixWeb.PlayerHelpers do
       season_num: next.season.season_number,
       series_name: next.season.series.name,
       cover: ImageProxy.proxy(next.cover || next.still_path),
-      stream_url: next_episode_stream_url(type, next, user_id),
+      stream_url: next_episode_stream_url(type, next, provider, user_id),
       type: type
     }
+  end
+
+  # Players pick their engine from the URL suffix, so an HLS Xtream item gets
+  # the gateway's `.m3u8` URL, a direct-client item its container-suffixed
+  # direct route, and everything else the token proxy. Items of a probed
+  # provider are probed here (once, then cached) unless `probe: false`.
+  defp xtream_stream_url(token, provider, type, content, opts \\ []) do
+    case Streamix.Playback.xtream_route(provider, type, content, opts) do
+      :proxy -> build_token_proxy_url(token)
+      route -> StreamUrls.xtream_url(token, route)
+    end
   end
 
   defp build_token_proxy_url(token) do
