@@ -192,6 +192,13 @@ tokens also expire two hours after minting.
 
 ## HLS transport and media constraints
 
+The playlist parser, bounded fetcher, resource registry and response
+preparation are the shared HLS gateway under `lib/streamix/hls/`
+(`Streamix.Hls.Playlist`, `Fetch`, `Registry`, `Gateway`), which the Xtream
+`m3u8` gateway uses too ([xtream-hls-playback.md](xtream-hls-playback.md)).
+Embedplay keeps its resolver, sessions, global fetch lease and progressive
+streaming; the rules below are those of the shared gateway.
+
 - Requests use Req with automatic redirects/retries disabled; every media URL
   and manually followed redirect is SSRF-checked; only HTTP(S) without userinfo;
   at most five redirects; 15-second deadline and 5-second connect timeout per
@@ -218,7 +225,7 @@ separate authorized validation before enabling production traffic.
 ## Deterministic checks
 
 ```sh
-mix test test/streamix/embedplay/hls_test.exs \
+mix test test/streamix/hls \
   test/streamix/embedplay/http_test.exs \
   test/streamix_web/controllers/embedplay_stream_controller_test.exs \
   test/streamix_web/stream_token_test.exs

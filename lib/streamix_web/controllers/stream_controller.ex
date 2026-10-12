@@ -52,6 +52,11 @@ defmodule StreamixWeb.StreamController do
           to: "/api/stream/embedplay/video.mp4?token=#{URI.encode_www_form(token)}"
         )
 
+      # An `m3u8` Xtream item is a playlist tree, not a byte-range file.
+      # Players holding an older proxy URL are sent to the HLS gateway.
+      {:error, :hls_playback_required} ->
+        redirect(conn, to: "/api/stream/hls/master.m3u8?token=#{URI.encode_www_form(token)}")
+
       {:error, reason} ->
         token_error(conn, reason)
     end

@@ -27,6 +27,9 @@ defmodule StreamixWeb.StreamToken.Resolver do
   # Token expires in 2 hours (reduced from 24h for security).
   @token_max_age 7_200
 
+  # Gateway resources of an opened HLS session; see `authorize_xtream_hls/2`.
+  @resource_token_max_age 21_600
+
   @doc """
   Verifies a token and returns `{:ok, url, content_type, meta}` or `{:error, reason}`.
   See `StreamixWeb.StreamToken.verify_and_get_url/2` for the full contract.
@@ -65,6 +68,119 @@ defmodule StreamixWeb.StreamToken.Resolver do
       _ -> {:error, :invalid_token}
     end
   end
+
+  @doc """
+  Authorizes a movie or episode token for the Xtream HLS gateway.
+
+  The checks are those of the progressive movie/episode flow — signature,
+  two-hour age, ownership or visibility, the global-content subscription
+  policy and the API-key bypass (the token's own claim, or
+  `bypass_subscription: true` from a request carrying a valid key) — plus
+  the provider's operator switch (`:provider_disabled`) and automatic health
+  (`:provider_degraded`). Content the delivery policy does not route to HLS
+  fails with `:stream_format_mismatch`.
+
+  Returns `{:ok, %{content: {:movie | :episode, id}, provider_id:, url:}}`.
+  `url` embeds the account credentials: it is for the server-side gateway
+  only and must never reach a client or a log line.
+
+  `stage: :start` (the default) is the master request that starts a
+  playback: the delivery is checked, a bypass is audited, and the token's
+  two-hour age applies. `stage: :resource` is a playlist, key or segment of
+  an already opened session: the session itself pins the item, a bypass is
+  not audited per segment, and the token is accepted for
+  #{div(21_600, 3_600)} hours, because a VOD player loads its playlists once
+  and keeps requesting segments with the start token for as long as the
+  movie (and any pause) lasts. Every other check still runs on each request.
+  """
+  def authorize_xtream_hls(token, opts \\ []) do
+    stage = Keyword.get(opts, :stage, :start)
+
+    with {:ok, claims} <- verify_claims(token, token_max_age(stage)),
+         {:ok, type, id} <- content_claim(claims),
+         {:ok, content, provider} <- stream_content(type, id),
+         {:ok, extension} <- hls_delivery(stage, provider, content),
+         bypass = authorize_bypass(claims, Keyword.put(opts, :audit, stage == :start)),
+         {:ok, url, provider_id} <-
+           build_content_url(
+             provider,
+             claims.user_id,
+             content,
+             content_path(type),
+             upstream_stream_id(type, content),
+             extension,
+             bypass
+           ),
+         :ok <- provider_available(provider) do
+      {:ok, %{content: {type, id}, provider_id: provider_id, url: url}}
+    end
+  end
+
+  # Resource requests are pinned to the item by their session, so only the
+  # start of a playback consults the delivery policy.
+  defp hls_delivery(:resource, _provider, _content), do: {:ok, "m3u8"}
+
+  defp hls_delivery(:start, provider, content) do
+    case Streamix.Playback.xtream_delivery(provider, content) do
+      {:hls, extension} -> {:ok, extension}
+      _other -> {:error, :stream_format_mismatch}
+    end
+  end
+
+  defp token_max_age(:resource), do: @resource_token_max_age
+  defp token_max_age(_stage), do: @token_max_age
+
+  defp verify_claims(token, max_age) do
+    case Phoenix.Token.verify(StreamixWeb.Endpoint, "stream", token, max_age: max_age) do
+      {:ok, claims} when is_map(claims) -> {:ok, claims}
+      {:ok, _claims} -> {:error, :invalid_token}
+      {:error, :expired} -> {:error, :token_expired}
+      {:error, _reason} -> {:error, :invalid_token}
+    end
+  end
+
+  defp content_claim(%{type: "movie", id: id, user_id: _user_id}) when is_integer(id) and id > 0,
+    do: {:ok, :movie, id}
+
+  defp content_claim(%{type: "episode", id: id, user_id: _user_id})
+       when is_integer(id) and id > 0,
+       do: {:ok, :episode, id}
+
+  defp content_claim(_claims), do: {:error, :invalid_token}
+
+  defp stream_content(:movie, id) do
+    case Streamix.Playback.get_movie_for_stream(id) do
+      %{provider: %{} = provider} = movie -> {:ok, movie, provider}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp stream_content(:episode, id) do
+    case Streamix.Playback.get_episode_for_stream(id) do
+      %{season: %{series: %{provider: %{} = provider}}} = episode -> {:ok, episode, provider}
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp content_path(:movie), do: "movie"
+  defp content_path(:episode), do: "series"
+
+  defp upstream_stream_id(:movie, movie), do: movie.stream_id
+  defp upstream_stream_id(:episode, episode), do: episode.episode_id
+
+  defp authorize_bypass(claims, opts) do
+    external_bypass = Keyword.get(opts, :bypass_subscription, false)
+
+    if Keyword.get(opts, :audit, true),
+      do: effective_bypass(claims, external_bypass),
+      else: external_bypass or Map.get(claims, :bypass, false)
+  end
+
+  # The operator's switch and the automatic health state, checked after
+  # authorization so an unauthorized caller learns nothing about either.
+  defp provider_available(%{is_active: false}), do: {:error, :provider_disabled}
+  defp provider_available(%{health_status: :degraded}), do: {:error, :provider_degraded}
+  defp provider_available(_provider), do: :ok
 
   @doc """
   Returns the raw upstream URL that the given content would resolve to
@@ -289,15 +405,21 @@ defmodule StreamixWeb.StreamToken.Resolver do
   end
 
   defp build_movie_url(provider, user_id, movie, bypass) do
-    build_content_url(
-      provider,
-      user_id,
-      movie,
-      "movie",
-      movie.stream_id,
-      movie.container_extension,
-      bypass
-    )
+    case Streamix.Playback.xtream_delivery(provider, movie) do
+      {:hls, _extension} ->
+        {:error, :hls_playback_required}
+
+      :proxy ->
+        build_content_url(
+          provider,
+          user_id,
+          movie,
+          "movie",
+          movie.stream_id,
+          movie.container_extension,
+          bypass
+        )
+    end
   end
 
   defp build_episode_url(provider, user_id, %{gindex_path: path} = episode, bypass)
@@ -319,16 +441,24 @@ defmodule StreamixWeb.StreamToken.Resolver do
     end
   end
 
+  # HLS items are not byte-range files, so the progressive proxy never gets
+  # their URL: the token proxy redirects them to the HLS gateway instead.
   defp build_episode_url(provider, user_id, episode, bypass) do
-    build_content_url(
-      provider,
-      user_id,
-      episode,
-      "series",
-      episode.episode_id,
-      episode.container_extension,
-      bypass
-    )
+    case Streamix.Playback.xtream_delivery(provider, episode) do
+      {:hls, _extension} ->
+        {:error, :hls_playback_required}
+
+      :proxy ->
+        build_content_url(
+          provider,
+          user_id,
+          episode,
+          "series",
+          episode.episode_id,
+          episode.container_extension,
+          bypass
+        )
+    end
   end
 
   defp authorize_resolved_content(provider, user_id, content, bypass, fetch_url) do

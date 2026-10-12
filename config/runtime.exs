@@ -411,6 +411,52 @@ config :streamix, :embedplay,
       max: 512
     )
 
+# Xtream VOD stored as `m3u8` plays through the HLS gateway. Every playlist,
+# key and segment fetch holds a lease; at most this many run at once per
+# provider, and a request beyond that waits up to the lease wait. See
+# docs/xtream-hls-playback.md.
+config :streamix, :xtream_hls,
+  max_fetches_per_provider:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_MAX_FETCHES_PER_PROVIDER",
+      get_env.("XTREAM_HLS_MAX_FETCHES_PER_PROVIDER"),
+      16,
+      min: 1,
+      max: 256
+    ),
+  lease_wait_ms:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LEASE_WAIT_MS",
+      get_env.("XTREAM_HLS_LEASE_WAIT_MS"),
+      5_000,
+      min: 0,
+      max: 30_000
+    ),
+  session_ttl_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_SESSION_TTL_SECONDS",
+      get_env.("XTREAM_HLS_SESSION_TTL_SECONDS"),
+      600,
+      min: 30,
+      max: 3_600
+    ),
+  idle_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_IDLE_SECONDS",
+      get_env.("XTREAM_HLS_IDLE_SECONDS"),
+      1_800,
+      min: 60,
+      max: 21_600
+    ),
+  max_sessions:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_MAX_SESSIONS",
+      get_env.("XTREAM_HLS_MAX_SESSIONS"),
+      2_048,
+      min: 16,
+      max: 100_000
+    )
+
 # External subtitles. Providers are tried in chain order; each is only
 # used when its API key is present, so a missing key degrades to "no
 # subtitle" instead of erroring. Both keys are free with signup.

@@ -84,6 +84,13 @@ defmodule StreamixWeb.StreamToken do
   defdelegate authorize_embedplay_movie(token), to: Resolver
 
   @doc """
+  Authorizes a movie or episode token for the Xtream HLS gateway. The
+  returned upstream URL is for server-side use only. See
+  `StreamixWeb.StreamToken.Resolver.authorize_xtream_hls/2`.
+  """
+  defdelegate authorize_xtream_hls(token, opts \\ []), to: Resolver
+
+  @doc """
   Returns the raw upstream URL that the given content would resolve to
   if its token were verified.
 
