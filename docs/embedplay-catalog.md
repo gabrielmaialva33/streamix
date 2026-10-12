@@ -74,6 +74,7 @@ Trip rules, over a six-hour window with no success in between (any success reset
 | --- | --- | --- |
 | `resolver_outdated` | 2 distinct titles | The page no longer has the structure the resolver drives — a site change, not a title |
 | `no_source_available` | 5 failures over 5 distinct titles | Can be one title without a source; five distinct misses in a row is not |
+| `challenge_required` | 5 failures over 5 distinct titles (shared with the row above) | The upstream challenged the resolver's browser; it is never solved or evaded, and challenges can be sporadic |
 | timeout, capacity, generic failure | never on their own | Transient |
 
 Recovery is automatic. `Streamix.Workers.EmbedplayCanaryWorker` runs at :17 and :47 past every

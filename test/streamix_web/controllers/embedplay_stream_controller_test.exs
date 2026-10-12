@@ -271,6 +271,20 @@ defmodule StreamixWeb.EmbedplayStreamControllerTest do
     end
   end
 
+  test "an upstream challenge is a distinct, retryable 503 on both routes", context do
+    Req.Test.stub(__MODULE__, fn conn ->
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(502, ~s({"error":{"code":"challenge_required"}}))
+    end)
+
+    for path <- [context.master, video_path(context.token)] do
+      response = get(build_conn(), path)
+      assert response.status == 503
+      assert json_response(response, 503)["error"]["code"] == "challenge_required"
+    end
+  end
+
   describe "progressive MP4 on video.mp4" do
     setup context do
       owner = self()

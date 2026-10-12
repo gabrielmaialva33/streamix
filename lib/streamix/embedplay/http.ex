@@ -234,10 +234,16 @@ defmodule Streamix.Embedplay.HTTP do
   # no longer recognises the upstream page, so every title fails the same way
   # until the adapter is fixed. That is systemic rather than per-title, and a
   # health monitor keys on `:resolver_outdated` to tell the two apart.
+  #
+  # `challenge_required` means the upstream answered the resolver's browser
+  # with a human challenge. The resolver never solves or evades one, so while
+  # the upstream keeps challenging, every title fails; it gets its own atom so
+  # the health monitor can count it instead of filing it as transient.
   defp resolution_error(body) do
     case Jason.decode(body) do
       {:ok, %{"error" => %{"code" => "stream_unavailable"}}} -> {:error, :no_source_available}
       {:ok, %{"error" => %{"code" => "unsupported_page"}}} -> {:error, :resolver_outdated}
+      {:ok, %{"error" => %{"code" => "challenge_required"}}} -> {:error, :challenge_required}
       _ -> {:error, :stream_resolution_failed}
     end
   end

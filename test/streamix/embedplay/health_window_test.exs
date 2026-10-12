@@ -88,6 +88,25 @@ defmodule Streamix.Embedplay.HealthWindowTest do
     end
   end
 
+  describe "challenge_required" do
+    @challenge {:error, :challenge_required}
+
+    test "trips by the rate rule, not on sight" do
+      {decisions, _window} = feed(for id <- 1..5, do: {id, @challenge})
+
+      assert Enum.take(decisions, 4) == List.duplicate(:recorded, 4)
+      assert {:trip, :challenge_required, %{failures: 5, movies: 5}} = List.last(decisions)
+    end
+
+    test "counts towards the rate rule alongside no_source_available" do
+      events = [{1, @challenge}, {2, @challenge}] ++ for id <- 3..5, do: {id, @no_source}
+      {decisions, _window} = feed(events)
+
+      assert {:trip, :no_source_available, %{reasons: %{challenge_required: 2}}} =
+               List.last(decisions)
+    end
+  end
+
   test "transient errors are recorded but never trip and never reset the streak" do
     transient = [
       {:error, :upstream_timeout},

@@ -31,6 +31,9 @@ route and gateway remain for sources that still resolve to a playlist.
   latter means the resolver's adapter no longer matches the upstream page, so
   every title fails alike until the adapter is fixed; it is systemic, not
   per-title, and health monitoring keys on the `:resolver_outdated` atom.
+  `challenge_required` → `challenge_required` (`503`): the upstream answered the
+  resolver's browser with a human challenge, which is never solved or evaded;
+  health counts it by the same rate rule as `no_source_available`.
   Anything else becomes `502 stream_resolution_failed`.
 
 ## Routes and the client contract

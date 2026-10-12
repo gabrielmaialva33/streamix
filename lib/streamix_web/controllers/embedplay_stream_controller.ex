@@ -256,6 +256,9 @@ defmodule StreamixWeb.EmbedplayStreamController do
   # alike until its adapter is fixed. 503 because that is expected to clear,
   # and a code of its own so the systemic case is never read as per-title.
   defp error_status(:resolver_outdated), do: {503, :resolver_outdated}
+  # The upstream challenged the resolver's browser. It is never solved, so the
+  # title cannot play now; 503 because the upstream may stop challenging.
+  defp error_status(:challenge_required), do: {503, :challenge_required}
   # The movie's current source is HLS on the MP4 route or MP4 on the HLS
   # route. The player already chose its engine from the URL, so the bytes are
   # not cross-served. Catalog URLs name the MP4 route, the only format the

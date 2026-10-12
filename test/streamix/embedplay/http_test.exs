@@ -41,9 +41,11 @@ defmodule Streamix.Embedplay.HTTPTest do
       assert {:error, :no_source_available} = HTTP.resolve(movie)
     end
 
-    test "a challenge keeps the generic retryable classification", %{movie: movie} do
+    # A challenge is never solved, so the health monitor has to be able to
+    # count it; the generic failure would be filed as transient.
+    test "a challenge is classified apart so health can count it", %{movie: movie} do
       respond(502, ~s({"error":{"code":"challenge_required"}}))
-      assert {:error, :stream_resolution_failed} = HTTP.resolve(movie)
+      assert {:error, :challenge_required} = HTTP.resolve(movie)
     end
 
     test "an unparseable error body falls back to the generic failure", %{movie: movie} do

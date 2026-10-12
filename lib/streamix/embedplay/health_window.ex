@@ -17,6 +17,10 @@ defmodule Streamix.Embedplay.HealthWindow do
       at least `:trip_movies` *distinct* titles with no success in between.
       Distinct titles matter because many viewers retrying one dead title is
       not evidence about the others.
+    * `{:error, :challenge_required}` — the upstream answered the resolver
+      with a human challenge, which is never solved or evaded. Challenges can
+      be sporadic, so it trips by the same rate rule as
+      `:no_source_available`, not on sight.
     * `:upstream_timeout`, `:provider_capacity_exhausted`,
       `:stream_resolution_failed` and any unknown error are transient: they
       are recorded for visibility but never trip on their own and do not
@@ -67,6 +71,7 @@ defmodule Streamix.Embedplay.HealthWindow do
   def classify({:ok, source}) when is_map(source), do: {:success, Map.get(source, :session_id)}
   def classify({:error, :resolver_outdated}), do: {:failure, :resolver_outdated}
   def classify({:error, :no_source_available}), do: {:failure, :no_source_available}
+  def classify({:error, :challenge_required}), do: {:failure, :challenge_required}
   def classify({:error, reason}) when reason in @ignored, do: :ignore
   # `:upstream_timeout`, `:provider_capacity_exhausted`, `:stream_resolution_failed`
   # and anything new the resolver starts reporting.
