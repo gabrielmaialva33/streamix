@@ -139,6 +139,7 @@ defmodule Streamix.Iptv do
   defdelegate list_torrent_movies(provider_id, opts \\ []), to: CatalogBoundary
   defdelegate count_torrent_movies(provider_id, opts \\ []), to: CatalogBoundary
   defdelegate get_torrent_movie_for_playback(movie_id), to: CatalogBoundary
+  defdelegate torrent_tmdb_ids_by_imdb(imdb_ids, opts \\ []), to: CatalogBoundary
 
   # =============================================================================
   # Series

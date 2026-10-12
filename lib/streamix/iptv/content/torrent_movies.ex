@@ -77,6 +77,39 @@ defmodule Streamix.Iptv.Content.TorrentMovies do
 
   def get_for_playback(_movie_id), do: {:error, :not_found}
 
+  @doc """
+  Maps IMDb ids to the TMDB id the catalog already knows for them.
+
+  Only unambiguous ids are returned: an IMDb id that different catalog rows
+  pair with different TMDB ids is left out rather than guessed.
+
+  Options:
+
+    * `:exclude_provider_id` — ignore that provider's own rows, so ids a
+      provider obtained by fuzzy title matching are not fed back to it.
+  """
+  @spec tmdb_ids_by_imdb([String.t()], keyword()) :: %{String.t() => String.t()}
+  def tmdb_ids_by_imdb(imdb_ids, opts \\ [])
+
+  def tmdb_ids_by_imdb([], _opts), do: %{}
+
+  def tmdb_ids_by_imdb(imdb_ids, opts) when is_list(imdb_ids) do
+    Movie
+    |> where([movie], movie.imdb_id in ^imdb_ids)
+    |> where([movie], not is_nil(movie.tmdb_id) and movie.tmdb_id not in ["", "0"])
+    |> exclude_provider(Keyword.get(opts, :exclude_provider_id))
+    |> group_by([movie], movie.imdb_id)
+    |> having([movie], count(movie.tmdb_id, :distinct) == 1)
+    |> select([movie], {movie.imdb_id, min(movie.tmdb_id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp exclude_provider(query, provider_id) when is_integer(provider_id),
+    do: where(query, [movie], movie.provider_id != ^provider_id)
+
+  defp exclude_provider(query, _provider_id), do: query
+
   defp insert_movie(provider_id, attrs) do
     with {:ok, catalog_item} <- insert_catalog_item(provider_id),
          {:ok, movie} <-

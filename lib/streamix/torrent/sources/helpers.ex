@@ -10,10 +10,18 @@ defmodule Streamix.Torrent.Sources.Helpers do
 
   alias Streamix.Torrent.Magnet
 
+  # Honest client identity shared by every torrent source. Sites see who is
+  # asking; nothing here impersonates a browser.
+  @user_agent "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.fun)"
+
   @headers [
-    {"user-agent", "Mozilla/5.0 (compatible; Streamix/1.0; +https://streamix.mahina.fun)"},
+    {"user-agent", @user_agent},
     {"accept", "application/json"}
   ]
+
+  @doc "The User-Agent every torrent source sends."
+  @spec user_agent() :: String.t()
+  def user_agent, do: @user_agent
 
   @doc """
   Fetches a normalized JSON feed for a source slug.

@@ -358,7 +358,7 @@ autorizado ou habilite uma das fontes de catálogo do sistema.
 |------------------------|----------------------------------------------------------------------------------------------------------|
 | Catálogo Xtream global | `GLOBAL_PROVIDER_ENABLED`, `GLOBAL_PROVIDER_URL`, `GLOBAL_PROVIDER_USERNAME`, `GLOBAL_PROVIDER_PASSWORD` |
 | Catálogo GIndex        | `GINDEX_ENABLED`, `GINDEX_ENDPOINTS`, `GINDEX_SYNC_URL`, `GINDEX_STREAM_URL`                             |
-| Catálogo torrent       | `TORRENT_ENABLED`, `RQBIT_URL`, variáveis dos endpoints das fontes                                       |
+| Catálogo torrent       | `TORRENT_ENABLED`, `RQBIT_URL`, ajustes dos scrapers BR ([`docs/torrent-br-sources.md`](docs/torrent-br-sources.md)) |
 | Metadados e legendas   | `TMDB_API_TOKEN`, `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY`                                               |
 | Descoberta semântica   | `QDRANT_ENABLED`, `QDRANT_URL`, `GEMINI_API_KEY` ou `NVIDIA_API_KEY`                                     |
 | Billing                | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, variáveis de preço do Stripe                               |

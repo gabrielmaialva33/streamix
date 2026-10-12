@@ -121,9 +121,55 @@ defmodule Streamix.Torrent.CatalogTest do
       movie = movie_fixture(provider, "No Streams")
       assert Catalog.best_stream_for_movie(movie.id) == nil
     end
+
+    test "prefers a clean release over a bigger swarm of fan dubs or cams", %{provider: provider} do
+      movie = movie_fixture(provider, "Flagged Swarm")
+      stream_fixture(movie, seeders: 500, quality: "1080p", release_flags: ["unofficial_dub"])
+      stream_fixture(movie, seeders: 300, quality: "1080p", release_flags: ["cam"])
+      clean = stream_fixture(movie, seeders: 4, quality: "720p")
+
+      assert Catalog.best_stream_for_movie(movie.id).id == clean.id
+
+      assert movie.id
+             |> Catalog.streams_for_movie()
+             |> Enum.map(&{&1.seeders, &1.release_flags}) == [
+               {4, []},
+               {500, ["unofficial_dub"]},
+               {300, ["cam"]}
+             ]
+    end
+
+    test "still plays a flagged release when nothing clean exists", %{provider: provider} do
+      movie = movie_fixture(provider, "Only Cam")
+      cam = stream_fixture(movie, seeders: 7, quality: "1080p", release_flags: ["cam"])
+
+      assert Catalog.best_stream_for_movie(movie.id).id == cam.id
+    end
   end
 
-  defp movie_fixture(provider, name) do
+  describe "tmdb_ids_by_imdb/1" do
+    test "returns only unambiguous IMDb to TMDB pairings", %{provider: provider} do
+      movie_fixture(provider, "Matrix", imdb_id: "tt0133093", tmdb_id: "603")
+      movie_fixture(provider, "Matrix (dup)", imdb_id: "tt0133093", tmdb_id: "603")
+      movie_fixture(provider, "Clash A", imdb_id: "tt0000001", tmdb_id: "1")
+      movie_fixture(provider, "Clash B", imdb_id: "tt0000001", tmdb_id: "2")
+      movie_fixture(provider, "No TMDB", imdb_id: "tt0000002")
+
+      assert Catalog.tmdb_ids_by_imdb(["tt0133093", "tt0000001", "tt0000002", "tt9999999"]) ==
+               %{"tt0133093" => "603"}
+
+      assert Catalog.tmdb_ids_by_imdb([]) == %{}
+    end
+
+    test "can ignore a provider's own (possibly fuzzy-matched) rows", %{provider: provider} do
+      movie_fixture(provider, "Fuzzy", imdb_id: "tt0133093", tmdb_id: "603")
+
+      assert Catalog.tmdb_ids_by_imdb(["tt0133093"], exclude_provider_id: provider.id) == %{}
+      assert Catalog.tmdb_ids_by_imdb(["tt0133093"]) == %{"tt0133093" => "603"}
+    end
+  end
+
+  defp movie_fixture(provider, name, attrs \\ []) do
     {:ok, catalog_item} =
       %CatalogItem{}
       |> CatalogItem.changeset(%{content_type: "movie", provider_id: provider.id})
@@ -131,13 +177,18 @@ defmodule Streamix.Torrent.CatalogTest do
 
     {:ok, movie} =
       %Movie{}
-      |> Movie.changeset(%{
-        stream_id: System.unique_integer([:positive]),
-        name: name,
-        title: name,
-        provider_id: provider.id,
-        catalog_item_id: catalog_item.id
-      })
+      |> Movie.changeset(
+        Map.merge(
+          %{
+            stream_id: System.unique_integer([:positive]),
+            name: name,
+            title: name,
+            provider_id: provider.id,
+            catalog_item_id: catalog_item.id
+          },
+          Map.new(attrs)
+        )
+      )
       |> Repo.insert()
 
     movie
@@ -158,7 +209,8 @@ defmodule Streamix.Torrent.CatalogTest do
         source_slug: "test",
         movie_id: movie.id,
         seeders: Keyword.fetch!(opts, :seeders),
-        quality: Keyword.fetch!(opts, :quality)
+        quality: Keyword.fetch!(opts, :quality),
+        release_flags: Keyword.get(opts, :release_flags, [])
       })
       |> Repo.insert()
 

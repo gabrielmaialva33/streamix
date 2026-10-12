@@ -1,7 +1,7 @@
 defmodule Streamix.Torrent.SyncTest do
   use Streamix.DataCase, async: false
 
-  alias Streamix.Iptv.{Movie, Provider}
+  alias Streamix.Iptv.{CatalogItem, Movie, Provider}
   alias Streamix.Repo
   alias Streamix.TestSupport.TorrentTestSource
   alias Streamix.Torrent.{Sync, TorrentStream}
@@ -262,6 +262,95 @@ defmodule Streamix.Torrent.SyncTest do
     end
   end
 
+  describe "honest results" do
+    test "a source with nothing configured is reported disabled, not ok", %{provider: provider} do
+      seed_pages([{1, [], %{next_page: nil, disabled?: true}}])
+
+      assert {:ok, %{movies: 0, torrents: 0, state: :disabled}} =
+               Sync.sync_source(provider, TorrentTestSource)
+
+      assert {:ok, %{sources: [%{slug: "test", status: :disabled}]}} =
+               Sync.sync_provider(provider)
+    end
+
+    test "a successful page is state :ok", %{provider: provider} do
+      seed_pages([{1, [sample_item("ok-1", "Fine", [magnet("ok")])], %{next_page: nil}}])
+      assert {:ok, %{state: :ok, movies: 1}} = Sync.sync_source(provider, TorrentTestSource)
+    end
+
+    test "failure_state/1 names blocked and layout_changed sources" do
+      assert Sync.failure_state({:blocked, %{url: "https://comando.la/", status: 403}}) ==
+               "blocked"
+
+      assert Sync.failure_state({:layout_changed, %{url: "https://x/", what: :listing}}) ==
+               "layout_changed"
+
+      assert Sync.failure_state({:rate_limited, %{url: "https://x/"}}) == "rate_limited"
+      assert Sync.failure_state({:page_limit_exceeded, %{}}) == "page_limit_exceeded"
+      assert Sync.failure_state({:item_upsert_failed, "x", :boom}) == "persistence_failed"
+      assert Sync.failure_state(:boom) == "error"
+    end
+
+    test "a provider sync records the failure state of a broken source", %{provider: provider} do
+      Application.put_env(:streamix, :torrent_sources, [__MODULE__.BlockedSource])
+
+      assert {:ok, %{sources: [%{status: :error, failure: "blocked"}]}} =
+               Sync.sync_provider(provider)
+
+      assert Repo.get!(Provider, provider.id).sync_status == "failed"
+    end
+  end
+
+  describe "release flags and identities" do
+    test "persists release flags and refreshes them on resync", %{provider: provider} do
+      flagged = magnet("flagged") |> Map.put(:release_flags, ["unofficial_dub", "cam", "cam"])
+      seed_pages([{1, [sample_item("fan-dub", "Fan Dub", [flagged])], %{next_page: nil}}])
+
+      assert {:ok, _stats} = Sync.sync_source(provider, TorrentTestSource)
+      assert %TorrentStream{release_flags: ["cam", "unofficial_dub"]} = Repo.one!(TorrentStream)
+
+      cleaned = Map.put(flagged, :release_flags, [])
+      seed_pages([{1, [sample_item("fan-dub", "Fan Dub", [cleaned])], %{next_page: nil}}])
+
+      assert {:ok, _stats} = Sync.sync_source(provider, TorrentTestSource)
+      assert %TorrentStream{release_flags: []} = Repo.one!(TorrentStream)
+    end
+
+    test "maps an item's IMDb id to the TMDB id the catalog already knows", %{
+      provider: provider
+    } do
+      other = torrent_provider_fixture()
+      catalog_item = Repo.insert!(%CatalogItem{content_type: "movie", provider_id: other.id})
+
+      Repo.insert!(%Movie{
+        provider_id: other.id,
+        catalog_item_id: catalog_item.id,
+        stream_id: 1,
+        name: "Quadrant",
+        imdb_id: "tt31179749",
+        tmdb_id: "1239456"
+      })
+
+      item = %{sample_item("quadrant", "Quadrant", [magnet("q")]) | imdb_id: "tt31179749"}
+      seed_pages([{1, [item], %{next_page: nil}}])
+
+      assert {:ok, _stats} = Sync.sync_source(provider, TorrentTestSource)
+
+      assert %Movie{tmdb_id: "1239456", imdb_id: "tt31179749"} =
+               Repo.get_by!(Movie, provider_id: provider.id)
+    end
+
+    test "ingest_items/3 persists items through the sync pipeline", %{provider: provider} do
+      item = %{sample_item("targeted", "Targeted", [magnet("t")]) | tmdb_id: "603"}
+
+      assert {:ok, {1, 1}} = Sync.ingest_items(provider, TorrentTestSource, [item])
+      assert %Movie{tmdb_id: "603"} = Repo.get_by!(Movie, provider_id: provider.id)
+
+      assert {:error, :not_torrent_provider} =
+               Sync.ingest_items(%Provider{provider_type: :xtream, id: 1}, TorrentTestSource, [])
+    end
+  end
+
   describe "refresh_provider_counts/1" do
     test "recomputes movies_count from the DB and marks completed", %{provider: provider} do
       seed_pages([
@@ -349,6 +438,24 @@ defmodule Streamix.Torrent.SyncTest do
       |> Repo.insert()
 
     provider
+  end
+
+  defmodule BlockedSource do
+    @behaviour Streamix.Torrent.Source
+
+    @impl true
+    def slug, do: "blocked"
+
+    @impl true
+    def name, do: "Blocked"
+
+    @impl true
+    def rate_limit_ms, do: 1
+
+    @impl true
+    def fetch_listing(_opts) do
+      {:error, {:blocked, %{url: "https://comando.la/", status: 403, reason: :challenge}}}
+    end
   end
 
   defmodule SecondSource do

@@ -3,6 +3,8 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorkerTest do
 
   use Oban.Testing, repo: Streamix.Repo
 
+  import ExUnit.CaptureLog
+
   alias Streamix.Iptv.Provider
   alias Streamix.Repo
   alias Streamix.TestSupport.TorrentTestSource
@@ -113,6 +115,51 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorkerTest do
     end
   end
 
+  describe "logging" do
+    setup do
+      previous = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: previous) end)
+      :ok
+    end
+
+    test "a source with nothing configured is logged as disabled, never as ok" do
+      provider = torrent_provider_fixture()
+
+      Application.put_env(:streamix, :torrent_test_source, [
+        {1, [], %{next_page: nil, disabled?: true}}
+      ])
+
+      log =
+        capture_log([level: :info], fn ->
+          assert :ok =
+                   perform_job(SyncSourceWorker, %{
+                     "provider_id" => provider.id,
+                     "source_slug" => "test"
+                   })
+        end)
+
+      assert log =~ "slug=test disabled"
+      refute log =~ "slug=test ok"
+    end
+
+    test "a blocked source fails with its state in the log" do
+      provider = torrent_provider_fixture()
+      Application.put_env(:streamix, :torrent_sources, [__MODULE__.BlockedSource])
+
+      log =
+        capture_log(fn ->
+          assert {:error, {:blocked, _details}} =
+                   perform_job(SyncSourceWorker, %{
+                     "provider_id" => provider.id,
+                     "source_slug" => "blocked"
+                   })
+        end)
+
+      assert log =~ "slug=blocked failed state=blocked"
+    end
+  end
+
   describe "configuration" do
     test "uses the torrent_sync queue and 3 max attempts" do
       job =
@@ -178,5 +225,23 @@ defmodule Streamix.Workers.Torrent.SyncSourceWorkerTest do
       })
 
     provider
+  end
+
+  defmodule BlockedSource do
+    @behaviour Streamix.Torrent.Source
+
+    @impl true
+    def slug, do: "blocked"
+
+    @impl true
+    def name, do: "Blocked"
+
+    @impl true
+    def rate_limit_ms, do: 1
+
+    @impl true
+    def fetch_listing(_opts) do
+      {:error, {:blocked, %{url: "https://comando.la/", status: 403, reason: :challenge}}}
+    end
   end
 end
