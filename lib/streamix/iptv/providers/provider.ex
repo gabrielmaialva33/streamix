@@ -34,6 +34,12 @@ defmodule Streamix.Iptv.Provider do
     # See docs/xtream-direct-playback.md.
     field :direct_client_playback, :boolean, default: false
 
+    # Operator-only, like `direct_client_playback`. Each live channel is then
+    # probed at play time: HLS plays through the gateway, TS keeps the live
+    # proxy, and anything else is reported unavailable. Providers without it
+    # keep the TS live path untouched. See docs/xtream-live-hls.md.
+    field :probe_live_delivery, :boolean, default: false
+
     # Provider type: xtream (default), gindex, torrent, or embedplay
     field :provider_type, Ecto.Enum,
       values: [:xtream, :gindex, :torrent, :embedplay],
@@ -71,7 +77,8 @@ defmodule Streamix.Iptv.Provider do
                       live_channels_count movies_count series_count
                       live_synced_at vod_synced_at series_synced_at
                       epg_synced_at epg_sync_interval_hours server_info
-                      provider_type gindex_url direct_client_playback)a
+                      provider_type gindex_url direct_client_playback
+                      probe_live_delivery)a
 
   @user_fields ~w(name url urls username password is_active visibility epg_sync_interval_hours)a
 

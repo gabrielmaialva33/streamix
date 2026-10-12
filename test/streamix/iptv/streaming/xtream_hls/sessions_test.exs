@@ -79,6 +79,36 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.SessionsTest do
                Sessions.resource(second.session_id, second.resource_id, content)
     end
 
+    test "a live session is shared while alive and goes after the live idle time" do
+      content = {:channel, System.unique_integer([:positive])}
+      live_url = "http://93.184.216.34/live/u/p/501.ts"
+      {:ok, session} = Sessions.open(content, 1, live_url)
+
+      age = fn field, seconds ->
+        :sys.replace_state(Sessions, fn state ->
+          put_in(
+            state.sessions[session.session_id][field],
+            System.monotonic_time(:second) - seconds
+          )
+        end)
+      end
+
+      # Older than the VOD reuse TTL, but alive: every viewer shares it.
+      age.(:created_at, 3_600)
+      assert {:ok, ^session} = Sessions.open(content, 1, live_url)
+
+      assert {:ok, %{kind: :playlist}, %{live?: true, root: root}} =
+               Sessions.resource(session.session_id, session.resource_id, content)
+
+      assert root == session.resource_id
+
+      # Five idle minutes end it (VOD sessions get thirty).
+      age.(:touched_at, 301)
+
+      assert {:error, :playback_restart_required} =
+               Sessions.resource(session.session_id, session.resource_id, content)
+    end
+
     test "an idle session asks the player to restart, then is gone" do
       content = {:episode, System.unique_integer([:positive])}
       {:ok, session} = Sessions.open(content, 1, @url)

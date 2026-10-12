@@ -2,28 +2,34 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
   @moduledoc """
   Sessions and per-provider fetch leases for Xtream HLS playback.
 
-  A session ties one content item (`{:movie, id}` or `{:episode, id}`) to a
-  `Streamix.Hls.Registry` whose root is the item's Xtream URL. That URL embeds
-  the account credentials, so it lives only in this process: clients see the
-  opaque session and resource identifiers.
+  A session ties one content item (`{:movie, id}`, `{:episode, id}` or
+  `{:channel, id}`) to a `Streamix.Hls.Registry` whose root is the item's
+  Xtream URL. That URL embeds the account credentials, so it lives only in
+  this process: clients see the opaque session and resource identifiers.
 
-  Opening an item reuses its session for `session_ttl_seconds` (default 600)
-  while the source URL is unchanged — a provider whose credentials changed
-  gets a fresh session at once. A session stays alive while it is used and is
-  removed after `idle_seconds` (default 1800) without a request, or as soon as
-  an upstream answers 401/403/410 for one of its resources.
+  Opening a VOD item reuses its session for `session_ttl_seconds` (default
+  600) while the source URL is unchanged — a provider whose credentials
+  changed gets a fresh session at once. A VOD session stays alive while it is
+  used and is removed after `idle_seconds` (default 1800) without a request,
+  or as soon as an upstream answers 401/403/410 for one of its resources.
+
+  A live channel's session is shared by every viewer for as long as it is
+  used, is removed after `live_idle_seconds` (default 300) without a request,
+  and its registry keeps a sliding window of `live_window_seconds` (default
+  180): references no playlist refresh has named for longer are dropped, so
+  a channel that runs for days never reaches the registry caps.
 
   ## Playlists and lookahead
 
-  A session keeps each immutable playlist it has served (a master, or a media
-  playlist with `#EXT-X-ENDLIST`) as a template of resource ids — never as
-  rendered text, whose URLs carry the requesting viewer's token — up to
+  A VOD session keeps each immutable playlist it has served (a master, or a
+  media playlist with `#EXT-X-ENDLIST`) as a template of resource ids — never
+  as rendered text, whose URLs carry the requesting viewer's token — up to
   `playlist_cache_bytes` (8 MiB) per session, so a playlist is fetched once
-  per session. It also records every media playlist's segment order and, per
-  playlist, the playhead (the latest segment a player asked for), which
-  `claim_prefetch/4` uses to hand out the next segments to prefetch, at most
-  `prefetch_concurrency` (3) in flight per session. All of it goes with the
-  session when it idles.
+  per session. A live session never keeps a playlist. Both record every
+  media playlist's latest segment order and, per playlist, the playhead (the
+  latest segment a player asked for), which `claim_prefetch/4` uses to hand
+  out the next segments to prefetch, at most `prefetch_concurrency` (3) in
+  flight per session. All of it goes with the session when it idles.
 
   ## Leases
 
@@ -47,7 +53,7 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
   @max_waiters 256
   @cleanup_interval_ms 60_000
 
-  @type content :: {:movie | :episode, pos_integer()}
+  @type content :: {:movie | :episode | :channel, pos_integer()}
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -59,8 +65,8 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
 
   @doc """
   Looks up a resource of a session opened for `content`. Returns
-  `{:ok, resource, %{provider_id:, template:}}`, where `template` is the
-  session's cached template of that playlist, or `nil`.
+  `{:ok, resource, %{provider_id:, live?:, root:, template:}}`, where
+  `template` is the session's cached template of that playlist, or `nil`.
   """
   def resource(session_id, resource_id, content),
     do: GenServer.call(__MODULE__, {:resource, session_id, resource_id, content})
@@ -140,7 +146,13 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     with %{content: ^content} = session <- state.sessions[sid],
          false <- expired?(session),
          {:ok, resource} <- Registry.lookup(session.registry, rid) do
-      info = %{provider_id: session.provider_id, template: session.playlists[rid]}
+      info = %{
+        provider_id: session.provider_id,
+        live?: session.live?,
+        root: Registry.root(session.registry),
+        template: session.playlists[rid]
+      }
+
       {:reply, {:ok, resource, info}, touch(state, sid)}
     else
       true -> {:reply, {:error, :playback_restart_required}, remove(state, sid)}
@@ -294,12 +306,20 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
       else: put_in(state.waiters[provider_id], queue)
   end
 
-  defp new_session(content, provider_id, url) do
+  defp new_session({type, _id} = content, provider_id, url) do
+    live? = type == :channel
+
+    registry_opts =
+      if live?,
+        do: [suffix: &suffix/2, window_seconds: config(:live_window_seconds, 180)],
+        else: [suffix: &suffix/2]
+
     %{
       id: Registry.opaque_id(),
       content: content,
       provider_id: provider_id,
-      registry: Registry.new(url, :playlist, suffix: &suffix/2),
+      live?: live?,
+      registry: Registry.new(url, :playlist, registry_opts),
       # Immutable playlists, as templates of resource ids (never rendered
       # URLs, which carry the requesting viewer's token).
       playlists: %{},
@@ -334,11 +354,13 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     end
   end
 
+  # The playhead is a segment id, resolved to its position when claiming: a
+  # live playlist's order shifts on every refresh.
   defp move_playhead(session, :continue), do: session
 
   defp move_playhead(session, rid) do
     case session.positions[rid] do
-      {playlist, index} -> put_in(session.playheads[playlist], index)
+      {playlist, _index} -> put_in(session.playheads[playlist], rid)
       nil -> session
     end
   end
@@ -348,16 +370,24 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
 
     claimed =
       session.playheads
-      |> Enum.flat_map(fn {playlist, index} ->
-        order = Map.get(session.orders, playlist, {})
-        for i <- (index + 1)..(index + depth)//1, i < tuple_size(order), do: elem(order, i)
-      end)
+      |> Enum.flat_map(fn {_playlist, rid} -> following(session, rid, depth) end)
       |> Enum.reject(&MapSet.member?(session.prefetching, &1))
       |> Enum.flat_map(&uncached_resource(session, &1, cached?))
       |> Enum.take(room)
 
     prefetching = Enum.reduce(claimed, session.prefetching, &MapSet.put(&2, &1.id))
     {claimed, %{session | prefetching: prefetching}}
+  end
+
+  # The `depth` segments after `rid` in its playlist's latest order; none
+  # once a live refresh no longer lists it.
+  defp following(session, rid, depth) do
+    with {playlist, index} <- session.positions[rid],
+         order when is_tuple(order) <- session.orders[playlist] do
+      for i <- (index + 1)..(index + depth)//1, i < tuple_size(order), do: elem(order, i)
+    else
+      _ -> []
+    end
   end
 
   defp uncached_resource(session, id, cached?) do
@@ -384,11 +414,13 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
     }
   end
 
+  # A live session is shared for as long as it is alive: its registry only
+  # holds the current window, so there is nothing stale to start from.
   defp cached(state, content, url) do
     with sid when not is_nil(sid) <- state.cache[content],
          session when not is_nil(session) <- state.sessions[sid],
          true <- Registry.root_url(session.registry) == url,
-         true <- now() - session.created_at < session_ttl_seconds(),
+         true <- session.live? or now() - session.created_at < session_ttl_seconds(),
          false <- expired?(session) do
       session
     else
@@ -421,6 +453,9 @@ defmodule Streamix.Iptv.Streaming.XtreamHls.Sessions do
       if expired?(session), do: remove(acc, sid), else: acc
     end)
   end
+
+  defp expired?(%{live?: true} = session),
+    do: now() - session.touched_at >= config(:live_idle_seconds, 300)
 
   defp expired?(session), do: now() - session.touched_at >= idle_seconds()
 

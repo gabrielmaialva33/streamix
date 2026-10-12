@@ -29,6 +29,35 @@ defmodule StreamixWeb.PlayerComponents.Metadata do
 
   def proxy_url(_stream_url, _content_type), do: nil
 
+  @doc """
+  The engine hint handed to the player for `stream_url`.
+
+  A minted gateway URL names its own format and wins: an HLS gateway URL is
+  HLS even for a live channel (whose default hint is `ts`) or a movie whose
+  catalogue extension says `mp4` but whose probe found HLS, and a
+  direct-client URL names the container the redirect leads to. Any other URL
+  (the token proxies carry no extension) falls back to `stream_type_hint/3`.
+  """
+  @spec stream_type(String.t() | nil, atom(), map(), atom() | String.t()) :: String.t() | nil
+  def stream_type(stream_url, content_type, content, source_type) do
+    url_stream_type(stream_url) || stream_type_hint(content_type, content, source_type)
+  end
+
+  defp url_stream_type(url) when is_binary(url) do
+    cond do
+      String.contains?(url, "/api/stream/hls/") ->
+        "m3u8"
+
+      match = Regex.run(~r"/api/stream/vod/direct\.([a-z0-9]{1,8})\?", url) ->
+        List.last(match)
+
+      true ->
+        nil
+    end
+  end
+
+  defp url_stream_type(_url), do: nil
+
   @spec stream_type_hint(atom(), map(), atom() | String.t()) :: String.t() | nil
   def stream_type_hint(content_type, _content, _source_type)
       when content_type in [:live, :live_channel],

@@ -445,10 +445,14 @@ defmodule Streamix.Iptv do
   defdelegate head_stream(conn, url, opts \\ []), to: PlaybackBoundary
   defdelegate sort_stream_sources(sources, opts \\ []), to: PlaybackBoundary
   defdelegate xtream_delivery(provider, content), to: PlaybackBoundary
+  defdelegate xtream_live_mode(provider), to: PlaybackBoundary
   defdelegate xtream_route(provider, type, content, opts \\ []), to: PlaybackBoundary
   defdelegate resolve_xtream_delivery(provider, type, content), to: PlaybackBoundary
   defdelegate open_xtream_hls(content, provider_id, url), to: PlaybackBoundary
 
   defdelegate fetch_xtream_hls_resource(session_id, resource_id, content, opts \\ []),
+    to: PlaybackBoundary
+
+  defdelegate fetch_xtream_hls_master(session_id, resource_id, content, opts \\ []),
     to: PlaybackBoundary
 end

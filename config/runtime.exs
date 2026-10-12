@@ -492,6 +492,40 @@ config :streamix, :xtream_hls,
       8 * 1_024 * 1_024,
       min: 0,
       max: 64 * 1_024 * 1_024
+    ),
+  # Live channels: playlist refresh deadline, registry sliding window, idle
+  # eviction and lookahead (at most the next segment).
+  live_playlist_timeout_ms:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_PLAYLIST_TIMEOUT_MS",
+      get_env.("XTREAM_HLS_LIVE_PLAYLIST_TIMEOUT_MS"),
+      8_000,
+      min: 1_000,
+      max: 30_000
+    ),
+  live_window_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_WINDOW_SECONDS",
+      get_env.("XTREAM_HLS_LIVE_WINDOW_SECONDS"),
+      180,
+      min: 30,
+      max: 3_600
+    ),
+  live_idle_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_IDLE_SECONDS",
+      get_env.("XTREAM_HLS_LIVE_IDLE_SECONDS"),
+      300,
+      min: 30,
+      max: 3_600
+    ),
+  live_prefetch_segments:
+    RuntimeConfig.integer!(
+      "XTREAM_HLS_LIVE_PREFETCH_SEGMENTS",
+      get_env.("XTREAM_HLS_LIVE_PREFETCH_SEGMENTS"),
+      1,
+      min: 0,
+      max: 1
     )
 
 # Short shared single-flight cache of HLS segments (prefetched segments wait
@@ -541,6 +575,15 @@ config :streamix, :xtream_delivery,
       600,
       min: 30,
       max: 3_600
+    ),
+  # A live channel probed as TS (it keeps the live proxy).
+  ts_ttl_seconds:
+    RuntimeConfig.integer!(
+      "XTREAM_PROBE_TS_TTL_SECONDS",
+      get_env.("XTREAM_PROBE_TS_TTL_SECONDS"),
+      1_800,
+      min: 60,
+      max: 86_400
     ),
   failure_ttl_seconds:
     RuntimeConfig.integer!(

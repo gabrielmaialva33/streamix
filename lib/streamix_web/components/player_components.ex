@@ -46,7 +46,8 @@ defmodule StreamixWeb.PlayerComponents do
     source_type = assigns.provider_type || Atom.to_string(assigns.content_type)
 
     # Explicit stream type hint for token-based URLs where extension is not in the URL
-    stream_type = Metadata.stream_type_hint(assigns.content_type, assigns.content, source_type)
+    stream_type =
+      Metadata.stream_type(assigns.stream_url, assigns.content_type, assigns.content, source_type)
 
     # Encode next episode data as JSON for JS
     next_episode_json =

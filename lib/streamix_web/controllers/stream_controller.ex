@@ -219,7 +219,8 @@ defmodule StreamixWeb.StreamController do
     provider_capacity_exhausted: :provider_capacity_exhausted,
     provider_disabled: :provider_disabled,
     provider_degraded: :provider_degraded,
-    stream_format_mismatch: :stream_format_mismatch
+    stream_format_mismatch: :stream_format_mismatch,
+    not_a_stream: :not_a_stream
   }
 
   defp token_error(conn, {:quota_exhausted, _count}) do

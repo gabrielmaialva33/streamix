@@ -102,6 +102,13 @@ defmodule Streamix.Playback do
   defdelegate xtream_delivery(provider, content), to: XtreamDelivery, as: :mode
 
   @doc """
+  How a provider's live channels are delivered, without I/O: `:ts` (the live
+  proxy, the default) or `:probe` for a `probe_live_delivery` provider, whose
+  channels are probed at play time (HLS gateway, TS proxy, or unavailable).
+  """
+  defdelegate xtream_live_mode(provider), to: XtreamDelivery, as: :live_mode
+
+  @doc """
   The route a player must be given for an Xtream movie or episode: `:hls`,
   `{:direct, extension}` or `:proxy`. Probes (cached) when the provider
   requires it, unless `probe: false`. URL minting uses this.
@@ -127,6 +134,15 @@ defmodule Streamix.Playback do
   defdelegate fetch_xtream_hls_resource(session_id, resource_id, content, opts \\ []),
     to: XtreamHls,
     as: :fetch_resource
+
+  @doc """
+  Fetches an Xtream HLS session's root for the master route. A live channel
+  whose root is a media playlist is answered with a one-variant master that
+  points at the root resource.
+  """
+  defdelegate fetch_xtream_hls_master(session_id, resource_id, content, opts \\ []),
+    to: XtreamHls,
+    as: :fetch_master
 
   # Stable error translation used by the web delivery layer
 

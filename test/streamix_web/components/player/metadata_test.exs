@@ -27,6 +27,22 @@ defmodule StreamixWeb.PlayerComponents.MetadataTest do
     assert Metadata.stream_type_hint(:movie, %{container_extension: "avi"}, :xtream) == "avi"
   end
 
+  test "a minted gateway URL names its own format over the content hint" do
+    hls = "https://streamix.example/api/stream/hls/master.m3u8?token=abc"
+    proxy = "https://streamix.example/api/stream/proxy?token=abc"
+    direct = "https://streamix.example/api/stream/vod/direct.mkv?token=abc"
+
+    # A live channel defaults to TS; one minted on the HLS gateway is HLS.
+    assert Metadata.stream_type(hls, :live_channel, %{}, :xtream) == "m3u8"
+    assert Metadata.stream_type(proxy, :live_channel, %{}, :xtream) == "ts"
+
+    # A probed movie listed as mp4 may be HLS, or a direct file of another container.
+    assert Metadata.stream_type(hls, :movie, %{container_extension: "mp4"}, :xtream) == "m3u8"
+    assert Metadata.stream_type(direct, :movie, %{container_extension: "mp4"}, :xtream) == "mkv"
+    assert Metadata.stream_type(proxy, :movie, %{container_extension: "avi"}, :xtream) == "avi"
+    assert Metadata.stream_type(nil, :live_channel, %{}, :xtream) == "ts"
+  end
+
   test "builds episode title and subtitle from nested context" do
     episode = %{
       episode_num: 3,

@@ -28,7 +28,7 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
 
   @type mode :: {:hls, String.t()} | :probe | :proxy
   @type route :: :hls | {:direct, String.t()} | :proxy
-  @type item_type :: :movie | :episode
+  @type item_type :: :movie | :episode | :channel
 
   @spec mode(map() | nil, map()) :: mode()
   def mode(%{provider_type: type} = provider, content)
@@ -44,6 +44,19 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
   def mode(_provider, _content), do: :proxy
 
   @doc """
+  The static answer for a live channel: `:probe` when the provider has the
+  operator-only `probe_live_delivery` switch (the channel is then probed:
+  HLS through the gateway, TS through the live proxy, anything else
+  unavailable), `:ts` otherwise — the live proxy, untouched.
+  """
+  @spec live_mode(map() | nil) :: :probe | :ts
+  def live_mode(%{provider_type: type, probe_live_delivery: true})
+      when type in [:xtream, "xtream"],
+      do: :probe
+
+  def live_mode(_provider), do: :ts
+
+  @doc """
   The route a player must be given for `content`: `:hls` (an `.m3u8` gateway
   URL), `{:direct, extension}` (the direct route, suffixed with the
   container the client will receive) or `:proxy` (the token proxy).
@@ -54,7 +67,23 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
   a `:probe` item then answers `:proxy` unless a decision is already known.
   """
   @spec route(map() | nil, item_type(), map(), keyword()) :: route()
-  def route(provider, type, content, opts \\ []) do
+  def route(provider, type, content, opts \\ [])
+
+  # A live channel is `:hls` only when its probe says so; TS channels and
+  # failed probes keep the live proxy, whose redirect reports a failure.
+  def route(provider, :channel, channel, opts) do
+    case live_mode(provider) do
+      :ts ->
+        :proxy
+
+      :probe ->
+        if Keyword.get(opts, :probe, true),
+          do: probed_route(DeliveryProbe.decide(provider, :channel, channel)),
+          else: probed_route(DeliveryProbe.peek(provider, :channel, channel))
+    end
+  end
+
+  def route(provider, type, content, opts) do
     case mode(provider, content) do
       {:hls, _extension} ->
         :hls
@@ -83,7 +112,15 @@ defmodule Streamix.Iptv.Streaming.XtreamDelivery do
   `client_url` has passed `Streamix.Iptv.Streaming.DirectUrl`.
   """
   @spec resolve(map(), item_type(), map()) ::
-          {:ok, {:hls, String.t()} | {:direct, String.t(), String.t()}} | {:error, atom()}
+          {:ok, {:hls, String.t()} | {:direct, String.t(), String.t()} | :ts}
+          | {:error, atom()}
+  def resolve(provider, :channel, channel) do
+    case live_mode(provider) do
+      :ts -> {:error, :stream_format_mismatch}
+      :probe -> DeliveryProbe.decide(provider, :channel, channel)
+    end
+  end
+
   def resolve(provider, type, content) do
     case mode(provider, content) do
       {:hls, extension} -> {:ok, {:hls, stream_url(provider, type, content, extension)}}

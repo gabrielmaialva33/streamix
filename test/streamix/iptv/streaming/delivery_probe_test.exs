@@ -224,6 +224,69 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbeTest do
     end
   end
 
+  describe "live channels" do
+    setup context do
+      %{channel: %{id: 7, stream_id: 501}, provider: context.provider}
+    end
+
+    defp live_chain(final) do
+      record(fn
+        %{host: @panel} = conn -> redirect(conn, "https://#{@redirector}/live/501/index")
+        conn -> final.(conn)
+      end)
+    end
+
+    test "an HLS answer goes to the gateway, rooted at the live URL", context do
+      live_chain(&hls/1)
+
+      assert {:ok, {:hls, root}} =
+               DeliveryProbe.decide(context.provider, :channel, context.channel)
+
+      assert root == "http://#{@panel}/live/#{@user}/#{@pass}/501.ts"
+      assert_received {:hop, "GET", @panel, "/live/megauser/s3cr3t-Pa55word/501.ts", ""}
+    end
+
+    test "a transport stream keeps the live proxy", context do
+      live_chain(fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("video/mp2t", nil)
+        |> Plug.Conn.send_resp(200, <<0x47, 0x40, 0x11>> <> :binary.copy(<<0>>, 185))
+      end)
+
+      assert {:ok, :ts} = DeliveryProbe.decide(context.provider, :channel, context.channel)
+    end
+
+    test "a channel that leads to a web page is not a stream, and never served", context do
+      live_chain(fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("text/html")
+        |> Plug.Conn.send_resp(200, "<!DOCTYPE html><html><body>embed</body></html>")
+      end)
+
+      assert {:error, :not_a_stream} =
+               DeliveryProbe.decide(context.provider, :channel, context.channel)
+
+      # The failure is cached: a second request does not walk the chain again.
+      assert {:error, :not_a_stream} =
+               DeliveryProbe.decide(context.provider, :channel, context.channel)
+
+      assert hops() == 2
+    end
+
+    test "a dead or failing channel is unavailable", context do
+      live_chain(&Plug.Conn.send_resp(&1, 404, "gone"))
+
+      assert {:error, :upstream_not_found} =
+               DeliveryProbe.decide(context.provider, :channel, context.channel)
+
+      provider = %{context.provider | id: System.unique_integer([:positive])}
+      live_chain(&Plug.Conn.send_resp(&1, 503, "busy"))
+
+      assert {:error, :upstream_unavailable} =
+               DeliveryProbe.decide(provider, :channel, context.channel)
+    end
+  end
+
   test "no log line carries the password, the username or the CDN token", context do
     log =
       capture_log([level: :debug], fn ->

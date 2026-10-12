@@ -4,12 +4,23 @@ defmodule Streamix.Hls.Registry do
 
   Clients only ever see opaque identifiers. Each upstream reference a gateway
   discovers while rewriting a playlist is registered here once and keeps its
-  identifier for the life of the session, so the same segment always maps to
+  identifier while it stays registered, so the same segment always maps to
   the same URL. There is never a caller-supplied upstream URL: a request
   names an identifier, and only a registered identifier resolves.
 
   A session can hold at most 20,000 resources and 4 MiB of upstream URL text;
-  beyond that `register/2` refuses with `:resource_limit` instead of growing.
+  beyond that `register/3` refuses with `:resource_limit` instead of growing.
+
+  ## Live sliding window
+
+  A live playlist names new segments on every refresh, so a long-running
+  channel would eventually reach those caps. With `window_seconds:` the
+  registry keeps, besides the root, only resources a rewrite referenced
+  within that many seconds: every registration stamps the references it
+  names and first drops the ones no refresh has named for longer than the
+  window. A dropped identifier no longer resolves (the player gets
+  `resource_not_found` and reloads the playlist). Without a window (VOD) a
+  resource stays for the life of the session.
 
   The identifier suffix tells the player what it is fetching. By default a
   playlist ends in `.m3u8`, a progressive root in `.mp4`, and other media in
@@ -20,12 +31,17 @@ defmodule Streamix.Hls.Registry do
   @max_bytes 4 * 1024 * 1024
 
   @enforce_keys [:root, :resources, :ids, :bytes, :suffix]
-  defstruct @enforce_keys
+  defstruct @enforce_keys ++ [window: nil, seen: %{}]
 
   @type kind :: :playlist | :media | :progressive
   @type t :: %__MODULE__{}
 
-  @doc "Creates a registry whose root resource is `url`."
+  @doc """
+  Creates a registry whose root resource is `url`.
+
+  Options: `:suffix` (see the module doc) and `:window_seconds` (enables the
+  live sliding window).
+  """
   @spec new(String.t(), kind(), keyword()) :: t()
   def new(url, kind, opts \\ []) when is_binary(url) do
     suffix = Keyword.get(opts, :suffix, &default_suffix/2)
@@ -36,7 +52,8 @@ defmodule Streamix.Hls.Registry do
       resources: %{root => %{url: url, kind: kind}},
       ids: %{{url, kind} => root},
       bytes: byte_size(url),
-      suffix: suffix
+      suffix: suffix,
+      window: Keyword.get(opts, :window_seconds)
     }
   end
 
@@ -48,17 +65,23 @@ defmodule Streamix.Hls.Registry do
   @spec root_url(t()) :: String.t()
   def root_url(%__MODULE__{root: root, resources: resources}), do: resources[root].url
 
+  @doc "The number of registered resources, the root included."
+  @spec size(t()) :: non_neg_integer()
+  def size(%__MODULE__{resources: resources}), do: map_size(resources)
+
   @doc "Looks up a registered resource."
   @spec lookup(t(), String.t()) :: {:ok, %{url: String.t(), kind: kind()}} | :error
   def lookup(%__MODULE__{resources: resources}, id), do: Map.fetch(resources, id)
 
   @doc """
   Registers `refs` (`{url, kind}` pairs) and returns one identifier per ref,
-  in order. Already-registered refs keep their identifier.
+  in order. Already-registered refs keep their identifier. `now` (monotonic
+  seconds) drives the live window.
   """
-  @spec register(t(), [{String.t(), kind()}]) ::
+  @spec register(t(), [{String.t(), kind()}], integer()) ::
           {:ok, [String.t()], t()} | {:error, :resource_limit}
-  def register(%__MODULE__{} = registry, refs) do
+  def register(%__MODULE__{} = registry, refs, now \\ System.monotonic_time(:second)) do
+    registry = evict(registry, now)
     new_refs = refs |> Enum.uniq() |> Enum.reject(&Map.has_key?(registry.ids, &1))
     added = Enum.sum(Enum.map(new_refs, fn {url, _kind} -> byte_size(url) end))
 
@@ -67,7 +90,8 @@ defmodule Streamix.Hls.Registry do
       {:error, :resource_limit}
     else
       {ids, registry} = Enum.map_reduce(refs, registry, &put/2)
-      {:ok, ids, %{registry | bytes: registry.bytes + added}}
+      registry = %{registry | bytes: registry.bytes + added}
+      {:ok, ids, stamp(registry, ids, now)}
     end
   end
 
@@ -86,6 +110,31 @@ defmodule Streamix.Hls.Registry do
       id ->
         {id, registry}
     end
+  end
+
+  defp stamp(%__MODULE__{window: nil} = registry, _ids, _now), do: registry
+
+  defp stamp(registry, ids, now),
+    do: %{registry | seen: Enum.reduce(ids, registry.seen, &Map.put(&2, &1, now))}
+
+  defp evict(%__MODULE__{window: nil} = registry, _now), do: registry
+
+  defp evict(%__MODULE__{window: window} = registry, now) do
+    registry.seen
+    |> Enum.filter(fn {id, seen_at} -> id != registry.root and now - seen_at > window end)
+    |> Enum.reduce(registry, fn {id, _seen_at}, acc -> drop(acc, id) end)
+  end
+
+  defp drop(registry, id) do
+    %{url: url, kind: kind} = Map.fetch!(registry.resources, id)
+
+    %{
+      registry
+      | resources: Map.delete(registry.resources, id),
+        ids: Map.delete(registry.ids, {url, kind}),
+        seen: Map.delete(registry.seen, id),
+        bytes: registry.bytes - byte_size(url)
+    }
   end
 
   @doc "The default identifier suffix for a resource kind."

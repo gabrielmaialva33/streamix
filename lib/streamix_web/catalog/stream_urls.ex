@@ -48,7 +48,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
     cond do
       embedplay_content?(movie) -> embedplay_url(token)
       gindex_content?(movie) -> gindex_direct_url(token)
-      true -> signed_xtream_url(token, movie_provider(movie), :movie, movie)
+      true -> signed_xtream_url(token, loaded_provider(movie), :movie, movie)
     end
   end
 
@@ -60,12 +60,16 @@ defmodule StreamixWeb.Catalog.StreamUrls do
       else: signed_xtream_url(token, episode_provider(episode), :episode, episode)
   end
 
+  # Channels are always live IPTV — never GIndex. They keep the live token
+  # proxy unless their provider probes live delivery and the probe found HLS,
+  # in which case the `.m3u8` gateway URL is minted.
   def signed_channel_url(channel) do
-    # Channels are always live IPTV — never GIndex — so they always go
-    # through the legacy token proxy flow.
-    channel.id
-    |> StreamToken.sign_channel(nil, @sign_opts)
-    |> token_proxy_url()
+    token = StreamToken.sign_channel(channel.id, nil, @sign_opts)
+
+    case Streamix.Playback.xtream_route(loaded_provider(channel), :channel, channel) do
+      :hls -> hls_master_url(token)
+      _proxy -> token_proxy_url(token)
+    end
   end
 
   # ---------------------------------------------------------------------
@@ -77,7 +81,7 @@ defmodule StreamixWeb.Catalog.StreamUrls do
 
     if embedplay_content?(movie),
       do: embedplay_url(token),
-      else: browser_xtream_url(token, movie_provider(movie), :movie, movie)
+      else: browser_xtream_url(token, loaded_provider(movie), :movie, movie)
   end
 
   def browser_episode_url(episode) do
@@ -86,9 +90,12 @@ defmodule StreamixWeb.Catalog.StreamUrls do
   end
 
   def browser_channel_url(channel) do
-    channel.id
-    |> StreamToken.sign_channel(nil, @sign_opts)
-    |> browser_token_proxy_url()
+    token = StreamToken.sign_channel(channel.id, nil, @sign_opts)
+
+    case Streamix.Playback.xtream_route(loaded_provider(channel), :channel, channel) do
+      :hls -> browser_hls_master_url(token)
+      _proxy -> browser_token_proxy_url(token)
+    end
   end
 
   # ---------------------------------------------------------------------
@@ -168,8 +175,10 @@ defmodule StreamixWeb.Catalog.StreamUrls do
     end
   end
 
-  defp movie_provider(%{provider: %{} = provider}), do: provider
-  defp movie_provider(_movie), do: nil
+  # Movies and channels carry their provider; without it preloaded the item
+  # keeps the token proxy, which redirects by itself where it must.
+  defp loaded_provider(%{provider: %{} = provider}), do: provider
+  defp loaded_provider(_content), do: nil
 
   # Catalog episode payloads preload season → series → provider. Without it
   # the episode keeps the token proxy, which redirects HLS items itself.

@@ -6,7 +6,9 @@ not a byte-range file. The progressive token proxy (`/api/stream/proxy`,
 `VodProxy`/`VodMultiplexer`) treats every movie as one file and only timed out
 on these items (`[VodMux] block miss: :block_deadline_exceeded`). They now play
 through an HLS gateway built on the same shared modules as the Embedplay
-gateway ([embedplay-playback.md](embedplay-playback.md)).
+gateway ([embedplay-playback.md](embedplay-playback.md)). Live channels of
+providers whose live answers HLS use the same gateway in a live mode
+([xtream-live-hls.md](xtream-live-hls.md)).
 
 ## Upstream behaviour (measured from the production server)
 

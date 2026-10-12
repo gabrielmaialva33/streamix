@@ -70,9 +70,10 @@ defmodule StreamixWeb.StreamToken.Resolver do
   end
 
   @doc """
-  Authorizes a movie or episode token for the Xtream HLS gateway.
+  Authorizes a movie, episode or live channel token for the Xtream HLS
+  gateway.
 
-  The checks are those of the progressive movie/episode flow — signature,
+  The checks are those of the progressive movie/episode/channel flow — signature,
   two-hour age, ownership or visibility, the global-content subscription
   policy and the API-key bypass (the token's own claim, or
   `bypass_subscription: true` from a request carrying a valid key) — plus
@@ -80,9 +81,9 @@ defmodule StreamixWeb.StreamToken.Resolver do
   (`:provider_degraded`). Content the delivery policy does not route to HLS
   fails with `:stream_format_mismatch`.
 
-  Returns `{:ok, %{content: {:movie | :episode, id}, provider_id:, url:}}`.
-  `url` embeds the account credentials: it is for the server-side gateway
-  only and must never reach a client or a log line.
+  Returns `{:ok, %{content: {:movie | :episode | :channel, id}, provider_id:,
+  url:}}`. `url` embeds the account credentials: it is for the server-side
+  gateway only and must never reach a client or a log line.
 
   `stage: :start` (the default) is the master request that starts a
   playback: the delivery is checked, a bypass is audited, and the token's
@@ -91,7 +92,11 @@ defmodule StreamixWeb.StreamToken.Resolver do
   not audited per segment, and the token is accepted for
   #{div(21_600, 3_600)} hours, because a VOD player loads its playlists once
   and keeps requesting segments with the start token for as long as the
-  movie (and any pause) lasts. Every other check still runs on each request.
+  movie (and any pause) lasts, and a live player keeps refreshing its
+  playlist with it. Past that cap the request fails with `token_expired`,
+  and the player re-requests its stream URL (the web player does this on its
+  own; a TV client re-requests `/api/v1/catalog/channels/:id/stream`). Every
+  other check still runs on each request; no token is ever unbounded.
   """
   def authorize_xtream_hls(token, opts \\ []) do
     stage = Keyword.get(opts, :stage, :start)
@@ -118,7 +123,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
            delivery(item) do
       {:ok, %{content: {item.type, item.id}, provider_id: item.provider_id, url: url}}
     else
-      {:ok, {:hls, _root}} -> {:error, :stream_format_mismatch}
+      {:ok, _hls_or_ts} -> {:error, :stream_format_mismatch}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -135,6 +140,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
       case delivery(item) do
         {:ok, {:hls, _root}} -> {:ok, :hls}
         {:ok, {:direct, _url, extension}} -> {:ok, {:direct, extension}}
+        {:ok, :ts} -> {:error, :stream_format_mismatch}
         {:error, reason} -> {:error, reason}
       end
     end
@@ -155,7 +161,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
              content,
              content_path(type),
              upstream_stream_id(type, content),
-             content.container_extension,
+             Map.get(content, :container_extension),
              bypass
            ),
          :ok <- provider_available(provider) do
@@ -170,7 +176,7 @@ defmodule StreamixWeb.StreamToken.Resolver do
   defp hls_root(:start, item) do
     case delivery(item) do
       {:ok, {:hls, root_url}} -> {:ok, root_url}
-      {:ok, {:direct, _url, _extension}} -> {:error, :stream_format_mismatch}
+      {:ok, _direct_or_ts} -> {:error, :stream_format_mismatch}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -200,7 +206,18 @@ defmodule StreamixWeb.StreamToken.Resolver do
        when is_integer(id) and id > 0,
        do: {:ok, :episode, id}
 
+  defp content_claim(%{type: "channel", id: id, user_id: _user_id})
+       when is_integer(id) and id > 0,
+       do: {:ok, :channel, id}
+
   defp content_claim(_claims), do: {:error, :invalid_token}
+
+  defp stream_content(:channel, id) do
+    case Streamix.Playback.get_live_channel_for_stream(id) do
+      %{provider: %{} = provider} = channel -> {:ok, channel, provider}
+      _ -> {:error, :not_found}
+    end
+  end
 
   defp stream_content(:movie, id) do
     case Streamix.Playback.get_movie_for_stream(id) do
@@ -218,9 +235,11 @@ defmodule StreamixWeb.StreamToken.Resolver do
 
   defp content_path(:movie), do: "movie"
   defp content_path(:episode), do: "series"
+  defp content_path(:channel), do: "live"
 
   defp upstream_stream_id(:movie, movie), do: movie.stream_id
   defp upstream_stream_id(:episode, episode), do: episode.episode_id
+  defp upstream_stream_id(:channel, channel), do: channel.stream_id
 
   defp authorize_bypass(claims, opts) do
     external_bypass = Keyword.get(opts, :bypass_subscription, false)
@@ -424,15 +443,36 @@ defmodule StreamixWeb.StreamToken.Resolver do
         {:error, :not_found}
 
       channel ->
-        build_content_url(
-          channel.provider,
-          user_id,
-          channel,
-          "live",
-          channel.stream_id,
-          "ts",
-          bypass
-        )
+        with {:ok, _url, _provider_id} = built <-
+               build_content_url(
+                 channel.provider,
+                 user_id,
+                 channel,
+                 "live",
+                 channel.stream_id,
+                 "ts",
+                 bypass
+               ) do
+          live_route(channel, built)
+        end
+    end
+  end
+
+  # Providers without `probe_live_delivery` keep the TS live path exactly as
+  # it was. For the others, the (authorized) channel's probe decides: TS
+  # stays here, HLS is redirected to the gateway, and a channel that is not
+  # a stream (an embed page, a dead URL) is refused instead of proxied.
+  defp live_route(channel, built) do
+    case Streamix.Playback.xtream_live_mode(channel.provider) do
+      :ts ->
+        built
+
+      :probe ->
+        case Streamix.Playback.resolve_xtream_delivery(channel.provider, :channel, channel) do
+          {:ok, :ts} -> built
+          {:ok, {:hls, _root}} -> {:error, :hls_playback_required}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 

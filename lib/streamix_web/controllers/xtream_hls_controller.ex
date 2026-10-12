@@ -1,17 +1,18 @@
 defmodule StreamixWeb.XtreamHlsController do
   @moduledoc """
-  HLS gateway routes for Xtream movies and episodes stored as `m3u8`.
+  HLS gateway routes for Xtream content delivered as HLS: movies and episodes
+  stored as `m3u8` or probed as HLS, and live channels probed as HLS.
 
   | Route | Serves |
   | --- | --- |
-  | `/api/stream/hls/master.m3u8?token=…` | the rewritten master playlist |
-  | `/api/stream/hls/:session_id/:resource_id?token=…` | variants, renditions, keys, segments |
+  | `/api/stream/hls/master.m3u8?token=…` | the rewritten master playlist (a one-variant master for a live media playlist) |
+  | `/api/stream/hls/:session_id/:resource_id?token=…` | variants, renditions, live playlist refreshes, keys, segments |
 
-  Both routes authorize the signed movie/episode token on every request
-  (`StreamixWeb.StreamToken.authorize_xtream_hls/2`): resource requests are
-  authorized with the original token, and a resource is served only from a
-  session opened for that same item. A `HEAD` on the master authorizes and
-  advertises the HLS type without an upstream request.
+  Both routes authorize the signed movie/episode/channel token on every
+  request (`StreamixWeb.StreamToken.authorize_xtream_hls/2`): resource
+  requests are authorized with the original token, and a resource is served
+  only from a session opened for that same item. A `HEAD` on the master
+  authorizes and advertises the HLS type without an upstream request.
 
   `edge=1` marks a request that arrived through the browser stream proxy
   (`source.mahina.fun`); the rewritten playlist then wraps each reference in
@@ -52,7 +53,9 @@ defmodule StreamixWeb.XtreamHlsController do
     playback_restart_required: :playback_restart_required,
     unsafe_url: :unsafe_url,
     upstream_unavailable: :upstream_unavailable,
-    response_too_large: :upstream_unavailable
+    response_too_large: :upstream_unavailable,
+    upstream_timeout: :upstream_timeout,
+    not_a_stream: :not_a_stream
   }
 
   def options(conn, _params), do: conn |> cors() |> send_resp(204, "")
@@ -97,7 +100,12 @@ defmodule StreamixWeb.XtreamHlsController do
     with {:ok, session} <-
            Playback.open_xtream_hls(playback.content, playback.provider_id, playback.url),
          {:ok, response} <-
-           fetch(conn, session.session_id, session.resource_id, playback, token, edge?) do
+           Playback.fetch_xtream_hls_master(
+             session.session_id,
+             session.resource_id,
+             playback.content,
+             fetch_options(conn, token, edge?)
+           ) do
       send_gateway_response(conn, response)
     else
       {:error, reason} ->
@@ -107,20 +115,25 @@ defmodule StreamixWeb.XtreamHlsController do
   end
 
   defp serve(conn, sid, rid, playback, token, edge?) do
-    case fetch(conn, sid, rid, playback, token, edge?) do
+    case Playback.fetch_xtream_hls_resource(
+           sid,
+           rid,
+           playback.content,
+           fetch_options(conn, token, edge?)
+         ) do
       {:ok, response} -> send_gateway_response(conn, response)
       {:error, reason} -> error(conn, reason)
     end
   end
 
-  defp fetch(conn, sid, rid, playback, token, edge?) do
-    Playback.fetch_xtream_hls_resource(sid, rid, playback.content,
+  defp fetch_options(conn, token, edge?) do
+    [
       method: method(conn),
       range: range(conn),
       resource_url: fn session_id, resource_id ->
         StreamUrls.hls_resource_url(session_id, resource_id, token, edge?)
       end
-    )
+    ]
   end
 
   # Each master request fetches the Xtream URL afresh, so a 401/403/410 there
