@@ -2,6 +2,7 @@ defmodule Streamix.AI.QdrantTest do
   use ExUnit.Case, async: false
 
   alias Streamix.AI.Qdrant
+  alias Streamix.AI.ScoreThresholds
 
   test "disabled client fails fast without requiring a Qdrant service" do
     assert Qdrant.enabled?() == false
@@ -55,6 +56,29 @@ defmodule Streamix.AI.QdrantTest do
            ]
   end
 
+  # The default floors are calibrated per embedding model; a hard-coded 0.7
+  # here once silently emptied every "similar titles" answer.
+  test "searches default to the calibrated floor, and an explicit floor wins" do
+    {:ok, port, requests} = start_qdrant_stub(:search)
+    prior = Application.get_env(:streamix, :qdrant)
+    Application.put_env(:streamix, :qdrant, enabled: true, url: "http://127.0.0.1:#{port}")
+    on_exit(fn -> Application.put_env(:streamix, :qdrant, prior) end)
+
+    assert {:ok, []} = Qdrant.find_similar("movies", 123)
+    assert {:ok, []} = Qdrant.find_similar("movies", 123, score_threshold: 0.9)
+    assert {:ok, []} = Qdrant.search("movies", [0.1, 0.2])
+
+    thresholds =
+      requests
+      |> Agent.get(&Enum.reverse/1)
+      |> Enum.flat_map(fn
+        {"POST", "/collections/movies/points/search", body} -> [body["score_threshold"]]
+        _request -> []
+      end)
+
+    assert thresholds == [ScoreThresholds.similar(), 0.9, ScoreThresholds.similar()]
+  end
+
   defp start_qdrant_stub(mode) do
     {:ok, requests} = Agent.start_link(fn -> [] end)
 
@@ -82,6 +106,30 @@ defmodule Streamix.AI.QdrantTest do
       requests = Keyword.fetch!(opts, :requests)
       mode = Keyword.fetch!(opts, :mode)
 
+      record(conn, requests, mode)
+    end
+
+    defp record(conn, requests, :search) do
+      {:ok, raw, conn} = read_body(conn)
+
+      entry =
+        if conn.method == "POST",
+          do: {conn.method, conn.request_path, Jason.decode!(raw)},
+          else: {conn.method, conn.request_path}
+
+      Agent.update(requests, &[entry | &1])
+
+      result =
+        if conn.method == "GET",
+          do: %{"id" => 123, "vector" => [0.1, 0.2], "payload" => %{}},
+          else: []
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{"result" => result}))
+    end
+
+    defp record(conn, requests, mode) do
       Agent.update(requests, &[{conn.method, conn.request_path} | &1])
       send_resp(conn, response_status(mode, conn.method), Jason.encode!(%{"status" => "ok"}))
     end

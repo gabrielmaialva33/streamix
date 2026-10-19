@@ -21,7 +21,7 @@ defmodule Streamix.AI.SemanticSearch do
 
   require Logger
 
-  alias Streamix.AI.{Embeddings, Qdrant, SearchHealth}
+  alias Streamix.AI.{Embeddings, Qdrant, ScoreThresholds, SearchHealth}
 
   # The NVIDIA endpoint accepts 64 E5 inputs in one request (also within
   # Gemini's batch API envelope). Sending 10 made a full production backfill
@@ -78,14 +78,14 @@ defmodule Streamix.AI.SemanticSearch do
   - `opts` - Options:
     - `:limit` - Max results (default: 10)
     - `:provider_id` - Filter by provider
-    - `:min_score` - Minimum similarity score (default: 0.7)
+    - `:min_score` - Minimum similarity score (default: `ScoreThresholds.query/0`)
 
   ## Returns
   `{:ok, [%{id, score, title, year, ...}]}` or `{:error, reason}`
   """
   def search(query, collection, opts \\ []) when is_atom(collection) do
     limit = Keyword.get(opts, :limit, 10)
-    min_score = Keyword.get(opts, :min_score, 0.7)
+    min_score = Keyword.get_lazy(opts, :min_score, &ScoreThresholds.query/0)
     provider_id = Keyword.get(opts, :provider_id)
 
     filter = build_filter(provider_id: provider_id)

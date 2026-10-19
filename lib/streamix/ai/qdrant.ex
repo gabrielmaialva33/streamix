@@ -21,7 +21,7 @@ defmodule Streamix.AI.Qdrant do
 
   require Logger
 
-  alias Streamix.AI.Embeddings
+  alias Streamix.AI.{Embeddings, ScoreThresholds}
 
   @default_url "http://localhost:6333"
   @collections ~w(movies series animes user_profiles)
@@ -144,7 +144,8 @@ defmodule Streamix.AI.Qdrant do
   - `vector` - Query vector
   - `opts` - Options:
     - `:limit` - Max results (default: 10)
-    - `:score_threshold` - Minimum similarity score (default: 0.7)
+    - `:score_threshold` - Minimum similarity score (default:
+      `ScoreThresholds.similar/0`; text queries and profiles pass their own)
     - `:filter` - Qdrant filter for payload fields
 
   ## Returns
@@ -154,7 +155,7 @@ defmodule Streamix.AI.Qdrant do
     url = "#{base_url()}/collections/#{collection}/points/search"
 
     limit = Keyword.get(opts, :limit, 10)
-    score_threshold = Keyword.get(opts, :score_threshold, 0.7)
+    score_threshold = Keyword.get_lazy(opts, :score_threshold, &ScoreThresholds.similar/0)
     filter = Keyword.get(opts, :filter)
 
     body =
@@ -202,6 +203,7 @@ defmodule Streamix.AI.Qdrant do
     # Use query input type for search queries (E5 bi-encoder best practice)
     case Embeddings.embed(query_text, input_type: :query) do
       {:ok, vector} ->
+        opts = Keyword.put_new_lazy(opts, :score_threshold, &ScoreThresholds.query/0)
         search(collection, vector, opts)
 
       {:error, reason} ->
@@ -222,7 +224,11 @@ defmodule Streamix.AI.Qdrant do
           must_not: [%{has_id: [content_id]}]
         }
 
-        opts = Keyword.put(opts, :filter, filter)
+        opts =
+          opts
+          |> Keyword.put(:filter, filter)
+          |> Keyword.put_new_lazy(:score_threshold, &ScoreThresholds.similar/0)
+
         search(collection, vector, opts)
 
       {:error, reason} ->

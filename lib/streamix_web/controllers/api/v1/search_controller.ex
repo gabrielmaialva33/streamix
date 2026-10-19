@@ -20,7 +20,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
   use StreamixWeb, :controller
 
   import StreamixWeb.Helpers.Params,
-    only: [bounded_float: 4, bounded_integer: 4, parse_positive_integer: 1]
+    only: [bounded_integer: 4, parse_positive_integer: 1]
 
   alias Streamix.AI
   alias Streamix.Helpers
@@ -45,10 +45,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
     if AI.semantic_search_available?() do
       limit = result_limit(conn.params, 20)
 
-      opts = [
-        limit: candidate_limit(limit),
-        min_score: parse_float(conn.params["min_score"], 0.6)
-      ]
+      opts = [limit: candidate_limit(limit)] ++ min_score_opt(conn.params)
 
       case AI.semantic_search(query, :movies, opts) do
         {:ok, results} ->
@@ -88,10 +85,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
     if AI.semantic_search_available?() do
       limit = result_limit(conn.params, 20)
 
-      opts = [
-        limit: candidate_limit(limit),
-        min_score: parse_float(conn.params["min_score"], 0.6)
-      ]
+      opts = [limit: candidate_limit(limit)] ++ min_score_opt(conn.params)
 
       case AI.semantic_search(query, :series, opts) do
         {:ok, results} ->
@@ -329,7 +323,17 @@ defmodule StreamixWeb.Api.V1.SearchController do
   defp result_limit(params, default), do: bounded_integer(params["limit"], default, 1, 50)
   defp candidate_limit(limit), do: min(limit * 4, 200)
 
-  defp parse_float(value, default), do: bounded_float(value, default, 0.0, 1.0)
+  # The similarity floor belongs to the embedding model, so `Streamix.AI`
+  # owns the default; a client may only set one explicitly. A missing or
+  # unparsable value is ignored rather than turned into a floor.
+  defp min_score_opt(%{"min_score" => value}) when is_binary(value) do
+    case Float.parse(value) do
+      {score, ""} -> [min_score: score |> max(0.0) |> min(1.0)]
+      _ -> []
+    end
+  end
+
+  defp min_score_opt(_params), do: []
 
   defp normalize_query(query) do
     query

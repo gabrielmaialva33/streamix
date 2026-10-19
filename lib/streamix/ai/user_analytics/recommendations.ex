@@ -6,6 +6,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   alias Streamix.Accounts
   alias Streamix.AI.Embeddings
   alias Streamix.AI.Qdrant
+  alias Streamix.AI.ScoreThresholds
   alias Streamix.AI.UserAnalytics.Content
   alias Streamix.AI.UserAnalytics.Formatter
   alias Streamix.AI.UserAnalytics.Profile
@@ -68,7 +69,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
          {:ok, results} <-
            Qdrant.find_similar(collection, content_id,
              limit: limit,
-             score_threshold: 0.6
+             score_threshold: ScoreThresholds.similar()
            ) do
       {:ok, Formatter.recommendations(results)}
     else
@@ -138,7 +139,7 @@ defmodule Streamix.AI.UserAnalytics.Recommendations do
   end
 
   defp build_search_opts(user_id, collection, limit, exclude_watched) do
-    search_opts = [limit: limit, score_threshold: 0.5]
+    search_opts = [limit: limit, score_threshold: ScoreThresholds.profile()]
 
     case build_exclusion_filter(user_id, collection, exclude_watched) do
       nil -> search_opts
