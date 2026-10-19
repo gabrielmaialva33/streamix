@@ -26,7 +26,10 @@ defmodule StreamixWeb.Content.GamesTest do
     hidden = game_fixture(stranger, channel_fixture(stranger))
     {:ok, view, html} = conn |> log_in_user(user) |> live(~p"/browse")
     assert has_element?(view, "#games-today-list[phx-update=stream]")
+    # The player lives in another live_session, so the card is a plain
+    # link, like the channel cards, rather than a LiveView navigation.
     assert has_element?(view, "#games-#{game.id} a[href='/watch/live_channel/#{channel.id}']")
+    refute has_element?(view, "#games-#{game.id} a[data-phx-link]")
     assert has_element?(view, "#games-#{game.id} [data-live=true]", "AO VIVO")
     assert has_element?(view, "#games-#{game.id} img[src*='/proxy?url=']")
     assert has_element?(view, "#games-#{own_game.id}")

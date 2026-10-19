@@ -19,7 +19,7 @@ defmodule StreamixWeb.GameComponents do
           class="w-72 shrink-0 snap-start rounded-xl border border-white/10 bg-surface p-4"
         >
           <.link
-            navigate={~p"/watch/live_channel/#{game.channel_id}"}
+            href={~p"/watch/live_channel/#{game.channel_id}"}
             class="block space-y-3"
             aria-label={"Assistir #{game.title}"}
           >
