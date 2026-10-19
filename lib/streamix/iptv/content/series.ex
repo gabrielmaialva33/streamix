@@ -15,6 +15,10 @@ defmodule Streamix.Iptv.Series do
     # otherwise an integer where higher = more relevant.
     field :rank_score, :integer, virtual: true
 
+    # Virtual label populated by `Streamix.Iptv.Content.SeriesOps.Reels`:
+    # the reel category display name (without the `[Reels] ` prefix).
+    field :reel_category, :string, virtual: true
+
     field :series_id, :integer
     field :name, :string
     field :title, :string

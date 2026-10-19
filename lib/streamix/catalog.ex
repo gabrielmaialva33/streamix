@@ -13,6 +13,7 @@ defmodule Streamix.Catalog do
     CatalogItem,
     Channels,
     Content.EmbedplayMovies,
+    Content.SeriesOps.Reels,
     Content.TorrentMovies,
     ContentRef,
     Movies,
@@ -86,6 +87,18 @@ defmodule Streamix.Catalog do
   defdelegate list_visible_series_by_ids(user_id, ids, opts \\ []),
     to: SeriesOps,
     as: :list_visible_by_ids
+
+  # Short dramas: series tagged with a provider `[Reels] ...` category
+
+  defdelegate count_public_reel_series(opts \\ []), to: Reels, as: :count_public
+  defdelegate list_public_reel_categories(opts \\ []), to: Reels, as: :list_public_categories
+  defdelegate list_public_reel_series(opts \\ []), to: Reels, as: :list_public
+
+  defdelegate list_visible_reel_categories(user_id, opts \\ []),
+    to: Reels,
+    as: :list_visible_categories
+
+  defdelegate list_visible_reel_series(user_id, opts \\ []), to: Reels, as: :list_visible
 
   # Live channels
 

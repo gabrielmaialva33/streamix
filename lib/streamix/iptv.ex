@@ -170,6 +170,13 @@ defmodule Streamix.Iptv do
 
   defdelegate list_series_variants(series, user_id, opts \\ []), to: PlaybackBoundary
 
+  # Short dramas (series in provider `[Reels] ...` categories)
+  defdelegate list_visible_reel_series(user_id, opts \\ []), to: CatalogBoundary
+  defdelegate list_visible_reel_categories(user_id, opts \\ []), to: CatalogBoundary
+  defdelegate list_public_reel_series(opts \\ []), to: CatalogBoundary
+  defdelegate count_public_reel_series(opts \\ []), to: CatalogBoundary
+  defdelegate list_public_reel_categories(opts \\ []), to: CatalogBoundary
+
   # GIndex Series
   defdelegate list_gindex_series(opts \\ []), to: CatalogBoundary
   defdelegate count_gindex_series, to: SeriesOps, as: :count_gindex
