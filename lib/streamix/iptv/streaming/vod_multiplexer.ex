@@ -243,6 +243,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
 
         BlockFetcher.prefetch({key, next_index},
           url: url,
+          domain_policy: Keyword.get(opts, :domain_policy),
           provider_id: Keyword.get(opts, :provider_id),
           range_start: range_start,
           range_end: range_start + size - 1
@@ -306,6 +307,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer do
         block_key
         |> BlockFetcher.await(
           url: url,
+          domain_policy: Keyword.get(opts, :domain_policy),
           provider_id: Keyword.get(opts, :provider_id),
           range_start: range_start,
           range_end: range_start + size - 1

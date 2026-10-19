@@ -29,6 +29,7 @@ defmodule Streamix.Iptv.Streaming.LiveProxy do
 
     mux_opts =
       Keyword.take(opts, [
+        :domain_policy,
         :provider_id,
         :content_id,
         :buffer_size,

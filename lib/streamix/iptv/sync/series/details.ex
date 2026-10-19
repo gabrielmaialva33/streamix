@@ -101,6 +101,7 @@ defmodule Streamix.Iptv.Sync.Series.Details do
                provider.password,
                series.series_id,
                provider_id: provider.id,
+               provider: provider,
                allow_private_network: provider.is_system
              ) do
           {:ok, info} ->

@@ -128,7 +128,8 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
   defp final_hop(url, count, opts) do
     with :ok <- validate_target(url, opts),
-         {:ok, response} <- Req.get(url, final_hop_req_opts(opts)) do
+         {:ok, response} <-
+           Req.get(url, UpstreamPolicy.request_options(url, final_hop_req_opts(opts), opts)) do
       next_hop(response, url, count, opts)
     end
   end
@@ -501,6 +502,15 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   defp cache_policy(opts) do
+    domain_policy = opts[:domain_policy]
+
+    case base_cache_policy(opts) do
+      {:cached, scope} when not is_nil(domain_policy) -> {:cached, {scope, domain_policy}}
+      policy -> policy
+    end
+  end
+
+  defp base_cache_policy(opts) do
     case Keyword.fetch(opts, :cache_scope) do
       {:ok, scope} ->
         {:cached, scope}
@@ -529,11 +539,14 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
     end
   end
 
+  defp resolution_start_url(url, opts, {@full_cache_scope, _policy}),
+    do: resolution_start_url(url, opts, @full_cache_scope)
+
   defp resolution_start_url(url, opts, @full_cache_scope) do
     if Keyword.has_key?(opts, :stop_fn) do
       url
     else
-      case prewarmed_result(url) do
+      case prewarmed_result(url, opts) do
         {:ok, next_url} when is_binary(next_url) -> next_url
         _ -> url
       end
@@ -542,8 +555,10 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
 
   defp resolution_start_url(url, _opts, _scope), do: url
 
-  defp prewarmed_result(url) do
-    {scope, opts} = prewarm_policy(url)
+  defp prewarmed_result(url, opts) do
+    {base_scope, prewarm_opts} = prewarm_policy(url)
+    opts = Keyword.merge(prewarm_opts, Keyword.take(opts, [:domain_policy]))
+    {:cached, scope} = cache_policy(Keyword.put(opts, :cache_scope, base_scope))
 
     case lookup(url, scope) do
       {:hit, result} -> result
@@ -661,7 +676,7 @@ defmodule Streamix.Iptv.Streaming.RedirectResolver do
   end
 
   defp request_hop(url, count, opts) do
-    case Req.get(url, build_req_opts(opts)) do
+    case Req.get(url, UpstreamPolicy.request_options(url, build_req_opts(opts), opts)) do
       {:ok, %{status: status, headers: headers}} when status in [301, 302, 303, 307, 308] ->
         follow_redirect(url, headers, count, opts)
 

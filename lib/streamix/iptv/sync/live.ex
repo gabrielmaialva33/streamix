@@ -24,6 +24,7 @@ defmodule Streamix.Iptv.Sync.Live do
 
     case XtreamClient.get_live_streams(provider.url, provider.username, provider.password,
            provider_id: provider.id,
+           provider: provider,
            allow_private_network: provider.is_system
          ) do
       {:ok, streams} ->

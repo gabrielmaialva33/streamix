@@ -216,6 +216,8 @@ defmodule Streamix.Iptv.XtreamClient do
   end
 
   defp request_document(target, opts, default_timeout, empty_error) do
+    opts = Keyword.put(opts, :domain_policy, UpstreamPolicy.domain_policy(opts[:provider]))
+
     request_opts = [
       receive_timeout: Keyword.get(opts, :request_timeout, default_timeout),
       finch: [name: Streamix.Finch],
@@ -246,6 +248,8 @@ defmodule Streamix.Iptv.XtreamClient do
   defp do_api_call(url, attempt, opts) do
     request_timeout = Keyword.get(opts, :request_timeout, @timeout)
     max_retries = Keyword.get(opts, :max_retries, @max_retries)
+
+    opts = Keyword.put(opts, :domain_policy, UpstreamPolicy.domain_policy(opts[:provider]))
 
     request_opts = [
       receive_timeout: request_timeout,
@@ -391,7 +395,7 @@ defmodule Streamix.Iptv.XtreamClient do
       end
 
     with :ok <- UrlValidator.validate_url(url, validator_opts),
-         {:ok, response} <- Req.get(url, request_opts) do
+         {:ok, response} <- Req.get(url, UpstreamPolicy.request_options(url, request_opts, opts)) do
       follow_safe_redirect(url, response, request_opts, opts, redirects)
     end
   end

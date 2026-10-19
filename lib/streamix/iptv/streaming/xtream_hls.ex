@@ -230,11 +230,13 @@ defmodule Streamix.Iptv.Streaming.XtreamHls do
 
   defp serve_options(session_id, content, session, opts) do
     resource_url = Keyword.fetch!(opts, :resource_url)
+    policy = UpstreamPolicy.with_domain_policy(provider_id: session.provider_id)[:domain_policy]
 
     [
       method: Keyword.get(opts, :method),
       range: Keyword.get(opts, :range),
       http_options: http_options(),
+      headers_for_url: fn url, headers -> UpstreamPolicy.headers(url, headers, policy) end,
       sniff_media: true,
       media_timeout: media_timeout_ms(),
       # A live playlist that does not answer quickly is stale anyway.

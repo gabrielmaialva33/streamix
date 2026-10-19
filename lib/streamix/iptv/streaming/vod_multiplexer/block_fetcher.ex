@@ -18,6 +18,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   alias Streamix.Iptv.Streaming.ProviderRuntime
   alias Streamix.Iptv.Streaming.RedirectResolver
   alias Streamix.Iptv.Streaming.UpstreamLease
+  alias Streamix.Iptv.Streaming.UpstreamPolicy
   alias Streamix.Iptv.Streaming.VodMultiplexer.BlockStore
   alias Streamix.SafeLog
 
@@ -121,6 +122,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
     state = %{
       key: Keyword.fetch!(args, :key),
       url: Keyword.fetch!(args, :url),
+      domain_policy: Keyword.get(args, :domain_policy),
       provider_id: Keyword.get(args, :provider_id),
       range_start: Keyword.fetch!(args, :range_start),
       range_end: Keyword.fetch!(args, :range_end),
@@ -207,7 +209,7 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   end
 
   defp request(state) do
-    case resolve(state.url) do
+    case resolve(state.url, state.domain_policy) do
       {:ok, final_url} -> fetch_range(state, final_url)
       {:error, reason} -> {:error, reason}
     end
@@ -217,13 +219,21 @@ defmodule Streamix.Iptv.Streaming.VodMultiplexer.BlockFetcher do
   # follow redirects, so the chain has to be walked first — exactly like
   # `VodProxy` does. `RedirectResolver` caches the outcome, so this is cheap
   # for the blocks that follow.
-  defp resolve(url) do
-    RedirectResolver.resolve(url)
+  defp resolve(url, policy) do
+    RedirectResolver.resolve(url, domain_policy: policy)
   end
 
   defp fetch_range(state, final_url) do
     range = "bytes=#{state.range_start}-#{state.range_end}"
-    request = Finch.build(:get, final_url, [{"range", range}, {"connection", "close"}])
+
+    headers =
+      UpstreamPolicy.headers(
+        final_url,
+        [{"range", range}, {"connection", "close"}],
+        state.domain_policy
+      )
+
+    request = Finch.build(:get, final_url, headers)
 
     case Finch.request(request, Streamix.StreamFinch,
            receive_timeout: @receive_timeout,

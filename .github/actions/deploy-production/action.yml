@@ -109,6 +109,6 @@ runs:
         key: ${{ inputs.private-key }}
         port: ${{ inputs.port }}
         timeout: 30s
-        command_timeout: 8m
+        command_timeout: 15m
         envs: IMAGE_NAME,IMAGE_DIGEST,PRODUCTION_COMPOSE_B64,PRODUCTION_COMPOSE_SHA256,EXPECTED_REVISION,DEPLOY_BASE_URL,DEPLOY_CANARY_EMAIL,DEPLOY_CANARY_PASSWORD
         script_path: scripts/deploy-production.sh

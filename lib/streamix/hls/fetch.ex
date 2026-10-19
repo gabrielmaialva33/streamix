@@ -25,7 +25,7 @@ defmodule Streamix.Hls.Fetch do
   @doc """
   Fetches `url` with `headers`, following at most five validated redirects.
 
-  `headers` are sent unchanged on every hop. Options: `:method` (`:get` or
+  `headers` are sent unchanged unless `:headers_for_url` (arity 2) scopes them per hop. Options: `:method` (`:get` or
   `:head`), `:range` (a single byte range, sent upstream as-is),
   `:http_options`, and `:timeout` — the total deadline of each hop in
   milliseconds (default 15 s). The idle time between two reads is capped at
@@ -51,7 +51,7 @@ defmodule Streamix.Hls.Fetch do
              [
                method: Keyword.get(opts, :method, :get),
                url: url,
-               headers: headers ++ range_header(opts),
+               headers: hop_headers(url, headers, opts) ++ range_header(opts),
                receive_timeout: min(timeout, @idle_timeout),
                request_timeout: timeout,
                max_body: @max_body
@@ -176,6 +176,13 @@ defmodule Streamix.Hls.Fetch do
     end
   rescue
     ArgumentError -> {:error, :unsafe_url}
+  end
+
+  defp hop_headers(url, headers, opts) do
+    case Keyword.get(opts, :headers_for_url) do
+      fun when is_function(fun, 2) -> fun.(url, headers)
+      _ -> headers
+    end
   end
 
   defp range_header(opts) do

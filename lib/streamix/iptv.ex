@@ -306,7 +306,7 @@ defmodule Streamix.Iptv do
   defdelegate change_provider(provider, attrs \\ %{}), to: ProviderBoundary
   defdelegate new_provider(), to: ProviderBoundary
   defdelegate new_provider_changeset(attrs \\ %{}), to: ProviderBoundary
-  defdelegate test_connection(url, username, password), to: ProviderBoundary
+  defdelegate test_connection(url, username, password, opts \\ []), to: ProviderBoundary
   defdelegate sync_provider(provider, opts \\ []), to: ProviderBoundary
   defdelegate async_sync_provider(provider), to: ProviderBoundary
 

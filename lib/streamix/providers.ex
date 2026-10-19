@@ -100,7 +100,7 @@ defmodule Streamix.Providers do
 
   # Synchronization and runtime validation
 
-  defdelegate test_connection(url, username, password), to: ProviderStore
+  defdelegate test_connection(url, username, password, opts \\ []), to: ProviderStore
   defdelegate sync_provider(provider, opts \\ []), to: ProviderStore, as: :sync
   defdelegate async_sync_provider(provider), to: ProviderStore, as: :async_sync
 

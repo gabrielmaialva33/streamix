@@ -151,14 +151,14 @@ defmodule StreamixWeb.StreamController do
 
   defp stream_by_type(%{method: "HEAD"} = conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
-      :redirect -> resolve_and_redirect_to_proxy(conn, url)
+      :redirect -> resolve_and_redirect_to_proxy(conn, url, meta)
       _ -> Streamix.Playback.head_stream(conn, url, stream_options(url, type, meta))
     end
   end
 
   defp stream_by_type(conn, url, type, meta) do
     case Application.get_env(:streamix, :stream_proxy_backend, :beam) do
-      :redirect -> resolve_and_redirect_to_proxy(conn, url)
+      :redirect -> resolve_and_redirect_to_proxy(conn, url, meta)
       _ -> pipe_from_beam(conn, url, type, meta)
     end
   end
@@ -245,14 +245,16 @@ defmodule StreamixWeb.StreamController do
 
   # --- All streaming types: resolve redirects and send to source proxy ---
 
-  defp resolve_and_redirect_to_proxy(conn, url) do
+  defp resolve_and_redirect_to_proxy(conn, url, meta) do
     # O nginx em source.mahina.fun já segue cadeia de redirects via Lua,
     # com cache + UA stealth. Quando a URL inicial vem com creds IPTV
     # (/movie/USER/PASS/...) só andamos a chain o suficiente pra trocar
     # essas creds por um token de curta duração — o resto dos hops lentos
     # (vauth → vauth → vauth) roda no nginx, sem segurar BEAM. Se a URL
     # já vem limpa, mantém o chase deep antigo (sem regressão).
-    case Streamix.Playback.resolve_stream_url_for_proxy(url) do
+    case Streamix.Playback.resolve_stream_url_for_proxy(url,
+           provider_id: Map.get(meta, :provider_id)
+         ) do
       {:ok, final_url} ->
         # Pick a source proxy from the configured pool. Each request
         # gets a different source (round-robin across the user's session

@@ -30,6 +30,7 @@ defmodule Streamix.Iptv.EpgSync do
              stream_id,
              limit: 20,
              provider_id: provider.id,
+             provider: provider,
              allow_private_network: provider.is_system
            ),
          {:ok, programs} <- EpgParser.parse_short_epg(data) do
@@ -102,6 +103,7 @@ defmodule Streamix.Iptv.EpgSync do
     with {:ok, xml} <-
            XtreamClient.get_xmltv(provider.url, provider.username, provider.password,
              provider_id: provider.id,
+             provider: provider,
              allow_private_network: provider.is_system
            ),
          _ <-

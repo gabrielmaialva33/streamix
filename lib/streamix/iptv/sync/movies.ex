@@ -24,6 +24,7 @@ defmodule Streamix.Iptv.Sync.Movies do
 
     case XtreamClient.get_vod_streams(provider.url, provider.username, provider.password,
            provider_id: provider.id,
+           provider: provider,
            allow_private_network: provider.is_system
          ) do
       {:ok, streams} ->
