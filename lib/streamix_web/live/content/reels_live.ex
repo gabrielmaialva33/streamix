@@ -23,6 +23,8 @@ defmodule StreamixWeb.Content.ReelsLive do
   @browse_path "/browse/reels"
   @per_page 48
   @max_restore_pages 25
+  # Matches the domain bound: a display name of a varchar(255) category.
+  @max_category_length 247
 
   def mount(_params, _session, socket) do
     user = socket.assigns.current_scope.user
@@ -146,6 +148,7 @@ defmodule StreamixWeb.Content.ReelsLive do
         <.link
           :for={category <- @categories}
           id={category_dom_id(category.name)}
+          data-category={category.name}
           patch={reels_path(category.name, 1)}
           aria-current={@selected_category == category.name && "page"}
           class={[
@@ -282,7 +285,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   defp normalize_category(value) when is_binary(value) do
     case String.trim(value) do
       "" -> nil
-      category -> String.slice(category, 0, 100)
+      category -> String.slice(category, 0, @max_category_length)
     end
   end
 
@@ -297,15 +300,10 @@ defmodule StreamixWeb.Content.ReelsLive do
 
   defp restore_page(_page), do: 1
 
+  # A slug would merge "Ação" with "Acao" and leave CJK names empty, so the
+  # id hashes the full name; hex never spells the fixed "all" chip.
   defp category_dom_id(name) do
-    slug =
-      name
-      |> String.normalize(:nfd)
-      |> String.replace(~r/\p{Mn}/u, "")
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9]+/, "-")
-      |> String.trim("-")
-
-    "reel-category-" <> slug
+    digest = :crypto.hash(:sha256, name) |> binary_part(0, 6) |> Base.encode16(case: :lower)
+    "reel-category-" <> digest
   end
 end

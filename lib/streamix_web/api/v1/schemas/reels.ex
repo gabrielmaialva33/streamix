@@ -3,7 +3,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Reels do
 
   alias StreamixWeb.Api.V1.Schemas.{Catalog, Common}
 
-  @max_category_length 100
+  @max_category_length 247
   @max_page 1000
   @max_per_page 100
   @default_per_page 24

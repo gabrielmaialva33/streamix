@@ -26,7 +26,9 @@ defmodule Streamix.Iptv.Content.SeriesOps.Reels do
   @default_limit 48
   @max_limit 100
   @max_offset 100_000
-  @max_category_length 100
+  # categories.name is varchar(255); a display name drops the "[Reels] "
+  # prefix, so it can be up to 247 characters long.
+  @max_category_length 247
   @sort "created_desc"
   @visible_preloads [:genres]
   @public_preloads [:provider, :genres]

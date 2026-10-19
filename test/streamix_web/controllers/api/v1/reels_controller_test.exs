@@ -151,6 +151,21 @@ defmodule StreamixWeb.Api.V1.ReelsControllerTest do
                "meta" => %{"total" => 2}
              }
     end
+
+    test "a listed name filters the reels, however long it is", %{conn: conn, global: global} do
+      # 247 characters: the longest display name a varchar(255) category holds.
+      long_name = String.duplicate("a", 247)
+      drama = reel!(global, [category!(global, "[Reels] " <> long_name)])
+
+      assert %{"data" => [%{"name" => ^long_name}]} =
+               conn |> get(~p"/api/v1/catalog/reels/categories") |> json_response(200)
+
+      response =
+        conn |> get(~p"/api/v1/catalog/reels?#{%{category: long_name}}") |> json_response(200)
+
+      assert Enum.map(response["data"], & &1["id"]) == [drama.id]
+      assert response["meta"]["filters"] == %{"category" => long_name}
+    end
   end
 
   describe "API key authentication" do

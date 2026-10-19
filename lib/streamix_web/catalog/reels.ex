@@ -12,7 +12,7 @@ defmodule StreamixWeb.Catalog.Reels do
   @default_per_page 24
   @max_per_page 100
   @max_page 1000
-  @max_category_length 100
+  @max_category_length 247
 
   @doc "One page of public short dramas, newest first."
   @spec page(map()) :: map()

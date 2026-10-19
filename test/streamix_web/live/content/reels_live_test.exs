@@ -27,8 +27,8 @@ defmodule StreamixWeb.Content.ReelsLiveTest do
     assert page_title(view) =~ "Dramas curtos"
     assert has_element?(view, "#browse-tab-reels.content-nav__tab--active", "Dramas curtos")
     assert has_element?(view, "#reel-category-all.category-chip--active", "Todas")
-    assert has_element?(view, "#reel-category-historias-da-asia", "Histórias da Ásia")
-    assert has_element?(view, "#reel-category-homem-lobo-e-vampiro", "Homem-lobo e Vampiro")
+    assert has_element?(view, chip("Histórias da Ásia"), "Histórias da Ásia")
+    assert has_element?(view, chip("Homem-lobo e Vampiro"), "Homem-lobo e Vampiro")
 
     assert has_element?(view, "#reels-grid #series-card-#{asian.id}")
     assert has_element?(view, "#reels-grid #series-card-#{wolf.id}")
@@ -43,10 +43,10 @@ defmodule StreamixWeb.Content.ReelsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/browse/reels")
 
-    view |> element("#reel-category-historias-da-asia") |> render_click()
+    view |> element(chip("Histórias da Ásia")) |> render_click()
 
     assert_patch(view, ~p"/browse/reels?#{%{category: "Histórias da Ásia"}}")
-    assert has_element?(view, "#reel-category-historias-da-asia.category-chip--active")
+    assert has_element?(view, chip("Histórias da Ásia") <> ".category-chip--active")
     refute has_element?(view, "#reel-category-all.category-chip--active")
     assert has_element?(view, "#series-card-#{asian.id}")
     refute has_element?(view, "#series-card-#{wolf.id}")
@@ -69,7 +69,7 @@ defmodule StreamixWeb.Content.ReelsLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/browse/reels?#{%{category: "Série Dublada"}}")
 
-    assert has_element?(view, "#reel-category-serie-dublada.category-chip--active", "2")
+    assert has_element?(view, chip("Série Dublada") <> ".category-chip--active", "2")
     assert has_element?(view, "#series-card-#{global_reel.id}")
     assert has_element?(view, "#series-card-#{own_reel.id}")
   end
@@ -161,6 +161,40 @@ defmodule StreamixWeb.Content.ReelsLiveTest do
     assert has_element?(view, ~s(#browse-tab-reels[href="/browse/reels"]), "Dramas curtos")
     refute has_element?(view, "#browse-tab-reels.content-nav__tab--active")
   end
+
+  test "chips keep distinct ids and full names, however the names look", %{
+    conn: conn,
+    global: global
+  } do
+    long_name = String.duplicate("Romance proibido ", 7) |> String.trim()
+    names = ["All", "Ação", "Acao", "爱情", "家庭", long_name]
+
+    reels =
+      for name <- names,
+          into: %{},
+          do: {name, reel!(global, [category!(global, "[Reels] " <> name)])}
+
+    {:ok, view, html} = live(conn, ~p"/browse/reels")
+
+    ids =
+      html
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#reel-categories a")
+      |> LazyHTML.attribute("id")
+
+    assert length(ids) == length(names) + 1
+    assert ids == Enum.uniq(ids)
+
+    # A name longer than 100 characters still round-trips through the filter.
+    assert String.length(long_name) > 100
+    view |> element(chip(long_name)) |> render_click()
+    assert_patch(view, ~p"/browse/reels?#{%{category: long_name}}")
+    assert has_element?(view, chip(long_name) <> ".category-chip--active")
+    assert has_element?(view, "#series-card-#{reels[long_name].id}")
+    refute has_element?(view, "#series-card-#{reels["Ação"].id}")
+  end
+
+  defp chip(name), do: ~s(#reel-categories a[data-category="#{name}"])
 
   defp count_cards(html) do
     html
