@@ -465,6 +465,8 @@ defmodule StreamixWeb.Router do
       live "/browse/series/:id", Content.SeriesDetailLive, :show
       live "/browse/series/:series_id/episode/:id", Content.EpisodeDetailLive, :show
       live "/browse/animes", Gindex.AnimeLive, :index
+      # Short dramas: series in providers' `[Reels] ...` categories
+      live "/browse/reels", Content.ReelsLive, :index
 
       # Dedicated torrent aggregator screen
       live "/torrent", TorrentLive, :index

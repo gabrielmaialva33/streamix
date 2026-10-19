@@ -62,7 +62,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
   Content type tabs with animated underline indicator.
   Netflix-inspired minimal tab navigation.
   """
-  attr :selected, :atom, required: true, values: [:live, :movies, :series, :animes]
+  attr :selected, :atom, required: true, values: [:live, :movies, :series, :animes, :reels]
   attr :counts, :map, default: %{}
   attr :source, :string, default: "iptv"
   attr :query_params, :map, default: %{}
@@ -100,13 +100,31 @@ defmodule StreamixWeb.Content.NavigationComponents do
         count={@counts[:series]}
         selected={@selected == :series}
       />
+      <%!-- Short dramas exist only in IPTV catalogs and ignore provider/search filters. --%>
+      <.browse_tab_item
+        :if={@source != "gindex"}
+        id="browse-tab-reels"
+        href={~p"/browse/reels"}
+        icon="hero-device-phone-mobile"
+        label="Dramas curtos"
+        count={@counts[:reels]}
+        selected={@selected == :reels}
+      />
     </nav>
     """
   end
 
+  attr :id, :string, default: nil
+  attr :href, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+  attr :count, :integer, default: nil
+  attr :selected, :boolean, default: false
+
   defp browse_tab_item(assigns) do
     ~H"""
     <.link
+      id={@id}
       navigate={@href}
       class={["content-nav__tab", @selected && "content-nav__tab--active"]}
     >
