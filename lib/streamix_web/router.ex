@@ -304,6 +304,9 @@ defmodule StreamixWeb.Router do
     get "/catalog/movies/:id", CatalogController, :show_movie
     get "/catalog/series", CatalogController, :series
     get "/catalog/series/:id", CatalogController, :show_series
+    # Short dramas ("[Reels]" provider categories merged across providers).
+    get "/catalog/reels", ReelsController, :index
+    get "/catalog/reels/categories", ReelsController, :categories
     get "/catalog/episodes/:id", CatalogController, :show_episode
     # Equivalent playable copies of one title (source picker / failover).
     get "/catalog/movies/:id/sources", CatalogController, :movie_sources

@@ -20,6 +20,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   source picker. Torrent copies and copies the stream endpoint would refuse are never listed.
 - `GET /api/v1/catalog/series/:id/sources` offers the same per-provider series copies as the web series page, in the
   same order, with their playable season and episode counts.
+- "Dramas curtos" at `/browse/reels`: the vertical short-drama series that providers tag with `[Reels] ...`
+  categories, with those categories merged by name across every visible provider, category chips, infinite scroll and
+  a catalog tab. TV clients get the same list from `GET /api/v1/catalog/reels` (`category`, `page`, `per_page`;
+  series cards plus `reel_category`) and the merged categories with counts from
+  `GET /api/v1/catalog/reels/categories`.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
 

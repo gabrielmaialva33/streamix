@@ -4,7 +4,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
   import OpenApiSpex.TestAssertions, only: [assert_operation_response: 2]
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{Episode, MovieCredit, Person, Season}
+  alias Streamix.Iptv.{Category, Episode, MovieCredit, Person, Season}
   alias Streamix.Repo
 
   setup do
@@ -20,13 +20,13 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
 
     assert spec["openapi"] =~ ~r/^3\.0\./
     assert spec["info"]["title"] == "Streamix Catalog API"
-    assert map_size(spec["paths"]) == 22
+    assert map_size(spec["paths"]) == 24
     assert spec["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
 
     operations = Enum.map(spec["paths"], fn {_path, path_item} -> path_item["get"] end)
     operation_ids = Enum.map(operations, & &1["operationId"])
 
-    assert length(Enum.uniq(operation_ids)) == 22
+    assert length(Enum.uniq(operation_ids)) == 24
     assert Enum.all?(operations, &Map.has_key?(&1["responses"], "429"))
 
     assert Enum.all?(operations, fn operation ->
@@ -59,6 +59,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     episode = contract_episode!(provider, series)
     channel = channel_fixture(provider, %{name: "Contract Channel"})
     playable_movie = movie_fixture(provider, %{name: "Contract Movie 4K", tmdb_id: "100"})
+    _reel = contract_reel!(provider)
 
     requests = [
       {"/api/v1/catalog/providers", "catalog.providers.list"},
@@ -83,7 +84,11 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
       {"/api/v1/catalog/movies/#{movie.id}/sources", "catalog.movies.sources"},
       {"/api/v1/catalog/movies/#{playable_movie.id}/sources", "catalog.movies.sources"},
       {"/api/v1/catalog/episodes/#{episode.id}/sources", "catalog.episodes.sources"},
-      {"/api/v1/catalog/series/#{series.id}/sources", "catalog.series.sources"}
+      {"/api/v1/catalog/series/#{series.id}/sources", "catalog.series.sources"},
+      {"/api/v1/catalog/reels", "catalog.reels.list"},
+      {"/api/v1/catalog/reels?category=Hist%C3%B3rias%20da%20%C3%81sia&per_page=1",
+       "catalog.reels.list"},
+      {"/api/v1/catalog/reels/categories", "catalog.reels.categories"}
     ]
 
     Enum.each(requests, fn {path, operation_id} ->
@@ -124,6 +129,11 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     |> get(~p"/api/v1/catalog/series/999999999/sources")
     |> assert_status(404)
     |> assert_operation_response("catalog.series.sources")
+
+    build_conn()
+    |> get(~p"/api/v1/catalog/reels?per_page=0")
+    |> assert_status(400)
+    |> assert_operation_response("catalog.reels.list")
   end
 
   test "authentication failures also satisfy every catalog operation contract" do
@@ -162,6 +172,26 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
     end
 
     movie
+  end
+
+  defp contract_reel!(provider) do
+    reel = series_content_fixture(provider, %{name: "Contract Reel"})
+
+    category =
+      %Category{}
+      |> Category.changeset(%{
+        provider_id: provider.id,
+        name: "[Reels] Histórias da Ásia",
+        type: "series",
+        external_id: "contract-reels"
+      })
+      |> Repo.insert!()
+
+    Repo.insert_all("item_categories", [
+      %{catalog_item_id: reel.catalog_item_id, category_id: category.id}
+    ])
+
+    reel
   end
 
   defp contract_episode!(provider, series) do

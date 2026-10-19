@@ -352,7 +352,9 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
     }
   end
 
-  defp series_card_properties do
+  @doc false
+  # Shared with `StreamixWeb.Api.V1.Schemas.Reels`, whose cards extend it.
+  def series_card_properties do
     movie_card_properties()
     |> Map.delete(:duration)
   end
