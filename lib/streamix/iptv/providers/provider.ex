@@ -43,6 +43,9 @@ defmodule Streamix.Iptv.Provider do
     # Operator-only domain whitelist identity; never accepted from owner params.
     field :send_x_domain, :boolean, default: false
 
+    # Operator-only opt-in for the provider sports feed.
+    field :games_enabled, :boolean, default: false
+
     # Provider type: xtream (default), gindex, torrent, or embedplay
     field :provider_type, Ecto.Enum,
       values: [:xtream, :gindex, :torrent, :embedplay],
@@ -81,7 +84,7 @@ defmodule Streamix.Iptv.Provider do
                       live_synced_at vod_synced_at series_synced_at
                       epg_synced_at epg_sync_interval_hours server_info
                       provider_type gindex_url direct_client_playback
-                      probe_live_delivery send_x_domain)a
+                      probe_live_delivery send_x_domain games_enabled)a
 
   @user_fields ~w(name url urls username password is_active visibility epg_sync_interval_hours)a
 

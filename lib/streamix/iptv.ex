@@ -456,4 +456,9 @@ defmodule Streamix.Iptv do
 
   defdelegate fetch_xtream_hls_master(session_id, resource_id, content, opts \\ []),
     to: PlaybackBoundary
+
+  defdelegate list_games(user_id, opts \\ []), to: CatalogBoundary
+  defdelegate sync_games(provider, opts \\ []), to: ProviderBoundary
+  defdelegate games_providers(), to: ProviderBoundary
+  defdelegate prune_games(now \\ DateTime.utc_now()), to: ProviderBoundary
 end

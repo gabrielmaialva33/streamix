@@ -110,6 +110,9 @@ defmodule Streamix.Iptv.Channels do
     end
   end
 
+  @doc false
+  def visible_query(user_id, opts), do: build_visible_query(user_id, opts)
+
   defp build_visible_query(user_id, opts) do
     LiveChannel
     |> Access.visible_to_user(user_id)

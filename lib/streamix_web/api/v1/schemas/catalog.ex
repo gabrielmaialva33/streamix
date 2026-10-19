@@ -16,6 +16,33 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
     channel_card = channel_card_properties()
 
     %{
+      "GameTeam" =>
+        Common.object(
+          "GameTeam",
+          %{name: Common.string(), logo_url: Common.string(nullable: true, format: :uri)},
+          [:name, :logo_url]
+        ),
+      "SportsMatch" =>
+        Common.object(
+          "SportsMatch",
+          %{
+            id: Common.id(),
+            league: Common.string(),
+            title: Common.string(),
+            home: Common.ref("GameTeam"),
+            away: Common.ref("GameTeam"),
+            starts_at: Common.string(format: :"date-time"),
+            ends_at: Common.string(format: :"date-time"),
+            live: Common.boolean(),
+            channel_id: Common.id()
+          },
+          [:id, :league, :title, :home, :away, :starts_at, :ends_at, :live, :channel_id]
+        ),
+      "GamesResponse" =>
+        Common.array(Common.ref("SportsMatch"),
+          description:
+            "Today's visible sports matches in America/Sao_Paulo; live first, then start time"
+        ),
       "CatalogPagination" =>
         Common.object(
           "CatalogPagination",

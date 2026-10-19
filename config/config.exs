@@ -276,6 +276,7 @@ config :streamix, Oban,
     {Oban.Reindexer, schedule: "@weekly"},
     {Oban.Cron,
      crontab: [
+       {"*/10 * * * *", Streamix.Workers.SyncGamesWorker},
        # Cleanup orphaned favorites/history daily at 2 AM
        {"0 2 * * *", Streamix.Workers.CleanupOrphanedDataWorker},
        # Recover abandoned party processes and prune old ended rooms.

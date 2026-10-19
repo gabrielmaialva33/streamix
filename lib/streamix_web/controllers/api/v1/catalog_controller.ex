@@ -12,7 +12,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias StreamixWeb.Api.V1.{Response, Schemas}
-  alias StreamixWeb.Catalog.Api
+  alias StreamixWeb.Catalog.{Api, Games}
 
   plug OpenApiSpex.Plug.CastAndValidate,
     render_error: StreamixWeb.Api.V1.OpenApiError,
@@ -82,6 +82,17 @@ defmodule StreamixWeb.Api.V1.CatalogController do
     responses: [
       ok: {"Paginated live-channel cards", @json, Schemas.ref("ChannelsPageResponse")},
       bad_request: @invalid_filter,
+      unauthorized: @unauthorized,
+      too_many_requests: @rate_limited
+    ]
+
+  operation :games,
+    operation_id: "catalog.games.list",
+    summary: "List today's sports matches",
+    description:
+      "Returns a bare array of matches with visible public channels, live first then start time. Today uses America/Sao_Paulo; timestamps are UTC. No upstream playback URLs are exposed.",
+    responses: [
+      ok: {"Sports matches", @json, Schemas.ref("GamesResponse")},
       unauthorized: @unauthorized,
       too_many_requests: @rate_limited
     ]
@@ -303,6 +314,7 @@ defmodule StreamixWeb.Api.V1.CatalogController do
   def movies(conn, params), do: json(conn, Api.movies(params))
   def series(conn, params), do: json(conn, Api.series(params))
   def channels(conn, params), do: json(conn, Api.channels(params))
+  def games(conn, _params), do: json(conn, Games.list(nil))
   def categories(conn, params), do: json(conn, Api.categories(params))
   def search(conn, params), do: json(conn, Api.search(params))
   def suggest(conn, params), do: json(conn, Api.suggest(params))

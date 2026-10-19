@@ -11,7 +11,7 @@ defmodule Streamix.SafeLog do
   @default_url_limit 240
   @default_inspect_limit 512
 
-  @credential_path ~r{/(live|movie|series)/[^/?#\s]+/[^/?#\s]+(?=/|$)}i
+  @credential_path ~r{/(live|movie|series|api/jogos)/[^/?#\s]+/[^/?#\s]+(?=/|$)}i
   @credential_query ~r{([?&](?:username|password|token|api[_-]?key|apikey|auth|authorization)=)[^&#\s]*}i
   @credential_userinfo ~r{(https?://)[^/@\s]+:[^/@\s]+@}i
   @control_characters ~r/[\x00-\x1F\x7F]/u

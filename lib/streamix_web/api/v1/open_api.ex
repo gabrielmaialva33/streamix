@@ -26,7 +26,7 @@ defmodule StreamixWeb.Api.V1.OpenApi do
         description: """
         Provider-aware TV/mobile API for public catalog discovery and signed playback.
 
-        Success responses use a `data` envelope. Collection metadata, applied
+        Success responses use a `data` envelope, except `/catalog/games`, which returns a bare array. Collection metadata, applied
         filters and pagination live under `meta`; failures use the stable
         `{\"error\": {\"code\": ..., \"message\": ...}}` envelope.
         """,
