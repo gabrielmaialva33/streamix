@@ -15,9 +15,9 @@ defmodule Streamix.Iptv.XtreamClient do
   - Fail-fast when circuit is open
   """
 
+  alias Streamix.Iptv.{Provider, XtreamCircuitBreaker}
   alias Streamix.Iptv.Streaming.{ProviderRuntime, UpstreamPolicy}
   alias Streamix.Iptv.Sync.Telemetry
-  alias Streamix.Iptv.XtreamCircuitBreaker
   alias Streamix.SafeLog
   alias Streamix.Security.UrlValidator
 
@@ -32,6 +32,62 @@ defmodule Streamix.Iptv.XtreamClient do
   # ============================================================================
   # Account
   # ============================================================================
+
+  @doc "Fetches the optional sports feed; errors never contain credential-bearing URLs or bodies."
+  def get_games(provider, opts \\ []) do
+    opts =
+      opts
+      |> Keyword.put(:provider, provider)
+      |> Keyword.put(:domain_policy, UpstreamPolicy.domain_policy(provider))
+
+    provider
+    |> Provider.url_chain()
+    |> Enum.reduce_while({:error, :games_unavailable}, fn base, _error ->
+      url =
+        String.trim_trailing(base, "/") <>
+          "/api/jogos/" <>
+          URI.encode(provider.username, &URI.char_unreserved?/1) <>
+          "/" <> URI.encode(provider.password, &URI.char_unreserved?/1)
+
+      case games_request(url, opts) do
+        {:ok, items} -> {:halt, {:ok, items}}
+        _ -> {:cont, {:error, :games_unavailable}}
+      end
+    end)
+  end
+
+  defp games_request(url, opts) do
+    request_opts =
+      Keyword.merge(
+        Keyword.get(opts, :http_options, Application.get_env(:streamix, :games_http_options, [])),
+        finch: [name: Streamix.Finch],
+        receive_timeout: 15_000,
+        request_timeout: 20_000,
+        redirect: false,
+        retry: false,
+        decode_body: false,
+        headers: [{"user-agent", UpstreamPolicy.user_agent()}],
+        into: &games_body/2
+      )
+
+    with {:ok, %{status: 200, body: body} = response} <- safe_get(url, request_opts, opts),
+         false <- response.private[:games_body_too_large] == true,
+         {:ok, items} when is_list(items) and length(items) <= 1000 <- Jason.decode(body) do
+      {:ok, items}
+    else
+      _ -> {:error, :games_unavailable}
+    end
+  end
+
+  defp games_body({:data, data}, {request, response}) do
+    body = response.body || ""
+
+    if byte_size(body) + byte_size(data) <= 1_048_576 do
+      {:cont, {request, %{response | body: body <> data}}}
+    else
+      {:halt, {request, Req.Response.put_private(response, :games_body_too_large, true)}}
+    end
+  end
 
   def get_account_info(url, username, password, opts \\ []) do
     api_call(url, username, password, nil, %{}, opts)

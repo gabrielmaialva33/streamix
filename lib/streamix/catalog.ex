@@ -194,4 +194,5 @@ defmodule Streamix.Catalog do
     as: :upsert_series
 
   defdelegate sync_series_details(series), to: Streamix.Iptv.Sync
+  defdelegate list_games(user_id, opts \\ []), to: Streamix.Iptv.Games, as: :list
 end

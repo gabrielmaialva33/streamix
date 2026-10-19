@@ -9,6 +9,7 @@ defmodule StreamixWeb.Content.LiveChannels do
 
   alias Phoenix.LiveView
   alias Streamix.Library
+  alias StreamixWeb.Catalog.Games
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.FavoriteState
 
@@ -37,6 +38,8 @@ defmodule StreamixWeb.Content.LiveChannels do
     |> assign(empty_results: false)
     |> assign(user_id: user.id)
     |> assign(epg_syncing: false)
+    |> assign(games_count: 0)
+    |> LiveView.stream(:games, [])
     |> LiveView.stream(:channels, [])
     |> load_favorites_map()
   end
@@ -58,12 +61,24 @@ defmodule StreamixWeb.Content.LiveChannels do
           |> assign(page: 1)
           |> LiveView.stream(:channels, [], reset: true)
           |> load_channels()
+          |> load_games()
 
         {:ok, socket}
 
       {:redirect, socket} ->
         {:redirect, socket}
     end
+  end
+
+  def load_games(socket) do
+    provider_id =
+      if socket.assigns.provider && socket.assigns.provider_filter != "all",
+        do: socket.assigns.provider.id
+
+    opts = [show_adult: socket.assigns.current_scope.user.show_adult_content]
+    opts = if provider_id, do: Keyword.put(opts, :provider_id, provider_id), else: opts
+    games = Games.cards(socket.assigns.user_id, opts)
+    socket |> assign(games_count: length(games)) |> LiveView.stream(:games, games, reset: true)
   end
 
   def load_more(socket) do

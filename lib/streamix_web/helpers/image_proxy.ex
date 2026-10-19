@@ -43,6 +43,21 @@ defmodule StreamixWeb.Helpers.ImageProxy do
     original: "original"
   }
 
+  @doc "Always relays an external public image through the configured image proxy."
+  def external(url) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
+      when scheme in ["http", "https"] and is_binary(host) ->
+        if public_host?(String.downcase(host)) and not browser_blocked_host?(url),
+          do: "#{image_proxy_url()}/proxy?url=#{URI.encode_www_form(url)}"
+
+      _ ->
+        nil
+    end
+  end
+
+  def external(_url), do: nil
+
   @doc """
   Proxies an image URL through Cloudflare CDN.
 

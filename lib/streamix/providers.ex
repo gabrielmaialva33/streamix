@@ -147,4 +147,7 @@ defmodule Streamix.Providers do
   """
   defdelegate provider_health_statuses(providers), to: ProviderHealth, as: :statuses
   defdelegate cached_provider_health_summary(), to: ProviderHealthMonitor, as: :get
+  defdelegate sync_games(provider, opts \\ []), to: Streamix.Iptv.Games, as: :sync
+  defdelegate games_providers(), to: Streamix.Iptv.Games, as: :enabled_providers
+  defdelegate prune_games(now \\ DateTime.utc_now()), to: Streamix.Iptv.Games, as: :prune
 end

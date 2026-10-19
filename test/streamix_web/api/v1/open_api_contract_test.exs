@@ -20,13 +20,13 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
 
     assert spec["openapi"] =~ ~r/^3\.0\./
     assert spec["info"]["title"] == "Streamix Catalog API"
-    assert map_size(spec["paths"]) == 24
+    assert map_size(spec["paths"]) == 25
     assert spec["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
 
     operations = Enum.map(spec["paths"], fn {_path, path_item} -> path_item["get"] end)
     operation_ids = Enum.map(operations, & &1["operationId"])
 
-    assert length(Enum.uniq(operation_ids)) == 24
+    assert length(Enum.uniq(operation_ids)) == 25
     assert Enum.all?(operations, &Map.has_key?(&1["responses"], "429"))
 
     assert Enum.all?(operations, fn operation ->
@@ -66,6 +66,7 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
       {"/api/v1/catalog/movies", "catalog.movies.list"},
       {"/api/v1/catalog/series", "catalog.series.list"},
       {"/api/v1/catalog/channels", "catalog.channels.list"},
+      {"/api/v1/catalog/games", "catalog.games.list"},
       {"/api/v1/catalog/categories", "catalog.categories.list"},
       {"/api/v1/catalog/featured", "catalog.featured"},
       {"/api/v1/catalog/search?q=Contract", "catalog.search"},
