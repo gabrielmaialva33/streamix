@@ -85,12 +85,16 @@ defmodule Streamix.Iptv.Games do
     from(g in SportsMatch,
       join: c in subquery(visible),
       on: c.id == g.live_channel_id and c.provider_id == g.provider_id,
+      # Today's schedule in São Paulo plus any match still on air (an
+      # overnight one started yesterday); a finished match is no longer
+      # playable as a game, since its channel has moved on.
       where:
-        fragment(
-          "(? AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = (?::timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date",
-          g.starts_at,
-          type(^now, :utc_datetime)
-        ) or (g.starts_at <= ^now and g.ends_at > ^now),
+        g.ends_at > ^now and
+          (fragment(
+             "(? AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = (?::timestamp AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date",
+             g.starts_at,
+             type(^now, :utc_datetime)
+           ) or g.starts_at <= ^now),
       order_by: [desc: g.starts_at <= ^now and g.ends_at > ^now, asc: g.starts_at, asc: g.id],
       select_merge: %{
         live: g.starts_at <= ^now and g.ends_at > ^now,

@@ -87,10 +87,11 @@ defmodule Streamix.Iptv.GamesAccessTest do
         ends_at: ~U[2026-10-20 05:00:00Z]
       })
 
-    assert [first, second] = Catalog.list_games(nil, now: now)
+    # The match that ended earlier today is gone: it is no longer playable.
+    assert [first] = Catalog.list_games(nil, now: now)
     assert first.id == live.id and first.live
     assert NaiveDateTime.compare(first.local_starts_at, ~N[2026-10-19 23:00:00]) == :eq
-    assert second.id == ended.id and not second.live
+    refute Enum.any?(Catalog.list_games(nil, now: now), &(&1.id == ended.id))
 
     assert Enum.map(Catalog.list_games(nil, now: ~U[2026-10-20 03:30:00Z]), & &1.id) == [
              live.id,

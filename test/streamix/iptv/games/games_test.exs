@@ -5,6 +5,40 @@ defmodule Streamix.Iptv.GamesTest do
   alias Streamix.Iptv
   alias Streamix.Iptv.Provider
 
+  # 21:00Z is 18:00 in São Paulo. A match that already ended is no longer
+  # playable as a game (its channel moved on), so it leaves the list.
+  test "lists today's upcoming and live matches, never the finished ones" do
+    provider = global_provider_fixture(%{games_enabled: true})
+    channel = channel_fixture(provider, %{stream_id: 7})
+    now = ~U[2026-10-19 21:00:00Z]
+
+    game_fixture(provider, channel, %{
+      title: "Finished",
+      starts_at: ~U[2026-10-19 15:00:00Z],
+      ends_at: ~U[2026-10-19 17:00:00Z]
+    })
+
+    game_fixture(provider, channel, %{
+      title: "Upcoming",
+      starts_at: ~U[2026-10-19 23:00:00Z],
+      ends_at: ~U[2026-10-20 01:00:00Z]
+    })
+
+    game_fixture(provider, channel, %{
+      title: "Live",
+      starts_at: ~U[2026-10-19 20:30:00Z],
+      ends_at: ~U[2026-10-19 22:30:00Z]
+    })
+
+    assert [%{title: "Live", live: true}, %{title: "Upcoming", live: false}] =
+             Iptv.list_games(nil, now: now)
+
+    # 03:00Z is midnight in São Paulo: an overnight match that started the
+    # previous local day stays while it is on air.
+    assert [%{title: "Upcoming", live: true}] =
+             Iptv.list_games(nil, now: ~U[2026-10-20 00:30:00Z])
+  end
+
   test "games flag is operator-only" do
     assert Ecto.Changeset.get_change(
              Provider.changeset(%Provider{}, %{games_enabled: true}),

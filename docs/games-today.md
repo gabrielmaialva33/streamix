@@ -64,7 +64,8 @@ feeds never appear. The TV endpoint uses the same public/API-key pipeline as
 
 “Today” and displayed kickoff times use PostgreSQL's `America/Sao_Paulo`
 timezone rules, not the server/browser timezone. Ongoing overnight matches
-remain visible. Results order live first, then kickoff and ID; `live` means
+remain visible; a match that has ended is left out, since its channel has
+moved on and it is no longer playable as a game. Results order live first, then kickoff and ID; `live` means
 `starts_at <= now < ends_at`. The rail uses LiveView streams and refreshed
 server-side state. Logos always go through the existing image proxy helper,
 including HTTPS origins, rather than hotlinking.
