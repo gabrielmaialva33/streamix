@@ -46,12 +46,16 @@ defmodule Streamix.HttpPoolContractTest do
 
   test "a late response after a receive timeout never reaches the next request", ctx do
     assert {:error, %Req.TransportError{reason: :timeout}} =
-             Req.get("#{ctx.base}/slow", finch: ctx.finch, receive_timeout: 100, retry: false)
+             Req.get("#{ctx.base}/slow",
+               finch: [name: ctx.finch],
+               receive_timeout: 100,
+               retry: false
+             )
 
     assert_receive {:slow_waiting, handler}
     send(handler, :release)
 
     assert {:ok, %Req.Response{status: 200, body: "fast"}} =
-             Req.get("#{ctx.base}/fast", finch: ctx.finch, retry: false)
+             Req.get("#{ctx.base}/fast", finch: [name: ctx.finch], retry: false)
   end
 end
