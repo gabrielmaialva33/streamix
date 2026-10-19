@@ -2,7 +2,8 @@ defmodule Streamix.Workers.SyncEpgWorker do
   @moduledoc """
   Background worker that syncs the full EPG catalog for a provider.
 
-  Issues exactly **one** HTTP request per run — `/xmltv.php` returns a
+  Issues at most **one** HTTP request per run (none when the provider's
+  channels declare no EPG id) — `/xmltv.php` returns a
   complete XMLTV document covering every channel. This is the same
   endpoint XCIPTV, TiviMate, IPTVSmarters and IBOPlayer hit, so the
   provider's anti-scraper WAF can't tell us apart from a normal client.

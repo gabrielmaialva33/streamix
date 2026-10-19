@@ -85,6 +85,76 @@ defmodule Streamix.Iptv.EpgSyncTest do
     end
   end
 
+  describe "sync_all_epg/1" do
+    defmodule Panel do
+      @moduledoc false
+      import Plug.Conn
+
+      def init(test_pid), do: test_pid
+
+      def call(conn, test_pid) do
+        send(test_pid, {:panel_request, conn.request_path})
+
+        xml = """
+        <tv>
+          <programme channel="sports.br" start="20260503040000 -0300" stop="20260503050000 -0300">
+            <title>Jogo ao vivo</title>
+          </programme>
+        </tv>
+        """
+
+        send_resp(conn, 200, xml)
+      end
+    end
+
+    setup do
+      server =
+        start_supervised!(
+          {Bandit,
+           plug: {Panel, self()}, scheme: :http, port: 0, ip: :loopback, startup_log: false}
+        )
+
+      {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
+      %{url: "http://127.0.0.1:#{port}"}
+    end
+
+    test "never asks for a guide when no channel declares an EPG id", %{url: url} do
+      provider = imported!(global_provider_fixture(%{url: url}))
+      channel_fixture(provider, %{epg_channel_id: nil})
+      channel_fixture(provider, %{epg_channel_id: ""})
+
+      assert {:ok, %{channels: 0, programs: 0}} = EpgSync.sync_all_epg(provider)
+      refute_received {:panel_request, _}
+      assert %DateTime{} = Repo.reload!(provider).epg_synced_at
+    end
+
+    # An empty table before the first import says nothing about the guide,
+    # so the next attempt must not wait a whole interval.
+    test "waits for the first channel import without stamping", %{url: url} do
+      provider = global_provider_fixture(%{url: url})
+
+      assert {:error, :live_catalog_pending} = EpgSync.sync_all_epg(provider)
+      refute_received {:panel_request, _}
+      assert Repo.reload!(provider).epg_synced_at == nil
+    end
+
+    test "fetches the XMLTV once when a channel declares an EPG id", %{url: url} do
+      provider = global_provider_fixture(%{url: url})
+      channel_fixture(provider, %{epg_channel_id: "sports.br"})
+
+      assert {:ok, %{channels: 1, programs: 1}} = EpgSync.sync_all_epg(provider)
+      assert_received {:panel_request, "/xmltv.php"}
+      refute_received {:panel_request, _}
+      assert [%EpgProgram{title: "Jogo ao vivo"}] = Repo.all(EpgProgram)
+    end
+
+    defp imported!(provider) do
+      provider
+      |> Ecto.Changeset.change(live_synced_at: DateTime.utc_now(:second))
+      |> Repo.update!()
+    end
+  end
+
   describe "update_epg_synced_at/1" do
     test "sets epg_synced_at to current time" do
       user = user_fixture()

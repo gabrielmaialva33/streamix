@@ -96,8 +96,38 @@ defmodule Streamix.Iptv.EpgSync do
   no WAF flag.
 
   Returns `{:ok, %{channels: n, programs: m}}` on success.
+
+  A provider whose imported channels declare no EPG id is not asked for a
+  guide: programs attach to channels by that id, so there is nothing to
+  store (and panels like that, such as MegaEmbed, answer `/xmltv.php` with
+  404). The sync is still stamped, so it waits a full interval, the same
+  cadence as a guide refresh, before checking again. Before the first
+  channel import there is nothing to judge by, so it returns
+  `{:error, :live_catalog_pending}` without a stamp.
   """
   def sync_all_epg(%Provider{} = provider) do
+    cond do
+      declares_epg?(provider) ->
+        fetch_all_epg(provider)
+
+      is_nil(provider.live_synced_at) ->
+        {:error, :live_catalog_pending}
+
+      true ->
+        Logger.info("[EpgSync] Provider #{provider.id} declares no EPG ids, skipping XMLTV")
+        update_epg_synced_at(provider)
+        {:ok, %{channels: 0, programs: 0}}
+    end
+  end
+
+  defp declares_epg?(provider) do
+    Streamix.Iptv.LiveChannel
+    |> where([c], c.provider_id == ^provider.id)
+    |> where([c], not is_nil(c.epg_channel_id) and c.epg_channel_id != "")
+    |> Repo.exists?()
+  end
+
+  defp fetch_all_epg(provider) do
     Logger.info("[EpgSync] Fetching XMLTV for provider #{provider.id}")
 
     with {:ok, xml} <-
