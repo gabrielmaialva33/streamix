@@ -62,6 +62,7 @@ defmodule Streamix.Hls.Gateway do
         fetch_opts
         |> Enum.reject(&is_nil(elem(&1, 1)))
         |> Keyword.put(:http_options, Keyword.get(opts, :http_options, []))
+        |> Keyword.put(:headers_for_url, Keyword.get(opts, :headers_for_url))
 
       with {:ok, response} <- Fetch.fetch(url, Map.get(resource, :headers, []), fetch_opts) do
         respond(response, kind, opts)

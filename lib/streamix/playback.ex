@@ -16,6 +16,7 @@ defmodule Streamix.Playback do
     RedirectResolver,
     SourceSelector,
     StreamErrors,
+    UpstreamPolicy,
     VodMultiplexer,
     VodProxy,
     XtreamDelivery,
@@ -56,24 +57,31 @@ defmodule Streamix.Playback do
 
   # Source resolution and prewarming
 
-  defdelegate resolve_stream_url(url, opts \\ []), to: RedirectResolver, as: :resolve
+  def resolve_stream_url(url, opts \\ []) do
+    RedirectResolver.resolve(url, UpstreamPolicy.with_domain_policy(opts))
+  end
 
   @doc """
   Resolves a stream URL using the source proxy credential-exchange policy.
   """
-  defdelegate resolve_stream_url_for_proxy(url, opts \\ []),
-    to: RedirectResolver,
-    as: :resolve_for_proxy
+  def resolve_stream_url_for_proxy(url, opts \\ []) do
+    RedirectResolver.resolve_for_proxy(url, UpstreamPolicy.with_domain_policy(opts))
+  end
 
   @doc "Prewarms without fetching a single-use token target."
   def prewarm_stream_url(url, opts \\ []) when is_binary(url) and is_list(opts) do
-    RedirectResolver.prewarm_for_proxy_async(url, opts)
+    RedirectResolver.prewarm_for_proxy_async(url, UpstreamPolicy.with_domain_policy(opts))
   end
 
   # HTTP media delivery
 
-  defdelegate pipe_stream(conn, url, opts \\ []), to: VodProxy, as: :pipe
-  defdelegate pipe_live_stream(conn, url, opts \\ []), to: LiveProxy, as: :pipe
+  def pipe_stream(conn, url, opts \\ []) do
+    VodProxy.pipe(conn, url, UpstreamPolicy.with_domain_policy(opts))
+  end
+
+  def pipe_live_stream(conn, url, opts \\ []) do
+    LiveProxy.pipe(conn, url, UpstreamPolicy.with_domain_policy(opts))
+  end
 
   @doc """
   Streams VOD through the block multiplexer so concurrent viewers of one title
@@ -82,6 +90,8 @@ defmodule Streamix.Playback do
   """
   @spec pipe_vod_stream(Plug.Conn.t(), String.t(), keyword()) :: Plug.Conn.t()
   def pipe_vod_stream(conn, url, opts \\ []) do
+    opts = UpstreamPolicy.with_domain_policy(opts)
+
     if Application.get_env(:streamix, :vod_multiplexer_enabled, false) do
       VodMultiplexer.pipe(conn, url, opts, &VodProxy.pipe(&1, url, opts))
     else
@@ -89,7 +99,9 @@ defmodule Streamix.Playback do
     end
   end
 
-  defdelegate head_stream(conn, url, opts \\ []), to: VodProxy, as: :head
+  def head_stream(conn, url, opts \\ []) do
+    VodProxy.head(conn, url, UpstreamPolicy.with_domain_policy(opts))
+  end
 
   # Xtream VOD delivery by container
 

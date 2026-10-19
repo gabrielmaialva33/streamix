@@ -142,6 +142,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
       urls: Keyword.fetch!(args, :urls),
       url_index: 0,
       current_url: nil,
+      domain_policy: Keyword.get(args, :domain_policy),
       provider_id: Keyword.get(args, :provider_id),
       content_id: Keyword.get(args, :content_id),
       url_validator: Keyword.get(args, :url_validator, &UrlValidator.validate_url/1),
@@ -445,7 +446,12 @@ defmodule Streamix.Iptv.StreamMultiplexer do
          :ok <- state.url_validator.(redirect_url) do
       Upstream.close(state.mint_conn)
 
-      case Upstream.connect(redirect_url, state.url_validator, @connect_timeout) do
+      case Upstream.connect(
+             redirect_url,
+             state.url_validator,
+             @connect_timeout,
+             state.domain_policy
+           ) do
         {:ok, mint_conn, request_ref} ->
           {:reconnect,
            %{
@@ -501,7 +507,7 @@ defmodule Streamix.Iptv.StreamMultiplexer do
   defp connect_current_url(state) do
     url = Enum.at(state.urls, state.url_index)
 
-    case Upstream.connect(url, state.url_validator, @connect_timeout) do
+    case Upstream.connect(url, state.url_validator, @connect_timeout, state.domain_policy) do
       {:ok, mint_conn, request_ref} ->
         {:ok,
          %{

@@ -471,10 +471,10 @@ defmodule Streamix.Iptv.Providers do
   @doc """
   Tests connection to a provider.
   """
-  @spec test_connection(String.t(), String.t(), String.t()) ::
+  @spec test_connection(String.t(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
-  def test_connection(url, username, password) do
-    case XtreamClient.get_account_info(url, username, password) do
+  def test_connection(url, username, password, opts \\ []) do
+    case XtreamClient.get_account_info(url, username, password, opts) do
       {:ok, %{"user_info" => info}} -> {:ok, info}
       {:ok, info} -> {:ok, info}
       {:error, reason} -> {:error, reason}

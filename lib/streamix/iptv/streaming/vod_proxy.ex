@@ -43,7 +43,8 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     ProviderRuntime,
     RedirectResolver,
     StreamErrors,
-    UpstreamLease
+    UpstreamLease,
+    UpstreamPolicy
   }
 
   alias Streamix.Iptv.Streaming.VodProxy.{Headers, Observability, Transfer}
@@ -112,7 +113,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp head_chain([url | rest], conn) do
-    case resolve_chain(url) do
+    case resolve_chain(url, Observability.context_from_conn(conn)) do
       {:ok, final_url} ->
         case do_head(conn, final_url) do
           {:ok, conn} ->
@@ -136,7 +137,13 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   defp rotate_head_or_halt(rest, conn, _reason), do: head_chain(rest, conn)
 
   defp do_head(conn, final_url) do
-    headers = Headers.request(conn, 0)
+    headers =
+      UpstreamPolicy.headers(
+        final_url,
+        Headers.request(conn, 0),
+        Observability.context_from_conn(conn)[:domain_policy]
+      )
+
     req = Finch.build(:head, final_url, headers)
 
     case Finch.request(req, Streamix.StreamFinch, receive_timeout: 10_000, pool_timeout: 5_000) do
@@ -179,7 +186,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
 
     Observability.emit(:start, state)
 
-    case resolve_chain(url) do
+    case resolve_chain(url, Observability.context_from_conn(conn)) do
       {:ok, final_url} ->
         if FailoverPolicy.failover_url?(final_url) do
           Logger.warning(
@@ -233,12 +240,12 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     end
   end
 
-  defp resolve_chain(url) do
+  defp resolve_chain(url, context) do
     # Walk the full vauth → … → deliver chain so Finch lands on a URL
     # that responds with 200/206. Stopping at the first non-creds hop
     # would still leave us on a 302 redirector and the pre-flight
     # would bounce.
-    RedirectResolver.resolve(url)
+    RedirectResolver.resolve(url, domain_policy: Map.get(context, :domain_policy))
   end
 
   defp do_pipe(conn, _final_url, %{retry_count: n} = state)
@@ -262,7 +269,13 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
   end
 
   defp do_pipe_attempt(conn, final_url, state) do
-    headers = Headers.request(conn, state.bytes_sent)
+    headers =
+      UpstreamPolicy.headers(
+        final_url,
+        Headers.request(conn, state.bytes_sent),
+        state[:domain_policy]
+      )
+
     req = Finch.build(:get, final_url, headers)
 
     handle_attempt_result(Transfer.stream(conn, req, state), conn, state)
@@ -360,7 +373,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy do
     # 5xx upstream don't all wake up in lockstep and re-hammer it.
     Process.sleep(@retry_backoff_ms + :rand.uniform(@retry_backoff_ms))
 
-    case resolve_chain(state.original_url) do
+    case resolve_chain(state.original_url, state) do
       {:ok, fresh_url} ->
         do_pipe(conn, fresh_url, state)
 

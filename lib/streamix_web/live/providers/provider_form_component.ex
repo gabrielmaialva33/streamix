@@ -57,11 +57,12 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
 
     case connection_credentials(params) do
       {:ok, credentials} ->
+        provider = socket.assigns.provider
         socket = assign(socket, testing: true, test_result: nil)
 
         {:noreply,
          start_async(socket, :connection_test, fn ->
-           test_connection(credentials)
+           test_connection(credentials, provider)
          end)}
 
       {:error, message} ->
@@ -177,8 +178,8 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(_), do: "Ocorreu um erro desconhecido"
 
-  defp test_connection(%{url: url, username: username, password: password}) do
-    Streamix.Providers.test_connection(url, username, password)
+  defp test_connection(%{url: url, username: username, password: password}, provider \\ nil) do
+    Streamix.Providers.test_connection(url, username, password, provider: provider)
   end
 
   defp ensure_connection_tested(_params, true), do: :ok

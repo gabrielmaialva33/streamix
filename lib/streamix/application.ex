@@ -14,6 +14,10 @@ defmodule Streamix.Application do
     # The BEAM's default inet resolver can cache DNS indefinitely
     configure_dns_resolver()
 
+    # Pass web URL configuration into the outbound domain policy at the composition root.
+    endpoint = Application.fetch_env!(:streamix, StreamixWeb.Endpoint)
+    Application.put_env(:streamix, :iptv_public_host, get_in(endpoint, [:url, :host]))
+
     opts = [strategy: :one_for_one, name: Streamix.Supervisor]
     Supervisor.start_link(children(), opts)
   end

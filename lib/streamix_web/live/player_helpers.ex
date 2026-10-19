@@ -363,17 +363,17 @@ defmodule StreamixWeb.PlayerHelpers do
     else
       case content_id(content) do
         nil -> :ok
-        id -> do_prewarm(type, id, user_id)
+        id -> do_prewarm(type, id, user_id, Map.get(content, :provider_id))
       end
     end
   end
 
   def prewarm_upstream_redirect(_type, _content, _user_id), do: :ok
 
-  defp do_prewarm(type, id, user_id) do
+  defp do_prewarm(type, id, user_id, provider_id) do
     with {:ok, upstream_type} <- prewarmable_upstream_type(type),
          {:ok, url} <- StreamToken.upstream_url(upstream_type, id, user_id) do
-      Streamix.Playback.prewarm_stream_url(url)
+      Streamix.Playback.prewarm_stream_url(url, provider_id: provider_id)
     else
       _ -> :ok
     end

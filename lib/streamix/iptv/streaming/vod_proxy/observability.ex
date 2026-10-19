@@ -11,6 +11,7 @@ defmodule Streamix.Iptv.Streaming.VodProxy.Observability do
     media_type = opts |> Keyword.get(:media_type) |> normalize_media_type()
 
     %{
+      domain_policy: Keyword.get(opts, :domain_policy),
       provider_id: Keyword.get(opts, :provider_id),
       content_id: Keyword.get(opts, :content_id),
       media_type: media_type,

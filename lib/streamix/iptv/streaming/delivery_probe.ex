@@ -187,7 +187,12 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   # The credentials are part of the key, so a provider whose URL or password
   # changed never reuses a decision rooted at its old account.
   defp cache_key(provider, type, content) do
-    credentials = :erlang.phash2({provider.url, provider.username, provider.password})
+    credentials =
+      :erlang.phash2(
+        {provider.url, provider.username, provider.password,
+         UpstreamPolicy.domain_policy(provider)}
+      )
+
     {provider.id, credentials, type, stream_id(type, content)}
   end
 
@@ -212,7 +217,9 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
       )
 
     result =
-      case with_lease(provider.id, fn -> RedirectResolver.final_hop(url, final_hop_options()) end) do
+      case with_lease(provider.id, fn ->
+             RedirectResolver.final_hop(url, final_hop_options(provider))
+           end) do
         {:ok, hop} -> classify_live(hop, url)
         {:error, reason} -> {:error, transport_reason(reason)}
       end
@@ -263,7 +270,9 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp probe_source(provider, type, content, source) do
     url = source_url(provider, type, content, source)
 
-    case with_lease(provider.id, fn -> RedirectResolver.final_hop(url, final_hop_options()) end) do
+    case with_lease(provider.id, fn ->
+           RedirectResolver.final_hop(url, final_hop_options(provider))
+         end) do
       {:ok, hop} -> classify(hop, url, provider, content)
       {:error, reason} -> {:skip, transport_reason(reason)}
     end
@@ -377,8 +386,9 @@ defmodule Streamix.Iptv.Streaming.DeliveryProbe do
   defp stream_id(:episode, content), do: content.episode_id
   defp stream_id(:channel, content), do: content.stream_id
 
-  defp final_hop_options do
+  defp final_hop_options(provider) do
     [
+      domain_policy: UpstreamPolicy.domain_policy(provider),
       headers: [{"user-agent", UpstreamPolicy.user_agent()}],
       req_options:
         Keyword.merge(

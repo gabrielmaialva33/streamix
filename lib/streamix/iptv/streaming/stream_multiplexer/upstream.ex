@@ -5,9 +5,11 @@ defmodule Streamix.Iptv.Streaming.StreamMultiplexer.Upstream do
 
   @forwardable_headers ~w(content-type accept-ranges etag last-modified)
 
-  def connect(nil, _validator, _connect_timeout), do: {:error, :missing_upstream_url}
+  def connect(url, validator, connect_timeout, policy \\ nil)
 
-  def connect(url, validator, connect_timeout) do
+  def connect(nil, _validator, _connect_timeout, _policy), do: {:error, :missing_upstream_url}
+
+  def connect(url, validator, connect_timeout, policy) do
     with :ok <- validator.(url),
          %URI{host: host} = uri when is_binary(host) <- URI.parse(url) do
       scheme = if uri.scheme == "https", do: :https, else: :http
@@ -28,7 +30,13 @@ defmodule Streamix.Iptv.Streaming.StreamMultiplexer.Upstream do
       with {:ok, mint_conn} <-
              Mint.HTTP.connect(scheme, host, port, transport_opts: transport_opts),
            {:ok, mint_conn, request_ref} <-
-             Mint.HTTP.request(mint_conn, "GET", request_path(uri), headers, nil) do
+             Mint.HTTP.request(
+               mint_conn,
+               "GET",
+               request_path(uri),
+               UpstreamPolicy.headers(url, headers, policy),
+               nil
+             ) do
         {:ok, mint_conn, request_ref}
       else
         {:error, mint_conn, reason} ->
