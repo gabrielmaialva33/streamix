@@ -86,6 +86,12 @@ playwright_browser =
 playwright_options = [
   browser: playwright_browser,
   headless: System.get_env("PLAYWRIGHT_HEADED") != "true",
+  # Since phoenix_test_playwright 0.19 (playwright_ex 0.15) this timeout also
+  # bounds the driver's `initialize` handshake, not only operations. WebKit
+  # starts slower than the 2 s default on CI runners and failed every suite in
+  # setup_all with `playwright_initialization_failed`; Chromium and Firefox
+  # keep the default so their assertion waits are unchanged.
+  timeout: if(playwright_browser == :webkit, do: 5_000, else: 2_000),
   # Closing the browser context is synchronous in StreamixWeb.PlaywrightSupport,
   # but Bandit still needs a short drain window before the sandbox owner exits.
   ecto_sandbox_stop_owner_delay: 1_000,
