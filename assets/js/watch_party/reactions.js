@@ -92,8 +92,10 @@ export class ReactionPresenter {
     if (button && copied) {
       const originalLabel = button.getAttribute("aria-label");
       button.setAttribute("aria-label", "Link copiado");
+      if (button.dataset) button.dataset.copied = "true";
       this.later(() => {
         if (originalLabel) button.setAttribute("aria-label", originalLabel);
+        if (button.dataset) delete button.dataset.copied;
       }, COPY_LABEL_RESTORE_MS);
     }
   }

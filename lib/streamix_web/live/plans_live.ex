@@ -16,6 +16,7 @@ defmodule StreamixWeb.PlansLive do
       end
 
     current_plan_id = active_subscription && active_subscription.plan_id
+    return_to = safe_return_path(params["return_to"])
 
     socket =
       socket
@@ -25,6 +26,7 @@ defmodule StreamixWeb.PlansLive do
       |> assign(active_subscription: active_subscription)
       |> assign(current_plan_id: current_plan_id)
       |> assign(upgrade_reason: params["upgrade"])
+      |> assign(return_to: return_to)
       |> assign(subscription_state: subscription_state(active_subscription))
 
     {:ok, socket}
@@ -39,10 +41,12 @@ defmodule StreamixWeb.PlansLive do
           {:noreply, Phoenix.LiveView.redirect(socket, external: checkout_url)}
 
         %{trial: true} ->
+          target = socket.assigns[:return_to] || ~p"/billing"
+
           {:noreply,
            socket
            |> put_flash(:info, "Trial grátis ativado por #{plan.trial_days} dias.")
-           |> redirect(to: ~p"/billing")}
+           |> redirect(to: target)}
       end
     else
       {:error, :trial_already_used} ->
@@ -316,4 +320,15 @@ defmodule StreamixWeb.PlansLive do
     do: "Escolha um plano com mais streams simultâneos para assistir em mais telas."
 
   defp upgrade_message(_reason), do: "Compare os planos e escolha o melhor para sua conta."
+
+  # Only a local path: browsers drop tabs and newlines from URLs, so
+  # "/\t/evil.test" would become "//evil.test".
+  defp safe_return_path("/" <> _ = path) do
+    if String.starts_with?(path, "//") or String.contains?(path, "\\") or
+         path =~ ~r/[\s\x00-\x1f\x7f]/u,
+       do: nil,
+       else: path
+  end
+
+  defp safe_return_path(_), do: nil
 end

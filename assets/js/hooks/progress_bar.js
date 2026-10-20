@@ -69,9 +69,11 @@ const ProgressBar = {
     this.handleTimeUpdate = () => this.updateProgress();
     this.handleProgress = () => this.updateBuffer();
     this.handleLoadedMetadata = () => this.updateProgress();
+    this.onKeyDown = (e) => this.handleKeyDown(e);
 
     // Click to seek
     this.progressContainer.addEventListener("click", this.handleClick);
+    this.progressContainer.addEventListener("keydown", this.onKeyDown);
 
     // Drag functionality
     this.progressContainer.addEventListener("mousedown", this.handleMouseDown);
@@ -143,6 +145,86 @@ const ProgressBar = {
     }
   },
 
+  formatAriaTime(seconds) {
+    const s = Math.floor(Math.max(0, seconds || 0));
+    const hours = Math.floor(s / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const remainingSeconds = s % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+
+    if (hours > 0) {
+      return `${hours}:${pad(minutes)}:${pad(remainingSeconds)}`;
+    }
+    return `${pad(minutes)}:${pad(remainingSeconds)}`;
+  },
+
+  updateAria(currentTime, duration) {
+    if (!this.progressContainer) return;
+    const cur = Math.round(currentTime || 0);
+    const dur = Math.round(duration || 0);
+    this.progressContainer.setAttribute("aria-valuenow", String(cur));
+    this.progressContainer.setAttribute("aria-valuemin", "0");
+    this.progressContainer.setAttribute("aria-valuemax", String(dur));
+    this.progressContainer.setAttribute(
+      "aria-valuetext",
+      `${this.formatAriaTime(cur)} de ${this.formatAriaTime(dur)}`,
+    );
+  },
+
+  handleKeyDown(e) {
+    if (this.progressContainer.getAttribute("aria-disabled") === "true") return;
+
+    const hook = this.getVideoPlayerHook();
+    const duration = hook?.getDuration?.() || this.video?.duration || 0;
+    const currentTime = hook?.getCurrentTime?.() ?? this.video?.currentTime ?? 0;
+
+    if (!duration || !Number.isFinite(duration)) return;
+
+    let delta = null;
+    let targetTime = null;
+
+    switch (e.key) {
+      case "ArrowLeft":
+        delta = -5;
+        break;
+      case "ArrowRight":
+        delta = 5;
+        break;
+      case "ArrowDown":
+        delta = -10;
+        break;
+      case "ArrowUp":
+        delta = 10;
+        break;
+      case "PageDown":
+        delta = -30;
+        break;
+      case "PageUp":
+        delta = 30;
+        break;
+      case "Home":
+        targetTime = 0;
+        break;
+      case "End":
+        targetTime = duration;
+        break;
+      default:
+        return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const newTime =
+      targetTime !== null ? targetTime : Math.max(0, Math.min(duration, currentTime + delta));
+    this.commitSeek(newTime);
+
+    this.updateAria(newTime, duration);
+    if (this.progressPlayed) {
+      this.progressPlayed.style.width = `${(newTime / duration) * 100}%`;
+    }
+  },
+
   updateProgress() {
     const hook = this.getVideoPlayerHook();
 
@@ -150,9 +232,15 @@ const ProgressBar = {
     if (hook?.usingAVPlayer) return;
 
     if (!this.video?.duration || !Number.isFinite(this.video.duration)) return;
+
+    const currentTime = this.video.currentTime || 0;
+    const duration = this.video.duration;
+
+    this.updateAria(currentTime, duration);
+
     if (!this.progressPlayed) return;
 
-    const percent = (this.video.currentTime / this.video.duration) * 100;
+    const percent = (currentTime / duration) * 100;
     this.progressPlayed.style.width = `${percent}%`;
   },
 
@@ -185,6 +273,7 @@ const ProgressBar = {
       this.progressContainer.removeEventListener("click", this.handleClick);
       this.progressContainer.removeEventListener("mousedown", this.handleMouseDown);
       this.progressContainer.removeEventListener("touchstart", this.handleTouchStart);
+      this.progressContainer.removeEventListener("keydown", this.onKeyDown);
     }
 
     // Remove document-level listeners

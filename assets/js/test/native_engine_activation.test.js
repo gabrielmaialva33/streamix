@@ -103,6 +103,8 @@ function createHarness({ state: stateOverrides = {}, hostOverrides = {}, deps = 
       hideLoading: () => calls.presentation.push("hideLoading"),
       keepControlsVisible: () => calls.presentation.push("keepControlsVisible"),
       showLoading: () => calls.presentation.push("showLoading"),
+      showAutoplayBlocked: () => calls.presentation.push("showAutoplayBlocked"),
+      showResumeToast: (time) => calls.presentation.push(["showResumeToast", time]),
     }),
     getSessionId: () => state.sessionId,
     getSourceType: () => state.sourceType,
@@ -405,7 +407,11 @@ test("playAfterResume applies autoplay and unsupported-format policies", async (
   const blocked = createHarness();
   blocked.video.playError = Object.assign(new Error("gesture"), { name: "NotAllowedError" });
   await blocked.activation.playAfterResume(9);
-  assert.deepEqual(blocked.calls.presentation, ["hideLoading", "keepControlsVisible"]);
+  assert.deepEqual(blocked.calls.presentation, [
+    "hideLoading",
+    "showAutoplayBlocked",
+    "keepControlsVisible",
+  ]);
   assert.deepEqual(blocked.calls.errors, []);
 
   const unsupported = createHarness();
@@ -427,6 +433,16 @@ test("playAfterResume applies autoplay and unsupported-format policies", async (
   const stale = createHarness();
   await stale.activation.playAfterResume(1);
   assert.equal(stale.video.playCalls, 0);
+});
+
+test("playAfterResume triggers showResumeToast when resumeTime exceeds 10s (AGY-10)", async () => {
+  const harness = createHarness({ state: { resumeTime: 25 } });
+  await harness.activation.playAfterResume(9, 25);
+  assert.ok(
+    harness.calls.presentation.some(
+      (entry) => Array.isArray(entry) && entry[0] === "showResumeToast" && entry[1] === 25,
+    ),
+  );
 });
 
 test("playAfterResume prefers the registered native engine and defaults the resume time", async () => {

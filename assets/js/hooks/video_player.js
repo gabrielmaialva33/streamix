@@ -1040,6 +1040,8 @@ const VideoPlayer = {
 
     this.observePlaybackState(PLAYBACK_STATE.PLAYING, "playback_started");
     this.setPlaybackSystemState("playing");
+    this.playerUIController.hideAutoplayBlocked();
+    this.playerUIController.hideEndedOverlay();
   },
 
   handlePlaybackPaused() {
@@ -1048,6 +1050,20 @@ const VideoPlayer = {
 
   handlePlaybackEnded() {
     this.setPlaybackSystemState("none");
+    if (!this.nextEpisode) {
+      this.playerUIController.showEndedOverlay(
+        () => {
+          this.seekTo(0);
+          this.play();
+        },
+        () => {
+          const closeBtn = this.el.querySelector("#player-close-btn");
+          if (closeBtn) closeBtn.click();
+          else if (window.history.length > 1) window.history.back();
+          else window.location.href = "/browse";
+        },
+      );
+    }
   },
 
   setupIosPwaTapControls() {
@@ -1209,6 +1225,13 @@ const VideoPlayer = {
       () => this.retryPlaybackFromError(),
       (target, event, handler) => this.lifecycle.listen(target, event, handler),
     );
+    const autoplayPlayBtn = this.el.querySelector("#autoplay-play-btn");
+    if (autoplayPlayBtn) {
+      this.lifecycle.listen(autoplayPlayBtn, "click", () => {
+        this.playerUIController.hideAutoplayBlocked();
+        this.play();
+      });
+    }
     this.setupIosPwaTapControls();
     this.setupMobileControls();
     this.mediaEventBindings.bindMediaEvents();

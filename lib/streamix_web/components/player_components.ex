@@ -132,18 +132,38 @@ defmodule StreamixWeb.PlayerComponents do
       <%!-- Error container --%>
       <div
         id="error-container"
-        class="absolute inset-0 flex items-center justify-center bg-black/80 z-20 hidden"
+        class="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/80 z-40 hidden"
       >
         <div class="flex flex-col items-center gap-4 text-center p-6">
           <.icon name="hero-exclamation-triangle" class="size-16 text-error" />
           <p class="error-message text-white text-lg">Erro ao carregar</p>
           <p class="error-hint hidden max-w-sm text-sm text-white/65"></p>
-          <button
-            type="button"
-            class="retry-btn px-6 py-2 bg-brand hover:bg-brand/80 text-white rounded-lg font-medium transition-colors"
-          >
-            Tentar novamente
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="retry-btn min-h-11 px-6 py-2.5 bg-brand hover:bg-brand/80 text-white rounded-lg font-medium transition-colors"
+            >
+              Tentar novamente
+            </button>
+            <button
+              :if={@on_close}
+              type="button"
+              id="player-error-back-btn"
+              phx-click={@on_close}
+              class="player-error-back-btn min-h-11 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors"
+            >
+              Voltar
+            </button>
+            <button
+              :if={!@on_close}
+              type="button"
+              id="player-error-back-btn"
+              onclick="window.history.length > 1 ? window.history.back() : window.location.href = '/browse'"
+              class="player-error-back-btn min-h-11 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors"
+            >
+              Voltar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -156,6 +176,86 @@ defmodule StreamixWeb.PlayerComponents do
         aria-label="Carregando vídeo"
       >
         <div class="size-12 rounded-full border-4 border-white/20 border-t-brand animate-spin drop-shadow-md sm:size-14" />
+      </div>
+
+      <%!-- Autoplay blocked overlay (CL2-01) --%>
+      <div
+        id="autoplay-overlay"
+        class="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center bg-black/40 hidden"
+        role="dialog"
+        aria-modal="false"
+        aria-label="Reprodução pausada"
+      >
+        <button
+          type="button"
+          id="autoplay-play-btn"
+          aria-label="Iniciar reprodução"
+          class="flex size-20 min-h-11 min-w-11 items-center justify-center rounded-full bg-brand text-white shadow-2xl transition-all hover:scale-110 hover:bg-brand-hover active:scale-95 focus:outline-none focus:ring-4 focus:ring-brand/50 sm:size-24"
+        >
+          <.icon name="hero-play-solid" class="size-10 sm:size-12 translate-x-0.5" aria-hidden="true" />
+        </button>
+      </div>
+
+      <%!-- End of playback overlay (AGY-11) --%>
+      <div
+        id="ended-overlay"
+        class="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center bg-black/85 hidden"
+        role="dialog"
+        aria-modal="false"
+        aria-label="Reprodução finalizada"
+      >
+        <div class="flex flex-col items-center gap-4 text-center p-6 max-w-sm">
+          <.icon name="hero-check-circle" class="size-16 text-brand" />
+          <h3 class="text-xl font-bold text-white">Reprodução finalizada</h3>
+          <p class="text-sm text-white/60">Você chegou ao final do vídeo.</p>
+          <div class="flex items-center gap-3 mt-2">
+            <button
+              type="button"
+              id="ended-replay-btn"
+              class="min-h-11 px-5 py-2.5 bg-brand hover:bg-brand/80 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+            >
+              <.icon name="hero-arrow-path" class="size-4" />
+              <span>Assistir novamente</span>
+            </button>
+            <button
+              :if={@on_close}
+              type="button"
+              id="ended-back-btn"
+              phx-click={@on_close}
+              class="min-h-11 px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
+            >
+              Voltar
+            </button>
+            <button
+              :if={!@on_close}
+              type="button"
+              id="ended-back-btn"
+              onclick="window.history.length > 1 ? window.history.back() : window.location.href = '/browse'"
+              class="min-h-11 px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
+            >
+              Voltar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Auto-resume toast (AGY-10) --%>
+      <div
+        id="resume-toast"
+        class="pointer-events-auto absolute bottom-24 left-4 sm:left-8 z-30 hidden opacity-0 transition-all duration-300 transform -translate-y-2 rounded-lg bg-neutral-900/95 px-4 py-2.5 text-white shadow-2xl border border-white/10 backdrop-blur-md flex items-center gap-3"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="text-xs sm:text-sm text-white/90">
+          Continuando de <span id="resume-time-text" class="font-semibold text-brand">00:00</span>
+        </span>
+        <button
+          type="button"
+          id="resume-restart-btn"
+          class="rounded bg-white/15 px-2.5 py-1 text-xs font-medium text-white hover:bg-white/25 active:scale-95 transition-all"
+        >
+          Recomeçar
+        </button>
       </div>
 
       <%!-- AVPlayer mount point. AVPlayer renders its canvas inside
@@ -223,12 +323,18 @@ defmodule StreamixWeb.PlayerComponents do
                 <p :if={@content_type == :episode} class="text-xs sm:text-sm text-white/60">
                   {@episode_subtitle}
                 </p>
+                <p
+                  :if={@content_type in [:live, :live_channel]}
+                  class="text-xs sm:text-sm text-white/50"
+                >
+                  Programação ao vivo
+                </p>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="flex-1" aria-hidden="true" />
+        <div class="flex-1 pointer-events-none" aria-hidden="true" />
 
         <%!-- Bottom bar --%>
         <div
@@ -273,6 +379,9 @@ defmodule StreamixWeb.PlayerComponents do
       <div
         :if={@next_episode}
         id="next-episode-overlay"
+        role="dialog"
+        aria-live="polite"
+        aria-label="Próximo episódio"
         class="absolute bottom-24 right-4 sm:right-8 z-30 hidden opacity-0 transition-all duration-300 transform translate-x-4"
       >
         <div class="bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl border border-white/10 p-4 max-w-xs sm:max-w-sm">
@@ -309,14 +418,14 @@ defmodule StreamixWeb.PlayerComponents do
             <button
               type="button"
               id="play-next-btn"
-              class="flex-1 px-4 py-2 bg-brand hover:bg-brand/80 text-white text-sm font-medium rounded transition-colors"
+              class="flex-1 min-h-11 px-4 py-2.5 sm:py-2 bg-brand hover:bg-brand/80 text-white text-sm font-medium rounded transition-colors touch-manipulation"
             >
               Reproduzir
             </button>
             <button
               type="button"
               id="cancel-next-btn"
-              class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded transition-colors"
+              class="min-h-11 px-4 py-2.5 sm:py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded transition-colors touch-manipulation"
             >
               Cancelar
             </button>

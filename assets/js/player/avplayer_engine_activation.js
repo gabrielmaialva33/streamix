@@ -314,14 +314,32 @@ export class AvPlayerEngineActivation {
         this.host.setUsingAVPlayer(true);
         this.host.getVideo()?.classList.add("hidden");
 
-        if (playback?.shouldPlay === true) await engine.play();
-        else this.host.handlePlaybackPaused();
+        if (playback?.shouldPlay === true) {
+          try {
+            await engine.play();
+          } catch (error) {
+            if (error?.name === "NotAllowedError" || error?.message?.includes?.("user gesture")) {
+              this.host.getPresentation()?.hideLoading();
+              this.host.getPresentation()?.showAutoplayBlocked?.();
+              this.host.handlePlaybackPaused();
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          this.host.handlePlaybackPaused();
+        }
       },
       complete: ({ capture: playback, engine, sessionId }) => {
         this.startTimeUpdates();
         this.host.updateMediaSessionPosition({ force: true });
         void this.detectTracks(sessionId);
         this.host.getPresentation()?.hideLoading();
+        if ((playback?.resumeTime ?? 0) > 10 && key === "startup-avplayer") {
+          this.host
+            .getPresentation()
+            ?.showResumeToast?.(playback.resumeTime, () => this.host.seekTo(0));
+        }
         this.logger.debug("[VideoPlayer] AVPlayer transition completed", {
           key,
           resumeTime: playback?.resumeTime ?? 0,

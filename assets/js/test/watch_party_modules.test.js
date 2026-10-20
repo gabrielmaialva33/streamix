@@ -395,6 +395,7 @@ test("reactions render into their container and copy feedback restores labels", 
 
   const labels = [];
   const button = {
+    dataset: {},
     getAttribute: () => "Copiar convite",
     setAttribute: (_name, value) => labels.push(value),
   };
@@ -409,8 +410,10 @@ test("reactions render into their container and copy feedback restores labels", 
   assert.equal(body.children[0].id, "watch-party-copy-status");
   assert.equal(body.children[0].textContent, "Link da Watch Party copiado.");
   assert.deepEqual(labels, ["Link copiado"]);
+  assert.equal(button.dataset.copied, "true");
   timerApi.fireTimeout(2_000);
   assert.deepEqual(labels, ["Link copiado", "Copiar convite"]);
+  assert.equal(button.dataset.copied, undefined);
 
   const fallback = createReactionPresenter({ documentRef, navigatorRef: {}, timerApi });
   assert.equal(

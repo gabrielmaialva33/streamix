@@ -55,7 +55,7 @@ defmodule StreamixWeb.WatchPartyLive.Join do
         {:ok,
          socket
          |> put_flash(:error, "Seu plano não permite reproduzir o conteúdo desta sala.")
-         |> redirect(to: ~p"/plans?upgrade=global_catalog")}
+         |> redirect(to: ~p"/plans?upgrade=global_catalog&return_to=#{~p"/party/#{invite_code}"}")}
 
       {:error, _reason} ->
         {:ok,
@@ -74,8 +74,17 @@ defmodule StreamixWeb.WatchPartyLive.Join do
 
   @impl true
   def handle_event("join", _params, socket) do
-    room = socket.assigns.room
-    {:noreply, push_navigate(socket, to: ~p"/party/#{room.invite_code}/watch")}
+    if socket.assigns.capacity.full? do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "A sala atingiu a capacidade máxima. Aguarde uma vaga ser liberada."
+       )}
+    else
+      room = socket.assigns.room
+      {:noreply, push_navigate(socket, to: ~p"/party/#{room.invite_code}/watch")}
+    end
   end
 
   @impl true
@@ -128,7 +137,15 @@ defmodule StreamixWeb.WatchPartyLive.Join do
           type="button"
           phx-click="join"
           phx-disable-with="Abrindo sala..."
-          class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-6 py-3 text-base font-bold text-white shadow-card transition-colors hover:bg-brand-hover focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
+          disabled={@room_full?}
+          aria-disabled={to_string(@room_full?)}
+          class={[
+            "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg px-6 py-3 text-base font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background",
+            @room_full? &&
+              "cursor-not-allowed bg-surface-muted text-text-muted opacity-60 shadow-none",
+            !@room_full? &&
+              "bg-brand text-white shadow-card hover:bg-brand-hover"
+          ]}
         >
           <.icon name="hero-play-solid" class="size-5" /> Entrar na sala
         </button>

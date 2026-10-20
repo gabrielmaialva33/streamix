@@ -48,9 +48,56 @@ defmodule StreamixWeb.WatchPartyLive.JoinTest do
     movie = movie_fixture(provider, %{name: "Premium Join Movie"})
     room = room_fixture(host, movie)
 
-    assert {:error, {:redirect, %{to: "/plans?upgrade=global_catalog"}}} =
+    assert {:error, {:redirect, %{to: to}}} =
              live(conn, ~p"/party/#{room.invite_code}")
 
+    assert to =~ "/plans?upgrade=global_catalog"
+    assert to =~ "return_to=%2Fparty%2F#{room.invite_code}"
+
+    refute active_participant?(room.id, guest.id)
+  end
+
+  test "full room disables join button and blocks join event (AGY-03)", %{
+    conn: conn,
+    user: guest
+  } do
+    {:ok, guest} = Streamix.Accounts.make_admin_user(guest)
+    host = user_fixture()
+
+    provider =
+      provider_fixture(host, %{
+        visibility: "global",
+        is_system: true,
+        provider_type: "xtream",
+        is_active: true
+      })
+
+    movie = movie_fixture(provider, %{name: "Full Room Movie"})
+    room = room_fixture(host, movie)
+
+    # Fill room to maximum capacity (10 participants)
+    for _i <- 1..10 do
+      other_user = user_fixture()
+
+      %Participant{}
+      |> Participant.join_changeset(%{
+        room_id: room.id,
+        user_id: other_user.id,
+        role: "viewer"
+      })
+      |> Repo.insert!()
+    end
+
+    {:ok, view, html} = live(conn, ~p"/party/#{room.invite_code}")
+
+    assert html =~ "A sala está cheia agora"
+    assert html =~ "disabled"
+    assert html =~ ~s(aria-disabled="true")
+    assert html =~ "cursor-not-allowed"
+
+    # Even if client triggers join event, server flashes error instead of redirecting
+    render_click(view, "join", %{})
+    assert render(view) =~ "A sala atingiu a capacidade máxima"
     refute active_participant?(room.id, guest.id)
   end
 

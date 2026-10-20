@@ -241,6 +241,9 @@ export class NativeEngineActivation {
       await (nativeEngine ? nativeEngine.play() : video.play());
       if (!isCurrent()) return;
       this.trace("native_play_resolved", sessionId, { resume_time: resumeTime });
+      if (resumeTime > 10) {
+        this.host.getPresentation()?.showResumeToast?.(resumeTime, () => this.host.seekTo(0));
+      }
     } catch (error) {
       if (!isCurrent()) return;
       if (error?.name === "AbortError") return;
@@ -259,8 +262,7 @@ export class NativeEngineActivation {
       }
 
       if (error?.name === "NotAllowedError") {
-        // Keep the standard bottom controls visible so the user can start
-        // playback without covering the video with an autoplay overlay.
+        presentation?.showAutoplayBlocked?.();
         presentation?.keepControlsVisible();
       } else {
         this.host.showPlaybackError(`Falha ao iniciar reproducao: ${error?.message}`);

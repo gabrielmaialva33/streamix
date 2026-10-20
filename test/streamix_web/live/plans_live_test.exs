@@ -165,6 +165,26 @@ defmodule StreamixWeb.PlansLiveTest do
 
       assert_redirect(view, ~p"/billing")
     end
+
+    test "a trial goes back to a local return_to, never elsewhere", %{conn: conn} do
+      plan_fixture(name: "Trial", slug: "trial", price_cents: 0, trial_days: 7)
+
+      {:ok, view, _html} = live(conn, ~p"/plans?return_to=/watch/movie/42")
+      view |> element("#plan-cta-trial") |> render_click()
+      assert_redirect(view, "/watch/movie/42")
+    end
+
+    for unsafe <- ["//evil.test", "/\\evil.test", "/\t/evil.test", "https://evil.test"] do
+      test "ignores the unsafe return_to #{inspect(unsafe)}", %{conn: conn} do
+        plan_fixture(name: "Trial", slug: "trial", price_cents: 0, trial_days: 7)
+
+        {:ok, view, _html} =
+          live(conn, "/plans?" <> URI.encode_query(%{return_to: unquote(unsafe)}))
+
+        view |> element("#plan-cta-trial") |> render_click()
+        assert_redirect(view, ~p"/billing")
+      end
+    end
   end
 
   describe "billing plans" do

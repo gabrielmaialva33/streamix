@@ -5,10 +5,23 @@ import { createControllerChangeGuard } from "./service_worker_runtime";
 const showUpdateToast = (waitingWorker) => {
   if (document.getElementById("sw-update-toast")) return;
 
+  const isPlayerActive =
+    document.getElementById("video-player-container") !== null ||
+    document.getElementById("watch-party-sync") !== null ||
+    (typeof window !== "undefined" && window.location?.pathname?.startsWith?.("/watch/"));
+
   const toast = document.createElement("div");
   toast.id = "sw-update-toast";
-  toast.className =
-    "fixed bottom-4 right-4 z-[9999] flex max-w-[calc(100vw-2rem)] items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-300";
+  if (isPlayerActive) {
+    toast.classList.add("player-active");
+    toast.dataset.player = "true";
+  }
+
+  const positionClasses = isPlayerActive
+    ? "fixed top-4 right-4 z-[9999] flex max-w-[calc(100vw-2rem)] items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg shadow-2xl animate-in slide-in-from-top-4 fade-in duration-300"
+    : "fixed bottom-20 sm:bottom-4 right-4 z-[9999] flex max-w-[calc(100vw-2rem)] items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-300";
+
+  toast.className = `${positionClasses}${isPlayerActive ? " player-active" : ""}`;
 
   const content = document.createElement("div");
   content.className = "flex-1";

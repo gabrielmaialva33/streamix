@@ -24,6 +24,24 @@ const WatchPartyChat = {
     }
     this.syncFocusTrap();
 
+    this.onResize = () => this.syncViewportHeight();
+    window.addEventListener("resize", this.onResize);
+
+    this.onInputFocus = () => {
+      if (this.mobileQuery?.matches) {
+        this.setReactionsCollapsed(true);
+      }
+    };
+    this.onInputBlur = () => {
+      if (this.mobileQuery?.matches) {
+        this.syncViewportHeight();
+      }
+    };
+
+    this.input?.addEventListener("focus", this.onInputFocus);
+    this.input?.addEventListener("blur", this.onInputBlur);
+    this.syncViewportHeight();
+
     this.focusFrame = requestAnimationFrame(() => {
       this.focusFrame = null;
       this.scrollToBottom();
@@ -44,6 +62,9 @@ const WatchPartyChat = {
   destroyed() {
     if (this.focusFrame !== null) cancelAnimationFrame(this.focusFrame);
     this.focusFrame = null;
+    if (this.onResize) window.removeEventListener("resize", this.onResize);
+    this.input?.removeEventListener("focus", this.onInputFocus);
+    this.input?.removeEventListener("blur", this.onInputBlur);
     if (this.mobileQuery?.removeEventListener) {
       this.mobileQuery.removeEventListener("change", this.onViewportModeChange);
     } else {
@@ -53,9 +74,28 @@ const WatchPartyChat = {
     this.focusTrap = null;
     this.mobileQuery = null;
     this.onViewportModeChange = null;
+    this.onResize = null;
+    this.onInputFocus = null;
+    this.onInputBlur = null;
     this.messages = null;
     this.input = null;
     this.trigger = null;
+  },
+
+  setReactionsCollapsed(collapsed) {
+    const reactionBar = this.el.querySelector("#wp-chat-reaction-bar");
+    if (!reactionBar) return;
+    reactionBar.classList.toggle("hidden", collapsed);
+  },
+
+  syncViewportHeight() {
+    if (!this.mobileQuery?.matches) {
+      this.setReactionsCollapsed(false);
+      return;
+    }
+    const height = window.visualViewport?.height || window.innerHeight;
+    const isSmallHeight = height < 550;
+    this.setReactionsCollapsed(isSmallHeight);
   },
 
   syncFocusTrap() {

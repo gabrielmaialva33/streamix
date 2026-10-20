@@ -51,11 +51,13 @@
       aria-hidden="true"
     />
 
-    <div class="absolute right-14 top-3 z-40 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-2 py-1.5 shadow-card backdrop-blur-md">
-      <.presence_indicators presences={@presences} />
-      <div class="h-6 w-px bg-white/10" aria-hidden="true" />
-      <.invite_badge invite_code={@room.invite_code} />
-      <div class="h-6 w-px bg-white/10" aria-hidden="true" />
+    <div class="absolute right-3 sm:right-14 top-3 z-40 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-2 py-1.5 shadow-card backdrop-blur-md">
+      <div class="hidden sm:flex items-center gap-2">
+        <.presence_indicators presences={@presences} />
+        <div class="h-6 w-px bg-white/10" aria-hidden="true" />
+        <.invite_badge invite_code={@room.invite_code} />
+        <div class="h-6 w-px bg-white/10" aria-hidden="true" />
+      </div>
 
       <button
         type="button"
@@ -93,7 +95,7 @@
 
     <div
       :if={Status.show?(@is_host, @host_status, @sync_status)}
-      class="pointer-events-none absolute left-1/2 top-[calc(4.75rem+env(safe-area-inset-top,0px))] z-20 max-w-[calc(100vw-2rem)] -translate-x-1/2"
+      class="pointer-events-none absolute left-1/2 top-[calc(6.5rem+env(safe-area-inset-top,0px))] sm:top-[calc(5rem+env(safe-area-inset-top,0px))] z-20 max-w-[calc(100vw-2rem)] -translate-x-1/2"
     >
       <span
         id="watch-party-sync-status"
@@ -121,5 +123,7 @@
     message_input={@message_input}
     room_id={@room.id}
     error={@chat_error}
+    presences={@presences}
+    invite_code={@room.invite_code}
   />
 </div>

@@ -120,29 +120,40 @@ export class PlayerUI {
       returnFocusTo: triggerBtn,
       onEscape: () => {
         menu.classList.add("hidden");
+        menu.style.display = "none";
         triggerBtn.setAttribute("aria-expanded", "false");
       },
     });
 
     this.focusTraps.set(name, focusTrap);
 
+    const checkVisibility = () => {
+      const isHidden =
+        menu.classList.contains("hidden") ||
+        menu.style.display === "none" ||
+        (typeof window !== "undefined" && window.getComputedStyle
+          ? window.getComputedStyle(menu).display === "none"
+          : false);
+
+      if (isHidden) {
+        focusTrap.deactivate();
+        triggerBtn.setAttribute("aria-expanded", "false");
+      } else {
+        focusTrap.activate();
+        triggerBtn.setAttribute("aria-expanded", "true");
+      }
+    };
+
     // Use MutationObserver to detect when menu visibility changes
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.attributeName === "class") {
-          const isHidden = menu.classList.contains("hidden");
-          if (isHidden) {
-            focusTrap.deactivate();
-            triggerBtn.setAttribute("aria-expanded", "false");
-          } else {
-            focusTrap.activate();
-            triggerBtn.setAttribute("aria-expanded", "true");
-          }
+        if (mutation.attributeName === "class" || mutation.attributeName === "style") {
+          checkVisibility();
         }
       }
     });
 
-    observer.observe(menu, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(menu, { attributes: true, attributeFilter: ["class", "style"] });
 
     // Store observer for cleanup
     if (!this._menuObservers) {
@@ -306,11 +317,25 @@ export class PlayerUI {
   }
 
   updateProgressBar(currentTime, duration) {
-    const { progressPlayed } = this.elements;
-    if (!progressPlayed || !duration || !Number.isFinite(duration)) return;
+    const { progressPlayed, progressContainer } = this.elements;
+    if (!duration || !Number.isFinite(duration)) return;
 
-    const percent = (currentTime / duration) * 100;
-    progressPlayed.style.width = `${percent}%`;
+    if (progressPlayed) {
+      const percent = (currentTime / duration) * 100;
+      progressPlayed.style.width = `${percent}%`;
+    }
+
+    if (progressContainer) {
+      const cur = Math.round(currentTime || 0);
+      const dur = Math.round(duration || 0);
+      progressContainer.setAttribute("aria-valuenow", String(cur));
+      progressContainer.setAttribute("aria-valuemin", "0");
+      progressContainer.setAttribute("aria-valuemax", String(dur));
+      progressContainer.setAttribute(
+        "aria-valuetext",
+        `${this.formatTime(cur)} de ${this.formatTime(dur)}`,
+      );
+    }
   }
 
   /**
@@ -579,7 +604,11 @@ export class PlayerUI {
 
     const audioHidden = this.elements.audioSection?.classList.contains("hidden") ?? true;
     const subtitleHidden = this.elements.subtitleSection?.classList.contains("hidden") ?? true;
-    emptyNotice.classList.toggle("hidden", !(audioHidden && subtitleHidden));
+    const isEmpty = audioHidden && subtitleHidden;
+    emptyNotice.classList.toggle("hidden", !isEmpty);
+    if (this.elements.tracksButton) {
+      this.elements.tracksButton.classList.toggle("opacity-60", isEmpty);
+    }
   }
 
   updateSubtitleOffsetLabel(label) {
@@ -768,6 +797,94 @@ export class PlayerUI {
     setTimeout(() => toast.remove(), 2000);
   }
 
+  showAutoplayBlocked() {
+    this.hideLoading();
+    const overlay = this.container.querySelector("#autoplay-overlay");
+    if (overlay) {
+      overlay.classList.remove("hidden");
+    }
+  }
+
+  hideAutoplayBlocked() {
+    const overlay = this.container.querySelector("#autoplay-overlay");
+    if (overlay) {
+      overlay.classList.add("hidden");
+    }
+  }
+
+  showResumeToast(resumeSeconds, onRestart) {
+    const toast = this.container.querySelector("#resume-toast");
+    const timeText = this.container.querySelector("#resume-time-text");
+    const restartBtn = this.container.querySelector("#resume-restart-btn");
+    if (!toast) return;
+
+    if (timeText) {
+      timeText.textContent = this.formatTime(resumeSeconds);
+    }
+
+    if (restartBtn && typeof onRestart === "function") {
+      restartBtn.onclick = () => {
+        this.hideResumeToast();
+        onRestart();
+      };
+    }
+
+    toast.classList.remove("hidden");
+    const rAF = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => cb();
+    rAF(() => {
+      toast.classList.remove("opacity-0", "-translate-y-2");
+    });
+
+    if (this._resumeToastTimeout) clearTimeout(this._resumeToastTimeout);
+    this._resumeToastTimeout = setTimeout(() => {
+      this.hideResumeToast();
+    }, 5000);
+  }
+
+  hideResumeToast() {
+    if (this._resumeToastTimeout) {
+      clearTimeout(this._resumeToastTimeout);
+      this._resumeToastTimeout = null;
+    }
+    const toast = this.container.querySelector("#resume-toast");
+    if (!toast) return;
+
+    toast.classList.add("opacity-0", "-translate-y-2");
+    setTimeout(() => {
+      toast.classList.add("hidden");
+    }, 300);
+  }
+
+  showEndedOverlay(onReplay, onBack) {
+    const overlay = this.container.querySelector("#ended-overlay");
+    const replayBtn = this.container.querySelector("#ended-replay-btn");
+    const backBtn = this.container.querySelector("#ended-back-btn");
+    if (!overlay) return;
+
+    if (replayBtn && typeof onReplay === "function") {
+      replayBtn.onclick = () => {
+        this.hideEndedOverlay();
+        onReplay();
+      };
+    }
+
+    if (backBtn && typeof onBack === "function") {
+      backBtn.onclick = () => {
+        this.hideEndedOverlay();
+        onBack();
+      };
+    }
+
+    overlay.classList.remove("hidden");
+  }
+
+  hideEndedOverlay() {
+    const overlay = this.container.querySelector("#ended-overlay");
+    if (overlay) {
+      overlay.classList.add("hidden");
+    }
+  }
+
   // ============================================
   // Cleanup
   // ============================================
@@ -779,6 +896,11 @@ export class PlayerUI {
     if (this._loadingSafetyTimeout) {
       clearTimeout(this._loadingSafetyTimeout);
       this._loadingSafetyTimeout = null;
+    }
+
+    if (this._resumeToastTimeout) {
+      clearTimeout(this._resumeToastTimeout);
+      this._resumeToastTimeout = null;
     }
 
     // Cleanup focus traps

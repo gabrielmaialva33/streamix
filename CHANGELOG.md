@@ -108,6 +108,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Meus provedores no longer lists the platform's system providers to regular users (admins still manage them, without
   a delete button); a provider's catalog has a header with its name, a way back and a 44 px "Sincronizar". Torrents,
   Dramas curtos (now with search) and the admin pages (pt-BR intervals, "R$ 0,00", accents) got the same polish.
+- The player handles its edges: when the browser blocks autoplay it shows a large play button instead of an endless
+  spinner; errors offer "Tentar novamente" (now clickable) and "Voltar"; a resume toast offers "Recomeçar"; the end
+  of a movie or last episode offers "Assistir novamente" or "Voltar"; the timeline is a keyboard slider ("Posição do
+  vídeo", arrows, Page Up/Down, Home/End); and the update notice moves to the top while a player is open.
+- Watch Party rooms on phones keep the header clear and the video visible under a shorter chat sheet; a full room
+  disables "Entrar"; copying the invite says "Copiado!"; the paywall returns you to the room or title afterwards.
 - The player shows a centered spinner while buffering instead of a red pulsing dot (which read as recording), has
   an "Áudio e legendas" button in the control bar with a quick subtitles on/off (also on the `C` key, restoring
   the last subtitle used), and every control is a 44 px target with a backdrop on phones.

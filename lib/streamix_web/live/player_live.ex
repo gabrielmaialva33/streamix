@@ -431,13 +431,15 @@ defmodule StreamixWeb.PlayerLive do
     if Access.plays_global_content?(socket.assigns.current_scope.user, provider) do
       load_authorized_content(socket, type, user_id, content, provider, return_to)
     else
+      target_path = return_to || ~p"/watch/#{type}/#{content.id}"
+
       {:ok,
        socket
        |> put_flash(
          :error,
          "Você precisa de uma assinatura ativa ou permissão para assistir conteúdo global."
        )
-       |> redirect(to: ~p"/plans")}
+       |> redirect(to: ~p"/plans?return_to=#{target_path}")}
     end
   end
 
@@ -663,12 +665,16 @@ defmodule StreamixWeb.PlayerLive do
         socket
 
       not Access.plays_global_content?(socket.assigns.current_scope.user, provider) ->
+        target_path =
+          socket.assigns[:return_to] ||
+            ~p"/watch/#{socket.assigns.content_type}/#{content.id}"
+
         socket
         |> put_flash(
           :error,
           "Sua assinatura não está mais ativa. Renove para continuar assistindo."
         )
-        |> redirect(to: ~p"/plans")
+        |> redirect(to: ~p"/plans?return_to=#{target_path}")
 
       true ->
         push_refreshed_stream_token(socket, content, provider, now)

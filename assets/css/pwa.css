@@ -100,3 +100,10 @@ html.ios-pwa #sw-update-toast {
     left: max(1rem, env(safe-area-inset-left));
 }
 
+html.ios-pwa #sw-update-toast.player-active {
+    bottom: auto;
+    top: max(1rem, env(safe-area-inset-top));
+    right: max(1rem, env(safe-area-inset-right));
+    left: auto;
+}
+

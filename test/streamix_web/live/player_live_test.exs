@@ -162,10 +162,11 @@ defmodule StreamixWeb.PlayerLiveTest do
       result = live(conn, ~p"/watch/live_channel/#{channel.id}")
 
       assert {:error, {:redirect, %{to: to, flash: flash}}} = result
-      assert to == ~p"/plans"
+      assert to =~ "/plans?return_to="
+      assert to =~ URI.encode_www_form(~p"/watch/live_channel/#{channel.id}")
       assert flash["error"] =~ "assinatura"
 
-      {:ok, plans_conn} = follow_redirect(result, conn, ~p"/plans")
+      {:ok, plans_conn} = follow_redirect(result, conn, to)
       refute html_response(plans_conn, 200) =~ "Canal Global Bloqueado"
     end
 
@@ -187,7 +188,8 @@ defmodule StreamixWeb.PlayerLiveTest do
       result = live(conn, ~p"/watch/movie/#{movie.id}")
 
       assert {:error, {:redirect, %{to: to, flash: flash}}} = result
-      assert to == ~p"/plans"
+      assert to =~ "/plans?return_to="
+      assert to =~ URI.encode_www_form(~p"/watch/movie/#{movie.id}")
       assert flash["error"] =~ "assinatura"
     end
 
@@ -204,7 +206,8 @@ defmodule StreamixWeb.PlayerLiveTest do
       result = live(conn, ~p"/watch/gindex/#{movie.id}")
 
       assert {:error, {:redirect, %{to: to, flash: flash}}} = result
-      assert to == ~p"/plans"
+      assert to =~ "/plans?return_to="
+      assert to =~ URI.encode_www_form(~p"/watch/gindex/#{movie.id}")
       assert flash["error"] =~ "assinatura"
     end
 
@@ -390,7 +393,8 @@ defmodule StreamixWeb.PlayerLiveTest do
 
       render_hook(view, "request_token_refresh", %{})
 
-      assert_redirect(view, "/plans")
+      expected_redirect = ~p"/plans?return_to=#{~p"/watch/live_channel/#{channel.id}"}"
+      assert_redirect(view, expected_redirect)
     end
 
     test "private and public content owned by the user still opens without subscription", %{

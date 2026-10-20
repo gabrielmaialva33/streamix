@@ -69,6 +69,7 @@ function createWrapperClass(behaviour = {}) {
     }
     async play() {
       this.calls.push(["play"]);
+      if (behaviour.playError) throw behaviour.playError;
     }
     pause() {
       this.calls.push(["pause"]);
@@ -205,6 +206,8 @@ function createHarness({ state: stateOverrides = {}, hostOverrides = {}, wrapper
       hideError: () => calls.presentation.push("hideError"),
       hideLoading: () => calls.presentation.push("hideLoading"),
       showLoading: () => calls.presentation.push("showLoading"),
+      showAutoplayBlocked: () => calls.presentation.push("showAutoplayBlocked"),
+      showResumeToast: (time) => calls.presentation.push(["showResumeToast", time]),
       updatePlayPauseUI: (paused) => calls.presentation.push(`playPause:${paused}`),
     }),
     getProxyUrl: () => state.proxyUrl,
@@ -558,4 +561,17 @@ test("buildLoadOptions only uses the heavy profile for GIndex MKV VOD", () => {
 
   const xtream = createHarness({ state: { sourceType: "xtream" } });
   assert.deepEqual(xtream.activation.buildLoadOptions("mkv", false), { ext: "mkv", isLive: false });
+});
+
+test("AVPlayer handles autoplay NotAllowedError by showing autoplay blocked overlay (CL2-01)", async () => {
+  const notAllowedError = new Error("Autoplay rejected");
+  notAllowedError.name = "NotAllowedError";
+
+  const harness = createHarness({
+    wrapper: { playError: notAllowedError },
+  });
+
+  await harness.activation.activate(harness.request());
+  assert.ok(harness.calls.presentation.includes("showAutoplayBlocked"));
+  assert.ok(harness.calls.playback.includes("paused"));
 });

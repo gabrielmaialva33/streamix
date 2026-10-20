@@ -237,3 +237,148 @@ test("updates tracks empty state when sections are hidden or visible (agy-15)", 
   PlayerUI.prototype.updateTracksEmptyState.call(ui);
   assert.equal(tracksEmpty.classList.contains("hidden"), true);
 });
+
+test("updates tracks empty state applies opacity-60 to tracks button when empty (AGY-08)", () => {
+  const tracksEmpty = elementDouble();
+  const tracksButton = elementDouble();
+  const audioSection = elementDouble(["hidden"]);
+  const subtitleSection = elementDouble(["hidden"]);
+  const container = {
+    querySelector: (selector) => (selector === "#tracks-empty" ? tracksEmpty : null),
+  };
+  const ui = {
+    container,
+    elements: { audioSection, subtitleSection, tracksButton },
+  };
+
+  // Both hidden -> tracksButton gets opacity-60
+  PlayerUI.prototype.updateTracksEmptyState.call(ui);
+  assert.equal(tracksButton.classList.contains("opacity-60"), true);
+
+  // When subtitles available -> opacity-60 is removed
+  subtitleSection.classList.remove("hidden");
+  PlayerUI.prototype.updateTracksEmptyState.call(ui);
+  assert.equal(tracksButton.classList.contains("opacity-60"), false);
+});
+
+test("updateProgressBar updates ARIA slider attributes on progressContainer (A2-C11)", () => {
+  const progressPlayed = elementDouble();
+  const progressContainer = elementDouble();
+  const ui = {
+    elements: { progressPlayed, progressContainer },
+    formatTime: (s) => (s === 60 ? "01:00" : "02:00"),
+  };
+
+  PlayerUI.prototype.updateProgressBar.call(ui, 60, 120);
+
+  assert.equal(progressPlayed.style.width, "50%");
+  assert.equal(progressContainer.getAttribute("aria-valuenow"), "60");
+  assert.equal(progressContainer.getAttribute("aria-valuemin"), "0");
+  assert.equal(progressContainer.getAttribute("aria-valuemax"), "120");
+  assert.equal(progressContainer.getAttribute("aria-valuetext"), "01:00 de 02:00");
+});
+
+test("showAutoplayBlocked and hideAutoplayBlocked toggle overlay (CL2-01)", () => {
+  const overlay = elementDouble(["hidden"]);
+  let hideLoadingCalled = false;
+  const container = {
+    querySelector: (selector) => (selector === "#autoplay-overlay" ? overlay : null),
+  };
+  const ui = {
+    container,
+    hideLoading: () => {
+      hideLoadingCalled = true;
+    },
+  };
+
+  PlayerUI.prototype.showAutoplayBlocked.call(ui);
+  assert.equal(hideLoadingCalled, true);
+  assert.equal(overlay.classList.contains("hidden"), false);
+
+  PlayerUI.prototype.hideAutoplayBlocked.call(ui);
+  assert.equal(overlay.classList.contains("hidden"), true);
+});
+
+test("showResumeToast and hideResumeToast bind restart callback and format time (AGY-10)", () => {
+  const toast = elementDouble(["hidden", "opacity-0", "-translate-y-2"]);
+  const timeText = elementDouble();
+  const restartBtn = elementDouble();
+  let restarted = false;
+
+  const container = {
+    querySelector: (selector) => {
+      if (selector === "#resume-toast") return toast;
+      if (selector === "#resume-time-text") return timeText;
+      if (selector === "#resume-restart-btn") return restartBtn;
+      return null;
+    },
+  };
+  const ui = {
+    container,
+    formatTime: (s) => (s === 95 ? "01:35" : `${s}`),
+    hideResumeToast() {
+      toast.classList.add("hidden");
+    },
+  };
+
+  PlayerUI.prototype.showResumeToast.call(ui, 95, () => {
+    restarted = true;
+  });
+
+  assert.equal(timeText.textContent, "01:35");
+  assert.equal(toast.classList.contains("hidden"), false);
+
+  restartBtn.onclick();
+  assert.equal(restarted, true);
+  assert.equal(toast.classList.contains("hidden"), true);
+});
+
+test("showEndedOverlay and hideEndedOverlay bind replay and back actions (AGY-11)", () => {
+  const overlay = elementDouble(["hidden"]);
+  const replayBtn = elementDouble();
+  const backBtn = elementDouble();
+  let replayed = false;
+  let backed = false;
+
+  const container = {
+    querySelector: (selector) => {
+      if (selector === "#ended-overlay") return overlay;
+      if (selector === "#ended-replay-btn") return replayBtn;
+      if (selector === "#ended-back-btn") return backBtn;
+      return null;
+    },
+  };
+  const ui = {
+    container,
+    hideEndedOverlay() {
+      overlay.classList.add("hidden");
+    },
+  };
+
+  PlayerUI.prototype.showEndedOverlay.call(
+    ui,
+    () => {
+      replayed = true;
+    },
+    () => {
+      backed = true;
+    },
+  );
+
+  assert.equal(overlay.classList.contains("hidden"), false);
+
+  replayBtn.onclick();
+  assert.equal(replayed, true);
+  assert.equal(overlay.classList.contains("hidden"), true);
+
+  PlayerUI.prototype.showEndedOverlay.call(
+    ui,
+    () => {},
+    () => {
+      backed = true;
+    },
+  );
+  backBtn.onclick();
+  assert.equal(backed, true);
+  assert.equal(overlay.classList.contains("hidden"), true);
+});

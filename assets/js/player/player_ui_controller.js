@@ -184,6 +184,36 @@ export class PlayerUiController {
     this.ui.showLoading();
   }
 
+  showAutoplayBlocked() {
+    if (this._destroyed) return;
+    this.ui.showAutoplayBlocked?.();
+  }
+
+  hideAutoplayBlocked() {
+    if (this._destroyed) return;
+    this.ui.hideAutoplayBlocked?.();
+  }
+
+  showResumeToast(time, onRestart) {
+    if (this._destroyed) return;
+    this.ui.showResumeToast?.(time, onRestart);
+  }
+
+  hideResumeToast() {
+    if (this._destroyed) return;
+    this.ui.hideResumeToast?.();
+  }
+
+  showEndedOverlay(onReplay, onBack) {
+    if (this._destroyed) return;
+    this.ui.showEndedOverlay?.(onReplay, onBack);
+  }
+
+  hideEndedOverlay() {
+    if (this._destroyed) return;
+    this.ui.hideEndedOverlay?.();
+  }
+
   setPiPState(active) {
     if (this._destroyed) return false;
 

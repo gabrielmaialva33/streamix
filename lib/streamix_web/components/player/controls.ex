@@ -14,13 +14,20 @@ defmodule StreamixWeb.PlayerComponents.Controls do
     <div class="py-2 -my-2">
       <div
         id="progress-container"
+        role="slider"
+        tabindex={if @disabled, do: "-1", else: "0"}
+        aria-label="Posição do vídeo"
+        aria-valuemin="0"
+        aria-valuemax="0"
+        aria-valuenow="0"
+        aria-valuetext="00:00 de 00:00"
+        aria-disabled={to_string(@disabled)}
         class={[
-          "relative h-1.5 sm:h-1 bg-white/30 rounded-full group/progress transition-all touch-none",
+          "relative h-1.5 sm:h-1 bg-white/30 rounded-full group/progress transition-all touch-none focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-black",
           !@disabled && "cursor-pointer active:h-2 sm:hover:h-1.5",
           @disabled && "pointer-events-none cursor-not-allowed opacity-70"
         ]}
         phx-hook={if @disabled, do: nil, else: "ProgressBar"}
-        aria-disabled={to_string(@disabled)}
       >
         <div
           id="progress-buffered"
@@ -199,7 +206,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
       </button>
       <div
         id="tracks-menu"
-        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[280px] max-w-[320px] border border-white/10 max-h-[60vh] overflow-y-auto z-40"
+        class="absolute bottom-full -right-12 sm:right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[280px] sm:max-w-[320px] border border-white/10 max-h-[60vh] overflow-y-auto z-40"
         phx-click-away={JS.hide(to: "#tracks-menu")}
       >
         <div id="tracks-empty" class="px-4 py-3 text-xs text-white/50 text-center">
