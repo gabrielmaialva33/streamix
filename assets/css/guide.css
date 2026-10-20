@@ -183,10 +183,22 @@
         top: 0;
         bottom: 0;
         width: 2px;
-        background: var(--color-brand);
         pointer-events: none;
         z-index: 1;
     }
+    /* Keep the time position visible inside the 10px content padding,
+       without drawing across programme titles, times or progress bars. */
+    .guide-now-line::before,
+    .guide-now-line::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 6px;
+        background: var(--color-brand);
+    }
+    .guide-now-line::before { top: 0; }
+    .guide-now-line::after { bottom: 0; }
 }
 
 @media (min-width: 1024px) {
