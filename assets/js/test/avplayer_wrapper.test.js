@@ -164,3 +164,125 @@ test("track selection and delay degrade safely before AVPlayer is ready", async 
   assert.equal(await wrapper.selectSubtitleTrack(1), false);
   assert.equal(wrapper.setSubtitleDelay(100), false);
 });
+
+const stream = (id, mediaType, metadata = {}, extra = {}) => ({
+  id,
+  index: id,
+  mediaType,
+  metadata,
+  timeBase: { num: 1, den: 1_000 },
+  ...extra,
+});
+
+// The GIndex MKV that listed a dozen "audio" tracks: two real audio streams and
+// subtitles whose low BPS fooled the old bitrate guess.
+const mkvStreams = () => [
+  stream(0, "Video", { BPS: "8000000" }),
+  stream(1, "Audio", { language: "por", BPS: "256000" }, { codecparProxy: { channels: 2 } }),
+  stream(
+    2,
+    "Audio",
+    { language: "eng", BPS: "640000" },
+    {
+      codecparProxy: { chLayout: { nbChannels: 6 } },
+    },
+  ),
+  stream(3, "Subtitle", { language: "por", BPS: "120" }),
+  stream(4, "Subtitle", { language: "eng", title: "SDH", BPS: "130" }, { disposition: 0x40 }),
+];
+
+test("lists audio tracks by media type, with language, channels and selection", async () => {
+  const wrapper = createWrapper();
+  wrapper.player = createPlayer({ getStreams: mkvStreams, getSelectedAudioStreamId: () => 2 });
+
+  assert.deepEqual(await wrapper.getAudioTracks(), [
+    {
+      id: 1,
+      index: 0,
+      streamIndex: 1,
+      label: "Audio 1",
+      language: "por",
+      channels: 2,
+      selected: false,
+    },
+    {
+      id: 2,
+      index: 1,
+      streamIndex: 2,
+      label: "Audio 2",
+      language: "eng",
+      channels: 6,
+      selected: true,
+    },
+  ]);
+
+  const subtitles = await wrapper.getSubtitleTracks();
+  assert.deepEqual(
+    subtitles.map(({ id, label, language, forced }) => ({ id, label, language, forced })),
+    [
+      { id: 3, label: "Subtitle 1", language: "por", forced: false },
+      { id: 4, label: "SDH", language: "eng", forced: true },
+    ],
+  );
+});
+
+const withWindow = async (fn) => {
+  const previous = globalThis.window;
+  globalThis.window = {};
+  try {
+    await fn();
+  } finally {
+    globalThis.window = previous;
+  }
+};
+
+test("play starts the subtitle renderer and hides it until the viewer picks a track", () =>
+  withWindow(async () => {
+    const calls = [];
+    const wrapper = createWrapper();
+    wrapper.player = createPlayer({
+      getStreams: mkvStreams,
+      async play(options) {
+        calls.push(["play", options]);
+      },
+      async selectSubtitle(id) {
+        calls.push(["subtitle", id]);
+      },
+      setSubtitleEnable(enabled) {
+        calls.push(["subtitle-enabled", enabled]);
+      },
+    });
+
+    await wrapper.play();
+    await wrapper.selectSubtitleTrack(4);
+    // A later play (resume) must not hide the track the viewer chose.
+    await wrapper.play();
+
+    assert.deepEqual(calls, [
+      ["play", { video: true, audio: true, subtitle: true }],
+      ["subtitle-enabled", false],
+      ["subtitle", 4],
+      ["subtitle-enabled", true],
+      ["play", { video: true, audio: true, subtitle: true }],
+    ]);
+  }));
+
+test("play keeps the subtitle renderer off when a stream would crash it", () =>
+  withWindow(async () => {
+    const calls = [];
+    const wrapper = createWrapper();
+    const broken = stream(5, "Subtitle", { language: "spa" }, { timeBase: { num: 0, den: 1_000 } });
+    wrapper.player = createPlayer({
+      getStreams: () => [...mkvStreams(), broken],
+      async play(options) {
+        calls.push(["play", options]);
+      },
+      setSubtitleEnable(enabled) {
+        calls.push(["subtitle-enabled", enabled]);
+      },
+    });
+
+    await wrapper.play();
+
+    assert.deepEqual(calls, [["play", { video: true, audio: true, subtitle: false }]]);
+  }));

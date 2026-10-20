@@ -37,6 +37,24 @@ const scriptLoadPromises = new Map();
 // Track active audio detection to prevent AudioContext leaks during rapid zapping
 let activeAudioDetection = null;
 
+// FFmpeg's AVDisposition bit, which libmedia keeps on each stream.
+const AV_DISPOSITION_FORCED = 0x40;
+
+function hasDisposition(stream, flag) {
+  return (Number(stream?.disposition) & flag) === flag;
+}
+
+// The codec parameters proxy reads WASM memory; a stream without readable
+// parameters simply reports no channel count.
+function streamChannels(stream) {
+  try {
+    const codecpar = stream?.codecparProxy;
+    return Number(codecpar?.chLayout?.nbChannels || codecpar?.channels) || 0;
+  } catch (_error) {
+    return 0;
+  }
+}
+
 function configureLibmediaLogging() {
   // libmedia reads COMMON_LOG_LEVEL from the global object. Keep its noisy
   // demux/decode info out of production consoles, but preserve it in debug.
@@ -476,6 +494,9 @@ export class AVPlayerWrapper {
     this._currentTimeMs = 0;
     this._durationMs = 0;
     this._volume = 1;
+    // Whether the viewer picked an embedded subtitle; until then the renderer
+    // play() starts stays hidden.
+    this._subtitleChosen = false;
   }
 
   /**
@@ -747,6 +768,7 @@ export class AVPlayerWrapper {
     if (!player) throw new Error("Player failed to initialize");
 
     this.currentUrl = url;
+    this._subtitleChosen = false;
     log.debug("Loading:", url);
     log.debug("Load options:", options);
     log.debug("Container:", this.container);
@@ -799,6 +821,16 @@ export class AVPlayerWrapper {
     }
   }
 
+  // Stream list from AVPlayer's public API, empty before load or on versions
+  // without it.
+  _streams() {
+    try {
+      return this.player?.getStreams?.() || [];
+    } catch (_error) {
+      return [];
+    }
+  }
+
   /**
    * Start playback
    */
@@ -818,13 +850,17 @@ export class AVPlayerWrapper {
         log.debug("AudioContext resumed, new state:", window.AVPlayer?.audioContext?.state);
       }
       log.debug("Calling player.play()...");
-      // Embedded subtitles are opt-in. Some otherwise playable files expose
-      // subtitle packets with a zero time-base; starting their renderer here
-      // crashes libmedia's async loop with a BigInt division-by-zero.
-      const playResult = this.player.play(initialAVPlayerPlayOptions());
+      // See initialAVPlayerPlayOptions: the subtitle renderer has to start
+      // here for any embedded subtitle to work later, but it starts showing
+      // the file's default track, so it is hidden until the viewer picks one.
+      const options = initialAVPlayerPlayOptions(this._streams());
+      const playResult = this.player.play(options);
       log.debug("player.play() returned:", playResult);
       if (playResult && typeof playResult.then === "function") {
         await playResult;
+      }
+      if (options.subtitle && !this._subtitleChosen) {
+        this.player?.setSubtitleEnable?.(false);
       }
       // Manually set _playing in case event doesn't fire
       this._playing = true;
@@ -996,7 +1032,32 @@ export class AVPlayerWrapper {
         }
       }
 
-      // Method 2: For MP4/MKV, use selectedAudioStream and formatContext
+      // Method 2: AVPlayer's public stream API tells audio apart by media
+      // type. The bitrate guess below also took subtitle streams (they carry
+      // a low BPS too) for audio, listing a dozen fake audio tracks.
+      if (typeof this.player.getStreams === "function") {
+        const selectedId = this.player.getSelectedAudioStreamId?.() ?? -1;
+        const audioStreams =
+          this.player.getStreams()?.filter((stream) => stream.mediaType === "Audio") || [];
+
+        if (audioStreams.length > 0) {
+          return audioStreams.map((stream, index) => {
+            const metadata = stream.metadata || {};
+
+            return {
+              id: stream.id,
+              index,
+              streamIndex: stream.index,
+              label: metadata.title || `Audio ${index + 1}`,
+              language: metadata.language || "",
+              channels: streamChannels(stream),
+              selected: stream.id === selectedId,
+            };
+          });
+        }
+      }
+
+      // Method 3: Legacy guess for versions without the public stream API.
       // codecpar is a pointer in libmedia, so we use metadata to identify tracks
       const formatContext = this.player.getFormatContext?.();
       const selectedAudio = this.player.selectedAudioStream;
@@ -1108,13 +1169,14 @@ export class AVPlayerWrapper {
                 metadata.name ||
                 `Subtitle ${index + 1}`,
               language: metadata.language || "",
+              forced: hasDisposition(stream, AV_DISPOSITION_FORCED),
               selected: stream.id === selectedId,
             };
           });
         }
       }
 
-      // Method 3: Legacy fallback for versions without the public stream API.
+      // Method 3: Legacy guess for versions without the public stream API.
       const formatContext = this.player.getFormatContext?.();
       const selectedSub = this.player.selectedSubtitleStream;
       const selectedVideo = this.player.selectedVideoStream;
@@ -1235,6 +1297,7 @@ export class AVPlayerWrapper {
 
     try {
       log.debug(`Selecting subtitle track: ${trackId}`);
+      this._subtitleChosen = trackId !== -1;
       if (trackId === -1) {
         if (typeof this.player.setSubtitleEnable === "function") {
           this.player.setSubtitleEnable(false);
