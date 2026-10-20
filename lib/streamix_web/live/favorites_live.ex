@@ -12,10 +12,12 @@ defmodule StreamixWeb.FavoritesLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Filters, only: [filter_chip: 1, filter_strip: 1]
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Library
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   @per_page 24
@@ -31,7 +33,7 @@ defmodule StreamixWeb.FavoritesLive do
 
     socket =
       socket
-      |> assign(page_title: "Favoritos")
+      |> assign(page_title: "Minha Lista")
       |> assign(current_path: "/favorites")
       |> assign(user_id: user_id)
       |> assign(show_adult: show_adult)
@@ -132,7 +134,7 @@ defmodule StreamixWeb.FavoritesLive do
       <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
         <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Minha Lista</h1>
 
-        <div id="favorites-filter-strip" data-filter-strip class="filter-strip">
+        <.filter_strip id="favorites-filter-strip">
           <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
           <.filter_button
             type="live_channel"
@@ -152,13 +154,13 @@ defmodule StreamixWeb.FavoritesLive do
             current={@filter}
             count={@counts["series"] || 0}
           />
-        </div>
+        </.filter_strip>
       </div>
 
       <div
         id="favorites-grid"
         phx-update="stream"
-        class="responsive-wide-grid"
+        class={grid_class(@filter)}
       >
         <.favorite_item
           :for={{dom_id, favorite} <- @streams.favorites}
@@ -189,25 +191,14 @@ defmodule StreamixWeb.FavoritesLive do
 
   defp filter_button(assigns) do
     ~H"""
-    <button
-      type="button"
+    <.filter_chip
+      id={"favorites-filter-#{@type}"}
+      active={@current == @type}
+      label={@label}
+      count={if @count > 0, do: @count}
       phx-click="filter"
       phx-value-type={@type}
-      class={[
-        "min-h-11 flex-shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand sm:px-4 sm:py-2 sm:text-sm",
-        @current == @type && "bg-brand text-white",
-        @current != @type &&
-          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
-      ]}
-    >
-      {@label}
-      <span
-        :if={@count > 0}
-        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-2xs rounded bg-black/20"
-      >
-        {@count}
-      </span>
-    </button>
+    />
     """
   end
 
@@ -222,7 +213,7 @@ defmodule StreamixWeb.FavoritesLive do
           _other -> nil
         end
       )
-      |> assign(:title, assigns.favorite.content_name || "Desconhecido")
+      |> assign(:title, favorite_display_title(assigns.favorite))
 
     ~H"""
     <.poster_media_card
@@ -285,7 +276,8 @@ defmodule StreamixWeb.FavoritesLive do
       phx-click="remove_favorite"
       phx-value-type={@favorite.content_type}
       phx-value-content_id={@favorite.content_id}
-      class="flex size-11 items-center justify-center rounded-md bg-surface/90 text-text-secondary shadow-sm transition-all hover:bg-error/10 hover:text-error focus:outline-none focus:ring-2 focus:ring-error"
+      data-touch-visible="true"
+      class="flex size-11 items-center justify-center rounded-full bg-surface/90 text-text-secondary opacity-100 shadow-sm backdrop-blur-sm transition-all hover:bg-error/15 hover:text-error focus:outline-none focus:ring-2 focus:ring-error"
       aria-label="Remover dos favoritos"
     >
       <.icon name="hero-trash" class="size-4" />
@@ -296,6 +288,28 @@ defmodule StreamixWeb.FavoritesLive do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp grid_class("live_channel"), do: "responsive-wide-grid"
+  defp grid_class(_filter), do: "responsive-poster-grid"
+
+  defp favorite_display_title(%{content_type: "live_channel", content_name: name})
+       when is_binary(name) and name != "" do
+    name |> DisplayTitle.channel() |> fallback_title()
+  end
+
+  defp favorite_display_title(%{content_type: "episode", content_name: name})
+       when is_binary(name) and name != "" do
+    name |> DisplayTitle.episode() |> fallback_title()
+  end
+
+  defp favorite_display_title(%{content_name: name}) when is_binary(name) and name != "" do
+    name |> DisplayTitle.title() |> fallback_title()
+  end
+
+  defp favorite_display_title(_favorite), do: "Desconhecido"
+
+  defp fallback_title(""), do: "Desconhecido"
+  defp fallback_title(title), do: title
 
   defp load_favorites(socket) do
     user_id = socket.assigns.user_id

@@ -77,13 +77,38 @@ defmodule StreamixWeb.FavoritesLiveTest do
              )
 
       assert html =~ "aspect-[2/3]"
+      assert has_element?(view, "#favorites-grid.responsive-poster-grid")
 
       assert has_element?(
                view,
-               "[data-media-secondary] button[aria-label='Remover dos favoritos'].size-11"
+               "[data-media-secondary] button[aria-label='Remover dos favoritos'][data-touch-visible='true'].size-11.opacity-100"
              )
 
       refute has_element?(view, "[data-media-primary] button")
+
+      # Filtering by live_channel switches grid to responsive-wide-grid
+      view
+      |> element("button[phx-click='filter'][phx-value-type='live_channel']")
+      |> render_click()
+
+      assert has_element?(view, "#favorites-grid.responsive-wide-grid")
+    end
+
+    test "cleans release noise from favorite titles", %{conn: conn, user: user} do
+      provider = provider_fixture(user, %{visibility: "global", is_system: true})
+
+      movie =
+        movie_fixture(provider, %{
+          name: "Armadilha [LEG] 4K",
+          title: "Armadilha [LEG] 4K"
+        })
+
+      movie_favorite_fixture(user, movie)
+
+      {:ok, view, _html} = live(conn, ~p"/favorites")
+
+      assert has_element?(view, "#favorites-grid h3", "Armadilha")
+      refute has_element?(view, "#favorites-grid h3", "[LEG]")
     end
   end
 

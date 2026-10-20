@@ -12,13 +12,17 @@ defmodule StreamixWeb.HistoryLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Filters, only: [filter_chip: 1, filter_strip: 1]
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   alias Streamix.Library
+  alias StreamixWeb.Content.DisplayTitle
+  alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
 
   @per_page 20
+  @episode_dash_code ~r/\s+[-–]\s+s0?(\d{1,2})\s?e0?(\d{1,4})\s+[-–]\s+/iu
 
   @doc false
   def mount(_params, _session, socket) do
@@ -141,7 +145,7 @@ defmodule StreamixWeb.HistoryLive do
         <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Histórico</h1>
 
         <div class="flex min-w-0 items-center gap-2 sm:justify-end sm:gap-4">
-          <div id="history-filter-strip" data-filter-strip class="filter-strip min-w-0 flex-1">
+          <.filter_strip id="history-filter-strip" class="min-w-0 flex-1">
             <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
             <.filter_button
               type="live_channel"
@@ -161,7 +165,7 @@ defmodule StreamixWeb.HistoryLive do
               current={@filter}
               count={@counts["episode"] || 0}
             />
-          </div>
+          </.filter_strip>
 
           <button
             :if={total_count(@counts) > 0}
@@ -207,25 +211,14 @@ defmodule StreamixWeb.HistoryLive do
 
   defp filter_button(assigns) do
     ~H"""
-    <button
-      type="button"
+    <.filter_chip
+      id={"history-filter-#{@type}"}
+      active={@current == @type}
+      label={@label}
+      count={if @count > 0, do: @count}
       phx-click="filter"
       phx-value-type={@type}
-      class={[
-        "min-h-11 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-brand",
-        @current == @type && "bg-brand text-white",
-        @current != @type &&
-          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
-      ]}
-    >
-      {@label}
-      <span
-        :if={@count > 0}
-        class="ml-1.5 sm:ml-2 px-1.5 py-0.5 text-2xs rounded bg-black/20"
-      >
-        {@count}
-      </span>
-    </button>
+    />
     """
   end
 
@@ -239,7 +232,7 @@ defmodule StreamixWeb.HistoryLive do
           _other -> nil
         end
       )
-      |> assign(:title, assigns.entry.content_name || "Desconhecido")
+      |> assign(:title, history_display_title(assigns.entry))
 
     ~H"""
     <.landscape_media_card
@@ -257,13 +250,14 @@ defmodule StreamixWeb.HistoryLive do
       data-history-entry
       class="catalog-stream-item catalog-stream-item--wide self-start border border-transparent hover:border-border"
     >
-      <:badge>
-        <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
-          {format_content_type(@entry.content_type)}
-        </span>
-      </:badge>
       <:metadata>
-        <div class="mt-2 flex items-center gap-2 text-xs text-text-muted">
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+          <span
+            data-history-type-badge
+            class="rounded bg-surface-hover px-1.5 py-0.5 text-2xs font-medium text-text-secondary"
+          >
+            {format_content_type(@entry.content_type)}
+          </span>
           <span :if={@entry.duration_seconds}>
             {format_duration(@entry.duration_seconds)}
           </span>
@@ -275,7 +269,8 @@ defmodule StreamixWeb.HistoryLive do
           phx-click="remove_entry"
           phx-value-id={@entry.id}
           phx-value-type={@entry.content_type}
-          class="flex size-11 items-center justify-center rounded-md bg-surface/90 text-text-secondary shadow-sm transition-all hover:bg-error/10 hover:text-error focus:outline-none focus:ring-2 focus:ring-error"
+          data-touch-visible="true"
+          class="flex size-11 items-center justify-center rounded-full bg-surface/90 text-text-secondary opacity-100 shadow-sm backdrop-blur-sm transition-all hover:bg-error/15 hover:text-error focus:outline-none focus:ring-2 focus:ring-error"
           aria-label="Remover do histórico"
         >
           <.icon name="hero-x-mark" class="size-5" />
@@ -288,6 +283,23 @@ defmodule StreamixWeb.HistoryLive do
   # ============================================
   # Private Helpers
   # ============================================
+
+  defp history_display_title(%{content_type: "live_channel", content_name: name})
+       when is_binary(name) and name != "" do
+    name |> DisplayTitle.channel() |> fallback_title()
+  end
+
+  defp history_display_title(%{content_name: name}) when is_binary(name) and name != "" do
+    name
+    |> DisplayTitle.title()
+    |> String.replace(@episode_dash_code, " · T\\1 E\\2 · ")
+    |> fallback_title()
+  end
+
+  defp history_display_title(_entry), do: "Desconhecido"
+
+  defp fallback_title(""), do: "Desconhecido"
+  defp fallback_title(title), do: title
 
   defp load_history(socket) do
     user_id = socket.assigns.user_id
@@ -359,19 +371,7 @@ defmodule StreamixWeb.HistoryLive do
   defp format_content_type("episode"), do: "Episódio"
   defp format_content_type(type), do: type || "Desconhecido"
 
-  defp format_relative_time(nil), do: ""
-
-  defp format_relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 60 -> "agora mesmo"
-      diff < 3600 -> "#{div(diff, 60)} min atrás"
-      diff < 86_400 -> "#{div(diff, 3600)}h atrás"
-      diff < 604_800 -> "#{div(diff, 86_400)} dias atrás"
-      true -> Calendar.strftime(datetime, "%d/%m/%Y")
-    end
-  end
+  defp format_relative_time(datetime), do: HelperComponents.format_relative_time(datetime)
 
   defp format_duration(seconds) when is_integer(seconds) do
     hours = div(seconds, 3600)

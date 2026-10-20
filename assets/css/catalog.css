@@ -612,3 +612,22 @@ select:focus-visible {
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+
+/* "Todos" on /search previews each type: two rows on phones, one row from
+   768px, following the column counts of the grids above. The full list is
+   that type's filter. */
+.search-preview > :nth-child(n + 7) {
+    display: none;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+    .search-preview > :nth-child(n + 5) {
+        display: none;
+    }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+    .search-preview > :nth-child(n + 6) {
+        display: none;
+    }
+}

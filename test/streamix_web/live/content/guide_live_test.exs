@@ -51,7 +51,6 @@ defmodule StreamixWeb.Content.GuideLiveTest do
 
     test "renders now/next programs and provider-aware controls", %{
       conn: conn,
-      provider: provider,
       channel: channel
     } do
       {:ok, view, html} = live(conn, ~p"/guide")
@@ -65,17 +64,19 @@ defmodule StreamixWeb.Content.GuideLiveTest do
       assert html =~ "Entrevista da Tarde"
       assert html =~ "Provider Guia"
       assert html =~ "Notícias"
-      assert has_element?(view, "select[name='provider'] option[value='#{provider.id}']")
+      assert has_element?(view, "#guide-search-form input[name='search']")
+      assert has_element?(view, "#provider-dropdown button[role='option']", "Provider Guia")
       assert has_element?(view, "[data-current-program='true']", "Jornal ao Vivo")
       assert has_element?(view, "a[href*='/watch/live_channel/#{channel.id}']", "Assistir")
     end
 
-    test "filters by category and favorites without leaking other channels", %{
-      conn: conn,
-      user: user,
-      provider: provider,
-      channel: channel
-    } do
+    test "filters by category and favorites without leaking other channels and strips Canais | prefix",
+         %{
+           conn: conn,
+           user: user,
+           provider: provider,
+           channel: channel
+         } do
       other_epg_id = "guide-other-#{System.unique_integer([:positive])}"
       other = channel_fixture(provider, %{name: "Canal Esportes", epg_channel_id: other_epg_id})
       now = DateTime.utc_now()
@@ -83,16 +84,18 @@ defmodule StreamixWeb.Content.GuideLiveTest do
       epg_program_fixture(provider, %{
         epg_channel_id: other_epg_id,
         title: "Futebol Agora",
-        category: "Esportes",
+        category: "Canais | Esportes",
         start_time: DateTime.add(now, -5, :minute),
         end_time: DateTime.add(now, 60, :minute)
       })
 
-      {:ok, view, _html} = live(conn, ~p"/guide")
-      render_async(view)
+      {:ok, view, _initial_html} = live(conn, ~p"/guide")
+      html = render_async(view)
 
       assert has_element?(view, "#guide-channel-#{channel.id}")
       assert has_element?(view, "#guide-channel-#{other.id}")
+      assert has_element?(view, "button[phx-value-category='Esportes']", "Esportes")
+      refute html =~ "Canais | Esportes"
 
       view
       |> element("button[phx-value-category='Notícias']")

@@ -102,6 +102,16 @@ defmodule StreamixWeb.SearchLiveTest do
       assert has_element?(view, "#movie-card-#{Enum.at(movies, 6).id}")
       assert has_element?(view, "#movie-card-#{Enum.at(movies, 23).id}")
       refute has_element?(view, "#movie-card-#{Enum.at(movies, 24).id}")
+
+      # "Todos" previews the type; its filter has the whole list.
+      assert has_element?(view, "#search-movies-grid.search-preview")
+      assert has_element?(view, "#search-see-all-movies", "Ver os 24+ filmes")
+      refute has_element?(view, "#search-load-more-movies")
+
+      view |> element("#search-see-all-movies") |> render_click()
+
+      assert has_element?(view, "#search-filter-movies[aria-pressed='true']")
+      refute has_element?(view, "#search-movies-grid.search-preview")
       assert has_element?(view, "#search-load-more-movies[phx-click='load_more']")
 
       view
@@ -166,10 +176,10 @@ defmodule StreamixWeb.SearchLiveTest do
       conn = log_in_user(conn, user)
       {:ok, view, _html} = live(conn, ~p"/search?q=Busca+Persistente")
 
-      view |> element("button[phx-value-type='channels']") |> render_click()
+      view |> element("#search-filter-channels") |> render_click()
       assert has_element?(view, "#channel-img-#{channel.id}")
 
-      view |> element("button[phx-value-type='all']") |> render_click()
+      view |> element("#search-filter-all") |> render_click()
       assert has_element?(view, "#movie-card-#{movie.id}")
     end
   end

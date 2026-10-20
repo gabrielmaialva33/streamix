@@ -228,6 +228,7 @@ defmodule StreamixWeb.SearchLive do
           count={@result_counts.channels}
           has_more={@has_more.channels}
           hidden={@filter not in ["all", "channels"]}
+          preview={@filter == "all"}
         />
 
         <.movies_section
@@ -236,6 +237,7 @@ defmodule StreamixWeb.SearchLive do
           count={@result_counts.movies}
           has_more={@has_more.movies}
           hidden={@filter not in ["all", "movies"]}
+          preview={@filter == "all"}
         />
 
         <.series_section
@@ -244,6 +246,7 @@ defmodule StreamixWeb.SearchLive do
           count={@result_counts.series}
           has_more={@has_more.series}
           hidden={@filter not in ["all", "series"]}
+          preview={@filter == "all"}
         />
       </div>
 
@@ -284,13 +287,28 @@ defmodule StreamixWeb.SearchLive do
     <section id="search-channels-section" class={["space-y-4", @hidden && "hidden"]}>
       <.section_header title="Canais ao Vivo">
         <:actions>
-          <span class="text-sm text-text-secondary">
+          <.see_all
+            :if={preview_hides?(@preview, @count, @has_more)}
+            type="channels"
+            article="os"
+            noun="canais"
+            count={@count}
+            has_more={@has_more}
+          />
+          <span
+            :if={!preview_hides?(@preview, @count, @has_more)}
+            class="text-sm text-text-secondary"
+          >
             {result_count_label(@count, @has_more)}
           </span>
         </:actions>
       </.section_header>
 
-      <div id="search-channels-grid" phx-update="stream" class="responsive-wide-grid">
+      <div
+        id="search-channels-grid"
+        phx-update="stream"
+        class={["responsive-wide-grid", @preview && "search-preview"]}
+      >
         <div
           :for={{dom_id, channel} <- @channels}
           id={dom_id}
@@ -304,7 +322,7 @@ defmodule StreamixWeb.SearchLive do
         </div>
       </div>
 
-      <.load_more_button :if={@has_more} type="channels" label="Mostrar mais canais" />
+      <.load_more_button :if={@has_more and !@preview} type="channels" label="Mostrar mais canais" />
     </section>
     """
   end
@@ -314,13 +332,28 @@ defmodule StreamixWeb.SearchLive do
     <section id="search-movies-section" class={["space-y-4", @hidden && "hidden"]}>
       <.section_header title="Filmes">
         <:actions>
-          <span class="text-sm text-text-secondary">
+          <.see_all
+            :if={preview_hides?(@preview, @count, @has_more)}
+            type="movies"
+            article="os"
+            noun="filmes"
+            count={@count}
+            has_more={@has_more}
+          />
+          <span
+            :if={!preview_hides?(@preview, @count, @has_more)}
+            class="text-sm text-text-secondary"
+          >
             {result_count_label(@count, @has_more)}
           </span>
         </:actions>
       </.section_header>
 
-      <div id="search-movies-grid" phx-update="stream" class="responsive-poster-grid">
+      <div
+        id="search-movies-grid"
+        phx-update="stream"
+        class={["responsive-poster-grid", @preview && "search-preview"]}
+      >
         <div
           :for={{dom_id, movie} <- @movies}
           id={dom_id}
@@ -330,7 +363,7 @@ defmodule StreamixWeb.SearchLive do
         </div>
       </div>
 
-      <.load_more_button :if={@has_more} type="movies" label="Mostrar mais filmes" />
+      <.load_more_button :if={@has_more and !@preview} type="movies" label="Mostrar mais filmes" />
     </section>
     """
   end
@@ -340,13 +373,28 @@ defmodule StreamixWeb.SearchLive do
     <section id="search-series-section" class={["space-y-4", @hidden && "hidden"]}>
       <.section_header title="Séries">
         <:actions>
-          <span class="text-sm text-text-secondary">
+          <.see_all
+            :if={preview_hides?(@preview, @count, @has_more)}
+            type="series"
+            article="as"
+            noun="séries"
+            count={@count}
+            has_more={@has_more}
+          />
+          <span
+            :if={!preview_hides?(@preview, @count, @has_more)}
+            class="text-sm text-text-secondary"
+          >
             {result_count_label(@count, @has_more)}
           </span>
         </:actions>
       </.section_header>
 
-      <div id="search-series-grid" phx-update="stream" class="responsive-poster-grid">
+      <div
+        id="search-series-grid"
+        phx-update="stream"
+        class={["responsive-poster-grid", @preview && "search-preview"]}
+      >
         <div
           :for={{dom_id, series} <- @series}
           id={dom_id}
@@ -356,8 +404,25 @@ defmodule StreamixWeb.SearchLive do
         </div>
       </div>
 
-      <.load_more_button :if={@has_more} type="series" label="Mostrar mais séries" />
+      <.load_more_button :if={@has_more and !@preview} type="series" label="Mostrar mais séries" />
     </section>
+    """
+  end
+
+  # "Todos" previews each type (see .search-preview in catalog.css); the
+  # whole list, with "Mostrar mais", is one tap away in that type's filter.
+  defp see_all(assigns) do
+    ~H"""
+    <button
+      id={"search-see-all-#{@type}"}
+      type="button"
+      phx-click="filter"
+      phx-value-type={@type}
+      class="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-brand hover:underline focus:outline-none focus:ring-2 focus:ring-brand"
+    >
+      {see_all_label(@article, @noun, @count, @has_more)}
+      <.icon name="hero-chevron-right" class="size-4" />
+    </button>
     """
   end
 
@@ -613,6 +678,15 @@ defmodule StreamixWeb.SearchLive do
   end
 
   defp total_count(result_counts), do: result_counts |> Map.values() |> Enum.sum()
+
+  # A preview row holds at least four cards, so smaller lists are whole.
+  defp preview_hides?(preview?, count, has_more?), do: preview? and (count > 4 or has_more?)
+
+  defp see_all_label(article, noun, count, has_more?) do
+    suffix = if has_more?, do: "+", else: ""
+
+    "Ver #{article} #{HelperComponents.format_count(count)}#{suffix} #{noun}"
+  end
 
   defp result_count_label(count, has_more?) do
     suffix = if has_more?, do: "+", else: ""

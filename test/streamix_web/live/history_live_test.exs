@@ -133,10 +133,32 @@ defmodule StreamixWeb.HistoryLiveTest do
 
       assert has_element?(
                view,
-               "#history-list [data-media-secondary] button[aria-label='Remover do histórico'].size-11"
+               "#history-list [data-media-secondary] button[aria-label='Remover do histórico'][data-touch-visible='true'].size-11"
              )
 
+      assert has_element?(view, "#history-list [data-history-type-badge]", "Filme")
+      refute has_element?(view, "#history-list [data-media-primary] .bottom-1.right-1")
       refute has_element?(view, "#history-list [data-media-primary] button")
+    end
+
+    test "cleans noisy release and episode titles via DisplayTitle", %{conn: conn, user: user} do
+      provider = provider_fixture(user, %{visibility: "global", is_system: true})
+
+      noisy_movie =
+        movie_fixture(provider, %{
+          name: "Dawsons.Creek.S01E01.1080p.WEB-DL.DUAL",
+          title: "Dawsons.Creek.S01E01.1080p.WEB-DL.DUAL"
+        })
+
+      movie_history_fixture(user, noisy_movie, %{
+        duration_seconds: 2700,
+        progress_seconds: 900
+      })
+
+      {:ok, view, _html} = live(conn, ~p"/history")
+
+      assert has_element?(view, "#history-list h3", "Dawsons Creek S01E01")
+      refute has_element?(view, "#history-list h3", "WEB-DL")
     end
   end
 
@@ -196,8 +218,8 @@ defmodule StreamixWeb.HistoryLiveTest do
     test "displays relative time for recent entries", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/history")
 
-      # Should show "agora mesmo" or similar relative time
-      assert html =~ "agora mesmo" or html =~ "min atrás"
+      # The shared pt-BR relative time ("agora", "há 5 min").
+      assert html =~ "agora" or html =~ ~r/há \d+ min/
     end
   end
 end

@@ -1,16 +1,18 @@
-<div id="tv-guide" class="space-y-4 sm:space-y-6">
-  <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-    <div>
+<div id="tv-guide" class="space-y-3 sm:space-y-5">
+  <header class="flex items-center justify-between gap-3 sm:items-end">
+    <div class="min-w-0">
       <div class="flex items-center gap-2">
-        <.icon name="hero-calendar-days" class="size-6 text-brand" />
-        <h1 class="text-2xl font-bold text-text-primary sm:text-3xl">{gettext("Guia de TV")}</h1>
+        <.icon name="hero-calendar-days" class="size-5 shrink-0 text-brand sm:size-6" />
+        <h1 class="truncate text-xl font-bold text-text-primary sm:text-3xl">
+          {gettext("Guia de TV")}
+        </h1>
       </div>
-      <p class="mt-1 text-sm text-text-secondary">
+      <p class="mt-1 hidden text-sm text-text-secondary sm:block">
         {gettext("Veja o que está passando agora e a programação das próximas horas.")}
       </p>
     </div>
 
-    <div class="flex items-center gap-2 self-stretch sm:self-auto">
+    <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
       <button
         type="button"
         phx-click="shift_window"
@@ -36,66 +38,45 @@
   </header>
 
   <section class="guide-toolbar" aria-label={gettext("Filtros do guia")}>
-    <form
-      id="guide-filter-form"
-      phx-change="filter"
-      class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,18rem)]"
+    <div class="browse-toolbar__row">
+      <.search_input
+        id="guide-search-form"
+        value={@search}
+        placeholder={gettext("Buscar canais...")}
+        on_change="filter"
+        class="browse-toolbar__search"
+      />
+
+      <.provider_dropdown
+        providers={@providers}
+        selected={to_string(@selected_provider || "all")}
+        on_change="filter_provider"
+      />
+    </div>
+
+    <.filter_strip
+      id="guide-category-strip"
+      class="mt-2.5 sm:mt-3"
+      role="group"
+      aria-label={gettext("Categorias da programação")}
     >
-      <label class="relative block">
-        <span class="sr-only">{gettext("Buscar canal")}</span>
-        <.icon
-          name="hero-magnifying-glass"
-          class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted"
-        />
-        <input
-          type="search"
-          name="search"
-          value={@search}
-          placeholder={gettext("Buscar canais…")}
-          phx-debounce="350"
-          class="guide-input pl-9"
-        />
-      </label>
-
-      <label>
-        <span class="sr-only">{gettext("Filtrar provedor")}</span>
-        <select name="provider" class="guide-input">
-          <option value="" selected={is_nil(@selected_provider)}>
-            {gettext("Todos os provedores")}
-          </option>
-          <option
-            :for={provider <- @providers}
-            value={provider.id}
-            selected={provider.id == @selected_provider}
-          >
-            {provider.name}
-          </option>
-        </select>
-      </label>
-    </form>
-
-    <div class="filter-strip mt-3" role="group" aria-label={gettext("Categorias da programação")}>
-      <button
-        type="button"
+      <.filter_chip
+        active={@selected_category == "all"}
+        label={gettext("Todos")}
         phx-click="filter_category"
         phx-value-category="all"
-        class={["category-chip", @selected_category == "all" && "category-chip--active"]}
-      >
-        {gettext("Todos")}
-      </button>
-      <button
+      />
+      <.filter_chip
         :for={category <- @categories}
-        type="button"
+        active={@selected_category == category}
+        label={category}
         phx-click="filter_category"
         phx-value-category={category}
-        class={["category-chip", @selected_category == category && "category-chip--active"]}
-      >
-        {category}
-      </button>
+      />
       <button
         type="button"
         phx-click="toggle_favorites"
-        aria-pressed={@favorites_only}
+        aria-pressed={to_string(@favorites_only)}
         class={[
           "category-chip gap-1.5",
           @favorites_only && "category-chip--active"
@@ -106,7 +87,7 @@
           class="size-3.5"
         /> {gettext("Favoritos")}
       </button>
-    </div>
+    </.filter_strip>
   </section>
 
   <div class="flex items-center justify-between gap-3 text-xs text-text-muted">
@@ -119,45 +100,56 @@
     <p :if={!@loading}>{ngettext("%{count} canal", "%{count} canais", length(@rows))}</p>
   </div>
 
-  <div :if={@loading} id="guide-loading" class="space-y-3" aria-label={gettext("Carregando guia")}>
-    <div :for={_ <- 1..6} class="guide-row animate-pulse">
-      <div class="h-16 rounded-lg bg-surface-hover" />
-      <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <div :for={_ <- 1..3} class="h-16 rounded-lg bg-surface-hover" />
+  <div :if={@loading} id="guide-loading" class="space-y-2" aria-label={gettext("Carregando guia")}>
+    <div
+      :for={_ <- 1..6}
+      class="grid gap-1.5 rounded-xl border border-border bg-surface/90 p-2 animate-pulse sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:gap-3 sm:p-3"
+    >
+      <div class="h-10 rounded-lg bg-surface-hover sm:h-14" />
+      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3 sm:gap-2">
+        <div :for={_ <- 1..3} class="h-12 rounded-lg bg-surface-hover sm:h-14" />
       </div>
     </div>
   </div>
 
-  <div :if={!@loading && @rows != []} id="guide-rows" class="space-y-2.5">
-    <article :for={row <- @rows} id={"guide-channel-#{row.channel.id}"} class="guide-row">
-      <div class="guide-channel">
+  <div :if={!@loading && @rows != []} id="guide-rows" class="space-y-1.5 sm:space-y-2.5">
+    <article
+      :for={row <- @rows}
+      id={"guide-channel-#{row.channel.id}"}
+      data-guide-row
+      class="grid gap-1.5 rounded-xl border border-border bg-surface/92 p-2 sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:items-stretch sm:gap-3 sm:p-3"
+    >
+      <div class="flex min-w-0 items-center justify-between gap-2 sm:border-r sm:border-border sm:pr-3">
         <.link
           href={~p"/watch/live_channel/#{row.channel.id}?return_to=/guide"}
-          class="group flex min-w-0 flex-1 items-center gap-2.5"
+          class="group flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5"
         >
-          <div class="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-hover">
+          <div class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-hover sm:size-11 sm:rounded-lg">
             <img
               :if={ImageProxy.browser_image(row.channel.stream_icon)}
               src={ImageProxy.browser_image(row.channel.stream_icon)}
               alt=""
-              class="size-full object-contain p-1"
+              class="size-full object-contain p-0.5 sm:p-1"
               loading="lazy"
               decoding="async"
             />
             <.icon
               :if={!ImageProxy.browser_image(row.channel.stream_icon)}
               name="hero-tv"
-              class="size-5 text-text-muted"
+              class="size-4 text-text-muted sm:size-5"
             />
           </div>
-          <div class="min-w-0">
-            <h2 class="truncate text-sm font-semibold text-text-primary group-hover:text-brand">
+          <div class="min-w-0 flex-1">
+            <h2 class="truncate text-xs font-semibold leading-tight text-text-primary group-hover:text-brand sm:text-sm">
               {row.channel.name}
             </h2>
-            <p class="truncate text-[10px] text-text-muted">{row.provider_name}</p>
-            <span class="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-brand">
-              <.icon name="hero-play-solid" class="size-3" /> {gettext("Assistir")}
-            </span>
+            <div class="mt-0.5 flex items-center gap-1.5 text-[10px] leading-none text-text-muted">
+              <span class="truncate">{row.provider_name}</span>
+              <span aria-hidden="true">·</span>
+              <span class="inline-flex shrink-0 items-center gap-0.5 font-medium text-brand">
+                <.icon name="hero-play-solid" class="size-2.5 sm:size-3" /> {gettext("Assistir")}
+              </span>
+            </div>
           </div>
         </.link>
 
@@ -187,39 +179,50 @@
       </div>
 
       <div
-        class="guide-programs"
+        class="grid auto-cols-[minmax(140px,62vw)] grid-flow-col gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 snap-x snap-proximity scrollbar-hide sm:auto-cols-[minmax(180px,230px)] sm:gap-2"
         aria-label={gettext("Programação de %{channel}", channel: row.channel.name)}
       >
         <div
           :for={program <- row.programs}
+          data-guide-program
           data-current-program={
             if row.current_program && row.current_program.id == program.id,
               do: "true",
               else: "false"
           }
           class={[
-            "guide-program",
+            "min-h-12 snap-start rounded-lg border p-2 sm:min-h-[68px] sm:p-2.5",
             row.current_program && row.current_program.id == program.id &&
-              "guide-program--current"
+              "guide-program--current border-brand/60 bg-brand/10",
+            !(row.current_program && row.current_program.id == program.id) &&
+              "border-border bg-surface-hover"
           ]}
         >
-          <div class="flex items-center justify-between gap-2 text-[10px] text-text-muted">
-            <span>
+          <div class="flex items-center justify-between gap-2 text-[10px] leading-none text-text-muted">
+            <span class="tabular-nums">
               {TvGuide.format_time(program.start_time)}–{TvGuide.format_time(program.end_time)}
             </span>
             <span :if={program.category} class="truncate">{program.category}</span>
           </div>
-          <p class="mt-1 line-clamp-2 text-xs font-medium text-text-primary" title={program.title}>
+          <p
+            class="mt-1 line-clamp-1 text-xs font-medium leading-snug text-text-primary sm:line-clamp-2"
+            title={program.title}
+          >
             {program.title}
           </p>
-          <StreamixWeb.EpgComponents.epg_progress_bar
+          <div
             :if={row.current_program && row.current_program.id == program.id}
-            program={program}
-          />
+            class="mt-1"
+          >
+            <StreamixWeb.EpgComponents.epg_progress_bar program={program} />
+          </div>
         </div>
 
-        <div :if={row.programs == []} class="guide-program guide-program--empty">
-          <.icon name="hero-clock" class="size-4" /> {gettext(
+        <div
+          :if={row.programs == []}
+          class="flex min-h-12 items-center gap-2 rounded-lg border border-border bg-surface-hover p-2 text-xs italic text-text-muted sm:min-h-[68px] sm:p-2.5"
+        >
+          <.icon name="hero-clock" class="size-4 shrink-0" /> {gettext(
             "Sem programação disponível nesta janela"
           )}
         </div>

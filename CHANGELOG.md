@@ -68,6 +68,15 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - "Continuar assistindo" leads an episode with its series and position ("T1 E2") and falls back to the series cover.
 - "Lançamentos" stops at the current year, and GIndex reads the last plausible year in a release name, so
   "Blade.Runner.2049.2017" is from 2017.
+- One set of web controls: `<.button>` and `<.badge>` variants, pill filter chips with pt-BR counts ("76,1 mil"),
+  styled selects, shared page and section headers, one page gutter, an opaque header once scrolled, and one relative
+  time ("agora", "há 5 min", "ontem"). On title pages "Assistir" is the only primary action.
+- The phone shell's last tab is "Mais" (Guia, Torrents, Assistir juntos, Histórico, provedores, configurações), so it
+  reaches what the desktop header offers.
+- Search "Todos" previews each type (two rows on phones, one on desktop) with "Ver os N filmes"; the full list and
+  "Mostrar mais" live in each type's filter.
+- Minha lista uses the poster grid with touch-visible actions, Histórico no longer stacks its type badge on the
+  progress bar, and the Guia has compact phone rows and category chips without the "Canais |" prefix.
 
 ## [v0.0.1] - 2026-04-13
 

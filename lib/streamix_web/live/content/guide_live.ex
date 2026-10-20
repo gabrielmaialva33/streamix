@@ -5,12 +5,17 @@ defmodule StreamixWeb.Content.GuideLive do
 
   require Logger
 
+  import StreamixWeb.App.Filters,
+    only: [filter_chip: 1, filter_strip: 1, provider_dropdown: 1, search_input: 1]
+
   alias Streamix.Library
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.TvGuide
   alias StreamixWeb.Helpers.ImageProxy
 
   @refresh_interval :timer.minutes(1)
   @shift_hours 2
+  @category_prefix ~r/^(?:canais(?:\s+ao\s+vivo)?|tv(?:\s+ao\s+vivo)?)\s*[|:–-]\s*/iu
 
   @impl true
   def mount(_params, _session, socket) do
@@ -58,9 +63,12 @@ defmodule StreamixWeb.Content.GuideLive do
   @impl true
   def handle_async({:load_guide, generation}, {:ok, result}, socket)
       when generation == socket.assigns.load_generation do
+    cleaned_rows = Enum.map(result.rows, &clean_row/1)
+    cleaned_categories = clean_categories(result.categories, cleaned_rows)
+
     rows =
       TvGuide.filter(
-        result.rows,
+        cleaned_rows,
         socket.assigns.selected_category,
         socket.assigns.favorites_only,
         socket.assigns.favorite_ids
@@ -70,8 +78,8 @@ defmodule StreamixWeb.Content.GuideLive do
      socket
      |> assign(
        rows: rows,
-       all_rows: result.rows,
-       categories: result.categories,
+       all_rows: cleaned_rows,
+       categories: cleaned_categories,
        providers: result.providers,
        starts_at: result.starts_at,
        ends_at: result.ends_at,
@@ -95,17 +103,31 @@ defmodule StreamixWeb.Content.GuideLive do
 
   @impl true
   def handle_event("filter", params, socket) do
+    provider =
+      case Map.fetch(params, "provider") do
+        {:ok, val} when val in [nil, "", "all"] -> nil
+        {:ok, val} -> parse_positive_integer(val)
+        :error -> socket.assigns.selected_provider
+      end
+
     path =
       guide_path(socket,
         search: Map.get(params, "search", socket.assigns.search),
-        provider: Map.get(params, "provider", socket.assigns.selected_provider)
+        provider: provider
       )
 
     {:noreply, push_patch(socket, to: path)}
   end
 
+  def handle_event("filter_provider", %{"provider" => provider}, socket) do
+    provider_id =
+      if provider in [nil, "", "all"], do: nil, else: parse_positive_integer(provider)
+
+    {:noreply, push_patch(socket, to: guide_path(socket, provider: provider_id))}
+  end
+
   def handle_event("filter_category", %{"category" => category}, socket) do
-    {:noreply, push_patch(socket, to: guide_path(socket, category: category))}
+    {:noreply, push_patch(socket, to: guide_path(socket, category: normalize_filter(category)))}
   end
 
   def handle_event("toggle_favorites", _params, socket) do
@@ -167,6 +189,41 @@ defmodule StreamixWeb.Content.GuideLive do
   def terminate(_reason, socket) do
     cancel_refresh(socket.assigns[:refresh_ref])
     :ok
+  end
+
+  @doc "Strips redundant provider prefixes such as 'Canais | ' from category names."
+  @spec clean_category(String.t() | nil) :: String.t() | nil
+  def clean_category(nil), do: nil
+
+  def clean_category(category) when is_binary(category) do
+    cleaned =
+      category
+      |> String.trim()
+      |> String.replace(@category_prefix, "")
+      |> String.trim()
+
+    if cleaned == "", do: nil, else: cleaned
+  end
+
+  defp clean_row(row) do
+    programs = Enum.map(row.programs, &clean_program/1)
+    current = row.current_program && clean_program(row.current_program)
+    next = row.next_program && clean_program(row.next_program)
+    channel = Map.update(row.channel, :name, "", &DisplayTitle.channel/1)
+
+    %{row | channel: channel, programs: programs, current_program: current, next_program: next}
+  end
+
+  defp clean_program(program) do
+    Map.update(program, :category, nil, &clean_category/1)
+  end
+
+  defp clean_categories(categories, rows) do
+    (categories ++ Enum.flat_map(rows, fn row -> Enum.map(row.programs, & &1.category) end))
+    |> Enum.map(&clean_category/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp start_guide_load(socket) do
@@ -266,7 +323,14 @@ defmodule StreamixWeb.Content.GuideLive do
     end
   end
 
-  defp normalize_filter(value) when is_binary(value) and value != "", do: value
+  defp normalize_filter(value) when is_binary(value) and value != "" do
+    if value == "all" do
+      "all"
+    else
+      clean_category(value) || "all"
+    end
+  end
+
   defp normalize_filter(_value), do: "all"
 
   defp normalize_search(value) when is_binary(value),
