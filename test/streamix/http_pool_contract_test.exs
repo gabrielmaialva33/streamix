@@ -52,7 +52,9 @@ defmodule Streamix.HttpPoolContractTest do
                retry: false
              )
 
-    assert_receive {:slow_waiting, handler}
+    # The request was sent before the client gave up; under load the handler
+    # can take longer than the default 100ms to see it.
+    assert_receive {:slow_waiting, handler}, 5_000
     send(handler, :release)
 
     assert {:ok, %Req.Response{status: 200, body: "fast"}} =
