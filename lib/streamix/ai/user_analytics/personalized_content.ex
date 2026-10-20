@@ -139,17 +139,6 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
     |> Enum.any?(&MapSet.member?(favorite_slugs, &1))
   end
 
-  defp genre_match?(item, favorite_genres) when is_list(favorite_genres) do
-    favorite_slugs =
-      favorite_genres
-      |> Catalog.genre_slugs_all()
-      |> MapSet.new()
-
-    genre_match?(item, favorite_slugs)
-  end
-
-  defp genre_match?(_item, _), do: false
-
   defp item_slugs(item) do
     case Map.get(item, :genres) do
       %Ecto.Association.NotLoaded{} ->
