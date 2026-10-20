@@ -242,6 +242,27 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       )
     end
 
+    # Every copy carries the same series title; its files are what differ.
+    test "series source options carry the badges of the copy's first episode", ctx do
+      %{conn: conn, user: user, series: series} = ctx
+      provider = provider_fixture(user, %{name: "Drive"})
+      copy = series_fixture(provider, %{title: series.title, tmdb_id: series.tmdb_id})
+
+      copy
+      |> season_fixture()
+      |> episode_fixture(provider)
+      |> Ecto.Changeset.change(container_extension: "mkv", title: "Pilot 1080p DUAL")
+      |> Repo.update!()
+
+      {:ok, view, _} = live(log_in_user(conn, user), ~p"/browse/series/#{series.id}")
+
+      for badge <- ~w(MKV 1080p DUAL) do
+        assert has_element?(view, "#source-option-#{copy.id} [data-source-badge]", badge)
+      end
+
+      assert has_element?(view, "#series-source-summary", "Trocar fonte")
+    end
+
     test "latest progress chooses a source, explicit and invalid parameters are handled", ctx do
       %{conn: conn, user: user, series: series} = ctx
       provider = provider_fixture(user)

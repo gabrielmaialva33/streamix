@@ -63,13 +63,27 @@ defmodule StreamixWeb.Content.SeriesSources do
       %{
         id: source.id,
         label: source.provider.name,
-        badges: SourceBadges.badges(source),
+        badges: badges(source),
         note: availability_note(source, fullest),
         recommended: index == 0,
         unstable: Map.get(statuses, source.provider_id) == :degraded,
         locked: not Detail.premium_access?(user, source.provider)
       }
     end)
+  end
+
+  # The series title is the same on every copy, so the files tell copies
+  # apart: the first episode's container, quality and audio stand for the copy.
+  defp badges(source) do
+    episode =
+      source
+      |> Detail.seasons_with_episodes()
+      |> Enum.find_value(fn season ->
+        season.episodes |> Enum.sort_by(& &1.episode_num) |> List.first()
+      end)
+
+    (SourceBadges.badges(source) ++ if(episode, do: SourceBadges.badges(episode), else: []))
+    |> Enum.uniq()
   end
 
   defp availability_note(source, fullest) do

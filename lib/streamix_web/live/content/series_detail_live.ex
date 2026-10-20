@@ -409,10 +409,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   event="play_first_episode"
                   label={if @resuming, do: "Continuar", else: "Assistir"}
                 />
-                <a href="#episodes" class="min-h-11 inline-flex items-center text-sm">
-                  Fonte: {provider_name(@selected_series)} · Trocar
-                </a>
-
                 <StreamixWeb.WatchPartyComponents.create_party_button
                   :if={@playable_episode}
                   content_type="episode"
@@ -423,6 +419,22 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 <.trailer_link youtube_id={@series.youtube_trailer} />
                 <.tmdb_link type="tv" tmdb_id={@series.tmdb_id} />
               </div>
+
+              <a
+                :if={length(@source_options) > 1}
+                id="series-source-summary"
+                href="#episodes"
+                class="inline-flex min-h-11 items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+              >
+                <.icon name="hero-server-stack" class="size-4" />
+                <span>
+                  Assistindo de
+                  <span class="font-semibold text-text-primary">
+                    {provider_name(@selected_series)}
+                  </span>
+                </span>
+                <span class="text-brand">· Trocar fonte</span>
+              </a>
 
               <.premium_cta_banner
                 :if={not @premium_access}
