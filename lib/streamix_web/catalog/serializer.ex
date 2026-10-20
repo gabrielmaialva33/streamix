@@ -71,6 +71,7 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
+      genres: Helpers.genre_refs(movie.genres),
       plot: movie.plot,
       poster: poster,
       backdrop: featured_backdrop(backdrops, poster),
@@ -92,6 +93,7 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
+      genres: Helpers.genre_refs(series.genres),
       plot: series.plot,
       poster: poster,
       backdrop: featured_backdrop(backdrops, poster),
@@ -128,6 +130,7 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
+      genres: Helpers.genre_refs(movie.genres),
       poster: ImageProxy.proxy(movie.stream_icon),
       duration: format_duration(movie.duration_secs),
       provider: serialize_provider_ref(movie.provider)
@@ -142,6 +145,7 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
+      genres: Helpers.genre_refs(movie.genres),
       plot: movie.plot,
       cast: Helpers.cast_names(movie.credits),
       director: Helpers.director_names(movie.credits),
@@ -170,6 +174,7 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
+      genres: Helpers.genre_refs(series.genres),
       poster: ImageProxy.proxy(series.cover),
       provider: serialize_provider_ref(series.provider)
     }
@@ -185,6 +190,7 @@ defmodule StreamixWeb.Catalog.Serializer do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
+      genres: Helpers.genre_refs(series.genres),
       plot: series.plot,
       cast: Helpers.cast_names(series.credits),
       director: Helpers.director_names(series.credits),

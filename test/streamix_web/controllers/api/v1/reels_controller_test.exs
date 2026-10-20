@@ -46,8 +46,9 @@ defmodule StreamixWeb.Api.V1.ReelsControllerTest do
       [card | _] = response["data"]
 
       assert Map.keys(card) |> Enum.sort() ==
-               Enum.sort(~w(id name title year rating genre poster provider reel_category))
+               Enum.sort(~w(id name title year rating genre genres poster provider reel_category))
 
+      assert card["genres"] == []
       assert card["reel_category"] == "Histórias da Ásia"
       assert card["provider"] == %{"id" => global.id, "name" => "MegaEmbed", "type" => "xtream"}
     end

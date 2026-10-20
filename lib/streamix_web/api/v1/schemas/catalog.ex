@@ -112,7 +112,11 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
             "title" => "Dune: Part Two",
             "year" => 2024,
             "rating" => 8.6,
-            "genre" => "Science Fiction, Adventure",
+            "genre" => "Aventura, Ficção científica",
+            "genres" => [
+              %{"slug" => "aventura", "name" => "Aventura"},
+              %{"slug" => "ficcao-cientifica", "name" => "Ficção científica"}
+            ],
             "poster" => "https://img.example.test/dune.jpg",
             "duration" => "2h 46min",
             "provider" => %{"id" => 4, "name" => "Streamix Fallback", "type" => "xtream"}
@@ -373,6 +377,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
       year: year(),
       rating: rating(),
       genre: Common.string(nullable: true),
+      genres: genres_property(),
       poster: Common.string(nullable: true),
       duration: Common.string(nullable: true),
       provider: Common.ref("ProviderRef")
@@ -404,6 +409,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
       year: year(),
       rating: rating(),
       genre: Common.string(nullable: true),
+      genres: genres_property(),
       plot: Common.string(nullable: true),
       poster: Common.string(nullable: true),
       backdrop: Common.array(Common.string()),
@@ -727,6 +733,23 @@ defmodule StreamixWeb.Api.V1.Schemas.Catalog do
   defp year, do: Common.integer(minimum: 0, maximum: 2200, nullable: true)
   defp rating, do: Common.number(format: :float, minimum: 0, maximum: 10, nullable: true)
   defp rank_score, do: Common.integer(minimum: 0, description: "Search relevance score")
+
+  defp genres_property do
+    genre_item =
+      Common.object(
+        "GenreRef",
+        %{
+          slug: Common.string(min_length: 1),
+          name: Common.string(min_length: 1)
+        },
+        [:slug, :name],
+        example: %{"slug" => "acao", "name" => "Ação"}
+      )
+
+    Common.array(genre_item,
+      description: "Canonical genres ordered by vocabulary position"
+    )
+  end
 
   defp page_parameters(default_limit) do
     [

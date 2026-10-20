@@ -35,24 +35,64 @@ defmodule Streamix.Helpers do
   # =============================================================================
 
   @doc """
-  Formats a list of Genre structs as a comma-separated string.
+  Formats a list of Genre structs as a comma-separated string, ordered by
+  `position` (nil last) then `name`.
   Returns nil if the list is empty or not loaded.
 
   ## Examples
 
-      iex> Streamix.Helpers.genre_names([%{name: "Action"}, %{name: "Drama"}])
-      "Action, Drama"
+      iex> Streamix.Helpers.genre_names([%{name: "Drama", position: 7}, %{name: "Ação", position: 1}])
+      "Ação, Drama"
 
       iex> Streamix.Helpers.genre_names([])
       nil
   """
-  @spec genre_names(list()) :: String.t() | nil
+  @spec genre_names(list() | Ecto.Association.NotLoaded.t() | nil) :: String.t() | nil
   def genre_names(%Ecto.Association.NotLoaded{}), do: nil
   def genre_names(nil), do: nil
   def genre_names([]), do: nil
 
   def genre_names(genres) when is_list(genres) do
-    Enum.map_join(genres, ", ", & &1.name)
+    genres
+    |> sort_genres()
+    |> Enum.map_join(", ", & &1.name)
+  end
+
+  @doc """
+  Formats a list of Genre structs into API genre references (`[%{slug: slug, name: name}]`),
+  keeping only canonical genres with a non-empty `slug` and ordering by `position`
+  (nil last) then `name`.
+
+  ## Examples
+
+      iex> Streamix.Helpers.genre_refs([%{slug: "drama", name: "Drama", position: 7}, %{slug: "acao", name: "Ação", position: 1}])
+      [%{slug: "acao", name: "Ação"}, %{slug: "drama", name: "Drama"}]
+
+      iex> Streamix.Helpers.genre_refs([])
+      []
+  """
+  @spec genre_refs(list() | Ecto.Association.NotLoaded.t() | nil) :: [
+          %{slug: String.t(), name: String.t()}
+        ]
+  def genre_refs(%Ecto.Association.NotLoaded{}), do: []
+  def genre_refs(nil), do: []
+  def genre_refs([]), do: []
+
+  def genre_refs(genres) when is_list(genres) do
+    genres
+    |> Enum.filter(&has_slug?/1)
+    |> sort_genres()
+    |> Enum.map(&%{slug: &1.slug, name: &1.name})
+  end
+
+  defp has_slug?(%{slug: slug}) when is_binary(slug) and slug != "", do: true
+  defp has_slug?(_genre), do: false
+
+  defp sort_genres(genres) do
+    Enum.sort_by(genres, fn genre ->
+      position = Map.get(genre, :position)
+      {is_nil(position), position || 0, Map.get(genre, :name) || ""}
+    end)
   end
 
   @doc """

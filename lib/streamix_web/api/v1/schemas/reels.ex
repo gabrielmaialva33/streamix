@@ -33,6 +33,7 @@ defmodule StreamixWeb.Api.V1.Schemas.Reels do
             "year" => 2025,
             "rating" => nil,
             "genre" => nil,
+            "genres" => [],
             "poster" => "https://img.example.test/reels/amor-escondido.jpg",
             "provider" => %{"id" => 9, "name" => "MegaEmbed", "type" => "xtream"},
             "reel_category" => "Histórias da Ásia"

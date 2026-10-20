@@ -243,6 +243,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
+      genres: Helpers.genre_refs(movie.genres),
       poster: proxy_image(movie.stream_icon),
       backdrop: proxy_image(Streamix.Catalog.backdrop_urls(movie)),
       plot: movie.plot,
@@ -258,6 +259,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
+      genres: Helpers.genre_refs(series.genres),
       poster: proxy_image(series.cover),
       backdrop: proxy_image(Streamix.Catalog.backdrop_urls(series)),
       plot: series.plot,
@@ -302,6 +304,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       year: movie.year,
       rating: movie.rating && Decimal.to_float(movie.rating),
       genre: Helpers.genre_names(movie.genres),
+      genres: Helpers.genre_refs(movie.genres),
       poster: movie.stream_icon
     }
   end
@@ -314,6 +317,7 @@ defmodule StreamixWeb.Api.V1.SearchController do
       year: series.year,
       rating: series.rating && Decimal.to_float(series.rating),
       genre: Helpers.genre_names(series.genres),
+      genres: Helpers.genre_refs(series.genres),
       poster: series.cover
     }
   end

@@ -10,7 +10,6 @@ defmodule Streamix.Iptv.Catalog do
   import Ecto.Query, warn: false
 
   alias Streamix.Cache
-  alias Streamix.Helpers
 
   alias Streamix.Iptv.{
     Access,
@@ -219,13 +218,16 @@ defmodule Streamix.Iptv.Catalog do
   Lists canonical genres that have content of the given kind, ordered by
   content volume. Powers the genre sidebar on the unified browse pages.
   """
-  @spec list_genres_for(:movies | :series) :: [%{id: integer(), name: String.t()}]
+  @spec list_genres_for(:movies | :series) :: [
+          %{id: integer(), slug: String.t(), name: String.t()}
+        ]
   def list_genres_for(kind) when kind in [:movies, :series] do
     Cache.fetch("catalog:genres:#{kind}", :timer.hours(6), fn ->
       genre_query_for(kind)
-      |> group_by([g], [g.id, g.name])
+      |> where([g], not is_nil(g.slug))
+      |> group_by([g], [g.id, g.slug, g.name])
       |> order_by([g], desc: count(), asc: g.name)
-      |> select([g], %{id: g.id, name: g.name})
+      |> select([g], %{id: g.id, slug: g.slug, name: g.name})
       |> Repo.all()
     end)
   end
@@ -245,7 +247,7 @@ defmodule Streamix.Iptv.Catalog do
   def list_movies_by_genre(genre, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
     show_adult = Keyword.get(opts, :show_adult, false)
-    escaped_genre = Helpers.escape_like(genre)
+    normalized = String.trim(genre)
 
     public_movies_query()
     |> with_provider_filters(opts)
@@ -257,7 +259,10 @@ defmodule Streamix.Iptv.Catalog do
       as: :genre,
       on: genre.id == movie_genre.genre_id
     )
-    |> where([genre: genre], ilike(genre.name, ^"%#{escaped_genre}%"))
+    |> where(
+      [genre: genre],
+      genre.slug == ^normalized or fragment("lower(?) = lower(?)", genre.name, ^normalized)
+    )
     |> maybe_exclude_adult(show_adult, :movie)
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.rating, desc: movie.year)

@@ -651,8 +651,21 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
 
       global = global_provider_fixture(%{name: "Global"})
 
-      drama = Repo.insert!(%Streamix.Iptv.Genre{name: "volume drama"})
-      niche = Repo.insert!(%Streamix.Iptv.Genre{name: "volume niche"})
+      drama =
+        Repo.insert!(%Streamix.Iptv.Genre{
+          name: "Drama",
+          slug: "drama",
+          position: 7
+        })
+
+      niche =
+        Repo.insert!(%Streamix.Iptv.Genre{
+          name: "Faroeste",
+          slug: "faroeste",
+          position: 19
+        })
+
+      _raw = Repo.insert!(%Streamix.Iptv.Genre{name: "unmigrated raw genre"})
 
       series_a = series_content_fixture(global, %{name: "Show A", series_id: 1_305})
       series_b = series_content_fixture(global, %{name: "Show B", series_id: 1_306})
@@ -664,12 +677,13 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       ])
 
       genres = Iptv.list_genres_for(:series)
-      names = Enum.map(genres, & &1.name)
+      slugs = Enum.map(genres, & &1.slug)
 
-      drama_index = Enum.find_index(names, &(&1 == "volume drama"))
-      niche_index = Enum.find_index(names, &(&1 == "volume niche"))
+      drama_index = Enum.find_index(slugs, &(&1 == "drama"))
+      niche_index = Enum.find_index(slugs, &(&1 == "faroeste"))
 
       assert drama_index < niche_index
+      assert Enum.all?(genres, &(is_binary(&1.slug) and is_binary(&1.name) and is_integer(&1.id)))
 
       Streamix.Cache.delete("catalog:genres:series")
     end

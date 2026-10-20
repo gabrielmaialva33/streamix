@@ -98,6 +98,19 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
       |> assert_status(200)
       |> assert_operation_response(operation_id)
     end)
+
+    movie_detail =
+      build_conn()
+      |> get("/api/v1/catalog/movies/#{movie.id}")
+      |> json_response(200)
+      |> Map.fetch!("data")
+
+    assert movie_detail["genre"] == "Ação, Drama"
+
+    assert movie_detail["genres"] == [
+             %{"slug" => "acao", "name" => "Ação"},
+             %{"slug" => "drama", "name" => "Drama"}
+           ]
   end
 
   test "documented error responses conform to the stable error envelope", %{conn: conn} do
@@ -160,6 +173,25 @@ defmodule StreamixWeb.Api.V1.OpenApiContractTest do
         tmdb_id: "100",
         content_rating: "PG-13"
       })
+
+    action =
+      Repo.insert!(
+        %Streamix.Iptv.Genre{name: "Ação", slug: "acao", position: 1},
+        on_conflict: {:replace, [:name, :position]},
+        conflict_target: :slug
+      )
+
+    drama =
+      Repo.insert!(
+        %Streamix.Iptv.Genre{name: "Drama", slug: "drama", position: 7},
+        on_conflict: {:replace, [:name, :position]},
+        conflict_target: :slug
+      )
+
+    Repo.insert_all("movie_genres", [
+      %{movie_id: movie.id, genre_id: drama.id},
+      %{movie_id: movie.id, genre_id: action.id}
+    ])
 
     for {name, role} <- [{"Contract Actor", "cast"}, {"Contract Director", "director"}] do
       person =

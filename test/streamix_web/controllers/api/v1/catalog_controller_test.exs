@@ -103,6 +103,8 @@ defmodule StreamixWeb.Api.V1.CatalogControllerTest do
       assert Map.has_key?(first, "year")
       assert Map.has_key?(first, "rating")
       assert Map.has_key?(first, "genre")
+      assert Map.has_key?(first, "genres")
+      assert is_list(first["genres"])
       assert Map.has_key?(first, "poster")
     end
 
