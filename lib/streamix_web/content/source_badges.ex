@@ -10,6 +10,9 @@ defmodule StreamixWeb.Content.SourceBadges do
   Markers are read from the raw provider `name`/`title` as whole words,
   ignoring case, because provider catalogs label copies in many shapes:
   `Filme [L]`, `Filme [LEG]`, `Filme Legendado`, `Filme 1080p WEB-DL DUAL`.
+  Many providers say the language only through the shelf a copy sits on
+  ("▶️ Legendados", "FILMES | Legendados"), so the audio markers also read
+  the names of preloaded categories.
   """
 
   # A delivery format, not something a viewer chooses by.
@@ -49,9 +52,37 @@ defmodule StreamixWeb.Content.SourceBadges do
        container_label(Map.get(source, :container_extension)),
        resolution(label),
        if(label =~ @hdr, do: "HDR")
-     ] ++ audio(source, label))
+     ] ++ audio(source, label <> " " <> category_names(source)))
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
+  end
+
+  @doc """
+  Keeps one source per provider and badge set, in order.
+
+  Two copies of one provider that show the same badges cannot be told apart
+  by a viewer (often one file listed on two shelves), so a picker offers the
+  first one. The copy `current_id` names stands for its group, so a page
+  opened on it still shows it. Playback failover still tries every copy.
+  """
+  @spec distinct_copies([map()], term()) :: [map()]
+  def distinct_copies(sources, current_id \\ nil) do
+    groups = Enum.group_by(sources, &copy_key/1)
+
+    sources
+    |> Enum.uniq_by(&copy_key/1)
+    |> Enum.map(fn first -> Enum.find(groups[copy_key(first)], first, &(&1.id == current_id)) end)
+  end
+
+  # A failover candidate wraps the catalog row in `:content`.
+  defp copy_key(source),
+    do: {Map.get(source, :provider_id), badges(Map.get(source, :content) || source)}
+
+  defp category_names(source) do
+    case Map.get(source, :categories) do
+      categories when is_list(categories) -> Enum.map_join(categories, " ", &(&1.name || ""))
+      _not_loaded -> ""
+    end
   end
 
   defp resolution(label) do

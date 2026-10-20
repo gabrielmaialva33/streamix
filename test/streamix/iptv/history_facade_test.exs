@@ -81,6 +81,7 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
                :duration_seconds,
                :id,
                :progress_seconds,
+               :tmdb_id,
                :watched_at
              ]
     end

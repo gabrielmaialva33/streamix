@@ -117,6 +117,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> Detail.movie_variants(user_id)
           |> ensure_current_variant(movie)
           |> sort_movie_variants(movie.id, preferred_provider_id)
+          |> SourceBadges.distinct_copies(movie.id)
 
         selected_movie = selected_variant(movie_variants, movie, preferred_provider_id)
         movie_watch_paths = build_watch_paths(movie_variants, current_path)

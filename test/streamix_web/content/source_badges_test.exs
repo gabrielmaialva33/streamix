@@ -75,4 +75,58 @@ defmodule StreamixWeb.Content.SourceBadgesTest do
 
     assert SourceBadges.badges(%{title: "Episódio Dublado"}) == ["DUB"]
   end
+
+  # Production providers file subtitled copies under "▶️ Legendados" and
+  # "FILMES | Legendados" without a marker in the name.
+  test "reads audio markers from the shelves a copy sits on" do
+    assert SourceBadges.badges(%{
+             name: "Armadilha",
+             container_extension: "mp4",
+             categories: [%{name: "▶️ Legendados"}, %{name: "Suspense"}]
+           }) == ["MP4", "LEG"]
+
+    assert SourceBadges.badges(%{name: "Dark", categories: [%{name: "Séries | Dubladas"}]}) ==
+             ["DUB"]
+
+    # A shelf never adds a resolution, and unloaded categories are ignored.
+    assert SourceBadges.badges(%{name: "Filme", categories: [%{name: "FILMES | 4K"}]}) == []
+
+    assert SourceBadges.badges(%{name: "Filme", categories: %Ecto.Association.NotLoaded{}}) ==
+             []
+  end
+
+  describe "distinct_copies/2" do
+    defp copy(id, provider_id, fields \\ %{}),
+      do:
+        Map.merge(
+          %{id: id, provider_id: provider_id, name: "Filme", container_extension: "mp4"},
+          fields
+        )
+
+    test "one choice per provider and badge set, in order" do
+      sources = [
+        copy(1, :a),
+        copy(2, :a),
+        copy(3, :a, %{categories: [%{name: "FILMES | Legendados"}]}),
+        copy(4, :b)
+      ]
+
+      assert Enum.map(SourceBadges.distinct_copies(sources), & &1.id) == [1, 3, 4]
+    end
+
+    test "the current copy stands for its group, in the group's place" do
+      sources = [copy(1, :a), copy(4, :b), copy(2, :a)]
+
+      assert Enum.map(SourceBadges.distinct_copies(sources, 2), & &1.id) == [2, 4]
+    end
+
+    test "failover candidates are compared by the row they wrap" do
+      sources = [
+        %{id: 1, provider_id: :a, content: copy(1, :a)},
+        %{id: 2, provider_id: :a, content: copy(2, :a, %{container_extension: "mkv"})}
+      ]
+
+      assert Enum.map(SourceBadges.distinct_copies(sources), & &1.id) == [1, 2]
+    end
+  end
 end

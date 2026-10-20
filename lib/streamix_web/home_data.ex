@@ -8,6 +8,7 @@ defmodule StreamixWeb.HomeData do
   alias Streamix.AI
   alias Streamix.Cache
   alias Streamix.Library
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.FavoriteState
   alias StreamixWeb.Content.TitleIdentity
   alias StreamixWeb.HomeCatalogLoader
@@ -279,10 +280,13 @@ defmodule StreamixWeb.HomeData do
           )
         end,
         history: fn ->
-          Library.list_home_history(user.id,
-            limit: @home_history_limit,
+          user.id
+          |> Library.list_home_history(
+            limit: @home_history_limit * 3,
             show_adult: user.show_adult_content
           )
+          |> Enum.uniq_by(&resume_key/1)
+          |> Enum.take(@home_history_limit)
         end
       },
       timeout: 6_000
@@ -412,6 +416,23 @@ defmodule StreamixWeb.HomeData do
       |> Enum.take(@home_default_limit)
     end
   end
+
+  # "Continuar assistindo" resumes a title, not a provider copy: the latest
+  # entry of a movie (by TMDB id, else its clean title) or of a series (its
+  # most recent episode) stands for the others. Progress stays per copy.
+  defp resume_key(%{content_type: "movie"} = entry),
+    do: {:movie, present(entry[:tmdb_id]) || title_key(entry.content_name)}
+
+  defp resume_key(%{content_type: "episode", series_name: name} = entry)
+       when is_binary(name) and name != "",
+       do: {:series, present(entry[:series_tmdb_id]) || title_key(name)}
+
+  defp resume_key(entry), do: {entry.content_type, entry.content_id}
+
+  defp title_key(name), do: name |> DisplayTitle.title() |> String.downcase()
+
+  defp present(value) when is_binary(value) and value != "", do: value
+  defp present(_value), do: nil
 
   defp recommendation_ids(recommendations) do
     Enum.flat_map(recommendations, &recommendation_id/1)

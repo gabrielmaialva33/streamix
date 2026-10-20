@@ -463,6 +463,7 @@ defmodule Streamix.Iptv.History do
         movie_id: movie.id,
         movie_name: movie.name,
         movie_icon: movie.stream_icon,
+        movie_tmdb_id: movie.tmdb_id,
         series_id: series.id,
         series_name: series.name,
         series_icon: series.cover,
@@ -473,6 +474,7 @@ defmodule Streamix.Iptv.History do
         episode_season_number: episode_season.season_number,
         episode_series_name: episode_series.name,
         episode_series_cover: episode_series.cover,
+        episode_series_tmdb_id: episode_series.tmdb_id,
         live_channel_id: channel.id,
         live_channel_name: channel.name,
         live_channel_icon: channel.stream_icon
@@ -489,7 +491,8 @@ defmodule Streamix.Iptv.History do
       content_type: row.content_type,
       content_id: row.movie_id,
       content_name: row.movie_name,
-      content_icon: row.movie_icon
+      content_icon: row.movie_icon,
+      tmdb_id: row.movie_tmdb_id
     }
   end
 
@@ -519,6 +522,7 @@ defmodule Streamix.Iptv.History do
       content_name: row.episode_name,
       content_icon: row.episode_icon || row.episode_series_cover,
       series_name: row.episode_series_name,
+      series_tmdb_id: row.episode_series_tmdb_id,
       season_number: row.episode_season_number,
       episode_number: row.episode_num
     }

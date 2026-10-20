@@ -21,6 +21,7 @@ defmodule StreamixWeb.Catalog.Sources do
 
   alias StreamixWeb.Catalog.Serializer
   alias StreamixWeb.Content.SeriesSources
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.PlayerHelpers
 
   @doc "Sources of a movie returned by `Streamix.Catalog.get_public_movie/1`."
@@ -44,10 +45,12 @@ defmodule StreamixWeb.Catalog.Sources do
     |> serialize(series.id, &Serializer.serialize_series_source(&1, SeriesSources.counts(&1), &2))
   end
 
+  # Copies a viewer cannot tell apart are one choice, as on the web picker.
   defp playback_sources(type, content) do
     type
     |> PlayerHelpers.failover_sources(content, nil)
     |> Enum.filter(&stream_endpoint_accepts?(&1.provider))
+    |> SourceBadges.distinct_copies(content.id)
     |> serialize(content.id, &Serializer.serialize_source/2)
   end
 

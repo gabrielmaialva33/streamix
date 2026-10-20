@@ -13,6 +13,33 @@ defmodule StreamixWeb.HomeDataTest do
     :ok
   end
 
+  describe "library_sections/1" do
+    test "continue watching resumes each title once, from its latest copy" do
+      user = user_fixture()
+      first = provider_fixture(user, %{name: "Primeiro"})
+      second = provider_fixture(user, %{name: "Segundo"})
+
+      older = movie_fixture(first, %{name: "Shark Tale", tmdb_id: "10555"})
+      latest = movie_fixture(second, %{name: "O Espanta Tubarões", tmdb_id: "10555"})
+      other = movie_fixture(first, %{name: "Outro Filme [L]"})
+      same_title = movie_fixture(second, %{name: "Outro Filme"})
+
+      for {movie, minutes_ago} <- [{older, 40}, {other, 30}, {same_title, 20}, {latest, 10}] do
+        {:ok, entry} = Iptv.add_watch_history(user.id, "movie", movie.id, %{progress_seconds: 10})
+        watched_at = DateTime.utc_now(:second) |> DateTime.add(-minutes_ago * 60)
+
+        Streamix.Repo.query!("UPDATE watch_progress SET last_watched_at = $1 WHERE id = $2", [
+          watched_at,
+          entry.id
+        ])
+      end
+
+      %{history: history} = HomeData.library_sections(%{current_scope: %{user: user}})
+
+      assert Enum.map(history, & &1.content_id) == [latest.id, same_title.id]
+    end
+  end
+
   describe "toggle_content_favorite/3" do
     test "persists movie favorites from home card previews and refreshes home state" do
       user = user_fixture()

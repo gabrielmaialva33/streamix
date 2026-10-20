@@ -65,7 +65,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   cards showing "Stream <id>" and a category link.
 - "Para você" and "Títulos similares" show one card per title, and similar titles no longer include the page's own
   title through another provider's copy.
-- "Continuar assistindo" leads an episode with its series and position ("T1 E2") and falls back to the series cover.
+- "Continuar assistindo" leads an episode with its series and position ("T1 E2") and falls back to the series cover,
+  and resumes each title once: the latest copy of a movie (same TMDB id or clean title) and the latest episode of a
+  series stand for the others.
+- Source badges read `LEG`/`DUB` from the shelf a copy sits on ("▶️ Legendados", "FILMES | Legendados") when its name
+  says nothing, and copies of one provider with the same badges are offered once by the web pickers and
+  `GET /api/v1/catalog/{movies,episodes}/:id/sources`; playback failover still tries every copy.
 - "Lançamentos" stops at the current year, and GIndex reads the last plausible year in a release name, so
   "Blade.Runner.2049.2017" is from 2017.
 - One set of web controls: `<.button>` and `<.badge>` variants, pill filter chips with pt-BR counts ("76,1 mil"),
