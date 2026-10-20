@@ -20,6 +20,7 @@ defmodule Streamix.AI.UserAnalyticsTest do
 
   alias Streamix.Cache
   alias Streamix.Iptv.{Category, Episode, Genre, History, Season, WatchProgress}
+  alias Streamix.Iptv.Genres.Normalizer
 
   defmodule ProfileQdrantStub do
     def get_points(collection, ids) do
@@ -62,12 +63,12 @@ defmodule Streamix.AI.UserAnalyticsTest do
 
       assert UserAnalytics.get_user_genre_filters(nil) == [
                {"all", "Todos"},
-               {"action", "Ação"},
-               {"comedy", "Comédia"},
+               {"acao", "Ação"},
+               {"comedia", "Comédia"},
                {"drama", "Drama"},
-               {"horror", "Terror"},
-               {"sci-fi", "Ficção"},
-               {"animation", "Animação"}
+               {"terror", "Terror"},
+               {"ficcao-cientifica", "Ficção científica"},
+               {"animacao", "Animação"}
              ]
 
       assert UserAnalytics.get_period_filters() == [
@@ -132,10 +133,53 @@ defmodule Streamix.AI.UserAnalyticsTest do
 
       assert [
                {"all", "Todos"},
-               {"action", "Action"},
+               {"acao", "Ação"},
                {"drama", "Drama"},
-               {"comedy", "Comedy"}
+               {"comedia", "Comédia"}
              ] = UserAnalytics.get_user_genre_filters(user.id)
+    end
+
+    test "skips favorite genres that normalize to nothing and dedupes" do
+      user = user_fixture()
+      cache_key = Cache.user_insights_key(user.id)
+
+      ConCache.put(
+        :streamix_l1_cache,
+        cache_key,
+        %ConCache.Item{
+          value: %{
+            has_data: true,
+            favorite_genres: ["Action", "Ação", "UnknownXYZ", "Drama"]
+          },
+          ttl: :timer.seconds(60)
+        }
+      )
+
+      assert [
+               {"all", "Todos"},
+               {"acao", "Ação"},
+               {"drama", "Drama"}
+             ] = UserAnalytics.get_user_genre_filters(user.id)
+    end
+
+    test "falls back to default genre filters when all favorite genres map to nothing" do
+      user = user_fixture()
+      cache_key = Cache.user_insights_key(user.id)
+
+      ConCache.put(
+        :streamix_l1_cache,
+        cache_key,
+        %ConCache.Item{
+          value: %{
+            has_data: true,
+            favorite_genres: ["UnknownXYZ", "NotAGenre"]
+          },
+          ttl: :timer.seconds(60)
+        }
+      )
+
+      assert UserAnalytics.get_user_genre_filters(user.id) ==
+               UserAnalytics.get_user_genre_filters(nil)
     end
   end
 
@@ -256,6 +300,17 @@ defmodule Streamix.AI.UserAnalyticsTest do
         |> Season.changeset(%{season_number: 1, name: "Season 1", series_id: series.id})
         |> Repo.insert!()
 
+      _offset_episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: 300,
+          title: "Intro",
+          episode_num: 0,
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
       episode =
         %Episode{}
         |> Episode.changeset(%{
@@ -356,6 +411,78 @@ defmodule Streamix.AI.UserAnalyticsTest do
       assert channels
              |> Channels.rank_candidates(category_scores, Enum.reverse(category_refs))
              |> Enum.map(& &1.id) == expected
+    end
+
+    test "filtering by 'acao' keeps an item with 'acao' and drops one with 'animacao'" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{visibility: :global, is_system: true})
+
+      acao = genre_fixture("Ação", %{slug: "acao"})
+      animacao = genre_fixture("Animação", %{slug: "animacao"})
+
+      action_movie =
+        provider
+        |> movie_fixture(%{
+          name: "Ação Pura",
+          stream_icon: "http://example.com/acao.jpg",
+          year: 2026
+        })
+        |> attach_genres([acao])
+
+      animation_movie =
+        provider
+        |> movie_fixture(%{
+          name: "Animação Infantil",
+          stream_icon: "http://example.com/animacao.jpg",
+          year: 2026
+        })
+        |> attach_genres([animacao])
+
+      watched_movie(user, action_movie)
+      watched_movie(user, animation_movie)
+
+      results_acao =
+        UserAnalytics.get_personalized_trending(user.id, genre: "acao", limit: 10)
+
+      assert Enum.map(results_acao, & &1.id) == [action_movie.id]
+
+      results_animacao =
+        UserAnalytics.get_personalized_trending(user.id, genre: "animacao", limit: 10)
+
+      assert Enum.map(results_animacao, & &1.id) == [animation_movie.id]
+
+      results_all =
+        UserAnalytics.get_personalized_trending(user.id, genre: "all", limit: 10)
+
+      assert length(results_all) == 2
+    end
+
+    test "genre matching in hybrid ranking does not cross-match 'acao' and 'animacao'" do
+      acao = %Genre{slug: "acao", name: "Ação"}
+      animacao = %Genre{slug: "animacao", name: "Animação"}
+
+      acao_item = %{id: 1, name: "Ação", genres: [acao], rating: "5.0", year: 2026}
+      animacao_item = %{id: 2, name: "Animação", genres: [animacao], rating: "5.0", year: 2026}
+
+      ranked_for_acao =
+        PersonalizedContent.rank_items(
+          [animacao_item, acao_item],
+          %{favorite_genres: ["Ação"]},
+          %{},
+          current_year: 2026
+        )
+
+      assert Enum.map(ranked_for_acao, & &1.id) == [1, 2]
+
+      ranked_for_animacao =
+        PersonalizedContent.rank_items(
+          [acao_item, animacao_item],
+          %{favorite_genres: ["Animação"]},
+          %{},
+          current_year: 2026
+        )
+
+      assert Enum.map(ranked_for_animacao, & &1.id) == [2, 1]
     end
   end
 
@@ -497,9 +624,22 @@ defmodule Streamix.AI.UserAnalyticsTest do
     |> Repo.update_all(set: [last_watched_at: DateTime.truncate(watched_at, :second)])
   end
 
-  defp genre_fixture(name) do
+  defp genre_fixture(name, attrs \\ %{}) do
+    slug =
+      Map.get_lazy(attrs, :slug, fn ->
+        case Normalizer.normalize(name) do
+          [s | _] -> s
+          [] -> String.downcase(name)
+        end
+      end)
+
+    attrs =
+      attrs
+      |> Map.put_new(:name, name)
+      |> Map.put_new(:slug, slug)
+
     %Genre{}
-    |> Genre.changeset(%{name: name})
+    |> Genre.changeset(attrs)
     |> Repo.insert!()
   end
 

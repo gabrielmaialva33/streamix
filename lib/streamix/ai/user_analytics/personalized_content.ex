@@ -13,7 +13,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
 
   ## Options
   - `:limit` - Number of results (default: 12)
-  - `:genre` - Filter by genre ("all" | "action" | "comedy" | etc)
+  - `:genre` - Filter by genre ("all" | "acao" | "comedia" | etc)
   - `:days` - Trending period (7 | 30 | nil for all time)
   - `:show_adult` - Include adult content (default: false)
   """
@@ -50,17 +50,11 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
     |> Enum.take(limit)
   end
 
-  defp filter_by_genre(items, "all"), do: items
+  defp filter_by_genre(items, genre) when genre in ["all", nil, ""], do: items
 
-  defp filter_by_genre(items, genre) do
-    downcased_genre = String.downcase(genre)
-
+  defp filter_by_genre(items, genre) when is_binary(genre) do
     Enum.filter(items, fn item ->
-      item_genre_str = Streamix.Helpers.genre_names(Map.get(item, :genres, [])) || ""
-
-      item_genre_str
-      |> String.downcase()
-      |> String.contains?(downcased_genre)
+      genre in item_slugs(item)
     end)
   end
 
@@ -95,6 +89,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   @spec rank_items([map()], map(), map(), keyword()) :: [map()]
   def rank_items(items, insights, semantic_scores, opts \\ []) when is_list(items) do
     favorite_genres = Map.get(insights || %{}, :favorite_genres, [])
+    favorite_slugs = favorite_genres |> Catalog.genre_slugs_all() |> MapSet.new()
     current_year = Keyword.get(opts, :current_year, Date.utc_today().year)
     count = max(length(items), 1)
 
@@ -106,7 +101,7 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
           item,
           index,
           count,
-          favorite_genres,
+          favorite_slugs,
           semantic_scores || %{},
           current_year
         )
@@ -121,9 +116,9 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
       Map.get(insights || %{}, :favorite_genres, []) != []
   end
 
-  defp hybrid_score(item, index, count, favorite_genres, semantic_scores, current_year) do
+  defp hybrid_score(item, index, count, favorite_slugs, semantic_scores, current_year) do
     semantic = Map.get(semantic_scores, Map.get(item, :id), 0.0) * 55.0
-    genre = if genre_match?(item, favorite_genres), do: 18.0, else: 0.0
+    genre = if genre_match?(item, favorite_slugs), do: 18.0, else: 0.0
     rating = normalized_rating(Map.get(item, :rating)) * 10.0
     recency = recency_score(Map.get(item, :year), current_year) * 7.0
     upstream_order = max(0.0, 1.0 - index / count) * 10.0
@@ -138,18 +133,45 @@ defmodule Streamix.AI.UserAnalytics.PersonalizedContent do
   defp resolve_insights(insights, _user_id) when is_map(insights), do: insights
   defp resolve_insights(_insights, _user_id), do: %{}
 
-  defp genre_match?(item, favorite_genres) do
-    item_genre = Streamix.Helpers.genre_names(Map.get(item, :genres, [])) || ""
-    matches_favorite_genre?(item_genre, favorite_genres)
+  defp genre_match?(item, %MapSet{} = favorite_slugs) do
+    item
+    |> item_slugs()
+    |> Enum.any?(&MapSet.member?(favorite_slugs, &1))
   end
 
-  defp matches_favorite_genre?(item_genre, favorite_genres) do
-    item_genre = String.downcase(item_genre)
+  defp genre_match?(item, favorite_genres) when is_list(favorite_genres) do
+    favorite_slugs =
+      favorite_genres
+      |> Catalog.genre_slugs_all()
+      |> MapSet.new()
 
-    Enum.any?(favorite_genres, fn genre ->
-      String.contains?(item_genre, String.downcase(genre))
-    end)
+    genre_match?(item, favorite_slugs)
   end
+
+  defp genre_match?(_item, _), do: false
+
+  defp item_slugs(item) do
+    case Map.get(item, :genres) do
+      %Ecto.Association.NotLoaded{} ->
+        []
+
+      nil ->
+        []
+
+      genres when is_list(genres) ->
+        Enum.flat_map(genres, &extract_genre_slug/1)
+
+      _ ->
+        []
+    end
+  end
+
+  defp extract_genre_slug(%{slug: slug}) when is_binary(slug) and slug != "", do: [slug]
+  defp extract_genre_slug(%{"slug" => slug}) when is_binary(slug) and slug != "", do: [slug]
+  defp extract_genre_slug(%{name: name}) when is_binary(name), do: Catalog.genre_slugs(name)
+  defp extract_genre_slug(%{"name" => name}) when is_binary(name), do: Catalog.genre_slugs(name)
+  defp extract_genre_slug(slug) when is_binary(slug) and slug != "", do: [slug]
+  defp extract_genre_slug(_), do: []
 
   defp normalized_rating(%Decimal{} = value), do: normalized_rating(Decimal.to_float(value))
   defp normalized_rating(value) when is_integer(value), do: normalized_rating(value * 1.0)

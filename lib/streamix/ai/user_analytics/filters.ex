@@ -2,6 +2,9 @@ defmodule Streamix.AI.UserAnalytics.Filters do
   @moduledoc false
 
   alias Streamix.AI.UserAnalytics.Insights
+  alias Streamix.Catalog
+
+  @default_genre_slugs ~w(acao comedia drama terror ficcao-cientifica animacao)
 
   @doc """
   Gets user's favorite genres for dynamic filter options.
@@ -15,10 +18,15 @@ defmodule Streamix.AI.UserAnalytics.Filters do
       %{favorite_genres: [_ | _] = genres} ->
         user_genres =
           genres
+          |> Enum.flat_map(&Catalog.genre_slugs/1)
+          |> Enum.uniq()
           |> Enum.take(5)
-          |> Enum.map(fn genre -> {String.downcase(genre), genre} end)
+          |> Enum.map(fn slug -> {slug, Catalog.genre_name(slug)} end)
 
-        [{"all", "Todos"}] ++ user_genres
+        case user_genres do
+          [] -> default_genre_filters()
+          _ -> [{"all", "Todos"} | user_genres]
+        end
 
       _ ->
         default_genre_filters()
@@ -51,13 +59,8 @@ defmodule Streamix.AI.UserAnalytics.Filters do
 
   defp default_genre_filters do
     [
-      {"all", "Todos"},
-      {"action", "Ação"},
-      {"comedy", "Comédia"},
-      {"drama", "Drama"},
-      {"horror", "Terror"},
-      {"sci-fi", "Ficção"},
-      {"animation", "Animação"}
+      {"all", "Todos"}
+      | Enum.map(@default_genre_slugs, fn slug -> {slug, Catalog.genre_name(slug)} end)
     ]
   end
 end
