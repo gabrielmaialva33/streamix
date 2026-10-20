@@ -244,10 +244,11 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
 
         expected_width = (viewport_width - 42) / 2
 
-        # Two stable 14 px title lines make a channel card ~190 px tall.
+        # Two stable 14 px title lines make a channel card ~190 px tall in
+        # Chromium; WebKit sets the same lines taller (up to ~212 px).
         for rect <- Enum.take(state["rects"], 2) do
           assert_in_delta rect["width"], expected_width, 7
-          assert rect["height"] <= 200
+          assert rect["height"] <= 220
           assert rect["right"] <= viewport_width
         end
 
