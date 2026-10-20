@@ -162,7 +162,12 @@ defmodule Streamix.Iptv.Content.TmdbGenresSourcesTest do
     Req.Test.verify!(__MODULE__)
   end
 
-  defp unique_title, do: "Genrematch#{System.system_time(:nanosecond)}"
+  # Letters only: the release parser reads digit runs as years or episode
+  # numbers, which made a numeric suffix change the searched title at random.
+  defp unique_title do
+    suffix = for _ <- 1..12, into: "", do: <<Enum.random(?a..?z)>>
+    "Genrematch #{suffix}"
+  end
 
   defp slugs(item) do
     item
