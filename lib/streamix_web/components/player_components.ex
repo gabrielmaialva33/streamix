@@ -147,6 +147,17 @@ defmodule StreamixWeb.PlayerComponents do
         </div>
       </div>
 
+      <%!-- Centered buffer spinner (agy-05) --%>
+      <div
+        id="loading-indicator"
+        class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center hidden"
+        role="status"
+        aria-live="polite"
+        aria-label="Carregando vídeo"
+      >
+        <div class="size-12 rounded-full border-4 border-white/20 border-t-brand animate-spin drop-shadow-md sm:size-14" />
+      </div>
+
       <%!-- AVPlayer mount point. AVPlayer renders its canvas inside
            this div. Declared server-side with `phx-update="ignore"`
            so any LiveView patch (watch-party presence ticks, chat
@@ -201,7 +212,7 @@ defmodule StreamixWeb.PlayerComponents do
                 type="button"
                 phx-click={@on_close}
                 aria-label="Fechar player"
-                class="flex size-12 shrink-0 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
+                class="player-control-btn flex size-12 min-h-11 min-w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
               >
                 <.icon name="hero-x-mark" class="size-6" aria-hidden="true" />
               </button>
@@ -224,17 +235,6 @@ defmodule StreamixWeb.PlayerComponents do
           id="player-bottom-controls"
           class="player-safe-bottom bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity"
         >
-          <%!-- Loading stays with the controls instead of covering the video. --%>
-          <div
-            id="loading-indicator"
-            class="mb-2 flex items-center gap-2 text-xs text-white/75"
-            role="status"
-            aria-live="polite"
-          >
-            <span class="size-2 animate-pulse rounded-full bg-brand" aria-hidden="true" />
-            <span>Carregando...</span>
-          </div>
-
           <%!-- Progress bar --%>
           <.progress_bar
             :if={@content_type not in [:live, :live_channel]}
@@ -260,6 +260,7 @@ defmodule StreamixWeb.PlayerComponents do
                 :if={@content_type not in [:live, :live_channel]}
                 disabled={@party_transport_locked}
               />
+              <.tracks_button subtitle_offset_ms={@subtitle_offset_ms} />
               <.settings_button subtitle_offset_ms={@subtitle_offset_ms} />
               <.pip_button />
               <.fullscreen_button />

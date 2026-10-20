@@ -52,8 +52,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
       }
       disabled={@disabled}
       class={[
-        "flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors sm:size-11",
-        !@disabled && "hover:bg-white/10 active:bg-white/25",
+        "player-control-btn flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-xs transition-all hover:bg-black/50 active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/25",
         @disabled && "cursor-not-allowed opacity-60"
       ]}
     >
@@ -76,7 +75,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
         phx-click={JS.dispatch("player:toggle-mute")}
         aria-label="Ativar ou desativar som"
         aria-pressed="false"
-        class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 active:bg-white/20 sm:size-11"
+        class="player-control-btn flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-xs transition-all hover:bg-black/50 active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
       >
         <.icon name="hero-speaker-wave" class="size-6 sm:size-5 volume-on-icon" aria-hidden="true" />
         <.icon
@@ -136,7 +135,10 @@ defmodule StreamixWeb.PlayerComponents.Controls do
         phx-click={
           if @disabled,
             do: nil,
-            else: JS.toggle(to: "#speed-menu") |> JS.hide(to: "#settings-menu")
+            else:
+              JS.toggle(to: "#speed-menu")
+              |> JS.hide(to: "#settings-menu")
+              |> JS.hide(to: "#tracks-menu")
         }
         aria-label={
           if @disabled, do: "Velocidade controlada pelo anfitrião", else: "Velocidade de reprodução"
@@ -145,8 +147,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
         aria-expanded="false"
         disabled={@disabled}
         class={[
-          "flex size-12 touch-manipulation items-center justify-center rounded text-sm font-medium text-white/90 transition-colors sm:size-11",
-          !@disabled && "hover:bg-white/10 hover:text-white active:bg-white/20",
+          "player-control-btn flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-sm font-medium text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20",
           @disabled && "cursor-not-allowed opacity-60"
         ]}
       >
@@ -156,7 +157,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
         id="speed-menu"
         role="menu"
         aria-label="Opções de velocidade"
-        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[100px] sm:min-w-[80px] border border-white/10"
+        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[100px] sm:min-w-[80px] border border-white/10 z-40"
         phx-click-away={JS.hide(to: "#speed-menu")}
       >
         <button
@@ -177,43 +178,36 @@ defmodule StreamixWeb.PlayerComponents.Controls do
 
   attr :subtitle_offset_ms, :integer, default: 0
 
-  def settings_button(assigns) do
+  def tracks_button(assigns) do
     ~H"""
-    <div class="relative" id="settings-container">
+    <div class="relative" id="tracks-container">
       <button
         type="button"
-        id="settings-btn"
-        phx-click={JS.toggle(to: "#settings-menu") |> JS.hide(to: "#speed-menu")}
-        aria-label="Configurações"
+        id="tracks-btn"
+        phx-click={
+          JS.toggle(to: "#tracks-menu")
+          |> JS.hide(to: "#settings-menu")
+          |> JS.hide(to: "#speed-menu")
+        }
+        aria-label="Áudio e legendas"
         aria-haspopup="menu"
         aria-expanded="false"
-        class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
+        class="player-control-btn flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
+        title="Áudio e legendas"
       >
-        <.icon name="hero-cog-6-tooth" class="size-6 sm:size-5" aria-hidden="true" />
+        <.icon name="hero-chat-bubble-bottom-center-text" class="size-6 sm:size-5" aria-hidden="true" />
       </button>
       <div
-        id="settings-menu"
-        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[280px] border border-white/10 max-h-[60vh] overflow-y-auto"
-        phx-click-away={JS.hide(to: "#settings-menu")}
+        id="tracks-menu"
+        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[280px] max-w-[320px] border border-white/10 max-h-[60vh] overflow-y-auto z-40"
+        phx-click-away={JS.hide(to: "#tracks-menu")}
       >
-        <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-b border-white/10">
-          Qualidade
-        </div>
-        <div id="quality-options" class="py-1">
-          <button
-            type="button"
-            phx-click={JS.push("set_quality", value: %{level: -1})}
-            class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <span>Automático</span>
-            <span class="size-4 quality-check" data-level="-1">
-              <.icon name="hero-check" class="size-4" />
-            </span>
-          </button>
+        <div id="tracks-empty" class="px-4 py-3 text-xs text-white/50 text-center">
+          Nenhuma faixa adicional disponível
         </div>
 
         <div id="audio-section" class="hidden">
-          <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
+          <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-b border-white/10">
             Áudio
           </div>
           <div id="audio-options" class="py-1">
@@ -222,8 +216,19 @@ defmodule StreamixWeb.PlayerComponents.Controls do
         </div>
 
         <div id="subtitle-section" class="hidden">
-          <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
-            Legendas
+          <div class="flex items-center justify-between px-4 py-2 border-y border-white/10">
+            <span class="text-xs text-white/50 font-semibold uppercase tracking-wider">
+              Legendas
+            </span>
+            <button
+              type="button"
+              id="quick-subtitles-toggle-btn"
+              phx-click={JS.dispatch("player:toggle-subtitles")}
+              class="text-xs text-brand hover:text-brand/80 font-medium transition-colors cursor-pointer px-1.5 py-0.5 rounded touch-manipulation"
+              aria-label="Alternar legendas"
+            >
+              Alternar
+            </button>
           </div>
           <div id="subtitle-options" class="py-1">
             <button
@@ -270,6 +275,52 @@ defmodule StreamixWeb.PlayerComponents.Controls do
             </div>
           </div>
         </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :subtitle_offset_ms, :integer, default: 0
+
+  def settings_button(assigns) do
+    ~H"""
+    <div class="relative" id="settings-container">
+      <button
+        type="button"
+        id="settings-btn"
+        phx-click={
+          JS.toggle(to: "#settings-menu")
+          |> JS.hide(to: "#tracks-menu")
+          |> JS.hide(to: "#speed-menu")
+        }
+        aria-label="Configurações"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        class="player-control-btn flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
+        title="Configurações"
+      >
+        <.icon name="hero-cog-6-tooth" class="size-6 sm:size-5" aria-hidden="true" />
+      </button>
+      <div
+        id="settings-menu"
+        class="absolute bottom-full right-0 mb-2 py-2 bg-neutral-900/95 backdrop-blur-md rounded-lg shadow-2xl hidden min-w-[280px] border border-white/10 max-h-[60vh] overflow-y-auto z-40"
+        phx-click-away={JS.hide(to: "#settings-menu")}
+      >
+        <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-b border-white/10">
+          Qualidade
+        </div>
+        <div id="quality-options" class="py-1">
+          <button
+            type="button"
+            phx-click={JS.push("set_quality", value: %{level: -1})}
+            class="flex items-center justify-between w-full px-4 py-2 text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <span>Automático</span>
+            <span class="size-4 quality-check" data-level="-1">
+              <.icon name="hero-check" class="size-4" />
+            </span>
+          </button>
+        </div>
 
         <div class="px-4 py-2 text-xs text-white/50 font-semibold uppercase tracking-wider border-y border-white/10">
           Proporção
@@ -306,7 +357,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
       id="fullscreen-btn"
       phx-click={JS.dispatch("player:toggle-fullscreen")}
       aria-label="Tela cheia"
-      class="flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 sm:size-11"
+      class="player-control-btn flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
       title="Tela cheia"
     >
       <.icon name="hero-arrows-pointing-out" class="size-6 sm:size-5 expand-icon" aria-hidden="true" />
@@ -328,7 +379,7 @@ defmodule StreamixWeb.PlayerComponents.Controls do
       aria-label="Ativar picture-in-picture"
       aria-pressed="false"
       disabled
-      class="hidden flex size-12 touch-manipulation items-center justify-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 disabled:pointer-events-none sm:size-11"
+      class="player-control-btn hidden flex size-12 min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full bg-black/35 text-white/90 backdrop-blur-xs transition-all hover:bg-black/50 hover:text-white active:scale-95 active:bg-black/60 disabled:pointer-events-none sm:size-11 sm:min-h-0 sm:min-w-0 sm:bg-transparent sm:backdrop-blur-none sm:hover:bg-white/10 sm:active:scale-100 sm:active:bg-white/20"
       title="Picture-in-picture"
     >
       <.icon name="hero-rectangle-stack" class="size-6 sm:size-5" aria-hidden="true" />

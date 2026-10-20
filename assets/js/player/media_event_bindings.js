@@ -26,6 +26,7 @@ export const MEDIA_EVENT_BINDINGS_HOST_METHODS = Object.freeze([
   "toggleMute",
   "togglePiP",
   "togglePlayPause",
+  "toggleSubtitles",
   "updateBufferBar",
   "updateTimeUI",
   "usesNativePlaybackEvents",
@@ -85,6 +86,7 @@ export class MediaEventBindings {
     lifecycle.listen(root, "player:toggle-mute", () => this.host.toggleMute());
     lifecycle.listen(root, "player:toggle-fullscreen", () => this.host.toggleFullscreen());
     lifecycle.listen(root, "player:toggle-pip", () => this.host.togglePiP());
+    lifecycle.listen(root, "player:toggle-subtitles", () => this.host.toggleSubtitles());
     lifecycle.listen(root, "player:set-speed", (event) => {
       const speed = Number.parseFloat(event.detail?.speed || 1);
       this.host.setPlaybackRate(speed);

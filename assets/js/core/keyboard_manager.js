@@ -127,6 +127,14 @@ export class KeyboardManager {
         }
         break;
 
+      // Subtitles Toggle
+      case "c":
+      case "C":
+        if (typeof this.actions.toggleSubtitles === "function") {
+          this.actions.toggleSubtitles();
+        }
+        break;
+
       // Volume Up
       case "ArrowUp":
         e.preventDefault();

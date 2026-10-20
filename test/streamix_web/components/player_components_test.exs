@@ -5,7 +5,7 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
   alias StreamixWeb.PlayerComponents
 
-  test "keeps VOD controls and loading status in the bottom bar without seek buttons" do
+  test "keeps VOD controls in the bottom bar with centered loading indicator and no seek buttons" do
     html =
       render_component(&PlayerComponents.video_player/1,
         content: %{id: 42, name: "Filme de teste", title: "Filme de teste"},
@@ -18,8 +18,11 @@ defmodule StreamixWeb.PlayerComponentsTest do
 
     assert Floki.find(document, "#player-bottom-controls #player-primary-controls") != []
     assert Floki.find(document, "#player-bottom-controls #play-pause-btn") != []
-    assert Floki.find(document, "#player-bottom-controls #loading-indicator") != []
-    assert Floki.find(document, "#loading-indicator.absolute") == []
+    assert Floki.find(document, "#player-bottom-controls #loading-indicator") == []
+    assert Floki.find(document, "#loading-indicator.absolute") != []
+    assert Floki.find(document, "#loading-indicator .animate-spin") != []
+    assert Floki.find(document, "#player-bottom-controls #tracks-btn") != []
+    assert Floki.find(document, "#player-bottom-controls #settings-btn") != []
     assert Floki.find(document, "#center-play") == []
     assert Floki.find(document, "#seek-backward-btn") == []
     assert Floki.find(document, "#seek-forward-btn") == []

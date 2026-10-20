@@ -93,6 +93,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   "Piloto · T1 E1".
 - Plans show prices as "R$ 9,99", statuses in Portuguese and "Assinar plano"; Settings shows the account e-mail
   read-only instead of a change form that did nothing; the Watch Party hub no longer hides under the phone nav.
+- The player shows a centered spinner while buffering instead of a red pulsing dot (which read as recording), has
+  an "Áudio e legendas" button in the control bar with a quick subtitles on/off (also on the `C` key, restoring
+  the last subtitle used), and every control is a 44 px target with a backdrop on phones.
 - The Guia on desktop has a readable channel column and a timeline: programme blocks are as wide as their share of
   the visible window, with a "now" marker and the current programme highlighted.
 - Minha lista, Histórico, Guia, Planos, Configurações, Watch Party, Torrents and Meus provedores share one page

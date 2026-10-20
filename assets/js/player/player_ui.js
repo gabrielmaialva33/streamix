@@ -71,6 +71,10 @@ export class PlayerUI {
       audioOptions: container.querySelector("#audio-options"),
       subtitleSection: container.querySelector("#subtitle-section"),
       subtitleOptions: container.querySelector("#subtitle-options"),
+      tracksButton: container.querySelector("#tracks-btn"),
+      tracksMenu: container.querySelector("#tracks-menu"),
+      tracksEmpty: container.querySelector("#tracks-empty"),
+      quickSubtitlesBtn: container.querySelector("#quick-subtitles-toggle-btn"),
     };
 
     // Controls visibility state
@@ -101,6 +105,13 @@ export class PlayerUI {
     const settingsBtn = this.container.querySelector("#settings-btn");
     if (settingsMenu && settingsBtn) {
       this.setupMenuFocusTrap(settingsMenu, settingsBtn, "settings");
+    }
+
+    // Tracks menu
+    const tracksMenu = this.container.querySelector("#tracks-menu");
+    const tracksBtn = this.container.querySelector("#tracks-btn");
+    if (tracksMenu && tracksBtn) {
+      this.setupMenuFocusTrap(tracksMenu, tracksBtn, "tracks");
     }
   }
 
@@ -486,11 +497,13 @@ export class PlayerUI {
     // Only show audio section if there are multiple tracks
     if (tracks.length <= 1) {
       if (section) section.classList.add("hidden");
+      this.updateTracksEmptyState();
       return;
     }
 
     // Show the section when we have multiple tracks
     if (section) section.classList.remove("hidden");
+    this.updateTracksEmptyState();
 
     container.innerHTML = "";
     container.appendChild(this.renderOptionList(tracks, currentTrack, "audio-option", "track"));
@@ -516,11 +529,13 @@ export class PlayerUI {
     // Only show subtitle section if there are subtitles available
     if (!tracks || tracks.length === 0) {
       if (section) section.classList.add("hidden");
+      this.updateTracksEmptyState();
       return;
     }
 
     // Show the section when we have subtitles
     if (section) section.classList.remove("hidden");
+    this.updateTracksEmptyState();
 
     const allTracks = [{ index: -1, label: "Desativadas" }, ...tracks];
 
@@ -529,13 +544,42 @@ export class PlayerUI {
       this.renderOptionList(allTracks, currentTrack, "subtitle-option", "track"),
     );
 
+    this.updateQuickSubtitlesButton(currentTrack);
+
     container.querySelectorAll(".subtitle-option").forEach((btn) => {
       btn.addEventListener("click", () => {
         const track = parseInt(btn.dataset.track, 10);
         onSelect(track);
         this.updateOptionCheckmarks(container, ".subtitle-option", track, "track");
+        this.updateQuickSubtitlesButton(track);
       });
     });
+  }
+
+  updateQuickSubtitlesButton(currentTrack) {
+    const btn = this.container.querySelector("#quick-subtitles-toggle-btn");
+    if (!btn) return;
+
+    if (currentTrack >= 0) {
+      btn.textContent = "Desativar";
+      btn.setAttribute("aria-label", "Desativar legendas");
+      btn.classList.add("text-brand");
+      btn.classList.remove("text-white/60");
+    } else {
+      btn.textContent = "Ativar";
+      btn.setAttribute("aria-label", "Ativar última legenda");
+      btn.classList.remove("text-brand");
+      btn.classList.add("text-white/60");
+    }
+  }
+
+  updateTracksEmptyState() {
+    const emptyNotice = this.container.querySelector("#tracks-empty");
+    if (!emptyNotice) return;
+
+    const audioHidden = this.elements.audioSection?.classList.contains("hidden") ?? true;
+    const subtitleHidden = this.elements.subtitleSection?.classList.contains("hidden") ?? true;
+    emptyNotice.classList.toggle("hidden", !(audioHidden && subtitleHidden));
   }
 
   updateSubtitleOffsetLabel(label) {

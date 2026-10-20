@@ -531,6 +531,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           "play-pause-btn",
           "mute-btn",
           "speed-btn",
+          "tracks-btn",
           "settings-btn",
           "fullscreen-btn"
         ];
@@ -616,7 +617,7 @@ defmodule StreamixWeb.E2E.PlayerLifecycleTest do
           assert rect["bottom"] <= expected_height, "#{id} crosses the bottom viewport edge"
         end
 
-        for id <- ~w(play-pause-btn mute-btn speed-btn settings-btn fullscreen-btn) do
+        for id <- ~w(play-pause-btn mute-btn speed-btn tracks-btn settings-btn fullscreen-btn) do
           rect = state["controls"][id]
 
           assert rect["top"] >= state["bottomBounds"]["top"],

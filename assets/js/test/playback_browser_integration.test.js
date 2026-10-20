@@ -61,6 +61,7 @@ function createHarness(options = {}) {
     setPlaybackRate: (rate) => calls.commands.push(["setPlaybackRate", rate]),
     toggleMute: () => calls.commands.push(["toggleMute"]),
     togglePlayPause: () => calls.commands.push(["togglePlayPause"]),
+    toggleSubtitles: () => calls.commands.push(["toggleSubtitles"]),
     ...options.commands,
   };
   const presentation = {
@@ -144,6 +145,7 @@ test("owns keyboard commands and browser listeners with idempotent cleanup", () 
 
   keyboardOptions.actions.togglePlayPause();
   keyboardOptions.actions.toggleMute();
+  keyboardOptions.actions.toggleSubtitles();
   keyboardOptions.actions.adjustVolume(0.1);
   keyboardOptions.actions.seek(-10);
   keyboardOptions.actions.seekTo(30);
@@ -155,6 +157,7 @@ test("owns keyboard commands and browser listeners with idempotent cleanup", () 
   assert.deepEqual(harness.calls.commands, [
     ["togglePlayPause"],
     ["toggleMute"],
+    ["toggleSubtitles"],
     ["adjustVolume", 0.1],
     ["seek", -10],
     ["seekTo", 30],

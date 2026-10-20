@@ -341,6 +341,10 @@ const VideoPlayer = {
     // Store track preferences to apply after manifest loads
     this._preferredAudioTrack = prefs.audioTrack;
     this._preferredSubtitleTrack = prefs.subtitleTrack;
+    this._lastActiveSubtitleTrack =
+      Number.isInteger(prefs.subtitleTrack) && prefs.subtitleTrack >= 0
+        ? prefs.subtitleTrack
+        : null;
 
     // Playback rate
     if (this.video && prefs.playbackRate !== 1) {
@@ -418,6 +422,9 @@ const VideoPlayer = {
         this.subtitleTracks = [...snapshot.subtitleTracks];
         this.selectedAudioTrack = snapshot.selectedAudioTrack;
         this.selectedSubtitleTrack = snapshot.selectedSubtitleTrack;
+        if (snapshot.selectedSubtitleTrack >= 0) {
+          this._lastActiveSubtitleTrack = snapshot.selectedSubtitleTrack;
+        }
         this.subtitleOffsetMs = snapshot.subtitleOffsetMs;
       },
       renderAudioOptions: (tracks, currentTrack, onSelect) =>
@@ -888,6 +895,23 @@ const VideoPlayer = {
     return this.trackOperations?.selectSubtitleTrack(trackIndex) ?? false;
   },
 
+  toggleSubtitles() {
+    if (this.selectedSubtitleTrack >= 0) {
+      this._lastActiveSubtitleTrack = this.selectedSubtitleTrack;
+      return this.setSubtitleTrack(-1);
+    }
+
+    const targetTrack =
+      this.playerTrackPresentationController?.resolveQuickSubtitleTrack(
+        this._lastActiveSubtitleTrack,
+      ) ?? 0;
+
+    if (targetTrack === -1) return false;
+
+    this._lastActiveSubtitleTrack = targetTrack;
+    return this.setSubtitleTrack(targetTrack);
+  },
+
   async setSubtitleOffset(offsetMs) {
     if (this.playerTrackController) {
       return this.playerTrackController.setSubtitleOffset(offsetMs);
@@ -1073,6 +1097,7 @@ const VideoPlayer = {
         "#player-controls",
         "#progress-container",
         "#settings-menu",
+        "#tracks-menu",
         ".no-ios-pwa-tap",
       ].join(","),
     );
@@ -1217,6 +1242,7 @@ const VideoPlayer = {
       toggleMute: () => this.toggleMute(),
       togglePiP: () => this.togglePiP(),
       togglePlayPause: () => this.togglePlayPause(),
+      toggleSubtitles: () => this.toggleSubtitles(),
       updateBufferBar: () => this.updateBufferBar(),
       updateTimeUI: () => this.updateTimeUI(),
       usesNativePlaybackEvents: () => this.usesNativePlaybackEvents(),

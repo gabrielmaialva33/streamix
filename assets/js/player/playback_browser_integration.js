@@ -150,6 +150,7 @@ export class PlaybackBrowserIntegration {
         toggleMute: () => this.commands.toggleMute(),
         toggleFullscreen: () => this.toggleFullscreen(),
         togglePiP: () => this.togglePiP(),
+        toggleSubtitles: () => this.commands.toggleSubtitles?.(),
         adjustVolume: (delta) => this.commands.adjustVolume(delta),
         seek: (seconds) => this.commands.seek(seconds),
         seekTo: (time) => this.commands.seekTo(time),

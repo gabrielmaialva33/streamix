@@ -17,6 +17,20 @@
         min-width: 44px;
     }
 
+    /* Player control buttons on mobile: >=44px, subtle backdrop, active feedback (agy-27) */
+    .player-control-btn {
+        min-height: 44px;
+        min-width: 44px;
+        background-color: rgb(0 0 0 / 0.35);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+
+    .player-control-btn:active {
+        background-color: rgb(0 0 0 / 0.6);
+        transform: scale(0.95);
+    }
+
     /* Player controls - always visible on mobile until user taps */
     #player-controls {
         opacity: 1 !important;
@@ -57,6 +71,11 @@
 /* Video player touch area */
 #video-player-container {
     -webkit-tap-highlight-color: transparent;
+}
+
+/* Centered buffer spinner visibility (agy-05) */
+#loading-indicator.hidden {
+    display: none !important;
 }
 
 /* Keep native WebVTT subtitles readable without the browser's dark caption box. */

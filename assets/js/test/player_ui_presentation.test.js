@@ -184,3 +184,56 @@ test("coordinates control visibility for playing and native-control modes", () =
   assert.equal(controls.style.pointerEvents, "none");
   assert.equal(topControls.style.pointerEvents, "auto");
 });
+
+test("updates quick subtitles toggle button state according to active track (agy-15)", () => {
+  const quickSubtitlesBtn = elementDouble();
+  const container = {
+    querySelector: (selector) =>
+      selector === "#quick-subtitles-toggle-btn" ? quickSubtitlesBtn : null,
+  };
+  const ui = {
+    container,
+  };
+
+  // Subtitles on (track 0)
+  PlayerUI.prototype.updateQuickSubtitlesButton.call(ui, 0);
+  assert.equal(quickSubtitlesBtn.textContent, "Desativar");
+  assert.equal(quickSubtitlesBtn.getAttribute("aria-label"), "Desativar legendas");
+  assert.equal(quickSubtitlesBtn.classList.contains("text-brand"), true);
+  assert.equal(quickSubtitlesBtn.classList.contains("text-white/60"), false);
+
+  // Subtitles off (-1)
+  PlayerUI.prototype.updateQuickSubtitlesButton.call(ui, -1);
+  assert.equal(quickSubtitlesBtn.textContent, "Ativar");
+  assert.equal(quickSubtitlesBtn.getAttribute("aria-label"), "Ativar última legenda");
+  assert.equal(quickSubtitlesBtn.classList.contains("text-brand"), false);
+  assert.equal(quickSubtitlesBtn.classList.contains("text-white/60"), true);
+});
+
+test("updates tracks empty state when sections are hidden or visible (agy-15)", () => {
+  const tracksEmpty = elementDouble();
+  const audioSection = elementDouble(["hidden"]);
+  const subtitleSection = elementDouble(["hidden"]);
+  const container = {
+    querySelector: (selector) => (selector === "#tracks-empty" ? tracksEmpty : null),
+  };
+  const ui = {
+    container,
+    elements: { audioSection, subtitleSection },
+  };
+
+  // Both hidden -> tracksEmpty is visible (hidden is false)
+  PlayerUI.prototype.updateTracksEmptyState.call(ui);
+  assert.equal(tracksEmpty.classList.contains("hidden"), false);
+
+  // Subtitle visible -> tracksEmpty is hidden
+  subtitleSection.classList.remove("hidden");
+  PlayerUI.prototype.updateTracksEmptyState.call(ui);
+  assert.equal(tracksEmpty.classList.contains("hidden"), true);
+
+  // Audio visible, subtitle hidden -> tracksEmpty is hidden
+  subtitleSection.classList.add("hidden");
+  audioSection.classList.remove("hidden");
+  PlayerUI.prototype.updateTracksEmptyState.call(ui);
+  assert.equal(tracksEmpty.classList.contains("hidden"), true);
+});

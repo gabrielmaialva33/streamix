@@ -389,6 +389,22 @@ export class PlayerTrackPresentationController {
     return offset;
   }
 
+  resolveQuickSubtitleTrack(lastUsedTrack = null) {
+    const tracks =
+      this._subtitleTracks.length > 0 ? this._subtitleTracks : this._probedSubtitleTracks;
+    if (!tracks || tracks.length === 0) return -1;
+
+    const candidate = finiteTrackIndex(lastUsedTrack);
+    if (candidate >= 0 && validTrackIndex(candidate, tracks)) {
+      return candidate;
+    }
+
+    const portugueseTrack = findPortugueseTrack(tracks);
+    if (validTrackIndex(portugueseTrack, tracks)) return portugueseTrack;
+
+    return 0;
+  }
+
   async presentNativeSubtitleSnapshot(
     snapshot,
     { emitAvailable = true, selectTrack, selectedTrack = -1, sessionId } = {},

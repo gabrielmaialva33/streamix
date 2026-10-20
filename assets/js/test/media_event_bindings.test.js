@@ -80,6 +80,7 @@ function createHarness({ state: overrides = {}, slider = null } = {}) {
     toggleMute: record("toggleMute"),
     togglePiP: record("togglePiP"),
     togglePlayPause: record("togglePlayPause"),
+    toggleSubtitles: record("toggleSubtitles"),
     updateBufferBar: record("updateBufferBar"),
     updateTimeUI: record("updateTimeUI"),
     usesNativePlaybackEvents: () => state.native,
@@ -135,6 +136,7 @@ test("control events route to host commands and the volume slider scales to 0..1
   lifecycle.dispatch(root, "player:toggle-mute");
   lifecycle.dispatch(root, "player:toggle-fullscreen");
   lifecycle.dispatch(root, "player:toggle-pip");
+  lifecycle.dispatch(root, "player:toggle-subtitles");
   lifecycle.dispatch(root, "player:toggle-avplayer");
   lifecycle.dispatch(root, "player:set-speed", { detail: { speed: "1.25" } });
   lifecycle.dispatch(root, "player:set-speed", { detail: null });
@@ -147,6 +149,7 @@ test("control events route to host commands and the volume slider scales to 0..1
       "toggleMute",
       "toggleFullscreen",
       "togglePiP",
+      "toggleSubtitles",
       "toggleAVPlayerPreference",
       "setPlaybackRate",
       "setPlaybackRate",
