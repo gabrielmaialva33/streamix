@@ -35,6 +35,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   Movies get genres for the first time, from their categories. `Streamix.Catalog.canonicalize_genres/0` converts an
   existing catalog once (run it with the `sync` queue paused).
 - Catalog, search and recommendation cards expose `genres: [{slug, name}]` next to the unchanged `genre` string.
+- TMDB genres now own a title: the ids already present in TMDB detail responses, GIndex matches and YTS torrents are
+  stored and applied to every copy of the same `tmdb_id`, and a nightly job (05:45) backfills the rest, once per
+  `tmdb_id`, through a bare uncached request.
+- "Todos os provedores" on `/browse/movies` and `/browse/series` finally has a filter: the canonical genres, with
+  counts, as a sidebar on desktop and chips on mobile (`?genre=terror`). Provider categories still apply once a
+  provider is selected.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
 
