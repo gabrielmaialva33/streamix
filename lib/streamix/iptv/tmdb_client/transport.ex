@@ -22,6 +22,11 @@ defmodule Streamix.Iptv.TmdbClient.Transport do
     |> request(profile)
   end
 
+  # Bare details, no appended resources: just what the genre backfill reads.
+  def get_details(kind, tmdb_id, profile) when kind in [:movie, :tv] do
+    request("#{@base_url}/#{kind}/#{tmdb_id}?language=pt-BR", profile)
+  end
+
   def get_season(series_tmdb_id, season_number, profile) do
     series_tmdb_id
     |> season_url(season_number)

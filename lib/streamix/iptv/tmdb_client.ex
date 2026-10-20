@@ -47,6 +47,28 @@ defmodule Streamix.Iptv.TmdbClient do
   end
 
   @doc """
+  Fetches only a title's TMDB genre ids (`:movie` or `:tv`), uncached and
+  without appended resources.
+
+  The genre backfill reads tens of thousands of titles once; the full detail
+  fetch would cache each large response for a day. Returns `{:ok, ids}`, or
+  `{:error, :missing_genres}` when the answer carries no genre list.
+  """
+  @spec get_genre_ids(:movie | :tv, String.t() | integer(), keyword()) ::
+          {:ok, [pos_integer()]} | {:error, term()}
+  def get_genre_ids(kind, tmdb_id, opts \\ []) when kind in [:movie, :tv] do
+    profile = Config.profile_from(opts)
+
+    with true <- Config.enabled?(profile) || {:error, :tmdb_not_configured},
+         {:ok, data} <- Transport.get_details(kind, tmdb_id, profile) do
+      case Parser.genre_ids(data) do
+        ids when is_list(ids) -> {:ok, ids}
+        nil -> {:error, :missing_genres}
+      end
+    end
+  end
+
+  @doc """
   Fetches TV series details from TMDB by series ID.
   Results are cached in Redis for 24h.
   """

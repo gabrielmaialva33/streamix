@@ -219,6 +219,10 @@ config :gettext, :default_locale, "pt_BR"
 config :streamix, StreamixWeb.Gettext, default_locale: "pt_BR"
 
 # Oban - Background jobs
+config :streamix, Streamix.Workers.BackfillTmdbGenresWorker,
+  limit: 10_000,
+  delay_ms: 100
+
 config :streamix, Oban,
   repo: Streamix.Repo,
   # In-memory leader election. The Database peer in Oban 2.22 has a
@@ -305,6 +309,8 @@ config :streamix, Oban,
        # 04:45 movie/series details pass, which shares the same queue and the
        # same TMDB token pool.
        {"15 5 * * *", Streamix.Workers.EpisodeDetailsWorker},
+       # Bounded genre backfill after the movie/series and episode detail jobs.
+       {"45 5 * * *", Streamix.Workers.BackfillTmdbGenresWorker},
        # Sync torrent provider sources daily at 4 AM
        {"0 4 * * *", Streamix.Workers.SyncTorrentProviderWorker},
        # Embedplay movie catalog, daily. 06:43 UTC is 03:43 in Brasília, the
