@@ -12,9 +12,7 @@ const component = readFileSync(
 const script = component.match(
   /<script :type=\{Phoenix.LiveView.ColocatedHook\} name="\.SourcePicker">([\s\S]*?)<\/script>/,
 )[1];
-const { default: hook } = await import(
-  `data:text/javascript,${encodeURIComponent(script)}`
-);
+const { default: hook } = await import(`data:text/javascript,${encodeURIComponent(script)}`);
 
 test("source radio arrows select and focus adjacent options, wrapping both ways", () => {
   const actions = [];
