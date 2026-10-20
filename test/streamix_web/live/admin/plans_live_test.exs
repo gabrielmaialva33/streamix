@@ -34,7 +34,7 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
       {:ok, _plan} = Billing.create_plan(@plan_attrs)
       {:ok, view, html} = live(conn, ~p"/admin/plans")
       assert html =~ "Premium"
-      assert html =~ "month"
+      assert html =~ "Mensal"
       assert has_element?(view, "[data-admin-table='plans'].overflow-x-auto")
     end
 

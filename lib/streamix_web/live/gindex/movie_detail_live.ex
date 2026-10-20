@@ -5,9 +5,18 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
   use StreamixWeb, :live_view
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
-  import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.CoreComponents, only: [badge: 1, icon: 1]
+
+  import StreamixWeb.Content.DetailComponents,
+    only: [detail_hero: 1, detail_title: 1, synopsis_section: 1]
+
+  import StreamixWeb.Content.DetailComponents.Actions, only: [favorite_button: 1, play_button: 1]
+
+  import StreamixWeb.Content.DetailComponents.Badges,
+    only: [extension_badge: 1, rating_badge: 1, year_badge: 1]
 
   def mount(%{"id" => movie_id} = params, _session, socket) do
     user_id = socket.assigns.current_scope.user.id
@@ -21,7 +30,6 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
          |> push_navigate(to: ~p"/gindex/movies")}
 
       movie ->
-        # Verify it's a GIndex movie
         if is_nil(movie.gindex_path) do
           {:ok,
            socket
@@ -30,17 +38,19 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
         else
           is_favorite = Library.favorite?(user_id, "movie", movie.id)
           movie = Streamix.Catalog.get_movie_with_provider!(movie.id)
+          display_title = DH.display_title_movie(movie)
 
           socket =
             socket
-            |> assign(page_title: movie.title || movie.name)
+            |> assign(page_title: display_title)
             |> assign(
               current_path: with_return_to(~p"/gindex/movies/#{movie.id}", return_to),
               return_to: return_to
             )
             |> assign(movie: movie)
             |> assign(lcp_image: movie.stream_icon)
-            |> assign(display_title: DH.display_title_movie(movie))
+            |> assign(display_title: display_title)
+            |> assign(source_badges: SourceBadges.badges(movie))
             |> assign(is_favorite: is_favorite)
             |> assign(user_id: user_id)
 
@@ -48,8 +58,6 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
         end
     end
   end
-
-  # Event Handlers
 
   def handle_event("play_movie", _, socket) do
     {:noreply,
@@ -76,47 +84,20 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
-  # Render
-
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
-      <!-- Hero Section -->
-      <div class="relative h-[40vh] sm:h-[50vh] min-h-[260px]">
-        <div class="absolute inset-0 overflow-hidden">
-          <img
-            :if={@movie.stream_icon}
-            src={@movie.stream_icon}
-            alt=""
-            aria-hidden="true"
-            class="w-full h-full object-cover scale-110 blur-2xl opacity-60"
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          />
-          <div
-            :if={is_nil(@movie.stream_icon)}
-            class="w-full h-full bg-surface-hover"
-          />
-        </div>
+      <.detail_hero
+        image={@movie.stream_icon}
+        alt={@display_title}
+        back_path={@return_to || ~p"/browse/movies?source=gindex"}
+      />
 
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        <!-- Back Button -->
-        <div class="absolute top-20 left-4 sm:left-6 z-30">
-          <.link
-            href={@return_to || ~p"/browse/movies?source=gindex"}
-            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
-          >
-            <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar
-          </.link>
-        </div>
-      </div>
-      <!-- Content Section -->
-      <div class="relative -mt-24 sm:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
-        <div class="max-w-5xl mx-auto">
-          <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
-            <!-- Poster -->
-            <div class="flex-shrink-0 w-40 sm:w-48 lg:w-64 mx-auto lg:mx-0">
-              <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
+      <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
+        <div class="max-w-7xl mx-auto">
+          <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
+            <div class="flex-shrink-0 w-24 sm:w-48 lg:w-72 mx-auto lg:mx-0">
+              <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
                 <img
                   :if={@movie.stream_icon}
                   src={@movie.stream_icon}
@@ -133,69 +114,36 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
                 </div>
               </div>
             </div>
-            <!-- Info -->
-            <div class="flex-1 space-y-4 text-center lg:text-left">
-              <!-- Title -->
-              <div class="space-y-2">
-                <h1
-                  class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
-                  title={@movie.name}
+
+            <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
+              <.detail_title title={@display_title} />
+
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
+                <.rating_badge rating={@movie.rating} />
+                <.year_badge year={@movie.year} />
+                <.extension_badge extension={@movie.container_extension} />
+                <.badge
+                  :for={badge <- @source_badges}
+                  variant="surface"
+                  size="sm"
+                  data-source-badge
                 >
-                  {@display_title}
-                </h1>
-                <p
-                  :if={@movie.title && @movie.title != @movie.name && @movie.title != @display_title}
-                  class="text-lg text-text-secondary"
-                >
-                  {@movie.title}
-                </p>
-              </div>
-              <!-- Meta Tags -->
-              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
-                <span
-                  :if={@movie.year}
-                  class="inline-flex items-center h-7 px-2.5 bg-surface text-text-primary rounded-md text-sm font-medium"
-                >
-                  {@movie.year}
-                </span>
-                <span
-                  :if={@movie.rating}
-                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-warning/10 text-warning rounded-md text-sm font-medium"
-                >
-                  <.icon name="hero-star-solid" class="size-3.5" /> {@movie.rating}
-                </span>
-                <span
-                  :if={@movie.container_extension}
-                  class="inline-flex items-center h-7 px-2.5 bg-info/10 text-info rounded-md uppercase text-xs font-bold"
-                >
-                  {@movie.container_extension}
-                </span>
+                  {badge}
+                </.badge>
               </div>
 
-              <%!-- Plot (enriched) --%>
-              <p
-                :if={@movie.plot && @movie.plot != ""}
-                class="text-sm sm:text-base text-text-secondary leading-relaxed max-w-3xl"
-              >
-                {@movie.plot}
-              </p>
-              <!-- Action Buttons -->
-              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">
-                <StreamixWeb.Content.DetailComponents.Actions.play_button
-                  event="play_movie"
-                  label="Assistir"
-                />
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
+                <.play_button event="play_movie" label="Assistir" />
                 <div class="title-secondary-actions">
                   <StreamixWeb.WatchPartyComponents.create_party_button
                     content_type="gindex"
                     content_id={@movie.id}
                   />
-
-                  <StreamixWeb.Content.DetailComponents.Actions.favorite_button favorite?={
-                    @is_favorite
-                  } />
+                  <.favorite_button favorite?={@is_favorite} />
                 </div>
               </div>
+
+              <.synopsis_section text={@movie.plot} />
             </div>
           </div>
         </div>

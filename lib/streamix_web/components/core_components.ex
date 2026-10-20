@@ -565,6 +565,7 @@ defmodule StreamixWeb.CoreComponents do
   """
   attr :id, :string, required: true
   attr :show, :boolean, default: false
+  attr :return_focus, :string, default: nil
   attr :on_cancel, JS, default: %JS{}
 
   attr :label, :string,
@@ -581,6 +582,7 @@ defmodule StreamixWeb.CoreComponents do
       class="fixed inset-0 z-50 m-0 h-full w-full max-h-full max-w-full bg-transparent p-0"
       phx-hook="Modal"
       data-show={to_string(@show)}
+      data-return-focus={@return_focus}
       role="dialog"
       aria-modal="true"
       aria-labelledby={@label && "#{@id}-label"}

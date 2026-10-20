@@ -66,7 +66,7 @@ defmodule StreamixWeb.Content.GuideLiveTest do
       assert html =~ "Notícias"
       assert has_element?(view, "#guide-search-form input[name='search']")
       assert has_element?(view, "#guide-page-header")
-      assert has_element?(view, ".guide-now-line")
+      assert has_element?(view, ".guide-now-line[aria-hidden=true]")
       assert has_element?(view, "[data-guide-program][style*='--program-width']")
       assert has_element?(view, "#provider-dropdown button[role='option']", "Provider Guia")
       assert has_element?(view, "[data-current-program='true']", "Jornal ao Vivo")

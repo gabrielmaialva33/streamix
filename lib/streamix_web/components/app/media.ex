@@ -191,28 +191,32 @@ defmodule StreamixWeb.App.Media do
         </div>
       </div>
 
-      <div class="mt-4 min-h-12 text-sm text-text-secondary">
+      <div
+        :if={has_provider_stats?(@provider)}
+        data-provider-stats
+        class="mt-4 text-sm text-text-secondary"
+      >
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div
             :if={@provider.live_channels_count && @provider.live_channels_count > 0}
             class="flex items-center gap-1.5"
           >
             <.icon name="hero-tv" class="size-4 shrink-0" />
-            <span>{@provider.live_channels_count} ao vivo</span>
+            <span>{HelperComponents.format_count(@provider.live_channels_count)} ao vivo</span>
           </div>
           <div
             :if={@provider.movies_count && @provider.movies_count > 0}
             class="flex items-center gap-1.5"
           >
             <.icon name="hero-film" class="size-4 shrink-0" />
-            <span>{@provider.movies_count} filmes</span>
+            <span>{HelperComponents.format_count(@provider.movies_count)} filmes</span>
           </div>
           <div
             :if={@provider.series_count && @provider.series_count > 0}
             class="flex items-center gap-1.5"
           >
             <.icon name="hero-video-camera" class="size-4 shrink-0" />
-            <span>{@provider.series_count} séries</span>
+            <span>{HelperComponents.format_count(@provider.series_count)} séries</span>
           </div>
           <div :if={@provider.live_synced_at} class="flex items-center gap-1.5">
             <.icon name="hero-clock" class="size-4 shrink-0" />
@@ -237,7 +241,7 @@ defmodule StreamixWeb.App.Media do
           /> Sincronizar
         </button>
         <.link
-          navigate={~p"/providers/#{@provider.id}"}
+          navigate={provider_view_path(@provider)}
           aria-label="Ver provedor"
           class="inline-flex min-h-11 items-center gap-1.5 rounded-md px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
@@ -245,6 +249,7 @@ defmodule StreamixWeb.App.Media do
         </.link>
         <button
           type="button"
+          id={"edit-provider-#{@provider.id}"}
           phx-click={@on_edit}
           phx-value-id={@provider.id}
           aria-label="Editar provedor"
@@ -252,7 +257,10 @@ defmodule StreamixWeb.App.Media do
         >
           <.icon name="hero-pencil" class="size-4" />
         </button>
+        <%!-- Only admins list system providers; deleting the platform's
+             catalog from a card is one confirm away from wiping it. --%>
         <button
+          :if={!Map.get(@provider, :is_system, false)}
           type="button"
           phx-click={@on_delete}
           phx-value-id={@provider.id}
@@ -266,6 +274,18 @@ defmodule StreamixWeb.App.Media do
     </div>
     """
   end
+
+  defp has_provider_stats?(provider) do
+    (provider.live_channels_count || 0) > 0 or
+      (provider.movies_count || 0) > 0 or
+      (provider.series_count || 0) > 0 or
+      not is_nil(provider.live_synced_at)
+  end
+
+  defp provider_view_path(%{provider_type: :torrent}), do: ~p"/torrent"
+  defp provider_view_path(%{provider_type: :gindex}), do: ~p"/browse/animes"
+  defp provider_view_path(%{is_system: true}), do: ~p"/browse"
+  defp provider_view_path(%{id: id}), do: ~p"/providers/#{id}"
 
   defp sync_status_message("pending"), do: "Sincronização aguardando processamento."
   defp sync_status_message("syncing"), do: "Sincronizando o catálogo deste provedor."

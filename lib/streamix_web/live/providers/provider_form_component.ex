@@ -333,21 +333,25 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
         <.input field={@form[:username]} label="Usuário" required />
         <.input field={@form[:password]} type="password" label="Senha" required />
 
-        <div :if={@can_publish_provider} class="flex items-start gap-3 py-2">
+        <label
+          :if={@can_publish_provider}
+          for="provider_is_public"
+          class="flex min-h-11 cursor-pointer items-center gap-3 py-2"
+        >
           <input
             type="checkbox"
             id="provider_is_public"
             name="provider[is_public]"
             checked={public?(@form)}
-            class="mt-0.5 size-5 rounded border-border text-brand focus:ring-brand"
+            class="size-5 shrink-0 rounded border-border text-brand focus:ring-brand"
           />
-          <label for="provider_is_public" class="text-sm text-text-secondary">
+          <span class="text-sm text-text-secondary">
             <span class="font-medium text-text-primary">Compartilhar no catálogo público</span>
             <span class="block text-xs">
               Outros usuários poderão descobrir e reproduzir o conteúdo conforme as regras de acesso.
             </span>
-          </label>
-        </div>
+          </span>
+        </label>
 
         <div
           :if={!@can_publish_provider}
@@ -402,13 +406,14 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
         </div>
 
         <:actions>
-          <div class="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
-            <button
+          <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+            <.button
               type="button"
+              variant="secondary"
               phx-click="test_connection"
               phx-target={@myself}
               disabled={@testing || @saving}
-              class="inline-flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover font-medium rounded-lg disabled:opacity-50 transition-colors"
+              class="w-full justify-center sm:w-auto"
             >
               <.icon
                 :if={@testing}
@@ -416,7 +421,7 @@ defmodule StreamixWeb.Providers.ProviderFormComponent do
                 class="size-4 animate-spin"
               />
               <.icon :if={!@testing} name="hero-signal" class="size-4" /> Testar Conexão
-            </button>
+            </.button>
             <.button
               type="submit"
               variant="primary"

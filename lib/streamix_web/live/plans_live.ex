@@ -214,10 +214,7 @@ defmodule StreamixWeb.PlansLive do
               </span>
             </div>
 
-            <div class="mt-6 pt-4 border-t border-border flex items-center justify-between gap-3">
-              <p class="text-xs uppercase tracking-[0.18em] text-text-muted">
-                {if plan.grants_global_access, do: "Global", else: "Plano"}
-              </p>
+            <div class="mt-6 pt-4 border-t border-border flex items-center justify-end gap-3">
               <%= if plan.id == @current_plan_id do %>
                 <span
                   id={"plan-cta-#{plan.slug}"}

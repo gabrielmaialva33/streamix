@@ -131,9 +131,18 @@ defmodule StreamixWeb.Admin.BillingLive do
   end
 
   defp format_price(cents, currency) when is_integer(cents) do
-    "#{currency} " <>
-      (:erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ","))
+    symbol =
+      case currency do
+        "BRL" -> "R$"
+        "USD" -> "R$"
+        "EUR" -> "€"
+        nil -> "R$"
+        other -> other
+      end
+
+    amount = :erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ",")
+    "#{symbol} #{amount}"
   end
 
-  defp format_price(_, currency), do: currency || "-"
+  defp format_price(_, _currency), do: "R$ 0,00"
 end

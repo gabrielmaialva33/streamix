@@ -21,37 +21,44 @@ defmodule StreamixWeb.Content.DetailComponents do
 
   def gallery_preview(assigns) do
     ~H"""
-    <div
+    <dialog
       :if={@image}
-      class="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
-      phx-window-keydown="close_gallery_preview"
-      phx-key="Escape"
+      id="gallery-preview"
+      phx-hook="Modal"
+      data-show="true"
+      data-close-event="close_gallery_preview"
+      data-return-focus={"##{gallery_trigger_id(@image)}"}
+      aria-label={@alt}
+      class="fixed inset-0 z-50 m-0 h-full w-full max-h-full max-w-full bg-transparent p-0 text-text-primary"
     >
-      <button
-        type="button"
-        class="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        phx-click="close_gallery_preview"
-        aria-label="Fechar imagem"
-      />
-
-      <figure class="relative z-10 w-full max-w-5xl overflow-hidden rounded-lg border border-border bg-surface shadow-modal">
+      <div class="fixed inset-0 flex items-center justify-center px-4 py-8">
         <button
           type="button"
+          class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+          tabindex="-1"
           phx-click="close_gallery_preview"
-          class="absolute right-3 top-3 z-10 inline-flex size-9 items-center justify-center rounded-lg bg-black/60 text-white transition-colors hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-brand"
           aria-label="Fechar imagem"
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
-        <img
-          src={@image}
-          alt={@alt}
-          class="max-h-[82dvh] w-full object-contain bg-black"
-          loading="eager"
-          decoding="async"
         />
-      </figure>
-    </div>
+
+        <figure class="relative z-10 w-full max-w-5xl overflow-hidden rounded-lg border border-border bg-surface shadow-modal">
+          <button
+            type="button"
+            phx-click="close_gallery_preview"
+            class="absolute right-3 top-3 z-10 inline-flex size-11 items-center justify-center rounded-lg bg-black/60 text-white transition-colors hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-brand"
+            aria-label="Fechar imagem"
+          >
+            <.icon name="hero-x-mark" class="size-5" />
+          </button>
+          <img
+            src={@image}
+            alt={@alt}
+            class="max-h-[82dvh] w-full object-contain bg-black"
+            loading="eager"
+            decoding="async"
+          />
+        </figure>
+      </div>
+    </dialog>
     """
   end
 
@@ -341,6 +348,8 @@ defmodule StreamixWeb.Content.DetailComponents do
     """
   end
 
+  defp gallery_trigger_id(image), do: "gallery-image-" <> Base.url_encode64(image, padding: false)
+
   attr :images, :list, default: []
   attr :title, :string, default: "Galeria"
   attr :alt, :string, default: "Imagem da galeria"
@@ -352,6 +361,7 @@ defmodule StreamixWeb.Content.DetailComponents do
       <div class="responsive-gallery-grid">
         <button
           :for={image <- @images}
+          id={gallery_trigger_id(image)}
           type="button"
           phx-click="open_gallery_image"
           phx-value-src={image}

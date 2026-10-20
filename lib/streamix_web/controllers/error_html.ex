@@ -4,7 +4,7 @@ defmodule StreamixWeb.ErrorHTML do
 
   See config/config.exs.
   """
-  use Phoenix.Component
+  use StreamixWeb, :html
 
   embed_templates "error_html/*"
 

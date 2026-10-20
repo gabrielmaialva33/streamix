@@ -4,7 +4,10 @@ const Modal = {
       this._openWithFocusRestore();
     }
 
-    this.onClose = () => this.pushEvent("close_modal", {});
+    this.onClose = () => {
+      this._restoreFocus();
+      this.pushEvent(this.el.dataset.closeEvent || "close_modal", {});
+    };
     this.el.addEventListener("close", this.onClose);
 
     this.onBackdropClick = (e) => {
@@ -37,11 +40,8 @@ const Modal = {
       document.removeEventListener("keydown", this.handleKeyDown);
     }
 
-    // If we still have the trigger reference, hand focus back. Closing
-    // a <dialog> normally restores it, but if the modal vanishes via
-    // LV destroy (e.g. navigation) the browser doesn't, and the user
-    // ends up at the top of the page.
-    this._previousFocus?.focus?.();
+    if (this.el.open) this.el.close();
+    this._restoreFocus();
     this._previousFocus = null;
   },
 
@@ -52,14 +52,23 @@ const Modal = {
     this._previousFocus = document.activeElement;
     this.el.showModal();
 
-    // Move focus into the first focusable inside the dialog. The
-    // default browser behaviour focuses the dialog itself, which
-    // screen readers announce as a generic "dialog" with no further
-    // context.
-    const firstFocusable = this.el.querySelector(
-      'button:not([tabindex="-1"]), [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
+    const firstFocusable =
+      this.el.querySelector(
+        'input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)',
+      ) ||
+      this.el.querySelector(
+        'button:not([tabindex="-1"]):not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+      );
     firstFocusable?.focus?.();
+  },
+
+  _restoreFocus() {
+    // LiveView can replace the trigger while patching. Resolve the stable
+    // selector again instead of focusing a detached node or the page body.
+    const target = this.el.dataset.returnFocus
+      ? document.querySelector(this.el.dataset.returnFocus)
+      : this._previousFocus;
+    if (target?.isConnected) target.focus();
   },
 };
 

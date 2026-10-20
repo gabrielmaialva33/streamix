@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.ReelsLive do
   use StreamixWeb, :live_view
 
   import StreamixWeb.App.Feedback
+  import StreamixWeb.App.Filters, only: [search_input: 1]
   import StreamixWeb.App.Premium
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Content.NavigationComponents
@@ -47,6 +48,7 @@ defmodule StreamixWeb.Content.ReelsLive do
      )
      |> assign(favorites_map: Library.list_favorite_ids(user.id, "series"))
      |> assign(selected_category: nil)
+     |> assign(search: "")
      |> assign(page: 1)
      |> assign(has_more: false)
      |> assign(loading: false)
@@ -56,11 +58,13 @@ defmodule StreamixWeb.Content.ReelsLive do
 
   def handle_params(params, _url, socket) do
     category = normalize_category(params["category"])
+    search = normalize_search(params["search"])
 
     socket =
       socket
       |> assign(selected_category: category)
-      |> assign(current_path: reels_path(category, 1))
+      |> assign(search: search)
+      |> assign(current_path: reels_path(category, search, 1))
       |> assign(page: 1)
       |> assign(has_more: true)
       |> assign(empty_results: false)
@@ -73,6 +77,13 @@ defmodule StreamixWeb.Content.ReelsLive do
   # ============================================
   # Event Handlers
   # ============================================
+
+  def handle_event("search", %{"search" => search}, socket) do
+    {:noreply,
+     push_patch(socket,
+       to: reels_path(socket.assigns.selected_category, normalize_search(search), 1)
+     )}
+  end
 
   def handle_event("load_more", _params, socket) do
     socket =
@@ -113,6 +124,12 @@ defmodule StreamixWeb.Content.ReelsLive do
           <.source_tabs selected="iptv" path={~p"/browse/reels"} gindex_path={~p"/browse/movies"} />
           <div class="browse-toolbar__divider" />
           <.browse_tabs selected={:reels} source="iptv" counts={@tab_counts} />
+          <.search_input
+            id="reels-search-form"
+            value={@search}
+            placeholder="Buscar dramas curtos..."
+            class="browse-toolbar__search"
+          />
         </div>
 
         <.premium_cta_banner
@@ -226,6 +243,7 @@ defmodule StreamixWeb.Content.ReelsLive do
     items =
       Streamix.Catalog.list_visible_reel_series(user.id,
         category: socket.assigns.selected_category,
+        search: socket.assigns.search,
         show_adult: user.show_adult_content,
         limit: @per_page,
         offset: (page - 1) * @per_page
@@ -240,14 +258,17 @@ defmodule StreamixWeb.Content.ReelsLive do
   end
 
   defp detail_path(assigns, id) do
-    return_to = reels_path(assigns.selected_category, assigns.page)
+    return_to = reels_path(assigns.selected_category, assigns.search, assigns.page)
     "/browse/series/#{id}?" <> URI.encode_query(%{"return_to" => return_to})
   end
 
-  defp reels_path(category, page) do
+  defp reels_path(category, page), do: reels_path(category, "", page)
+
+  defp reels_path(category, search, page) do
     params =
       %{}
       |> put_present("category", category)
+      |> put_present("search", search)
       |> put_present("page", page > 1 && page)
 
     case params do
@@ -255,6 +276,11 @@ defmodule StreamixWeb.Content.ReelsLive do
       params -> @browse_path <> "?" <> URI.encode_query(params)
     end
   end
+
+  defp normalize_search(value) when is_binary(value),
+    do: value |> String.trim() |> String.slice(0, 120)
+
+  defp normalize_search(_value), do: ""
 
   defp put_present(params, _key, value) when value in [nil, false, ""], do: params
   defp put_present(params, key, value), do: Map.put(params, key, value)

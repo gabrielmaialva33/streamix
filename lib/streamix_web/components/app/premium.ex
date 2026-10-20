@@ -97,9 +97,9 @@ defmodule StreamixWeb.App.Premium do
 
     assigns =
       assigns
-      |> assign_new(:title, fn -> defaults.title end)
-      |> assign_new(:description, fn -> defaults.description end)
-      |> assign_new(:cta_label, fn -> defaults.cta_label end)
+      |> assign(:title, assigns.title || defaults.title)
+      |> assign(:description, assigns.description || defaults.description)
+      |> assign(:cta_label, assigns.cta_label || defaults.cta_label)
 
     ~H"""
     <section

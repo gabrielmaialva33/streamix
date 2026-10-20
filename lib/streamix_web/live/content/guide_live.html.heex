@@ -18,6 +18,7 @@
         </button>
         <button type="button" phx-click="go_now" class="guide-now-button">
           <span class="size-1.5 rounded-full bg-brand" aria-hidden="true" /> {gettext("Agora")}
+          <span class="sr-only">{TvGuide.format_time(@now)}</span>
         </button>
         <button
           type="button"
@@ -228,7 +229,7 @@
           }
           class="guide-now-line"
           style={"left: #{StreamixWeb.EpgComponents.window_position(@now, @starts_at, @ends_at)}%"}
-          aria-label={gettext("Agora")}
+          aria-hidden="true"
         />
         <div
           :if={row.programs == []}

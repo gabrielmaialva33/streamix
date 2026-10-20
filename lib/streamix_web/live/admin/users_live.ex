@@ -59,7 +59,7 @@ defmodule StreamixWeb.Admin.UsersLive do
                 <th class="px-4 py-3">Perfil</th>
                 <th class="px-4 py-3">Assinatura</th>
                 <th class="px-4 py-3">Registrado</th>
-                <th class="px-4 py-3"></th>
+                <th class="px-4 py-3"><span class="sr-only">Ações</span></th>
               </tr>
             </thead>
             <tbody>
@@ -98,6 +98,6 @@ defmodule StreamixWeb.Admin.UsersLive do
   end
 
   defp subscription_label(user) do
-    if Billing.subscribed?(user), do: "active", else: "expired"
+    if Billing.subscribed?(user), do: "active", else: "none"
   end
 end

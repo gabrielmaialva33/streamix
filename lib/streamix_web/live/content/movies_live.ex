@@ -79,6 +79,21 @@ defmodule StreamixWeb.Content.MoviesLive do
   def render(assigns) do
     ~H"""
     <div id="movies-browse" phx-hook="BrowseScrollRestoration" class="space-y-4 sm:space-y-5">
+      <h1 :if={@mode == :browse} class="sr-only">{@page_title}</h1>
+      <.page_header
+        :if={@mode == :provider}
+        id="provider-catalog-header"
+        title={@provider.name}
+        icon="hero-server-stack"
+        subtitle="Catálogo do provedor"
+      >
+        <:actions>
+          <.button navigate={~p"/providers"} variant="ghost">
+            <.icon name="hero-arrow-left" class="size-4" /> Meus provedores
+          </.button>
+        </:actions>
+      </.page_header>
+
       <div class="browse-toolbar">
         <%!-- Row 1: Source toggle + Content tabs --%>
         <div class="browse-toolbar__row">

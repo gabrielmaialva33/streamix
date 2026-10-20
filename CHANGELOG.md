@@ -93,6 +93,19 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   "Piloto · T1 E1".
 - Plans show prices as "R$ 9,99", statuses in Portuguese and "Assinar plano"; Settings shows the account e-mail
   read-only instead of a change form that did nothing; the Watch Party hub no longer hides under the phone nav.
+- 404 and 500 pages render inside the app's layout (styles, title, dark theme) with a button back home, instead of a
+  bare white page with a missing illustration.
+- The public landing page uses clean titles, the app's 0–5 rating scale and "TV" instead of a fixed "AO VIVO", and
+  its cards lead to the title (through login).
+- Google Drive title pages share the IPTV title pages' hero, badges, back link and actions, with clean titles and
+  nothing under the phone navigation.
+- Accessibility: carousel arrows are named and visible on keyboard focus, the gallery preview is a real dialog,
+  functional text meets WCAG AA contrast, the phone logo link has a name, login and sign-up have a main landmark,
+  and the provider form returns focus to its trigger. axe violations on the audited pages went from 10–23 per page
+  to 0–1.
+- Meus provedores no longer lists the platform's system providers to regular users (admins still manage them, without
+  a delete button); a provider's catalog has a header with its name, a way back and a 44 px "Sincronizar". Torrents,
+  Dramas curtos (now with search) and the admin pages (pt-BR intervals, "R$ 0,00", accents) got the same polish.
 - The player shows a centered spinner while buffering instead of a red pulsing dot (which read as recording), has
   an "Áudio e legendas" button in the control bar with a quick subtitles on/off (also on the `C` key, restoring
   the last subtitle used), and every control is a 44 px target with a backdrop on phones.

@@ -151,6 +151,36 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-5">
+      <h1 :if={@mode == :browse} class="sr-only">{@page_title}</h1>
+      <.page_header
+        :if={@mode == :provider}
+        id="provider-catalog-header"
+        title={@provider.name}
+        icon="hero-server-stack"
+        subtitle="Catálogo do provedor"
+      >
+        <:actions>
+          <.button navigate={~p"/providers"} variant="ghost">
+            <.icon name="hero-arrow-left" class="size-4" /> Meus provedores
+          </.button>
+          <.button
+            type="button"
+            variant="secondary"
+            phx-click="sync_provider"
+            disabled={
+              @provider.sync_status in ["pending", "syncing", "paused_quota", "paused_upstream"]
+            }
+            title={"Última sinc: #{format_relative_time(@provider.live_synced_at)}"}
+          >
+            <.icon
+              name="hero-arrow-path"
+              class={["size-4", @provider.sync_status == "syncing" && "animate-spin"]}
+            />
+            <span>Sincronizar</span>
+          </.button>
+        </:actions>
+      </.page_header>
+
       <div class="browse-toolbar">
         <%!-- Row 1: Source toggle + Content tabs --%>
         <div class="browse-toolbar__row">
@@ -199,23 +229,6 @@ defmodule StreamixWeb.Content.LiveChannelsLive do
             placeholder="Buscar canais..."
             class="browse-toolbar__search"
           />
-          <%= if @mode == :provider do %>
-            <button
-              type="button"
-              phx-click="sync_provider"
-              disabled={
-                @provider.sync_status in ["pending", "syncing", "paused_quota", "paused_upstream"]
-              }
-              class="segmented-control__item flex-shrink-0"
-              title={"Última sinc: #{format_relative_time(@provider.live_synced_at)}"}
-            >
-              <.icon
-                name="hero-arrow-path"
-                class={["size-4", @provider.sync_status == "syncing" && "animate-spin"]}
-              />
-              <span class="hidden sm:inline">Sincronizar</span>
-            </button>
-          <% end %>
         </div>
 
         <.premium_cta_banner

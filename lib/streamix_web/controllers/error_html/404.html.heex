@@ -1,27 +1,19 @@
-<div class="flex items-center justify-center min-h-screen bg-background px-6">
-  <div class="flex flex-col items-center text-center max-w-md">
-    <img
-      src="/images/metronic/illustrations/19-dark.svg"
-      alt="Página não encontrada"
-      class="max-h-[180px] mb-8"
-      decoding="async"
-    />
+<main class="flex min-h-screen items-center justify-center bg-background px-6 text-text-primary">
+  <div class="flex max-w-md flex-col items-center text-center">
+    <div class="mb-5 flex size-16 items-center justify-center rounded-2xl border border-border bg-surface text-brand shadow-card">
+      <.icon name="hero-magnifying-glass" class="size-8" />
+    </div>
 
-    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-brand/10 text-brand border border-brand/20 mb-4">
-      404
-    </span>
+    <.badge variant="brand" size="md" class="mb-3">404</.badge>
 
-    <h1 class="text-2xl font-bold text-white mb-2">Página não encontrada</h1>
+    <h1 class="mb-2 text-2xl font-bold text-text-primary sm:text-3xl">Página não encontrada</h1>
 
-    <p class="text-text-secondary text-sm leading-relaxed mb-8">
+    <p class="mb-8 text-sm leading-relaxed text-text-secondary">
       A página que você está procurando não existe ou foi movida.
     </p>
 
-    <a
-      href="/"
-      class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-hover transition-colors"
-    >
-      Voltar ao início
-    </a>
+    <.button navigate={~p"/"} variant="primary">
+      <.icon name="hero-home" class="size-4" /> Voltar ao início
+    </.button>
   </div>
-</div>
+</main>

@@ -33,6 +33,7 @@ defmodule StreamixWeb.Layouts do
   defp do_detail_path?(path) do
     Regex.match?(~r{^/browse/(movies|series)/\d+}, path) or
       Regex.match?(~r{^/providers/\d+/(movies|series)/\d+}, path) or
+      Regex.match?(~r{^/gindex/(movies|series|animes)/\d+}, path) or
       Regex.match?(~r{^/watch/}, path)
   end
 end

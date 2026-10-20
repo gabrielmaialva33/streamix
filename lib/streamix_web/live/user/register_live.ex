@@ -50,7 +50,10 @@ defmodule StreamixWeb.User.RegisterLive do
       <h1 class="text-2xl font-semibold text-text-primary tracking-tight">Criar conta</h1>
       <p class="text-sm text-text-secondary mt-2">
         Já tem uma conta?
-        <.link navigate={~p"/login"} class="text-brand hover:underline font-medium">
+        <.link
+          navigate={~p"/login"}
+          class="inline-flex min-h-11 items-center px-2 text-brand hover:underline font-medium"
+        >
           Entrar
         </.link>
       </p>
@@ -91,8 +94,8 @@ defmodule StreamixWeb.User.RegisterLive do
 
     <p class="text-xs text-text-muted text-center mt-6">
       Ao criar uma conta, você concorda com nossos
-      <span class="text-text-secondary">Termos de Uso</span>
-      e <span class="text-text-secondary">Política de Privacidade</span>.
+      Termos de Uso
+      e Política de Privacidade.
     </p>
     """
   end

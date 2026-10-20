@@ -6,9 +6,16 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
   use StreamixWeb, :live_view
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
-  import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.CoreComponents, only: [badge: 1, icon: 1]
+
+  import StreamixWeb.Content.DetailComponents,
+    only: [detail_hero: 1, detail_title: 1, synopsis_section: 1]
+
+  import StreamixWeb.Content.DetailComponents.Actions, only: [favorite_button: 1, play_button: 1]
+  import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1, year_badge: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   def mount(%{"id" => anime_id}, _session, socket) do
@@ -24,6 +31,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
       anime ->
         is_favorite = Library.favorite?(user_id, "series", anime.id)
         sorted_releases = Enum.sort_by(anime.seasons || [], & &1.season_number)
+        display_title = DH.display_title(anime)
 
         first_release_id =
           case sorted_releases do
@@ -33,11 +41,12 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
 
         socket =
           socket
-          |> assign(page_title: anime.title || anime.name)
+          |> assign(page_title: display_title)
           |> assign(current_path: "/gindex/animes/#{anime.id}")
           |> assign(anime: anime)
           |> assign(lcp_image: anime.cover)
-          |> assign(display_title: DH.display_title(anime))
+          |> assign(display_title: display_title)
+          |> assign(source_badges: SourceBadges.badges(anime))
           |> assign(releases: sorted_releases)
           |> assign(
             expanded_releases:
@@ -49,10 +58,6 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
         {:ok, socket}
     end
   end
-
-  # ============================================
-  # Event Handlers
-  # ============================================
 
   def handle_event("toggle_release", %{"id" => release_id}, socket) do
     case parse_positive_integer(release_id) do
@@ -82,7 +87,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
         {:noreply, redirect(socket, to: ~p"/watch/gindex_episode/#{first_episode.id}")}
 
       _ ->
-        {:noreply, put_flash(socket, :error, "Nenhum episodio disponivel")}
+        {:noreply, put_flash(socket, :error, "Nenhum episódio disponível")}
     end
   end
 
@@ -100,49 +105,20 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
-  # ============================================
-  # Render
-  # ============================================
-
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
-      <!-- Hero Section -->
-      <div class="relative h-[40vh] sm:h-[50vh] min-h-[260px]">
-        <div class="absolute inset-0 overflow-hidden">
-          <img
-            :if={@anime.cover}
-            src={@anime.cover}
-            alt=""
-            aria-hidden="true"
-            class="w-full h-full object-cover scale-110 blur-2xl opacity-60"
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          />
-          <div
-            :if={is_nil(@anime.cover)}
-            class="w-full h-full bg-surface-hover"
-          />
-        </div>
+      <.detail_hero
+        image={@anime.cover}
+        alt={@display_title}
+        back_path={~p"/browse/animes?source=gindex"}
+      />
 
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        <!-- Back Button -->
-        <div class="absolute top-20 left-4 sm:left-6 z-30">
-          <.link
-            navigate={~p"/browse/animes?source=gindex"}
-            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
-          >
-            <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar
-          </.link>
-        </div>
-      </div>
-      <!-- Content Section -->
-      <div class="relative -mt-24 sm:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
-        <div class="max-w-5xl mx-auto">
-          <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
-            <!-- Poster -->
-            <div class="flex-shrink-0 w-40 sm:w-48 lg:w-64 mx-auto lg:mx-0">
-              <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
+      <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
+        <div class="max-w-7xl mx-auto">
+          <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
+            <div class="flex-shrink-0 w-24 sm:w-48 lg:w-72 mx-auto lg:mx-0">
+              <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
                 <img
                   :if={@anime.cover}
                   src={@anime.cover}
@@ -159,86 +135,54 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
                 </div>
               </div>
             </div>
-            <!-- Info -->
-            <div class="flex-1 space-y-4 text-center lg:text-left">
-              <!-- Title -->
-              <div class="space-y-2">
-                <h1
-                  class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
-                  title={@anime.name}
-                >
-                  {@display_title}
-                </h1>
-                <p
-                  :if={@anime.title && @anime.title != @anime.name && @anime.title != @display_title}
-                  class="text-lg text-text-secondary"
-                >
-                  {@anime.title}
-                </p>
-              </div>
-              <!-- Meta Tags -->
-              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
-                <span
-                  :if={@anime.year}
-                  class="inline-flex items-center h-7 px-2.5 bg-surface text-text-primary rounded-md text-sm font-medium"
-                >
-                  {@anime.year}
-                </span>
-                <span class="inline-flex items-center gap-1 h-7 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
+
+            <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
+              <.detail_title title={@display_title} />
+
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
+                <.rating_badge rating={@anime.rating} />
+                <.year_badge year={@anime.year} />
+                <.badge variant="surface" size="sm">
                   <.icon name="hero-sparkles" class="size-3.5" />
-                  {length(@releases)} releases | {Enum.sum(
-                    Enum.map(@releases, fn s -> length(s.episodes || []) end)
-                  )} eps
-                </span>
-                <span
-                  :if={@anime.rating}
-                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-warning/10 text-warning rounded-md text-sm font-medium"
-                >
-                  <.icon name="hero-star-solid" class="size-3.5" /> {@anime.rating}
-                </span>
-                <span
+                  {releases_count_label(@releases)} · {episodes_count_label(@releases)}
+                </.badge>
+                <.badge
                   :if={Map.get(@anime, :dub_available)}
-                  class="inline-flex items-center h-7 px-2.5 bg-success/10 text-success rounded-md text-xs font-bold uppercase"
+                  variant="success"
+                  size="sm"
                 >
                   Dublado
-                </span>
-                <span class="inline-flex items-center h-7 px-2.5 bg-info/10 text-info rounded-md uppercase text-xs font-bold">
-                  Anime
-                </span>
+                </.badge>
+                <.badge
+                  :for={badge <- @source_badges}
+                  variant="surface"
+                  size="sm"
+                  data-source-badge
+                >
+                  {badge}
+                </.badge>
               </div>
 
-              <%!-- Plot (enriched) --%>
-              <p
-                :if={@anime.plot && @anime.plot != ""}
-                class="text-sm sm:text-base text-text-secondary leading-relaxed max-w-3xl"
-              >
-                {@anime.plot}
-              </p>
-              <!-- Action Buttons -->
-              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">
-                <StreamixWeb.Content.DetailComponents.Actions.play_button
-                  event="play_first_episode"
-                  label="Assistir"
-                />
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
+                <.play_button event="play_first_episode" label="Assistir" />
                 <div class="title-secondary-actions">
-                  <StreamixWeb.Content.DetailComponents.Actions.favorite_button favorite?={
-                    @is_favorite
-                  } />
+                  <.favorite_button favorite?={@is_favorite} />
                 </div>
               </div>
+
+              <.synopsis_section text={@anime.plot} />
             </div>
           </div>
 
-          <!-- Releases Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
-            <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Releases</h2>
+            <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Versões e episódios</h2>
 
             <div :if={Enum.empty?(@releases)} class="text-center py-8 sm:py-12">
               <.icon
                 name="hero-film"
                 class="size-12 sm:size-16 mx-auto mb-3 sm:mb-4 text-text-secondary/20"
               />
-              <p class="text-text-secondary text-sm sm:text-base">Nenhum release disponivel</p>
+              <p class="text-text-secondary text-sm sm:text-base">Nenhuma versão disponível</p>
             </div>
 
             <div class="space-y-3 sm:space-y-4">
@@ -269,7 +213,7 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
       >
         <div class="flex items-center gap-2 sm:gap-4">
           <span class="text-base sm:text-lg font-semibold text-text-primary truncate max-w-[200px] sm:max-w-none">
-            {@release.name || "Release #{@release.season_number}"}
+            {@release.name || "Versão #{@release.season_number}"}
           </span>
           <span class="text-xs sm:text-sm text-text-secondary flex-shrink-0">
             {length(@episodes)} eps
@@ -286,7 +230,11 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
 
       <div :if={@expanded} class="border-t border-border">
         <div class="divide-y divide-border">
-          <.episode_item :for={episode <- @episodes} episode={episode} />
+          <.episode_item
+            :for={episode <- @episodes}
+            episode={episode}
+            season_number={@release.season_number}
+          />
         </div>
       </div>
     </div>
@@ -320,18 +268,31 @@ defmodule StreamixWeb.Gindex.AnimeDetailLive do
 
       <div class="flex-1 min-w-0">
         <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
-          {DH.episode_title(@episode)}
+          {DH.episode_title(@episode, @season_number)}
         </h4>
         <div class="flex items-center gap-2 mt-1">
-          <span
+          <.badge
             :if={@episode.container_extension}
-            class="text-[10px] sm:text-xs px-1.5 py-0.5 bg-info/10 text-info rounded uppercase font-bold"
+            variant="surface"
+            size="sm"
           >
-            {@episode.container_extension}
-          </span>
+            {String.upcase(@episode.container_extension)}
+          </.badge>
         </div>
       </div>
     </div>
     """
+  end
+
+  defp releases_count_label(releases) do
+    case length(releases) do
+      1 -> "1 versão"
+      n -> "#{n} versões"
+    end
+  end
+
+  defp episodes_count_label(releases) do
+    total = Enum.sum(Enum.map(releases, fn s -> length(s.episodes || []) end))
+    "#{total} eps"
   end
 end

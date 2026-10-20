@@ -3,6 +3,16 @@ defmodule StreamixWeb.User.LoginLiveTest do
 
   import Phoenix.LiveViewTest
 
+  test "auth pages have a main landmark and reachable account links", %{conn: conn} do
+    for path <- [~p"/login", ~p"/register"] do
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, "main#main-content h1")
+      assert has_element?(view, "main a.min-h-11")
+      assert render(view) =~ "Busca com IA"
+      refute has_element?(view, "a[href=\"#\"]", "Termos de Uso")
+    end
+  end
+
   test "keeps persistent login enabled without racing browser autofill", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/login")
 

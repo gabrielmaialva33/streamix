@@ -45,11 +45,12 @@
     /* Text */
     --text-primary: #ffffff;
     --text-secondary: #a3a3a3;
-    --text-muted: #6b6b6b;
+    --text-muted: #a3a3a3;
 
     /* Brand */
     --brand-color: #e50914;
-    --brand-hover-color: #f6121d;
+    --brand-text-color: #ff6871;
+    --brand-hover-color: #cf0812;
     --accent-color: #46d369;
 
     /* Status */
@@ -350,4 +351,14 @@ html.ios-webkit header[data-scrolled="true"] {
 
 :root {
   --page-gutter: 4vw;
+}
+
+/* Brand fill retains white-button contrast; text needs a lighter red on
+   dark and brand-tinted surfaces. Keep this distinct from brand fills. */
+@layer utilities {
+    .text-brand,
+    .hover\:text-brand:hover,
+    .hover\:text-brand-hover:hover {
+        color: var(--brand-text-color);
+    }
 }

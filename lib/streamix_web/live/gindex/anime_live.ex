@@ -115,6 +115,7 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
+      <h1 class="sr-only">{@page_title}</h1>
       <div class="browse-toolbar">
         <%!-- Source and content tabs row --%>
         <div class="browse-toolbar__row">

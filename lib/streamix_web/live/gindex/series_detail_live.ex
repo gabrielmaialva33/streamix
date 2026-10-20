@@ -5,9 +5,19 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
   use StreamixWeb, :live_view
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.Gindex.DetailHelpers, as: DH
 
-  import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.CoreComponents, only: [badge: 1, icon: 1]
+
+  import StreamixWeb.Content.DetailComponents,
+    only: [detail_hero: 1, detail_title: 1, synopsis_section: 1]
+
+  import StreamixWeb.Content.DetailComponents.Actions, only: [favorite_button: 1, play_button: 1]
+
+  import StreamixWeb.Content.DetailComponents.Badges,
+    only: [rating_badge: 1, series_count_badge: 1, year_badge: 1]
+
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
 
   def mount(%{"id" => series_id}, _session, socket) do
@@ -23,6 +33,7 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
       series ->
         is_favorite = Library.favorite?(user_id, "series", series.id)
         sorted_seasons = Enum.sort_by(series.seasons || [], & &1.season_number)
+        display_title = DH.display_title(series)
 
         first_season_id =
           case sorted_seasons do
@@ -32,8 +43,9 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
 
         socket =
           socket
-          |> assign(page_title: series.title || series.name)
-          |> assign(display_title: DH.display_title(series))
+          |> assign(page_title: display_title)
+          |> assign(display_title: display_title)
+          |> assign(source_badges: SourceBadges.badges(series))
           |> assign(current_path: "/gindex/series/#{series.id}")
           |> assign(series: series)
           |> assign(lcp_image: series.cover)
@@ -48,10 +60,6 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
         {:ok, socket}
     end
   end
-
-  # ============================================
-  # Event Handlers
-  # ============================================
 
   def handle_event("toggle_season", %{"id" => season_id}, socket) do
     case parse_positive_integer(season_id) do
@@ -99,49 +107,20 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
     {:noreply, assign(socket, is_favorite: FavoriteState.preserve_boolean(is_favorite, result))}
   end
 
-  # ============================================
-  # Render
-  # ============================================
-
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-background">
-      <!-- Hero Section -->
-      <div class="relative h-[40vh] sm:h-[50vh] min-h-[260px]">
-        <div class="absolute inset-0 overflow-hidden">
-          <img
-            :if={@series.cover}
-            src={@series.cover}
-            alt=""
-            aria-hidden="true"
-            class="w-full h-full object-cover scale-110 blur-2xl opacity-60"
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          />
-          <div
-            :if={is_nil(@series.cover)}
-            class="w-full h-full bg-surface-hover"
-          />
-        </div>
+      <.detail_hero
+        image={@series.cover}
+        alt={@display_title}
+        back_path={~p"/browse/series?source=gindex"}
+      />
 
-        <div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-        <!-- Back Button -->
-        <div class="absolute top-20 left-4 sm:left-6 z-30">
-          <.link
-            navigate={~p"/browse/series?source=gindex"}
-            class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-black/40 backdrop-blur-sm text-white/90 hover:text-white hover:bg-black/60 rounded-full transition-all text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-brand"
-          >
-            <.icon name="hero-arrow-left" class="size-3.5 sm:size-4" /> Voltar
-          </.link>
-        </div>
-      </div>
-      <!-- Content Section -->
-      <div class="relative -mt-24 sm:-mt-32 px-[4%] sm:px-8 lg:px-12 pb-8 sm:pb-12">
-        <div class="max-w-5xl mx-auto">
-          <div class="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
-            <!-- Poster -->
-            <div class="flex-shrink-0 w-40 sm:w-48 lg:w-64 mx-auto lg:mx-0">
-              <div class="aspect-[2/3] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
+      <div class="relative -mt-16 sm:-mt-32 lg:-mt-40 px-3 sm:px-8 lg:px-12 pb-6 sm:pb-12">
+        <div class="max-w-7xl mx-auto">
+          <div class="flex flex-col lg:flex-row gap-3 sm:gap-6 lg:gap-8">
+            <div class="flex-shrink-0 w-24 sm:w-48 lg:w-72 mx-auto lg:mx-0">
+              <div class="aspect-[2/3] rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-surface">
                 <img
                   :if={@series.cover}
                   src={@series.cover}
@@ -158,79 +137,42 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
                 </div>
               </div>
             </div>
-            <!-- Info -->
-            <div class="flex-1 space-y-4 text-center lg:text-left">
-              <!-- Title -->
-              <div class="space-y-2">
-                <h1
-                  class="text-2xl sm:text-3xl lg:text-4xl font-bold text-text-primary leading-tight"
-                  title={@series.name}
-                >
-                  {@display_title}
-                </h1>
-                <p
-                  :if={
-                    @series.title && @series.title != @series.name && @series.title != @display_title
-                  }
-                  class="text-lg text-text-secondary"
-                >
-                  {@series.title}
-                </p>
-              </div>
-              <!-- Meta Tags -->
-              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
-                <span
-                  :if={@series.year}
-                  class="inline-flex items-center h-7 px-2.5 bg-surface text-text-primary rounded-md text-sm font-medium"
-                >
-                  {@series.year}
-                </span>
-                <span class="inline-flex items-center gap-1 h-7 px-2.5 bg-surface text-text-secondary rounded-md text-sm">
-                  <.icon name="hero-tv" class="size-3.5" />
-                  {length(@seasons)} temp · {Enum.sum(
-                    Enum.map(@seasons, fn s -> length(s.episodes || []) end)
-                  )} eps
-                </span>
-                <span
-                  :if={@series.rating}
-                  class="inline-flex items-center gap-1 h-7 px-2.5 bg-warning/10 text-warning rounded-md text-sm font-medium"
-                >
-                  <.icon name="hero-star-solid" class="size-3.5" /> {@series.rating}
-                </span>
-                <span
+
+            <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
+              <.detail_title title={@display_title} />
+
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-1.5 sm:gap-2">
+                <.rating_badge rating={@series.rating} />
+                <.year_badge year={@series.year} />
+                <.series_count_badge seasons={@seasons} />
+                <.badge
                   :if={Map.get(@series, :dub_available)}
-                  class="inline-flex items-center h-7 px-2.5 bg-success/10 text-success rounded-md text-xs font-bold uppercase"
+                  variant="success"
+                  size="sm"
                 >
                   Dublado
-                </span>
-                <span class="inline-flex items-center h-7 px-2.5 bg-info/10 text-info rounded-md uppercase text-xs font-bold">
-                  GDrive
-                </span>
+                </.badge>
+                <.badge
+                  :for={badge <- @source_badges}
+                  variant="surface"
+                  size="sm"
+                  data-source-badge
+                >
+                  {badge}
+                </.badge>
               </div>
 
-              <%!-- Plot (enriched) --%>
-              <p
-                :if={@series.plot && @series.plot != ""}
-                class="text-sm sm:text-base text-text-secondary leading-relaxed max-w-3xl"
-              >
-                {@series.plot}
-              </p>
-              <!-- Action Buttons -->
-              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">
-                <StreamixWeb.Content.DetailComponents.Actions.play_button
-                  event="play_first_episode"
-                  label="Assistir"
-                />
+              <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
+                <.play_button event="play_first_episode" label="Assistir" />
                 <div class="title-secondary-actions">
-                  <StreamixWeb.Content.DetailComponents.Actions.favorite_button favorite?={
-                    @is_favorite
-                  } />
+                  <.favorite_button favorite?={@is_favorite} />
                 </div>
               </div>
+
+              <.synopsis_section text={@series.plot} />
             </div>
           </div>
 
-          <!-- Episodes Section -->
           <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
             <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
 
@@ -285,7 +227,11 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
 
       <div :if={@expanded} class="border-t border-border">
         <div class="divide-y divide-border">
-          <.episode_item :for={episode <- @episodes} episode={episode} />
+          <.episode_item
+            :for={episode <- @episodes}
+            episode={episode}
+            season_number={@season.season_number}
+          />
         </div>
       </div>
     </div>
@@ -319,15 +265,16 @@ defmodule StreamixWeb.Gindex.SeriesDetailLive do
 
       <div class="flex-1 min-w-0">
         <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
-          {DH.episode_title(@episode)}
+          {DH.episode_title(@episode, @season_number)}
         </h4>
         <div class="flex items-center gap-2 mt-1">
-          <span
+          <.badge
             :if={@episode.container_extension}
-            class="text-[10px] sm:text-xs px-1.5 py-0.5 bg-info/10 text-info rounded uppercase font-bold"
+            variant="surface"
+            size="sm"
           >
-            {@episode.container_extension}
-          </span>
+            {String.upcase(@episode.container_extension)}
+          </.badge>
         </div>
       </div>
     </div>

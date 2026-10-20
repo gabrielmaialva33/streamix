@@ -16,7 +16,9 @@ defmodule StreamixWeb.TorrentLive do
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
   alias Streamix.Library
   alias Streamix.Torrent
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
 
   @per_page 48
@@ -108,7 +110,7 @@ defmodule StreamixWeb.TorrentLive do
         id="torrents-page-header"
         title="Torrents"
         icon="hero-bolt"
-        subtitle={"Filmes via swarm P2P, ordenados por saúde da rede. #{@total_count} títulos"}
+        subtitle={torrent_subtitle(@total_count)}
       />
 
       <.search_input id="torrent-search-form" value={@search} placeholder="Buscar torrents..." />
@@ -161,22 +163,39 @@ defmodule StreamixWeb.TorrentLive do
   attr :provider_id, :any, default: nil
 
   defp torrent_card(assigns) do
+    assigns =
+      assigns
+      |> assign(:clean_title, DisplayTitle.title(assigns.movie))
+      |> assign(
+        :image_url,
+        assigns.movie.stream_icon && ImageProxy.card(assigns.movie.stream_icon)
+      )
+
     ~H"""
-    <div class="group relative">
+    <div id={"torrent-card-#{@movie.id}"} class="group relative">
       <.link navigate={detail_path(@provider_id, @movie.id)} class="block poster-card card-glow">
-        <img
-          :if={@movie.stream_icon}
-          src={ImageProxy.card(@movie.stream_icon)}
-          alt={@movie.title || @movie.name}
-          class="h-full w-full object-cover"
-          loading="lazy"
-          decoding="async"
-        />
-        <div
-          :if={!@movie.stream_icon}
-          class="flex h-full w-full items-center justify-center bg-surface-hover text-text-muted"
-        >
-          <.icon name="hero-film" class="size-10" />
+        <div id={"torrent-img-#{@movie.id}"} phx-hook="ImageFallback" class="h-full w-full">
+          <img
+            :if={@image_url}
+            src={@image_url}
+            alt={@clean_title}
+            class="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+            data-fallback-target
+          />
+          <div
+            data-fallback
+            class={[
+              "flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 p-3 text-center text-text-muted",
+              @image_url && "hidden"
+            ]}
+          >
+            <.icon name="hero-film" class="mb-2 size-8 text-brand/60" />
+            <span class="line-clamp-3 text-xs font-medium leading-snug text-text-secondary">
+              {@clean_title}
+            </span>
+          </div>
         </div>
 
         <span
@@ -199,23 +218,37 @@ defmodule StreamixWeb.TorrentLive do
         type="button"
         phx-click="toggle_favorite"
         phx-value-id={@movie.id}
-        class="absolute bottom-2 right-2 flex size-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus:opacity-100"
-        aria-label="Favoritar"
+        data-touch-visible="true"
+        class="absolute bottom-8 right-1.5 flex size-11 items-center justify-center rounded-full bg-black/65 text-white opacity-100 backdrop-blur-sm transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100"
+        aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
       >
         <.icon
           name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-          class={["size-4", @is_favorite && "text-brand"]}
+          class={["size-5", @is_favorite && "text-brand"]}
         />
       </button>
 
       <div class="mt-2 space-y-0.5">
-        <h3 class="truncate text-2sm font-medium text-text-primary group-hover:text-brand">
-          {@movie.title || @movie.name}
+        <h3
+          class="truncate text-2sm font-medium text-text-primary group-hover:text-brand"
+          title={@clean_title}
+        >
+          {@clean_title}
         </h3>
-        <p :if={@movie.year} class="text-2xs text-text-muted">{@movie.year}</p>
+        <p :if={HelperComponents.display_year(@movie.year) != ""} class="text-2xs text-text-muted">
+          {@movie.year}
+        </p>
       </div>
     </div>
     """
+  end
+
+  defp torrent_subtitle(count) when is_integer(count) and count > 0 do
+    "Filmes via swarm P2P, ordenados por saúde da rede · #{HelperComponents.format_count(count)} títulos"
+  end
+
+  defp torrent_subtitle(_count) do
+    "Filmes via swarm P2P, ordenados por saúde da rede."
   end
 
   # Healthy swarms read green, weak ones amber, dead ones muted.

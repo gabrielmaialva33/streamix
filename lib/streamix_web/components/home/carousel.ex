@@ -14,6 +14,10 @@ defmodule StreamixWeb.Home.Carousel do
 
   alias StreamixWeb.Helpers.ImageProxy
 
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  slot :inner_block, required: true
+
   def carousel_arrows(assigns) do
     ~H"""
     <div
@@ -25,14 +29,18 @@ defmodule StreamixWeb.Home.Carousel do
       <button
         type="button"
         data-scroll-dir="left"
-        class="carousel-arrow-left absolute left-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-r from-background/90 to-transparent opacity-0 group-hover/carousel:opacity-100 transition-opacity cursor-pointer disabled:hidden"
+        aria-label={"Rolar #{@title} para a esquerda"}
+        disabled
+        class="carousel-arrow-left absolute left-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-r from-background/90 to-transparent opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer disabled:hidden"
       >
         <.icon name="hero-chevron-left" class="size-6 text-white" />
       </button>
       <button
         type="button"
         data-scroll-dir="right"
-        class="carousel-arrow-right absolute right-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-l from-background/90 to-transparent opacity-0 group-hover/carousel:opacity-100 transition-opacity cursor-pointer disabled:hidden"
+        aria-label={"Rolar #{@title} para a direita"}
+        disabled
+        class="carousel-arrow-right absolute right-0 top-0 bottom-0 z-10 w-10 flex items-center justify-center bg-gradient-to-l from-background/90 to-transparent opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer disabled:hidden"
       >
         <.icon name="hero-chevron-right" class="size-6 text-white" />
       </button>
@@ -55,6 +63,8 @@ defmodule StreamixWeb.Home.Carousel do
           this.rightBtn?.addEventListener('click', this.onRightClick)
           this.track.addEventListener('scroll', this.onTrackScroll, { passive: true })
 
+          this.resizeObserver = new ResizeObserver(() => this.scheduleArrowUpdate())
+          this.resizeObserver.observe(this.track)
           this.scheduleArrowUpdate()
         },
 
@@ -63,6 +73,7 @@ defmodule StreamixWeb.Home.Carousel do
         },
 
         destroyed() {
+          this.resizeObserver?.disconnect()
           this.leftBtn?.removeEventListener('click', this.onLeftClick)
           this.rightBtn?.removeEventListener('click', this.onRightClick)
           this.track?.removeEventListener('scroll', this.onTrackScroll)
@@ -114,7 +125,7 @@ defmodule StreamixWeb.Home.Carousel do
         see_more_path={@see_more_path}
       />
       <%= if @type == :channels do %>
-        <.carousel_arrows id={@carousel_id}>
+        <.carousel_arrows id={@carousel_id} title={@title}>
           <div
             data-carousel-track
             class="media-shelf-track media-shelf-track--two-row media-shelf-track--channels-wide"
@@ -133,7 +144,7 @@ defmodule StreamixWeb.Home.Carousel do
           </div>
         </.carousel_arrows>
       <% else %>
-        <.carousel_arrows id={@carousel_id}>
+        <.carousel_arrows id={@carousel_id} title={@title}>
           <div
             data-carousel-track
             class="media-shelf-track"
@@ -202,7 +213,7 @@ defmodule StreamixWeb.Home.Carousel do
         see_more_path={~p"/browse/movies?sort=trending"}
         ai_powered={@ai_powered}
       />
-      <.carousel_arrows id="carousel-trending">
+      <.carousel_arrows id="carousel-trending" title="Em Alta Agora">
         <div
           data-carousel-track
           class="media-shelf-track"
@@ -243,7 +254,7 @@ defmodule StreamixWeb.Home.Carousel do
         see_more_path={~p"/browse/series?sort=popularity"}
         ai_powered={@ai_powered}
       />
-      <.carousel_arrows id="carousel-series">
+      <.carousel_arrows id="carousel-series" title="Séries Populares">
         <div
           data-carousel-track
           class="media-shelf-track"
@@ -279,7 +290,7 @@ defmodule StreamixWeb.Home.Carousel do
         see_more_path={~p"/browse"}
         ai_powered={@ai_powered}
       />
-      <.carousel_arrows id="carousel-channels">
+      <.carousel_arrows id="carousel-channels" title="TV ao Vivo">
         <div
           data-carousel-track
           class="media-shelf-track media-shelf-track--two-row media-shelf-track--channels-compact"
@@ -304,7 +315,7 @@ defmodule StreamixWeb.Home.Carousel do
         icon="hero-trophy"
         see_more_path={~p"/browse/movies?sort=rating"}
       />
-      <.carousel_arrows id="carousel-top10">
+      <.carousel_arrows id="carousel-top10" title={@title}>
         <div
           data-carousel-track
           class="flex gap-3 sm:gap-4 overflow-x-auto py-1 sm:py-2 scrollbar-hide scroll-smooth"

@@ -14,12 +14,12 @@ defmodule StreamixWeb.Providers.ProviderListLive do
       Phoenix.PubSub.subscribe(Streamix.PubSub, "user:#{user_id}:providers")
     end
 
-    # Admins see every provider (including the global system rows
-    # owned by the platform); regular users only see what they own.
+    # Admins manage every provider, the platform's system rows included;
+    # anyone else sees only their own, never the system rows.
     providers =
       case Accounts.role_name(user) do
         "admin" -> Streamix.Providers.list_providers(user_id, scope: :all)
-        _ -> Streamix.Providers.list_providers(user_id)
+        _ -> user_id |> Streamix.Providers.list_providers() |> Enum.reject(& &1.is_system)
       end
 
     socket =
@@ -190,7 +190,8 @@ defmodule StreamixWeb.Providers.ProviderListLive do
         <:actions>
           <.button
             :if={!@empty_providers}
-            navigate={~p"/providers/new"}
+            id="add-provider"
+            patch={~p"/providers/new"}
             variant="primary"
             class="w-full sm:w-auto"
           >
@@ -220,14 +221,21 @@ defmodule StreamixWeb.Providers.ProviderListLive do
           message="Adicione seu primeiro provedor IPTV para começar a assistir"
         >
           <:action>
-            <.button navigate={~p"/providers/new"} variant="primary">
+            <.button id="add-provider" patch={~p"/providers/new"} variant="primary">
               <.icon name="hero-plus" class="size-4 sm:size-5" /> Adicionar Provedor
             </.button>
           </:action>
         </.empty_state>
       </div>
 
-      <.modal :if={@show_modal} id="provider-modal" show on_cancel={JS.patch(~p"/providers")}>
+      <.modal
+        :if={@show_modal}
+        id="provider-modal"
+        show
+        label={if @provider, do: "Editar Provedor", else: "Adicionar Provedor"}
+        return_focus={if @provider, do: "#edit-provider-#{@provider.id}", else: "#add-provider"}
+        on_cancel={JS.patch(~p"/providers")}
+      >
         <.live_component
           module={StreamixWeb.Providers.ProviderFormComponent}
           id={(@provider && @provider.id) || :new}

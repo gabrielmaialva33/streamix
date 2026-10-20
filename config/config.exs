@@ -129,7 +129,7 @@ config :streamix, StreamixWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
     formats: [html: StreamixWeb.ErrorHTML, json: StreamixWeb.ErrorJSON],
-    layout: false
+    layout: [html: {StreamixWeb.Layouts, :root}]
   ],
   pubsub_server: Streamix.PubSub,
   live_view: [signing_salt: "Jhh/r6Do"]

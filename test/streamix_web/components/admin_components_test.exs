@@ -7,6 +7,7 @@ defmodule StreamixWeb.AdminComponentsTest do
 
   test "localizes known status and role labels" do
     assert render_component(&AdminComponents.status_badge/1, status: "active") =~ "Ativa"
+    assert render_component(&AdminComponents.status_badge/1, status: "none") =~ "Sem assinatura"
     assert render_component(&AdminComponents.status_badge/1, status: "admin") =~ "Administrador"
     assert render_component(&AdminComponents.status_badge/1, status: "customer") =~ "Cliente"
     assert render_component(&AdminComponents.status_badge/1, status: "moderator") =~ "Moderador"

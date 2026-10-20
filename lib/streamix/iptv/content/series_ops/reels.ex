@@ -56,7 +56,10 @@ defmodule Streamix.Iptv.Content.SeriesOps.Reels do
   @spec list_visible(integer() | nil, keyword()) :: [Series.t()]
   def list_visible(user_id, opts \\ []) do
     user_id
-    |> ListingQuery.filtered_visible(show_adult: Keyword.get(opts, :show_adult, false))
+    |> ListingQuery.filtered_visible(
+      show_adult: Keyword.get(opts, :show_adult, false),
+      search: Keyword.get(opts, :search)
+    )
     |> list_page(opts, @visible_preloads)
   end
 

@@ -98,21 +98,21 @@ defmodule StreamixWeb.Admin.PlanFormLive do
             </div>
           </div>
 
-          <.input field={@form[:description]} type="textarea" label="Descricao" />
+          <.input field={@form[:description]} type="textarea" label="Descrição" />
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <.input field={@form[:price_cents]} type="number" label="Preco (centavos)" />
+            <.input field={@form[:price_cents]} type="number" label="Preço (centavos)" />
             <.input
               field={@form[:currency]}
               type="select"
               label="Moeda"
-              options={[{"Real (BRL)", "BRL"}, {"Dolar (USD)", "USD"}, {"Euro (EUR)", "EUR"}]}
+              options={[{"Real (BRL)", "BRL"}, {"Dólar (USD)", "USD"}, {"Euro (EUR)", "EUR"}]}
             />
             <.input
               field={@form[:billing_interval]}
               type="select"
               label="Intervalo"
-              options={[{"Dia", "day"}, {"Semana", "week"}, {"Mes", "month"}, {"Ano", "year"}]}
+              options={[{"Dia", "day"}, {"Semana", "week"}, {"Mês", "month"}, {"Ano", "year"}]}
             />
           </div>
 
@@ -136,7 +136,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
           />
 
           <fieldset class="surface-card p-4 space-y-4">
-            <legend class="px-1 text-sm font-semibold text-text-primary">Features do plano</legend>
+            <legend class="px-1 text-sm font-semibold text-text-primary">Recursos do plano</legend>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label class="flex items-center gap-2 text-sm text-text-secondary">
@@ -150,7 +150,7 @@ defmodule StreamixWeb.Admin.PlanFormLive do
                   name="plan[features][global_catalog]"
                   value="true"
                   checked={feature_enabled?(@plan, "global_catalog", true)}
-                  class="rounded border-border bg-surface text-brand focus:ring-brand"
+                  class="size-4 shrink-0 rounded border-border bg-surface text-brand focus:ring-brand"
                 /> Catálogo global
               </label>
 
@@ -165,8 +165,8 @@ defmodule StreamixWeb.Admin.PlanFormLive do
                   name="plan[features][ai_recommendations]"
                   value="true"
                   checked={feature_enabled?(@plan, "ai_recommendations", false)}
-                  class="rounded border-border bg-surface text-brand focus:ring-brand"
-                /> AI avançada
+                  class="size-4 shrink-0 rounded border-border bg-surface text-brand focus:ring-brand"
+                /> IA avançada
               </label>
 
               <label class="flex items-center gap-2 text-sm text-text-secondary">
@@ -180,17 +180,21 @@ defmodule StreamixWeb.Admin.PlanFormLive do
                   name="plan[features][watch_party]"
                   value="true"
                   checked={feature_enabled?(@plan, "watch_party", false)}
-                  class="rounded border-border bg-surface text-brand focus:ring-brand"
-                /> Watch party
+                  class="size-4 shrink-0 rounded border-border bg-surface text-brand focus:ring-brand"
+                /> Watch Party
               </label>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-text-primary mb-1">
-                  Limite de providers
+                <label
+                  for="plan_features_max_providers"
+                  class="block text-sm font-medium text-text-primary mb-1"
+                >
+                  Limite de provedores
                 </label>
                 <input
+                  id="plan_features_max_providers"
                   type="number"
                   name="plan[features][max_providers]"
                   value={feature_limit(@plan, "max_providers")}
@@ -200,10 +204,14 @@ defmodule StreamixWeb.Admin.PlanFormLive do
               </div>
 
               <div>
-                <label class="block text-sm font-medium text-text-primary mb-1">
+                <label
+                  for="plan_features_concurrent_streams"
+                  class="block text-sm font-medium text-text-primary mb-1"
+                >
                   Streams simultâneos
                 </label>
                 <input
+                  id="plan_features_concurrent_streams"
                   type="number"
                   name="plan[features][concurrent_streams]"
                   value={feature_limit(@plan, "concurrent_streams")}
@@ -216,14 +224,11 @@ defmodule StreamixWeb.Admin.PlanFormLive do
 
           <div class="flex items-center gap-3 pt-4">
             <.button type="submit" phx-disable-with="Salvando...">
-              {if @live_action == :new, do: "Criar plano", else: "Salvar alteracoes"}
+              {if @live_action == :new, do: "Criar plano", else: "Salvar alterações"}
             </.button>
-            <.link
-              navigate={~p"/admin/plans"}
-              class="text-sm text-text-secondary hover:text-text-primary"
-            >
+            <.button navigate={~p"/admin/plans"} variant="ghost">
               Cancelar
-            </.link>
+            </.button>
           </div>
         </.form>
       </div>

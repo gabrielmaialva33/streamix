@@ -194,6 +194,24 @@ defmodule StreamixWeb.Content.ReelsLiveTest do
     refute has_element?(view, "#series-card-#{reels["Ação"].id}")
   end
 
+  test "search input filters reel series by title", %{conn: conn, global: global} do
+    cat = category!(global, "[Reels] Romance")
+    match = reel!(global, [cat], %{name: "Casamento Secreto", title: "Casamento Secreto"})
+    other = reel!(global, [cat], %{name: "Vingança da Herdeira", title: "Vingança da Herdeira"})
+
+    {:ok, view, _html} = live(conn, ~p"/browse/reels")
+
+    assert has_element?(view, "#reels-search-form input[name='search']")
+
+    view
+    |> form("#reels-search-form", %{search: "Casamento"})
+    |> render_submit()
+
+    assert_patch(view, ~p"/browse/reels?search=Casamento")
+    assert has_element?(view, "#series-card-#{match.id}")
+    refute has_element?(view, "#series-card-#{other.id}")
+  end
+
   defp chip(name), do: ~s(#reel-categories a[data-category="#{name}"])
 
   defp count_cards(html) do

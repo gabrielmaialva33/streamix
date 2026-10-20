@@ -26,7 +26,10 @@ defmodule StreamixWeb.User.LoginLive do
       <h1 class="text-2xl font-semibold text-text-primary tracking-tight">Entrar</h1>
       <p class="text-sm text-text-secondary mt-2">
         Não tem uma conta?
-        <.link navigate={~p"/register"} class="text-brand hover:underline font-medium">
+        <.link
+          navigate={~p"/register"}
+          class="inline-flex min-h-11 items-center px-2 text-brand hover:underline font-medium"
+        >
           Cadastre-se
         </.link>
       </p>

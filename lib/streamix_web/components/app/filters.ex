@@ -30,9 +30,7 @@ defmodule StreamixWeb.App.Filters do
       {@rest}
     >
       <span>{@label}</span>
-      <span :if={!is_nil(@count)} class="text-xs tabular-nums opacity-75">{HelperComponents.format_count(
-        @count
-      )}{@count_suffix}</span>
+      <span :if={!is_nil(@count)} class="text-xs tabular-nums">{HelperComponents.format_count(@count)}{@count_suffix}</span>
     </button>
     """
   end

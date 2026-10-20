@@ -110,6 +110,7 @@ defmodule StreamixWeb.AdminComponents do
   end
 
   def status_label("active"), do: "Ativa"
+  def status_label("none"), do: "Sem assinatura"
   def status_label("expired"), do: "Expirada"
   def status_label("canceled"), do: "Cancelada"
   def status_label("pending"), do: "Pendente"

@@ -154,7 +154,7 @@ defmodule StreamixWeb.FooterComponents do
         <div class="mt-8 flex flex-col gap-3 border-t border-border/30 pt-6 text-xs text-text-muted sm:flex-row sm:items-center sm:justify-between">
           <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>© {@year} Streamix</span>
-            <span :if={@version != ""} class="text-text-muted/70">v{@version}</span>
+            <span :if={@version != ""} class="text-text-muted">v{@version}</span>
           </p>
           <p>Powered by Maia</p>
         </div>

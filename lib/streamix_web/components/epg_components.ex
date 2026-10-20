@@ -53,7 +53,7 @@ defmodule StreamixWeb.EpgComponents do
       >
         {@current_program.title}
       </p>
-      <p :if={!@current_program} class="text-[10px] text-text-muted/50 italic">
+      <p :if={!@current_program} class="text-[10px] text-text-muted italic">
         Programação indisponível
       </p>
     </div>

@@ -48,7 +48,7 @@ defmodule StreamixWeb.Admin.PlansLive do
                 <th class="px-4 py-3">Recursos</th>
                 <th class="px-4 py-3">Global</th>
                 <th class="px-4 py-3">Status</th>
-                <th class="px-4 py-3"></th>
+                <th class="px-4 py-3"><span class="sr-only">Ações</span></th>
               </tr>
             </thead>
             <tbody>
@@ -58,7 +58,9 @@ defmodule StreamixWeb.Admin.PlansLive do
                 <td class="px-4 py-3 text-text-primary">
                   {format_price(plan.price_cents, plan.currency)}
                 </td>
-                <td class="px-4 py-3 text-text-secondary">{plan.billing_interval}</td>
+                <td class="px-4 py-3 text-text-secondary">
+                  {format_interval(plan.billing_interval)}
+                </td>
                 <td class="px-4 py-3 font-mono text-xs text-text-secondary">
                   {plan.stripe_price_id || "-"}
                 </td>
@@ -116,27 +118,35 @@ defmodule StreamixWeb.Admin.PlansLive do
     """
   end
 
-  defp format_price(cents, currency) when is_integer(cents) do
-    symbol =
-      case currency do
-        "BRL" -> "R$"
-        "USD" -> "$"
-        "EUR" -> "€"
-        other -> other
-      end
-
+  defp format_price(cents, _currency) when is_integer(cents) do
     amount = :erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ",")
-    "#{symbol} #{amount}"
+    "R$ #{amount}"
   end
 
   defp format_price(_, _), do: "-"
+
+  defp format_interval("day"), do: "Diário"
+  defp format_interval("week"), do: "Semanal"
+  defp format_interval("month"), do: "Mensal"
+  defp format_interval("year"), do: "Anual"
+  defp format_interval(other), do: other || "-"
 
   defp visible_features(plan) do
     plan.features
     |> Enum.filter(& &1.enabled)
     |> Enum.map(fn
-      %{feature: feature, limit: limit} when is_integer(limit) -> "#{feature}: #{limit}"
-      %{feature: feature} -> feature
+      %{feature: feature, limit: limit} when is_integer(limit) ->
+        "#{feature_label(feature)}: #{limit}"
+
+      %{feature: feature} ->
+        feature_label(feature)
     end)
   end
+
+  defp feature_label("global_catalog"), do: "Catálogo global"
+  defp feature_label("ai_recommendations"), do: "IA avançada"
+  defp feature_label("watch_party"), do: "Watch Party"
+  defp feature_label("max_providers"), do: "Provedores"
+  defp feature_label("concurrent_streams"), do: "Streams"
+  defp feature_label(other), do: other
 end

@@ -9,8 +9,9 @@ defmodule StreamixWeb.Home.Landing do
   import StreamixWeb.CoreComponents
 
   import StreamixWeb.Content.HelperComponents,
-    only: [display_year: 1, positive_rating?: 1, format_count: 1]
+    only: [display_year: 1, format_count: 1, get_display_rating: 1]
 
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   def render_landing_page(assigns) do
@@ -225,22 +226,28 @@ defmodule StreamixWeb.Home.Landing do
   attr :class, :string, default: nil
 
   def public_media_card(assigns) do
-    assigns = assign(assigns, :image_url, public_card_image(assigns.item))
+    assigns =
+      assigns
+      |> assign(:image_url, public_card_image(assigns.item))
+      |> assign(:clean_title, public_title(assigns.item))
+      |> assign(:display_rating, public_rating(assigns.item))
+      |> assign(:target_path, public_item_path(assigns.kind, assigns.item))
 
     ~H"""
-    <article
+    <.link
+      href={@target_path}
       class={[
-        "group w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0",
+        "group block w-full sm:w-[132px] lg:w-[148px] sm:flex-shrink-0",
         @class
       ]}
-      title={public_title(@item)}
+      title={@clean_title}
     >
       <div class="aspect-[2/3] overflow-hidden rounded-md bg-surface-hover shadow-sm transition-transform duration-300 group-hover:-translate-y-1 sm:rounded-lg">
         <div id={"public-#{@kind}-img-#{@item.id}"} phx-hook="ImageFallback" class="h-full w-full">
           <img
             :if={@image_url}
             src={@image_url}
-            alt={public_title(@item)}
+            alt={@clean_title}
             class="h-full w-full object-cover"
             loading="lazy"
             decoding="async"
@@ -258,21 +265,21 @@ defmodule StreamixWeb.Home.Landing do
               class="mb-1 size-6 text-brand/60"
             />
             <span class="line-clamp-2 text-2xs leading-tight text-text-muted">
-              {public_title(@item)}
+              {@clean_title}
             </span>
           </div>
         </div>
       </div>
       <div class="px-0.5 pt-1.5 sm:pt-2">
-        <h3 class="line-clamp-2 text-2xs font-medium leading-tight text-text-primary sm:text-sm">
-          {public_title(@item)}
+        <h3 class="line-clamp-2 text-2xs font-medium leading-tight text-text-primary transition-colors group-hover:text-brand sm:text-sm">
+          {@clean_title}
         </h3>
         <p class="mt-1 flex items-center gap-1 text-2xs text-text-muted">
           <span :if={display_year(Map.get(@item, :year)) != ""}>{Map.get(@item, :year)}</span>
-          <span :if={positive_rating?(Map.get(@item, :rating))}>★ {public_rating(@item)}</span>
+          <span :if={@display_rating}>★ {@display_rating}</span>
         </p>
       </div>
-    </article>
+    </.link>
     """
   end
 
@@ -302,20 +309,25 @@ defmodule StreamixWeb.Home.Landing do
 
   def public_channel_card(assigns) do
     assigns =
-      assign(
-        assigns,
+      assigns
+      |> assign(
         :image_url,
         ImageProxy.browser_image(Map.get(assigns.channel, :stream_icon))
       )
+      |> assign(:clean_name, DisplayTitle.channel(assigns.channel.name))
 
     ~H"""
-    <article class={["group w-full sm:w-[150px] lg:w-[176px]", @class]} title={@channel.name}>
+    <.link
+      href={~p"/watch/live_channel/#{@channel.id}"}
+      class={["group block w-full sm:w-[150px] lg:w-[176px]", @class]}
+      title={@clean_name}
+    >
       <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-md bg-surface-hover shadow-sm transition-transform duration-300 group-hover:-translate-y-1 sm:rounded-lg">
         <div id={"public-channel-img-#{@channel.id}"} phx-hook="ImageFallback" class="h-full w-full">
           <img
             :if={@image_url}
             src={@image_url}
-            alt={@channel.name}
+            alt={@clean_name}
             class="h-full w-full object-contain p-1.5 sm:p-2"
             loading="lazy"
             decoding="async"
@@ -330,18 +342,18 @@ defmodule StreamixWeb.Home.Landing do
           >
             <.icon name="hero-tv" class="mb-1 size-5 text-brand/60 sm:size-8" />
             <span class="line-clamp-2 text-2xs leading-tight text-text-muted sm:text-xs">
-              {@channel.name}
+              {@clean_name}
             </span>
           </div>
         </div>
-        <div class="absolute left-1 top-1 flex items-center gap-1 rounded bg-brand px-1 py-0.5 text-2xs font-semibold text-white sm:left-2 sm:top-2 sm:px-1.5">
-          <span class="size-1 rounded-full bg-white" /> AO VIVO
-        </div>
+        <.badge variant="surface" size="sm" class="absolute left-1 top-1 sm:left-2 sm:top-2">
+          TV
+        </.badge>
       </div>
-      <h3 class="mt-1.5 truncate px-0.5 text-2xs font-medium text-text-primary sm:mt-2 sm:text-sm">
-        {@channel.name}
+      <h3 class="mt-1.5 truncate px-0.5 text-2xs font-medium text-text-primary transition-colors group-hover:text-brand sm:mt-2 sm:text-sm">
+        {@clean_name}
       </h3>
-    </article>
+    </.link>
     """
   end
 
@@ -352,7 +364,10 @@ defmodule StreamixWeb.Home.Landing do
   defp featured_kind({:series, _content}), do: "Série"
   defp featured_kind(_), do: "Conteúdo"
 
-  defp public_title(content), do: Map.get(content, :title) || Map.get(content, :name)
+  defp public_title(content), do: DisplayTitle.title(content)
+
+  defp public_item_path(:series, item), do: ~p"/browse/series/#{item.id}"
+  defp public_item_path(_kind, item), do: ~p"/browse/movies/#{item.id}"
 
   defp public_hero_image(content) do
     url =
@@ -369,14 +384,7 @@ defmodule StreamixWeb.Home.Landing do
   defp group_loading?(home_loading, group),
     do: Map.get(home_loading || %{}, group) in [true, :running]
 
-  defp public_rating(content) do
-    case Map.get(content, :rating) do
-      nil -> nil
-      %Decimal{} = rating -> rating |> Decimal.to_float() |> Float.round(1)
-      rating when is_float(rating) -> Float.round(rating, 1)
-      rating -> rating
-    end
-  end
+  defp public_rating(content), do: get_display_rating(content)
 
   def landing_features(assigns) do
     ~H"""
