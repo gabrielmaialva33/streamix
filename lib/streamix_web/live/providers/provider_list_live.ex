@@ -181,20 +181,23 @@ defmodule StreamixWeb.Providers.ProviderListLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-4 sm:space-y-6">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-        <div>
-          <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Meus Provedores</h1>
-          <p class="text-sm sm:text-base text-text-secondary mt-1">Gerencie seus provedores IPTV</p>
-        </div>
-        <.button
-          :if={!@empty_providers}
-          navigate={~p"/providers/new"}
-          variant="primary"
-          class="w-full sm:w-auto"
-        >
-          <.icon name="hero-plus" class="size-4 sm:size-5" /> Adicionar Provedor
-        </.button>
-      </div>
+      <.page_header
+        id="providers-page-header"
+        title="Meus provedores"
+        icon="hero-server"
+        subtitle="Gerencie seus provedores IPTV"
+      >
+        <:actions>
+          <.button
+            :if={!@empty_providers}
+            navigate={~p"/providers/new"}
+            variant="primary"
+            class="w-full sm:w-auto"
+          >
+            <.icon name="hero-plus" class="size-4 sm:size-5" /> Adicionar Provedor
+          </.button>
+        </:actions>
+      </.page_header>
 
       <div
         id="providers"

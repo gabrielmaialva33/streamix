@@ -313,14 +313,16 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
                 <.play_button event="play_movie" label="Assistir" />
 
-                <StreamixWeb.WatchPartyComponents.create_party_button
-                  content_type="movie"
-                  content_id={@selected_movie.id}
-                />
+                <div class="title-secondary-actions">
+                  <StreamixWeb.WatchPartyComponents.create_party_button
+                    content_type="movie"
+                    content_id={@selected_movie.id}
+                  />
 
-                <.favorite_button favorite?={@is_favorite} />
-                <.trailer_link youtube_id={@movie.youtube_trailer} />
-                <.tmdb_link type="movie" tmdb_id={@movie.tmdb_id} />
+                  <.favorite_button favorite?={@is_favorite} />
+                  <.trailer_link youtube_id={@movie.youtube_trailer} />
+                  <.tmdb_link type="movie" tmdb_id={@movie.tmdb_id} />
+                </div>
               </div>
 
               <.premium_cta_banner

@@ -5,6 +5,8 @@ defmodule StreamixWeb.Content.GuideLive do
 
   require Logger
 
+  import StreamixWeb.App.Feedback, only: [empty_state: 1]
+
   import StreamixWeb.App.Filters,
     only: [filter_chip: 1, filter_strip: 1, provider_dropdown: 1, search_input: 1]
 
@@ -24,6 +26,7 @@ defmodule StreamixWeb.Content.GuideLive do
     {:ok,
      socket
      |> assign(
+       now: DateTime.utc_now(),
        page_title: gettext("Guia de TV"),
        current_path: "/guide",
        rows: [],
@@ -77,6 +80,7 @@ defmodule StreamixWeb.Content.GuideLive do
     {:noreply,
      socket
      |> assign(
+       now: DateTime.utc_now(),
        rows: rows,
        all_rows: cleaned_rows,
        categories: cleaned_categories,

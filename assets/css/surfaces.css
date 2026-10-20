@@ -60,3 +60,19 @@
 #app-header[data-hero="true"][data-scrolled="false"] {
   background: transparent !important;
 }
+
+.title-secondary-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    width: 100%;
+}
+.title-secondary-actions > * {
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+@media (min-width: 640px) {
+    .title-secondary-actions { width: auto; gap: 0.5rem; }
+}

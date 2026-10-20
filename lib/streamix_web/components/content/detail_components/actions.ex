@@ -28,7 +28,7 @@ defmodule StreamixWeb.Content.DetailComponents.Actions do
       type="button"
       phx-click="toggle_favorite"
       variant="ghost"
-      size="icon"
+      size="sm"
       class={@favorite? && "text-brand"}
       aria-pressed={to_string(@favorite?)}
       aria-label={if @favorite?, do: @label_on, else: @label_off}
@@ -36,7 +36,7 @@ defmodule StreamixWeb.Content.DetailComponents.Actions do
       <.icon
         name={if @favorite?, do: "hero-heart-solid", else: "hero-heart"}
         class="size-4 sm:size-5"
-      />
+      /> Lista
     </.button>
     """
   end
@@ -52,7 +52,8 @@ defmodule StreamixWeb.Content.DetailComponents.Actions do
       href={@url}
       target="_blank"
       rel="noopener noreferrer"
-      variant="secondary"
+      variant="ghost"
+      size="sm"
     >
       <.icon name="hero-play-circle" class="size-4 sm:size-5 text-brand" /> Trailer
     </.button>
@@ -69,7 +70,8 @@ defmodule StreamixWeb.Content.DetailComponents.Actions do
       href={"https://www.themoviedb.org/#{@type}/#{@tmdb_id}"}
       target="_blank"
       rel="noopener noreferrer"
-      variant="secondary"
+      variant="ghost"
+      size="sm"
       title="Ver no The Movie Database"
     >
       <svg class="size-3.5 sm:size-4" viewBox="0 0 24 24" fill="currentColor">

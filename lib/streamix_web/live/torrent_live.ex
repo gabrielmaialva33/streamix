@@ -12,7 +12,7 @@ defmodule StreamixWeb.TorrentLive do
 
   import StreamixWeb.App.Feedback
   import StreamixWeb.App.Filters
-  import StreamixWeb.CoreComponents, only: [icon: 1]
+  import StreamixWeb.CoreComponents, only: [icon: 1, page_header: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
   alias Streamix.Library
   alias Streamix.Torrent
@@ -104,20 +104,12 @@ defmodule StreamixWeb.TorrentLive do
   def render(assigns) do
     ~H"""
     <div class="space-y-6">
-      <header class="space-y-1">
-        <div class="flex items-center gap-2">
-          <span class="inline-flex size-9 items-center justify-center rounded-lg bg-brand/15 text-brand">
-            <.icon name="hero-bolt" class="size-5" />
-          </span>
-          <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Torrents</h1>
-        </div>
-        <p class="text-2sm text-text-secondary">
-          Filmes via swarm P2P, ordenados por saúde da rede.
-          <span :if={@total_count > 0} class="text-text-muted">
-            {@total_count} títulos
-          </span>
-        </p>
-      </header>
+      <.page_header
+        id="torrents-page-header"
+        title="Torrents"
+        icon="hero-bolt"
+        subtitle={"Filmes via swarm P2P, ordenados por saúde da rede. #{@total_count} títulos"}
+      />
 
       <.search_input id="torrent-search-form" value={@search} placeholder="Buscar torrents..." />
 

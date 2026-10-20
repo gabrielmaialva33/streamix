@@ -141,8 +141,8 @@ defmodule StreamixWeb.HistoryLive do
         class="hidden"
       />
 
-      <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
-        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Histórico</h1>
+      <div class="space-y-3">
+        <.page_header id="history-page-header" title="Histórico" icon="hero-clock" />
 
         <div class="flex min-w-0 items-center gap-2 sm:justify-end sm:gap-4">
           <.filter_strip id="history-filter-strip" class="min-w-0 flex-1">
@@ -201,9 +201,12 @@ defmodule StreamixWeb.HistoryLive do
 
       <.empty_state
         :if={total_count(@counts) == 0}
+        id="history-empty"
         icon="hero-clock"
         title={empty_title(@filter)}
         message={empty_message(@filter)}
+        cta_label="Explorar catálogo"
+        cta_navigate={empty_cta_path(@filter)}
       />
     </div>
     """
@@ -233,13 +236,14 @@ defmodule StreamixWeb.HistoryLive do
         end
       )
       |> assign(:title, history_display_title(assigns.entry))
+      |> assign(:subtitle, history_display_subtitle(assigns.entry))
 
     ~H"""
     <.landscape_media_card
       id={@id}
       image_id={"history-image-#{@entry.id}"}
       title={@title}
-      subtitle={format_relative_time(@entry.watched_at)}
+      subtitle={@subtitle}
       image_url={@image_url}
       image_fit={if @entry.content_type == "live_channel", do: "contain", else: "cover"}
       fallback_icon={content_type_icon(@entry.content_type)}
@@ -260,6 +264,9 @@ defmodule StreamixWeb.HistoryLive do
           </span>
           <span :if={@entry.duration_seconds}>
             {format_duration(@entry.duration_seconds)}
+          </span>
+          <span :if={@entry.content_type == "episode" && @entry.watched_at}>
+            {format_relative_time(@entry.watched_at)}
           </span>
         </div>
       </:metadata>
@@ -284,19 +291,87 @@ defmodule StreamixWeb.HistoryLive do
   # Private Helpers
   # ============================================
 
+  defp history_display_title(%{content_type: "episode"} = entry) do
+    series = episode_series_title(entry)
+    code = episode_position_label(entry)
+    format_episode_history_title(series, code, entry[:content_name])
+  end
+
   defp history_display_title(%{content_type: "live_channel", content_name: name})
        when is_binary(name) and name != "" do
     name |> DisplayTitle.channel() |> fallback_title()
   end
 
   defp history_display_title(%{content_name: name}) when is_binary(name) and name != "" do
+    clean_raw_history_title(name)
+  end
+
+  defp history_display_title(_entry), do: "Desconhecido"
+
+  defp episode_series_title(%{series_name: name}) when is_binary(name) and name != "",
+    do: DisplayTitle.title(name)
+
+  defp episode_series_title(entry), do: extract_series_from_episode_name(entry[:content_name])
+
+  defp format_episode_history_title(series, code, _raw)
+       when is_binary(series) and series != "" and is_binary(code),
+       do: "#{series} · #{code}"
+
+  defp format_episode_history_title(series, _code, _raw)
+       when is_binary(series) and series != "",
+       do: series
+
+  defp format_episode_history_title(_series, _code, name)
+       when is_binary(name) and name != "",
+       do: clean_raw_history_title(name)
+
+  defp format_episode_history_title(_series, _code, _raw), do: "Desconhecido"
+
+  defp clean_raw_history_title(name) do
     name
     |> DisplayTitle.title()
     |> String.replace(@episode_dash_code, " · T\\1 E\\2 · ")
     |> fallback_title()
   end
 
-  defp history_display_title(_entry), do: "Desconhecido"
+  defp history_display_subtitle(%{content_type: "episode"} = entry) do
+    ep_title =
+      case entry[:content_name] do
+        name when is_binary(name) and name != "" -> DisplayTitle.episode(name)
+        _ -> ""
+      end
+
+    if ep_title != "" do
+      ep_title
+    else
+      format_relative_time(entry[:watched_at])
+    end
+  end
+
+  defp history_display_subtitle(entry), do: format_relative_time(entry[:watched_at])
+
+  defp episode_position_label(%{season_number: season, episode_number: episode})
+       when is_integer(season) and is_integer(episode) do
+    "T#{season} E#{episode}"
+  end
+
+  defp episode_position_label(%{content_name: name}) when is_binary(name) do
+    case Regex.run(~r/\bs0?(\d{1,2})\s?e0?(\d{1,4})\b/iu, name) do
+      [_, season, episode] -> "T#{season} E#{episode}"
+      _ -> nil
+    end
+  end
+
+  defp episode_position_label(_), do: nil
+
+  defp extract_series_from_episode_name(name) when is_binary(name) do
+    case Regex.run(~r/^(.+?)\s*[-–.]*\s*s\d{1,2}\s?e\d{1,4}\b/iu, name) do
+      [_, series] -> DisplayTitle.title(series)
+      _ -> nil
+    end
+  end
+
+  defp extract_series_from_episode_name(_), do: nil
 
   defp fallback_title(""), do: "Desconhecido"
   defp fallback_title(title), do: title
@@ -397,4 +472,8 @@ defmodule StreamixWeb.HistoryLive do
   defp empty_message("movie"), do: "Os filmes que você assistir aparecerão aqui."
   defp empty_message("episode"), do: "Os episódios que você assistir aparecerão aqui."
   defp empty_message(_), do: "Seu histórico aparecerá aqui."
+
+  defp empty_cta_path("movie"), do: ~p"/browse/movies"
+  defp empty_cta_path("episode"), do: ~p"/browse/series"
+  defp empty_cta_path(_), do: ~p"/browse"
 end

@@ -13,6 +13,9 @@ defmodule StreamixWeb.HistoryLiveTest do
   import Phoenix.LiveViewTest
   import Streamix.IptvFixtures
 
+  alias Streamix.Iptv.{Episode, Season}
+  alias Streamix.Repo
+
   describe "mount" do
     setup :register_and_log_in_user
 
@@ -21,6 +24,14 @@ defmodule StreamixWeb.HistoryLiveTest do
 
       assert html =~ "Histórico"
       assert html =~ "Nenhum histórico"
+      assert has_element?(view, "#history-empty[data-empty-state]")
+
+      assert has_element?(
+               view,
+               "#history-empty [data-empty-cta][href='/browse']",
+               "Explorar catálogo"
+             )
+
       assert has_element?(view, "[data-sync-type='history']")
     end
 
@@ -159,6 +170,51 @@ defmodule StreamixWeb.HistoryLiveTest do
 
       assert has_element?(view, "#history-list h3", "Dawsons Creek S01E01")
       refute has_element?(view, "#history-list h3", "WEB-DL")
+    end
+
+    test "formats episode history entries as 'Série · T1 E1' with the episode title as secondary text",
+         %{conn: conn, user: user} do
+      provider = provider_fixture(user, %{visibility: "global", is_system: true})
+
+      series =
+        series_content_fixture(provider, %{
+          name: "Dawson's Creek (1998) [LEG]",
+          title: "Dawson's Creek",
+          cover: "https://example.com/dawson.jpg"
+        })
+
+      season =
+        %Season{}
+        |> Season.changeset(%{
+          season_number: 1,
+          name: "Temporada 1",
+          series_id: series.id
+        })
+        |> Repo.insert!()
+
+      episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: System.unique_integer([:positive]),
+          episode_num: 1,
+          title: "Dawson's Creek - S01E01 - Piloto [LEG]",
+          name: "Dawson.S01E01.Piloto.1080p.mkv",
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
+      {:ok, _} =
+        Streamix.Library.add_watch_history(user.id, "episode", episode.id, %{
+          progress_seconds: 600,
+          duration_seconds: 2400
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/history")
+
+      assert has_element?(view, "#history-list h3", "Dawson's Creek · T1 E1")
+      assert has_element?(view, "#history-list p", "Piloto")
+      assert has_element?(view, "#history-list [data-history-type-badge]", "Episódio")
     end
   end
 

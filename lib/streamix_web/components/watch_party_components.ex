@@ -18,8 +18,7 @@ defmodule StreamixWeb.WatchPartyComponents do
     <.button
       navigate={~p"/party/new/#{@content_type}/#{@content_id}"}
       variant="secondary"
-      size="lg"
-      class="w-full sm:w-auto"
+      size="sm"
     >
       <.icon name="hero-users" class="size-4 sm:size-5" /> Watch Party
     </.button>

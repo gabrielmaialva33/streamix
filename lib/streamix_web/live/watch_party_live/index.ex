@@ -4,6 +4,8 @@ defmodule StreamixWeb.WatchPartyLive.Index do
   """
   use StreamixWeb, :live_view
 
+  import StreamixWeb.App.Feedback, only: [empty_state: 1]
+
   alias Streamix.WatchParty
   alias StreamixWeb.Helpers.ImageProxy
 
@@ -85,20 +87,23 @@ defmodule StreamixWeb.WatchPartyLive.Index do
 
   def render(assigns) do
     ~H"""
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-28 sm:pb-16">
+    <div class="max-w-5xl mx-auto space-y-6 pb-28 sm:pb-16">
       <%!-- Hero --%>
-      <div class="text-center mb-10 sm:mb-14">
-        <div class="relative inline-flex items-center justify-center mb-5">
-          <div class="relative w-20 h-20 rounded-lg bg-brand flex items-center justify-center shadow-card">
-            <.icon name="hero-users" class="size-10 text-white" />
-          </div>
-        </div>
-        <h1 class="text-3xl sm:text-4xl font-bold text-text-primary tracking-tight">
-          Watch Party
-        </h1>
-        <p class="text-text-secondary mt-3 text-base sm:text-lg max-w-xl mx-auto">
-          Assista filmes, séries e TV ao vivo com seus amigos — tudo sincronizado e com chat em tempo real.
-        </p>
+      <.page_header
+        id="party-page-header"
+        title="Watch Party"
+        icon="hero-users"
+        subtitle="Assista com seus amigos, com reprodução sincronizada e chat em tempo real."
+      />
+
+      <div :if={@active_rooms == []} id="party-empty" class="mb-10 sm:mb-14">
+        <.empty_state
+          icon="hero-users"
+          title="Nenhuma sala ativa"
+          message="Escolha um título no catálogo e toque em Watch Party para começar uma sessão com amigos."
+          cta_label="Explorar catálogo"
+          cta_navigate={~p"/browse"}
+        />
       </div>
 
       <section :if={@active_rooms != []} class="mb-10 sm:mb-14" aria-labelledby="active-parties-title">

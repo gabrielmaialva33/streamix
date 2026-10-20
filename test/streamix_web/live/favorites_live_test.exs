@@ -20,6 +20,14 @@ defmodule StreamixWeb.FavoritesLiveTest do
 
       assert html =~ "Minha Lista"
       assert html =~ "Nenhum favorito"
+      assert has_element?(view, "#favorites-empty[data-empty-state]")
+
+      assert has_element?(
+               view,
+               "#favorites-empty [data-empty-cta][href='/browse']",
+               "Explorar catálogo"
+             )
+
       assert has_element?(view, "[data-sync-type='favorites']")
     end
 
@@ -82,6 +90,17 @@ defmodule StreamixWeb.FavoritesLiveTest do
       assert has_element?(
                view,
                "[data-media-secondary] button[aria-label='Remover dos favoritos'][data-touch-visible='true'].size-11.opacity-100"
+             )
+
+      assert has_element?(
+               view,
+               "[data-favorite-kind='poster'] [data-favorite-type-badge]",
+               "Filme"
+             )
+
+      refute has_element?(
+               view,
+               "[data-favorite-kind='poster'] [data-media-primary] .poster-card .top-1\\.5"
              )
 
       refute has_element?(view, "[data-media-primary] button")

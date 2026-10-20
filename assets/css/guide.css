@@ -146,3 +146,57 @@
         grid-auto-columns: minmax(180px, 230px);
     }
 }
+
+.guide-time-axis, .guide-now-line { display: none; }
+
+@media (min-width: 1024px) {
+    .guide-timeline-row, .guide-time-axis {
+        grid-template-columns: 260px minmax(0, 1fr);
+    }
+    .guide-time-axis {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0 0.75rem;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+    }
+    .guide-timeline {
+        display: block;
+        position: relative;
+        min-width: 0;
+        height: 84px;
+        overflow: hidden;
+    }
+    .guide-timeline [data-guide-program] {
+        position: absolute;
+        padding: 0;
+        border-width: 0;
+        left: var(--program-left);
+        width: var(--program-width);
+        height: 100%;
+        min-width: 0;
+        overflow: hidden;
+    }
+    .guide-now-line {
+        display: block;
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--color-brand);
+        pointer-events: none;
+        z-index: 1;
+    }
+}
+
+@media (min-width: 1024px) {
+    .guide-program-content {
+        height: 100%;
+        padding: 0.625rem;
+        box-shadow: inset 0 0 0 1px var(--color-border);
+        border-radius: inherit;
+    }
+    .guide-program--current .guide-program-content {
+        box-shadow: inset 0 0 0 1px var(--color-brand);
+    }
+}

@@ -103,12 +103,12 @@ defmodule StreamixWeb.User.SettingsLive do
   def render(assigns) do
     ~H"""
     <div class="mx-auto w-full max-w-5xl space-y-4 sm:space-y-5">
-      <div>
-        <h1 class="text-2xl font-bold text-text-primary sm:text-3xl">{gettext("Configurações")}</h1>
-        <p class="mt-1 text-sm text-text-secondary sm:text-base">
-          {gettext("Gerencie as configurações da sua conta")}
-        </p>
-      </div>
+      <.page_header
+        id="settings-page-header"
+        title={gettext("Configurações")}
+        icon="hero-cog-6-tooth"
+        subtitle={gettext("Gerencie as configurações da sua conta")}
+      />
 
       <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
         <section

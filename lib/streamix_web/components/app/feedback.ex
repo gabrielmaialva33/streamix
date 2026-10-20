@@ -7,20 +7,39 @@ defmodule StreamixWeb.App.Feedback do
 
   import StreamixWeb.CoreComponents
 
+  attr :id, :string, default: nil
   attr :icon, :string, required: true
   attr :title, :string, required: true
   attr :message, :string, default: nil
+  attr :cta_label, :string, default: "Explorar catálogo"
+  attr :cta_navigate, :string, default: "/browse"
+  attr :class, :any, default: nil
   slot :action
 
   def empty_state(assigns) do
     ~H"""
-    <div class="flex flex-col items-center justify-center py-16 text-center">
-      <div class="rounded-full bg-surface-hover p-6 mb-4">
-        <.icon name={@icon} class="size-12 text-text-muted" />
+    <div
+      id={@id}
+      data-empty-state
+      class={[
+        "flex flex-col items-center justify-center rounded-2xl border border-border bg-surface/40 px-4 py-12 text-center sm:py-16",
+        @class
+      ]}
+    >
+      <div class="mb-4 rounded-full bg-surface-hover p-5">
+        <.icon name={@icon} class="size-10 text-text-muted" />
       </div>
-      <h3 class="text-lg font-medium text-text-primary mb-1">{@title}</h3>
-      <p :if={@message} class="text-text-secondary mb-6 max-w-md">{@message}</p>
+      <h3 class="mb-1 text-lg font-semibold text-text-primary">{@title}</h3>
+      <p :if={@message} class="mb-6 max-w-md text-sm text-text-secondary">{@message}</p>
       {render_slot(@action)}
+      <.button
+        :if={@action == [] and is_binary(@cta_navigate) and @cta_navigate != ""}
+        navigate={@cta_navigate}
+        variant="secondary"
+        data-empty-cta
+      >
+        {@cta_label}
+      </.button>
     </div>
     """
   end

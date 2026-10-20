@@ -181,37 +181,20 @@ defmodule StreamixWeb.Gindex.MovieDetailLive do
               </p>
               <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-4">
-                <button
-                  type="button"
-                  phx-click="play_movie"
-                  class="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
-                >
-                  <.icon name="hero-play-solid" class="size-5" /> Assistir
-                </button>
-
-                <StreamixWeb.WatchPartyComponents.create_party_button
-                  content_type="gindex"
-                  content_id={@movie.id}
+                <StreamixWeb.Content.DetailComponents.Actions.play_button
+                  event="play_movie"
+                  label="Assistir"
                 />
-
-                <button
-                  type="button"
-                  phx-click="toggle_favorite"
-                  class={[
-                    "inline-flex items-center justify-center w-12 h-12 rounded-lg border-2 transition-all focus:outline-none focus:ring-2 focus:ring-brand",
-                    @is_favorite && "bg-brand border-brand text-white",
-                    !@is_favorite &&
-                      "border-border text-text-secondary hover:border-text-secondary hover:text-text-primary bg-surface"
-                  ]}
-                  aria-label={
-                    if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"
-                  }
-                >
-                  <.icon
-                    name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-                    class="size-5"
+                <div class="title-secondary-actions">
+                  <StreamixWeb.WatchPartyComponents.create_party_button
+                    content_type="gindex"
+                    content_id={@movie.id}
                   />
-                </button>
+
+                  <StreamixWeb.Content.DetailComponents.Actions.favorite_button favorite?={
+                    @is_favorite
+                  } />
+                </div>
               </div>
             </div>
           </div>

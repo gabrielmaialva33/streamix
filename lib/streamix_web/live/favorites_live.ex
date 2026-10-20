@@ -131,8 +131,8 @@ defmodule StreamixWeb.FavoritesLive do
         class="hidden"
       />
 
-      <div class="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
-        <h1 class="text-2xl sm:text-3xl font-bold text-text-primary">Minha Lista</h1>
+      <div class="space-y-3">
+        <.page_header id="favorites-page-header" title="Minha lista" icon="hero-heart" />
 
         <.filter_strip id="favorites-filter-strip">
           <.filter_button type="all" label="Todos" current={@filter} count={total_count(@counts)} />
@@ -181,9 +181,12 @@ defmodule StreamixWeb.FavoritesLive do
 
       <.empty_state
         :if={total_count(@counts) == 0}
+        id="favorites-empty"
         icon="hero-heart"
         title={empty_title(@filter)}
         message={empty_message(@filter)}
+        cta_label="Explorar catálogo"
+        cta_navigate={empty_cta_path(@filter)}
       />
     </div>
     """
@@ -221,7 +224,6 @@ defmodule StreamixWeb.FavoritesLive do
       id={@id}
       image_id={"favorite-image-#{@favorite.content_type}-#{@favorite.content_id}"}
       title={@title}
-      subtitle={format_content_type(@favorite.content_type)}
       image_url={@image_url}
       fallback_icon={content_type_icon(@favorite.content_type)}
       content_id={@favorite.content_id}
@@ -230,11 +232,16 @@ defmodule StreamixWeb.FavoritesLive do
       data-favorite-kind="poster"
       class="catalog-stream-item catalog-stream-item--poster self-start border border-transparent hover:border-border"
     >
-      <:badge>
-        <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
-          {format_content_type(@favorite.content_type)}
-        </span>
-      </:badge>
+      <:metadata>
+        <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
+          <span
+            data-favorite-type-badge
+            class="rounded bg-surface-hover px-1.5 py-0.5 text-2xs font-medium text-text-secondary"
+          >
+            {format_content_type(@favorite.content_type)}
+          </span>
+        </div>
+      </:metadata>
       <:secondary_action>
         <.remove_favorite_button favorite={@favorite} />
       </:secondary_action>
@@ -245,7 +252,6 @@ defmodule StreamixWeb.FavoritesLive do
       id={@id}
       image_id={"favorite-image-#{@favorite.content_type}-#{@favorite.content_id}"}
       title={@title}
-      subtitle={format_content_type(@favorite.content_type)}
       image_url={@image_url}
       image_fit={if @favorite.content_type == "live_channel", do: "contain", else: "cover"}
       fallback_icon={content_type_icon(@favorite.content_type)}
@@ -255,11 +261,16 @@ defmodule StreamixWeb.FavoritesLive do
       data-favorite-kind="wide"
       class="catalog-stream-item catalog-stream-item--wide self-start border border-transparent hover:border-border"
     >
-      <:badge>
-        <span class="rounded bg-black/65 px-2 py-0.5 text-2xs font-medium text-white backdrop-blur-sm">
-          {format_content_type(@favorite.content_type)}
-        </span>
-      </:badge>
+      <:metadata>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+          <span
+            data-favorite-type-badge
+            class="rounded bg-surface-hover px-1.5 py-0.5 text-2xs font-medium text-text-secondary"
+          >
+            {format_content_type(@favorite.content_type)}
+          </span>
+        </div>
+      </:metadata>
       <:secondary_action>
         <.remove_favorite_button favorite={@favorite} />
       </:secondary_action>
@@ -386,4 +397,8 @@ defmodule StreamixWeb.FavoritesLive do
   defp empty_message("movie"), do: "Favorite filmes para acessá-los aqui."
   defp empty_message("series"), do: "Favorite séries para acessá-las aqui."
   defp empty_message(_), do: "Adicione conteúdos aos seus favoritos."
+
+  defp empty_cta_path("movie"), do: ~p"/browse/movies"
+  defp empty_cta_path("series"), do: ~p"/browse/series"
+  defp empty_cta_path(_), do: ~p"/browse"
 end

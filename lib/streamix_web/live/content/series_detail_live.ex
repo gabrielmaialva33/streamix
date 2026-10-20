@@ -432,15 +432,17 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   event="play_first_episode"
                   label={if @resuming, do: "Continuar", else: "Assistir"}
                 />
-                <StreamixWeb.WatchPartyComponents.create_party_button
-                  :if={@playable_episode}
-                  content_type="episode"
-                  content_id={@playable_episode.id}
-                />
+                <div class="title-secondary-actions">
+                  <StreamixWeb.WatchPartyComponents.create_party_button
+                    :if={@playable_episode}
+                    content_type="episode"
+                    content_id={@playable_episode.id}
+                  />
 
-                <.favorite_button favorite?={@is_favorite} />
-                <.trailer_link youtube_id={@series.youtube_trailer} />
-                <.tmdb_link type="tv" tmdb_id={@series.tmdb_id} />
+                  <.favorite_button favorite?={@is_favorite} />
+                  <.trailer_link youtube_id={@series.youtube_trailer} />
+                  <.tmdb_link type="tv" tmdb_id={@series.tmdb_id} />
+                </div>
               </div>
 
               <a

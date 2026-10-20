@@ -93,6 +93,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   "Piloto · T1 E1".
 - Plans show prices as "R$ 9,99", statuses in Portuguese and "Assinar plano"; Settings shows the account e-mail
   read-only instead of a change form that did nothing; the Watch Party hub no longer hides under the phone nav.
+- The Guia on desktop has a readable channel column and a timeline: programme blocks are as wide as their share of
+  the visible window, with a "now" marker and the current programme highlighted.
+- Minha lista, Histórico, Guia, Planos, Configurações, Watch Party, Torrents and Meus provedores share one page
+  header; empty lists share one empty state with an "Explorar catálogo" way out. On phones, a title page puts
+  Watch Party, Lista, Trailer and TMDB in one labeled row under "Assistir". Histórico names episodes
+  "Série · T1 E1" with the episode title below, and Minha lista moves the type off the poster.
 - Minha lista uses the poster grid with touch-visible actions, Histórico no longer stacks its type badge on the
   progress bar, and the Guia has compact phone rows and category chips without the "Canais |" prefix.
 

@@ -32,16 +32,14 @@ defmodule Streamix.Iptv.History do
     |> ContentPolicy.visible_to_user(user_id)
     |> maybe_filter_by_type(content_type)
     |> maybe_exclude_adult(show_adult)
+    |> join_home_content()
     |> order_by([progress: progress], desc: progress.last_watched_at)
-    |> preload(^@catalog_preloads)
     |> limit(^limit)
     |> offset(^offset)
+    |> select_home_card()
     |> Repo.all()
-    |> Enum.map(fn entry ->
-      entry
-      |> ContentRef.decorate()
-      |> Map.put(:watched_at, entry.last_watched_at)
-    end)
+    |> Enum.map(&build_history_entry/1)
+    |> Enum.reject(&is_nil(&1.content_id))
   end
 
   @doc """
@@ -456,6 +454,9 @@ defmodule Streamix.Iptv.History do
       ],
       %{
         id: progress.id,
+        user_id: progress.user_id,
+        catalog_item_id: progress.catalog_item_id,
+        completed: progress.completed,
         progress_seconds: progress.progress_seconds,
         duration_seconds: progress.duration_seconds,
         watched_at: progress.last_watched_at,
@@ -469,10 +470,13 @@ defmodule Streamix.Iptv.History do
         series_icon: series.cover,
         episode_id: episode.id,
         episode_name: episode.title,
+        episode_raw_name: episode.name,
         episode_icon: episode.still_path,
+        episode_cover: episode.cover,
         episode_num: episode.episode_num,
         episode_season_number: episode_season.season_number,
         episode_series_name: episode_series.name,
+        episode_series_title: episode_series.title,
         episode_series_cover: episode_series.cover,
         episode_series_tmdb_id: episode_series.tmdb_id,
         live_channel_id: channel.id,
@@ -480,6 +484,17 @@ defmodule Streamix.Iptv.History do
         live_channel_icon: channel.stream_icon
       }
     )
+  end
+
+  defp build_history_entry(row) do
+    row
+    |> build_home_card()
+    |> Map.merge(%{
+      user_id: row.user_id,
+      catalog_item_id: row.catalog_item_id,
+      completed: row.completed,
+      last_watched_at: row.watched_at
+    })
   end
 
   defp build_home_card(%{content_type: "movie"} = row) do
@@ -519,9 +534,9 @@ defmodule Streamix.Iptv.History do
       watched_at: row.watched_at,
       content_type: row.content_type,
       content_id: row.episode_id,
-      content_name: row.episode_name,
-      content_icon: row.episode_icon || row.episode_series_cover,
-      series_name: row.episode_series_name,
+      content_name: row.episode_name || row.episode_raw_name,
+      content_icon: row.episode_icon || row.episode_cover || row.episode_series_cover,
+      series_name: row.episode_series_name || row.episode_series_title,
       series_tmdb_id: row.episode_series_tmdb_id,
       season_number: row.episode_season_number,
       episode_number: row.episode_num

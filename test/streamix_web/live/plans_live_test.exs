@@ -115,7 +115,7 @@ defmodule StreamixWeb.PlansLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/plans")
 
-      assert render(view) =~ "reúne os planos disponíveis"
+      assert has_element?(view, "#plans-page-header h1", "Planos")
       assert has_element?(view, "#plan-card-essencial", "Ativação manual antes da liberação")
 
       refute has_element?(

@@ -1,41 +1,36 @@
 <div id="tv-guide" class="space-y-3 sm:space-y-5">
-  <header class="flex items-center justify-between gap-3 sm:items-end">
-    <div class="min-w-0">
-      <div class="flex items-center gap-2">
-        <.icon name="hero-calendar-days" class="size-5 shrink-0 text-brand sm:size-6" />
-        <h1 class="truncate text-xl font-bold text-text-primary sm:text-3xl">
-          {gettext("Guia de TV")}
-        </h1>
+  <.page_header
+    id="guide-page-header"
+    title={gettext("Guia de TV")}
+    icon="hero-calendar-days"
+    subtitle={gettext("Veja o que está passando agora e a programação das próximas horas.")}
+  >
+    <:actions>
+      <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          phx-click="shift_window"
+          phx-value-direction="previous"
+          class="guide-icon-button"
+          aria-label={gettext("Mostrar programação anterior")}
+        >
+          <.icon name="hero-chevron-left" class="size-4" />
+        </button>
+        <button type="button" phx-click="go_now" class="guide-now-button">
+          <span class="size-1.5 rounded-full bg-brand" aria-hidden="true" /> {gettext("Agora")}
+        </button>
+        <button
+          type="button"
+          phx-click="shift_window"
+          phx-value-direction="next"
+          class="guide-icon-button"
+          aria-label={gettext("Mostrar próxima programação")}
+        >
+          <.icon name="hero-chevron-right" class="size-4" />
+        </button>
       </div>
-      <p class="mt-1 hidden text-sm text-text-secondary sm:block">
-        {gettext("Veja o que está passando agora e a programação das próximas horas.")}
-      </p>
-    </div>
-
-    <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
-      <button
-        type="button"
-        phx-click="shift_window"
-        phx-value-direction="previous"
-        class="guide-icon-button"
-        aria-label={gettext("Mostrar programação anterior")}
-      >
-        <.icon name="hero-chevron-left" class="size-4" />
-      </button>
-      <button type="button" phx-click="go_now" class="guide-now-button">
-        <span class="size-1.5 rounded-full bg-brand" aria-hidden="true" /> {gettext("Agora")}
-      </button>
-      <button
-        type="button"
-        phx-click="shift_window"
-        phx-value-direction="next"
-        class="guide-icon-button"
-        aria-label={gettext("Mostrar próxima programação")}
-      >
-        <.icon name="hero-chevron-right" class="size-4" />
-      </button>
-    </div>
-  </header>
+    </:actions>
+  </.page_header>
 
   <section class="guide-toolbar" aria-label={gettext("Filtros do guia")}>
     <div class="browse-toolbar__row">
@@ -113,11 +108,17 @@
   </div>
 
   <div :if={!@loading && @rows != []} id="guide-rows" class="space-y-1.5 sm:space-y-2.5">
+    <div class="guide-time-axis" aria-hidden="true">
+      <span>Canal</span>
+      <div class="flex justify-between min-w-0">
+        <span :for={step <- 0..3}>{TvGuide.format_time(DateTime.add(@starts_at, step, :hour))}</span>
+      </div>
+    </div>
     <article
       :for={row <- @rows}
       id={"guide-channel-#{row.channel.id}"}
       data-guide-row
-      class="grid gap-1.5 rounded-xl border border-border bg-surface/92 p-2 sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:items-stretch sm:gap-3 sm:p-3"
+      class="guide-timeline-row grid gap-1.5 rounded-xl border border-border bg-surface/92 p-2 sm:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] sm:items-stretch sm:gap-3 sm:p-3"
     >
       <div class="flex min-w-0 items-center justify-between gap-2 sm:border-r sm:border-border sm:pr-3">
         <.link
@@ -140,7 +141,7 @@
             />
           </div>
           <div class="min-w-0 flex-1">
-            <h2 class="truncate text-xs font-semibold leading-tight text-text-primary group-hover:text-brand sm:text-sm">
+            <h2 class="line-clamp-2 text-xs font-semibold leading-tight text-text-primary group-hover:text-brand sm:text-sm">
               {row.channel.name}
             </h2>
             <div class="mt-0.5 flex items-center gap-1.5 text-[10px] leading-none text-text-muted">
@@ -179,11 +180,12 @@
       </div>
 
       <div
-        class="grid auto-cols-[minmax(140px,62vw)] grid-flow-col gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 snap-x snap-proximity scrollbar-hide sm:auto-cols-[minmax(180px,230px)] sm:gap-2"
+        class="guide-timeline grid auto-cols-[minmax(140px,62vw)] grid-flow-col gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 snap-x snap-proximity scrollbar-hide sm:auto-cols-[minmax(180px,230px)] sm:gap-2"
         aria-label={gettext("Programação de %{channel}", channel: row.channel.name)}
       >
         <div
           :for={program <- row.programs}
+          style={StreamixWeb.EpgComponents.program_style(program, @starts_at, @ends_at)}
           data-guide-program
           data-current-program={
             if row.current_program && row.current_program.id == program.id,
@@ -198,26 +200,36 @@
               "border-border bg-surface-hover"
           ]}
         >
-          <div class="flex items-center justify-between gap-2 text-[10px] leading-none text-text-muted">
-            <span class="tabular-nums">
-              {TvGuide.format_time(program.start_time)}–{TvGuide.format_time(program.end_time)}
-            </span>
-            <span :if={program.category} class="truncate">{program.category}</span>
-          </div>
-          <p
-            class="mt-1 line-clamp-1 text-xs font-medium leading-snug text-text-primary sm:line-clamp-2"
-            title={program.title}
-          >
-            {program.title}
-          </p>
-          <div
-            :if={row.current_program && row.current_program.id == program.id}
-            class="mt-1"
-          >
-            <StreamixWeb.EpgComponents.epg_progress_bar program={program} />
+          <div class="guide-program-content">
+            <div class="flex items-center justify-between gap-2 text-[10px] leading-none text-text-muted">
+              <span class="tabular-nums">
+                {TvGuide.format_time(program.start_time)}–{TvGuide.format_time(program.end_time)}
+              </span>
+              <span :if={program.category} class="truncate">{program.category}</span>
+            </div>
+            <p
+              class="mt-1 line-clamp-1 text-xs font-medium leading-snug text-text-primary sm:line-clamp-2"
+              title={program.title}
+            >
+              {program.title}
+            </p>
+            <div
+              :if={row.current_program && row.current_program.id == program.id}
+              class="mt-1"
+            >
+              <StreamixWeb.EpgComponents.epg_progress_bar program={program} />
+            </div>
           </div>
         </div>
 
+        <span
+          :if={
+            DateTime.compare(@now, @starts_at) != :lt && DateTime.compare(@now, @ends_at) == :lt
+          }
+          class="guide-now-line"
+          style={"left: #{StreamixWeb.EpgComponents.window_position(@now, @starts_at, @ends_at)}%"}
+          aria-label={gettext("Agora")}
+        />
         <div
           :if={row.programs == []}
           class="flex min-h-12 items-center gap-2 rounded-lg border border-border bg-surface-hover p-2 text-xs italic text-text-muted sm:min-h-[68px] sm:p-2.5"
@@ -230,21 +242,17 @@
     </article>
   </div>
 
-  <div :if={!@loading && @rows == []} class="surface-card py-14 text-center">
-    <.icon name="hero-calendar-days" class="mx-auto size-10 text-text-muted" />
-    <h2 class="mt-3 text-lg font-semibold text-text-primary">
-      {gettext("Nenhum canal no guia")}
-    </h2>
-    <p class="mx-auto mt-1 max-w-md text-sm text-text-secondary">
-      {gettext(
+  <.empty_state
+    :if={!@loading && @rows == []}
+    id="guide-empty"
+    icon="hero-calendar-days"
+    title={gettext("Nenhum canal no guia")}
+    message={
+      gettext(
         "Ajuste os filtros ou sincronize o EPG do seu provedor para preencher a programação."
-      )}
-    </p>
-    <.link
-      navigate={~p"/browse"}
-      class="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-brand"
-    >
-      {gettext("Voltar aos canais")}
-    </.link>
-  </div>
+      )
+    }
+    cta_label={gettext("Explorar catálogo")}
+    cta_navigate={~p"/browse"}
+  />
 </div>

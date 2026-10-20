@@ -273,16 +273,18 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   label="Assistir"
                 />
 
-                <StreamixWeb.WatchPartyComponents.create_party_button
-                  content_type="episode"
-                  content_id={@episode.id}
-                />
+                <div class="title-secondary-actions">
+                  <StreamixWeb.WatchPartyComponents.create_party_button
+                    content_type="episode"
+                    content_id={@episode.id}
+                  />
 
-                <.favorite_button
-                  favorite?={@is_favorite}
-                  label_on="Série nos favoritos"
-                  label_off="Adicionar série aos favoritos"
-                />
+                  <.favorite_button
+                    favorite?={@is_favorite}
+                    label_on="Série nos favoritos"
+                    label_off="Adicionar série aos favoritos"
+                  />
+                </div>
               </div>
 
               <!-- Synopsis -->

@@ -80,17 +80,12 @@ defmodule StreamixWeb.PlansLive do
   def render(assigns) do
     ~H"""
     <div id="plans-page" class="space-y-6 pb-12">
-      <section class="rounded-2xl border border-border bg-gradient-to-br from-surface via-background to-brand/10 p-5 sm:p-6">
-        <div class="max-w-2xl space-y-2 sm:space-y-3">
-          <.premium_badge label="Acesso global" />
-          <h1 class="text-2xl sm:text-4xl font-bold text-text-primary tracking-tight">
-            Acesso global para todo o catálogo
-          </h1>
-          <p class="text-sm sm:text-base text-text-secondary">
-            A página reúne os planos disponíveis, destaca quais liberam acesso global e mostra o estado atual da sua assinatura.
-          </p>
-        </div>
-      </section>
+      <.page_header
+        id="plans-page-header"
+        title="Planos"
+        icon="hero-sparkles"
+        subtitle="Compare os planos disponíveis e acompanhe sua assinatura."
+      />
 
       <section
         :if={@upgrade_reason}

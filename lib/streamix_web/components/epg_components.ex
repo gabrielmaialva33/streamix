@@ -16,6 +16,19 @@ defmodule StreamixWeb.EpgComponents do
 
   def current_program?(_, _now), do: false
 
+  @doc "Clamped percentage position within a guide window."
+  def window_position(time, starts_at, ends_at) do
+    duration = max(DateTime.diff(ends_at, starts_at), 1)
+    min(100.0, max(0.0, DateTime.diff(time, starts_at) * 100 / duration))
+  end
+
+  @doc "Desktop programme geometry; mobile keeps its compact scrolling cards."
+  def program_style(program, starts_at, ends_at) do
+    left = window_position(program.start_time, starts_at, ends_at)
+    right = window_position(program.end_time, starts_at, ends_at)
+    "--program-left: #{left}%; --program-width: #{max(right - left, 0.0)}%;"
+  end
+
   @doc """
   Displays current program info with progress bar.
   Shows "Ao Vivo" badge, program title, and progress indicator.
