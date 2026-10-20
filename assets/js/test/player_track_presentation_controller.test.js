@@ -148,7 +148,7 @@ test("applies the preferred audio command before rendering and announcing tracks
   assert.equal(harness.calls[1][0], "renderAudioOptions");
   assert.equal(harness.calls[1][2], 1);
   assert.equal(harness.emitted[0][0], "audio_track_changed");
-  assert.equal(harness.emitted[0][1].label, "Português Português (BR)");
+  assert.equal(harness.emitted[0][1].label, "Português (Brasil)");
   assert.equal(harness.emitted[1][0], "audio_tracks_available");
 });
 
@@ -194,13 +194,19 @@ test("normalizes and presents probed metadata without owning engine commands", (
   assert.deepEqual(result.audioTracks[1], {
     id: 4,
     index: 1,
-    label: "Português Português (BR) (eac3) 6ch",
+    label: "Português (Brasil) · 5.1",
+    title: "Português",
+    type: "audio",
+    channels: 6,
     language: "pt-BR",
   });
   assert.deepEqual(result.subtitleTracks[0], {
     id: 7,
     index: 0,
-    label: "Português Português (BR) (subrip)",
+    label: "Português (Brasil)",
+    title: "Português",
+    type: "subtitle",
+    forced: undefined,
     language: "pt-BR",
   });
   assert.deepEqual(harness.calls[0], ["renderAudioOptions", result.audioTracks, 1, onAudioSelect]);
@@ -344,7 +350,10 @@ test("presents a normalized native subtitle snapshot through the public selectio
 
   assert.strictEqual(result, nativeSnapshot);
   assert.deepEqual(selected, [0]);
-  assert.equal(harness.controller.snapshot().subtitleTracks[0].label, "Português (auto)");
+  assert.equal(
+    harness.controller.snapshot().subtitleTracks[0].label,
+    "Português (Brasil) · Português (auto)",
+  );
   assert.equal(harness.calls[1][0], "renderSubtitleOptions");
   assert.equal(harness.emitted[1][0], "subtitle_tracks_available");
 });
@@ -454,7 +463,7 @@ test("a newer track refresh suppresses the older asynchronous presentation", asy
       harness.controller.presentAudioSelection(trackIndex, { sessionId: 7 }),
   });
 
-  assert.deepEqual(await secondResult, audioTracks);
+  assert.deepEqual(await secondResult, harness.controller.snapshot().audioTracks);
   firstSelection.resolve(0);
   assert.equal(await firstResult, false);
   assert.equal(harness.calls.filter(([operation]) => operation === "renderAudioOptions").length, 1);
@@ -500,4 +509,87 @@ test("destroy is idempotent and terminal", async () => {
     false,
   );
   assert.equal(harness.controller.presentSubtitleOffset(0, { sessionId: 7 }), false);
+});
+
+const realSubtitles = [
+  ["por", "", "Português"],
+  ["eng", "", "Inglês"],
+  ["eng", "SDH", "Inglês · SDH"],
+  ["dan", "", "Dinamarquês"],
+  ["ger", "", "Alemão"],
+  ["spa", "Spanish", "Espanhol"],
+  ["spa", "European", "Espanhol · European"],
+  ["fin", "", "Finlandês"],
+  ["fre", "", "Francês"],
+  ["ita", "", "Italiano"],
+  ["nob", "", "Norueguês"],
+  ["dut", "", "Holandês"],
+  ["pob", "", "Português (Brasil)"],
+];
+
+test("engine, native and probed subtitle menus use the same labels as selection", async () => {
+  const tracks = realSubtitles.map(([language, title], index) => ({
+    index,
+    language,
+    label: title || `Subtitle ${index + 1}`,
+    codec: "subrip",
+    forced: index === 2,
+  }));
+  const expected = realSubtitles.map(
+    ([, , label], index) => label + (index === 2 ? " · Forçada" : ""),
+  );
+  const engine = createHarness();
+  await engine.controller.presentSubtitleTracks({ tracks, sessionId: 7 });
+  assert.deepEqual(
+    engine.controller.snapshot().subtitleTracks.map((t) => t.label),
+    expected,
+  );
+  for (const track of tracks) {
+    engine.controller.presentSubtitleSelection(track.index, { sessionId: 7 });
+    assert.equal(engine.emitted.at(-1)[1].label, expected[track.index]);
+  }
+  const native = createHarness();
+  await native.controller.presentNativeSubtitleSnapshot(
+    { tracks },
+    { sessionId: 7, selectTrack: () => 0 },
+  );
+  assert.deepEqual(
+    native.controller.snapshot().subtitleTracks.map((t) => t.label),
+    expected,
+  );
+  native.controller.presentSubtitleSelection(2, { sessionId: 7 });
+  assert.equal(native.emitted.at(-1)[1].label, expected[2]);
+  const probed = createHarness();
+  const result = probed.controller.presentProbedTracks({
+    sessionId: 7,
+    subtitleTracks: tracks.map(({ label, ...track }) => ({ ...track, title: label })),
+  });
+  assert.deepEqual(
+    result.subtitleTracks.map((t) => t.label),
+    expected,
+  );
+  // A normalized snapshot can be presented again without duplicating qualifiers.
+  await engine.controller.presentSubtitleTracks({ tracks: result.subtitleTracks, sessionId: 7 });
+  engine.controller.presentSubtitleSelection(2, { sessionId: 7 });
+  assert.equal(engine.emitted.at(-1)[1].label, expected[2]);
+});
+
+test("real audio track menus and selections have compact channels", async () => {
+  const harness = createHarness();
+  const tracks = [
+    { index: 0, language: "por", channels: 2, codec: "eac3" },
+    { index: 1, language: "eng", channels: 6, codec: "eac3" },
+  ];
+  await harness.controller.presentAudioTracks({ tracks, sessionId: 7 });
+  assert.deepEqual(
+    harness.controller.snapshot().audioTracks.map((t) => t.label),
+    ["Português · Estéreo", "Inglês · 5.1"],
+  );
+  harness.controller.presentAudioSelection(1, { sessionId: 7 });
+  assert.equal(harness.emitted.at(-1)[1].label, "Inglês · 5.1");
+  const probed = harness.controller.presentProbedTracks({ audioTracks: tracks, sessionId: 7 });
+  assert.deepEqual(
+    probed.audioTracks.map((t) => t.label),
+    ["Português · Estéreo", "Inglês · 5.1"],
+  );
 });

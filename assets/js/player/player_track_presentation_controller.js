@@ -33,16 +33,20 @@ function safeNotify(callback, ...args) {
   }
 }
 
-function immutableTracks(tracks) {
+function immutableTracks(tracks, type) {
   if (!Array.isArray(tracks)) return Object.freeze([]);
 
   return Object.freeze(
-    tracks.map((track, index) =>
-      Object.freeze({
+    tracks.map((track, index) => {
+      const metadata = {
         ...track,
         index: Number.isInteger(track?.index) ? track.index : index,
-      }),
-    ),
+        type,
+        language: track?.language || track?.lang || "",
+        title: track?.title ?? track?.label ?? track?.name ?? "",
+      };
+      return Object.freeze({ ...metadata, label: formatTrackLabel(metadata) });
+    }),
   );
 }
 
@@ -81,7 +85,7 @@ function audioSelectionLabel(track, trackIndex) {
 function subtitleSelectionLabel(track, trackIndex) {
   if (trackIndex === -1) return SUBTITLE_DISABLED_TRACK.label;
 
-  return track?.label || track?.name || track?.lang || track?.language || `Faixa ${trackIndex}`;
+  return formatTrackLabel(track || { index: trackIndex, type: "subtitle" });
 }
 
 function nativeTracks(snapshot) {
@@ -89,12 +93,14 @@ function nativeTracks(snapshot) {
 
   return immutableTracks(
     snapshot.tracks.map((track, index) => ({
+      ...track,
       id: track?.id ?? index,
       index: Number.isInteger(track?.index) ? track.index : index,
-      label: String(track?.label ?? ""),
-      language: String(track?.language ?? ""),
+      label: String(track?.label ?? track?.name ?? ""),
+      language: String(track?.language ?? track?.lang ?? ""),
       selectionId: track?.selectionId ?? track?.id ?? index,
     })),
+    "subtitle",
   );
 }
 
@@ -105,15 +111,11 @@ function probedAudioTracks(tracks) {
     tracks.map((track, index) => ({
       id: track?.index,
       index,
-      label: formatTrackLabel({
-        channels: track?.channels,
-        codec: track?.codec,
-        index,
-        label: track?.title,
-        language: track?.language,
-      }),
+      channels: track?.channels,
+      title: track?.title ?? track?.label ?? "",
       language: track?.language || "",
     })),
+    "audio",
   );
 }
 
@@ -124,14 +126,11 @@ function probedSubtitleTracks(tracks) {
     tracks.map((track, index) => ({
       id: track?.index,
       index,
-      label: formatTrackLabel({
-        codec: track?.codec,
-        index,
-        label: track?.title,
-        language: track?.language,
-      }),
+      title: track?.title ?? track?.label ?? "",
+      forced: track?.forced,
       language: track?.language || "",
     })),
+    "subtitle",
   );
 }
 
@@ -167,12 +166,12 @@ export class PlayerTrackPresentationController {
     this._revision = 0;
     this._audioTracksRevision = 0;
     this._subtitleTracksRevision = 0;
-    this._audioTracks = immutableTracks(initialState.audioTracks);
+    this._audioTracks = immutableTracks(initialState.audioTracks, "audio");
     this._probedAudioTracks = Object.freeze([]);
     this._probedSubtitleTracks = Object.freeze([]);
     this._probedSelectedAudioTrack = 0;
     this._probedSelectedSubtitleTrack = -1;
-    this._subtitleTracks = immutableTracks(initialState.subtitleTracks);
+    this._subtitleTracks = immutableTracks(initialState.subtitleTracks, "subtitle");
     this._selectedAudioTrack = finiteTrackIndex(initialState.selectedAudioTrack, 0);
     this._selectedSubtitleTrack = finiteTrackIndex(initialState.selectedSubtitleTrack, -1);
     this._subtitleOffsetMs = normalizeSubtitleOffset(initialState.subtitleOffsetMs) ?? 0;
@@ -261,7 +260,7 @@ export class PlayerTrackPresentationController {
     if (!this._canPresent(sessionId)) return false;
 
     const tracksRevision = ++this._audioTracksRevision;
-    this._audioTracks = immutableTracks(tracks);
+    this._audioTracks = immutableTracks(tracks, "audio");
     this._revision += 1;
     this._notifyState();
 
@@ -323,7 +322,7 @@ export class PlayerTrackPresentationController {
     if (!this._canPresent(sessionId)) return false;
 
     const tracksRevision = ++this._subtitleTracksRevision;
-    this._subtitleTracks = immutableTracks(tracks);
+    this._subtitleTracks = immutableTracks(tracks, "subtitle");
     this._revision += 1;
     this._notifyState();
 
