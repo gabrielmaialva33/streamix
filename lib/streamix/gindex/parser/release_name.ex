@@ -125,14 +125,30 @@ defmodule Streamix.Gindex.Parser.ReleaseName do
     }
   end
 
+  # The release year is the last plausible year in the name: in
+  # "Blade.Runner.2049.2017.1080p" 2049 is part of the title, and a year
+  # past next year is never a release's. A year at the very start is only the
+  # year when nothing follows it ("2012.1080p" keeps its number as the year,
+  # as before; "1917.2019.1080p" is 1917 from 2019).
   defp extract_year(parts) do
-    year_index =
-      Enum.find_index(parts, fn part ->
+    max_year = Date.utc_today().year + 1
+
+    candidates =
+      parts
+      |> Enum.with_index()
+      |> Enum.filter(fn {part, _index} ->
         case Integer.parse(part) do
-          {num, ""} when num >= 1900 and num <= 2100 -> true
+          {num, ""} -> num >= 1900 and num <= max_year
           _ -> false
         end
       end)
+      |> Enum.map(&elem(&1, 1))
+
+    year_index =
+      case Enum.reject(candidates, &(&1 == 0)) do
+        [] -> List.first(candidates)
+        titled -> List.last(titled)
+      end
 
     case year_index do
       nil ->

@@ -942,6 +942,31 @@ defmodule Streamix.Iptv.CatalogFacadeTest do
       assert result.youtube_trailer == nil
     end
 
+    test "list_new_releases/1 leaves out future years" do
+      user = user_fixture()
+      provider = provider_fixture(user, %{visibility: "public"})
+      year = Date.utc_today().year
+
+      released =
+        movie_fixture(provider, %{
+          name: "Lançado",
+          stream_icon: "http://example.com/released.jpg",
+          year: year
+        })
+
+      announced =
+        movie_fixture(provider, %{
+          name: "Anunciado",
+          stream_icon: "http://example.com/announced.jpg",
+          year: year + 1
+        })
+
+      ids = Enum.map(Iptv.list_new_releases(limit: 200), & &1.id)
+
+      assert released.id in ids
+      refute announced.id in ids
+    end
+
     test "list_trending_movies/1 respects the adult-content preference" do
       user = user_fixture()
       provider = provider_fixture(user, %{visibility: "public"})

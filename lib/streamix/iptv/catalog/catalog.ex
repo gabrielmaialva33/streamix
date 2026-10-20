@@ -484,7 +484,9 @@ defmodule Streamix.Iptv.Catalog do
   end
 
   @doc """
-  Gets new releases (movies from 2024-2026 with good ratings).
+  Gets new releases: movies from the last two years up to the current one,
+  newest first. Future years are announcements or a number taken from the
+  title ("Blade Runner 2049"), not releases.
   """
   @spec list_new_releases(keyword()) :: [Movie.t()]
   def list_new_releases(opts \\ []) do
@@ -496,7 +498,7 @@ defmodule Streamix.Iptv.Catalog do
     public_movies_query()
     |> with_provider_filters(opts)
     |> maybe_exclude_adult(show_adult, :movie)
-    |> where([movie: movie], movie.year >= ^(current_year - 2))
+    |> where([movie: movie], movie.year >= ^(current_year - 2) and movie.year <= ^current_year)
     |> with_movie_poster()
     |> order_by([movie: movie], desc: movie.year, desc: movie.rating)
     |> offset(^offset)
