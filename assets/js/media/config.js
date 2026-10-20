@@ -12,11 +12,14 @@ export const AVPLAYER_CONFIG = {
 
   // The vendored libmedia scripts and their webpack chunks. /avplayer is
   // served immutable (and the service worker caches it), so a changed bundle
-  // needs a new directory. r2 is libmedia v1.2.0 with one patch in
-  // 168.avplayer.js: SubtitleRender skips rescaling packets whose time-base
-  // is zero (Matroska subtitles arrive that way, already in milliseconds)
-  // instead of dividing by zero and killing the renderer.
-  scriptBasePath: "/avplayer/r2",
+  // needs a new directory. r3 is libmedia v1.2.0 with one patch in
+  // 168.avplayer.js (module 98168, SubtitleRender.pull): without shared
+  // memory (no cross-origin isolation, as here) the demuxer sends serialized
+  // packets, which the audio and video pipelines unserialize but the
+  // subtitle renderer read as memory pointers, so no embedded subtitle ever
+  // showed. The patch unserializes them with libmedia's own helper (module
+  // 10567, export r0). Upstream 1.3.1 has the same bug.
+  scriptBasePath: "/avplayer/r3",
 
   // CDN base URL for WASM files (fallback if local not available)
   cdnBasePath: "https://cdn.jsdelivr.net/gh/zhaohappy/libmedia@latest/dist",

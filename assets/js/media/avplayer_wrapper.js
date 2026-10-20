@@ -1328,7 +1328,11 @@ export class AVPlayerWrapper {
           await this.player.selectSubtitle(-1);
         }
       } else {
-        await this.player.selectSubtitle(trackId);
+        // libmedia refuses to "select" the stream its renderer already holds
+        // (the default it starts with); that one only needs enabling.
+        if (this.player.getSelectedSubtitleStreamId?.() !== trackId) {
+          await this.player.selectSubtitle(trackId);
+        }
         this.player.setSubtitleEnable?.(true);
       }
       log.debug(`Subtitle track ${trackId} selected`);

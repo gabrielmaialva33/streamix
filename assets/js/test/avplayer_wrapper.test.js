@@ -324,3 +324,26 @@ test("Matroska tracks without a language are English, and libmedia's default sub
   wrapper.currentUrl = "https://example.test/stream/movie.mp4";
   assert.equal((await wrapper.getAudioTracks())[0].language, "");
 });
+
+test("picking the subtitle libmedia already holds only enables it", async () => {
+  const calls = [];
+  const wrapper = createWrapper();
+  wrapper.player = createPlayer({
+    getSelectedSubtitleStreamId: () => 3,
+    async selectSubtitle(id) {
+      calls.push(["subtitle", id]);
+    },
+    setSubtitleEnable(enabled) {
+      calls.push(["subtitle-enabled", enabled]);
+    },
+  });
+
+  await wrapper.selectSubtitleTrack(3);
+  await wrapper.selectSubtitleTrack(4);
+
+  assert.deepEqual(calls, [
+    ["subtitle-enabled", true],
+    ["subtitle", 4],
+    ["subtitle-enabled", true],
+  ]);
+});
