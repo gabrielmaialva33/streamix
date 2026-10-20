@@ -1,54 +1,46 @@
-/**
- * ImageFallback Hook
- *
- * Handles image load errors in a CSP-compliant way.
- * When an image fails to load, hides it and shows the fallback element.
- *
- * Usage:
- *   <div phx-hook="ImageFallback">
- *     <img src="..." data-fallback-target />
- *     <div data-fallback class="hidden">Fallback content</div>
- *   </div>
- */
+/** Shared missing/broken-image fallback, including LiveView URL replacements. */
 const ImageFallback = {
   mounted() {
     this.setupFallback();
   },
-
   updated() {
     this.setupFallback();
   },
-
   setupFallback() {
+    this.removeListeners();
     const img = this.el.querySelector("img[data-fallback-target]");
     const fallback = this.el.querySelector("[data-fallback]");
-
-    if (!img || !fallback) return;
-
-    // Remove any existing listener to avoid duplicates
-    if (this._errorHandler) {
-      img.removeEventListener("error", this._errorHandler);
+    if (!fallback) return;
+    if (!img) {
+      fallback.classList.remove("hidden");
+      return;
     }
-
+    this._image = img;
     this._errorHandler = () => {
       img.classList.add("hidden");
       fallback.classList.remove("hidden");
     };
-
+    this._loadHandler = () => {
+      img.classList.remove("hidden");
+      fallback.classList.add("hidden");
+    };
     img.addEventListener("error", this._errorHandler);
-
-    // Check if image already failed (cached error state or empty src)
-    if (img.complete && img.naturalHeight === 0) {
-      this._errorHandler();
+    img.addEventListener("load", this._loadHandler);
+    if (img.complete) {
+      if (img.naturalHeight === 0) this._errorHandler();
+      else this._loadHandler();
+    } else {
+      this._loadHandler();
     }
   },
-
+  removeListeners() {
+    if (!this._image) return;
+    this._image.removeEventListener("error", this._errorHandler);
+    this._image.removeEventListener("load", this._loadHandler);
+    this._image = null;
+  },
   destroyed() {
-    const img = this.el.querySelector("img[data-fallback-target]");
-    if (img && this._errorHandler) {
-      img.removeEventListener("error", this._errorHandler);
-    }
+    this.removeListeners();
   },
 };
-
 export default ImageFallback;

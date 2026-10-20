@@ -42,17 +42,31 @@ defmodule StreamixWeb.GameComponents do
                 class="text-sm font-semibold"
               >{game.start_time}</time>
             </div>
-            <div :for={team <- [game.home, game.away]} class="flex items-center gap-3">
-              <img
-                :if={team.logo_url}
-                src={team.logo_url}
-                alt=""
-                width="32"
-                height="32"
-                loading="lazy"
-                class="size-8 object-contain"
-              />
-              <span class="truncate font-semibold">{team.name}</span>
+            <div
+              :for={{team, index} <- Enum.with_index([game.home, game.away])}
+              class="flex min-w-0 items-center gap-3"
+            >
+              <div id={"#{dom_id}-crest-#{index}"} phx-hook="ImageFallback" class="size-8 shrink-0">
+                <img
+                  :if={team.logo_url not in [nil, ""]}
+                  src={team.logo_url}
+                  alt=""
+                  width="32"
+                  height="32"
+                  loading="lazy"
+                  class="size-8 object-contain"
+                  data-fallback-target
+                />
+                <span
+                  data-fallback
+                  aria-hidden="true"
+                  class={[
+                    "flex size-8 items-center justify-center rounded bg-surface-hover text-xs font-semibold text-text-secondary",
+                    team.logo_url not in [nil, ""] && "hidden"
+                  ]}
+                >{team_monogram(team.name)}</span>
+              </div>
+              <span class="min-w-0 truncate font-semibold">{team.name}</span>
             </div>
           </.link>
         </article>
@@ -60,4 +74,10 @@ defmodule StreamixWeb.GameComponents do
     </section>
     """
   end
+
+  defp team_monogram(name) when is_binary(name) do
+    name |> String.split() |> Enum.take(2) |> Enum.map_join(&String.first/1) |> String.upcase()
+  end
+
+  defp team_monogram(_), do: "?"
 end

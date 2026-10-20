@@ -176,7 +176,7 @@ defmodule StreamixWeb.SearchLive do
               autocorrect="off"
               spellcheck="false"
               enterkeyhint="search"
-              class="flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-base sm:text-lg text-text-primary placeholder:text-text-muted"
+              class="min-w-0 flex-1 bg-transparent border-0 outline-none ring-0 focus:ring-0 focus:outline-none text-base sm:text-lg text-text-primary placeholder:text-text-muted"
               autofocus
             />
             <div

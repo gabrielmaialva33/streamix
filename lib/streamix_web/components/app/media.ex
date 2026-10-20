@@ -9,6 +9,7 @@ defmodule StreamixWeb.App.Media do
   import StreamixWeb.CoreComponents
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.HelperComponents
+  alias StreamixWeb.EpgComponents
   alias StreamixWeb.Helpers.ImageProxy
 
   @sync_status_badges %{
@@ -31,6 +32,15 @@ defmodule StreamixWeb.App.Media do
   attr :on_favorite, :string, default: "toggle_favorite"
 
   def live_channel_card(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :live?,
+        EpgComponents.current_program?(
+          assigns.current_program || Map.get(assigns.channel, :current_program)
+        )
+      )
+
     ~H"""
     <div class="group relative">
       <.link
@@ -66,9 +76,13 @@ defmodule StreamixWeb.App.Media do
             </div>
           </div>
 
-          <span class="absolute left-1.5 top-1.5 flex items-center gap-1 rounded-md bg-brand/90 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm sm:left-2 sm:top-2 sm:text-2xs">
-            <span class="size-1 rounded-full bg-white live-pulse sm:size-1.5" /> AO VIVO
-          </span>
+          <.badge
+            variant={if @live?, do: "live", else: "surface"}
+            size="sm"
+            class="absolute left-1.5 top-1.5"
+          >
+            {if @live?, do: "AO VIVO", else: "TV"}
+          </.badge>
 
           <div class="absolute inset-0 hidden items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 sm:flex">
             <div class="flex size-11 items-center justify-center rounded-full bg-white/90 shadow-lg sm:size-12">
@@ -77,9 +91,12 @@ defmodule StreamixWeb.App.Media do
           </div>
         </div>
 
-        <div class="space-y-0.5 px-2 py-2 sm:space-y-1 sm:px-3 sm:py-2.5">
+        <div class={[
+          "catalog-poster-caption space-y-1",
+          @show_favorite && "catalog-poster-caption--actions"
+        ]}>
           <h3
-            class="truncate text-[11px] font-medium leading-tight text-text-primary transition-colors group-hover:text-brand sm:text-sm sm:leading-normal"
+            class="catalog-poster-title line-clamp-2 font-medium text-text-primary transition-colors group-hover:text-brand"
             title={DisplayTitle.channel(@channel.name)}
           >
             {DisplayTitle.channel(@channel.name)}
@@ -92,25 +109,23 @@ defmodule StreamixWeb.App.Media do
         </div>
       </.link>
 
-      <button
+      <.button
         :if={@show_favorite}
         type="button"
+        variant="ghost"
+        size="icon"
+        aria-pressed={to_string(@is_favorite)}
         phx-click={@on_favorite}
         phx-value-id={@channel.id}
         phx-value-type="live_channel"
         aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
-        class={[
-          "absolute right-0.5 top-0.5 z-10 flex size-11 items-center justify-center rounded-full backdrop-blur-sm transition-all sm:right-1 sm:top-1",
-          @is_favorite && "bg-brand/20 text-brand",
-          !@is_favorite &&
-            "bg-black/25 text-white/60 opacity-100 hover:bg-brand/20 hover:text-brand sm:opacity-0 sm:group-hover:opacity-100"
-        ]}
+        class={["absolute right-0 bottom-1 text-text-muted", @is_favorite && "text-brand"]}
       >
         <.icon
           name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
           class="size-4"
         />
-      </button>
+      </.button>
     </div>
     """
   end

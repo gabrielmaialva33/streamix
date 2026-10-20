@@ -73,7 +73,7 @@ defmodule StreamixWeb.BillingLive do
           </h2>
           <p class="mt-2 text-sm text-text-secondary">
             <%= if @active_subscription do %>
-              Status {@active_subscription.status}
+              Status {status_label(@active_subscription.status)}
             <% else %>
               Assine um plano para liberar catálogo global e recursos avançados.
             <% end %>
@@ -121,7 +121,7 @@ defmodule StreamixWeb.BillingLive do
               <td class="px-5 py-3 text-text-primary">
                 {invoice.number || invoice.external_id || "-"}
               </td>
-              <td class="px-5 py-3 text-text-secondary">{invoice.status}</td>
+              <td class="px-5 py-3 text-text-secondary">{status_label(invoice.status)}</td>
               <td class="px-5 py-3 text-text-primary">
                 {format_price(invoice.amount_paid_cents, invoice.currency)}
               </td>
@@ -150,7 +150,7 @@ defmodule StreamixWeb.BillingLive do
           <tbody>
             <tr :for={payment <- @payments} class="border-t border-border/50">
               <td class="px-5 py-3 text-text-primary">{payment.provider}</td>
-              <td class="px-5 py-3 text-text-secondary">{payment.status}</td>
+              <td class="px-5 py-3 text-text-secondary">{status_label(payment.status)}</td>
               <td class="px-5 py-3 text-text-primary">
                 {format_price(payment.amount_cents, payment.currency)}
               </td>
@@ -177,12 +177,26 @@ defmodule StreamixWeb.BillingLive do
     end
   end
 
-  defp format_price(cents, currency) when is_integer(cents) do
-    "#{currency} " <>
+  defp format_price(cents, _currency) when is_integer(cents) do
+    "R$ " <>
       (:erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ","))
   end
 
-  defp format_price(_, currency), do: currency || "-"
+  defp format_price(_, _), do: "-"
+
+  defp status_label("active"), do: "Ativo"
+  defp status_label("trialing"), do: "Em teste"
+  defp status_label("canceled"), do: "Cancelado"
+  defp status_label("incomplete"), do: "Incompleto"
+  defp status_label("incomplete_expired"), do: "Expirado"
+  defp status_label("past_due"), do: "Pagamento pendente"
+  defp status_label("unpaid"), do: "Não pago"
+  defp status_label("paid"), do: "Pago"
+  defp status_label("succeeded"), do: "Confirmado"
+  defp status_label("failed"), do: "Falhou"
+  defp status_label("pending"), do: "Pendente"
+  defp status_label(status) when is_binary(status), do: String.capitalize(status)
+  defp status_label(_), do: "-"
 
   defp format_datetime(nil), do: "-"
   defp format_datetime(%DateTime{} = datetime), do: Calendar.strftime(datetime, "%d/%m/%Y %H:%M")

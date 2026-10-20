@@ -35,22 +35,28 @@ defmodule StreamixWeb.Content.NavigationComponents do
       end)
 
     ~H"""
-    <nav class="segmented-control">
-      <.link
-        navigate={@iptv_target}
-        class={["segmented-control__item", @selected == "iptv" && "segmented-control__item--active"]}
-      >
-        <.icon name="hero-signal" class="size-3.5" />
-        <span>IPTV</span>
-      </.link>
-      <.link
-        navigate={@gindex_target}
-        class={["segmented-control__item", @selected == "gindex" && "segmented-control__item--active"]}
-      >
-        <.icon name="hero-cloud" class="size-3.5" />
-        <span>GDrive</span>
-      </.link>
-    </nav>
+    <div class="catalog-source">
+      <span class="text-xs text-text-secondary">Catálogo:</span>
+      <nav class="segmented-control" aria-label="Escolher catálogo">
+        <.link
+          navigate={@iptv_target}
+          class={["segmented-control__item", @selected == "iptv" && "segmented-control__item--active"]}
+        >
+          <.icon name="hero-signal" class="size-3.5" />
+          <span>IPTV</span>
+        </.link>
+        <.link
+          navigate={@gindex_target}
+          class={[
+            "segmented-control__item",
+            @selected == "gindex" && "segmented-control__item--active"
+          ]}
+        >
+          <.icon name="hero-cloud" class="size-3.5" />
+          <span>Google Drive</span>
+        </.link>
+      </nav>
+    </div>
     """
   end
 
@@ -69,7 +75,12 @@ defmodule StreamixWeb.Content.NavigationComponents do
 
   def browse_tabs(assigns) do
     ~H"""
-    <nav class="content-nav">
+    <nav
+      id="catalog-type-tabs"
+      phx-hook=".CatalogTabs"
+      class="content-nav"
+      aria-label={"Tipos do catálogo #{if @source == "gindex", do: "Google Drive", else: "IPTV"}"}
+    >
       <.browse_tab_item
         :if={@source == "gindex"}
         href={browse_path("/browse/animes", @source, @query_params)}
@@ -111,6 +122,20 @@ defmodule StreamixWeb.Content.NavigationComponents do
         selected={@selected == :reels}
       />
     </nav>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".CatalogTabs">
+      export default {
+        mounted() { this.revealActive() },
+        updated() { this.revealActive() },
+        revealActive() {
+          const active = this.el.querySelector('[aria-current="page"]')
+          if (!active) return
+          const bounds = this.el.getBoundingClientRect()
+          const tab = active.getBoundingClientRect()
+          if (tab.left < bounds.left) this.el.scrollLeft -= bounds.left - tab.left
+          else if (tab.right > bounds.right) this.el.scrollLeft += tab.right - bounds.right
+        }
+      }
+    </script>
     """
   end
 
@@ -126,6 +151,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
     <.link
       id={@id}
       navigate={@href}
+      aria-current={@selected && "page"}
       class={["content-nav__tab", @selected && "content-nav__tab--active"]}
     >
       <.icon name={@icon} class="size-4" />

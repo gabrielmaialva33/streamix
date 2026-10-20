@@ -10,6 +10,7 @@ defmodule StreamixWeb.Content.DetailComponents do
   # Shared helpers and internal formats
   import StreamixWeb.Content.CardComponents
   import StreamixWeb.Content.HelperComponents
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   @doc """
@@ -438,6 +439,8 @@ defmodule StreamixWeb.Content.DetailComponents do
   attr :expanded, :boolean, default: false
 
   attr :episode_paths, :map, default: %{}
+  attr :episode_progress, :map, default: %{}
+  attr :fallback_image, :string, default: nil
 
   def detail_season_accordion(assigns) do
     episodes = Enum.sort_by(assigns.season.episodes || [], & &1.episode_num)
@@ -471,7 +474,10 @@ defmodule StreamixWeb.Content.DetailComponents do
           <.detail_episode_item
             :for={episode <- @episodes}
             episode={episode}
+            season_number={Map.get(@season, :season_number)}
             path={Map.get(@episode_paths, episode.id)}
+            progress={Map.get(@episode_progress, episode.id)}
+            fallback_image={@fallback_image}
           />
         </div>
       </div>
@@ -480,12 +486,30 @@ defmodule StreamixWeb.Content.DetailComponents do
   end
 
   attr :episode, :map, required: true
-
+  attr :season_number, :integer, default: nil
   attr :path, :string, default: nil
+  attr :progress, :any, default: nil
+  attr :fallback_image, :string, default: nil
 
   def detail_episode_item(assigns) do
+    still_url = episode_still_url(assigns.episode)
+    fallback_url = if is_nil(still_url), do: present_url(assigns.fallback_image), else: nil
+    display_title = episode_item_title(assigns.episode, assigns.season_number)
+    completed? = episode_completed?(assigns.progress, assigns.episode)
+    progress_pct = if completed?, do: nil, else: episode_progress_pct(assigns.progress)
+
+    assigns =
+      assigns
+      |> assign(:still_url, still_url)
+      |> assign(:fallback_url, fallback_url)
+      |> assign(:display_title, display_title)
+      |> assign(:completed?, completed?)
+      |> assign(:progress_pct, progress_pct)
+
     ~H"""
     <.link
+      id={"episode-item-#{@episode.id}"}
+      data-episode-item
       navigate={@path}
       class="flex gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-surface-hover cursor-pointer transition-colors group"
       phx-click={if is_nil(@path), do: "view_episode"}
@@ -499,16 +523,32 @@ defmodule StreamixWeb.Content.DetailComponents do
 
       <div class="relative flex-shrink-0 w-24 sm:w-36 aspect-video bg-surface-hover rounded-lg overflow-hidden">
         <img
-          :if={@episode.cover}
-          src={ImageProxy.proxy(@episode.cover)}
-          alt={episode_item_title(@episode)}
+          :if={@still_url}
+          data-episode-still="episode"
+          src={@still_url}
+          alt={@display_title}
           class="w-full h-full object-cover"
           loading="lazy"
           decoding="async"
         />
         <div
-          :if={!@episode.cover}
-          class="w-full h-full flex items-center justify-center bg-surface"
+          :if={!@still_url && @fallback_url}
+          data-episode-still="fallback"
+          class="relative w-full h-full"
+        >
+          <img
+            src={@fallback_url}
+            alt={@display_title}
+            class="w-full h-full object-cover opacity-75"
+            loading="lazy"
+            decoding="async"
+          />
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-black/15" />
+        </div>
+        <div
+          :if={!@still_url && !@fallback_url}
+          data-episode-still="placeholder"
+          class="w-full h-full flex items-center justify-center bg-gradient-to-br from-surface-hover to-surface"
         >
           <.icon name="hero-play-circle" class="size-6 sm:size-10 text-text-secondary/30" />
         </div>
@@ -518,12 +558,32 @@ defmodule StreamixWeb.Content.DetailComponents do
             <.icon name="hero-play-solid" class="size-4 sm:size-5 text-black ml-0.5" />
           </div>
         </div>
+
+        <div
+          :if={@progress_pct}
+          data-episode-progress
+          class="poster-progress"
+        >
+          <div class="poster-progress-bar" style={"width: #{@progress_pct}%"} />
+        </div>
       </div>
 
       <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
-          {episode_item_title(@episode)}
-        </h4>
+        <div class="flex items-center justify-between gap-2">
+          <h4 class="font-medium text-sm sm:text-base text-text-primary group-hover:text-brand truncate">
+            {@display_title}
+          </h4>
+          <span
+            :if={@completed?}
+            data-episode-completed
+            class="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-hover px-2 py-0.5 text-[11px] font-medium text-text-secondary"
+            title="Episódio concluído"
+            aria-label="Episódio concluído"
+          >
+            <.icon name="hero-check-circle-solid" class="size-3.5 text-brand" />
+            <span class="hidden sm:inline">Concluído</span>
+          </span>
+        </div>
         <p
           :if={@episode.plot}
           class="text-xs sm:text-sm text-text-secondary line-clamp-2 mt-0.5 sm:mt-1 hidden sm:block"
@@ -566,7 +626,7 @@ defmodule StreamixWeb.Content.DetailComponents do
                 Anterior
               </p>
               <p class="text-xs sm:text-sm font-medium text-text-primary truncate">
-                Ep. {@prev_episode.episode_num}
+                {episode_item_title(@prev_episode, nil)}
               </p>
             </div>
           </.link>
@@ -590,7 +650,7 @@ defmodule StreamixWeb.Content.DetailComponents do
                 Próximo
               </p>
               <p class="text-xs sm:text-sm font-medium text-text-primary truncate">
-                Ep. {@next_episode.episode_num}
+                {episode_item_title(@next_episode, nil)}
               </p>
             </div>
             <.icon
@@ -681,5 +741,86 @@ defmodule StreamixWeb.Content.DetailComponents do
   defp fallback_icon_class(:movie), do: "size-6 text-brand/60 mb-1"
   defp fallback_icon_class(:series), do: "size-8 text-text-secondary/30"
 
-  defp episode_item_title(episode), do: "Episódio #{episode.episode_num}"
+  defp episode_still_url(episode) do
+    raw =
+      present_url(Map.get(episode, :still_path)) ||
+        present_url(Map.get(episode, :cover))
+
+    if raw, do: ImageProxy.proxy(raw), else: nil
+  end
+
+  defp present_url(url) when is_binary(url) do
+    case String.trim(url) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp present_url(_), do: nil
+
+  defp episode_completed?(:completed, _episode), do: true
+  defp episode_completed?(true, _episode), do: true
+  defp episode_completed?(%{completed: true}, _episode), do: true
+
+  defp episode_completed?(progress, _episode) when is_number(progress) and progress >= 0.9,
+    do: true
+
+  defp episode_completed?(_progress, episode), do: Map.get(episode, :completed) == true
+
+  defp episode_progress_pct(%{progress_seconds: progress, duration_seconds: duration})
+       when is_integer(progress) and is_integer(duration) and duration > 0 and progress > 0 do
+    episode_progress_pct(progress / duration)
+  end
+
+  defp episode_progress_pct(progress) when is_number(progress) and progress > 0 do
+    min(100, max(1, round(progress * 100)))
+  end
+
+  defp episode_progress_pct(_), do: nil
+
+  @doc "Formats an episode row title via DisplayTitle.episode/1 with season/episode code."
+  def episode_item_title(episode, season_number \\ nil) do
+    base = episode_clean_title(episode)
+    season_num = season_number || episode_season_number(episode)
+    ep_num = Map.get(episode, :episode_num) || Map.get(episode, :num)
+
+    cond do
+      is_integer(season_num) and is_integer(ep_num) ->
+        "#{base} · T#{season_num} E#{ep_num}"
+
+      is_integer(ep_num) and not String.ends_with?(base, " #{ep_num}") ->
+        "#{base} · E#{ep_num}"
+
+      true ->
+        base
+    end
+  end
+
+  defp episode_clean_title(episode) do
+    ep_num = Map.get(episode, :episode_num) || Map.get(episode, :num) || "?"
+    fallback = "Episódio #{ep_num}"
+
+    cleaned =
+      episode
+      |> episode_title()
+      |> DisplayTitle.episode()
+      |> strip_sxxexx_prefix()
+
+    if cleaned == "" or Regex.match?(~r/^(?:.+?\s+)?s\d{1,2}\s?e\d{1,4}$/iu, cleaned) do
+      fallback
+    else
+      cleaned
+    end
+  end
+
+  defp strip_sxxexx_prefix(text) do
+    case Regex.run(~r/^(?:.+?\s+)?s\d{1,2}\s?e\d{1,4}\s*[-–:]?\s+(.+)$/iu, text) do
+      [_, rest] -> String.trim(rest)
+      _ -> String.trim(text)
+    end
+  end
+
+  defp episode_season_number(%{season_number: num}) when is_integer(num), do: num
+  defp episode_season_number(%{season: %{season_number: num}}) when is_integer(num), do: num
+  defp episode_season_number(_), do: nil
 end

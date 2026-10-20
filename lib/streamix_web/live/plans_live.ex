@@ -79,14 +79,14 @@ defmodule StreamixWeb.PlansLive do
 
   def render(assigns) do
     ~H"""
-    <div id="plans-page" class="space-y-8 pb-12">
-      <section class="rounded-3xl border border-border bg-gradient-to-br from-surface via-background to-brand/10 p-6 sm:p-8">
-        <div class="max-w-3xl space-y-4">
+    <div id="plans-page" class="space-y-6 pb-12">
+      <section class="rounded-2xl border border-border bg-gradient-to-br from-surface via-background to-brand/10 p-5 sm:p-6">
+        <div class="max-w-2xl space-y-2 sm:space-y-3">
           <.premium_badge label="Acesso global" />
-          <h1 class="text-3xl sm:text-5xl font-bold text-text-primary tracking-tight">
+          <h1 class="text-2xl sm:text-4xl font-bold text-text-primary tracking-tight">
             Acesso global para todo o catálogo
           </h1>
-          <p class="text-base sm:text-lg text-text-secondary max-w-2xl">
+          <p class="text-sm sm:text-base text-text-secondary">
             A página reúne os planos disponíveis, destaca quais liberam acesso global e mostra o estado atual da sua assinatura.
           </p>
         </div>
@@ -137,7 +137,7 @@ defmodule StreamixWeb.PlansLive do
                 Estado
               </p>
               <p class="text-sm font-medium text-text-primary">
-                {@active_subscription.status |> String.capitalize()}
+                {status_label(@active_subscription.status)}
               </p>
             </div>
           </div>
@@ -152,7 +152,6 @@ defmodule StreamixWeb.PlansLive do
               Compare os planos publicados e escolha o nível que faz sentido para a sua conta.
             </p>
           </div>
-          <.premium_badge label="Ativos" class="hidden sm:inline-flex" />
         </div>
 
         <div id="plans-list" class="grid gap-4 lg:grid-cols-2">
@@ -277,26 +276,26 @@ defmodule StreamixWeb.PlansLive do
   defp subscription_state(nil), do: "none"
   defp subscription_state(_subscription), do: "active"
 
-  defp format_price(price_cents, currency) when is_integer(price_cents) do
-    value = price_cents / 100
-
-    locale_currency =
-      case currency do
-        "BRL" -> "R$"
-        "EUR" -> "€"
-        "USD" -> "$"
-        _ -> currency
-      end
-
+  defp format_price(price_cents, _currency) when is_integer(price_cents) do
     amount =
-      value
+      (price_cents / 100)
       |> :erlang.float_to_binary(decimals: 2)
       |> String.replace(".", ",")
 
-    "#{locale_currency} #{amount}"
+    "R$ #{amount}"
   end
 
-  defp format_price(_, currency), do: currency
+  defp format_price(_, _), do: "R$ 0,00"
+
+  defp status_label("active"), do: "Ativo"
+  defp status_label("trialing"), do: "Em teste"
+  defp status_label("canceled"), do: "Cancelado"
+  defp status_label("incomplete"), do: "Incompleto"
+  defp status_label("incomplete_expired"), do: "Expirado"
+  defp status_label("past_due"), do: "Pagamento pendente"
+  defp status_label("unpaid"), do: "Não pago"
+  defp status_label(status) when is_binary(status), do: String.capitalize(status)
+  defp status_label(_), do: "Inativo"
 
   defp interval_label("day"), do: "dia"
   defp interval_label("week"), do: "semana"
@@ -307,7 +306,7 @@ defmodule StreamixWeb.PlansLive do
   defp plan_cta_label(%{price_cents: 0, trial_days: trial_days}) when trial_days > 0,
     do: "Começar grátis"
 
-  defp plan_cta_label(_plan), do: "Assinar com Stripe"
+  defp plan_cta_label(_plan), do: "Assinar plano"
 
   defp plan_cta_icon(%{price_cents: 0, trial_days: trial_days}) when trial_days > 0,
     do: "hero-sparkles"
@@ -316,7 +315,7 @@ defmodule StreamixWeb.PlansLive do
 
   defp upgrade_title("providers"), do: "Limite de providers atingido"
   defp upgrade_title("watch_party"), do: "Watch Party avançado"
-  defp upgrade_title("ai"), do: "AI avançada"
+  defp upgrade_title("ai"), do: "IA avançada"
   defp upgrade_title("screens"), do: "Limite de telas atingido"
   defp upgrade_title(_reason), do: "Upgrade disponível"
 
@@ -327,7 +326,7 @@ defmodule StreamixWeb.PlansLive do
     do: "Escolha um plano com Watch Party para criar salas sincronizadas."
 
   defp upgrade_message("ai"),
-    do: "Escolha um plano com AI avançada para liberar recomendações inteligentes."
+    do: "Escolha um plano com IA avançada para liberar recomendações inteligentes."
 
   defp upgrade_message("screens"),
     do: "Escolha um plano com mais streams simultâneos para assistir em mais telas."

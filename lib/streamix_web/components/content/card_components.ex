@@ -68,12 +68,13 @@ defmodule StreamixWeb.Content.CardComponents do
           />
           <div
             class={[
-              "flex h-full w-full items-center justify-center bg-surface-hover",
+              "flex h-full w-full flex-col gap-3 items-center justify-center bg-surface-hover p-4 text-center",
               @image_url && "hidden"
             ]}
             data-fallback
           >
             <.icon name={@fallback_icon} class="size-12 text-text-secondary/30 sm:size-16" />
+            <span class="line-clamp-4 text-sm font-medium text-text-secondary break-words">{@title}</span>
           </div>
 
           <div
@@ -90,9 +91,12 @@ defmodule StreamixWeb.Content.CardComponents do
           </div>
         </div>
 
-        <div class="p-2 sm:p-3">
+        <div class={[
+          "catalog-poster-caption",
+          @secondary_action != [] && "catalog-poster-caption--actions"
+        ]}>
           <h3
-            class="line-clamp-2 min-h-[2.35em] text-[11px] font-medium leading-[1.18] text-text-primary sm:min-h-0 sm:truncate sm:text-sm sm:leading-normal"
+            class="catalog-poster-title line-clamp-2 font-medium text-text-primary"
             title={@title}
           >
             {@title}
@@ -112,7 +116,7 @@ defmodule StreamixWeb.Content.CardComponents do
       <div
         :if={@secondary_action != []}
         data-media-secondary
-        class="absolute right-0.5 top-0.5 z-10 sm:right-1 sm:top-1"
+        class="absolute right-0 bottom-1 z-10"
       >
         <%= for action <- @secondary_action do %>
           {render_slot(action)}
@@ -360,25 +364,23 @@ defmodule StreamixWeb.Content.CardComponents do
           <.premium_badge class="border-white/10 bg-black/60 text-white shadow-lg" />
         </div>
       </:badge>
-      <:badge :if={@source == "gindex"}>
-        <span class="rounded bg-info/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
-          GDrive
-        </span>
-      </:badge>
       <:secondary_action :if={@show_favorite}>
-        <button
+        <.button
           type="button"
+          variant="ghost"
+          size="icon"
+          aria-pressed={to_string(@is_favorite)}
           phx-click={@on_favorite}
           phx-value-id={@movie.id}
           phx-value-type="movie"
-          class="flex size-11 flex-shrink-0 items-center justify-center rounded-full bg-black/35 text-white/75 backdrop-blur-sm transition-all hover:scale-105 hover:bg-brand/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-brand"
+          class="text-text-muted"
           aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
         >
           <.icon
             name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-            class={["size-5", @is_favorite && "text-brand"]}
+            class={["size-4", @is_favorite && "text-brand"]}
           />
-        </button>
+        </.button>
       </:secondary_action>
     </.poster_media_card>
     """
@@ -447,25 +449,23 @@ defmodule StreamixWeb.Content.CardComponents do
           <.premium_badge class="border-white/10 bg-black/60 text-white shadow-lg" />
         </div>
       </:badge>
-      <:badge :if={@source == "gindex"}>
-        <span class="rounded bg-info/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
-          GDrive
-        </span>
-      </:badge>
       <:secondary_action :if={@show_favorite}>
-        <button
+        <.button
           type="button"
+          variant="ghost"
+          size="icon"
+          aria-pressed={to_string(@is_favorite)}
           phx-click={@on_favorite}
           phx-value-id={@series.id}
           phx-value-type="series"
-          class="flex size-11 flex-shrink-0 items-center justify-center rounded-full bg-black/35 text-white/75 backdrop-blur-sm transition-all hover:scale-105 hover:bg-brand/25 hover:text-white focus:outline-none focus:ring-2 focus:ring-brand"
+          class="text-text-muted"
           aria-label={if @is_favorite, do: "Remover dos favoritos", else: "Adicionar aos favoritos"}
         >
           <.icon
             name={if @is_favorite, do: "hero-heart-solid", else: "hero-heart"}
-            class={["size-5", @is_favorite && "text-brand"]}
+            class={["size-4", @is_favorite && "text-brand"]}
           />
-        </button>
+        </.button>
       </:secondary_action>
     </.poster_media_card>
     """

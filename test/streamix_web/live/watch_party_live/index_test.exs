@@ -39,4 +39,20 @@ defmodule StreamixWeb.WatchPartyLive.IndexTest do
 
     refute has_element?(view, "#active-parties-title")
   end
+
+  test "renders balanced cards with friendly placeholder and brand palette", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/party")
+
+    assert has_element?(
+             view,
+             "#join-watch-party-form input[placeholder='Código da sala ou link']"
+           )
+
+    assert has_element?(view, "a[href='/browse']", "Ir para o catálogo")
+    assert has_element?(view, ".pb-28")
+    assert has_element?(view, ".surface-card .text-brand")
+    refute has_element?(view, ".surface-card .text-accent")
+    refute has_element?(view, ".surface-card .text-warning")
+    refute has_element?(view, ".surface-card .text-info")
+  end
 end

@@ -80,6 +80,16 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   reaches what the desktop header offers.
 - Search "Todos" previews each type (two rows on phones, one on desktop) with "Ver os N filmes"; the full list and
   "Mostrar mais" live in each type's filter.
+- Catalog toolbars put the type tabs on a line of their own (the active tab is never cut), name the catalog
+  ("Catálogo: IPTV / Google Drive") and the sources ("Fontes: todas"), and no catalog page or search scrolls
+  sideways on a phone. Phone grids have two poster columns (three from 540 px) with 14 px titles and a favorite
+  button that no longer covers the poster.
+- "AO VIVO" is shown only when a programme is on now; other channels say "TV" and "Programação indisponível"
+  without a guide. Missing posters show the clean title, and missing team crests a neutral monogram.
+- Series episodes show a 16:9 still (or the series art), a progress bar or "Concluído", and titles such as
+  "Piloto · T1 E1".
+- Plans show prices as "R$ 9,99", statuses in Portuguese and "Assinar plano"; Settings shows the account e-mail
+  read-only instead of a change form that did nothing; the Watch Party hub no longer hides under the phone nav.
 - Minha lista uses the poster grid with touch-visible actions, Histórico no longer stacks its type badge on the
   progress bar, and the Guia has compact phone rows and category chips without the "Canais |" prefix.
 

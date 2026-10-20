@@ -138,6 +138,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> assign(selected_seasons: selected_seasons)
       |> assign(series_sources: series_sources)
       |> assign(expanded_seasons: Detail.initial_expanded(selected_seasons))
+      |> assign(episode_progress: %{})
+      |> assign(
+        series_still_fallback:
+          Detail.hero_image(selected_series, selected_series.cover) ||
+            Detail.hero_image(series, series.cover)
+      )
       |> assign(is_favorite: Detail.favorite?(user_id, "series", series.id))
       |> assign(user_id: user_id)
       |> assign(similar_series: [])
@@ -175,13 +181,20 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       if progress && !progress.completed, do: Enum.find(episodes, &(&1.id == progress.episode_id))
 
     playable = resume || first_episode(seasons)
+    episode_progress = load_episode_progress(socket.assigns.user_id, episodes, progress)
+
+    series_still_fallback =
+      Detail.hero_image(selected, selected.cover) ||
+        Detail.hero_image(socket.assigns.series, socket.assigns.series.cover)
 
     socket
     |> assign(selected_series: selected, selected_seasons: seasons, expanded_seasons: expanded)
     |> assign(
       current_path: current_path,
       playable_episode: playable,
-      resuming: not is_nil(resume)
+      resuming: not is_nil(resume),
+      episode_progress: episode_progress,
+      series_still_fallback: series_still_fallback
     )
     |> assign(
       premium_access: Detail.premium_access?(socket.assigns.current_scope.user, selected.provider)
@@ -223,11 +236,20 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   def handle_async({:series_enrichment, series_id}, {:ok, series}, socket)
       when series_id == socket.assigns.series.id do
+    hero_image = Detail.hero_image(series, series.cover)
+
     {:noreply,
      socket
      |> assign(page_title: series.title || series.name)
      |> assign(series: series)
-     |> assign(lcp_image: Detail.hero_image(series, series.cover))}
+     |> assign(lcp_image: hero_image)
+     |> assign(
+       series_still_fallback:
+         Detail.hero_image(
+           socket.assigns.selected_series,
+           socket.assigns.selected_series.cover
+         ) || hero_image
+     )}
   end
 
   def handle_async({:series_recommendations, series_id}, {:ok, series}, socket)
@@ -472,6 +494,8 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                   season={season}
                   expanded={MapSet.member?(@expanded_seasons, season.id)}
                   episode_paths={@episode_paths}
+                  episode_progress={@episode_progress}
+                  fallback_image={@series_still_fallback}
                 />
               </div>
             </div>
@@ -561,6 +585,22 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp first_episode(_), do: nil
+
+  defp load_episode_progress(nil, _episodes, _source_progress), do: %{}
+  defp load_episode_progress(_user_id, [], _source_progress), do: %{}
+
+  defp load_episode_progress(user_id, episodes, source_progress) do
+    episode_ids = Enum.map(episodes, & &1.id)
+    progress_map = Streamix.Library.get_watch_progress_map(user_id, "episode", episode_ids)
+
+    case source_progress do
+      %{episode_id: ep_id, completed: true} when is_integer(ep_id) ->
+        Map.put(progress_map, ep_id, 1.0)
+
+      _ ->
+        progress_map
+    end
+  end
 
   defp provider_name(%{provider: %{name: name}}) when is_binary(name) and name != "", do: name
   defp provider_name(%{provider_id: provider_id}), do: "Provedor #{provider_id}"

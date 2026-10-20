@@ -212,10 +212,62 @@ defmodule StreamixWeb.Content.EpisodeDetailLiveTest do
              ~s(#episode-prev-link[href="/browse/series/#{series.id}/episode/#{ep1.id}"])
            )
 
+    assert has_element?(view, "#episode-prev-link", "Começo · T1 E1")
+    assert has_element?(view, "h1", "Meio · T1 E2")
+    assert has_element?(view, "[data-episode-still='placeholder']")
+
     assert has_element?(
              view,
              ~s(#episode-all-episodes-link[href="/browse/series/#{series.id}?source=#{series.id}"])
            )
+  end
+
+  test "series detail accordion renders episode stills, fallback backdrop, progress bar and completed check",
+       %{conn: conn, user: user, global: global} do
+    series =
+      create_series!(global, %{
+        name: "Dawson's Creek (1998) [LEG]",
+        title: "Dawson's Creek",
+        cover: "https://image.tmdb.org/t/p/w500/dawson-cover.jpg",
+        tmdb_id: "tmdb-dawson-progress"
+      })
+
+    season = create_season!(series, 1)
+
+    ep1 =
+      create_episode!(season, global, 1, %{
+        name: "Dawson's Creek - S01E01 - Piloto",
+        title: "Dawson's Creek - S01E01 - Piloto",
+        still_path: "https://image.tmdb.org/t/p/w500/ep1-still.jpg",
+        tmdb_enriched: true
+      })
+
+    ep2 =
+      create_episode!(season, global, 2, %{
+        name: "Dawsons.Creek.S01E02.Danca.1080p.WEB-DL.mkv",
+        title: "Dança",
+        still_path: nil,
+        cover: nil,
+        tmdb_enriched: true
+      })
+
+    assert {:ok, _} =
+             Streamix.Library.update_watch_progress(user.id, "episode", ep1.id, 1150, 1200)
+
+    assert {:ok, _} =
+             Streamix.Library.update_watch_progress(user.id, "episode", ep2.id, 600, 1200)
+
+    conn = log_in_user(conn, user)
+    {:ok, view, _html} = live(conn, ~p"/browse/series/#{series.id}")
+
+    assert has_element?(view, "#episode-item-#{ep1.id} h4", "Piloto · T1 E1")
+    assert has_element?(view, "#episode-item-#{ep1.id} [data-episode-still='episode']")
+    assert has_element?(view, "#episode-item-#{ep1.id} [data-episode-completed]")
+    refute has_element?(view, "#episode-item-#{ep1.id} [data-episode-progress]")
+
+    assert has_element?(view, "#episode-item-#{ep2.id} h4", "Dança · T1 E2")
+    assert has_element?(view, "#episode-item-#{ep2.id} [data-episode-still='fallback']")
+    assert has_element?(view, "#episode-item-#{ep2.id} [data-episode-progress]")
   end
 
   defp create_series!(provider, attrs) do

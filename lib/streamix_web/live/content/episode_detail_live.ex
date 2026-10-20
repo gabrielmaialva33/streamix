@@ -8,7 +8,6 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.DisplayTitle
-  alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.PlayerHelpers
 
@@ -30,6 +29,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   import StreamixWeb.Content.DetailComponents,
     only: [
       detail_hero: 1,
+      episode_item_title: 2,
       synopsis_section: 1
     ]
 
@@ -192,6 +192,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
               <div class="aspect-video rounded-lg sm:rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/10">
                 <img
                   :if={get_episode_image(@episode)}
+                  data-episode-still="episode"
                   src={get_episode_image(@episode)}
                   alt={episode_title(@episode, @series)}
                   class="w-full h-full object-cover"
@@ -199,7 +200,22 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   decoding="async"
                 />
                 <div
-                  :if={!get_episode_image(@episode)}
+                  :if={!get_episode_image(@episode) && get_series_backdrop(@series)}
+                  data-episode-still="fallback"
+                  class="relative w-full h-full"
+                >
+                  <img
+                    src={get_series_backdrop(@series)}
+                    alt={episode_title(@episode, @series)}
+                    class="w-full h-full object-cover opacity-75"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-black/15" />
+                </div>
+                <div
+                  :if={!get_episode_image(@episode) && !get_series_backdrop(@series)}
+                  data-episode-still="placeholder"
                   class="w-full h-full bg-surface flex items-center justify-center"
                 >
                   <.icon name="hero-play-circle" class="size-10 sm:size-16 text-text-secondary/30" />
@@ -215,7 +231,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                   navigate={all_episodes_path(@series.id)}
                   class="text-brand hover:underline text-xs sm:text-sm font-medium"
                 >
-                  {@series.title || @series.name}
+                  {DisplayTitle.title(@series)}
                 </.link>
                 <p class="text-text-secondary text-xs sm:text-sm">
                   T{@season.season_number} · Ep {@episode.episode_num} de {@total_episodes}
@@ -224,7 +240,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
               <!-- Episode Title -->
               <h1 class="text-xl sm:text-2xl lg:text-4xl font-bold text-text-primary leading-tight">
-                {episode_display_title(@episode)}
+                {episode_item_title(@episode, @season.season_number)}
               </h1>
 
               <!-- Meta Tags -->
@@ -287,6 +303,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
             mode={@mode}
             provider={@provider}
             series={@series}
+            season_number={@season.season_number}
             return_to={@return_to}
             prev_episode={@prev_episode}
             next_episode={@next_episode}
@@ -300,6 +317,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   attr :mode, :atom, required: true
   attr :provider, :map, required: true
   attr :series, :map, required: true
+  attr :season_number, :integer, default: nil
   attr :return_to, :string, default: nil
   attr :prev_episode, :map, default: nil
   attr :next_episode, :map, default: nil
@@ -327,7 +345,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 Anterior
               </p>
               <p class="text-xs sm:text-sm font-medium text-text-primary truncate">
-                Ep. {@prev_episode.episode_num}
+                {episode_item_title(@prev_episode, @season_number)}
               </p>
             </div>
           </.link>
@@ -356,7 +374,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
                 Próximo
               </p>
               <p class="text-xs sm:text-sm font-medium text-text-primary truncate">
-                Ep. {@next_episode.episode_num}
+                {episode_item_title(@next_episode, @season_number)}
               </p>
             </div>
             <.icon
@@ -481,29 +499,25 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   defp safe_return_path(_), do: nil
 
   defp episode_title(episode, series) do
-    base = series.title || series.name
-    "S#{episode.season.season_number}E#{episode.episode_num} - #{base}"
+    base = DisplayTitle.title(series)
+    "#{episode_item_title(episode, episode.season.season_number)} - #{base}"
   end
 
-  # Title before name. `name` holds the raw filename for almost every episode in
-  # the catalog, so this page was showing
-  # "Vingadores.Unidos.da.Marvel.S01E23.1080p.DSNP.WEB-DL...mkv" as the label.
-  defp episode_display_title(episode),
-    do: episode |> HelperComponents.episode_title() |> DisplayTitle.episode()
-
   defp get_episode_image(episode) do
-    episode.still_path || episode.cover
+    ImageProxy.proxy(episode.still_path || episode.cover)
   end
 
   defp present?(value), do: is_binary(value) and value != ""
 
   defp get_series_backdrop(series) do
     case Streamix.Catalog.backdrop_urls(series) do
-      [url | _] -> url
+      [url | _] -> ImageProxy.proxy(url)
       _ -> get_series_backdrop_fallback(series)
     end
   end
 
-  defp get_series_backdrop_fallback(%{cover: cover}) when is_binary(cover), do: cover
+  defp get_series_backdrop_fallback(%{cover: cover}) when is_binary(cover),
+    do: ImageProxy.proxy(cover)
+
   defp get_series_backdrop_fallback(_), do: nil
 end

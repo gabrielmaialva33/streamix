@@ -31,6 +31,7 @@ defmodule StreamixWeb.BillingLiveTest do
       {:ok, view, html} = live(conn, ~p"/billing")
 
       assert html =~ "Billing Premium"
+      assert html =~ "Status Ativo"
       assert has_element?(view, "#billing-page")
       assert render(view) =~ "0 / 2"
     end

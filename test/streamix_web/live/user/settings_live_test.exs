@@ -72,7 +72,8 @@ defmodule StreamixWeb.User.SettingsLiveTest do
     conn = log_in_user(conn, user_fixture())
     {:ok, view, _html} = live(conn, ~p"/settings")
 
-    assert has_element?(view, "#account-settings #email_form")
+    assert has_element?(view, "#account-settings #account-email", "E-mail da conta")
+    refute has_element?(view, "#account-settings #email_form")
     assert has_element?(view, "#account-settings #password_form")
     assert has_element?(view, "#playback-preferences #adult-content-toggle")
     assert has_element?(view, "#playback-preferences #subtitle-preferences-form")

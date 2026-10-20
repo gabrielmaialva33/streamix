@@ -3,6 +3,18 @@ defmodule StreamixWeb.EpgComponents do
   UI components for EPG (Electronic Program Guide) display.
   """
   use Phoenix.Component
+  import StreamixWeb.CoreComponents, only: [badge: 1]
+
+  def current_program?(program, now \\ DateTime.utc_now())
+
+  def current_program?(
+        %{start_time: %DateTime{} = start_time, end_time: %DateTime{} = end_time},
+        now
+      ) do
+    DateTime.compare(start_time, now) != :gt and DateTime.compare(end_time, now) == :gt
+  end
+
+  def current_program?(_, _now), do: false
 
   @doc """
   Displays current program info with progress bar.
@@ -12,6 +24,13 @@ defmodule StreamixWeb.EpgComponents do
   attr :compact, :boolean, default: true
 
   def epg_now(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :current_program,
+        if(current_program?(assigns.current_program), do: assigns.current_program)
+      )
+
     ~H"""
     <div :if={@compact} class="min-h-[16px]">
       <p
@@ -22,15 +41,13 @@ defmodule StreamixWeb.EpgComponents do
         {@current_program.title}
       </p>
       <p :if={!@current_program} class="text-[10px] text-text-muted/50 italic">
-        Sem programação
+        Programação indisponível
       </p>
     </div>
 
     <div :if={@current_program && !@compact} class="mt-1.5 space-y-1">
       <div class="flex items-center gap-1.5">
-        <span class="inline-flex items-center px-1 py-0.5 text-[9px] font-semibold rounded bg-brand/90 text-white uppercase tracking-wide">
-          Ao Vivo
-        </span>
+        <.badge :if={current_program?(@current_program)} variant="live" size="sm">AO VIVO</.badge>
         <p class="text-[11px] text-text-secondary truncate flex-1" title={@current_program.title}>
           {@current_program.title}
         </p>
@@ -40,7 +57,7 @@ defmodule StreamixWeb.EpgComponents do
     </div>
 
     <div :if={!@current_program && !@compact} class="mt-1.5">
-      <p class="text-[10px] text-text-muted italic">Sem programação</p>
+      <p class="text-[10px] text-text-muted italic">Programação indisponível</p>
     </div>
     """
   end
@@ -75,9 +92,7 @@ defmodule StreamixWeb.EpgComponents do
     <div :if={@current_program} class="space-y-2">
       <div class="space-y-1">
         <div class="flex items-center gap-2">
-          <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold rounded bg-brand text-white uppercase">
-            Ao Vivo
-          </span>
+          <.badge :if={current_program?(@current_program)} variant="live" size="sm">AO VIVO</.badge>
           <p class="text-sm text-text-primary truncate flex-1" title={@current_program.title}>
             {@current_program.title}
           </p>

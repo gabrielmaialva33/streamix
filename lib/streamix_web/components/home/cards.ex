@@ -98,8 +98,8 @@ defmodule StreamixWeb.Home.Cards do
             </span>
           </div>
         </div>
-        <.badge variant="live" size="sm" class="absolute top-1 left-1 sm:top-2 sm:left-2">
-          AO VIVO
+        <.badge variant="surface" size="sm" class="absolute top-1 left-1 sm:top-2 sm:left-2">
+          TV
         </.badge>
         <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />

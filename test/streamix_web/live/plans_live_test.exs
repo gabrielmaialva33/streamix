@@ -75,7 +75,9 @@ defmodule StreamixWeb.PlansLiveTest do
       {:ok, view, _html} = live(conn, ~p"/plans")
 
       assert has_element?(view, "#current-subscription[data-status='active']")
+      assert has_element?(view, "#current-subscription", "Ativo")
       assert render(view) =~ plan.name
+      assert render(view) =~ "R$ 19,99"
     end
 
     test "current plan card renders a non-clickable current-state CTA", %{conn: conn, user: user} do
@@ -100,6 +102,9 @@ defmodule StreamixWeb.PlansLiveTest do
 
       assert has_element?(view, "#plan-badge-essencial[data-variant='neutral']")
       assert has_element?(view, "#plan-cta-essencial[data-cta-state='checkout']")
+      assert has_element?(view, "#plan-cta-essencial", "Assinar plano")
+      refute has_element?(view, "#plan-cta-essencial", "Stripe")
+      refute has_element?(view, "#plans-page", "ATIVOS")
       refute has_element?(view, "#plan-card-essencial a[href='/register']")
     end
 

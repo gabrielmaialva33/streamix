@@ -77,4 +77,95 @@ defmodule StreamixWeb.Content.DetailComponentsTest do
       assert html =~ ~s(rel="noopener noreferrer")
     end
   end
+
+  describe "detail_season_accordion and detail_episode_item" do
+    test "formats episode titles as 'Piloto · T1 E1', renders still fallback chain, progress bar and completed check" do
+      season = %{
+        id: 10,
+        season_number: 1,
+        episodes: [
+          %{
+            id: 101,
+            episode_num: 1,
+            title: "Dawson's Creek - S01E01 - Piloto [LEG] 1080p",
+            name: "Dawson.S01E01.mkv",
+            still_path: "https://image.tmdb.org/t/p/w500/still1.jpg",
+            cover: nil,
+            plot: "O começo.",
+            duration_secs: 2700
+          },
+          %{
+            id: 102,
+            episode_num: 2,
+            title: "Dança",
+            name: "Dawson.S01E02.mkv",
+            still_path: nil,
+            cover: nil,
+            plot: nil,
+            duration_secs: 2640
+          },
+          %{
+            id: 103,
+            episode_num: 3,
+            title: nil,
+            name: "Dawson.S01E03.1080p.WEB-DL.mkv",
+            still_path: nil,
+            cover: nil,
+            plot: nil,
+            duration_secs: nil
+          }
+        ]
+      }
+
+      html =
+        render_component(&DetailComponents.detail_season_accordion/1,
+          season: season,
+          expanded: true,
+          episode_paths: %{101 => "/ep/101", 102 => "/ep/102", 103 => "/ep/103"},
+          episode_progress: %{101 => 0.95, 102 => 0.45},
+          fallback_image: "https://image.tmdb.org/t/p/w780/series-backdrop.jpg"
+        )
+
+      # Cleaned episode titles with T1 E<n> code
+      assert html =~ "Piloto · T1 E1"
+      refute html =~ "Dawson&#39;s Creek - S01E01"
+      assert html =~ "Dança · T1 E2"
+      assert html =~ "Episódio 3 · T1 E3"
+
+      # Ep 1 has its own still_path and is completed (>= 0.9)
+      assert html =~ ~s(data-episode-still="episode")
+      assert html =~ ~s(data-episode-completed)
+      assert html =~ "Concluído"
+
+      # Ep 2 has no still_path/cover, so it uses the series fallback with gradient and shows 45% progress bar
+      assert html =~ ~s(data-episode-still="fallback")
+      assert html =~ ~s(data-episode-progress)
+      assert html =~ "width: 45%"
+    end
+
+    test "renders neutral placeholder when neither episode still nor series fallback exists" do
+      html =
+        render_component(&DetailComponents.detail_episode_item/1,
+          episode: %{
+            id: 201,
+            episode_num: 4,
+            title: "Capítulo Quatro",
+            name: "Ep 4",
+            still_path: nil,
+            cover: nil,
+            plot: nil,
+            duration_secs: nil
+          },
+          season_number: 2,
+          path: "/ep/201",
+          progress: nil,
+          fallback_image: nil
+        )
+
+      assert html =~ "Capítulo Quatro · T2 E4"
+      assert html =~ ~s(data-episode-still="placeholder")
+      refute html =~ ~s(data-episode-progress)
+      refute html =~ ~s(data-episode-completed)
+    end
+  end
 end

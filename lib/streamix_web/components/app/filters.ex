@@ -90,21 +90,21 @@ defmodule StreamixWeb.App.Filters do
     assigns = assign(assigns, :selected_provider, selected_provider)
 
     ~H"""
-    <div :if={@providers != []} id="provider-dropdown" class={["relative flex-shrink-0", @class]}>
+    <div :if={@providers != []} id="provider-dropdown" class={["relative min-w-0 max-w-full", @class]}>
       <button
         type="button"
         phx-click={JS.toggle(to: "#provider-dropdown-menu")}
         class={[
-          "category-chip gap-1.5",
-          @selected_provider && "category-chip--active pr-8"
+          "category-chip gap-1.5 max-w-full min-h-11",
+          @selected_provider && "category-chip--active provider-chip--selected"
         ]}
         aria-haspopup="listbox"
         aria-label="Filtrar por provedor"
-        title={(@selected_provider && @selected_provider.name) || "Filtrar por provedor"}
+        title={(@selected_provider && @selected_provider.name) || "Fontes: todas"}
       >
         <.icon name="hero-server-stack" class="size-4 flex-shrink-0" />
         <span class="truncate max-w-36">
-          {(@selected_provider && @selected_provider.name) || "Provedor"}
+          {(@selected_provider && @selected_provider.name) || "Fontes: todas"}
         </span>
         <.icon
           :if={!@selected_provider}
@@ -117,7 +117,7 @@ defmodule StreamixWeb.App.Filters do
         type="button"
         phx-click={@on_change}
         phx-value-provider="all"
-        class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full p-0.5 text-white/80 hover:text-white hover:bg-white/20 transition-colors"
+        class="absolute right-0 top-1/2 -translate-y-1/2 flex size-11 items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/20 transition-colors"
         aria-label="Limpar filtro de provedor"
         title="Voltar ao catálogo completo"
       >

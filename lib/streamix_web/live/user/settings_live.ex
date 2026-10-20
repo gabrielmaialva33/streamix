@@ -12,29 +12,11 @@ defmodule StreamixWeb.User.SettingsLive do
       |> assign(page_title: gettext("Configurações"))
       |> assign(current_path: "/settings")
       |> assign(current_email: user.email)
-      |> assign(email_form: to_form(Accounts.change_user_email(user), as: "user"))
       |> assign(password_form: to_form(Accounts.change_user_password(user), as: "user"))
       |> assign(settings_form: to_form(Accounts.change_user_settings(user), as: "user"))
       |> assign(trigger_submit: false)
 
     {:ok, socket}
-  end
-
-  def handle_event("validate_email", %{"user" => params}, socket) do
-    user = socket.assigns.current_scope.user
-
-    changeset =
-      user
-      |> Accounts.change_user_email(params)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, email_form: to_form(changeset, as: "user"))}
-  end
-
-  def handle_event("update_email", %{"user" => _params}, socket) do
-    {:noreply,
-     socket
-     |> put_flash(:info, "A funcionalidade de alteração de email ainda não está implementada")}
   end
 
   def handle_event("validate_password", %{"user" => params}, socket) do
@@ -140,43 +122,22 @@ defmodule StreamixWeb.User.SettingsLive do
             </p>
           </div>
 
-          <div id="email-settings">
-            <div class="mb-4">
-              <h3 class="text-base font-semibold text-text-primary">Email</h3>
-              <p class="mt-1 text-sm text-text-secondary">
-                Atualize o endereço usado para entrar na sua conta.
-              </p>
+          <div id="account-email" class="mb-5">
+            <div class="rounded-lg border border-border/60 bg-surface-hover/40 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <span class="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    E-mail da conta
+                  </span>
+                  <p class="mt-0.5 truncate text-sm font-medium text-text-primary">
+                    {@current_email}
+                  </p>
+                </div>
+                <span class="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-xs text-text-secondary">
+                  <.icon name="hero-lock-closed" class="size-3 text-text-muted" /> Principal
+                </span>
+              </div>
             </div>
-
-            <.simple_form
-              for={@email_form}
-              id="email_form"
-              phx-change="validate_email"
-              phx-submit="update_email"
-            >
-              <.input
-                field={@email_form[:email]}
-                type="email"
-                label="Email"
-                required
-                autocomplete="email"
-              />
-              <.input
-                field={@email_form[:current_password]}
-                type="password"
-                label="Senha atual"
-                required
-                name="current_password"
-                id="email_current_password"
-                autocomplete="current-password"
-              />
-
-              <:actions>
-                <.button type="submit" variant="primary" class="w-full sm:w-auto">
-                  Alterar Email
-                </.button>
-              </:actions>
-            </.simple_form>
           </div>
 
           <div id="password-settings" class="mt-6 border-t border-border pt-5">
