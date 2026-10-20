@@ -207,4 +207,12 @@ defmodule Streamix.Catalog do
 
   @doc "The pt-BR label of a canonical genre slug."
   defdelegate genre_name(slug), to: Streamix.Iptv.Genres.Vocabulary, as: :name
+
+  @doc "Stores TMDB genre ids and applies them to every matching provider copy."
+  defdelegate apply_tmdb_genres(kind, tmdb_id, genre_ids),
+    to: Streamix.Iptv.Genres,
+    as: :apply_tmdb
+
+  @doc "Replaces incremental source genres while preserving TMDB ownership."
+  defdelegate put_string_genres(kind, items), to: Streamix.Iptv.Genres
 end

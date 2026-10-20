@@ -4,6 +4,7 @@ defmodule Streamix.Iptv.Series do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Streamix.Iptv.Content.EnrichmentFields
 
   alias Streamix.Iptv.{Assets, CatalogItem, Genre, Provider, Season, SeriesAsset, SeriesCredit}
 
@@ -28,6 +29,8 @@ defmodule Streamix.Iptv.Series do
     field :plot, :string
     field :youtube_trailer, :string
     field :tmdb_id, :string
+    # Written only by Genres.apply_tmdb/3, never provider changesets.
+    field :tmdb_genre_ids, {:array, :integer}
     field :variant_key, :string, writable: :never, load_in_query: false
     field :tagline, :string
     field :content_rating, :string
@@ -72,6 +75,7 @@ defmodule Streamix.Iptv.Series do
   def changeset(series, attrs) do
     series
     |> cast(attrs, @fields)
+    |> EnrichmentFields.invalidate_tmdb_genres()
     |> validate_required([:series_id, :name, :provider_id])
     |> unique_constraint([:provider_id, :series_id])
     |> foreign_key_constraint(:provider_id)

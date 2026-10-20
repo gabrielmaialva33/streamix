@@ -354,6 +354,9 @@ defmodule Streamix.Iptv do
 
   defdelegate list_genres_for(kind), to: Catalog
 
+  defdelegate apply_tmdb_genres(kind, tmdb_id, genre_ids), to: CatalogBoundary
+  defdelegate put_string_genres(kind, items), to: CatalogBoundary
+
   defdelegate list_public_movies_by_genre(genre, opts \\ []),
     to: Catalog,
     as: :list_movies_by_genre

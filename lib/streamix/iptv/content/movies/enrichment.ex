@@ -2,6 +2,7 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
   @moduledoc false
 
   alias Streamix.Iptv.{
+    Genres,
     Movie,
     MovieAsset,
     TmdbClient,
@@ -87,14 +88,27 @@ defmodule Streamix.Iptv.Content.Movies.Enrichment do
   def update_movie(movie, attrs) do
     {backdrops, attrs} = Map.pop(attrs, :_backdrop_urls, [])
     {images, attrs} = Map.pop(attrs, :_image_urls, [])
+    {genre_ids, attrs} = Map.pop(attrs, :tmdb_genre_ids)
     attrs = promote_tmdb_title(attrs, movie.title)
 
-    with {:ok, updated} <- movie |> Movie.changeset(attrs) |> Repo.update() do
+    with {:ok, updated} <- movie |> Movie.changeset(attrs) |> Repo.update(),
+         {:ok, updated} <- apply_tmdb_genres(updated, genre_ids) do
       persist_movie_assets(updated.id, "backdrop", backdrops)
       persist_movie_assets(updated.id, "image", images)
       {:ok, updated}
     end
   end
+
+  defp apply_tmdb_genres(%{tmdb_id: tmdb_id} = movie, ids)
+       when is_list(ids) and is_binary(tmdb_id) and tmdb_id != "" do
+    with {:ok, _stats} <- Genres.apply_tmdb(:movies, movie.tmdb_id, ids) do
+      updated = %{movie | tmdb_genre_ids: Repo.reload!(movie).tmdb_genre_ids}
+      {:ok, Repo.preload(updated, :genres, force: true)}
+    end
+  end
+
+  defp apply_tmdb_genres(_movie, ids) when is_list(ids), do: {:error, :missing_tmdb_id}
+  defp apply_tmdb_genres(movie, _ids), do: {:ok, movie}
 
   def persist_movie_assets(_movie_id, _type, nil), do: :ok
   def persist_movie_assets(_movie_id, _type, []), do: :ok

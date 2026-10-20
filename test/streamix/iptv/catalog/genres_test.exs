@@ -3,6 +3,7 @@ defmodule Streamix.Iptv.GenresTest do
 
   import Streamix.IptvFixtures
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Streamix.Iptv.{Category, Genre, Genres, Movie, Series}
   alias Streamix.Iptv.Genres.Vocabulary
   alias Streamix.Iptv.Sync.Metadata
@@ -166,6 +167,192 @@ defmodule Streamix.Iptv.GenresTest do
 
       assert slugs(mine) == ["drama"]
       assert slugs(theirs) == ["terror"]
+    end
+  end
+
+  describe "TMDB and incremental source ownership" do
+    test "TMDB replaces genres across providers, stores ids on adult copies, and is idempotent" do
+      provider = global_provider_fixture()
+      other = global_provider_fixture()
+      movie = movie_fixture(provider, %{tmdb_id: "900001"})
+      copy = movie_fixture(other, %{tmdb_id: "900001"})
+      adult = movie_fixture(other, %{tmdb_id: "900001"})
+      untouched = movie_fixture(provider, %{tmdb_id: "900002"})
+      show = series_content_fixture(provider, %{tmdb_id: "900001"})
+      in_category!(adult, category!(other, "vod", "Adult", is_adult: true))
+      ids = Genres.canonical_ids()
+      for item <- [movie, copy, adult, untouched], do: link!(item, Repo.get!(Genre, ids["drama"]))
+
+      assert {:ok, _} = Genres.apply_tmdb(:movies, "900001", [28, 12, 28, 999_999])
+
+      for item <- [movie, copy] do
+        assert slugs(item) == ~w(acao aventura)
+        assert Repo.get!(Movie, item.id).tmdb_genre_ids == [28, 12, 28, 999_999]
+      end
+
+      assert Repo.get!(Movie, adult.id).tmdb_genre_ids == [28, 12, 28, 999_999]
+      assert slugs(adult) == []
+      assert slugs(untouched) == ["drama"]
+      assert Repo.get!(Series, show.id).tmdb_genre_ids == nil
+
+      assert {:ok, %{removed: 0, added: 0, updated: 0}} =
+               Genres.apply_tmdb(:movies, "900001", [28, 12, 28, 999_999])
+    end
+
+    test "reconcile leaves TMDB-owned links untouched, but adult veto still clears them" do
+      provider = global_provider_fixture()
+      show = series_content_fixture(provider, %{tmdb_id: "900003"})
+      in_category!(show, category!(provider, "series", "Comédia"))
+      assert {:ok, _} = Genres.apply_tmdb(:series, "900003", [10_765])
+      sync_series(provider, [%{"series_id" => show.series_id, "genre" => "Drama"}])
+      assert slugs(show) == ~w(fantasia ficcao-cientifica)
+
+      # Preservation means no repairs/additions either: ownership is not fallback.
+      Repo.delete_all(from g in "series_genres", where: g.series_id == ^show.id)
+      sync_series(provider, [%{"series_id" => show.series_id, "genre" => "Drama"}])
+      assert slugs(show) == []
+      assert {:ok, _} = Genres.apply_tmdb(:series, "900003", [10_765])
+      in_category!(show, category!(provider, "series", "Adult", is_adult: true))
+      sync_series(provider, [%{"series_id" => show.series_id, "genre" => "Drama"}])
+      assert slugs(show) == []
+    end
+
+    test "empty or unknown TMDB mappings store fetched state but allow normal reconciliation" do
+      provider = global_provider_fixture()
+
+      for {tmdb_id, tmdb_ids} <- [{"900004", []}, {"900005", [10_770]}, {"900006", [28]}] do
+        show = series_content_fixture(provider, %{tmdb_id: tmdb_id})
+        in_category!(show, category!(provider, "series", "Comédia"))
+        assert {:ok, _} = Genres.apply_tmdb(:series, tmdb_id, tmdb_ids)
+        assert Repo.get!(Series, show.id).tmdb_genre_ids == tmdb_ids
+      end
+
+      Genres.reconcile(:series, provider.id, [])
+
+      for show <- Repo.all(from s in Series, where: s.provider_id == ^provider.id) do
+        assert slugs(show) == ["comedia"]
+      end
+    end
+
+    test "empty TMDB mapping preserves existing fallback but clears adult links" do
+      provider = global_provider_fixture()
+      movie = movie_fixture(provider, %{tmdb_id: "900007"})
+      adult = movie_fixture(provider, %{tmdb_id: "900007"})
+      in_category!(adult, category!(provider, "vod", "Adult", is_adult: true))
+      drama = Repo.get!(Genre, Genres.canonical_ids()["drama"])
+      link!(movie, drama)
+      link!(adult, drama)
+      assert {:ok, _} = Genres.apply_tmdb(:movies, "900007", [])
+      assert slugs(movie) == ["drama"]
+      assert slugs(adult) == []
+    end
+
+    test "incremental strings replace only submitted unowned items and respect adult veto" do
+      provider = global_provider_fixture()
+      movie = movie_fixture(provider)
+      other = movie_fixture(provider)
+      owned = movie_fixture(provider, %{tmdb_id: "900008"})
+      adult = movie_fixture(provider, %{tmdb_id: "900009"})
+      Genres.put_string_genres(:movies, [{movie.id, "Drama"}, {other.id, "Drama"}])
+      assert {:ok, _} = Genres.apply_tmdb(:movies, "900008", [28])
+      assert {:ok, _} = Genres.apply_tmdb(:movies, "900009", [28])
+      in_category!(adult, category!(provider, "vod", "Adult", is_adult: true))
+
+      Genres.put_string_genres(:movies, [
+        {movie.id, "Comedy / Romance"},
+        {owned.id, "Terror"},
+        {adult.id, "Drama"}
+      ])
+
+      assert slugs(movie) == ~w(comedia romance)
+      assert slugs(other) == ["drama"]
+      assert slugs(owned) == ["acao"]
+      assert slugs(adult) == []
+      Genres.put_string_genres(:movies, [{movie.id, nil}])
+      assert slugs(movie) == []
+      assert Genres.put_string_genres(:movies, []) == %{removed: 0, added: 0}
+    end
+  end
+
+  test "TMDB application rechecks identity after a concurrent correction commits" do
+    parent = self()
+    old_id = Integer.to_string(System.unique_integer([:positive]) + 80_000_000)
+    new_id = old_id <> "1"
+
+    {provider, movie, created_genres} =
+      unboxed(fn ->
+        provider = global_provider_fixture()
+        previous_ids = Repo.all(from g in Genre, select: g.id)
+        created_genres = Map.values(Genres.canonical_ids()) -- previous_ids
+        {provider, movie_fixture(provider, %{tmdb_id: old_id}), created_genres}
+      end)
+
+    on_exit(fn ->
+      unboxed(fn ->
+        Repo.delete!(provider)
+        Repo.delete_all(from g in Genre, where: g.id in ^created_genres)
+      end)
+    end)
+
+    updater =
+      Task.async(fn ->
+        unboxed(fn ->
+          Repo.transaction(fn ->
+            movie |> Movie.changeset(%{tmdb_id: new_id}) |> Repo.update!()
+            send(parent, :identity_changed)
+
+            receive do
+              :commit_identity -> :ok
+            after
+              10_000 -> Repo.rollback(:barrier_timeout)
+            end
+          end)
+        end)
+      end)
+
+    assert_receive :identity_changed
+
+    applier =
+      Task.async(fn ->
+        unboxed(fn ->
+          Repo.transaction(fn ->
+            %{rows: [[backend]]} = Repo.query!("SELECT pg_backend_pid()")
+            send(parent, {:applying, backend})
+            Genres.apply_tmdb(:movies, old_id, [28])
+          end)
+        end)
+      end)
+
+    try do
+      assert_receive {:applying, backend}
+      await_blocked(backend, System.monotonic_time(:millisecond) + 5_000)
+    after
+      send(updater.pid, :commit_identity)
+    end
+
+    assert {:ok, :ok} = Task.await(updater)
+    assert {:ok, {:ok, %{updated: 0, added: 0, removed: 0}}} = Task.await(applier)
+
+    unboxed(fn ->
+      assert Repo.reload!(movie).tmdb_id == new_id
+      assert Repo.reload!(movie).tmdb_genre_ids == nil
+      assert slugs(movie) == []
+    end)
+  end
+
+  defp unboxed(fun), do: Sandbox.unboxed_run(Repo, fun)
+
+  defp await_blocked(backend, deadline) do
+    %{rows: [[blocked]]} = Repo.query!("SELECT cardinality(pg_blocking_pids($1)) > 0", [backend])
+
+    if not blocked do
+      assert System.monotonic_time(:millisecond) < deadline,
+             "TMDB writer never reached the row lock"
+
+      receive do
+      after
+        10 -> await_blocked(backend, deadline)
+      end
     end
   end
 

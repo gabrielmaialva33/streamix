@@ -5,17 +5,18 @@ defmodule Streamix.Iptv.Genres do
 
   A title's genres are derived, in order of strength:
 
-    1. its provider genre string, mapped by `Streamix.Iptv.Genres.Normalizer`
+    1. usable TMDB genre ids, when fetched;
+    2. its provider genre string, mapped by `Streamix.Iptv.Genres.Normalizer`
        (series carry one; Xtream movie lists do not);
-    2. otherwise its provider category names ("▶️ Terror & Suspense");
-    3. none at all when any of its categories is adult, the rule
+    3. otherwise its provider category names ("▶️ Terror & Suspense");
+    4. none at all when any of its categories is adult, the rule
        `Streamix.Iptv.AdultFilter` applies to listings.
 
   Sync calls `reconcile/4` for the whole provider, so a changed string, a
   changed category or a title turning adult replaces the old genres instead
   of piling up. `canonicalize/0` converts a catalog that still holds the raw
-  names sync used to create; run it with the `sync` queue paused, since it
-  rewrites links a running sync would also write.
+  names sync used to create; run it with all genre writers drained, including
+  sync, TMDB backfills and request-triggered enrichment, since it rewrites links.
   """
 
   import Ecto.Query, warn: false
@@ -61,40 +62,164 @@ defmodule Streamix.Iptv.Genres do
   @spec reconcile(:movies | :series, integer(), [{integer(), integer()}], map()) ::
           %{removed: non_neg_integer(), added: non_neg_integer()}
   def reconcile(kind, provider_id, string_genres, ids \\ canonical_ids()) do
-    %{table: table, fk: fk, content: content, type: type} = Map.fetch!(@kinds, kind)
+    {:ok, result} =
+      genre_transaction(kind, fn -> reconcile_locked(kind, provider_id, string_genres, ids) end)
+
+    result
+  end
+
+  defp reconcile_locked(kind, provider_id, string_genres, ids) do
+    config = %{content: content, type: type} = Map.fetch!(@kinds, kind)
     {item_ids, genre_ids} = Enum.unzip(string_genres)
     {category_ids, category_genre_ids} = category_genres(type, provider_id, ids)
 
-    %{rows: [[removed, added]]} =
+    replace_links(
+      config,
+      """
+      SELECT c.id, c.catalog_item_id,
+             coalesce(c.tmdb_genre_ids && $6::integer[], false) AS owned,
+             #{adult_sql()} AS adult
+      FROM #{content} c WHERE c.provider_id = $3
+      """,
+      """
+      SELECT s.item_id, s.genre_id
+      FROM unnest($1::bigint[], $2::bigint[]) AS s(item_id, genre_id)
+      JOIN items i ON i.id = s.item_id WHERE NOT i.owned AND NOT i.adult
+      UNION
+      SELECT i.id, m.genre_id FROM items i
+      JOIN item_categories ic ON ic.catalog_item_id = i.catalog_item_id
+      JOIN unnest($4::bigint[], $5::bigint[]) AS m(category_id, genre_id)
+        ON m.category_id = ic.category_id
+      WHERE NOT i.owned AND NOT i.adult
+        AND NOT (i.id = ANY($1::bigint[]))
+      """,
+      [item_ids, genre_ids, provider_id, category_ids, category_genre_ids, tmdb_ids(kind)]
+    )
+  end
+
+  @doc """
+  Stores a fetched TMDB genre list on every matching copy and replaces its links
+  when the mapping is usable. Empty mappings preserve fallback links; adult
+  copies always lose their links. The whole application is one transaction.
+  """
+  @spec apply_tmdb(:movies | :series, String.t() | integer(), [integer()]) ::
+          {:ok, map()} | {:error, term()}
+  def apply_tmdb(kind, tmdb_id, genre_ids)
+      when (is_binary(tmdb_id) and tmdb_id != "") or (is_integer(tmdb_id) and tmdb_id > 0) do
+    unless is_list(genre_ids) and Enum.all?(genre_ids, &is_integer/1) do
+      raise ArgumentError, "TMDB genre ids must be a list of integers"
+    end
+
+    genre_transaction(kind, fn -> apply_tmdb_locked(kind, to_string(tmdb_id), genre_ids) end)
+  end
+
+  defp apply_tmdb_locked(kind, tmdb_id, genre_ids) do
+    config = %{content: content} = Map.fetch!(@kinds, kind)
+    ids = canonical_ids()
+
+    desired_ids =
+      kind |> tmdb_type() |> Vocabulary.from_tmdb(genre_ids) |> Enum.map(&Map.fetch!(ids, &1))
+
+    # One statement gives the stored ids and link replacement the same target
+    # snapshot, including when catalog rows are being inserted concurrently.
+    replace_links(
+      config,
+      """
+      SELECT c.id, cardinality($3::bigint[]) = 0 AS owned, #{adult_sql()} AS adult
+      FROM #{content} c WHERE c.tmdb_id = $1 AND c.tmdb_id <> ''
+      ORDER BY c.id FOR NO KEY UPDATE OF c
+      """,
+      """
+      SELECT i.id AS item_id, g.genre_id
+      FROM items i CROSS JOIN unnest($3::bigint[]) AS g(genre_id)
+      WHERE NOT i.adult
+      """,
+      [tmdb_id, genre_ids, desired_ids],
+      """
+      UPDATE #{content} c SET tmdb_genre_ids = $2::integer[]
+      FROM items i WHERE c.id = i.id AND c.tmdb_genre_ids IS DISTINCT FROM $2::integer[]
+      RETURNING 1
+      """
+    )
+  end
+
+  @doc """
+  Replaces only the submitted incremental source items' genres. TMDB-owned
+  items are untouched, except that adult items always lose their links.
+  """
+  @spec put_string_genres(:movies | :series, [{integer(), String.t() | nil}]) :: map()
+  def put_string_genres(_kind, []), do: %{removed: 0, added: 0}
+
+  def put_string_genres(kind, items) do
+    {:ok, result} = genre_transaction(kind, fn -> put_strings_locked(kind, items) end)
+    result
+  end
+
+  defp put_strings_locked(kind, items) do
+    config = %{content: content} = Map.fetch!(@kinds, kind)
+    ids = canonical_ids()
+    item_ids = items |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+
+    {string_items, genre_ids} =
+      items
+      |> Enum.flat_map(fn {id, raw} ->
+        for slug <- Normalizer.normalize(raw), do: {id, Map.fetch!(ids, slug)}
+      end)
+      |> Enum.unzip()
+
+    replace_links(
+      config,
+      """
+      SELECT c.id, coalesce(c.tmdb_genre_ids && $4::integer[], false) AS owned,
+             #{adult_sql()} AS adult
+      FROM #{content} c WHERE c.id = ANY($1::bigint[])
+      """,
+      """
+      SELECT DISTINCT s.item_id, s.genre_id
+      FROM unnest($2::bigint[], $3::bigint[]) AS s(item_id, genre_id)
+      JOIN items i ON i.id = s.item_id WHERE NOT i.owned AND NOT i.adult
+      """,
+      [item_ids, string_items, genre_ids, tmdb_ids(kind)]
+    )
+  end
+
+  # The gate spans ownership reads and writes, not just vocabulary initialization.
+  # canonicalize remains an operational migration with all genre writers drained.
+  defp genre_transaction(kind, fun) when kind in [:movies, :series] do
+    Repo.transaction(
+      fn ->
+        Repo.query!(
+          "SELECT pg_advisory_xact_lock(hashtext($1))",
+          ["streamix:genres:#{kind}"],
+          timeout: :timer.minutes(5)
+        )
+
+        fun.()
+      end,
+      timeout: :timer.minutes(5)
+    )
+  end
+
+  defp tmdb_type(:movies), do: :movie
+  defp tmdb_type(:series), do: :tv
+  defp tmdb_ids(kind), do: kind |> tmdb_type() |> Vocabulary.tmdb_ids()
+
+  defp adult_sql do
+    """
+    EXISTS (SELECT 1 FROM item_categories ic JOIN categories k ON k.id = ic.category_id
+            WHERE ic.catalog_item_id = c.catalog_item_id AND k.is_adult)
+    """
+  end
+
+  defp replace_links(%{table: table, fk: fk}, items, desired, params, stored \\ nil) do
+    %{rows: [[removed, added, updated]]} =
       Repo.query!(
         """
-        WITH strings AS (
-          SELECT * FROM unnest($1::bigint[], $2::bigint[]) AS s(item_id, genre_id)
-        ),
-        items AS (
-          SELECT c.id, c.catalog_item_id
-          FROM #{content} c
-          WHERE c.provider_id = $3
-            AND NOT EXISTS (
-              SELECT 1 FROM item_categories ic
-              JOIN categories k ON k.id = ic.category_id
-              WHERE ic.catalog_item_id = c.catalog_item_id AND k.is_adult
-            )
-        ),
-        desired AS (
-          SELECT s.item_id, s.genre_id FROM strings s JOIN items i ON i.id = s.item_id
-          UNION
-          SELECT i.id, m.genre_id
-          FROM items i
-          JOIN item_categories ic ON ic.catalog_item_id = i.catalog_item_id
-          JOIN unnest($4::bigint[], $5::bigint[]) AS m(category_id, genre_id)
-            ON m.category_id = ic.category_id
-          WHERE NOT EXISTS (SELECT 1 FROM strings s WHERE s.item_id = i.id)
-        ),
+        WITH items AS (#{items}), desired AS (#{desired}),
+        stored AS (#{stored || "SELECT 1 WHERE false"}),
         removed AS (
-          DELETE FROM #{table} l
-          USING #{content} c
-          WHERE l.#{fk} = c.id AND c.provider_id = $3
+          DELETE FROM #{table} l USING items i
+          WHERE l.#{fk} = i.id AND (NOT i.owned OR i.adult)
             AND NOT EXISTS (
               SELECT 1 FROM desired d WHERE d.item_id = l.#{fk} AND d.genre_id = l.genre_id
             )
@@ -103,16 +228,17 @@ defmodule Streamix.Iptv.Genres do
         added AS (
           INSERT INTO #{table} (#{fk}, genre_id)
           SELECT item_id, genre_id FROM desired ORDER BY 1, 2
-          ON CONFLICT DO NOTHING
-          RETURNING 1
+          ON CONFLICT DO NOTHING RETURNING 1
         )
-        SELECT (SELECT count(*) FROM removed), (SELECT count(*) FROM added)
+        SELECT (SELECT count(*) FROM removed), (SELECT count(*) FROM added),
+               (SELECT count(*) FROM stored)
         """,
-        [item_ids, genre_ids, provider_id, category_ids, category_genre_ids],
+        params,
         timeout: :timer.minutes(5)
       )
 
-    %{removed: removed, added: added}
+    result = %{removed: removed, added: added}
+    if stored, do: Map.put(result, :updated, updated), else: result
   end
 
   @doc """

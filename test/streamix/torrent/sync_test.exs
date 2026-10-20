@@ -25,6 +25,22 @@ defmodule Streamix.Torrent.SyncTest do
     {:ok, provider: torrent_provider_fixture()}
   end
 
+  test "source genre arrays reach canonical links and later TMDB ownership wins", %{
+    provider: provider
+  } do
+    item = sample_item("genres-movie", "Genre movie", [magnet("genre")])
+    seed_pages([{1, [Map.put(item, :genres, ["Action", "Comedy"])], %{next_page: nil}}])
+    assert {:ok, _} = Sync.sync_provider(provider)
+    movie = Repo.get_by!(Movie, provider_id: provider.id)
+    assert Enum.sort(Enum.map(Repo.preload(movie, :genres).genres, & &1.slug)) == ~w(acao comedia)
+
+    Repo.update_all(from(m in Movie, where: m.id == ^movie.id), set: [tmdb_id: "900010"])
+    assert {:ok, _} = Streamix.Catalog.apply_tmdb_genres(:movies, "900010", [18])
+    seed_pages([{1, [Map.put(item, :genres, ["Horror"])], %{next_page: nil}}])
+    assert {:ok, _} = Sync.sync_provider(provider)
+    assert Enum.map(Repo.preload(movie, :genres, force: true).genres, & &1.slug) == ["drama"]
+  end
+
   describe "sync_provider/1" do
     test "rejects non-torrent providers" do
       provider = %Provider{provider_type: :gindex, id: 1, name: "fake"}

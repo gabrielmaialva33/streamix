@@ -3,7 +3,7 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
 
   import Streamix.IptvFixtures
 
-  alias Streamix.Iptv.{LiveChannel, Movie, Series}
+  alias Streamix.Iptv.{Genres, LiveChannel, Movie, Series}
   alias Streamix.Iptv.Sync.ContentUpsert
   alias Streamix.Iptv.Sync.Normalizers.LiveChannel, as: ChannelNormalizer
   alias Streamix.Iptv.Sync.Normalizers.Movie, as: MovieNormalizer
@@ -82,6 +82,68 @@ defmodule Streamix.Iptv.Sync.ContentUpsertPreservationTest do
         {"movie", Movie, MovieNormalizer, :movie_fixture, :stream_id, :stream_icon},
         {"series", Series, SeriesNormalizer, :series_content_fixture, :series_id, :cover}
       ] do
+    test "#{kind} changesets invalidate genres only when the TMDB identity changes", %{
+      provider: provider
+    } do
+      schema = unquote(schema)
+      record = apply(Streamix.IptvFixtures, unquote(fixture), [provider, %{tmdb_id: "550"}])
+      record = record |> Ecto.Changeset.change(tmdb_genre_ids: [18]) |> Repo.update!()
+
+      for attrs <- [%{}, %{tmdb_id: "550"}, %{tmdb_genre_ids: [28]}] do
+        unchanged = schema.changeset(record, attrs) |> Ecto.Changeset.apply_changes()
+        assert unchanged.tmdb_genre_ids == [18]
+      end
+
+      updated = schema.changeset(record, %{tmdb_id: "551"}) |> Repo.update!()
+      assert updated.tmdb_id == "551"
+      assert updated.tmdb_genre_ids == nil
+    end
+
+    test "#{kind} upsert invalidates fetched genres on a new TMDB identity only", %{
+      provider: provider
+    } do
+      schema = unquote(schema)
+      id_field = unquote(id_field)
+      record = apply(Streamix.IptvFixtures, unquote(fixture), [provider, %{tmdb_id: "550"}])
+      record = record |> Ecto.Changeset.change(tmdb_genre_ids: [18]) |> Repo.update!()
+
+      for incoming <- ["550", nil, "", "0", "551"] do
+        payload = %{
+          Atom.to_string(id_field) => Map.fetch!(record, id_field),
+          "name" => record.name,
+          "tmdb_id" => incoming
+        }
+
+        sync([payload], provider, schema, unquote(normalizer), id_field, unquote(kind))
+        updated = Repo.reload!(record)
+
+        if incoming == "551" do
+          assert updated.tmdb_id == "551"
+          assert updated.tmdb_genre_ids == nil
+        else
+          assert updated.tmdb_id == "550"
+          assert updated.tmdb_genre_ids == [18]
+        end
+      end
+    end
+
+    test "#{kind} identity correction clears genres fetched after the struct was loaded", %{
+      provider: provider
+    } do
+      schema = unquote(schema)
+      record = apply(Streamix.IptvFixtures, unquote(fixture), [provider, %{tmdb_id: "550"}])
+      kind = if unquote(kind) == "movie", do: :movies, else: :series
+
+      assert record.tmdb_genre_ids == nil
+      assert {:ok, _} = Genres.apply_tmdb(kind, "550", [18])
+      assert Repo.reload!(record).tmdb_genre_ids == [18]
+
+      record |> schema.changeset(%{tmdb_id: "551"}) |> Repo.update!()
+      updated = Repo.reload!(record)
+      assert updated.tmdb_id == "551"
+      assert updated.tmdb_genre_ids == nil
+    end
+
     test "#{kind} metadata can be filled and refreshed, but never erased by blank list values", %{
       provider: provider
     } do

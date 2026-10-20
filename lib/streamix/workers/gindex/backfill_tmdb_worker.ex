@@ -51,6 +51,7 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
 
   import Ecto.Query
 
+  alias Streamix.Catalog
   alias Streamix.Gindex.{AnimeMatcher, ReleaseParser, TmdbMatcher, TomatoMatcher}
   alias Streamix.Iptv.{Movie, Series, TmdbClient}
   alias Streamix.Repo
@@ -214,13 +215,22 @@ defmodule Streamix.Workers.Gindex.BackfillTmdbWorker do
     case TmdbMatcher.best_match(title, year, kind) do
       {:ok, match} ->
         attrs = kind |> build_hit_attrs(match) |> keep_artwork(row.artwork)
-        update_row(schema, row.id, attrs)
+        {1, _} = update_row(schema, row.id, attrs)
+        apply_match_genres(kind, match)
         :hit
 
       {:miss, reason} ->
         {:tmdb_miss, reasons ++ ["tmdb:#{format_miss_reason(reason)}"]}
     end
   end
+
+  defp apply_match_genres(kind, %{genre_ids: ids, tmdb_id: tmdb_id}) when is_list(ids) do
+    catalog_kind = if kind == :movie, do: :movies, else: :series
+    {:ok, _stats} = Catalog.apply_tmdb_genres(catalog_kind, tmdb_id, ids)
+    :ok
+  end
+
+  defp apply_match_genres(_kind, _match), do: :ok
 
   defp run_tmdb_only(schema, kind, row, title, year) do
     case try_tmdb(schema, kind, row, title, year, []) do

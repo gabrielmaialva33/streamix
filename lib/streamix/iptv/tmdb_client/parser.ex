@@ -7,6 +7,7 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
     {gallery_backdrops, gallery_posters} = parse_images_gallery(data["images"])
 
     %{}
+    |> maybe_put(:tmdb_genre_ids, parse_genre_ids(data["genres"]))
     |> maybe_put(:plot, data["overview"])
     # Private key: only promoted to `:title` when the row has none. See
     # `Content.Movies.Enrichment.update_movie/2`.
@@ -28,6 +29,7 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
     {gallery_backdrops, gallery_posters} = parse_images_gallery(data["images"])
 
     %{}
+    |> maybe_put(:tmdb_genre_ids, parse_genre_ids(data["genres"]))
     |> maybe_put(:plot, data["overview"])
     # TMDB names a TV record with `name`, not `title`. Same private-key rule
     # as movies: fills a blank title, never replaces one.
@@ -71,6 +73,20 @@ defmodule Streamix.Iptv.TmdbClient.Parser do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  @doc "TMDB genre ids of a movie or TV detail response, or nil when it has none."
+  def genre_ids(data) when is_map(data), do: parse_genre_ids(data["genres"])
+
+  defp parse_genre_ids(genres) when is_list(genres) do
+    genres
+    |> Enum.flat_map(fn
+      %{"id" => id} when is_integer(id) and id > 0 -> [id]
+      _ -> []
+    end)
+    |> Enum.uniq()
+  end
+
+  defp parse_genre_ids(_), do: nil
 
   defp parse_rating(nil), do: nil
   defp parse_rating(0), do: nil

@@ -7,6 +7,7 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
   """
 
   import Ecto.Query
+  import Ecto.Changeset, only: [fetch_change: 2, force_change: 3]
 
   @fields %{
     "movie" =>
@@ -16,6 +17,14 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
   }
 
   def fields(content_type), do: Map.get(@fields, content_type, [])
+
+  @doc "Invalidates genres fetched for a different TMDB identity."
+  def invalidate_tmdb_genres(changeset) do
+    case fetch_change(changeset, :tmdb_id) do
+      {:ok, _new_id} -> force_change(changeset, :tmdb_genre_ids, nil)
+      :error -> changeset
+    end
+  end
 
   # Unlike insert_all, changesets interpret explicit nil/empty values as changes.
   # Omit those keys entirely, including whitespace that Ecto casts to nil.
@@ -40,7 +49,31 @@ defmodule Streamix.Iptv.Content.EnrichmentFields do
         {key, conflict_value(key, key in enriched, schema.__schema__(:type, key))}
       end)
 
+    updates =
+      if content_type in ["movie", "series"] and :tmdb_id in row_fields do
+        [{:tmdb_genre_ids, retained_tmdb_genres()} | updates]
+      else
+        updates
+      end
+
     from(content in schema, update: [set: ^updates])
+  end
+
+  # Compare the same effective identifier used by conflict_value/3: omitted,
+  # empty and zero provider values preserve both identity and its fetched genres.
+  defp retained_tmdb_genres do
+    dynamic(
+      [content],
+      fragment(
+        """
+        CASE WHEN COALESCE(NULLIF(NULLIF(EXCLUDED.tmdb_id, ''), '0'), ?)
+          IS DISTINCT FROM ? THEN NULL ELSE ? END
+        """,
+        content.tmdb_id,
+        content.tmdb_id,
+        content.tmdb_genre_ids
+      )
+    )
   end
 
   # Xtream panels also use "0" for a missing TMDB identifier.

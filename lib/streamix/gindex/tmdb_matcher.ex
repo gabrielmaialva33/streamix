@@ -32,6 +32,7 @@ defmodule Streamix.Gindex.TmdbMatcher do
           backdrop_path: String.t() | nil,
           year: integer() | nil,
           popularity: float(),
+          genre_ids: [pos_integer()] | nil,
           score: number(),
           original_language: String.t() | nil
         }
@@ -94,6 +95,7 @@ defmodule Streamix.Gindex.TmdbMatcher do
       backdrop_path: result["backdrop_path"],
       year: extract_year(result["release_date"]),
       popularity: result["popularity"] || 0.0,
+      genre_ids: normalize_genre_ids(result["genre_ids"]),
       original_language: result["original_language"]
     }
   end
@@ -107,9 +109,15 @@ defmodule Streamix.Gindex.TmdbMatcher do
       backdrop_path: result["backdrop_path"],
       year: extract_year(result["first_air_date"]),
       popularity: result["popularity"] || 0.0,
+      genre_ids: normalize_genre_ids(result["genre_ids"]),
       original_language: result["original_language"]
     }
   end
+
+  defp normalize_genre_ids(ids) when is_list(ids),
+    do: ids |> Enum.filter(&(is_integer(&1) and &1 > 0)) |> Enum.uniq()
+
+  defp normalize_genre_ids(_), do: nil
 
   defp extract_year(nil), do: nil
   defp extract_year(""), do: nil

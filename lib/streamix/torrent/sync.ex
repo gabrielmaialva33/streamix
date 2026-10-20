@@ -348,15 +348,13 @@ defmodule Streamix.Torrent.Sync do
   end
 
   defp upsert_item(source, source_slug, item) do
-    Repo.transact(fn ->
-      with {:ok, movie_id} <-
-             Catalog.upsert_movie(
-               source.provider_id,
-               movie_attrs(item, synthesize_stream_id(item.external_id))
-             ) do
-        {:ok, upsert_torrents(movie_id, source_slug, item.torrents || [])}
-      end
-    end)
+    with {:ok, {movie_id, torrent_count}} <- persist_item(source, source_slug, item) do
+      # Acquire the genre gate after committing content writes, in the same
+      # lock order as enrichment and bulk reconciliation.
+      raw_genres = item |> Map.get(:genres, []) |> List.wrap() |> Enum.join(", ")
+      Streamix.Catalog.put_string_genres(:movies, [{movie_id, raw_genres}])
+      {:ok, torrent_count}
+    end
   rescue
     error ->
       Logger.error(
@@ -365,6 +363,18 @@ defmodule Streamix.Torrent.Sync do
       )
 
       {:error, {:persistence_exception, Exception.message(error)}}
+  end
+
+  defp persist_item(source, source_slug, item) do
+    Repo.transact(fn ->
+      with {:ok, movie_id} <-
+             Catalog.upsert_movie(
+               source.provider_id,
+               movie_attrs(item, synthesize_stream_id(item.external_id))
+             ) do
+        {:ok, {movie_id, upsert_torrents(movie_id, source_slug, item.torrents || [])}}
+      end
+    end)
   end
 
   # Upserts the parent movie row.

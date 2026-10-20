@@ -51,6 +51,14 @@ defmodule Streamix.Iptv.Genres.Vocabulary do
           {type, mapping}
         end)
 
+  @tmdb_ids Map.new(@tmdb, fn {type, mapping} ->
+              {type, mapping |> Map.keys() |> Enum.filter(&is_integer/1) |> Enum.sort()}
+            end)
+
+  @doc "TMDB ids which map to at least one canonical genre for this media type."
+  @spec tmdb_ids(:movie | :tv) :: [integer()]
+  def tmdb_ids(type), do: Map.fetch!(@tmdb_ids, type)
+
   @type genre :: %{slug: String.t(), name: String.t(), position: pos_integer()}
 
   @spec all() :: [genre()]
