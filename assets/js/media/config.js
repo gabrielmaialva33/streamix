@@ -7,8 +7,16 @@
 
 // AVPlayer local paths (bundled with app)
 export const AVPLAYER_CONFIG = {
-  // Local base path for AVPlayer assets
+  // Local base path for AVPlayer assets (WASM decoders)
   localBasePath: "/avplayer",
+
+  // The vendored libmedia scripts and their webpack chunks. /avplayer is
+  // served immutable (and the service worker caches it), so a changed bundle
+  // needs a new directory. r2 is libmedia v1.2.0 with one patch in
+  // 168.avplayer.js: SubtitleRender skips rescaling packets whose time-base
+  // is zero (Matroska subtitles arrive that way, already in milliseconds)
+  // instead of dividing by zero and killing the renderer.
+  scriptBasePath: "/avplayer/r2",
 
   // CDN base URL for WASM files (fallback if local not available)
   cdnBasePath: "https://cdn.jsdelivr.net/gh/zhaohappy/libmedia@latest/dist",
@@ -116,8 +124,8 @@ export function getWasmUrl(type, filename, useCdn = false) {
 export function getAvPlayerScriptUrls() {
   const config = AVPLAYER_CONFIG;
   return {
-    polyfill: `${config.localBasePath}${config.scripts.polyfill}`,
-    player: `${config.localBasePath}${config.scripts.player}`,
+    polyfill: `${config.scriptBasePath}${config.scripts.polyfill}`,
+    player: `${config.scriptBasePath}${config.scripts.player}`,
   };
 }
 

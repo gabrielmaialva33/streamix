@@ -40,6 +40,9 @@ let activeAudioDetection = null;
 // FFmpeg's AVDisposition bit, which libmedia keeps on each stream.
 const AV_DISPOSITION_FORCED = 0x40;
 
+// libmedia's AVFormat values for Matroska and WebM.
+const MATROSKA_FORMATS = new Set([8, 9]);
+
 function hasDisposition(stream, flag) {
   return (Number(stream?.disposition) & flag) === flag;
 }
@@ -338,7 +341,7 @@ function loadScript(src, id = null) {
 function configureWebpackPublicPath() {
   // Only set if not already configured (prevents conflicts with other modules)
   if (typeof __webpack_public_path__ === "undefined") {
-    window.__webpack_public_path__ = `${AVPLAYER_CONFIG.localBasePath}/`;
+    window.__webpack_public_path__ = `${AVPLAYER_CONFIG.scriptBasePath}/`;
     log.debug("Webpack public path configured:", window.__webpack_public_path__);
   }
 }
@@ -821,6 +824,18 @@ export class AVPlayerWrapper {
     }
   }
 
+  // Matroska tracks that omit their language are English by specification
+  // (muxers drop the element when it is "eng"); libmedia leaves it empty.
+  _defaultTrackLanguage() {
+    try {
+      const format = this.player?.getFormatContext?.()?.format;
+      const url = String(this.currentUrl || "");
+      return MATROSKA_FORMATS.has(format) || /\.(mkv|webm)(\?|$)/i.test(url) ? "eng" : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
   // Stream list from AVPlayer's public API, empty before load or on versions
   // without it.
   _streams() {
@@ -1037,6 +1052,7 @@ export class AVPlayerWrapper {
       // a low BPS too) for audio, listing a dozen fake audio tracks.
       if (typeof this.player.getStreams === "function") {
         const selectedId = this.player.getSelectedAudioStreamId?.() ?? -1;
+        const defaultLanguage = this._defaultTrackLanguage();
         const audioStreams =
           this.player.getStreams()?.filter((stream) => stream.mediaType === "Audio") || [];
 
@@ -1049,7 +1065,7 @@ export class AVPlayerWrapper {
               index,
               streamIndex: stream.index,
               label: metadata.title || `Audio ${index + 1}`,
-              language: metadata.language || "",
+              language: metadata.language || defaultLanguage,
               channels: streamChannels(stream),
               selected: stream.id === selectedId,
             };
@@ -1148,7 +1164,12 @@ export class AVPlayerWrapper {
       // Method 2: AVPlayer's public stream API covers embedded and external
       // subtitles for MP4/MKV without reaching into private player state.
       if (typeof this.player.getStreams === "function") {
-        const selectedId = this.player.getSelectedSubtitleStreamId?.() ?? -1;
+        // libmedia picks a default track when its renderer starts; it stays
+        // hidden (and unselected for the viewer) until one is chosen.
+        const selectedId = this._subtitleChosen
+          ? (this.player.getSelectedSubtitleStreamId?.() ?? -1)
+          : -1;
+        const defaultLanguage = this._defaultTrackLanguage();
         const streams = this.player.getStreams();
         const subtitleStreams =
           streams?.filter(
@@ -1168,7 +1189,7 @@ export class AVPlayerWrapper {
                 metadata.languageString ||
                 metadata.name ||
                 `Subtitle ${index + 1}`,
-              language: metadata.language || "",
+              language: metadata.language || defaultLanguage,
               forced: hasDisposition(stream, AV_DISPOSITION_FORCED),
               selected: stream.id === selectedId,
             };

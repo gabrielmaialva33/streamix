@@ -286,3 +286,41 @@ test("play keeps the subtitle renderer off when a stream would crash it", () =>
 
     assert.deepEqual(calls, [["play", { video: true, audio: true, subtitle: false }]]);
   }));
+
+test("Matroska tracks without a language are English, and libmedia's default subtitle is not the viewer's", async () => {
+  const wrapper = createWrapper();
+  wrapper.currentUrl = "https://example.test/stream/episode.mkv";
+  wrapper.player = createPlayer({
+    getStreams: () => [
+      stream(1, "Audio", {}),
+      stream(3, "Subtitle", {}),
+      stream(4, "Subtitle", { language: "por" }),
+    ],
+    getSelectedSubtitleStreamId: () => 4,
+    async selectSubtitle() {},
+    setSubtitleEnable() {},
+  });
+
+  const [audioTrack] = await wrapper.getAudioTracks();
+  assert.equal(audioTrack.language, "eng");
+
+  const hidden = await wrapper.getSubtitleTracks();
+  assert.deepEqual(
+    hidden.map(({ language, selected }) => ({ language, selected })),
+    [
+      { language: "eng", selected: false },
+      { language: "por", selected: false },
+    ],
+  );
+
+  await wrapper.selectSubtitleTrack(4);
+  const chosen = await wrapper.getSubtitleTracks();
+  assert.deepEqual(
+    chosen.map(({ selected }) => selected),
+    [false, true],
+  );
+
+  // Other containers keep an empty language.
+  wrapper.currentUrl = "https://example.test/stream/movie.mp4";
+  assert.equal((await wrapper.getAudioTracks())[0].language, "");
+});
