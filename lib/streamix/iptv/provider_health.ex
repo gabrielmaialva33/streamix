@@ -228,8 +228,11 @@ defmodule Streamix.Iptv.ProviderHealth do
         end
 
       {:error, _reason} ->
-        # XtreamClient already recorded a sanitized control-plane failure.
-        %{status: :unhealthy, capabilities: nil}
+        # XtreamClient already recorded a sanitized control-plane failure, and
+        # the runtime's rule decides what it means: degraded at first,
+        # unhealthy after three in a row or a terminal reason. One probe that
+        # timed out while the app was booting is not an outage.
+        %{status: :unknown, capabilities: nil}
     end
   rescue
     _ -> %{status: :unknown, capabilities: nil}

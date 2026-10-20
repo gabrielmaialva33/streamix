@@ -66,6 +66,26 @@ defmodule Streamix.Iptv.ProviderHealthTest do
     assert report.status == :unhealthy
   end
 
+  # Right after a deploy one probe can time out while the app boots; that
+  # alone used to raise the red "Provedor IPTV indisponível" banner.
+  test "a failed probe degrades a provider until failures repeat" do
+    provider = global_provider_fixture(%{url: "http://127.0.0.1:9"})
+    probe_key = {:provider_probe, provider.id}
+    ConCache.delete(:streamix_l1_cache, probe_key)
+    on_exit(fn -> ConCache.delete(:streamix_l1_cache, probe_key) end)
+
+    [report] = ProviderHealth.list_reports()
+
+    assert report.status == :degraded
+    assert report.dimensions.control.status == :degraded
+
+    for _ <- 1..2, do: ProviderRuntime.record_failure(provider.id, :control, :timeout)
+
+    [report] = ProviderHealth.list_reports(probe: false)
+
+    assert report.status == :unhealthy
+  end
+
   test "a declared expiry date never degrades an authenticated active account" do
     provider = global_provider_fixture()
 

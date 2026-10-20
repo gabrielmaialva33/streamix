@@ -56,6 +56,9 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Episodes embedded in `GET /api/v1/catalog/series/:id` now carry `season_number`, like the episode detail.
 - The home genre filters use canonical slugs and exact matches; before, only "Drama" matched, because the filter
   values were English and compared as substrings of pt-BR genre names.
+- A failed provider health probe no longer marks the provider unavailable on its own: the control-plane rule decides
+  (degraded at first, unavailable after three failures in a row or a terminal reason), so a probe that times out
+  while the app boots after a deploy shows "instável" at most, not the red "Provedor IPTV indisponível" banner.
 - EPG sync no longer requests `/xmltv.php` from a provider whose channels declare no EPG id; there is nothing a guide
   could attach to, and panels like that answer 404.
 - The web app shows clean titles: provider release noise (`[LEG]`, `[L]`, `4K [Hybrid]`, `(2025) (2025)`, `[Reel]`,
