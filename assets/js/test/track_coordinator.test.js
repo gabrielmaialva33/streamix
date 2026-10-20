@@ -284,3 +284,28 @@ test("reports asynchronous command failures without replacing them", async () =>
   await assert.rejects(coordinator.selectAudioTrack(0), (error) => error === failure);
   assert.deepEqual(errors, [[failure, "selectAudioTrack"]]);
 });
+
+test("selects by track index even when another track's id equals that index", async () => {
+  const calls = [];
+  // AVPlayer lists MKV audio by stream id: Portuguese is stream 1, English 2.
+  const engine = engineDouble({
+    getAudioTracks: () => [
+      { id: 1, index: 0, language: "por" },
+      { id: 2, index: 1, language: "eng" },
+    ],
+    selectAudioTrack(id) {
+      calls.push(id);
+      return id;
+    },
+  });
+  const coordinator = createTrackCoordinator({ getEngine: () => engine });
+
+  await coordinator.refreshAudioTracks();
+
+  assert.equal(coordinator.selectAudioTrack(1), 2);
+  assert.deepEqual(calls, [2]);
+  assert.deepEqual(
+    coordinator.audioTracks().map((track) => track.active),
+    [false, true],
+  );
+});

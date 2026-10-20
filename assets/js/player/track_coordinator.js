@@ -236,25 +236,34 @@ export class TrackCoordinator {
   _resolveSelectionId(kind, trackId) {
     if (kind === "subtitle" && Number(trackId) === -1) return -1;
 
-    const track = this._tracksFor(kind).find(
-      (candidate) =>
-        sameIdentifier(candidate.index, trackId) || sameIdentifier(candidate.id, trackId),
-    );
+    return trackSelectionId(this._findTrack(kind, trackId), trackId);
+  }
 
-    return trackSelectionId(track, trackId);
+  // The application selects by track index; an engine id is only the fallback.
+  // Matching either in one pass took the wrong track whenever one track's id
+  // equalled another's index (AVPlayer stream ids 1 and 2 against indexes 0
+  // and 1: picking the second track selected the first).
+  _findTrack(kind, trackId) {
+    const tracks = this._tracksFor(kind);
+
+    return (
+      tracks.find((candidate) => sameIdentifier(candidate.index, trackId)) ??
+      tracks.find((candidate) => sameIdentifier(candidate.id, trackId))
+    );
   }
 
   _markActive(kind, trackId, selectionId) {
     const tracks = this._tracksFor(kind);
     if (tracks.length === 0) return;
 
+    const selected = this._findTrack(kind, trackId);
     const next = Object.freeze(
       tracks.map((track) => {
         const active =
           !(kind === "subtitle" && Number(trackId) === -1) &&
-          (sameIdentifier(track.index, trackId) ||
-            sameIdentifier(track.id, trackId) ||
-            sameIdentifier(trackSelectionId(track, null), selectionId));
+          (selected
+            ? track === selected
+            : sameIdentifier(trackSelectionId(track, null), selectionId));
 
         return Object.freeze({ ...track, active });
       }),
