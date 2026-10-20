@@ -156,7 +156,7 @@ defmodule StreamixWeb.Content.ReelsLive do
       >
         <.link
           id="reel-category-all"
-          patch={~p"/browse/reels"}
+          patch={reels_path(nil, @search, 1)}
           aria-current={is_nil(@selected_category) && "page"}
           class={["category-chip", is_nil(@selected_category) && "category-chip--active"]}
         >
@@ -166,7 +166,7 @@ defmodule StreamixWeb.Content.ReelsLive do
           :for={category <- @categories}
           id={category_dom_id(category.name)}
           data-category={category.name}
-          patch={reels_path(category.name, 1)}
+          patch={reels_path(category.name, @search, 1)}
           aria-current={@selected_category == category.name && "page"}
           class={[
             "category-chip gap-1.5",
@@ -261,8 +261,6 @@ defmodule StreamixWeb.Content.ReelsLive do
     return_to = reels_path(assigns.selected_category, assigns.search, assigns.page)
     "/browse/series/#{id}?" <> URI.encode_query(%{"return_to" => return_to})
   end
-
-  defp reels_path(category, page), do: reels_path(category, "", page)
 
   defp reels_path(category, search, page) do
     params =

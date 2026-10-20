@@ -4,6 +4,7 @@ defmodule StreamixWeb.Admin.PlansLive do
   import StreamixWeb.AdminComponents
 
   alias Streamix.Billing
+  alias StreamixWeb.Helpers.Money
 
   def mount(_params, _session, socket) do
     plans = Billing.list_plans()
@@ -118,11 +119,7 @@ defmodule StreamixWeb.Admin.PlansLive do
     """
   end
 
-  defp format_price(cents, _currency) when is_integer(cents) do
-    amount = :erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ",")
-    "R$ #{amount}"
-  end
-
+  defp format_price(cents, currency) when is_integer(cents), do: Money.format(cents, currency)
   defp format_price(_, _), do: "-"
 
   defp format_interval("day"), do: "Diário"

@@ -12,6 +12,18 @@ defmodule StreamixWeb.Layouts do
 
   embed_templates "layouts/*"
 
+  @doc """
+  The page's title for the root layout. Error pages have no `page_title`
+  assign, only the `status` Phoenix renders them with.
+  """
+  def page_title(%{page_title: title}) when is_binary(title) and title != "", do: title
+  def page_title(%{status: 404}), do: "Página não encontrada"
+
+  def page_title(%{status: status}) when is_integer(status) and status >= 500,
+    do: "Algo deu errado"
+
+  def page_title(_assigns), do: nil
+
   def hero_path?(path) when is_binary(path) do
     path = path |> String.split("?", parts: 2) |> List.first()
 

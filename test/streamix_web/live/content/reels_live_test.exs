@@ -212,6 +212,26 @@ defmodule StreamixWeb.Content.ReelsLiveTest do
     refute has_element?(view, "#series-card-#{other.id}")
   end
 
+  test "a category keeps the active search, and Todas drops only the category", %{
+    conn: conn,
+    global: global
+  } do
+    romance = category!(global, "[Reels] Romance")
+    match = reel!(global, [romance], %{name: "Casamento Secreto", title: "Casamento Secreto"})
+    other = reel!(global, [romance], %{name: "Vingança da Herdeira", title: "Vingança"})
+
+    {:ok, view, _html} = live(conn, ~p"/browse/reels?search=Casamento")
+
+    view |> element(chip("Romance")) |> render_click()
+    assert_patch(view, "/browse/reels?category=Romance&search=Casamento")
+    assert has_element?(view, "#series-card-#{match.id}")
+    refute has_element?(view, "#series-card-#{other.id}")
+
+    view |> element("#reel-category-all") |> render_click()
+    assert_patch(view, ~p"/browse/reels?search=Casamento")
+    assert has_element?(view, "#reels-search-form input[name='search'][value='Casamento']")
+  end
+
   defp chip(name), do: ~s(#reel-categories a[data-category="#{name}"])
 
   defp count_cards(html) do

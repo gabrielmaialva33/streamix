@@ -93,8 +93,10 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   "Piloto · T1 E1".
 - Plans show prices as "R$ 9,99", statuses in Portuguese and "Assinar plano"; Settings shows the account e-mail
   read-only instead of a change form that did nothing; the Watch Party hub no longer hides under the phone nav.
-- 404 and 500 pages render inside the app's layout (styles, title, dark theme) with a button back home, instead of a
-  bare white page with a missing illustration.
+- 404 and 500 pages render inside the app's layout (styles, a "Página não encontrada" / "Algo deu errado" title, dark
+  theme) with a button back home, instead of a bare white page with a missing illustration.
+- Prices keep their currency with pt-BR numbers everywhere (public plans, admin plans and billing): "R$ 1.234,56",
+  "US$ 10,00", "€ 10,00", where the admin briefly showed every currency as reais.
 - The public landing page uses clean titles, the app's 0–5 rating scale and "TV" instead of a fixed "AO VIVO", and
   its cards lead to the title (through login).
 - Google Drive title pages share the IPTV title pages' hero, badges, back link and actions, with clean titles and

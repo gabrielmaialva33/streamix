@@ -4,6 +4,7 @@ defmodule StreamixWeb.PlansLive do
   import StreamixWeb.App.Premium
 
   alias Streamix.Billing
+  alias StreamixWeb.Helpers.Money
 
   def mount(params, _session, socket) do
     plans = Billing.list_active_plans()
@@ -268,16 +269,7 @@ defmodule StreamixWeb.PlansLive do
   defp subscription_state(nil), do: "none"
   defp subscription_state(_subscription), do: "active"
 
-  defp format_price(price_cents, _currency) when is_integer(price_cents) do
-    amount =
-      (price_cents / 100)
-      |> :erlang.float_to_binary(decimals: 2)
-      |> String.replace(".", ",")
-
-    "R$ #{amount}"
-  end
-
-  defp format_price(_, _), do: "R$ 0,00"
+  defp format_price(price_cents, currency), do: Money.format(price_cents, currency)
 
   defp status_label("active"), do: "Ativo"
   defp status_label("trialing"), do: "Em teste"

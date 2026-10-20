@@ -38,6 +38,17 @@ defmodule StreamixWeb.Admin.PlansLiveTest do
       assert has_element?(view, "[data-admin-table='plans'].overflow-x-auto")
     end
 
+    test "shows each plan in its own currency", %{conn: conn} do
+      {:ok, _} = Billing.create_plan(%{@plan_attrs | slug: "brl", price_cents: 123_456})
+      {:ok, _} = Billing.create_plan(%{@plan_attrs | slug: "usd", name: "Dólar", currency: "USD"})
+
+      {:ok, _view, html} = live(conn, ~p"/admin/plans")
+
+      assert html =~ "R$ 1.234,56"
+      assert html =~ "US$ 19,99"
+      refute html =~ "R$ 19,99"
+    end
+
     test "shows empty state when no plans", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/admin/plans")
       assert html =~ "Nenhum plano"

@@ -23,7 +23,7 @@ defmodule StreamixWeb.ErrorHTMLTest do
     conn = get(conn, "/pagina-inexistente")
     html = html_response(conn, 404)
 
-    assert html =~ "<title"
+    assert html =~ ~r/<title[^>]*>\s*Página não encontrada\s*· Streamix<\/title>/
     assert html =~ "/assets/css/app.css"
     assert html =~ "Página não encontrada"
     assert html =~ "Voltar ao início"

@@ -4,6 +4,7 @@ defmodule StreamixWeb.Admin.BillingLive do
   import StreamixWeb.AdminComponents
 
   alias Streamix.Billing
+  alias StreamixWeb.Helpers.Money
 
   def mount(_params, _session, socket) do
     socket =
@@ -130,19 +131,5 @@ defmodule StreamixWeb.Admin.BillingLive do
     |> assign(invoices: Billing.list_recent_invoices())
   end
 
-  defp format_price(cents, currency) when is_integer(cents) do
-    symbol =
-      case currency do
-        "BRL" -> "R$"
-        "USD" -> "R$"
-        "EUR" -> "€"
-        nil -> "R$"
-        other -> other
-      end
-
-    amount = :erlang.float_to_binary(cents / 100, decimals: 2) |> String.replace(".", ",")
-    "#{symbol} #{amount}"
-  end
-
-  defp format_price(_, _currency), do: "R$ 0,00"
+  defp format_price(cents, currency), do: Money.format(cents, currency)
 end
