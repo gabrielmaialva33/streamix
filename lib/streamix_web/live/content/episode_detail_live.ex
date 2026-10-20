@@ -252,13 +252,10 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
               <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
-                <button
-                  type="button"
-                  phx-click="play_episode"
-                  class="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-brand text-white font-bold rounded-lg hover:bg-brand-hover transition-colors shadow-card text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background"
-                >
-                  <.icon name="hero-play-solid" class="size-4 sm:size-5" /> Assistir Episódio
-                </button>
+                <StreamixWeb.Content.DetailComponents.Actions.play_button
+                  event="play_episode"
+                  label="Assistir"
+                />
 
                 <StreamixWeb.WatchPartyComponents.create_party_button
                   content_type="episode"

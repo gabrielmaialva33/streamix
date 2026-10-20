@@ -7,6 +7,7 @@ defmodule StreamixWeb.Home.Carousel do
   use StreamixWeb, :verified_routes
 
   import StreamixWeb.Content.NavigationComponents
+  import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1]
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Cards
   import StreamixWeb.Home.Helpers
@@ -105,20 +106,13 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
-    <div class="render-lazy px-[4%]">
-      <div class="flex items-center justify-between mb-3 sm:mb-4">
-        <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
-          <.icon :if={@icon} name={@icon} class="size-5 text-brand" />
-          {@title}
-        </h2>
-        <.link
-          :if={@see_more_path}
-          href={@see_more_path}
-          class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
-        >
-          Ver mais <.icon name="hero-chevron-right" class="size-4" />
-        </.link>
-      </div>
+    <div class="render-lazy">
+      <.section_header
+        title={@title}
+        icon={@icon}
+        icon_class="text-brand"
+        see_more_path={@see_more_path}
+      />
       <%= if @type == :channels do %>
         <.carousel_arrows id={@carousel_id}>
           <div
@@ -138,13 +132,6 @@ defmodule StreamixWeb.Home.Carousel do
             />
           </div>
         </.carousel_arrows>
-        <.link
-          :if={@see_more_path && length(@items) > 6}
-          href={@see_more_path}
-          class="sm:hidden mt-3 flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary hover:text-text-primary bg-surface/50 rounded-lg transition-colors"
-        >
-          Ver todos os canais <.icon name="hero-arrow-right" class="size-4" />
-        </.link>
       <% else %>
         <.carousel_arrows id={@carousel_id}>
           <div
@@ -189,13 +176,6 @@ defmodule StreamixWeb.Home.Carousel do
             />
           </div>
         </.carousel_arrows>
-        <.link
-          :if={@see_more_path && length(@items) > 6 && @type not in [:history]}
-          href={@see_more_path}
-          class="sm:hidden mt-3 flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary hover:text-text-primary bg-surface/50 rounded-lg transition-colors"
-        >
-          Ver mais <.icon name="hero-arrow-right" class="size-4" />
-        </.link>
       <% end %>
     </div>
     """
@@ -208,7 +188,7 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
-    <div class="render-lazy px-[4%]">
+    <div class="render-lazy">
       <.section_header
         title="Em Alta Agora"
         icon="hero-fire-solid"
@@ -252,7 +232,7 @@ defmodule StreamixWeb.Home.Carousel do
       |> assign_new(:favorites_map, fn -> MapSet.new() end)
 
     ~H"""
-    <div class="render-lazy px-[4%]">
+    <div class="render-lazy">
       <.section_header
         title="Séries Populares"
         icon="hero-tv-solid"
@@ -288,7 +268,7 @@ defmodule StreamixWeb.Home.Carousel do
 
   def render_ai_channels_section(assigns) do
     ~H"""
-    <div class="render-lazy px-[4%]">
+    <div class="render-lazy">
       <.section_header
         title="TV ao Vivo"
         icon="hero-signal-solid"
@@ -318,19 +298,12 @@ defmodule StreamixWeb.Home.Carousel do
 
   def render_top_10(assigns) do
     ~H"""
-    <div class="render-lazy px-[4%]">
-      <div class="flex items-center justify-between mb-3 sm:mb-4">
-        <h2 class="text-base sm:text-xl font-semibold text-text-primary flex items-center gap-2">
-          <.icon name="hero-trophy" class="size-5 text-warning" />
-          {@title}
-        </h2>
-        <.link
-          href={~p"/browse/movies?sort=rating"}
-          class="hidden sm:flex text-sm text-text-secondary hover:text-text-primary transition-colors items-center gap-1"
-        >
-          Ver mais <.icon name="hero-chevron-right" class="size-4" />
-        </.link>
-      </div>
+    <div class="render-lazy">
+      <.section_header
+        title={@title}
+        icon="hero-trophy"
+        see_more_path={~p"/browse/movies?sort=rating"}
+      />
       <.carousel_arrows id="carousel-top10">
         <div
           data-carousel-track
@@ -397,13 +370,11 @@ defmodule StreamixWeb.Home.Carousel do
             <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
               <.icon name="hero-play-circle-solid" class="size-10 text-white/90 drop-shadow-lg" />
             </div>
-            <div
-              :if={@movie.rating}
-              class="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 bg-black/70 rounded text-2xs text-white"
-            >
-              <.icon name="hero-star-solid" class="size-2.5 text-warning" />
-              {Float.round(Decimal.to_float(@movie.rating), 1)}
-            </div>
+            <.rating_badge
+              rating={@movie.rating}
+              divide_by_two?={false}
+              class="absolute top-1 right-1"
+            />
           </div>
         </div>
       </div>
@@ -443,7 +414,7 @@ defmodule StreamixWeb.Home.Carousel do
           />
         </div>
         <span class="text-sm text-text-secondary group-hover:text-text-primary transition-colors">
-          Ver mais
+          Ver todos
         </span>
       </div>
     </.link>

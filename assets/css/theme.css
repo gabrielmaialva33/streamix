@@ -347,3 +347,7 @@ html.ios-webkit header[data-scrolled="true"] {
         var(--inset-highlight),
         var(--shadow-card);
 }
+
+:root {
+  --page-gutter: 4vw;
+}

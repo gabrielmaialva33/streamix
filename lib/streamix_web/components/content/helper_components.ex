@@ -5,10 +5,35 @@ defmodule StreamixWeb.Content.HelperComponents do
   def format_count(nil), do: nil
 
   def format_count(count) when count >= 1000 do
-    "#{Float.round(count / 1000, 1)}k"
+    value =
+      (count / 1000)
+      |> Float.round(1)
+      |> to_string()
+      |> String.trim_trailing(".0")
+      |> String.replace(".", ",")
+
+    "#{value} mil"
   end
 
   def format_count(count), do: to_string(count)
+
+  def format_relative_time(datetime, now \\ DateTime.utc_now())
+  def format_relative_time(nil, _now), do: ""
+
+  def format_relative_time(datetime, now) do
+    diff = DateTime.diff(now, datetime, :second)
+
+    cond do
+      diff < 60 -> "agora"
+      diff < 3600 -> "há #{div(diff, 60)} min"
+      diff < 86_400 -> "há #{div(diff, 3600)} h"
+      diff < 172_800 -> "ontem"
+      true -> "há #{div(diff, 86_400)} dias"
+    end
+  end
+
+  def positive_rating?(%Decimal{} = value), do: Decimal.compare(value, Decimal.new(0)) == :gt
+  def positive_rating?(value), do: is_number(value) and value > 0
 
   def format_rating(%Decimal{} = rating) do
     rating

@@ -2,6 +2,7 @@ defmodule StreamixWeb.Home.Helpers do
   @moduledoc false
 
   use StreamixWeb, :verified_routes
+  alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
 
   def get_backdrop(content) do
@@ -48,19 +49,8 @@ defmodule StreamixWeb.Home.Helpers do
 
   def progress_percent(_), do: 0
 
-  def format_relative_time(nil), do: ""
-
-  def format_relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 60 -> "agora"
-      diff < 3600 -> "há #{div(diff, 60)} min"
-      diff < 86_400 -> "há #{div(diff, 3600)} h"
-      diff < 604_800 -> "há #{div(diff, 86_400)} dias"
-      true -> Calendar.strftime(datetime, "%d/%m")
-    end
-  end
+  def format_relative_time(datetime),
+    do: HelperComponents.format_relative_time(datetime)
 
   def build_carousel_id(type, title) do
     base = "carousel-#{type}"

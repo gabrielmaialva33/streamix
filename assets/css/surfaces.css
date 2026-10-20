@@ -44,3 +44,19 @@
         opacity: 1;
     }
 }
+
+/* One app gutter; home shelves inherit the main content inset. */
+.page-gutter {
+  padding-inline: var(--page-gutter);
+}
+
+#app-header[data-scrolled="true"],
+#app-header[data-hero="false"] {
+  background: var(--color-background) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+#app-header[data-hero="true"][data-scrolled="false"] {
+  background: transparent !important;
+}

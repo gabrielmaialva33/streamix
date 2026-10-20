@@ -162,10 +162,10 @@ defmodule StreamixWeb.Content.DetailComponents do
 
         <div class="p-6 space-y-4">
           <div class="flex items-center gap-4 text-sm text-text-secondary">
-            <span :if={Map.get(@content, :year)}>{@content.year}</span>
-            <span :if={Map.get(@content, :rating)} class="flex items-center gap-1">
+            <span :if={display_year(Map.get(@content, :year)) != ""}>{@content.year}</span>
+            <span :if={get_display_rating(@content)} class="flex items-center gap-1">
               <.icon name="hero-star-solid" class="size-4 text-warning" />
-              {format_rating(@content.rating)}
+              {get_display_rating(@content)}
             </span>
             <span :if={Map.get(@content, :genres, []) != []}>{format_genre_names(@content)}</span>
             <span :if={Map.get(@content, :duration_secs)}>
@@ -424,7 +424,7 @@ defmodule StreamixWeb.Content.DetailComponents do
             <p class="text-[11px] sm:text-sm text-text-primary font-medium truncate group-hover:text-brand transition-colors mt-0.5">
               {display_title(item)}
             </p>
-            <p :if={item.year} class="text-[10px] sm:text-xs text-text-secondary">
+            <p :if={display_year(item.year) != ""} class="text-[10px] sm:text-xs text-text-secondary">
               {item.year}
             </p>
           </div>

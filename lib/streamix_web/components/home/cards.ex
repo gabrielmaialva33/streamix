@@ -98,9 +98,9 @@ defmodule StreamixWeb.Home.Cards do
             </span>
           </div>
         </div>
-        <div class="absolute top-1 left-1 sm:top-2 sm:left-2 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-brand rounded text-2xs sm:text-xs text-white font-semibold">
-          <span class="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-white rounded-full animate-pulse" /> AO VIVO
-        </div>
+        <.badge variant="live" size="sm" class="absolute top-1 left-1 sm:top-2 sm:left-2">
+          AO VIVO
+        </.badge>
         <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hidden sm:flex items-center justify-center">
           <.icon name="hero-play-solid" class="size-8 text-white/90 drop-shadow-lg" />
         </div>

@@ -9,6 +9,8 @@ defmodule StreamixWeb.SearchLive do
   - Recent searches history
   """
   use StreamixWeb, :live_view
+  import StreamixWeb.App.Filters, only: [filter_chip: 1, filter_strip: 1]
+  import StreamixWeb.Content.NavigationComponents, only: [section_header: 1]
 
   import StreamixWeb.App.Feedback
   import StreamixWeb.App.Media
@@ -17,6 +19,7 @@ defmodule StreamixWeb.SearchLive do
 
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.HelperComponents
 
   @page_size 24
   @result_types %{"channels" => :channels, "movies" => :movies, "series" => :series}
@@ -152,7 +155,7 @@ defmodule StreamixWeb.SearchLive do
     ~H"""
     <div class="py-6 sm:py-8 space-y-6 sm:space-y-8">
       <div class="flex flex-col gap-4">
-        <h1 class="text-3xl font-bold text-text-primary">Buscar</h1>
+        <.page_header id="search-page-header" title="Buscar" icon="hero-magnifying-glass" />
 
         <form id="global-search-form" phx-submit="search" phx-change="search" class="max-w-xl">
           <div class="flex items-center gap-3 px-4 py-3 bg-surface border border-border rounded-lg focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-colors">
@@ -188,7 +191,7 @@ defmodule StreamixWeb.SearchLive do
       </div>
 
       <div :if={@searched && has_results?(@result_counts)} class="space-y-8">
-        <div id="search-filter-strip" data-filter-strip class="filter-strip">
+        <.filter_strip id="search-filter-strip">
           <.filter_button
             type="all"
             label="Todos"
@@ -217,7 +220,7 @@ defmodule StreamixWeb.SearchLive do
             count={@result_counts.series}
             has_more={@has_more.series}
           />
-        </div>
+        </.filter_strip>
 
         <.channels_section
           :if={@result_counts.channels > 0}
@@ -264,34 +267,28 @@ defmodule StreamixWeb.SearchLive do
 
   defp filter_button(assigns) do
     ~H"""
-    <button
-      type="button"
+    <.filter_chip
+      id={"search-filter-#{@type}"}
+      active={@current == @type}
+      label={@label}
+      count={@count}
+      count_suffix={if @has_more, do: "+", else: ""}
       phx-click="filter"
       phx-value-type={@type}
-      class={[
-        "min-h-11 flex-shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand",
-        @current == @type && "bg-brand text-white",
-        @current != @type &&
-          "bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border"
-      ]}
-    >
-      {@label}
-      <span :if={@count > 0} class="ml-2 px-1.5 py-0.5 text-xs rounded bg-black/20">
-        {@count}{if @has_more, do: "+", else: ""}
-      </span>
-    </button>
+    />
     """
   end
 
   defp channels_section(assigns) do
     ~H"""
     <section id="search-channels-section" class={["space-y-4", @hidden && "hidden"]}>
-      <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold text-text-primary">Canais ao Vivo</h2>
-        <span class="text-sm text-text-secondary">
-          {result_count_label(@count, @has_more)}
-        </span>
-      </div>
+      <.section_header title="Canais ao Vivo">
+        <:actions>
+          <span class="text-sm text-text-secondary">
+            {result_count_label(@count, @has_more)}
+          </span>
+        </:actions>
+      </.section_header>
 
       <div id="search-channels-grid" phx-update="stream" class="responsive-wide-grid">
         <div
@@ -315,12 +312,13 @@ defmodule StreamixWeb.SearchLive do
   defp movies_section(assigns) do
     ~H"""
     <section id="search-movies-section" class={["space-y-4", @hidden && "hidden"]}>
-      <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold text-text-primary">Filmes</h2>
-        <span class="text-sm text-text-secondary">
-          {result_count_label(@count, @has_more)}
-        </span>
-      </div>
+      <.section_header title="Filmes">
+        <:actions>
+          <span class="text-sm text-text-secondary">
+            {result_count_label(@count, @has_more)}
+          </span>
+        </:actions>
+      </.section_header>
 
       <div id="search-movies-grid" phx-update="stream" class="responsive-poster-grid">
         <div
@@ -340,12 +338,13 @@ defmodule StreamixWeb.SearchLive do
   defp series_section(assigns) do
     ~H"""
     <section id="search-series-section" class={["space-y-4", @hidden && "hidden"]}>
-      <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold text-text-primary">Séries</h2>
-        <span class="text-sm text-text-secondary">
-          {result_count_label(@count, @has_more)}
-        </span>
-      </div>
+      <.section_header title="Séries">
+        <:actions>
+          <span class="text-sm text-text-secondary">
+            {result_count_label(@count, @has_more)}
+          </span>
+        </:actions>
+      </.section_header>
 
       <div id="search-series-grid" phx-update="stream" class="responsive-poster-grid">
         <div
@@ -619,6 +618,6 @@ defmodule StreamixWeb.SearchLive do
     suffix = if has_more?, do: "+", else: ""
     noun = if count == 1, do: "resultado", else: "resultados"
 
-    "#{count}#{suffix} #{noun}"
+    "#{HelperComponents.format_count(count)}#{suffix} #{noun}"
   end
 end

@@ -74,7 +74,7 @@ defmodule StreamixWeb.FooterComponents do
                 </li>
                 <li>
                   <.footer_link href={~p"/favorites"} current_path={@current_path}>
-                    Minha Lista
+                    Minha lista
                   </.footer_link>
                 </li>
                 <li>

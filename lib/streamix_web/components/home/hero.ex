@@ -8,6 +8,7 @@ defmodule StreamixWeb.Home.Hero do
 
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
+  import StreamixWeb.Content.DetailComponents.Badges, only: [rating_badge: 1, year_badge: 1]
 
   alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
@@ -30,7 +31,7 @@ defmodule StreamixWeb.Home.Hero do
       <div class="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
 
       <div class="absolute inset-0 flex items-end">
-        <div class="w-full px-[4%] pb-10 sm:pb-16 lg:pb-24">
+        <div class="w-full pb-10 sm:pb-16 lg:pb-24">
           <.hero_content
             :if={@featured}
             featured={@featured}
@@ -234,16 +235,9 @@ defmodule StreamixWeb.Home.Hero do
     ~H"""
     <div class="max-w-2xl animate-slide-up">
       <div class="mb-2 flex items-center gap-2 sm:mb-4">
-        <span class="px-2 py-1 text-xs font-semibold bg-brand text-white rounded">
-          {if @type == :movie, do: "FILME", else: "SÉRIE"}
-        </span>
-        <span :if={@content.rating} class="flex items-center gap-1 text-sm text-text-secondary">
-          <.icon name="hero-star-solid" class="size-4 text-warning" />
-          {Float.round(Decimal.to_float(@content.rating), 1)}
-        </span>
-        <span :if={@content.year} class="text-sm text-text-secondary">
-          {@content.year}
-        </span>
+        <.badge variant="brand">{if @type == :movie, do: "FILME", else: "SÉRIE"}</.badge>
+        <.rating_badge rating={@content.rating} divide_by_two?={false} />
+        <.year_badge year={@content.year} />
         <span :if={@content.genres != []} class="text-sm text-text-secondary">
           {List.first(@content.genres).name}
         </span>
@@ -261,37 +255,31 @@ defmodule StreamixWeb.Home.Hero do
       </p>
 
       <div class="flex flex-wrap gap-2 sm:gap-3">
-        <.link
-          href={content_path(@type, @content)}
-          class="inline-flex min-h-11 items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-white text-black text-sm sm:text-base font-semibold rounded-md hover:bg-white/90 transition-colors"
-        >
+        <.button href={content_path(@type, @content)} variant="light" size="lg">
           <.icon name="hero-play-solid" class="size-4 sm:size-6" /> Assistir
-        </.link>
-        <.link
-          href={content_info_path(@type, @content)}
-          class="inline-flex min-h-11 items-center justify-center gap-1.5 sm:gap-2 px-4 sm:px-8 py-2 sm:py-3 bg-surface/60 text-text-primary text-sm sm:text-base font-semibold rounded-md hover:bg-surface/80 transition-colors backdrop-blur-sm border border-border"
-        >
-          <.icon name="hero-information-circle" class="size-4 sm:size-6" /> <span class="hidden sm:inline">Mais </span>Info
-        </.link>
+        </.button>
+        <.button href={content_info_path(@type, @content)} variant="secondary" size="lg">
+          <.icon name="hero-information-circle" class="size-4 sm:size-6" /> Detalhes
+        </.button>
         <%= if @current_scope do %>
-          <button
+          <.button
             type="button"
             phx-click="toggle_featured_favorite"
-            class={[
-              "inline-flex size-11 sm:size-12 items-center justify-center rounded-full transition-colors backdrop-blur-sm",
-              @featured_favorite && "bg-white text-black hover:bg-white/90",
-              !@featured_favorite &&
-                "bg-surface/60 text-text-primary hover:bg-surface/80 border border-border"
-            ]}
+            variant="ghost"
+            size="icon"
+            aria-pressed={to_string(@featured_favorite)}
+            aria-label={
+              if @featured_favorite, do: "Remover da Minha lista", else: "Adicionar à Minha lista"
+            }
             title={
-              if @featured_favorite, do: "Remover da Minha Lista", else: "Adicionar à Minha Lista"
+              if @featured_favorite, do: "Remover da Minha lista", else: "Adicionar à Minha lista"
             }
           >
             <.icon
               name={if @featured_favorite, do: "hero-check", else: "hero-plus"}
               class="size-4 sm:size-6"
             />
-          </button>
+          </.button>
         <% end %>
       </div>
     </div>

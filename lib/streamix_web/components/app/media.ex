@@ -8,6 +8,7 @@ defmodule StreamixWeb.App.Media do
 
   import StreamixWeb.CoreComponents
   alias StreamixWeb.Content.DisplayTitle
+  alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Helpers.ImageProxy
 
   @sync_status_badges %{
@@ -306,14 +307,6 @@ defmodule StreamixWeb.App.Media do
     """
   end
 
-  defp format_relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-
-    cond do
-      diff < 60 -> "agora mesmo"
-      diff < 3600 -> "#{div(diff, 60)}min atrás"
-      diff < 86_400 -> "#{div(diff, 3600)}h atrás"
-      true -> "#{div(diff, 86_400)}d atrás"
-    end
-  end
+  defp format_relative_time(datetime),
+    do: HelperComponents.format_relative_time(datetime)
 end

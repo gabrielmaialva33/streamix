@@ -8,10 +8,13 @@ defmodule StreamixWeb.GameComponents do
   def rail(assigns) do
     ~H"""
     <section :if={@count > 0} id="games-today" aria-labelledby="games-today-title" class="space-y-3">
-      <div class="flex items-baseline justify-between gap-3">
-        <h2 id="games-today-title" class="text-xl font-bold">Jogos de hoje</h2>
-        <span class="text-xs text-text-muted">Horário de Brasília</span>
-      </div>
+      <StreamixWeb.Content.NavigationComponents.section_header
+        id="games-today-title"
+        title="Jogos de hoje"
+        icon="hero-trophy"
+      >
+        <:actions><span class="text-xs text-text-muted">Horário de Brasília</span></:actions>
+      </StreamixWeb.Content.NavigationComponents.section_header>
       <div id="games-today-list" phx-update="stream" class="flex gap-4 overflow-x-auto pb-3 snap-x">
         <article
           :for={{dom_id, game} <- @games}
@@ -25,11 +28,14 @@ defmodule StreamixWeb.GameComponents do
           >
             <div class="flex items-center justify-between gap-2">
               <span class="truncate text-xs text-text-muted">{game.league}</span>
-              <span
+              <.badge
                 :if={game.live}
+                variant="live"
                 data-live="true"
-                class="shrink-0 rounded bg-red-600 px-2 py-1 text-xs font-bold text-white"
-              >AO VIVO</span>
+                class="shrink-0"
+              >
+                AO VIVO
+              </.badge>
               <time
                 :if={!game.live}
                 datetime={DateTime.to_iso8601(game.starts_at)}

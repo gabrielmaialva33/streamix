@@ -79,38 +79,123 @@ defmodule StreamixWeb.CoreComponents do
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value type disabled)
+  attr :rest, :global,
+    include: ~w(href navigate patch method download name value type disabled target rel)
+
   attr :class, :any, default: nil
-  attr :variant, :string, values: ~w(primary secondary ghost default), default: "default"
+
+  attr :variant, :string,
+    values: ~w(primary secondary ghost danger light),
+    default: "primary"
+
+  attr :size, :string, values: ~w(sm md lg icon), default: "md"
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
     base_classes =
-      "inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
+      "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg font-medium transition-all focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed"
 
-    variant_classes =
-      case assigns.variant do
-        "primary" -> "bg-brand text-white hover:bg-brand-hover"
-        "secondary" -> "bg-surface text-text-primary border border-border hover:bg-surface-hover"
-        "ghost" -> "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
-        _ -> "bg-brand/10 text-brand border border-brand/30 hover:bg-brand/20"
-      end
+    variants = %{
+      "primary" => "bg-brand text-white hover:bg-brand-hover",
+      "secondary" => "bg-surface text-text-primary border border-border hover:bg-surface-hover",
+      "danger" => "bg-error text-white hover:bg-error/90",
+      "light" => "bg-white text-black hover:bg-white/90",
+      "ghost" => "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+    }
 
-    assigns = assign(assigns, :computed_class, [base_classes, variant_classes, assigns.class])
+    sizes = %{
+      "sm" => "px-3 py-2 text-xs",
+      "md" => "px-4 py-2.5 text-sm",
+      "lg" => "px-6 py-3 text-base",
+      "icon" => "size-11 shrink-0 p-2"
+    }
+
+    variant_classes = variants[assigns.variant]
+    size_classes = sizes[assigns.size]
+
+    assigns =
+      assign(assigns, :computed_class, [
+        base_classes,
+        variant_classes,
+        size_classes,
+        assigns.class
+      ])
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
-      <.link class={@computed_class} {@rest}>
+      <.link class={@computed_class} data-variant={@variant} data-size={@size} {@rest}>
         {render_slot(@inner_block)}
       </.link>
       """
     else
       ~H"""
-      <button class={@computed_class} {@rest}>
+      <button class={@computed_class} data-variant={@variant} data-size={@size} {@rest}>
         {render_slot(@inner_block)}
       </button>
       """
     end
+  end
+
+  @doc "Shared compact status and metadata badge."
+  attr :variant, :string,
+    values: ~w(live overlay surface brand success warning error),
+    default: "surface"
+
+  attr :size, :string, values: ~w(sm md lg), default: "md"
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def badge(assigns) do
+    colors = %{
+      "live" => "bg-error text-white",
+      "overlay" => "bg-black/75 text-white",
+      "surface" => "bg-surface text-text-secondary",
+      "brand" => "bg-brand/15 text-brand",
+      "success" => "bg-success/15 text-success",
+      "warning" => "bg-warning/15 text-warning",
+      "error" => "bg-error/15 text-error"
+    }
+
+    sizes = %{
+      "sm" => "px-1.5 py-0.5 text-[10px]",
+      "md" => "px-2 py-1 text-xs",
+      "lg" => "px-2.5 py-1 text-sm"
+    }
+
+    assigns =
+      assign(assigns, :classes, [
+        "inline-flex items-center gap-1 rounded-md font-semibold",
+        colors[assigns.variant],
+        sizes[assigns.size],
+        assigns.class
+      ])
+
+    ~H"""
+    <span class={@classes} data-badge={@variant} {@rest}>{render_slot(@inner_block)}</span>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :subtitle, :string, default: nil
+  attr :icon, :string, default: nil
+  attr :id, :string, default: nil
+  slot :actions
+
+  def page_header(assigns) do
+    ~H"""
+    <header id={@id} class="flex flex-wrap items-center justify-between gap-4">
+      <div class="min-w-0">
+        <h1 class="flex items-center gap-2 text-2xl sm:text-3xl font-bold text-text-primary">
+          <.icon :if={@icon} name={@icon} class="size-6 text-brand" />{@title}
+        </h1>
+        <p :if={@subtitle} class="mt-1 text-sm text-text-secondary">{@subtitle}</p>
+      </div>
+      <div :if={@actions != []} class="flex flex-wrap items-center gap-2">
+        {render_slot(@actions)}
+      </div>
+    </header>
+    """
   end
 
   @doc """

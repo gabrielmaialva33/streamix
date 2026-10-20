@@ -79,13 +79,14 @@
     id="app-header"
     phx-hook="ScrollHeader"
     data-scrolled="false"
+    data-hero={to_string(hero_path?(@current_path))}
     style={if(banner_visible?, do: "", else: "padding-top: env(safe-area-inset-top);")}
     class={[
       "fixed left-0 right-0 z-50 border-b border-transparent transition-all",
       if(banner_visible?, do: "top-9", else: "top-0")
     ]}
   >
-    <div class="flex items-center justify-between h-14 sm:h-16 px-[4%]">
+    <div class="flex items-center justify-between h-14 sm:h-16 page-gutter">
       <!-- Logo & Navigation -->
       <div class="flex items-center gap-4 sm:gap-8">
         <.session_link
@@ -134,7 +135,7 @@
             <.nav_link
               path={~p"/favorites"}
               current_path={@current_path}
-              label={gettext("Minha Lista")}
+              label={gettext("Minha lista")}
               icon="hero-heart"
               icon_active="hero-heart-solid"
               active={@current_path == "/favorites"}
@@ -271,7 +272,7 @@
     utility in app.css adds env(safe-area-inset-top) on top of that so
     content clears the notch on iPhone X+ / Dynamic Island devices.
   --%>
-  <main id="main-content" class="flex-1 px-[4%] pb-8 main-safe-top" tabindex="-1">
+  <main id="main-content" class="flex-1 page-gutter pb-8 main-safe-top" tabindex="-1">
     {@inner_content}
   </main>
 

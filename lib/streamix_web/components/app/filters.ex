@@ -10,6 +10,74 @@ defmodule StreamixWeb.App.Filters do
   alias Phoenix.LiveView.JS
   alias StreamixWeb.Content.HelperComponents
 
+  attr :active, :boolean, default: false
+  attr :label, :string, required: true
+  attr :count, :integer, default: nil
+  attr :count_suffix, :string, default: ""
+  attr :class, :any, default: nil
+  attr :rest, :global, include: ~w(disabled)
+
+  def filter_chip(assigns) do
+    ~H"""
+    <button
+      type="button"
+      aria-pressed={to_string(@active)}
+      class={[
+        "category-chip min-h-11 rounded-full gap-1.5",
+        @active && "category-chip--active",
+        @class
+      ]}
+      {@rest}
+    >
+      <span>{@label}</span>
+      <span :if={!is_nil(@count)} class="text-xs tabular-nums opacity-75">{HelperComponents.format_count(
+        @count
+      )}{@count_suffix}</span>
+    </button>
+    """
+  end
+
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def filter_strip(assigns) do
+    ~H"""
+    <div data-filter-strip class={["filter-strip", @class]} {@rest}>{render_slot(@inner_block)}</div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :any, default: nil
+  attr :options, :list, required: true
+
+  def filter_select(assigns) do
+    ~H"""
+    <div class="relative">
+      <label class="sr-only" for={@id}>{@label}</label>
+      <select
+        id={@id}
+        name={@name}
+        class="min-h-11 appearance-none rounded-lg border border-border bg-surface pl-3 pr-9 text-sm text-text-secondary focus:outline-none focus:ring-2 focus:ring-brand"
+      >
+        <option
+          :for={{value, label} <- @options}
+          value={value || "all"}
+          selected={to_string(value) == to_string(@value)}
+        >
+          {label}
+        </option>
+      </select>
+      <.icon
+        name="hero-chevron-down"
+        class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-text-muted"
+      />
+    </div>
+    """
+  end
+
   attr :providers, :list, required: true
   attr :selected, :string, default: "all"
   attr :on_change, :string, default: "filter_provider"

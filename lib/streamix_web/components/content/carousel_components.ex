@@ -14,12 +14,12 @@ defmodule StreamixWeb.Content.CarouselComponents do
 
   def for_you_section(assigns) do
     ~H"""
-    <section class="px-[4%]">
-      <div class="flex items-center justify-between mb-3 sm:mb-4">
-        <h2 class="flex items-center gap-2 text-base sm:text-xl font-semibold text-text-primary">
-          <.icon name="hero-sparkles-solid" class="size-4 sm:size-5 text-warning" /> Para Você
-        </h2>
-      </div>
+    <section>
+      <StreamixWeb.Content.NavigationComponents.section_header
+        title="Para você"
+        icon="hero-sparkles-solid"
+        ai_powered={true}
+      />
 
       <%= if @recommendations == [] do %>
         <div class="flex flex-col items-center justify-center py-12 sm:py-16 rounded-lg border border-glass-border bg-surface-elevated/30">

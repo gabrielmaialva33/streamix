@@ -124,7 +124,7 @@ defmodule StreamixWeb.App.Navigation do
           current_path={@current_path}
           icon="hero-heart"
           icon_active="hero-heart-solid"
-          label={gettext("Lista")}
+          label={gettext("Minha lista")}
           active={String.starts_with?(@current_path, "/favorites")}
         />
         <.bottom_tab

@@ -12,6 +12,15 @@ defmodule StreamixWeb.Layouts do
 
   embed_templates "layouts/*"
 
+  def hero_path?(path) when is_binary(path) do
+    path = path |> String.split("?", parts: 2) |> List.first()
+
+    path in ["/", "/home"] or
+      Regex.match?(~r{^/(browse|providers/\d+)/(movies|series)/\d+}, path)
+  end
+
+  def hero_path?(_), do: false
+
   def detail_path?(path) when is_binary(path) do
     path
     |> String.split("?", parts: 2)

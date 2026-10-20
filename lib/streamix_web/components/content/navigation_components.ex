@@ -197,7 +197,7 @@ defmodule StreamixWeb.Content.NavigationComponents do
   # ============================================
 
   @doc """
-  Renders a section header with title, icon, filter dropdowns, and "Ver mais" link.
+  Renders a section header with title, icon, filter dropdowns, and "Ver todos" link.
   """
   attr :title, :string, required: true
   attr :icon, :string, default: nil
@@ -210,65 +210,43 @@ defmodule StreamixWeb.Content.NavigationComponents do
   attr :on_period_change, :string, default: nil
   attr :see_more_path, :string, default: nil
   attr :ai_powered, :boolean, default: false
+  attr :id, :string, default: nil
+  slot :actions
 
   def section_header(assigns) do
     ~H"""
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3 sm:mb-4">
-      <div class="flex items-center gap-2">
+    <div id={@id} class="mb-3 sm:mb-4 space-y-2">
+      <div class="flex items-center justify-between gap-3">
         <h2 class="flex items-center gap-2 text-base sm:text-xl font-semibold text-text-primary">
-          <.icon :if={@icon} name={@icon} class={["size-4 sm:size-5", @icon_class]} />
+          <.icon :if={@icon} name={@icon} class={["size-5 shrink-0", @icon_class]} />
           {@title}
+          <.badge :if={@ai_powered} variant="brand" size="sm">IA</.badge>
         </h2>
-        <span
-          :if={@ai_powered}
-          class="px-1.5 py-0.5 text-[9px] font-bold rounded bg-info/15 text-info border border-info/20"
-        >
-          AI
-        </span>
+        <div class="flex items-center gap-2 shrink-0">
+          {render_slot(@actions)}
+          <.button :if={@see_more_path} navigate={@see_more_path} variant="ghost" size="sm">Ver todos
+          <.icon name="hero-chevron-right" class="size-4" /></.button>
+        </div>
       </div>
-
-      <div class="flex flex-wrap items-center gap-2">
+      <div :if={@on_genre_change || @on_period_change} class="flex flex-wrap items-center gap-2">
         <form :if={@on_genre_change && @genre_filters != []} phx-change={@on_genre_change}>
-          <label class="sr-only" for={"section-genre-#{@on_genre_change}"}>Filtrar por gênero</label>
-          <select
+          <StreamixWeb.App.Filters.filter_select
             id={"section-genre-#{@on_genre_change}"}
             name="genre"
-            class="min-h-9 rounded-md border border-border bg-surface px-2 text-xs text-text-secondary focus:border-brand focus:outline-none"
-          >
-            <option
-              :for={{value, label} <- @genre_filters}
-              value={value}
-              selected={to_string(value) == to_string(@selected_genre)}
-            >
-              {label}
-            </option>
-          </select>
+            label="Filtrar por gênero"
+            options={@genre_filters}
+            value={@selected_genre}
+          />
         </form>
-
         <form :if={@on_period_change && @period_filters != []} phx-change={@on_period_change}>
-          <label class="sr-only" for={"section-period-#{@on_period_change}"}>Filtrar período</label>
-          <select
+          <StreamixWeb.App.Filters.filter_select
             id={"section-period-#{@on_period_change}"}
             name="period"
-            class="min-h-9 rounded-md border border-border bg-surface px-2 text-xs text-text-secondary focus:border-brand focus:outline-none"
-          >
-            <option
-              :for={{value, label} <- @period_filters}
-              value={value || "all"}
-              selected={value == @selected_period}
-            >
-              {label}
-            </option>
-          </select>
+            label="Filtrar período"
+            options={@period_filters}
+            value={@selected_period}
+          />
         </form>
-
-        <.link
-          :if={@see_more_path}
-          navigate={@see_more_path}
-          class="inline-flex min-h-11 items-center text-xs sm:min-h-0 sm:text-sm text-text-muted hover:text-brand transition-colors whitespace-nowrap flex-shrink-0"
-        >
-          Ver mais <span class="hidden sm:inline">→</span>
-        </.link>
       </div>
     </div>
     """

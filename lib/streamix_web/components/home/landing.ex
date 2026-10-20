@@ -8,6 +8,9 @@ defmodule StreamixWeb.Home.Landing do
 
   import StreamixWeb.CoreComponents
 
+  import StreamixWeb.Content.HelperComponents,
+    only: [display_year: 1, positive_rating?: 1, format_count: 1]
+
   alias StreamixWeb.Helpers.ImageProxy
 
   def render_landing_page(assigns) do
@@ -37,7 +40,7 @@ defmodule StreamixWeb.Home.Landing do
       <div class="absolute inset-0 bg-gradient-to-t from-background via-background/75 to-black/45" />
       <div class="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
 
-      <div class="relative z-10 flex min-h-[calc(52dvh-5rem)] sm:min-h-[calc(62dvh-6rem)] items-end px-[4%] pb-8 sm:pb-12">
+      <div class="relative z-10 flex min-h-[calc(52dvh-5rem)] sm:min-h-[calc(62dvh-6rem)] items-end pb-8 sm:pb-12">
         <div class="max-w-4xl">
           <div class="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-white/70">
             <span class="rounded bg-brand px-2 py-1 text-white">Catálogo público</span>
@@ -72,7 +75,7 @@ defmodule StreamixWeb.Home.Landing do
       </div>
     </div>
 
-    <section id="catalogo-publico" class="space-y-8 px-[4%] py-8 sm:space-y-10 sm:py-10">
+    <section id="catalogo-publico" class="space-y-8 py-8 sm:space-y-10 sm:py-10">
       <div class="grid gap-3 sm:grid-cols-3">
         <.public_stat
           id="public-stat-movies"
@@ -155,7 +158,7 @@ defmodule StreamixWeb.Home.Landing do
       </div>
     </section>
 
-    <section class="border-t border-white/5 px-[4%] py-10 sm:py-12">
+    <section class="border-t border-white/5 py-10 sm:py-12">
       <div class="flex flex-col gap-4 rounded-lg border border-white/10 bg-white/[0.04] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
           <h2 class="text-lg font-semibold text-white">Quer salvar progresso e favoritos?</h2>
@@ -185,7 +188,7 @@ defmodule StreamixWeb.Home.Landing do
       <div class="mb-3 flex size-10 items-center justify-center rounded-md bg-white/[0.06] text-white/80">
         <.icon name={@icon} class="size-5" />
       </div>
-      <div class="text-2xl font-bold text-white">{@value}</div>
+      <div class="text-2xl font-bold text-white">{format_count(@value)}</div>
       <div class="mt-1 text-sm text-text-secondary">{@label}</div>
     </div>
     """
@@ -200,10 +203,11 @@ defmodule StreamixWeb.Home.Landing do
   def public_media_shelf(assigns) do
     ~H"""
     <div id={@id} class="render-lazy">
-      <div class="mb-3 flex items-center gap-2 sm:mb-4">
-        <.icon name={@icon} class="size-5 text-brand" />
-        <h2 class="text-base font-semibold text-text-primary sm:text-xl">{@title}</h2>
-      </div>
+      <StreamixWeb.Content.NavigationComponents.section_header
+        title={@title}
+        icon={@icon}
+        icon_class="text-brand"
+      />
       <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-4 sm:overflow-x-auto sm:pb-2">
         <.public_media_card
           :for={{item, idx} <- Enum.with_index(@items)}
@@ -264,8 +268,8 @@ defmodule StreamixWeb.Home.Landing do
           {public_title(@item)}
         </h3>
         <p class="mt-1 flex items-center gap-1 text-2xs text-text-muted">
-          <span :if={Map.get(@item, :year)}>{Map.get(@item, :year)}</span>
-          <span :if={Map.get(@item, :rating)}>★ {public_rating(@item)}</span>
+          <span :if={display_year(Map.get(@item, :year)) != ""}>{Map.get(@item, :year)}</span>
+          <span :if={positive_rating?(Map.get(@item, :rating))}>★ {public_rating(@item)}</span>
         </p>
       </div>
     </article>
@@ -277,10 +281,11 @@ defmodule StreamixWeb.Home.Landing do
   def public_channel_shelf(assigns) do
     ~H"""
     <div id="public-channels" class="render-lazy">
-      <div class="mb-3 flex items-center gap-2 sm:mb-4">
-        <.icon name="hero-signal-solid" class="size-5 text-brand" />
-        <h2 class="text-base font-semibold text-text-primary sm:text-xl">TV ao vivo pública</h2>
-      </div>
+      <StreamixWeb.Content.NavigationComponents.section_header
+        title="TV ao vivo pública"
+        icon="hero-signal-solid"
+        icon_class="text-brand"
+      />
       <div class="grid grid-cols-3 gap-2 sm:grid-cols-none sm:grid-rows-2 sm:grid-flow-col sm:gap-4 sm:overflow-x-auto sm:pb-2 sm:auto-cols-[150px] lg:auto-cols-[176px]">
         <.public_channel_card
           :for={{channel, idx} <- Enum.with_index(@channels)}
@@ -375,7 +380,7 @@ defmodule StreamixWeb.Home.Landing do
 
   def landing_features(assigns) do
     ~H"""
-    <div class="py-16 sm:py-20 px-[4%] border-t border-white/5">
+    <div class="py-16 sm:py-20 border-t border-white/5">
       <h2 class="text-2xl sm:text-3xl font-bold text-white text-center mb-12">
         Mais motivos para usar o Streamix
       </h2>
@@ -428,7 +433,7 @@ defmodule StreamixWeb.Home.Landing do
 
   def landing_faq(assigns) do
     ~H"""
-    <div class="py-16 sm:py-20 px-[4%] border-t border-white/5">
+    <div class="py-16 sm:py-20 border-t border-white/5">
       <h2 class="text-2xl sm:text-3xl font-bold text-white text-center mb-10">
         Perguntas frequentes
       </h2>

@@ -1,13 +1,13 @@
 /**
  * ScrollHeader — scroll-aware header transparency
  *
- * Transparent at top of page, glass effect on scroll.
+ * Transparent over a hero at scroll zero, opaque elsewhere.
  * Uses data-scrolled attribute for CSS-driven styling.
  */
 const ScrollHeader = {
   mounted() {
     this.header = this.el;
-    this.threshold = 20;
+    this.threshold = 0;
     this.ticking = false;
 
     this.onScroll = () => {
@@ -23,6 +23,10 @@ const ScrollHeader = {
 
     window.addEventListener("scroll", this.onScroll, { passive: true });
     // Set initial state
+    this.header.dataset.scrolled = window.scrollY > this.threshold;
+  },
+
+  updated() {
     this.header.dataset.scrolled = window.scrollY > this.threshold;
   },
 

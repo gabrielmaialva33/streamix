@@ -33,7 +33,6 @@ defmodule StreamixWeb.Home.Authenticated do
       <div
         :if={@library_loading}
         id="home-library-loading"
-        class="px-[4%]"
         aria-label="Carregando sua biblioteca"
       >
         <.skeleton_carousel count={3} />
@@ -48,7 +47,7 @@ defmodule StreamixWeb.Home.Authenticated do
 
       <.render_content_carousel
         :if={@favorites != []}
-        title="Minha Lista"
+        title="Minha lista"
         items={@favorites}
         type={:favorites}
       />
@@ -56,7 +55,6 @@ defmodule StreamixWeb.Home.Authenticated do
       <div
         :if={@personalization_loading}
         id="home-personalization-loading"
-        class="px-[4%]"
         aria-label="Carregando recomendações"
       >
         <.skeleton_carousel count={4} />
@@ -79,7 +77,6 @@ defmodule StreamixWeb.Home.Authenticated do
       <div
         :if={@catalog_loading}
         id="home-catalog-loading"
-        class="px-[4%]"
         aria-label="Carregando catálogo"
       >
         <.skeleton_carousel count={5} />
@@ -130,7 +127,7 @@ defmodule StreamixWeb.Home.Authenticated do
           !@catalog_loading && !@personalization_loading && @movies == [] && @series == [] &&
             @channels == []
         }
-        class="px-[4%] py-24 text-center"
+        class="py-24 text-center"
       >
         <.icon name="hero-film" class="size-16 text-text-muted mx-auto mb-4" />
         <h2 class="text-2xl font-bold text-text-primary mb-2">Nenhum conteúdo disponível</h2>
