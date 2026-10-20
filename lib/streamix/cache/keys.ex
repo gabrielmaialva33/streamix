@@ -8,6 +8,11 @@ defmodule Streamix.Cache.Keys do
   @spec categories(integer()) :: String.t()
   def categories(user_id), do: "categories:user:#{user_id}"
 
+  @spec visible_genres(:movies | :series, integer() | nil, boolean()) :: String.t()
+  def visible_genres(kind, user_id, show_adult) do
+    "genres:visible:v1:#{kind}:adult:#{show_adult}:user:#{user_id || "anonymous"}"
+  end
+
   @spec provider_categories(integer()) :: String.t()
   def provider_categories(provider_id), do: "categories:provider:#{provider_id}"
 

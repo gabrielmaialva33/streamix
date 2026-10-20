@@ -4,6 +4,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
+  alias Streamix.Iptv.Genres.Browse
 
   alias Streamix.Iptv.{Access, AdultFilter, Series}
 
@@ -34,6 +35,7 @@ defmodule Streamix.Iptv.Content.SeriesOps.ListingQuery do
     )
     |> maybe_where_search(search)
     |> maybe_join_genre(genre_id)
+    |> Browse.filter(:series, Keyword.get(opts, :genre))
     |> exclude_adult(show_adult)
   end
 

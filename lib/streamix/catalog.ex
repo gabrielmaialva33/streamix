@@ -199,6 +199,11 @@ defmodule Streamix.Catalog do
   @doc "Moves the catalog onto the canonical genres; see `Streamix.Iptv.Genres.canonicalize/0`."
   defdelegate canonicalize_genres(), to: Streamix.Iptv.Genres, as: :canonicalize
 
+  @doc "Visible canonical genres with variant-deduplicated counts, cached for 60 seconds."
+  defdelegate list_visible_genres(kind, user_id, opts \\ []),
+    to: Streamix.Iptv.Genres.Browse,
+    as: :list_visible
+
   @doc "Canonical genre slugs a raw genre or category name means; see `Streamix.Iptv.Genres.Normalizer`."
   defdelegate genre_slugs(raw), to: Streamix.Iptv.Genres.Normalizer, as: :normalize
 

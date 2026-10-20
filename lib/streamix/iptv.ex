@@ -469,6 +469,7 @@ defmodule Streamix.Iptv do
 
   defdelegate list_games(user_id, opts \\ []), to: CatalogBoundary
   defdelegate canonicalize_genres(), to: CatalogBoundary
+  defdelegate list_visible_genres(kind, user_id, opts \\ []), to: CatalogBoundary
   defdelegate genre_slugs(raw), to: CatalogBoundary
   defdelegate genre_slugs_all(raws), to: CatalogBoundary
   defdelegate genre_name(slug), to: CatalogBoundary

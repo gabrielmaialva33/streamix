@@ -4,6 +4,7 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
   import Ecto.Query, warn: false
 
   alias Streamix.Helpers
+  alias Streamix.Iptv.Genres.Browse
 
   alias Streamix.Iptv.{
     Access,
@@ -38,6 +39,7 @@ defmodule Streamix.Iptv.Content.Movies.Queries do
     |> where([_m, p], p.provider_type == :xtream and p.is_active == true)
     |> maybe_where_search(search)
     |> maybe_join_genre(genre_id)
+    |> Browse.filter(:movies, Keyword.get(opts, :genre))
     |> maybe_exclude_adult(show_adult)
   end
 
