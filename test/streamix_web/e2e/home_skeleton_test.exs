@@ -97,17 +97,17 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
   end
 
   @tag browser_context_opts: @compact_mobile_opts
-  test "compact mobile catalog remains dense at 360px", %{conn: conn} do
+  test "compact mobile catalog stays readable at 360px", %{conn: conn} do
     assert_mobile_catalog(conn, 360)
   end
 
   @tag browser_context_opts: @mobile_opts
-  test "standard mobile catalog remains dense at 390px", %{conn: conn} do
+  test "standard mobile catalog stays readable at 390px", %{conn: conn} do
     assert_mobile_catalog(conn, 390)
   end
 
   @tag browser_context_opts: @large_mobile_opts
-  test "large mobile catalog remains dense at 430px", %{conn: conn} do
+  test "large mobile catalog stays readable at 430px", %{conn: conn} do
     assert_mobile_catalog(conn, 430)
   end
 
@@ -189,22 +189,24 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
         assert state["viewportWidth"] == viewport_width
         assert length(state["rects"]) == 6
 
-        [first, second, third, fourth | _rest] = state["rects"]
+        # Two readable columns on phones (a third from 540 px): a 4vw page
+        # gutter on each side and a 10 px gap.
+        [first, second, third | _rest] = state["rects"]
         assert_in_delta first["top"], second["top"], 2
-        assert_in_delta first["top"], third["top"], 2
-        assert fourth["top"] > first["bottom"]
+        assert third["top"] > first["bottom"]
 
-        expected_width = (viewport_width - 52) / 3
+        expected_width = (viewport_width * 0.92 - 10) / 2
 
-        for rect <- Enum.take(state["rects"], 3) do
+        for rect <- Enum.take(state["rects"], 2) do
           assert_in_delta rect["width"], expected_width, 6
           assert rect["height"] > rect["width"] * 1.6
           assert rect["right"] <= viewport_width
         end
 
+        # The favorite keeps a 44 px target inside its own card.
         assert state["favorite"]["width"] >= 44
         assert state["favorite"]["height"] >= 44
-        assert state["favorite"]["right"] <= 390
+        assert state["favorite"]["right"] <= first["right"]
         assert state["toolbarHeight"] <= 130
         assert state["horizontalOverflow"] <= 1
       end
@@ -242,16 +244,18 @@ defmodule StreamixWeb.E2E.HomeSkeletonTest do
 
         expected_width = (viewport_width - 42) / 2
 
+        # Two stable 14 px title lines make a channel card ~190 px tall.
         for rect <- Enum.take(state["rects"], 2) do
           assert_in_delta rect["width"], expected_width, 7
-          assert rect["height"] <= 180
+          assert rect["height"] <= 200
           assert rect["right"] <= viewport_width
         end
 
         assert state["favorite"]["width"] >= 44
         assert state["favorite"]["height"] >= 44
-        assert state["favorite"]["right"] <= 390
-        assert state["toolbarHeight"] <= 140
+        assert state["favorite"]["right"] <= first["right"]
+        # Type tabs have a line of their own above the catalog and search rows.
+        assert state["toolbarHeight"] <= 160
         assert state["horizontalOverflow"] <= 1
       end
     )
