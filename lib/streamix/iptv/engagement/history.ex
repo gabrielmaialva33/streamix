@@ -303,6 +303,34 @@ defmodule Streamix.Iptv.History do
     end)
   end
 
+  @doc "Latest watched episode per requested series, preserving each copy's progress."
+  def latest_series_progress(_user_id, []), do: %{}
+  def latest_series_progress(nil, _series_ids), do: %{}
+
+  def latest_series_progress(user_id, series_ids) do
+    from(progress in WatchProgress,
+      join: episode in Episode,
+      on: episode.catalog_item_id == progress.catalog_item_id,
+      join: season in Season,
+      on: season.id == episode.season_id,
+      where: progress.user_id == ^user_id and season.series_id in ^series_ids,
+      where: progress.progress_seconds > 0,
+      where: not is_nil(progress.last_watched_at),
+      distinct: season.series_id,
+      order_by: [asc: season.series_id, desc: progress.last_watched_at, desc: progress.id],
+      select:
+        {season.series_id,
+         %{
+           episode_id: episode.id,
+           watched_at: progress.last_watched_at,
+           progress_id: progress.id,
+           completed: progress.completed
+         }}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
   @doc """
   Returns a map of content_id => progress (0.0..1.0) for the given content IDs.
   Used for showing progress bars on content cards.

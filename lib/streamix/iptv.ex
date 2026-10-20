@@ -72,6 +72,7 @@ defmodule Streamix.Iptv do
   defdelegate clear_watch_history(user_id), to: Library
   defdelegate get_watch_progress_map(user_id, content_type, content_ids), to: Library
   defdelegate get_series_progress_map(user_id, series_ids), to: Library
+  defdelegate latest_series_progress(user_id, series_ids), to: Library
 
   # =============================================================================
   # Live Channels

@@ -437,6 +437,8 @@ defmodule StreamixWeb.Content.DetailComponents do
   attr :season, :map, required: true
   attr :expanded, :boolean, default: false
 
+  attr :episode_paths, :map, default: %{}
+
   def detail_season_accordion(assigns) do
     episodes = Enum.sort_by(assigns.season.episodes || [], & &1.episode_num)
     assigns = assign(assigns, :episodes, episodes)
@@ -466,7 +468,11 @@ defmodule StreamixWeb.Content.DetailComponents do
 
       <div :if={@expanded} class="border-t border-border">
         <div class="divide-y divide-border">
-          <.detail_episode_item :for={episode <- @episodes} episode={episode} />
+          <.detail_episode_item
+            :for={episode <- @episodes}
+            episode={episode}
+            path={Map.get(@episode_paths, episode.id)}
+          />
         </div>
       </div>
     </div>
@@ -475,11 +481,14 @@ defmodule StreamixWeb.Content.DetailComponents do
 
   attr :episode, :map, required: true
 
+  attr :path, :string, default: nil
+
   def detail_episode_item(assigns) do
     ~H"""
-    <div
+    <.link
+      navigate={@path}
       class="flex gap-2 sm:gap-4 p-3 sm:p-4 hover:bg-surface-hover cursor-pointer transition-colors group"
-      phx-click="view_episode"
+      phx-click={if is_nil(@path), do: "view_episode"}
       phx-value-id={@episode.id}
     >
       <div class="flex-shrink-0 w-6 sm:w-8 text-center">
@@ -528,7 +537,7 @@ defmodule StreamixWeb.Content.DetailComponents do
           {detail_format_duration(@episode.duration_secs)}
         </span>
       </div>
-    </div>
+    </.link>
     """
   end
 

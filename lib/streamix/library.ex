@@ -115,6 +115,8 @@ defmodule Streamix.Library do
 
   defdelegate get_series_progress_map(user_id, series_ids), to: History
 
+  defdelegate latest_series_progress(user_id, series_ids), to: History
+
   defp after_history_write({:ok, _entry} = result, user_id) do
     queue_personalization_refresh(user_id)
     result

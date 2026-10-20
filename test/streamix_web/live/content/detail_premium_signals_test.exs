@@ -189,45 +189,137 @@ defmodule StreamixWeb.Content.DetailPremiumSignalsTest do
       refute has_element?(view, "#series-detail-premium-cta")
     end
 
-    test "series detail recommends one source and collapses the alternatives", %{
+    test "series source selection updates episodes and keeps the season number", ctx do
+      %{conn: conn, user: user, series: series} = ctx
+      provider = provider_fixture(user, %{name: "Alternative"})
+
+      alternative =
+        series_fixture(provider, %{
+          title: series.title,
+          tmdb_id: series.tmdb_id,
+          name: "Alternative DUAL 1080p"
+        })
+
+      first = episode_fixture(season_fixture(alternative), provider)
+      second = episode_fixture(season_fixture(alternative, %{season_number: 2}), provider)
+
+      original_second =
+        episode_fixture(
+          season_fixture(series, %{season_number: 2}),
+          Repo.get!(Streamix.Iptv.Provider, series.provider_id)
+        )
+
+      {:ok, view, _} =
+        live(log_in_user(conn, user), ~p"/browse/series/#{series.id}?source=#{series.id}")
+
+      view
+      |> element("[phx-click=toggle_season][phx-value-id='#{original_second.season_id}']")
+      |> render_click()
+
+      view |> element("#source-option-#{alternative.id}") |> render_click()
+      assert_patch(view, ~p"/browse/series/#{series.id}?source=#{alternative.id}")
+      assert has_element?(view, "#source-option-#{alternative.id}[aria-checked=true]")
+
+      assert has_element?(
+               view,
+               "#episodes a[href*='/series/#{alternative.id}/episode/#{second.id}']"
+             )
+
+      refute has_element?(view, "#episodes a[href*='/episode/#{original_second.id}?']")
+      assert has_element?(view, "#source-option-#{alternative.id} [data-source-badge]", "DUAL")
+
+      assert has_element?(
+               view,
+               "#episodes a[href*='return_to='][href*='source%3D#{alternative.id}']"
+             )
+
+      assert has_element?(view, "[phx-click=play_first_episode]")
+      view |> element("[phx-click=play_first_episode]") |> render_click()
+
+      assert_redirect(
+        view,
+        ~p"/providers/#{provider.id}/series/#{alternative.id}/episode/#{first.id}?return_to=#{"/browse/series/#{series.id}?source=#{alternative.id}"}"
+      )
+    end
+
+    test "latest progress chooses a source, explicit and invalid parameters are handled", ctx do
+      %{conn: conn, user: user, series: series} = ctx
+      provider = provider_fixture(user)
+      alternative = series_fixture(provider, %{title: series.title, tmdb_id: series.tmdb_id})
+      episode = episode_fixture(season_fixture(alternative), provider)
+
+      original =
+        series
+        |> Repo.preload(seasons: :episodes)
+        |> Map.fetch!(:seasons)
+        |> hd()
+        |> Map.fetch!(:episodes)
+        |> hd()
+
+      assert {:ok, _} =
+               Streamix.Library.update_watch_progress(user.id, "episode", episode.id, 120, 1200)
+
+      assert {:ok, old_progress} =
+               Streamix.Library.update_watch_progress(user.id, "episode", original.id, 60, 1200)
+
+      Streamix.Iptv.WatchProgress
+      |> Repo.get!(old_progress.id)
+      |> Ecto.Changeset.change(last_watched_at: DateTime.add(DateTime.utc_now(:second), -60))
+      |> Repo.update!()
+
+      conn = log_in_user(conn, user)
+
+      for suffix <- ["", "?source=invalid", "?source=999999999"] do
+        {:ok, view, _} = live(conn, "/browse/series/#{series.id}" <> suffix)
+        assert has_element?(view, "#source-option-#{alternative.id}[aria-checked=true]")
+        assert has_element?(view, "[phx-click=play_first_episode]", "Continuar")
+      end
+
+      {:ok, view, _} = live(conn, ~p"/browse/series/#{series.id}?source=#{series.id}")
+      assert has_element?(view, "#source-option-#{series.id}[aria-checked=true]")
+    end
+
+    test "source query cannot select another user's private equivalent", %{
       conn: conn,
       user: user,
       series: series
     } do
-      alternative_provider =
-        provider_fixture(user, %{
-          name: "Alternative Series Provider",
-          is_active: true
-        })
+      owner = user_fixture()
+      provider = provider_fixture(owner)
+      hidden = series_fixture(provider, %{title: series.title, tmdb_id: series.tmdb_id})
+      episode_fixture(season_fixture(hidden), provider)
 
-      alternative_series =
-        series_fixture(alternative_provider, %{
-          name: "A Premium Series Alternative",
-          title: series.title,
-          plot: "Alternative source.",
-          content_rating: "14",
-          tmdb_id: series.tmdb_id
-        })
+      {:ok, view, _} =
+        live(log_in_user(conn, user), ~p"/browse/series/#{series.id}?source=#{hidden.id}")
 
-      alternative_series
-      |> season_fixture()
-      |> episode_fixture(alternative_provider)
+      refute has_element?(view, "#source-option-#{hidden.id}")
+      assert has_element?(view, "#episodes a[href*='/series/#{series.id}/episode/']")
+    end
 
-      conn = log_in_user(conn, user)
-      {:ok, view, html} = live(conn, ~p"/browse/series/#{series.id}")
-      document = Floki.parse_document!(html)
+    test "single source is informational without a radiogroup", %{
+      conn: conn,
+      user: user,
+      series: series
+    } do
+      {:ok, view, _} = live(log_in_user(conn, user), ~p"/browse/series/#{series.id}")
+      refute has_element?(view, "#series-source-picker")
+      assert has_element?(view, "#series-source-picker-info", "Fonte:")
+    end
 
-      assert length(
-               Floki.find(document, "#recommended-series-source [data-source-card='series']")
-             ) == 1
-
-      assert has_element?(view, "#recommended-series-source #series-source-#{series.id}")
-      assert has_element?(view, "details#alternative-series-sources:not([open])")
-
-      assert has_element?(
-               view,
-               "#alternative-series-sources #series-source-#{alternative_series.id}"
-             )
+    test "incomplete source displays availability and premium lock", %{
+      conn: conn,
+      user: user,
+      series: series
+    } do
+      provider = provider_fixture(user)
+      alternative = series_fixture(provider, %{title: series.title, tmdb_id: series.tmdb_id})
+      episode_fixture(season_fixture(alternative), provider)
+      episode_fixture(season_fixture(alternative, %{season_number: 5}), provider)
+      {:ok, view, _} = live(log_in_user(conn, user), ~p"/browse/series/#{series.id}")
+      assert has_element?(view, "#source-option-#{series.id}", "1 de 2 eps")
+      assert has_element?(view, "#source-option-#{series.id}", "sem T5")
+      assert has_element?(view, "#source-option-#{series.id}", "Premium")
+      refute has_element?(view, "#source-option-#{alternative.id}", "de 2 eps")
     end
 
     test "series detail browse opens a visible private series without a global provider", %{

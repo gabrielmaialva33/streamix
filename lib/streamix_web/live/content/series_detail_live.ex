@@ -6,9 +6,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   use StreamixWeb, :live_view
   alias StreamixWeb.Content.Detail
   alias StreamixWeb.Content.SeriesSources
-  alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.LiveSessionNavigation
 
+  import StreamixWeb.SourcePickerComponents
   import StreamixWeb.App.Premium
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
@@ -103,13 +103,13 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   defp mount_series_found(socket, provider, series, user_id, mode, return_to, provider_filter) do
-    sorted_seasons = Detail.seasons_with_episodes(series)
     preferred_provider_id = preferred_provider_id(provider_filter, mode, provider)
 
     series_sources =
       SeriesSources.list(series, user_id, preferred_provider_id: preferred_provider_id)
 
-    selected_series = selected_series_source(series_sources, series)
+    progress = Streamix.Library.latest_series_progress(user_id, Enum.map(series_sources, & &1.id))
+    selected_series = default_source(series_sources, progress, series)
     selected_seasons = Detail.seasons_with_episodes(selected_series)
 
     socket =
@@ -129,11 +129,14 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> assign(return_to: return_to)
       |> assign(provider_filter: provider_filter)
       |> assign(preferred_provider_id: preferred_provider_id)
-      |> assign(seasons: sorted_seasons)
+      |> assign(source_progress: progress)
+      |> assign(
+        source_options: SeriesSources.options(series_sources, socket.assigns.current_scope.user)
+      )
       |> assign(selected_series: selected_series)
       |> assign(selected_seasons: selected_seasons)
       |> assign(series_sources: series_sources)
-      |> assign(expanded_seasons: Detail.initial_expanded(sorted_seasons))
+      |> assign(expanded_seasons: Detail.initial_expanded(selected_seasons))
       |> assign(is_favorite: Detail.favorite?(user_id, "series", series.id))
       |> assign(user_id: user_id)
       |> assign(similar_series: [])
@@ -141,6 +144,80 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       |> start_detail_tasks(series)
 
     {:ok, socket}
+  end
+
+  def handle_params(params, _uri, %{assigns: %{series_sources: sources}} = socket) do
+    selected =
+      Enum.find(sources, &(Integer.to_string(&1.id) == params["source"])) ||
+        default_source(sources, socket.assigns.source_progress, socket.assigns.series)
+
+    {:noreply, select_source(socket, selected)}
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp select_source(socket, selected) do
+    seasons = Detail.seasons_with_episodes(selected)
+
+    open_numbers =
+      socket.assigns.selected_seasons
+      |> Enum.filter(&MapSet.member?(socket.assigns.expanded_seasons, &1.id))
+      |> Enum.map(& &1.season_number)
+
+    expanded = seasons |> Enum.filter(&(&1.season_number in open_numbers)) |> Enum.map(& &1.id)
+    expanded = if expanded == [], do: Detail.initial_expanded(seasons), else: MapSet.new(expanded)
+    current_path = source_path(socket.assigns, selected.id)
+    episodes = Enum.flat_map(seasons, & &1.episodes)
+    progress = Map.get(socket.assigns.source_progress, selected.id)
+
+    resume =
+      if progress && !progress.completed, do: Enum.find(episodes, &(&1.id == progress.episode_id))
+
+    playable = resume || first_episode(seasons)
+
+    socket
+    |> assign(selected_series: selected, selected_seasons: seasons, expanded_seasons: expanded)
+    |> assign(
+      current_path: current_path,
+      playable_episode: playable,
+      resuming: not is_nil(resume)
+    )
+    |> assign(
+      premium_access: Detail.premium_access?(socket.assigns.current_scope.user, selected.provider)
+    )
+    |> assign(
+      episode_paths:
+        Map.new(episodes, &{&1.id, selected_episode_path(selected, &1, current_path)})
+    )
+    |> stream(:seasons, seasons, reset: true)
+  end
+
+  defp default_source(sources, progress, fallback) do
+    latest =
+      Enum.max_by(
+        progress,
+        fn {_id, entry} -> {DateTime.to_unix(entry.watched_at), entry.progress_id} end,
+        fn -> nil end
+      )
+
+    case latest do
+      {id, _} -> Enum.find(sources, &(&1.id == id)) || List.first(sources) || fallback
+      nil -> List.first(sources) || fallback
+    end
+  end
+
+  defp source_path(assigns, source_id) do
+    query = %{"source" => source_id}
+
+    query =
+      if assigns.provider_filter,
+        do: Map.put(query, "provider", assigns.provider_filter),
+        else: query
+
+    query = if assigns.return_to, do: Map.put(query, "return_to", assigns.return_to), else: query
+
+    series_path_for(assigns.mode, assigns.provider, assigns.series) <>
+      "?" <> URI.encode_query(query)
   end
 
   def handle_async({:series_enrichment, series_id}, {:ok, series}, socket)
@@ -188,6 +265,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   # Event Handlers
   # ============================================
 
+  def handle_event("select_source", %{"id" => id}, socket) do
+    selected =
+      Enum.find(socket.assigns.series_sources, &(Integer.to_string(&1.id) == id)) ||
+        default_source(
+          socket.assigns.series_sources,
+          socket.assigns.source_progress,
+          socket.assigns.series
+        )
+
+    {:noreply, push_patch(socket, to: source_path(socket.assigns, selected.id))}
+  end
+
   def handle_event("toggle_season", %{"id" => season_id}, socket) do
     case parse_positive_integer(season_id) do
       {:ok, season_id} ->
@@ -198,7 +287,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             do: MapSet.delete(expanded, season_id),
             else: MapSet.put(expanded, season_id)
 
-        {:noreply, assign(socket, expanded_seasons: expanded)}
+        {:noreply,
+         socket
+         |> assign(expanded_seasons: expanded)
+         |> stream(:seasons, socket.assigns.selected_seasons, reset: true)}
 
       :error ->
         {:noreply, socket}
@@ -206,35 +298,26 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   def handle_event("view_episode", %{"id" => episode_id}, socket) do
-    path =
-      episode_path(
-        socket.assigns.mode,
-        socket.assigns.provider,
-        socket.assigns.series.id,
-        episode_id
-      )
+    case parse_positive_integer(episode_id) do
+      {:ok, id} ->
+        case Map.get(socket.assigns.episode_paths, id) do
+          nil -> {:noreply, socket}
+          path -> {:noreply, push_navigate(socket, to: path)}
+        end
 
-    {:noreply, push_navigate(socket, to: path)}
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("play_first_episode", _, socket) do
-    case socket.assigns.selected_seasons do
-      [first_season | _] when first_season.episodes != [] ->
-        [first_episode | _] = Enum.sort_by(first_season.episodes, & &1.episode_num)
-
-        {:noreply,
-         push_navigate(
-           socket,
-           to:
-             selected_episode_path(
-               socket.assigns.selected_series,
-               first_episode,
-               socket.assigns.current_path
-             )
-         )}
-
-      _ ->
+    case socket.assigns.playable_episode do
+      nil ->
         {:noreply, put_flash(socket, :error, "Nenhum episódio disponível")}
+
+      episode ->
+        {:noreply,
+         push_navigate(socket, to: Map.fetch!(socket.assigns.episode_paths, episode.id))}
     end
   end
 
@@ -305,7 +388,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 tagline={@series.tagline}
               />
 
-              <div :if={@mode == :browse and not @premium_access} data-premium-badge>
+              <div :if={not @premium_access} data-premium-badge>
                 <.premium_badge />
               </div>
 
@@ -314,7 +397,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
                 <.content_rating_badge rating={@series.content_rating} />
                 <.rating_badge rating={@series.rating} />
                 <.year_badge year={@series.year} />
-                <.series_count_badge seasons={@seasons} />
+                <.series_count_badge seasons={@selected_seasons} />
               </div>
 
               <!-- Genres -->
@@ -322,12 +405,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
               <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
-                <.play_button event="play_first_episode" label="Assistir" />
+                <.play_button
+                  event="play_first_episode"
+                  label={if @resuming, do: "Continuar", else: "Assistir"}
+                />
+                <a href="#episodes" class="min-h-11 inline-flex items-center text-sm">
+                  Fonte: {provider_name(@selected_series)} · Trocar
+                </a>
 
                 <StreamixWeb.WatchPartyComponents.create_party_button
-                  :if={Enum.any?(@seasons, fn s -> s.episodes != [] end)}
+                  :if={@playable_episode}
                   content_type="episode"
-                  content_id={Enum.find_value(@seasons, fn s -> List.first(s.episodes) end).id}
+                  content_id={@playable_episode.id}
                 />
 
                 <.favorite_button favorite?={@is_favorite} />
@@ -336,25 +425,45 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
               </div>
 
               <.premium_cta_banner
-                :if={@mode == :browse and not @premium_access}
+                :if={not @premium_access}
                 id="series-detail-premium-cta"
                 current_scope={@current_scope}
               />
 
               <%!-- Synopsis --%>
               <.synopsis_section text={@series.plot} />
-
-              <.series_sources
-                sources={@series_sources}
-                current_series_id={@series.id}
-                selected_series_id={@selected_series.id}
-                current_path={@current_path}
-              />
-
-              <!-- Details Grid -->
-              <.credits_grid content={@series} director_label="Criado por" />
             </div>
           </div>
+
+          <!-- Episodes Section -->
+          <div id="episodes" class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
+            <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
+
+            <.source_picker
+              id="series-source-picker"
+              options={@source_options}
+              selected={@selected_series.id}
+              event="select_source"
+            />
+            <div :if={Enum.empty?(@selected_seasons)} class="text-center py-8 sm:py-12">
+              <.icon
+                name="hero-film"
+                class="size-12 sm:size-16 mx-auto mb-3 sm:mb-4 text-text-secondary/20"
+              />
+              <p class="text-text-secondary text-sm sm:text-base">Nenhum episódio disponível</p>
+            </div>
+
+            <div id="series-seasons" phx-update="stream" class="space-y-3 sm:space-y-4">
+              <div :for={{dom_id, season} <- @streams.seasons} id={dom_id}>
+                <.detail_season_accordion
+                  season={season}
+                  expanded={MapSet.member?(@expanded_seasons, season.id)}
+                  episode_paths={@episode_paths}
+                />
+              </div>
+            </div>
+          </div>
+          <.credits_grid content={@series} director_label="Criado por" />
 
           <!-- Image Gallery -->
           <.image_gallery
@@ -375,27 +484,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             return_to={@current_path}
             title="Séries Similares"
           />
-
-          <!-- Episodes Section -->
-          <div class="mt-8 sm:mt-12 space-y-4 sm:space-y-6">
-            <h2 class="text-xl sm:text-2xl font-bold text-text-primary">Episódios</h2>
-
-            <div :if={Enum.empty?(@seasons)} class="text-center py-8 sm:py-12">
-              <.icon
-                name="hero-film"
-                class="size-12 sm:size-16 mx-auto mb-3 sm:mb-4 text-text-secondary/20"
-              />
-              <p class="text-text-secondary text-sm sm:text-base">Nenhum episódio disponível</p>
-            </div>
-
-            <div class="space-y-3 sm:space-y-4">
-              <.detail_season_accordion
-                :for={season <- @seasons}
-                season={season}
-                expanded={MapSet.member?(@expanded_seasons, season.id)}
-              />
-            </div>
-          </div>
         </div>
       </div>
       <.gallery_preview image={@selected_gallery_image} alt="Imagem da série" />
@@ -411,28 +499,15 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp back_path(_return_to, :browse, _provider), do: ~p"/browse/series"
   defp back_path(_return_to, :provider, provider), do: ~p"/providers/#{provider.id}/series"
 
-  defp episode_path(:browse, _provider, series_id, episode_id),
-    do: ~p"/browse/series/#{series_id}/episode/#{episode_id}"
-
-  defp episode_path(:provider, provider, series_id, episode_id),
-    do: ~p"/providers/#{provider.id}/series/#{series_id}/episode/#{episode_id}"
-
   defp selected_episode_path(%{provider_id: provider_id, id: series_id}, episode, return_to),
     do:
       ~p"/providers/#{provider_id}/series/#{series_id}/episode/#{episode.id}"
       |> with_return_to(return_to)
 
-  defp provider_series_path(%{provider_id: provider_id}), do: ~p"/providers/#{provider_id}/series"
-
-  defp provider_category_path(%{provider_id: provider_id}, %{id: category_id}),
-    do: ~p"/providers/#{provider_id}/series?category=#{category_id}"
-
   defp with_return_to(path, return_to) when is_binary(return_to) do
     separator = if String.contains?(path, "?"), do: "&", else: "?"
     path <> separator <> "return_to=" <> URI.encode_www_form(return_to)
   end
-
-  defp with_return_to(path, _return_to), do: path
 
   defp with_provider_filter(path, nil), do: path
   defp with_provider_filter(path, provider_filter), do: path <> "?provider=" <> provider_filter
@@ -466,9 +541,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp preferred_provider_id(_provider_filter, :provider, %{id: id}), do: id
   defp preferred_provider_id(_provider_filter, _mode, _provider), do: nil
 
-  defp selected_series_source([source | _], _series), do: source
-  defp selected_series_source([], series), do: series
-
   defp first_episode([first_season | _]) when first_season.episodes != [] do
     first_season.episodes
     |> Enum.sort_by(& &1.episode_num)
@@ -479,179 +551,6 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
 
   defp provider_name(%{provider: %{name: name}}) when is_binary(name) and name != "", do: name
   defp provider_name(%{provider_id: provider_id}), do: "Provedor #{provider_id}"
-
-  defp source_categories(%{categories: categories}) when is_list(categories) do
-    categories
-    |> Enum.reject(& &1.is_adult)
-    |> Enum.take(4)
-  end
-
-  defp source_categories(_), do: []
-
-  defp series_sources(assigns) do
-    recommended =
-      Enum.find(assigns.sources, &(&1.id == assigns.selected_series_id)) ||
-        List.first(assigns.sources)
-
-    alternatives =
-      if recommended do
-        Enum.reject(assigns.sources, &(&1.id == recommended.id))
-      else
-        []
-      end
-
-    assigns =
-      assigns
-      |> assign(:recommended, recommended)
-      |> assign(:alternatives, alternatives)
-
-    ~H"""
-    <section :if={@recommended} class="space-y-3 pb-2 pt-2 text-left">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-base font-semibold text-text-primary sm:text-lg">Fonte recomendada</h2>
-        <span class="text-xs text-text-muted">
-          {length(@sources)} {if length(@sources) == 1, do: "provedor", else: "provedores"}
-        </span>
-      </div>
-
-      <div id="recommended-series-source">
-        <.series_source_card
-          source={@recommended}
-          current_series_id={@current_series_id}
-          current_path={@current_path}
-          recommended?
-        />
-      </div>
-
-      <details
-        :if={@alternatives != []}
-        id="alternative-series-sources"
-        class="group/source rounded-lg border border-border bg-surface/45"
-      >
-        <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary sm:px-4">
-          <span>Outras fontes ({length(@alternatives)})</span>
-          <.icon
-            name="hero-chevron-down"
-            class="size-4 transition-transform group-open/source:rotate-180"
-          />
-        </summary>
-        <div class="grid gap-2 border-t border-border p-2 sm:p-3">
-          <.series_source_card
-            :for={source <- @alternatives}
-            source={source}
-            current_series_id={@current_series_id}
-            current_path={@current_path}
-          />
-        </div>
-      </details>
-    </section>
-    """
-  end
-
-  attr :source, :map, required: true
-  attr :current_series_id, :integer, required: true
-  attr :current_path, :string, required: true
-  attr :recommended?, :boolean, default: false
-
-  defp series_source_card(assigns) do
-    {season_count, episode_count} = SeriesSources.counts(assigns.source)
-    playable_episode = first_episode(Detail.seasons_with_episodes(assigns.source))
-
-    assigns =
-      assigns
-      |> assign(:season_count, season_count)
-      |> assign(:episode_count, episode_count)
-      |> assign(:playable_episode, playable_episode)
-
-    ~H"""
-    <article
-      id={"series-source-#{@source.id}"}
-      data-source-card="series"
-      class={[
-        "rounded-lg border bg-surface/80 p-3 transition-colors sm:p-4",
-        @recommended? && "border-brand/60 ring-1 ring-brand/30",
-        !@recommended? && "border-border hover:border-brand/40"
-      ]}
-    >
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div class="min-w-0 space-y-2">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="truncate text-sm font-semibold text-text-primary">
-              {@source.title || @source.name}
-            </span>
-            <span
-              :if={@recommended?}
-              class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
-            >
-              Recomendada
-            </span>
-            <span
-              :if={@source.id == @current_series_id and not @recommended?}
-              class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
-            >
-              Atual
-            </span>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-1.5 text-xs text-text-secondary">
-            <span class="inline-flex items-center gap-1 rounded bg-surface-hover px-2 py-1">
-              <.icon name="hero-server-stack" class="size-3.5" />
-              {provider_name(@source)}
-            </span>
-            <span data-season-count={@season_count} class="rounded bg-surface-hover px-2 py-1">
-              {@season_count} temporadas
-            </span>
-            <span data-episode-count={@episode_count} class="rounded bg-surface-hover px-2 py-1">
-              {@episode_count} episódios
-            </span>
-            <span
-              :for={badge <- SourceBadges.badges(@source)}
-              data-source-badge
-              class="rounded bg-brand/10 px-2 py-1 font-medium text-brand"
-            >
-              {badge}
-            </span>
-          </div>
-
-          <div class="flex flex-wrap gap-1.5">
-            <.link
-              :for={category <- source_categories(@source)}
-              navigate={provider_category_path(@source, category)}
-              class="inline-flex min-h-9 items-center rounded bg-white/5 px-2 py-1 text-[11px] text-text-muted hover:bg-brand/10 hover:text-text-primary"
-            >
-              {category.name}
-            </.link>
-          </div>
-        </div>
-
-        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
-          <.link
-            :if={@playable_episode}
-            navigate={selected_episode_path(@source, @playable_episode, @current_path)}
-            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-hover sm:flex-none"
-          >
-            <.icon name="hero-play-solid" class="size-3.5" /> Assistir
-          </.link>
-          <.link
-            navigate={provider_series_path(@source)}
-            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-hover px-3 py-2 text-xs font-semibold text-text-primary hover:border-brand/60 sm:flex-none"
-          >
-            <.icon name="hero-funnel" class="size-3.5" /> Catálogo
-          </.link>
-          <.link
-            :if={@source.id != @current_series_id}
-            navigate={
-              ~p"/providers/#{@source.provider_id}/series/#{@source.id}?return_to=#{@current_path}"
-            }
-            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold text-text-secondary hover:border-brand/60 hover:text-text-primary sm:flex-none"
-          >
-            <.icon name="hero-information-circle" class="size-3.5" /> Detalhes
-          </.link>
-        </div>
-      </div>
-    </article>
-    """
-  end
 
   defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do
     if title != name, do: name

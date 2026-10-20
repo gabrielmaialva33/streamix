@@ -429,27 +429,23 @@ defmodule StreamixWeb.Api.V1.CatalogSourcesTest do
         |> log_in_user(user_fixture())
         |> live(~p"/browse/series/#{ctx.current.id}")
 
-      cards =
+      options =
         html
         |> LazyHTML.from_document()
-        |> LazyHTML.query("[data-source-card='series']")
-        |> Enum.map(fn card ->
+        |> LazyHTML.query("#series-source-picker [role=radio]")
+        |> Enum.map(fn option ->
           %{
-            "id" => card |> LazyHTML.attribute("id") |> hd(),
-            "season_count" => data_count(card, "data-season-count"),
-            "episode_count" => data_count(card, "data-episode-count"),
+            "id" => option |> LazyHTML.attribute("id") |> hd(),
             "badges" =>
-              card
+              option
               |> LazyHTML.query("[data-source-badge]")
               |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
           }
         end)
 
-      assert cards ==
+      assert options ==
                Enum.map(sources, fn source ->
-                 source
-                 |> Map.take(["season_count", "episode_count", "badges"])
-                 |> Map.put("id", "series-source-#{source["id"]}")
+                 %{"id" => "source-option-#{source["id"]}", "badges" => source["badges"]}
                end)
     end
 
@@ -556,11 +552,6 @@ defmodule StreamixWeb.Api.V1.CatalogSourcesTest do
     provider
     |> Ecto.Changeset.change(changes)
     |> Repo.update!()
-  end
-
-  defp data_count(card, attribute) do
-    [value] = card |> LazyHTML.query("[#{attribute}]") |> LazyHTML.attribute(attribute)
-    String.to_integer(value)
   end
 
   # A series copy sharing the TMDB id "888", with `episodes_per_season`
