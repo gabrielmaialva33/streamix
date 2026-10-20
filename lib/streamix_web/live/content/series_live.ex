@@ -40,6 +40,10 @@ defmodule StreamixWeb.Content.SeriesLive do
      push_patch(socket, to: Browse.build_path(socket, :series, category, socket.assigns.search))}
   end
 
+  def handle_event("filter_genre", %{"genre" => genre}, socket) do
+    {:noreply, push_patch(socket, to: Browse.genre_filter_path(socket, :series, genre))}
+  end
+
   def handle_event("search", %{"search" => search}, socket) do
     {:noreply,
      push_patch(socket,
@@ -119,6 +123,12 @@ defmodule StreamixWeb.Content.SeriesLive do
       </div>
 
       <div class="flex flex-col sm:flex-row gap-4 sm:gap-6">
+        <.genre_filter_v2
+          :if={@mode == :browse and @source == "iptv" and @provider_filter == "all" and @genres != []}
+          genres={@genres}
+          selected={@selected_genre}
+          layout={:sidebar}
+        />
         <.category_filter_v2
           :if={@source == "iptv" && length(@categories) > 0}
           categories={@categories}

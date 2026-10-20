@@ -6,8 +6,10 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
   import Streamix.IptvFixtures
 
   alias Streamix.Accounts
+  alias Streamix.Cache
+  alias Streamix.Cache.Keys
   alias Streamix.Iptv
-  alias Streamix.Iptv.Category
+  alias Streamix.Iptv.{Category, Genre}
   alias Streamix.Repo
 
   describe "Infinite Scroll" do
@@ -186,6 +188,85 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
       render_hook(view, "toggle_favorite", %{"id" => private_movie.id, "type" => "movie"})
 
       refute Iptv.favorite?(user.id, "movie", private_movie.id)
+    end
+
+    test "all-providers browse renders canonical genre filter, patches ?genre, preserves it on search/return_to, and drops it on provider switch",
+         %{conn: conn} do
+      user = user_fixture()
+      provider = provider_fixture(user, %{name: "User Movie Catalog"})
+
+      acao =
+        Repo.insert!(
+          %Genre{slug: "acao", name: "Ação", position: 1},
+          on_conflict: {:replace, [:name, :position]},
+          conflict_target: :slug
+        )
+        |> then(fn _ -> Repo.get_by!(Genre, slug: "acao") end)
+
+      drama =
+        Repo.insert!(
+          %Genre{slug: "drama", name: "Drama", position: 7},
+          on_conflict: {:replace, [:name, :position]},
+          conflict_target: :slug
+        )
+        |> then(fn _ -> Repo.get_by!(Genre, slug: "drama") end)
+
+      action_movie = movie_fixture(provider, %{name: "Action Hero"})
+      drama_movie = movie_fixture(provider, %{name: "Drama Story"})
+
+      Repo.insert_all("movie_genres", [
+        %{movie_id: action_movie.id, genre_id: acao.id},
+        %{movie_id: drama_movie.id, genre_id: drama.id}
+      ])
+
+      Cache.delete(Keys.visible_genres(:movies, user.id, false))
+
+      conn = log_in_user(conn, user)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies")
+
+      assert has_element?(view, "#genre-filter")
+      assert has_element?(view, "#genre-all.category-pill--sidebar-active", "Todos")
+      assert has_element?(view, "#genre-acao", "Ação")
+      assert has_element?(view, "#genre-acao", "1")
+      assert has_element?(view, "#genre-drama", "Drama")
+      assert has_element?(view, "#movie-card-#{action_movie.id}")
+      assert has_element?(view, "#movie-card-#{drama_movie.id}")
+
+      # Selecting a genre patches ?genre=acao, resets to page 1, and filters the stream
+      view |> element("#genre-acao") |> render_click()
+      assert_patch(view, "/browse/movies?genre=acao")
+      assert has_element?(view, "#genre-acao.category-pill--sidebar-active")
+      refute has_element?(view, "#genre-all.category-pill--sidebar-active")
+      assert has_element?(view, "#movie-card-#{action_movie.id}")
+      refute has_element?(view, "#movie-card-#{drama_movie.id}")
+
+      # Search keeps the selected genre
+      view |> element("#movies-search-form") |> render_change(%{"search" => "Hero"})
+      assert_patch(view, "/browse/movies?genre=acao&search=Hero")
+
+      # Detail navigation keeps genre and search in return_to
+      view
+      |> element("#movie-card-#{action_movie.id} > [data-media-primary]")
+      |> render_click()
+
+      expected_return = URI.encode_www_form("/browse/movies?genre=acao&search=Hero")
+
+      assert_redirect(
+        view,
+        "/browse/movies/#{action_movie.id}?return_to=#{expected_return}"
+      )
+
+      # Unknown genre slug in URL is ignored
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?genre=unknown-slug")
+      assert has_element?(view, "#genre-all.category-pill--sidebar-active")
+      assert has_element?(view, "#movie-card-#{action_movie.id}")
+      assert has_element?(view, "#movie-card-#{drama_movie.id}")
+
+      # Switching to a specific provider drops ?genre and hides #genre-filter
+      {:ok, view, _html} = live(conn, ~p"/browse/movies?genre=acao")
+      render_hook(view, "filter_provider", %{"provider" => Integer.to_string(provider.id)})
+      assert_patch(view, "/browse/movies?provider=#{provider.id}")
+      refute has_element?(view, "#genre-filter")
     end
   end
 

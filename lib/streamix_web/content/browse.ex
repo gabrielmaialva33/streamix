@@ -56,6 +56,8 @@ defmodule StreamixWeb.Content.Browse do
     |> assign(provider_options: [])
     |> assign(categories: [])
     |> assign(selected_category: nil)
+    |> assign(genres: [])
+    |> assign(selected_genre: nil)
     |> assign(search: "")
     |> assign(page: 1)
     |> assign(has_more: true)
@@ -72,6 +74,7 @@ defmodule StreamixWeb.Content.Browse do
   def assign_params(socket, kind, params) do
     source = params["source"] || "iptv"
     category = parse_integer(params["category"])
+    genre = parse_genre(params["genre"])
     search = params["search"] || ""
     sort = parse_sort(kind, params["sort"])
     restore_page = restore_page(params["page"])
@@ -79,10 +82,12 @@ defmodule StreamixWeb.Content.Browse do
     case apply_route_context(socket, kind, params, source) do
       {:ok, socket} ->
         category = selected_category_for(socket.assigns, category)
+        genre = selected_genre_for(socket.assigns, genre)
 
         socket =
           socket
           |> assign(selected_category: category)
+          |> assign(selected_genre: genre)
           |> assign(search: search)
           |> assign(sort: sort)
           |> assign(page: 1)
@@ -170,8 +175,13 @@ defmodule StreamixWeb.Content.Browse do
   end
 
   def build_path(%{assigns: assigns}, kind, category, search) do
+    build_path(%{assigns: assigns}, kind, category, Map.get(assigns, :selected_genre), search)
+  end
+
+  def build_path(%{assigns: assigns}, kind, category, genre, search) do
     config = config!(kind)
-    params = query_params(assigns.source, assigns.provider_filter, category, search)
+    genre = selected_genre_for(assigns, parse_genre(genre))
+    params = query_params(assigns.source, assigns.provider_filter, category, genre, search)
 
     case assigns.mode do
       :browse ->
@@ -182,13 +192,17 @@ defmodule StreamixWeb.Content.Browse do
     end
   end
 
+  def genre_filter_path(%{assigns: assigns} = socket, kind, genre) do
+    build_path(socket, kind, nil, genre, assigns.search)
+  end
+
   def provider_filter_path(%{assigns: assigns}, kind, provider_filter) do
     config = config!(kind)
     provider_filter = provider_filter(provider_filter)
 
     append_query(
       config.browse_path,
-      query_params(assigns.source, provider_filter, nil, assigns.search)
+      query_params(assigns.source, provider_filter, nil, nil, assigns.search)
     )
   end
 
@@ -214,6 +228,13 @@ defmodule StreamixWeb.Content.Browse do
   defp parse_sort(kind, sort) do
     if sort in config!(kind).valid_sorts, do: sort
   end
+
+  defp parse_genre(genre) when is_binary(genre) do
+    trimmed = String.trim(genre)
+    if trimmed != "" and not is_nil(Streamix.Catalog.genre_name(trimmed)), do: trimmed
+  end
+
+  defp parse_genre(_genre), do: nil
 
   defp restore_page(page) when is_binary(page) do
     case Integer.parse(page) do
@@ -246,6 +267,7 @@ defmodule StreamixWeb.Content.Browse do
        |> assign(mode: :provider)
        |> assign(source: "iptv")
        |> assign(categories: categories)
+       |> assign(genres: [])
        |> assign(gindex_counts: Streamix.Catalog.gindex_counts())}
     else
       {:redirect,
@@ -279,6 +301,7 @@ defmodule StreamixWeb.Content.Browse do
      |> assign(mode: :browse)
      |> assign(source: "gindex")
      |> assign(categories: [])
+     |> assign(genres: [])
      |> assign(gindex_counts: Streamix.Catalog.gindex_counts())}
   end
 
@@ -302,6 +325,15 @@ defmodule StreamixWeb.Content.Browse do
           |> filter_adult_categories(user.show_adult_content)
       end
 
+    genres =
+      if provider_filter == "all" do
+        Streamix.Catalog.list_visible_genres(kind, socket.assigns.user_id,
+          show_adult: user.show_adult_content
+        )
+      else
+        []
+      end
+
     {:ok,
      socket
      |> assign(page_title: provider_page_title(config.title, provider, provider_filter))
@@ -312,6 +344,7 @@ defmodule StreamixWeb.Content.Browse do
      |> assign(mode: :browse)
      |> assign(source: "iptv")
      |> assign(categories: categories)
+     |> assign(genres: genres)
      |> assign(gindex_counts: Streamix.Catalog.gindex_counts())}
   end
 
@@ -349,6 +382,7 @@ defmodule StreamixWeb.Content.Browse do
 
     items =
       list_visible_items(kind, socket.assigns.user_id,
+        genre: socket.assigns.selected_genre,
         search: socket.assigns.search,
         limit: @per_page,
         offset: offset(socket.assigns.page),
@@ -487,23 +521,29 @@ defmodule StreamixWeb.Content.Browse do
     }
   end
 
-  defp query_params("gindex", _provider_filter, category, search) do
+  defp query_params("gindex", _provider_filter, category, _genre, search) do
     %{"source" => "gindex"}
     |> maybe_put_query("category", category)
     |> maybe_put_query("search", search)
   end
 
-  defp query_params(_source, provider_filter, category, search) do
+  defp query_params(_source, provider_filter, category, genre, search) do
     %{}
     |> maybe_put_provider_query(provider_filter)
     |> maybe_put_query("category", category)
+    |> maybe_put_query("genre", genre)
     |> maybe_put_query("search", search)
   end
 
   defp browse_return_path(assigns, kind) do
     params =
       assigns.source
-      |> query_params(assigns.provider_filter, assigns.selected_category, assigns.search)
+      |> query_params(
+        assigns.provider_filter,
+        assigns.selected_category,
+        Map.get(assigns, :selected_genre),
+        assigns.search
+      )
       |> maybe_put_query("sort", assigns.sort)
       |> maybe_put_page(assigns.page)
 
@@ -566,6 +606,11 @@ defmodule StreamixWeb.Content.Browse do
     do: nil
 
   defp selected_category_for(_assigns, category), do: category
+
+  defp selected_genre_for(%{source: "iptv", mode: :browse, provider_filter: "all"}, genre),
+    do: genre
+
+  defp selected_genre_for(_assigns, _genre), do: nil
 
   defp provider_path(:movies, provider), do: "/providers/#{provider.id}/movies"
   defp provider_path(:series, provider), do: "/providers/#{provider.id}/series"

@@ -8,6 +8,7 @@ defmodule StreamixWeb.App.Filters do
   import StreamixWeb.CoreComponents
 
   alias Phoenix.LiveView.JS
+  alias StreamixWeb.Content.HelperComponents
 
   attr :providers, :list, required: true
   attr :selected, :string, default: "all"
@@ -230,6 +231,158 @@ defmodule StreamixWeb.App.Filters do
     """
   end
 
+  attr :genres, :list, required: true
+  attr :selected, :string, default: nil
+  attr :on_change, :string, default: "filter_genre"
+  attr :visible_count, :integer, default: 6
+  attr :layout, :atom, values: [:horizontal, :sidebar], default: :horizontal
+
+  def genre_filter_v2(%{layout: :sidebar} = assigns) do
+    ~H"""
+    <div id="genre-filter" class="w-full sm:w-56 lg:w-64 sm:sticky sm:top-24 self-start flex-shrink-0">
+      <aside class="hidden sm:block w-full">
+        <ul class="category-sidebar space-y-0.5 max-h-[calc(100dvh-7rem)] overflow-y-auto pr-1">
+          <li>
+            <button
+              id="genre-all"
+              type="button"
+              phx-click={@on_change}
+              phx-value-genre=""
+              class={[
+                "category-pill--sidebar flex items-center justify-between gap-2",
+                !@selected && "category-pill--sidebar-active"
+              ]}
+            >
+              <span>Todos</span>
+            </button>
+          </li>
+          <li :for={genre <- @genres}>
+            <button
+              id={"genre-#{genre.slug}"}
+              type="button"
+              phx-click={@on_change}
+              phx-value-genre={genre.slug}
+              class={[
+                "category-pill--sidebar flex items-center justify-between gap-2",
+                @selected == genre.slug && "category-pill--sidebar-active"
+              ]}
+            >
+              <span class="truncate">{genre.name}</span>
+              <span class="text-[11px] font-semibold tabular-nums opacity-70">
+                {HelperComponents.format_count(genre.count)}
+              </span>
+            </button>
+          </li>
+        </ul>
+      </aside>
+      <div class="sm:hidden w-full">
+        <.genre_filter_v2
+          genres={@genres}
+          selected={@selected}
+          on_change={@on_change}
+          visible_count={@visible_count}
+          layout={:horizontal}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  def genre_filter_v2(assigns) do
+    {visible, overflow} = Enum.split(assigns.genres, assigns.visible_count)
+    selected_in_overflow = genre_in_overflow?(overflow, assigns.selected)
+    selected_name = find_genre_name(assigns.genres, assigns.selected)
+
+    assigns =
+      assigns
+      |> assign(:visible, visible)
+      |> assign(:overflow, overflow)
+      |> assign(:selected_in_overflow, selected_in_overflow)
+      |> assign(:selected_name, selected_name)
+
+    ~H"""
+    <div class="flex items-center gap-1.5 min-w-0">
+      <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-hide min-w-0">
+        <button
+          id="genre-chip-all"
+          type="button"
+          phx-click={@on_change}
+          phx-value-genre=""
+          class={["category-chip", !@selected && "category-chip--active"]}
+        >
+          Todos
+        </button>
+        <button
+          :for={genre <- @visible}
+          id={"genre-chip-#{genre.slug}"}
+          type="button"
+          phx-click={@on_change}
+          phx-value-genre={genre.slug}
+          class={[
+            "category-chip gap-1.5",
+            @selected == genre.slug && "category-chip--active"
+          ]}
+        >
+          <span>{genre.name}</span>
+          <span class="text-[11px] font-semibold tabular-nums opacity-70">
+            {HelperComponents.format_count(genre.count)}
+          </span>
+        </button>
+      </div>
+      <div
+        :if={@overflow != []}
+        id="genre-more-wrapper"
+        class="relative flex-shrink-0"
+      >
+        <button
+          type="button"
+          phx-click={JS.toggle(to: "#genre-more-menu")}
+          class={[
+            "category-chip inline-flex items-center gap-1",
+            @selected_in_overflow && "category-chip--active"
+          ]}
+          aria-haspopup="listbox"
+          aria-controls="genre-more-menu"
+        >
+          <span>{if @selected_in_overflow, do: @selected_name, else: "Mais"}</span>
+          <.icon name="hero-chevron-down-mini" class="size-3" />
+        </button>
+        <div
+          id="genre-more-menu"
+          class="hidden absolute right-0 z-50 mt-2 w-52 max-h-72 overflow-y-auto glass rounded-xl shadow-dropdown"
+          phx-click-away={JS.hide(to: "#genre-more-menu")}
+          phx-window-keydown={JS.hide(to: "#genre-more-menu")}
+          phx-key="escape"
+          role="listbox"
+        >
+          <div class="py-1">
+            <button
+              :for={genre <- @overflow}
+              id={"genre-chip-#{genre.slug}"}
+              type="button"
+              phx-click={
+                JS.hide(to: "#genre-more-menu")
+                |> JS.push(@on_change, value: %{genre: genre.slug})
+              }
+              role="option"
+              aria-selected={to_string(@selected == genre.slug)}
+              class={[
+                "w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-white/5 transition-colors",
+                @selected == genre.slug && "text-brand font-medium"
+              ]}
+            >
+              <span class="truncate">{genre.name}</span>
+              <span class="text-[11px] font-semibold tabular-nums opacity-70">
+                {HelperComponents.format_count(genre.count)}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   attr :id, :string, required: true
   attr :value, :string, default: ""
   attr :placeholder, :string, default: "Buscar..."
@@ -279,6 +432,20 @@ defmodule StreamixWeb.App.Filters do
 
     Enum.find_value(categories, fn cat ->
       if to_string(cat.id) == selected_str, do: cat.name
+    end)
+  end
+
+  defp genre_in_overflow?(_overflow, nil), do: false
+
+  defp genre_in_overflow?(overflow, selected) do
+    Enum.any?(overflow, &(&1.slug == selected))
+  end
+
+  defp find_genre_name(_genres, nil), do: nil
+
+  defp find_genre_name(genres, selected) do
+    Enum.find_value(genres, fn genre ->
+      if genre.slug == selected, do: genre.name
     end)
   end
 end
