@@ -1,11 +1,17 @@
 defmodule Streamix.Iptv.Sync.Metadata do
   @moduledoc """
   Genre and credit synchronization helpers.
+
+  Genres are canonical: a provider genre string is mapped through
+  `Streamix.Iptv.Genres.Normalizer` onto the vocabulary rows, and a string
+  that means no known genre is dropped rather than becoming a new genre.
   """
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{Genre, Person}
+  alias Streamix.Iptv.Genres
+  alias Streamix.Iptv.Genres.Normalizer
+  alias Streamix.Iptv.Person
   alias Streamix.Repo
 
   @batch_size 500
@@ -20,12 +26,11 @@ defmodule Streamix.Iptv.Sync.Metadata do
     stream_id_field = if fk_column == "series_id", do: :series_id, else: :stream_id
 
     db_lookup = build_db_lookup(schema, provider_id, stream_id_field)
-    genre_map = streams |> extract_unique_names("genre") |> upsert_genres()
+    genre_ids = Genres.canonical_ids()
     people_map = streams |> extract_all_people() |> upsert_people()
 
-    streams
-    |> build_genre_assocs(db_lookup, genre_map, stream_id_key, fk_col_atom)
-    |> batch_insert(genre_join_table)
+    string_genres = build_genre_pairs(streams, db_lookup, genre_ids, stream_id_key)
+    Genres.reconcile(genre_kind(genre_join_table), provider_id, string_genres, genre_ids)
 
     streams
     |> build_credit_assocs(db_lookup, people_map, stream_id_key, fk_col_atom)
@@ -48,26 +53,25 @@ defmodule Streamix.Iptv.Sync.Metadata do
     MapSet.union(cast, directors)
   end
 
-  defp build_genre_assocs(streams, db_lookup, genre_map, stream_id_key, fk_col_atom) do
+  defp genre_kind("movie_genres"), do: :movies
+  defp genre_kind("series_genres"), do: :series
+
+  # {item_id, genre_id} pairs from the provider genre strings.
+  defp build_genre_pairs(streams, db_lookup, genre_ids, stream_id_key) do
     Enum.flat_map(streams, fn stream ->
       case Map.get(db_lookup, stream[stream_id_key]) do
-        nil ->
-          []
-
-        db_id ->
-          stream["genre"]
-          |> parse_comma_separated()
-          |> Enum.flat_map(&resolve_genre(&1, genre_map, fk_col_atom, db_id))
+        nil -> []
+        db_id -> genre_pairs(db_id, stream["genre"], genre_ids)
       end
     end)
   end
 
-  defp resolve_genre(name, genre_map, fk_col_atom, db_id) do
-    case Map.get(genre_map, String.downcase(name)) do
-      nil -> []
-      genre_id -> [%{fk_col_atom => db_id, genre_id: genre_id}]
-    end
+  defp genre_pairs(db_id, raw, genre_ids) do
+    for slug <- normalize_genre(raw), genre_id = genre_ids[slug], do: {db_id, genre_id}
   end
+
+  defp normalize_genre(raw) when is_binary(raw), do: Normalizer.normalize(raw)
+  defp normalize_genre(_raw), do: []
 
   defp build_credit_assocs(streams, db_lookup, people_map, stream_id_key, fk_col_atom) do
     Enum.flat_map(streams, fn stream ->
@@ -121,22 +125,6 @@ defmodule Streamix.Iptv.Sync.Metadata do
     |> String.split(",")
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
-  end
-
-  defp upsert_genres(names) when is_struct(names, MapSet) do
-    now = DateTime.utc_now(:second)
-    entries = Enum.map(names, fn name -> %{name: name, inserted_at: now, updated_at: now} end)
-
-    if entries != [] do
-      entries
-      |> Enum.chunk_every(@batch_size)
-      |> Enum.each(&Repo.insert_all(Genre, &1, on_conflict: :nothing))
-    end
-
-    Genre
-    |> select([g], {fragment("lower(?)", g.name), g.id})
-    |> Repo.all()
-    |> Map.new()
   end
 
   defp upsert_people(names) when is_struct(names, MapSet) do

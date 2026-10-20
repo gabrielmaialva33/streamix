@@ -195,4 +195,16 @@ defmodule Streamix.Catalog do
 
   defdelegate sync_series_details(series), to: Streamix.Iptv.Sync
   defdelegate list_games(user_id, opts \\ []), to: Streamix.Iptv.Games, as: :list
+
+  @doc "Moves the catalog onto the canonical genres; see `Streamix.Iptv.Genres.canonicalize/0`."
+  defdelegate canonicalize_genres(), to: Streamix.Iptv.Genres, as: :canonicalize
+
+  @doc "Canonical genre slugs a raw genre or category name means; see `Streamix.Iptv.Genres.Normalizer`."
+  defdelegate genre_slugs(raw), to: Streamix.Iptv.Genres.Normalizer, as: :normalize
+
+  @doc "Canonical genre slugs, in first-seen order, for several raw names."
+  defdelegate genre_slugs_all(raws), to: Streamix.Iptv.Genres.Normalizer, as: :normalize_all
+
+  @doc "The pt-BR label of a canonical genre slug."
+  defdelegate genre_name(slug), to: Streamix.Iptv.Genres.Vocabulary, as: :name
 end

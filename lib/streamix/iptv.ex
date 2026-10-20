@@ -465,6 +465,10 @@ defmodule Streamix.Iptv do
     to: PlaybackBoundary
 
   defdelegate list_games(user_id, opts \\ []), to: CatalogBoundary
+  defdelegate canonicalize_genres(), to: CatalogBoundary
+  defdelegate genre_slugs(raw), to: CatalogBoundary
+  defdelegate genre_slugs_all(raws), to: CatalogBoundary
+  defdelegate genre_name(slug), to: CatalogBoundary
   defdelegate sync_games(provider, opts \\ []), to: ProviderBoundary
   defdelegate games_providers(), to: ProviderBoundary
   defdelegate prune_games(now \\ DateTime.utc_now()), to: ProviderBoundary
