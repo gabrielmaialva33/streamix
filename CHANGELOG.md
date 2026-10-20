@@ -28,6 +28,13 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - "Jogos de hoje": providers with the operator-only `games_enabled` flag feed today's sports schedule (São Paulo time)
   into a rail on `/browse`, each match opening its live channel in the existing player. Finished matches leave the
   list. TV clients get the same matches from `GET /api/v1/catalog/games`.
+- Canonical genres: a closed vocabulary of 24 pt-BR genres with stable slugs (`acao`, `ficcao-cientifica`, …) replaces
+  the raw provider strings sync used to store ("sci-fi & fantasy", "comédia / drama", reels tropes). Provider genre
+  strings and category names ("▶️ Terror & Suspense", "FILMES | Ação e Aventura") map onto it; anything else, such as
+  streaming services, quality, language, release shelves, reels categories and adult categories, is never a genre.
+  Movies get genres for the first time, from their categories. `Streamix.Catalog.canonicalize_genres/0` converts an
+  existing catalog once (run it with the `sync` queue paused).
+- Catalog, search and recommendation cards expose `genres: [{slug, name}]` next to the unchanged `genre` string.
 - Response-contract tests covering success, validation, not-found, and authentication responses against the published
   schemas.
 
@@ -41,6 +48,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   include a safe `provider` reference on every serialized catalog resource.
 - Ranked movie and series search now applies the same canonicalization after relevance scoring.
 - Episodes embedded in `GET /api/v1/catalog/series/:id` now carry `season_number`, like the episode detail.
+- The home genre filters use canonical slugs and exact matches; before, only "Drama" matched, because the filter
+  values were English and compared as substrings of pt-BR genre names.
 - EPG sync no longer requests `/xmltv.php` from a provider whose channels declare no EPG id; there is nothing a guide
   could attach to, and panels like that answer 404.
 
