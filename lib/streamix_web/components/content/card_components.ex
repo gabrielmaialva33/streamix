@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.CardComponents do
   import StreamixWeb.CoreComponents
   import StreamixWeb.App.Premium
   import StreamixWeb.Content.HelperComponents
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   attr :id, :string, required: true
@@ -314,7 +315,7 @@ defmodule StreamixWeb.Content.CardComponents do
       get_image_url(Map.get(assigns.movie, :stream_icon), Map.get(assigns.movie, :cover))
 
     rating = get_display_rating(assigns.movie)
-    movie_name = Map.get(assigns.movie, :title) || Map.get(assigns.movie, :name, "")
+    movie_name = DisplayTitle.title(assigns.movie)
     provider_id = Map.get(assigns.movie, :provider_id)
 
     assigns =
@@ -397,7 +398,7 @@ defmodule StreamixWeb.Content.CardComponents do
 
   def series_card(assigns) do
     rating = get_display_rating(assigns.series)
-    series_name = Map.get(assigns.series, :title) || Map.get(assigns.series, :name, "")
+    series_name = DisplayTitle.title(assigns.series)
     image_url = ImageProxy.browser_poster(Map.get(assigns.series, :cover), :carousel)
 
     provider_id = Map.get(assigns.series, :provider_id)

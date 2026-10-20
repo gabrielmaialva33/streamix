@@ -5,6 +5,7 @@ defmodule StreamixWeb.PlayerHelpers do
   """
   alias Streamix.Torrent
   alias StreamixWeb.Catalog.StreamUrls
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
   alias StreamixWeb.StreamToken
 
@@ -264,16 +265,16 @@ defmodule StreamixWeb.PlayerHelpers do
 
   def load_next_episode(_, _, _, _), do: nil
 
-  def content_title(content, "live_channel"), do: content.name
-  def content_title(content, "movie"), do: content.title || content.name
-  def content_title(content, "gindex"), do: content.title || content.name
-  def content_title(content, "torrent"), do: content.title || content.name
+  def content_title(content, "live_channel"), do: DisplayTitle.channel(content.name)
+  def content_title(content, "movie"), do: DisplayTitle.title(content)
+  def content_title(content, "gindex"), do: DisplayTitle.title(content)
+  def content_title(content, "torrent"), do: DisplayTitle.title(content)
 
   def content_title(content, "episode"),
-    do: content.title || "Episódio #{content.episode_num || ""}"
+    do: DisplayTitle.episode(content.title || "Episódio #{content.episode_num || ""}")
 
   def content_title(content, "gindex_episode"),
-    do: content.title || "Episódio #{content.episode_num || ""}"
+    do: DisplayTitle.episode(content.title || "Episódio #{content.episode_num || ""}")
 
   def content_title(content, _), do: content.name
 

@@ -7,6 +7,7 @@ defmodule StreamixWeb.App.Media do
   use StreamixWeb, :verified_routes
 
   import StreamixWeb.CoreComponents
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   @sync_status_badges %{
@@ -44,7 +45,7 @@ defmodule StreamixWeb.App.Media do
             <img
               :if={@channel.stream_icon not in [nil, ""]}
               src={ImageProxy.proxy(@channel.stream_icon)}
-              alt={@channel.name}
+              alt={DisplayTitle.channel(@channel.name)}
               class="max-h-[72%] max-w-[76%] object-contain drop-shadow-lg sm:max-h-full sm:max-w-full"
               loading="lazy"
               decoding="async"
@@ -59,7 +60,7 @@ defmodule StreamixWeb.App.Media do
             >
               <.icon name="hero-tv" class="size-6 sm:size-10 text-text-muted/40 mb-1" />
               <span class="text-2xs sm:text-xs text-text-muted leading-tight line-clamp-2">
-                {@channel.name}
+                {DisplayTitle.channel(@channel.name)}
               </span>
             </div>
           </div>
@@ -78,9 +79,9 @@ defmodule StreamixWeb.App.Media do
         <div class="space-y-0.5 px-2 py-2 sm:space-y-1 sm:px-3 sm:py-2.5">
           <h3
             class="truncate text-[11px] font-medium leading-tight text-text-primary transition-colors group-hover:text-brand sm:text-sm sm:leading-normal"
-            title={@channel.name}
+            title={DisplayTitle.channel(@channel.name)}
           >
-            {@channel.name}
+            {DisplayTitle.channel(@channel.name)}
           </h3>
           <StreamixWeb.EpgComponents.epg_now
             :if={@show_epg}

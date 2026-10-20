@@ -99,19 +99,17 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       )
     end
 
-    test "version watch links do not request cross-session live navigation", ctx do
+    test "a single source is stated, not offered as a choice", ctx do
       conn = log_in_user(ctx.conn, ctx.user)
       {:ok, view, _html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")
 
-      watch_path =
-        "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
-
-      assert has_element?(view, "#recommended-movie-source #movie-source-#{ctx.movie.id}")
-      refute has_element?(view, "#alternative-movie-sources")
-      assert has_element?(view, ~s|a[href="#{watch_path}"]:not([data-phx-link])|)
+      assert has_element?(view, "#movie-source-picker-info")
+      refute has_element?(view, "#movie-source-picker")
+      refute has_element?(view, "#movie-sources h2")
+      refute has_element?(view, "[data-source-card]")
     end
 
-    test "shows one recommended source and keeps alternatives collapsed", ctx do
+    test "picks the recommended source and switches copies in place", ctx do
       alternative_provider =
         provider_fixture(ctx.user, %{
           name: "Alternative Movie Provider",
@@ -128,32 +126,43 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
         })
 
       conn = log_in_user(ctx.conn, ctx.user)
-      {:ok, view, html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")
-      document = Floki.parse_document!(html)
+      {:ok, view, _html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}")
 
-      assert length(Floki.find(document, "#recommended-movie-source [data-source-card='movie']")) ==
-               1
+      assert has_element?(view, "#movie-sources h2", "Fonte")
 
       assert has_element?(
                view,
-               "#recommended-movie-source #movie-source-#{alternative_movie.id}"
+               ~s|#source-option-#{alternative_movie.id}[aria-checked="true"]|
              )
 
-      assert has_element?(view, "details#alternative-movie-sources:not([open])")
+      assert has_element?(view, ~s|#source-option-#{ctx.movie.id}[aria-checked="false"]|)
+      refute has_element?(view, "#movie-source-picker-info")
 
-      assert has_element?(
-               view,
-               "#alternative-movie-sources #movie-source-#{ctx.movie.id}"
-             )
+      view |> element("#source-option-#{ctx.movie.id}") |> render_click()
 
-      alternative_watch_path =
-        "/watch/movie/#{alternative_movie.id}" <>
-          "?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
+      assert_patch(view, "/browse/movies/#{ctx.movie.id}?source=#{ctx.movie.id}")
+      assert has_element?(view, ~s|#source-option-#{ctx.movie.id}[aria-checked="true"]|)
 
-      assert has_element?(
-               view,
-               ~s|#recommended-movie-source a[href="#{alternative_watch_path}"]:not([data-phx-link])|
-             )
+      view |> element(~s(button[phx-click="play_movie"])) |> render_click()
+
+      assert_redirect(
+        view,
+        "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
+      )
+    end
+
+    test "a ?source the viewer cannot see keeps the recommended copy", ctx do
+      hidden = movie_fixture(provider_fixture(user_fixture()), %{tmdb_id: ctx.movie.tmdb_id})
+      conn = log_in_user(ctx.conn, ctx.user)
+
+      {:ok, view, _html} = live(conn, ~p"/browse/movies/#{ctx.movie.id}?source=#{hidden.id}")
+
+      view |> element(~s(button[phx-click="play_movie"])) |> render_click()
+
+      assert_redirect(
+        view,
+        "/watch/movie/#{ctx.movie.id}?return_to=%2Fbrowse%2Fmovies%2F#{ctx.movie.id}"
+      )
     end
 
     test "torrent version watch links enter the swarm gate", %{conn: conn} do
@@ -196,8 +205,9 @@ defmodule StreamixWeb.Content.MovieDetailRoutingTest do
       {:ok, view, _html} = live(conn, detail_path)
       watch_path = "/watch/torrent/#{stream.id}?return_to=#{URI.encode_www_form(detail_path)}"
 
-      assert has_element?(view, ~s|a[href="#{watch_path}"]:not([data-phx-link])|)
-      refute has_element?(view, ~s|a[href="/watch/movie/#{movie.id}"]|)
+      view |> element(~s(button[phx-click="play_movie"])) |> render_click()
+
+      assert_redirect(view, watch_path)
     end
 
     test "provider route ignores unsafe return paths", ctx do

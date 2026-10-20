@@ -5,6 +5,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   """
   use StreamixWeb, :live_view
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SeriesSources
   alias StreamixWeb.LiveSessionNavigation
 
@@ -254,7 +255,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
         Detail.maybe_fetch_series_info(series)
       end)
       |> start_async({:series_recommendations, series.id}, fn ->
-        Detail.similar_series(series.id)
+        Detail.similar_series(series)
       end)
     else
       socket
@@ -383,7 +384,7 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
             <!-- Info -->
             <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <.detail_title
-                title={@series.title || @series.name}
+                title={DisplayTitle.title(@series)}
                 subtitle={alternate_title(@series)}
                 tagline={@series.tagline}
               />
@@ -564,8 +565,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp provider_name(%{provider: %{name: name}}) when is_binary(name) and name != "", do: name
   defp provider_name(%{provider_id: provider_id}), do: "Provedor #{provider_id}"
 
+  # The original name, only when it says more than the displayed title does
+  # (not "Dawson's Creek (1998)" under "Dawson's Creek").
   defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do
-    if title != name, do: name
+    shown = DisplayTitle.clean(title)
+    original = DisplayTitle.clean(name)
+    if String.downcase(shown) != String.downcase(original), do: original
   end
 
   defp alternate_title(_), do: nil

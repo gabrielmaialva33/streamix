@@ -5,10 +5,12 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   """
   use StreamixWeb, :live_view
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.LiveSessionNavigation
   alias StreamixWeb.PlayerHelpers
 
+  import StreamixWeb.SourcePickerComponents
   import StreamixWeb.App.Premium
   import StreamixWeb.CoreComponents, only: [icon: 1]
   import StreamixWeb.Helpers.Params, only: [parse_positive_integer: 1]
@@ -142,6 +144,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
           |> assign(selected_movie: selected_movie)
           |> assign(movie_watch_paths: movie_watch_paths)
           |> assign(selected_watch_path: Map.fetch!(movie_watch_paths, selected_movie.id))
+          |> assign(source_options: source_options(movie_variants, user))
           |> assign(selected_gallery_image: nil)
           |> start_detail_tasks(movie)
 
@@ -176,6 +179,24 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   # ============================================
   # Event Handlers
   # ============================================
+
+  # ?source=<movie_id> picks one of the authorized copies; anything else keeps
+  # the recommended one.
+  def handle_params(params, _uri, %{assigns: %{movie_variants: variants}} = socket) do
+    variant =
+      case Integer.parse(to_string(params["source"])) do
+        {id, ""} -> Enum.find(variants, &(&1.id == id))
+        _ -> nil
+      end
+
+    {:noreply, if(variant, do: select_variant(socket, variant), else: socket)}
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  def handle_event("select_source", %{"id" => id}, socket) do
+    {:noreply, push_patch(socket, to: with_source(socket.assigns.current_path, id))}
+  end
 
   def handle_event("play_movie", _, socket) do
     {:noreply, redirect(socket, to: socket.assigns.selected_watch_path)}
@@ -251,7 +272,7 @@ defmodule StreamixWeb.Content.MovieDetailLive do
             <!-- Info -->
             <div class="flex-1 space-y-2 sm:space-y-4 lg:space-y-6 text-center lg:text-left">
               <.detail_title
-                title={@movie.title || @movie.name}
+                title={DisplayTitle.title(@movie)}
                 subtitle={alternate_title(@movie)}
                 tagline={@movie.tagline}
               />
@@ -272,13 +293,28 @@ defmodule StreamixWeb.Content.MovieDetailLive do
               <!-- Genres -->
               <.genre_chips genres={@movie.genres} />
 
+              <div id="movie-sources" class="space-y-2 pt-2 text-left">
+                <h2
+                  :if={length(@source_options) > 1}
+                  class="text-xs font-semibold uppercase tracking-wide text-text-secondary"
+                >
+                  Fonte
+                </h2>
+                <.source_picker
+                  id="movie-source-picker"
+                  options={@source_options}
+                  selected={@selected_movie.id}
+                  event="select_source"
+                />
+              </div>
+
               <!-- Action Buttons -->
               <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-3 pt-2">
-                <.play_button event="play_movie" label="Assistir Agora" />
+                <.play_button event="play_movie" label="Assistir" />
 
                 <StreamixWeb.WatchPartyComponents.create_party_button
                   content_type="movie"
-                  content_id={@movie.id}
+                  content_id={@selected_movie.id}
                 />
 
                 <.favorite_button favorite?={@is_favorite} />
@@ -294,14 +330,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
 
               <%!-- Synopsis --%>
               <.synopsis_section text={@movie.plot} />
-
-              <.movie_versions
-                variants={@movie_variants}
-                current_movie_id={@movie.id}
-                selected_movie_id={@selected_movie.id}
-                watch_paths={@movie_watch_paths}
-                current_path={@current_path}
-              />
 
               <!-- Details Grid -->
               <.credits_grid content={@movie} />
@@ -351,11 +379,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp back_path(return_to, _mode, _provider) when is_binary(return_to), do: return_to
   defp back_path(_return_to, :browse, _provider), do: ~p"/browse/movies"
   defp back_path(_return_to, :provider, provider), do: ~p"/providers/#{provider.id}/movies"
-
-  defp provider_movies_path(%{provider_id: provider_id}), do: ~p"/providers/#{provider_id}/movies"
-
-  defp provider_category_path(%{provider_id: provider_id}, %{id: category_id}),
-    do: ~p"/providers/#{provider_id}/movies?category=#{category_id}"
 
   defp detail_base_path(:browse, _provider, movie), do: ~p"/browse/movies/#{movie.id}"
 
@@ -416,164 +439,6 @@ defmodule StreamixWeb.Content.MovieDetailLive do
   defp selected_variant([variant | _], _movie, _preferred_provider_id), do: variant
   defp selected_variant([], movie, _preferred_provider_id), do: movie
 
-  defp movie_versions(assigns) do
-    recommended =
-      Enum.find(assigns.variants, &(&1.id == assigns.selected_movie_id)) ||
-        List.first(assigns.variants)
-
-    alternatives =
-      if recommended do
-        Enum.reject(assigns.variants, &(&1.id == recommended.id))
-      else
-        []
-      end
-
-    assigns =
-      assigns
-      |> assign(:recommended, recommended)
-      |> assign(:alternatives, alternatives)
-
-    ~H"""
-    <section :if={@recommended} class="space-y-3 pb-2 pt-2 text-left">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-base font-semibold text-text-primary sm:text-lg">Fonte recomendada</h2>
-        <span class="text-xs text-text-muted">
-          {length(@variants)} {if length(@variants) == 1, do: "fonte", else: "fontes"}
-        </span>
-      </div>
-
-      <div id="recommended-movie-source">
-        <.movie_source_card
-          variant={@recommended}
-          current_movie_id={@current_movie_id}
-          watch_paths={@watch_paths}
-          current_path={@current_path}
-          recommended?
-        />
-      </div>
-
-      <details
-        :if={@alternatives != []}
-        id="alternative-movie-sources"
-        class="group/source rounded-lg border border-border bg-surface/45"
-      >
-        <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary sm:px-4">
-          <span>Outras fontes ({length(@alternatives)})</span>
-          <.icon
-            name="hero-chevron-down"
-            class="size-4 transition-transform group-open/source:rotate-180"
-          />
-        </summary>
-        <div class="grid gap-2 border-t border-border p-2 sm:p-3">
-          <.movie_source_card
-            :for={variant <- @alternatives}
-            variant={variant}
-            current_movie_id={@current_movie_id}
-            watch_paths={@watch_paths}
-            current_path={@current_path}
-          />
-        </div>
-      </details>
-    </section>
-    """
-  end
-
-  attr :variant, :map, required: true
-  attr :current_movie_id, :integer, required: true
-  attr :watch_paths, :map, required: true
-  attr :current_path, :string, required: true
-  attr :recommended?, :boolean, default: false
-
-  defp movie_source_card(assigns) do
-    ~H"""
-    <article
-      id={"movie-source-#{@variant.id}"}
-      data-source-card="movie"
-      class={[
-        "rounded-lg border bg-surface/80 p-3 transition-colors sm:p-4",
-        @recommended? && "border-brand/60 ring-1 ring-brand/30",
-        !@recommended? && "border-border hover:border-brand/40"
-      ]}
-    >
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div class="min-w-0 space-y-2">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="truncate text-sm font-semibold text-text-primary">
-              {@variant.title || @variant.name}
-            </span>
-            <span
-              :if={@recommended?}
-              class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
-            >
-              Recomendada
-            </span>
-            <span
-              :if={@variant.id == @current_movie_id and not @recommended?}
-              class="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand"
-            >
-              Atual
-            </span>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-1.5 text-xs text-text-secondary">
-            <span class="inline-flex items-center gap-1 rounded bg-surface-hover px-2 py-1">
-              <.icon name="hero-server-stack" class="size-3.5" />
-              {provider_name(@variant)}
-            </span>
-            <span class="rounded bg-surface-hover px-2 py-1">
-              Stream {@variant.stream_id}
-            </span>
-            <span
-              :for={badge <- SourceBadges.badges(@variant)}
-              data-source-badge
-              class="rounded bg-brand/10 px-2 py-1 font-medium text-brand"
-            >
-              {badge}
-            </span>
-          </div>
-
-          <div class="flex flex-wrap gap-1.5">
-            <.link
-              :for={category <- version_categories(@variant)}
-              navigate={provider_category_path(@variant, category)}
-              class="inline-flex min-h-9 items-center rounded bg-white/5 px-2 py-1 text-[11px] text-text-muted hover:bg-brand/10 hover:text-text-primary"
-            >
-              {category.name}
-            </.link>
-          </div>
-        </div>
-
-        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
-          <.link
-            href={Map.fetch!(@watch_paths, @variant.id)}
-            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white hover:bg-brand-hover sm:flex-none"
-          >
-            <.icon name="hero-play-solid" class="size-3.5" /> Assistir
-          </.link>
-          <.link
-            navigate={provider_movies_path(@variant)}
-            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-surface-hover px-3 py-2 text-xs font-semibold text-text-primary hover:border-brand/60 sm:flex-none"
-          >
-            <.icon name="hero-funnel" class="size-3.5" /> Catálogo
-          </.link>
-          <.link
-            :if={@variant.id != @current_movie_id}
-            navigate={
-              ~p"/providers/#{@variant.provider_id}/movies/#{@variant.id}?return_to=#{@current_path}"
-            }
-            class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold text-text-secondary hover:border-brand/60 hover:text-text-primary sm:flex-none"
-          >
-            <.icon name="hero-information-circle" class="size-3.5" /> Detalhes
-          </.link>
-        </div>
-      </div>
-    </article>
-    """
-  end
-
-  # Torrent movies play through the rqbit swarm gate (/watch/torrent/:id,
-  # where :id is the best torrent_stream). Everything else is a direct
-  # VOD play keyed on the movie id.
   defp watch_path(%{provider_type: :torrent}, movie, return_to) do
     case Detail.best_torrent_stream(movie.id) do
       %{id: stream_id} -> with_return_to(~p"/watch/torrent/#{stream_id}", return_to)
@@ -604,27 +469,55 @@ defmodule StreamixWeb.Content.MovieDetailLive do
         Detail.maybe_fetch_movie_info(movie)
       end)
       |> start_async({:movie_recommendations, movie.id}, fn ->
-        Detail.similar_movies(movie.id)
+        Detail.similar_movies(movie)
       end)
     else
       socket
     end
   end
 
+  # The original name, only when it says more than the displayed title does
+  # (not "Dawson's Creek (1998)" under "Dawson's Creek").
   defp alternate_title(%{title: title, name: name}) when is_binary(title) and is_binary(name) do
-    if title != name, do: name
+    shown = DisplayTitle.clean(title)
+    original = DisplayTitle.clean(name)
+    if String.downcase(shown) != String.downcase(original), do: original
   end
 
   defp alternate_title(_), do: nil
 
-  defp provider_name(%{provider: %{name: name}}) when is_binary(name) and name != "", do: name
-  defp provider_name(%{provider_id: provider_id}), do: "Provedor #{provider_id}"
-
-  defp version_categories(%{categories: categories}) when is_list(categories) do
-    categories
-    |> Enum.reject(& &1.is_adult)
-    |> Enum.take(4)
+  defp select_variant(socket, variant) do
+    socket
+    |> assign(selected_movie: variant)
+    |> assign(selected_watch_path: Map.fetch!(socket.assigns.movie_watch_paths, variant.id))
   end
 
-  defp version_categories(_), do: []
+  defp with_source(path, id) do
+    uri = URI.parse(path)
+    query = (uri.query || "") |> URI.decode_query() |> Map.put("source", to_string(id))
+    URI.to_string(%{uri | query: URI.encode_query(query)})
+  end
+
+  # Same presentation as the series and episode pages: only what tells the
+  # copies apart.
+  defp source_options(variants, user) do
+    statuses = Streamix.Providers.provider_health_statuses(Enum.map(variants, & &1.provider))
+
+    variants
+    |> Enum.with_index()
+    |> Enum.map(fn {variant, index} ->
+      %{
+        id: variant.id,
+        label: provider_name(variant),
+        badges: SourceBadges.badges(variant),
+        note: nil,
+        recommended: index == 0,
+        unstable: Map.get(statuses, variant.provider_id) == :degraded,
+        locked: not Detail.premium_access?(user, variant.provider)
+      }
+    end)
+  end
+
+  defp provider_name(%{provider: %{name: name}}) when is_binary(name) and name != "", do: name
+  defp provider_name(%{provider_id: provider_id}), do: "Provedor #{provider_id}"
 end

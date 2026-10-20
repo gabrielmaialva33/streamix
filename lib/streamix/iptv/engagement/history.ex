@@ -435,6 +435,10 @@ defmodule Streamix.Iptv.History do
     |> join(:left, [catalog_item: catalog_item], channel in assoc(catalog_item, :live_channel),
       as: :channel
     )
+    |> join(:left, [episode: episode], season in assoc(episode, :season), as: :episode_season)
+    |> join(:left, [episode_season: season], series in assoc(season, :series),
+      as: :episode_series
+    )
   end
 
   defp select_home_card(query) do
@@ -446,6 +450,8 @@ defmodule Streamix.Iptv.History do
         movie: movie,
         series: series,
         episode: episode,
+        episode_season: episode_season,
+        episode_series: episode_series,
         channel: channel
       ],
       %{
@@ -463,6 +469,10 @@ defmodule Streamix.Iptv.History do
         episode_id: episode.id,
         episode_name: episode.title,
         episode_icon: episode.still_path,
+        episode_num: episode.episode_num,
+        episode_season_number: episode_season.season_number,
+        episode_series_name: episode_series.name,
+        episode_series_cover: episode_series.cover,
         live_channel_id: channel.id,
         live_channel_name: channel.name,
         live_channel_icon: channel.stream_icon
@@ -496,6 +506,8 @@ defmodule Streamix.Iptv.History do
     }
   end
 
+  # An episode title alone ("Piloto") does not say what to resume, so the
+  # card also carries its series and position.
   defp build_home_card(%{content_type: "episode"} = row) do
     %{
       id: row.id,
@@ -505,7 +517,10 @@ defmodule Streamix.Iptv.History do
       content_type: row.content_type,
       content_id: row.episode_id,
       content_name: row.episode_name,
-      content_icon: row.episode_icon
+      content_icon: row.episode_icon || row.episode_series_cover,
+      series_name: row.episode_series_name,
+      season_number: row.episode_season_number,
+      episode_number: row.episode_num
     }
   end
 

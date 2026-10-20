@@ -58,6 +58,16 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   values were English and compared as substrings of pt-BR genre names.
 - EPG sync no longer requests `/xmltv.php` from a provider whose channels declare no EPG id; there is nothing a guide
   could attach to, and panels like that answer 404.
+- The web app shows clean titles: provider release noise (`[LEG]`, `[L]`, `4K [Hybrid]`, `(2025) (2025)`, `[Reel]`,
+  dotted file names, "Série - S01E01 - " prefixes, channel list numbers) stays in the stored name and leaves the cards,
+  hero, detail pages and player title.
+- The movie page picks its source with the same picker as the series and episode pages (`?source=<id>`), instead of
+  cards showing "Stream <id>" and a category link.
+- "Para você" and "Títulos similares" show one card per title, and similar titles no longer include the page's own
+  title through another provider's copy.
+- "Continuar assistindo" leads an episode with its series and position ("T1 E2") and falls back to the series cover.
+- "Lançamentos" stops at the current year, and GIndex reads the last plausible year in a release name, so
+  "Blade.Runner.2049.2017" is from 2017.
 
 ## [v0.0.1] - 2026-04-13
 

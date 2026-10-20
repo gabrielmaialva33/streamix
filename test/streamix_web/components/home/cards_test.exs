@@ -28,6 +28,54 @@ defmodule StreamixWeb.Home.CardsTest do
     assert html =~ "data-fallback"
   end
 
+  test "an episode card leads with its series and where to resume" do
+    html =
+      render_component(&Cards.history_item/1,
+        entry: %{
+          id: 2,
+          content_type: "episode",
+          content_id: 11,
+          content_icon: nil,
+          content_name: "Dawson's Creek - S01E02 - Piloto",
+          series_name: "Dawson's Creek [L]",
+          season_number: 1,
+          episode_number: 2,
+          progress_seconds: 30,
+          duration_seconds: 60,
+          watched_at: DateTime.utc_now()
+        }
+      )
+
+    document = LazyHTML.from_fragment(html)
+
+    assert document |> LazyHTML.query("h3") |> LazyHTML.text() |> String.trim() ==
+             "Dawson's Creek"
+
+    assert html =~ "T1 E2"
+    refute html =~ "Episódio"
+    assert html =~ ~s(title="Dawson&#39;s Creek · T1 E2 · Piloto")
+  end
+
+  test "a channel card says TV, not Vídeo" do
+    html =
+      render_component(&Cards.history_item/1,
+        entry: %{
+          id: 3,
+          content_type: "live_channel",
+          content_id: 12,
+          content_icon: nil,
+          content_name: "(01) Globo SP",
+          progress_seconds: nil,
+          duration_seconds: nil,
+          watched_at: DateTime.utc_now()
+        }
+      )
+
+    assert html =~ "TV"
+    refute html =~ "Vídeo"
+    refute html =~ "(01)"
+  end
+
   test "favorite cards select their fallback before blocked images reach the browser" do
     html =
       render_component(&Cards.favorite_item/1,

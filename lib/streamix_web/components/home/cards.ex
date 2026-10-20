@@ -10,6 +10,7 @@ defmodule StreamixWeb.Home.Cards do
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
 
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   def render_movie_card(assigns) do
@@ -78,7 +79,7 @@ defmodule StreamixWeb.Home.Cards do
           <img
             :if={@image_url}
             src={@image_url}
-            alt={@channel.name}
+            alt={DisplayTitle.channel(@channel.name)}
             class="w-full h-full object-contain p-1.5 sm:p-2 animate-fade-in"
             loading="lazy"
             decoding="async"
@@ -93,7 +94,7 @@ defmodule StreamixWeb.Home.Cards do
           >
             <.icon name="hero-tv" class="size-5 sm:size-8 text-brand/60 mb-1" />
             <span class="text-2xs sm:text-xs text-text-muted leading-tight line-clamp-2">
-              {@channel.name}
+              {DisplayTitle.channel(@channel.name)}
             </span>
           </div>
         </div>
@@ -106,7 +107,7 @@ defmodule StreamixWeb.Home.Cards do
       </div>
       <div class="px-0.5 pt-1.5 sm:pt-2">
         <h3 class="mt-0.5 truncate text-[11px] font-medium leading-tight text-text-primary transition-colors group-hover:text-brand sm:text-sm sm:leading-normal">
-          {@channel.name}
+          {DisplayTitle.channel(@channel.name)}
         </h3>
       </div>
     </.link>
@@ -122,6 +123,7 @@ defmodule StreamixWeb.Home.Cards do
     ~H"""
     <.link
       href={watch_path(@entry.content_type, @entry.content_id)}
+      title={history_full_title(@entry)}
       class={[
         "media-shelf-card media-shelf-card--progress group block transition-all duration-300",
         @class
@@ -132,7 +134,7 @@ defmodule StreamixWeb.Home.Cards do
           <img
             :if={@image_url}
             src={@image_url}
-            alt={@entry.content_name}
+            alt={history_full_title(@entry)}
             class="w-full h-full object-cover"
             loading="lazy"
             decoding="async"
@@ -160,11 +162,11 @@ defmodule StreamixWeb.Home.Cards do
       </div>
       <div class="pt-2 px-0.5">
         <h3 class="text-xs sm:text-sm font-medium text-text-primary truncate group-hover:text-brand transition-colors">
-          {@entry.content_name || "Desconhecido"}
+          {history_title(@entry)}
         </h3>
         <p class="text-2xs text-text-muted flex items-center gap-1 sm:gap-2 mt-1">
           <span class="px-1 sm:px-1.5 py-0.5 rounded bg-surface-hover text-text-secondary">
-            {format_content_type(@entry.content_type)}
+            {history_label(@entry)}
           </span>
           <span>{format_relative_time(@entry.watched_at)}</span>
         </p>
@@ -219,4 +221,31 @@ defmodule StreamixWeb.Home.Cards do
     </.link>
     """
   end
+
+  # An episode resumes inside a series: the card leads with the series and
+  # says where ("T1 E2"); the episode title goes to the tooltip.
+  defp history_title(%{content_type: "episode", series_name: name})
+       when is_binary(name) and name != "",
+       do: DisplayTitle.title(name)
+
+  defp history_title(%{content_type: "live_channel", content_name: name}),
+    do: DisplayTitle.channel(name || "Desconhecido")
+
+  defp history_title(entry), do: DisplayTitle.clean(entry.content_name || "Desconhecido")
+
+  defp history_label(%{content_type: "episode", season_number: season, episode_number: episode})
+       when is_integer(season) and is_integer(episode),
+       do: "T#{season} E#{episode}"
+
+  defp history_label(%{content_type: "live_channel"}), do: "TV"
+  defp history_label(entry), do: format_content_type(entry.content_type)
+
+  defp history_full_title(%{content_type: "episode"} = entry) do
+    [history_title(entry), history_label(entry), DisplayTitle.episode(entry.content_name)]
+    |> Enum.reject(&(&1 in ["", "Episódio"]))
+    |> Enum.uniq()
+    |> Enum.join(" · ")
+  end
+
+  defp history_full_title(entry), do: history_title(entry)
 end

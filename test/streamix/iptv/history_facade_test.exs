@@ -86,6 +86,49 @@ defmodule Streamix.Iptv.HistoryFacadeTest do
     end
   end
 
+  describe "list_home_history/2 for episodes" do
+    test "carries the series and the episode's position" do
+      user = user_fixture()
+      provider = provider_fixture(user)
+
+      series =
+        series_content_fixture(provider, %{
+          name: "Dawson's Creek",
+          cover: "http://example.com/dc.jpg"
+        })
+
+      season =
+        %Season{}
+        |> Season.changeset(%{season_number: 1, name: "Season 1", series_id: series.id})
+        |> Repo.insert!()
+
+      episode =
+        %Episode{}
+        |> Episode.changeset(%{
+          episode_id: 302,
+          title: "Dawson's Creek - S01E02 - Piloto",
+          episode_num: 2,
+          season_id: season.id,
+          catalog_item_id: catalog_item_fixture("episode", provider.id).id
+        })
+        |> Repo.insert!()
+
+      {:ok, _entry} =
+        Iptv.add_watch_history(user.id, "episode", episode.id, %{
+          progress_seconds: 42,
+          duration_seconds: 120
+        })
+
+      [entry] = Iptv.list_home_history(user.id, limit: 6)
+
+      assert entry.content_id == episode.id
+      assert entry.series_name == "Dawson's Creek"
+      assert entry.season_number == 1
+      assert entry.episode_number == 2
+      assert entry.content_icon == "http://example.com/dc.jpg"
+    end
+  end
+
   describe "add_watch_history/3" do
     test "adds watch progress entry" do
       user = user_fixture()

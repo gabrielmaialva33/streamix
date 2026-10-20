@@ -9,6 +9,7 @@ defmodule StreamixWeb.Home.Hero do
   import StreamixWeb.CoreComponents
   import StreamixWeb.Home.Helpers
 
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Helpers.ImageProxy
 
   def render_hero_section(assigns) do
@@ -249,7 +250,7 @@ defmodule StreamixWeb.Home.Hero do
       </div>
 
       <h1 class="mb-2 line-clamp-2 max-w-[86vw] text-2xl font-bold leading-tight text-text-primary drop-shadow-lg sm:mb-4 sm:max-w-none sm:text-4xl md:text-6xl">
-        {@content.title || @content.name}
+        {DisplayTitle.title(@content)}
       </h1>
 
       <p

@@ -9,6 +9,7 @@ defmodule StreamixWeb.HomeData do
   alias Streamix.Cache
   alias Streamix.Library
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.TitleIdentity
   alias StreamixWeb.HomeCatalogLoader
 
   @trending_ttl 3 * 3600
@@ -386,10 +387,13 @@ defmodule StreamixWeb.HomeData do
   defp load_recommendations(user_id, show_adult, personalization) do
     ids = recommendation_ids(personalization.movie_recommendations)
 
+    # One card per title: the vectors of several providers' copies of a movie
+    # rank side by side.
     recommendations =
       user_id
       |> Streamix.Catalog.list_visible_movies_by_ids(ids, show_adult: show_adult)
       |> order_by_ids(ids)
+      |> TitleIdentity.distinct()
 
     if length(recommendations) >= @home_default_limit do
       Enum.take(recommendations, @home_default_limit)
@@ -404,7 +408,7 @@ defmodule StreamixWeb.HomeData do
         )
 
       (recommendations ++ fallback)
-      |> Enum.uniq_by(& &1.id)
+      |> TitleIdentity.distinct()
       |> Enum.take(@home_default_limit)
     end
   end

@@ -12,7 +12,10 @@ defmodule StreamixWeb.Content.Detail do
   alias Streamix.Library
   alias Streamix.Torrent
   alias StreamixWeb.Content.FavoriteState
+  alias StreamixWeb.Content.TitleIdentity
   alias StreamixWeb.Helpers.ImageProxy
+
+  @similar_limit 6
 
   @provider_unavailable_message "Esse provedor não está disponível para sua conta. " <>
                                   "Pode estar inativo, ter sido removido ou ser privado de outro usuário."
@@ -137,11 +140,11 @@ defmodule StreamixWeb.Content.Detail do
     end
   end
 
-  def similar_movies(movie_id),
-    do: similar(movie_id, :movies, &Streamix.Catalog.get_movies_by_ids/1, "MovieDetail")
+  def similar_movies(movie),
+    do: similar(movie, :movies, &Streamix.Catalog.get_movies_by_ids/1, "MovieDetail")
 
-  def similar_series(series_id),
-    do: similar(series_id, :series, &Streamix.Catalog.get_series_by_ids/1, "SeriesDetail")
+  def similar_series(series),
+    do: similar(series, :series, &Streamix.Catalog.get_series_by_ids/1, "SeriesDetail")
 
   def seasons_with_episodes(series) do
     (series.seasons || [])
@@ -180,12 +183,16 @@ defmodule StreamixWeb.Content.Detail do
     missing_basic or missing_extended
   end
 
-  defp similar(content_id, type, fetch_full, log_context) do
-    case AI.similar_content(content_id, type, limit: 6) do
+  # Other providers' copies of the page's own title are neighbours in the
+  # vector index too; ask for extra so dropping them still fills the rail.
+  defp similar(content, type, fetch_full, log_context) do
+    case AI.similar_content(content.id, type, limit: @similar_limit * 3) do
       {:ok, results} ->
         results
         |> Enum.map(& &1.id)
         |> fetch_full.()
+        |> TitleIdentity.distinct([content])
+        |> Enum.take(@similar_limit)
 
       {:error, reason} ->
         Logger.debug("[#{log_context}] SemanticSearch unavailable: #{inspect(reason)}")

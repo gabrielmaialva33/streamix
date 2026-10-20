@@ -172,7 +172,7 @@ defmodule StreamixWeb.Api.V1.CatalogSourcesTest do
       for source <- sources do
         page_badges =
           document
-          |> LazyHTML.query("#movie-source-#{source["id"]} [data-source-badge]")
+          |> LazyHTML.query("#source-option-#{source["id"]} [data-source-badge]")
           |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
 
         assert page_badges == source["badges"]

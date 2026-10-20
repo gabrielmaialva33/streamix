@@ -7,6 +7,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   use StreamixWeb, :live_view
 
   alias StreamixWeb.Content.Detail
+  alias StreamixWeb.Content.DisplayTitle
   alias StreamixWeb.Content.HelperComponents
   alias StreamixWeb.Content.SourceBadges
   alias StreamixWeb.PlayerHelpers
@@ -490,7 +491,8 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   # Title before name. `name` holds the raw filename for almost every episode in
   # the catalog, so this page was showing
   # "Vingadores.Unidos.da.Marvel.S01E23.1080p.DSNP.WEB-DL...mkv" as the label.
-  defp episode_display_title(episode), do: HelperComponents.episode_title(episode)
+  defp episode_display_title(episode),
+    do: episode |> HelperComponents.episode_title() |> DisplayTitle.episode()
 
   defp get_episode_image(episode) do
     episode.still_path || episode.cover
