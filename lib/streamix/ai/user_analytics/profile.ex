@@ -7,61 +7,44 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   alias Streamix.AI.Qdrant
   alias Streamix.Cache
   alias Streamix.Library
+  alias Streamix.Library.Key
 
-  @user_profile_collection "user_profiles"
-  @recommendations_ttl 3600
+  @profile_ttl :timer.minutes(30)
 
   @doc """
-  Computes and stores a user's taste profile based on watch history.
+  Computes a user's taste profile from their watch history.
 
   The profile is a weighted average of content embeddings:
   - More recent = higher weight
   - Completed = higher weight
   - Longer watch time = higher weight
 
-  Returns {:ok, profile_vector} or {:error, reason}
+  It needs the user's unlocked library key and is never persisted: a stored
+  taste vector would let anyone with Qdrant access search for what the user
+  watched. Returns {:ok, profile_vector} or {:error, reason}.
   """
-  def compute_user_profile(user_id) do
-    with {:ok, watched_content} <- get_watched_content_with_embeddings(user_id),
-         {:ok, profile_vector} <- aggregate_profile(watched_content) do
-      payload = %{
-        user_id: user_id,
-        content_count: length(watched_content),
-        computed_at: DateTime.utc_now() |> DateTime.to_iso8601()
-      }
-
-      case qdrant_module().upsert_point(
-             @user_profile_collection,
-             user_id,
-             profile_vector,
-             payload
-           ) do
-        {:ok, _} ->
-          Cache.invalidate_personalization(user_id)
-          Logger.info("[UserAnalytics] Updated profile for user #{user_id}")
-          {:ok, profile_vector}
-
-        {:error, reason} ->
-          Logger.warning("[UserAnalytics] Failed to store profile: #{inspect(reason)}")
-          {:error, {:profile_store_failed, reason}}
-      end
+  def compute_user_profile(%Key{} = key) do
+    with {:ok, watched_content} <- get_watched_content_with_embeddings(key) do
+      aggregate_profile(watched_content)
     end
   end
 
   @doc """
-  Gets cached user profile vector, computing if needed.
+  Gets the user's profile vector, computing it if needed. It is cached in
+  this node's memory only (`Streamix.Cache.fetch_personal/4`).
   """
-  def get_user_profile(user_id) do
-    cache_key = Cache.user_profile_key(user_id)
-
-    Cache.fetch(cache_key, @recommendations_ttl, fn ->
-      fetch_or_compute_profile(user_id)
+  def get_user_profile(%Key{user_id: user_id} = key) do
+    Cache.fetch_personal(user_id, :profile, @profile_ttl, fn ->
+      case compute_user_profile(key) do
+        {:ok, vector} -> vector
+        {:error, _reason} -> nil
+      end
     end)
   end
 
-  defp get_watched_content_with_embeddings(user_id) do
+  defp get_watched_content_with_embeddings(%Key{user_id: user_id} = key) do
     history =
-      user_id
+      key
       |> Library.list_watch_history_for_analytics(
         limit: 100,
         show_adult: show_adult_content?(user_id)
@@ -109,21 +92,6 @@ defmodule Streamix.AI.UserAnalytics.Profile do
   defp content_type_to_collection("movie"), do: "movies"
   defp content_type_to_collection("episode"), do: "series"
   defp content_type_to_collection(_), do: :skip
-
-  defp fetch_or_compute_profile(user_id) do
-    case qdrant_module().get_point(@user_profile_collection, user_id) do
-      {:ok, %{vector: vector}} -> vector
-      {:error, :not_found} -> compute_profile_vector(user_id)
-      {:error, _} -> nil
-    end
-  end
-
-  defp compute_profile_vector(user_id) do
-    case compute_user_profile(user_id) do
-      {:ok, vector} -> vector
-      {:error, _} -> nil
-    end
-  end
 
   # One Qdrant request per collection (usually 2: movies + series), instead
   # of one per entry. With ~100 items in history this turns a 100-roundtrip

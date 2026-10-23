@@ -9,6 +9,7 @@ defmodule Streamix.AI.UserAnalytics.Context do
   """
 
   alias Streamix.AI.UserAnalytics.{Insights, Profile, Recommendations}
+  alias Streamix.Library.Key
 
   @recommendation_limit 48
 
@@ -24,17 +25,17 @@ defmodule Streamix.AI.UserAnalytics.Context do
         }
 
   @doc "Loads cached profile, insights, and bounded semantic rankings once for a user."
-  @spec load(pos_integer()) :: t()
-  def load(user_id) when is_integer(user_id) and user_id > 0 do
-    profile = Profile.get_user_profile(user_id)
-    insights = Insights.get_user_insights(user_id)
+  @spec load(Key.t()) :: t()
+  def load(%Key{} = key) do
+    profile = Profile.get_user_profile(key)
+    insights = Insights.get_user_insights(key)
 
     rankings =
       [movies: "movies", series: "series"]
       |> Task.async_stream(
-        fn {key, collection} ->
-          recommendations = semantic_recommendations(user_id, collection, profile)
-          {key, recommendations}
+        fn {shelf, collection} ->
+          recommendations = semantic_recommendations(key, collection, profile)
+          {shelf, recommendations}
         end,
         ordered: true,
         max_concurrency: 2,
@@ -42,7 +43,7 @@ defmodule Streamix.AI.UserAnalytics.Context do
         on_timeout: :kill_task
       )
       |> Enum.reduce(%{movies: [], series: []}, fn
-        {:ok, {key, recommendations}}, acc -> Map.put(acc, key, recommendations)
+        {:ok, {shelf, recommendations}}, acc -> Map.put(acc, shelf, recommendations)
         {:exit, _reason}, acc -> acc
       end)
 
@@ -56,10 +57,10 @@ defmodule Streamix.AI.UserAnalytics.Context do
     }
   end
 
-  defp semantic_recommendations(_user_id, _collection, nil), do: []
+  defp semantic_recommendations(_key, _collection, nil), do: []
 
-  defp semantic_recommendations(user_id, collection, profile) do
-    user_id
+  defp semantic_recommendations(key, collection, profile) do
+    key
     |> Recommendations.get_recommendations(
       type: collection,
       limit: @recommendation_limit,

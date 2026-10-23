@@ -29,7 +29,7 @@ defmodule Streamix.AI.QdrantTest do
     assert Agent.get(requests, &Enum.reverse/1) == [{"GET", "/collections/movies"}]
   end
 
-  test "setup_collections creates every collection used by semantic search and profiles" do
+  test "setup_collections creates the semantic search collections and drops per-user profiles" do
     {:ok, port, requests} = start_qdrant_stub(:create_missing)
     prior = Application.get_env(:streamix, :qdrant)
 
@@ -51,8 +51,7 @@ defmodule Streamix.AI.QdrantTest do
              {"PUT", "/collections/series"},
              {"GET", "/collections/animes"},
              {"PUT", "/collections/animes"},
-             {"GET", "/collections/user_profiles"},
-             {"PUT", "/collections/user_profiles"}
+             {"DELETE", "/collections/user_profiles"}
            ]
   end
 
@@ -136,6 +135,7 @@ defmodule Streamix.AI.QdrantTest do
 
     defp response_status(:create_missing, "GET"), do: 404
     defp response_status(:create_missing, "PUT"), do: 200
+    defp response_status(:create_missing, "DELETE"), do: 404
     defp response_status(status, _method) when is_integer(status), do: status
   end
 end

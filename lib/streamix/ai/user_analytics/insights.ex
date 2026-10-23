@@ -4,8 +4,9 @@ defmodule Streamix.AI.UserAnalytics.Insights do
   alias Streamix.Accounts
   alias Streamix.Cache
   alias Streamix.Library
+  alias Streamix.Library.Key
 
-  @recommendations_ttl 3600
+  @insights_ttl :timer.hours(1)
 
   @doc """
   Gets viewing insights for a user.
@@ -15,15 +16,16 @@ defmodule Streamix.AI.UserAnalytics.Insights do
   - Watch time patterns (weekday vs weekend, time of day)
   - Content type preferences
   - Completion rate
-  """
-  def get_user_insights(user_id) do
-    cache_key = Cache.user_insights_key(user_id)
 
-    Cache.fetch(cache_key, @recommendations_ttl, fn ->
+  Derived from the sealed history, so it needs the user's library key and is
+  only cached in this node's memory.
+  """
+  def get_user_insights(%Key{user_id: user_id} = key) do
+    Cache.fetch_personal(user_id, :insights, @insights_ttl, fn ->
       show_adult = show_adult_content?(user_id)
 
       history =
-        Library.list_watch_history_for_analytics(user_id, limit: 500, show_adult: show_adult)
+        Library.list_watch_history_for_analytics(key, limit: 500, show_adult: show_adult)
 
       if Enum.empty?(history) do
         %{has_data: false}
@@ -35,7 +37,7 @@ defmodule Streamix.AI.UserAnalytics.Insights do
         %{
           has_data: true,
           total_items: length(history),
-          content_breakdown: Library.count_watch_history_by_type(user_id, show_adult: show_adult),
+          content_breakdown: Library.count_watch_history_by_type(key, show_adult: show_adult),
           completion_rate: calculate_completion_rate(history),
           favorite_genres: extract_favorite_genres(movie_history),
           watch_patterns: analyze_watch_patterns(history),
