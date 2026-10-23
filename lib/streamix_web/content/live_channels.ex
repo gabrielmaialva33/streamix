@@ -105,10 +105,15 @@ defmodule StreamixWeb.Content.LiveChannels do
     with channel_id when is_integer(channel_id) <- parse_integer(id),
          %{} = channel <-
            Streamix.Playback.get_playable_channel(socket.assigns.user_id, channel_id) do
-      Library.add_watch_history(socket.assigns.user_id, "live_channel", channel.id, %{
-        content_name: channel.name,
-        content_icon: channel.stream_icon
-      })
+      Library.add_watch_history(
+        socket.assigns.current_scope.library_key,
+        "live_channel",
+        channel.id,
+        %{
+          content_name: channel.name,
+          content_icon: channel.stream_icon
+        }
+      )
 
       LiveView.redirect(socket, to: ~p"/watch/live_channel/#{channel.id}")
     else
@@ -369,10 +374,15 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp toggle_loaded_channel(socket, channel_id, channel) do
-    case FavoriteState.toggle(socket.assigns.user_id, "live_channel", channel_id, %{
-           content_name: channel.name,
-           content_icon: channel.stream_icon
-         }) do
+    case FavoriteState.toggle(
+           socket.assigns.current_scope.library_key,
+           "live_channel",
+           channel_id,
+           %{
+             content_name: channel.name,
+             content_icon: channel.stream_icon
+           }
+         ) do
       {:ok, status} ->
         socket
         |> FavoriteState.apply_map(:favorites_map, channel_id, status)
@@ -384,7 +394,9 @@ defmodule StreamixWeb.Content.LiveChannels do
   end
 
   defp load_favorites_map(socket) do
-    favorite_ids = Library.list_favorite_ids(socket.assigns.user_id, "live_channel")
+    favorite_ids =
+      Library.list_favorite_ids(socket.assigns.current_scope.library_key, "live_channel")
+
     assign(socket, favorites_map: favorite_ids)
   end
 

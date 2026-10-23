@@ -187,7 +187,7 @@ defmodule StreamixWeb.Content.MoviesLiveTest do
 
       render_hook(view, "toggle_favorite", %{"id" => private_movie.id, "type" => "movie"})
 
-      refute Iptv.favorite?(user.id, "movie", private_movie.id)
+      refute Iptv.favorite?(library_key_fixture(user), "movie", private_movie.id)
     end
 
     test "all-providers browse renders canonical genre filter, patches ?genre, preserves it on search/return_to, and drops it on provider switch",

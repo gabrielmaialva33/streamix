@@ -66,7 +66,9 @@ defmodule StreamixWeb.PlayerLive do
     # Update progress in database for VOD content (only for logged-in users)
     if user_id && socket.assigns.content_type != :live do
       {progress_type, progress_id} = progress_ref(type, content)
-      Library.update_watch_progress(user_id, progress_type, progress_id, current_time, duration)
+
+      socket.assigns.current_scope.library_key
+      |> Library.update_watch_progress(progress_type, progress_id, current_time, duration)
     end
 
     Billing.touch_playback_session(socket.assigns[:playback_session])
@@ -228,7 +230,9 @@ defmodule StreamixWeb.PlayerLive do
 
   def handle_event("ios_pwa_player_event", params, socket) do
     if Application.get_env(:streamix, :player_lifecycle_logs, false) do
-      Logger.debug("ios_pwa_player_event #{params["event"]} content_id=#{params["content_id"]}",
+      # The event's content_id stays out: player diagnostics must not record
+      # what is being watched (docs/privacy.md).
+      Logger.debug("ios_pwa_player_event #{params["event"]}",
         player_stage: params["event"],
         content_type: params["content_type"],
         source_type: params["source_type"],
@@ -480,7 +484,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp load_authorized_content(socket, "torrent" = type, user_id, content, provider, return_to) do
-    case reserve_playback_session(socket, type, content, user_id) do
+    case reserve_playback_session(socket) do
       {:ok, playback_session} ->
         prepare_torrent_gate(
           socket,
@@ -514,7 +518,7 @@ defmodule StreamixWeb.PlayerLive do
   end
 
   defp start_authorized_player(socket, type, user_id, content, provider, stream_url, return_to) do
-    case reserve_playback_session(socket, type, content, user_id) do
+    case reserve_playback_session(socket) do
       {:ok, playback_session} ->
         prepare_player_socket(
           socket,
@@ -547,7 +551,7 @@ defmodule StreamixWeb.PlayerLive do
        ) do
     # Mount runs twice (static HTTP + WS upgrade). Writing watch history on
     # the static pass duplicated every play into the timeline.
-    if connected?(socket), do: record_watch_history(user_id, type, content)
+    if connected?(socket), do: record_watch_history(socket, type, content)
     prepare_connected_player(socket, type, content, user_id)
 
     next_episode = load_next_episode(type, content, provider, user_id)
@@ -596,7 +600,7 @@ defmodule StreamixWeb.PlayerLive do
 
   defp prepare_torrent_gate(socket, type, user_id, content, provider, playback_session, return_to) do
     # Mount runs twice — see comment in prepare_player_socket. Same guard.
-    if connected?(socket), do: record_watch_history(user_id, type, content)
+    if connected?(socket), do: record_watch_history(socket, type, content)
     start_torrent_session_task(socket, content)
 
     info_hash = content.torrent_stream.info_hash
@@ -635,11 +639,9 @@ defmodule StreamixWeb.PlayerLive do
     {:ok, socket}
   end
 
-  defp reserve_playback_session(socket, type, content, _user_id) do
+  defp reserve_playback_session(socket) do
     if connected?(socket) do
       Billing.start_playback_session(socket.assigns.current_scope.user, %{
-        content_type: type,
-        content_id: content.id,
         client_id: client_id_from_socket(socket),
         metadata: %{live_view: "player"}
       })
@@ -704,8 +706,8 @@ defmodule StreamixWeb.PlayerLive do
     end
   end
 
-  defp record_watch_history(user_id, "torrent", content) do
-    Library.add_to_watch_history(user_id, %{
+  defp record_watch_history(socket, "torrent", content) do
+    Library.add_to_watch_history(socket.assigns.current_scope.library_key, %{
       content_type: "movie",
       content_id: content.movie_id,
       content_name: content_title(content, "torrent"),
@@ -713,8 +715,8 @@ defmodule StreamixWeb.PlayerLive do
     })
   end
 
-  defp record_watch_history(user_id, type, content) do
-    Library.add_to_watch_history(user_id, %{
+  defp record_watch_history(socket, type, content) do
+    Library.add_to_watch_history(socket.assigns.current_scope.library_key, %{
       content_type: type,
       content_id: content.id,
       content_name: content_title(content, type),

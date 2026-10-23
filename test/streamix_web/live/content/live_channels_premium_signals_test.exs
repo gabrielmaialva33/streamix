@@ -177,7 +177,7 @@ defmodule StreamixWeb.Content.LiveChannelsPremiumSignalsTest do
       refute match?({:error, {:redirect, _}}, play_html)
       refute favorite_html =~ ~s(id="channel-img-#{private_channel.id}")
       refute refresh_html =~ "Other Private Channel"
-      refute Iptv.favorite?(user.id, "live_channel", private_channel.id)
+      refute Iptv.favorite?(library_key_fixture(user), "live_channel", private_channel.id)
     end
   end
 end

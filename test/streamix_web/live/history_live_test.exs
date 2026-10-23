@@ -11,6 +11,7 @@ defmodule StreamixWeb.HistoryLiveTest do
   use StreamixWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Streamix.AccountsFixtures, only: [library_key_fixture: 1]
   import Streamix.IptvFixtures
 
   alias Streamix.Iptv.{Episode, Season}
@@ -205,7 +206,7 @@ defmodule StreamixWeb.HistoryLiveTest do
         |> Repo.insert!()
 
       {:ok, _} =
-        Streamix.Library.add_watch_history(user.id, "episode", episode.id, %{
+        Streamix.Library.add_watch_history(library_key_fixture(user), "episode", episode.id, %{
           progress_seconds: 600,
           duration_seconds: 2400
         })

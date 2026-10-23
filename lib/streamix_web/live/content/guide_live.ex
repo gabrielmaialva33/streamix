@@ -21,7 +21,7 @@ defmodule StreamixWeb.Content.GuideLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    user = socket.assigns.current_scope.user
+    library_key = socket.assigns.current_scope.library_key
 
     {:ok,
      socket
@@ -42,7 +42,7 @@ defmodule StreamixWeb.Content.GuideLive do
        loading: true,
        load_generation: 0,
        refresh_ref: nil,
-       favorite_ids: Library.list_favorite_ids(user.id, "live_channel")
+       favorite_ids: Library.list_favorite_ids(library_key, "live_channel")
      )}
   end
 
@@ -156,7 +156,7 @@ defmodule StreamixWeb.Content.GuideLive do
            Enum.find(socket.assigns.all_rows, &(&1.channel.id == channel_id)),
          {:ok, status} <-
            Library.toggle_favorite(
-             socket.assigns.current_scope.user.id,
+             socket.assigns.current_scope.library_key,
              "live_channel",
              channel_id,
              %{

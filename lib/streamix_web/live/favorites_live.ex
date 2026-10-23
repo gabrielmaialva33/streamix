@@ -24,24 +24,22 @@ defmodule StreamixWeb.FavoritesLive do
 
   @doc false
   def mount(_params, _session, socket) do
-    user = socket.assigns.current_scope.user
-    user_id = user.id
+    %{user: user, library_key: library_key} = socket.assigns.current_scope
     show_adult = user.show_adult_content
 
     # Load all favorites for offline sync (limited to recent 100)
-    sync_favorites = load_favorites_for_sync(user_id, show_adult)
+    sync_favorites = load_favorites_for_sync(library_key, show_adult)
 
     socket =
       socket
       |> assign(page_title: "Minha Lista")
       |> assign(current_path: "/favorites")
-      |> assign(user_id: user_id)
       |> assign(show_adult: show_adult)
       |> assign(filter: "all")
       |> assign(page: 0)
       |> assign(loading: false)
       |> assign(end_of_list: false)
-      |> assign(counts: load_counts(user_id, show_adult))
+      |> assign(counts: load_counts(library_key, show_adult))
       |> assign(sync_favorites: sync_favorites)
       |> stream(:favorites, [])
       |> load_favorites()
@@ -90,11 +88,11 @@ defmodule StreamixWeb.FavoritesLive do
         %{"type" => type, "content_id" => content_id},
         socket
       ) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
 
     case parse_positive_integer(content_id) do
       {:ok, content_id_int} ->
-        Library.remove_favorite(user_id, type, content_id_int)
+        Library.remove_favorite(library_key, type, content_id_int)
 
         # Update counts
         counts = update_counts(socket.assigns.counts, type, -1)
@@ -323,7 +321,7 @@ defmodule StreamixWeb.FavoritesLive do
   defp fallback_title(title), do: title
 
   defp load_favorites(socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
     filter = socket.assigns.filter
     page = socket.assigns.page
     offset = page * @per_page
@@ -332,7 +330,7 @@ defmodule StreamixWeb.FavoritesLive do
     opts = if filter != "all", do: Keyword.put(opts, :content_type, filter), else: opts
 
     favorites =
-      Library.list_favorites(user_id, opts)
+      Library.list_favorites(library_key, opts)
       |> Enum.map(fn f -> Map.put(f, :id, "#{f.content_type}-#{f.content_id}") end)
 
     socket
@@ -341,13 +339,13 @@ defmodule StreamixWeb.FavoritesLive do
     |> stream(:favorites, favorites)
   end
 
-  defp load_counts(user_id, show_adult) do
-    Library.count_favorites_by_type(user_id, show_adult: show_adult)
+  defp load_counts(library_key, show_adult) do
+    Library.count_favorites_by_type(library_key, show_adult: show_adult)
   end
 
-  defp load_favorites_for_sync(user_id, show_adult) do
+  defp load_favorites_for_sync(library_key, show_adult) do
     # Load recent favorites for offline sync
-    Library.list_favorites(user_id, limit: 100, show_adult: show_adult)
+    Library.list_favorites(library_key, limit: 100, show_adult: show_adult)
     |> Enum.map(fn f ->
       %{
         content_type: f.content_type,

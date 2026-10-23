@@ -13,14 +13,14 @@ defmodule StreamixWeb.Content.FavoriteStateTest do
     movie = movie_fixture(provider)
     socket = %{assigns: %{favorites_map: MapSet.new()}}
 
-    assert {:ok, :added} = FavoriteState.toggle(user.id, "movie", movie.id)
-    assert Iptv.favorite?(user.id, "movie", movie.id)
+    assert {:ok, :added} = FavoriteState.toggle(library_key_fixture(user), "movie", movie.id)
+    assert Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
 
     socket = FavoriteState.apply_map(socket, :favorites_map, movie.id, :added)
     assert MapSet.member?(socket.assigns.favorites_map, movie.id)
 
-    assert {:ok, :removed} = FavoriteState.toggle(user.id, "movie", movie.id)
-    refute Iptv.favorite?(user.id, "movie", movie.id)
+    assert {:ok, :removed} = FavoriteState.toggle(library_key_fixture(user), "movie", movie.id)
+    refute Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
 
     socket = FavoriteState.apply_map(socket, :favorites_map, movie.id, :removed)
     refute MapSet.member?(socket.assigns.favorites_map, movie.id)

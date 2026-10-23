@@ -83,13 +83,13 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   end
 
   def handle_event("toggle_favorite", %{"id" => id, "type" => "series"}, socket) do
-    user_id = socket.assigns.user_id
+    library_key = socket.assigns.current_scope.library_key
 
     case parse_positive_integer(id) do
       {:ok, anime_id} ->
         anime = Streamix.Catalog.get_series!(anime_id)
 
-        case FavoriteState.toggle(user_id, "series", anime_id, %{
+        case FavoriteState.toggle(library_key, "series", anime_id, %{
                content_name: anime.title || anime.name,
                content_icon: anime.cover
              }) do
@@ -201,8 +201,8 @@ defmodule StreamixWeb.Gindex.AnimeLive do
   end
 
   defp load_favorites_map(socket) do
-    user_id = socket.assigns.user_id
-    favorite_ids = Library.list_favorite_ids(user_id, "series")
+    library_key = socket.assigns.current_scope.library_key
+    favorite_ids = Library.list_favorite_ids(library_key, "series")
     assign(socket, favorites_map: favorite_ids)
   end
 end

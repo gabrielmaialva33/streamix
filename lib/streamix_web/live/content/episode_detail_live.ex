@@ -82,7 +82,7 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
 
   defp mount_episode_found(socket, provider, episode, series, user_id, mode, return_to) do
     user = socket.assigns.current_scope.user
-    is_favorite = Detail.favorite?(user_id, "series", series.id)
+    is_favorite = Detail.favorite?(socket.assigns.current_scope.library_key, "series", series.id)
 
     # Enrich episode with TMDB data if needed
     episode = Detail.maybe_fetch_episode_info(episode)
@@ -154,16 +154,18 @@ defmodule StreamixWeb.Content.EpisodeDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    case socket.assigns.user_id do
+    case socket.assigns.current_scope.library_key do
       nil ->
         {:noreply, put_flash(socket, :info, "Faça login para adicionar favoritos")}
 
-      user_id ->
+      library_key ->
         series = socket.assigns.series
         is_favorite = socket.assigns.is_favorite
 
         {:noreply,
-         assign(socket, is_favorite: Detail.toggle_series_favorite(user_id, series, is_favorite))}
+         assign(socket,
+           is_favorite: Detail.toggle_series_favorite(library_key, series, is_favorite)
+         )}
     end
   end
 

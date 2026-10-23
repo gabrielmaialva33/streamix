@@ -109,7 +109,12 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
     series_sources =
       SeriesSources.list(series, user_id, preferred_provider_id: preferred_provider_id)
 
-    progress = Streamix.Library.latest_series_progress(user_id, Enum.map(series_sources, & &1.id))
+    progress =
+      Streamix.Library.latest_series_progress(
+        socket.assigns.current_scope.library_key,
+        Enum.map(series_sources, & &1.id)
+      )
+
     selected_series = default_source(series_sources, progress, series)
     selected_seasons = Detail.seasons_with_episodes(selected_series)
 
@@ -144,7 +149,10 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
           Detail.hero_image(selected_series, selected_series.cover) ||
             Detail.hero_image(series, series.cover)
       )
-      |> assign(is_favorite: Detail.favorite?(user_id, "series", series.id))
+      |> assign(
+        is_favorite:
+          Detail.favorite?(socket.assigns.current_scope.library_key, "series", series.id)
+      )
       |> assign(user_id: user_id)
       |> assign(similar_series: [])
       |> assign(selected_gallery_image: nil)
@@ -181,7 +189,9 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
       if progress && !progress.completed, do: Enum.find(episodes, &(&1.id == progress.episode_id))
 
     playable = resume || first_episode(seasons)
-    episode_progress = load_episode_progress(socket.assigns.user_id, episodes, progress)
+
+    episode_progress =
+      load_episode_progress(socket.assigns.current_scope.library_key, episodes, progress)
 
     series_still_fallback =
       Detail.hero_image(selected, selected.cover) ||
@@ -345,16 +355,18 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   end
 
   def handle_event("toggle_favorite", _, socket) do
-    case socket.assigns.user_id do
+    case socket.assigns.current_scope.library_key do
       nil ->
         {:noreply, put_flash(socket, :info, "Faça login para adicionar favoritos")}
 
-      user_id ->
+      library_key ->
         series = socket.assigns.series
         is_favorite = socket.assigns.is_favorite
 
         {:noreply,
-         assign(socket, is_favorite: Detail.toggle_series_favorite(user_id, series, is_favorite))}
+         assign(socket,
+           is_favorite: Detail.toggle_series_favorite(library_key, series, is_favorite)
+         )}
     end
   end
 
@@ -589,11 +601,11 @@ defmodule StreamixWeb.Content.SeriesDetailLive do
   defp first_episode(_), do: nil
 
   defp load_episode_progress(nil, _episodes, _source_progress), do: %{}
-  defp load_episode_progress(_user_id, [], _source_progress), do: %{}
+  defp load_episode_progress(_library_key, [], _source_progress), do: %{}
 
-  defp load_episode_progress(user_id, episodes, source_progress) do
+  defp load_episode_progress(library_key, episodes, source_progress) do
     episode_ids = Enum.map(episodes, & &1.id)
-    progress_map = Streamix.Library.get_watch_progress_map(user_id, "episode", episode_ids)
+    progress_map = Streamix.Library.get_watch_progress_map(library_key, "episode", episode_ids)
 
     case source_progress do
       %{episode_id: ep_id, completed: true} when is_integer(ep_id) ->
