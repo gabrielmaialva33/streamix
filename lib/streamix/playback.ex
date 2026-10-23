@@ -87,17 +87,29 @@ defmodule Streamix.Playback do
   Streams VOD through the block multiplexer so concurrent viewers of one title
   can share upstream connections. Falls back to the direct proxy when the
   multiplexer is disabled or cannot serve the request.
+
+  Content of a private (personal) provider never goes through it: the block
+  cache lives on disk, keyed by provider and content, and only the provider's
+  owner can play that content, so the cache would record what they watched
+  (docs/privacy.md).
   """
   @spec pipe_vod_stream(Plug.Conn.t(), String.t(), keyword()) :: Plug.Conn.t()
   def pipe_vod_stream(conn, url, opts \\ []) do
     opts = UpstreamPolicy.with_domain_policy(opts)
 
-    if Application.get_env(:streamix, :vod_multiplexer_enabled, false) do
+    if Application.get_env(:streamix, :vod_multiplexer_enabled, false) and
+         not private_provider?(Keyword.get(opts, :provider_id)) do
       VodMultiplexer.pipe(conn, url, opts, &VodProxy.pipe(&1, url, opts))
     else
       VodProxy.pipe(conn, url, opts)
     end
   end
+
+  defp private_provider?(provider_id) when is_integer(provider_id) do
+    match?(%Provider{visibility: :private}, Streamix.Providers.get_provider(provider_id))
+  end
+
+  defp private_provider?(_provider_id), do: false
 
   def head_stream(conn, url, opts \\ []) do
     VodProxy.head(conn, url, UpstreamPolicy.with_domain_policy(opts))

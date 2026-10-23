@@ -117,6 +117,22 @@ defmodule Streamix.Cache do
     end
   end
 
+  @doc """
+  Gets or computes a value derived from a user's sealed library — taste
+  profile, viewing insights, recommendations, personalized shelves — keeping
+  it in this node's memory only.
+
+  Such values reveal what the user watched, so they never reach Redis (see
+  `Streamix.Library`). `invalidate_personalization/1` drops all of a user's
+  entries at once by bumping a per-user generation that is part of the key.
+  """
+  @spec fetch_personal(integer(), term(), pos_integer(), (-> term())) :: term()
+  def fetch_personal(user_id, kind, ttl_ms, fun) when is_integer(user_id) do
+    fetch_local({:personal, user_id, personal_generation(user_id), kind}, ttl_ms, fun)
+  end
+
+  defp personal_generation(user_id), do: L1.get({:personal_generation, user_id}) || 0
+
   @doc "Removes an entry written by `fetch_local/3` from this node's L1."
   @spec delete_local(term()) :: :ok
   def delete_local(key) do
@@ -199,12 +215,6 @@ defmodule Streamix.Cache do
   defdelegate provider_categories_key(provider_id), to: Keys, as: :provider_categories
   defdelegate channel_count_key(provider_id), to: Keys, as: :channel_count
   defdelegate groups_key(user_id), to: Keys, as: :groups
-  defdelegate user_profile_key(user_id), to: Keys, as: :user_profile
-  defdelegate user_insights_key(user_id), to: Keys, as: :user_insights
-
-  defdelegate recommendations_key(user_id, type, limit, exclude_watched),
-    to: Keys,
-    as: :recommendations
 
   defdelegate public_stats_key, to: Keys, as: :public_stats
   defdelegate featured_key, to: Keys, as: :featured
@@ -278,8 +288,13 @@ defmodule Streamix.Cache do
   @doc "Invalidates derived profile, recommendation, insight and home personalization data."
   @spec invalidate_personalization(integer()) :: {:ok, non_neg_integer()}
   def invalidate_personalization(user_id) do
-    # Remove legacy exact keys as well so rolling deploys cannot resurrect
-    # personalization written by an older node.
+    # Entries written by `fetch_personal/4` carry the generation in their key.
+    # The generation lives exactly as long as they can (the L1 TTL ceiling),
+    # so a reset to 0 can never revive one of them.
+    L1.put({:personal_generation, user_id}, personal_generation(user_id) + 1, L1.l1_ttl())
+
+    # Personalization used to be cached in Redis. Keep sweeping those keys
+    # (and the even older exact ones) so nothing an older node wrote lingers.
     delete("user_profile:#{user_id}")
     delete("user_insights:#{user_id}")
 

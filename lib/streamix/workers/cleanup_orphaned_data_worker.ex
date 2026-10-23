@@ -1,9 +1,10 @@
 defmodule Streamix.Workers.CleanupOrphanedDataWorker do
   @moduledoc """
-  Background worker for cleaning up orphaned favorites and watch history.
+  Background worker for cleaning up orphaned catalog items and the
+  watch-party rooms that reference them.
 
-  Runs as a scheduled cron job (daily at 2 AM) to remove user data
-  that references deleted content without blocking the sync process.
+  Runs as a scheduled cron job (daily at 2 AM) without blocking the sync
+  process. Sealed favorites and history are pruned by their owner's reads.
 
   Each execution deletes a bounded batch and snoozes the same Oban job
   while a full batch was found. That drains large backlogs incrementally
@@ -36,8 +37,7 @@ defmodule Streamix.Workers.CleanupOrphanedDataWorker do
     case Streamix.Library.cleanup_orphaned_user_data(nil, limit: batch_size) do
       {:ok, counts} ->
         Logger.info(
-          "[CleanupWorker] Batch completed: #{counts.favorites} favorites, " <>
-            "#{counts.watch_history} history, #{counts.watch_party_rooms} rooms, " <>
+          "[CleanupWorker] Batch completed: #{counts.watch_party_rooms} rooms, " <>
             "#{counts.catalog_items} catalog items removed"
         )
 
