@@ -22,6 +22,9 @@ defmodule Streamix.Accounts.UserToken do
     field :user_agent, :string
     field :country, :string
     field :city, :string
+    # The session's wrap of the user's library key (`Streamix.Library`). It
+    # opens only with the secret the client holds, never stored here.
+    field :library_key, :binary, redact: true
     belongs_to :user, Streamix.Accounts.User
 
     timestamps(type: :utc_datetime, updated_at: false)
@@ -46,7 +49,7 @@ defmodule Streamix.Accounts.UserToken do
   and devices in the UI and allow users to explicitly expire any
   session they deem invalid.
   """
-  def build_session_token(user, ip_info \\ %{}) do
+  def build_session_token(user, ip_info \\ %{}, library_key \\ nil) do
     token = :crypto.strong_rand_bytes(@rand_size)
     dt = user.authenticated_at || DateTime.utc_now(:second)
 
@@ -58,7 +61,8 @@ defmodule Streamix.Accounts.UserToken do
       ip_address: Map.get(ip_info, :ip_address),
       user_agent: Map.get(ip_info, :user_agent),
       country: Map.get(ip_info, :country),
-      city: Map.get(ip_info, :city)
+      city: Map.get(ip_info, :city),
+      library_key: library_key
     }
 
     {token, user_token}
@@ -67,7 +71,8 @@ defmodule Streamix.Accounts.UserToken do
   @doc """
   Checks if the token is valid and returns its underlying lookup query.
 
-  The query returns the user found by the token, if any, along with the token's creation time.
+  The query returns the user found by the token, if any, along with the token's creation time
+  and the session's sealed library key.
 
   The token is valid if it matches the value in the database and remains
   inside the window defined by `Streamix.Accounts.SessionPolicy`.
@@ -79,7 +84,9 @@ defmodule Streamix.Accounts.UserToken do
       from token in by_token_and_context_query(token, "session"),
         join: user in assoc(token, :user),
         where: token.inserted_at > ago(^validity_in_days, "day"),
-        select: {%{user | authenticated_at: token.authenticated_at}, token.inserted_at}
+        select:
+          {%{user | authenticated_at: token.authenticated_at}, token.inserted_at,
+           token.library_key}
 
     {:ok, query}
   end
