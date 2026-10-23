@@ -67,8 +67,10 @@ only appears after an authorized Xtream, GIndex, or torrent source is configured
 - **Optional torrent catalog and playback** through an operator-managed rqbit sidecar
 - **Live channels, movies, series, seasons, episodes, and anime**
 - **EPG now/next data**, favorites, history, and resumable watch progress
+- **Private watch history**: favorites, history and progress are encrypted with a key only the user's password opens,
+  so not even the operator can see what anyone watched ([how and its limits](docs/privacy.md))
 - **Optional TMDB enrichment** and external subtitle lookup
-- **Signed stream tokens** and server-side source resolution that keep provider credentials out of browser payloads
+- **Encrypted stream tokens** and server-side source resolution that keep provider credentials out of browser payloads
 - **HLS, transport stream, and VOD playback paths**, with actual codec support depending on the source and browser
 
 ### Accounts and Shared Experience
@@ -128,7 +130,7 @@ graph TD
         BILL[Billing]
         PARTY[Watch Party]
         AI[AI discovery]
-        TOKEN[Signed stream tokens]
+        TOKEN[Encrypted stream tokens]
         DELIVERY[Resolver / stream proxy]
         JOBS[Oban workers]
         L1[ConCache L1]
