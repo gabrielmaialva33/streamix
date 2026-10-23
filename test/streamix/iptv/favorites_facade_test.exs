@@ -17,7 +17,7 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      favorites = Iptv.list_favorites(user.id)
+      favorites = Iptv.list_favorites(library_key_fixture(user))
 
       assert length(favorites) == 1
       assert hd(favorites).content_id == channel.id
@@ -32,7 +32,7 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       favorite_fixture(user, ch1)
       favorite_fixture(user, ch2)
 
-      favorites = Iptv.list_favorites(user.id)
+      favorites = Iptv.list_favorites(library_key_fixture(user))
       assert length(favorites) == 2
 
       content_ids = Enum.map(favorites, & &1[:content_id]) |> MapSet.new()
@@ -59,19 +59,25 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
         %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
       ])
 
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", regular.id)
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", adult.id)
+      {:ok, _favorite} = Iptv.add_favorite(library_key_fixture(user), "movie", regular.id)
+      {:ok, _favorite} = Iptv.add_favorite(library_key_fixture(user), "movie", adult.id)
 
-      assert Enum.map(Iptv.list_favorites(user.id), & &1.content_id) == [regular.id]
-      assert Iptv.count_favorites(user.id) == 1
-      assert Iptv.count_favorites_by_type(user.id) == %{"movie" => 1}
+      assert Enum.map(Iptv.list_favorites(library_key_fixture(user)), & &1.content_id) == [
+               regular.id
+             ]
 
-      assert MapSet.new(Iptv.list_favorites(user.id, show_adult: true), & &1.content_id) ==
+      assert Iptv.count_favorites(library_key_fixture(user)) == 1
+      assert Iptv.count_favorites_by_type(library_key_fixture(user)) == %{"movie" => 1}
+
+      assert MapSet.new(
+               Iptv.list_favorites(library_key_fixture(user), show_adult: true),
+               & &1.content_id
+             ) ==
                MapSet.new([regular.id, adult.id])
 
       {:ok, _provider} = Iptv.update_provider(provider, %{is_active: false})
-      assert Iptv.list_favorites(user.id, show_adult: true) == []
-      assert Iptv.count_favorites(user.id, show_adult: true) == 0
+      assert Iptv.list_favorites(library_key_fixture(user), show_adult: true) == []
+      assert Iptv.count_favorites(library_key_fixture(user), show_adult: true) == 0
     end
   end
 
@@ -86,9 +92,9 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
           stream_icon: "http://example.com/home-favorite.jpg"
         })
 
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", movie.id)
+      {:ok, _favorite} = Iptv.add_favorite(library_key_fixture(user), "movie", movie.id)
 
-      [favorite] = Iptv.list_home_favorites(user.id, limit: 12)
+      [favorite] = Iptv.list_home_favorites(library_key_fixture(user), limit: 12)
 
       assert favorite.content_type == "movie"
       assert favorite.content_id == movie.id
@@ -124,15 +130,18 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
         %{catalog_item_id: adult.catalog_item_id, category_id: adult_category.id}
       ])
 
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", regular.id)
-      {:ok, _favorite} = Iptv.add_favorite(user.id, "movie", adult.id)
+      {:ok, _favorite} = Iptv.add_favorite(library_key_fixture(user), "movie", regular.id)
+      {:ok, _favorite} = Iptv.add_favorite(library_key_fixture(user), "movie", adult.id)
 
-      assert Enum.map(Iptv.list_home_favorites(user.id, show_adult: false), & &1.content_id) == [
+      assert Enum.map(
+               Iptv.list_home_favorites(library_key_fixture(user), show_adult: false),
+               & &1.content_id
+             ) == [
                regular.id
              ]
 
       assert MapSet.new(
-               Iptv.list_home_favorites(user.id, show_adult: true),
+               Iptv.list_home_favorites(library_key_fixture(user), show_adult: true),
                & &1.content_id
              ) == MapSet.new([regular.id, adult.id])
     end
@@ -148,7 +157,7 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
         favorite_fixture(user, ch)
       end
 
-      assert Iptv.count_favorites(user.id) == 3
+      assert Iptv.count_favorites(library_key_fixture(user)) == 3
     end
   end
 
@@ -165,13 +174,13 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       favorite_fixture(user, ch)
 
       # Add 2 movies
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie1.id)
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie2.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "movie", movie1.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "movie", movie2.id)
 
       # Add 1 series
-      {:ok, _} = Iptv.add_favorite(user.id, "series", series.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "series", series.id)
 
-      counts = Iptv.count_favorites_by_type(user.id)
+      counts = Iptv.count_favorites_by_type(library_key_fixture(user))
 
       assert counts["live_channel"] == 1
       assert counts["movie"] == 2
@@ -187,12 +196,12 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       movie2 = movie_fixture(provider, %{name: "Movie 101"})
       series = series_content_fixture(provider, %{name: "Series 200"})
 
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie1.id)
-      {:ok, _} = Iptv.add_favorite(user.id, "movie", movie2.id)
-      {:ok, _} = Iptv.add_favorite(user.id, "series", series.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "movie", movie1.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "movie", movie2.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "series", series.id)
 
-      movie_ids = Iptv.list_favorite_ids(user.id, "movie")
-      series_ids = Iptv.list_favorite_ids(user.id, "series")
+      movie_ids = Iptv.list_favorite_ids(library_key_fixture(user), "movie")
+      series_ids = Iptv.list_favorite_ids(library_key_fixture(user), "series")
 
       assert movie_ids == MapSet.new([movie1.id, movie2.id])
       assert series_ids == MapSet.new([series.id])
@@ -206,7 +215,7 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert Iptv.favorite?(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(library_key_fixture(user), "live_channel", channel.id)
     end
 
     test "returns false if channel is not favorited" do
@@ -214,7 +223,7 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      refute Iptv.favorite?(user.id, "live_channel", channel.id)
+      refute Iptv.favorite?(library_key_fixture(user), "live_channel", channel.id)
     end
   end
 
@@ -224,9 +233,10 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, %{} = fav} = Iptv.add_favorite(user.id, "live_channel", channel.id)
+      assert {:ok, %{} = fav} =
+               Iptv.add_favorite(library_key_fixture(user), "live_channel", channel.id)
 
-      assert Iptv.favorite?(user.id, "live_channel", channel.id)
+      assert Iptv.favorite?(library_key_fixture(user), "live_channel", channel.id)
       assert fav.catalog_item_id == channel.catalog_item_id
     end
 
@@ -235,8 +245,11 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      {:ok, _} = Iptv.add_favorite(user.id, "live_channel", channel.id)
-      assert {:error, changeset} = Iptv.add_favorite(user.id, "live_channel", channel.id)
+      {:ok, _} = Iptv.add_favorite(library_key_fixture(user), "live_channel", channel.id)
+
+      assert {:error, changeset} =
+               Iptv.add_favorite(library_key_fixture(user), "live_channel", channel.id)
+
       assert "has already been taken" in errors_on(changeset).user_id
     end
 
@@ -245,7 +258,9 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       owner = user_fixture()
       private_movie = owner |> provider_fixture() |> movie_fixture()
 
-      assert {:error, changeset} = Iptv.add_favorite(user.id, "movie", private_movie.id)
+      assert {:error, changeset} =
+               Iptv.add_favorite(library_key_fixture(user), "movie", private_movie.id)
+
       assert "content not found" in errors_on(changeset).content_id
     end
   end
@@ -257,13 +272,15 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert {:ok, 1} = Iptv.remove_favorite(user.id, "live_channel", channel.id)
-      refute Iptv.favorite?(user.id, "live_channel", channel.id)
+      assert {:ok, 1} =
+               Iptv.remove_favorite(library_key_fixture(user), "live_channel", channel.id)
+
+      refute Iptv.favorite?(library_key_fixture(user), "live_channel", channel.id)
     end
 
     test "returns 0 if favorite doesn't exist" do
       user = user_fixture()
-      assert {:ok, 0} = Iptv.remove_favorite(user.id, "live_channel", 0)
+      assert {:ok, 0} = Iptv.remove_favorite(library_key_fixture(user), "live_channel", 0)
     end
   end
 
@@ -273,8 +290,10 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       provider = provider_fixture(user)
       channel = channel_fixture(provider)
 
-      assert {:ok, :added} = Iptv.toggle_favorite(user.id, "live_channel", channel.id)
-      assert Iptv.favorite?(user.id, "live_channel", channel.id)
+      assert {:ok, :added} =
+               Iptv.toggle_favorite(library_key_fixture(user), "live_channel", channel.id)
+
+      assert Iptv.favorite?(library_key_fixture(user), "live_channel", channel.id)
     end
 
     test "removes favorite if exists" do
@@ -283,8 +302,10 @@ defmodule Streamix.Iptv.FavoritesFacadeTest do
       channel = channel_fixture(provider)
       favorite_fixture(user, channel)
 
-      assert {:ok, :removed} = Iptv.toggle_favorite(user.id, "live_channel", channel.id)
-      refute Iptv.favorite?(user.id, "live_channel", channel.id)
+      assert {:ok, :removed} =
+               Iptv.toggle_favorite(library_key_fixture(user), "live_channel", channel.id)
+
+      refute Iptv.favorite?(library_key_fixture(user), "live_channel", channel.id)
     end
   end
 end

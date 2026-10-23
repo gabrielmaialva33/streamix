@@ -1,35 +1,20 @@
 defmodule Streamix.Iptv.WatchProgress do
   @moduledoc """
-  Tracks current watch progress per user per content item.
-  One record per user+item — updated as user watches.
+  Sealed playback progress: one row per user and content item.
+
+  The row never says which content it is about. `item_digest` is an HMAC
+  under the owner's library key and `sealed` is the AES-256-GCM ciphertext of
+  the progress itself, including when it was last watched, so reading the
+  table without that key reveals only how many entries a user has.
+  `Streamix.Iptv.History` opens and writes these rows.
   """
   use Ecto.Schema
-  import Ecto.Changeset
-
-  alias Streamix.Iptv.CatalogItem
 
   @type t :: %__MODULE__{}
 
   schema "watch_progress" do
     field :user_id, :id
-    field :progress_seconds, :integer, default: 0
-    field :duration_seconds, :integer
-    field :completed, :boolean, default: false
-    field :last_watched_at, :utc_datetime
-
-    belongs_to :catalog_item, CatalogItem
-
-    timestamps(type: :utc_datetime)
-  end
-
-  @fields ~w(user_id catalog_item_id progress_seconds duration_seconds completed last_watched_at)a
-
-  def changeset(progress, attrs) do
-    progress
-    |> cast(attrs, @fields)
-    |> validate_required([:user_id, :catalog_item_id])
-    |> foreign_key_constraint(:user_id)
-    |> assoc_constraint(:catalog_item)
-    |> unique_constraint([:user_id, :catalog_item_id])
+    field :item_digest, :binary
+    field :sealed, :binary, redact: true
   end
 end

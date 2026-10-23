@@ -1,28 +1,25 @@
 defmodule Streamix.Iptv.Favorite do
   @moduledoc """
-  Schema for user favorites. References content via catalog_item_id.
+  A sealed favorite. Like `Streamix.Iptv.WatchProgress`, the row only holds
+  an HMAC of the content under the owner's library key and the ciphertext of
+  the reference; `Streamix.Iptv.Favorites` opens and writes it.
   """
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Streamix.Iptv.CatalogItem
-
   @type t :: %__MODULE__{}
 
-  @primary_key false
   schema "favorites" do
-    field :user_id, :id, primary_key: true
-    belongs_to :catalog_item, CatalogItem, primary_key: true
-
-    field :inserted_at, :utc_datetime, read_after_writes: true
+    field :user_id, :id
+    field :item_digest, :binary
+    field :sealed, :binary, redact: true
   end
 
   def changeset(favorite, attrs) do
     favorite
-    |> cast(attrs, [:user_id, :catalog_item_id])
-    |> validate_required([:user_id, :catalog_item_id])
+    |> change(attrs)
+    |> validate_required([:user_id, :item_digest, :sealed])
     |> foreign_key_constraint(:user_id)
-    |> assoc_constraint(:catalog_item)
-    |> unique_constraint([:user_id, :catalog_item_id], name: :favorites_pkey)
+    |> unique_constraint([:user_id, :item_digest])
   end
 end
