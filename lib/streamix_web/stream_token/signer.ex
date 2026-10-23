@@ -1,6 +1,11 @@
 defmodule StreamixWeb.StreamToken.Signer do
   @moduledoc """
-  Mints signed stream tokens.
+  Mints stream tokens.
+
+  Tokens are encrypted, not just signed (`Phoenix.Token.encrypt/3`). Their
+  claims name the user and the content, and they travel in URLs that land in
+  browser history, proxy logs and player diagnostics; a signed token is
+  readable base64 there, an encrypted one is opaque.
 
   Split out of `StreamixWeb.StreamToken` so the signing surface stays
   small (4 public entry points) and is easy to reason about
@@ -47,7 +52,7 @@ defmodule StreamixWeb.StreamToken.Signer do
           bypass: bypass
         }
 
-        Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
+        Phoenix.Token.encrypt(StreamixWeb.Endpoint, "stream", data)
 
       {:error, :unsafe_url} ->
         {:error, :unsafe_url}
@@ -62,6 +67,6 @@ defmodule StreamixWeb.StreamToken.Signer do
       bypass: Keyword.get(opts, :bypass_subscription, false)
     }
 
-    Phoenix.Token.sign(StreamixWeb.Endpoint, "stream", data)
+    Phoenix.Token.encrypt(StreamixWeb.Endpoint, "stream", data)
   end
 end

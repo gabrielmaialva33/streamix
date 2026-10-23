@@ -48,6 +48,11 @@ config :streamix, :embedplay,
 config :phoenix,
   gzippable_exts: ~w(.js .map .css .txt .text .html .json .svg .eot .ttf .wasm)
 
+# Parameters Phoenix and LiveView redact wherever they log params. Besides
+# credentials: stream tokens, and the LiveView `_client_id`, which identifies
+# a browser tab across the socket log and playback slots (docs/privacy.md).
+config :phoenix, :filter_parameters, ["password", "secret", "token", "_client_id"]
+
 config :streamix, :scopes,
   user: [
     default: true,

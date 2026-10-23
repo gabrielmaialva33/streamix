@@ -4,13 +4,13 @@ defmodule Streamix.SafeLogTest do
   alias Streamix.SafeLog
 
   describe "redact_url/2" do
-    test "redacts Xtream credentials in paths" do
+    test "redacts Xtream credentials and the stream id in paths" do
       url = "https://iptv.example/live/customer@example.com/super-secret/123.ts"
 
       redacted = SafeLog.redact_url(url)
 
       assert redacted ==
-               "https://iptv.example/live/[REDACTED]/[REDACTED]/123.ts"
+               "https://iptv.example/live/[REDACTED]/[REDACTED]/[REDACTED].ts"
 
       refute redacted =~ "customer@example.com"
       refute redacted =~ "super-secret"
@@ -48,9 +48,21 @@ defmodule Streamix.SafeLogTest do
 
       assert redacted =~ "Req.HTTPError"
       assert redacted =~ "invalid_request_target"
-      assert redacted =~ "stream_id=3333506"
+      assert redacted =~ "stream_id=[REDACTED]"
+      refute redacted =~ "3333506"
       assert redacted =~ "token=[REDACTED]"
       refute redacted =~ "top-secret"
+    end
+  end
+
+  describe "content_ref/1" do
+    test "is stable within a run, distinct per content, and names no id" do
+      tag = SafeLog.content_ref({:movie, 3_333_506})
+
+      assert tag == SafeLog.content_ref({:movie, 3_333_506})
+      refute tag == SafeLog.content_ref({:movie, 3_333_507})
+      assert tag =~ ~r/\Ac:[0-9a-f]{12}\z/
+      refute tag =~ "3333506"
     end
   end
 

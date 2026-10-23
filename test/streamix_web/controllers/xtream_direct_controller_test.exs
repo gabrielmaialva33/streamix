@@ -82,7 +82,7 @@ defmodule StreamixWeb.XtreamDirectControllerTest do
       assert get(build_conn(), direct_path("bad")).status == 401
 
       expired =
-        Phoenix.Token.sign(
+        Phoenix.Token.encrypt(
           Endpoint,
           "stream",
           %{type: "movie", id: context.movie.id, user_id: nil, bypass: true},

@@ -8,6 +8,7 @@ defmodule Streamix.Qoe do
 
   import Ecto.Query
 
+  alias Streamix.Library.{Cipher, Key}
   alias Streamix.Qoe.Event
   alias Streamix.Repo
 
@@ -47,11 +48,15 @@ defmodule Streamix.Qoe do
   @doc """
   Persists up to 50 samples and returns the number of newly inserted rows.
 
-  The tuple `{user_id, batch_id, sample_index}` is hashed into a unique key, so
-  client retries are safe and do not inflate operational metrics.
+  The tuple `{batch_id, sample_index}` is hashed into a unique key, so client
+  retries are safe and do not inflate operational metrics. For a signed-in
+  caller the hash is keyed with their library key (`Streamix.Library.Key`):
+  samples stay apart per user, yet the stored rows cannot be tied to anyone.
+  A playback sample names a content type and when it happened, which next to
+  a user would say when they watched (docs/privacy.md).
   """
-  def ingest(user_id, batch_id, metrics)
-      when (is_integer(user_id) or is_nil(user_id)) and is_binary(batch_id) and
+  def ingest(library_key, batch_id, metrics)
+      when (is_struct(library_key, Key) or is_nil(library_key)) and is_binary(batch_id) and
              is_list(metrics) do
     batch_id = normalize_batch_id(batch_id)
     now = DateTime.utc_now(:microsecond)
@@ -65,10 +70,9 @@ defmodule Streamix.Qoe do
         metric
         |> normalize_metric()
         |> Map.merge(%{
-          user_id: user_id,
           batch_id: batch_id,
           sample_index: index,
-          dedupe_key: dedupe_key(user_id, batch_id, index),
+          dedupe_key: dedupe_key(library_key, batch_id, index),
           inserted_at: now
         })
       end)
@@ -79,16 +83,16 @@ defmodule Streamix.Qoe do
     {:ok, %{accepted: accepted, batch_id: batch_id}}
   end
 
-  def ingest(_user_id, _batch_id, _metrics), do: {:error, :invalid_payload}
+  def ingest(_library_key, _batch_id, _metrics), do: {:error, :invalid_payload}
 
   @doc "Persists one LiveView/browser sample through the same deduplicated path."
-  def record_client_event(user_id, metric) when is_map(metric) do
+  def record_client_event(library_key, metric) when is_map(metric) do
     batch_id =
       metric
       |> value("batch_id")
       |> bounded_string(128, Ecto.UUID.generate())
 
-    ingest(user_id, batch_id, [metric])
+    ingest(library_key, batch_id, [metric])
   end
 
   @doc "Returns a small aggregate used by the admin operational dashboard."
@@ -303,8 +307,14 @@ defmodule Streamix.Qoe do
   defp maybe_put_measurement(measurements, _key, nil), do: measurements
   defp maybe_put_measurement(measurements, key, value), do: Map.put(measurements, key, value)
 
-  defp dedupe_key(user_id, batch_id, index) do
-    :crypto.hash(:sha256, "#{user_id || "anonymous"}:#{batch_id}:#{index}")
+  defp dedupe_key(nil, batch_id, index) do
+    :crypto.hash(:sha256, "anonymous:#{batch_id}:#{index}")
+    |> Base.encode16(case: :lower)
+  end
+
+  defp dedupe_key(%Key{} = library_key, batch_id, index) do
+    library_key
+    |> Cipher.digest("qoe", "#{batch_id}:#{index}")
     |> Base.encode16(case: :lower)
   end
 
