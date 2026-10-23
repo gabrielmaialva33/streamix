@@ -4,14 +4,11 @@ defmodule StreamixWeb.Api.V1.AuthControllerTest do
   import ExUnit.CaptureLog
   import Streamix.AccountsFixtures
 
-  alias Streamix.Accounts
-
   test "me and logout share the Bearer parser and accept case-insensitive unpadded tokens", %{
     conn: conn
   } do
     user = user_fixture()
-    token = Accounts.generate_user_session_token(user)
-    encoded = Base.url_encode64(token, padding: false)
+    encoded = user |> api_token_fixture() |> String.trim_trailing("=")
 
     me =
       conn
@@ -33,6 +30,29 @@ defmodule StreamixWeb.Api.V1.AuthControllerTest do
       |> json_response(401)
 
     assert unauthorized["error"]["code"] == "unauthorized"
+  end
+
+  test "login returns a token that carries the library secret, and it opens the library", %{
+    conn: conn
+  } do
+    user = user_fixture()
+
+    %{"token" => token} =
+      conn
+      |> post(~p"/api/v1/auth/login", %{
+        "email" => user.email,
+        "password" => valid_user_password()
+      })
+      |> json_response(200)
+
+    assert {:ok, credentials} = Base.url_decode64(token)
+    assert byte_size(credentials) == 64
+
+    assert %{"items" => []} =
+             conn
+             |> put_req_header("authorization", "Bearer #{token}")
+             |> get(~p"/api/v1/history")
+             |> json_response(200)
   end
 
   test "logout stays idempotent without a token", %{conn: conn} do

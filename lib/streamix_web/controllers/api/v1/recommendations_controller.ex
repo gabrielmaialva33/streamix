@@ -50,7 +50,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     user = conn.assigns.current_user
     limit = parse_int(params["limit"], 20)
 
-    case AI.get_recommendations(user.id,
+    case AI.get_recommendations(conn.assigns.current_library_key,
            type: collection,
            limit: candidate_limit(limit),
            exclude_watched: true
@@ -160,7 +160,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
     limit = parse_int(params["limit"], 10)
 
     {:ok, channels} =
-      AI.get_channel_recommendations(user.id,
+      AI.get_channel_recommendations(conn.assigns.current_library_key,
         limit: limit,
         show_adult: user.show_adult_content
       )
@@ -174,9 +174,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Get user viewing insights and stats.
   """
   def insights(conn, _params) do
-    user_id = conn.assigns.current_user.id
-
-    insights = AI.get_user_insights(user_id)
+    insights = AI.get_user_insights(conn.assigns.current_library_key)
 
     json(conn, %{insights: insights})
   end
@@ -186,10 +184,10 @@ defmodule StreamixWeb.Api.V1.RecommendationsController do
   Force refresh user profile (recalculate from watch history).
   """
   def refresh(conn, _params) do
-    user_id = conn.assigns.current_user.id
-    Cache.invalidate_personalization(user_id)
+    library_key = conn.assigns.current_library_key
+    Cache.invalidate_personalization(library_key.user_id)
 
-    case AI.compute_user_profile(user_id) do
+    case AI.compute_user_profile(library_key) do
       {:ok, _vector} ->
         json(conn, %{status: "refreshed"})
 

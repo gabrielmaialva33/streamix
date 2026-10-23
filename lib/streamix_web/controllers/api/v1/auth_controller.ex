@@ -5,8 +5,9 @@ defmodule StreamixWeb.Api.V1.AuthController do
   """
   use StreamixWeb, :controller
 
-  alias Streamix.Accounts
+  alias Streamix.{Accounts, Library}
   alias StreamixWeb.Api.V1.Response
+  alias StreamixWeb.Plugs.BearerAuth
 
   plug StreamixWeb.Plugs.BearerAuth when action == :me
   plug StreamixWeb.Plugs.BearerAuth, [optional: true] when action == :logout
@@ -23,14 +24,15 @@ defmodule StreamixWeb.Api.V1.AuthController do
            name: params["name"]
          }) do
       {:ok, user} ->
-        token = Accounts.generate_user_session_token(user, ip_info(conn))
+        case issue_token(conn, user, password) do
+          {:ok, token} ->
+            conn
+            |> put_status(:created)
+            |> json(%{token: token, user: serialize_user(user)})
 
-        conn
-        |> put_status(:created)
-        |> json(%{
-          token: Base.url_encode64(token),
-          user: serialize_user(user)
-        })
+          {:error, :locked} ->
+            library_locked(conn)
+        end
 
       {:error, changeset} ->
         Response.error(
@@ -77,12 +79,10 @@ defmodule StreamixWeb.Api.V1.AuthController do
         )
 
       user ->
-        token = Accounts.generate_user_session_token(user, ip_info(conn))
-
-        json(conn, %{
-          token: Base.url_encode64(token),
-          user: serialize_user(user)
-        })
+        case issue_token(conn, user, password) do
+          {:ok, token} -> json(conn, %{token: token, user: serialize_user(user)})
+          {:error, :locked} -> library_locked(conn)
+        end
     end
   end
 
@@ -114,6 +114,26 @@ defmodule StreamixWeb.Api.V1.AuthController do
     end
 
     send_resp(conn, 204, "")
+  end
+
+  # The password is in hand only at register/login, so the library key is
+  # unlocked here and wrapped for the new session; the client keeps the
+  # secret as the second half of its bearer token (see BearerAuth).
+  defp issue_token(conn, user, password) do
+    with {:ok, library_key} <- Library.unlock(user, password) do
+      {library_secret, sealed_library_key} = Library.seal_session(library_key)
+      token = Accounts.generate_user_session_token(user, ip_info(conn), sealed_library_key)
+      {:ok, BearerAuth.encode_token(token, library_secret)}
+    end
+  end
+
+  defp library_locked(conn) do
+    Response.error(
+      conn,
+      :unauthorized,
+      "library_locked",
+      "This password does not open the account's library"
+    )
   end
 
   defp ip_info(conn) do

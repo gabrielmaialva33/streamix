@@ -3,14 +3,13 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
 
   import Streamix.AccountsFixtures
 
-  alias Streamix.Accounts
+  alias Streamix.{Accounts, Library}
   alias StreamixWeb.Plugs.BearerAuth
 
   describe "call/2 with a valid token" do
-    test "assigns :current_user when the Bearer header is correct" do
+    test "assigns :current_user and the unlocked library key" do
       user = user_fixture()
-      raw = Accounts.generate_user_session_token(user)
-      encoded = Base.url_encode64(raw, padding: false)
+      encoded = user |> api_token_fixture() |> String.trim_trailing("=")
 
       conn =
         build_conn(:get, "/api/v1/recommendations")
@@ -19,12 +18,12 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
 
       refute conn.halted
       assert conn.assigns.current_user.id == user.id
+      assert conn.assigns.current_library_key == library_key_fixture(user)
     end
 
     test "accepts padded url-safe base64 too (TV client emits padded output)" do
       user = user_fixture()
-      raw = Accounts.generate_user_session_token(user)
-      encoded = Base.url_encode64(raw)
+      encoded = api_token_fixture(user)
 
       conn =
         build_conn(:get, "/")
@@ -37,8 +36,7 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
 
     test "tolerates lowercase scheme separator" do
       user = user_fixture()
-      raw = Accounts.generate_user_session_token(user)
-      encoded = Base.url_encode64(raw, padding: false)
+      encoded = user |> api_token_fixture() |> String.trim_trailing("=")
 
       conn =
         build_conn(:get, "/")
@@ -74,6 +72,36 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
       assert conn.status == 401
     end
 
+    test "returns 401 for a session token that carries no library secret" do
+      # Tokens issued before the library was sealed: valid sessions that can
+      # never unlock it, so the client has to log in again.
+      user = user_fixture()
+      legacy = user |> Accounts.generate_user_session_token() |> Base.url_encode64()
+
+      conn =
+        build_conn(:get, "/")
+        |> put_req_header("authorization", "Bearer #{legacy}")
+        |> BearerAuth.call([])
+
+      assert conn.halted
+      assert conn.status == 401
+    end
+
+    test "returns 401 when the library secret does not open the session's key" do
+      user = user_fixture()
+      {_secret, sealed} = user |> library_key_fixture() |> Library.seal_session()
+      token = Accounts.generate_user_session_token(user, %{}, sealed)
+      forged = BearerAuth.encode_token(token, :crypto.strong_rand_bytes(32))
+
+      conn =
+        build_conn(:get, "/")
+        |> put_req_header("authorization", "Bearer #{forged}")
+        |> BearerAuth.call([])
+
+      assert conn.halted
+      assert conn.status == 401
+    end
+
     test "returns 401 when the base64 is malformed" do
       conn =
         build_conn(:get, "/")
@@ -97,8 +125,7 @@ defmodule StreamixWeb.Plugs.BearerAuthTest do
 
     test "still authenticates a valid Bearer header" do
       user = user_fixture()
-      raw = Accounts.generate_user_session_token(user)
-      encoded = Base.url_encode64(raw, padding: false)
+      encoded = user |> api_token_fixture() |> String.trim_trailing("=")
 
       conn =
         build_conn(:get, "/")

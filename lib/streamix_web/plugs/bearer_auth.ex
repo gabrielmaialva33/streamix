@@ -26,11 +26,22 @@ defmodule StreamixWeb.Plugs.BearerAuth do
 
   Downstream code should read `conn.assigns[:current_user]` and treat
   `nil` as "anonymous".
+
+  ## Token shape
+
+  The bearer token is the URL-safe base64 of the 32-byte session token
+  followed by the 32-byte library secret (`Streamix.Library`). The secret
+  never reaches the database; together with the session's stored wrap it
+  unlocks the user's library key, assigned as `:current_library_key`.
+  Tokens without a secret predate the encrypted library and are rejected,
+  so the client logs in again.
   """
 
   import Plug.Conn
 
-  alias Streamix.Accounts
+  alias Streamix.{Accounts, Library}
+
+  @session_token_bytes 32
 
   @type opts :: [optional: boolean()]
 
@@ -40,16 +51,18 @@ defmodule StreamixWeb.Plugs.BearerAuth do
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
   def call(conn, opts) do
     case authenticate(conn) do
-      {:ok, user, token} ->
+      {:ok, user, token, library_key} ->
         conn
         |> assign(:current_user, user)
         |> assign(:current_session_token, token)
+        |> assign(:current_library_key, library_key)
 
       :error ->
         if Keyword.get(opts, :optional, false) do
           conn
           |> assign(:current_user, nil)
           |> assign(:current_session_token, nil)
+          |> assign(:current_library_key, nil)
         else
           reject(conn)
         end
@@ -58,13 +71,31 @@ defmodule StreamixWeb.Plugs.BearerAuth do
 
   defp authenticate(conn) do
     with token_str when is_binary(token_str) <- get_bearer_token(conn),
-         {:ok, token} <- decode_token(token_str),
-         {user, _inserted_at} <- Accounts.get_user_by_session_token(token) do
-      {:ok, user, token}
+         {:ok, credentials} <- decode_token(token_str),
+         {:ok, token, library_secret} <- split_credentials(credentials),
+         {user, _inserted_at, sealed_library_key} <- Accounts.get_session_by_token(token),
+         {:ok, library_key} <- Library.open_session(user.id, library_secret, sealed_library_key) do
+      {:ok, user, token, library_key}
     else
       _ -> :error
     end
   end
+
+  @doc """
+  Encodes the bearer token handed to API clients at login: the session token
+  followed by the library secret, URL-safe base64.
+  """
+  @spec encode_token(binary(), binary()) :: String.t()
+  def encode_token(session_token, library_secret)
+      when byte_size(session_token) == @session_token_bytes do
+    Base.url_encode64(session_token <> library_secret)
+  end
+
+  defp split_credentials(<<token::binary-size(@session_token_bytes), library_secret::binary>>)
+       when byte_size(library_secret) > 0,
+       do: {:ok, token, library_secret}
+
+  defp split_credentials(_credentials), do: :error
 
   # Accept both padded and unpadded url-safe base64 without leaking the
   # distinction into every call site.

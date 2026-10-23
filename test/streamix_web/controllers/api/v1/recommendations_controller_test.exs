@@ -4,7 +4,7 @@ defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.{Accounts, Billing}
+  alias Streamix.Billing
 
   setup do
     original_api_keys = Application.get_env(:streamix, :api_keys, [])
@@ -83,17 +83,19 @@ defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
       %{series_id: series.id, genre_id: drama.id}
     ])
 
-    Streamix.Cache.set(
-      Streamix.Cache.recommendations_key(user.id, "movies", 80, true),
-      [%{id: movie.id, score: 0.91}],
-      60
-    )
+    # Recommendations are cached in this node's memory only; seed them there
+    # so the test needs no Qdrant.
+    previous_local_cache = Application.get_env(:streamix, :disable_local_cache)
+    Application.put_env(:streamix, :disable_local_cache, false)
+    on_exit(fn -> Application.put_env(:streamix, :disable_local_cache, previous_local_cache) end)
 
-    Streamix.Cache.set(
-      Streamix.Cache.recommendations_key(user.id, "series", 80, true),
-      [%{id: series.id, score: 0.88}],
-      60
-    )
+    Streamix.Cache.fetch_personal(user.id, {:recommendations, "movies", 80, true}, 60_000, fn ->
+      [%{id: movie.id, score: 0.91}]
+    end)
+
+    Streamix.Cache.fetch_personal(user.id, {:recommendations, "series", 80, true}, 60_000, fn ->
+      [%{id: series.id, score: 0.88}]
+    end)
 
     movie_resp =
       conn
@@ -141,7 +143,6 @@ defmodule StreamixWeb.Api.V1.RecommendationsControllerTest do
   end
 
   defp authenticated(conn, user) do
-    token = Accounts.generate_user_session_token(user)
-    put_req_header(conn, "authorization", "Bearer #{Base.url_encode64(token)}")
+    put_req_header(conn, "authorization", "Bearer #{api_token_fixture(user)}")
   end
 end

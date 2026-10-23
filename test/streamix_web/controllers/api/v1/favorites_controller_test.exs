@@ -4,7 +4,6 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
   import Streamix.AccountsFixtures
   import Streamix.IptvFixtures
 
-  alias Streamix.Accounts
   alias Streamix.Iptv
 
   setup do
@@ -40,7 +39,7 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
         |> json_response(201)
 
       assert get_in(response, ["data", "content_type"]) == "movie"
-      assert Iptv.favorite?(user.id, "movie", movie.id)
+      assert Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
     end
 
     test "blocks favoriting another user's private content", %{conn: conn} do
@@ -56,7 +55,7 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
         |> json_response(404)
 
       assert response["error"]["code"] == "content_not_found"
-      refute Iptv.favorite?(user.id, "movie", movie.id)
+      refute Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
     end
   end
 
@@ -74,7 +73,7 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
         |> json_response(404)
 
       assert response["error"]["code"] == "content_not_found"
-      refute Iptv.favorite?(user.id, "movie", movie.id)
+      refute Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
     end
   end
 
@@ -112,7 +111,7 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
         |> json_response(200)
 
       assert response == %{"added" => 0, "removed" => 0, "skipped" => 1}
-      refute Iptv.favorite?(user.id, "movie", movie.id)
+      refute Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
     end
 
     test "uses the newest timestamp when a batch repeats the same favorite", %{conn: conn} do
@@ -142,7 +141,7 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
         |> json_response(200)
 
       assert response == %{"added" => 1, "removed" => 0, "skipped" => 1}
-      assert Iptv.favorite?(user.id, "movie", movie.id)
+      assert Iptv.favorite?(library_key_fixture(user), "movie", movie.id)
     end
 
     test "rejects oversized offline batches", %{conn: conn} do
@@ -172,7 +171,7 @@ defmodule StreamixWeb.Api.V1.FavoritesControllerTest do
   end
 
   defp authenticated(conn, user) do
-    token = Accounts.generate_user_session_token(user)
-    put_req_header(conn, "authorization", "Bearer #{Base.url_encode64(token)}")
+    token = api_token_fixture(user)
+    put_req_header(conn, "authorization", "Bearer #{token}")
   end
 end
