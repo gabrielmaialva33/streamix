@@ -1,6 +1,11 @@
 defmodule Streamix.Iptv.Sync.Cleanup do
   @moduledoc """
-  Cleanup of orphaned catalog items and their dependent user data.
+  Cleanup of orphaned catalog items and the watch-party rooms that point at
+  them.
+
+  Favorites and watch history are sealed with each user's library key, so
+  the database cannot tell which catalog item they reference; the owner's own
+  reads drop entries whose item is gone (see `Streamix.Iptv.History`).
 
   Provider syncs use a bounded, provider-scoped sweep. The scheduled cleanup
   worker can run an unbounded sweep across all providers.
@@ -8,21 +13,21 @@ defmodule Streamix.Iptv.Sync.Cleanup do
 
   import Ecto.Query, warn: false
 
-  alias Streamix.Iptv.{CatalogItem, Favorite, WatchEvent, WatchProgress}
+  alias Streamix.Iptv.CatalogItem
   alias Streamix.Repo
   alias Streamix.WatchParty
 
   @delete_chunk 500
   @query_timeout :timer.seconds(60)
-  @empty_counts %{favorites: 0, watch_history: 0, watch_party_rooms: 0, catalog_items: 0}
+  @empty_counts %{watch_party_rooms: 0, catalog_items: 0}
 
   require Logger
 
   @doc """
   Cleans up orphaned catalog items:
 
-    1. Removes `favorites` and `watch_progress` entries whose
-       `catalog_item_id` no longer points at an existing content row.
+    1. Removes watch-party rooms whose `catalog_item_id` no longer points at
+       an existing content row.
     2. Removes the now-dangling `catalog_items` themselves so the table
        doesn't grow unbounded.
 
@@ -36,43 +41,13 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     limit = cleanup_limit!(opts)
 
     Logger.info(
-      "Cleaning up orphaned favorites, watch progress, and catalog_items" <>
+      "Cleaning up orphaned watch-party rooms and catalog_items" <>
         cleanup_scope(provider_id, limit)
     )
 
     provider_id
     |> find_orphaned_catalog_item_ids(limit)
     |> do_cleanup()
-  end
-
-  @doc """
-  Returns the subset of `catalog_item_ids` that user data still hangs off:
-  favorites, watch progress, watch events or watch party rooms, active or
-  ended.
-
-  All four cascade from `catalog_items`, and the sweep above deletes a catalog
-  item as soon as no content row references it. So a content row whose catalog
-  item is in this set must not be deleted, or the next sweep takes the user's
-  data with it.
-  """
-  @spec catalog_item_ids_with_user_data([integer()]) :: MapSet.t(integer())
-  def catalog_item_ids_with_user_data([]), do: MapSet.new()
-
-  def catalog_item_ids_with_user_data(catalog_item_ids) when is_list(catalog_item_ids) do
-    ids = Enum.uniq(catalog_item_ids)
-
-    [Favorite, WatchProgress, WatchEvent]
-    |> Enum.flat_map(&referenced_catalog_item_ids(&1, ids))
-    |> Enum.concat(WatchParty.catalog_item_ids_with_rooms(ids))
-    |> MapSet.new()
-  end
-
-  defp referenced_catalog_item_ids(schema, ids) do
-    schema
-    |> where([row], row.catalog_item_id in ^ids)
-    |> distinct(true)
-    |> select([row], row.catalog_item_id)
-    |> Repo.all()
   end
 
   defp do_cleanup([]), do: {:ok, @empty_counts}
@@ -95,21 +70,10 @@ defmodule Streamix.Iptv.Sync.Cleanup do
     result
   end
 
-  # Favorites, watch_progress, and watch_party_rooms all cascade from
-  # catalog_items, but deleting them explicitly gives us useful counts.
-  # A room pointing at deleted content is itself dead; dropping it also
-  # cascades its participants and messages.
+  # watch_party_rooms cascade from catalog_items, but deleting them
+  # explicitly gives us a useful count. A room pointing at deleted content is
+  # itself dead; dropping it also cascades its participants and messages.
   defp delete_chunk(chunk) do
-    {fav, _} =
-      Favorite
-      |> where([f], f.catalog_item_id in ^chunk)
-      |> Repo.delete_all(timeout: @query_timeout)
-
-    {hist, _} =
-      WatchProgress
-      |> where([wp], wp.catalog_item_id in ^chunk)
-      |> Repo.delete_all(timeout: @query_timeout)
-
     rooms =
       WatchParty.delete_rooms_by_catalog_item_ids(chunk, timeout: @query_timeout)
 
@@ -119,8 +83,6 @@ defmodule Streamix.Iptv.Sync.Cleanup do
       |> Repo.delete_all(timeout: @query_timeout)
 
     %{
-      favorites: fav,
-      watch_history: hist,
       watch_party_rooms: rooms,
       catalog_items: ci
     }
@@ -143,8 +105,8 @@ defmodule Streamix.Iptv.Sync.Cleanup do
   defp log_result({:ok, counts}) do
     if Enum.any?(counts, fn {_key, value} -> value > 0 end) do
       Logger.info(
-        "Cleanup: #{counts.favorites} favorites, #{counts.watch_history} watch_progress, " <>
-          "#{counts.watch_party_rooms} watch_party_rooms, #{counts.catalog_items} catalog_items removed"
+        "Cleanup: #{counts.watch_party_rooms} watch_party_rooms, " <>
+          "#{counts.catalog_items} catalog_items removed"
       )
     end
   end
