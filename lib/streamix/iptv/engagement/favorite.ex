@@ -9,7 +9,7 @@ defmodule Streamix.Iptv.Favorite do
 
   @type t :: %__MODULE__{}
 
-  schema "favorites" do
+  schema "sealed_favorites" do
     field :user_id, :id
     field :item_digest, :binary
     field :sealed, :binary, redact: true

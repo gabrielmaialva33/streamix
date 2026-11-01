@@ -45,7 +45,8 @@ issuing a new one.
 
 ### Sealed rows
 
-`watch_progress` and `favorites` hold, besides the owner's `user_id`:
+`sealed_watch_progress` and `sealed_favorites` hold, besides the owner's
+`user_id`:
 
 - `sealed`: the entry (catalog item, progress, completion, and when it was
   watched or favorited) as AES-256-GCM ciphertext under a key derived from the
@@ -144,18 +145,27 @@ Being precise about the limits is part of the promise:
 - Deploying the encrypted library ends every session once. The session cookie
   changed, and sessions without a key cannot read the library. TV and mobile
   apps must log in again; their new bearer token is 88 characters.
-- Plaintext history and favorites from before the upgrade were moved to
-  `legacy_watch_progress` and `legacy_favorites`. Each user's rows are sealed
-  and deleted at their next login. Rows of users who do not come back stay
-  readable until the operator purges them:
+- The schema change is an expand step: it only adds tables and columns,
+  clears data and relaxes constraints, so the previous image keeps working
+  against it while the deploy swaps containers and after an image rollback.
+- Plaintext history and favorites from before the upgrade stay in the original
+  `watch_progress` and `favorites` tables. Each user's rows are sealed into
+  `sealed_watch_progress` and `sealed_favorites` and deleted from the originals
+  at their next login. Rows of users who do not come back stay readable until
+  the operator purges them:
 
   ```bash
   bin/streamix eval "Streamix.Library.purge_legacy_plaintext()"
   ```
 
-- The migration drops `watch_events` (no reader, content next to IP
-  addresses), the content columns of `playback_sessions` and its ended rows,
-  and the `user_id` of `qoe_events`.
+- The migration empties `watch_events` (no reader, content next to IP
+  addresses) and the ended rows of `playback_sessions`, and clears the content
+  of `playback_sessions` and the `user_id` of `qoe_events`. The new code never
+  writes those columns.
+- A later contract release retires the plaintext tables, `watch_events` and
+  the cleared columns, once no deployable image reads them. Until then an
+  image rollback runs the previous release against the new schema: it works,
+  but it writes plaintext again until the new image is back.
 - Qdrant's `user_profiles` collection is dropped by the collection bootstrap
   job at boot. Personalization older releases left in Redis expires within
   three hours.

@@ -97,6 +97,25 @@ defmodule StreamixWeb.Api.V1.HistoryControllerTest do
     end
   end
 
+  describe "DELETE /api/v1/history/:id" do
+    test "another user's entry id deletes nothing", %{conn: conn} do
+      owner = user_fixture()
+      intruder = user_fixture()
+      channel = channel_fixture(provider_fixture(owner))
+      owner_key = library_key_fixture(owner)
+      {:ok, entry} = Iptv.add_watch_history(owner_key, "live_channel", channel.id)
+
+      conn =
+        conn
+        |> authenticated(intruder)
+        |> delete(~p"/api/v1/history/#{entry.id}")
+
+      assert response(conn, 204)
+      assert [%{id: id}] = Iptv.list_watch_history(owner_key)
+      assert id == entry.id
+    end
+  end
+
   defp authenticated(conn, user) do
     token = api_token_fixture(user)
     put_req_header(conn, "authorization", "Bearer #{token}")

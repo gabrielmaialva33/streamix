@@ -4,9 +4,13 @@ defmodule Streamix.Library.LegacyImport do
   was encrypted.
 
   Sealing needs the user's key, which only exists once they log in, so each
-  user's `legacy_watch_progress` and `legacy_favorites` rows are moved at
-  their next login and then deleted. Rows of users who never come back stay
-  readable until an operator runs `purge/0`.
+  user's rows in the plaintext `watch_progress` and `favorites` tables are
+  sealed into `sealed_watch_progress` and `sealed_favorites` at their next
+  login and then deleted. Rows of users who never come back stay readable
+  until an operator runs `purge/0`.
+
+  The plaintext tables stay in the schema for one release, so an image
+  rollback still finds them (see the SealPersonalLibrary migration).
   """
 
   import Ecto.Query, warn: false
@@ -37,14 +41,14 @@ defmodule Streamix.Library.LegacyImport do
   """
   @spec purge() :: %{watch_progress: non_neg_integer(), favorites: non_neg_integer()}
   def purge do
-    {progress, _} = Repo.delete_all("legacy_watch_progress")
-    {favorites, _} = Repo.delete_all("legacy_favorites")
+    {progress, _} = Repo.delete_all("watch_progress")
+    {favorites, _} = Repo.delete_all("favorites")
     %{watch_progress: progress, favorites: favorites}
   end
 
   defp import_progress(%Key{user_id: user_id} = key) do
     rows =
-      from(progress in "legacy_watch_progress",
+      from(progress in "watch_progress",
         join: catalog_item in "catalog_items",
         on: catalog_item.id == progress.catalog_item_id,
         left_join: episode in "episodes",
@@ -67,12 +71,12 @@ defmodule Streamix.Library.LegacyImport do
     sealed = Enum.map(rows, &History.sealed_row(key, &1))
 
     insert_chunks(WatchProgress, sealed)
-    delete_legacy("legacy_watch_progress", user_id, length(rows))
+    delete_legacy("watch_progress", user_id, length(rows))
   end
 
   defp import_favorites(%Key{user_id: user_id} = key) do
     rows =
-      from(favorite in "legacy_favorites",
+      from(favorite in "favorites",
         join: catalog_item in "catalog_items",
         on: catalog_item.id == favorite.catalog_item_id,
         where: favorite.user_id == ^user_id,
@@ -87,7 +91,7 @@ defmodule Streamix.Library.LegacyImport do
     sealed = Enum.map(rows, &Favorites.sealed_row(key, &1))
 
     insert_chunks(Favorite, sealed)
-    delete_legacy("legacy_favorites", user_id, length(rows))
+    delete_legacy("favorites", user_id, length(rows))
   end
 
   defp insert_chunks(schema, rows) do
@@ -104,7 +108,7 @@ defmodule Streamix.Library.LegacyImport do
       |> Repo.delete_all()
 
     if deleted > 0 do
-      Logger.info("[Library] sealed #{imported} legacy #{table} rows", user_id: user_id)
+      Logger.info("[Library] sealed #{imported} plaintext #{table} rows", user_id: user_id)
     end
 
     imported

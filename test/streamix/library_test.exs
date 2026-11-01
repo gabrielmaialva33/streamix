@@ -52,8 +52,8 @@ defmodule Streamix.LibraryTest do
       {:ok, _} = Library.add_favorite(key, "movie", movie.id)
 
       # No content reference and no plaintext timestamps either.
-      assert columns("watch_progress") == ~w(id user_id item_digest sealed)
-      assert columns("favorites") == ~w(id user_id item_digest sealed)
+      assert columns("sealed_watch_progress") == ~w(id user_id item_digest sealed)
+      assert columns("sealed_favorites") == ~w(id user_id item_digest sealed)
 
       [progress] = Repo.all(WatchProgress)
       [favorite] = Repo.all(Favorite)
@@ -209,7 +209,7 @@ defmodule Streamix.LibraryTest do
       channel = channel_fixture(provider)
       watched_at = ~U[2026-10-01 20:00:00Z]
 
-      Repo.insert_all("legacy_watch_progress", [
+      Repo.insert_all("watch_progress", [
         %{
           user_id: user.id,
           catalog_item_id: movie.catalog_item_id,
@@ -222,7 +222,7 @@ defmodule Streamix.LibraryTest do
         }
       ])
 
-      Repo.insert_all("legacy_favorites", [
+      Repo.insert_all("favorites", [
         %{user_id: user.id, catalog_item_id: channel.catalog_item_id}
       ])
 
@@ -235,20 +235,55 @@ defmodule Streamix.LibraryTest do
       assert [%{content_id: channel_id}] = Library.list_favorites(key)
       assert channel_id == channel.id
 
-      assert Repo.aggregate("legacy_watch_progress", :count) == 0
-      assert Repo.aggregate("legacy_favorites", :count) == 0
+      assert Repo.aggregate("watch_progress", :count) == 0
+      assert Repo.aggregate("favorites", :count) == 0
     end
 
     test "of users who never come back can be purged" do
       user = user_fixture()
       channel = channel_fixture(provider_fixture(user))
 
-      Repo.insert_all("legacy_favorites", [
+      Repo.insert_all("favorites", [
         %{user_id: user.id, catalog_item_id: channel.catalog_item_id}
       ])
 
       assert %{favorites: 1, watch_progress: 0} = Library.purge_legacy_plaintext()
-      assert Repo.aggregate("legacy_favorites", :count) == 0
+      assert Repo.aggregate("favorites", :count) == 0
+    end
+  end
+
+  describe "the schema change is an expand step" do
+    # The migration runs while the previous image still serves, and an image
+    # rollback keeps the migrated schema: everything that image reads and
+    # writes has to survive it.
+    test "the previous release's tables and columns are still there" do
+      assert "catalog_item_id" in columns("watch_progress")
+      assert "catalog_item_id" in columns("favorites")
+      assert "catalog_item_id" in columns("watch_events")
+      assert "user_id" in columns("qoe_events")
+
+      nullability =
+        Repo.query!(
+          """
+          SELECT column_name, is_nullable FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'playback_sessions'
+            AND column_name IN ('content_type', 'content_id')
+          """,
+          []
+        ).rows
+
+      assert Enum.sort(nullability) == [["content_id", "YES"], ["content_type", "YES"]]
+    end
+
+    test "passes the migration safety gate without a review waiver" do
+      path = "priv/repo/migrations/20261023033608_seal_personal_library.exs"
+
+      refute File.read!(path) =~ "migration-safety: reviewed"
+      # The gate only needs PATH; nothing from the test environment reaches it.
+      env = for {name, _value} <- System.get_env(), name != "PATH", do: {name, nil}
+
+      assert {_output, 0} =
+               System.cmd("bash", ["scripts/check-migration-safety.sh", path], env: env)
     end
   end
 

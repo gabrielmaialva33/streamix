@@ -12,7 +12,7 @@ defmodule Streamix.Iptv.WatchProgress do
 
   @type t :: %__MODULE__{}
 
-  schema "watch_progress" do
+  schema "sealed_watch_progress" do
     field :user_id, :id
     field :item_digest, :binary
     field :sealed, :binary, redact: true

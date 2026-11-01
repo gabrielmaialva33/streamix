@@ -142,8 +142,11 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   ids, and the sample nginx log format drops query strings, `Referer` and client addresses. Stream tokens are
   encrypted instead of signed.
 - `playback_sessions` stops recording what a screen plays and deletes slots when playback ends, QoE samples no longer
-  store a user, `watch_events` is dropped, ended Watch Party rooms are purged after a day instead of 90, and
+  store a user, `watch_events` is emptied, ended Watch Party rooms are purged after a day instead of 90, and
   personal-provider VOD bypasses the on-disk block cache.
+- The migration is an expand step (new `sealed_watch_progress`/`sealed_favorites` tables, nothing dropped, renamed or
+  made stricter), so the previous image survives the deploy window and an image rollback. A later release retires
+  the plaintext tables and the cleared columns.
 - Upgrading ends every session once: web users and TV/mobile apps log in again, and the API bearer token now carries
   the session's library secret (88 characters). Each user's plaintext history is sealed at their next login; run
   `Streamix.Library.purge_legacy_plaintext/0` to delete what is left.

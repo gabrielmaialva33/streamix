@@ -60,7 +60,8 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
         select: %{
           engine: event.engine,
           ttff_ms: event.ttff_ms,
-          batch_id: event.batch_id
+          batch_id: event.batch_id,
+          user_id: event.user_id
         }
       )
       |> Repo.one!()
@@ -68,6 +69,10 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
     assert event.engine == "native"
     assert event.ttff_ms == 840
     assert event.batch_id == batch_id
+    # A playback sample says when and what kind of content was played, so it
+    # must not say by whom (docs/privacy.md). The column itself stays for one
+    # release so the previous image can still write it after a rollback.
+    assert event.user_id == nil
 
     columns =
       Repo.query!(
@@ -75,9 +80,6 @@ defmodule StreamixWeb.Api.V1.TelemetryControllerTest do
       ).rows
 
     refute ["url"] in columns
-    # A playback sample says when and what kind of content was played, so it
-    # must not say by whom (docs/privacy.md).
-    refute ["user_id"] in columns
   end
 
   test "accepts single event payloads from lightweight clients", %{conn: conn} do
