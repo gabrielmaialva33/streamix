@@ -93,6 +93,7 @@ function createHarness(options = {}) {
     isPlayerDestroyed: () => state.destroyed,
     metadata: { title: "Example", artist: "Streamix", album: "Streamix" },
     navigatorRef: options.navigatorRef ?? {},
+    nextEpisode: options.nextEpisode,
     onError: (operation, error) => calls.errors.push([operation, error.message]),
     presentation,
     root,
@@ -361,4 +362,38 @@ test("composes Media Session actions, positions, and playback wake state", () =>
   assert.equal(wakeDestroys, 1);
   assert.equal(mediaSession.metadata, null);
   for (const handler of handlers.values()) assert.equal(handler, null);
+});
+
+test("keyboard honours root policy and routes next/escape through browser integration", () => {
+  let next = 0;
+  let exits = 0;
+  const root = { dataset: {} };
+  const h = createHarness({
+    root,
+    nextEpisode: () => {
+      next += 1;
+    },
+  });
+  h.documentRef.exitFullscreen = () => {
+    exits += 1;
+  };
+  h.documentRef.fullscreenElement = root;
+  h.integration.setupKeyboardShortcuts();
+  root.dataset.playerPanel = "episodes";
+  dispatchKey(h.documentRef, "Escape");
+  assert.equal(root.dataset.playerPanel, undefined);
+  assert.equal(exits, 0);
+  dispatchKey(h.documentRef, "Escape");
+  assert.equal(exits, 1);
+  dispatchKey(h.documentRef, "n");
+  assert.equal(next, 1);
+  root.dataset.partyRole = "viewer";
+  dispatchKey(h.documentRef, "n");
+  dispatchKey(h.documentRef, "Enter");
+  assert.equal(next, 1);
+  assert.deepEqual(h.calls.commands, []);
+  root.dataset.playerLocked = "true";
+  dispatchKey(h.documentRef, "ArrowUp");
+  assert.deepEqual(h.calls.commands, []);
+  h.integration.destroy();
 });
